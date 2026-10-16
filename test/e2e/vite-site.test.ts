@@ -6,11 +6,11 @@ import { compareRoute } from '../../src/check/compare.ts';
 import { runCheck } from '../../src/check/run.ts';
 import { summarize } from '../../src/check/summary.ts';
 import { VIEWPORTS } from '../../src/check/types.ts';
-import { buildVite, redDimensions, startStatic, type App, type Mutation } from './harness.ts';
+import { buildVite, failuresIn, redDimensions, startStatic, type App, type Mutation } from './harness.ts';
 
 const ROUTES = ['/', '/about/', '/fr/', '/old-about', '/missing'];
 
-const failure = (report: Parameters<Mutation['expect']>[0], dimension: string) => report.routes.flatMap((r) => r.failures).filter((f) => f.dimension === dimension);
+const failure = failuresIn;
 
 const MUTATIONS: Mutation[] = [
 	{

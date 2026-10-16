@@ -138,6 +138,23 @@ export async function startNext(dir: string): Promise<App> {
 	}
 }
 
+export function failuresIn(report: Report, dimension: Dimension) {
+	return report.routes.flatMap((r) => r.failures).filter((f) => f.dimension === dimension);
+}
+
+export async function limited<T, R>(items: readonly T[], concurrency: number, task: (item: T) => Promise<R>): Promise<R[]> {
+	const results: R[] = new Array(items.length);
+	let next = 0;
+	const worker = async () => {
+		while (next < items.length) {
+			const i = next++;
+			results[i] = await task(items[i]!);
+		}
+	};
+	await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
+	return results;
+}
+
 export function redDimensions(report: Report): Dimension[] {
 	return [...new Set(report.routes.flatMap((r) => r.failures.map((f) => f.dimension)))].sort();
 }

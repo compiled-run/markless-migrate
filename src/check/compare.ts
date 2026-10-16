@@ -7,6 +7,8 @@ import { compareScreenshots, visualNoise, visuallyDifferent } from './visual.ts'
 
 const LIMIT = 20;
 const WEIGHT_SLACK_BYTES = 1024;
+// Measured on the Next fixture: run-at-load bytes of one build moved by 2,016 bytes (1.07%) between loads that two OLD loads did not see.
+const EXECUTED_SLACK_RATIO = 0.02;
 const BUILD_OUTPUT_PREFIXES = ['/_next/', '/_nuxt/', '/_astro/', '/_app/immutable/'];
 
 export interface Probe {
@@ -180,7 +182,8 @@ export function compareRoute(route: string, oldA: RouteCapture, oldB: RouteCaptu
 	const wb = oldB.pages[desktop]!.weight;
 	const wn = next.pages[desktop]?.weight ?? { downloaded: 0, source: 0, executed: 0, scripts: [] };
 	for (const key of ['downloaded', 'executed'] as const) {
-		const allowed = wa[key] + Math.abs(wa[key] - wb[key]) + WEIGHT_SLACK_BYTES;
+		const slack = key === 'executed' ? Math.max(WEIGHT_SLACK_BYTES, Math.round(wa[key] * EXECUTED_SLACK_RATIO)) : WEIGHT_SLACK_BYTES;
+		const allowed = wa[key] + Math.abs(wa[key] - wb[key]) + slack;
 		if (wn[key] > allowed) {
 			const oldUrls = new Set(wa.scripts.map((s) => s.url));
 			const only = wn.scripts.filter((s) => !oldUrls.has(s.url)).sort((x, y) => y[key === 'downloaded' ? 'bytes' : 'executed'] - x[key === 'downloaded' ? 'bytes' : 'executed']).slice(0, 3);
