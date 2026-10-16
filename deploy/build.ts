@@ -59,8 +59,9 @@ export default await handler(join(import.meta.dirname, 'dist'));
 async function front(): Promise<void> {
 	const out = await output('front');
 	await cp(join(root, 'front/static'), join(out, 'static'), { recursive: true });
-	const report = join(root, '../examples/.migrate');
-	await cp(report, join(out, 'static/_migrate'), { recursive: true }).catch(() => undefined);
+	const state = join(examples, 'vite-site-markless/.migrate');
+	await mkdir(join(out, 'static/_migrate'), { recursive: true });
+	for (const file of ['report.html', 'report.json']) await cp(join(state, file), join(out, 'static/_migrate', file)).catch(() => undefined);
 	await writeFile(join(out, 'config.json'), JSON.stringify({ version: 3, routes: [{ handle: 'filesystem' }] }));
 }
 

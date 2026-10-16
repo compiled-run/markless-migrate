@@ -184,6 +184,17 @@ asset its NEW page loads that OLD does not serve (a whole directory when OLD has
 `/:path*` to OLD. `--nitro` writes `routeRules` for a Markless app in front: a `proxy` rule per
 inventoried route and endpoint not switched yet, and per asset OLD's pages load that NEW does not serve.
 
+## Demo
+
+A real migration you can open: the Vite fixture deployed as the old app, its Markless port as the new
+one, and the report between them.
+
+- Front door and report: https://markless-migrate-demo.vercel.app (`/_migrate/report.html`)
+- Old app: https://migrate-demo-old.vercel.app, new app: https://migrate-demo-new.vercel.app, CMS: https://migrate-demo-cms.vercel.app
+
+`examples/` holds both apps and the CMS; `deploy/deploy.sh cms|old|new|front` builds and deploys each.
+`examples/MIGRATION-LOG.md` records every agent attempt and every problem found on the way.
+
 ## Development
 
 ```bash
