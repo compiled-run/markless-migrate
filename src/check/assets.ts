@@ -14,10 +14,11 @@ export function fileName(url: string): string {
 
 // A content hash is a token of eight or more characters that reads as random: dates, versions and words do not count.
 export function hasContentHash(url: string): boolean {
-	return fileName(url)
-		.replace(/\.[a-z0-9]+$/i, '')
-		.split(/[-.~]/)
-		.some(isHashToken);
+	const base = fileName(url).replace(/\.[a-z0-9]+$/i, '');
+	// Vite and Rollup hash in base64url, so an eight-character hash may itself contain '-' or '_'.
+	const tail = /[-.]([A-Za-z0-9_-]{8})$/.exec(base)?.[1];
+	if (tail && /[-_]/.test(tail) && isHashToken(tail.replace(/-/g, '_'))) return true;
+	return base.split(/[-.~]/).some(isHashToken);
 }
 
 // Fingerprinted: the framework's own output directory, or a hashed name that the page's built HTML, JS or CSS refers to.

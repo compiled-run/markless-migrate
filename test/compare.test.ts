@@ -9,8 +9,8 @@ import type { ElementSnapshot } from '../src/check/types.ts';
 import { compareScreenshots, visualNoise, visuallyDifferent } from '../src/check/visual.ts';
 
 test('only a hashed name the built output refers to is fingerprinted; public files keep their URLs', () => {
-	for (const url of ['/assets/main-DPvuoccY.css', '/assets/main-Bo_Cokpq.js', '/static/app.3f9a1c2e.js', '/fonts/a1b2c3d4e5-s.p.woff2']) assert.ok(hasContentHash(url), url);
-	for (const url of ['/hero.png', '/logo-2024.png', '/inter-latin.woff2', '/HeroImage.png', '/images/background-v12.jpg', '/release-20261016.zip', '/deadbeef.png']) assert.ok(!hasContentHash(url), url);
+	for (const url of ['/assets/main-DPvuoccY.css', '/assets/main-Bo_Cokpq.js', '/assets/main-D6x1mVz-.js', '/assets/index-a-B3cd9Z.js', '/static/app.3f9a1c2e.js', '/fonts/a1b2c3d4e5-s.p.woff2']) assert.ok(hasContentHash(url), url);
+	for (const url of ['/hero.png', '/logo-2024.png', '/inter-latin.woff2', '/HeroImage.png', '/images/background-v12.jpg', '/release-20261016.zip', '/deadbeef.png', '/photo-hero-v2.png', '/my-long-file-name.pdf']) assert.ok(!hasContentHash(url), url);
 	const built = ['<link rel="stylesheet" href="/assets/main-DPvuoccY.css">', 'import("./chunk-Bo_Cokpq.js")'];
 	assert.ok(isFingerprinted('/assets/main-DPvuoccY.css', built));
 	assert.ok(isFingerprinted('/assets/chunk-Bo_Cokpq.js', built));
