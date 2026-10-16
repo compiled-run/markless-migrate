@@ -1,9 +1,12 @@
-import { SERVER_NAME } from '../agents/registry.ts';
+import { lstat } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
+import { SERVER_NAME, type ServerCommand } from '../agents/registry.ts';
 
 export interface Driver {
 	readonly id: string;
 	readonly binary: string;
-	args(prompt: string, model?: string): string[];
+	/** With `server`, the markless-migrate MCP server is passed on the command line, so the agent's own config is never edited or copied. */
+	args(prompt: string, model?: string, server?: ServerCommand): string[];
 }
 
 const model = (flag: string, value?: string) => (value ? [flag, value] : []);
@@ -12,12 +15,31 @@ export const DRIVERS: readonly Driver[] = [
 	{
 		id: 'codex',
 		binary: 'codex',
-		args: (prompt, m) => ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '-c', `mcp_servers.${SERVER_NAME}.default_tools_approval_mode="approve"`, ...model('--model', m), prompt],
+		args: (prompt, m, server) => [
+			'exec',
+			'--skip-git-repo-check',
+			'--sandbox',
+			'workspace-write',
+			...(server ? ['-c', `mcp_servers.${SERVER_NAME}.command=${JSON.stringify(server.command)}`, '-c', `mcp_servers.${SERVER_NAME}.args=${JSON.stringify(server.args)}`] : []),
+			'-c',
+			`mcp_servers.${SERVER_NAME}.default_tools_approval_mode="approve"`,
+			...model('--model', m),
+			prompt,
+		],
 	},
 	{
 		id: 'claude',
 		binary: 'claude',
-		args: (prompt, m) => ['-p', prompt, ...model('--model', m), '--permission-mode', 'acceptEdits', '--allowedTools', `mcp__${SERVER_NAME},Bash,Read,Edit,Write,Glob,Grep`],
+		args: (prompt, m, server) => [
+			'-p',
+			prompt,
+			...model('--model', m),
+			...(server ? ['--mcp-config', JSON.stringify({ mcpServers: { [SERVER_NAME]: { type: 'stdio', command: server.command, args: server.args, env: {} } } })] : []),
+			'--permission-mode',
+			'acceptEdits',
+			'--allowedTools',
+			`mcp__${SERVER_NAME},Bash,Read,Edit,Write,Glob,Grep`,
+		],
 	},
 	{
 		id: 'gemini',
@@ -45,4 +67,19 @@ export function driver(id: string): Driver {
 	const found = DRIVERS.find((d) => d.id === id);
 	if (!found) throw new Error(`unknown agent "${id}"; run supports: ${DRIVERS.map((d) => d.id).join(', ')}`);
 	return found;
+}
+
+/**
+ * A CODEX_HOME other than ~/.codex that holds its own copy of auth.json: ChatGPT refresh tokens are single-use, so when that
+ * copy refreshes, the user's real login in ~/.codex is spent and the new tokens die with the copy.
+ */
+export async function copiedLogin(id: string, env: NodeJS.ProcessEnv, home: string): Promise<string | undefined> {
+	if (id !== 'codex' || !env.CODEX_HOME) return undefined;
+	const real = join(home, '.codex');
+	const other = resolve(env.CODEX_HOME);
+	if (other === real) return undefined;
+	const copy = await lstat(join(other, 'auth.json')).catch(() => undefined);
+	const original = await lstat(join(real, 'auth.json')).catch(() => undefined);
+	if (!copy?.isFile() || !original) return undefined;
+	return `CODEX_HOME=${other} holds a copy of ${join(real, 'auth.json')}. Codex refresh tokens work once: when the copy refreshes, your real login is spent. Unset CODEX_HOME (run passes the markless-migrate server to codex on the command line, so ~/.codex is not changed), or sign in inside that home with \`codex login\` instead of copying the file.`;
 }

@@ -20,7 +20,8 @@ import { discoverEndpoints } from './check/endpoints.ts';
 import { readSamples, routeTargets } from './plan/routes.ts';
 import { writeStarterAuth } from './plan/auth.ts';
 import { plan, summarizeInventory, writeInventory } from './plan/inventory.ts';
-import { DRIVERS, driver } from './run/drivers.ts';
+import { copiedLogin, DRIVERS, driver } from './run/drivers.ts';
+import { startAppServer } from './run/server.ts';
 import { runRoutes } from './run/loop.ts';
 import { readInventory, recordResults, STATE_DIR, status, summarizeStatus } from './status.ts';
 import { VERSION } from './version.ts';
@@ -81,9 +82,17 @@ const USAGE = `markless-migrate ${VERSION}
           Production routing for the switched routes: a vercel.json (switched routes and the assets
           their pages load to NEW, the rest to OLD) and Nitro routeRules for the Markless app in front
           (every inventoried route and asset not switched yet proxied to OLD).
-  run     --agent <id> --old <origin> --new <origin> [--route <path>]... [--attempts <n>] [--model <name>]
+  run     --agent <id> --old <origin> --new <origin> [--route <path>]... [--all] [--attempts <n>] [--model <name>]
+          [--source <path>] [--new-source <path>] [--auth <file>] [--header <name:value>]... [--cookie <name=value>]...
+          [--serve <command>] [--build <command>] [--restart-on <path>]
           Drive your agent's own CLI headless, one route at a time, until each route is green or
-          needs a human after n attempts (default 3). Logs to .migrate/run.log.
+          needs a human after n attempts (default 3). Logs to .migrate/run.log. Each route is checked
+          with the same --source, --new-source, --auth and bypass flags as check (--all as in check),
+          and the prompt names them. --serve makes run own the new app's server: it runs --build and
+          restarts the server after every attempt and waits until --new answers; with --restart-on it
+          also restarts whenever that file changes, so the agent's own builds are served.
+          It passes the MCP server to codex and claude on the command line and refuses a CODEX_HOME
+          that holds a copy of ~/.codex/auth.json (refresh tokens are single-use).
           Agents: ${DRIVERS.map((d) => d.id).join(', ')}.
 `;
 
@@ -154,38 +163,97 @@ async function setup(args: string[]): Promise<number> {
 async function run(args: string[], cwd: string): Promise<number> {
 	const { values } = parseArgs({
 		args,
-		options: { agent: { type: 'string' }, old: { type: 'string' }, new: { type: 'string' }, route: { type: 'string', multiple: true }, routes: { type: 'string' }, attempts: { type: 'string' }, model: { type: 'string' } },
+		options: {
+			agent: { type: 'string' },
+			old: { type: 'string' },
+			new: { type: 'string' },
+			route: { type: 'string', multiple: true },
+			routes: { type: 'string' },
+			attempts: { type: 'string' },
+			model: { type: 'string' },
+			source: { type: 'string' },
+			'new-source': { type: 'string' },
+			auth: { type: 'string' },
+			all: { type: 'boolean' },
+			header: { type: 'string', multiple: true },
+			cookie: { type: 'string', multiple: true },
+			serve: { type: 'string' },
+			build: { type: 'string' },
+			'restart-on': { type: 'string' },
+		},
 	});
 	if (!values.agent) fail(`run needs --agent <id> (${DRIVERS.map((d) => d.id).join(', ')})`);
 	if (!values.old || !values.new) fail('run needs --old <origin> and --new <origin>');
 	const attempts = values.attempts ? Number(values.attempts) : 3;
 	if (!Number.isInteger(attempts) || attempts < 1) fail('--attempts must be a whole number of at least 1');
+	if ((values.build || values['restart-on']) && !values.serve) fail('--build and --restart-on need --serve <command>, the command that serves the new app');
 	const agent = driver(values.agent);
-	if (!(await findBinary(agent.binary, { home: process.env.HOME || homedir(), env: process.env }))) fail(`${agent.binary} is not on PATH; install it and sign in first`);
+	const home = process.env.HOME || homedir();
+	if (!(await findBinary(agent.binary, { home, env: process.env }))) fail(`${agent.binary} is not on PATH; install it and sign in first`);
+	const copied = await copiedLogin(agent.id, process.env, home);
+	if (copied) fail(copied);
+	let bypass: ReturnType<typeof bypassOptions> = {};
+	try {
+		bypass = bypassOptions(values.header, values.cookie);
+	} catch (error) {
+		fail((error as Error).message);
+	}
+	const auth = values.auth ? await readAuthFile(values.auth).catch((error: Error) => fail(error.message)) : undefined;
+	const source = values.source ? resolve(values.source) : undefined;
+	const newSource = values['new-source'] ? resolve(values['new-source']) : undefined;
+	const facts = source ? (await loadSourceFacts(source)).facts : undefined;
 	const named = [...(values.route ?? []), ...(values.routes?.split(',').map((r) => r.trim()).filter(Boolean) ?? [])];
-	const routes = named.length ? named : (await readInventory(cwd))?.routes.map((r) => r.route);
+	const inventory = await readInventory(cwd);
+	let routes = named.length ? named : inventory?.routes.map((r) => r.route);
+	let unchecked: CheckOptions['unchecked'] = [];
+	if (values.all) {
+		if (!inventory) fail('run --all needs .migrate/inventory.json: run plan first');
+		const all = routeTargets(inventory, await readSamples(join(cwd, STATE_DIR)));
+		routes = [...new Set([...named, ...all.pages, ...(await discoverEndpoints(defaultEnv(values.old, bypass), all.pages, all.endpoints))])];
+		unchecked = all.needsSample;
+	}
 	if (!routes?.length) fail('no routes: pass --route <path> or run plan first');
 	const { old, new: next } = values;
-	const outcomes = await runRoutes({
-		cwd,
-		driver: agent,
-		old,
-		new: next,
-		routes,
-		attempts,
-		model: values.model,
-		cli: [serverCommand().command, ...serverCommand().args.slice(0, -1)].join(' '),
-		progress: out,
-		check: async (route) => {
-			const report = await runCheck({ oldOrigin: old, newOrigin: next, routes: [route], accepted: await readAccepted(join(cwd, STATE_DIR, ACCEPTED_FILE)) });
-			await writeReport(report, join(cwd, STATE_DIR));
-			await recordResults(cwd, report);
-			return { ok: report.ok, summary: summarize(report) };
-		},
-	});
-	const human = outcomes.filter((o) => o.outcome === 'needs a human');
-	out(`\n${outcomes.length - human.length} of ${outcomes.length} routes green.${human.length ? ` Needs a human: ${human.map((o) => o.route).join(', ')}.` : ''} Log: ${join(cwd, STATE_DIR, 'run.log')}\n`);
-	return human.length ? 1 : 0;
+	const server = values.serve ? await startAppServer({ cwd, serve: values.serve, ...(values.build ? { build: values.build } : {}), ...(values['restart-on'] ? { restartOn: values['restart-on'] } : {}), origin: next, log: (line) => out(`server: ${line}\n`) }).catch((error: Error) => fail(error.message)) : undefined;
+	const mcp = serverCommand();
+	try {
+		const outcomes = await runRoutes({
+			cwd,
+			driver: agent,
+			old,
+			new: next,
+			routes,
+			attempts,
+			model: values.model,
+			cli: [mcp.command, ...mcp.args.slice(0, -1)].join(' '),
+			mcp,
+			context: { ...(source ? { source } : {}), ...(newSource ? { newSource } : {}), ...(values.auth ? { auth: resolve(values.auth) } : {}), flags: [...(values.header ?? []).flatMap((h) => ['--header', h]), ...(values.cookie ?? []).flatMap((c) => ['--cookie', c])] },
+			...(server ? { server, serving: { ...(values.build ? { build: values.build } : {}), ...(values['restart-on'] ? { restartOn: values['restart-on'] } : {}) } } : {}),
+			progress: out,
+			check: async (route) => {
+				const report = await runCheck({
+					oldOrigin: old,
+					newOrigin: next,
+					routes: [route],
+					locales: inventory?.locales,
+					accepted: await readAccepted(join(cwd, STATE_DIR, ACCEPTED_FILE)),
+					...(facts ? { source: facts } : {}),
+					...(source || newSource ? { sourceDirs: { ...(source ? { old: source } : {}), ...(newSource ? { new: newSource } : {}) } } : {}),
+					...(auth ? { auth, authStateDir: join(cwd, STATE_DIR, 'auth') } : {}),
+					...bypass,
+				});
+				await writeReport(report, join(cwd, STATE_DIR));
+				await recordResults(cwd, report);
+				return { ok: report.ok, summary: summarize(report) };
+			},
+		});
+		const human = outcomes.filter((o) => o.outcome === 'needs a human');
+		const left = unchecked?.length ? ` Not checked, needs a sample: ${unchecked.map((u) => u.route).join(', ')}.` : '';
+		out(`\n${outcomes.length - human.length} of ${outcomes.length} routes green.${human.length ? ` Needs a human: ${human.map((o) => o.route).join(', ')}.` : ''}${left} Log: ${join(cwd, STATE_DIR, 'run.log')}\n`);
+		return human.length || unchecked?.length ? 1 : 0;
+	} finally {
+		await server?.stop();
+	}
 }
 
 async function main(argv: string[]): Promise<number> {

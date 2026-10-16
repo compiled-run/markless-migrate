@@ -40,6 +40,15 @@ What `setup` writes and what `run` invokes, against each agent's current officia
 
 `scripts/trial.ts` serves the Vite fixture as the old app and a copy whose `/about/` heading reads "Meet the guides" as the new app. Codex 0.159.0, model gpt-6.1-sol, signed in with the owner's ChatGPT plan through a temporary `CODEX_HOME` that held only a copy of `auth.json` and what `setup --agent codex` wrote.
 
+Do not repeat that set-up. ChatGPT refresh tokens are single-use: once the copied access token expired,
+the copy refreshed, which spent the refresh token in `~/.codex/auth.json`, and the new tokens were deleted
+with the temporary home. The owner's real login stopped working ("your refresh token was already used").
+`run` now passes the markless-migrate server to `codex exec` with `-c mcp_servers.markless-migrate.command=...`
+and `args=...` (and to `claude -p` with `--mcp-config`), so it works with the agent's real home and changes
+nothing in it, and it refuses to start when `CODEX_HOME` is another directory holding its own copy of
+`auth.json`. To isolate configuration, use `-c` overrides or a home that ran `codex login` itself, never a
+copied `auth.json`. `scripts/trial.ts` only builds and serves the two apps; it never touches an agent home.
+
 | Run | Agent actions | Result |
 | --- | --- | --- |
 | `codex exec` with a hand-written prompt, reasoning low | 1 `plan` and 3 `check_route` calls, 5 shell commands, 1 file edit; the first `vite build` failed in the sandbox because the trial's `node_modules` is a symlink outside the workspace, and Codex retried with `--configLoader native` | green; 1 turn, 33 s, 126,236 input tokens (109,056 cached), 686 output |

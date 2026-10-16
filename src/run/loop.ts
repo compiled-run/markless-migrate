@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { skillBody } from '../agents/skill.ts';
 import { STATE_DIR } from '../status.ts';
 import type { Driver } from './drivers.ts';
+import type { AppServer } from './server.ts';
+import type { ServerCommand } from '../agents/registry.ts';
 
 export interface RouteCheck {
 	readonly ok: boolean;
@@ -21,8 +23,24 @@ export interface RunOptions {
 	readonly timeoutMs?: number;
 	readonly env?: NodeJS.ProcessEnv;
 	readonly cli: string;
+	/** The markless-migrate MCP server, passed to agents that take one on the command line. */
+	readonly mcp?: ServerCommand;
+	/** What the check of each route is run with, so the prompt can say where things are and how to check the same way. */
+	readonly context?: RunContext;
+	/** The new app's server, owned by run: rebuilt and restarted after every attempt. */
+	readonly server?: AppServer;
+	/** How the agent gets the new app served: build command and the file that triggers a restart. */
+	readonly serving?: { readonly build?: string; readonly restartOn?: string };
 	check(route: string): Promise<RouteCheck>;
 	progress?(line: string): void;
+}
+
+export interface RunContext {
+	readonly source?: string;
+	readonly newSource?: string;
+	readonly auth?: string;
+	/** Extra `check` flags, as typed, so the agent's own check matches run's. */
+	readonly flags?: readonly string[];
 }
 
 export type Outcome = 'green' | 'already green' | 'needs a human';
@@ -34,17 +52,29 @@ export interface RouteOutcome {
 	readonly summary: string;
 }
 
-export function buildPrompt(o: Pick<RunOptions, 'old' | 'new' | 'cli'>, route: string, summary: string, attempt: number): string {
+const quote = (arg: string) => (/^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replaceAll("'", "'\\''")}'`);
+
+function serveLine(o: Pick<RunOptions, 'new' | 'server' | 'serving'>): string {
+	if (!o.server) return `- When you change the new app, rebuild or restart whatever serves it so ${o.new} shows your change.`;
+	const build = o.serving?.build ? `\`${o.serving.build}\`` : 'its build';
+	const restart = o.serving?.restartOn ? ` As soon as ${o.serving.restartOn} changes (${build} writes it), the server restarts on its own within a second, so you can check your change.` : '';
+	return `- markless-migrate runs the new app's server at ${o.new}: do not start, stop or restart a server yourself. After you finish it runs ${build}, restarts the server and checks again.${restart}`;
+}
+
+export function buildPrompt(o: Pick<RunOptions, 'old' | 'new' | 'cli' | 'context' | 'server' | 'serving'>, route: string, summary: string, attempt: number): string {
+	const c = o.context ?? {};
+	const toolArgs = [`old: ${o.old}`, `new: ${o.new}`, `route: ${route}`, ...(c.source ? [`source: ${c.source}`] : []), ...(c.newSource ? [`new_source: ${c.newSource}`] : []), ...(c.auth ? [`auth: ${c.auth}`] : [])];
+	const command = [o.cli, 'check', '--old', o.old, '--new', o.new, '--route', route, ...(c.source ? ['--source', c.source] : []), ...(c.newSource ? ['--new-source', c.newSource] : []), ...(c.auth ? ['--auth', c.auth] : []), ...(c.flags ?? [])].map(quote).join(' ');
 	return `${skillBody()}
 ## Your task now
 
 Make route ${route} of the new app match the old app. Work in the current directory, which holds the new app.
 
-- Old app (reference, never edit it): ${o.old}
-- New app: ${o.new}
-- When you change the new app, rebuild or restart whatever serves it so ${o.new} shows your change.
-- Check with the markless-migrate \`check_route\` tool (old: ${o.old}, new: ${o.new}, route: ${route}),
-  or run \`${o.cli} check --old ${o.old} --new ${o.new} --route ${route}\`.
+- Old app (reference, never edit it): ${o.old}${c.source ? `\n- Old app's source, to read (never edit it): ${c.source}` : ''}
+- New app: ${o.new}${c.newSource ? ` (source: ${c.newSource})` : ''}${c.auth ? `\n- Roles: ${c.auth}; the route is checked anonymous and as each role, and every one must be green.` : ''}
+${serveLine(o)}
+- Check with the markless-migrate \`check_route\` tool (${toolArgs.join(', ')}),
+  or run \`${command}\`.
 - Stop when the check is green, or when you cannot make progress; say what blocks you.
 
 This is attempt ${attempt}. The latest check of ${route} says:
@@ -63,7 +93,7 @@ interface AgentRun {
 function invoke(o: RunOptions, prompt: string): Promise<AgentRun> {
 	const started = Date.now();
 	return new Promise((resolve) => {
-		const child = spawn(o.driver.binary, o.driver.args(prompt, o.model), { cwd: o.cwd, env: o.env ?? process.env, stdio: ['ignore', 'pipe', 'pipe'] });
+		const child = spawn(o.driver.binary, o.driver.args(prompt, o.model, o.mcp), { cwd: o.cwd, env: o.env ?? process.env, stdio: ['ignore', 'pipe', 'pipe'] });
 		let output = '';
 		child.stdout.on('data', (chunk) => (output += chunk));
 		child.stderr.on('data', (chunk) => (output += chunk));
@@ -103,6 +133,12 @@ export async function runRoutes(o: RunOptions): Promise<RouteOutcome[]> {
 			const exit = run.error ? `failed to start: ${run.error}` : run.signal ? `killed by ${run.signal}` : `exit ${run.code}`;
 			await write(`-- ${route} attempt ${attempt}: ${o.driver.binary} ${exit} after ${(run.ms / 1000).toFixed(1)}s\n${run.output.replace(/^/gm, '   | ')}\n`);
 			if (run.error) throw new Error(`could not start ${o.driver.binary}: ${run.error}`);
+			const served = o.server ? await o.server.refresh() : { ok: true, output: '' };
+			if (!served.ok) {
+				await write(`-- ${route} attempt ${attempt}: ${served.output.replace(/\n/g, '\n   ! ')}\n`);
+				check = { ok: false, summary: `The new app could not be served after your changes, so nothing was checked.\n${served.output}` };
+				continue;
+			}
 			check = await o.check(route);
 			await write(`-- ${route} attempt ${attempt}: check ${check.ok ? 'green' : 'red'}\n${check.ok ? '' : check.summary.replace(/^/gm, '   > ')}`);
 		}

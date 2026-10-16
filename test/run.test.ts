@@ -4,8 +4,11 @@ import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { DRIVERS, driver } from '../src/run/drivers.ts';
-import { runRoutes, type RunOptions } from '../src/run/loop.ts';
+import { copiedLogin, DRIVERS, driver } from '../src/run/drivers.ts';
+import { buildPrompt, runRoutes, type RunOptions } from '../src/run/loop.ts';
+import { startAppServer } from '../src/run/server.ts';
+import { symlink } from 'node:fs/promises';
+import { createServer } from 'node:net';
 
 const CLI = new URL('../src/cli.ts', import.meta.url).pathname;
 
@@ -124,4 +127,110 @@ test('run validates its arguments before starting anything', async () => {
 	const missing = cli('--agent', 'codex', '--old', 'http://a', '--new', 'http://b', '--route', '/');
 	assert.equal(missing.status, 2);
 	assert.match(missing.stderr, /codex is not on PATH/);
+});
+
+test('the prompt names the old source, the new source and the roles, and the check command carries the same flags as run', () => {
+	const prompt = buildPrompt({ old: 'http://old.test', new: 'http://new.test', cli: 'markless-migrate', context: { source: '/src/old app', newSource: '/src/new', auth: '/x/auth.json', flags: ['--header', 'x-pass: 1'] } }, '/members/', 'FAIL', 1);
+	assert.match(prompt, /Old app's source, to read \(never edit it\): \/src\/old app/);
+	assert.match(prompt, /New app: http:\/\/new\.test \(source: \/src\/new\)/);
+	assert.match(prompt, /Roles: \/x\/auth\.json; the route is checked anonymous and as each role/);
+	assert.ok(prompt.includes("markless-migrate check --old http://old.test --new http://new.test --route /members/ --source '/src/old app' --new-source /src/new --auth /x/auth.json --header 'x-pass: 1'"), prompt);
+	assert.match(prompt, /check_route` tool \(old: http:\/\/old\.test, new: http:\/\/new\.test, route: \/members\/, source: \/src\/old app, new_source: \/src\/new, auth: \/x\/auth\.json\)/);
+});
+
+function port(): Promise<number> {
+	return new Promise((done) => {
+		const s = createServer();
+		s.listen(0, '127.0.0.1', () => {
+			const p = (s.address() as { port: number }).port;
+			s.close(() => done(p));
+		});
+	});
+}
+
+const SERVE = `import { createServer } from 'node:http';
+import { readFileSync } from 'node:fs';
+const build = readFileSync('build.txt', 'utf8');
+createServer((req, res) => res.end(build + ' pid ' + process.pid)).listen(Number(process.env.APP_PORT), '127.0.0.1');
+`;
+const BUILD = `node -e "const fs = require('fs'); const n = Number(fs.existsSync('build.txt') ? fs.readFileSync('build.txt', 'utf8').split(' ')[1] : 0) + 1; if (fs.existsSync('broken')) process.exit(3); fs.writeFileSync('build.txt', 'build ' + n)"`;
+
+test('run owns the new app server: it builds and restarts it after each attempt, so the check sees the agent\'s change, and a failed build is the next prompt', async () => {
+	const { cwd, options } = await sandbox(99);
+	const appPort = await port();
+	const origin = `http://127.0.0.1:${appPort}`;
+	await writeFile(join(cwd, 'serve.mjs'), SERVE);
+	const served: string[] = [];
+	const server = await startAppServer({ cwd, serve: 'node serve.mjs', build: BUILD, origin, env: { ...process.env, APP_PORT: String(appPort) } });
+	try {
+		await writeFile(join(cwd, 'bin', 'codex'), `#!/bin/sh\nn=$(cat calls 2>/dev/null || echo 0); n=$((n + 1)); echo $n > calls\nfor last; do :; done\nprintf '%s' "$last" > prompt.$n\nif [ "$n" = 1 ]; then touch broken; else rm -f broken; fi\n`);
+		const outcomes = await runRoutes({
+			...options,
+			new: origin,
+			attempts: 2,
+			server,
+			serving: { build: 'npm run build' },
+			check: async () => {
+				const body = await (await fetch(origin)).text();
+				served.push(body.split(' pid ')[0]!);
+				return { ok: body.startsWith('build 2'), summary: `served ${body}` };
+			},
+		});
+		assert.deepEqual(outcomes.map((o) => [o.outcome, o.attempts]), [['green', 2]]);
+		assert.deepEqual(served, ['build 1', 'build 2'], 'the first attempt broke the build, so it was not checked; the second built and restarted');
+		const first = await readFile(join(cwd, 'prompt.1'), 'utf8');
+		assert.match(first, /markless-migrate runs the new app's server at http:\/\/127\.0\.0\.1:\d+: do not start, stop or restart a server yourself\. After you finish it runs `npm run build`/);
+		assert.match(await readFile(join(cwd, 'prompt.2'), 'utf8'), /could not be served after your changes[\s\S]*failed \(exit 3\)/);
+	} finally {
+		await server.stop();
+	}
+	await assert.rejects(fetch(origin), 'the server is stopped with run');
+});
+
+test('with --restart-on the server restarts when the agent\'s own build touches that file', async () => {
+	const cwd = await mkdtemp(join(tmpdir(), 'mm-serve-'));
+	const appPort = await port();
+	const origin = `http://127.0.0.1:${appPort}`;
+	await writeFile(join(cwd, 'serve.mjs'), SERVE);
+	await writeFile(join(cwd, 'build.txt'), 'build 1');
+	const server = await startAppServer({ cwd, serve: 'node serve.mjs', origin, restartOn: 'build.txt', env: { ...process.env, APP_PORT: String(appPort) } });
+	try {
+		const before = await (await fetch(origin)).text();
+		await new Promise((r) => setTimeout(r, 50));
+		await writeFile(join(cwd, 'build.txt'), 'build 2');
+		let after = before;
+		for (let i = 0; i < 40 && !after.startsWith('build 2'); i++) {
+			await new Promise((r) => setTimeout(r, 100));
+			after = await fetch(origin).then((r) => r.text(), () => after);
+		}
+		assert.match(after, /^build 2 pid \d+$/);
+		assert.notEqual(after.split(' pid ')[1], before.split(' pid ')[1], 'a new server process');
+	} finally {
+		await server.stop();
+	}
+});
+
+test('codex and claude get the MCP server on the command line, so their own config is never copied or edited', () => {
+	const server = { command: '/bin/node', args: ['/x/cli.ts', 'mcp'] };
+	const codex = driver('codex').args('P', undefined, server);
+	assert.deepEqual(codex.slice(4, 8), ['-c', 'mcp_servers.markless-migrate.command="/bin/node"', '-c', 'mcp_servers.markless-migrate.args=["/x/cli.ts","mcp"]']);
+	const claude = driver('claude').args('P', undefined, server);
+	assert.deepEqual(JSON.parse(claude[claude.indexOf('--mcp-config') + 1]!), { mcpServers: { 'markless-migrate': { type: 'stdio', command: '/bin/node', args: ['/x/cli.ts', 'mcp'], env: {} } } });
+});
+
+test('a CODEX_HOME holding a copy of the real auth.json is refused; the real home, a symlink, or a home signed in on its own is not', async () => {
+	const home = await mkdtemp(join(tmpdir(), 'mm-home-'));
+	await mkdir(join(home, '.codex'));
+	await writeFile(join(home, '.codex', 'auth.json'), '{}');
+	const other = join(home, 'tmp-codex');
+	await mkdir(other);
+	assert.equal(await copiedLogin('codex', { CODEX_HOME: other }, home), undefined, 'no auth.json there: it signs in on its own');
+	await writeFile(join(other, 'auth.json'), '{}');
+	assert.match((await copiedLogin('codex', { CODEX_HOME: other }, home))!, /refresh tokens work once/);
+	assert.equal(await copiedLogin('claude', { CODEX_HOME: other }, home), undefined);
+	assert.equal(await copiedLogin('codex', { CODEX_HOME: join(home, '.codex') }, home), undefined);
+	const linked = join(home, 'linked');
+	await mkdir(linked);
+	await symlink(join(home, '.codex', 'auth.json'), join(linked, 'auth.json'));
+	assert.equal(await copiedLogin('codex', { CODEX_HOME: linked }, home), undefined);
 });

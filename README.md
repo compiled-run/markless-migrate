@@ -31,7 +31,9 @@ markless-migrate recorder
 markless-migrate status
 markless-migrate setup [--agent claude-code]... [--yes] [--dry-run]
 markless-migrate mcp
-markless-migrate run --agent codex --old http://localhost:3000 --new http://localhost:5173 [--route /about]... [--attempts 3] [--model <name>]
+markless-migrate run --agent codex --old http://localhost:3000 --new http://localhost:5173 [--route /about]... [--all] [--attempts 3] [--model <name>]
+    [--source ../old-app] [--new-source .] [--auth .migrate/auth.json] [--header <name:value>]... [--cookie <name=value>]...
+    [--serve "node .output/server/index.mjs"] [--build "npm run build"] [--restart-on .output/nitro.json]
 ```
 
 `plan` writes `.migrate/inventory.json`, including the locale prefixes in use and where `/` sends each
@@ -49,7 +51,15 @@ shows every file it will change and keeps a backup of each. Paths and their sour
 `copilot -p`, `opencode run`) on whatever login it already has, one route at a time: it checks the route,
 gives the agent the migration skill and the failing report, checks again after the agent finishes, and
 stops the route as "needs a human" after `--attempts` tries. Every attempt, with the agent's output, is
-appended to `.migrate/run.log`. Run `setup` first so the agent has the MCP tools.
+appended to `.migrate/run.log`. Each route is checked with the same `--source`, `--new-source`, `--auth`,
+`--header` and `--cookie` as `check` (and `--all` takes the same routes and endpoints), and the prompt
+names the old source, the roles and the exact check command. A sandboxed agent cannot keep a server
+running, so `--serve <command>` makes `run` own the new app's server: it runs `--build`, restarts the
+server after every attempt and waits until `--new` answers before checking (a failed build becomes the
+next prompt); with `--restart-on <file>` it also restarts whenever the agent's own build rewrites that file.
+`run` passes the MCP server to `codex` and `claude` on the command line, so `setup` is optional for them,
+and it refuses a `CODEX_HOME` holding a copy of `~/.codex/auth.json`: refresh tokens are single-use, and a
+copy that refreshes spends the real login (see [docs/notes/agents.md](docs/notes/agents.md)).
 
 ## What check compares
 
