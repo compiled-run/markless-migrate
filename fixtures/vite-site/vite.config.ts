@@ -12,11 +12,11 @@ export default defineConfig({
 				fr: resolve(root, 'fr/index.html'),
 				ar: resolve(root, 'ar/index.html'),
 				notFound: resolve(root, '404.html'),
-			},
 				forbidden: resolve(root, '403.html'),
 				login: resolve(root, 'login/index.html'),
 				members: resolve(root, 'members/index.html'),
 				admin: resolve(root, 'admin/index.html'),
+			},
 		},
 	},
 });
