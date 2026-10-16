@@ -13,7 +13,7 @@ import { plan } from '../../src/plan/inventory.ts';
 import { connect, firstText } from '../mcp-client.ts';
 import { buildVite, failuresIn, redDimensions, startStatic, type App, type Mutation } from './harness.ts';
 
-const ROUTES = ['/', '/about/', '/fr/', '/old-about', '/missing'];
+const ROUTES = ['/', '/about/', '/fr/', '/ar/', '/old-about', '/missing'];
 
 const failure = failuresIn;
 
@@ -84,7 +84,7 @@ const MUTATIONS: Mutation[] = [
 		expect: (report) => {
 			const assets = failure(report, 'assets');
 			assert.ok(assets.some((f) => f.check === 'image /hero.png' && f.actual.startsWith('404')), JSON.stringify(assets, null, 1));
-			assert.ok(assets.some((f) => f.check.startsWith('image #1') && f.expected === '640x320' && f.actual === 'broken'));
+			assert.ok(assets.some((f) => f.check.startsWith('image #2') && f.expected === '640x320' && f.actual === 'broken'));
 		},
 	},
 	{
@@ -126,6 +126,20 @@ const MUTATIONS: Mutation[] = [
 			assert.match(text!.actual, /^Page built at \d{4}-/);
 		},
 	},
+	{
+		name: 'renamed-public-file',
+		route: '/',
+		edits: [
+			{ file: 'public/logo-2024.png', renameTo: 'public/logo-2025.png' },
+			{ file: 'index.html', find: 'src="/logo-2024.png"', replace: 'src="/logo-2025.png"' },
+		],
+		red: ['assets'],
+		expect: (report) => {
+			const [f] = failure(report, 'assets');
+			assert.equal(f?.check, 'image /logo-2024.png');
+			assert.equal(f?.actual, '404 text/html');
+		},
+	},
 ];
 
 describe('vite multi-page site', () => {
@@ -162,9 +176,9 @@ describe('vite multi-page site', () => {
 
 	test('plan finds the sitemap and crawled routes and both locales', async () => {
 		const inventory = await plan({ origin: old.origin, source: join(import.meta.dirname, '../../fixtures/vite-site'), browser });
-		assert.deepEqual(inventory.routes.map((r) => r.route), ['/', '/about/', '/fr/']);
+		assert.deepEqual(inventory.routes.map((r) => r.route), ['/', '/about/', '/ar/', '/fr/']);
 		assert.deepEqual(inventory.routes[0]!.foundIn, ['crawl', 'hreflang', 'sitemap']);
-		assert.deepEqual(inventory.locales, ['en', 'fr']);
+		assert.deepEqual(inventory.locales, ['ar', 'en', 'fr']);
 		assert.equal(inventory.routes[1]!.seo.title, 'About | Lighthouse Walks');
 		assert.ok(inventory.routes[0]!.assets.some((a) => a.url === '/hero.png' && a.contentType === 'image/png'));
 		assert.equal(inventory.source?.framework, 'vite');

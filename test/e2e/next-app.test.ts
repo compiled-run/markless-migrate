@@ -9,7 +9,7 @@ import { summarize } from '../../src/check/summary.ts';
 import { plan } from '../../src/plan/inventory.ts';
 import { buildNext, failuresIn as failure, limited, redDimensions, startNext, type App, type Mutation } from './harness.ts';
 
-const ROUTES = ['/', '/en', '/fr', '/en/about', '/fr/about', '/en/contact', '/de', '/en/missing'];
+const ROUTES = ['/', '/en', '/fr', '/ar', '/en/about', '/fr/about', '/en/contact', '/de', '/en/missing'];
 
 const MUTATIONS: Mutation[] = [
 	{
@@ -76,14 +76,14 @@ const MUTATIONS: Mutation[] = [
 		red: ['assets', 'visual'],
 		expect: (report) => {
 			const assets = failure(report, 'assets');
-			assert.ok(assets.some((f) => f.check.startsWith('image #1') && f.expected === '640x320' && f.actual === 'broken'), JSON.stringify(assets, null, 1));
+			assert.ok(assets.some((f) => f.check.startsWith('image #2') && f.expected === '640x320' && f.actual === 'broken'), JSON.stringify(assets, null, 1));
 			assert.ok(assets.some((f) => f.check.startsWith('image /_next/image?url=%2Fhero.png') && /^4\d\d$/.test(f.actual)));
 		},
 	},
 	{
 		name: 'status-code',
 		route: '/',
-		edits: [{ file: 'next.config.ts', find: 'permanent: false', replace: 'permanent: true' }],
+		edits: [{ file: 'proxy.ts', find: '307)', replace: '308)' }],
 		red: ['http'],
 		expect: (report) => {
 			const [f] = failure(report, 'http');
@@ -116,6 +116,20 @@ const MUTATIONS: Mutation[] = [
 			const text = failure(report, 'rendered').find((f) => f.check === 'visible text');
 			assert.match(text!.expected, /^Page rendered at \d{4}-/);
 			assert.match(text!.actual, /^Page generated at \d{4}-/);
+		},
+	},
+	{
+		name: 'renamed-public-file',
+		route: '/en',
+		edits: [
+			{ file: 'public/logo-2024.png', renameTo: 'public/logo-2025.png' },
+			{ file: 'app/[lang]/layout.tsx', find: 'src="/logo-2024.png"', replace: 'src="/logo-2025.png"' },
+		],
+		red: ['assets'],
+		expect: (report) => {
+			const [f] = failure(report, 'assets');
+			assert.equal(f?.check, 'image /logo-2024.png');
+			assert.equal(f?.actual, '404 text/html');
 		},
 	},
 ];
@@ -156,9 +170,9 @@ describe('next.js app router app', () => {
 
 	test('plan crawls every locale and records the root redirect', async () => {
 		const inventory = await plan({ origin: old.origin, source: new URL('../../fixtures/next-app', import.meta.url).pathname, browser });
-		assert.deepEqual(inventory.routes.map((r) => r.route), ['/', '/en', '/en/about', '/en/contact', '/fr', '/fr/about', '/fr/contact']);
+		assert.deepEqual(inventory.routes.map((r) => r.route), ['/', '/ar', '/ar/about', '/ar/contact', '/en', '/en/about', '/en/contact', '/fr', '/fr/about', '/fr/contact']);
 		assert.equal(inventory.routes[0]!.redirectsTo, '/en');
-		assert.deepEqual(inventory.locales, ['en', 'fr']);
+		assert.deepEqual(inventory.locales, ['ar', 'en', 'fr']);
 		assert.equal(inventory.source?.framework, 'next');
 		assert.deepEqual(inventory.source?.fileRoutes, ['/[lang]', '/[lang]/about', '/[lang]/contact', '/api/contact']);
 	});

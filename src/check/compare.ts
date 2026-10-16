@@ -9,21 +9,10 @@ const LIMIT = 20;
 const WEIGHT_SLACK_BYTES = 1024;
 // Measured on the Next fixture: run-at-load bytes of one build moved by 2,016 bytes (1.07%) between loads that two OLD loads did not see.
 const EXECUTED_SLACK_RATIO = 0.02;
-const BUILD_OUTPUT_PREFIXES = ['/_next/', '/_nuxt/', '/_astro/', '/_app/immutable/'];
 
 export interface Probe {
 	readonly status: number;
 	readonly contentType: string;
-}
-
-// Fingerprinted bundle files are build output, not public URLs: a new build may rename them.
-export function isBuildOutput(url: string): boolean {
-	if (!url.startsWith('/')) return false;
-	const path = url.split(/[?#]/)[0]!;
-	if (BUILD_OUTPUT_PREFIXES.some((prefix) => path.startsWith(prefix))) return true;
-	const file = path.slice(path.lastIndexOf('/') + 1).replace(/\.[a-z0-9]+$/i, '');
-	const tail = file.slice(-8);
-	return /^[A-Za-z0-9_-]{8}$/.test(tail) && /[a-z]/i.test(tail) && (/\d/.test(tail) || (/[a-z]/.test(tail) && /[A-Z]/.test(tail)));
 }
 
 export function uniqueAssets(capture: RouteCapture): AssetRecord[] {
@@ -32,11 +21,11 @@ export function uniqueAssets(capture: RouteCapture): AssetRecord[] {
 	return [...seen.values()];
 }
 
-// Same-origin, non-fingerprinted OLD assets the NEW page did not request itself, so the runner must fetch them.
+// Same-origin, unfingerprinted OLD assets the NEW page did not request itself, so the runner must fetch them.
 export function assetsToProbe(oldA: RouteCapture, next: RouteCapture): string[] {
 	const requested = new Set(uniqueAssets(next).map((a) => a.url));
 	return uniqueAssets(oldA)
-		.filter((a) => a.url.startsWith('/') && !isBuildOutput(a.url) && !requested.has(a.url))
+		.filter((a) => a.url.startsWith('/') && !a.fingerprinted && !requested.has(a.url))
 		.map((a) => a.url);
 }
 
@@ -173,7 +162,7 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 	const newAssets = new Map(uniqueAssets(next).map((a) => [a.url, a]));
 	const reported = new Set<string>();
 	for (const asset of uniqueAssets(oldA)) {
-		if (!asset.url.startsWith('/') || isBuildOutput(asset.url) || stableIn.some((set) => !set.has(asset.url)) || asset.status >= 400) continue;
+		if (!asset.url.startsWith('/') || asset.fingerprinted || stableIn.some((set) => !set.has(asset.url)) || asset.status >= 400) continue;
 		const found = newAssets.get(asset.url) ?? probes.get(asset.url);
 		if (!found || found.status >= 400) {
 			reported.add(asset.url);

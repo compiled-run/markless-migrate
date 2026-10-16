@@ -47,6 +47,7 @@ export interface AssetRecord {
 	readonly status: number;
 	readonly contentType: string;
 	readonly bytes: number;
+	readonly fingerprinted: boolean;
 }
 
 export interface ImageRecord {
@@ -79,6 +80,7 @@ export interface PageCapture {
 	readonly text: readonly string[];
 	readonly seo: Readonly<Record<string, string>>;
 	readonly assets: readonly AssetRecord[];
+	readonly stylesheets: readonly { readonly url: string; readonly text: string }[];
 	readonly decoded: Readonly<Record<string, { width: number; height: number }>>;
 	readonly images: readonly ImageRecord[];
 	readonly fonts: readonly string[];

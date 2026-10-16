@@ -2,14 +2,21 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PNG } from 'pngjs';
 import { executedBytes } from '../src/check/capture.ts';
-import { isBuildOutput } from '../src/check/compare.ts';
+import { hasContentHash, isFingerprinted } from '../src/check/assets.ts';
 import { matchElements } from '../src/check/match.ts';
 import type { ElementSnapshot } from '../src/check/types.ts';
 import { compareScreenshots, visualNoise, visuallyDifferent } from '../src/check/visual.ts';
 
-test('fingerprinted bundle names are build output, public file names are not', () => {
-	for (const url of ['/assets/main-DPvuoccY.css', '/assets/main-Bo_Cokpq.js', '/_next/static/chunks/24peyy7yj1dyk.css', '/_next/image?url=%2Fhero.png&w=640']) assert.ok(isBuildOutput(url), url);
-	for (const url of ['/hero.png', '/inter-latin.woff2', '/styles.css', '/images/background.jpg', 'https://cdn.example/app-1a2b3c4d.js']) assert.ok(!isBuildOutput(url), url);
+test('only a hashed name the built output refers to is fingerprinted; public files keep their URLs', () => {
+	for (const url of ['/assets/main-DPvuoccY.css', '/assets/main-Bo_Cokpq.js', '/static/app.3f9a1c2e.js', '/fonts/a1b2c3d4e5-s.p.woff2']) assert.ok(hasContentHash(url), url);
+	for (const url of ['/hero.png', '/logo-2024.png', '/inter-latin.woff2', '/HeroImage.png', '/images/background-v12.jpg', '/release-20261016.zip', '/deadbeef.png']) assert.ok(!hasContentHash(url), url);
+	const built = ['<link rel="stylesheet" href="/assets/main-DPvuoccY.css">', 'import("./chunk-Bo_Cokpq.js")'];
+	assert.ok(isFingerprinted('/assets/main-DPvuoccY.css', built));
+	assert.ok(isFingerprinted('/assets/chunk-Bo_Cokpq.js', built));
+	assert.ok(!isFingerprinted('/assets/other-Zx81kQp2.js', built), 'hashed, but nothing built refers to it');
+	assert.ok(!isFingerprinted('/logo-2024.png', ['<img src="/logo-2024.png">']), 'referenced, but its name has no hash');
+	assert.ok(isFingerprinted('/_next/image?url=%2Fhero.png&w=640', []), "the framework's own output directory");
+	assert.ok(!isFingerprinted('https://cdn.example/app-1a2b3c4d.js', ['app-1a2b3c4d.js']));
 });
 
 test('executed bytes count only ranges that ran, with inner ranges overriding outer ones', () => {
