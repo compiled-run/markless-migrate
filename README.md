@@ -19,6 +19,7 @@ markless-migrate plan --old http://localhost:3000 [--source ../old-app] [--limit
 markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [--route /about]... [--open]
     [--source ../old-app] [--data record|replay] [--staging] [--block <host>]... [--allow <host>]...
     [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
+    [--auth .migrate/auth.json] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
 markless-migrate recorder
 markless-migrate status
 markless-migrate setup [--agent claude-code]... [--yes] [--dry-run]
@@ -62,6 +63,7 @@ only within the same kind of character (digits stay digits); everything else mus
 | Dimension | Compared |
 | --- | --- |
 | `http` | status code, redirect chain, content type |
+| `auth` | with `--auth`: whether each role is let in or turned away, and where to; the cookies signing in sets, by name and attributes |
 | `rendered` | accessibility tree and visible text |
 | `visual` | full-page screenshots, outside the noise mask, and screenshots in every forced CSS state |
 | `seo` | title, description, robots, canonical, Open Graph, Twitter, hreflang, JSON-LD (as data) |
@@ -72,6 +74,37 @@ only within the same kind of character (digits stay digits); everything else mus
 | `behaviour` | interactions explored on the old page and replayed on the new one: the URL, what appears and disappears, app requests (method, path, body shape), console errors, live-region announcements and focus after each step |
 | `network` | every request the page makes, in the browser and, when the server runs the request recorder, while the server renders it: method, URL (the app's own origin, ids, timestamps and cache-busters normalised, query keys and values kept), body shape, how many times, and which response fields the page shows |
 | `weight` | JavaScript on the wire and run at load (Chromium coverage); red when the new route is heavier |
+
+### Logged-in pages and bot protection
+
+`plan --source` reads the old app's auth guards and writes a starter `.migrate/auth.json`: the roles they
+check and the login route, with login steps read from the login form. Put each role's credentials in the
+environment it names, then pass the file to `check --auth` (or `auth` to `check_route`):
+
+```json
+{
+	"loginRoute": "/login",
+	"roles": {
+		"member": { "login": [{ "goto": "/login" }, { "fill": { "label": "Email" }, "value": "${MEMBER_EMAIL}" }, { "fill": { "label": "Password" }, "value": "${MEMBER_PASSWORD}" }, { "click": { "role": "button", "name": "Sign in" } }, { "wait": "/account" }] },
+		"admin": { "storageState": "admin.json" }
+	}
+}
+```
+
+A role signs in by its login steps (`goto`, `fill`, `click`, `press`, `wait` for a path or a selector)
+once per app per run, or uses a Playwright storage state file (`{ "old": ..., "new": ... }` when the apps
+are on different hosts). Every route is then checked anonymous and once per role, and the report, the
+summary and report.html group the routes by role. `auth` goes red when the new app lets a role see a page
+the old app kept from it (or the reverse), sends a turned-away visitor somewhere else, or sets the
+session cookie with different attributes. When the two apps let a role in differently, that page is not
+compared further for that role.
+
+When a route is answered by a bot wall (Cloudflare, Akamai, DataDome, PerimeterX, Imperva, AWS WAF,
+Vercel, hCaptcha, reCAPTCHA or Turnstile challenge pages, or a 403/429 that asks if you are a robot) on
+either app, check stops that route as blocked, with the vendor and what gave it away, instead of
+reporting every check red. Point check at a staging URL, or pass the bypass token: `--header
+'x-bypass-token: ...'` (sent only to the apps' own origins), `--cookie name=value`, and `--user-agent`
+when the wall allows a known agent.
 
 ### Server requests, recorded data and writes
 
@@ -121,6 +154,14 @@ fetch, and a server request replaced by hardcoded text. Both fixtures render fro
 suites also replay recorded data to an app on a second CMS with different content (must be green), and
 check writes through a guard on a non-loopback address that fails the test if any write reaches it. Each mutation must turn red
 exactly the dimensions it affects, with the expected message. Mutated copies are built in `.mutants/`.
+
+Both fixtures also sign in with a cookie session: a member and an admin, a members-only page, an
+admin-only page, and a redirect to the login page for anonymous visitors. Their suites check each role
+against a rebuild (green, from the starter auth file `plan` writes), against four auth mutations (the
+members page shown to anonymous visitors, the admin page shown to members, a different login redirect
+target, a session cookie without HttpOnly and with SameSite=Strict), each red only as the role it
+affects, and against a copy behind a Cloudflare-style challenge, which must stop as blocked until the
+staging pass is sent as a header or cookie.
 
 ## License
 

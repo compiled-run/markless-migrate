@@ -222,6 +222,52 @@ Writes:
 - Held-back browser writes are answered with an empty 204 response, so whatever the page does with a
   real response (showing an id, a confirmation) is not exercised.
 
+Logged-in pages (`--auth`):
+
+- Roles come from the auth file. `plan --source` proposes them from the source scan's auth guards: a
+  `signed-in` role plus each role a guard compares against (`user.role !== 'admin'`), and the login route
+  from a guard's redirect or, when the redirect is built at run time (`/${lang}/login`), from a source
+  route named login or sign-in made concrete with a crawled value. The scan keeps one guard per function,
+  so a function that checks sign-in and a role together is reported with that role for every path it
+  covers (the Vite fixture's `/members/` is listed as `admin`). The starter's steps read the login form
+  (the field before the password, the password, the submit button); logins over several pages, single
+  sign-on on another origin, MFA or a CAPTCHA on the login page are not scripted: give the role a
+  storage state file instead.
+- Each role signs in once per side per run, with the clock unfrozen and its requests sent (the login
+  script is the user's own instruction). The state is saved to `.migrate/auth/<role>.<side>.json` but not
+  reused by the next run unless the auth file points `storageState` at it, and a session that expires
+  during a long run is not renewed.
+- Access is decided from the checker's own request with the role's cookies: denied is 401, 403, or a
+  redirect that ends on the login route (the auth file's `loginRoute`, the role's first `goto`, or a path
+  like `/login` or `/sign-in`). An app that answers 404, 200 with an "access denied" page, or redirects a
+  denied visitor somewhere else (the home page) is compared as a page, not as access. A session held in
+  localStorage rather than a cookie is restored in the browser, but the access decision does not see it.
+- When the two apps decide access differently for a role, that role's page is not compared (`skipped`):
+  a login page against a members page is all noise. Fix access and check again.
+- Session cookies are compared by name and attributes (Path, Domain or host-only, HttpOnly, Secure,
+  SameSite, session or persistent), never by value, and not by lifetime. Only cookies for the app's host
+  count. A role from a storage state file carries the cookie as saved, so what the new app's login would
+  set is not seen for it: give at least one role a login script.
+- Every route runs once anonymous and once per role, so a run takes (roles + 1) times as long. Recorded
+  data is kept per role in `.migrate/data/<role>/`. Signing out, session expiry, CSRF tokens and
+  switching roles inside one journey are not checked.
+
+Bot protection:
+
+- A wall is recognised by headers (`cf-mitigated: challenge`, `x-vercel-mitigated`, `x-amzn-waf-action`,
+  `x-datadome`, `server: AkamaiGHost`), cookies it sets (`datadome`, `_px3`, `_abck`...) and page markers
+  (Cloudflare's "Just a moment..." and challenge platform, PerimeterX, DataDome, Imperva, and hCaptcha,
+  reCAPTCHA or Turnstile when the status is a refusal or the title says it is a check), plus 403 or 429
+  pages that talk about captchas or robots. Only a Cloudflare-style wall is proven, on the fixtures; the
+  other vendors' markers come from their public challenge pages. A wall that answers 200 with none of
+  these markers, or quietly serves a different page, is not recognised.
+- The wall is looked for on the checker's first request for each route on each side and on every
+  browser page load, not in forced states, journeys or asset requests; a wall that starts rate-limiting
+  part way through a route shows up as red checks.
+- `--header` goes only to each app's own origin (never to third parties or a redirect's other host),
+  `--cookie` is set for each app's host, and `--user-agent` applies to everything; the same values go to
+  both apps. `plan` does not take them yet, so a walled old app cannot be crawled.
+
 Other:
 
 - Run-at-load JavaScript may grow by up to 2% plus 1 KB before `weight` goes red, because Next.js moved

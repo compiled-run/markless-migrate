@@ -585,7 +585,7 @@ describe('next.js app router app', { concurrency: 4 }, () => {
 		assert.deepEqual(inventory.locales, ['ar', 'en', 'fr']);
 		assert.deepEqual(inventory.localeRouting, { prefixes: ['ar', 'en', 'fr'], negotiation: { ar: '/ar', en: '/en', fr: '/fr' } });
 		assert.equal(inventory.source?.framework, 'next');
-		assert.deepEqual(inventory.source?.fileRoutes, ['/[lang]', '/[lang]/about', '/[lang]/admin', '/[lang]/contact', '/[lang]/login', '/[lang]/members', '/api/contact', '/api/login']);
+		assert.deepEqual(inventory.source?.fileRoutes, ['/[lang]', '/[lang]/about', '/[lang]/admin', '/[lang]/contact', '/[lang]/login', '/[lang]/members', '/[lang]/news/[slug]', '/api/contact', '/api/login', '/api/news', '/feed.xml']);
 	});
 
 	test('plan proposes the roles and login route from the auth guards, and its starter, given credentials, checks every role green', async () => {
