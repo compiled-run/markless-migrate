@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { diffFields, diffLines, fieldTemplates, lineTemplates, template } from '../src/check/noise.ts';
+import { diffFields, diffLines, diffLines as diffAt, fieldTemplates, lineTemplates, template } from '../src/check/noise.ts';
 
 test('a line that never changed between OLD loads must match exactly', () => {
 	const m = template('Home', 'Home');
@@ -31,6 +31,10 @@ test('a noisy line whose token count changed still pins its stable words', () =>
 });
 
 test('lines that only some OLD loads had are optional, everything else is required', () => {
+	const diffLines = (...args: Parameters<typeof diffAt>) => {
+		const { at: _, ...rest } = diffAt(...args);
+		return rest;
+	};
 	const three = lineTemplates(['a', 'b', 'c'], ['a', 'b', 'c'], ['a', 'c']);
 	assert.deepEqual(diffLines(three, ['a', 'c']), { missing: [], unexpected: [], changed: [] });
 	assert.deepEqual(diffLines(three, ['a', 'b']), { missing: ['c'], unexpected: [], changed: [] });
@@ -45,6 +49,7 @@ test('line diffs name missing, unexpected and changed lines', () => {
 	assert.deepEqual(diff.changed, [{ expected: 'one', actual: 'uno' }]);
 	assert.deepEqual(diff.unexpected, ['three']);
 	assert.deepEqual(diff.missing, []);
+	assert.deepEqual(diff.at, { missing: [], unexpected: [3], changed: [{ expected: 1, actual: 1 }] }, 'where each line sits, to tell identical lines apart');
 });
 
 test('field diffs report changed, missing and added keys, but not keys only one OLD load had', () => {

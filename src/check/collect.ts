@@ -67,6 +67,7 @@ export function collectPage({ origin, full }: { origin: string; full: boolean })
 	const byId = (scope.__mmById ??= new Map());
 	const ids = (scope.__mmIds ??= new WeakMap());
 	const paths = new Map<Element, string>();
+	const chains = new Map<Element, string>();
 	for (const el of full ? [document.documentElement, document.body, ...document.body.querySelectorAll('*')] : []) {
 		if (SKIP.has(el.tagName)) continue;
 		const r = role(el);
@@ -74,6 +75,9 @@ export function collectPage({ origin, full }: { origin: string; full: boolean })
 		const parentPath = parent && parent !== document.body ? (paths.get(parent) ?? '') : '';
 		const segment = r && r !== 'generic' && r !== 'none' && r !== 'presentation' ? r : '';
 		paths.set(el, segment ? (parentPath ? `${parentPath}>${segment}` : segment) : parentPath);
+		const tagName = el.tagName.toLowerCase();
+		const nth = parent ? [...parent.children].filter((c) => c.tagName === el.tagName).indexOf(el) + 1 : 1;
+		chains.set(el, `${parent ? `${chains.get(parent) ?? ''}>` : ''}${tagName}:${nth}`.replace(/^>/, ''));
 		if (!el.checkVisibility({ visibilityProperty: true })) continue;
 		const rect = el.getBoundingClientRect();
 		if (rect.width === 0 && rect.height === 0) continue;
@@ -95,6 +99,7 @@ export function collectPage({ origin, full }: { origin: string; full: boolean })
 			tag,
 			text,
 			path: `${paths.get(el) || 'body'}/${tag}`,
+			chain: chains.get(el)!,
 			box: { x: Math.round(rect.x + scrollX), y: Math.round(rect.y + scrollY), width: Math.round(rect.width), height: Math.round(rect.height) },
 			style,
 		});

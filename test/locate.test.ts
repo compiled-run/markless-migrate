@@ -43,3 +43,18 @@ test('each migration step lists the route patterns it is part of: a layout the r
 	assert.deepEqual(routes('About'), ['/:lang/about']);
 	assert.ok(order.findIndex((s) => s.name === 'Tip') < order.findIndex((s) => s.name === 'Home'));
 });
+
+test('of two elements written alike, the one whose ancestors and position among its siblings match the page is chosen', async () => {
+	const { mkdtemp, writeFile } = await import('node:fs/promises');
+	const { tmpdir } = await import('node:os');
+	const dir = await mkdtemp(join(tmpdir(), 'mm-alike-'));
+	await writeFile(join(dir, 'index.html'), '<html><body>\n<header><p>Free entry</p></header>\n<main><ul>\n<li>Walk</li>\n<li>Walk</li>\n</ul></main>\n<footer><p>Free entry</p></footer>\n</body></html>\n');
+	await writeFile(join(dir, 'Card.tsx'), 'export const Cards = () => (\n\t<section>\n\t\t<article><b>New</b></article>\n\t\t<article><b>New</b></article>\n\t</section>\n);\n');
+	const index = await indexMarkup(dir);
+	const at = (tag: string, text: string, chain: string) => pick(locate(index, { tag, text, name: '', chain }, ['index.html', 'Card.tsx']));
+	assert.deepEqual(at('p', 'Free entry', 'html:1>body:1>footer:1>p:1'), ['index.html', 7]);
+	assert.deepEqual(at('p', 'Free entry', 'html:1>body:1>header:1>p:1'), ['index.html', 2]);
+	assert.deepEqual(at('li', 'Walk', 'html:1>body:1>main:1>ul:1>li:2'), ['index.html', 5]);
+	assert.deepEqual(at('b', 'New', 'html:1>body:1>div:1>section:1>article:2>b:1'), ['Card.tsx', 4], 'a component file matches the end of the page chain');
+	assert.deepEqual(at('p', 'Free entry', ''), ['index.html', 2], 'without a chain, the first one written');
+});

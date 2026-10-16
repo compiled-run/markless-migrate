@@ -49,6 +49,8 @@ export interface ElementSnapshot {
 	readonly font?: string;
 	/** Where the page says this element was written: dev hooks, data attributes, component functions. */
 	readonly sources?: readonly RawSource[];
+	/** Its ancestors from `html` down and itself, each `tag:n` (the n-th of its tag among its siblings). */
+	readonly chain?: string;
 }
 
 export interface AssetRecord {

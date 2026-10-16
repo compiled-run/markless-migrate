@@ -453,6 +453,17 @@ const MUTATIONS: Mutation[] = [
 		},
 	},
 	{
+		name: 'second-of-two-alike',
+		route: '/',
+		edits: [{ file: 'index.html', find: 'with seals below the path.</p><p class="meta">Guided</p>', replace: 'with seals below the path.</p><p class="meta">Self-guided</p>' }],
+		red: ['rendered', 'visual'],
+		expect: (report) => {
+			const text = failure(report, 'rendered').find((f) => f.check === 'visible text' && f.expected === 'Guided');
+			assert.equal(text?.where, 'old index.html:57 renders paragraph "Guided"; new index.html:57 renders paragraph "Self-guided"', 'the second of two paragraphs written alike, not the first');
+			assert.equal(text?.old?.column, 114);
+		},
+	},
+	{
 		name: 'redirect-dropped',
 		route: '/old-about',
 		check: { routes: [], redirects: ['/old-about'] },

@@ -126,6 +126,8 @@ export interface LineDiff {
 	readonly missing: readonly string[];
 	readonly unexpected: readonly string[];
 	readonly changed: readonly { expected: string; actual: string }[];
+	/** Where each line sits: its index in the expected and actual lists, in the same order as the lists above. */
+	readonly at?: { readonly missing: readonly number[]; readonly unexpected: readonly number[]; readonly changed: readonly { expected: number; actual: number }[] };
 }
 
 export function diffLines(expected: readonly LineMatcher[], actual: readonly string[]): LineDiff {
@@ -133,15 +135,22 @@ export function diffLines(expected: readonly LineMatcher[], actual: readonly str
 	const missing: string[] = [];
 	const unexpected: string[] = [];
 	const changed: { expected: string; actual: string }[] = [];
+	const at = { missing: [] as number[], unexpected: [] as number[], changed: [] as { expected: number; actual: number }[] };
 	let i = 0;
 	let j = 0;
 	const flush = (endI: number, endJ: number) => {
-		const gone = expected.slice(i, endI).filter((m) => !m.optional).map((m) => m.source);
+		const goneAt = expected.slice(i, endI).flatMap((m, k) => (m.optional ? [] : [i + k]));
+		const gone = goneAt.map((k) => expected[k]!.source);
 		const added = actual.slice(j, endJ);
 		const n = Math.min(gone.length, added.length);
-		for (let k = 0; k < n; k++) changed.push({ expected: gone[k]!, actual: added[k]! });
+		for (let k = 0; k < n; k++) {
+			changed.push({ expected: gone[k]!, actual: added[k]! });
+			at.changed.push({ expected: goneAt[k]!, actual: j + k });
+		}
 		missing.push(...gone.slice(n));
+		at.missing.push(...goneAt.slice(n));
 		unexpected.push(...added.slice(n));
+		at.unexpected.push(...added.slice(n).map((_, k) => j + n + k));
 	};
 	for (const [pi, pj] of pairs) {
 		flush(pi, pj);
@@ -149,7 +158,7 @@ export function diffLines(expected: readonly LineMatcher[], actual: readonly str
 		j = pj + 1;
 	}
 	flush(expected.length, actual.length);
-	return { missing, unexpected, changed };
+	return { missing, unexpected, changed, at };
 }
 
 export function fieldTemplates(a: Readonly<Record<string, string>>, ...others: readonly Readonly<Record<string, string>>[]): Map<string, LineMatcher> {

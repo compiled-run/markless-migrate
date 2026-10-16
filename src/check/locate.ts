@@ -8,6 +8,8 @@ import { matchRoute, specificity } from '../source/pattern.ts';
 
 /** The OLD and NEW page elements behind a failure, registered where the failure is made. */
 export const failureElements = new WeakMap<Failure, { readonly old?: ElementSnapshot; readonly new?: ElementSnapshot }>();
+/** For a failure about one of several identical lines, how many identical lines come before it on each side. */
+export const failureOccurrence = new WeakMap<Failure, { readonly old?: number; readonly new?: number }>();
 /** The OLD stylesheet rule behind a computed-style failure. */
 export const failureRules = new WeakMap<Failure, CssRule>();
 
@@ -36,17 +38,18 @@ function roleAndName(text: string): { role: string; name: string } | undefined {
 
 const squash = (value: string) => value.replace(/\s+/g, '');
 
-function byText(page: PageCapture | undefined, line: string): ElementSnapshot | undefined {
+function byText(page: PageCapture | undefined, line: string, nth = 0): ElementSnapshot | undefined {
 	if (!page || !line || line === '(absent)') return undefined;
+	const pick = (all: ElementSnapshot[]) => all[Math.min(nth, all.length - 1)];
 	const named = roleAndName(line);
 	if (named) {
-		const hit = page.elements.find((e) => e.role === named.role && e.name === named.name) ?? page.elements.find((e) => e.name === named.name);
+		const hit = pick(page.elements.filter((e) => e.role === named.role && e.name === named.name)) ?? page.elements.find((e) => e.name === named.name);
 		if (hit) return hit;
 	}
 	const content = /^\s*-\s*([a-z]+):\s*"?(.*?)"?\s*$/.exec(line);
 	const role = content?.[1];
 	const text = squash(content ? content[2]! : line);
-	const exact = page.elements.find((e) => (!role || e.role === role) && (squash(e.text) === text || squash(e.name) === text));
+	const exact = pick(page.elements.filter((e) => (!role || e.role === role) && (squash(e.text) === text || squash(e.name) === text)));
 	if (exact) return exact;
 	// The element whose own words make up most of the line: text split across child elements still names its owner.
 	return page.elements.filter((e) => (!role || e.role === role) && e.text.length > 3 && text.includes(squash(e.text))).sort((a, b) => text.indexOf(squash(a.text)) - text.indexOf(squash(b.text)) || b.text.length - a.text.length)[0];
@@ -58,8 +61,9 @@ function targets(f: Failure, oldPage: PageCapture | undefined, newPage: PageCapt
 	let next = known?.new;
 	if (!old && !next) {
 		if (f.dimension === 'rendered' || f.dimension === 'behaviour' || (f.dimension === 'a11y' && /\(step \d+\)|^(click|press|type|fill|choose)\b/.test(f.check))) {
-			old = byText(oldPage, f.dimension === 'rendered' ? f.expected : f.check);
-			next = byText(newPage, f.dimension === 'rendered' ? f.actual : f.check);
+			const nth = failureOccurrence.get(f);
+			old = byText(oldPage, f.dimension === 'rendered' ? f.expected : f.check, nth?.old);
+			next = byText(newPage, f.dimension === 'rendered' ? f.actual : f.check, nth?.new);
 		} else if (f.dimension === 'assets' && /^image #(\d+)/.test(f.check)) {
 			const img = oldPage?.images[Number(/^image #(\d+)/.exec(f.check)![1]) - 1];
 			old = img ? oldPage!.elements.find((e) => e.tag === 'img' && e.name === (img.alt ?? '')) : undefined;
@@ -73,7 +77,10 @@ function targets(f: Failure, oldPage: PageCapture | undefined, newPage: PageCapt
 	old = rebind(old, oldPage);
 	next = rebind(next, newPage);
 	// Only a confident pair: the same element with the same words, or the same named control; a merely similar one would point at the wrong line.
-	const twin = (el: ElementSnapshot, page: PageCapture) => page.elements.find((e) => e.tag === el.tag && e.role === el.role && (el.text ? e.text === el.text : el.name ? e.name === el.name : false));
+	const twin = (el: ElementSnapshot, page: PageCapture) => {
+		const alike = page.elements.filter((e) => e.tag === el.tag && e.role === el.role && (el.text ? e.text === el.text : el.name ? e.name === el.name : false));
+		return alike.find((e) => e.chain && e.chain === el.chain) ?? alike[0];
+	};
 	if (old && !next && newPage) next = twin(old, newPage);
 	else if (next && !old && oldPage) old = twin(next, oldPage);
 	return { ...(old ? { old } : {}), ...(next ? { new: next } : {}) };

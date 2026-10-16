@@ -1,6 +1,6 @@
 import { compareA11y } from './a11y.ts';
 import { HINTS, seoHint } from './hints.ts';
-import { failureElements } from './locate.ts';
+import { failureElements, failureOccurrence } from './locate.ts';
 import { compareI18n } from './i18n.ts';
 import { describe, matchElements } from './match.ts';
 import { compareNetwork, contractLines } from './network.ts';
@@ -43,11 +43,20 @@ function fmt(value: string | undefined): string {
 	return value === undefined ? '(absent)' : JSON.stringify(value);
 }
 
-function lineFailures(route: string, dimension: Dimension, check: string, viewport: string, diff: LineDiff, hint: string): Failure[] {
+// How many identical lines come before this one, so the failure can name the right one of several elements written alike.
+const occurrence = (lines: readonly string[] | undefined, index: number | undefined) => (lines && index !== undefined ? lines.slice(0, index).filter((l) => l === lines[index]).length : undefined);
+
+function lineFailures(route: string, dimension: Dimension, check: string, viewport: string, diff: LineDiff, hint: string, lines?: { readonly old: readonly string[]; readonly new: readonly string[] }): Failure[] {
 	const out: Failure[] = [];
-	for (const c of diff.changed) out.push({ route, dimension, check, viewport, expected: c.expected, actual: c.actual, hint });
-	for (const line of diff.missing) out.push({ route, dimension, check, viewport, expected: line, actual: '(absent)', hint });
-	for (const line of diff.unexpected) out.push({ route, dimension, check, viewport, expected: '(absent)', actual: line, hint });
+	const note = (f: Failure, old?: number, next?: number) => {
+		const o = occurrence(lines?.old, old);
+		const n = occurrence(lines?.new, next);
+		if (o || n) failureOccurrence.set(f, { ...(o !== undefined ? { old: o } : {}), ...(n !== undefined ? { new: n } : {}) });
+		out.push(f);
+	};
+	diff.changed.forEach((c, k) => note({ route, dimension, check, viewport, expected: c.expected, actual: c.actual, hint }, diff.at?.changed[k]?.expected, diff.at?.changed[k]?.actual));
+	diff.missing.forEach((line, k) => note({ route, dimension, check, viewport, expected: line, actual: '(absent)', hint }, diff.at?.missing[k]));
+	diff.unexpected.forEach((line, k) => note({ route, dimension, check, viewport, expected: '(absent)', actual: line, hint }, undefined, diff.at?.unexpected[k]));
 	return out;
 }
 
@@ -206,8 +215,8 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 		const bs = others.map((o) => o.pages[viewport]!);
 		const n = next.pages[viewport];
 		if (!n) continue;
-		failures.push(...lineFailures(route, 'rendered', 'accessibility tree', viewport, diffLines(lineTemplates(a.aria, ...bs.map((b) => b.aria)), n.aria), HINTS.aria).slice(0, LIMIT));
-		failures.push(...lineFailures(route, 'rendered', 'visible text', viewport, diffLines(lineTemplates(a.text, ...bs.map((b) => b.text)), n.text), HINTS.text).slice(0, LIMIT));
+		failures.push(...lineFailures(route, 'rendered', 'accessibility tree', viewport, diffLines(lineTemplates(a.aria, ...bs.map((b) => b.aria)), n.aria), HINTS.aria, { old: a.aria, new: n.aria }).slice(0, LIMIT));
+		failures.push(...lineFailures(route, 'rendered', 'visible text', viewport, diffLines(lineTemplates(a.text, ...bs.map((b) => b.text)), n.text), HINTS.text, { old: a.text, new: n.text }).slice(0, LIMIT));
 
 		const noise = visualNoise(a.screenshot, bs.map((b) => b.screenshot), noisyTextBoxes(a.elements, bs.map((b) => b.elements)));
 		const diff = compareScreenshots(a.screenshot, n.screenshot, noise);
