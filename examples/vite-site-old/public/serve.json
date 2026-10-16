@@ -1,0 +1,6 @@
+{
+	"redirects": { "/old-about": "/about/" },
+	"negotiate": { "/": { "en": "", "fr": "/fr/", "ar": "/ar/" } },
+	"forms": { "/api/subscribe": "/about/?subscribed=1", "/api/signup": "/about/?subscribed=1" },
+	"notFoundStatus": 404
+}
