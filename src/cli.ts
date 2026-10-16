@@ -7,7 +7,10 @@ import { parseArgs } from 'node:util';
 import { AGENTS, detectAgents, findBinary, type HostEnv, type ServerCommand } from './agents/registry.ts';
 import { applySetup, describeChanges, planSetup } from './agents/setup.ts';
 import { openFile } from './check/open.ts';
-import { jsonReport, runCheck, writeReport } from './check/run.ts';
+import { DATA_DIR } from './check/data.ts';
+import { RECORDER, recorderEnv } from './check/recorder.ts';
+import { jsonReport, runCheck, writeReport, type CheckOptions } from './check/run.ts';
+import { loadSourceFacts } from './check/source-facts.ts';
 import { summarize } from './check/summary.ts';
 import { plan, summarizeInventory, writeInventory } from './plan/inventory.ts';
 import { DRIVERS, driver } from './run/drivers.ts';
@@ -20,8 +23,18 @@ const USAGE = `markless-migrate ${VERSION}
   plan    --old <origin> [--source <path>] [--limit <n>]
           Inventory the old app's routes, SEO, assets and locales into .migrate/inventory.json.
   check   --old <origin> --new <origin> [--route <path>]... [--json] [--open]
+          [--source <path>] [--data record|replay] [--staging] [--block <host>]... [--allow <host>]...
+          [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
           Compare routes old vs new (default: every route in the inventory). Exits 1 when any is red.
           Writes .migrate/report.json and .migrate/report.html; --open opens the HTML report.
+          Pages load with a fixed clock, seeded randomness, a fixed timezone and locale, and trackers
+          blocked. --source scans the old app's code for what varies and which handlers write.
+          --data record saves what OLD fetched per route in .migrate/data/; --data replay serves it to
+          both apps. Writes (form posts, non-GET requests) are sent only when both origins are on this
+          machine or --staging; otherwise they are held back and compared unsent.
+  recorder
+          Print the NODE_OPTIONS that loads the request recorder into a Node server, so check compares
+          what the server fetches while rendering and can replay recorded data to it.
   status  Show which routes are green, red or not checked yet.
   setup   [--agent <id>]... [--yes] [--dry-run]
           Register the MCP server and install the migration skill for your coding agents.
@@ -154,12 +167,53 @@ async function main(argv: string[]): Promise<number> {
 			return 0;
 		}
 		case 'check': {
-			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, new: { type: 'string' }, route: { type: 'string', multiple: true }, json: { type: 'boolean' }, open: { type: 'boolean' } } });
+			const { values } = parseArgs({
+				args: rest,
+				options: {
+					old: { type: 'string' },
+					new: { type: 'string' },
+					route: { type: 'string', multiple: true },
+					json: { type: 'boolean' },
+					open: { type: 'boolean' },
+					source: { type: 'string' },
+					data: { type: 'string' },
+					staging: { type: 'boolean' },
+					block: { type: 'string', multiple: true },
+					allow: { type: 'string', multiple: true },
+					'no-freeze': { type: 'boolean' },
+					time: { type: 'string' },
+					seed: { type: 'string' },
+					timezone: { type: 'string' },
+					locale: { type: 'string' },
+				},
+			});
 			if (!values.old || !values.new) fail('check needs --old <origin> and --new <origin>');
+			if (values.data && values.data !== 'record' && values.data !== 'replay') fail('--data must be record or replay');
+			const time = values.time ? Date.parse(values.time) : undefined;
+			if (time !== undefined && Number.isNaN(time)) fail('--time must be a date, for example 2026-01-15T12:00:00Z');
+			const seed = values.seed ? Number(values.seed) : undefined;
+			if (seed !== undefined && !Number.isInteger(seed)) fail('--seed must be a whole number');
 			const inventory = await readInventory(cwd);
 			const routes = values.route?.length ? values.route : inventory?.routes.map((r) => r.route);
 			if (!routes?.length) fail('no routes: pass --route <path> or run plan first');
-			const report = await runCheck({ oldOrigin: values.old, newOrigin: values.new, routes, locales: inventory?.locales });
+			let source: CheckOptions['source'];
+			if (values.source) {
+				const scanned = await loadSourceFacts(resolve(values.source));
+				if (scanned.error) err(`markless-migrate: --source ignored: ${scanned.error}\n`);
+				source = scanned.facts;
+			}
+			const freeze = values['no-freeze'] ? false : { ...(time !== undefined ? { time } : {}), ...(seed !== undefined ? { seed } : {}), ...(values.timezone ? { timezone: values.timezone } : {}), ...(values.locale ? { locale: values.locale } : {}) };
+			const report = await runCheck({
+				oldOrigin: values.old,
+				newOrigin: values.new,
+				routes,
+				locales: inventory?.locales,
+				freeze,
+				block: { add: values.block ?? [], allow: values.allow ?? [] },
+				...(values.staging ? { staging: { old: true, new: true } } : {}),
+				...(source ? { source } : {}),
+				...(values.data ? { data: { mode: values.data as 'record' | 'replay', dir: join(cwd, STATE_DIR, DATA_DIR) } } : {}),
+			});
 			const path = await writeReport(report, join(cwd, STATE_DIR));
 			await recordResults(cwd, report);
 			const html = join(dirname(path), 'report.html');
@@ -169,6 +223,9 @@ async function main(argv: string[]): Promise<number> {
 		}
 		case 'status':
 			out(summarizeStatus(await status(cwd)));
+			return 0;
+		case 'recorder':
+			out(`Start each Node server (old and new) with the request recorder loaded:\n\n  export NODE_OPTIONS="${recorderEnv().NODE_OPTIONS}"\n\nIt records what the server fetches while rendering each page check loads (fetch: method, URL, body and response; node:http and node:https: method, URL and status), and serves recordings on --data replay. It answers loopback callers only; set MARKLESS_MIGRATE_TOKEN in both the server and check environments to reach a remote server.\nModule: ${RECORDER.pathname}\n`);
 			return 0;
 		case 'setup':
 			return setup(rest);

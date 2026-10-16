@@ -34,6 +34,17 @@ matches it in a real browser. A route is done when its check is green, not when 
 - \`css\` failures name the old rule (selector, file, line) that set the value; port that rule's intent.
 - \`behaviour\` failures come from replaying recorded interactions (\`.migrate/journeys/\`): match what
   appears, the URL, the requests and the focus after each step, not just the final screen.
+- \`network\` failures compare the requests each page makes, in the browser and (when the servers run
+  the request recorder, see \`markless-migrate recorder\`) while the server renders it: the same
+  endpoints, query parameters, body fields and number of calls, and the response fields the old page
+  showed. A request the old server made and the new one does not usually means data was hardcoded.
+- Pages load with a fixed clock, seeded \`Math.random\`, a fixed timezone and locale and trackers
+  blocked, so anything that still varies comes from the server; the report's noise section names it.
+- When the two apps read different data (another CMS, staging vs production), check once with
+  \`--data record\` and then with \`--data replay\` (or the \`data\` argument of \`check_route\`) so both
+  see the old app's responses.
+- Writes (form posts, non-GET requests) are held back as "would POST ..." unless both origins are on
+  this machine or marked \`--staging\` (\`staging: true\`). Never mark a production origin as staging.
 - \`a11y\` and \`i18n\` failures are as blocking as visual ones; check every locale the inventory lists.
 - \`.migrate/report.html\` shows old, new and diff images; tell the user to open it when a failure is visual.
 `;

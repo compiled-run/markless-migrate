@@ -34,8 +34,14 @@ const report: Report = {
 				{ label: 'desktop', viewport: 'desktop', old: png(40, 30, [0, 0, 0]), new: png(40, 30, [255, 0, 0]), diff: png(40, 30, [255, 0, 80]), regions: [{ x: 4, y: 4, width: 10, height: 8 }], ok: false },
 				{ label: 'mobile', viewport: 'mobile', old: png(20, 30, [0, 0, 0]), new: png(20, 30, [0, 0, 0]), regions: [], ok: true },
 			],
+			network: { old: ['server GET cms.test/news?fields=title,slug'], new: ['server GET cms.test/news?fields=title'], server: { old: true, new: true } },
+			noise: { noisy: [{ viewport: 'desktop, mobile', element: 'time "12:01" (contentinfo/time)', why: 'comes from the server' }], blocked: { 'www.googletagmanager.com': 2 } },
+			writes: [{ line: 'would POST /api/subscribe {email: string}', reason: 'POST request', sent: false, during: 'fill textbox "Email" and submit' }],
 		},
 	],
+	pinned: ['clock: fixed'],
+	sources: [{ file: 'app/layout.tsx', line: 12, kind: 'new Date', side: 'server', pinned: 'not pinned: runs on the server' }],
+	writes: 'held back',
 };
 
 test('report.html is one self-contained page with every failure, its fix, and old, new and diff images', async () => {
@@ -46,6 +52,12 @@ test('report.html is one self-contained page with every failure, its fix, and ol
 	assert.equal(html.match(/src="data:image\/png;base64,/g)?.length, 13, 'failing shot: 3 side by side, 2 slider, 2 blink; passing shot: 2 + 2 + 2');
 	assert.match(html, /Port &#60;the rule&#62; &#38; keep it/);
 	assert.match(html, /<rect x="4" y="4" width="10" height="8">/);
+	assert.match(html, /Network contract: 1 old, 1 new, browser and server requests, 2 differ/);
+	assert.match(html, /<li class="differs"><code>server GET cms.test\/news\?fields=title,slug<\/code>/);
+	assert.match(html, /Noise: 1 element still varied between old loads, 1 tracker host blocked/);
+	assert.match(html, /Writes: 1, 1 held back/);
+	assert.match(html, /<code>app\/layout.tsx:12<\/code> new Date: not pinned: runs on the server/);
+	assert.match(html, /Writes were held back/);
 	const json = JSON.parse(await readFile(join(dir, 'report.json'), 'utf8'));
 	assert.equal(json.routes[0].shots, undefined, 'screenshots stay out of the JSON report');
 
