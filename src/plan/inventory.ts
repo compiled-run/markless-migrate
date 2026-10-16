@@ -158,7 +158,7 @@ export async function plan(options: PlanOptions): Promise<Inventory> {
 			if (last.url !== route) note(last.url, 'crawl');
 			routes.push({
 				route,
-				status: http.status,
+				status: http.chain[0]!.status,
 				...(http.chain.length > 1 ? { redirectsTo: last.url } : {}),
 				foundIn: [],
 				seo: collected.seo,
