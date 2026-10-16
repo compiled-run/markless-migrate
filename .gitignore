@@ -6,3 +6,4 @@ fixtures/*/.next/
 fixtures/*/.output/
 fixtures/*/dist/
 .mutants/
+fixtures/*/.vite/

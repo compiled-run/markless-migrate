@@ -97,11 +97,12 @@ async function fromHints(el: ElementSnapshot, side: Side, index: MarkupIndex | u
 			link = { file, ...(h.line ? { line: h.line } : {}), ...(h.column ? { column: h.column } : {}), ...(path ? { path } : {}), how: h.how };
 		}
 		if (!link || inDependencies(link.file)) continue;
-		if (h.how === 'react component') {
-			// The component function's file: find the element itself in it, or the hint was a wrapper.
+		if (h.how === 'react component' || (!link.line && index)) {
+			// The component's file (a React component function, Vue's __file): find the element itself in it.
 			if (!index) return { link };
 			const hit = locate(index, el, [link.file], new Set([link.file]));
-			if (!hit) continue;
+			if (!hit && h.how === 'react component') continue;
+			if (!hit) return { link };
 			return { link: { ...link, line: hit.element.line, column: hit.element.column }, ...(hit.textFrom ? { textFrom: hit.textFrom } : {}) };
 		}
 		return { link };

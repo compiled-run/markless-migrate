@@ -262,7 +262,10 @@ check writes through a guard on a non-loopback address that fails the test if an
 exactly the dimensions it affects, with the expected message, and the failures that concern an element
 must name its old and new source line. `fixtures/markless-site` ports two routes of the Vite site to
 Markless with the published `@markless` packages; its suite checks the Vite site against it and
-requires each failure to name the `.tsrx` file and line. Mutated copies are built in `.mutants/`.
+requires each failure to name the `.tsrx` file and line. `fixtures/react-dev`, `fixtures/vue-dev` and
+`fixtures/svelte-dev` are one page each, run on Vite's dev server; their suite changes the heading and
+requires the old side to be named from React's owner stack (through the dev server's source map), Vue's
+`__file` and Svelte's `__svelte_meta`. Mutated copies are built in `.mutants/`.
 
 Both fixtures also sign in with a cookie session: a member and an admin, a members-only page, an
 admin-only page, and a redirect to the login page for anonymous visitors. Their suites check each role

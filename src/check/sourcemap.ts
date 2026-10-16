@@ -69,7 +69,9 @@ export async function originalPosition(url: string, line: number, column: number
 	const map = await mapFor(url, body);
 	const entry = map?.findEntry(line - 1, Math.max(0, column - 1)) as { originalSource?: string; originalLine?: number; originalColumn?: number } | undefined;
 	if (!entry?.originalSource) return undefined;
-	const { file, path } = sourceFile(entry.originalSource, root);
+	// A bare relative source ("App.tsx", as Vite's dev server writes) is relative to the script that names it.
+	const named = /^[a-z][\w+.-]*:|^\/|^\[/i.test(entry.originalSource) ? entry.originalSource : new URL(entry.originalSource, url).pathname;
+	const { file, path } = sourceFile(named, root);
 	return { file, line: (entry.originalLine ?? 0) + 1, column: (entry.originalColumn ?? 0) + 1, ...(path ? { path } : {}), how: 'source map' };
 }
 
