@@ -81,11 +81,30 @@ The bar is that a user, a crawler, a screen reader and the backend cannot tell w
   screenshots within a small pixel threshold.
 - Proof apps: Next.js Commerce and a Contentful or Sanity blog starter.
 
-## What still slips through (2026-10-16)
+## What still slips through (2026-10-16, after freezing, network contracts, recorded data and write safety)
 
 What `check` does not catch yet, so a green report does not promise it.
 
-Noise:
+Freezing and noise:
+
+- The clock is frozen in the browser only. Server time, server randomness, data that changes between
+  requests and server-side experiments still vary; they are left to the noise baseline below and listed
+  in the report's noise section, with the server-side sources the source scan found, but they cannot be
+  matched to an element.
+- The frozen clock moves only when a `setTimeout` or `setInterval` callback runs, to the time it was due.
+  A clock that ticks every second still shows how many ticks ran before the capture, which depends on
+  real time. `performance.now`, `requestAnimationFrame` timestamps and `Intl.DateTimeFormat().format()`
+  with no date (which reads the engine's own clock) are not frozen. After 10,000 reads of the clock
+  without a timer in between, it creeps forward 1 ms per read so busy-waits end.
+- `Math.random` is one seeded stream per page: when a framework draws from it too, a change in how
+  often the framework draws shifts the values the page sees, and the new app may show different
+  "random" values than the old one (reported, not hidden). Web Workers, iframes from other origins and
+  service workers are not frozen; service workers are blocked.
+- The tracker list is host-based. First-party analytics (served from the app's own origin), tag
+  managers on unlisted hosts, and feature-flag services (LaunchDarkly, GrowthBook, Statsig) are not
+  blocked, because blocking flags changes which features render.
+
+Noise between loads:
 
 - A text line that differed between the OLD loads may vary only where they differed, within the same
   kind of character. When the first two OLD loads differ, a third is taken after NEW. A value that
@@ -148,14 +167,60 @@ Interactions:
   clicks, types fixed sample values, chooses the second option of a select, and presses Enter, Space,
   and after opening something Escape and ArrowDown. It does not hover, drag, scroll, long-press or try
   other shortcuts. Form values may fail a page's own validation patterns.
-- Forms are submitted to the OLD app's own origin and requests to other origins are blocked, so
-  third-party widgets do not run during journeys. Submissions are real: point `--old` at a staging app
-  with test data, not at production.
+- Requests to other origins are blocked during journeys (unless answered from recorded data), so
+  third-party widgets do not run. Form posts and non-GET requests are sent only when both origins are on
+  this machine or marked `--staging`; otherwise they are answered by the checker and compared as
+  "would POST ..." (a held-back form post lands on a placeholder page, so what the real response would
+  have shown is not compared).
 - Steps find their target by accessibility role, name and position, so a control renamed on NEW fails
   as "could not be used". After a step navigates, the landing page's content and focus are left to that
   route's own checks. Framework transport (React Server Component payloads, server-action posts,
   `/_next/` requests) is excluded, and GET page loads are compared through the URL only. Timers,
   websockets, history entries and scroll restoration are not compared.
+
+Network contracts:
+
+- Compared per route on the desktop load: browser `fetch`, XHR, EventSource and beacons to any origin,
+  documents from other origins, and, with the request recorder, every `fetch` the Node server makes for
+  that page load. Static assets, the page's own document, framework transport (`/_next/`, React Server
+  Component payloads, server actions) and framework prefetches of other routes are not part of the
+  contract. WebSockets are not recorded.
+- Server requests are recorded only for Node servers started with the recorder; `node:http(s)` clients
+  are recorded without bodies, and other runtimes not at all. Requests the server makes outside a page
+  load (cron jobs, build-time fetches, caches warmed earlier) are not seen. A server that caches a
+  response between loads makes the request only on some loads; the noise baseline makes it optional.
+- URLs are normalised before comparing: path segments that are numbers, UUIDs or long hashes, query
+  values that are UUIDs, 10- or 13-digit timestamps or long hashes, and values of common cache-buster
+  keys (`_`, `t`, `ts`, `cb`, `nonce`...). An id that does not look like one of these differs between
+  loads and is caught by the noise baseline only if the OLD loads differed too.
+- "Fields the page shows" means response values of four or more characters, not plain numbers, found
+  in the page's text or attribute values. A value the page reformats (dates, prices, truncated text),
+  a number, or a value shown only after an interaction is not counted; a field shown on NEW but not OLD
+  is left to the rendered check.
+- Pairing a missing request with an extra one to name a "changed" or "different endpoint" request is by
+  side, method and host; several changes on one host may pair the wrong two.
+
+Recorded data:
+
+- Responses are recorded from the first OLD load of each route: text bodies up to 256 kB (binary
+  responses and images are not recorded), from the browser and, with the recorder, from the server.
+  Replay answers by exact URL, then by path and query on any host; anything not in the recording goes to
+  the network. Recordings are not refreshed or trimmed automatically: delete `.migrate/data/` and record
+  again when the old app's data changes. Same-origin API routes are never replayed, so the new app's own
+  API runs for real.
+
+Writes:
+
+- A write is recognised by its request (method, server-action header, or a handler the source scan
+  marks as writing), at the moment the browser sends it. A GET that writes is caught only when the
+  source scan names its handler. Writes the server makes on its own while handling a request (for
+  example on page render) are sent, because the browser cannot hold them back; replay avoids the ones
+  that go through `fetch`.
+- Writes the source scan finds without a request path (server actions, SDK calls, forms without an
+  action) cannot be matched to a request; server actions are still caught by their `Next-Action`
+  header, and form posts by their method.
+- Held-back browser writes are answered with an empty 204 response, so whatever the page does with a
+  real response (showing an id, a confirmation) is not exercised.
 
 Other:
 

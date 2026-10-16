@@ -17,6 +17,9 @@ Status: early. `plan`, `check`, `status`, `setup`, `run` and the MCP server work
 ```bash
 markless-migrate plan --old http://localhost:3000 [--source ../old-app] [--limit 100]
 markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [--route /about]... [--open]
+    [--source ../old-app] [--data record|replay] [--staging] [--block <host>]... [--allow <host>]...
+    [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
+markless-migrate recorder
 markless-migrate status
 markless-migrate setup [--agent claude-code]... [--yes] [--dry-run]
 markless-migrate mcp
@@ -40,6 +43,17 @@ appended to `.migrate/run.log`. Run `setup` first so the agent has the MCP tools
 
 ## What check compares
 
+Every page loads frozen: `Date` and `Date.now` start at a fixed instant and move only when a timer
+fires (to the time it was due), `performance.timeOrigin` is that instant, `Math.random`,
+`crypto.getRandomValues` and `crypto.randomUUID` are seeded, the timezone and locale are fixed
+(UTC and en-US unless `--timezone`/`--locale`), screenshots finish or cancel CSS animations and
+transitions (the reduced-motion check still sees them run), and requests to known ad, analytics,
+tag-manager, session-replay and client-side experiment hosts are blocked (`src/check/trackers.ts`;
+`--block` adds a host, `--allow` lets one load). `--no-freeze` turns freezing off. The server's own
+clock cannot be frozen from the browser, so the repeated old loads below still catch it, and the report
+lists every element that still varied and why. With `--source`, the old app's code is scanned for
+sources of variation, each reported as pinned, blocked or left to the noise baseline.
+
 Each route is loaded twice on the old app and once on the new one, at a desktop (1280x800) and a
 mobile (390x844) viewport. When the two old loads differ, a third old load is taken after the new one.
 A text line that differed between old loads may vary only in the characters that varied there, and
@@ -56,7 +70,30 @@ only within the same kind of character (digits stay digits); everything else mus
 | `a11y` | axe-core violations (the new page may not add any), landmarks, focus order by Tab, animations under reduced motion, and every keyboard path (Enter and Space on controls, Escape and ArrowDown in what they open) |
 | `i18n` | `lang`, `dir` and text direction, the formats of dates and numbers in the text, and the page each Accept-Language lands on |
 | `behaviour` | interactions explored on the old page and replayed on the new one: the URL, what appears and disappears, app requests (method, path, body shape), console errors, live-region announcements and focus after each step |
+| `network` | every request the page makes, in the browser and, when the server runs the request recorder, while the server renders it: method, URL (the app's own origin, ids, timestamps and cache-busters normalised, query keys and values kept), body shape, how many times, and which response fields the page shows |
 | `weight` | JavaScript on the wire and run at load (Chromium coverage); red when the new route is heavier |
+
+### Server requests, recorded data and writes
+
+`markless-migrate recorder` prints the `NODE_OPTIONS` that load the request recorder into a Node server
+(Next.js, Nuxt, Remix, Express, Nitro...). Start both apps with it. While `check` loads a page, the
+recorder files every request the server makes for it: `fetch` with method, URL, body and response,
+and `node:http`/`node:https` (axios, got, most SDKs) with method, URL and status only. Requests from
+other runtimes (Python, Ruby, PHP, Go, edge workers) are not recorded; for those, only browser requests
+are compared. The recorder answers the checker on the app's own origin under `/__markless-migrate/`,
+to loopback callers only, or to callers sending `MARKLESS_MIGRATE_TOKEN` when it is set.
+
+`--data record` saves what the old app fetched for each route (server and browser responses) in
+`.migrate/data/<route>.json`. `--data replay` serves those responses to both apps: in the browser
+for requests to other origins, and on the server through the recorder, so both render the same data
+even when they are pointed at different backends. A request is answered from the recording by its
+exact URL, or else by the same path and query on any host; the app's own API routes still run.
+
+Writes are classified before they are sent: form posts, non-GET requests, Next.js server actions,
+and any request a handler the source scan marks as writing. They are sent only when both origins are
+on this machine or `--staging` marks them as staging apps with test data. Otherwise each write is
+answered by the checker without reaching the app, and compared old vs new as `would POST /path {shape}`.
+Server-side writes the app makes while handling a request cannot be held back.
 
 ## Development
 
@@ -74,10 +111,15 @@ CSS is parsed with [yuku-css](https://github.com/thejackshelton/yuku-css), which
 
 `fixtures/` holds a Next.js App Router app and a Vite multi-page site, each with an Arabic (RTL) locale,
 Accept-Language negotiation at `/`, a menu, a counter and a form. The fixture suites build each one,
-check it against a separate build of the same source (must be green), and then against 27 mutated
+check it against a separate build of the same source (must be green), and then against 32 mutated
 copies each: one per check, from a changed title to a hover colour, a breakpoint moved by 40px, a font
 file swapped under the same name (and a font renamed, which must stay green), a removed label, a
-positive tabindex, a counter that adds 2 and a form that posts elsewhere. Each mutation must turn red
+positive tabindex, a counter that adds 2, a form that posts elsewhere, a changed label next to a
+`Math.random()` tip, and four network contracts: a query field dropped, another endpoint, a second
+fetch, and a server request replaced by hardcoded text. Both fixtures render from a small JSON CMS
+(`fixtures/cms/server.ts`) on the server and in the browser, and run with the request recorder. The
+suites also replay recorded data to an app on a second CMS with different content (must be green), and
+check writes through a guard on a non-loopback address that fails the test if any write reaches it. Each mutation must turn red
 exactly the dimensions it affects, with the expected message. Mutated copies are built in `.mutants/`.
 
 ## License
