@@ -56,13 +56,21 @@ export default await handler(join(import.meta.dirname, 'dist'));
 	await writeFile(join(out, 'config.json'), JSON.stringify(everythingToFunction));
 }
 
+// The front door is a vercel.json that `markless-migrate config` writes from .migrate/switched.json, plus the report.
 async function front(): Promise<void> {
-	const out = await output('front');
-	await cp(join(root, 'front/static'), join(out, 'static'), { recursive: true });
-	const state = join(examples, 'vite-site-markless/.migrate');
-	await mkdir(join(out, 'static/_migrate'), { recursive: true });
-	for (const file of ['report.html', 'report.json']) await cp(join(state, file), join(out, 'static/_migrate', file)).catch(() => undefined);
-	await writeFile(join(out, 'config.json'), JSON.stringify({ version: 3, routes: [{ handle: 'filesystem' }] }));
+	const app = join(examples, 'vite-site-markless');
+	const publicDir = join(root, 'front/public/_migrate');
+	for (const file of ['report.html', 'report.json']) await cp(join(app, '.migrate', file), join(publicDir, file)).catch(() => undefined);
+	const config = spawnSync(process.execPath, [join(root, '../src/cli.ts'), 'config', '--old', DEMO.old, '--new', DEMO.new, '--vercel', join(root, 'front/vercel.json')], { cwd: app, stdio: 'inherit' });
+	if (config.status !== 0) throw new Error('markless-migrate config failed');
+	// Vercel's `/:path*` matches neither `/` nor a path ending in `/`; logged as a config --vercel problem.
+	const file = join(root, 'front/vercel.json');
+	const vercel = JSON.parse(await readFile(file, 'utf8')) as { rewrites: { source: string; destination: string }[] };
+	const catchAll = vercel.rewrites.find((r) => r.source === '/:path*');
+	if (catchAll) vercel.rewrites.push({ source: '/', destination: `${DEMO.old}/` }, { source: '/:path*/', destination: catchAll.destination.replace(/\/:path\*$/, '/:path*/') });
+	await writeFile(file, `${JSON.stringify(vercel, null, '\t')}\n`);
+	const built = spawnSync('vercel', ['build', '--prod', '--yes'], { cwd: join(root, 'front'), stdio: 'inherit' });
+	if (built.status !== 0) throw new Error('vercel build failed');
 }
 
 const targets: Record<string, () => Promise<void>> = { cms, old, front };

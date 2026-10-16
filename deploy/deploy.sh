@@ -11,7 +11,8 @@ case "${1:-}" in
 	*) echo "usage: $0 cms|old|new|front" >&2; exit 1 ;;
 esac
 mkdir -p "$CWD"
-[ -f "$CWD/.vercel/project.json" ] || (cd "$CWD" && vercel link --yes --project "$PROJECT" --scope "$SCOPE" >/dev/null && rm -f .env.local && git checkout -q -- .gitignore 2>/dev/null || true)
+[ -f "$CWD/.vercel/project.json" ] || (cd "$CWD" && vercel link --yes --project "$PROJECT" --scope "$SCOPE" >/dev/null && rm -f .env.local; git checkout -q -- .gitignore 2>/dev/null || rm -f .gitignore)
+[ "$1" = front ] && (cd "$CWD" && vercel pull --yes --environment production --scope "$SCOPE" >/dev/null && rm -f .env.local .gitignore)
 if [ "$1" = new ]; then
 	(cd "$CWD" && NITRO_PRESET=vercel npm run build)
 else

@@ -1,0 +1,16 @@
+{
+	"rewrites": [
+		{
+			"source": "/:path*",
+			"destination": "https://migrate-demo-old.vercel.app/:path*"
+		},
+		{
+			"source": "/",
+			"destination": "https://migrate-demo-old.vercel.app/"
+		},
+		{
+			"source": "/:path*/",
+			"destination": "https://migrate-demo-old.vercel.app/:path*/"
+		}
+	]
+}

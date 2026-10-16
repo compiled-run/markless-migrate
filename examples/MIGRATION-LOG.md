@@ -8,7 +8,7 @@ the tool or the stack had on the way.
 
 | What | URL | Built from |
 | --- | --- | --- |
-| Front door | https://markless-migrate-demo.vercel.app (report at `/_migrate/report.html`) | `deploy/front` |
+| Front door | https://markless-migrate-demo.vercel.app (index at `/_migrate/`, report at `/_migrate/report.html`) | `deploy/front`: the `vercel.json` that `markless-migrate config --vercel` writes |
 | Old app | https://migrate-demo-old.vercel.app | `examples/vite-site-old`, its `serve.ts` as one Vercel function |
 | New app | https://migrate-demo-new.vercel.app | `examples/vite-site-markless`, `NITRO_PRESET=vercel` |
 | CMS | https://migrate-demo-cms.vercel.app | `examples/cms/server.ts` as one Vercel function |
@@ -19,6 +19,9 @@ behaviour on Vercel: CMS news and tagline rendered on the server, Accept-Languag
 session, the members and admin guards and the 403 page. Dropped on Vercel: the bot wall (`BOT_WALL` is
 not set) and the request recorder (it is loaded with `NODE_OPTIONS` into a Node server, which a Vercel
 function does not take), so the `network` dimension compares browser requests only.
+
+The front door is the switched site: each switched route is rewritten to the new app, everything else to
+the old one. With no route switched yet it serves the old app, sign-in and redirects included.
 
 `migrate-demo.vercel.app` belongs to someone else, so the front door's production address is
 `markless-migrate-demo.vercel.app`, added to the project as a domain (`vercel alias set` alone put it
@@ -86,12 +89,17 @@ No route has been converted yet.
 7. **`check --all` does not cover redirects or unknown paths.** `/old-about` (301 to `/about/`), `/about`
    (301 to `/about/`) and an unknown path (404 with the 404 page) are not in the inventory, so a port that
    drops them would still be green.
-8. **report.html is 27.9 MB** for 25 route checks (screenshots inline). It deploys and loads, but slowly.
+8. **`config --vercel` sends `/` and every path ending in `/` nowhere.** Its catch-all
+   `{ "source": "/:path*" }` compiles to `^(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))?$`, which matches neither `/`
+   nor `/about/`; on the deployed front door both answered Vercel's own 404 while `/about` and `/robots.txt`
+   reached the old app. Worked around in `deploy/build.ts` by adding `/` and `/:path*/` rewrites after it.
+   Switched routes are written with and without the slash, so only the catch-all is affected.
+9. **report.html is 27.9 MB** for 25 route checks (screenshots inline). It deploys and loads, but slowly.
 
 ### Markless and create-markless
 
-9. **create-markless prints `npm dev`** as the next step and in the generated README; npm needs `npm run dev`.
-10. **`--agents codex` writes outside the project**: it installs the skill at `~/.codex/skills/markless`
+10. **create-markless prints `npm dev`** as the next step and in the generated README; npm needs `npm run dev`.
+11. **`--agents codex` writes outside the project**: it installs the skill at `~/.codex/skills/markless`
     ("already configured") and nothing in the app, so an agent run with another `CODEX_HOME` does not see it.
-11. **The minimal starter's one-button page preloads 50 chunks (99.7 kB uncompressed)** while about 1.1 kB
+12. **The minimal starter's one-button page preloads 50 chunks (99.7 kB uncompressed)** while about 1.1 kB
     runs at load.
