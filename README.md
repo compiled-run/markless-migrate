@@ -38,9 +38,10 @@ markless-migrate run --agent codex --old http://localhost:3000 --new http://loca
 
 `plan` writes `.migrate/inventory.json`, including the locale prefixes in use and where `/` sends each
 Accept-Language. `check` checks the routes you name, or every route in the inventory, and exits 1 when a
-route is red. It writes `.migrate/report.json`, `.migrate/report.html` (one self-contained page: old, new
-and diff screenshots per route, viewport and failing state, side by side or as a slider or blink
-toggle, with the differing regions boxed and every failure listed with its fix; `--open` opens it),
+route is red. It writes `.migrate/report.json`, `.migrate/report.html` (one page: old, new and diff
+screenshots per route, viewport and failing state, side by side or as a slider or blink toggle, with the
+differing regions boxed and every failure listed with its fix; `--open` opens it; the screenshots are
+PNG files in `.migrate/shots/`, each stored once and loaded lazily, so publish that folder with the page),
 screenshot diffs in `.migrate/diffs/`, and the interactions it explored in `.migrate/journeys/`.
 `check --all` also takes every route the source scan knows (see below) and the old app's non-page
 endpoints. `plan` prints the migration order and `status` shows progress in that order. `setup` registers the `markless-migrate mcp` server and installs a migration skill for

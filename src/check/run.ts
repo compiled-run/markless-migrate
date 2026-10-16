@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium, type Browser } from 'playwright';
@@ -337,6 +337,14 @@ export async function writeReport(report: Report, dir: string): Promise<string> 
 	}
 	const path = join(dir, 'report.json');
 	await writeFile(path, `${JSON.stringify(jsonReport(report, diffs), null, '\t')}\n`);
-	await writeFile(join(dir, 'report.html'), renderHtml(report));
+	const images = new Map<string, Buffer>();
+	const html = renderHtml(report, (png) => {
+		const name = `shots/${createHash('sha256').update(png).digest('hex').slice(0, 16)}.png`;
+		images.set(name, png);
+		return name;
+	});
+	if (images.size) await mkdir(join(dir, 'shots'), { recursive: true });
+	for (const [name, png] of images) await writeFile(join(dir, name), png);
+	await writeFile(join(dir, 'report.html'), html);
 	return path;
 }

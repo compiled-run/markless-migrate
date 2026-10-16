@@ -44,13 +44,17 @@ const report: Report = {
 	writes: 'held back',
 };
 
-test('report.html is one self-contained page with every failure, its fix, and old, new and diff images', async () => {
+test('report.html is one page with every failure, its fix, and old, new and diff images stored once each beside it', async () => {
 	const dir = await mkdtemp(join(tmpdir(), 'mm-report-'));
 	await writeReport(report, dir);
 	const html = await readFile(join(dir, 'report.html'), 'utf8');
-	assert.doesNotMatch(html, /(src|href)="(?!data:|#|vscode:)/, 'no external resources');
+	assert.doesNotMatch(html, /(src|href)="(?!shots\/[0-9a-f]{16}\.png"|#|vscode:)/, 'nothing outside the report directory');
+	assert.doesNotMatch(html, /data:image/, 'screenshots are files, not inline');
+	const sources = [...html.matchAll(/src="(shots\/[0-9a-f]{16}\.png)" loading="lazy"/g)].map((m) => m[1]!);
+	assert.equal(sources.length, 13, 'failing shot: 3 side by side, 2 slider, 2 blink; passing shot: 2 + 2 + 2');
+	assert.equal(new Set(sources).size, 4, 'identical screenshots are written once');
+	for (const file of new Set(sources)) assert.ok((await readFile(join(dir, file))).length > 0);
 	assert.match(html, /old <a href="vscode:\/\/file\/app\/src\/About\.tsx:12:5" [^>]*>src\/About\.tsx:12<\/a> renders heading &#34;About&#34;; new <code [^>]*>pages\/about\/index\.tsrx:3<\/code> renders it/);
-	assert.equal(html.match(/src="data:image\/png;base64,/g)?.length, 13, 'failing shot: 3 side by side, 2 slider, 2 blink; passing shot: 2 + 2 + 2');
 	assert.match(html, /Port &#60;the rule&#62; &#38; keep it/);
 	assert.match(html, /<rect x="4" y="4" width="10" height="8">/);
 	assert.match(html, /Network contract: 1 old, 1 new, browser and server requests, 2 differ/);
@@ -66,6 +70,7 @@ test('report.html is one self-contained page with every failure, its fix, and ol
 	try {
 		const page = await browser.newPage();
 		await page.goto(`file://${join(dir, 'report.html')}`);
+		assert.ok(await page.locator('.side figure img').first().evaluate(async (img: HTMLImageElement) => (await img.decode(), img.naturalWidth)), 'the image files load');
 		const shot = page.locator('.shot').first();
 		assert.equal(await shot.locator('.side figure').count(), 3);
 		await shot.getByRole('button', { name: 'Slider' }).click();

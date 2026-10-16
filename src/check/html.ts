@@ -46,7 +46,9 @@ function where(f: Failure): string {
 }
 
 const esc = (value: string) => value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-const png = (buffer: Buffer) => `data:image/png;base64,${buffer.toString('base64')}`;
+const inline = (buffer: Buffer) => `data:image/png;base64,${buffer.toString('base64')}`;
+// Set for the duration of one synchronous renderHtml call.
+let png: (buffer: Buffer) => string = inline;
 
 function size(buffer: Buffer): { width: number; height: number } {
 	return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
@@ -59,7 +61,7 @@ function boxes(regions: readonly Box[], width: number, height: number): string {
 
 function figure(caption: string, image: Buffer, regions: readonly Box[]): string {
 	const { width, height } = size(image);
-	return `<figure><figcaption>${caption}</figcaption><div class="frame"><img src="${png(image)}" width="${width}" height="${height}" alt="${esc(caption)} screenshot">${boxes(regions, width, height)}</div></figure>`;
+	return `<figure><figcaption>${caption}</figcaption><div class="frame"><img src="${png(image)}" loading="lazy" width="${width}" height="${height}" alt="${esc(caption)} screenshot">${boxes(regions, width, height)}</div></figure>`;
 }
 
 function shot(s: Shot, id: string): string {
@@ -69,9 +71,9 @@ function shot(s: Shot, id: string): string {
 <h3><span class="badge ${s.ok ? 'pass' : 'fail'}">${s.ok ? 'same' : 'differs'}</span> ${esc(s.label)} <small>${status}</small></h3>
 <div class="modes" role="group" aria-label="View for ${esc(s.label)}"><button type="button" data-set="side" aria-pressed="true">Side by side</button><button type="button" data-set="slider" aria-pressed="false">Slider</button><button type="button" data-set="blink" aria-pressed="false">Blink</button></div>
 <div class="panel side">${figure('Old', s.old, s.regions)}${figure('New', s.new, s.regions)}${s.diff ? figure('Diff', s.diff, s.regions) : ''}</div>
-<div class="panel slider"><div class="frame stack"><img src="${png(s.new)}" alt="New screenshot"><img class="over" src="${png(s.old)}" alt="Old screenshot" style="clip-path: inset(0 50% 0 0)">${boxes(s.regions, width, height)}<div class="handle" style="left: 50%"></div></div>
+<div class="panel slider"><div class="frame stack"><img src="${png(s.new)}" loading="lazy" alt="New screenshot"><img class="over" src="${png(s.old)}" loading="lazy" alt="Old screenshot" style="clip-path: inset(0 50% 0 0)">${boxes(s.regions, width, height)}<div class="handle" style="left: 50%"></div></div>
 <label>Old on the left of the line, new on the right <input type="range" min="0" max="100" value="50"></label></div>
-<div class="panel blink"><div class="frame stack"><img src="${png(s.old)}" alt="Old screenshot"><img class="over" src="${png(s.new)}" alt="New screenshot">${boxes(s.regions, width, height)}</div>
+<div class="panel blink"><div class="frame stack"><img src="${png(s.old)}" loading="lazy" alt="Old screenshot"><img class="over" src="${png(s.new)}" loading="lazy" alt="New screenshot">${boxes(s.regions, width, height)}</div>
 <p class="showing" aria-live="polite">Showing old</p></div>
 </div>`;
 }
@@ -195,7 +197,17 @@ for (const shot of document.querySelectorAll('.shot')) {
 }
 `;
 
-export function renderHtml(report: Report): string {
+/** `image` turns a screenshot into the img src: inline by default; writeReport stores each one once, next to the page. */
+export function renderHtml(report: Report, image: (buffer: Buffer) => string = inline): string {
+	png = image;
+	try {
+		return renderPage(report);
+	} finally {
+		png = inline;
+	}
+}
+
+function renderPage(report: Report): string {
 	const green = report.routes.filter((r) => r.ok).length;
 	const badge = (r: RouteResult) => (r.blocked ? '<span class="badge blocked">blocked</span>' : `<span class="badge ${r.ok ? 'pass' : 'fail'}">${r.ok ? 'green' : 'red'}</span>`);
 	const tocItems = (items: readonly [RouteResult, number][]) => items.map(([r, i]) => `<li><a href="#route-${i}">${badge(r)} ${esc(r.route)}</a></li>`).join('');
