@@ -103,6 +103,9 @@ function fontFailures(route: string, viewport: string, oldA: PageCapture, others
 	}));
 }
 
+/** The OLD element and properties behind each default computed-style failure, so the runner can name the rule. */
+export const cssTargets = new WeakMap<Failure, { element: ElementSnapshot; props: readonly string[] }>();
+
 function cssFailures(route: string, viewport: string, oldA: PageCapture, others: readonly PageCapture[], next: PageCapture): Failure[] {
 	const noisy = noisyStyles(oldA.elements, others.map((o) => o.elements));
 	const failures: Failure[] = [];
@@ -118,7 +121,7 @@ function cssFailures(route: string, viewport: string, oldA: PageCapture, others:
 			extra++;
 			continue;
 		}
-		failures.push({
+		const failure: Failure = {
 			route,
 			dimension: 'css',
 			check: `computed style of ${describe(expected)}`,
@@ -126,7 +129,9 @@ function cssFailures(route: string, viewport: string, oldA: PageCapture, others:
 			expected: props.map((p) => `${p}: ${expected.style[p]}`).join('; '),
 			actual: props.map((p) => `${p}: ${actual.style[p] ?? '(unset)'}`).join('; '),
 			hint: HINTS.css,
-		});
+		};
+		cssTargets.set(failure, { element: expected, props });
+		failures.push(failure);
 	}
 	if (extra) failures.push({ route, dimension: 'css', check: 'computed styles', viewport, expected: '', actual: `${extra} more elements differ`, hint: HINTS.css });
 	return failures;
@@ -231,15 +236,11 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 		}
 	}
 
+	return withFailures({ route, ok: true, dimensions: {} as RouteResult['dimensions'], failures: [], weight: { old: { downloaded: wa.downloaded, source: wa.source, executed: wa.executed }, new: { downloaded: wn.downloaded, source: wn.source, executed: wn.executed } }, visualDiffs, shots }, failures);
+}
+
+export function withFailures(result: RouteResult, failures: readonly Failure[], extra: Partial<Pick<RouteResult, 'shots' | 'states'>> = {}): RouteResult {
 	const failed = new Set(failures.map((f) => f.dimension));
 	const dimensions = Object.fromEntries(DIMENSIONS.map((d) => [d, failed.has(d) ? 'fail' : 'pass'])) as Record<Dimension, 'pass' | 'fail'>;
-	return {
-		route,
-		ok: failures.length === 0,
-		dimensions,
-		failures,
-		weight: { old: { downloaded: wa.downloaded, source: wa.source, executed: wa.executed }, new: { downloaded: wn.downloaded, source: wn.source, executed: wn.executed } },
-		visualDiffs,
-		shots,
-	};
+	return { ...result, ...extra, ok: failures.length === 0, dimensions, failures };
 }

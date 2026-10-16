@@ -2,9 +2,12 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium, type Browser } from 'playwright';
 import { captureRoute, mime } from './capture.ts';
-import { assetsToProbe, compareRoute, type Probe } from './compare.ts';
+import { assetsToProbe, compareRoute, cssTargets, noisyStyles, withFailures, type Probe } from './compare.ts';
+import { matchElements } from './match.ts';
+import { compareStates, type StateInput } from './states.ts';
+import { discoverStates, parseRules } from './stylesheet.ts';
 import { renderHtml } from './html.ts';
-import type { PageCapture, Report, RouteCapture, RouteResult, Viewport } from './types.ts';
+import type { Failure, PageCapture, Report, RouteCapture, RouteResult, Shot, Viewport } from './types.ts';
 import { VIEWPORTS } from './types.ts';
 
 export interface CheckOptions {
@@ -43,7 +46,42 @@ export async function checkRoute(browser: Browser, oldOrigin: string, newOrigin:
 	if (loadsDiffer(oldA, oldB)) olds.push(await captureRoute(browser, oldOrigin, route, viewports));
 	const probes = new Map<string, Probe>();
 	for (const url of assetsToProbe(oldA, next)) probes.set(url, await probe(newOrigin, url));
-	return compareRoute(route, olds, next, probes);
+	const result = compareRoute(route, olds, next, probes);
+	return checkStates(browser, oldOrigin, newOrigin, route, viewports, olds, result);
+}
+
+// Forces every state the OLD stylesheets style, on the first viewport, and names the OLD rule behind each computed-style failure.
+async function checkStates(browser: Browser, oldOrigin: string, newOrigin: string, route: string, viewports: readonly Viewport[], olds: readonly RouteCapture[], result: RouteResult): Promise<RouteResult> {
+	const first = viewports[0]!;
+	const sources = olds[0]!.pages[first.name]?.stylesheets ?? [];
+	const states = discoverStates(sources);
+	const rules = parseRules(sources);
+	const failures: Failure[] = [];
+	const explained = new Map<Failure, Failure>();
+	const shots: Shot[] = [];
+	const checked: string[] = [];
+	const skipped: string[] = [];
+	for (const viewport of viewports) {
+		const a = olds[0]!.pages[viewport.name];
+		if (!a) continue;
+		const others = olds.slice(1).map((o) => o.pages[viewport.name]!).filter(Boolean);
+		const explain = result.failures.flatMap((failure) => {
+			const target = failure.viewport === viewport.name ? cssTargets.get(failure) : undefined;
+			return target ? [{ failure, ...target }] : [];
+		});
+		const forced = viewport === first ? states : [];
+		if (!forced.length && !explain.length) continue;
+		const styleNoise = noisyStyles(a.elements, others.map((o) => o.elements));
+		const textNoise = new Set(others.flatMap((o) => [...matchElements(a.elements, o.elements)].filter(([i, j]) => a.elements[i]!.text !== o.elements[j]!.text).map(([i]) => i)));
+		const noise = a.elements.flatMap((element, i): StateInput['noise'][number][] => (textNoise.has(i) ? [{ element, props: 'text' }] : styleNoise.get(i)?.size ? [{ element, props: styleNoise.get(i)! }] : []));
+		const out = await compareStates({ browser, oldOrigin, newOrigin, route, viewport, states: forced, rules, noise, explain });
+		failures.push(...out.failures);
+		for (const [from, to] of out.explained) explained.set(from, to);
+		shots.push(...out.shots);
+		checked.push(...out.checked.map((label) => (viewports.length > 1 ? `${label} (${viewport.name})` : label)));
+		skipped.push(...out.skipped);
+	}
+	return withFailures(result, [...result.failures.map((f) => explained.get(f) ?? f), ...failures], { shots: [...result.shots, ...shots], states: { checked, skipped } });
 }
 
 export async function runCheck(options: CheckOptions): Promise<Report> {

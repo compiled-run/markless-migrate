@@ -75,6 +75,7 @@ const MUTATIONS: Mutation[] = [
 			const css = failure(report, 'css');
 			assert.ok(css.length >= 1);
 			assert.ok(css.every((f) => /paragraph "Six guided routes/.test(f.check) && f.expected.startsWith('font-size: 18px;') && f.actual.startsWith('font-size: 21px;')), JSON.stringify(css, null, 1));
+			assert.ok(css.every((f) => /^Old rule: `\.lede` \(.+:\d+:\d+\) sets font-size with `18px`/.test(f.hint)), JSON.stringify(css.map((f) => f.hint), null, 1));
 		},
 	},
 	{
@@ -162,9 +163,56 @@ const MUTATIONS: Mutation[] = [
 		red: [],
 		expect: () => {},
 	},
+	{
+		name: 'hover-color',
+		route: '/',
+		edits: [{ file: 'src/style.css', find: '.menu-button:hover { background: #17527a; }', replace: '.menu-button:hover { background: #5a2d82; }' }],
+		red: ['css', 'visual'],
+		expect: (report) => {
+			const css = failure(report, 'css');
+			assert.ok(css.length >= 1 && css.every((f) => /^computed style in :hover on (\.counter button|\.menu-button): button "/.test(f.check) && /^background-color: /.test(f.expected)), JSON.stringify(css, null, 1));
+			const counter = css.find((f) => f.check.startsWith('computed style in :hover on .counter button'));
+			assert.match(counter!.hint, /Old rule: `\.counter button:hover` \(.+:\d+:\d+\) sets background-color with `#[0-9a-f]+`/);
+			assert.ok(failure(report, 'visual').every((f) => /^screenshot in :hover on (\.counter button|\.menu-button)$/.test(f.check)));
+			assert.ok(report.routes[0]!.shots.some((s) => s.label === 'desktop in :hover on .counter button' && !s.ok));
+		},
+	},
+	{
+		name: 'dark-mode',
+		route: '/',
+		edits: [{ file: 'src/style.css', find: '--paper: #0f1a22;', replace: '--paper: #1a1a1a;' }],
+		red: ['css'],
+		expect: (report) => {
+			const css = failure(report, 'css');
+			assert.ok(css.length >= 1 && css.every((f) => f.check.startsWith('computed style in prefers-color-scheme: dark')), JSON.stringify(css, null, 1));
+			assert.ok(css.some((f) => /reading --paper from `:root` inside @media \(prefers-color-scheme:dark\)/.test(f.hint)), JSON.stringify(css.map((f) => f.hint), null, 1));
+		},
+	},
+	{
+		name: 'breakpoint',
+		route: '/',
+		edits: [{ file: 'src/style.css', find: '@media (max-width: 600px)', replace: '@media (max-width: 640px)' }],
+		red: ['css', 'visual'],
+		expect: (report) => {
+			const checks = [...new Set([...failure(report, 'css'), ...failure(report, 'visual')].map((f) => f.check.replace(/: .*$/, '')))];
+			assert.deepEqual(checks.sort(), ['computed style in viewport width 601px', 'screenshot in viewport width 601px']);
+			assert.ok(failure(report, 'css').some((f) => /Old rule: `header` \(.+\) sets (flex-direction|align-items) with/.test(f.hint)), JSON.stringify(failure(report, 'css').map((f) => f.hint), null, 1));
+		},
+	},
+	{
+		name: 'container',
+		route: '/',
+		edits: [{ file: 'src/style.css', find: '@container (min-width: 480px)', replace: '@container (min-width: 520px)' }],
+		red: ['css', 'visual'],
+		expect: (report) => {
+			const checks = [...new Set([...failure(report, 'css'), ...failure(report, 'visual')].map((f) => f.check.replace(/: .*$/, '')))];
+			assert.deepEqual(checks.sort(), ['computed style in container width 480px', 'screenshot in container width 480px']);
+			assert.ok(failure(report, 'css').some((f) => /`\.ro(ute|ast)` inside @container \((min-width:|width>=)480px\) \(.+\) sets display with `grid`/.test(f.hint)), JSON.stringify(failure(report, 'css').map((f) => f.hint), null, 1));
+		},
+	},
 ];
 
-describe('vite multi-page site', () => {
+describe('vite multi-page site', { concurrency: 4 }, () => {
 	let browser: Browser;
 	let old: App;
 	let twin: App;

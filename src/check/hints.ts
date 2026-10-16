@@ -31,5 +31,7 @@ export const HINTS = {
 	image: 'The image at this position in the page loads a different picture or fails to load.',
 	fonts: 'A different font renders this text. Port the @font-face rule with the same font file (compared by content, not by family name) and the font-family stack, and make sure the file is served.',
 	css: 'Port the rule that sets this property for this element in the old stylesheet; computed values must match.',
+	cssState: 'The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.',
+	visualState: 'The page looks different in this state or condition. Compare the computed-style failures for the same state first.',
 	weight: 'The new route downloads or runs more JavaScript at load than the old one. Look at the scripts only the new route loads.',
 } as const;

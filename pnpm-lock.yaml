@@ -11,6 +11,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.1
         version: 1.32.1(zod@4.6.7)
+      axe-core:
+        specifier: 4.14.0
+        version: 4.14.0
       pixelmatch:
         specifier: ^8.0.0
         version: 8.0.0
@@ -20,6 +23,9 @@ importers:
       pngjs:
         specifier: ^7.0.0
         version: 7.0.0
+      yuku-css:
+        specifier: link:../yuku-css
+        version: link:../yuku-css
       zod:
         specifier: ^4.6.7
         version: 4.6.7
@@ -436,6 +442,10 @@ packages:
 
   ajv@8.20.0:
     resolution: {integrity: sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==}
+
+  axe-core@4.14.0:
+    resolution: {integrity: sha512-9WTZxEjsZ7b13TH8JPmbV2z8CHbl80/2hm3XPEG4JgNdQLK81IBRXmSxHfMAOkSqQeRxT/0dwNDz2GOm3zzpcQ==}
+    engines: {node: '>=4'}
 
   baseline-browser-mapping@2.11.29:
     resolution: {integrity: sha512-YeesxhUmR4h5y5V8KF8iBCqJb8YFrBJ++XBTeGcWIaQOYXGN19JM0FoiOjAhwuDoln8owMgXcWBmgHtYSkky2w==}
@@ -1297,6 +1307,8 @@ snapshots:
       fast-uri: 3.1.8
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
+
+  axe-core@4.14.0: {}
 
   baseline-browser-mapping@2.11.29: {}
 

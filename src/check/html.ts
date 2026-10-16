@@ -50,6 +50,7 @@ function route(r: RouteResult, index: number): string {
 <h2><span class="badge ${r.ok ? 'pass' : 'fail'}">${r.ok ? 'green' : 'red'}</span> ${esc(r.route)}</h2>
 <ul class="dims" aria-label="Dimensions">${dims}</ul>
 <p class="weight">JavaScript on the wire ${kb(w.old.downloaded)} → ${kb(w.new.downloaded)}, run at load ${kb(w.old.executed)} → ${kb(w.new.executed)} (uncompressed)</p>
+${r.states ? `<details class="states"><summary>CSS states and conditions from the old stylesheets: ${r.states.checked.length} forced and compared${r.states.skipped.length ? `, ${r.states.skipped.length} not forced` : ''}</summary><ul>${r.states.checked.map((x) => `<li>${esc(x)}</li>`).join('')}${r.states.skipped.map((x) => `<li class="skipped">not forced: ${esc(x)}</li>`).join('')}</ul></details>` : ''}
 <h3>Failures (${r.failures.length})</h3>
 ${table}
 ${r.shots.map((s, i) => shot(s, `route-${index}-shot-${i}`)).join('\n')}
@@ -95,6 +96,7 @@ figcaption { font-weight: 600; margin-bottom: 4px; }
 .handle { position: absolute; top: 0; bottom: 0; width: 2px; background: #1a73e8; pointer-events: none; }
 .slider label { display: block; margin-top: 8px; }
 .slider input { width: 100%; }
+.states { margin: 8px 0; } .states .skipped { color: var(--muted); }
 `;
 
 const SCRIPT = `

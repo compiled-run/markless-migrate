@@ -1,4 +1,4 @@
-import type { Browser, Page, Response } from 'playwright';
+import type { Browser, BrowserContextOptions, Page, Response } from 'playwright';
 import { collectPage, decodeImages } from './collect.ts';
 import { createHash } from 'node:crypto';
 import { isFingerprinted } from './assets.ts';
@@ -10,6 +10,8 @@ const ASSET_TYPES = new Set(['image', 'font', 'stylesheet', 'script', 'media']);
 export function toLocal(url: string, origin: string): string {
 	return url.startsWith(origin) ? url.slice(origin.length) || '/' : url;
 }
+
+const pageUrlBefore = (page: Page) => page.url();
 
 export function mime(contentType: string | null | undefined): string {
 	return (contentType ?? '').split(';')[0]!.trim().toLowerCase();
@@ -42,7 +44,7 @@ export function executedBytes(source: string, functions: readonly { ranges: read
 	return total;
 }
 
-async function settle(page: Page): Promise<void> {
+export async function settle(page: Page): Promise<void> {
 	await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
 	await page.evaluate(async () => {
 		scrollTo(0, document.documentElement.scrollHeight);
@@ -54,15 +56,20 @@ async function settle(page: Page): Promise<void> {
 	});
 }
 
-export async function capturePage(browser: Browser, origin: string, route: string, viewport: Viewport): Promise<PageCapture> {
-	const context = await browser.newContext({
+export function contextOptions(viewport: Viewport): BrowserContextOptions {
+	return {
 		viewport: { width: viewport.width, height: viewport.height },
 		isMobile: viewport.isMobile,
 		hasTouch: viewport.isMobile,
 		deviceScaleFactor: 1,
 		reducedMotion: 'reduce',
+		colorScheme: 'light',
 		serviceWorkers: 'block',
-	});
+	};
+}
+
+export async function capturePage(browser: Browser, origin: string, route: string, viewport: Viewport): Promise<PageCapture> {
+	const context = await browser.newContext(contextOptions(viewport));
 	try {
 		const page = await context.newPage();
 		const pending: Promise<Omit<AssetRecord, 'fingerprinted'> | undefined>[] = [];
@@ -84,8 +91,8 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 			);
 		});
 		await page.coverage.startJSCoverage({ resetOnNavigation: false });
-		const document = await page.goto(new URL(route, origin).href, { waitUntil: 'load' });
-		const html = (await document?.text().catch(() => '')) ?? '';
+		const navigation = await page.goto(new URL(route, origin).href, { waitUntil: 'load' });
+		const html = (await navigation?.text().catch(() => '')) ?? '';
 		await settle(page);
 		const collected = await page.evaluate(collectPage, { origin, full: true });
 		const aria = (await page.locator('body').ariaSnapshot()).split(origin).join('').split('\n');
@@ -93,6 +100,9 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 		const coverage = await page.coverage.stopJSCoverage();
 		await Promise.all(pending);
 		const elements = await renderedFonts(page, collected.elements, fontHashes);
+		for (const [i, text] of (await page.evaluate(() => [...document.querySelectorAll('style')].map((style) => style.textContent ?? ''))).entries()) {
+			if (text.trim()) stylesheets.push({ url: `${toLocal(pageUrlBefore(page), origin)} <style> #${i + 1}`, text });
+		}
 		const builtTexts = [html, ...stylesheets.map((s) => s.text), ...coverage.map((entry) => entry.source ?? '')];
 		const assets: AssetRecord[] = (await Promise.all(pending)).filter((a) => a !== undefined).map((a) => ({ ...a, fingerprinted: isFingerprinted(a.url, builtTexts) }));
 		const imageUrls = [...new Set(assets.filter((a) => a.type === 'image' && a.status < 400).map((a) => new URL(a.url, origin).href))];

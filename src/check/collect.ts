@@ -63,10 +63,11 @@ export function collectPage({ origin, full }: { origin: string; full: boolean })
 
 	const elements = [];
 	const refs: Element[] = [];
-	const scope = window as unknown as { __mmIds?: WeakMap<Element, number>; __mmNext?: number; __mmElements?: Element[] };
+	const scope = window as unknown as { __mmIds?: WeakMap<Element, number>; __mmNext?: number; __mmElements?: Element[]; __mmById?: Map<number, Element> };
+	const byId = (scope.__mmById ??= new Map());
 	const ids = (scope.__mmIds ??= new WeakMap());
 	const paths = new Map<Element, string>();
-	for (const el of full ? document.body.querySelectorAll('*') : []) {
+	for (const el of full ? [document.documentElement, document.body, ...document.body.querySelectorAll('*')] : []) {
 		if (SKIP.has(el.tagName)) continue;
 		const r = role(el);
 		const parent = el.parentElement;
@@ -85,6 +86,7 @@ export function collectPage({ origin, full }: { origin: string; full: boolean })
 		const text = clean([...el.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent).join(' ')).slice(0, 80);
 		const tag = el.tagName.toLowerCase();
 		if (!ids.has(el)) ids.set(el, (scope.__mmNext = (scope.__mmNext ?? 0) + 1));
+		byId.set(ids.get(el)!, el);
 		refs.push(el);
 		elements.push({
 			id: ids.get(el)!,

@@ -128,6 +128,8 @@ export interface RouteResult {
 	readonly weight: { readonly old: Omit<Weight, 'scripts'>; readonly new: Omit<Weight, 'scripts'> };
 	readonly visualDiffs: readonly { viewport: string; png: Buffer }[];
 	readonly shots: readonly Shot[];
+	/** CSS states and conditions found in the OLD stylesheets: the ones forced and compared, and the ones that could not be. */
+	readonly states?: { readonly checked: readonly string[]; readonly skipped: readonly string[] };
 }
 
 export interface Report {
