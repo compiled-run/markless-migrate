@@ -276,7 +276,7 @@ export async function compareStates(input: StateInput): Promise<StateOutput> {
 				const differing: { el: ElementSnapshot; other: ElementSnapshot; props: string[] }[] = [];
 				for (const [i, el] of s1.entries()) {
 					const b1 = base1.get(el.id);
-					const props = Object.keys(el.style);
+					const props = Object.keys(el.style).filter((p) => !IGNORED.has(p));
 					const changed1 = props.filter((p) => !b1 || b1.style[p] !== el.style[p]);
 					if (changed1.length) changedBoxes.push(el.box);
 					const j = p1n.get(i);
@@ -286,7 +286,7 @@ export async function compareStates(input: StateInput): Promise<StateOutput> {
 					const bn = baseN.get(other.id);
 					const changed = new Set([...changed1, ...props.filter((p) => !bn || bn.style[p] !== other.style[p])]);
 					const noisy = styleNoise.get(i);
-					const diff = [...changed].filter((p) => !IGNORED.has(p) && twin.style[p] === el.style[p] && !noisy?.has(p) && el.style[p] !== other.style[p]);
+					const diff = [...changed].filter((p) => twin.style[p] === el.style[p] && !noisy?.has(p) && el.style[p] !== other.style[p]);
 					if (diff.length) differing.push({ el, other, props: diff });
 				}
 				out.checked.push(state.label);
