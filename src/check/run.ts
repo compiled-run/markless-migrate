@@ -8,7 +8,7 @@ import { BlockedError, blockedResult, probeWall } from './blocked.ts';
 import { defaultEnv, isLoopback, pushRecording, tagHeaders, type SideEnv, type StorageState } from './browser.ts';
 import { captureHttp, captureRoute, mime } from './capture.ts';
 import { readRecording, recordable, slug, writeRecording } from './data.ts';
-import { checkEndpoint, isPage } from './endpoints.ts';
+import { checkEndpoint, checkRedirect, isPage } from './endpoints.ts';
 import { DEFAULT_FREEZE, pinnedBy, pinnedSummary, type FreezeOptions } from './freeze.ts';
 import { HINTS } from './hints.ts';
 import { locateFailures } from './locate.ts';
@@ -54,6 +54,8 @@ export interface CheckOptions {
 	readonly userAgent?: string;
 	/** Paths compared as data rather than as pages; any route whose OLD response is not HTML is too. */
 	readonly endpoints?: readonly string[];
+	/** Paths the old app redirects: only the status and redirect chain are compared. */
+	readonly redirects?: readonly string[];
 	/** Source routes that could not be checked for want of a sample value, listed in the report. */
 	readonly unchecked?: Report['unchecked'];
 	/** Source checkouts of the old and new app, to name the file and line behind each failing element. */
@@ -291,6 +293,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				}
 			}
 			for (const route of endpoints) routes.push(asRole(await checkEndpoint(roleRun, route), role));
+			for (const route of options.redirects ?? []) routes.push(asRole(await checkRedirect(roleRun, route), role));
 		}
 		const sources = options.source?.nondeterminism.map((f) => ({ ...f, pinned: pinnedBy(`${f.kind} ${f.what ?? ''}`, f.side, freeze) }));
 		return applyAccepted({

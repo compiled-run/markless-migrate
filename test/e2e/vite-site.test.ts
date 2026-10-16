@@ -12,7 +12,7 @@ import { runCheck, loadsDiffer } from '../../src/check/run.ts';
 import { loadSourceFacts } from '../../src/check/source-facts.ts';
 import { summarize } from '../../src/check/summary.ts';
 import { VIEWPORTS } from '../../src/check/types.ts';
-import { discoverEndpoints } from '../../src/check/endpoints.ts';
+import { discoverEndpoints, redirectTargets, UNKNOWN_PATH } from '../../src/check/endpoints.ts';
 import { plan } from '../../src/plan/inventory.ts';
 import { routeTargets } from '../../src/plan/routes.ts';
 import { connect, firstText } from '../mcp-client.ts';
@@ -453,6 +453,17 @@ const MUTATIONS: Mutation[] = [
 		},
 	},
 	{
+		name: 'redirect-dropped',
+		route: '/old-about',
+		check: { routes: [], redirects: ['/old-about'] },
+		edits: [{ file: 'public/serve.json', find: '"redirects": { "/old-about": "/about/" },', replace: '"redirects": {},' }],
+		red: ['http'],
+		expect: (report) => {
+			assert.equal(report.routes[0]!.endpoint, 'redirect');
+			assert.deepEqual(failure(report, 'http').map((f) => [f.check, f.expected, f.actual]), [['redirect chain hop 1', '301 /old-about', '404 /old-about'], ['redirect chain hop 2', '200 /about/', '(absent)']]);
+		},
+	},
+	{
 		name: 'json-item',
 		route: '/manifest.json',
 		edits: [{ file: 'public/manifest.json', find: '\t\t{ "src": "/logo-2024.png", "sizes": "32x32", "type": "image/png" },\n', replace: '' }],
@@ -641,8 +652,11 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		assert.deepEqual(targets.needsSample, []);
 		const endpoints = await discoverEndpoints(defaultEnv(old.origin), targets.pages, targets.endpoints);
 		assert.deepEqual(endpoints, ['/feed.xml', '/manifest.json', '/robots.txt', '/sitemap.xml']);
-		const report = await runCheck({ oldOrigin: old.origin, newOrigin: twin.origin, routes: [], endpoints, browser });
-		assert.deepEqual(report.routes.map((r) => [r.route, r.endpoint]), [['/feed.xml', 'feed'], ['/manifest.json', 'json'], ['/robots.txt', 'robots'], ['/sitemap.xml', 'sitemap']]);
+		const redirects = redirectTargets(targets.pages, inventory.source?.redirects);
+		assert.deepEqual(redirects, ['/about', '/admin', '/ar', '/fr', '/login', '/members', '/old-about']);
+		const report = await runCheck({ oldOrigin: old.origin, newOrigin: twin.origin, routes: [UNKNOWN_PATH], endpoints, redirects: ['/about', '/old-about'], browser });
+		assert.deepEqual(report.routes.map((r) => [r.route, r.endpoint]), [[UNKNOWN_PATH, undefined], ['/feed.xml', 'feed'], ['/manifest.json', 'json'], ['/robots.txt', 'robots'], ['/sitemap.xml', 'sitemap'], ['/about', 'redirect'], ['/old-about', 'redirect']]);
+		assert.ok(report.routes[0]!.failures.length === 0 && (await fetch(new URL(UNKNOWN_PATH, old.origin))).status === 404, 'the not-found page, with its 404, is compared as a page');
 		assert.deepEqual(redDimensions(report), [], summarize(report));
 	});
 
@@ -778,7 +792,7 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 
 	for (const mutation of MUTATIONS) {
 		test(`mutation "${mutation.name}" ${mutation.red.length ? `turns ${mutation.red.join(' + ')} red and nothing else` : 'stays green'}`, async () => {
-			const report = await runCheck({ oldOrigin: old.origin, newOrigin: mutants.get(mutation.name)!.origin, routes: [mutation.route], browser, sourceDirs: { old: SOURCE, new: sources.get(mutation.name)! } });
+			const report = await runCheck({ oldOrigin: old.origin, newOrigin: mutants.get(mutation.name)!.origin, routes: [mutation.route], browser, sourceDirs: { old: SOURCE, new: sources.get(mutation.name)! }, ...mutation.check });
 			if (process.env.SHOW_SUMMARY) process.stdout.write(`\n${summarize(report)}`);
 			assert.deepEqual(redDimensions(report), [...mutation.red].sort(), summarize(report));
 			mutation.expect(report);

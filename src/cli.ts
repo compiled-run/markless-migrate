@@ -16,7 +16,7 @@ import { jsonReport, runCheck, writeReport, type CheckOptions } from './check/ru
 import { loadSourceFacts } from './check/source-facts.ts';
 import { summarize } from './check/summary.ts';
 import { defaultEnv } from './check/browser.ts';
-import { discoverEndpoints } from './check/endpoints.ts';
+import { discoverEndpoints, redirectTargets, UNKNOWN_PATH } from './check/endpoints.ts';
 import { readSamples, routeTargets } from './plan/routes.ts';
 import { writeStarterAuth } from './plan/auth.ts';
 import { plan, summarizeInventory, writeInventory } from './plan/inventory.ts';
@@ -43,8 +43,9 @@ const USAGE = `markless-migrate ${VERSION}
           [--all] [--allow-unchecked] [--new-source <path>]
           Compare routes old vs new (default: every route in the inventory). Exits 1 when any is red.
           --all adds every route the source scan knows (dynamic segments filled from crawled paths or
-          .migrate/samples.json; check exits 1 while any is left unchecked, unless --allow-unchecked)
-          and the non-page endpoints: robots.txt, sitemaps, feeds, the manifest,
+          .migrate/samples.json; check exits 1 while any is left unchecked, unless --allow-unchecked),
+          a path no app has (the not-found page), redirects (the config's own and the other
+          trailing-slash form of every page, compared by status and redirect chain) and the non-page endpoints: robots.txt, sitemaps, feeds, the manifest,
           /.well-known files and JSON route handlers, compared as data.
           --source and --new-source map each failing element to its old and new source file and line.
           Writes .migrate/report.json and .migrate/report.html; --open opens the HTML report.
@@ -206,10 +207,12 @@ async function run(args: string[], cwd: string): Promise<number> {
 	const inventory = await readInventory(cwd);
 	let routes = named.length ? named : inventory?.routes.map((r) => r.route);
 	let unchecked: CheckOptions['unchecked'] = [];
+	let redirects = new Set<string>();
 	if (values.all) {
 		if (!inventory) fail('run --all needs .migrate/inventory.json: run plan first');
 		const all = routeTargets(inventory, await readSamples(join(cwd, STATE_DIR)));
-		routes = [...new Set([...named, ...all.pages, ...(await discoverEndpoints(defaultEnv(values.old, bypass), all.pages, all.endpoints))])];
+		redirects = new Set(redirectTargets(all.pages, inventory.source?.redirects));
+		routes = [...new Set([...named, ...all.pages, UNKNOWN_PATH, ...(await discoverEndpoints(defaultEnv(values.old, bypass), all.pages, all.endpoints)), ...redirects])];
 		unchecked = all.needsSample;
 	}
 	if (!routes?.length) fail('no routes: pass --route <path> or run plan first');
@@ -234,7 +237,8 @@ async function run(args: string[], cwd: string): Promise<number> {
 				const report = await runCheck({
 					oldOrigin: old,
 					newOrigin: next,
-					routes: [route],
+					routes: redirects.has(route) ? [] : [route],
+					...(redirects.has(route) ? { redirects: [route] } : {}),
 					locales: inventory?.locales,
 					accepted: await readAccepted(join(cwd, STATE_DIR, ACCEPTED_FILE)),
 					...(facts ? { source: facts } : {}),
@@ -319,12 +323,12 @@ async function main(argv: string[]): Promise<number> {
 			if (seed !== undefined && !Number.isInteger(seed)) fail('--seed must be a whole number');
 			const inventory = await readInventory(cwd);
 			let routes = values.route?.length ? values.route : inventory?.routes.map((r) => r.route);
-			let targets: { endpoints: string[]; unchecked: CheckOptions['unchecked'] } | undefined;
+			let targets: { endpoints: string[]; unchecked: CheckOptions['unchecked']; redirects: string[] } | undefined;
 			if (values.all) {
 				if (!inventory) fail('check --all needs .migrate/inventory.json: run plan first');
 				const all = routeTargets(inventory, await readSamples(join(cwd, STATE_DIR)));
-				routes = [...new Set([...(values.route ?? []), ...all.pages])];
-				targets = { endpoints: await discoverEndpoints(defaultEnv(values.old), all.pages, all.endpoints), unchecked: all.needsSample };
+				routes = [...new Set([...(values.route ?? []), ...all.pages, UNKNOWN_PATH])];
+				targets = { endpoints: await discoverEndpoints(defaultEnv(values.old), all.pages, all.endpoints), unchecked: all.needsSample, redirects: redirectTargets(all.pages, inventory.source?.redirects) };
 			}
 			if (!routes?.length && !targets?.endpoints.length) fail('no routes: pass --route <path> or run plan first');
 			let source: CheckOptions['source'];
@@ -347,7 +351,7 @@ async function main(argv: string[]): Promise<number> {
 				...bypass,
 				...(values['user-agent'] ? { userAgent: values['user-agent'] } : {}),
 				...(auth ? { auth, authStateDir: join(cwd, STATE_DIR, 'auth') } : {}),
-				...(targets ? { endpoints: targets.endpoints, unchecked: targets.unchecked } : {}),
+				...(targets ? { endpoints: targets.endpoints, unchecked: targets.unchecked, redirects: targets.redirects } : {}),
 				...(values.source || values['new-source'] ? { sourceDirs: { ...(values.source ? { old: resolve(values.source) } : {}), ...(values['new-source'] ? { new: resolve(values['new-source']) } : {}) } } : {}),
 				accepted: await readAccepted(join(cwd, STATE_DIR, ACCEPTED_FILE)).catch((error: Error) => fail(error.message)),
 			});

@@ -55,3 +55,8 @@ test('JSON arrays without an identity field are aligned by longest common subseq
 	const edited = compareEndpoint('/api/tags', [capture('/api/tags', doc(['x', 'y', 'z']), 'application/json')], capture('/api/tags', doc(['x', 'why', 'z']), 'application/json'));
 	assert.deepEqual(edited.map((f) => [f.check, f.expected, f.actual]), [['JSON field tags[]', '"y"', '"why"']], 'an item replaced in place is a changed value');
 });
+
+test('check --all adds the config redirects and the other trailing-slash form of each page, not the pages themselves', async () => {
+	const { redirectTargets } = await import('../src/check/endpoints.ts');
+	assert.deepEqual(redirectTargets(['/', '/about/', '/blog', '/feed.xml', '/x?y=1', '/blog/'], [{ from: '/old-about' }, { from: '/old/:slug' }]), ['/about', '/old-about']);
+});

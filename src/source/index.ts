@@ -5,6 +5,7 @@ import { createContext } from './context.ts';
 import { openProject } from './files.ts';
 import { detectFramework } from './framework.ts';
 import { scanNondeterminism } from './nondeterminism.ts';
+import { scanRedirects } from './redirects.ts';
 import { codeRoutes, routesConfig } from './routes/config.ts';
 import { djangoRoutes } from './routes/django.ts';
 import { astroRoutes, htmlRoutes, nextRoutes, nuxtRoutes, remixFlatRoutes, solidStartRoutes, svelteKitRoutes, tanstackRoutes } from './routes/files.ts';
@@ -69,6 +70,7 @@ export async function scanSource(dir: string): Promise<SourceFacts> {
 	guards.push(...(await scanAuth(ctx, merged)));
 	const nondeterminism = await scanNondeterminism(ctx, framework);
 	const components = await scanComponents(ctx, merged);
+	const redirects = await scanRedirects(ctx);
 	for (const g of guards) {
 		for (const path of g.routes) {
 			for (const r of merged) {
@@ -98,5 +100,6 @@ export async function scanSource(dir: string): Promise<SourceFacts> {
 		authGuards: [...mergedGuards.values()].sort(byLocation),
 		components,
 		limits: [...new Set(ctx.limits)].sort(),
+		...(redirects.length ? { redirects } : {}),
 	};
 }

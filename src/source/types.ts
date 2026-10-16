@@ -81,6 +81,15 @@ export interface SourceFacts {
 	components: Component[];
 	/** What this scan could not read, so a short list is not taken as complete. */
 	limits: string[];
+	/** Redirects the app declares in its config. */
+	redirects?: Redirect[];
+}
+
+export interface Redirect {
+	from: string;
+	to: string;
+	file: string;
+	line: number;
 }
 
 export interface PlanStep {

@@ -1,6 +1,6 @@
 import { tagHeaders, type SideEnv } from './browser.ts';
 import { captureHttp, mime } from './capture.ts';
-import { withFailures } from './compare.ts';
+import { httpFailures, withFailures } from './compare.ts';
 import { diffFields, diffLines, fieldTemplates, lineTemplates } from './noise.ts';
 import type { Dimension, Failure, HttpCapture, RouteResult } from './types.ts';
 
@@ -371,6 +371,29 @@ export async function checkEndpoint(envs: { readonly old: SideEnv; readonly new:
 	const failures = compareEndpoint(route, olds, next);
 	const zero = { downloaded: 0, source: 0, executed: 0 };
 	return { ...withFailures({ route, ok: true, dimensions: {} as RouteResult['dimensions'], failures: [], weight: { old: zero, new: zero }, visualDiffs: [], shots: [] }, failures), endpoint: oldA.kind };
+}
+
+/** A path the old app redirects (a config redirect, the other trailing-slash form): only where it sends a visitor is compared. */
+export async function checkRedirect(envs: { readonly old: SideEnv; readonly new: SideEnv }, route: string): Promise<RouteResult & { readonly endpoint: 'redirect' }> {
+	const [a, b, next] = await Promise.all([captureHttp(envs.old.origin, route, tagHeaders(envs.old)), captureHttp(envs.old.origin, route, tagHeaders(envs.old)), captureHttp(envs.new.origin, route, tagHeaders(envs.new))]);
+	const zero = { downloaded: 0, source: 0, executed: 0 };
+	return { ...withFailures({ route, ok: true, dimensions: {} as RouteResult['dimensions'], failures: [], weight: { old: zero, new: zero }, visualDiffs: [], shots: [] }, httpFailures(route, [a, b], next)), endpoint: 'redirect' };
+}
+
+/** A path no app serves, so the not-found page and its status are checked too. */
+export const UNKNOWN_PATH = '/markless-migrate-no-such-page';
+
+/** Paths check --all adds for redirects: the config's own (static ones), and the other trailing-slash form of every page. */
+export function redirectTargets(pages: readonly string[], declared: readonly { readonly from: string }[] = []): string[] {
+	const known = new Set(pages);
+	const out = new Set<string>();
+	for (const r of declared) if (!/[:*(]/.test(r.from) && !known.has(r.from)) out.add(r.from);
+	for (const page of pages) {
+		if (page === '/' || page.includes('?') || page === UNKNOWN_PATH || /\.[a-z0-9]+$/i.test(page)) continue;
+		const other = page.endsWith('/') ? page.replace(/\/+$/, '') : `${page}/`;
+		if (!known.has(other)) out.add(other);
+	}
+	return [...out].sort();
 }
 
 /** Same-origin links a page head declares for feeds and the manifest. */

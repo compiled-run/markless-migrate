@@ -3,7 +3,7 @@ import { join, posix, relative, sep } from 'node:path';
 import { parseJsonc } from './js.ts';
 
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'out', 'coverage', 'vendor', 'tmp', 'storage', '__pycache__', 'venv', 'site-packages', 'target', 'wp-admin', 'wp-includes']);
-const TEXT = /\.(m?[jt]sx?|cjs|cts|vue|svelte|astro|html?|mdx?|rb|erb|php|py|graphql|gql|json|ya?ml|css|toml|txt)$|^(Gemfile|artisan)$/;
+const TEXT = /\.(m?[jt]sx?|cjs|cts|vue|svelte|astro|html?|mdx?|rb|erb|php|py|graphql|gql|json|ya?ml|css|toml|txt)$|^(Gemfile|artisan|_redirects)$/;
 const MAX_BYTES = 1_000_000;
 
 export interface Project {

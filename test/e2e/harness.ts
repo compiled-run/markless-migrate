@@ -7,6 +7,7 @@ import { networkInterfaces, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { readAuthFile, type AuthConfig } from '../../src/check/auth.ts';
 import { recorderEnv } from '../../src/check/recorder.ts';
+import type { CheckOptions } from '../../src/check/run.ts';
 import type { Dimension, Report } from '../../src/check/types.ts';
 
 export const ROOT = new URL('../..', import.meta.url).pathname.replace(/\/$/, '');
@@ -26,6 +27,8 @@ export interface Mutation {
 	readonly edits: readonly Edit[];
 	readonly red: readonly Dimension[];
 	readonly expect: (report: Report) => void;
+	/** Check options other than the route, for mutations that are not checked as a page. */
+	readonly check?: Partial<CheckOptions>;
 }
 
 // An OFL font that ships inside Next.js, used to swap a font file for different bytes under the same name.

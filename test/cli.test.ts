@@ -61,7 +61,7 @@ test('check --all with a route nothing gives a sample is not "all green": it cou
 	try {
 		const strict = await check();
 		assert.equal(strict.status, 1, strict.stdout + strict.stderr);
-		assert.match(strict.stdout, /1 of 1 routes green; 1 route not checked \(needs a sample\)\./);
+		assert.match(strict.stdout, /2 of 2 routes green; 1 route not checked \(needs a sample\)\./);
 		assert.match(strict.stdout, /\/news\/:slug +no value for :slug +app\/news\/\[slug\]\/page\.tsx:4/);
 		assert.match(strict.stderr, /1 route not checked for want of a sample value/);
 		assert.equal((await check('--allow-unchecked')).status, 0);
