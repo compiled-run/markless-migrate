@@ -1,9 +1,11 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { openSync } from 'node:fs';
 import { copyFile, cp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
+import { createServer as createHttpServer, request as httpRequest } from 'node:http';
+import { networkInterfaces } from 'node:os';
 import { dirname, join } from 'node:path';
-import type { Server } from 'node:http';
-import { serve } from '../../fixtures/vite-site/serve.ts';
+import { recorderEnv } from '../../src/check/recorder.ts';
 import type { Dimension, Report } from '../../src/check/types.ts';
 
 export const ROOT = new URL('../..', import.meta.url).pathname.replace(/\/$/, '');
@@ -91,14 +93,33 @@ export async function buildVite(name: string, edits: readonly Edit[] = []): Prom
 	return join(dir, 'dist');
 }
 
-export async function startStatic(dist: string): Promise<App> {
-	const { server, origin } = await serve(dist);
-	return { origin, stop: () => closeServer(server) };
+/** Environment of a fixture server: the CMS it renders from, and the request recorder loaded into it. */
+export function serverEnv(cms: string): NodeJS.ProcessEnv {
+	return { ...process.env, CMS_URL: cms, NEXT_TELEMETRY_DISABLED: '1', ...recorderEnv('') };
 }
 
-function closeServer(server: Server): Promise<void> {
-	server.closeAllConnections();
-	return new Promise((done) => server.close(() => done()));
+function stopChild(child: ChildProcess): Promise<void> {
+	return new Promise<void>((done) => {
+		if (child.exitCode !== null) return done();
+		child.once('exit', () => done());
+		child.kill();
+	});
+}
+
+/** Serves a Vite build with the fixture's own server (it renders CMS content into the HTML), in its own Node process. */
+export async function startStatic(dist: string, cms: string): Promise<App> {
+	const child = spawn(process.execPath, [join(dirname(dist), 'serve.ts'), dist], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...serverEnv(cms), PORT: '0' } });
+	const origin = await new Promise<string>((resolve, reject) => {
+		let output = '';
+		child.stdout!.on('data', (chunk) => {
+			output += chunk;
+			const line = output.split('\n')[0]!;
+			if (output.includes('\n')) resolve(line.trim());
+		});
+		child.stderr!.on('data', (chunk) => (output += chunk));
+		child.once('exit', (code) => reject(new Error(`serve.ts exited with ${code}: ${output}`)));
+	});
+	return { origin, stop: () => stopChild(child) };
 }
 
 export async function buildNext(name: string, edits: readonly Edit[] = []): Promise<string> {
@@ -133,10 +154,11 @@ async function waitForReady(origin: string, child: ChildProcess): Promise<void> 
 	throw new Error(`${origin} did not answer within 30s`);
 }
 
-export async function startNext(dir: string): Promise<App> {
+export async function startNext(dir: string, cms: string): Promise<App> {
 	for (let attempt = 0; ; attempt++) {
 		const port = await freePort();
-		const child = spawn(join(dir, 'node_modules/.bin/next'), ['start', '-p', String(port), '-H', '127.0.0.1'], { cwd: dir, stdio: 'ignore', env: { ...process.env, NEXT_TELEMETRY_DISABLED: '1' } });
+		const log = openSync(join(dir, `server-${port}.log`), 'w');
+		const child = spawn(join(dir, 'node_modules/.bin/next'), ['start', '-p', String(port), '-H', '127.0.0.1'], { cwd: dir, stdio: ['ignore', log, log], env: serverEnv(cms) });
 		const origin = `http://127.0.0.1:${port}`;
 		try {
 			await waitForReady(origin, child);
@@ -145,16 +167,50 @@ export async function startNext(dir: string): Promise<App> {
 			if (attempt < 2) continue;
 			throw error;
 		}
-		return {
-			origin,
-			stop: () =>
-				new Promise<void>((done) => {
-					if (child.exitCode !== null) return done();
-					child.once('exit', () => done());
-					child.kill();
-				}),
-		};
+		return { origin, stop: () => stopChild(child) };
 	}
+}
+
+/** An address of this machine that is not loopback, so an origin on it counts as neither localhost nor staging. */
+export function lanAddress(): string {
+	for (const list of Object.values(networkInterfaces())) for (const net of list ?? []) if (net.family === 'IPv4' && !net.internal) return net.address;
+	throw new Error('this machine has no non-loopback IPv4 address, so the write-safety guard cannot run');
+}
+
+export interface Guard extends App {
+	/** Non-GET requests that reached the guard: none may arrive unless the origin is marked staging. */
+	readonly writes: string[];
+}
+
+/** A reverse proxy on a non-loopback address in front of an app: forwards reads and refuses, and counts, every write. */
+export async function startGuard(target: string): Promise<Guard> {
+	const writes: string[] = [];
+	const host = lanAddress();
+	const server = createHttpServer((req, res) => {
+		if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method ?? 'GET')) {
+			writes.push(`${req.method} ${req.url}`);
+			req.resume();
+			res.writeHead(500, { 'content-type': 'text/plain' }).end('write refused by the test guard');
+			return;
+		}
+		const upstream = httpRequest(new URL(req.url ?? '/', target), { method: req.method, headers: req.headers }, (response) => {
+			res.writeHead(response.statusCode ?? 502, response.headers);
+			response.pipe(res);
+		});
+		upstream.on('error', () => res.writeHead(502).end());
+		req.pipe(upstream);
+	});
+	await new Promise<void>((done) => server.listen(0, host, done));
+	const address = server.address();
+	if (!address || typeof address === 'string') throw new Error('guard has no port');
+	return {
+		origin: `http://${host}:${address.port}`,
+		writes,
+		stop: () => {
+			server.closeAllConnections();
+			return new Promise((done) => server.close(() => done()));
+		},
+	};
 }
 
 export function failuresIn(report: Report, dimension: Dimension) {

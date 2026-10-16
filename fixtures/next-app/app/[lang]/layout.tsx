@@ -2,6 +2,7 @@ import localFont from 'next/font/local';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
+import { cms } from '../cms';
 import { dictionaries, isLocale, locales } from '../dictionaries';
 import { Menu } from './menu';
 import '../globals.css';
@@ -21,6 +22,7 @@ export default async function LangLayout({ children, params }: { children: React
 	const { lang } = await params;
 	if (!isLocale(lang)) notFound();
 	const t = dictionaries[lang];
+	const settings = await cms<{ tagline: string }>('/coffee/settings');
 	return (
 		<html lang={lang} dir={lang === 'ar' ? 'rtl' : 'ltr'} className={inter.variable}>
 			<body>
@@ -54,6 +56,7 @@ export default async function LangLayout({ children, params }: { children: React
 					<p>
 						{t.rendered} <time>{new Date().toISOString()}</time>
 					</p>
+					<p className="tagline">{settings?.tagline}</p>
 				</footer>
 			</body>
 		</html>

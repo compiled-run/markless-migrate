@@ -1,5 +1,6 @@
 import type { Browser, BrowserContext, CDPSession, Page } from 'playwright';
-import { contextOptions, settle } from './capture.ts';
+import { defaultEnv, openPage, type SideEnv } from './browser.ts';
+import { settle } from './capture.ts';
 import { collectPage } from './collect.ts';
 import { HINTS } from './hints.ts';
 import { describe, matchElements } from './match.ts';
@@ -25,6 +26,8 @@ export interface StateInput {
 	readonly browser: Browser;
 	readonly oldOrigin: string;
 	readonly newOrigin: string;
+	/** How each app is loaded (frozen clock, blocked trackers, held-back writes, recorded data); defaults from the origins. */
+	readonly envs?: { readonly old: SideEnv; readonly new: SideEnv };
 	readonly route: string;
 	readonly viewport: Viewport;
 	readonly states: readonly CssState[];
@@ -43,9 +46,9 @@ export interface StateOutput {
 	readonly skipped: string[];
 }
 
-async function open(browser: Browser, origin: string, route: string, viewport: Viewport): Promise<Side> {
-	const context = await browser.newContext(contextOptions(viewport));
-	const page = await context.newPage();
+async function open(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<Side> {
+	const origin = env.origin;
+	const { context, page } = await openPage(browser, env, viewport);
 	await page.goto(new URL(route, origin).href, { waitUntil: 'load' });
 	await settle(page);
 	const session = await context.newCDPSession(page);
@@ -195,7 +198,8 @@ async function screenshot(page: Page, clip: Box | undefined): Promise<Buffer> {
 export async function compareStates(input: StateInput): Promise<StateOutput> {
 	const { browser, oldOrigin, newOrigin, route, viewport } = input;
 	const out: StateOutput = { failures: [], explained: new Map(), shots: [], checked: [], skipped: [] };
-	const [o1, o2, n] = await Promise.all([open(browser, oldOrigin, route, viewport), open(browser, oldOrigin, route, viewport), open(browser, newOrigin, route, viewport)]);
+	const envs = input.envs ?? { old: defaultEnv(oldOrigin), new: defaultEnv(newOrigin) };
+	const [o1, o2, n] = await Promise.all([open(browser, envs.old, route, viewport), open(browser, envs.old, route, viewport), open(browser, envs.new, route, viewport)]);
 	try {
 		for (const { failure, element, props } of input.explain) {
 			const at = matchElements([element], o1.base).get(0);

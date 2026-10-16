@@ -36,6 +36,10 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outlin
 .menu-button { font: inherit; padding: 2px 8px; border: 1px solid var(--accent); border-radius: 6px; background: transparent; color: var(--accent); cursor: pointer; }
 .menu ul { list-style: none; margin: 4px 0 0; padding: 8px 12px; position: absolute; right: 0; z-index: 1; background: var(--paper); border: 1px solid #b9ad9c; border-radius: 6px; }
 .next-roast { color: #4a4239; }
+.tip, .hours { color: #4a4239; }
+.news { display: grid; gap: 8px; margin: 24px 0; }
+.news h2 { font-size: 18px; margin: 0; }
+.news p { margin: 0; }
 .roasts { container-type: inline-size; display: grid; gap: 12px; margin: 24px 0; }
 .roast { padding: 12px; border: 1px solid #d8cfc2; border-radius: 8px; }
 .roast h2 { font-size: 18px; margin: 0; }

@@ -1,6 +1,8 @@
 import type { RecordedJourney } from './journeys.ts';
+import type { NetworkCapture } from './network.ts';
+import type { NondeterminismFact } from './source-facts.ts';
 
-export const DIMENSIONS = ['http', 'rendered', 'visual', 'seo', 'assets', 'css', 'a11y', 'i18n', 'behaviour', 'weight'] as const;
+export const DIMENSIONS = ['http', 'rendered', 'visual', 'seo', 'assets', 'css', 'a11y', 'i18n', 'behaviour', 'network', 'weight'] as const;
 export type Dimension = (typeof DIMENSIONS)[number];
 
 export interface Viewport {
@@ -103,6 +105,18 @@ export interface PageCapture {
 	readonly screenshot: Buffer;
 	readonly weight: Weight;
 	readonly a11y?: A11yCapture;
+	readonly network?: NetworkCapture;
+	/** Requests to tracker hosts that were blocked, by host. */
+	readonly blocked?: Readonly<Record<string, number>>;
+	/** Writes the page made while loading, sent or held back. */
+	readonly writes?: readonly WriteLine[];
+}
+
+export interface WriteLine {
+	/** `POST /path {shape}`, or `would POST ...` when it was held back. */
+	readonly line: string;
+	readonly reason: string;
+	readonly sent: boolean;
 }
 
 export interface RouteCapture {
@@ -145,6 +159,24 @@ export interface RouteResult {
 	readonly states?: { readonly checked: readonly string[]; readonly skipped: readonly string[] };
 	/** Interactions explored on the OLD page and replayed on NEW, with what OLD did at each step. */
 	readonly journeys?: readonly RecordedJourney[];
+	/** What still varied between OLD loads after freezing, and what was blocked. */
+	readonly noise?: NoiseReport;
+	/** The request contract of each side's first load: `browser GET host/path?query {body shape}`. */
+	readonly network?: { readonly old: readonly string[]; readonly new: readonly string[]; readonly server: { readonly old: boolean; readonly new: boolean } };
+	/** Every write the OLD page and its interactions made, and whether it was sent. */
+	readonly writes?: readonly (WriteLine & { readonly during: string })[];
+}
+
+export interface NoiseReport {
+	/** Elements whose text changed between OLD loads, with why. */
+	readonly noisy: readonly { readonly viewport: string; readonly element: string; readonly why: string }[];
+	/** Tracker hosts blocked on the OLD page, with request counts. */
+	readonly blocked: Readonly<Record<string, number>>;
+}
+
+/** A source of nondeterminism the source scan found, and whether the checker pins it. */
+export interface PinnedSource extends NondeterminismFact {
+	readonly pinned: string;
 }
 
 export interface Report {
@@ -154,4 +186,12 @@ export interface Report {
 	readonly startedAt: string;
 	readonly ok: boolean;
 	readonly routes: readonly RouteResult[];
+	/** What freezing pinned in the browser for this run. */
+	readonly pinned?: readonly string[];
+	/** Nondeterminism sources the old app's source scan found, with how each is handled. */
+	readonly sources?: readonly PinnedSource[];
+	/** Recorded data: written from OLD (record) or served to both apps (replay). */
+	readonly data?: { readonly mode: 'record' | 'replay'; readonly dir: string };
+	/** Whether writes were sent to the apps or held back and compared unsent. */
+	readonly writes?: 'sent' | 'held back';
 }

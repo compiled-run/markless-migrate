@@ -1,8 +1,9 @@
-import type { Browser, BrowserContextOptions, Page, Response } from 'playwright';
+import type { Browser, Page, Response } from 'playwright';
 import { collectPage, decodeImages } from './collect.ts';
 import { createHash } from 'node:crypto';
 import { captureA11y } from './a11y.ts';
 import { isFingerprinted } from './assets.ts';
+import { defaultEnv, openPage, serverRecords, tagHeaders, type SideEnv } from './browser.ts';
 import { renderedFonts } from './fonts.ts';
 import type { AssetRecord, HttpCapture, HttpHop, PageCapture, RouteCapture, ScriptWeight, Viewport } from './types.ts';
 
@@ -57,22 +58,16 @@ export async function settle(page: Page): Promise<void> {
 	});
 }
 
-export function contextOptions(viewport: Viewport): BrowserContextOptions {
-	return {
-		viewport: { width: viewport.width, height: viewport.height },
-		isMobile: viewport.isMobile,
-		hasTouch: viewport.isMobile,
-		deviceScaleFactor: 1,
-		reducedMotion: 'reduce',
-		colorScheme: 'light',
-		serviceWorkers: 'block',
-	};
+// Text and attribute values of the page, to tell which response fields it shows.
+function shownText(): string {
+	const attributes = [...document.querySelectorAll('*')].flatMap((el) => [...el.attributes].map((a) => a.value));
+	return [document.title, document.body?.innerText ?? '', ...attributes].join('\n');
 }
 
-export async function capturePage(browser: Browser, origin: string, route: string, viewport: Viewport): Promise<PageCapture> {
-	const context = await browser.newContext(contextOptions(viewport));
+export async function capturePage(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<PageCapture> {
+	const origin = env.origin;
+	const { context, page, log } = await openPage(browser, env, viewport);
 	try {
-		const page = await context.newPage();
 		const pending: Promise<Omit<AssetRecord, 'fingerprinted'> | undefined>[] = [];
 		const stylesheets: { url: string; text: string }[] = [];
 		const fontHashes = new Map<string, string>();
@@ -100,6 +95,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 		const screenshot = await page.screenshot({ fullPage: true, animations: 'disabled', caret: 'hide' });
 		const coverage = await page.coverage.stopJSCoverage();
 		await Promise.all(pending);
+		const shown = await page.evaluate(shownText);
 		const elements = await renderedFonts(page, collected.elements, fontHashes);
 		const a11y = viewport.isMobile ? undefined : await captureA11y(page);
 		for (const [i, text] of (await page.evaluate(() => [...document.querySelectorAll('style')].map((style) => style.textContent ?? ''))).entries()) {
@@ -108,6 +104,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 		const builtTexts = [html, ...stylesheets.map((s) => s.text), ...coverage.map((entry) => entry.source ?? '')];
 		const assets: AssetRecord[] = (await Promise.all(pending)).filter((a) => a !== undefined).map((a) => ({ ...a, fingerprinted: isFingerprinted(a.url, builtTexts) }));
 		const imageUrls = [...new Set(assets.filter((a) => a.type === 'image' && a.status < 400).map((a) => new URL(a.url, origin).href))];
+		log.stop();
 		const decodedAbsolute = await page.evaluate(decodeImages, imageUrls);
 		const decoded = Object.fromEntries(Object.entries(decodedAbsolute).map(([url, size]) => [toLocal(url, origin), size]));
 		const pageUrl = page.url();
@@ -121,6 +118,8 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 			}));
 		const inline = coverage.filter((entry) => entry.url === pageUrl);
 		const inlineExecuted = inline.reduce((sum, entry) => sum + executedBytes(entry.source ?? '', entry.functions), 0);
+		await log.settled();
+		const server = await serverRecords(env, log.load);
 		return {
 			viewport: viewport.name,
 			finalUrl: toLocal(pageUrl, origin),
@@ -135,6 +134,9 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 			elements,
 			screenshot,
 			...(a11y ? { a11y } : {}),
+			network: { records: [...log.records, ...(server ?? [])], server: server !== undefined, shown },
+			blocked: Object.fromEntries(log.blocked),
+			writes: log.writes.map((w) => ({ line: w.line, reason: w.reason, sent: w.sent })),
 			weight: {
 				downloaded: scripts.reduce((sum, s) => sum + s.bytes, 0),
 				source: scripts.reduce((sum, s) => sum + s.source, 0) + inline.reduce((sum, entry) => sum + (entry.source ?? '').length, 0),
@@ -147,7 +149,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 	}
 }
 
-export async function captureRoute(browser: Browser, origin: string, route: string, viewports: readonly Viewport[]): Promise<RouteCapture> {
-	const [http, ...captured] = await Promise.all([captureHttp(origin, route), ...viewports.map((viewport) => capturePage(browser, origin, route, viewport))]);
+export async function captureRoute(browser: Browser, origin: string, route: string, viewports: readonly Viewport[], env: SideEnv = defaultEnv(origin)): Promise<RouteCapture> {
+	const [http, ...captured] = await Promise.all([captureHttp(origin, route, tagHeaders(env)), ...viewports.map((viewport) => capturePage(browser, env, route, viewport))]);
 	return { origin, route, http, pages: Object.fromEntries(captured.map((page) => [page.viewport, page])) };
 }

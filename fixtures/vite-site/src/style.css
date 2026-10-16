@@ -30,6 +30,10 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outlin
 .menu-button { font: inherit; padding: 2px 8px; border: 1px solid var(--accent); border-radius: 6px; background: transparent; color: var(--accent); cursor: pointer; }
 .menu ul { list-style: none; margin: 4px 0 0; padding: 8px 12px; position: absolute; right: 0; z-index: 1; background: var(--paper); border: 1px solid #a9b6bf; border-radius: 6px; }
 .next-walk { color: #3c4b57; }
+.tip, .hours { color: #3c4b57; }
+.news { display: grid; gap: 8px; margin: 24px 0; }
+.news h2 { font-size: 18px; margin: 0; }
+.news p { margin: 0; }
 .subscribe { display: grid; gap: 8px; max-width: 360px; }
 .subscribe label { font-weight: 600; }
 .subscribe input { font: inherit; padding: 8px; border: 1px solid #a9b6bf; border-radius: 6px; }

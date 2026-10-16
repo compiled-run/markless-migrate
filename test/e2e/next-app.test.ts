@@ -1,14 +1,20 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
+import { mkdtemp, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { chromium, type Browser } from 'playwright';
+import { CONTENT, startCms, type Cms } from '../../fixtures/cms/server.ts';
 import { captureRoute } from '../../src/check/capture.ts';
 import { compareRoute } from '../../src/check/compare.ts';
 import { runCheck } from '../../src/check/run.ts';
+import { loadSourceFacts } from '../../src/check/source-facts.ts';
 import { VIEWPORTS } from '../../src/check/types.ts';
 import { summarize } from '../../src/check/summary.ts';
 import { plan } from '../../src/plan/inventory.ts';
-import { buildNext, failuresIn as failure, limited, OTHER_FONT, redDimensions, startNext, type App, type Mutation } from './harness.ts';
+import { buildNext, failuresIn as failure, limited, OTHER_FONT, redDimensions, startGuard, startNext, type App, type Mutation } from './harness.ts';
 
+const FIXTURE = new URL('../../fixtures/next-app', import.meta.url).pathname;
 const ROUTES = ['/', '/en', '/fr', '/ar', '/en/about', '/fr/about', '/en/contact', '/de', '/en/missing'];
 
 const MUTATIONS: Mutation[] = [
@@ -347,26 +353,94 @@ const MUTATIONS: Mutation[] = [
 			assert.ok(failure(report, 'a11y').some((f) => f.check === 'press Enter on button "More"'));
 		},
 	},
+	{
+		name: 'tip-label',
+		route: '/en',
+		edits: [{ file: 'app/[lang]/page.tsx', find: '<Tip label="Barista’s tip" />', replace: '<Tip label="Baristas’ tip" />' }],
+		red: ['rendered', 'visual'],
+		expect: (report) => {
+			const text = failure(report, 'rendered').find((f) => f.check === 'visible text');
+			assert.match(text!.expected, /^Barista’s tip: \S/);
+			assert.equal(text!.actual, text!.expected.replace('Barista’s', 'Baristas’'), 'the random tip is the same on both sides, so only the label differs');
+		},
+	},
+	{
+		name: 'network-query-field',
+		route: '/en',
+		edits: [{ file: 'app/[lang]/page.tsx', find: 'fields=title,summary,slug', replace: 'fields=title,summary' }],
+		red: ['network'],
+		expect: (report) => {
+			const [f, ...rest] = failure(report, 'network');
+			assert.equal(rest.length, 0, JSON.stringify(rest, null, 1));
+			assert.equal(f!.check, 'server request changed');
+			assert.match(f!.expected, /^server GET 127\.0\.0\.1:\d+\/coffee\/news\?fields=title,summary,slug&locale=en$/);
+			assert.match(f!.actual, /^server GET 127\.0\.0\.1:\d+\/coffee\/news\?fields=title,summary&locale=en$/);
+		},
+	},
+	{
+		name: 'network-endpoint',
+		route: '/en',
+		edits: [{ file: 'app/[lang]/page.tsx', find: '/coffee/news?', replace: '/coffee/articles?' }],
+		red: ['network'],
+		expect: (report) => {
+			const [f, ...rest] = failure(report, 'network');
+			assert.equal(rest.length, 0, JSON.stringify(rest, null, 1));
+			assert.equal(f!.check, 'server request to a different endpoint');
+			assert.match(f!.expected, /\/coffee\/news\?/);
+			assert.match(f!.actual, /\/coffee\/articles\?/);
+		},
+	},
+	{
+		name: 'network-twice',
+		route: '/en',
+		edits: [{ file: 'app/[lang]/hours.tsx', find: 'void load();', replace: 'void load().then(load);' }],
+		red: ['network'],
+		expect: (report) => {
+			const [f, ...rest] = failure(report, 'network');
+			assert.equal(rest.length, 0, JSON.stringify(rest, null, 1));
+			assert.match(f!.check, /^browser request GET 127\.0\.0\.1:\d+\/coffee\/hours$/);
+			assert.equal(f!.actual, '2 times');
+		},
+	},
+	{
+		name: 'network-server-request',
+		route: '/en',
+		edits: [{ file: 'app/[lang]/layout.tsx', find: "const settings = await cms<{ tagline: string }>('/coffee/settings');", replace: `const settings = { tagline: '${CONTENT.coffee!.settings.tagline}' };` }],
+		red: ['network'],
+		expect: (report) => {
+			const [f, ...rest] = failure(report, 'network');
+			assert.equal(rest.length, 0, JSON.stringify(rest, null, 1));
+			assert.equal(f!.check, 'server request missing');
+			assert.match(f!.expected, /^server GET 127\.0\.0\.1:\d+\/coffee\/settings$/);
+		},
+	},
 ];
 
 describe('next.js app router app', { concurrency: 4 }, () => {
 	let browser: Browser;
 	let old: App;
 	let twin: App;
+	let twinOnOtherCms: App;
+	let cms: Cms;
+	let otherCms: Cms;
 	const mutants = new Map<string, App>();
 
 	before(async () => {
 		browser = await chromium.launch();
+		cms = await startCms();
+		otherCms = await startCms({ coffee: { ...CONTENT.coffee!, news: CONTENT.coffee!.news.map((n) => ({ ...n, title: `${n.title} (staging copy)` })), hours: { today: 'Shop closed for a private tasting' } } });
 		const builds = [{ name: 'original', edits: [] }, { name: 'rebuild', edits: [] }, ...MUTATIONS];
 		const dirs = await limited(builds, 3, (b) => buildNext(b.name, b.edits));
-		const apps = await Promise.all(dirs.map(startNext));
+		const apps = await Promise.all([...dirs.map((dir) => startNext(dir, cms.origin)), startNext(dirs[1]!, otherCms.origin)]);
 		old = apps[0]!;
 		twin = apps[1]!;
+		twinOnOtherCms = apps.at(-1)!;
 		MUTATIONS.forEach((m, i) => mutants.set(m.name, apps[i + 2]!));
 	});
 
 	after(async () => {
-		await Promise.all([old?.stop(), twin?.stop(), ...[...mutants.values()].map((m) => m.stop())]);
+		await Promise.all([old?.stop(), twin?.stop(), twinOnOtherCms?.stop(), ...[...mutants.values()].map((m) => m.stop())]);
+		await Promise.all([cms?.stop(), otherCms?.stop()]);
 		await browser?.close();
 	});
 
@@ -381,6 +455,61 @@ describe('next.js app router app', { concurrency: 4 }, () => {
 		const next = await captureRoute(browser, twin.origin, '/en', VIEWPORTS);
 		const result = compareRoute('/en', [oldA, oldA], next, new Map());
 		assert.ok(result.failures.some((f) => f.dimension === 'rendered' && /Page rendered at/.test(f.expected)), JSON.stringify(result.failures, null, 1));
+	});
+
+	test('the source scan of the old app feeds the noise report: server time stays noise, the seeded Math.random tip is pinned', async () => {
+		const { facts: source } = await loadSourceFacts(FIXTURE);
+		const serverTime = source!.nondeterminism.find((f) => f.what === 'new Date()' && f.side === 'server')!;
+		assert.equal(serverTime.file, 'app/[lang]/layout.tsx');
+		const report = await runCheck({ oldOrigin: old.origin, newOrigin: twin.origin, routes: ['/en'], browser, source: source! });
+		assert.deepEqual(redDimensions(report), [], summarize(report));
+		const noisy = report.routes[0]!.noise!.noisy;
+		assert.ok(noisy.some((n) => /^time /.test(n.element) && /comes from the server/.test(n.why) && n.why.includes(`app/[lang]/layout.tsx:${serverTime.line} (new Date())`)), JSON.stringify(noisy, null, 1));
+		assert.ok(!noisy.some((n) => /tip/i.test(n.element)), JSON.stringify(noisy, null, 1));
+		const pinned = Object.fromEntries(report.sources!.map((s) => [`${s.file} ${s.what}`, s.pinned]));
+		assert.equal(pinned['app/[lang]/layout.tsx new Date()'], 'not pinned: runs on the server, left to the noise baseline (repeated OLD loads)');
+		assert.equal(pinned['app/[lang]/tip.tsx Math.random()'], 'pinned in the browser (seeded)');
+		const network = report.routes[0]!.network!;
+		assert.deepEqual(network.server, { old: true, new: true });
+		assert.ok(network.old.some((line) => /^server GET 127\.0\.0\.1:\d+\/coffee\/settings$/.test(line)), network.old.join('\n'));
+		assert.ok(network.old.some((line) => /^browser GET 127\.0\.0\.1:\d+\/coffee\/hours$/.test(line)), network.old.join('\n'));
+	});
+
+	test('recorded data: record from OLD, replay to both apps, so a NEW app on another CMS sees the same content', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'mm-data-'));
+		const live = await runCheck({ oldOrigin: old.origin, newOrigin: twinOnOtherCms.origin, routes: ['/en'], browser });
+		assert.ok(redDimensions(live).includes('rendered'), summarize(live));
+		await runCheck({ oldOrigin: old.origin, newOrigin: twinOnOtherCms.origin, routes: ['/en'], browser, data: { mode: 'record', dir } });
+		const file = JSON.parse(await readFile(join(dir, 'en.json'), 'utf8')) as { responses: { side: string; url: string }[] };
+		assert.deepEqual(file.responses.map((r) => `${r.side} ${new URL(r.url).pathname}`).sort(), ['browser /coffee/hours', 'server /coffee/news', 'server /coffee/settings']);
+		const before = otherCms.requests.length;
+		const replayed = await runCheck({ oldOrigin: old.origin, newOrigin: twinOnOtherCms.origin, routes: ['/en'], browser, data: { mode: 'replay', dir } });
+		assert.deepEqual(redDimensions(replayed), [], summarize(replayed));
+		const asked = otherCms.requests.slice(before);
+		// Pages reached through the locale links are not in /en's recording, so they fetch live.
+		assert.deepEqual(asked.filter((r) => !/locale=(fr|ar)$/.test(r)), [], 'what the recording covers never reaches the other CMS');
+	});
+
+	test('writes to an origin that is neither staging nor localhost are held back, compared unsent, and never reach it', async () => {
+		const guardOld = await startGuard(old.origin);
+		const guardNew = await startGuard(mutants.get('form-path')!.origin);
+		const { facts: source } = await loadSourceFacts(FIXTURE);
+		try {
+			const report = await runCheck({ oldOrigin: guardOld.origin, newOrigin: guardNew.origin, routes: ['/en/contact'], browser, ...(source ? { source } : {}) });
+			assert.equal(guardOld.writes.length + guardNew.writes.length, 0, [...guardOld.writes, ...guardNew.writes].join(', '));
+			assert.equal(report.writes, 'held back');
+			assert.deepEqual(redDimensions(report), ['behaviour'], summarize(report));
+			const [f] = failure(report, 'behaviour');
+			assert.match(f!.expected, /requests: would POST \/api\/contact \{lang: string, message: string, name: string\}/);
+			assert.match(f!.actual, /requests: would POST \/api\/message /);
+			assert.ok(report.routes[0]!.writes!.some((w) => w.line.startsWith('would POST /api/contact') && !w.sent && w.reason === 'writes per the source: route-handler at app/api/contact/route.ts:3'), JSON.stringify(report.routes[0]!.writes));
+
+			const staged = await runCheck({ oldOrigin: guardOld.origin, newOrigin: guardNew.origin, routes: ['/en/contact'], browser, staging: { old: true, new: true } });
+			assert.equal(staged.writes, 'sent');
+			assert.ok(guardOld.writes.includes('POST /api/contact'), 'marked staging, the write is sent, so the guard does see writes');
+		} finally {
+			await Promise.all([guardOld.stop(), guardNew.stop()]);
+		}
 	});
 
 	test('plan crawls every locale and records the root redirect', async () => {

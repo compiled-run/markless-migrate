@@ -5,14 +5,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
+import { CONTENT, startCms, type Cms } from '../../fixtures/cms/server.ts';
+import { defaultEnv } from '../../src/check/browser.ts';
 import { captureRoute } from '../../src/check/capture.ts';
-import { compareRoute } from '../../src/check/compare.ts';
-import { runCheck } from '../../src/check/run.ts';
+import { runCheck, loadsDiffer } from '../../src/check/run.ts';
+import { loadSourceFacts } from '../../src/check/source-facts.ts';
 import { summarize } from '../../src/check/summary.ts';
 import { VIEWPORTS } from '../../src/check/types.ts';
 import { plan } from '../../src/plan/inventory.ts';
 import { connect, firstText } from '../mcp-client.ts';
-import { buildVite, failuresIn, OTHER_FONT, redDimensions, startStatic, type App, type Mutation } from './harness.ts';
+import { buildVite, failuresIn, OTHER_FONT, redDimensions, startGuard, startStatic, type App, type Mutation } from './harness.ts';
 
 const ROUTES = ['/', '/about/', '/fr/', '/ar/', '/old-about', '/missing'];
 
@@ -348,24 +350,93 @@ const MUTATIONS: Mutation[] = [
 			assert.ok(failure(report, 'a11y').some((f) => f.check === 'press Enter on button "More"'));
 		},
 	},
+	{
+		name: 'tip-label',
+		route: '/',
+		edits: [{ file: 'index.html', find: 'Walker’s tip:', replace: 'Walkers’ tip:' }],
+		red: ['rendered', 'visual'],
+		expect: (report) => {
+			const text = failure(report, 'rendered').find((f) => f.check === 'visible text');
+			assert.match(text!.expected, /^Walker’s tip: \S/);
+			assert.equal(text!.actual, text!.expected.replace('Walker’s', 'Walkers’'), 'the random tip is the same on both sides, so only the label differs');
+		},
+	},
+	{
+		name: 'network-query-field',
+		route: '/',
+		edits: [{ file: 'serve.ts', find: 'fields=title,summary,slug', replace: 'fields=title,summary' }],
+		red: ['network'],
+		expect: (report) => {
+			const [f, ...rest] = failure(report, 'network');
+			assert.equal(rest.length, 0, JSON.stringify(rest, null, 1));
+			assert.equal(f!.check, 'server request changed');
+			assert.match(f!.expected, /^server GET 127\.0\.0\.1:\d+\/walks\/news\?fields=title,summary,slug&locale=en$/);
+			assert.match(f!.actual, /^server GET 127\.0\.0\.1:\d+\/walks\/news\?fields=title,summary&locale=en$/);
+		},
+	},
+	{
+		name: 'network-endpoint',
+		route: '/',
+		edits: [{ file: 'src/main.ts', find: '/walks/hours', replace: '/walks/opening-hours' }],
+		red: ['network'],
+		expect: (report) => {
+			const [f, ...rest] = failure(report, 'network');
+			assert.equal(rest.length, 0, JSON.stringify(rest, null, 1));
+			assert.equal(f!.check, 'browser request to a different endpoint');
+			assert.match(f!.expected, /^browser GET 127\.0\.0\.1:\d+\/walks\/hours$/);
+			assert.match(f!.actual, /\/walks\/opening-hours$/);
+		},
+	},
+	{
+		name: 'network-twice',
+		route: '/',
+		edits: [{ file: 'src/main.ts', find: "void loadHours();", replace: 'void loadHours().then(loadHours);' }],
+		red: ['network'],
+		expect: (report) => {
+			const [f, ...rest] = failure(report, 'network');
+			assert.equal(rest.length, 0, JSON.stringify(rest, null, 1));
+			assert.match(f!.check, /^browser request GET 127\.0\.0\.1:\d+\/walks\/hours$/);
+			assert.match(f!.expected, /^1 time: /);
+			assert.equal(f!.actual, '2 times');
+		},
+	},
+	{
+		name: 'network-server-request',
+		route: '/',
+		edits: [{ file: 'serve.ts', find: "const settings = await cmsJson<{ tagline: string }>('/walks/settings');", replace: `const settings = { tagline: '${CONTENT.walks!.settings.tagline}' };` }],
+		red: ['network'],
+		expect: (report) => {
+			const [f, ...rest] = failure(report, 'network');
+			assert.equal(rest.length, 0, JSON.stringify(rest, null, 1));
+			assert.equal(f!.check, 'server request missing');
+			assert.match(f!.expected, /^server GET 127\.0\.0\.1:\d+\/walks\/settings$/);
+			assert.match(f!.hint, /hardcoded/);
+		},
+	},
 ];
 
 describe('vite multi-page site', { concurrency: 4 }, () => {
 	let browser: Browser;
+	let cms: Cms;
+	let otherCms: Cms;
 	let old: App;
 	let twin: App;
+	let twinOnOtherCms: App;
 	const mutants = new Map<string, App>();
 
 	before(async () => {
 		browser = await chromium.launch();
+		cms = await startCms();
+		otherCms = await startCms({ walks: { ...CONTENT.walks!, news: CONTENT.walks!.news.map((n) => ({ ...n, title: `${n.title} (staging copy)` })), hours: { today: 'Booking office closed for staff training' } } });
 		const [dist, ...dists] = await Promise.all([buildVite('original'), buildVite('rebuild'), ...MUTATIONS.map((m) => buildVite(m.name, m.edits))]);
-		old = await startStatic(dist!);
-		twin = await startStatic(dists[0]!);
-		for (const [i, mutation] of MUTATIONS.entries()) mutants.set(mutation.name, await startStatic(dists[i + 1]!));
+		[old, twin, twinOnOtherCms] = await Promise.all([startStatic(dist!, cms.origin), startStatic(dists[0]!, cms.origin), startStatic(dists[0]!, otherCms.origin)]);
+		const apps = await Promise.all(MUTATIONS.map((_, i) => startStatic(dists[i + 1]!, cms.origin)));
+		MUTATIONS.forEach((m, i) => mutants.set(m.name, apps[i]!));
 	});
 
 	after(async () => {
-		await Promise.all([old?.stop(), twin?.stop(), ...[...mutants.values()].map((m) => m.stop())]);
+		await Promise.all([old?.stop(), twin?.stop(), twinOnOtherCms?.stop(), ...[...mutants.values()].map((m) => m.stop())]);
+		await Promise.all([cms?.stop(), otherCms?.stop()]);
 		await browser?.close();
 	});
 
@@ -375,11 +446,60 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		assert.deepEqual(redDimensions(report), [], summarize(report));
 	});
 
-	test('without the noise baseline the same comparison goes red, so the baseline is doing work', async () => {
-		const oldA = await captureRoute(browser, old.origin, '/', VIEWPORTS);
-		const next = await captureRoute(browser, twin.origin, '/', VIEWPORTS);
-		const result = compareRoute('/', [oldA, oldA], next, new Map());
-		assert.ok(result.failures.some((f) => f.dimension === 'rendered' && /Page rendered at/.test(f.expected)), JSON.stringify(result.failures, null, 1));
+	test('with the browser frozen two OLD loads are identical; unfrozen, the clock and Math.random make them differ', async () => {
+		const [a, b] = await Promise.all([captureRoute(browser, old.origin, '/', VIEWPORTS), captureRoute(browser, old.origin, '/', VIEWPORTS)]);
+		assert.equal(loadsDiffer(a, b), false);
+		assert.ok(a.pages.desktop!.text.some((line) => /^Walker’s tip: \S/.test(line)));
+		const unfrozen = defaultEnv(old.origin, { freeze: false });
+		const [c, d] = [await captureRoute(browser, old.origin, '/', VIEWPORTS, unfrozen), await captureRoute(browser, old.origin, '/', VIEWPORTS, unfrozen)];
+		assert.notDeepEqual(c.pages.desktop!.text.find((line) => line.startsWith('Page rendered at')), d.pages.desktop!.text.find((line) => line.startsWith('Page rendered at')));
+	});
+
+	test('the network contract records server-rendered and browser requests, and the fields the page shows', async () => {
+		const report = await runCheck({ oldOrigin: old.origin, newOrigin: twin.origin, routes: ['/'], browser });
+		const network = report.routes[0]!.network!;
+		assert.deepEqual(network.server, { old: true, new: true });
+		assert.ok(network.old.some((line) => /^server GET 127\.0\.0\.1:\d+\/walks\/news\?fields=title,summary,slug&locale=en$/.test(line)), network.old.join('\n'));
+		assert.ok(network.old.some((line) => /^browser GET 127\.0\.0\.1:\d+\/walks\/hours$/.test(line)), network.old.join('\n'));
+		assert.deepEqual(network.old, network.new);
+		assert.deepEqual(report.routes[0]!.noise!.noisy, [], 'nothing on this static page varies once the browser is frozen');
+	});
+
+	test('recorded data: record from OLD, replay to both apps, so a NEW app on another CMS sees the same content', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'mm-data-'));
+		const live = await runCheck({ oldOrigin: old.origin, newOrigin: twinOnOtherCms.origin, routes: ['/'], browser });
+		assert.ok(redDimensions(live).includes('rendered'), summarize(live));
+		const recorded = await runCheck({ oldOrigin: old.origin, newOrigin: twinOnOtherCms.origin, routes: ['/'], browser, data: { mode: 'record', dir } });
+		assert.equal(recorded.data?.mode, 'record');
+		const file = JSON.parse(await readFile(join(dir, 'root.json'), 'utf8')) as { responses: { side: string; url: string }[] };
+		assert.deepEqual(file.responses.map((r) => `${r.side} ${new URL(r.url).pathname}`).sort(), ['browser /walks/hours', 'server /walks/news', 'server /walks/settings']);
+		const before = otherCms.requests.length;
+		const replayed = await runCheck({ oldOrigin: old.origin, newOrigin: twinOnOtherCms.origin, routes: ['/'], browser, data: { mode: 'replay', dir } });
+		assert.deepEqual(redDimensions(replayed), [], summarize(replayed));
+		assert.deepEqual(otherCms.requests.slice(before), [], 'the other CMS is never asked while replaying');
+	});
+
+	test('writes to an origin that is neither staging nor localhost are held back, compared unsent, and never reach it', async () => {
+		const guardOld = await startGuard(old.origin);
+		const guardNew = await startGuard(mutants.get('form-path')!.origin);
+		const { facts: source } = await loadSourceFacts(join(import.meta.dirname, '../../fixtures/vite-site'));
+		const form = source!.writes.find((w) => w.path === '/api/subscribe')!;
+		try {
+			const report = await runCheck({ oldOrigin: guardOld.origin, newOrigin: guardNew.origin, routes: ['/about/'], browser, source: source! });
+			assert.equal(guardOld.writes.length + guardNew.writes.length, 0, [...guardOld.writes, ...guardNew.writes].join(', '));
+			assert.equal(report.writes, 'held back');
+			assert.deepEqual(redDimensions(report), ['behaviour'], summarize(report));
+			const [f] = failure(report, 'behaviour');
+			assert.match(f!.expected, /requests: would POST \/api\/subscribe \{email: string\}/);
+			assert.match(f!.actual, /requests: would POST \/api\/signup \{email: string\}/);
+			assert.ok(report.routes[0]!.writes!.some((w) => w.line === 'would POST /api/subscribe {email: string}' && !w.sent && w.reason === `writes per the source: form at ${form.handler.file}:${form.handler.line}`), JSON.stringify(report.routes[0]!.writes));
+
+			const staged = await runCheck({ oldOrigin: guardOld.origin, newOrigin: guardNew.origin, routes: ['/about/'], browser, staging: { old: true, new: true } });
+			assert.equal(staged.writes, 'sent');
+			assert.ok(guardOld.writes.includes('POST /api/subscribe'), 'marked staging, the write is sent, so the guard does see writes');
+		} finally {
+			await Promise.all([guardOld.stop(), guardNew.stop()]);
+		}
 	});
 
 	test('plan finds the sitemap and crawled routes and both locales', async () => {

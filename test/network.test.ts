@@ -1,0 +1,73 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { recordable } from '../src/check/data.ts';
+import { bodyShape, compareNetwork, contractLines, normalizeUrl, usedFields, type NetworkCapture, type NetworkRecord } from '../src/check/network.ts';
+
+const OLD = 'http://127.0.0.1:3000';
+const NEW = 'http://127.0.0.1:5173';
+const news = (query = 'fields=title,summary&locale=en'): NetworkRecord => ({ side: 'server', method: 'GET', url: `https://cms.example/news?${query}`, status: 200, contentType: 'application/json', body: JSON.stringify({ items: [{ title: 'Winter timetable', summary: 'Walks start later.' }] }) });
+const hours = (origin = OLD): NetworkRecord => ({ side: 'browser', method: 'GET', url: `${origin}/api/hours`, status: 200, contentType: 'application/json', body: '{"today":"Open 9 to 5"}' });
+const capture = (records: NetworkRecord[], shown = 'Winter timetable\nWalks start later.\nOpen 9 to 5'): NetworkCapture => ({ records, server: true, shown });
+
+test('URLs normalise the app origin, ids, timestamps and cache-busters, and sort the query', () => {
+	assert.equal(normalizeUrl('http://localhost:3000/api/posts/42?b=2&a=1&_=1739912345678', OLD), '{self}/api/posts/{id}?_={bust}&a=1&b=2');
+	assert.equal(normalizeUrl('https://cms.example/entries/3f2b8c1e-9a7d-4e2b-8f1a-2b3c4d5e6f70?since=1739912345', OLD), 'cms.example/entries/{uuid}?since={time}');
+	assert.equal(normalizeUrl('https://cms.example/news?limit=2', OLD), 'cms.example/news?limit=2', 'small numbers are kept: a changed page size is a difference');
+});
+
+test('body shapes keep field names and types, and GraphQL queries as text', () => {
+	assert.equal(bodyShape('email=a%40b.c&n=2', 'application/x-www-form-urlencoded'), ' {email: string, n: number}');
+	assert.equal(bodyShape('{"query":"query {\\n  posts { title summary }\\n}","variables":{"first":2}}', 'application/json'), ' {"query":"query { posts { title summary } }","variables":{"first":"number"}}');
+});
+
+test('the fields a page uses are the response values it shows in text or attributes', () => {
+	const used = usedFields(news(), 'Winter timetable');
+	assert.deepEqual([...used], ['items[].title']);
+	assert.deepEqual([...usedFields({ ...hours(), body: '{"count":12,"ok":"yes"}' }, '12 yes')], [], 'short values and plain numbers match by chance, so they are not counted');
+});
+
+test('the same requests from both apps are one contract, whatever their origins', () => {
+	assert.deepEqual(compareNetwork('/', [capture([news(), hours()]), capture([news(), hours()])], capture([news(), hours(NEW)]), OLD, NEW), []);
+	assert.deepEqual(contractLines(capture([news(), hours(), hours()]), OLD), ['2x browser GET {self}/api/hours', 'server GET cms.example/news?fields=title,summary&locale=en']);
+});
+
+test('a dropped query field, a different endpoint, a second fetch and a dropped server request each fail', () => {
+	const olds = [capture([news(), hours()]), capture([news(), hours()])];
+	const [changed] = compareNetwork('/', olds, capture([news('fields=title&locale=en'), hours(NEW)]), OLD, NEW);
+	assert.equal(changed!.check, 'server request changed');
+	assert.equal(changed!.actual, 'server GET cms.example/news?fields=title&locale=en');
+
+	const endpoint = compareNetwork('/', olds, capture([news(), { ...hours(NEW), url: `${NEW}/api/opening-hours` }]), OLD, NEW);
+	assert.deepEqual(endpoint.map((f) => [f.check, f.expected, f.actual]), [['browser request to a different endpoint', 'browser GET {self}/api/hours', 'browser GET {self}/api/opening-hours']]);
+
+	const twice = compareNetwork('/', olds, capture([news(), hours(NEW), hours(NEW)]), OLD, NEW);
+	assert.deepEqual(twice.map((f) => [f.check, f.actual]), [['browser request GET {self}/api/hours', '2 times']]);
+
+	const dropped = compareNetwork('/', olds, capture([hours(NEW)]), OLD, NEW);
+	assert.deepEqual(dropped.map((f) => [f.check, f.expected]), [['server request missing', 'server GET cms.example/news?fields=title,summary&locale=en']]);
+});
+
+test('a request only some OLD loads made is optional; a field the NEW page stops showing fails', () => {
+	assert.deepEqual(compareNetwork('/', [capture([news(), hours()]), capture([news()])], capture([news()]), OLD, NEW), []);
+	const [f] = compareNetwork('/', [capture([news()]), capture([news()])], capture([news()], 'Winter timetable'), OLD, NEW);
+	assert.equal(f!.check, 'response fields the page shows from server GET cms.example/news?fields=title,summary&locale=en');
+	assert.match(f!.actual, /no longer shown: items\[\]\.summary$/);
+});
+
+test('without the recorder on NEW, server requests cannot be compared and the report says so', () => {
+	const [f, ...rest] = compareNetwork('/', [capture([news()]), capture([news()])], { ...capture([]), server: false }, OLD, NEW);
+	assert.equal(rest.length, 0);
+	assert.equal(f!.check, 'server-side requests');
+	assert.match(f!.actual, /not recorded/);
+});
+
+test('source facts name the old call site behind a failing request', () => {
+	const [f] = compareNetwork('/', [capture([news()]), capture([news()])], capture([]), OLD, NEW, [{ file: 'lib/cms.ts', line: 12, kind: 'fetch', queries: ['https://cms.example/news?fields=title,summary'] }]);
+	assert.match(f!.hint, /Old source sends it from lib\/cms\.ts:12 \(fetch\)\.$/);
+});
+
+test('only answered requests are recorded for replay, once each, under the URL that was recorded', () => {
+	const kept = recordable([news(), news(), { ...hours(), intercepted: true, status: 0 }, { ...hours(NEW), replayed: true, recordedUrl: `${OLD}/api/hours` }]);
+	assert.deepEqual(kept.map((r) => r.url), ['https://cms.example/news?fields=title,summary&locale=en', `${OLD}/api/hours`]);
+	assert.equal('replayed' in kept[1]!, false);
+});

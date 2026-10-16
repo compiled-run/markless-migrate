@@ -1,8 +1,8 @@
 import type { Browser, BrowserContext, Locator, Page, Request } from 'playwright';
-import { contextOptions } from './capture.ts';
+import { frameworkTransport, openPage, requestLine, type SideEnv } from './browser.ts';
 import { HINTS } from './hints.ts';
 import { diffLines, lineTemplates, template } from './noise.ts';
-import type { Dimension, Failure, Viewport } from './types.ts';
+import type { Dimension, Failure, Viewport, WriteLine } from './types.ts';
 
 export interface Target {
 	readonly role: string;
@@ -22,6 +22,8 @@ export interface StepResult {
 	readonly added: readonly string[];
 	readonly removed: readonly string[];
 	readonly requests: readonly string[];
+	/** Requests of this step that write, and whether each was sent or held back. */
+	readonly writes?: readonly WriteLine[];
 	readonly errors: readonly string[];
 	readonly announcements: readonly string[];
 	readonly focus: string;
@@ -172,35 +174,14 @@ function firstSteps(found: readonly Candidate[]): Step[] {
 	return steps;
 }
 
-function bodyShape(request: Request): string {
-	const body = request.postData();
-	if (!body) return '';
-	const type = request.headers()['content-type'] ?? '';
-	const kind = (value: string) => (/^-?\d+(\.\d+)?$/.test(value) ? 'number' : value === '' ? 'empty' : 'string');
-	if (type.includes('application/x-www-form-urlencoded')) {
-		return ` {${[...new URLSearchParams(body)].map(([k, v]) => `${k}: ${kind(v)}`).sort().join(', ')}}`;
-	}
-	if (type.includes('multipart/form-data')) {
-		return ` {${[...body.matchAll(/name="([^"]+)"/g)].map((m) => m[1]).sort().join(', ')}}`;
-	}
-	try {
-		const shape = (value: unknown): unknown => (Array.isArray(value) ? [value.length ? shape(value[0]) : 'empty'] : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort().map(([k, v]) => [k, shape(v)])) : typeof value);
-		return ` ${JSON.stringify(shape(JSON.parse(body)))}`;
-	} catch {
-		return ` (${body.length} bytes)`;
-	}
-}
-
 // App requests only: framework transport (React Server Component payloads, server-action posts, /_next/ data) and plain page loads are left to the URL.
 function appRequest(request: Request, origin: string): string | undefined {
 	const url = new URL(request.url());
 	if (url.origin !== origin) return undefined;
 	const type = request.resourceType();
-	const headers = request.headers();
-	if (url.pathname.startsWith('/_next/') || url.searchParams.has('_rsc') || headers.rsc || headers['next-action'] || headers['next-router-state-tree']) return undefined;
+	if (frameworkTransport(request, url)) return undefined;
 	if (type === 'document' ? request.method() === 'GET' : type !== 'fetch' && type !== 'xhr') return undefined;
-	const query = [...url.searchParams.keys()].sort();
-	return `${request.method()} ${url.pathname}${query.length ? `?${query.join('&')}` : ''}${bodyShape(request)}`;
+	return requestLine(request.method(), url, origin, request.postData(), request.headers()['content-type'] ?? '');
 }
 
 function multisetDiff(before: readonly string[], after: readonly string[]): { added: string[]; removed: string[] } {
@@ -278,19 +259,17 @@ export interface Session {
 	close(): Promise<void>;
 }
 
-export async function openSession(browser: Browser, origin: string, route: string, viewport: Viewport): Promise<Session> {
-	const context = await browser.newContext(contextOptions(viewport));
+export async function openSession(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<Session> {
+	const origin = env.origin;
+	const { context, page, log } = await openPage(browser, env, viewport, { sameOriginOnly: true });
 	const host = new URL(origin).origin;
-	await context.route('**/*', (r) => (new URL(r.request().url()).origin === host || r.request().url().startsWith('data:') ? r.continue() : r.abort()));
-	const page = await context.newPage();
 	page.on('dialog', (dialog) => dialog.dismiss().catch(() => {}));
-	let requests: string[] = [];
+	let requests: Request[] = [];
 	let errors: string[] = [];
 	const pending = new Set<Request>();
 	page.on('request', (request) => {
 		pending.add(request);
-		const line = appRequest(request, host);
-		if (line) requests.push(line);
+		requests.push(request);
 	});
 	page.on('requestfinished', (request) => pending.delete(request));
 	page.on('requestfailed', (request) => pending.delete(request));
@@ -317,6 +296,7 @@ export async function openSession(browser: Browser, origin: string, route: strin
 			const liveBefore = await page.evaluate(liveRegions).catch(() => [] as string[]);
 			requests = [];
 			errors = [];
+			const writesBefore = log.writes.length;
 			let failed: string | undefined;
 			try {
 				await perform(page, step);
@@ -327,12 +307,18 @@ export async function openSession(browser: Browser, origin: string, route: strin
 			const after = await snapshot(page, origin);
 			const liveAfter = await page.evaluate(liveRegions).catch(() => [] as string[]);
 			const { added, removed } = multisetDiff(before, after);
+			const writes = log.writes.slice(writesBefore);
+			const writeOf = new Map(writes.map((w) => [w.request, w.line]));
 			return {
 				url: localUrl(page.url(), origin),
 				navigated: documentLoaded || new URL(page.url()).pathname !== startPath || (href !== null && new URL(href, page.url()).href === page.url()),
 				added,
 				removed,
-				requests: [...requests],
+				requests: requests.flatMap((r) => {
+					const line = writeOf.get(r) ?? appRequest(r, host);
+					return line ? [line] : [];
+				}),
+				...(writes.length ? { writes: writes.map((w) => ({ line: w.line, reason: w.reason, sent: w.sent })) } : {}),
 				errors: [...errors],
 				announcements: liveAfter.filter((line) => !liveBefore.includes(line)),
 				focus: await focusLabel(page),
@@ -343,8 +329,8 @@ export async function openSession(browser: Browser, origin: string, route: strin
 	};
 }
 
-export async function replay(browser: Browser, origin: string, route: string, viewport: Viewport, journey: Journey): Promise<StepResult[]> {
-	const session = await openSession(browser, origin, route, viewport);
+export async function replay(browser: Browser, env: SideEnv, route: string, viewport: Viewport, journey: Journey): Promise<StepResult[]> {
+	const session = await openSession(browser, env, route, viewport);
 	try {
 		const results: StepResult[] = [];
 		for (const step of journey.steps) {
@@ -373,9 +359,10 @@ async function pool<T, R>(items: readonly T[], task: (item: T) => Promise<R>): P
 }
 
 /** Breadth first over the OLD page to depth 2: every control once from a fresh load, then whatever a step revealed. */
-export async function explore(browser: Browser, origin: string, route: string, viewport: Viewport): Promise<RecordedJourney[]> {
+export async function explore(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<RecordedJourney[]> {
+	const origin = env.origin;
 	const host = new URL(origin).origin;
-	const start = await openSession(browser, origin, route, viewport);
+	const start = await openSession(browser, env, route, viewport);
 	let first: Step[];
 	let initial: Set<string>;
 	try {
@@ -387,7 +374,7 @@ export async function explore(browser: Browser, origin: string, route: string, v
 	}
 	const journeys: RecordedJourney[] = [];
 	const level1 = await pool(first.slice(0, MAX_JOURNEYS), async (step) => {
-		const session = await openSession(browser, origin, route, viewport);
+		const session = await openSession(browser, env, route, viewport);
 		try {
 			const result = await session.run(step);
 			const path = new URL(session.page.url()).pathname;
@@ -410,7 +397,7 @@ export async function explore(browser: Browser, origin: string, route: string, v
 		}
 	}
 	const room = Math.max(0, MAX_JOURNEYS - journeys.length);
-	const level2 = await pool(second.slice(0, room), async (journey) => ({ ...journey, expected: await replay(browser, origin, route, viewport, journey) }));
+	const level2 = await pool(second.slice(0, room), async (journey) => ({ ...journey, expected: await replay(browser, env, route, viewport, journey) }));
 	return [...journeys, ...level2];
 }
 
@@ -435,8 +422,8 @@ function format(result: StepResult, parts: readonly string[]): string {
 /** Step results of every journey in one run, in journey order. */
 export type Run = readonly (readonly StepResult[])[];
 
-export async function replayAll(browser: Browser, origin: string, route: string, viewport: Viewport, journeys: readonly Journey[]): Promise<Run> {
-	return pool(journeys, (journey) => replay(browser, origin, route, viewport, journey));
+export async function replayAll(browser: Browser, env: SideEnv, route: string, viewport: Viewport, journeys: readonly Journey[]): Promise<Run> {
+	return pool(journeys, (journey) => replay(browser, env, route, viewport, journey));
 }
 
 export function compareJourneys(route: string, olds: readonly Run[], journeys: readonly Journey[], next: Run): Failure[] {

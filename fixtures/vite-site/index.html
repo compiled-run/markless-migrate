@@ -47,6 +47,9 @@
 				<li>Every walk ends at a café</li>
 			</ul>
 			<div class="counter"><span>Walks booked today: <output>0</output></span><button type="button" data-book>Book a walk</button></div>
+			<p class="tip">Walker’s tip: <span data-tip></span></p>
+			<p class="hours" data-cms="{{cms}}">Opening hours: <span data-hours>loading</span></p>
+			<section class="news" aria-label="News"><!--cms:news--></section>
 			<section class="routes" aria-label="Routes">
 				<article class="route"><h2>Lizard Point loop</h2><p>Two hours on the cliffs around the most southerly lighthouse.</p></article>
 				<article class="route"><h2>Godrevy to St Ives</h2><p>A full day along the bay, with seals below the path.</p></article>
@@ -59,6 +62,7 @@
 		</main>
 		<footer>
 			<p>Page rendered at <time data-rendered-at></time></p>
+			<p class="tagline"><!--cms:tagline--></p>
 		</footer>
 	</body>
 </html>

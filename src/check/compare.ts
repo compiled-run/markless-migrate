@@ -2,8 +2,11 @@ import { compareA11y } from './a11y.ts';
 import { HINTS, seoHint } from './hints.ts';
 import { compareI18n } from './i18n.ts';
 import { describe, matchElements } from './match.ts';
+import { compareNetwork, contractLines } from './network.ts';
+import type { ClientFact, NondeterminismFact } from './source-facts.ts';
+import { at as sourceAt } from './source-facts.ts';
 import { diffFields, diffLines, fieldTemplates, lineTemplates, type LineDiff } from './noise.ts';
-import type { AssetRecord, Box, Dimension, ElementSnapshot, Failure, PageCapture, RouteCapture, RouteResult, Shot } from './types.ts';
+import type { AssetRecord, Box, Dimension, ElementSnapshot, Failure, NoiseReport, PageCapture, RouteCapture, RouteResult, Shot } from './types.ts';
 import { DIMENSIONS } from './types.ts';
 import { compareScreenshots, visualNoise, visuallyDifferent } from './visual.ts';
 
@@ -141,7 +144,34 @@ function cssFailures(route: string, viewport: string, oldA: PageCapture, others:
 	return failures;
 }
 
-export function compareRoute(route: string, olds: readonly RouteCapture[], next: RouteCapture, probes: ReadonlyMap<string, Probe>): RouteResult {
+/** Elements whose text still changed between OLD loads, and why; with freezing on, what is left comes from the server or from timers. */
+export function noiseReport(olds: readonly RouteCapture[], frozen: boolean, sources: readonly NondeterminismFact[] = []): NoiseReport {
+	const [oldA, ...others] = olds;
+	const found = new Map<string, { viewports: string[]; why: string }>();
+	const unpinned = sources.filter((s) => s.side !== 'client').slice(0, 3);
+	const suspects = unpinned.length ? `; sources the old app's code has that freezing cannot reach: ${unpinned.map((s) => `${sourceAt(s)} (${s.what ?? s.kind})`).join(', ')}` : '';
+	const why = frozen
+		? `changed between OLD loads although the browser clock, randomness, timezone and locale were frozen and trackers blocked, so it comes from the server (time, data, an experiment) or from a timer${suspects}; the noise baseline allows it to vary only where the OLD loads differed`
+		: 'changed between OLD loads with freezing off; the noise baseline allows it to vary only where the OLD loads differed';
+	for (const [viewport, a] of Object.entries(oldA?.pages ?? {})) {
+		for (const other of others) {
+			const b = other.pages[viewport];
+			if (!b) continue;
+			for (const [i, j] of matchElements(a.elements, b.elements)) {
+				if (a.elements[i]!.text === b.elements[j]!.text && a.elements[i]!.name === b.elements[j]!.name) continue;
+				const element = describe(a.elements[i]!);
+				const entry = found.get(element) ?? { viewports: [], why };
+				if (!entry.viewports.includes(viewport)) entry.viewports.push(viewport);
+				found.set(element, entry);
+			}
+		}
+	}
+	const blocked: Record<string, number> = {};
+	for (const page of Object.values(oldA?.pages ?? {}).slice(0, 1)) for (const [host, n] of Object.entries(page.blocked ?? {})) blocked[host] = (blocked[host] ?? 0) + n;
+	return { noisy: [...found].map(([element, e]) => ({ viewport: e.viewports.join(', '), element, why: e.why })), blocked };
+}
+
+export function compareRoute(route: string, olds: readonly RouteCapture[], next: RouteCapture, probes: ReadonlyMap<string, Probe>, clients: readonly ClientFact[] = []): RouteResult {
 	const oldA = olds[0]!;
 	const others = olds.length > 1 ? olds.slice(1) : [oldA];
 	const failures: Failure[] = [];
@@ -224,6 +254,11 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 		}
 	}
 
+	failures.push(...compareNetwork(route, olds.map((o) => o.pages[desktop]?.network), next.pages[desktop]?.network, oldA.origin, next.origin, clients));
+	const oldNet = oldA.pages[desktop]?.network;
+	const newNet = next.pages[desktop]?.network;
+	const network = oldNet && newNet ? { old: contractLines(oldNet, oldA.origin), new: contractLines(newNet, next.origin), server: { old: oldNet.server, new: newNet.server } } : undefined;
+
 	const wa = oldA.pages[desktop]!.weight;
 	const wn = next.pages[desktop]?.weight ?? { downloaded: 0, source: 0, executed: 0, scripts: [] };
 	for (const key of ['downloaded', 'executed'] as const) {
@@ -243,10 +278,10 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 		}
 	}
 
-	return withFailures({ route, ok: true, dimensions: {} as RouteResult['dimensions'], failures: [], weight: { old: { downloaded: wa.downloaded, source: wa.source, executed: wa.executed }, new: { downloaded: wn.downloaded, source: wn.source, executed: wn.executed } }, visualDiffs, shots }, failures);
+	return withFailures({ route, ok: true, dimensions: {} as RouteResult['dimensions'], failures: [], weight: { old: { downloaded: wa.downloaded, source: wa.source, executed: wa.executed }, new: { downloaded: wn.downloaded, source: wn.source, executed: wn.executed } }, visualDiffs, shots, ...(network ? { network } : {}) }, failures);
 }
 
-export function withFailures(result: RouteResult, failures: readonly Failure[], extra: Partial<Pick<RouteResult, 'shots' | 'states' | 'journeys'>> = {}): RouteResult {
+export function withFailures(result: RouteResult, failures: readonly Failure[], extra: Partial<Pick<RouteResult, 'shots' | 'states' | 'journeys' | 'noise' | 'writes'>> = {}): RouteResult {
 	const failed = new Set(failures.map((f) => f.dimension));
 	const dimensions = Object.fromEntries(DIMENSIONS.map((d) => [d, failed.has(d) ? 'fail' : 'pass'])) as Record<Dimension, 'pass' | 'fail'>;
 	return { ...result, ...extra, ok: failures.length === 0, dimensions, failures };

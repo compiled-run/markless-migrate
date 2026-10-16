@@ -1,8 +1,11 @@
 import Image from 'next/image';
 import type { Metadata } from 'next';
+import { cms } from '../cms';
 import { dictionaries, type Locale } from '../dictionaries';
 import { pageMetadata } from '../metadata';
 import { Counter } from './counter';
+import { Hours } from './hours';
+import { Tip } from './tip';
 
 type Props = { params: Promise<{ lang: Locale }> };
 
@@ -18,6 +21,7 @@ export default async function Home({ params }: Props) {
 	const t = d.home;
 	const roast = new Intl.DateTimeFormat(d.dateLocale, { dateStyle: 'long', timeZone: 'UTC' }).format(new Date('2026-10-27T00:00:00Z'));
 	const price = new Intl.NumberFormat(d.numberLocale, { style: 'currency', currency: 'EUR' }).format(1234.5);
+	const news = await cms<{ items: { title: string; summary: string }[] }>(`/coffee/news?fields=title,summary,slug&locale=${lang}`);
 	const jsonLd = {
 		'@context': 'https://schema.org',
 		'@type': 'CafeOrCoffeeShop',
@@ -35,6 +39,16 @@ export default async function Home({ params }: Props) {
 			</p>
 			<Image className="hero" src="/hero.png" alt={t.heroAlt} width={640} height={320} priority />
 			<Counter label={t.counter} action={t.pour} />
+			<Tip label="Barista’s tip" />
+			<Hours cms={process.env.CMS_URL ?? ''} label="Opening hours" />
+			<section className="news" aria-label="News">
+				{(news?.items ?? []).map((item) => (
+					<article key={item.title}>
+						<h2>{item.title}</h2>
+						<p>{item.summary}</p>
+					</article>
+				))}
+			</section>
 			<section className="roasts" aria-label={t.roasts}>
 				{[t.harbour, t.pier].map(([name, notes]) => (
 					<article className="roast" key={name}>

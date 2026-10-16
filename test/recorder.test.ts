@@ -1,0 +1,85 @@
+import assert from 'node:assert/strict';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { after, before, test } from 'node:test';
+import { startCms, type Cms } from '../fixtures/cms/server.ts';
+import { defaultEnv, pushRecording, RECORDER_HEADER, serverRecords, writeReason, requestLine } from '../src/check/browser.ts';
+import { recorderEnv } from '../src/check/recorder.ts';
+import { writesAllowed } from '../src/check/run.ts';
+import { writeHandler } from '../src/check/source-facts.ts';
+
+// A Node server that renders from the CMS with fetch and pings it with node:http, as a framework server would.
+const APP = `
+import http from 'node:http';
+const server = http.createServer(async (req, res) => {
+	const news = await (await fetch(process.env.CMS_URL + '/walks/news?fields=title')).json();
+	await new Promise((done) => http.get(process.env.CMS_URL + '/walks/settings', (r) => { r.resume(); r.on('end', done); }));
+	res.writeHead(200, { 'content-type': 'text/html' }).end('<h1>' + news.items.map((i) => i.title).join(', ') + '</h1>');
+});
+server.listen(0, '127.0.0.1', () => console.log('http://127.0.0.1:' + server.address().port));
+`;
+
+let cms: Cms;
+let child: ChildProcess;
+let origin: string;
+
+before(async () => {
+	cms = await startCms();
+	child = spawn(process.execPath, ['--input-type=module', '-e', APP], { env: { ...process.env, CMS_URL: cms.origin, ...recorderEnv('') }, stdio: ['ignore', 'pipe', 'inherit'] });
+	origin = await new Promise((resolve) => child.stdout!.once('data', (chunk) => resolve(String(chunk).trim())));
+});
+after(async () => {
+	child?.kill();
+	await cms?.stop();
+});
+
+test('the server recorder files what the server fetched under the page load that caused it', async () => {
+	const env = defaultEnv(origin);
+	const html = await (await fetch(origin, { headers: { [RECORDER_HEADER]: 'load=one' } })).text();
+	assert.match(html, /Winter timetable/);
+	await fetch(origin);
+	const records = await serverRecords(env, 'one');
+	assert.deepEqual(records!.map((r) => `${r.side} ${r.method} ${new URL(r.url).pathname}${new URL(r.url).search} ${r.status}`), ['server GET /walks/news?fields=title 200', 'server GET /walks/settings 200']);
+	assert.match(records![0]!.body!, /"title":"Winter timetable/);
+	assert.deepEqual(await serverRecords(env, 'never-seen'), []);
+	assert.equal(await serverRecords(defaultEnv(cms.origin), 'one'), undefined, 'a server without the recorder has no records');
+});
+
+test('pushed recordings are served instead of the network for loads that ask for them', async () => {
+	const env = { ...defaultEnv(origin), replay: { set: 's1', responses: [{ side: 'server' as const, method: 'GET', url: 'http://elsewhere.test/walks/news?fields=title', status: 200, contentType: 'application/json', body: '{"items":[{"title":"Recorded headline"}]}' }] } };
+	assert.equal(await pushRecording(env), true);
+	const asked = cms.requests.length;
+	const html = await (await fetch(origin, { headers: { [RECORDER_HEADER]: 'load=two; data=s1' } })).text();
+	assert.match(html, /Recorded headline/);
+	assert.deepEqual(cms.requests.slice(asked), ['GET /walks/settings'], 'only the request missing from the recording went to the CMS');
+	const [news] = (await serverRecords(env, 'two'))!;
+	assert.equal(news!.replayed, true);
+	assert.equal(news!.recordedUrl, 'http://elsewhere.test/walks/news?fields=title');
+	assert.equal(await pushRecording({ ...defaultEnv(cms.origin), replay: env.replay }), false, 'nothing is pushed to a server without the recorder');
+});
+
+test('writes: non-GET requests, server actions and handlers the source marks as writing', () => {
+	const facts = [
+		{ method: 'GET', path: '/account/logout', handler: { file: 'app/account/logout/route.ts', line: 4 }, via: 'route-handler' },
+		{ method: 'POST', path: '/api/cart/:id', handler: { file: 'app/api/cart/[id]/route.ts', line: 9 }, via: 'route-handler', touches: ['prisma', 'stripe'] },
+		{ method: '*', path: '/admin/*rest', handler: { file: 'server.ts', line: 40 }, via: 'route' },
+		{ method: 'SDK', path: '/api/orders', handler: { file: 'lib/orders.ts', line: 2 }, via: 'sdk' },
+		{ method: 'POST', path: null, handler: { file: 'app/actions.ts', line: 1 }, via: 'server-action' },
+	];
+	const url = (path: string) => new URL(path, 'http://127.0.0.1:3000');
+	assert.equal(writeReason('GET', url('/about'), 'http://127.0.0.1:3000', facts), undefined);
+	assert.equal(writeReason('GET', url('/account/logout'), 'http://127.0.0.1:3000', facts), 'writes per the source: route-handler at app/account/logout/route.ts:4');
+	assert.equal(writeReason('POST', url('/api/cart/42'), 'http://127.0.0.1:3000', facts), 'writes per the source: route-handler at app/api/cart/[id]/route.ts:9, touches prisma, stripe');
+	assert.equal(writeReason('GET', url('/admin/users/7'), 'http://127.0.0.1:3000', facts), 'writes per the source: route at server.ts:40', '`*` is any method');
+	assert.equal(writeReason('GET', url('/api/orders'), 'http://127.0.0.1:3000', facts), undefined, 'an SDK write is not a request');
+	assert.equal(writeReason('POST', url('/en'), 'http://127.0.0.1:3000', [], { 'next-action': 'abc' }), 'server action');
+	assert.equal(writeReason('DELETE', new URL('https://pay.example/v1/cards/1'), 'http://127.0.0.1:3000', facts), 'DELETE request');
+	assert.equal(writeHandler(facts, 'POST', '/api/cart'), undefined);
+	assert.equal(requestLine('POST', new URL('https://pay.example/v1/charge?x=1'), 'http://127.0.0.1:3000', '{"amount":5}', 'application/json'), 'POST https://pay.example/v1/charge?x {"amount":"number"}');
+});
+
+test('writes are sent only when both apps are staging or on this machine', () => {
+	assert.equal(writesAllowed({ oldOrigin: 'http://localhost:3000', newOrigin: 'http://127.0.0.1:5173' }), true);
+	assert.equal(writesAllowed({ oldOrigin: 'https://www.shop.example', newOrigin: 'http://127.0.0.1:5173' }), false);
+	assert.equal(writesAllowed({ oldOrigin: 'https://staging.shop.example', newOrigin: 'http://127.0.0.1:5173', staging: { old: true } }), true);
+	assert.equal(writesAllowed({ oldOrigin: 'https://staging.shop.example', newOrigin: 'https://next.shop.example', staging: { old: true } }), false);
+});
