@@ -15,7 +15,8 @@ body {
 .site-header { display: flex; justify-content: space-between; align-items: center; }
 .site-header nav { display: flex; gap: 16px; }
 .site-header a { color: var(--accent); text-decoration: none; }
-.brand { font-weight: 700; font-size: 18px; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 18px; }
+.logo { display: block; }
 h1 { font-size: 36px; line-height: 1.15; margin: 24px 0 12px; }
 .lede { font-size: 18px; color: #4a4239; }
 .hero { display: block; width: 100%; height: auto; border-radius: 8px; }
@@ -28,3 +29,31 @@ form { display: grid; gap: 12px; max-width: 420px; }
 label { display: grid; gap: 4px; font-weight: 600; }
 input, textarea { font: inherit; padding: 8px; border: 1px solid #b9ad9c; border-radius: 6px; }
 .site-footer { color: #7a6f62; font-size: 14px; }
+.site-header a:hover { text-decoration: underline; }
+.counter button:hover, form button:hover, .menu-button:hover { background: #8a3a18; }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.menu { position: relative; }
+.menu-button { font: inherit; padding: 2px 8px; border: 1px solid var(--accent); border-radius: 6px; background: transparent; color: var(--accent); cursor: pointer; }
+.menu ul { list-style: none; margin: 4px 0 0; padding: 8px 12px; position: absolute; right: 0; z-index: 1; background: var(--paper); border: 1px solid #b9ad9c; border-radius: 6px; }
+.next-roast { color: #4a4239; }
+.roasts { container-type: inline-size; display: grid; gap: 12px; margin: 24px 0; }
+.roast { padding: 12px; border: 1px solid #d8cfc2; border-radius: 8px; }
+.roast h2 { font-size: 18px; margin: 0; }
+.roast p { margin: 0; }
+@container (min-width: 480px) {
+	.roast { display: grid; grid-template-columns: 200px 1fr; gap: 12px; align-items: baseline; }
+}
+@media (max-width: 600px) {
+	.site-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+}
+@media (prefers-color-scheme: dark) {
+	:root { --ink: #f3ece1; --paper: #1b1712; --accent: #e58a5c; }
+	.lede, .next-roast { color: #cbbfae; }
+}
+@media (prefers-reduced-motion: no-preference) {
+	.brand { animation: glow 4s ease-in-out infinite alternate; }
+}
+@keyframes glow {
+	from { opacity: 1; }
+	to { opacity: 0.85; }
+}

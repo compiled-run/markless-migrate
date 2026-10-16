@@ -10,6 +10,7 @@ export default defineConfig({
 				home: resolve(root, 'index.html'),
 				about: resolve(root, 'about/index.html'),
 				fr: resolve(root, 'fr/index.html'),
+				ar: resolve(root, 'ar/index.html'),
 				notFound: resolve(root, '404.html'),
 			},
 		},

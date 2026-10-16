@@ -17,17 +17,24 @@
 	</head>
 	<body>
 		<header>
-			<span class="brand">Lighthouse Walks</span>
+			<span class="brand"><img class="logo" src="/logo-2024.png" alt="" width="32" height="32" />Lighthouse Walks</span>
 			<nav aria-label="Main">
 				<a href="/">Home</a>
 				<a href="/about/">About</a>
 				<a href="/fr/" hreflang="fr">Français</a>
+				<a href="/ar/" hreflang="ar">العربية</a>
 			</nav>
 		</header>
 		<main>
 			<h1>About the guides</h1>
 			<p>Our guides grew up on this coast and have walked every route in every season.</p>
 			<p class="note">All guides hold a first-aid certificate.</p>
+			<p role="status" data-subscribed hidden>Thanks, you are on the list.</p>
+			<form method="post" action="/api/subscribe" class="subscribe">
+				<label for="email">Email</label>
+				<input id="email" type="email" name="email" autocomplete="email" required />
+				<button type="submit">Subscribe</button>
+			</form>
 		</main>
 		<footer>
 			<p>Page rendered at <time data-rendered-at></time></p>

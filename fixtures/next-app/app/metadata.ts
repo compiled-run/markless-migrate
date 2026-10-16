@@ -9,14 +9,14 @@ export function pageMetadata(lang: Locale, path: string, title: string, descript
 		robots: { index: true, follow: true },
 		alternates: {
 			canonical: `/${lang}${path}`,
-			languages: { en: `/en${path}`, fr: `/fr${path}`, 'x-default': `/en${path}` },
+			languages: { en: `/en${path}`, fr: `/fr${path}`, ar: `/ar${path}`, 'x-default': `/en${path}` },
 		},
 		openGraph: {
 			title,
 			description,
 			url: `/${lang}${path}`,
 			siteName: 'Harbour Coffee',
-			locale: lang === 'en' ? 'en_GB' : 'fr_FR',
+			locale: { en: 'en_GB', fr: 'fr_FR', ar: 'ar_EG' }[lang],
 			images: [{ url: '/hero.png', width: 640, height: 320 }],
 			type: 'website',
 		},

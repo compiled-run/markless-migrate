@@ -1,4 +1,4 @@
-export const locales = ['en', 'fr'] as const;
+export const locales = ['en', 'fr', 'ar'] as const;
 export type Locale = (typeof locales)[number];
 
 export function isLocale(value: string): value is Locale {
@@ -8,7 +8,9 @@ export function isLocale(value: string): value is Locale {
 export const dictionaries = {
 	en: {
 		siteName: 'Harbour Coffee',
-		nav: { home: 'Home', about: 'About', contact: 'Contact' },
+		dateLocale: 'en-GB',
+		numberLocale: 'en-GB',
+		nav: { home: 'Home', about: 'About', contact: 'Contact', more: 'More', wholesale: 'Wholesale', story: 'Our story' },
 		home: {
 			title: 'Harbour Coffee: small-batch roasts',
 			description: 'Small-batch coffee roasted by the harbour every Tuesday.',
@@ -17,6 +19,11 @@ export const dictionaries = {
 			heroAlt: 'Sacks of green coffee beans stacked by the roaster',
 			counter: 'Cups poured today',
 			pour: 'Pour a cup',
+			nextRoast: 'Next roast',
+			sack: 'Wholesale sack',
+			roasts: 'Roasts',
+			harbour: ['Harbour Blend', 'Chocolate and toasted hazelnut, for espresso.'],
+			pier: ['Pier Single Origin', 'Bright citrus and black tea, for filter.'],
 		},
 		about: {
 			title: 'About us | Harbour Coffee',
@@ -37,7 +44,9 @@ export const dictionaries = {
 	},
 	fr: {
 		siteName: 'Café du Port',
-		nav: { home: 'Accueil', about: 'À propos', contact: 'Contact' },
+		dateLocale: 'fr-FR',
+		numberLocale: 'fr-FR',
+		nav: { home: 'Accueil', about: 'À propos', contact: 'Contact', more: 'Plus', wholesale: 'Vente en gros', story: 'Notre histoire' },
 		home: {
 			title: 'Café du Port : torréfaction artisanale',
 			description: 'Du café torréfié au port chaque mardi, en petites quantités.',
@@ -46,6 +55,11 @@ export const dictionaries = {
 			heroAlt: 'Sacs de grains de café vert empilés près du torréfacteur',
 			counter: 'Tasses servies aujourd’hui',
 			pour: 'Servir une tasse',
+			nextRoast: 'Prochaine torréfaction',
+			sack: 'Sac en gros',
+			roasts: 'Torréfactions',
+			harbour: ['Mélange du Port', 'Chocolat et noisette grillée, pour l’espresso.'],
+			pier: ['Origine unique de la Jetée', 'Agrumes vifs et thé noir, pour le filtre.'],
 		},
 		about: {
 			title: 'À propos | Café du Port',
@@ -63,5 +77,41 @@ export const dictionaries = {
 			sent: 'Merci, nous répondons sous un jour.',
 		},
 		rendered: 'Page générée à',
+	},
+	ar: {
+		siteName: 'قهوة الميناء',
+		dateLocale: 'ar-EG',
+		numberLocale: 'ar-EG',
+		nav: { home: 'الرئيسية', about: 'من نحن', contact: 'اتصل بنا', more: 'المزيد', wholesale: 'البيع بالجملة', story: 'قصتنا' },
+		home: {
+			title: 'قهوة الميناء: تحميص بكميات صغيرة',
+			description: 'قهوة تحمص عند الميناء كل ثلاثاء بكميات صغيرة.',
+			heading: 'قهوة طازجة، محمصة عند الميناء',
+			lede: 'نحمص بكميات صغيرة كل ثلاثاء ونشحن في اليوم نفسه.',
+			heroAlt: 'أكياس من حبوب القهوة الخضراء بجانب المحمصة',
+			counter: 'أكواب اليوم',
+			pour: 'اسكب كوبا',
+			nextRoast: 'التحميص القادم',
+			sack: 'كيس الجملة',
+			roasts: 'أنواع التحميص',
+			harbour: ['خلطة الميناء', 'شوكولاتة وبندق محمص، للإسبريسو.'],
+			pier: ['أصل واحد من الرصيف', 'حمضيات مشرقة وشاي أسود، للتقطير.'],
+		},
+		about: {
+			title: 'من نحن | قهوة الميناء',
+			description: 'من يحمص قهوتك وكيف.',
+			heading: 'من نحن',
+			body: 'بدأ ثلاثة أصدقاء التحميص في حاوية شحن عام 2019.',
+		},
+		contact: {
+			title: 'اتصل بنا | قهوة الميناء',
+			description: 'اطلب بالجملة أو اطرح سؤالا.',
+			heading: 'تواصل معنا',
+			name: 'اسمك',
+			message: 'رسالة',
+			send: 'إرسال',
+			sent: 'شكرا، سنرد خلال يوم.',
+		},
+		rendered: 'أنشئت الصفحة في',
 	},
 } as const;

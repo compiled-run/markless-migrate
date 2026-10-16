@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { cp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { Server } from 'node:http';
 import { serve } from '../../fixtures/vite-site/serve.ts';
 import type { Dimension, Report } from '../../src/check/types.ts';
@@ -12,7 +12,9 @@ const MUTANTS = join(ROOT, '.mutants');
 export type Edit =
 	| { readonly file: string; readonly find: string; readonly replace: string }
 	| { readonly file: string; readonly remove: true }
-	| { readonly file: string; readonly append: string };
+	| { readonly file: string; readonly append: string }
+	| { readonly file: string; readonly write: string }
+	| { readonly file: string; readonly renameTo: string };
 
 export interface Mutation {
 	readonly name: string;
@@ -43,6 +45,15 @@ async function applyEdits(dir: string, edits: readonly Edit[]): Promise<void> {
 		const path = join(dir, edit.file);
 		if ('remove' in edit) {
 			await rm(path);
+			continue;
+		}
+		if ('renameTo' in edit) {
+			await rename(path, join(dir, edit.renameTo));
+			continue;
+		}
+		if ('write' in edit) {
+			await mkdir(dirname(path), { recursive: true });
+			await writeFile(path, edit.write);
 			continue;
 		}
 		const source = await readFile(path, 'utf8');

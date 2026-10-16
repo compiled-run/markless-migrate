@@ -9,6 +9,7 @@
 		<link rel="canonical" href="https://lighthouse.example/" />
 		<link rel="alternate" hreflang="en" href="https://lighthouse.example/" />
 		<link rel="alternate" hreflang="fr" href="https://lighthouse.example/fr/" />
+		<link rel="alternate" hreflang="ar" href="https://lighthouse.example/ar/" />
 		<link rel="alternate" hreflang="x-default" href="https://lighthouse.example/" />
 		<meta property="og:title" content="Lighthouse Walks: coastal routes in Cornwall" />
 		<meta property="og:description" content="Guided coastal walks between the lighthouses of west Cornwall." />
@@ -20,22 +21,36 @@
 	</head>
 	<body>
 		<header>
-			<span class="brand">Lighthouse Walks</span>
+			<span class="brand"><img class="logo" src="/logo-2024.png" alt="" width="32" height="32" />Lighthouse Walks</span>
 			<nav aria-label="Main">
 				<a href="/">Home</a>
 				<a href="/about/">About</a>
 				<a href="/fr/" hreflang="fr">Français</a>
+				<a href="/ar/" hreflang="ar">العربية</a>
+				<div class="menu">
+					<button type="button" class="menu-button" aria-expanded="false" aria-controls="more-menu">More</button>
+					<ul id="more-menu" hidden>
+						<li><a href="/about/">Our guides</a></li>
+						<li><a href="/fr/">Randonnées en français</a></li>
+					</ul>
+				</div>
 			</nav>
 		</header>
 		<main>
 			<h1>Walk the coast between the lighthouses</h1>
 			<p class="lede">Six guided routes, from two hours to a full day, all starting at a lighthouse.</p>
+			<p class="next-walk">Next walk: <time datetime="2026-10-27">27 October 2026</time> · Season pass: £1,234.50</p>
 			<img class="hero" src="/hero.png" alt="Cliff path leading to a white lighthouse" width="640" height="320" />
 			<ul class="facts">
 				<li>Routes from 4 km to 19 km</li>
 				<li>Small groups of up to 12</li>
 				<li>Every walk ends at a café</li>
 			</ul>
+			<div class="counter"><span>Walks booked today: <output>0</output></span><button type="button" data-book>Book a walk</button></div>
+			<section class="routes" aria-label="Routes">
+				<article class="route"><h2>Lizard Point loop</h2><p>Two hours on the cliffs around the most southerly lighthouse.</p></article>
+				<article class="route"><h2>Godrevy to St Ives</h2><p>A full day along the bay, with seals below the path.</p></article>
+			</section>
 			<details>
 				<summary>What should I bring?</summary>
 				<p>Boots, a waterproof and water. We bring the maps.</p>

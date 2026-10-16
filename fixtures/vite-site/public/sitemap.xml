@@ -3,4 +3,5 @@
 	<url><loc>https://lighthouse.example/</loc></url>
 	<url><loc>https://lighthouse.example/about/</loc></url>
 	<url><loc>https://lighthouse.example/fr/</loc></url>
+	<url><loc>https://lighthouse.example/ar/</loc></url>
 </urlset>
