@@ -13,5 +13,5 @@
 		"skipLibCheck": true,
 		"types": ["node"]
 	},
-	"include": ["src", "test", "fixtures/vite-site/serve.ts"]
+	"include": ["src", "test", "scripts", "fixtures/vite-site/serve.ts"]
 }
