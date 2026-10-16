@@ -41,6 +41,9 @@ export interface SourceFacts {
 	readonly nondeterminism: readonly NondeterminismFact[];
 	readonly writes: readonly WriteFact[];
 	readonly clients: readonly ClientFact[];
+	/** Route patterns and the files that serve them, to find which files render a failing element. */
+	readonly routes?: readonly { readonly path: string; readonly file: string; readonly kind: string }[];
+	readonly components?: readonly { readonly file: string; readonly kind: string }[];
 }
 
 type Scanner = { scanSource(dir: string): Promise<ScannedFacts> };
@@ -55,7 +58,7 @@ export async function loadSourceFacts(dir: string): Promise<{ facts?: SourceFact
 	}
 	if (typeof scanner.scanSource !== 'function') return { error: 'source readers do not export scanSource' };
 	const scanned = await scanner.scanSource(dir);
-	const facts: SourceFacts = { nondeterminism: scanned.nondeterminism, writes: scanned.writes, clients: scanned.clients };
+	const facts: SourceFacts = { nondeterminism: scanned.nondeterminism, writes: scanned.writes, clients: scanned.clients, routes: scanned.routes, components: scanned.components };
 	return { facts };
 }
 

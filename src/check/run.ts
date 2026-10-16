@@ -10,6 +10,8 @@ import { readRecording, recordable, slug, writeRecording } from './data.ts';
 import { checkEndpoint, isPage } from './endpoints.ts';
 import { DEFAULT_FREEZE, pinnedBy, pinnedSummary, type FreezeOptions } from './freeze.ts';
 import { HINTS } from './hints.ts';
+import { locateFailures } from './locate.ts';
+import { mapRules } from './sourcemap.ts';
 import { negotiationFailures } from './i18n.ts';
 import { compareJourneys, explore, replayAll } from './journeys.ts';
 import { assetsToProbe, compareRoute, cssTargets, httpFailures, noiseReport, noisyStyles, withFailures, type Probe } from './compare.ts';
@@ -62,6 +64,7 @@ interface Run {
 	readonly new: SideEnv;
 	readonly frozen: boolean;
 	readonly source?: SourceFacts;
+	readonly sourceDirs?: { readonly old?: string; readonly new?: string };
 }
 
 async function probe(env: SideEnv, url: string): Promise<Probe> {
@@ -118,7 +121,8 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 	const noise = noiseReport(olds, run.frozen, run.source?.nondeterminism);
 	const loadWrites = (Object.values(oldA.pages)[0]?.writes ?? []).map((w) => ({ ...w, during: 'page load' }));
 	const result = withFailures(compared, [...compared.failures, ...negotiationFailures(route, languages, [negotiatedA, negotiatedB], negotiatedNew)], { noise, writes: loadWrites });
-	const done = await checkJourneys(browser, run, route, viewports[0]!, await checkStates(browser, run, route, viewports, olds, result));
+	const checked = await checkJourneys(browser, run, route, viewports[0]!, await checkStates(browser, run, route, viewports, olds, result));
+	const done = await locateFailures(checked, { route, old: oldA, next, sides: { old: { origin: oldOrigin, dir: run.sourceDirs?.old }, new: { origin: newOrigin, dir: run.sourceDirs?.new } }, ...(run.source ? { facts: run.source } : {}) });
 	oldCaptures.set(done, oldA);
 	return done;
 }
@@ -141,7 +145,7 @@ async function checkStates(browser: Browser, run: Run, route: string, viewports:
 	const first = viewports[0]!;
 	const sources = olds[0]!.pages[first.name]?.stylesheets ?? [];
 	const states = discoverStates(sources);
-	const rules = parseRules(sources);
+	const rules = await mapRules(parseRules(sources), sources, run.old.origin, run.sourceDirs?.old);
 	const failures: Failure[] = [];
 	const explained = new Map<Failure, Failure>();
 	const shots: Shot[] = [];
@@ -254,7 +258,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const freeze: FreezeOptions | false = options.freeze === false ? false : { ...DEFAULT_FREEZE, ...options.freeze };
 	const bypass = { ...(options.headers ? { headers: options.headers } : {}), ...(options.cookies?.length ? { cookies: options.cookies } : {}), ...(options.userAgent ? { userAgent: options.userAgent } : {}) };
 	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [], ...bypass };
-	const base: Run = { old: defaultEnv(options.oldOrigin, shared), new: defaultEnv(options.newOrigin, shared), frozen: Boolean(freeze), ...(options.source ? { source: options.source } : {}) };
+	const base: Run = { old: defaultEnv(options.oldOrigin, shared), new: defaultEnv(options.newOrigin, shared), frozen: Boolean(freeze), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
 	const auth = options.auth;
 	const roles: (string | undefined)[] = auth ? [ANONYMOUS, ...Object.keys(auth.roles)] : [undefined];
 	const logins: LoginResult[] = [];

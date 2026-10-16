@@ -39,6 +39,7 @@ export function summarize(report: Report): string {
 			lines.push(`        expected: ${clip(f.expected)}`);
 			lines.push(`        actual:   ${clip(f.actual)}`);
 			lines.push(`        fix:      ${f.hint}`);
+			if (f.where) lines.push(`        where:    ${f.where}`);
 		}
 	}
 	if (report.unchecked?.length) lines.push('', `Not checked, needs a sample (add one to .migrate/samples.json):`, ...report.unchecked.map((u) => `  ${u.route}  no value for ${u.params.map((p) => `:${p}`).join(', ')}${u.file ? `  ${u.file}:${u.line}` : ''}`));

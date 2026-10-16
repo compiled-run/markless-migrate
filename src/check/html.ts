@@ -1,4 +1,4 @@
-import type { Box, LoginResult, Report, RouteResult, Shot } from './types.ts';
+import type { Box, Failure, LoginResult, Report, RouteResult, Shot, SourceLink } from './types.ts';
 
 const list = (items: readonly string[], cls = '') => `<ul>${items.map((x) => `<li${cls ? ` class="${cls}"` : ''}>${esc(x)}</li>`).join('')}</ul>`;
 
@@ -31,6 +31,18 @@ function run(report: Report): string {
 	if (report.unchecked?.length) parts.push(`<details class="states" open><summary>Not checked, needs a sample: ${report.unchecked.length} source route${report.unchecked.length === 1 ? '' : 's'} (add values to .migrate/samples.json)</summary><ul>${report.unchecked.map((u) => `<li><code>${esc(u.route)}</code> no value for ${esc(u.params.map((p) => `:${p}`).join(', '))}${u.file ? ` <small>${esc(`${u.file}:${u.line}`)}</small>` : ''}</li>`).join('')}</ul></details>`);
 	if (report.writes) parts.push(`<p><small>Writes were ${report.writes === 'sent' ? 'sent (both apps are on this machine or marked staging)' : 'held back: neither app received a form post or non-GET request; they are compared as "would POST ..."'}.${report.data ? ` Data: ${report.data.mode === 'record' ? 'recorded from old into' : 'replayed to both apps from'} <code>${esc(report.data.dir)}</code>.` : ''}</small></p>`);
 	return parts.join('\n');
+}
+
+function link(side: string, l: SourceLink): string {
+	const label = `${l.file}${l.line ? `:${l.line}` : ''}`;
+	return l.path ? `${side} <a href="vscode://file${encodeURI(l.path)}${l.line ? `:${l.line}${l.column ? `:${l.column}` : ''}` : ''}" title="${esc(`${l.path} (found by ${l.how}); file://${l.path}`)}">${esc(label)}</a>` : `${side} <code title="${esc(`found by ${l.how}`)}">${esc(label)}</code>`;
+}
+
+function where(f: Failure): string {
+	if (!f.where) return '';
+	let html = esc(f.where);
+	for (const [side, l] of [['old', f.old], ['new', f.new]] as const) if (l) html = html.replace(esc(`${side} ${l.file}${l.line ? `:${l.line}` : ''}`), link(side, l));
+	return `<div class="where">${html}</div>`;
 }
 
 const esc = (value: string) => value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -92,7 +104,7 @@ function route(r: RouteResult, index: number): string {
 		.map(([d, state]) => `<li class="${state}">${esc(d)}</li>`)
 		.join('');
 	const rows = r.failures
-		.map((f) => `<tr><td>${esc(f.dimension)}</td><td>${esc(f.viewport ?? '')}</td><td>${esc(f.check)}</td><td><code>${esc(f.expected)}</code></td><td><code>${esc(f.actual)}</code></td><td>${esc(f.hint)}</td></tr>`)
+		.map((f) => `<tr><td>${esc(f.dimension)}</td><td>${esc(f.viewport ?? '')}</td><td>${esc(f.check)}</td><td><code>${esc(f.expected)}</code></td><td><code>${esc(f.actual)}</code></td><td>${esc(f.hint)}${where(f)}</td></tr>`)
 		.join('');
 	const table = r.failures.length
 		? `<table><thead><tr><th>Dimension</th><th>Viewport</th><th>Check</th><th>Expected (old)</th><th>Actual (new)</th><th>Fix</th></tr></thead><tbody>${rows}</tbody></table>`
@@ -154,6 +166,7 @@ figcaption { font-weight: 600; margin-bottom: 4px; }
 .slider label { display: block; margin-top: 8px; }
 .slider input { width: 100%; }
 .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; } .pair h4 { margin: 8px 0 4px; } .network code { font-size: 12px; word-break: break-all; }
+.where { margin-top: 6px; color: var(--muted); } .where a { color: #1a73e8; }
 .states { margin: 8px 0; } .states .skipped { color: var(--muted); } .states .differs { color: var(--fail); font-weight: 600; }
 `;
 

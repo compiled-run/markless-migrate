@@ -1,5 +1,6 @@
 import { parse } from 'yuku-css';
 import { generate } from 'yuku-css/codegen';
+import type { SourceLink } from './types.ts';
 
 /** One selector of one style rule in an OLD stylesheet, with where it sits in the source. */
 export interface CssRule {
@@ -12,6 +13,8 @@ export interface CssRule {
 	/** Media, container and supports conditions around the rule, outermost first. */
 	readonly conditions: readonly { readonly kind: 'media' | 'container' | 'supports'; readonly text: string }[];
 	readonly declarations: readonly { readonly property: string; readonly value: string; readonly important: boolean }[];
+	/** Where the rule was written, when the stylesheet's source map or the old source says. */
+	readonly original?: SourceLink;
 }
 
 export type CssState =
@@ -207,5 +210,6 @@ export function covers(declared: string, computed: string): boolean {
 
 export function describeRule(rule: CssRule): string {
 	const where = rule.conditions.map((c) => `@${c.kind} ${c.text}`).join(' ');
-	return `\`${rule.selector}\`${where ? ` inside ${where}` : ''} (${rule.file}:${rule.line}:${rule.column})`;
+	const at = rule.original ? `${rule.original.file}:${rule.original.line}:${rule.original.column}, served as ` : '';
+	return `\`${rule.selector}\`${where ? ` inside ${where}` : ''} (${at}${rule.file}:${rule.line}:${rule.column})`;
 }

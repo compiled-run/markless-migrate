@@ -1,5 +1,6 @@
 import { compareA11y } from './a11y.ts';
 import { HINTS, seoHint } from './hints.ts';
+import { failureElements } from './locate.ts';
 import { compareI18n } from './i18n.ts';
 import { describe, matchElements } from './match.ts';
 import { compareNetwork, contractLines } from './network.ts';
@@ -99,15 +100,19 @@ function fontFailures(route: string, viewport: string, oldA: PageCapture, others
 		group.elements.push(expected);
 		groups.set(key, group);
 	}
-	return [...groups.values()].slice(0, LIMIT).map((g) => ({
-		route,
-		dimension: 'assets',
-		check: `rendered font of ${describe(g.elements[0]!)}${g.elements.length > 1 ? ` and ${g.elements.length - 1} more elements` : ''}`,
-		viewport,
-		expected: g.expected,
-		actual: g.actual,
-		hint: HINTS.fonts,
-	}));
+	return [...groups.values()].slice(0, LIMIT).map((g) => {
+		const failure: Failure = {
+			route,
+			dimension: 'assets',
+			check: `rendered font of ${describe(g.elements[0]!)}${g.elements.length > 1 ? ` and ${g.elements.length - 1} more elements` : ''}`,
+			viewport,
+			expected: g.expected,
+			actual: g.actual,
+			hint: HINTS.fonts,
+		};
+		failureElements.set(failure, { old: g.elements[0]! });
+		return failure;
+	});
 }
 
 /** The OLD element and properties behind each default computed-style failure, so the runner can name the rule. */
@@ -138,6 +143,7 @@ function cssFailures(route: string, viewport: string, oldA: PageCapture, others:
 			hint: HINTS.css,
 		};
 		cssTargets.set(failure, { element: expected, props });
+		failureElements.set(failure, { old: expected, new: actual });
 		failures.push(failure);
 	}
 	if (extra) failures.push({ route, dimension: 'css', check: 'computed styles', viewport, expected: '', actual: `${extra} more elements differ`, hint: HINTS.css });
@@ -209,12 +215,15 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 		if (visuallyDifferent(diff)) {
 			const r = diff.region;
 			const band = r && { x: r.x, y: r.y, width: r.width, height: Math.min(r.height, 24) };
-			const near = band ? n.elements.filter((el) => overlaps(el.box, band)).sort((x, y) => x.box.width * x.box.height - y.box.width * y.box.height).slice(0, 2).map(describe) : [];
+			const nearest = band ? n.elements.filter((el) => overlaps(el.box, band)).sort((x, y) => x.box.width * x.box.height - y.box.width * y.box.height).slice(0, 2) : [];
+			const near = nearest.map(describe);
 			const where = r ? `${diff.differing} pixels (${((diff.differing / diff.area) * 100).toFixed(2)}%) differ in x=${r.x}..${r.x + r.width}, y=${r.y}..${r.y + r.height}, first near ${near.join(', ') || 'no element'}` : 'no pixel differs in the shared area';
 			if (diff.sizeMismatch) {
 				failures.push({ route, dimension: 'visual', check: 'page size', viewport, expected: diff.sizeMismatch.expected, actual: `${diff.sizeMismatch.actual}; ${where}`, hint: HINTS.visualSize });
 			} else {
-				failures.push({ route, dimension: 'visual', check: 'screenshot', viewport, expected: 'same pixels outside the noise mask', actual: where, hint: HINTS.visual });
+				const failure: Failure = { route, dimension: 'visual', check: 'screenshot', viewport, expected: 'same pixels outside the noise mask', actual: where, hint: HINTS.visual };
+				if (nearest[0]) failureElements.set(failure, { new: nearest[0] });
+				failures.push(failure);
 			}
 			if (diff.png) visualDiffs.push({ viewport, png: diff.png });
 		}

@@ -36,6 +36,7 @@
 		"tree-sitter-ruby": "^0.23.1",
 		"web-tree-sitter": "^0.27.1",
 		"yuku-css": "link:../yuku-css",
+		"yuku-tsrx": "0.1.4",
 		"zod": "^4.6.7"
 	},
 	"files": [

@@ -27,7 +27,7 @@ const report: Report = {
 			route: '/about',
 			ok: false,
 			dimensions: { http: 'pass', rendered: 'pass', visual: 'fail', seo: 'pass', assets: 'pass', css: 'fail', weight: 'pass' } as Report['routes'][number]['dimensions'],
-			failures: [{ route: '/about', dimension: 'css', check: 'computed style of heading "About" (main>heading/h1)', viewport: 'desktop', expected: 'color: rgb(0, 0, 0)', actual: 'color: rgb(255, 0, 0)', hint: 'Port <the rule> & keep it' }],
+			failures: [{ route: '/about', dimension: 'css', check: 'computed style of heading "About" (main>heading/h1)', viewport: 'desktop', expected: 'color: rgb(0, 0, 0)', actual: 'color: rgb(255, 0, 0)', hint: 'Port <the rule> & keep it', old: { file: 'src/About.tsx', line: 12, column: 5, path: '/app/src/About.tsx', how: 'source map' }, new: { file: 'pages/about/index.tsrx', line: 3, how: 'source markup' }, where: 'old src/About.tsx:12 renders heading "About"; new pages/about/index.tsrx:3 renders it' }],
 			weight: { old: { downloaded: 1024, source: 2048, executed: 512 }, new: { downloaded: 1024, source: 2048, executed: 512 } },
 			visualDiffs: [{ viewport: 'desktop', png: png(40, 30, [255, 0, 80]) }],
 			shots: [
@@ -48,7 +48,8 @@ test('report.html is one self-contained page with every failure, its fix, and ol
 	const dir = await mkdtemp(join(tmpdir(), 'mm-report-'));
 	await writeReport(report, dir);
 	const html = await readFile(join(dir, 'report.html'), 'utf8');
-	assert.doesNotMatch(html, /(src|href)="(?!data:|#)/, 'no external resources');
+	assert.doesNotMatch(html, /(src|href)="(?!data:|#|vscode:)/, 'no external resources');
+	assert.match(html, /old <a href="vscode:\/\/file\/app\/src\/About\.tsx:12:5" [^>]*>src\/About\.tsx:12<\/a> renders heading &#34;About&#34;; new <code [^>]*>pages\/about\/index\.tsrx:3<\/code> renders it/);
 	assert.equal(html.match(/src="data:image\/png;base64,/g)?.length, 13, 'failing shot: 3 side by side, 2 slider, 2 blink; passing shot: 2 + 2 + 2');
 	assert.match(html, /Port &#60;the rule&#62; &#38; keep it/);
 	assert.match(html, /<rect x="4" y="4" width="10" height="8">/);

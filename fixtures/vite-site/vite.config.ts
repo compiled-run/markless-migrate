@@ -5,6 +5,7 @@ const root = import.meta.dirname;
 
 export default defineConfig({
 	build: {
+		sourcemap: true,
 		rollupOptions: {
 			input: {
 				home: resolve(root, 'index.html'),

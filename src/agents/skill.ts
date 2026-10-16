@@ -53,6 +53,13 @@ matches it in a real browser. A route is done when its check is green, not when 
   URL or pass the bypass token with \`--header\`/\`--cookie\` (\`header\`/\`cookie\`); never weaken the wall.
 - \`a11y\` and \`i18n\` failures are as blocking as visual ones; check every locale the inventory lists.
 - \`.migrate/report.html\` shows old, new and diff images; tell the user to open it when a failure is visual.
+- Pass the old app's source (\`source\`, \`--source\`) and the Markless app's (\`new_source\`, \`--new-source\`):
+  each failing element then carries a \`where\` line naming the old file and line that renders it and the
+  \`.tsrx\` file and line that renders it now, or the \`.tsrx\` page that is missing it. Start there.
+- Convert in the order \`plan\` prints (shared layouts and components first); \`status\` shows progress
+  in that order. \`check --all\` also checks routes only the source knows and the non-page endpoints
+  (robots.txt, sitemaps, feeds, the manifest, \`/.well-known\`, JSON routes); a route whose dynamic
+  segment has no value is listed as "needs a sample": add one to \`.migrate/samples.json\`.
 `;
 
 function sha256(text: string): string {

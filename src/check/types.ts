@@ -1,3 +1,4 @@
+import type { RawSource } from './hints-page.ts';
 import type { RecordedJourney } from './journeys.ts';
 import type { NetworkCapture } from './network.ts';
 import type { NondeterminismFact } from './source-facts.ts';
@@ -46,6 +47,8 @@ export interface ElementSnapshot {
 	readonly style: Readonly<Record<string, string>>;
 	/** The font files that render this element's own text: web fonts by content hash, system fonts by name. */
 	readonly font?: string;
+	/** Where the page says this element was written: dev hooks, data attributes, component functions. */
+	readonly sources?: readonly RawSource[];
 }
 
 export interface AssetRecord {
@@ -93,6 +96,8 @@ export interface A11yCapture {
 export interface PageCapture {
 	readonly viewport: string;
 	readonly finalUrl: string;
+	/** The page file that rendered the route, when the app names it (Markless's router does). */
+	readonly routeFile?: string;
 	readonly aria: readonly string[];
 	readonly text: readonly string[];
 	readonly seo: Readonly<Record<string, string>>;
@@ -126,6 +131,17 @@ export interface RouteCapture {
 	readonly pages: Readonly<Record<string, PageCapture>>;
 }
 
+export interface SourceLink {
+	/** Path relative to the app's source root when known, else as the source map or page names it. */
+	readonly file: string;
+	readonly line?: number;
+	readonly column?: number;
+	/** Absolute path on this machine, when the file exists, for editor links. */
+	readonly path?: string;
+	/** How it was found: `source map`, `react`, `vue`, `svelte`, `data attribute`, `markless route`, `source text`... */
+	readonly how: string;
+}
+
 export interface Failure {
 	readonly route: string;
 	/** The role the route was checked as, when check ran with --auth. */
@@ -136,6 +152,11 @@ export interface Failure {
 	readonly expected: string;
 	readonly actual: string;
 	readonly hint: string;
+	/** Where the element behind this failure comes from in the old and new source. */
+	readonly old?: SourceLink;
+	readonly new?: SourceLink;
+	/** One line naming both locations, for example `old ProductCard.tsx:42 renders "£4"; new product-card.tsrx:17 renders "£5"`. */
+	readonly where?: string;
 }
 
 /** A pair of screenshots of one route in one viewport and state, with the boxes where they differ. */

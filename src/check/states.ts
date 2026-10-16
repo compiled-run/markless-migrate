@@ -3,6 +3,7 @@ import { defaultEnv, openPage, type SideEnv } from './browser.ts';
 import { settle } from './capture.ts';
 import { collectPage } from './collect.ts';
 import { HINTS } from './hints.ts';
+import { carry, failureElements, failureRules } from './locate.ts';
 import { describe, matchElements } from './match.ts';
 import { describeRule, type CssRule, type CssState } from './stylesheet.ts';
 import type { Box, ElementSnapshot, Failure, Shot, Viewport } from './types.ts';
@@ -152,13 +153,14 @@ function explainInPage({ id, props, rules }: { id: number; props: string[]; rule
 	return out;
 }
 
-async function explain(side: Side, rules: readonly CssRule[], element: ElementSnapshot, props: readonly string[]): Promise<string | undefined> {
+async function explain(side: Side, rules: readonly CssRule[], element: ElementSnapshot, props: readonly string[], source?: { rule?: CssRule }): Promise<string | undefined> {
 	const found = await side.page.evaluate(explainInPage, { id: element.id, props: [...props], rules: rules as unknown as Parameters<typeof explainInPage>[0]['rules'] });
 	const lines = new Set<string>();
 	for (const prop of props) {
 		const hit = found[prop];
 		if (!hit) continue;
 		const rule = rules[hit.rule]!;
+		if (source && !source.rule) source.rule = rule;
 		let line = `${describeRule(rule)} sets ${prop} with \`${hit.value}\``;
 		if (hit.variable) line += `, reading ${hit.variable.name} from ${describeRule(rules[hit.variable.rule]!)} (\`${hit.variable.value}\`)`;
 		lines.add(line);
@@ -203,8 +205,13 @@ export async function compareStates(input: StateInput): Promise<StateOutput> {
 	try {
 		for (const { failure, element, props } of input.explain) {
 			const at = matchElements([element], o1.base).get(0);
-			const rule = at === undefined ? undefined : await explain(o1, input.rules, o1.base[at]!, props);
-			if (rule) out.explained.set(failure, { ...failure, hint: hintWith(rule, failure.hint) });
+			const source: { rule?: CssRule } = {};
+			const rule = at === undefined ? undefined : await explain(o1, input.rules, o1.base[at]!, props, source);
+			if (rule) {
+				const explained = carry(failure, { ...failure, hint: hintWith(rule, failure.hint) });
+				if (source.rule) failureRules.set(explained, source.rule);
+				out.explained.set(failure, explained);
+			}
 		}
 		const noiseIn = (elements: readonly ElementSnapshot[]) => {
 			const textNoise = new Set<number>();
@@ -295,8 +302,9 @@ export async function compareStates(input: StateInput): Promise<StateOutput> {
 				}
 				out.checked.push(state.label);
 				for (const { el, other, props } of differing.slice(0, ELEMENTS_PER_STATE)) {
-					const rule = await explain(o1, input.rules, el, props);
-					out.failures.push({
+					const source: { rule?: CssRule } = {};
+					const rule = await explain(o1, input.rules, el, props, source);
+					const failure: Failure = {
 						route,
 						dimension: 'css',
 						check: `computed style in ${state.label}: ${describe(el)}`,
@@ -304,7 +312,10 @@ export async function compareStates(input: StateInput): Promise<StateOutput> {
 						expected: props.map((p) => `${p}: ${el.style[p]}`).join('; '),
 						actual: props.map((p) => `${p}: ${other.style[p] ?? '(unset)'}`).join('; '),
 						hint: hintWith(rule, HINTS.cssState),
-					});
+					};
+					failureElements.set(failure, { old: el, new: other });
+					if (source.rule) failureRules.set(failure, source.rule);
+					out.failures.push(failure);
 				}
 				if (differing.length > ELEMENTS_PER_STATE) {
 					out.failures.push({ route, dimension: 'css', check: `computed style in ${state.label}`, viewport: viewport.name, expected: '', actual: `${differing.length - ELEMENTS_PER_STATE} more elements differ`, hint: HINTS.cssState });

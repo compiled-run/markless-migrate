@@ -6,9 +6,21 @@ import { isFingerprinted } from './assets.ts';
 import { BlockedError, detectChallenge } from './blocked.ts';
 import { defaultEnv, openPage, serverRecords, tagHeaders, type SideEnv } from './browser.ts';
 import { renderedFonts } from './fonts.ts';
+import { captureSourceHints } from './hints-page.ts';
 import type { AssetRecord, HttpCapture, HttpHop, PageCapture, RouteCapture, ScriptWeight, Viewport } from './types.ts';
 
 const ASSET_TYPES = new Set(['image', 'font', 'stylesheet', 'script', 'media']);
+
+// Markless's router names the page file that rendered the route in a script tag.
+function routeFile(html: string): { routeFile?: string } {
+	const json = /<script type="@markless\/core\/route">([^<]*)<\/script>/.exec(html)?.[1];
+	try {
+		const file = json ? (JSON.parse(json) as { file?: unknown }).file : undefined;
+		return typeof file === 'string' ? { routeFile: file } : {};
+	} catch {
+		return {};
+	}
+}
 
 export function toLocal(url: string, origin: string): string {
 	return url.startsWith(origin) ? url.slice(origin.length) || '/' : url;
@@ -101,7 +113,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		const coverage = await page.coverage.stopJSCoverage();
 		await Promise.all(pending);
 		const shown = await page.evaluate(shownText);
-		const elements = await renderedFonts(page, collected.elements, fontHashes);
+		const elements = await captureSourceHints(page, await renderedFonts(page, collected.elements, fontHashes));
 		const a11y = viewport.isMobile ? undefined : await captureA11y(page);
 		for (const [i, text] of (await page.evaluate(() => [...document.querySelectorAll('style')].map((style) => style.textContent ?? ''))).entries()) {
 			if (text.trim()) stylesheets.push({ url: `${toLocal(pageUrlBefore(page), origin)} <style> #${i + 1}`, text });
@@ -128,6 +140,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		return {
 			viewport: viewport.name,
 			finalUrl: toLocal(pageUrl, origin),
+			...routeFile(html),
 			aria,
 			text: collected.text,
 			seo: collected.seo,
