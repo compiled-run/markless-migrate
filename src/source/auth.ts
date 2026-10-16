@@ -17,6 +17,29 @@ interface Found {
 	how: string;
 	redirectTo?: string;
 	prefixes: string[];
+	/** Role checks that only run under a path test (`pathname.startsWith('/admin/') && user.role !== 'admin'`). */
+	scoped?: { role: string; prefixes: string[] }[];
+}
+
+const SCOPE = new Set(['LogicalExpression', 'IfStatement', 'ConditionalExpression']);
+
+/** Each role check's own path prefixes, from the nearest enclosing condition that tests the path. */
+function scopedRoles(fn: N, mod: Module): { role: string; prefixes: string[] }[] {
+	const out: { role: string; prefixes: string[] }[] = [];
+	walk(fn, (n, ancestors) => {
+		if (n.type !== 'BinaryExpression') return;
+		const role = roleIn(n, mod);
+		if (!role) return;
+		for (const a of [...ancestors].reverse()) {
+			if (!SCOPE.has(a.type)) continue;
+			const prefixes = prefixesIn(a.type === 'LogicalExpression' ? a : a.test, mod);
+			if (prefixes.length) {
+				out.push({ role, prefixes });
+				return;
+			}
+		}
+	});
+	return out;
 }
 
 function roleIn(fn: N, mod: Module): string | null {
@@ -113,7 +136,9 @@ function guardInFunction(fn: N, mod: Module, authFile: boolean): Found | undefin
 		if (!(authFile && deny)) return undefined;
 		how ||= 'auth middleware';
 	}
-	return { line: mod.line((read ?? deny)!.start), role: roleIn(fn, mod), how, redirectTo: redirectIn(fn, mod), prefixes: prefixesIn(fn, mod) };
+	const scoped = scopedRoles(fn, mod);
+	const role = roleIn(fn, mod);
+	return { line: mod.line((read ?? deny)!.start), role: scoped.some((x) => x.role === role) ? null : role, how, redirectTo: redirectIn(fn, mod), prefixes: prefixesIn(fn, mod), ...(scoped.length ? { scoped } : {}) };
 }
 
 function guardInModule(mod: Module): Found | undefined {
@@ -174,9 +199,16 @@ export async function scanAuth(ctx: Context, routes: SourceRoute[]): Promise<Aut
 		const g = mod && guardInModule(mod);
 		if (!mod || !g) continue;
 		const { include, exclude } = matchers(mod);
-		const scoped = g.prefixes.length ? g.prefixes.map((p) => (p.includes('*') || p.includes(':') ? p : `${p.replace(/\/$/, '')}/*rest?`)) : include.length ? include : ['/*rest?'];
-		const covered = pages.filter((r) => scoped.some((p) => covers(p, r.path) || covers(p.replace(/\/\*rest\?$/, ''), r.path)) && !exclude.some((e) => r.path.startsWith(e)) && (!include.length || include.some((p) => covers(p, r.path))));
-		out.push({ role: g.role, file, line: g.line, routes: covered.length ? covered.map((r) => r.path) : scoped, how: g.how, ...(g.redirectTo ? { redirectTo: g.redirectTo } : {}) });
+		const under = (prefixes: string[]) => {
+			const scoped = prefixes.length ? prefixes.map((p) => (p.includes('*') || p.includes(':') ? p : `${p.replace(/\/$/, '')}/*rest?`)) : include.length ? include : ['/*rest?'];
+			const covered = pages.filter((r) => scoped.some((p) => covers(p, r.path) || covers(p.replace(/\/\*rest\?$/, ''), r.path)) && !exclude.some((e) => r.path.startsWith(e)) && (!include.length || include.some((p) => covers(p, r.path))));
+			return covered.length ? covered.map((r) => r.path) : scoped;
+		};
+		const byRole = (g.scoped ?? []).map((x) => ({ role: x.role, routes: under(x.prefixes) }));
+		const elsewhere = under(g.prefixes).filter((r) => !byRole.some((x) => x.routes.includes(r)));
+		const redirect = g.redirectTo ? { redirectTo: g.redirectTo } : {};
+		if (elsewhere.length || !byRole.length) out.push({ role: g.role, file, line: g.line, routes: elsewhere.length ? elsewhere : under(g.prefixes), how: g.how, ...redirect });
+		for (const x of byRole) out.push({ role: x.role, file, line: g.line, routes: x.routes, how: g.how, ...redirect });
 	}
 	const files = new Set<string>();
 	for (const r of routes) {

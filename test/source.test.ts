@@ -185,7 +185,7 @@ test('the Vite multi-page fixture: one route per HTML page, its form and its clo
 	const facts = await scanSource(join(fixtures, 'vite-site'));
 	assert.equal(facts.framework, 'vite');
 	assert.deepEqual(facts.routes.map((r) => r.path), ['/', '/about/', '/admin/', '/ar/', '/fr/', '/login/', '/members/']);
-	assert.deepEqual(facts.authGuards.map((g) => [g.file, g.role, g.redirectTo, g.routes]), [['middleware.ts', 'admin', '/login/', ['/admin/', '/members/']]]);
+	assert.deepEqual(facts.authGuards.map((g) => [g.file, g.role, g.redirectTo, g.routes]), [['middleware.ts', null, '/login/', ['/members/']], ['middleware.ts', 'admin', '/login/', ['/admin/']]], 'the admin check runs only under /admin/, so /members/ needs only a session');
 	assert.ok(facts.writes.some((w) => w.method === 'POST' && w.path === '/api/subscribe' && w.via === 'form' && w.handler.file === 'about/index.html'));
 	assert.ok(facts.nondeterminism.some((n) => n.kind === 'time' && n.file === 'src/main.ts' && n.what === 'new Date()'));
 });

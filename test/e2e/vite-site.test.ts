@@ -708,7 +708,8 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		assert.match(planned.stdout, /Roles to check \(from auth guards\): signed-in, admin, and anonymous; login at \/login\//);
 		assert.match(planned.stdout, /Wrote .*auth\.json: set the credentials/);
 		const starter = JSON.parse(await readFile(join(cwd, '.migrate', 'auth.json'), 'utf8'));
-		assert.deepEqual(starter.guards, ['/admin/: admin (middleware.ts:28)', '/members/: admin (middleware.ts:28)'], 'one guard checks sign-in and the admin role together, so the scan names admin for both paths');
+		assert.deepEqual(starter.guards, ['/members/: signed-in (middleware.ts:28)', '/admin/: admin (middleware.ts:28)'], 'the admin check runs only under /admin/');
+		assert.deepEqual(starter.roles.admin.login.at(-1), { wait: '!/login/' });
 		const credentials = { SIGNED_IN_EMAIL: 'sam@lighthouse.example', SIGNED_IN_PASSWORD: 'night-route', ADMIN_EMAIL: 'kit@lighthouse.example', ADMIN_PASSWORD: 'godrevy' };
 		const checked = await cli(['check', '--old', old.origin, '--new', twin.origin, '--route', '/members/', '--route', '/admin/', '--auth', join(cwd, '.migrate', 'auth.json')], cwd, credentials);
 		assert.equal(checked.status, 0, checked.stdout + checked.stderr);

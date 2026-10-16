@@ -38,7 +38,7 @@ export function proposeAuth(guards: readonly AuthGuard[], routes: readonly Sourc
 	return {
 		note: 'Starter written by plan from the auth guards in the source. Set each role\'s credentials in the environment (never in this file), check the login steps against the login page, then pass this file to check --auth. A role can use "storageState": "file.json" instead of "login".',
 		...(loginRoute ? { loginRoute } : {}),
-		roles: Object.fromEntries(roles.map((role) => [role, { login: [{ goto: loginRoute ?? '/login' }, { fill: { label: 'Email' }, value: `\${${env(role)}_EMAIL}` }, { fill: { label: 'Password' }, value: `\${${env(role)}_PASSWORD}` }, { click: { role: 'button', name: 'Sign in' } }] as LoginStep[] }])),
+		roles: Object.fromEntries(roles.map((role) => [role, { login: [{ goto: loginRoute ?? '/login' }, { fill: { label: 'Email' }, value: `\${${env(role)}_EMAIL}` }, { fill: { label: 'Password' }, value: `\${${env(role)}_PASSWORD}` }, { click: { role: 'button', name: 'Sign in' } }, { wait: `!${loginRoute ?? '/login'}` }] as LoginStep[] }])),
 		guards: guarded,
 	};
 }

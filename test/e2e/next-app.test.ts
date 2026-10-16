@@ -661,7 +661,7 @@ describe('next.js app router app', { concurrency: 4 }, () => {
 		assert.equal(auth.loginRoute, '/en/login');
 		assert.deepEqual(Object.keys(auth.roles), ['signed-in', 'admin']);
 		assert.deepEqual(auth.guards, ['/en/admin: admin (app/[lang]/admin/page.tsx:11)', '/en/members: signed-in (app/[lang]/members/page.tsx:11)']);
-		assert.deepEqual(auth.roles.admin!.login, [{ goto: '/en/login' }, { fill: { label: 'Email' }, value: '${ADMIN_EMAIL}' }, { fill: { label: 'Password' }, value: '${ADMIN_PASSWORD}' }, { click: { role: 'button', name: 'Sign in' } }]);
+		assert.deepEqual(auth.roles.admin!.login, [{ goto: '/en/login' }, { fill: { label: 'Email' }, value: '${ADMIN_EMAIL}' }, { fill: { label: 'Password' }, value: '${ADMIN_PASSWORD}' }, { click: { role: 'button', name: 'Sign in' } }, { wait: '!/en/login' }], 'the last step waits until the browser has left the login page, so the session cookie is set');
 		const dir = await mkdtemp(join(tmpdir(), 'mm-starter-'));
 		await writeFile(join(dir, 'auth.json'), JSON.stringify(auth));
 		Object.assign(process.env, { SIGNED_IN_EMAIL: 'mia@harbour.example', SIGNED_IN_PASSWORD: 'tuesday-roast', ADMIN_EMAIL: 'ada@harbour.example', ADMIN_PASSWORD: 'green-beans' });

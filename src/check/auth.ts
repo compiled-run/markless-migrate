@@ -18,7 +18,7 @@ export type LoginStep =
 	| { readonly fill: Target; readonly value: string }
 	| { readonly click: Target }
 	| { readonly press: string; readonly on?: Target }
-	/** A path (`/account`) waits for the URL, anything else for that selector to appear. */
+	/** A path (`/account`) waits for the URL, `!/login` until the URL leaves that path, anything else for that selector to appear. */
 	| { readonly wait: string };
 
 export interface RoleSpec {
@@ -89,7 +89,10 @@ async function runStep(page: Page, origin: string, step: LoginStep): Promise<voi
 	else if ('fill' in step) await locate(page, step.fill).fill(interpolate(step.value), { timeout });
 	else if ('click' in step) await locate(page, step.click).click({ timeout });
 	else if ('press' in step) await (step.on ? locate(page, step.on) : page.locator(':focus')).press(step.press, { timeout });
-	else if (step.wait.startsWith('/')) {
+	else if (step.wait.startsWith('!/')) {
+		const path = interpolate(step.wait.slice(1));
+		await page.waitForURL((url) => url.pathname !== path && url.pathname + url.search !== path, { timeout });
+	} else if (step.wait.startsWith('/')) {
 		const path = interpolate(step.wait);
 		await page.waitForURL((url) => url.pathname === path || url.pathname + url.search === path, { timeout });
 	} else await page.locator(step.wait).first().waitFor({ timeout });
