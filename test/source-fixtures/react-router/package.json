@@ -1,0 +1,6 @@
+{
+	"dependencies": {
+		"react-router": "7.0.0",
+		"@react-router/dev": "7.0.0"
+	}
+}

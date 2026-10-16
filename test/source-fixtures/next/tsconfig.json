@@ -1,0 +1,4 @@
+{
+	// paths as a Next app sets them
+	"compilerOptions": { "paths": { "@/*": ["./*"] } },
+}

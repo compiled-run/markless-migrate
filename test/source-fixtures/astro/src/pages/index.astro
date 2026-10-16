@@ -1,0 +1,8 @@
+---
+import Layout from '../layouts/Base.astro';
+const res = await fetch(`${import.meta.env.WP_URL}/wp-json/wp/v2/posts?_fields=title,link`);
+const posts = await res.json();
+---
+<Layout>
+	{posts.map((p) => <a href={p.link}>{p.title.rendered}</a>)}
+</Layout>

@@ -1,0 +1,6 @@
+{
+	"dependencies": {
+		"@sveltejs/kit": "2.0.0",
+		"@sanity/client": "6.0.0"
+	}
+}
