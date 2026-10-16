@@ -4,6 +4,7 @@ import { delimiter, join } from 'node:path';
 export interface HostEnv {
 	readonly home: string;
 	readonly env: Readonly<Record<string, string | undefined>>;
+	readonly platform?: NodeJS.Platform;
 }
 
 export interface ServerCommand {
@@ -32,6 +33,12 @@ const codexDir = (h: HostEnv) => nonEmpty(h.env.CODEX_HOME) ?? join(h.home, '.co
 const geminiDir = (h: HostEnv) => join(nonEmpty(h.env.GEMINI_CLI_HOME) ?? h.home, '.gemini');
 const copilotDir = (h: HostEnv) => nonEmpty(h.env.COPILOT_HOME) ?? join(h.home, '.copilot');
 const opencodeDir = (h: HostEnv) => nonEmpty(h.env.OPENCODE_CONFIG_DIR) ?? join(nonEmpty(h.env.XDG_CONFIG_HOME) ?? join(h.home, '.config'), 'opencode');
+const vscodeUserDir = (h: HostEnv) => {
+	const platform = h.platform ?? process.platform;
+	if (platform === 'darwin') return join(h.home, 'Library', 'Application Support', 'Code', 'User');
+	if (platform === 'win32') return join(nonEmpty(h.env.APPDATA) ?? join(h.home, 'AppData', 'Roaming'), 'Code', 'User');
+	return join(nonEmpty(h.env.XDG_CONFIG_HOME) ?? join(h.home, '.config'), 'Code', 'User');
+};
 const skill = (dir: string) => join(dir, 'skills', 'markless-migrate', 'SKILL.md');
 
 export const SERVER_NAME = 'markless-migrate';
@@ -89,6 +96,17 @@ export const AGENTS: readonly AgentDefinition[] = [
 		jsonPath: ['mcpServers', SERVER_NAME],
 		serverEntry: (s) => ({ type: 'local', command: s.command, args: s.args, tools: ['*'] }),
 		skillPath: (h) => skill(copilotDir(h)),
+	},
+	{
+		id: 'vscode',
+		label: 'VS Code (Copilot agent mode)',
+		binaries: ['code'],
+		homeDir: vscodeUserDir,
+		configPath: (h) => join(vscodeUserDir(h), 'mcp.json'),
+		format: 'json',
+		jsonPath: ['servers', SERVER_NAME],
+		serverEntry: (s) => ({ type: 'stdio', command: s.command, args: s.args }),
+		skillPath: (h) => skill(join(h.home, '.copilot')),
 	},
 	{
 		id: 'opencode',

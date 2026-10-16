@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { detectAgents } from '../src/agents/registry.ts';
+import { planSetup } from '../src/agents/setup.ts';
 import { isManagedSkill } from '../src/agents/skill.ts';
 
 const CLI = new URL('../src/cli.ts', import.meta.url).pathname;
@@ -133,4 +134,36 @@ test('--agent selects agents explicitly, even ones not detected, and rejects unk
 	const bad = run('--agent', 'notepad', '--yes');
 	assert.equal(bad.status, 1);
 	assert.match(bad.stderr, /unknown agent "notepad"/);
+});
+
+test('VS Code agent mode gets a "servers" entry in the user profile mcp.json for each platform and shares the Copilot skill folder', async () => {
+	const home = '/h';
+	const server = { command: 'node', args: ['cli.ts', 'mcp'] };
+	const path = async (platform: NodeJS.Platform, env: Record<string, string> = {}) => (await planSetup({ home, env, platform }, ['vscode'], server))[0]!.path;
+	assert.equal(await path('darwin'), '/h/Library/Application Support/Code/User/mcp.json');
+	assert.equal(await path('linux'), '/h/.config/Code/User/mcp.json');
+	assert.equal(await path('linux', { XDG_CONFIG_HOME: '/x' }), '/x/Code/User/mcp.json');
+	assert.equal(await path('win32', { APPDATA: '/a' }), '/a/Code/User/mcp.json');
+
+	const both = await planSetup({ home, env: {}, platform: 'linux' }, ['github-copilot', 'vscode'], server);
+	assert.deepEqual(both.map((c) => `${c.agent} ${c.what} ${c.path}`), [
+		'github-copilot mcp server /h/.copilot/mcp-config.json',
+		'github-copilot skill /h/.copilot/skills/markless-migrate/SKILL.md',
+		'vscode mcp server /h/.config/Code/User/mcp.json',
+	]);
+});
+
+test('setup --agent vscode writes the VS Code mcp.json with a stdio server under "servers"', { skip: process.platform !== 'darwin' && process.platform !== 'linux' }, async () => {
+	const { home, run } = await sandbox();
+	const dir = process.platform === 'darwin' ? join(home, 'Library', 'Application Support', 'Code', 'User') : join(home, '.config', 'Code', 'User');
+	await mkdir(dir, { recursive: true });
+	await writeFile(join(dir, 'mcp.json'), JSON.stringify({ servers: { other: { command: 'x' } }, inputs: [] }));
+	assert.equal(run('--agent', 'vscode', '--yes').status, 0);
+	const config = await json(join(dir, 'mcp.json'));
+	assert.deepEqual(config.servers.other, { command: 'x' });
+	assert.deepEqual(config.inputs, []);
+	assert.equal(config.servers['markless-migrate'].type, 'stdio');
+	assert.equal(config.servers['markless-migrate'].args.at(-1), 'mcp');
+	assert.equal(config.mcpServers, undefined);
+	assert.ok(isManagedSkill(await readFile(join(home, '.copilot', 'skills', 'markless-migrate', 'SKILL.md'), 'utf8')));
 });

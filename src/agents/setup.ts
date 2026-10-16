@@ -83,6 +83,7 @@ export async function planSetup(host: HostEnv, agentIds: readonly string[], serv
 		changes.push({ agent: agent.id, path: configPath, what: 'mcp server', before, ...mcp });
 
 		const skillPath = agent.skillPath(host);
+		if (changes.some((c) => c.what === 'skill' && c.path === skillPath)) continue;
 		const existing = await readIfExists(skillPath);
 		const skill = managedSkill();
 		if (existing === skill) changes.push({ agent: agent.id, path: skillPath, what: 'skill', action: 'unchanged', detail: 'skill is current' });
