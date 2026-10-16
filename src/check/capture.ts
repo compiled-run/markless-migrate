@@ -1,6 +1,8 @@
 import type { Browser, Page, Response } from 'playwright';
 import { collectPage, decodeImages } from './collect.ts';
+import { createHash } from 'node:crypto';
 import { isFingerprinted } from './assets.ts';
+import { renderedFonts } from './fonts.ts';
 import type { AssetRecord, HttpCapture, HttpHop, PageCapture, RouteCapture, ScriptWeight, Viewport } from './types.ts';
 
 const ASSET_TYPES = new Set(['image', 'font', 'stylesheet', 'script', 'media']);
@@ -65,6 +67,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 		const page = await context.newPage();
 		const pending: Promise<Omit<AssetRecord, 'fingerprinted'> | undefined>[] = [];
 		const stylesheets: { url: string; text: string }[] = [];
+		const fontHashes = new Map<string, string>();
 		const scriptBytes = new Map<string, number>();
 		page.on('response', (response: Response) => {
 			const type = response.request().resourceType();
@@ -74,6 +77,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 					const sizes = await response.request().sizes().catch(() => undefined);
 					const bytes = sizes?.responseBodySize ?? 0;
 					if (type === 'script') scriptBytes.set(response.url(), bytes);
+					if (type === 'font' && response.ok()) fontHashes.set(response.url(), createHash('sha256').update(await response.body()).digest('hex'));
 					if (type === 'stylesheet' && response.ok()) stylesheets.push({ url: toLocal(response.url(), origin), text: await response.text() });
 					return { url: toLocal(response.url(), origin), type, status: response.status(), contentType: mime(response.headers()['content-type']), bytes };
 				})().catch(() => undefined),
@@ -87,6 +91,8 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 		const aria = (await page.locator('body').ariaSnapshot()).split(origin).join('').split('\n');
 		const screenshot = await page.screenshot({ fullPage: true, animations: 'disabled', caret: 'hide' });
 		const coverage = await page.coverage.stopJSCoverage();
+		await Promise.all(pending);
+		const elements = await renderedFonts(page, collected.elements, fontHashes);
 		const builtTexts = [html, ...stylesheets.map((s) => s.text), ...coverage.map((entry) => entry.source ?? '')];
 		const assets: AssetRecord[] = (await Promise.all(pending)).filter((a) => a !== undefined).map((a) => ({ ...a, fingerprinted: isFingerprinted(a.url, builtTexts) }));
 		const imageUrls = [...new Set(assets.filter((a) => a.type === 'image' && a.status < 400).map((a) => new URL(a.url, origin).href))];
@@ -114,7 +120,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 			decoded,
 			images: collected.images,
 			fonts: collected.fonts,
-			elements: collected.elements,
+			elements,
 			screenshot,
 			weight: {
 				downloaded: scripts.reduce((sum, s) => sum + s.bytes, 0),

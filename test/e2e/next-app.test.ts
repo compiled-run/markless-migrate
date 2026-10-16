@@ -7,7 +7,7 @@ import { runCheck } from '../../src/check/run.ts';
 import { VIEWPORTS } from '../../src/check/types.ts';
 import { summarize } from '../../src/check/summary.ts';
 import { plan } from '../../src/plan/inventory.ts';
-import { buildNext, failuresIn as failure, limited, redDimensions, startNext, type App, type Mutation } from './harness.ts';
+import { buildNext, failuresIn as failure, limited, OTHER_FONT, redDimensions, startNext, type App, type Mutation } from './harness.ts';
 
 const ROUTES = ['/', '/en', '/fr', '/ar', '/en/about', '/fr/about', '/en/contact', '/de', '/en/missing'];
 
@@ -132,6 +132,27 @@ const MUTATIONS: Mutation[] = [
 			assert.equal(f?.actual, '404 text/html');
 		},
 	},
+	{
+		name: 'font-swap',
+		route: '/en/about',
+		edits: [{ file: 'app/fonts/inter-latin.woff2', copyFrom: OTHER_FONT }],
+		red: ['assets', 'visual'],
+		expect: (report) => {
+			const fonts = failure(report, 'assets').filter((f) => f.check.startsWith('rendered font of'));
+			assert.ok(fonts.length >= 1, JSON.stringify(failure(report, 'assets'), null, 1));
+			assert.ok(fonts.every((f) => /^web font Inter.* \(sha256 \w{12}\)$/.test(f.expected) && /^web font Geist/.test(f.actual)), JSON.stringify(fonts, null, 1));
+		},
+	},
+	{
+		name: 'font-renamed',
+		route: '/en/about',
+		edits: [
+			{ file: 'app/[lang]/layout.tsx', find: 'const inter = localFont(', replace: 'const bodyFace = localFont(' },
+			{ file: 'app/[lang]/layout.tsx', find: 'className={inter.variable}', replace: 'className={bodyFace.variable}' },
+		],
+		red: [],
+		expect: () => {},
+	},
 ];
 
 describe('next.js app router app', () => {
@@ -178,7 +199,7 @@ describe('next.js app router app', () => {
 	});
 
 	for (const mutation of MUTATIONS) {
-		test(`mutation "${mutation.name}" turns ${mutation.red.join(' + ')} red and nothing else`, async () => {
+		test(`mutation "${mutation.name}" ${mutation.red.length ? `turns ${mutation.red.join(' + ')} red and nothing else` : 'stays green'}`, async () => {
 			const report = await runCheck({ oldOrigin: old.origin, newOrigin: mutants.get(mutation.name)!.origin, routes: [mutation.route], browser });
 			if (process.env.SHOW_SUMMARY) process.stdout.write(`\n${summarize(report)}`);
 			assert.deepEqual(redDimensions(report), [...mutation.red].sort(), summarize(report));

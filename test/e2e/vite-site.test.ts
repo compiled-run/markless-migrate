@@ -11,7 +11,7 @@ import { summarize } from '../../src/check/summary.ts';
 import { VIEWPORTS } from '../../src/check/types.ts';
 import { plan } from '../../src/plan/inventory.ts';
 import { connect, firstText } from '../mcp-client.ts';
-import { buildVite, failuresIn, redDimensions, startStatic, type App, type Mutation } from './harness.ts';
+import { buildVite, failuresIn, OTHER_FONT, redDimensions, startStatic, type App, type Mutation } from './harness.ts';
 
 const ROUTES = ['/', '/about/', '/fr/', '/ar/', '/old-about', '/missing'];
 
@@ -140,6 +140,27 @@ const MUTATIONS: Mutation[] = [
 			assert.equal(f?.actual, '404 text/html');
 		},
 	},
+	{
+		name: 'font-swap',
+		route: '/about/',
+		edits: [{ file: 'public/inter-latin.woff2', copyFrom: OTHER_FONT }],
+		red: ['assets', 'visual'],
+		expect: (report) => {
+			const fonts = failure(report, 'assets').filter((f) => f.check.startsWith('rendered font of'));
+			assert.ok(fonts.length >= 1, JSON.stringify(failure(report, 'assets'), null, 1));
+			assert.ok(fonts.every((f) => /^web font Inter.* \(sha256 \w{12}\)$/.test(f.expected) && /^web font Geist/.test(f.actual)), JSON.stringify(fonts, null, 1));
+		},
+	},
+	{
+		name: 'font-renamed',
+		route: '/about/',
+		edits: [
+			{ file: 'src/style.css', find: "font-family: 'Inter';", replace: "font-family: 'Lighthouse Sans';" },
+			{ file: 'src/style.css', find: "font-family: 'Inter', system-ui", replace: "font-family: 'Lighthouse Sans', system-ui" },
+		],
+		red: [],
+		expect: () => {},
+	},
 ];
 
 describe('vite multi-page site', () => {
@@ -201,7 +222,7 @@ describe('vite multi-page site', () => {
 	});
 
 	for (const mutation of MUTATIONS) {
-		test(`mutation "${mutation.name}" turns ${mutation.red.join(' + ')} red and nothing else`, async () => {
+		test(`mutation "${mutation.name}" ${mutation.red.length ? `turns ${mutation.red.join(' + ')} red and nothing else` : 'stays green'}`, async () => {
 			const report = await runCheck({ oldOrigin: old.origin, newOrigin: mutants.get(mutation.name)!.origin, routes: [mutation.route], browser });
 			if (process.env.SHOW_SUMMARY) process.stdout.write(`\n${summarize(report)}`);
 			assert.deepEqual(redDimensions(report), [...mutation.red].sort(), summarize(report));

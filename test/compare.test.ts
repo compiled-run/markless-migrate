@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PNG } from 'pngjs';
 import { executedBytes } from '../src/check/capture.ts';
+import { fontSignature } from '../src/check/fonts.ts';
 import { hasContentHash, isFingerprinted } from '../src/check/assets.ts';
 import { matchElements } from '../src/check/match.ts';
 import type { ElementSnapshot } from '../src/check/types.ts';
@@ -28,7 +29,7 @@ test('executed bytes count only ranges that ran, with inner ranges overriding ou
 	assert.equal(executedBytes(source, functions), 100 - 30 + 10);
 });
 
-const el = (over: Partial<ElementSnapshot>): ElementSnapshot => ({ role: 'generic', name: '', tag: 'div', text: '', path: 'body/div', box: { x: 0, y: 0, width: 10, height: 10 }, style: {}, ...over });
+const el = (over: Partial<ElementSnapshot>): ElementSnapshot => ({ id: 0, role: 'generic', name: '', tag: 'div', text: '', path: 'body/div', box: { x: 0, y: 0, width: 10, height: 10 }, style: {}, ...over });
 
 test('elements pair by role and name before landmark path, and survive a renamed heading', () => {
 	const old = [el({ role: 'heading', name: 'Welcome', tag: 'h1', text: 'Welcome', path: 'main>heading/h1' }), el({ role: 'link', name: 'About', tag: 'a', text: 'About', path: 'navigation>link/a' })];
@@ -63,4 +64,13 @@ test('a different page height is always a visual difference', () => {
 	const diff = compareScreenshots(png(50, 50), png(50, 60), noise);
 	assert.deepEqual(diff.sizeMismatch, { expected: '50x50', actual: '50x60' });
 	assert.ok(visuallyDifferent(diff));
+});
+
+test('a font signature names web fonts by family and file hash, system fonts by name, most glyphs first', () => {
+	const fonts = [
+		{ familyName: 'Geeza Pro', isCustomFont: false, glyphCount: 3 },
+		{ familyName: 'Inter Variable', isCustomFont: true, glyphCount: 12 },
+		{ familyName: 'Arial', isCustomFont: false, glyphCount: 0 },
+	];
+	assert.equal(fontSignature(fonts, 'f7ab715caa2c0d1e'), 'web font Inter Variable (sha256 f7ab715caa2c) + Geeza Pro');
 });

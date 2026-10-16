@@ -62,6 +62,9 @@ export function collectPage({ origin, full }: { origin: string; full: boolean })
 	}
 
 	const elements = [];
+	const refs: Element[] = [];
+	const scope = window as unknown as { __mmIds?: WeakMap<Element, number>; __mmNext?: number; __mmElements?: Element[] };
+	const ids = (scope.__mmIds ??= new WeakMap());
 	const paths = new Map<Element, string>();
 	for (const el of full ? document.body.querySelectorAll('*') : []) {
 		if (SKIP.has(el.tagName)) continue;
@@ -81,7 +84,10 @@ export function collectPage({ origin, full }: { origin: string; full: boolean })
 		}
 		const text = clean([...el.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent).join(' ')).slice(0, 80);
 		const tag = el.tagName.toLowerCase();
+		if (!ids.has(el)) ids.set(el, (scope.__mmNext = (scope.__mmNext ?? 0) + 1));
+		refs.push(el);
 		elements.push({
+			id: ids.get(el)!,
 			role: r,
 			name: name(el, r),
 			tag,
@@ -91,6 +97,8 @@ export function collectPage({ origin, full }: { origin: string; full: boolean })
 			style,
 		});
 	}
+
+	scope.__mmElements = refs;
 
 	const seo: Record<string, string> = {};
 	const put = (key: string, value: string | null | undefined) => {

@@ -6,6 +6,8 @@ import { DIMENSIONS } from './types.ts';
 import { compareScreenshots, visualNoise, visuallyDifferent } from './visual.ts';
 
 const LIMIT = 20;
+// font-family names are compared by the font files that render, so generated family names do not differ.
+const RENDERED_ELSEWHERE = new Set(['font-family']);
 const WEIGHT_SLACK_BYTES = 1024;
 // Measured on the Next fixture: run-at-load bytes of one build moved by 2,016 bytes (1.07%) between loads that two OLD loads did not see.
 const EXECUTED_SLACK_RATIO = 0.02;
@@ -74,6 +76,33 @@ export function noisyStyles(a: readonly ElementSnapshot[], others: readonly (rea
 	return noisy;
 }
 
+function fontFailures(route: string, viewport: string, oldA: PageCapture, others: readonly PageCapture[], next: PageCapture): Failure[] {
+	const stable = new Set(oldA.elements.map((_, i) => i));
+	for (const other of others) {
+		const pairs = matchElements(oldA.elements, other.elements);
+		for (const i of stable) if (oldA.elements[i]!.font !== other.elements[pairs.get(i) ?? -1]?.font) stable.delete(i);
+	}
+	const groups = new Map<string, { expected: string; actual: string; elements: ElementSnapshot[] }>();
+	for (const [i, j] of matchElements(oldA.elements, next.elements)) {
+		const expected = oldA.elements[i]!;
+		if (!stable.has(i) || !expected.font || expected.font === next.elements[j]!.font) continue;
+		const actual = next.elements[j]!.font ?? '(no text)';
+		const key = `${expected.font}\n${actual}`;
+		const group = groups.get(key) ?? { expected: expected.font, actual, elements: [] };
+		group.elements.push(expected);
+		groups.set(key, group);
+	}
+	return [...groups.values()].slice(0, LIMIT).map((g) => ({
+		route,
+		dimension: 'assets',
+		check: `rendered font of ${describe(g.elements[0]!)}${g.elements.length > 1 ? ` and ${g.elements.length - 1} more elements` : ''}`,
+		viewport,
+		expected: g.expected,
+		actual: g.actual,
+		hint: HINTS.fonts,
+	}));
+}
+
 function cssFailures(route: string, viewport: string, oldA: PageCapture, others: readonly PageCapture[], next: PageCapture): Failure[] {
 	const noisy = noisyStyles(oldA.elements, others.map((o) => o.elements));
 	const failures: Failure[] = [];
@@ -83,7 +112,7 @@ function cssFailures(route: string, viewport: string, oldA: PageCapture, others:
 		if (!skip) continue;
 		const expected = oldA.elements[i]!;
 		const actual = next.elements[j]!;
-		const props = Object.keys(expected.style).filter((prop) => !skip.has(prop) && expected.style[prop] !== actual.style[prop]);
+		const props = Object.keys(expected.style).filter((prop) => !skip.has(prop) && !RENDERED_ELSEWHERE.has(prop) && expected.style[prop] !== actual.style[prop]);
 		if (!props.length) continue;
 		if (failures.length >= LIMIT) {
 			extra++;
@@ -149,9 +178,7 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 			const actual = !other ? '(absent)' : other.broken ? 'broken' : `${other.naturalWidth}x${other.naturalHeight}`;
 			if (expected !== actual) failures.push({ route, dimension: 'assets', check: `image #${i + 1} ${img.src}`, viewport, expected, actual, hint: HINTS.image });
 		});
-		if (bs.every((b) => b.fonts.join() === a.fonts.join()) && a.fonts.join() !== n.fonts.join()) {
-			failures.push({ route, dimension: 'assets', check: 'loaded fonts', viewport, expected: a.fonts.join(', ') || '(none)', actual: n.fonts.join(', ') || '(none)', hint: HINTS.fonts });
-		}
+		failures.push(...fontFailures(route, viewport, a, bs, n));
 	}
 
 	const desktop = Object.keys(oldA.pages)[0]!;

@@ -29,7 +29,7 @@ export const HINTS = {
 	assetDimensions: 'Serve the same image: its decoded size differs.',
 	assetBroken: 'This URL fails on the new side; fix the reference or serve the file.',
 	image: 'The image at this position in the page loads a different picture or fails to load.',
-	fonts: 'A different set of web fonts loaded. Port the @font-face rules and make sure the font files are served.',
+	fonts: 'A different font renders this text. Port the @font-face rule with the same font file (compared by content, not by family name) and the font-family stack, and make sure the file is served.',
 	css: 'Port the rule that sets this property for this element in the old stylesheet; computed values must match.',
 	weight: 'The new route downloads or runs more JavaScript at load than the old one. Look at the scripts only the new route loads.',
 } as const;

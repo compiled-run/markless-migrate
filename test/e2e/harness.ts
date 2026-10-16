@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { cp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { copyFile, cp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import type { Server } from 'node:http';
@@ -14,7 +14,8 @@ export type Edit =
 	| { readonly file: string; readonly remove: true }
 	| { readonly file: string; readonly append: string }
 	| { readonly file: string; readonly write: string }
-	| { readonly file: string; readonly renameTo: string };
+	| { readonly file: string; readonly renameTo: string }
+	| { readonly file: string; readonly copyFrom: string };
 
 export interface Mutation {
 	readonly name: string;
@@ -23,6 +24,9 @@ export interface Mutation {
 	readonly red: readonly Dimension[];
 	readonly expect: (report: Report) => void;
 }
+
+// An OFL font that ships inside Next.js, used to swap a font file for different bytes under the same name.
+export const OTHER_FONT = 'fixtures/next-app/node_modules/next/dist/esm/next-devtools/server/font/geist-latin.woff2';
 
 export interface App {
 	readonly origin: string;
@@ -49,6 +53,10 @@ async function applyEdits(dir: string, edits: readonly Edit[]): Promise<void> {
 		}
 		if ('renameTo' in edit) {
 			await rename(path, join(dir, edit.renameTo));
+			continue;
+		}
+		if ('copyFrom' in edit) {
+			await copyFile(join(ROOT, edit.copyFrom), path);
 			continue;
 		}
 		if ('write' in edit) {

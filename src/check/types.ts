@@ -32,6 +32,7 @@ export interface Box {
 }
 
 export interface ElementSnapshot {
+	readonly id: number;
 	readonly role: string;
 	readonly name: string;
 	readonly tag: string;
@@ -39,6 +40,8 @@ export interface ElementSnapshot {
 	readonly path: string;
 	readonly box: Box;
 	readonly style: Readonly<Record<string, string>>;
+	/** The font files that render this element's own text: web fonts by content hash, system fonts by name. */
+	readonly font?: string;
 }
 
 export interface AssetRecord {
