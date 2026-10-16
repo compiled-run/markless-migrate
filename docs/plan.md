@@ -81,26 +81,89 @@ The bar is that a user, a crawler, a screen reader and the backend cannot tell w
   screenshots within a small pixel threshold.
 - Proof apps: Next.js Commerce and a Contentful or Sanity blog starter.
 
-## Slice 1 limits (2026-10-16)
+## What still slips through (2026-10-16)
 
-What `check` does not catch yet, so a green report does not promise it:
+What `check` does not catch yet, so a green report does not promise it.
 
-- Noise: a text line that changed between the two OLD loads becomes a template in which every number
-  and every word that changed may vary. A real change to those parts of that line passes. Pixels near
-  noisy pixels, and the boxes of elements whose text was noisy, are not compared. A line that only one
-  OLD load showed may be absent or replaced.
-- Noise the two OLD loads did not happen to show (an A/B test that picked the same arm twice, a
-  timer that fired late) is reported as a difference.
-- Run-at-load JavaScript may grow by up to 2% plus 1 KB before `weight` goes red, because Next.js
-  moved by about 1% between loads of one build.
-- Fingerprinted file names (`main-DPvuoccY.js`, `/_next/...`) are treated as build output and not
-  required at the same URL. The test is a name heuristic, so a public file named like `logo-2024.png`
-  is also skipped by the same-URL check; the per-position image check still covers images on the page.
-- Computed styles skip custom properties and box geometry (width, height, transform and perspective
-  origins); screenshots cover geometry. Only the default state is compared: no hover, focus, open
-  menus or dark mode yet.
-- Web fonts are compared by family name, so a renamed but identical font (Next.js generates names)
-  shows as a difference.
-- Third-party assets and scripts are not compared.
-- Roles and names come from a heuristic in the page, not Chromium's accessibility tree; the
-  accessibility tree check itself uses Playwright's ARIA snapshot.
+Noise:
+
+- A text line that differed between the OLD loads may vary only where they differed, within the same
+  kind of character. When the first two OLD loads differ, a third is taken after NEW. A value that
+  changes between the concurrent second OLD load and the NEW load but never between OLD loads (a clock
+  rolling over a minute in that moment) is a false red; this is rare, not impossible.
+- Noise the OLD loads did not show (an A/B test that picked the same arm every time) is reported as a
+  difference. A line only some OLD loads showed may be absent or replaced.
+- Pixels within 6px of pixels that differed between OLD loads are not compared. In forced states the
+  whole block around text that varied is masked. pixelmatch's threshold (0.1) misses small shifts
+  between dark colours: a changed dark-mode background is caught by computed styles, not by pixels.
+
+CSS states:
+
+- States are forced on the desktop viewport only, on the first two visible elements a state's selector
+  matches, and at most 40 states per route. `:hover`, `:focus`, `:focus-visible`, `:focus-within` and
+  `:active` are forced through DevTools on that element alone (not its ancestors, no mouse events);
+  `:checked`, `:disabled` and `[open]` are set as DOM properties without events.
+- Container queries are forced by sizing each size container's content box to the edge widths; only
+  width and inline-size conditions are listed, not height or `style()` queries.
+- The rule a difference is traced to is the OLD stylesheet as served: Next.js and Vite minify CSS, so
+  the line and column point into the built file, not the source (source maps are not followed).
+  Attribution weighs `!important`, specificity and source order; cascade layers are ignored, and a
+  shorthand covers its longhands through a short table. Cross-origin stylesheets are not read.
+- Box geometry (width, height, transform and perspective origins) and custom properties are not
+  compared as computed styles; screenshots cover geometry. `font-family` is compared through the font
+  files that render.
+
+Fonts and assets:
+
+- The file behind a web font is found through the first family in the element's stack that has a
+  downloaded `@font-face` fitting its weight and style. With `unicode-range` subsets that may name the
+  wrong subset; fonts loaded through the FontFace API or cross-origin CSS are named, not hashed.
+- An asset counts as build output when its name carries a hash-like token (eight or more random-looking
+  characters, so `logo-2024` does not) and the page's built HTML, JS or CSS refers to it, or when it
+  lives in a framework's output directory (`/_next/`, `/_nuxt/`, `/_astro/`, `/_app/immutable/`).
+  Whether that token really changes with the file's bytes cannot be seen from one build, so it is not
+  verified. Third-party assets and scripts are not compared.
+
+Accessibility:
+
+- axe-core violations are compared per rule by count: swapping one violation for another of the same
+  rule passes. Landmarks are compared as a set, not in order. Focus order stops after 60 Tab presses.
+- Live regions are read as text after each step, which is what changed, not how or when a screen reader
+  would speak it. Reduced motion catches running CSS animations, transitions and Web Animations, not
+  motion driven from requestAnimationFrame or smooth scrolling.
+
+Internationalisation:
+
+- Dates and numbers are recognised by pattern: ISO dates and timestamps, numeric day/month/year, dates
+  with month names in 15 languages, grouped numbers and decimals with a currency symbol. Times on their
+  own, relative dates ("3 days ago"), percentages and numbering systems other than Latin and
+  Arabic-Indic are not.
+- Locales come from hreflang, `<html lang>` and the inventory. Locales chosen by cookie or domain are
+  not tried. Accept-Language is compared by the page a browser lands on, and only on routes where the
+  OLD app lands differently by language; the redirect status is the http check's.
+
+Interactions:
+
+- Exploration is breadth first to depth 2, at most 30 journeys per route, on the desktop viewport. It
+  clicks, types fixed sample values, chooses the second option of a select, and presses Enter, Space,
+  and after opening something Escape and ArrowDown. It does not hover, drag, scroll, long-press or try
+  other shortcuts. Form values may fail a page's own validation patterns.
+- Forms are submitted to the OLD app's own origin and requests to other origins are blocked, so
+  third-party widgets do not run during journeys. Submissions are real: point `--old` at a staging app
+  with test data, not at production.
+- Steps find their target by accessibility role, name and position, so a control renamed on NEW fails
+  as "could not be used". After a step navigates, the landing page's content and focus are left to that
+  route's own checks. Framework transport (React Server Component payloads, server-action posts,
+  `/_next/` requests) is excluded, and GET page loads are compared through the URL only. Timers,
+  websockets, history entries and scroll restoration are not compared.
+
+Other:
+
+- Run-at-load JavaScript may grow by up to 2% plus 1 KB before `weight` goes red, because Next.js moved
+  by about 1% between loads of one build.
+- Element pairing for computed styles uses a role and name heuristic in the page; the accessibility
+  checks use Chromium's accessibility tree and Playwright's ARIA snapshot.
+- A route takes about 15 to 30 seconds to check: three OLD loads, every forced state on three pages,
+  and about twenty journeys run three times.
+- yuku-css is not on npm yet, so the package links it from a sibling checkout and cannot be installed
+  from npm until it is published.
