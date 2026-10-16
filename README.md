@@ -10,7 +10,7 @@ Your agent (Claude Code, Codex, Cursor...) does the converting. This tool does t
 
 Every report also shows how much JavaScript runs at load on each route, before and after.
 
-Status: early. `plan`, `check`, `status`, `setup` and the MCP server work; `switch` and `run` do not exist yet. See [docs/plan.md](docs/plan.md).
+Status: early. `plan`, `check`, `status`, `setup`, `run` and the MCP server work; `switch` does not exist yet. See [docs/plan.md](docs/plan.md).
 
 ## Commands
 
@@ -20,13 +20,20 @@ markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [
 markless-migrate status
 markless-migrate setup [--agent claude-code]... [--yes] [--dry-run]
 markless-migrate mcp
+markless-migrate run --agent codex --old http://localhost:3000 --new http://localhost:5173 [--route /about]... [--attempts 3] [--model <name>]
 ```
 
 `plan` writes `.migrate/inventory.json`. `check` checks the routes you name, or every route in the
 inventory, writes `.migrate/report.json` (plus screenshot diffs in `.migrate/diffs/`) and exits 1 when a
 route is red. `setup` registers the `markless-migrate mcp` server and installs a migration skill for
-Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot CLI and opencode. It shows every file it will
-change and keeps a backup of each.
+Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot CLI, VS Code (Copilot agent mode) and opencode. It
+shows every file it will change and keeps a backup of each. Paths and their sources: [docs/notes/agents.md](docs/notes/agents.md).
+
+`run` drives your agent's own CLI headless (`codex exec`, `claude -p`, `gemini -p`, `cursor-agent -p`,
+`copilot -p`, `opencode run`) on whatever login it already has, one route at a time: it checks the route,
+gives the agent the migration skill and the failing report, checks again after the agent finishes, and
+stops the route as "needs a human" after `--attempts` tries. Every attempt, with the agent's output, is
+appended to `.migrate/run.log`. Run `setup` first so the agent has the MCP tools.
 
 ## What check compares
 
