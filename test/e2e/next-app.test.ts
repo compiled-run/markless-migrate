@@ -208,7 +208,7 @@ const MUTATIONS: Mutation[] = [
 			{ file: 'app/[lang]/contact/page.tsx', find: '<label>\n\t\t\t\t\t{t.name}', replace: '<div>\n\t\t\t\t\t{t.name}' },
 			{ file: 'app/[lang]/contact/page.tsx', find: '</label>', replace: '</div>' },
 		],
-		red: ['a11y', 'css', 'rendered', 'visual'],
+		red: ['a11y', 'behaviour', 'css', 'rendered', 'visual'],
 		expect: (report) => {
 			const axe = failure(report, 'a11y').find((f) => f.check.startsWith('axe label:'));
 			assert.ok(axe, JSON.stringify(failure(report, 'a11y'), null, 1));
@@ -236,7 +236,7 @@ const MUTATIONS: Mutation[] = [
 			{ file: 'app/[lang]/counter.tsx', find: '<button type="button" onClick', replace: '<div onClick' },
 			{ file: 'app/[lang]/counter.tsx', find: '</button>', replace: '</div>' },
 		],
-		red: ['a11y', 'rendered', 'visual'],
+		red: ['a11y', 'behaviour', 'rendered', 'visual'],
 		expect: (report) => {
 			const order = failure(report, 'a11y').find((f) => f.check.startsWith('focus order'));
 			assert.match(order!.expected, /button "Pour a cup"/);
@@ -304,6 +304,47 @@ const MUTATIONS: Mutation[] = [
 				['<html dir>', 'rtl', 'ltr'],
 				['text direction of the page', 'rtl', 'ltr'],
 			]);
+		},
+	},
+	{
+		name: 'counter-by-two',
+		route: '/en',
+		edits: [{ file: 'app/[lang]/counter.tsx', find: 'setCount(count + 1)', replace: 'setCount(count + 2)' }],
+		red: ['a11y', 'behaviour'],
+		expect: (report) => {
+			const click = failure(report, 'behaviour').find((f) => f.check === 'click button "Pour a cup"');
+			assert.ok(click, JSON.stringify(failure(report, 'behaviour'), null, 1));
+			assert.match(click.expected, /announced: output: 1/);
+			assert.match(click.actual, /announced: output: 2/);
+			assert.ok(failure(report, 'a11y').some((f) => f.check === 'press Enter on button "Pour a cup"'));
+		},
+	},
+	{
+		name: 'form-path',
+		route: '/en/contact',
+		edits: [
+			{ file: 'app/[lang]/contact/page.tsx', find: 'action="/api/contact"', replace: 'action="/api/message"' },
+			{ file: 'app/api/message/route.ts', write: "import { isLocale } from '../../dictionaries';\n\nexport async function POST(request: Request) {\n\tconst form = await request.formData();\n\tconst lang = String(form.get('lang') ?? 'en');\n\tconst target = new URL(`/${isLocale(lang) ? lang : 'en'}/contact?sent=1`, request.url);\n\treturn Response.redirect(target, 303);\n}\n" },
+		],
+		red: ['behaviour'],
+		expect: (report) => {
+			const [f, ...rest] = failure(report, 'behaviour');
+			assert.equal(rest.length, 0, JSON.stringify(rest, null, 1));
+			assert.match(f!.check, /^fill textbox "Your name", textbox "Message" and submit with button "Send message"$/);
+			assert.match(f!.expected, /requests: POST \/api\/contact \{lang: string, message: string, name: string\}/);
+			assert.match(f!.actual, /requests: POST \/api\/message /);
+		},
+	},
+	{
+		name: 'menu-broken',
+		route: '/en/about',
+		edits: [{ file: 'app/[lang]/menu.tsx', find: 'onClick={() => setOpen(!open)}', replace: 'onClick={() => {}}' }],
+		red: ['a11y', 'behaviour'],
+		expect: (report) => {
+			const click = failure(report, 'behaviour').find((f) => f.check === 'click button "More"');
+			assert.ok(click, JSON.stringify(failure(report, 'behaviour'), null, 1));
+			assert.match(click.expected, /appears: .*link "Wholesale"/);
+			assert.ok(failure(report, 'a11y').some((f) => f.check === 'press Enter on button "More"'));
 		},
 	},
 ];

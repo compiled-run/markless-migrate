@@ -215,7 +215,7 @@ const MUTATIONS: Mutation[] = [
 		name: 'removed-label',
 		route: '/about/',
 		edits: [{ file: 'about/index.html', find: '<label for="email">Email</label>', replace: '<span>Email</span>' }],
-		red: ['a11y', 'rendered', 'visual'],
+		red: ['a11y', 'behaviour', 'rendered', 'visual'],
 		expect: (report) => {
 			const axe = failure(report, 'a11y').find((f) => f.check.startsWith('axe label:'));
 			assert.ok(axe, JSON.stringify(failure(report, 'a11y'), null, 1));
@@ -240,7 +240,7 @@ const MUTATIONS: Mutation[] = [
 		name: 'button-as-div',
 		route: '/',
 		edits: [{ file: 'index.html', find: '<button type="button" data-book>Book a walk</button>', replace: '<div data-book>Book a walk</div>' }],
-		red: ['a11y', 'rendered', 'visual'],
+		red: ['a11y', 'behaviour', 'rendered', 'visual'],
 		expect: (report) => {
 			const order = failure(report, 'a11y').find((f) => f.check.startsWith('focus order'));
 			assert.match(order!.expected, /button "Book a walk"/);
@@ -308,6 +308,44 @@ const MUTATIONS: Mutation[] = [
 				['<html dir>', 'rtl', '(absent)'],
 				['text direction of the page', 'rtl', 'ltr'],
 			]);
+		},
+	},
+	{
+		name: 'counter-by-two',
+		route: '/',
+		edits: [{ file: 'src/main.ts', find: 'Number(count.textContent) + 1', replace: 'Number(count.textContent) + 2' }],
+		red: ['a11y', 'behaviour'],
+		expect: (report) => {
+			const click = failure(report, 'behaviour').find((f) => f.check === 'click button "Book a walk"');
+			assert.ok(click, JSON.stringify(failure(report, 'behaviour'), null, 1));
+			assert.match(click.expected, /announced: output: 1/);
+			assert.match(click.actual, /announced: output: 2/);
+			assert.ok(failure(report, 'a11y').some((f) => f.check === 'press Space on button "Book a walk"'));
+		},
+	},
+	{
+		name: 'form-path',
+		route: '/about/',
+		edits: [{ file: 'about/index.html', find: 'action="/api/subscribe"', replace: 'action="/api/signup"' }],
+		red: ['behaviour'],
+		expect: (report) => {
+			const [f, ...rest] = failure(report, 'behaviour');
+			assert.equal(rest.length, 0, JSON.stringify(rest, null, 1));
+			assert.equal(f!.check, 'fill textbox "Email" and submit with button "Subscribe"');
+			assert.match(f!.expected, /requests: POST \/api\/subscribe \{email: string\}/);
+			assert.match(f!.actual, /requests: POST \/api\/signup \{email: string\}/);
+		},
+	},
+	{
+		name: 'menu-broken',
+		route: '/',
+		edits: [{ file: 'src/main.ts', find: "menu?.toggleAttribute('hidden', !open);", replace: '' }],
+		red: ['a11y', 'behaviour'],
+		expect: (report) => {
+			const click = failure(report, 'behaviour').find((f) => f.check === 'click button "More"');
+			assert.ok(click, JSON.stringify(failure(report, 'behaviour'), null, 1));
+			assert.match(click.expected, /appears: .*link "Our guides"/);
+			assert.ok(failure(report, 'a11y').some((f) => f.check === 'press Enter on button "More"'));
 		},
 	},
 ];

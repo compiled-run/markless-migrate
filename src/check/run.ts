@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { chromium, type Browser } from 'playwright';
 import { captureHttp, captureRoute, mime } from './capture.ts';
 import { negotiationFailures } from './i18n.ts';
+import { compareJourneys, explore, replayAll } from './journeys.ts';
 import { assetsToProbe, compareRoute, cssTargets, noisyStyles, withFailures, type Probe } from './compare.ts';
 import { matchElements } from './match.ts';
 import { compareStates, type StateInput } from './states.ts';
@@ -68,7 +69,17 @@ export async function checkRoute(browser: Browser, oldOrigin: string, newOrigin:
 	const [negotiatedA, negotiatedB, negotiatedNew] = await Promise.all([negotiate(oldOrigin, route, languages), negotiate(oldOrigin, route, languages), negotiate(newOrigin, route, languages)]);
 	const compared = compareRoute(route, olds, next, probes);
 	const result = withFailures(compared, [...compared.failures, ...negotiationFailures(route, languages, [negotiatedA, negotiatedB], negotiatedNew)]);
-	return checkStates(browser, oldOrigin, newOrigin, route, viewports, olds, result);
+	return checkJourneys(browser, oldOrigin, newOrigin, route, viewports[0]!, await checkStates(browser, oldOrigin, newOrigin, route, viewports, olds, result));
+}
+
+// Explores OLD, then replays every journey on OLD again and on NEW; a third OLD replay confirms noise when the first two differ.
+async function checkJourneys(browser: Browser, oldOrigin: string, newOrigin: string, route: string, viewport: Viewport, result: RouteResult): Promise<RouteResult> {
+	const journeys = await explore(browser, oldOrigin, route, viewport);
+	const recorded = journeys.map((j) => j.expected);
+	const [again, next] = await Promise.all([replayAll(browser, oldOrigin, route, viewport, journeys), replayAll(browser, newOrigin, route, viewport, journeys)]);
+	const runs = [recorded, again];
+	if (JSON.stringify(recorded) !== JSON.stringify(again)) runs.push(await replayAll(browser, oldOrigin, route, viewport, journeys));
+	return withFailures(result, [...result.failures, ...compareJourneys(route, runs, journeys, next)], { journeys });
 }
 
 // Forces every state the OLD stylesheets style, on the first viewport, and names the OLD rule behind each computed-style failure.
@@ -122,7 +133,7 @@ function slug(route: string): string {
 }
 
 export function jsonReport(report: Report, diffs: Readonly<Record<string, string[]>> = {}) {
-	return { ...report, routes: report.routes.map(({ visualDiffs: _, shots: __, ...route }) => ({ ...route, visualDiffs: diffs[route.route] ?? [] })) };
+	return { ...report, routes: report.routes.map(({ visualDiffs: _, shots: __, journeys, ...route }) => ({ ...route, visualDiffs: diffs[route.route] ?? [], journeys: journeys?.length ?? 0 })) };
 }
 
 export async function writeReport(report: Report, dir: string): Promise<string> {
@@ -135,6 +146,11 @@ export async function writeReport(report: Report, dir: string): Promise<string> 
 			await writeFile(file, diff.png);
 			(diffs[route.route] ??= []).push(file);
 		}
+	}
+	for (const route of report.routes) {
+		if (!route.journeys?.length) continue;
+		await mkdir(join(dir, 'journeys'), { recursive: true });
+		await writeFile(join(dir, 'journeys', `${slug(route.route)}.json`), `${JSON.stringify({ route: route.route, origin: report.old, viewport: 'desktop', journeys: route.journeys }, null, '\t')}\n`);
 	}
 	const path = join(dir, 'report.json');
 	await writeFile(path, `${JSON.stringify(jsonReport(report, diffs), null, '\t')}\n`);

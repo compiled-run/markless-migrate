@@ -41,5 +41,7 @@ export const HINTS = {
 	dir: 'Set the same dir attribute on <html> (rtl for Arabic, Hebrew, Persian and Urdu), so the layout mirrors as it did.',
 	formats: 'Format dates and numbers for this locale as the old page did, for example with Intl.DateTimeFormat and Intl.NumberFormat and the same locale and options.',
 	negotiation: 'Send a browser to the same locale by its Accept-Language header as the old app did (the http check compares the redirect status).',
+	behaviour: 'Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.',
+	keyboard: 'This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.',
 	weight: 'The new route downloads or runs more JavaScript at load than the old one. Look at the scripts only the new route loads.',
 } as const;

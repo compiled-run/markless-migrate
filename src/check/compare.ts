@@ -246,7 +246,7 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 	return withFailures({ route, ok: true, dimensions: {} as RouteResult['dimensions'], failures: [], weight: { old: { downloaded: wa.downloaded, source: wa.source, executed: wa.executed }, new: { downloaded: wn.downloaded, source: wn.source, executed: wn.executed } }, visualDiffs, shots }, failures);
 }
 
-export function withFailures(result: RouteResult, failures: readonly Failure[], extra: Partial<Pick<RouteResult, 'shots' | 'states'>> = {}): RouteResult {
+export function withFailures(result: RouteResult, failures: readonly Failure[], extra: Partial<Pick<RouteResult, 'shots' | 'states' | 'journeys'>> = {}): RouteResult {
 	const failed = new Set(failures.map((f) => f.dimension));
 	const dimensions = Object.fromEntries(DIMENSIONS.map((d) => [d, failed.has(d) ? 'fail' : 'pass'])) as Record<Dimension, 'pass' | 'fail'>;
 	return { ...result, ...extra, ok: failures.length === 0, dimensions, failures };

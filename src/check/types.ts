@@ -1,4 +1,6 @@
-export const DIMENSIONS = ['http', 'rendered', 'visual', 'seo', 'assets', 'css', 'a11y', 'i18n', 'weight'] as const;
+import type { RecordedJourney } from './journeys.ts';
+
+export const DIMENSIONS = ['http', 'rendered', 'visual', 'seo', 'assets', 'css', 'a11y', 'i18n', 'behaviour', 'weight'] as const;
 export type Dimension = (typeof DIMENSIONS)[number];
 
 export interface Viewport {
@@ -141,6 +143,8 @@ export interface RouteResult {
 	readonly shots: readonly Shot[];
 	/** CSS states and conditions found in the OLD stylesheets: the ones forced and compared, and the ones that could not be. */
 	readonly states?: { readonly checked: readonly string[]; readonly skipped: readonly string[] };
+	/** Interactions explored on the OLD page and replayed on NEW, with what OLD did at each step. */
+	readonly journeys?: readonly RecordedJourney[];
 }
 
 export interface Report {
