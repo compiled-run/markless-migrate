@@ -22,22 +22,23 @@ export function template(a: string, b: string): Matcher {
 	return { source: a, test: (other) => regex.test(other), noisy: true };
 }
 
-function lcs<A, B>(a: readonly A[], b: readonly B[], same: (x: A, y: B) => boolean): [number, number][] {
-	const rows = a.length + 1;
+// Highest-scoring alignment: score(x, y) is 0 for no match, higher for a match worth more.
+function align<A, B>(a: readonly A[], b: readonly B[], score: (x: A, y: B) => number): [number, number][] {
 	const cols = b.length + 1;
-	const table = new Uint32Array(rows * cols);
+	const table = new Uint32Array((a.length + 1) * cols);
 	for (let i = a.length - 1; i >= 0; i--) {
 		for (let j = b.length - 1; j >= 0; j--) {
-			table[i * cols + j] = same(a[i]!, b[j]!) ? table[(i + 1) * cols + j + 1]! + 1 : Math.max(table[(i + 1) * cols + j]!, table[i * cols + j + 1]!);
+			const s = score(a[i]!, b[j]!);
+			table[i * cols + j] = Math.max(s ? table[(i + 1) * cols + j + 1]! + s : 0, table[(i + 1) * cols + j]!, table[i * cols + j + 1]!);
 		}
 	}
 	const pairs: [number, number][] = [];
 	let i = 0;
 	let j = 0;
 	while (i < a.length && j < b.length) {
-		if (same(a[i]!, b[j]!)) {
-			pairs.push([i++, j++]);
-		} else if (table[(i + 1) * cols + j]! >= table[i * cols + j + 1]!) i++;
+		const s = score(a[i]!, b[j]!);
+		if (s && table[i * cols + j] === table[(i + 1) * cols + j + 1]! + s) pairs.push([i++, j++]);
+		else if (table[(i + 1) * cols + j]! >= table[i * cols + j + 1]!) i++;
 		else j++;
 	}
 	return pairs;
@@ -48,7 +49,7 @@ export interface LineMatcher extends Matcher {
 }
 
 export function lineTemplates(a: readonly string[], b: readonly string[]): LineMatcher[] {
-	const pairs = lcs(a, b, (x, y) => x === y);
+	const pairs = align(a, b, (x, y) => (x === y ? 1 : 0));
 	const out: LineMatcher[] = [];
 	let ia = 0;
 	let ib = 0;
@@ -79,7 +80,7 @@ export interface LineDiff {
 }
 
 export function diffLines(expected: readonly LineMatcher[], actual: readonly string[]): LineDiff {
-	const pairs = lcs(expected, actual, (m, line) => m.test(line));
+	const pairs = align(expected, actual, (m, line) => (!m.test(line) ? 0 : m.optional ? 1 : 2));
 	const missing: string[] = [];
 	const unexpected: string[] = [];
 	const changed: { expected: string; actual: string }[] = [];
