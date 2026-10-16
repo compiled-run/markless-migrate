@@ -204,7 +204,10 @@ function liveRegions() {
 }
 
 async function focusLabel(page: Page): Promise<string> {
-	const line = (await page.locator(':focus').first().ariaSnapshot({ timeout: 500 }).catch(() => '')).split('\n')[0] ?? '';
+	// Asks whether anything has focus first, so a snapshot slowed by load is waited for instead of read as "body".
+	const focused = await page.evaluate(() => Boolean(document.activeElement && document.activeElement !== document.body)).catch(() => false);
+	if (!focused) return 'body';
+	const line = (await page.locator(':focus').first().ariaSnapshot({ timeout: STEP_TIMEOUT }).catch(() => '')).split('\n')[0] ?? '';
 	return line.replace(/^- /, '').replace(/:$/, '') || 'body';
 }
 
