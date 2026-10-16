@@ -33,7 +33,7 @@ export function summarize(report: Report): string {
 		const w = route.weight;
 		const stopped = Object.entries(route.dimensions).some(([, state]) => state === 'skipped');
 		const js = stopped ? 'page not compared: the two apps did not let this role in alike' : `JS on the wire ${kb(w.old.downloaded)} -> ${kb(w.new.downloaded)}, run at load ${kb(w.old.executed)} -> ${kb(w.new.executed)} (uncompressed)`;
-		lines.push(`${route.ok ? 'pass' : 'FAIL'}  ${route.route.padEnd(width)}  ${route.ok ? '' : `[${failed.join(', ')}]  `}${js}`);
+		lines.push(`${route.ok ? 'pass' : 'FAIL'}  ${route.route.padEnd(width)}  ${route.ok ? '' : `[${failed.join(', ')}]  `}${route.endpoint ? `compared as ${route.endpoint}` : js}`);
 		for (const f of route.failures) {
 			lines.push(`      ${f.dimension}${f.viewport ? ` (${f.viewport})` : ''}: ${f.check}`);
 			lines.push(`        expected: ${clip(f.expected)}`);
@@ -41,6 +41,7 @@ export function summarize(report: Report): string {
 			lines.push(`        fix:      ${f.hint}`);
 		}
 	}
+	if (report.unchecked?.length) lines.push('', `Not checked, needs a sample (add one to .migrate/samples.json):`, ...report.unchecked.map((u) => `  ${u.route}  no value for ${u.params.map((p) => `:${p}`).join(', ')}${u.file ? `  ${u.file}:${u.line}` : ''}`));
 	for (const login of report.logins ?? []) if (!report.routes.some((r) => r.role === login.role)) lines.push(`As ${login.role}: not checked`, ...loginLines(login));
 	const green = report.routes.filter((r) => r.ok).length;
 	const blocked = report.routes.filter((r) => r.blocked).length;

@@ -7,6 +7,7 @@ import { BlockedError, blockedResult, probeWall } from './blocked.ts';
 import { defaultEnv, isLoopback, pushRecording, tagHeaders, type SideEnv, type StorageState } from './browser.ts';
 import { captureHttp, captureRoute, mime } from './capture.ts';
 import { readRecording, recordable, slug, writeRecording } from './data.ts';
+import { checkEndpoint, isPage } from './endpoints.ts';
 import { DEFAULT_FREEZE, pinnedBy, pinnedSummary, type FreezeOptions } from './freeze.ts';
 import { HINTS } from './hints.ts';
 import { negotiationFailures } from './i18n.ts';
@@ -48,6 +49,12 @@ export interface CheckOptions {
 	readonly headers?: Readonly<Record<string, string>>;
 	readonly cookies?: readonly { readonly name: string; readonly value: string }[];
 	readonly userAgent?: string;
+	/** Paths compared as data rather than as pages; any route whose OLD response is not HTML is too. */
+	readonly endpoints?: readonly string[];
+	/** Source routes that could not be checked for want of a sample value, listed in the report. */
+	readonly unchecked?: Report['unchecked'];
+	/** Source checkouts of the old and new app, to name the file and line behind each failing element. */
+	readonly sourceDirs?: { readonly old?: string; readonly new?: string };
 }
 
 interface Run {
@@ -254,6 +261,8 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const loginPaths = auth ? loginRoutes(auth) : [];
 	try {
 		const routes: RouteResult[] = [];
+		const endpoints = new Set(options.endpoints ?? []);
+		for (const route of options.routes) if (!isPage((await captureHttp(options.oldOrigin, route, tagHeaders(base.old)).catch(() => undefined))?.contentType ?? '')) endpoints.add(route);
 		for (const role of roles) {
 			let roleRun = base;
 			if (auth && role && role !== ANONYMOUS) {
@@ -264,6 +273,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			}
 			const data = options.data && role && role !== ANONYMOUS ? { ...options.data, dir: join(options.data.dir, slug(role)) } : options.data;
 			for (const route of options.routes) {
+				if (endpoints.has(route)) continue;
 				const { run, failures } = data?.mode === 'replay' ? await replayRoute(roleRun, data.dir, route) : { run: roleRun, failures: [] };
 				const result = await checkAs(browser, run, route, role, loginPaths, options);
 				routes.push(asRole(failures.length ? withFailures(result, [...failures, ...result.failures]) : result, role));
@@ -274,6 +284,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				}
 			}
 		}
+		for (const route of endpoints) routes.push(asRole(await checkEndpoint(base, route), roles[0]));
 		const sources = options.source?.nondeterminism.map((f) => ({ ...f, pinned: pinnedBy(`${f.kind} ${f.what ?? ''}`, f.side, freeze) }));
 		return {
 			version: 1,
@@ -287,6 +298,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			...(options.data ? { data: options.data } : {}),
 			writes: shared.sendWrites ? 'sent' : 'held back',
 			...(auth ? { roles: roles as string[], logins } : {}),
+			...(options.unchecked?.length ? { unchecked: options.unchecked } : {}),
 		};
 	} finally {
 		if (!options.browser) await browser.close();

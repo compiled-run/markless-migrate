@@ -168,7 +168,7 @@ test('the Next.js app fixture: routes, the form that posts to its route handler,
 	assert.equal(facts.framework, 'next');
 	assert.deepEqual(
 		facts.routes.map((r) => `${r.kind} ${r.path}`),
-		['page /:lang', 'page /:lang/about', 'page /:lang/admin', 'page /:lang/contact', 'page /:lang/login', 'page /:lang/members', 'endpoint /api/contact', 'endpoint /api/login'],
+		['page /:lang', 'page /:lang/about', 'page /:lang/admin', 'page /:lang/contact', 'page /:lang/login', 'page /:lang/members', 'page /:lang/news/:slug', 'endpoint /api/contact', 'endpoint /api/login', 'endpoint /api/news', 'endpoint /feed.xml'],
 	);
 	assert.ok(facts.writes.some((w) => w.method === 'POST' && w.path === '/api/contact' && w.via === 'route-handler' && w.handler.file === 'app/api/contact/route.ts'));
 	assert.ok(!facts.writes.some((w) => w.via === 'form' && w.path === '/api/contact'), 'the form is answered by the route handler, so it is not listed twice');
@@ -194,7 +194,7 @@ test('plan --source keeps the file routes older readers expect and adds the scan
 	const { readSource, summarizeInventory } = await import('../src/plan/inventory.ts');
 	const source = await readSource(join(fixtures, 'next-app'));
 	assert.equal(source.framework, 'next');
-	assert.deepEqual(source.fileRoutes, ['/[lang]', '/[lang]/about', '/[lang]/admin', '/[lang]/contact', '/[lang]/login', '/[lang]/members', '/api/contact', '/api/login']);
+	assert.deepEqual(source.fileRoutes, ['/[lang]', '/[lang]/about', '/[lang]/admin', '/[lang]/contact', '/[lang]/login', '/[lang]/members', '/[lang]/news/[slug]', '/api/contact', '/api/login', '/api/news', '/feed.xml']);
 	assert.ok(source.order.some((s) => s.kind === 'layout'));
 	const text = summarizeInventory({ version: 1, origin: 'http://old', generatedAt: '', limit: 1, truncated: false, routes: [], locales: [], localeRouting: { prefixes: [], negotiation: {} }, source, routeUnion: unionRoutes(['/en', '/'], source.routes) });
 	assert.match(text, /Source: next at /);

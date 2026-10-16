@@ -2,7 +2,7 @@ import type { RecordedJourney } from './journeys.ts';
 import type { NetworkCapture } from './network.ts';
 import type { NondeterminismFact } from './source-facts.ts';
 
-export const DIMENSIONS = ['http', 'auth', 'rendered', 'visual', 'seo', 'assets', 'css', 'a11y', 'i18n', 'behaviour', 'network', 'weight'] as const;
+export const DIMENSIONS = ['http', 'auth', 'rendered', 'visual', 'seo', 'assets', 'css', 'a11y', 'i18n', 'behaviour', 'network', 'data', 'weight'] as const;
 export type Dimension = (typeof DIMENSIONS)[number];
 
 export interface Viewport {
@@ -172,6 +172,8 @@ export interface RouteResult {
 	readonly network?: { readonly old: readonly string[]; readonly new: readonly string[]; readonly server: { readonly old: boolean; readonly new: boolean } };
 	/** Every write the OLD page and its interactions made, and whether it was sent. */
 	readonly writes?: readonly (WriteLine & { readonly during: string })[];
+	/** Set when the route is not a page (robots.txt, a sitemap, a feed, JSON): what it was compared as. */
+	readonly endpoint?: string;
 }
 
 export interface Blocked {
@@ -219,6 +221,8 @@ export interface Report {
 	readonly data?: { readonly mode: 'record' | 'replay'; readonly dir: string };
 	/** Whether writes were sent to the apps or held back and compared unsent. */
 	readonly writes?: 'sent' | 'held back';
+	/** Source routes not checked because no crawled path or sample gave their dynamic segments a value. */
+	readonly unchecked?: readonly { readonly route: string; readonly params: readonly string[]; readonly file?: string; readonly line?: number }[];
 	/** Roles checked, `anonymous` first, when check ran with --auth; routes are grouped in this order. */
 	readonly roles?: readonly string[];
 	readonly logins?: readonly LoginResult[];

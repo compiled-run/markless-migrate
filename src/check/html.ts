@@ -28,6 +28,7 @@ function run(report: Report): string {
 	const parts: string[] = [];
 	if (report.pinned?.length) parts.push(`<details class="states"><summary>Frozen in the browser for every load</summary>${list(report.pinned)}</details>`);
 	if (report.sources?.length) parts.push(`<details class="states"><summary>Sources of variation in the old app's code: ${report.sources.length}</summary><ul>${report.sources.map((s) => `<li><code>${esc(`${s.file}:${s.line}`)}</code> ${esc(s.what ?? s.kind)}: ${esc(s.pinned)}</li>`).join('')}</ul></details>`);
+	if (report.unchecked?.length) parts.push(`<details class="states" open><summary>Not checked, needs a sample: ${report.unchecked.length} source route${report.unchecked.length === 1 ? '' : 's'} (add values to .migrate/samples.json)</summary><ul>${report.unchecked.map((u) => `<li><code>${esc(u.route)}</code> no value for ${esc(u.params.map((p) => `:${p}`).join(', '))}${u.file ? ` <small>${esc(`${u.file}:${u.line}`)}</small>` : ''}</li>`).join('')}</ul></details>`);
 	if (report.writes) parts.push(`<p><small>Writes were ${report.writes === 'sent' ? 'sent (both apps are on this machine or marked staging)' : 'held back: neither app received a form post or non-GET request; they are compared as "would POST ..."'}.${report.data ? ` Data: ${report.data.mode === 'record' ? 'recorded from old into' : 'replayed to both apps from'} <code>${esc(report.data.dir)}</code>.` : ''}</small></p>`);
 	return parts.join('\n');
 }
@@ -100,7 +101,7 @@ function route(r: RouteResult, index: number): string {
 	return `<section class="route" id="route-${index}">
 <h2><span class="badge ${r.ok ? 'pass' : 'fail'}">${r.ok ? 'green' : 'red'}</span> ${esc(r.route)}${r.role ? ` <small>as ${esc(r.role)}</small>` : ''}</h2>
 <ul class="dims" aria-label="Dimensions">${dims}</ul>
-<p class="weight">JavaScript on the wire ${kb(w.old.downloaded)} → ${kb(w.new.downloaded)}, run at load ${kb(w.old.executed)} → ${kb(w.new.executed)} (uncompressed)</p>
+<p class="weight">${r.endpoint ? `Not a page: compared as ${esc(r.endpoint)}` : `JavaScript on the wire ${kb(w.old.downloaded)} → ${kb(w.new.downloaded)}, run at load ${kb(w.old.executed)} → ${kb(w.new.executed)} (uncompressed)`}</p>
 ${r.states ? `<details class="states"><summary>CSS states and conditions from the old stylesheets: ${r.states.checked.length} forced and compared${r.states.skipped.length ? `, ${r.states.skipped.length} not forced` : ''}</summary><ul>${r.states.checked.map((x) => `<li>${esc(x)}</li>`).join('')}${r.states.skipped.map((x) => `<li class="skipped">not forced: ${esc(x)}</li>`).join('')}</ul></details>` : ''}
 ${network(r)}
 ${noise(r)}

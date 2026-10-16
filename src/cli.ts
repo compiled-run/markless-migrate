@@ -14,6 +14,9 @@ import { RECORDER, recorderEnv } from './check/recorder.ts';
 import { jsonReport, runCheck, writeReport, type CheckOptions } from './check/run.ts';
 import { loadSourceFacts } from './check/source-facts.ts';
 import { summarize } from './check/summary.ts';
+import { defaultEnv } from './check/browser.ts';
+import { discoverEndpoints } from './check/endpoints.ts';
+import { readSamples, routeTargets } from './plan/routes.ts';
 import { writeStarterAuth } from './plan/auth.ts';
 import { plan, summarizeInventory, writeInventory } from './plan/inventory.ts';
 import { DRIVERS, driver } from './run/drivers.ts';
@@ -30,7 +33,12 @@ const USAGE = `markless-migrate ${VERSION}
           [--source <path>] [--data record|replay] [--staging] [--block <host>]... [--allow <host>]...
           [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
+          [--all] [--new-source <path>]
           Compare routes old vs new (default: every route in the inventory). Exits 1 when any is red.
+          --all adds every route the source scan knows (dynamic segments filled from crawled paths or
+          .migrate/samples.json) and the non-page endpoints: robots.txt, sitemaps, feeds, the manifest,
+          /.well-known files and JSON route handlers, compared as data.
+          --source and --new-source map each failing element to its old and new source file and line.
           Writes .migrate/report.json and .migrate/report.html; --open opens the HTML report.
           Pages load with a fixed clock, seeded randomness, a fixed timezone and locale, and trackers
           blocked. --source scans the old app's code for what varies and which handlers write.
@@ -199,6 +207,8 @@ async function main(argv: string[]): Promise<number> {
 					header: { type: 'string', multiple: true },
 					cookie: { type: 'string', multiple: true },
 					'user-agent': { type: 'string' },
+					all: { type: 'boolean' },
+					'new-source': { type: 'string' },
 				},
 			});
 			if (!values.old || !values.new) fail('check needs --old <origin> and --new <origin>');
@@ -215,7 +225,14 @@ async function main(argv: string[]): Promise<number> {
 			const seed = values.seed ? Number(values.seed) : undefined;
 			if (seed !== undefined && !Number.isInteger(seed)) fail('--seed must be a whole number');
 			const inventory = await readInventory(cwd);
-			const routes = values.route?.length ? values.route : inventory?.routes.map((r) => r.route);
+			let routes = values.route?.length ? values.route : inventory?.routes.map((r) => r.route);
+			let targets: { endpoints: string[]; unchecked: CheckOptions['unchecked'] } | undefined;
+			if (values.all) {
+				if (!inventory) fail('check --all needs .migrate/inventory.json: run plan first');
+				const all = routeTargets(inventory, await readSamples(join(cwd, STATE_DIR)));
+				routes = [...new Set([...(values.route ?? []), ...all.pages])];
+				targets = { endpoints: await discoverEndpoints(defaultEnv(values.old), all.pages, all.endpoints), unchecked: all.needsSample };
+			}
 			if (!routes?.length) fail('no routes: pass --route <path> or run plan first');
 			let source: CheckOptions['source'];
 			if (values.source) {
@@ -237,6 +254,8 @@ async function main(argv: string[]): Promise<number> {
 				...bypass,
 				...(values['user-agent'] ? { userAgent: values['user-agent'] } : {}),
 				...(auth ? { auth, authStateDir: join(cwd, STATE_DIR, 'auth') } : {}),
+				...(targets ? { endpoints: targets.endpoints, unchecked: targets.unchecked } : {}),
+				...(values.source || values['new-source'] ? { sourceDirs: { ...(values.source ? { old: resolve(values.source) } : {}), ...(values['new-source'] ? { new: resolve(values['new-source']) } : {}) } } : {}),
 			});
 			const path = await writeReport(report, join(cwd, STATE_DIR));
 			await recordResults(cwd, report);

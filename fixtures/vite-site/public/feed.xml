@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+	<channel>
+		<title>Lighthouse Walks news</title>
+		<link>https://lighthouse.example/</link>
+		<description>Timetable changes and new routes.</description>
+		<item>
+			<title>Winter timetable from November</title>
+			<link>https://lighthouse.example/news/winter-timetable</link>
+			<guid>https://lighthouse.example/news/winter-timetable</guid>
+			<description>Walks start an hour later from the first of November.</description>
+		</item>
+		<item>
+			<title>New route: Porthgwarra to Land’s End</title>
+			<link>https://lighthouse.example/news/porthgwarra-route</link>
+			<guid>https://lighthouse.example/news/porthgwarra-route</guid>
+			<description>A three-hour walk past the old coastguard lookout.</description>
+		</item>
+	</channel>
+</rss>

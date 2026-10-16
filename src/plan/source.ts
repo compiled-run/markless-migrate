@@ -10,6 +10,7 @@ export interface RouteUnionEntry {
 	readonly line?: number;
 	readonly dynamic?: boolean;
 	readonly auth?: readonly string[];
+	readonly kind?: 'page' | 'endpoint';
 }
 
 export interface SourceInventory extends SourceFacts {
@@ -37,7 +38,7 @@ export function unionRoutes(crawled: readonly string[], routes: readonly SourceR
 		if (seen.has(r.path)) continue;
 		seen.add(r.path);
 		const hits = byPattern.get(r.path) ?? [];
-		entries.push({ route: r.path, knownBy: hits.length ? ['crawl', 'source'] : ['source'], crawled: [...hits].sort(), file: r.file, line: r.line, dynamic: r.dynamic, ...(r.auth ? { auth: r.auth } : {}) });
+		entries.push({ route: r.path, knownBy: hits.length ? ['crawl', 'source'] : ['source'], crawled: [...hits].sort(), file: r.file, line: r.line, dynamic: r.dynamic, kind: r.kind, ...(r.auth ? { auth: r.auth } : {}) });
 	}
 	for (const path of orphans) entries.push({ route: path, knownBy: ['crawl'], crawled: [path] });
 	return entries.sort((a, b) => a.route.localeCompare(b.route));
