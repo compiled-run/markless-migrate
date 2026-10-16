@@ -12,8 +12,11 @@
 		"node": ">=24.11.0"
 	},
 	"scripts": {
-		"test": "node --test test/*.test.ts",
-		"typecheck": "tsc --noEmit"
+		"test": "node --test test/*.test.ts test/e2e/*.test.ts",
+		"test:unit": "node --test test/*.test.ts",
+		"test:e2e": "node --test test/e2e/*.test.ts",
+		"typecheck": "tsc --noEmit",
+		"browsers": "playwright install chromium"
 	},
 	"devDependencies": {
 		"@types/node": "^24.12.2",
@@ -26,5 +29,10 @@
 		"playwright": "^1.64.1",
 		"pngjs": "^7.0.0",
 		"zod": "^4.6.7"
-	}
+	},
+	"files": [
+		"src",
+		"README.md",
+		"LICENSE"
+	]
 }
