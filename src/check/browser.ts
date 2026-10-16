@@ -15,6 +15,27 @@ export interface SideEnv {
 	readonly writeFacts: readonly WriteFact[];
 	/** Recorded responses to serve instead of the network, and the id the app's server knows them by. */
 	readonly replay?: { readonly set: string; readonly responses: readonly NetworkRecord[] };
+	/** The signed-in role's cookies and storage, from its login script or storage state file. */
+	readonly storageState?: StorageState;
+	/** Sent only to this app's own origin, for example a bot-protection bypass token. */
+	readonly headers?: Readonly<Record<string, string>>;
+	readonly cookies?: readonly { readonly name: string; readonly value: string }[];
+	readonly userAgent?: string;
+}
+
+export type StorageState = Exclude<BrowserContextOptions['storageState'], string | undefined>;
+
+function cookieMatches(domain: string, host: string): boolean {
+	const d = domain.replace(/^\./, '');
+	return host === d || host.endsWith(`.${d}`);
+}
+
+/** Headers for the checker's own requests to the app: bypass headers, the role's cookies and --cookie values, the user agent. */
+export function appHeaders(env: SideEnv | undefined): Record<string, string> {
+	if (!env) return {};
+	const host = new URL(env.origin).hostname;
+	const cookies = [...(env.storageState?.cookies ?? []).filter((c) => cookieMatches(c.domain, host)), ...(env.cookies ?? [])].map((c) => `${c.name}=${c.value}`);
+	return { ...env.headers, ...(cookies.length ? { cookie: cookies.join('; ') } : {}), ...(env.userAgent ? { 'user-agent': env.userAgent } : {}) };
 }
 
 export const RECORDER_HEADER = 'x-markless-migrate';
@@ -48,7 +69,7 @@ export function recorderTag(env: SideEnv, load: string): string {
 
 /** Headers for the checker's own requests to an app, so replayed data reaches those renders too. */
 export function tagHeaders(env: SideEnv | undefined): Record<string, string> {
-	return env ? { [RECORDER_HEADER]: recorderTag(env, randomUUID()) } : {};
+	return env ? { ...appHeaders(env), [RECORDER_HEADER]: recorderTag(env, randomUUID()) } : {};
 }
 
 /** Why a request is a write, or undefined for a read. */
@@ -125,7 +146,9 @@ export interface OpenPage {
 
 /** A fresh context with the clock and randomness frozen, trackers blocked, writes held back unless allowed, and recorded data served. */
 export async function openPage(browser: Browser, env: SideEnv, viewport: Viewport, options: OpenOptions = {}): Promise<OpenPage> {
-	const context = await browser.newContext(contextOptions(viewport, env.freeze));
+	const context = await browser.newContext({ ...contextOptions(viewport, env.freeze), ...(env.storageState ? { storageState: env.storageState } : {}), ...(env.userAgent ? { userAgent: env.userAgent } : {}) });
+	if (env.cookies?.length) await context.addCookies(env.cookies.map((c) => ({ ...c, url: env.origin })));
+	const extra = env.headers ?? {};
 	if (env.freeze) await context.addInitScript(freezePage, { time: env.freeze.time, seed: env.freeze.seed });
 	const load = randomUUID();
 	const tag = recorderTag(env, load);
@@ -179,8 +202,9 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 		}
 		// The page load's id goes only on the page and its API calls: framework prefetches render other routes, whose fetches are not this page's.
 		const own = request.isNavigationRequest() || (['fetch', 'xhr'].includes(request.resourceType()) && !frameworkTransport(request, url));
-		if (own) return route.continue({ headers: { ...request.headers(), [RECORDER_HEADER]: tag } });
-		return env.replay ? route.continue({ headers: { ...request.headers(), [RECORDER_HEADER]: recorderTag(env, randomUUID()) } }) : route.continue();
+		if (own) return route.continue({ headers: { ...request.headers(), ...extra, [RECORDER_HEADER]: tag } });
+		if (env.replay) return route.continue({ headers: { ...request.headers(), ...extra, [RECORDER_HEADER]: recorderTag(env, randomUUID()) } });
+		return env.headers ? route.continue({ headers: { ...request.headers(), ...extra } }) : route.continue();
 	});
 	const finish = (request: Request) => {
 		if (handled.has(request) || !contractRequest(request, env.origin)) return;
@@ -212,7 +236,7 @@ function tokenHeaders(): Record<string, string> {
 /** What the server fetched while rendering this load, when it runs with the request recorder; undefined when it does not. */
 export async function serverRecords(env: SideEnv, load: string): Promise<NetworkRecord[] | undefined> {
 	try {
-		const response = await fetch(new URL(`/__markless-migrate/requests?load=${encodeURIComponent(load)}`, env.origin), { headers: tokenHeaders() });
+		const response = await fetch(new URL(`/__markless-migrate/requests?load=${encodeURIComponent(load)}`, env.origin), { headers: { ...appHeaders(env), ...tokenHeaders() } });
 		if (!response.ok || !mime(response.headers.get('content-type') ?? '').includes('json')) {
 			await response.body?.cancel();
 			return undefined;
@@ -227,7 +251,7 @@ export async function serverRecords(env: SideEnv, load: string): Promise<Network
 /** Hands recorded server responses to the app's server recorder; false when the server does not run it. */
 export async function pushRecording(env: SideEnv): Promise<boolean> {
 	if (!env.replay) return true;
-	const headers = tokenHeaders();
+	const headers = { ...appHeaders(env), ...tokenHeaders() };
 	try {
 		const hello = await fetch(new URL('/__markless-migrate/', env.origin), { headers });
 		const recorder = hello.ok && (hello.headers.get('content-type') ?? '').includes('json') && ((await hello.json()) as { recorder?: number }).recorder === 1;

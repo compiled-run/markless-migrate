@@ -6,7 +6,7 @@ import { compareNetwork, contractLines } from './network.ts';
 import type { ClientFact, NondeterminismFact } from './source-facts.ts';
 import { at as sourceAt } from './source-facts.ts';
 import { diffFields, diffLines, fieldTemplates, lineTemplates, type LineDiff } from './noise.ts';
-import type { AssetRecord, Box, Dimension, ElementSnapshot, Failure, NoiseReport, PageCapture, RouteCapture, RouteResult, Shot } from './types.ts';
+import type { AssetRecord, Box, Dimension, ElementSnapshot, Failure, HttpCapture, NoiseReport, PageCapture, RouteCapture, RouteResult, Shot } from './types.ts';
 import { DIMENSIONS } from './types.ts';
 import { compareScreenshots, visualNoise, visuallyDifferent } from './visual.ts';
 
@@ -171,6 +171,22 @@ export function noiseReport(olds: readonly RouteCapture[], frozen: boolean, sour
 	return { noisy: [...found].map(([element, e]) => ({ viewport: e.viewports.join(', '), element, why: e.why })), blocked };
 }
 
+/** Status, redirect chain and content type; what varied between OLD loads may vary. */
+export function httpFailures(route: string, olds: readonly HttpCapture[], next: HttpCapture): Failure[] {
+	const failures: Failure[] = [];
+	const oldA = olds[0]!;
+	const others = olds.length > 1 ? olds.slice(1) : [oldA];
+	const chain = (c: HttpCapture) => Object.fromEntries(c.chain.map((hop, i) => [`hop ${i + 1}`, `${hop.status} ${hop.url}`]));
+	for (const d of diffFields(fieldTemplates(chain(oldA), ...others.map(chain)), chain(next))) {
+		const last = d.key === `hop ${oldA.chain.length}` && oldA.chain.length === next.chain.length;
+		failures.push({ route, dimension: 'http', check: last ? 'status' : `redirect chain ${d.key}`, expected: d.expected ?? '(absent)', actual: d.actual ?? '(absent)', hint: last ? HINTS.status : HINTS.redirects });
+	}
+	if (others.every((o) => o.contentType === oldA.contentType) && oldA.contentType !== next.contentType) {
+		failures.push({ route, dimension: 'http', check: 'content-type', expected: oldA.contentType, actual: next.contentType, hint: HINTS.contentType });
+	}
+	return failures;
+}
+
 export function compareRoute(route: string, olds: readonly RouteCapture[], next: RouteCapture, probes: ReadonlyMap<string, Probe>, clients: readonly ClientFact[] = []): RouteResult {
 	const oldA = olds[0]!;
 	const others = olds.length > 1 ? olds.slice(1) : [oldA];
@@ -178,14 +194,7 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 	const visualDiffs: { viewport: string; png: Buffer }[] = [];
 	const shots: Shot[] = [];
 
-	const chain = (c: RouteCapture) => Object.fromEntries(c.http.chain.map((hop, i) => [`hop ${i + 1}`, `${hop.status} ${hop.url}`]));
-	for (const d of diffFields(fieldTemplates(chain(oldA), ...others.map(chain)), chain(next))) {
-		const last = d.key === `hop ${oldA.http.chain.length}` && oldA.http.chain.length === next.http.chain.length;
-		failures.push({ route, dimension: 'http', check: last ? 'status' : `redirect chain ${d.key}`, expected: d.expected ?? '(absent)', actual: d.actual ?? '(absent)', hint: last ? HINTS.status : HINTS.redirects });
-	}
-	if (others.every((o) => o.http.contentType === oldA.http.contentType) && oldA.http.contentType !== next.http.contentType) {
-		failures.push({ route, dimension: 'http', check: 'content-type', expected: oldA.http.contentType, actual: next.http.contentType, hint: HINTS.contentType });
-	}
+	failures.push(...httpFailures(route, olds.map((o) => o.http), next.http));
 
 	for (const [viewport, a] of Object.entries(oldA.pages)) {
 		const bs = others.map((o) => o.pages[viewport]!);

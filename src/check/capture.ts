@@ -3,6 +3,7 @@ import { collectPage, decodeImages } from './collect.ts';
 import { createHash } from 'node:crypto';
 import { captureA11y } from './a11y.ts';
 import { isFingerprinted } from './assets.ts';
+import { BlockedError, detectChallenge } from './blocked.ts';
 import { defaultEnv, openPage, serverRecords, tagHeaders, type SideEnv } from './browser.ts';
 import { renderedFonts } from './fonts.ts';
 import type { AssetRecord, HttpCapture, HttpHop, PageCapture, RouteCapture, ScriptWeight, Viewport } from './types.ts';
@@ -22,8 +23,10 @@ export function mime(contentType: string | null | undefined): string {
 export async function captureHttp(origin: string, route: string, headers: Record<string, string> = {}): Promise<HttpCapture> {
 	const chain: HttpHop[] = [];
 	let url = new URL(route, origin).href;
+	const home = new URL(origin).origin;
 	for (let hop = 0; hop < 10; hop++) {
-		const response = await fetch(url, { redirect: 'manual', headers });
+		// Cookies, tokens and bypass headers go only to the app's own origin, never to a host a redirect points at.
+		const response = await fetch(url, { redirect: 'manual', headers: new URL(url).origin === home ? headers : Object.fromEntries(Object.entries(headers).filter(([k]) => /^(accept-language|user-agent)$/i.test(k))) });
 		await response.body?.cancel();
 		chain.push({ url: toLocal(url, origin), status: response.status });
 		const location = response.headers.get('location');
@@ -89,6 +92,8 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		await page.coverage.startJSCoverage({ resetOnNavigation: false });
 		const navigation = await page.goto(new URL(route, origin).href, { waitUntil: 'load' });
 		const html = (await navigation?.text().catch(() => '')) ?? '';
+		const wall = navigation && detectChallenge({ status: navigation.status(), headers: await navigation.allHeaders(), body: html });
+		if (wall) throw new BlockedError({ status: navigation!.status(), ...wall }, origin);
 		await settle(page);
 		const collected = await page.evaluate(collectPage, { origin, full: true });
 		const aria = (await page.locator('body').ariaSnapshot()).split(origin).join('').split('\n');

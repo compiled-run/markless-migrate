@@ -45,6 +45,12 @@ matches it in a real browser. A route is done when its check is green, not when 
   see the old app's responses.
 - Writes (form posts, non-GET requests) are held back as "would POST ..." unless both origins are on
   this machine or marked \`--staging\` (\`staging: true\`). Never mark a production origin as staging.
+- Logged-in pages: \`plan --source\` writes a starter \`.migrate/auth.json\` with the roles and login route it
+  found; fill in the login steps (credentials as \`\${ENV}\`) and pass it as \`--auth\` (\`auth\`). Every route is
+  then checked once per role and anonymous; \`auth\` failures mean the new app lets a role in, keeps it out,
+  sends it elsewhere, or sets the session cookie differently than the old app did.
+- A route reported as blocked was answered by bot protection, not the app: point the check at a staging
+  URL or pass the bypass token with \`--header\`/\`--cookie\` (\`header\`/\`cookie\`); never weaken the wall.
 - \`a11y\` and \`i18n\` failures are as blocking as visual ones; check every locale the inventory lists.
 - \`.migrate/report.html\` shows old, new and diff images; tell the user to open it when a failure is visual.
 `;

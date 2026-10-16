@@ -13,6 +13,8 @@ export interface RouteState {
 	readonly new: string;
 	readonly red: readonly Dimension[];
 	readonly failures: readonly Failure[];
+	/** Why nothing was compared: a bot wall answered instead of the app. */
+	readonly blocked?: string;
 }
 
 async function readJson<T>(path: string): Promise<T | undefined> {
@@ -32,8 +34,9 @@ export async function recordResults(cwd: string, report: Report): Promise<void> 
 	const path = join(cwd, STATE_DIR, 'results.json');
 	const results = (await readJson<Record<string, RouteState>>(path)) ?? {};
 	for (const route of report.routes) {
-		results[route.route] = {
+		results[route.role && route.role !== 'anonymous' ? `${route.route} as ${route.role}` : route.route] = {
 			route: route.route,
+			...(route.blocked ? { blocked: route.blocked.message } : {}),
 			ok: route.ok,
 			checkedAt: report.startedAt,
 			old: report.old,
@@ -48,7 +51,7 @@ export async function recordResults(cwd: string, report: Report): Promise<void> 
 
 export interface Status {
 	readonly planned: boolean;
-	readonly routes: readonly { route: string; state: 'green' | 'red' | 'unchecked'; red: readonly Dimension[]; checkedAt?: string }[];
+	readonly routes: readonly { route: string; state: 'green' | 'red' | 'blocked' | 'unchecked'; red: readonly Dimension[]; checkedAt?: string }[];
 }
 
 export async function status(cwd: string): Promise<Status> {
@@ -59,7 +62,7 @@ export async function status(cwd: string): Promise<Status> {
 		planned: Boolean(inventory),
 		routes: names.map((route) => {
 			const r = results[route];
-			return r ? { route, state: r.ok ? 'green' : 'red', red: r.red, checkedAt: r.checkedAt } : { route, state: 'unchecked', red: [] };
+			return r ? { route, state: r.blocked ? 'blocked' : r.ok ? 'green' : 'red', red: r.red, checkedAt: r.checkedAt } : { route, state: 'unchecked', red: [] };
 		}),
 	};
 }
@@ -67,7 +70,7 @@ export async function status(cwd: string): Promise<Status> {
 export function summarizeStatus(s: Status): string {
 	if (!s.planned && !s.routes.length) return 'No inventory yet. Run plan against the old app first.\n';
 	const count = (state: string) => s.routes.filter((r) => r.state === state).length;
-	const lines = [`${count('green')} green, ${count('red')} red, ${count('unchecked')} not checked${s.planned ? '' : ' (no inventory: only checked routes are listed)'}`];
+	const lines = [`${count('green')} green, ${count('red')} red, ${count('blocked') ? `${count('blocked')} blocked by bot protection, ` : ''}${count('unchecked')} not checked${s.planned ? '' : ' (no inventory: only checked routes are listed)'}`];
 	for (const r of s.routes) lines.push(`  ${r.state.padEnd(9)} ${r.route}${r.red.length ? `  [${r.red.join(', ')}]` : ''}`);
 	return `${lines.join('\n')}\n`;
 }

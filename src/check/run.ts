@@ -2,14 +2,16 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium, type Browser } from 'playwright';
-import { defaultEnv, isLoopback, pushRecording, tagHeaders, type SideEnv } from './browser.ts';
+import { accessFailures, ANONYMOUS, compareLogin, loginRoutes, saveState, signIn, type AuthConfig, type RoleSpec } from './auth.ts';
+import { BlockedError, blockedResult, probeWall } from './blocked.ts';
+import { defaultEnv, isLoopback, pushRecording, tagHeaders, type SideEnv, type StorageState } from './browser.ts';
 import { captureHttp, captureRoute, mime } from './capture.ts';
 import { readRecording, recordable, slug, writeRecording } from './data.ts';
 import { DEFAULT_FREEZE, pinnedBy, pinnedSummary, type FreezeOptions } from './freeze.ts';
 import { HINTS } from './hints.ts';
 import { negotiationFailures } from './i18n.ts';
 import { compareJourneys, explore, replayAll } from './journeys.ts';
-import { assetsToProbe, compareRoute, cssTargets, noiseReport, noisyStyles, withFailures, type Probe } from './compare.ts';
+import { assetsToProbe, compareRoute, cssTargets, httpFailures, noiseReport, noisyStyles, withFailures, type Probe } from './compare.ts';
 import { matchElements } from './match.ts';
 import { contractLines } from './network.ts';
 import type { SourceFacts } from './source-facts.ts';
@@ -17,8 +19,8 @@ import { compareStates, type StateInput } from './states.ts';
 import { discoverStates, parseRules } from './stylesheet.ts';
 import { renderHtml } from './html.ts';
 import { blocker, type BlockList } from './trackers.ts';
-import type { Failure, PageCapture, Report, RouteCapture, RouteResult, Shot, Viewport } from './types.ts';
-import { VIEWPORTS } from './types.ts';
+import type { Blocked, Dimension, Failure, LoginResult, PageCapture, Report, RouteCapture, RouteResult, Shot, Viewport } from './types.ts';
+import { DIMENSIONS, VIEWPORTS } from './types.ts';
 
 export interface CheckOptions {
 	readonly oldOrigin: string;
@@ -38,6 +40,14 @@ export interface CheckOptions {
 	readonly source?: SourceFacts;
 	/** Record OLD's responses per route into dir, or serve them to both apps from there. */
 	readonly data?: { readonly mode: 'record' | 'replay'; readonly dir: string };
+	/** Roles to sign in as; every route is checked once per role and once anonymous. */
+	readonly auth?: AuthConfig;
+	/** Where each role's signed-in storage state is written, per side. */
+	readonly authStateDir?: string;
+	/** Sent to both apps' own origins only, for example a bot-protection bypass token. */
+	readonly headers?: Readonly<Record<string, string>>;
+	readonly cookies?: readonly { readonly name: string; readonly value: string }[];
+	readonly userAgent?: string;
 }
 
 interface Run {
@@ -174,22 +184,94 @@ async function replayRoute(run: Run, dir: string, route: string): Promise<{ run:
 	return { run: next, failures };
 }
 
+/** A route that was not compared in full: only `compared` dimensions carry a verdict, the rest are skipped. */
+function partialResult(route: string, failures: readonly Failure[], compared: readonly Dimension[], blocked?: Blocked): RouteResult {
+	const failed = new Set(failures.map((f) => f.dimension));
+	const dimensions = Object.fromEntries(DIMENSIONS.map((d) => [d, failed.has(d) ? 'fail' : compared.includes(d) ? 'pass' : 'skipped'])) as RouteResult['dimensions'];
+	const zero = { downloaded: 0, source: 0, executed: 0 };
+	return { route, ok: false, dimensions, failures, weight: { old: zero, new: zero }, visualDiffs: [], shots: [], ...(blocked ? { blocked } : {}) };
+}
+
+function asRole(result: RouteResult, role: string | undefined): RouteResult {
+	return role ? { ...result, role, failures: result.failures.map((f) => ({ ...f, role })) } : result;
+}
+
+/** Checks one route as one role: a bot wall stops it, a different access decision is reported without comparing two different pages. */
+async function checkAs(browser: Browser, run: Run, route: string, role: string | undefined, logins: readonly string[], options: CheckOptions): Promise<RouteResult> {
+	const wall = (await probeWall(run.old, route, 'old')) ?? (await probeWall(run.new, route, 'new'));
+	if (wall) return partialResult(route, [], [], wall);
+	const gate: Failure[] = [];
+	if (role) {
+		const [a, b, n] = await Promise.all([captureHttp(run.old.origin, route, tagHeaders(run.old)), captureHttp(run.old.origin, route, tagHeaders(run.old)), captureHttp(run.new.origin, route, tagHeaders(run.new))]);
+		const decided = accessFailures(route, role, a, n, logins);
+		if (!decided.comparable) return partialResult(route, [...httpFailures(route, [a, b], n), ...decided.failures], ['http', 'auth']);
+		gate.push(...decided.failures);
+	}
+	try {
+		const result = await checkRoute(browser, run, route, options.viewports, options.locales);
+		if (!gate.length) return result;
+		const gated = withFailures(result, [...gate, ...result.failures]);
+		const old = oldCaptures.get(result);
+		if (old) oldCaptures.set(gated, old);
+		return gated;
+	} catch (error) {
+		if (!(error instanceof BlockedError)) throw error;
+		return partialResult(route, [], [], blockedResult(error.origin === run.new.origin && error.origin !== run.old.origin ? 'new' : 'old', error.blocked.status, error.blocked));
+	}
+}
+
+async function signInAs(browser: Browser, base: Run, role: string, spec: RoleSpec, auth: AuthConfig, stateDir: string | undefined): Promise<{ run?: Run; login: LoginResult }> {
+	const route = auth.loginRoute ?? loginRoutes(auth)[0] ?? '(login)';
+	const states: Partial<Record<'old' | 'new', StorageState>> = {};
+	const failures: Failure[] = [];
+	for (const side of ['old', 'new'] as const) {
+		try {
+			states[side] = await signIn(browser, base[side], side, role, spec, auth.dir);
+			if (stateDir) await saveState(stateDir, role, side, states[side]!);
+		} catch (error) {
+			failures.push({ route, role, dimension: 'auth', check: `signing in as ${role} on ${side.toUpperCase()}`, expected: 'the login script completes', actual: (error as Error).message, hint: side === 'old' ? HINTS.loginOld : HINTS.loginNew });
+		}
+	}
+	if (!states.old) return { login: { role, ok: false, failures, cookies: { old: [], new: [] } } };
+	const compared = states.new ? compareLogin(role, route, states.old, states.new, base.old.origin, base.new.origin) : undefined;
+	const all = [...failures, ...(compared?.failures ?? [])];
+	return {
+		run: { ...base, old: { ...base.old, storageState: states.old }, new: { ...base.new, ...(states.new ? { storageState: states.new } : {}) } },
+		login: { role, ok: all.length === 0, failures: all, cookies: compared?.cookies ?? { old: [], new: [] } },
+	};
+}
+
 export async function runCheck(options: CheckOptions): Promise<Report> {
 	const startedAt = new Date().toISOString();
 	const browser = options.browser ?? (await chromium.launch());
 	const freeze: FreezeOptions | false = options.freeze === false ? false : { ...DEFAULT_FREEZE, ...options.freeze };
-	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [] };
+	const bypass = { ...(options.headers ? { headers: options.headers } : {}), ...(options.cookies?.length ? { cookies: options.cookies } : {}), ...(options.userAgent ? { userAgent: options.userAgent } : {}) };
+	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [], ...bypass };
 	const base: Run = { old: defaultEnv(options.oldOrigin, shared), new: defaultEnv(options.newOrigin, shared), frozen: Boolean(freeze), ...(options.source ? { source: options.source } : {}) };
+	const auth = options.auth;
+	const roles: (string | undefined)[] = auth ? [ANONYMOUS, ...Object.keys(auth.roles)] : [undefined];
+	const logins: LoginResult[] = [];
+	const loginPaths = auth ? loginRoutes(auth) : [];
 	try {
 		const routes: RouteResult[] = [];
-		for (const route of options.routes) {
-			const { run, failures } = options.data?.mode === 'replay' ? await replayRoute(base, options.data.dir, route) : { run: base, failures: [] };
-			const result = await checkRoute(browser, run, route, options.viewports, options.locales);
-			routes.push(failures.length ? withFailures(result, [...failures, ...result.failures]) : result);
-			const old = oldCaptures.get(result);
-			if (options.data?.mode === 'record' && old) {
-				const records = Object.values(old.pages)[0]?.network?.records ?? [];
-				await writeRecording(options.data.dir, { route, recordedFrom: options.oldOrigin, at: startedAt, responses: recordable(records) });
+		for (const role of roles) {
+			let roleRun = base;
+			if (auth && role && role !== ANONYMOUS) {
+				const signed = await signInAs(browser, base, role, auth.roles[role]!, auth, options.authStateDir);
+				logins.push(signed.login);
+				if (!signed.run) continue;
+				roleRun = signed.run;
+			}
+			const data = options.data && role && role !== ANONYMOUS ? { ...options.data, dir: join(options.data.dir, slug(role)) } : options.data;
+			for (const route of options.routes) {
+				const { run, failures } = data?.mode === 'replay' ? await replayRoute(roleRun, data.dir, route) : { run: roleRun, failures: [] };
+				const result = await checkAs(browser, run, route, role, loginPaths, options);
+				routes.push(asRole(failures.length ? withFailures(result, [...failures, ...result.failures]) : result, role));
+				const old = oldCaptures.get(result);
+				if (data?.mode === 'record' && old) {
+					const records = Object.values(old.pages)[0]?.network?.records ?? [];
+					await writeRecording(data.dir, { route, recordedFrom: options.oldOrigin, at: startedAt, responses: recordable(records) });
+				}
 			}
 		}
 		const sources = options.source?.nondeterminism.map((f) => ({ ...f, pinned: pinnedBy(`${f.kind} ${f.what ?? ''}`, f.side, freeze) }));
@@ -198,12 +280,13 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			old: options.oldOrigin,
 			new: options.newOrigin,
 			startedAt,
-			ok: routes.every((r) => r.ok),
+			ok: routes.every((r) => r.ok) && logins.every((l) => l.ok),
 			routes,
 			pinned: pinnedSummary(freeze),
 			...(sources ? { sources } : {}),
 			...(options.data ? { data: options.data } : {}),
 			writes: shared.sendWrites ? 'sent' : 'held back',
+			...(auth ? { roles: roles as string[], logins } : {}),
 		};
 	} finally {
 		if (!options.browser) await browser.close();

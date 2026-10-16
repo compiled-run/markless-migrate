@@ -2,7 +2,7 @@ import type { RecordedJourney } from './journeys.ts';
 import type { NetworkCapture } from './network.ts';
 import type { NondeterminismFact } from './source-facts.ts';
 
-export const DIMENSIONS = ['http', 'rendered', 'visual', 'seo', 'assets', 'css', 'a11y', 'i18n', 'behaviour', 'network', 'weight'] as const;
+export const DIMENSIONS = ['http', 'auth', 'rendered', 'visual', 'seo', 'assets', 'css', 'a11y', 'i18n', 'behaviour', 'network', 'weight'] as const;
 export type Dimension = (typeof DIMENSIONS)[number];
 
 export interface Viewport {
@@ -128,6 +128,8 @@ export interface RouteCapture {
 
 export interface Failure {
 	readonly route: string;
+	/** The role the route was checked as, when check ran with --auth. */
+	readonly role?: string;
 	readonly dimension: Dimension;
 	readonly check: string;
 	readonly viewport?: string;
@@ -149,8 +151,13 @@ export interface Shot {
 
 export interface RouteResult {
 	readonly route: string;
+	/** The role the route was checked as, when check ran with --auth. */
+	readonly role?: string;
 	readonly ok: boolean;
-	readonly dimensions: Readonly<Record<Dimension, 'pass' | 'fail'>>;
+	/** `skipped`: not compared, because a side was blocked or the two sides did not let this role in alike. */
+	readonly dimensions: Readonly<Record<Dimension, 'pass' | 'fail' | 'skipped'>>;
+	/** A bot wall or challenge page answered instead of the app, so nothing was compared. */
+	readonly blocked?: Blocked;
 	readonly failures: readonly Failure[];
 	readonly weight: { readonly old: Omit<Weight, 'scripts'>; readonly new: Omit<Weight, 'scripts'> };
 	readonly visualDiffs: readonly { viewport: string; png: Buffer }[];
@@ -165,6 +172,24 @@ export interface RouteResult {
 	readonly network?: { readonly old: readonly string[]; readonly new: readonly string[]; readonly server: { readonly old: boolean; readonly new: boolean } };
 	/** Every write the OLD page and its interactions made, and whether it was sent. */
 	readonly writes?: readonly (WriteLine & { readonly during: string })[];
+}
+
+export interface Blocked {
+	readonly side: 'old' | 'new';
+	readonly vendor: string;
+	readonly status: number;
+	/** What gave the challenge away: a header, a cookie or a marker in the page. */
+	readonly evidence: string;
+	readonly message: string;
+}
+
+/** Signing in as one role on both apps, and how the session cookies it set compare. */
+export interface LoginResult {
+	readonly role: string;
+	readonly ok: boolean;
+	readonly failures: readonly Failure[];
+	/** Cookie names with their attributes, per side. */
+	readonly cookies: { readonly old: readonly string[]; readonly new: readonly string[] };
 }
 
 export interface NoiseReport {
@@ -194,4 +219,7 @@ export interface Report {
 	readonly data?: { readonly mode: 'record' | 'replay'; readonly dir: string };
 	/** Whether writes were sent to the apps or held back and compared unsent. */
 	readonly writes?: 'sent' | 'held back';
+	/** Roles checked, `anonymous` first, when check ran with --auth; routes are grouped in this order. */
+	readonly roles?: readonly string[];
+	readonly logins?: readonly LoginResult[];
 }

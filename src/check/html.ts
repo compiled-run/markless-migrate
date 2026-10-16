@@ -1,4 +1,4 @@
-import type { Box, Report, RouteResult, Shot } from './types.ts';
+import type { Box, LoginResult, Report, RouteResult, Shot } from './types.ts';
 
 const list = (items: readonly string[], cls = '') => `<ul>${items.map((x) => `<li${cls ? ` class="${cls}"` : ''}>${esc(x)}</li>`).join('')}</ul>`;
 
@@ -71,7 +71,22 @@ function kb(bytes: number): string {
 	return `${(bytes / 1024).toFixed(1)} kB`;
 }
 
+function blockedSection(r: RouteResult, index: number): string {
+	return `<section class="route" id="route-${index}">
+<h2><span class="badge blocked">blocked</span> ${esc(r.route)}${r.role ? ` <small>as ${esc(r.role)}</small>` : ''}</h2>
+<p><strong>${esc(r.blocked!.message)}</strong></p>
+<p><small>Nothing was compared on this route: the ${r.blocked!.side} app answered with a bot-protection page instead of the route.</small></p>
+</section>`;
+}
+
+function login(l: LoginResult): string {
+	const cookies = `<div class="pair"><div><h4>Old</h4>${list(l.cookies.old.length ? l.cookies.old : ['(none)'])}</div><div><h4>New</h4>${list(l.cookies.new.length ? l.cookies.new : ['(none)'])}</div></div>`;
+	const rows = l.failures.map((f) => `<tr><td>${esc(f.check)}</td><td><code>${esc(f.expected)}</code></td><td><code>${esc(f.actual)}</code></td><td>${esc(f.hint)}</td></tr>`).join('');
+	return `<details class="states login"${l.ok ? '' : ' open'}><summary><span class="badge ${l.ok ? 'pass' : 'fail'}">${l.ok ? 'same' : 'differs'}</span> Signing in as ${esc(l.role)}: cookies it leaves</summary>${cookies}${rows ? `<table><thead><tr><th>Check</th><th>Expected (old)</th><th>Actual (new)</th><th>Fix</th></tr></thead><tbody>${rows}</tbody></table>` : ''}</details>`;
+}
+
 function route(r: RouteResult, index: number): string {
+	if (r.blocked) return blockedSection(r, index);
 	const dims = Object.entries(r.dimensions)
 		.map(([d, state]) => `<li class="${state}">${esc(d)}</li>`)
 		.join('');
@@ -83,7 +98,7 @@ function route(r: RouteResult, index: number): string {
 		: '<p>Every check passed.</p>';
 	const w = r.weight;
 	return `<section class="route" id="route-${index}">
-<h2><span class="badge ${r.ok ? 'pass' : 'fail'}">${r.ok ? 'green' : 'red'}</span> ${esc(r.route)}</h2>
+<h2><span class="badge ${r.ok ? 'pass' : 'fail'}">${r.ok ? 'green' : 'red'}</span> ${esc(r.route)}${r.role ? ` <small>as ${esc(r.role)}</small>` : ''}</h2>
 <ul class="dims" aria-label="Dimensions">${dims}</ul>
 <p class="weight">JavaScript on the wire ${kb(w.old.downloaded)} → ${kb(w.new.downloaded)}, run at load ${kb(w.old.executed)} → ${kb(w.new.executed)} (uncompressed)</p>
 ${r.states ? `<details class="states"><summary>CSS states and conditions from the old stylesheets: ${r.states.checked.length} forced and compared${r.states.skipped.length ? `, ${r.states.skipped.length} not forced` : ''}</summary><ul>${r.states.checked.map((x) => `<li>${esc(x)}</li>`).join('')}${r.states.skipped.map((x) => `<li class="skipped">not forced: ${esc(x)}</li>`).join('')}</ul></details>` : ''}
@@ -107,7 +122,8 @@ h2 { font-size: 18px; margin: 24px 0 8px; }
 h3 { font-size: 15px; margin: 16px 0 8px; }
 small, .weight { color: var(--muted); }
 .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; color: white; font-size: 12px; font-weight: 600; vertical-align: 2px; }
-.badge.pass { background: var(--pass); } .badge.fail { background: var(--fail); }
+.badge.pass { background: var(--pass); } .badge.fail { background: var(--fail); } .badge.blocked { background: var(--muted); }
+.role { border-top: 2px solid var(--ink); margin-top: 24px; }
 .toc { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 0; list-style: none; }
 .toc a { color: inherit; }
 .dims { display: flex; flex-wrap: wrap; gap: 6px; padding: 0; list-style: none; }
@@ -167,7 +183,16 @@ for (const shot of document.querySelectorAll('.shot')) {
 
 export function renderHtml(report: Report): string {
 	const green = report.routes.filter((r) => r.ok).length;
-	const toc = report.routes.map((r, i) => `<li><a href="#route-${i}"><span class="badge ${r.ok ? 'pass' : 'fail'}">${r.ok ? 'green' : 'red'}</span> ${esc(r.route)}</a></li>`).join('');
+	const badge = (r: RouteResult) => (r.blocked ? '<span class="badge blocked">blocked</span>' : `<span class="badge ${r.ok ? 'pass' : 'fail'}">${r.ok ? 'green' : 'red'}</span>`);
+	const tocItems = (items: readonly [RouteResult, number][]) => items.map(([r, i]) => `<li><a href="#route-${i}">${badge(r)} ${esc(r.route)}</a></li>`).join('');
+	const indexed = report.routes.map((r, i) => [r, i] as [RouteResult, number]);
+	const groups = report.roles ? report.roles.map((role) => ({ role, items: indexed.filter(([r]) => r.role === role) })) : [{ role: undefined, items: indexed }];
+	const toc = report.roles ? groups.map((g) => `<li>As ${esc(g.role!)}: <ul class="toc">${tocItems(g.items)}</ul></li>`).join('') : tocItems(indexed);
+	const body = groups.map((g) => {
+		const signIn = report.logins?.find((l) => l.role === g.role);
+		const head = g.role ? `<section class="role"><h2>As ${esc(g.role)}</h2>${signIn ? login(signIn) : ''}${!g.items.length && signIn ? '<p>Not checked: signing in on the old app failed.</p>' : ''}</section>\n` : '';
+		return head + g.items.map(([r, i]) => route(r, i)).join('\n');
+	}).join('\n');
 	return `<!doctype html>
 <html lang="en">
 <head>
@@ -185,7 +210,7 @@ ${run(report)}
 <ul class="toc">${toc}</ul>
 </header>
 <main>
-${report.routes.map(route).join('\n')}
+${body}
 </main>
 <script>${SCRIPT}</script>
 </body>

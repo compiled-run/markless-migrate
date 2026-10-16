@@ -2,6 +2,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { join } from 'node:path';
 import * as z from 'zod';
+import { readAuthFile } from '../check/auth.ts';
+import { bypassOptions } from '../check/blocked.ts';
 import { DATA_DIR } from '../check/data.ts';
 import { runCheck, writeReport } from '../check/run.ts';
 import { loadSourceFacts } from '../check/source-facts.ts';
@@ -47,10 +49,15 @@ export function createServer(cwd: string): McpServer {
 				staging: z.boolean().optional().describe('Both origins are staging apps with test data, so writes may be sent to them'),
 				data: z.enum(['record', 'replay']).optional().describe('record: save what the old app fetched for this route in .migrate/data/; replay: serve that recording to both apps so both see the same data'),
 				source: z.string().optional().describe("Path to the old app's source, to find what varies between loads and which handlers write"),
+				auth: z.string().optional().describe('Auth file naming roles (login script or storage state each), as plan writes to .migrate/auth.json; the route is checked once per role and once anonymous'),
+				header: z.array(z.string()).optional().describe('name:value headers sent only to both apps, for example a bot-protection bypass token'),
+				cookie: z.array(z.string()).optional().describe('name=value cookies set on both apps, for example a bot-protection bypass cookie'),
+				userAgent: z.string().optional(),
 			},
 		},
 		async (args) => {
 			const source = args.source ? (await loadSourceFacts(args.source)).facts : undefined;
+			const auth = args.auth ? await readAuthFile(args.auth) : undefined;
 			const report = await runCheck({
 				oldOrigin: args.old,
 				newOrigin: args.new,
@@ -58,11 +65,15 @@ export function createServer(cwd: string): McpServer {
 				...(args.staging ? { staging: { old: true, new: true } } : {}),
 				...(args.data ? { data: { mode: args.data, dir: join(cwd, STATE_DIR, DATA_DIR) } } : {}),
 				...(source ? { source } : {}),
+				...bypassOptions(args.header, args.cookie),
+				...(args.userAgent ? { userAgent: args.userAgent } : {}),
+				...(auth ? { auth, authStateDir: join(cwd, STATE_DIR, 'auth') } : {}),
 			});
 			await writeReport(report, join(cwd, STATE_DIR));
 			await recordResults(cwd, report);
-			const failures = report.routes.flatMap((r) => r.failures);
-			return { ...text(summarize(report)), structuredContent: { ok: report.ok, failures } };
+			const failures = [...report.routes.flatMap((r) => r.failures), ...(report.logins ?? []).flatMap((l) => l.failures)];
+			const blocked = report.routes.flatMap((r) => (r.blocked ? [{ ...(r.role ? { role: r.role } : {}), message: r.blocked.message }] : []));
+			return { ...text(summarize(report)), structuredContent: { ok: report.ok, failures, ...(blocked.length ? { blocked } : {}) } };
 		},
 	);
 

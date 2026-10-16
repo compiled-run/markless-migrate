@@ -7,6 +7,8 @@ import { parseArgs } from 'node:util';
 import { AGENTS, detectAgents, findBinary, type HostEnv, type ServerCommand } from './agents/registry.ts';
 import { applySetup, describeChanges, planSetup } from './agents/setup.ts';
 import { openFile } from './check/open.ts';
+import { readAuthFile } from './check/auth.ts';
+import { bypassOptions } from './check/blocked.ts';
 import { DATA_DIR } from './check/data.ts';
 import { RECORDER, recorderEnv } from './check/recorder.ts';
 import { jsonReport, runCheck, writeReport, type CheckOptions } from './check/run.ts';
@@ -25,6 +27,7 @@ const USAGE = `markless-migrate ${VERSION}
   check   --old <origin> --new <origin> [--route <path>]... [--json] [--open]
           [--source <path>] [--data record|replay] [--staging] [--block <host>]... [--allow <host>]...
           [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
+          [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           Compare routes old vs new (default: every route in the inventory). Exits 1 when any is red.
           Writes .migrate/report.json and .migrate/report.html; --open opens the HTML report.
           Pages load with a fixed clock, seeded randomness, a fixed timezone and locale, and trackers
@@ -32,6 +35,9 @@ const USAGE = `markless-migrate ${VERSION}
           --data record saves what OLD fetched per route in .migrate/data/; --data replay serves it to
           both apps. Writes (form posts, non-GET requests) are sent only when both origins are on this
           machine or --staging; otherwise they are held back and compared unsent.
+          --auth names roles (a login script or a Playwright storage state file each, see plan's
+          .migrate/auth.json); every route is checked once per role and once anonymous. A route a bot
+          wall answers is stopped as blocked; --header and --cookie send a bypass token to both apps.
   recorder
           Print the NODE_OPTIONS that loads the request recorder into a Node server, so check compares
           what the server fetches while rendering and can replay recorded data to it.
@@ -185,9 +191,20 @@ async function main(argv: string[]): Promise<number> {
 					seed: { type: 'string' },
 					timezone: { type: 'string' },
 					locale: { type: 'string' },
+					auth: { type: 'string' },
+					header: { type: 'string', multiple: true },
+					cookie: { type: 'string', multiple: true },
+					'user-agent': { type: 'string' },
 				},
 			});
 			if (!values.old || !values.new) fail('check needs --old <origin> and --new <origin>');
+			let bypass: ReturnType<typeof bypassOptions> = {};
+			try {
+				bypass = bypassOptions(values.header, values.cookie);
+			} catch (error) {
+				fail((error as Error).message);
+			}
+			const auth = values.auth ? await readAuthFile(values.auth).catch((error: Error) => fail(error.message)) : undefined;
 			if (values.data && values.data !== 'record' && values.data !== 'replay') fail('--data must be record or replay');
 			const time = values.time ? Date.parse(values.time) : undefined;
 			if (time !== undefined && Number.isNaN(time)) fail('--time must be a date, for example 2026-01-15T12:00:00Z');
@@ -213,6 +230,9 @@ async function main(argv: string[]): Promise<number> {
 				...(values.staging ? { staging: { old: true, new: true } } : {}),
 				...(source ? { source } : {}),
 				...(values.data ? { data: { mode: values.data as 'record' | 'replay', dir: join(cwd, STATE_DIR, DATA_DIR) } } : {}),
+				...bypass,
+				...(values['user-agent'] ? { userAgent: values['user-agent'] } : {}),
+				...(auth ? { auth, authStateDir: join(cwd, STATE_DIR, 'auth') } : {}),
 			});
 			const path = await writeReport(report, join(cwd, STATE_DIR));
 			await recordResults(cwd, report);

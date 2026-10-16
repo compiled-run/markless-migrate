@@ -52,5 +52,13 @@ export const HINTS = {
 	networkFields: 'The old page shows these fields of the response and the new page does not. Render them, or request them if the new query no longer asks for them.',
 	networkRecorder: 'Start the server with the request recorder so its requests are compared: NODE_OPTIONS="--import <markless-migrate>/src/check/record-server.mjs" (run `markless-migrate recorder` for the exact line).',
 	dataMissing: 'Run check --data record first: it saves what the old app fetched for each route under .migrate/data/, which --data replay then serves to both apps.',
+	accessGranted: 'The new app lets this role see a page the old app kept from it. Port the old guard (middleware, layout or page check) with the same condition, so the new app also redirects to the login page or answers 401/403.',
+	accessDenied: 'The new app turns this role away from a page the old app showed it. Check that the new app reads the same session cookie and grants the same roles.',
+	loginRedirect: 'The new app sends a visitor who is not allowed in to a different place. Redirect to the same login route, with the same query (for example the return path), as the old app.',
+	loginOld: 'The login script failed on the old app, so this role has no reference and its routes were not checked. Fix the steps in the auth file (selectors, credentials in the environment) or pass a storageState file.',
+	loginNew: 'The login script failed on the new app: port the login page and its form handler so the same steps sign in, or give this side its own storageState file.',
+	cookieAttributes: 'The session cookie is set with different attributes. Set the same Path, Domain, HttpOnly, Secure and SameSite as the old app, and keep it a session or persistent cookie as it was: they decide which requests carry the session and whether scripts can read it.',
+	cookieMissing: 'The old app sets this cookie when the role signs in and the new one does not. Set it with the same name, or existing sessions and anything that reads it break at the switch.',
+	cookieExtra: 'The new app sets a cookie on sign-in that the old one did not. Remove it, or make sure it is intended.',
 	weight: 'The new route downloads or runs more JavaScript at load than the old one. Look at the scripts only the new route loads.',
 } as const;
