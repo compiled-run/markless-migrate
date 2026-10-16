@@ -9,14 +9,31 @@ test('a line that never changed between OLD loads must match exactly', () => {
 	assert.ok(!m.test('Home page'));
 });
 
-test('a noisy line keeps its stable words and lets every number vary', () => {
+test('a noisy line may vary only where the OLD loads differed, and digits stay digits', () => {
 	const m = template('Page rendered at 2026-10-16T05:47:57.922Z', 'Page rendered at 2026-10-16T05:47:58.101Z');
-	assert.ok(m.test('Page rendered at 2026-10-16T05:48:00.384Z'), 'digits that were equal in both OLD loads may still move');
-	assert.ok(!m.test('Page built at 2026-10-16T05:48:00.384Z'), 'a stable word changed');
-	assert.ok(!m.test('Page rendered at soon'));
+	assert.ok(m.test('Page rendered at 2026-10-16T05:47:59.384Z'));
+	assert.ok(!m.test('Page rendered at 2026-10-16T05:48:00.384Z'), 'the minute was stable in both OLD loads');
+	assert.ok(!m.test('Page built at 2026-10-16T05:47:59.384Z'), 'a stable word changed');
+	assert.ok(!m.test('Page rendered at 2026-10-16T05:47:ab.384Z'), 'digits became letters');
 });
 
-test('lines that only one OLD load had are optional, everything else is required', () => {
+test('a third OLD load widens the varying positions it confirms', () => {
+	const m = template('Page rendered at 05:47:57', 'Page rendered at 05:47:58', 'Page rendered at 05:48:01');
+	assert.ok(m.test('Page rendered at 05:48:00'));
+	assert.ok(!m.test('Page rendered at 06:48:00'), 'the hour never varied');
+});
+
+test('a noisy line whose token count changed still pins its stable words', () => {
+	const m = template('Updated 5 seconds ago by Ana', 'Updated 1 minute ago by Ana');
+	assert.ok(m.test('Updated 3 hours ago by Ana'));
+	assert.ok(!m.test('Updated 3 hours ago by Bob'));
+	assert.ok(!m.test('Edited 3 hours ago by Ana'));
+});
+
+test('lines that only some OLD loads had are optional, everything else is required', () => {
+	const three = lineTemplates(['a', 'b', 'c'], ['a', 'b', 'c'], ['a', 'c']);
+	assert.deepEqual(diffLines(three, ['a', 'c']), { missing: [], unexpected: [], changed: [] });
+	assert.deepEqual(diffLines(three, ['a', 'b']), { missing: ['c'], unexpected: [], changed: [] });
 	const templates = lineTemplates(['a', 'ad slot', 'b'], ['a', 'b']);
 	assert.deepEqual(diffLines(templates, ['a', 'b']), { missing: [], unexpected: [], changed: [] });
 	assert.deepEqual(diffLines(templates, ['a']), { missing: ['b'], unexpected: [], changed: [] });

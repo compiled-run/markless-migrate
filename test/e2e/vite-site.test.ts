@@ -115,6 +115,17 @@ const MUTATIONS: Mutation[] = [
 			assert.deepEqual(checks, ['JavaScript downloaded', 'JavaScript run at load']);
 		},
 	},
+	{
+		name: 'noise-word',
+		route: '/',
+		edits: [{ file: 'index.html', find: '<p>Page rendered at <time', replace: '<p>Page built at <time' }],
+		red: ['rendered', 'visual'],
+		expect: (report) => {
+			const text = failure(report, 'rendered').find((f) => f.check === 'visible text');
+			assert.match(text!.expected, /^Page rendered at \d{4}-/);
+			assert.match(text!.actual, /^Page built at \d{4}-/);
+		},
+	},
 ];
 
 describe('vite multi-page site', () => {
@@ -145,7 +156,7 @@ describe('vite multi-page site', () => {
 	test('without the noise baseline the same comparison goes red, so the baseline is doing work', async () => {
 		const oldA = await captureRoute(browser, old.origin, '/', VIEWPORTS);
 		const next = await captureRoute(browser, twin.origin, '/', VIEWPORTS);
-		const result = compareRoute('/', oldA, oldA, next, new Map());
+		const result = compareRoute('/', [oldA, oldA], next, new Map());
 		assert.ok(result.failures.some((f) => f.dimension === 'rendered' && /Page rendered at/.test(f.expected)), JSON.stringify(result.failures, null, 1));
 	});
 

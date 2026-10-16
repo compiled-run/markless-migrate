@@ -33,18 +33,20 @@ function markBox(mask: Uint8Array, width: number, height: number, box: Box, pad:
 	for (let y = y0; y < y1; y++) mask.fill(1, y * width + x0, y * width + x1);
 }
 
-export function visualNoise(oldA: Buffer, oldB: Buffer, noisyBoxes: readonly Box[]): VisualNoise {
+export function visualNoise(oldA: Buffer, others: readonly Buffer[], noisyBoxes: readonly Box[]): VisualNoise {
 	const a = PNG.sync.read(oldA);
-	const b = PNG.sync.read(oldB);
 	const mask = new Uint8Array(a.width * a.height);
 	for (const box of noisyBoxes) markBox(mask, a.width, a.height, box, NOISE_PADDING);
-	if (a.width === b.width && a.height === b.height) {
-		const diff = rawDiff(a, b);
-		for (let i = 0; i < mask.length; i++) {
-			if (diff[i * 4 + 3]! > 0) markBox(mask, a.width, a.height, { x: i % a.width, y: Math.floor(i / a.width), width: 1, height: 1 }, NOISE_PADDING);
+	for (const other of others) {
+		const b = PNG.sync.read(other);
+		if (a.width === b.width && a.height === b.height) {
+			const diff = rawDiff(a, b);
+			for (let i = 0; i < mask.length; i++) {
+				if (diff[i * 4 + 3]! > 0) markBox(mask, a.width, a.height, { x: i % a.width, y: Math.floor(i / a.width), width: 1, height: 1 }, NOISE_PADDING);
+			}
+		} else {
+			mask.fill(1, a.width * Math.min(a.height, b.height));
 		}
-	} else {
-		mask.fill(1, a.width * Math.min(a.height, b.height));
 	}
 	return { width: a.width, height: a.height, mask };
 }

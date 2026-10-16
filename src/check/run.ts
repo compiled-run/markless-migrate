@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { chromium, type Browser } from 'playwright';
 import { captureRoute, mime } from './capture.ts';
 import { assetsToProbe, compareRoute, type Probe } from './compare.ts';
-import type { Report, RouteResult, Viewport } from './types.ts';
+import type { PageCapture, Report, RouteCapture, RouteResult, Viewport } from './types.ts';
 import { VIEWPORTS } from './types.ts';
 
 export interface CheckOptions {
@@ -24,13 +24,25 @@ async function probe(origin: string, url: string): Promise<Probe> {
 	}
 }
 
+export function loadsDiffer(a: RouteCapture, b: RouteCapture): boolean {
+	if (JSON.stringify(a.http) !== JSON.stringify(b.http)) return true;
+	return Object.entries(a.pages).some(([viewport, pa]) => {
+		const pb = b.pages[viewport];
+		if (!pb) return true;
+		const facts = (p: PageCapture) => JSON.stringify([p.aria, p.text, p.seo, p.fonts, p.elements.map((el) => [el.text, el.name, el.style])]);
+		return facts(pa) !== facts(pb) || !pa.screenshot.equals(pb.screenshot);
+	});
+}
+
 export async function checkRoute(browser: Browser, oldOrigin: string, newOrigin: string, route: string, viewports: readonly Viewport[] = VIEWPORTS): Promise<RouteResult> {
-	// The two OLD loads must not overlap, or time-based noise (clocks, counters) looks stable.
+	// The OLD loads must not overlap, or time-based noise (clocks, counters) looks stable; the third comes after NEW so it brackets it in time.
 	const oldA = await captureRoute(browser, oldOrigin, route, viewports);
 	const [oldB, next] = await Promise.all([captureRoute(browser, oldOrigin, route, viewports), captureRoute(browser, newOrigin, route, viewports)]);
+	const olds = [oldA, oldB];
+	if (loadsDiffer(oldA, oldB)) olds.push(await captureRoute(browser, oldOrigin, route, viewports));
 	const probes = new Map<string, Probe>();
 	for (const url of assetsToProbe(oldA, next)) probes.set(url, await probe(newOrigin, url));
-	return compareRoute(route, oldA, oldB, next, probes);
+	return compareRoute(route, olds, next, probes);
 }
 
 export async function runCheck(options: CheckOptions): Promise<Report> {

@@ -44,7 +44,7 @@ function png(width: number, height: number, paint?: (x: number, y: number) => bo
 test('pixels that differ between OLD loads are masked; new differences elsewhere are not', () => {
 	const clockA = png(100, 100, (x, y) => x < 10 && y < 10);
 	const clockB = png(100, 100, (x, y) => x < 10 && y < 10 && x % 2 === 0);
-	const noise = visualNoise(clockA, clockB, []);
+	const noise = visualNoise(clockA, [clockB], []);
 	assert.ok(!visuallyDifferent(compareScreenshots(clockA, png(100, 100), noise)), 'a change inside the noisy clock is ignored');
 	const moved = compareScreenshots(clockA, png(100, 100, (x, y) => (x < 10 && y < 10) || (x > 50 && y > 50)), noise);
 	assert.ok(visuallyDifferent(moved));
@@ -52,7 +52,7 @@ test('pixels that differ between OLD loads are masked; new differences elsewhere
 });
 
 test('a different page height is always a visual difference', () => {
-	const noise = visualNoise(png(50, 50), png(50, 50), []);
+	const noise = visualNoise(png(50, 50), [png(50, 50)], []);
 	const diff = compareScreenshots(png(50, 50), png(50, 60), noise);
 	assert.deepEqual(diff.sizeMismatch, { expected: '50x50', actual: '50x60' });
 	assert.ok(visuallyDifferent(diff));

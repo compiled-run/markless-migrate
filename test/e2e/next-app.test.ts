@@ -107,6 +107,17 @@ const MUTATIONS: Mutation[] = [
 			assert.deepEqual(checks, ['JavaScript downloaded', 'JavaScript run at load']);
 		},
 	},
+	{
+		name: 'noise-word',
+		route: '/en',
+		edits: [{ file: 'app/dictionaries.ts', find: "rendered: 'Page rendered at'", replace: "rendered: 'Page generated at'" }],
+		red: ['rendered', 'visual'],
+		expect: (report) => {
+			const text = failure(report, 'rendered').find((f) => f.check === 'visible text');
+			assert.match(text!.expected, /^Page rendered at \d{4}-/);
+			assert.match(text!.actual, /^Page generated at \d{4}-/);
+		},
+	},
 ];
 
 describe('next.js app router app', () => {
@@ -139,7 +150,7 @@ describe('next.js app router app', () => {
 	test('without the noise baseline the same comparison goes red, so the baseline is doing work', async () => {
 		const oldA = await captureRoute(browser, old.origin, '/en', VIEWPORTS);
 		const next = await captureRoute(browser, twin.origin, '/en', VIEWPORTS);
-		const result = compareRoute('/en', oldA, oldA, next, new Map());
+		const result = compareRoute('/en', [oldA, oldA], next, new Map());
 		assert.ok(result.failures.some((f) => f.dimension === 'rendered' && /Page rendered at/.test(f.expected)), JSON.stringify(result.failures, null, 1));
 	});
 

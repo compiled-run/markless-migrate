@@ -1,6 +1,6 @@
 export type Matcher = { readonly source: string; readonly test: (value: string) => boolean; readonly noisy: boolean };
 
-const TOKEN = /\d+|[\p{L}]+|\s+|./gu;
+const TOKEN = /\d+|\p{L}+|\s+|./gu;
 const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export function exact(value: string): Matcher {
@@ -11,13 +11,52 @@ export function anything(source: string): Matcher {
 	return { source, test: () => true, noisy: true };
 }
 
-// Two loads of OLD give a and b: once any token differs, every number in the line may vary and differing words may be anything.
-export function template(a: string, b: string): Matcher {
-	if (a === b) return exact(a);
+function charClass(char: string): string {
+	if (/\d/.test(char)) return '\\d';
+	if (/\p{L}/u.test(char)) return '\\p{L}';
+	if (/\s/.test(char)) return '\\s';
+	return escape(char);
+}
+
+// Characters a varying stretch may hold: only the classes the OLD loads showed there, so digits stay digits.
+function gapPattern(gaps: readonly string[]): string {
+	const classes = new Set<string>();
+	for (const gap of gaps) for (const char of gap) classes.add(charClass(char));
+	if (!classes.size) return '';
+	return `[${[...classes].sort().join('')}]${gaps.some((gap) => gap === '') ? '*' : '+'}`;
+}
+
+// Index in b that each token of a pairs with, by longest common subsequence.
+function tokenMap(a: readonly string[], b: readonly string[]): (number | undefined)[] {
+	const map = align(a, b, (x, y) => (x === y ? 1 : 0));
+	const out: (number | undefined)[] = new Array(a.length).fill(undefined);
+	for (const [i, j] of map) out[i] = j;
+	return out;
+}
+
+// A line that differed between OLD loads may vary only where they differed, and only within the character classes seen there.
+export function template(a: string, ...others: string[]): Matcher {
+	if (others.every((other) => other === a)) return exact(a);
 	const ta = a.match(TOKEN) ?? [];
-	const tb = b.match(TOKEN) ?? [];
-	if (ta.length !== tb.length) return anything(a);
-	const pattern = ta.map((token, i) => (/^\d+$/.test(token) && /^\d+$/.test(tb[i]!) ? '\\d+' : token === tb[i] ? escape(token) : '.+?')).join('');
+	const tos = others.map((other) => other.match(TOKEN) ?? []);
+	const maps = tos.map((to) => tokenMap(ta, to));
+	let pattern = '';
+	let prevA = -1;
+	let prevO = tos.map(() => -1);
+	const flush = (endA: number, endO: readonly number[]) => {
+		const gaps = [ta.slice(prevA + 1, endA).join(''), ...tos.map((to, k) => to.slice(prevO[k]! + 1, endO[k]).join(''))];
+		if (gaps.every((gap) => gap === gaps[0]) && gaps[0] === '') return;
+		pattern += gapPattern(gaps);
+	};
+	for (let i = 0; i < ta.length; i++) {
+		const at = maps.map((map) => map[i]);
+		if (at.some((j, k) => j === undefined || j <= prevO[k]!)) continue;
+		flush(i, at as number[]);
+		pattern += escape(ta[i]!);
+		prevA = i;
+		prevO = at as number[];
+	}
+	flush(ta.length, tos.map((to) => to.length));
 	const regex = new RegExp(`^${pattern}$`, 'su');
 	return { source: a, test: (other) => regex.test(other), noisy: true };
 }
@@ -48,28 +87,38 @@ export interface LineMatcher extends Matcher {
 	readonly optional: boolean;
 }
 
-export function lineTemplates(a: readonly string[], b: readonly string[]): LineMatcher[] {
-	const pairs = align(a, b, (x, y) => (x === y ? 1 : 0));
-	const out: LineMatcher[] = [];
-	let ia = 0;
-	let ib = 0;
-	const flushGap = (endA: number, endB: number) => {
-		const gapA = a.slice(ia, endA);
-		const gapB = b.slice(ib, endB);
-		for (let k = 0; k < Math.max(gapA.length, gapB.length); k++) {
-			const x = gapA[k];
-			const y = gapB[k];
-			if (x !== undefined && y !== undefined) out.push({ ...template(x, y), optional: false });
-			else out.push({ ...anything(x ?? y!), optional: true });
+// Lines are aligned against the first OLD load; a line some OLD load lacked, or only some had, is optional.
+export function lineTemplates(a: readonly string[], ...others: readonly (readonly string[])[]): LineMatcher[] {
+	const counterparts = others.map(() => new Map<number, string>());
+	const extras = new Map<number, string[]>();
+	others.forEach((b, k) => {
+		let ia = 0;
+		let ib = 0;
+		const flushGap = (endA: number, endB: number) => {
+			for (let t = 0; t < Math.max(endA - ia, endB - ib); t++) {
+				if (ia + t < endA && ib + t < endB) counterparts[k]!.set(ia + t, b[ib + t]!);
+				else if (ib + t < endB) extras.set(endA - 1, [...(extras.get(endA - 1) ?? []), b[ib + t]!]);
+			}
+		};
+		for (const [pa, pb] of align(a, b, (x, y) => (x === y ? 1 : 0))) {
+			flushGap(pa, pb);
+			counterparts[k]!.set(pa, b[pb]!);
+			ia = pa + 1;
+			ib = pb + 1;
 		}
+		flushGap(a.length, b.length);
+	});
+	const out: LineMatcher[] = [];
+	const pushExtras = (after: number) => {
+		for (const line of extras.get(after) ?? []) out.push({ ...anything(line), optional: true });
 	};
-	for (const [pa, pb] of pairs) {
-		flushGap(pa, pb);
-		out.push({ ...exact(a[pa]!), optional: false });
-		ia = pa + 1;
-		ib = pb + 1;
-	}
-	flushGap(a.length, b.length);
+	pushExtras(-1);
+	a.forEach((line, i) => {
+		const seen = counterparts.map((m) => m.get(i));
+		if (seen.every((x) => x !== undefined)) out.push({ ...template(line, ...seen), optional: false });
+		else out.push({ ...anything(line), optional: true });
+		pushExtras(i);
+	});
 	return out;
 }
 
@@ -103,12 +152,13 @@ export function diffLines(expected: readonly LineMatcher[], actual: readonly str
 	return { missing, unexpected, changed };
 }
 
-export function fieldTemplates(a: Readonly<Record<string, string>>, b: Readonly<Record<string, string>>): Map<string, LineMatcher> {
+export function fieldTemplates(a: Readonly<Record<string, string>>, ...others: readonly Readonly<Record<string, string>>[]): Map<string, LineMatcher> {
 	const out = new Map<string, LineMatcher>();
 	for (const [key, value] of Object.entries(a)) {
-		out.set(key, key in b ? { ...template(value, b[key]!), optional: false } : { ...anything(value), optional: true });
+		const seen = others.map((b) => b[key]);
+		out.set(key, seen.every((x) => x !== undefined) ? { ...template(value, ...seen), optional: false } : { ...anything(value), optional: true });
 	}
-	for (const key of Object.keys(b)) if (!(key in a)) out.set(key, { ...anything(b[key]!), optional: true });
+	for (const b of others) for (const key of Object.keys(b)) if (!out.has(key)) out.set(key, { ...anything(b[key]!), optional: true });
 	return out;
 }
 

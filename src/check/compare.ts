@@ -56,22 +56,37 @@ function overlaps(a: Box, b: Box): boolean {
 	return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 }
 
-function noisyTextBoxes(a: readonly ElementSnapshot[], b: readonly ElementSnapshot[]): Box[] {
+function noisyTextBoxes(a: readonly ElementSnapshot[], others: readonly (readonly ElementSnapshot[])[]): Box[] {
 	const boxes: Box[] = [];
-	for (const [i, j] of matchElements(a, b)) {
-		if (a[i]!.text !== b[j]!.text || a[i]!.name !== b[j]!.name) boxes.push(a[i]!.box, b[j]!.box);
+	for (const b of others) {
+		for (const [i, j] of matchElements(a, b)) {
+			if (a[i]!.text !== b[j]!.text || a[i]!.name !== b[j]!.name) boxes.push(a[i]!.box, b[j]!.box);
+		}
 	}
 	return boxes;
 }
 
-function cssFailures(route: string, viewport: string, oldA: PageCapture, oldB: PageCapture, next: PageCapture): Failure[] {
-	const noisy = new Map<number, Set<string>>();
-	const baseline = matchElements(oldA.elements, oldB.elements);
-	for (const [i, j] of baseline) {
-		const a = oldA.elements[i]!.style;
-		const b = oldB.elements[j]!.style;
-		noisy.set(i, new Set(Object.keys(a).filter((prop) => a[prop] !== b[prop])));
+// Per element of the first OLD load: the properties that differed in any other OLD load. Elements some load lacked are absent.
+export function noisyStyles(a: readonly ElementSnapshot[], others: readonly (readonly ElementSnapshot[])[]): Map<number, Set<string>> {
+	const noisy = new Map<number, Set<string>>(a.map((_, i) => [i, new Set<string>()]));
+	for (const b of others) {
+		const pairs = matchElements(a, b);
+		for (const i of [...noisy.keys()]) {
+			const j = pairs.get(i);
+			if (j === undefined) {
+				noisy.delete(i);
+				continue;
+			}
+			const sa = a[i]!.style;
+			const sb = b[j]!.style;
+			for (const prop of Object.keys(sa)) if (sa[prop] !== sb[prop]) noisy.get(i)!.add(prop);
+		}
 	}
+	return noisy;
+}
+
+function cssFailures(route: string, viewport: string, oldA: PageCapture, others: readonly PageCapture[], next: PageCapture): Failure[] {
+	const noisy = noisyStyles(oldA.elements, others.map((o) => o.elements));
 	const failures: Failure[] = [];
 	let extra = 0;
 	for (const [i, j] of matchElements(oldA.elements, next.elements)) {
@@ -99,27 +114,29 @@ function cssFailures(route: string, viewport: string, oldA: PageCapture, oldB: P
 	return failures;
 }
 
-export function compareRoute(route: string, oldA: RouteCapture, oldB: RouteCapture, next: RouteCapture, probes: ReadonlyMap<string, Probe>): RouteResult {
+export function compareRoute(route: string, olds: readonly RouteCapture[], next: RouteCapture, probes: ReadonlyMap<string, Probe>): RouteResult {
+	const oldA = olds[0]!;
+	const others = olds.length > 1 ? olds.slice(1) : [oldA];
 	const failures: Failure[] = [];
 	const visualDiffs: { viewport: string; png: Buffer }[] = [];
 
 	const chain = (c: RouteCapture) => Object.fromEntries(c.http.chain.map((hop, i) => [`hop ${i + 1}`, `${hop.status} ${hop.url}`]));
-	for (const d of diffFields(fieldTemplates(chain(oldA), chain(oldB)), chain(next))) {
+	for (const d of diffFields(fieldTemplates(chain(oldA), ...others.map(chain)), chain(next))) {
 		const last = d.key === `hop ${oldA.http.chain.length}` && oldA.http.chain.length === next.http.chain.length;
 		failures.push({ route, dimension: 'http', check: last ? 'status' : `redirect chain ${d.key}`, expected: d.expected ?? '(absent)', actual: d.actual ?? '(absent)', hint: last ? HINTS.status : HINTS.redirects });
 	}
-	if (oldA.http.contentType === oldB.http.contentType && oldA.http.contentType !== next.http.contentType) {
+	if (others.every((o) => o.http.contentType === oldA.http.contentType) && oldA.http.contentType !== next.http.contentType) {
 		failures.push({ route, dimension: 'http', check: 'content-type', expected: oldA.http.contentType, actual: next.http.contentType, hint: HINTS.contentType });
 	}
 
 	for (const [viewport, a] of Object.entries(oldA.pages)) {
-		const b = oldB.pages[viewport]!;
+		const bs = others.map((o) => o.pages[viewport]!);
 		const n = next.pages[viewport];
 		if (!n) continue;
-		failures.push(...lineFailures(route, 'rendered', 'accessibility tree', viewport, diffLines(lineTemplates(a.aria, b.aria), n.aria), HINTS.aria).slice(0, LIMIT));
-		failures.push(...lineFailures(route, 'rendered', 'visible text', viewport, diffLines(lineTemplates(a.text, b.text), n.text), HINTS.text).slice(0, LIMIT));
+		failures.push(...lineFailures(route, 'rendered', 'accessibility tree', viewport, diffLines(lineTemplates(a.aria, ...bs.map((b) => b.aria)), n.aria), HINTS.aria).slice(0, LIMIT));
+		failures.push(...lineFailures(route, 'rendered', 'visible text', viewport, diffLines(lineTemplates(a.text, ...bs.map((b) => b.text)), n.text), HINTS.text).slice(0, LIMIT));
 
-		const noise = visualNoise(a.screenshot, b.screenshot, noisyTextBoxes(a.elements, b.elements));
+		const noise = visualNoise(a.screenshot, bs.map((b) => b.screenshot), noisyTextBoxes(a.elements, bs.map((b) => b.elements)));
 		const diff = compareScreenshots(a.screenshot, n.screenshot, noise);
 		if (visuallyDifferent(diff)) {
 			const r = diff.region;
@@ -134,30 +151,29 @@ export function compareRoute(route: string, oldA: RouteCapture, oldB: RouteCaptu
 			if (diff.png) visualDiffs.push({ viewport, png: diff.png });
 		}
 
-		failures.push(...cssFailures(route, viewport, a, b, n));
+		failures.push(...cssFailures(route, viewport, a, bs, n));
 
 		a.images.forEach((img, i) => {
-			const twin = b.images[i];
 			const other = n.images[i];
-			if (!twin || twin.naturalWidth !== img.naturalWidth || twin.broken !== img.broken) return;
+			if (bs.some((b) => !b.images[i] || b.images[i]!.naturalWidth !== img.naturalWidth || b.images[i]!.broken !== img.broken)) return;
 			const expected = img.broken ? 'broken' : `${img.naturalWidth}x${img.naturalHeight}`;
 			const actual = !other ? '(absent)' : other.broken ? 'broken' : `${other.naturalWidth}x${other.naturalHeight}`;
 			if (expected !== actual) failures.push({ route, dimension: 'assets', check: `image #${i + 1} ${img.src}`, viewport, expected, actual, hint: HINTS.image });
 		});
-		if (a.fonts.join() === b.fonts.join() && a.fonts.join() !== n.fonts.join()) {
+		if (bs.every((b) => b.fonts.join() === a.fonts.join()) && a.fonts.join() !== n.fonts.join()) {
 			failures.push({ route, dimension: 'assets', check: 'loaded fonts', viewport, expected: a.fonts.join(', ') || '(none)', actual: n.fonts.join(', ') || '(none)', hint: HINTS.fonts });
 		}
 	}
 
 	const desktop = Object.keys(oldA.pages)[0]!;
-	const seo = diffFields(fieldTemplates(oldA.pages[desktop]!.seo, oldB.pages[desktop]!.seo), next.pages[desktop]?.seo ?? {});
+	const seo = diffFields(fieldTemplates(oldA.pages[desktop]!.seo, ...others.map((o) => o.pages[desktop]!.seo)), next.pages[desktop]?.seo ?? {});
 	for (const d of seo) failures.push({ route, dimension: 'seo', check: d.key, expected: fmt(d.expected), actual: fmt(d.actual), hint: seoHint(d.key) });
 
-	const stable = new Set(uniqueAssets(oldB).map((a) => a.url));
+	const stableIn = others.map((o) => new Set(uniqueAssets(o).map((a) => a.url)));
 	const newAssets = new Map(uniqueAssets(next).map((a) => [a.url, a]));
 	const reported = new Set<string>();
 	for (const asset of uniqueAssets(oldA)) {
-		if (!asset.url.startsWith('/') || isBuildOutput(asset.url) || !stable.has(asset.url) || asset.status >= 400) continue;
+		if (!asset.url.startsWith('/') || isBuildOutput(asset.url) || stableIn.some((set) => !set.has(asset.url)) || asset.status >= 400) continue;
 		const found = newAssets.get(asset.url) ?? probes.get(asset.url);
 		if (!found || found.status >= 400) {
 			reported.add(asset.url);
@@ -179,11 +195,10 @@ export function compareRoute(route: string, oldA: RouteCapture, oldB: RouteCaptu
 	}
 
 	const wa = oldA.pages[desktop]!.weight;
-	const wb = oldB.pages[desktop]!.weight;
 	const wn = next.pages[desktop]?.weight ?? { downloaded: 0, source: 0, executed: 0, scripts: [] };
 	for (const key of ['downloaded', 'executed'] as const) {
 		const slack = key === 'executed' ? Math.max(WEIGHT_SLACK_BYTES, Math.round(wa[key] * EXECUTED_SLACK_RATIO)) : WEIGHT_SLACK_BYTES;
-		const allowed = wa[key] + Math.abs(wa[key] - wb[key]) + slack;
+		const allowed = wa[key] + Math.max(...others.map((o) => Math.abs(wa[key] - o.pages[desktop]!.weight[key]))) + slack;
 		if (wn[key] > allowed) {
 			const oldUrls = new Set(wa.scripts.map((s) => s.url));
 			const only = wn.scripts.filter((s) => !oldUrls.has(s.url)).sort((x, y) => y[key === 'downloaded' ? 'bytes' : 'executed'] - x[key === 'downloaded' ? 'bytes' : 'executed']).slice(0, 3);
