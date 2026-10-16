@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium, type Browser } from 'playwright';
+import { applyAccepted, type Accept } from './accepted.ts';
 import { accessFailures, ANONYMOUS, compareLogin, loginRoutes, saveState, signIn, type AuthConfig, type RoleSpec } from './auth.ts';
 import { BlockedError, blockedResult, probeWall } from './blocked.ts';
 import { defaultEnv, isLoopback, pushRecording, tagHeaders, type SideEnv, type StorageState } from './browser.ts';
@@ -57,6 +58,8 @@ export interface CheckOptions {
 	readonly unchecked?: Report['unchecked'];
 	/** Source checkouts of the old and new app, to name the file and line behind each failing element. */
 	readonly sourceDirs?: { readonly old?: string; readonly new?: string };
+	/** Intended differences (`.migrate/accepted.json`): failures they match are reported as accepted, not red. */
+	readonly accepted?: readonly Accept[];
 }
 
 interface Run {
@@ -290,7 +293,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			for (const route of endpoints) routes.push(asRole(await checkEndpoint(roleRun, route), role));
 		}
 		const sources = options.source?.nondeterminism.map((f) => ({ ...f, pinned: pinnedBy(`${f.kind} ${f.what ?? ''}`, f.side, freeze) }));
-		return {
+		return applyAccepted({
 			version: 1,
 			old: options.oldOrigin,
 			new: options.newOrigin,
@@ -303,7 +306,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			writes: shared.sendWrites ? 'sent' : 'held back',
 			...(auth ? { roles: roles as string[], logins } : {}),
 			...(options.unchecked?.length ? { unchecked: options.unchecked } : {}),
-		};
+		}, options.accepted ?? []);
 	} finally {
 		if (!options.browser) await browser.close();
 	}

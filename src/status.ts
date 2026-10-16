@@ -59,7 +59,7 @@ export async function recordResults(cwd: string, report: Report): Promise<void> 
 export interface Status {
 	readonly planned: boolean;
 	/** In migration order when the inventory has the source's plan, alphabetical otherwise. */
-	readonly routes: readonly { route: string; state: 'green' | 'red' | 'blocked' | 'unchecked' | 'needs a sample'; red: readonly Dimension[]; checkedAt?: string; switched?: boolean }[];
+	readonly routes: readonly { route: string; state: 'green' | 'red' | 'blocked' | 'unchecked' | 'needs a sample'; red: readonly Dimension[]; checkedAt?: string; switched?: boolean; accepted?: readonly string[] }[];
 	/** Each step of the migration order with how far the routes it is part of have come. */
 	readonly order?: readonly { readonly kind: string; readonly name: string; readonly file: string; readonly routes: readonly string[]; readonly green: number; readonly state: 'green' | 'red' | 'started' | 'unchecked' }[];
 }
@@ -81,7 +81,9 @@ export async function status(cwd: string): Promise<Status> {
 	};
 	const stateOf = (route: string): Status['routes'][number] => {
 		const r = results[route];
-		return r ? { route, state: r.blocked ? 'blocked' : r.ok ? 'green' : 'red', red: r.red, checkedAt: r.checkedAt } : { route, state: 'unchecked', red: [] };
+		if (!r) return { route, state: 'unchecked', red: [] };
+		const accepted = (r.failures ?? []).flatMap((f) => (f.accepted ? [`${f.dimension}: ${f.check}: ${f.accepted.reason}`] : []));
+		return { route, state: r.blocked ? 'blocked' : r.ok ? 'green' : 'red', red: r.red, checkedAt: r.checkedAt, ...(accepted.length ? { accepted } : {}) };
 	};
 	const routes = names.map(stateOf).sort((a, b) => rank(a.route) - rank(b.route) || a.route.localeCompare(b.route));
 	for (const n of targets?.needsSample ?? []) routes.push({ route: n.route, state: 'needs a sample', red: [] });
@@ -107,6 +109,9 @@ export function summarizeStatus(s: Status): string {
 		lines.push('Routes, in that order:');
 	}
 	if (s.routes.some((r) => r.switched)) lines[0] += `, ${s.routes.filter((r) => r.switched).length} switched to Markless`;
-	for (const r of s.routes) lines.push(`  ${r.state.padEnd(9)} ${r.route}${r.red.length ? `  [${r.red.join(', ')}]` : ''}${r.switched ? '  (switched)' : ''}`);
+	for (const r of s.routes) {
+		lines.push(`  ${r.state.padEnd(9)} ${r.route}${r.red.length ? `  [${r.red.join(', ')}]` : ''}${r.accepted ? `  (${r.accepted.length} accepted)` : ''}${r.switched ? '  (switched)' : ''}`);
+		for (const a of r.accepted ?? []) lines.push(`              accepted ${a}`);
+	}
 	return `${lines.join('\n')}\n`;
 }

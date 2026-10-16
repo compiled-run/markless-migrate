@@ -157,6 +157,10 @@ export interface Failure {
 	readonly new?: SourceLink;
 	/** One line naming both locations, for example `old ProductCard.tsx:42 renders "£4"; new product-card.tsrx:17 renders "£5"`. */
 	readonly where?: string;
+	/** Stable across runs: the same difference on the same route gets the same id, for `accept <id>`. */
+	readonly id?: string;
+	/** Set when `.migrate/accepted.json` lists this difference as intended: it does not turn the route red. */
+	readonly accepted?: { readonly reason: string; readonly by: string; readonly date: string };
 }
 
 /** A pair of screenshots of one route in one viewport and state, with the boxes where they differ. */
@@ -247,4 +251,8 @@ export interface Report {
 	/** Roles checked, `anonymous` first, when check ran with --auth; routes are grouped in this order. */
 	readonly roles?: readonly string[];
 	readonly logins?: readonly LoginResult[];
+	/** How many failures an accepted difference covered. */
+	readonly acceptedCount?: number;
+	/** Accepted differences for routes checked in this run that no longer match any failure. */
+	readonly staleAccepts?: readonly import('./accepted.ts').Accept[];
 }

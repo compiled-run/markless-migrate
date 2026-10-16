@@ -740,6 +740,31 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		}
 	});
 
+	test('accept turns one failure, by its stable id, into an accepted difference; status shows the reason; an accept nothing matches is stale', async () => {
+		const cwd = await realpath(await mkdtemp(join(tmpdir(), 'mm-accept-')));
+		const args = ['check', '--old', old.origin, '--new', mutants.get('title')!.origin, '--route', '/about/'];
+		const first = await cli(args, cwd);
+		assert.equal(first.status, 1, first.stderr);
+		const id = first.stdout.match(/seo \(desktop\): title  \[([0-9a-f]{10})\]|seo: title  \[([0-9a-f]{10})\]/)?.slice(1).find(Boolean);
+		assert.ok(id, first.stdout);
+		assert.equal((await cli(['accept', id], cwd)).status, 2, 'a reason is required');
+		const accepted = await cli(['accept', id, '--reason', 'Marketing renamed the page', '--by', 'Jack'], cwd);
+		assert.equal(accepted.status, 0, accepted.stderr);
+		const entry = JSON.parse(await readFile(join(cwd, '.migrate', 'accepted.json'), 'utf8')).accepted[0];
+		assert.deepEqual([entry.route, entry.dimension, entry.check, entry.match, entry.by, entry.id], ['/about/', 'seo', 'title', { expected: '"About | Lighthouse Walks"', actual: '"About us | Lighthouse Walks"' }, 'Jack', id]);
+		const second = await cli(args, cwd);
+		assert.equal(second.status, 0, second.stdout);
+		assert.match(second.stdout, new RegExp(`pass +/about/ +\\(1 accepted\\)`));
+		assert.match(second.stdout, new RegExp(`accepted seo(?: \\(desktop\\))?: title  \\[${id}\\]\n +reason: +Marketing renamed the page \\(Jack, \\d{4}-\\d\\d-\\d\\d\\)`), 'the same failure has the same id on the next run');
+		assert.match(second.stdout, /1 of 1 routes green, 1 accepted difference\./);
+		assert.match(await readFile(join(cwd, '.migrate', 'report.html'), 'utf8'), /<span class="badge accepted">accepted<\/span>/);
+		const listed = await cli(['status'], cwd);
+		assert.match(listed.stdout, /green +\/about\/  \(1 accepted\)\n +accepted seo: title: Marketing renamed the page/);
+		const stale = await cli(['check', '--old', old.origin, '--new', twin.origin, '--route', '/about/'], cwd);
+		assert.equal(stale.status, 0, stale.stdout);
+		assert.match(stale.stdout, /Accepted differences that no longer match anything \(remove them from \.migrate\/accepted\.json\):\n +\/about\/ seo: title +\(Marketing renamed the page\)/);
+	});
+
 	for (const mutation of AUTH_MUTATIONS) {
 		test(`auth mutation "${mutation.name}" turns ${Object.entries(mutation.red).filter(([, d]) => d.length).map(([role, d]) => `${d.join(' + ')} red as ${role}`).join(', ')} and nothing else`, async () => {
 			const auth = await writeAuth({ loginRoute: '/login/', member: 'sam@lighthouse.example', admin: 'kit@lighthouse.example', landing: '/members/' });

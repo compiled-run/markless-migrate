@@ -104,7 +104,7 @@ function route(r: RouteResult, index: number): string {
 		.map(([d, state]) => `<li class="${state}">${esc(d)}</li>`)
 		.join('');
 	const rows = r.failures
-		.map((f) => `<tr><td>${esc(f.dimension)}</td><td>${esc(f.viewport ?? '')}</td><td>${esc(f.check)}</td><td><code>${esc(f.expected)}</code></td><td><code>${esc(f.actual)}</code></td><td>${esc(f.hint)}${where(f)}</td></tr>`)
+		.map((f) => `<tr${f.accepted ? ' class="accepted"' : ''}><td>${f.accepted ? '<span class="badge accepted">accepted</span> ' : ''}${esc(f.dimension)}</td><td>${esc(f.viewport ?? '')}</td><td>${esc(f.check)}${f.id ? `<br><small>id ${esc(f.id)}</small>` : ''}</td><td><code>${esc(f.expected)}</code></td><td><code>${esc(f.actual)}</code></td><td>${f.accepted ? `Accepted by ${esc(f.accepted.by)} on ${esc(f.accepted.date)}: ${esc(f.accepted.reason)}` : `${esc(f.hint)}${where(f)}`}</td></tr>`)
 		.join('');
 	const table = r.failures.length
 		? `<table><thead><tr><th>Dimension</th><th>Viewport</th><th>Check</th><th>Expected (old)</th><th>Actual (new)</th><th>Fix</th></tr></thead><tbody>${rows}</tbody></table>`
@@ -119,7 +119,7 @@ ${network(r)}
 ${noise(r)}
 ${writes(r)}
 ${r.journeys?.length ? `<details class="states"><summary>Interactions explored on the old page and replayed on the new one: ${r.journeys.length}${failedJourneys(r) ? `, ${failedJourneys(r)} differ` : ''}</summary><ul>${r.journeys.map((j) => `<li${r.failures.some((f) => f.check.startsWith(j.name)) ? ' class="differs"' : ''}>${esc(j.name)}</li>`).join('')}</ul></details>` : ''}
-<h3>Failures (${r.failures.length})</h3>
+<h3>Failures (${r.failures.filter((f) => !f.accepted).length}${r.failures.some((f) => f.accepted) ? `, and ${r.failures.filter((f) => f.accepted).length} accepted differences` : ''})</h3>
 ${table}
 ${r.shots.map((s, i) => shot(s, `route-${index}-shot-${i}`)).join('\n')}
 </section>`;
@@ -135,7 +135,7 @@ h2 { font-size: 18px; margin: 24px 0 8px; }
 h3 { font-size: 15px; margin: 16px 0 8px; }
 small, .weight { color: var(--muted); }
 .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; color: white; font-size: 12px; font-weight: 600; vertical-align: 2px; }
-.badge.pass { background: var(--pass); } .badge.fail { background: var(--fail); } .badge.blocked { background: var(--muted); }
+.badge.pass { background: var(--pass); } .badge.fail { background: var(--fail); } .badge.blocked, .badge.accepted { background: var(--muted); }
 .role { border-top: 2px solid var(--ink); margin-top: 24px; }
 .toc { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 0; list-style: none; }
 .toc a { color: inherit; }
@@ -212,15 +212,16 @@ export function renderHtml(report: Report): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${report.ok ? 'Green' : 'Red'}: old vs new, ${green} of ${report.routes.length} routes green</title>
+<title>${report.ok ? (report.unchecked?.length ? 'Unchecked routes' : 'Green') : 'Red'}: old vs new, ${green} of ${report.routes.length} routes green${report.unchecked?.length ? `, ${report.unchecked.length} not checked` : ''}</title>
 <style>${STYLE}</style>
 </head>
 <body>
 <header>
 <h1>Old vs new</h1>
-<p>Old <code>${esc(report.old)}</code> against new <code>${esc(report.new)}</code>, checked ${esc(report.startedAt)}. <strong>${green} of ${report.routes.length} routes green.</strong></p>
+<p>Old <code>${esc(report.old)}</code> against new <code>${esc(report.new)}</code>, checked ${esc(report.startedAt)}. <strong>${green} of ${report.routes.length} routes green${report.unchecked?.length ? `, ${report.unchecked.length} not checked (needs a sample)` : ''}.</strong></p>
 ${run(report)}
 <p><small>Red boxes mark where the screenshots differ outside the noise mask. Slider: drag to wipe between old (left of the line) and new. Blink: alternates old and new in place.</small></p>
+${report.staleAccepts?.length ? `<p><strong>Accepted differences that no longer match anything</strong> (remove them from .migrate/accepted.json):</p><ul>${report.staleAccepts.map((a) => `<li>${esc(a.route)} ${esc(a.dimension)}: ${esc(a.check)}: ${esc(a.reason)}</li>`).join('')}</ul>` : ''}
 <ul class="toc">${toc}</ul>
 </header>
 <main>

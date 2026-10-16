@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline/promises';
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
@@ -27,6 +27,8 @@ import { VERSION } from './version.ts';
 import { nitroSnippet, notServedBy, pageAssets, vercelConfig } from './switch/deploy.ts';
 import { startProxy } from './switch/proxy.ts';
 import { readSwitched, switchRoute, unswitchRoute } from './switch/state.ts';
+import { ACCEPTED_FILE, acceptFailure, readAccepted, writeAccepted } from './check/accepted.ts';
+import type { RouteState } from './status.ts';
 
 const USAGE = `markless-migrate ${VERSION}
 
@@ -37,10 +39,11 @@ const USAGE = `markless-migrate ${VERSION}
           [--source <path>] [--data record|replay] [--staging] [--block <host>]... [--allow <host>]...
           [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
-          [--all] [--new-source <path>]
+          [--all] [--allow-unchecked] [--new-source <path>]
           Compare routes old vs new (default: every route in the inventory). Exits 1 when any is red.
           --all adds every route the source scan knows (dynamic segments filled from crawled paths or
-          .migrate/samples.json) and the non-page endpoints: robots.txt, sitemaps, feeds, the manifest,
+          .migrate/samples.json; check exits 1 while any is left unchecked, unless --allow-unchecked)
+          and the non-page endpoints: robots.txt, sitemaps, feeds, the manifest,
           /.well-known files and JSON route handlers, compared as data.
           --source and --new-source map each failing element to its old and new source file and line.
           Writes .migrate/report.json and .migrate/report.html; --open opens the HTML report.
@@ -52,6 +55,9 @@ const USAGE = `markless-migrate ${VERSION}
           --auth names roles (a login script or a Playwright storage state file each, see plan's
           .migrate/auth.json); every route is checked once per role and once anonymous. A route a bot
           wall answers is stopped as blocked; --header and --cookie send a bypass token to both apps.
+  accept  <failure-id> --reason <why> [--by <name>]
+          Record a failure as an intended difference in .migrate/accepted.json: from then on it shows as
+          accepted (with the reason), not red. For a human only; ids are printed with every failure.
   recorder
           Print the NODE_OPTIONS that loads the request recorder into a Node server, so check compares
           what the server fetches while rendering and can replay recorded data to it.
@@ -171,7 +177,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 		cli: [serverCommand().command, ...serverCommand().args.slice(0, -1)].join(' '),
 		progress: out,
 		check: async (route) => {
-			const report = await runCheck({ oldOrigin: old, newOrigin: next, routes: [route] });
+			const report = await runCheck({ oldOrigin: old, newOrigin: next, routes: [route], accepted: await readAccepted(join(cwd, STATE_DIR, ACCEPTED_FILE)) });
 			await writeReport(report, join(cwd, STATE_DIR));
 			await recordResults(cwd, report);
 			return { ok: report.ok, summary: summarize(report) };
@@ -226,6 +232,7 @@ async function main(argv: string[]): Promise<number> {
 					cookie: { type: 'string', multiple: true },
 					'user-agent': { type: 'string' },
 					all: { type: 'boolean' },
+					'allow-unchecked': { type: 'boolean' },
 					'new-source': { type: 'string' },
 				},
 			});
@@ -251,7 +258,7 @@ async function main(argv: string[]): Promise<number> {
 				routes = [...new Set([...(values.route ?? []), ...all.pages])];
 				targets = { endpoints: await discoverEndpoints(defaultEnv(values.old), all.pages, all.endpoints), unchecked: all.needsSample };
 			}
-			if (!routes?.length) fail('no routes: pass --route <path> or run plan first');
+			if (!routes?.length && !targets?.endpoints.length) fail('no routes: pass --route <path> or run plan first');
 			let source: CheckOptions['source'];
 			if (values.source) {
 				const scanned = await loadSourceFacts(resolve(values.source));
@@ -262,7 +269,7 @@ async function main(argv: string[]): Promise<number> {
 			const report = await runCheck({
 				oldOrigin: values.old,
 				newOrigin: values.new,
-				routes,
+				routes: routes ?? [],
 				locales: inventory?.locales,
 				freeze,
 				block: { add: values.block ?? [], allow: values.allow ?? [] },
@@ -274,12 +281,17 @@ async function main(argv: string[]): Promise<number> {
 				...(auth ? { auth, authStateDir: join(cwd, STATE_DIR, 'auth') } : {}),
 				...(targets ? { endpoints: targets.endpoints, unchecked: targets.unchecked } : {}),
 				...(values.source || values['new-source'] ? { sourceDirs: { ...(values.source ? { old: resolve(values.source) } : {}), ...(values['new-source'] ? { new: resolve(values['new-source']) } : {}) } } : {}),
+				accepted: await readAccepted(join(cwd, STATE_DIR, ACCEPTED_FILE)).catch((error: Error) => fail(error.message)),
 			});
 			const path = await writeReport(report, join(cwd, STATE_DIR));
 			await recordResults(cwd, report);
 			const html = join(dirname(path), 'report.html');
 			out(values.json ? `${JSON.stringify(jsonReport(report), null, 2)}\n` : `${summarize(report)}Report: ${path}\nVisual report: ${html}\n`);
 			if (values.open) await openFile(html);
+			if (report.ok && report.unchecked?.length && !values['allow-unchecked']) {
+				err(`markless-migrate: ${report.unchecked.length} route${report.unchecked.length === 1 ? '' : 's'} not checked for want of a sample value; add them to .migrate/samples.json, or pass --allow-unchecked.\n`);
+				return 1;
+			}
 			return report.ok ? 0 : 1;
 		}
 		case 'status':
@@ -297,6 +309,26 @@ async function main(argv: string[]): Promise<number> {
 		}
 		case 'run':
 			return run(rest, cwd);
+		case 'accept': {
+			const { values, positionals } = parseArgs({ args: rest, allowPositionals: true, options: { reason: { type: 'string' }, by: { type: 'string' } } });
+			if (positionals.length !== 1) fail('accept needs one failure id, as printed in [brackets] after a failure');
+			if (!values.reason?.trim()) fail('accept needs --reason: why this difference is intended');
+			const id = positionals[0]!;
+			const results = JSON.parse(await readFile(join(cwd, STATE_DIR, 'results.json'), 'utf8').catch(() => '{}')) as Record<string, RouteState>;
+			const found = Object.values(results).flatMap((r) => (r.failures ?? []).filter((f) => f.id === id).map((failure) => ({ failure, r })))[0];
+			if (!found) fail(`no failure with id ${id} in ${join(STATE_DIR, 'results.json')}: run check first and copy an id from its output`);
+			const path = join(cwd, STATE_DIR, ACCEPTED_FILE);
+			const accepted = await readAccepted(path);
+			if (accepted.some((a) => a.id === id)) {
+				out(`${id} is already accepted.\n`);
+				return 0;
+			}
+			const by = values.by ?? process.env.GIT_AUTHOR_NAME ?? process.env.USER ?? 'unknown';
+			const entry = acceptFailure(found.failure, { old: found.r.old, new: found.r.new }, values.reason.trim(), by);
+			await writeAccepted(path, [...accepted, entry]);
+			out(`Accepted ${entry.route} ${entry.dimension}: ${entry.check} (${entry.reason}). ${path}\n`);
+			return 0;
+		}
 		case 'switch': {
 			const { values, positionals } = parseArgs({ args: rest, allowPositionals: true, options: { force: { type: 'string' } } });
 			if (positionals.length !== 1) fail('switch needs one route, for example switch /about/');

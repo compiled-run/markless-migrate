@@ -32,6 +32,11 @@ matches it in a real browser. A route is done when its check is green, not when 
 - Never edit the old app to make a check pass; the old app is the reference.
 - Do not weaken or skip a failing dimension. If you think a failure is wrong, say so and show the
   evidence to the user.
+- A difference the user intends (a redesigned heading, a dropped tracker) can be accepted, but only by a
+  human: propose it to the user with the failure's id (printed in [brackets]) and your reason, and let
+  them run \`markless-migrate accept <id> --reason "..."\`. Never write \`.migrate/accepted.json\`
+  yourself. Accepted failures show as "accepted" with the reason; an accepted difference that no longer
+  matches anything is listed as stale.
 - \`visual\` failures that come with \`css\` or \`rendered\` failures usually disappear once those are
   fixed: fix the DOM and CSS failures first.
 - \`css\` failures name the old rule (selector, file, line) that set the value; port that rule's intent.

@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { join, resolve } from 'node:path';
 import * as z from 'zod';
+import { ACCEPTED_FILE, readAccepted } from '../check/accepted.ts';
 import { readAuthFile } from '../check/auth.ts';
 import { bypassOptions } from '../check/blocked.ts';
 import { DATA_DIR } from '../check/data.ts';
@@ -74,10 +75,11 @@ export function createServer(cwd: string): McpServer {
 				...bypassOptions(args.header, args.cookie),
 				...(args.userAgent ? { userAgent: args.userAgent } : {}),
 				...(auth ? { auth, authStateDir: join(cwd, STATE_DIR, 'auth') } : {}),
+				accepted: await readAccepted(join(cwd, STATE_DIR, ACCEPTED_FILE)),
 			});
 			await writeReport(report, join(cwd, STATE_DIR));
 			await recordResults(cwd, report);
-			const failures = [...report.routes.flatMap((r) => r.failures), ...(report.logins ?? []).flatMap((l) => l.failures)];
+			const failures = [...report.routes.flatMap((r) => r.failures), ...(report.logins ?? []).flatMap((l) => l.failures)].filter((f) => !f.accepted);
 			const blocked = report.routes.flatMap((r) => (r.blocked ? [{ ...(r.role ? { role: r.role } : {}), message: r.blocked.message }] : []));
 			return { ...text(summarize(report)), structuredContent: { ok: report.ok, failures, ...(blocked.length ? { blocked } : {}) } };
 		},

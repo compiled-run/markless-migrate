@@ -1,4 +1,4 @@
-import type { LoginResult, Report } from './types.ts';
+import type { Failure, LoginResult, Report } from './types.ts';
 
 function kb(bytes: number): string {
 	return `${(bytes / 1024).toFixed(1)} kB`;
@@ -8,9 +8,16 @@ function clip(value: string, max = 160): string {
 	return value.length > max ? `${value.slice(0, max)}...` : value;
 }
 
+function failureLines(f: Failure): string[] {
+	if (f.accepted) return [`      accepted ${f.dimension}${f.viewport ? ` (${f.viewport})` : ''}: ${f.check}${f.id ? `  [${f.id}]` : ''}`, `        reason:   ${f.accepted.reason} (${f.accepted.by}, ${f.accepted.date})`];
+	const lines = [`      ${f.dimension}${f.viewport ? ` (${f.viewport})` : ''}: ${f.check}${f.id ? `  [${f.id}]` : ''}`, `        expected: ${clip(f.expected)}`, `        actual:   ${clip(f.actual)}`, `        fix:      ${f.hint}`];
+	if (f.where) lines.push(`        where:    ${f.where}`);
+	return lines;
+}
+
 function loginLines(login: LoginResult): string[] {
 	const lines = [`      sign-in: ${login.ok ? 'same session cookies' : 'differs'}${login.cookies.old.length ? ` (${login.cookies.old.join(', ')})` : ''}`];
-	for (const f of login.failures) lines.push(`      ${f.dimension}: ${f.check}`, `        expected: ${clip(f.expected)}`, `        actual:   ${clip(f.actual)}`, `        fix:      ${f.hint}`);
+	for (const f of login.failures) lines.push(...failureLines(f));
 	return lines;
 }
 
@@ -30,23 +37,19 @@ export function summarize(report: Report): string {
 			continue;
 		}
 		const failed = Object.entries(route.dimensions).filter(([, state]) => state === 'fail').map(([d]) => d);
+		const accepted = route.failures.filter((f) => f.accepted).length;
 		const w = route.weight;
 		const stopped = Object.entries(route.dimensions).some(([, state]) => state === 'skipped');
 		const js = stopped ? 'page not compared: the two apps did not let this role in alike' : `JS on the wire ${kb(w.old.downloaded)} -> ${kb(w.new.downloaded)}, run at load ${kb(w.old.executed)} -> ${kb(w.new.executed)} (uncompressed)`;
-		lines.push(`${route.ok ? 'pass' : 'FAIL'}  ${route.route.padEnd(width)}  ${route.ok ? '' : `[${failed.join(', ')}]  `}${route.endpoint ? `compared as ${route.endpoint}` : js}`);
-		for (const f of route.failures) {
-			lines.push(`      ${f.dimension}${f.viewport ? ` (${f.viewport})` : ''}: ${f.check}`);
-			lines.push(`        expected: ${clip(f.expected)}`);
-			lines.push(`        actual:   ${clip(f.actual)}`);
-			lines.push(`        fix:      ${f.hint}`);
-			if (f.where) lines.push(`        where:    ${f.where}`);
-		}
+		lines.push(`${route.ok ? 'pass' : 'FAIL'}  ${route.route.padEnd(width)}  ${route.ok ? '' : `[${failed.join(', ')}]  `}${accepted ? `(${accepted} accepted) ` : ''}${route.endpoint ? `compared as ${route.endpoint}` : js}`);
+		for (const f of route.failures) lines.push(...failureLines(f));
 	}
 	if (report.unchecked?.length) lines.push('', `Not checked, needs a sample (add one to .migrate/samples.json):`, ...report.unchecked.map((u) => `  ${u.route}  no value for ${u.params.map((p) => `:${p}`).join(', ')}${u.file ? `  ${u.file}:${u.line}` : ''}`));
 	for (const login of report.logins ?? []) if (!report.routes.some((r) => r.role === login.role)) lines.push(`As ${login.role}: not checked`, ...loginLines(login));
 	const green = report.routes.filter((r) => r.ok).length;
 	const blocked = report.routes.filter((r) => r.blocked).length;
 	const red = report.routes.length - green - blocked;
-	lines.push('', `${green} of ${report.routes.length} ${report.roles ? 'route checks (route and role)' : 'routes'} green${red ? `, ${red} red` : ''}${blocked ? `, ${blocked} blocked by bot protection` : ''}.`);
+	if (report.staleAccepts?.length) lines.push('', 'Accepted differences that no longer match anything (remove them from .migrate/accepted.json):', ...report.staleAccepts.map((a) => `  ${a.route}${a.role ? ` as ${a.role}` : ''} ${a.dimension}: ${a.check}  (${a.reason})`));
+	lines.push('', `${green} of ${report.routes.length} ${report.roles ? 'route checks (route and role)' : 'routes'} green${red ? `, ${red} red` : ''}${blocked ? `, ${blocked} blocked by bot protection` : ''}${report.acceptedCount ? `, ${report.acceptedCount} accepted difference${report.acceptedCount === 1 ? '' : 's'}` : ''}${report.unchecked?.length ? `; ${report.unchecked.length} route${report.unchecked.length === 1 ? '' : 's'} not checked (needs a sample)` : ''}.`);
 	return `${lines.join('\n')}\n`;
 }

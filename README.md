@@ -26,6 +26,7 @@ markless-migrate switch <route> [--force <reason>]
 markless-migrate unswitch <route>
 markless-migrate proxy --old http://localhost:3000 --new http://localhost:5173 [--port 4300] [--host 127.0.0.1]
 markless-migrate config --old https://old.example.com --new https://new.example.com [--vercel vercel.json] [--nitro nitro.ts]
+markless-migrate accept <failure-id> --reason "why" [--by <name>]
 markless-migrate recorder
 markless-migrate status
 markless-migrate setup [--agent claude-code]... [--yes] [--dry-run]
@@ -160,6 +161,26 @@ and any request a handler the source scan marks as writing. They are sent only w
 on this machine or `--staging` marks them as staging apps with test data. Otherwise each write is
 answered by the checker without reaching the app, and compared old vs new as `would POST /path {shape}`.
 Server-side writes the app makes while handling a request cannot be held back.
+
+## Intended differences
+
+Every failure carries an id (in `[brackets]` in the summary, `id` in report.json) that stays the same
+across runs while the same difference is seen on the same route, role and viewport (the two origins are
+replaced by `OLD` and `NEW` before hashing, so other ports do not change it). `accept <id> --reason ...`
+adds it to `.migrate/accepted.json`:
+
+```json
+{ "accepted": [{ "route": "/about/", "dimension": "seo", "check": "title", "match": { "expected": "\"About | Lighthouse Walks\"", "actual": "\"About us | Lighthouse Walks\"" }, "reason": "Marketing renamed the page", "by": "Jack", "date": "2026-10-16", "id": "3f2a9c01de" }] }
+```
+
+Entries may be edited by hand: `route` is a glob (`*` within a segment, `**` across), `role` and
+`viewport` narrow it, `dimension` may be `*`, `check` is a glob, and `match` takes `expected`/`actual`
+(exact, or `/regex/flags`) or `element: { role, name }` (a failure about that element). A failure an
+entry matches is shown as accepted, with the reason, in the summary, report.html and `status`, and does
+not turn its route red; a route that was not fully compared (blocked, or let in differently) stays red.
+An entry for a route checked in this run that matched nothing is listed as stale. The skill tells
+agents to propose an accept to the user and never write the file themselves; the MCP server has no
+accept tool.
 
 ## Switching routes over
 
