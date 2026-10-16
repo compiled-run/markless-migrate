@@ -147,12 +147,14 @@ are on different hosts). Every route is then checked anonymous and once per role
 summary and report.html group the routes by role. `auth` goes red when the new app lets a role see a page
 the old app kept from it (or the reverse), sends a turned-away visitor somewhere else, or sets the
 session cookie with different attributes. When the two apps let a role in differently, that page is not
-compared further for that role.
+compared further for that role. With `--source`, a 404 or a page titled "Access denied" (or forbidden,
+not authorised, members only, sign in required) on a route behind an auth guard counts as turned away.
 
 When a route is answered by a bot wall (Cloudflare, Akamai, DataDome, PerimeterX, Imperva, AWS WAF,
 Vercel, hCaptcha, reCAPTCHA or Turnstile challenge pages, or a 403/429 that asks if you are a robot) on
 either app, check stops that route as blocked, with the vendor and what gave it away, instead of
-reporting every check red. Point check at a staging URL, or pass the bypass token: `--header
+reporting every check red; a wall that only answers the assets, a journey's form post or a forced state
+part way through stops it the same way. `plan` takes the same `--header`, `--cookie` and `--user-agent`. Point check at a staging URL, or pass the bypass token: `--header
 'x-bypass-token: ...'` (sent only to the apps' own origins), `--cookie name=value`, and `--user-agent`
 when the wall allows a known agent.
 

@@ -62,7 +62,7 @@ The bar is that a user, a crawler, a screen reader and the backend cannot tell w
 
 0. Proof apps: one React + Vite app and one Next.js App Router app with a CMS, chosen from public repos.
 1. Inventory + routes + rendered page + SEO, and `check` on one route. Proves the loop end to end.
-2. Pass-through proxy and `switch`.
+2. Pass-through proxy and `switch` (built: `switch`, `unswitch`, `proxy`, `config --vercel/--nitro`).
 3. Interaction exploration and replay.
 4. Bundler-plugin and component-library mapping.
 5. CMS/network contracts, forms/auth, third-party scripts.
@@ -230,21 +230,26 @@ Logged-in pages (`--auth`):
 - Roles come from the auth file. `plan --source` proposes them from the source scan's auth guards: a
   `signed-in` role plus each role a guard compares against (`user.role !== 'admin'`), and the login route
   from a guard's redirect or, when the redirect is built at run time (`/${lang}/login`), from a source
-  route named login or sign-in made concrete with a crawled value. The scan keeps one guard per function,
-  so a function that checks sign-in and a role together is reported with that role for every path it
-  covers (the Vite fixture's `/members/` is listed as `admin`). The starter's steps read the login form
-  (the field before the password, the password, the submit button); logins over several pages, single
-  sign-on on another origin, MFA or a CAPTCHA on the login page are not scripted: give the role a
-  storage state file instead.
+  route named login or sign-in made concrete with a crawled value. A role check inside a condition that
+  tests the path (`pathname.startsWith('/admin/') && user.role !== 'admin'`) applies to that path only, so
+  the Vite fixture's `/members/` needs a session and `/admin/` the admin role; a role check written
+  elsewhere in the function (a lookup table, a helper called with the path) still applies to every path
+  the function covers. The starter's steps read the login form (the field before the password, the
+  password, the submit button) and end by waiting until the browser leaves the login page; logins over
+  several pages, single sign-on on another origin, MFA or a CAPTCHA on the login page are not scripted:
+  give the role a storage state file instead.
 - Each role signs in once per side per run, with the clock unfrozen and its requests sent (the login
   script is the user's own instruction). The state is saved to `.migrate/auth/<role>.<side>.json` but not
   reused by the next run unless the auth file points `storageState` at it, and a session that expires
   during a long run is not renewed.
 - Access is decided from the checker's own request with the role's cookies: denied is 401, 403, or a
   redirect that ends on the login route (the auth file's `loginRoute`, the role's first `goto`, or a path
-  like `/login` or `/sign-in`). An app that answers 404, 200 with an "access denied" page, or redirects a
-  denied visitor somewhere else (the home page) is compared as a page, not as access. A session held in
-  localStorage rather than a cookie is restored in the browser, but the access decision does not see it.
+  like `/login` or `/sign-in`). On a route the source scan finds behind an auth guard (`check --source`),
+  a 404 and a 200 page whose `<title>` or first `<h1>` says access is denied, forbidden, not authorised,
+  members only or sign in required count as denied too. Without `--source`, or with a denial page worded
+  otherwise ("Guides only"), those are compared as pages; a denied visitor redirected somewhere other than
+  a login page (the home page) is too. A session held in localStorage rather than a cookie is restored in
+  the browser, but the access decision does not see it.
 - When the two apps decide access differently for a role, that role's page is not compared (`skipped`):
   a login page against a members page is all noise. Fix access and check again.
 - Session cookies are compared by name and attributes (Path, Domain or host-only, HttpOnly, Secure,
@@ -264,12 +269,18 @@ Bot protection:
   pages that talk about captchas or robots. Only a Cloudflare-style wall is proven, on the fixtures; the
   other vendors' markers come from their public challenge pages. A wall that answers 200 with none of
   these markers, or quietly serves a different page, is not recognised.
-- The wall is looked for on the checker's first request for each route on each side and on every
-  browser page load, not in forced states, journeys or asset requests; a wall that starts rate-limiting
-  part way through a route shows up as red checks.
+- The wall is looked for on the checker's first request for each route on each side, on every browser
+  page load, and on every response from the app's own origin during the route's check: assets, fetches,
+  journeys' posts, forced states, and the checker's asset probes. A wall seen anywhere stops the route as
+  blocked. On assets and fetches only a challenge header (`cf-mitigated`, `x-vercel-mitigated`,
+  `x-amzn-waf-action`) counts, because a CDN's `server` header on an ordinary 403 is not a wall; a wall
+  that answers an asset with a plain 403 and no header still shows up as red `assets`. Proven on the
+  Vite fixture with a Cloudflare-style wall on its static files only and on its form posts only. Sign-in
+  steps are not watched.
 - `--header` goes only to each app's own origin (never to third parties or a redirect's other host),
   `--cookie` is set for each app's host, and `--user-agent` applies to everything; the same values go to
-  both apps. `plan` does not take them yet, so a walled old app cannot be crawled.
+  both apps. `plan` takes the same three for the old app, and stops with what to do when its crawl meets
+  a wall.
 
 Other:
 
@@ -278,7 +289,10 @@ Other:
 - Element pairing for computed styles uses a role and name heuristic in the page; the accessibility
   checks use Chromium's accessibility tree and Playwright's ARIA snapshot.
 - A route takes about 15 to 30 seconds to check: three OLD loads, every forced state on three pages,
-  and about twenty journeys run three times.
+  and about twenty journeys run three times. Routes run `--concurrency` at a time (default half the
+  cores, at most 4); endpoints and redirects run one at a time after the pages. Each page load still gets
+  a fresh browser context (34 ms each with its page on this machine, about 70 per route, so about 2 s of a
+  route's time): reusing contexts would leak cookies and storage between journeys, so it was not done.
 - yuku-css is not on npm yet, so the package links it from a sibling checkout and cannot be installed
   from npm until it is published.
 
@@ -317,20 +331,80 @@ written alike or the text is computed. Exact locations need, in order of value:
 
 ### What still slips through, from this work
 
-- Old-side runtime hints are proven for production React (fiber to component function to source map)
-  and static HTML; React `_debugSource`/owner stacks, Vue `__file`, Svelte `__svelte_meta` and the data
-  attributes are implemented but no fixture runs a development build of those frameworks. Elements a
-  Next.js server component renders have no client fiber, so they are found by source matching only.
+- Old-side runtime hints are proven for production React (fiber to component function to source map),
+  static HTML, and development builds on Vite's dev server: React 19's owner stack followed through the
+  dev server's source map, Vue's `__file` (the element is then found in that component's template), and
+  Svelte 5's `__svelte_meta`. React 18's `_debugSource` and the data attributes are implemented but not
+  run by a fixture. Elements a Next.js server component renders have no client fiber, so they are found
+  by source matching only.
 - Source matching needs the element's tag plus its written text or accessible name; an element whose
   text is entirely computed is placed only inside the route's own files (and the files they import),
-  and text from a dictionary is named by exact string or the longest literal it contains. Two elements
-  written alike in one file resolve to the first. Elements created by plain JavaScript (`createElement`)
-  are not traced to the script that made them (CDP node stack traces would do it).
+  and text from a dictionary is named by exact string or the longest literal it contains. Of several
+  elements written alike, a failure about the n-th identical line of the accessibility tree or the text
+  is tied to the n-th element with that role and name, and the source element is chosen by its chain of
+  ancestors and its position among same-tag siblings (`main:1>section:2>article:2>p:2`); proven on the Vite
+  fixture's two "Guided" paragraphs. Inside a component the chain only reaches the component's root, so
+  two instances of one component rendered alike still resolve to the one line that writes them (which is
+  right), and an element repeated by a loop resolves to the loop body. Elements created by plain JavaScript
+  (`createElement`) are not traced to the script that made them (CDP node stack traces would do it).
 - Failures about the accessibility tree name the element only when the snapshot line carries a name or
   text; landmark-only and focus-order failures carry no location.
 - Feeds are keyed by guid, id, link or title; a feed that changes every key at once reports every item
-  as missing. JSON arrays are compared by index, so an item removed from the middle reports the shift.
-  Endpoint discovery probes a fixed list of well-known paths and the feeds and manifest the first 20
-  pages link to; endpoints only reachable otherwise need `--route`. Endpoints are checked once, as
-  anonymous, even with `--auth`.
-- "Needs a sample" routes are listed, not failed; a report can be green with routes unchecked.
+  as missing. JSON arrays of objects are keyed by the first of `id`, `_id`, `uuid`, `slug`, `key`, `href`,
+  `url`, `src`, `path`, `guid`, `title`, `name` that every item has with a distinct value, else aligned by
+  longest common subsequence (an item replaced in place is a changed value), so a removed middle item is
+  reported as that item; proven on the manifest's icons. When the new app renames the identity field
+  itself, the arrays fall back to alignment and the rename shows as changed fields. Endpoint discovery
+  probes a fixed list of well-known paths and the feeds and manifest the first 20 pages link to;
+  endpoints only reachable otherwise need `--route`. Under `--auth` endpoints are checked once per role
+  with that role's session.
+- "Needs a sample" routes are counted as not checked: the summary and report.html say how many, and
+  `check` exits 1 for them unless `--allow-unchecked`.
+
+## Switching, intended differences, run and speed (2026-10-16)
+
+Built: `switch <route>` / `unswitch` maintain `.migrate/switched.json` (refused unless the last check of
+every role is green; `--force <reason>` records the reason and the checks it overrode; MCP
+`switch_route` never forces). `proxy` serves both apps on one origin; `config` writes `vercel.json` and
+Nitro `routeRules`. `accept <failure-id> --reason` writes `.migrate/accepted.json`; accepted failures show
+as accepted with the reason, stale entries are listed. `run` checks like `check` (`--source`,
+`--new-source`, `--auth`, bypass flags, `--all`), owns the new app's server with `--serve`/`--build`/
+`--restart-on`, and passes the MCP server to codex and claude on the command line. `check --all` also
+covers redirects and a path no app has. `weight` counts every downloaded script. report.html keeps its
+screenshots in `.migrate/shots/`. `--concurrency` and `--changed`. Proven by `test/e2e/proxy.test.ts`
+(both apps from the Vite fixture: assets from each side and the fallback, a form post, signing in on OLD
+and landing on a switched page, an absolute redirect, a consent cookie pinned to OLD's domain, a cart
+cookie set by NEW), the Vercel rewrites compiled with `@vercel/routing-utils`, and the fixture suites.
+
+### What still slips through, from this work
+
+- The proxy picks a side for an asset by the `Referer`'s route; a request without a Referer (a
+  `no-referrer` policy, a service worker, a prefetch from another page) goes by its own path, then the
+  other app on 404, 405, 410 or 501. An asset both apps serve at the same path with different bytes is
+  served by the page's side, which is right for that page and may be wrong for a page of the other app
+  that loads it later from cache. Bodies are not rewritten, so absolute URLs to either app's own host
+  inside HTML, CSS or JS (canonical links, `og:url`, hard-coded asset hosts) still point there.
+  WebSockets (Vite's HMR, live updates) are not proxied. Secure cookies work on `localhost` only.
+- `config --vercel` cannot try one deployment and fall back to the other: an asset goes to NEW only when
+  a switched page's HTML loads it and OLD does not serve it, and a whole directory goes when OLD has no
+  inventoried asset in it. Chunks a NEW page imports at run time from a directory OLD also uses (both
+  apps on Vite's `/assets/`) are not listed: regenerate the config after each deploy, or give the two
+  apps different asset directories. `config --nitro` proxies only the inventoried routes, endpoints and
+  assets of OLD (exact paths); a path the inventory never saw is answered by the Markless app. Nitro
+  3's routeRules cannot switch a route back off a wider `proxy` rule, so there is no catch-all.
+- `switch` decides on `.migrate/results.json`, so a route checked green against an older build of NEW
+  stays switchable until it is checked again.
+- Failure ids hash the route, role, dimension, check, viewport, expected and actual (origins replaced),
+  so an accepted difference whose values move (a count, a date the noise baseline did not catch) is a new
+  failure and the old entry turns stale; widen it by hand with a `/regex/`. Accepting a failure that
+  stopped a route from being compared (an access decision) does not make the route green.
+- `run --serve` restarts the server only after an attempt or when `--restart-on` changes; an agent that
+  builds into a path not named there checks against the old server until the attempt ends. Build and
+  server output are kept only when they fail.
+- `--changed` trusts git: files outside the new app's checkout (a linked package, a CMS) and changes git
+  ignores are not seen, and a route checked without `--new-source` (or without git) has no file list, so
+  any change re-checks it. Which files a route is rendered from comes from the page file Markless names
+  and what it imports, plus `document.tsrx`.
+- Redirects come from Next.js `redirects()`, `vercel.json`, `serve.json` and `_redirects`, plus the other
+  trailing-slash form of every page; dynamic redirect sources (`/blog/:slug`), middleware redirects and
+  Nuxt/SvelteKit/Astro config are not read. Only the status and redirect chain are compared for them.
