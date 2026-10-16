@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
@@ -218,6 +219,33 @@ describe('vite multi-page site', () => {
 			assert.ok(JSON.parse(await readFile(join(cwd, '.migrate', 'report.json'), 'utf8')).routes[0].failures.length === 1);
 		} finally {
 			await client.close();
+		}
+	});
+
+	test('check --open writes the visual report, boxes the changed heading and opens the page', async () => {
+		const cwd = await realpath(await mkdtemp(join(tmpdir(), 'mm-open-')));
+		const opener = join(cwd, 'opener.sh');
+		await writeFile(opener, '#!/bin/sh\necho "$1" > "$(dirname "$0")/opened.txt"\n', { mode: 0o755 });
+		const cli = join(import.meta.dirname, '../../src/cli.ts');
+		const child = spawn(process.execPath, [cli, 'check', '--old', old.origin, '--new', mutants.get('heading')!.origin, '--route', '/about/', '--open'], { cwd, env: { ...process.env, MARKLESS_MIGRATE_OPENER: opener } });
+		const result = { stdout: '', stderr: '', status: -1 };
+		child.stdout.on('data', (chunk) => (result.stdout += chunk));
+		child.stderr.on('data', (chunk) => (result.stderr += chunk));
+		result.status = await new Promise<number>((done) => child.on('exit', (code) => done(code ?? -1)));
+		assert.equal(result.status, 1, result.stderr);
+		const html = join(cwd, '.migrate', 'report.html');
+		assert.match(result.stdout, new RegExp(`Visual report: ${html}`));
+		const opened = async (): Promise<string> => readFile(join(cwd, 'opened.txt'), 'utf8').catch(() => new Promise((done) => setTimeout(done, 50)).then(opened));
+		assert.equal((await opened()).trim(), html, 'the detached opener got the report path');
+		const page = await browser.newPage();
+		try {
+			await page.goto(`file://${html}`);
+			const failing = page.locator('.shot', { has: page.locator('.badge.fail') });
+			assert.ok((await failing.count()) >= 1);
+			assert.ok((await failing.first().locator('.side figure').first().locator('rect').count()) >= 1);
+			assert.ok(await page.getByRole('cell', { name: /The accessibility tree differs/ }).first().isVisible());
+		} finally {
+			await page.close();
 		}
 	});
 

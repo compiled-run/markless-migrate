@@ -109,6 +109,17 @@ export interface Failure {
 	readonly hint: string;
 }
 
+/** A pair of screenshots of one route in one viewport and state, with the boxes where they differ. */
+export interface Shot {
+	readonly label: string;
+	readonly viewport: string;
+	readonly old: Buffer;
+	readonly new: Buffer;
+	readonly diff?: Buffer;
+	readonly regions: readonly Box[];
+	readonly ok: boolean;
+}
+
 export interface RouteResult {
 	readonly route: string;
 	readonly ok: boolean;
@@ -116,6 +127,7 @@ export interface RouteResult {
 	readonly failures: readonly Failure[];
 	readonly weight: { readonly old: Omit<Weight, 'scripts'>; readonly new: Omit<Weight, 'scripts'> };
 	readonly visualDiffs: readonly { viewport: string; png: Buffer }[];
+	readonly shots: readonly Shot[];
 }
 
 export interface Report {

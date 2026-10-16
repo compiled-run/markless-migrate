@@ -1,7 +1,7 @@
 import { HINTS, seoHint } from './hints.ts';
 import { describe, matchElements } from './match.ts';
 import { diffFields, diffLines, fieldTemplates, lineTemplates, type LineDiff } from './noise.ts';
-import type { AssetRecord, Box, Dimension, ElementSnapshot, Failure, PageCapture, RouteCapture, RouteResult } from './types.ts';
+import type { AssetRecord, Box, Dimension, ElementSnapshot, Failure, PageCapture, RouteCapture, RouteResult, Shot } from './types.ts';
 import { DIMENSIONS } from './types.ts';
 import { compareScreenshots, visualNoise, visuallyDifferent } from './visual.ts';
 
@@ -137,6 +137,7 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 	const others = olds.length > 1 ? olds.slice(1) : [oldA];
 	const failures: Failure[] = [];
 	const visualDiffs: { viewport: string; png: Buffer }[] = [];
+	const shots: Shot[] = [];
 
 	const chain = (c: RouteCapture) => Object.fromEntries(c.http.chain.map((hop, i) => [`hop ${i + 1}`, `${hop.status} ${hop.url}`]));
 	for (const d of diffFields(fieldTemplates(chain(oldA), ...others.map(chain)), chain(next))) {
@@ -156,6 +157,7 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 
 		const noise = visualNoise(a.screenshot, bs.map((b) => b.screenshot), noisyTextBoxes(a.elements, bs.map((b) => b.elements)));
 		const diff = compareScreenshots(a.screenshot, n.screenshot, noise);
+		shots.push({ label: viewport, viewport, old: a.screenshot, new: n.screenshot, diff: diff.png, regions: visuallyDifferent(diff) ? diff.regions : [], ok: !visuallyDifferent(diff) });
 		if (visuallyDifferent(diff)) {
 			const r = diff.region;
 			const band = r && { x: r.x, y: r.y, width: r.width, height: Math.min(r.height, 24) };
@@ -238,5 +240,6 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 		failures,
 		weight: { old: { downloaded: wa.downloaded, source: wa.source, executed: wa.executed }, new: { downloaded: wn.downloaded, source: wn.source, executed: wn.executed } },
 		visualDiffs,
+		shots,
 	};
 }

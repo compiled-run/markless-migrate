@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { chromium, type Browser } from 'playwright';
 import { captureRoute, mime } from './capture.ts';
 import { assetsToProbe, compareRoute, type Probe } from './compare.ts';
+import { renderHtml } from './html.ts';
 import type { PageCapture, Report, RouteCapture, RouteResult, Viewport } from './types.ts';
 import { VIEWPORTS } from './types.ts';
 
@@ -61,6 +62,10 @@ function slug(route: string): string {
 	return route.replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '') || 'root';
 }
 
+export function jsonReport(report: Report, diffs: Readonly<Record<string, string[]>> = {}) {
+	return { ...report, routes: report.routes.map(({ visualDiffs: _, shots: __, ...route }) => ({ ...route, visualDiffs: diffs[route.route] ?? [] })) };
+}
+
 export async function writeReport(report: Report, dir: string): Promise<string> {
 	await mkdir(dir, { recursive: true });
 	const diffs: Record<string, string[]> = {};
@@ -72,8 +77,8 @@ export async function writeReport(report: Report, dir: string): Promise<string> 
 			(diffs[route.route] ??= []).push(file);
 		}
 	}
-	const json = { ...report, routes: report.routes.map(({ visualDiffs: _, ...route }) => ({ ...route, visualDiffs: diffs[route.route] ?? [] })) };
 	const path = join(dir, 'report.json');
-	await writeFile(path, `${JSON.stringify(json, null, '\t')}\n`);
+	await writeFile(path, `${JSON.stringify(jsonReport(report, diffs), null, '\t')}\n`);
+	await writeFile(join(dir, 'report.html'), renderHtml(report));
 	return path;
 }

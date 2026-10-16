@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 import { createInterface } from 'node:readline/promises';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { AGENTS, detectAgents, findBinary, type HostEnv, type ServerCommand } from './agents/registry.ts';
 import { applySetup, describeChanges, planSetup } from './agents/setup.ts';
-import { runCheck, writeReport } from './check/run.ts';
+import { openFile } from './check/open.ts';
+import { jsonReport, runCheck, writeReport } from './check/run.ts';
 import { summarize } from './check/summary.ts';
 import { plan, summarizeInventory, writeInventory } from './plan/inventory.ts';
 import { DRIVERS, driver } from './run/drivers.ts';
@@ -18,8 +19,9 @@ const USAGE = `markless-migrate ${VERSION}
 
   plan    --old <origin> [--source <path>] [--limit <n>]
           Inventory the old app's routes, SEO, assets and locales into .migrate/inventory.json.
-  check   --old <origin> --new <origin> [--route <path>]... [--json]
+  check   --old <origin> --new <origin> [--route <path>]... [--json] [--open]
           Compare routes old vs new (default: every route in the inventory). Exits 1 when any is red.
+          Writes .migrate/report.json and .migrate/report.html; --open opens the HTML report.
   status  Show which routes are green, red or not checked yet.
   setup   [--agent <id>]... [--yes] [--dry-run]
           Register the MCP server and install the migration skill for your coding agents.
@@ -152,14 +154,16 @@ async function main(argv: string[]): Promise<number> {
 			return 0;
 		}
 		case 'check': {
-			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, new: { type: 'string' }, route: { type: 'string', multiple: true }, json: { type: 'boolean' } } });
+			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, new: { type: 'string' }, route: { type: 'string', multiple: true }, json: { type: 'boolean' }, open: { type: 'boolean' } } });
 			if (!values.old || !values.new) fail('check needs --old <origin> and --new <origin>');
 			const routes = values.route?.length ? values.route : (await readInventory(cwd))?.routes.map((r) => r.route);
 			if (!routes?.length) fail('no routes: pass --route <path> or run plan first');
 			const report = await runCheck({ oldOrigin: values.old, newOrigin: values.new, routes });
 			const path = await writeReport(report, join(cwd, STATE_DIR));
 			await recordResults(cwd, report);
-			out(values.json ? `${JSON.stringify({ ...report, routes: report.routes.map(({ visualDiffs: _, ...r }) => r) }, null, 2)}\n` : `${summarize(report)}Report: ${path}\n`);
+			const html = join(dirname(path), 'report.html');
+			out(values.json ? `${JSON.stringify(jsonReport(report), null, 2)}\n` : `${summarize(report)}Report: ${path}\nVisual report: ${html}\n`);
+			if (values.open) await openFile(html);
 			return report.ok ? 0 : 1;
 		}
 		case 'status':
