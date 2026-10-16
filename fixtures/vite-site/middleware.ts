@@ -51,6 +51,10 @@ const CHALLENGE = '<!DOCTYPE html><html lang="en-US"><head><title>Just a moment.
 export function botWall(req: IncomingMessage, res: ServerResponse): boolean {
 	const pass = process.env.BOT_WALL;
 	if (!pass || req.headers['x-staging-pass'] === pass || cookieOf(req, 'staging_pass') === pass) return false;
+	// BOT_WALL_SCOPE narrows the wall to what a CDN often challenges on its own: static files, or posts.
+	const scope = process.env.BOT_WALL_SCOPE;
+	if (scope === 'assets' && !/\.(png|svg|jpe?g|webp|woff2?|css|js)$/.test((req.url ?? '').split('?')[0]!)) return false;
+	if (scope === 'writes' && (req.method === 'GET' || req.method === 'HEAD')) return false;
 	res.writeHead(403, { 'content-type': 'text/html; charset=UTF-8', 'cf-mitigated': 'challenge', 'cf-ray': '8d2f00000000-LHR', server: 'cloudflare' }).end(CHALLENGE);
 	return true;
 }

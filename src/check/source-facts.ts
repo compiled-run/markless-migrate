@@ -44,6 +44,8 @@ export interface SourceFacts {
 	/** Route patterns and the files that serve them, to find which files render a failing element. */
 	readonly routes?: readonly { readonly path: string; readonly file: string; readonly kind: string }[];
 	readonly components?: readonly { readonly file: string; readonly kind: string }[];
+	/** Route patterns behind an auth guard, to tell a 404 or an "access denied" page from a page that is really there. */
+	readonly guarded?: readonly string[];
 }
 
 type Scanner = { scanSource(dir: string): Promise<ScannedFacts> };
@@ -58,7 +60,7 @@ export async function loadSourceFacts(dir: string): Promise<{ facts?: SourceFact
 	}
 	if (typeof scanner.scanSource !== 'function') return { error: 'source readers do not export scanSource' };
 	const scanned = await scanner.scanSource(dir);
-	const facts: SourceFacts = { nondeterminism: scanned.nondeterminism, writes: scanned.writes, clients: scanned.clients, routes: scanned.routes, components: scanned.components };
+	const facts: SourceFacts = { nondeterminism: scanned.nondeterminism, writes: scanned.writes, clients: scanned.clients, routes: scanned.routes, components: scanned.components, guarded: [...new Set(scanned.authGuards.flatMap((g) => g.routes))] };
 	return { facts };
 }
 

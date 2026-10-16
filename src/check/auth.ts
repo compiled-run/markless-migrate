@@ -170,20 +170,35 @@ export interface Access {
 	readonly line: string;
 }
 
-/** Whether a role got the page: denied when the app answers 401 or 403, or sends the visitor to a login page. */
-export function access(http: HttpCapture, loginRoutes: readonly string[]): Access {
+const DENIED_TEXT = /access denied|forbidden|not authori[sz]ed|unauthori[sz]ed|permission denied|no access|you (do not|don't) have (access|permission)|(log|sign) ?in (is )?required|(log|sign) in to (continue|view)|please (log|sign) in|members only|restricted/i;
+
+/** Whether a page's title or first heading says the visitor was turned away. */
+export function saysDenied(html: string): boolean {
+	const title = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1] ?? '';
+	const heading = /<h1[^>]*>([\s\S]*?)<\/h1>/i.exec(html)?.[1]?.replace(/<[^>]+>/g, '') ?? '';
+	return DENIED_TEXT.test(title) || DENIED_TEXT.test(heading);
+}
+
+/**
+ * Whether a role got the page: denied when the app answers 401 or 403, or sends the visitor to a login page. On a route the
+ * source guards, `guarded` also counts a 404 (hiding the page) or a 200 page that says access is denied.
+ */
+export function access(http: HttpCapture, loginRoutes: readonly string[], guarded?: { readonly saysDenied: boolean }): Access {
 	const last = http.chain.at(-1)!;
 	const path = new URL(last.url, 'http://x').pathname;
 	const toLogin = http.chain.length > 1 && (loginRoutes.some((r) => path === r || path === r.replace(/\/$/, '')) || LOGIN_PATH.test(path));
-	const denied = http.status === 401 || http.status === 403 || toLogin;
+	const hidden = Boolean(guarded) && http.status === 404;
+	const page = Boolean(guarded?.saysDenied) && http.status === 200;
+	const denied = http.status === 401 || http.status === 403 || toLogin || hidden || page;
 	const hops = http.chain.length > 1 ? `${http.chain[0]!.status} to ${http.chain.slice(1).map((h) => h.url).join(' to ')} (${last.status})` : `${last.status}`;
-	return { allowed: !denied, line: `${denied ? 'denied' : 'let in'}: ${hops}` };
+	const why = hidden ? ' (not found on a guarded route)' : page ? ' (a page saying access is denied)' : '';
+	return { allowed: !denied, line: `${denied ? 'denied' : 'let in'}: ${hops}${why}` };
 }
 
 /** Access failures for one role on one route: different decisions, or both denied but sent to different places. */
-export function accessFailures(route: string, role: string, old: HttpCapture, next: HttpCapture, loginRoutes: readonly string[]): { failures: Failure[]; comparable: boolean } {
-	const a = access(old, loginRoutes);
-	const b = access(next, loginRoutes);
+export function accessFailures(route: string, role: string, old: HttpCapture, next: HttpCapture, loginRoutes: readonly string[], guarded?: { readonly old: { readonly saysDenied: boolean }; readonly new: { readonly saysDenied: boolean } }): { failures: Failure[]; comparable: boolean } {
+	const a = access(old, loginRoutes, guarded?.old);
+	const b = access(next, loginRoutes, guarded?.new);
 	if (a.allowed !== b.allowed) {
 		return { comparable: false, failures: [{ route, role, dimension: 'auth', check: `access as ${role}`, expected: a.line, actual: b.line, hint: a.allowed ? HINTS.accessDenied : HINTS.accessGranted }] };
 	}

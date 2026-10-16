@@ -1,5 +1,5 @@
 import { access, writeFile } from 'node:fs/promises';
-import type { Browser } from 'playwright';
+import type { Browser, BrowserContext } from 'playwright';
 import type { AuthFile, LoginStep, Target } from '../check/auth.ts';
 import type { AuthGuard, SourceRoute } from '../source/index.ts';
 import type { RouteUnionEntry } from './source.ts';
@@ -44,8 +44,8 @@ export function proposeAuth(guards: readonly AuthGuard[], routes: readonly Sourc
 }
 
 /** The login form's fields as the page labels them, so the starter's steps fit the real page. */
-export async function readLoginForm(browser: Browser, url: string): Promise<{ user?: Target; password?: Target; submit?: Target } | undefined> {
-	const page = await browser.newPage();
+export async function readLoginForm(browser: Browser, url: string, open?: (browser: Browser) => Promise<BrowserContext>): Promise<{ user?: Target; password?: Target; submit?: Target } | undefined> {
+	const page = open ? await (await open(browser)).newPage() : await browser.newPage();
 	try {
 		const response = await page.goto(url, { waitUntil: 'load', timeout: 15_000 });
 		if (!response?.ok()) return undefined;
@@ -64,7 +64,7 @@ export async function readLoginForm(browser: Browser, url: string): Promise<{ us
 	} catch {
 		return undefined;
 	} finally {
-		await page.close();
+		await page.context().close();
 	}
 }
 

@@ -33,7 +33,7 @@ import type { RouteState } from './status.ts';
 
 const USAGE = `markless-migrate ${VERSION}
 
-  plan    --old <origin> [--source <path>] [--limit <n>]
+  plan    --old <origin> [--source <path>] [--limit <n>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           Inventory the old app's routes, SEO, assets and locales into .migrate/inventory.json.
           With --source, auth guards propose roles and the login route in a starter .migrate/auth.json.
   check   --old <origin> --new <origin> [--route <path>]... [--json] [--open]
@@ -271,9 +271,15 @@ async function main(argv: string[]): Promise<number> {
 			out(USAGE);
 			return 0;
 		case 'plan': {
-			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, limit: { type: 'string' } } });
+			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, limit: { type: 'string' }, header: { type: 'string', multiple: true }, cookie: { type: 'string', multiple: true }, 'user-agent': { type: 'string' } } });
 			if (!values.old) fail('plan needs --old <origin>');
-			const inventory = await plan({ origin: values.old, source: values.source ? resolve(values.source) : undefined, limit: values.limit ? Number(values.limit) : undefined });
+			let bypass: ReturnType<typeof bypassOptions> = {};
+			try {
+				bypass = bypassOptions(values.header, values.cookie);
+			} catch (error) {
+				fail((error as Error).message);
+			}
+			const inventory = await plan({ origin: values.old, source: values.source ? resolve(values.source) : undefined, limit: values.limit ? Number(values.limit) : undefined, ...bypass, ...(values['user-agent'] ? { userAgent: values['user-agent'] } : {}) });
 			const path = await writeInventory(inventory, join(cwd, STATE_DIR));
 			out(`${summarizeInventory(inventory)}Wrote ${path}\n`);
 			const authPath = join(cwd, STATE_DIR, 'auth.json');

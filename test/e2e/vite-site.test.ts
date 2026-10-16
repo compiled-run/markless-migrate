@@ -506,11 +506,24 @@ interface AuthMutation {
 	readonly edits: readonly Edit[];
 	readonly red: Readonly<Record<'anonymous' | 'member' | 'admin', readonly Dimension[]>>;
 	readonly expect: (report: Report) => void;
+	/** Check with the old app's source scan, so its auth guards are known. */
+	readonly withSource?: boolean;
 }
 
 const authFailure = (report: Report, role: string) => [...report.routes.filter((r) => r.role === role).flatMap((r) => r.failures), ...(report.logins ?? []).filter((l) => l.role === role).flatMap((l) => l.failures)].filter((f) => f.dimension === 'auth');
 
 const AUTH_MUTATIONS: AuthMutation[] = [
+	{
+		name: 'auth-denied-hidden',
+		route: '/admin/',
+		withSource: true,
+		edits: [{ file: 'serve.ts', find: "res.writeHead(403, { 'content-type': TYPES['.html'] })", replace: "res.writeHead(404, { 'content-type': TYPES['.html'] })" }],
+		red: { anonymous: [], member: ['http'], admin: [] },
+		expect: (report) => {
+			const member = report.routes.find((r) => r.role === 'member')!;
+			assert.deepEqual(member.failures.map((f) => [f.dimension, f.check, f.expected, f.actual]), [['http', 'status', '403 /admin/', '404 /admin/']], 'a 404 on a guarded route is a denial, so both apps turn the member away and the page is compared');
+		},
+	},
 	{
 		name: 'auth-endpoint',
 		route: '/api/me',
@@ -575,6 +588,8 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 	const mutants = new Map<string, App>();
 	const sources = new Map<string, string>();
 	let walled: App;
+	let walledAssets: App;
+	let walledWrites: App;
 
 	before(async () => {
 		browser = await chromium.launch();
@@ -582,14 +597,14 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		otherCms = await startCms({ walks: { ...CONTENT.walks!, news: CONTENT.walks!.news.map((n) => ({ ...n, title: `${n.title} (staging copy)` })), hours: { today: 'Booking office closed for staff training' } } });
 		const all = [...MUTATIONS, ...AUTH_MUTATIONS];
 		const [dist, ...dists] = await Promise.all([buildVite('original'), buildVite('rebuild'), ...all.map((m) => buildVite(m.name, m.edits))]);
-		[old, twin, twinOnOtherCms, walled] = await Promise.all([startStatic(dist!, cms.origin), startStatic(dists[0]!, cms.origin), startStatic(dists[0]!, otherCms.origin), startStatic(dist!, cms.origin, { BOT_WALL: WALL })]);
+		[old, twin, twinOnOtherCms, walled, walledAssets, walledWrites] = await Promise.all([startStatic(dist!, cms.origin), startStatic(dists[0]!, cms.origin), startStatic(dists[0]!, otherCms.origin), startStatic(dist!, cms.origin, { BOT_WALL: WALL }), startStatic(dist!, cms.origin, { BOT_WALL: WALL, BOT_WALL_SCOPE: 'assets' }), startStatic(dist!, cms.origin, { BOT_WALL: WALL, BOT_WALL_SCOPE: 'writes' })]);
 		const apps = await Promise.all(all.map((_, i) => startStatic(dists[i + 1]!, cms.origin)));
 		all.forEach((m, i) => mutants.set(m.name, apps[i]!));
 		all.forEach((m, i) => sources.set(m.name, dirname(dists[i + 1]!)));
 	});
 
 	after(async () => {
-		await Promise.all([old?.stop(), twin?.stop(), twinOnOtherCms?.stop(), walled?.stop(), ...[...mutants.values()].map((m) => m.stop())]);
+		await Promise.all([old?.stop(), twin?.stop(), twinOnOtherCms?.stop(), walled?.stop(), walledAssets?.stop(), walledWrites?.stop(), ...[...mutants.values()].map((m) => m.stop())]);
 		await Promise.all([cms?.stop(), otherCms?.stop()]);
 		await browser?.close();
 	});
@@ -791,10 +806,25 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		assert.match(stale.stdout, /Accepted differences that no longer match anything \(remove them from \.migrate\/accepted\.json\):\n +\/about\/ seo: title +\(Marketing renamed the page\)/);
 	});
 
+	test('a wall that answers only the assets, or only a journey\'s form post, stops the route as blocked instead of turning it red', async () => {
+		const assets = await runCheck({ oldOrigin: old.origin, newOrigin: walledAssets.origin, routes: ['/'], browser });
+		assert.deepEqual(assets.routes.map((r) => [r.blocked?.side, r.blocked?.vendor, r.failures.length]), [['new', 'Cloudflare', 0]], summarize(assets));
+		assert.match(summarize(assets), /BLOCKED +\/ +blocked by Cloudflare on NEW \(403, header cf-mitigated: challenge\)/);
+		const writes = await runCheck({ oldOrigin: walledWrites.origin, newOrigin: twin.origin, routes: ['/about/'], browser });
+		assert.deepEqual(writes.routes.map((r) => [r.blocked?.side, r.blocked?.vendor, r.failures.length]), [['old', 'Cloudflare', 0]], summarize(writes));
+	});
+
+	test('plan stops at a bot wall with what to do, and gets through with the bypass header', async () => {
+		await assert.rejects(plan({ origin: walled.origin, browser }), /plan was stopped by Cloudflare on \/ \(403, header cf-mitigated: challenge\): plan a staging URL, or pass the bypass/);
+		const through = await plan({ origin: walled.origin, browser, headers: { 'x-staging-pass': WALL } });
+		assert.deepEqual(through.routes.map((r) => r.route), ['/', '/about/', '/ar/', '/fr/']);
+	});
+
 	for (const mutation of AUTH_MUTATIONS) {
 		test(`auth mutation "${mutation.name}" turns ${Object.entries(mutation.red).filter(([, d]) => d.length).map(([role, d]) => `${d.join(' + ')} red as ${role}`).join(', ')} and nothing else`, async () => {
 			const auth = await writeAuth({ loginRoute: '/login/', member: 'sam@lighthouse.example', admin: 'kit@lighthouse.example', landing: '/members/' });
-			const report = await runCheck({ oldOrigin: old.origin, newOrigin: mutants.get(mutation.name)!.origin, routes: [mutation.route], browser, auth });
+			const source = mutation.withSource ? (await loadSourceFacts(SOURCE)).facts : undefined;
+			const report = await runCheck({ oldOrigin: old.origin, newOrigin: mutants.get(mutation.name)!.origin, routes: [mutation.route], browser, auth, ...(source ? { source } : {}) });
 			if (process.env.SHOW_SUMMARY) process.stdout.write(`\n${summarize(report)}`);
 			assert.deepEqual(redByRole(report), mutation.red, summarize(report));
 			mutation.expect(report);

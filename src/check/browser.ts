@@ -3,6 +3,7 @@ import type { Browser, BrowserContext, BrowserContextOptions, Page, Request, Rou
 import { DEFAULT_FREEZE, freezePage, type FreezeOptions } from './freeze.ts';
 import { bodyShape, MAX_BODY, sameApp, type NetworkRecord } from './network.ts';
 import { at, writeHandler, type WriteFact } from './source-facts.ts';
+import { detectChallenge } from './blocked.ts';
 import { blocker } from './trackers.ts';
 import type { Viewport } from './types.ts';
 
@@ -21,6 +22,17 @@ export interface SideEnv {
 	readonly headers?: Readonly<Record<string, string>>;
 	readonly cookies?: readonly { readonly name: string; readonly value: string }[];
 	readonly userAgent?: string;
+	/** Bot walls that answered any of this app's own requests during one route's check: pages, assets, journeys and states. */
+	readonly walls?: WallHit[];
+}
+
+// On an asset or a fetch only a challenge header proves a wall; a CDN's server header on an ordinary 403 does not.
+export const DEFINITE = /^header (cf-mitigated|x-vercel-mitigated|x-amzn-waf-action):/i;
+
+export interface WallHit {
+	readonly status: number;
+	readonly vendor: string;
+	readonly evidence: string;
 }
 
 export type StorageState = Exclude<BrowserContextOptions['storageState'], string | undefined>;
@@ -167,6 +179,20 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 			stopped = true;
 		},
 	};
+	if (env.walls) {
+		const walls = env.walls;
+		context.on('response', (response) => {
+			if (!sameApp(new URL(response.url()), env.origin)) return;
+			const status = response.status();
+			const document = response.request().resourceType() === 'document';
+			const look = (body: string) => {
+				const found = detectChallenge({ status, headers: response.headers(), body });
+				if (found && (document || DEFINITE.test(found.evidence))) walls.push({ status, ...found });
+			};
+			if (status >= 400 && document) response.text().then(look, () => look(''));
+			else look('');
+		});
+	}
 	const recorded = env.replay?.responses.filter((r) => r.side === 'browser') ?? [];
 	await context.route('**/*', async (route: Route) => {
 		const request = route.request();

@@ -78,3 +78,15 @@ test('reports group routes by role, with each role sign-in, and a blocked route 
 	assert.match(html, /<h2>As member<\/h2><details class="states login" open>/);
 	assert.match(html, /<span class="badge blocked">blocked<\/span> \/members <small>as member<\/small>/);
 });
+
+test('on a guarded route a 404, or a 200 page whose title or heading says access is denied, counts as turned away', async () => {
+	const { access, saysDenied } = await import('../src/check/auth.ts');
+	const http = (status: number) => ({ chain: [{ url: '/admin/', status }], status, contentType: 'text/html' });
+	assert.equal(access(http(404), []).allowed, true, 'without a guard a 404 is just a page');
+	assert.deepEqual(access(http(404), [], { saysDenied: false }), { allowed: false, line: 'denied: 404 (not found on a guarded route)' });
+	assert.deepEqual(access(http(200), [], { saysDenied: true }), { allowed: false, line: 'denied: 200 (a page saying access is denied)' });
+	assert.equal(access(http(200), [], { saysDenied: false }).allowed, true);
+	assert.ok(saysDenied('<title>Access denied | Shop</title>'));
+	assert.ok(saysDenied('<h1>You don\'t have permission to view this</h1>'));
+	assert.ok(!saysDenied('<title>Pricing</title><h1>Plans for teams</h1><p>access denied errors are rare</p>'), 'only the title and first heading count');
+});

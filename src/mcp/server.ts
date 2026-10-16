@@ -31,10 +31,10 @@ export function createServer(cwd: string): McpServer {
 		{
 			title: 'Inventory the old app',
 			description: 'Discover the old app\'s routes (sitemap, robots.txt, crawl of same-origin links and hreflang alternates) with their SEO tags, assets and locales, and write .migrate/inventory.json.',
-			inputSchema: { old: z.string().url().describe('Origin of the running old app, e.g. http://localhost:3000'), source: z.string().optional().describe('Path to the old app source, to list file routes'), limit: z.number().int().positive().optional().describe('Maximum routes to visit (default 100)') },
+			inputSchema: { old: z.string().url().describe('Origin of the running old app, e.g. http://localhost:3000'), source: z.string().optional().describe('Path to the old app source, to list file routes'), limit: z.number().int().positive().optional().describe('Maximum routes to visit (default 100)'), header: z.array(z.string()).optional().describe('name:value headers sent only to the old app, for example a bot-protection bypass token'), cookie: z.array(z.string()).optional(), userAgent: z.string().optional() },
 		},
-		async ({ old, source, limit }) => {
-			const inventory = await plan({ origin: old, source, limit });
+		async ({ old, source, limit, header, cookie, userAgent }) => {
+			const inventory = await plan({ origin: old, source, limit, ...bypassOptions(header, cookie), ...(userAgent ? { userAgent } : {}) });
 			const path = await writeInventory(inventory, join(cwd, STATE_DIR));
 			const authPath = join(cwd, STATE_DIR, 'auth.json');
 			const wroteAuth = inventory.auth ? await writeStarterAuth(authPath, inventory.auth) : false;

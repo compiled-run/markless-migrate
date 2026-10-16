@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, sep } from 'node:path';
-import { chromium, type Browser } from 'playwright';
+import { chromium, type Browser, type BrowserContext } from 'playwright';
+import { detectChallenge } from '../check/blocked.ts';
 import { captureHttp, mime, toLocal } from '../check/capture.ts';
 import { collectPage } from '../check/collect.ts';
 import { proposeAuth, readLoginForm, withLoginForm, type ProposedAuth } from './auth.ts';
@@ -43,6 +44,26 @@ export interface PlanOptions {
 	readonly source?: string;
 	readonly limit?: number;
 	readonly browser?: Browser;
+	/** A bot-protection bypass, as for check: headers and cookies go to the old app's own origin only. */
+	readonly headers?: Readonly<Record<string, string>>;
+	readonly cookies?: readonly { readonly name: string; readonly value: string }[];
+	readonly userAgent?: string;
+}
+
+function ownHeaders(options: Pick<PlanOptions, 'headers' | 'cookies' | 'userAgent'>): Record<string, string> {
+	return { ...options.headers, ...(options.cookies?.length ? { cookie: options.cookies.map((c) => `${c.name}=${c.value}`).join('; ') } : {}), ...(options.userAgent ? { 'user-agent': options.userAgent } : {}) };
+}
+
+/** A browser context that sends the bypass to the old app's own origin and nowhere else. */
+async function bypassContext(browser: Browser, origin: string, options: Pick<PlanOptions, 'headers' | 'cookies' | 'userAgent'>): Promise<BrowserContext> {
+	const context = await browser.newContext(options.userAgent ? { userAgent: options.userAgent } : {});
+	if (options.cookies?.length) await context.addCookies(options.cookies.map((c) => ({ ...c, url: origin })));
+	const headers = options.headers;
+	if (headers && Object.keys(headers).length) {
+		const home = new URL(origin).origin;
+		await context.route('**/*', (route) => (new URL(route.request().url()).origin === home ? route.continue({ headers: { ...route.request().headers(), ...headers } }) : route.continue()));
+	}
+	return context;
 }
 
 function routeOf(url: string, origin: string): string | undefined {
@@ -55,9 +76,9 @@ function routeOf(url: string, origin: string): string | undefined {
 	}
 }
 
-async function text(url: string): Promise<string | undefined> {
+async function text(url: string, headers: Record<string, string> = {}): Promise<string | undefined> {
 	try {
-		const response = await fetch(url);
+		const response = await fetch(url, { headers });
 		return response.ok ? await response.text() : undefined;
 	} catch {
 		return undefined;
@@ -65,8 +86,8 @@ async function text(url: string): Promise<string | undefined> {
 }
 
 // Sitemap URLs name the production host; only their paths apply to the origin being planned.
-export async function sitemapRoutes(origin: string): Promise<string[]> {
-	const robots = (await text(new URL('/robots.txt', origin).href)) ?? '';
+export async function sitemapRoutes(origin: string, headers: Record<string, string> = {}): Promise<string[]> {
+	const robots = (await text(new URL('/robots.txt', origin).href, headers)) ?? '';
 	const maps = robots.split('\n').flatMap((line) => {
 		const match = line.match(/^\s*sitemap:\s*(\S+)/i);
 		return match ? [new URL(match[1]!, origin).pathname] : [];
@@ -74,7 +95,7 @@ export async function sitemapRoutes(origin: string): Promise<string[]> {
 	const queue = [...new Set(maps.length ? maps : ['/sitemap.xml'])];
 	const routes: string[] = [];
 	for (let i = 0; i < queue.length && i < 50; i++) {
-		const xml = await text(new URL(queue[i]!, origin).href);
+		const xml = await text(new URL(queue[i]!, origin).href, headers);
 		if (!xml) continue;
 		const isIndex = /<sitemapindex[\s>]/.test(xml);
 		for (const match of xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)) {
@@ -136,18 +157,19 @@ export async function plan(options: PlanOptions): Promise<Inventory> {
 		set.add(how);
 		found.set(route, set);
 	};
+	const own = ownHeaders(options);
 	note('/', 'crawl');
-	for (const route of await sitemapRoutes(origin)) note(route, 'sitemap');
+	for (const route of await sitemapRoutes(origin, own)) note(route, 'sitemap');
 	const routes: InventoryRoute[] = [];
 	const done = new Set<string>();
 	try {
-		const context = await browser.newContext();
+		const context = await bypassContext(browser, origin, options);
 		const page = await context.newPage();
 		while (routes.length < limit) {
 			const route = [...found.keys()].find((r) => !done.has(r));
 			if (route === undefined) break;
 			done.add(route);
-			const http = await captureHttp(origin, route);
+			const http = await captureHttp(origin, route, own);
 			const assets: InventoryRoute['assets'][number][] = [];
 			const onResponse = (response: import('playwright').Response) => {
 				const type = response.request().resourceType();
@@ -156,7 +178,9 @@ export async function plan(options: PlanOptions): Promise<Inventory> {
 				}
 			};
 			page.on('response', onResponse);
-			await page.goto(new URL(route, origin).href, { waitUntil: 'load' });
+			const navigation = await page.goto(new URL(route, origin).href, { waitUntil: 'load' });
+			const wall = navigation && detectChallenge({ status: navigation.status(), headers: await navigation.allHeaders(), body: (await navigation.text().catch(() => '')).slice(0, 256 * 1024) });
+			if (wall) throw new Error(`plan was stopped by ${wall.vendor} on ${route} (${navigation!.status()}, ${wall.evidence}): plan a staging URL, or pass the bypass with --header, --cookie or --user-agent`);
 			await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
 			page.off('response', onResponse);
 			const collected = await page.evaluate(collectPage, { origin, full: false });
@@ -194,7 +218,7 @@ export async function plan(options: PlanOptions): Promise<Inventory> {
 	const sortedLocales = [...locales].sort();
 	const prefixes = sortedLocales.filter((locale) => routes.some((r) => r.route === `/${locale}` || r.route.startsWith(`/${locale}/`)));
 	const landing: Record<string, string> = {};
-	for (const locale of sortedLocales) landing[locale] = (await captureHttp(origin, '/', { 'accept-language': locale })).chain.at(-1)!.url;
+	for (const locale of sortedLocales) landing[locale] = (await captureHttp(origin, '/', { ...own, 'accept-language': locale })).chain.at(-1)!.url;
 	const negotiation = new Set(Object.values(landing)).size > 1 ? landing : {};
 	const source = options.source ? await readSource(options.source) : undefined;
 	const crawled = [...found.keys()].map((r) => r.split(/[?#]/)[0]!);
@@ -203,7 +227,7 @@ export async function plan(options: PlanOptions): Promise<Inventory> {
 	if (auth?.loginRoute) {
 		const formBrowser = options.browser ?? (await chromium.launch());
 		try {
-			auth = withLoginForm(auth, await readLoginForm(formBrowser, new URL(auth.loginRoute, origin).href));
+			auth = withLoginForm(auth, await readLoginForm(formBrowser, new URL(auth.loginRoute, origin).href, (b) => bypassContext(b, origin, options)));
 		} finally {
 			if (!options.browser) await formBrowser.close();
 		}

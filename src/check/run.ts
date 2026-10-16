@@ -3,9 +3,9 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium, type Browser } from 'playwright';
 import { applyAccepted, type Accept } from './accepted.ts';
-import { accessFailures, ANONYMOUS, compareLogin, loginRoutes, saveState, signIn, type AuthConfig, type RoleSpec } from './auth.ts';
-import { BlockedError, blockedResult, probeWall } from './blocked.ts';
-import { defaultEnv, isLoopback, pushRecording, tagHeaders, type SideEnv, type StorageState } from './browser.ts';
+import { accessFailures, ANONYMOUS, saysDenied, compareLogin, loginRoutes, saveState, signIn, type AuthConfig, type RoleSpec } from './auth.ts';
+import { BlockedError, blockedResult, detectChallenge, probeWall } from './blocked.ts';
+import { DEFINITE, defaultEnv, isLoopback, pushRecording, tagHeaders, type SideEnv, type StorageState, type WallHit } from './browser.ts';
 import { captureHttp, captureRoute, mime } from './capture.ts';
 import { readRecording, recordable, slug, writeRecording } from './data.ts';
 import { checkEndpoint, checkRedirect, isPage } from './endpoints.ts';
@@ -23,7 +23,8 @@ import { compareStates, type StateInput } from './states.ts';
 import { discoverStates, parseRules } from './stylesheet.ts';
 import { renderHtml } from './html.ts';
 import { blocker, type BlockList } from './trackers.ts';
-import type { Blocked, Dimension, Failure, LoginResult, PageCapture, Report, RouteCapture, RouteResult, Shot, Viewport } from './types.ts';
+import { matchRoute } from '../source/pattern.ts';
+import type { Blocked, Dimension, Failure, HttpCapture, LoginResult, PageCapture, Report, RouteCapture, RouteResult, Shot, Viewport } from './types.ts';
 import { DIMENSIONS, VIEWPORTS } from './types.ts';
 
 export interface CheckOptions {
@@ -75,6 +76,10 @@ interface Run {
 async function probe(env: SideEnv, url: string): Promise<Probe> {
 	try {
 		const response = await fetch(new URL(url, env.origin), { redirect: 'follow', headers: tagHeaders(env) });
+		const headers: Record<string, string> = {};
+		response.headers.forEach((value, key) => (headers[key] = value));
+		const wall = detectChallenge({ status: response.status, headers, body: '' });
+		if (wall && DEFINITE.test(wall.evidence)) env.walls?.push({ status: response.status, ...wall });
 		await response.body?.cancel();
 		return { status: response.status, contentType: mime(response.headers.get('content-type')) };
 	} catch {
@@ -212,6 +217,12 @@ function asRole(result: RouteResult, role: string | undefined): RouteResult {
 	return role ? { ...result, role, failures: result.failures.map((f) => ({ ...f, role })) } : result;
 }
 
+async function deniedPage(env: SideEnv, http: HttpCapture): Promise<boolean> {
+	if (http.status !== 200) return false;
+	const response = await fetch(new URL(http.chain.at(-1)!.url, env.origin), { headers: tagHeaders(env) }).catch(() => undefined);
+	return response ? saysDenied(await response.text()) : false;
+}
+
 /** Checks one route as one role: a bot wall stops it, a different access decision is reported without comparing two different pages. */
 async function checkAs(browser: Browser, run: Run, route: string, role: string | undefined, logins: readonly string[], options: CheckOptions): Promise<RouteResult> {
 	const wall = (await probeWall(run.old, route, 'old')) ?? (await probeWall(run.new, route, 'new'));
@@ -219,12 +230,18 @@ async function checkAs(browser: Browser, run: Run, route: string, role: string |
 	const gate: Failure[] = [];
 	if (role) {
 		const [a, b, n] = await Promise.all([captureHttp(run.old.origin, route, tagHeaders(run.old)), captureHttp(run.old.origin, route, tagHeaders(run.old)), captureHttp(run.new.origin, route, tagHeaders(run.new))]);
-		const decided = accessFailures(route, role, a, n, logins);
+		const guarded = run.source?.guarded?.some((pattern) => matchRoute(pattern, route)) ? { old: { saysDenied: await deniedPage(run.old, a) }, new: { saysDenied: await deniedPage(run.new, n) } } : undefined;
+		const decided = accessFailures(route, role, a, n, logins, guarded);
 		if (!decided.comparable) return partialResult(route, [...httpFailures(route, [a, b], n), ...decided.failures], ['http', 'auth']);
 		gate.push(...decided.failures);
 	}
+	const walls = { old: [] as WallHit[], new: [] as WallHit[] };
+	const watched: Run = { ...run, old: { ...run.old, walls: walls.old }, new: { ...run.new, walls: walls.new } };
 	try {
-		const result = await checkRoute(browser, run, route, options.viewports, options.locales);
+		const result = await checkRoute(browser, watched, route, options.viewports, options.locales);
+		// A wall that started part way through (an asset, a journey's post, a forced state) stops the route like one at the door.
+		const hit = walls.old[0] ? ({ side: 'old', ...walls.old[0] } as const) : walls.new[0] ? ({ side: 'new', ...walls.new[0] } as const) : undefined;
+		if (hit) return partialResult(route, [], [], blockedResult(hit.side, hit.status, hit));
 		if (!gate.length) return result;
 		const gated = withFailures(result, [...gate, ...result.failures]);
 		const old = oldCaptures.get(result);
