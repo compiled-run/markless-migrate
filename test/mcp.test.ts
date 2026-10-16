@@ -9,7 +9,7 @@ test('the MCP server lists plan, check_route and status, with instructions for t
 	const client = await connect(await mkdtemp(join(tmpdir(), 'mm-mcp-')));
 	try {
 		const { tools } = await client.listTools();
-		assert.deepEqual(tools.map((t) => t.name).sort(), ['check_route', 'plan', 'status']);
+		assert.deepEqual(tools.map((t) => t.name).sort(), ['check_route', 'plan', 'status', 'switch_route']);
 		assert.deepEqual(Object.keys(tools.find((t) => t.name === 'check_route')!.inputSchema.properties ?? {}).sort(), ['auth', 'cookie', 'data', 'header', 'new', 'new_source', 'old', 'route', 'source', 'staging', 'userAgent']);
 		assert.match(client.getInstructions() ?? '', /check_route/);
 	} finally {
@@ -31,6 +31,9 @@ test('status reports no inventory, then lists inventoried and checked routes', a
 		assert.match(text, /0 green, 1 red, 1 not checked/);
 		assert.match(text, /red +\/about +\[seo\]/);
 		assert.match(text, /unchecked +\//);
+		const refused = await client.callTool({ name: 'switch_route', arguments: { route: '/about' } });
+		assert.deepEqual(refused.structuredContent, { ok: false });
+		assert.match((refused.content as { text: string }[])[0]!.text, /last check is not green \(\/about: red \[seo\]\)/);
 	} finally {
 		await client.close();
 	}

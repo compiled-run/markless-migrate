@@ -6,11 +6,12 @@ Your agent (Claude Code, Codex, Cursor...) does the converting. This tool does t
 
 - **plan** takes stock of the old app: routes, SEO metadata, assets and locales.
 - **check** compares the old route and the new one in a real browser and reports every difference in a form your agent can fix.
-- **switch** (not built yet) moves a route to Markless only when its check is green.
+- **switch** moves a route to Markless only when its check is green, behind a proxy (local) or
+  generated Vercel and Nitro routing (production) that sends every other route to the old app.
 
 Every report also shows how much JavaScript runs at load on each route, before and after.
 
-Status: early. `plan`, `check`, `status`, `setup`, `run` and the MCP server work; `switch` does not exist yet. See [docs/plan.md](docs/plan.md).
+Status: early. `plan`, `check`, `status`, `switch`, `proxy`, `config`, `setup`, `run` and the MCP server work. See [docs/plan.md](docs/plan.md).
 
 ## Commands
 
@@ -21,6 +22,10 @@ markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [
     [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
     [--auth .migrate/auth.json] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
     [--all] [--new-source ../markless-app]
+markless-migrate switch <route> [--force <reason>]
+markless-migrate unswitch <route>
+markless-migrate proxy --old http://localhost:3000 --new http://localhost:5173 [--port 4300] [--host 127.0.0.1]
+markless-migrate config --old https://old.example.com --new https://new.example.com [--vercel vercel.json] [--nitro nitro.ts]
 markless-migrate recorder
 markless-migrate status
 markless-migrate setup [--agent claude-code]... [--yes] [--dry-run]
@@ -155,6 +160,29 @@ and any request a handler the source scan marks as writing. They are sent only w
 on this machine or `--staging` marks them as staging apps with test data. Otherwise each write is
 answered by the checker without reaching the app, and compared old vs new as `would POST /path {shape}`.
 Server-side writes the app makes while handling a request cannot be held back.
+
+## Switching routes over
+
+`switch <route>` adds the route (a path, or a pattern like `/blog/:slug`) to `.migrate/switched.json`.
+It refuses unless the route's last check is green for every role it was checked as; `--force <reason>`
+switches it anyway and records the reason and the checks it overrode. `unswitch` sends it back. The
+MCP server's `switch_route` never forces. `status` marks switched routes.
+
+`proxy` serves both apps on one origin while you migrate: page loads of switched routes go to NEW,
+every other page load to OLD. Everything else (scripts, styles, images, fonts, fetches, form posts) goes
+first to the app that served the page it came from (by `Referer`), then to the other app when that one
+answers 404, 405, 410 or 501. Method, body, headers and cookies pass through (Host, Origin and Referer
+are pointed at the upstream, `X-Forwarded-*` added). A redirect to either app's own absolute URL is
+pointed back at the proxy, and a `Set-Cookie` Domain that would not apply to the proxy's host is
+dropped, so a cookie one app sets (consent, cart, session) reaches the other: the cookie and asset
+breakage Shopify Hydrogen's proxy hit. Each response carries `x-markless-migrate-side: old|new`.
+`switched.json` is read on every request, so `switch` takes effect without a restart.
+
+`config` writes production routing for the same list. `--vercel` writes a `vercel.json` for a project in
+front of both deployments: a rewrite per switched route (with and without the trailing slash) and per
+asset its NEW page loads that OLD does not serve (a whole directory when OLD has nothing in it), then
+`/:path*` to OLD. `--nitro` writes `routeRules` for a Markless app in front: a `proxy` rule per
+inventoried route and endpoint not switched yet, and per asset OLD's pages load that NEW does not serve.
 
 ## Development
 

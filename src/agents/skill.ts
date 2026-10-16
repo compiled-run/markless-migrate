@@ -22,7 +22,10 @@ matches it in a real browser. A route is done when its check is green, not when 
    (or \`markless-migrate check --old <origin> --new <origin> --routes <route>\`).
 5. Every failure names the route, the dimension, the expected and actual values and a likely fix.
    Fix them and check again until the route is green.
-6. Call \`status\` to see which routes are green, red or not checked yet, then repeat from step 3.
+6. When the route is green, call \`switch_route\` (or \`markless-migrate switch <route>\`) so the proxy
+   (\`markless-migrate proxy\`) and the deploy config (\`markless-migrate config\`) serve it from Markless.
+   Never pass \`--force\`: only a human switches a route that is not green.
+7. Call \`status\` to see which routes are green, red or not checked yet, then repeat from step 3.
 
 ## Rules
 

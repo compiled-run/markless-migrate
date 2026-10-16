@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { writeFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline/promises';
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
@@ -23,6 +24,9 @@ import { DRIVERS, driver } from './run/drivers.ts';
 import { runRoutes } from './run/loop.ts';
 import { readInventory, recordResults, STATE_DIR, status, summarizeStatus } from './status.ts';
 import { VERSION } from './version.ts';
+import { nitroSnippet, notServedBy, pageAssets, vercelConfig } from './switch/deploy.ts';
+import { startProxy } from './switch/proxy.ts';
+import { readSwitched, switchRoute, unswitchRoute } from './switch/state.ts';
 
 const USAGE = `markless-migrate ${VERSION}
 
@@ -56,7 +60,21 @@ const USAGE = `markless-migrate ${VERSION}
           Register the MCP server and install the migration skill for your coding agents.
           Agents: ${AGENTS.map((a) => a.id).join(', ')}.
   mcp     Run the MCP server on stdio (started by your agent).
-  switch  Not yet: move a green route from the pass-through to Markless.
+  switch  <route> [--force <reason>]
+          Serve a route from the new app: refused unless its last check (every role) is green; --force
+          switches anyway and records the reason in .migrate/switched.json. A route may be a pattern
+          (/blog/:slug, /docs/*rest).
+  unswitch <route>
+          Send a route back to the old app.
+  proxy   --old <origin> --new <origin> [--port <n>] [--host <addr>]
+          One origin in front of both apps: switched routes from NEW, everything else from OLD, with
+          method, body, headers and cookies passed through, redirects to either app pointed back at the
+          proxy, cookie Domains that would not apply dropped, and each asset taken from the app that
+          served the page it was loaded from (falling back to the other app).
+  config  --old <deployment> --new <deployment> [--vercel <file>] [--nitro <file>]
+          Production routing for the switched routes: a vercel.json (switched routes and the assets
+          their pages load to NEW, the rest to OLD) and Nitro routeRules for the Markless app in front
+          (every inventoried route and asset not switched yet proxied to OLD).
   run     --agent <id> --old <origin> --new <origin> [--route <path>]... [--attempts <n>] [--model <name>]
           Drive your agent's own CLI headless, one route at a time, until each route is green or
           needs a human after n attempts (default 3). Logs to .migrate/run.log.
@@ -279,9 +297,52 @@ async function main(argv: string[]): Promise<number> {
 		}
 		case 'run':
 			return run(rest, cwd);
-		case 'switch':
-			err(`markless-migrate ${command}: not yet. See docs/plan.md for the build order.\n`);
-			return 1;
+		case 'switch': {
+			const { values, positionals } = parseArgs({ args: rest, allowPositionals: true, options: { force: { type: 'string' } } });
+			if (positionals.length !== 1) fail('switch needs one route, for example switch /about/');
+			const outcome = await switchRoute(cwd, positionals[0]!, values.force !== undefined ? { force: values.force } : {});
+			if (!outcome.ok) {
+				err(`markless-migrate: ${outcome.reason}\n`);
+				return 1;
+			}
+			out(`${outcome.already ? 'Still switched' : 'Switched'} ${outcome.entry.route} to the new app${outcome.entry.forced ? ` (forced: ${outcome.entry.forced.reason}; last check ${outcome.entry.checks.join('; ') || 'none'})` : ''}. ${outcome.path}\n`);
+			return 0;
+		}
+		case 'unswitch': {
+			const { positionals } = parseArgs({ args: rest, allowPositionals: true, options: {} });
+			if (positionals.length !== 1) fail('unswitch needs one route');
+			const { removed, path } = await unswitchRoute(cwd, positionals[0]!);
+			out(removed ? `${positionals[0]} goes to the old app again. ${path}\n` : `${positionals[0]} was not switched.\n`);
+			return 0;
+		}
+		case 'proxy': {
+			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, new: { type: 'string' }, port: { type: 'string' }, host: { type: 'string' }, quiet: { type: 'boolean' } } });
+			if (!values.old || !values.new) fail('proxy needs --old <origin> and --new <origin>');
+			const port = values.port ? Number(values.port) : 4300;
+			if (!Number.isInteger(port) || port < 0) fail('--port must be a whole number');
+			const proxy = await startProxy({ old: values.old, new: values.new, port, host: values.host ?? '127.0.0.1', switched: async () => (await readSwitched(cwd)).routes.map((r) => r.route), ...(values.quiet ? {} : { log: (line: string) => out(`${line}\n`) }) });
+			const switched = (await readSwitched(cwd)).routes.map((r) => r.route);
+			out(`${proxy.origin}\nSwitched to NEW (${values.new}): ${switched.join(', ') || 'none yet'}; everything else from OLD (${values.old}).\n`);
+			return -1;
+		}
+		case 'config': {
+			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, new: { type: 'string' }, vercel: { type: 'string' }, nitro: { type: 'string' } } });
+			if (!values.old || !values.new) fail('config needs --old <deployment> and --new <deployment>');
+			const switched = (await readSwitched(cwd)).routes.map((r) => r.route);
+			const inventory = await readInventory(cwd);
+			const concrete = switched.filter((r) => !/[:*]/.test(r));
+			const newAssets = await notServedBy(values.old, await pageAssets(values.new, concrete));
+			const oldPaths = [...new Set(inventory?.routes.flatMap((r) => r.assets.map((a) => a.url)).filter((u) => u.startsWith('/')) ?? [])].sort();
+			const oldAssets = await notServedBy(values.new, oldPaths);
+			const input = { old: values.old, new: values.new, switched, newAssets, oldAssets, oldRoutes: [...new Set([...(inventory?.routes.map((r) => r.route) ?? []), ...(inventory?.source?.routes.map((r) => r.path) ?? [])])] };
+			const vercel = `${JSON.stringify(vercelConfig(input), null, '\t')}\n`;
+			const nitro = nitroSnippet(input);
+			if (values.vercel) await writeFile(values.vercel, vercel);
+			if (values.nitro) await writeFile(values.nitro, nitro);
+			if (!values.vercel && !values.nitro) out(`vercel.json:\n${vercel}\nNitro routeRules:\n${nitro}`);
+			else out(`Wrote ${[values.vercel, values.nitro].filter(Boolean).join(' and ')} for ${switched.length} switched route${switched.length === 1 ? '' : 's'}.\n`);
+			return 0;
+		}
 		default:
 			err(`Unknown command "${command}".\n\n${USAGE}`);
 			return 2;

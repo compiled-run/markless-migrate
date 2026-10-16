@@ -15,7 +15,18 @@ const TYPES: Record<string, string> = {
 	'.txt': 'text/plain; charset=utf-8',
 };
 
-type ServeConfig = { redirects?: Record<string, string>; negotiate?: Record<string, Record<string, string>>; forms?: Record<string, string>; notFoundStatus?: number };
+type ServeConfig = {
+	redirects?: Record<string, string>;
+	negotiate?: Record<string, Record<string, string>>;
+	forms?: Record<string, string>;
+	notFoundStatus?: number;
+	/** POST path to the Set-Cookie it answers with; `{{host}}` is this server's own host name, as a storefront pins its domain. */
+	cookies?: Record<string, string>;
+	/** A path that answers with the cookies the request carried. */
+	echoCookies?: string;
+	/** Redirect to this server's own absolute URL, as apps that build Location from their host do. */
+	absoluteRedirects?: boolean;
+};
 
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
@@ -70,6 +81,16 @@ export async function serve(dir: string, port = 0, host = '127.0.0.1'): Promise<
 			res.writeHead(403, { 'content-type': TYPES['.html'] }).end(await readFile(join(dir, decision.page)));
 			return;
 		}
+		const cookie = config.cookies?.[path];
+		if (req.method === 'POST' && cookie) {
+			req.resume();
+			res.writeHead(204, { 'set-cookie': cookie.replaceAll('{{host}}', (req.headers.host ?? '').replace(/:\d+$/, '')) }).end();
+			return;
+		}
+		if (path === config.echoCookies) {
+			res.writeHead(200, { 'content-type': TYPES['.json'] }).end(JSON.stringify({ cookie: req.headers.cookie ?? '' }));
+			return;
+		}
 		const form = config.forms?.[path];
 		if (req.method === 'POST' && form) {
 			req.resume();
@@ -85,7 +106,7 @@ export async function serve(dir: string, port = 0, host = '127.0.0.1'): Promise<
 		}
 		const redirect = config.redirects?.[path];
 		if (redirect) {
-			res.writeHead(301, { location: redirect }).end();
+			res.writeHead(301, { location: config.absoluteRedirects ? `http://${req.headers.host}${redirect}` : redirect }).end();
 			return;
 		}
 		const file = normalize(join(dir, path));

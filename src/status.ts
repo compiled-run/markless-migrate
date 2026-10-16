@@ -5,6 +5,7 @@ import { readSamples, routeTargets } from './plan/routes.ts';
 import { stepRoutes } from './plan/source.ts';
 import { matchRoute } from './source/pattern.ts';
 import type { Dimension, Failure, Report } from './check/types.ts';
+import { isSwitched, readSwitched } from './switch/state.ts';
 
 export const STATE_DIR = '.migrate';
 
@@ -58,7 +59,7 @@ export async function recordResults(cwd: string, report: Report): Promise<void> 
 export interface Status {
 	readonly planned: boolean;
 	/** In migration order when the inventory has the source's plan, alphabetical otherwise. */
-	readonly routes: readonly { route: string; state: 'green' | 'red' | 'blocked' | 'unchecked' | 'needs a sample'; red: readonly Dimension[]; checkedAt?: string }[];
+	readonly routes: readonly { route: string; state: 'green' | 'red' | 'blocked' | 'unchecked' | 'needs a sample'; red: readonly Dimension[]; checkedAt?: string; switched?: boolean }[];
 	/** Each step of the migration order with how far the routes it is part of have come. */
 	readonly order?: readonly { readonly kind: string; readonly name: string; readonly file: string; readonly routes: readonly string[]; readonly green: number; readonly state: 'green' | 'red' | 'started' | 'unchecked' }[];
 }
@@ -84,6 +85,8 @@ export async function status(cwd: string): Promise<Status> {
 	};
 	const routes = names.map(stateOf).sort((a, b) => rank(a.route) - rank(b.route) || a.route.localeCompare(b.route));
 	for (const n of targets?.needsSample ?? []) routes.push({ route: n.route, state: 'needs a sample', red: [] });
+	const switched = (await readSwitched(cwd)).routes.map((r) => r.route);
+	for (const [i, r] of routes.entries()) if (isSwitched(switched, r.route.replace(/ as .*$/, ''))) routes[i] = { ...r, switched: true };
 	const order = steps.map(({ step, patterns }) => {
 		const mine = routes.filter((r) => r.state !== 'needs a sample' && page(r.route) && patterns.some((p) => matchRoute(p, r.route.replace(/ as .*$/, ''))));
 		const green = mine.filter((r) => r.state === 'green').length;
@@ -103,6 +106,7 @@ export function summarizeStatus(s: Status): string {
 		s.order.forEach((o, i) => lines.push(`  ${String(i + 1).padStart(2)}. ${o.state.padEnd(9)} ${o.kind} ${o.name}  ${o.file}${o.routes.length ? `  ${o.green} of ${o.routes.length} routes green` : ''}`));
 		lines.push('Routes, in that order:');
 	}
-	for (const r of s.routes) lines.push(`  ${r.state.padEnd(9)} ${r.route}${r.red.length ? `  [${r.red.join(', ')}]` : ''}`);
+	if (s.routes.some((r) => r.switched)) lines[0] += `, ${s.routes.filter((r) => r.switched).length} switched to Markless`;
+	for (const r of s.routes) lines.push(`  ${r.state.padEnd(9)} ${r.route}${r.red.length ? `  [${r.red.join(', ')}]` : ''}${r.switched ? '  (switched)' : ''}`);
 	return `${lines.join('\n')}\n`;
 }

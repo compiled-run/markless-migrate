@@ -11,6 +11,7 @@ import { summarize } from '../check/summary.ts';
 import { writeStarterAuth } from '../plan/auth.ts';
 import { plan, summarizeInventory, writeInventory } from '../plan/inventory.ts';
 import { recordResults, STATE_DIR, status, summarizeStatus } from '../status.ts';
+import { switchRoute } from '../switch/state.ts';
 import { VERSION } from '../version.ts';
 
 const INSTRUCTIONS = `markless-migrate proves that a route moved to Markless still matches the old app.
@@ -92,6 +93,19 @@ export function createServer(cwd: string): McpServer {
 		async () => {
 			const s = await status(cwd);
 			return { ...text(summarizeStatus(s)), structuredContent: { ...s } };
+		},
+	);
+
+	server.registerTool(
+		'switch_route',
+		{
+			title: 'Serve a green route from the new app',
+			description: 'Add the route to .migrate/switched.json so the proxy and the deploy config serve it from the new app. Refused unless its last check, for every role, is green; only a human may force a route that is not.',
+			inputSchema: { route: z.string().startsWith('/') },
+		},
+		async ({ route }) => {
+			const outcome = await switchRoute(cwd, route);
+			return { ...text(outcome.ok ? `Switched ${route} to the new app.` : outcome.reason), structuredContent: { ok: outcome.ok } };
 		},
 	);
 
