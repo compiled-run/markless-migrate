@@ -452,6 +452,15 @@ const MUTATIONS: Mutation[] = [
 			assert.deepEqual(failure(report, 'data').map((f) => [f.check, f.expected, f.actual]), [['JSON field short_name missing', '"Walks"', '(absent)'], ['JSON field shortName not in the old response', '(absent)', '"Walks"']]);
 		},
 	},
+	{
+		name: 'json-item',
+		route: '/manifest.json',
+		edits: [{ file: 'public/manifest.json', find: '\t\t{ "src": "/logo-2024.png", "sizes": "32x32", "type": "image/png" },\n', replace: '' }],
+		red: ['data'],
+		expect: (report) => {
+			assert.deepEqual(failure(report, 'data').map((f) => [f.check, f.expected, f.actual]), [['JSON item icons[src=/logo-2024.png] missing', '{"src":"/logo-2024.png","sizes":"32x32","type":"image/png"}', '(absent)']]);
+		},
+	},
 ];
 
 const WALL = 'lighthouse-staging-pass';

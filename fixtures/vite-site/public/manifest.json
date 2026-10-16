@@ -4,5 +4,9 @@
 	"start_url": "/",
 	"display": "standalone",
 	"background_color": "#f4f7f9",
-	"icons": [{ "src": "/hero.png", "sizes": "640x320", "type": "image/png" }]
+	"icons": [
+		{ "src": "/hero.png", "sizes": "640x320", "type": "image/png" },
+		{ "src": "/logo-2024.png", "sizes": "32x32", "type": "image/png" },
+		{ "src": "/icon-maskable.png", "sizes": "32x32", "type": "image/png", "purpose": "maskable" }
+	]
 }

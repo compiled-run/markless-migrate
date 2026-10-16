@@ -34,3 +34,24 @@ test('sitemap entries are compared as a set, status and content type as http, an
 test('feeds and the manifest a page head declares are found', () => {
 	assert.deepEqual(declaredEndpoints('<link rel="manifest" href="/m.json"><link rel="alternate" type="application/rss+xml" href="/feed.xml"><link rel="alternate" hreflang="fr" href="/fr/"><link rel="stylesheet" href="/a.css">'), ['/m.json', '/feed.xml']);
 });
+
+test('JSON arrays are aligned by identity, so removing a middle item reports exactly that item', () => {
+	const doc = (items: object[]) => JSON.stringify({ items });
+	const a = { slug: 'a', title: 'A' };
+	const b = { slug: 'b', title: 'B' };
+	const c = { slug: 'c', title: 'C' };
+	const removed = compareEndpoint('/api/news', [capture('/api/news', doc([a, b, c]), 'application/json')], capture('/api/news', doc([a, c]), 'application/json'));
+	assert.deepEqual(removed.map((f) => [f.check, f.expected, f.actual]), [['JSON item items[slug=b] missing', '{"slug":"b","title":"B"}', '(absent)']]);
+	const changed = compareEndpoint('/api/news', [capture('/api/news', doc([a, b, c]), 'application/json')], capture('/api/news', doc([c, { ...b, title: 'Bee' }, a]), 'application/json'));
+	assert.deepEqual(changed.map((f) => [f.check, f.expected, f.actual]), [['JSON field items[].title', '"B"', '"Bee"']], 'reordering alone is not a difference');
+});
+
+test('JSON arrays without an identity field are aligned by longest common subsequence', () => {
+	const doc = (tags: unknown[]) => JSON.stringify({ tags });
+	const removed = compareEndpoint('/api/tags', [capture('/api/tags', doc(['x', 'y', 'z']), 'application/json')], capture('/api/tags', doc(['x', 'z']), 'application/json'));
+	assert.deepEqual(removed.map((f) => [f.check, f.expected, f.actual]), [['JSON item tags[#1] missing', '"y"', '(absent)']]);
+	const added = compareEndpoint('/api/tags', [capture('/api/tags', doc([{ n: 1 }, { n: 1 }]), 'application/json')], capture('/api/tags', doc([{ n: 1 }, { n: 2 }, { n: 1 }]), 'application/json'));
+	assert.deepEqual(added.map((f) => [f.check, f.actual]), [['JSON item tags[+0] not in the old response', '{"n":2}']]);
+	const edited = compareEndpoint('/api/tags', [capture('/api/tags', doc(['x', 'y', 'z']), 'application/json')], capture('/api/tags', doc(['x', 'why', 'z']), 'application/json'));
+	assert.deepEqual(edited.map((f) => [f.check, f.expected, f.actual]), [['JSON field tags[]', '"y"', '"why"']], 'an item replaced in place is a changed value');
+});

@@ -130,6 +130,96 @@ export function flattenJson(value: unknown, prefix = '', out: Record<string, str
 	return out;
 }
 
+const ID_FIELDS = ['id', '_id', 'uuid', 'slug', 'key', 'href', 'url', 'src', 'path', 'guid', 'title', 'name'];
+
+type Scalar = string | number;
+const isItem = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/** The field that names each item of an array: present on every item, a string or number, different on each. */
+export function identityField(items: readonly unknown[], prefer?: string): string | undefined {
+	if (!items.length || !items.every(isItem)) return undefined;
+	const ok = (f: string) => {
+		const values = items.map((i) => (i as Record<string, unknown>)[f]);
+		return values.every((v) => typeof v === 'string' || typeof v === 'number') && new Set(values as Scalar[]).size === values.length;
+	};
+	return prefer && ok(prefer) ? prefer : ID_FIELDS.find(ok);
+}
+
+/** Pairs each item of `next` with one of `ref` by longest common subsequence, then by position within each gap; unpaired ones get no partner. */
+export function alignByLcs(ref: readonly unknown[], next: readonly unknown[]): (number | undefined)[] {
+	const a = ref.map((v) => JSON.stringify(v));
+	const b = next.map((v) => JSON.stringify(v));
+	const table = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
+	for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) table[i]![j] = a[i] === b[j] ? table[i + 1]![j + 1]! + 1 : Math.max(table[i + 1]![j]!, table[i]![j + 1]!);
+	const out: (number | undefined)[] = new Array(b.length).fill(undefined);
+	const gapsA: number[] = [];
+	const gapsB: number[] = [];
+	const flush = () => {
+		// Within a gap, as many items as both sides have are the same items changed; the rest were added or removed.
+		const n = Math.min(gapsA.length, gapsB.length);
+		for (let k = 0; k < n; k++) out[gapsB[k]!] = gapsA[k];
+		gapsA.length = 0;
+		gapsB.length = 0;
+	};
+	let i = 0;
+	let j = 0;
+	while (i < a.length || j < b.length) {
+		if (i < a.length && j < b.length && a[i] === b[j]) {
+			flush();
+			out[j++] = i++;
+		} else if (j >= b.length || (i < a.length && table[i + 1]![j]! >= table[i]![j + 1]!)) gapsA.push(i++);
+		else gapsB.push(j++);
+	}
+	flush();
+	return out;
+}
+
+/** An array whose items are keyed by identity (`slug=two`) or by the index of the matching item in the reference (`#1`). */
+class Keyed {
+	readonly entries: readonly (readonly [string, unknown])[];
+	constructor(entries: readonly (readonly [string, unknown])[]) {
+		this.entries = entries;
+	}
+}
+
+/** Rewrites arrays so that the same item has the same key in every document, aligned to `ref` (the first OLD load). */
+export function keyJson(value: unknown, ref?: unknown): unknown {
+	if (Array.isArray(value)) {
+		const refItems = Array.isArray(ref) ? ref : undefined;
+		const field = identityField(value, refItems ? identityField(refItems) : undefined);
+		if (field && (!refItems || identityField(refItems) === field || !refItems.length)) {
+			const byId = new Map((refItems ?? []).filter(isItem).map((r) => [String(r[field]), r]));
+			return new Keyed(value.map((item) => {
+				const id = String((item as Record<string, unknown>)[field]);
+				return [`${field}=${id}`, keyJson(item, byId.get(id))] as const;
+			}));
+		}
+		if (!refItems) return new Keyed(value.map((item, i) => [`#${i}`, keyJson(item)] as const));
+		const pairs = alignByLcs(refItems, value);
+		let extra = 0;
+		return new Keyed(value.map((item, j) => (pairs[j] === undefined ? ([`+${extra++}`, keyJson(item)] as const) : ([`#${pairs[j]}`, keyJson(item, refItems[pairs[j]!])] as const))));
+	}
+	if (isItem(value)) return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, keyJson(v, isItem(ref) ? ref[k] : undefined)]));
+	return value;
+}
+
+/** Fields of a keyed document by path, and each array item's path with a short label. */
+export function flattenKeyed(value: unknown, prefix = '', out: { fields: Record<string, string>; items: Map<string, string> } = { fields: {}, items: new Map() }) {
+	if (value instanceof Keyed) {
+		if (!value.entries.length) out.fields[prefix || '.'] = '[]';
+		for (const [key, item] of value.entries) {
+			const path = `${prefix}[${key}]`;
+			out.items.set(path, JSON.stringify(item instanceof Keyed ? '[...]' : item, (_, v) => (v instanceof Keyed ? '[...]' : v)));
+			flattenKeyed(item, path, out);
+		}
+	} else if (value !== null && typeof value === 'object') {
+		const entries = Object.entries(value);
+		if (!entries.length) out.fields[prefix || '.'] = '{}';
+		for (const [k, v] of entries) flattenKeyed(v, prefix ? `${prefix}.${k}` : k, out);
+	} else out.fields[prefix || '.'] = JSON.stringify(value);
+	return out;
+}
+
 interface Feed {
 	readonly fields: Record<string, string>;
 	readonly items: Map<string, { readonly label: string; readonly fields: Record<string, string> }>;
@@ -172,6 +262,7 @@ const HINTS = {
 	feedItem: 'The feed must carry the same items: feed readers and aggregators subscribed to it would lose or duplicate entries.',
 	feed: 'Keep the feed fields the same; readers show them and use guid/id to tell entries apart.',
 	json: 'Return the same fields with the same names and values: other code (apps, integrations, scripts) reads this endpoint.',
+	jsonItem: 'Return the same items: clients that list this endpoint would lose or gain an entry.',
 	xml: 'Return the same XML document.',
 	text: 'Return the same text.',
 	status: 'Serve this file at the same URL with the same status code.',
@@ -187,7 +278,7 @@ function dimensionOf(kind: EndpointKind): Dimension {
 function grouped(route: string, dimension: Dimension, label: string, diffs: readonly { key: string; expected: string | undefined; actual: string | undefined }[], hint: string): Failure[] {
 	const groups = new Map<string, { expected: string[]; actual: string[] }>();
 	for (const d of diffs) {
-		const key = d.key.replace(/\[\d+\]/g, '[]');
+		const key = d.key.replace(/\[[^\]]*\]/g, '[]');
 		const side = d.expected === undefined ? 'extra' : d.actual === undefined ? 'missing' : 'changed';
 		const g = groups.get(`${side} ${key}`) ?? { expected: [], actual: [] };
 		g.expected.push(d.expected ?? '(absent)');
@@ -232,8 +323,18 @@ export function compareEndpoint(route: string, olds: readonly EndpointCapture[],
 			lines(textLines, 'line', HINTS.text);
 			break;
 		case 'json': {
-			const read = (c: EndpointCapture) => flattenJson(JSON.parse(c.body));
-			failures.push(...grouped(route, dimension, 'JSON field', diffFields(fieldTemplates(read(a), ...others.map(read)), read(next)), HINTS.json));
+			const ref = JSON.parse(a.body) as unknown;
+			const read = (c: EndpointCapture) => flattenKeyed(keyJson(JSON.parse(c.body), ref));
+			const [fa, fn, fo] = [read(a), read(next), others.map(read)];
+			const gone = [...fa.items.keys()].filter((path) => !fn.items.has(path) && fo.every((o) => o.items.has(path)));
+			const added = [...fn.items.keys()].filter((path) => !fa.items.has(path) && fo.every((o) => !o.items.has(path)));
+			const outer = (paths: string[]) => paths.filter((p) => !paths.some((q) => q !== p && p.startsWith(q)));
+			const [missing, extra] = [outer(gone), outer(added)];
+			const under = (key: string) => [...missing, ...extra].some((p) => key === p || key.startsWith(`${p}.`) || key.startsWith(`${p}[`));
+			for (const path of missing) failures.push({ route, dimension, check: `JSON item ${path} missing`, expected: fa.items.get(path)!, actual: '(absent)', hint: HINTS.jsonItem });
+			for (const path of extra) failures.push({ route, dimension, check: `JSON item ${path} not in the old response`, expected: '(absent)', actual: fn.items.get(path)!, hint: HINTS.jsonItem });
+			const diffs = diffFields(fieldTemplates(fa.fields, ...fo.map((o) => o.fields)), fn.fields).filter((d) => !under(d.key));
+			failures.push(...grouped(route, dimension, 'JSON field', diffs, HINTS.json));
 			break;
 		}
 		case 'xml': {
