@@ -79,7 +79,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 		await page.coverage.startJSCoverage({ resetOnNavigation: false });
 		await page.goto(new URL(route, origin).href, { waitUntil: 'load' });
 		await settle(page);
-		const collected = await page.evaluate(collectPage, origin);
+		const collected = await page.evaluate(collectPage, { origin, full: true });
 		const aria = (await page.locator('body').ariaSnapshot()).split(origin).join('').split('\n');
 		const screenshot = await page.screenshot({ fullPage: true, animations: 'disabled', caret: 'hide' });
 		const coverage = await page.coverage.stopJSCoverage();

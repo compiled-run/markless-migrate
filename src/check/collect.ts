@@ -1,5 +1,5 @@
 // Runs inside the page via page.evaluate: must stay self-contained (no imports, no outer references).
-export function collectPage(origin: string) {
+export function collectPage({ origin, full }: { origin: string; full: boolean }) {
 	const local = (url: string) => (url.startsWith(origin) ? url.slice(origin.length) || '/' : url);
 	const clean = (value: string) => value.replace(/\s+/g, ' ').trim();
 	const NAME_FROM_CONTENT = new Set(['link', 'button', 'heading', 'cell', 'columnheader', 'option', 'tab', 'menuitem', 'listitem']);
@@ -63,7 +63,7 @@ export function collectPage(origin: string) {
 
 	const elements = [];
 	const paths = new Map<Element, string>();
-	for (const el of document.body.querySelectorAll('*')) {
+	for (const el of full ? document.body.querySelectorAll('*') : []) {
 		if (SKIP.has(el.tagName)) continue;
 		const r = role(el);
 		const parent = el.parentElement;
@@ -134,7 +134,8 @@ export function collectPage(origin: string) {
 	}));
 	const fonts = [...new Set([...document.fonts].filter((f) => f.status === 'loaded').map((f) => `${f.family}|${f.style}|${f.weight}`))].sort();
 	const text = document.body.innerText.split('\n').map(clean).filter(Boolean);
-	return { elements, seo, images, fonts, text };
+	const links = [...document.querySelectorAll('a[href], link[rel~="alternate"][hreflang]')].map((a) => (a as HTMLAnchorElement).href).filter(Boolean);
+	return { elements, seo, images, fonts, text, links };
 }
 
 export async function decodeImages(urls: string[]) {
