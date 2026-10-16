@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { captureRoute } from '../../src/check/capture.ts';
@@ -6,6 +9,8 @@ import { compareRoute } from '../../src/check/compare.ts';
 import { runCheck } from '../../src/check/run.ts';
 import { summarize } from '../../src/check/summary.ts';
 import { VIEWPORTS } from '../../src/check/types.ts';
+import { plan } from '../../src/plan/inventory.ts';
+import { connect, firstText } from '../mcp-client.ts';
 import { buildVite, failuresIn, redDimensions, startStatic, type App, type Mutation } from './harness.ts';
 
 const ROUTES = ['/', '/about/', '/fr/', '/old-about', '/missing'];
@@ -142,6 +147,32 @@ describe('vite multi-page site', () => {
 		const next = await captureRoute(browser, twin.origin, '/', VIEWPORTS);
 		const result = compareRoute('/', oldA, oldA, next, new Map());
 		assert.ok(result.failures.some((f) => f.dimension === 'rendered' && /Page rendered at/.test(f.expected)), JSON.stringify(result.failures, null, 1));
+	});
+
+	test('plan finds the sitemap and crawled routes and both locales', async () => {
+		const inventory = await plan({ origin: old.origin, source: join(import.meta.dirname, '../../fixtures/vite-site'), browser });
+		assert.deepEqual(inventory.routes.map((r) => r.route), ['/', '/about/', '/fr/']);
+		assert.deepEqual(inventory.routes[0]!.foundIn, ['crawl', 'hreflang', 'sitemap']);
+		assert.deepEqual(inventory.locales, ['en', 'fr']);
+		assert.equal(inventory.routes[1]!.seo.title, 'About | Lighthouse Walks');
+		assert.ok(inventory.routes[0]!.assets.some((a) => a.url === '/hero.png' && a.contentType === 'image/png'));
+		assert.equal(inventory.source?.framework, 'vite');
+	});
+
+	test('an agent calling check_route over MCP gets the failure, and status remembers it', async () => {
+		const cwd = await mkdtemp(join(tmpdir(), 'mm-e2e-'));
+		const client = await connect(cwd);
+		try {
+			const result = await client.callTool({ name: 'check_route', arguments: { old: old.origin, new: mutants.get('title')!.origin, route: '/about/' } });
+			const structured = result.structuredContent as { ok: boolean; failures: { check: string; actual: string }[] };
+			assert.equal(structured.ok, false);
+			assert.deepEqual(structured.failures.map((f) => [f.check, f.actual]), [['title', '"About us | Lighthouse Walks"']]);
+			assert.match(firstText(result), /fix: +Set the same <title>/);
+			assert.match(firstText(await client.callTool({ name: 'status', arguments: {} })), /red +\/about\/ +\[seo\]/);
+			assert.ok(JSON.parse(await readFile(join(cwd, '.migrate', 'report.json'), 'utf8')).routes[0].failures.length === 1);
+		} finally {
+			await client.close();
+		}
 	});
 
 	for (const mutation of MUTATIONS) {

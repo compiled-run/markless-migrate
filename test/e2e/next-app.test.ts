@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
+import { captureRoute } from '../../src/check/capture.ts';
+import { compareRoute } from '../../src/check/compare.ts';
 import { runCheck } from '../../src/check/run.ts';
+import { VIEWPORTS } from '../../src/check/types.ts';
 import { summarize } from '../../src/check/summary.ts';
+import { plan } from '../../src/plan/inventory.ts';
 import { buildNext, failuresIn as failure, limited, redDimensions, startNext, type App, type Mutation } from './harness.ts';
 
 const ROUTES = ['/', '/en', '/fr', '/en/about', '/fr/about', '/en/contact', '/de', '/en/missing'];
@@ -130,6 +134,22 @@ describe('next.js app router app', () => {
 		const report = await runCheck({ oldOrigin: old.origin, newOrigin: twin.origin, routes: ROUTES, browser });
 		process.stdout.write(`\n${summarize(report)}`);
 		assert.deepEqual(redDimensions(report), [], summarize(report));
+	});
+
+	test('without the noise baseline the same comparison goes red, so the baseline is doing work', async () => {
+		const oldA = await captureRoute(browser, old.origin, '/en', VIEWPORTS);
+		const next = await captureRoute(browser, twin.origin, '/en', VIEWPORTS);
+		const result = compareRoute('/en', oldA, oldA, next, new Map());
+		assert.ok(result.failures.some((f) => f.dimension === 'rendered' && /Page rendered at/.test(f.expected)), JSON.stringify(result.failures, null, 1));
+	});
+
+	test('plan crawls every locale and records the root redirect', async () => {
+		const inventory = await plan({ origin: old.origin, source: new URL('../../fixtures/next-app', import.meta.url).pathname, browser });
+		assert.deepEqual(inventory.routes.map((r) => r.route), ['/', '/en', '/en/about', '/en/contact', '/fr', '/fr/about', '/fr/contact']);
+		assert.equal(inventory.routes[0]!.redirectsTo, '/en');
+		assert.deepEqual(inventory.locales, ['en', 'fr']);
+		assert.equal(inventory.source?.framework, 'next');
+		assert.deepEqual(inventory.source?.fileRoutes, ['/[lang]', '/[lang]/about', '/[lang]/contact', '/api/contact']);
 	});
 
 	for (const mutation of MUTATIONS) {
