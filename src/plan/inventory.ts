@@ -3,6 +3,7 @@ import { dirname, join, relative, sep } from 'node:path';
 import { chromium, type Browser } from 'playwright';
 import { captureHttp, mime, toLocal } from '../check/capture.ts';
 import { collectPage } from '../check/collect.ts';
+import { scanForInventory, summarizeSource, unionRoutes, type RouteUnionEntry, type SourceInventory } from './source.ts';
 
 export interface InventoryRoute {
 	readonly route: string;
@@ -23,7 +24,9 @@ export interface Inventory {
 	readonly locales: readonly string[];
 	/** How the old app routes locales: path prefixes in use, and where / sends a browser by Accept-Language. */
 	readonly localeRouting: { readonly prefixes: readonly string[]; readonly negotiation: Readonly<Record<string, string>> };
-	readonly source?: SourceInfo;
+	readonly source?: SourceInventory;
+	/** Crawled and source routes together; an entry known by one side only is flagged by `knownBy`. */
+	readonly routeUnion?: readonly RouteUnionEntry[];
 }
 
 export interface SourceInfo {
@@ -113,6 +116,13 @@ export async function inspectSource(path: string): Promise<SourceInfo> {
 	return { path, framework, fileRoutes: [...new Set(fileRoutes)].sort() };
 }
 
+/** The source scan, with the framework and file routes older readers of the inventory expect. */
+export async function readSource(path: string): Promise<SourceInventory> {
+	const info = await inspectSource(path);
+	const source = await scanForInventory(path, info.fileRoutes);
+	return { ...source, framework: source.framework ?? (info.framework === 'unknown' ? null : info.framework) };
+}
+
 export async function plan(options: PlanOptions): Promise<Inventory> {
 	const { origin } = options;
 	const limit = options.limit ?? 100;
@@ -183,6 +193,8 @@ export async function plan(options: PlanOptions): Promise<Inventory> {
 	const landing: Record<string, string> = {};
 	for (const locale of sortedLocales) landing[locale] = (await captureHttp(origin, '/', { 'accept-language': locale })).chain.at(-1)!.url;
 	const negotiation = new Set(Object.values(landing)).size > 1 ? landing : {};
+	const source = options.source ? await readSource(options.source) : undefined;
+	const crawled = [...found.keys()].map((r) => r.split(/[?#]/)[0]!);
 	return {
 		version: 1,
 		origin,
@@ -192,7 +204,7 @@ export async function plan(options: PlanOptions): Promise<Inventory> {
 		routes: routes.map((r) => ({ ...r, foundIn: [...found.get(r.route)!].sort() })).sort((a, b) => a.route.localeCompare(b.route)),
 		locales: sortedLocales,
 		localeRouting: { prefixes, negotiation },
-		...(options.source ? { source: await inspectSource(options.source) } : {}),
+		...(source ? { source, routeUnion: unionRoutes([...new Set(crawled)], source.routes) } : {}),
 	};
 }
 
@@ -212,6 +224,5 @@ export function summarizeInventory(inventory: Inventory): string {
 	if (inventory.localeRouting.prefixes.length) lines.push(`Locale prefixes: ${inventory.localeRouting.prefixes.map((p) => `/${p}`).join(', ')}`);
 	const negotiated = Object.entries(inventory.localeRouting.negotiation);
 	if (negotiated.length) lines.push(`Accept-Language at /: ${negotiated.map(([locale, to]) => `${locale} -> ${to}`).join(', ')}`);
-	if (inventory.source) lines.push(`Source: ${inventory.source.framework} at ${inventory.source.path}, ${inventory.source.fileRoutes.length} file routes`);
-	return `${lines.join('\n')}\n`;
+	return `${lines.join('\n')}\n${inventory.source ? summarizeSource(inventory.source, inventory.routeUnion) : ''}`;
 }
