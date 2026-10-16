@@ -55,6 +55,32 @@ const count = <T>(items: readonly T[], key: (item: T) => string) => {
 	return [...counts].map(([k, n]) => `${k} ${n}`).join(', ');
 };
 
+/** The route patterns a migration step is part of: a route's own pattern, the routes below a layout, the routes rendering a component. */
+export function stepRoutes(source: Pick<SourceInventory, 'routes' | 'components'>, step: Pick<PlanStep, 'kind' | 'id' | 'file'>): string[] {
+	const pages = source.routes.filter((r) => r.kind === 'page');
+	const below = (file: string) => {
+		const dir = file.includes('/') ? file.slice(0, file.lastIndexOf('/') + 1) : '';
+		return pages.filter((r) => r.file.startsWith(dir));
+	};
+	const byId = new Map(source.components.map((c) => [c.id, c]));
+	const files = new Set<string>();
+	const queue = [step.id];
+	const seen = new Set<string>();
+	while (queue.length) {
+		const id = queue.pop()!;
+		if (seen.has(id)) continue;
+		seen.add(id);
+		const c = byId.get(id);
+		if (!c) continue;
+		if (c.kind === 'route' || c.kind === 'layout') files.add(c.file);
+		queue.push(...c.usedBy);
+	}
+	if (!byId.has(step.id)) files.add(step.file);
+	const kindOf = (file: string) => byId.get([...byId.keys()].find((id) => byId.get(id)!.file === file) ?? '')?.kind;
+	const matched = [...files].flatMap((file) => (kindOf(file) === 'layout' ? below(file) : pages.filter((r) => r.file === file)));
+	return [...new Set(matched.map((r) => r.path))].sort();
+}
+
 /** A readable account of what the source scan found, for the plan output. */
 export function summarizeSource(source: SourceInventory, union: readonly RouteUnionEntry[] = []): string {
 	const lines = [`Source: ${source.framework ?? 'framework not recognised'} at ${source.path}`];
@@ -77,8 +103,14 @@ export function summarizeSource(source: SourceInventory, union: readonly RouteUn
 	for (const c of source.clients) lines.push(`    ${c.kind} ${c.base ?? ''}${(c.queries ?? []).join(' | ').slice(0, 120)}${c.fields?.length ? `  fields ${c.fields.join(', ')}` : ''}  ${at(c)}`);
 	lines.push(`  Auth guards: ${source.authGuards.length || 'none found'}`);
 	for (const g of source.authGuards) lines.push(`    ${g.role ?? 'signed-in'} via ${g.how} on ${[...g.routes, ...(g.writes ?? [])].join(', ')}${g.redirectTo ? `, login at ${g.redirectTo}` : ''}  ${at(g)}`);
-	const order = source.order.slice(0, 12).map((s) => s.name);
-	lines.push(`  Components: ${source.components.length}${order.length ? `; convert in this order: ${order.join(', ')}${source.order.length > 12 ? ', ...' : ''}` : ''}`);
+	lines.push(`  Components: ${source.components.length}`);
+	if (source.order.length) {
+		lines.push('  Migration order (shared layouts and components first, each before what renders it):');
+		source.order.forEach((step, i) => {
+			const routes = stepRoutes(source, step);
+			lines.push(`    ${String(i + 1).padStart(2)}. ${step.kind} ${step.name}  ${step.file}${step.unlocks ? `  unlocks ${step.unlocks}` : ''}${routes.length ? `  routes ${routes.join(', ')}` : ''}`);
+		});
+	}
 	for (const limit of source.limits) lines.push(`  Limit: ${limit}`);
 	return `${lines.join('\n')}\n`;
 }
