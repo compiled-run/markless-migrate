@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { CONTENT, startCms, type Cms } from '../../fixtures/cms/server.ts';
@@ -12,12 +12,16 @@ import { runCheck, loadsDiffer } from '../../src/check/run.ts';
 import { loadSourceFacts } from '../../src/check/source-facts.ts';
 import { summarize } from '../../src/check/summary.ts';
 import { VIEWPORTS } from '../../src/check/types.ts';
+import { discoverEndpoints } from '../../src/check/endpoints.ts';
 import { plan } from '../../src/plan/inventory.ts';
+import { routeTargets } from '../../src/plan/routes.ts';
 import { connect, firstText } from '../mcp-client.ts';
 import { buildVite, failuresIn, OTHER_FONT, redByRole, redDimensions, startGuard, startStatic, writeAuth, type App, type Edit, type Mutation } from './harness.ts';
 import type { Dimension, Report } from '../../src/check/types.ts';
 
-const ROUTES = ['/', '/about/', '/fr/', '/ar/', '/old-about', '/missing'];
+const ROUTES = ['/', '/about/', '/fr/', '/ar/', '/old-about', '/missing', '/feed.xml', '/robots.txt', '/manifest.json', '/sitemap.xml'];
+const SOURCE = join(import.meta.dirname, '../../fixtures/vite-site');
+const FEED_ITEM = (await readFile(join(SOURCE, 'public/feed.xml'), 'utf8')).match(/\t\t<item>\s*<title>New route[\s\S]*?<\/item>\n/)![0];
 
 const failure = failuresIn;
 
@@ -57,6 +61,8 @@ const MUTATIONS: Mutation[] = [
 			assert.match(aria!.actual, /heading "Meet the guides"/);
 			assert.ok(failure(report, 'rendered').some((f) => f.check === 'visible text' && f.actual === 'Meet the guides'));
 			assert.match(failure(report, 'visual')[0]!.actual, /near .*heading "Meet the guides"/);
+			assert.equal(aria!.where, 'old about/index.html:29 renders heading "About the guides"; new about/index.html:29 renders heading "Meet the guides"');
+			assert.equal(aria!.old?.path, join(SOURCE, 'about/index.html'));
 		},
 	},
 	{
@@ -80,6 +86,8 @@ const MUTATIONS: Mutation[] = [
 			assert.ok(css.length >= 1);
 			assert.ok(css.every((f) => /paragraph "Six guided routes/.test(f.check) && f.expected.startsWith('font-size: 18px;') && f.actual.startsWith('font-size: 21px;')), JSON.stringify(css, null, 1));
 			assert.ok(css.every((f) => /^Old rule: `\.lede` \(.+:\d+:\d+\) sets font-size with `18px`/.test(f.hint)), JSON.stringify(css.map((f) => f.hint), null, 1));
+			// Vite builds no CSS source maps, so the rule is found in the old source stylesheet by selector and property.
+			assert.ok(css.every((f) => /^old src\/style\.css:\d+ `\.lede` sets font-size; new index\.html:\d+ renders it$/.test(f.where ?? '') && f.old?.how === 'source stylesheet'), JSON.stringify(css.map((f) => [f.where, f.old]), null, 1));
 		},
 	},
 	{
@@ -414,6 +422,36 @@ const MUTATIONS: Mutation[] = [
 			assert.match(f!.hint, /hardcoded/);
 		},
 	},
+	{
+		name: 'feed-item',
+		route: '/feed.xml',
+		edits: [{ file: 'public/feed.xml', find: FEED_ITEM, replace: '' }],
+		red: ['data'],
+		expect: (report) => {
+			const [f, ...rest] = failure(report, 'data');
+			assert.equal(rest.length, 0, JSON.stringify(rest, null, 1));
+			assert.equal(report.routes[0]!.endpoint, 'feed');
+			assert.deepEqual([f!.check, f!.expected, f!.actual], ['feed item missing', '"New route: Porthgwarra to Land’s End" (https://lighthouse.example/news/porthgwarra-route)', '(absent)']);
+		},
+	},
+	{
+		name: 'robots',
+		route: '/robots.txt',
+		edits: [{ file: 'public/robots.txt', find: 'Allow: /', replace: 'Disallow: /about/' }],
+		red: ['seo'],
+		expect: (report) => {
+			assert.deepEqual(failure(report, 'seo').map((f) => [f.check, f.expected, f.actual]), [['robots.txt line', 'Allow: /', 'Disallow: /about/']]);
+		},
+	},
+	{
+		name: 'json-field',
+		route: '/manifest.json',
+		edits: [{ file: 'public/manifest.json', find: '"short_name"', replace: '"shortName"' }],
+		red: ['data'],
+		expect: (report) => {
+			assert.deepEqual(failure(report, 'data').map((f) => [f.check, f.expected, f.actual]), [['JSON field short_name missing', '"Walks"', '(absent)'], ['JSON field shortName not in the old response', '(absent)', '"Walks"']]);
+		},
+	},
 ];
 
 const WALL = 'lighthouse-staging-pass';
@@ -493,6 +531,7 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 	let twin: App;
 	let twinOnOtherCms: App;
 	const mutants = new Map<string, App>();
+	const sources = new Map<string, string>();
 	let walled: App;
 
 	before(async () => {
@@ -504,6 +543,7 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		[old, twin, twinOnOtherCms, walled] = await Promise.all([startStatic(dist!, cms.origin), startStatic(dists[0]!, cms.origin), startStatic(dists[0]!, otherCms.origin), startStatic(dist!, cms.origin, { BOT_WALL: WALL })]);
 		const apps = await Promise.all(all.map((_, i) => startStatic(dists[i + 1]!, cms.origin)));
 		all.forEach((m, i) => mutants.set(m.name, apps[i]!));
+		all.forEach((m, i) => sources.set(m.name, dirname(dists[i + 1]!)));
 	});
 
 	after(async () => {
@@ -572,6 +612,18 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		} finally {
 			await Promise.all([guardOld.stop(), guardNew.stop()]);
 		}
+	});
+
+	test('check --all takes every source route and the robots.txt, sitemap, feed and manifest the old app serves, compared as data', async () => {
+		const inventory = await plan({ origin: old.origin, source: SOURCE, browser });
+		const targets = routeTargets(inventory);
+		for (const r of inventory.source!.routes) assert.ok(targets.pages.includes(r.path), `${r.path} is checked`);
+		assert.deepEqual(targets.needsSample, []);
+		const endpoints = await discoverEndpoints(defaultEnv(old.origin), targets.pages, targets.endpoints);
+		assert.deepEqual(endpoints, ['/feed.xml', '/manifest.json', '/robots.txt', '/sitemap.xml']);
+		const report = await runCheck({ oldOrigin: old.origin, newOrigin: twin.origin, routes: [], endpoints, browser });
+		assert.deepEqual(report.routes.map((r) => [r.route, r.endpoint]), [['/feed.xml', 'feed'], ['/manifest.json', 'json'], ['/robots.txt', 'robots'], ['/sitemap.xml', 'sitemap']]);
+		assert.deepEqual(redDimensions(report), [], summarize(report));
 	});
 
 	test('plan finds the sitemap and crawled routes and both locales', async () => {
@@ -680,7 +732,7 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 
 	for (const mutation of MUTATIONS) {
 		test(`mutation "${mutation.name}" ${mutation.red.length ? `turns ${mutation.red.join(' + ')} red and nothing else` : 'stays green'}`, async () => {
-			const report = await runCheck({ oldOrigin: old.origin, newOrigin: mutants.get(mutation.name)!.origin, routes: [mutation.route], browser });
+			const report = await runCheck({ oldOrigin: old.origin, newOrigin: mutants.get(mutation.name)!.origin, routes: [mutation.route], browser, sourceDirs: { old: SOURCE, new: sources.get(mutation.name)! } });
 			if (process.env.SHOW_SUMMARY) process.stdout.write(`\n${summarize(report)}`);
 			assert.deepEqual(redDimensions(report), [...mutation.red].sort(), summarize(report));
 			mutation.expect(report);

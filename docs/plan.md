@@ -124,8 +124,11 @@ CSS states:
   `:checked`, `:disabled` and `[open]` are set as DOM properties without events.
 - Container queries are forced by sizing each size container's content box to the edge widths; only
   width and inline-size conditions are listed, not height or `style()` queries.
-- The rule a difference is traced to is the OLD stylesheet as served: Next.js and Vite minify CSS, so
-  the line and column point into the built file, not the source (source maps are not followed).
+- The rule a difference is traced to is the OLD stylesheet as served, followed through the stylesheet's
+  source map to the source file and line when the build has one (Next.js with
+  `productionBrowserSourceMaps`); Vite builds no CSS source maps, so with `--source` the rule is found in
+  the source stylesheets by selector, which misses Sass, CSS modules and PostCSS output whose selectors
+  differ from the source.
   Attribution weighs `!important`, specificity and source order; cascade layers are ignored, and a
   shorthand covers its longhands through a short table. Cross-origin stylesheets are not read.
 - Box geometry (width, height, transform and perspective origins) and custom properties are not
@@ -278,3 +281,56 @@ Other:
   and about twenty journeys run three times.
 - yuku-css is not on npm yet, so the package links it from a sibling checkout and cannot be installed
   from npm until it is published.
+
+## Routes, non-page endpoints, source locations and order (2026-10-16)
+
+Built: `check --all` takes the inventory's route union (crawl plus source), fills dynamic segments from
+crawled values or `.migrate/samples.json`, lists the rest as "needs a sample", and compares non-page
+endpoints as data (`data` dimension; robots.txt and sitemaps under `seo`). Failures about an element name
+the old and new source file and line (`where`, `old`, `new` on each failure; links in report.html).
+`plan` prints the full migration order from `planOrder`, with the routes each step is part of, and
+`status` lists steps and routes in that order. Proven on the Next.js and Vite fixtures (a feed item
+removed, a robots.txt line changed, a JSON field renamed; source lines on the heading, tip label, CSS
+rule and form mutations) and on `fixtures/markless-site`, a partial Markless port of two Vite routes.
+
+### What Markless would need to add for exact new-side locations
+
+Markless 0.4.0 (and the 0.5.0 source) emits nothing that maps a rendered element to its `.tsrx` line:
+compiled elements carry no source attribute (the resumability spec keeps static nodes attribute-free),
+the bundler returns `map: null` for every `.tsrx` transform, so there are no source maps back to `.tsrx`,
+`window.__MARKLESS_DEBUG__.explainInteraction` returns a host node id and a mechanism, not a position,
+and the "locator" stream addresses DOM order for resuming, not source. The one thing it does emit is
+`<script type="@markless/core/route">{"file":"pages/about/index.tsrx"}</script>`, which the migrate side
+uses to know the page file. Everything else is found by reading the `.tsrx` source with `yuku-tsrx` and
+matching elements by tag, written text and accessible name, which fails when two elements on a page are
+written alike or the text is computed. Exact locations need, in order of value:
+
+1. A dev-only attribute on every host element the compiler emits, for example
+   `data-markless-source="pages/about/index.tsrx:3:3"` (path relative to the app root, 1-based line and
+   column of the opening tag), behind the existing `markless({ debug: true })` switch so production HTML
+   stays attribute-free. `markless-migrate` already reads `data-markless-source` first.
+2. The compiler's per-module source maps passed through the bundler instead of `map: null`, in dev and
+   (opt-in) in build, so client code positions map back to `.tsrx` lines the way React's do.
+3. `explainInteraction(element)` (or a sibling `explainElement`) returning the source position of the
+   element's template node and its component, for elements created on the client where an attribute is
+   not rendered.
+
+### What still slips through, from this work
+
+- Old-side runtime hints are proven for production React (fiber to component function to source map)
+  and static HTML; React `_debugSource`/owner stacks, Vue `__file`, Svelte `__svelte_meta` and the data
+  attributes are implemented but no fixture runs a development build of those frameworks. Elements a
+  Next.js server component renders have no client fiber, so they are found by source matching only.
+- Source matching needs the element's tag plus its written text or accessible name; an element whose
+  text is entirely computed is placed only inside the route's own files (and the files they import),
+  and text from a dictionary is named by exact string or the longest literal it contains. Two elements
+  written alike in one file resolve to the first. Elements created by plain JavaScript (`createElement`)
+  are not traced to the script that made them (CDP node stack traces would do it).
+- Failures about the accessibility tree name the element only when the snapshot line carries a name or
+  text; landmark-only and focus-order failures carry no location.
+- Feeds are keyed by guid, id, link or title; a feed that changes every key at once reports every item
+  as missing. JSON arrays are compared by index, so an item removed from the middle reports the shift.
+  Endpoint discovery probes a fixed list of well-known paths and the feeds and manifest the first 20
+  pages link to; endpoints only reachable otherwise need `--route`. Endpoints are checked once, as
+  anonymous, even with `--auth`.
+- "Needs a sample" routes are listed, not failed; a report can be green with routes unchecked.

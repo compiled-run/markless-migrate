@@ -12,12 +12,16 @@ import { runCheck } from '../../src/check/run.ts';
 import { loadSourceFacts } from '../../src/check/source-facts.ts';
 import { VIEWPORTS } from '../../src/check/types.ts';
 import { summarize } from '../../src/check/summary.ts';
-import { plan } from '../../src/plan/inventory.ts';
+import { defaultEnv } from '../../src/check/browser.ts';
+import { discoverEndpoints } from '../../src/check/endpoints.ts';
+import { plan, writeInventory } from '../../src/plan/inventory.ts';
+import { routeTargets } from '../../src/plan/routes.ts';
+import { recordResults, status, summarizeStatus } from '../../src/status.ts';
 import { buildNext, failuresIn as failure, limited, OTHER_FONT, redByRole, redDimensions, startGuard, startNext, writeAuth, type App, type Edit, type Mutation } from './harness.ts';
 import type { Dimension, Report } from '../../src/check/types.ts';
 
 const FIXTURE = new URL('../../fixtures/next-app', import.meta.url).pathname;
-const ROUTES = ['/', '/en', '/fr', '/ar', '/en/about', '/fr/about', '/en/contact', '/de', '/en/missing'];
+const ROUTES = ['/', '/en', '/fr', '/ar', '/en/about', '/fr/about', '/en/contact', '/de', '/en/missing', '/feed.xml', '/robots.txt', '/sitemap.xml', '/api/news'];
 
 const MUTATIONS: Mutation[] = [
 	{
@@ -53,6 +57,7 @@ const MUTATIONS: Mutation[] = [
 			const aria = failure(report, 'rendered').find((f) => f.check === 'accessibility tree');
 			assert.match(aria!.expected, /heading "Fresh coffee, roasted by the harbour"/);
 			assert.match(aria!.actual, /heading "Fresh coffee from the harbour"/);
+			assert.match(aria!.where ?? '', /^old app\/\[lang\]\/page\.tsx:\d+ renders heading "Fresh coffee, roasted by the harbour" \(text from app\/dictionaries\.ts:\d+\); new app\/\[lang\]\/page\.tsx:\d+ renders heading "Fresh coffee from the harbour" \(text from app\/dictionaries\.ts:\d+\)$/, aria!.where);
 		},
 	},
 	{
@@ -76,6 +81,7 @@ const MUTATIONS: Mutation[] = [
 			assert.ok(css.length >= 1);
 			assert.ok(css.every((f) => /paragraph "We roast in small batches/.test(f.check) && f.expected.startsWith('font-size: 18px') && f.actual.startsWith('font-size: 21px')), JSON.stringify(css, null, 1));
 			assert.ok(css.every((f) => /^Old rule: `\.lede` \(.+:\d+:\d+\) sets font-size with `18px`/.test(f.hint)), JSON.stringify(css.map((f) => f.hint), null, 1));
+			assert.ok(css.every((f) => /^Old rule: `\.lede` \(app\/globals\.css:\d+:\d+, served as \/_next\/static\/chunks\//.test(f.hint) && f.old?.how === 'source map' && f.old.file === 'app/globals.css'), JSON.stringify(css.map((f) => [f.hint, f.old]), null, 1));
 		},
 	},
 	{
@@ -364,6 +370,9 @@ const MUTATIONS: Mutation[] = [
 			const text = failure(report, 'rendered').find((f) => f.check === 'visible text');
 			assert.match(text!.expected, /^Barista’s tip: \S/);
 			assert.equal(text!.actual, text!.expected.replace('Barista’s', 'Baristas’'), 'the random tip is the same on both sides, so only the label differs');
+			// A client component: its React fiber names the component function, the build's source map its file, and the source the line.
+			assert.match(text!.where ?? '', /^old app\/\[lang\]\/tip\.tsx:10 renders paragraph "Barista’s tip:" \(text from app\/\[lang\]\/page\.tsx:\d+\); new app\/\[lang\]\/tip\.tsx:10 renders paragraph "Baristas’ tip:" \(text from app\/\[lang\]\/page\.tsx:\d+\)$/, text!.where);
+			assert.equal(text!.old?.how, 'react component + source map');
 		},
 	},
 	{
@@ -414,6 +423,35 @@ const MUTATIONS: Mutation[] = [
 			assert.equal(rest.length, 0, JSON.stringify(rest, null, 1));
 			assert.equal(f!.check, 'server request missing');
 			assert.match(f!.expected, /^server GET 127\.0\.0\.1:\d+\/coffee\/settings$/);
+		},
+	},
+	{
+		name: 'feed-item',
+		route: '/feed.xml',
+		edits: [{ file: 'app/feed.xml/route.ts', find: '(news?.items ?? []).map(', replace: '(news?.items ?? []).slice(1).map(' }],
+		red: ['data'],
+		expect: (report) => {
+			assert.equal(report.routes[0]!.endpoint, 'feed');
+			assert.deepEqual(failure(report, 'data').map((f) => [f.check, f.expected, f.actual]), [['feed item missing', '"Ethiopian lot arrives Tuesday" (https://harbour.example/en/news/ethiopian-lot)', '(absent)']]);
+		},
+	},
+	{
+		name: 'robots',
+		route: '/robots.txt',
+		edits: [{ file: 'app/robots.ts', find: "disallow: ['/api/']", replace: "disallow: ['/api/', '/en/contact']" }],
+		red: ['seo'],
+		expect: (report) => {
+			assert.deepEqual(failure(report, 'seo').map((f) => [f.check, f.expected, f.actual]), [['robots.txt line', '(absent)', 'Disallow: /en/contact']]);
+		},
+	},
+	{
+		name: 'json-field',
+		route: '/api/news',
+		edits: [{ file: 'app/api/news/route.ts', find: '({ title: item.title,', replace: '({ headline: item.title,' }],
+		red: ['data'],
+		expect: (report) => {
+			assert.deepEqual(failure(report, 'data').map((f) => f.check), ['JSON field items[].title missing', 'JSON field items[].headline not in the old response']);
+			assert.equal(failure(report, 'data')[0]!.expected, '"Ethiopian lot arrives Tuesday" (and 1 more entry)');
 		},
 	},
 ];
@@ -488,6 +526,7 @@ describe('next.js app router app', { concurrency: 4 }, () => {
 	let cms: Cms;
 	let otherCms: Cms;
 	const mutants = new Map<string, App>();
+	const sources = new Map<string, string>();
 	let walled: App;
 
 	before(async () => {
@@ -502,6 +541,7 @@ describe('next.js app router app', { concurrency: 4 }, () => {
 		twinOnOtherCms = apps.at(-2)!;
 		walled = apps.at(-1)!;
 		[...MUTATIONS, ...AUTH_MUTATIONS].forEach((m, i) => mutants.set(m.name, apps[i + 2]!));
+		[...MUTATIONS, ...AUTH_MUTATIONS].forEach((m, i) => sources.set(m.name, dirs[i + 2]!));
 	});
 
 	after(async () => {
@@ -578,6 +618,33 @@ describe('next.js app router app', { concurrency: 4 }, () => {
 		}
 	});
 
+	test('check --all fills dynamic segments from the crawl, asks for a sample where none exists, and compares the feed, robots.txt, sitemap and JSON route as data; status follows the migration order', async () => {
+		const inventory = await plan({ origin: old.origin, source: FIXTURE, browser });
+		const targets = routeTargets(inventory);
+		assert.deepEqual(targets.needsSample, [{ route: '/:lang/news/:slug', params: ['slug'], file: 'app/[lang]/news/[slug]/page.tsx', line: 6 }]);
+		assert.deepEqual(targets.endpoints, ['/api/news', '/feed.xml']);
+		const sampled = routeTargets(inventory, { slug: 'ethiopian-lot' });
+		assert.deepEqual(sampled.pages.filter((p) => p.includes('/news/')), ['/ar/news/ethiopian-lot']);
+		const endpoints = await discoverEndpoints(defaultEnv(old.origin), targets.pages, targets.endpoints);
+		assert.deepEqual(endpoints, ['/api/news', '/feed.xml', '/robots.txt', '/sitemap.xml']);
+		const report = await runCheck({ oldOrigin: old.origin, newOrigin: twin.origin, routes: ['/ar/news/ethiopian-lot'], endpoints, browser, unchecked: targets.needsSample });
+		assert.deepEqual(report.routes.map((r) => [r.route, r.endpoint ?? 'page']), [['/ar/news/ethiopian-lot', 'page'], ['/api/news', 'json'], ['/feed.xml', 'feed'], ['/robots.txt', 'robots'], ['/sitemap.xml', 'sitemap']]);
+		assert.deepEqual(redDimensions(report), [], summarize(report));
+		assert.match(summarize(report), /needs a sample[\s\S]*\/:lang\/news\/:slug {2}no value for :slug/);
+
+		const cwd = await mkdtemp(join(tmpdir(), 'mm-order-'));
+		await writeInventory(inventory, join(cwd, '.migrate'));
+		await recordResults(cwd, report);
+		const s = await status(cwd);
+		const order = s.order!.map((o) => o.name);
+		assert.ok(order.indexOf('Tip') < order.indexOf('Home') && order.indexOf('LangLayout') < order.indexOf('About'), order.join(', '));
+		assert.deepEqual(s.order!.find((o) => o.name === 'NewsItem'), { kind: 'route', name: 'NewsItem', file: 'app/[lang]/news/[slug]/page.tsx', routes: ['/ar/news/ethiopian-lot'], green: 1, state: 'green' });
+		assert.equal(s.order!.find((o) => o.name === 'Home')!.state, 'unchecked');
+		assert.ok(s.routes.findIndex((r) => r.route === '/en/about') < s.routes.findIndex((r) => r.route === '/en'), 'routes follow the order: About converts before Home');
+		assert.deepEqual(s.routes.at(-1), { route: '/:lang/news/:slug', state: 'needs a sample', red: [] });
+		assert.match(summarizeStatus(s), /Migration order:\n +1\. unchecked +component Counter/);
+	});
+
 	test('plan crawls every locale and records the root redirect', async () => {
 		const inventory = await plan({ origin: old.origin, source: new URL('../../fixtures/next-app', import.meta.url).pathname, browser });
 		assert.deepEqual(inventory.routes.map((r) => r.route), ['/', '/ar', '/ar/about', '/ar/contact', '/en', '/en/about', '/en/contact', '/fr', '/fr/about', '/fr/contact']);
@@ -635,7 +702,7 @@ describe('next.js app router app', { concurrency: 4 }, () => {
 
 	for (const mutation of MUTATIONS) {
 		test(`mutation "${mutation.name}" ${mutation.red.length ? `turns ${mutation.red.join(' + ')} red and nothing else` : 'stays green'}`, async () => {
-			const report = await runCheck({ oldOrigin: old.origin, newOrigin: mutants.get(mutation.name)!.origin, routes: [mutation.route], browser });
+			const report = await runCheck({ oldOrigin: old.origin, newOrigin: mutants.get(mutation.name)!.origin, routes: [mutation.route], browser, sourceDirs: { old: FIXTURE, new: sources.get(mutation.name)! } });
 			if (process.env.SHOW_SUMMARY) process.stdout.write(`\n${summarize(report)}`);
 			assert.deepEqual(redDimensions(report), [...mutation.red].sort(), summarize(report));
 			mutation.expect(report);

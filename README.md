@@ -20,6 +20,7 @@ markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [
     [--source ../old-app] [--data record|replay] [--staging] [--block <host>]... [--allow <host>]...
     [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
     [--auth .migrate/auth.json] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
+    [--all] [--new-source ../markless-app]
 markless-migrate recorder
 markless-migrate status
 markless-migrate setup [--agent claude-code]... [--yes] [--dry-run]
@@ -32,7 +33,9 @@ Accept-Language. `check` checks the routes you name, or every route in the inven
 route is red. It writes `.migrate/report.json`, `.migrate/report.html` (one self-contained page: old, new
 and diff screenshots per route, viewport and failing state, side by side or as a slider or blink
 toggle, with the differing regions boxed and every failure listed with its fix; `--open` opens it),
-screenshot diffs in `.migrate/diffs/`, and the interactions it explored in `.migrate/journeys/`. `setup` registers the `markless-migrate mcp` server and installs a migration skill for
+screenshot diffs in `.migrate/diffs/`, and the interactions it explored in `.migrate/journeys/`.
+`check --all` also takes every route the source scan knows (see below) and the old app's non-page
+endpoints. `plan` prints the migration order and `status` shows progress in that order. `setup` registers the `markless-migrate mcp` server and installs a migration skill for
 Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot CLI, VS Code (Copilot agent mode) and opencode. It
 shows every file it will change and keeps a backup of each. Paths and their sources: [docs/notes/agents.md](docs/notes/agents.md).
 
@@ -73,7 +76,32 @@ only within the same kind of character (digits stay digits); everything else mus
 | `i18n` | `lang`, `dir` and text direction, the formats of dates and numbers in the text, and the page each Accept-Language lands on |
 | `behaviour` | interactions explored on the old page and replayed on the new one: the URL, what appears and disappears, app requests (method, path, body shape), console errors, live-region announcements and focus after each step |
 | `network` | every request the page makes, in the browser and, when the server runs the request recorder, while the server renders it: method, URL (the app's own origin, ids, timestamps and cache-busters normalised, query keys and values kept), body shape, how many times, and which response fields the page shows |
+| `data` | non-page endpoints as data, with the same noise rules as pages: feeds item by item (keyed by guid, id or link), JSON field by field, `/.well-known` files, the manifest; robots.txt lines and sitemap entries count as `seo` |
 | `weight` | JavaScript on the wire and run at load (Chromium coverage); red when the new route is heavier |
+
+### Which routes, and where a failure comes from
+
+`check --all` needs `plan --source`. It checks every crawled path, and every route only the source knows:
+a dynamic segment takes a value seen in a crawled path for a segment of the same name, or one from
+`.migrate/samples.json` (`{ "slug": "first-post" }` by name, or `{ "/blog/:slug": "/blog/hello" }` by
+pattern); a route nothing gives a value is reported as "needs a sample". It also checks the source's GET
+route handlers, `robots.txt`, sitemaps (including those robots.txt names), feeds and the manifest the
+pages link to, and common `/.well-known` files, whenever the old app serves them as something other than
+HTML. Any `--route` whose old response is not HTML is compared the same way.
+
+With `--source` (old) and `--new-source` (the Markless app), each failure about an element carries a
+`where` line, for example `old app/[lang]/tip.tsx:10 renders paragraph "Barista’s tip:"; new
+pages/index.tsrx:12 renders paragraph "Baristas’ tip:"`, and report.html links both to the editor
+(`vscode://file/...`). The old side is found, in order, from data attributes (`data-source`,
+`data-inspector-*`, `data-sentry-source-file`), Svelte's `__svelte_meta`, Vue's `__file`, React's
+`_debugSource` or owner stack in development builds, and in production builds the React component
+function behind the element, located through the debugger and the build's source maps, then the element
+inside it; failing that, the element is found in the source by tag, written text and accessible name, and
+text that comes from a dictionary or constant is named too. A CSS failure names the source rule, through
+the stylesheet's source map or, without one, by selector in the source stylesheets. Markless builds carry
+no source locations yet, so the new side is found in the `.tsrx` source the same way, preferring the
+page file Markless names for the route and what it imports; when the new page lacks the element the
+failure names that page file.
 
 ### Logged-in pages and bot protection
 
@@ -134,7 +162,7 @@ Server-side writes the app makes while handling a request cannot be held back.
 pnpm install
 pnpm browsers      # once: downloads Chromium for Playwright
 pnpm typecheck
-pnpm test          # unit tests and both fixture suites, about five minutes
+pnpm test          # unit tests and the three fixture suites, about five minutes
 pnpm test:unit     # unit tests only, a few seconds
 pnpm test:e2e      # fixture suites only
 ```
@@ -144,16 +172,20 @@ CSS is parsed with [yuku-css](https://github.com/thejackshelton/yuku-css), which
 
 `fixtures/` holds a Next.js App Router app and a Vite multi-page site, each with an Arabic (RTL) locale,
 Accept-Language negotiation at `/`, a menu, a counter and a form. The fixture suites build each one,
-check it against a separate build of the same source (must be green), and then against 32 mutated
+check it against a separate build of the same source (must be green), and then against 35 mutated
 copies each: one per check, from a changed title to a hover colour, a breakpoint moved by 40px, a font
 file swapped under the same name (and a font renamed, which must stay green), a removed label, a
 positive tabindex, a counter that adds 2, a form that posts elsewhere, a changed label next to a
 `Math.random()` tip, and four network contracts: a query field dropped, another endpoint, a second
-fetch, and a server request replaced by hardcoded text. Both fixtures render from a small JSON CMS
+fetch, and a server request replaced by hardcoded text, and three non-page endpoints: a feed item
+removed, a robots.txt line changed and a JSON field renamed. Both fixtures render from a small JSON CMS
 (`fixtures/cms/server.ts`) on the server and in the browser, and run with the request recorder. The
 suites also replay recorded data to an app on a second CMS with different content (must be green), and
 check writes through a guard on a non-loopback address that fails the test if any write reaches it. Each mutation must turn red
-exactly the dimensions it affects, with the expected message. Mutated copies are built in `.mutants/`.
+exactly the dimensions it affects, with the expected message, and the failures that concern an element
+must name its old and new source line. `fixtures/markless-site` ports two routes of the Vite site to
+Markless with the published `@markless` packages; its suite checks the Vite site against it and
+requires each failure to name the `.tsrx` file and line. Mutated copies are built in `.mutants/`.
 
 Both fixtures also sign in with a cookie session: a member and an admin, a members-only page, an
 admin-only page, and a redirect to the login page for anonymous visitors. Their suites check each role
