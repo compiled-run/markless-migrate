@@ -167,6 +167,8 @@ describe('switch and the pass-through proxy', { concurrency: 1 }, () => {
 			{ source: '/members/', destination: `${next.origin}/members/` },
 			{ source: '/members', destination: `${next.origin}/members` },
 			{ source: '/new-only.svg', destination: `${next.origin}/new-only.svg` },
+			{ source: '/', destination: `${old.origin}/` },
+			{ source: '/:path*/', destination: `${old.origin}/:path*/` },
 			{ source: '/:path*', destination: `${old.origin}/:path*` },
 		]);
 		const nitro = await readFile(join(cwd, 'nitro.ts'), 'utf8');

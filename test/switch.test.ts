@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { convertRewrites } from '@vercel/routing-utils';
 import { assetPaths, assetSources, nitroPattern, nitroRouteRules, vercelConfig, vercelPattern } from '../src/switch/deploy.ts';
 import { rewriteLocation, rewriteSetCookie, route } from '../src/switch/proxy.ts';
 import { status, summarizeStatus } from '../src/status.ts';
@@ -63,21 +64,39 @@ test('cookies keep a Domain that covers the proxy host and drop one that does no
 	assert.equal(rewriteLocation('https://accounts.example/sso', ['http://127.0.0.1:3000'], 'http://localhost:9'), 'https://accounts.example/sso');
 });
 
+/** Where Vercel sends a path: the first rewrite whose compiled route matches, as @vercel/routing-utils compiles it. */
+function vercelSends(rewrites: { source: string; destination: string }[], path: string): string | undefined {
+	for (const route of convertRewrites(rewrites)) {
+		const match = new RegExp(route.src!).exec(path);
+		if (match) return route.dest!.replace(/\$(\d+)/g, (_, n: string) => match[Number(n)] ?? '');
+	}
+	return undefined;
+}
+
+test('vercel.json, compiled the way Vercel compiles it, sends switched routes to NEW and every other path, / and trailing slashes included, to OLD', () => {
+	const vercel = vercelConfig({ old: 'https://old.example/', new: 'https://new.example', switched: ['/about/', '/blog/:slug'], newAssets: ['/_markless/a.js'] });
+	const sends = (path: string) => vercelSends(vercel.rewrites, path);
+	assert.equal(sends('/'), 'https://old.example/');
+	assert.equal(sends('/contact/'), 'https://old.example/contact/');
+	assert.equal(sends('/a/b/'), 'https://old.example/a/b/');
+	assert.equal(sends('/robots.txt'), 'https://old.example/robots.txt');
+	assert.equal(sends('/about/'), 'https://new.example/about/');
+	assert.equal(sends('/about'), 'https://new.example/about');
+	assert.equal(sends('/blog/hello'), 'https://new.example/blog/hello');
+	assert.equal(sends('/blog/hello/'), 'https://new.example/blog/hello/');
+	assert.equal(sends('/_markless/chunks/x.js'), 'https://new.example/_markless/chunks/x.js');
+});
+
 test('deploy config: patterns in each router syntax, asset directories only when the other app has none there', () => {
 	assert.equal(vercelPattern('/docs/*rest'), '/docs/:rest+');
 	assert.equal(vercelPattern('/docs/*rest?'), '/docs/:rest*');
 	assert.equal(nitroPattern('/docs/*rest'), '/docs/**');
 	assert.equal(nitroPattern('/blog/:slug'), '/blog/:slug');
 	assert.deepEqual(assetSources(['/_markless/a.js', '/assets/x.js', '/icon.svg'], ['/assets/y.js']), ['/_markless/**', '/assets/x.js', '/icon.svg']);
-	const vercel = vercelConfig({ old: 'https://old.example/', new: 'https://new.example', switched: ['/blog/:slug'], newAssets: ['/_markless/a.js'] });
-	assert.deepEqual(vercel.rewrites, [
-		{ source: '/blog/:slug', destination: 'https://new.example/blog/:slug' },
-		{ source: '/_markless/:path*', destination: 'https://new.example/_markless/:path*' },
-		{ source: '/:path*', destination: 'https://old.example/:path*' },
-	]);
 	assert.deepEqual(nitroRouteRules({ old: 'https://old.example', new: 'https://new.example', switched: ['/about/'], oldRoutes: ['/', '/about/', '/blog/:slug'], oldAssets: ['/assets/i.js'] }), {
 		'/': { proxy: 'https://old.example/' },
 		'/blog/:slug': { proxy: 'https://old.example/blog/:slug' },
+		'/blog/:slug/': { proxy: 'https://old.example/blog/:slug/' },
 		'/assets/i.js': { proxy: 'https://old.example/assets/i.js' },
 	});
 	assert.deepEqual(assetPaths('<link rel="canonical" href="/x/"><link rel="stylesheet" href="/a.css"><img srcset="/i-1.png 1x, /i-2.png 2x"><script src="https://cdn.example/x.js"></script><a href="/page/">p</a>', 'http://h'), ['/a.css', '/i-1.png', '/i-2.png']);

@@ -39,7 +39,7 @@ export function assetSources(paths: readonly string[], otherPaths: readonly stri
 }
 
 function bothSlashes(route: string): string[] {
-	if (/[:*]/.test(route) || route === '/') return [route];
+	if (route === '/') return [route];
 	const bare = route.replace(/\/+$/, '');
 	return [...new Set([route, bare, `${bare}/`])];
 }
@@ -59,7 +59,8 @@ export function vercelConfig(input: DeployInput): { rewrites: { source: string; 
 		const pattern = source.endsWith('/**') ? `${source.slice(0, -3)}/:path*` : source;
 		rewrites.push({ source: pattern, destination: `${next}${pattern}` });
 	}
-	rewrites.push({ source: '/:path*', destination: `${old}/:path*` });
+	// `/:path*` matches neither `/` nor a path ending in `/`, so those get their own rules.
+	rewrites.push({ source: '/', destination: `${old}/` }, { source: '/:path*/', destination: `${old}/:path*/` }, { source: '/:path*', destination: `${old}/:path*` });
 	return { rewrites };
 }
 
