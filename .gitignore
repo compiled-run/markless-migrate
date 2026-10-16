@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.migrate/
+fixtures/*/node_modules/
+fixtures/*/.next/
+fixtures/*/.output/

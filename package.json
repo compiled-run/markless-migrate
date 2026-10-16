@@ -1,0 +1,22 @@
+{
+	"name": "@markless/migrate",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Move an app to Markless with your own coding agent, proven route by route",
+	"license": "MIT",
+	"type": "module",
+	"bin": {
+		"markless-migrate": "./src/cli.ts"
+	},
+	"engines": {
+		"node": ">=24.11.0"
+	},
+	"scripts": {
+		"test": "node --test test/*.test.ts",
+		"typecheck": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@types/node": "^24.12.2",
+		"typescript": "^5.9.3"
+	}
+}
