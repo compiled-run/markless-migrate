@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium, type Browser } from 'playwright';
 import { CONTENT, startCms, type Cms } from '../../fixtures/cms/server.ts';
+import { readAuthFile } from '../../src/check/auth.ts';
 import { captureRoute } from '../../src/check/capture.ts';
 import { compareRoute } from '../../src/check/compare.ts';
 import { runCheck } from '../../src/check/run.ts';
@@ -12,7 +13,8 @@ import { loadSourceFacts } from '../../src/check/source-facts.ts';
 import { VIEWPORTS } from '../../src/check/types.ts';
 import { summarize } from '../../src/check/summary.ts';
 import { plan } from '../../src/plan/inventory.ts';
-import { buildNext, failuresIn as failure, limited, OTHER_FONT, redDimensions, startGuard, startNext, type App, type Mutation } from './harness.ts';
+import { buildNext, failuresIn as failure, limited, OTHER_FONT, redByRole, redDimensions, startGuard, startNext, writeAuth, type App, type Edit, type Mutation } from './harness.ts';
+import type { Dimension, Report } from '../../src/check/types.ts';
 
 const FIXTURE = new URL('../../fixtures/next-app', import.meta.url).pathname;
 const ROUTES = ['/', '/en', '/fr', '/ar', '/en/about', '/fr/about', '/en/contact', '/de', '/en/missing'];
@@ -416,6 +418,68 @@ const MUTATIONS: Mutation[] = [
 	},
 ];
 
+const WALL = 'harbour-staging-pass';
+process.env.FIXTURE_MEMBER_PASSWORD = 'tuesday-roast';
+
+interface AuthMutation {
+	readonly name: string;
+	readonly route: string;
+	readonly edits: readonly Edit[];
+	readonly red: Readonly<Record<'anonymous' | 'member' | 'admin', readonly Dimension[]>>;
+	readonly expect: (report: Report) => void;
+}
+
+const authFailure = (report: Report, role: string, dimension: Dimension) => [...report.routes.filter((r) => r.role === role).flatMap((r) => r.failures), ...(report.logins ?? []).filter((l) => l.role === role).flatMap((l) => l.failures)].filter((f) => f.dimension === dimension);
+
+const AUTH_MUTATIONS: AuthMutation[] = [
+	{
+		name: 'auth-anonymous-members',
+		route: '/en/members',
+		edits: [{ file: 'app/[lang]/members/page.tsx', find: 'if (!user) redirect(`/${lang}/login`);', replace: '' }],
+		red: { anonymous: ['auth', 'http'], member: [], admin: [] },
+		expect: (report) => {
+			const [f] = authFailure(report, 'anonymous', 'auth');
+			assert.equal(f!.check, 'access as anonymous');
+			assert.equal(f!.expected, 'denied: 307 to /en/login (200)');
+			assert.equal(f!.actual, 'let in: 200');
+			assert.equal(report.routes.find((r) => r.role === 'anonymous')!.dimensions.rendered, 'skipped', 'a login page is not compared with a members page');
+		},
+	},
+	{
+		name: 'auth-admin-for-members',
+		route: '/en/admin',
+		edits: [{ file: 'app/[lang]/admin/page.tsx', find: "if (user.role !== 'admin') forbidden();", replace: '' }],
+		red: { anonymous: [], member: ['auth', 'http'], admin: [] },
+		expect: (report) => {
+			const [f] = authFailure(report, 'member', 'auth');
+			assert.deepEqual([f!.check, f!.expected, f!.actual], ['access as member', 'denied: 403', 'let in: 200']);
+		},
+	},
+	{
+		name: 'auth-login-target',
+		route: '/en/members',
+		edits: [{ file: 'app/[lang]/members/page.tsx', find: 'redirect(`/${lang}/login`)', replace: 'redirect(`/${lang}/login?next=/${lang}/members`)' }],
+		red: { anonymous: ['auth', 'http'], member: [], admin: [] },
+		expect: (report) => {
+			const [f] = authFailure(report, 'anonymous', 'auth');
+			assert.deepEqual([f!.check, f!.expected, f!.actual], ['where anonymous is sent', '/en/login', '/en/login?next=/en/members']);
+		},
+	},
+	{
+		name: 'auth-session-cookie',
+		route: '/en/members',
+		edits: [{ file: 'app/api/login/route.ts', find: 'Path=/; HttpOnly; SameSite=Lax', replace: 'Path=/; SameSite=Strict' }],
+		red: { anonymous: [], member: ['auth'], admin: [] },
+		expect: (report) => {
+			const [f] = authFailure(report, 'member', 'auth');
+			assert.equal(f!.check, 'session cookie session after signing in as member');
+			assert.equal(f!.expected, 'session: Path=/; host-only; HttpOnly; not Secure; SameSite=Lax; session');
+			assert.equal(f!.actual, 'session: Path=/; host-only; readable by scripts; not Secure; SameSite=Strict; session');
+			assert.ok(report.logins!.find((l) => l.role === 'admin')!.ok, 'a storage state file carries its own cookie, so the admin role cannot see what the new login sets');
+		},
+	},
+];
+
 describe('next.js app router app', { concurrency: 4 }, () => {
 	let browser: Browser;
 	let old: App;
@@ -424,22 +488,24 @@ describe('next.js app router app', { concurrency: 4 }, () => {
 	let cms: Cms;
 	let otherCms: Cms;
 	const mutants = new Map<string, App>();
+	let walled: App;
 
 	before(async () => {
 		browser = await chromium.launch();
 		cms = await startCms();
 		otherCms = await startCms({ coffee: { ...CONTENT.coffee!, news: CONTENT.coffee!.news.map((n) => ({ ...n, title: `${n.title} (staging copy)` })), hours: { today: 'Shop closed for a private tasting' } } });
-		const builds = [{ name: 'original', edits: [] }, { name: 'rebuild', edits: [] }, ...MUTATIONS];
+		const builds = [{ name: 'original', edits: [] }, { name: 'rebuild', edits: [] }, ...MUTATIONS, ...AUTH_MUTATIONS];
 		const dirs = await limited(builds, 3, (b) => buildNext(b.name, b.edits));
-		const apps = await Promise.all([...dirs.map((dir) => startNext(dir, cms.origin)), startNext(dirs[1]!, otherCms.origin)]);
+		const apps = await Promise.all([...dirs.map((dir) => startNext(dir, cms.origin)), startNext(dirs[1]!, otherCms.origin), startNext(dirs[0]!, cms.origin, { BOT_WALL: WALL })]);
 		old = apps[0]!;
 		twin = apps[1]!;
-		twinOnOtherCms = apps.at(-1)!;
-		MUTATIONS.forEach((m, i) => mutants.set(m.name, apps[i + 2]!));
+		twinOnOtherCms = apps.at(-2)!;
+		walled = apps.at(-1)!;
+		[...MUTATIONS, ...AUTH_MUTATIONS].forEach((m, i) => mutants.set(m.name, apps[i + 2]!));
 	});
 
 	after(async () => {
-		await Promise.all([old?.stop(), twin?.stop(), twinOnOtherCms?.stop(), ...[...mutants.values()].map((m) => m.stop())]);
+		await Promise.all([old?.stop(), twin?.stop(), twinOnOtherCms?.stop(), walled?.stop(), ...[...mutants.values()].map((m) => m.stop())]);
 		await Promise.all([cms?.stop(), otherCms?.stop()]);
 		await browser?.close();
 	});
@@ -519,8 +585,53 @@ describe('next.js app router app', { concurrency: 4 }, () => {
 		assert.deepEqual(inventory.locales, ['ar', 'en', 'fr']);
 		assert.deepEqual(inventory.localeRouting, { prefixes: ['ar', 'en', 'fr'], negotiation: { ar: '/ar', en: '/en', fr: '/fr' } });
 		assert.equal(inventory.source?.framework, 'next');
-		assert.deepEqual(inventory.source?.fileRoutes, ['/[lang]', '/[lang]/about', '/[lang]/contact', '/api/contact']);
+		assert.deepEqual(inventory.source?.fileRoutes, ['/[lang]', '/[lang]/about', '/[lang]/admin', '/[lang]/contact', '/[lang]/login', '/[lang]/members', '/api/contact', '/api/login']);
 	});
+
+	test('plan proposes the roles and login route from the auth guards, and its starter, given credentials, checks every role green', async () => {
+		const inventory = await plan({ origin: old.origin, source: FIXTURE, browser });
+		const auth = inventory.auth!;
+		assert.equal(auth.loginRoute, '/en/login');
+		assert.deepEqual(Object.keys(auth.roles), ['signed-in', 'admin']);
+		assert.deepEqual(auth.guards, ['/en/admin: admin (app/[lang]/admin/page.tsx:11)', '/en/members: signed-in (app/[lang]/members/page.tsx:11)']);
+		assert.deepEqual(auth.roles.admin!.login, [{ goto: '/en/login' }, { fill: { label: 'Email' }, value: '${ADMIN_EMAIL}' }, { fill: { label: 'Password' }, value: '${ADMIN_PASSWORD}' }, { click: { role: 'button', name: 'Sign in' } }]);
+		const dir = await mkdtemp(join(tmpdir(), 'mm-starter-'));
+		await writeFile(join(dir, 'auth.json'), JSON.stringify(auth));
+		Object.assign(process.env, { SIGNED_IN_EMAIL: 'mia@harbour.example', SIGNED_IN_PASSWORD: 'tuesday-roast', ADMIN_EMAIL: 'ada@harbour.example', ADMIN_PASSWORD: 'green-beans' });
+		const report = await runCheck({ oldOrigin: old.origin, newOrigin: twin.origin, routes: ['/en/members', '/en/admin'], browser, auth: await readAuthFile(join(dir, 'auth.json')), authStateDir: join(dir, 'state') });
+		assert.equal(report.ok, true, summarize(report));
+		assert.deepEqual(report.roles, ['anonymous', 'signed-in', 'admin']);
+		assert.deepEqual(report.routes.map((r) => `${r.role} ${r.route}`), ['anonymous /en/members', 'anonymous /en/admin', 'signed-in /en/members', 'signed-in /en/admin', 'admin /en/members', 'admin /en/admin']);
+		assert.deepEqual(report.logins!.map((l) => [l.role, l.cookies.old]), [['signed-in', ['session: Path=/; host-only; HttpOnly; not Secure; SameSite=Lax; session']], ['admin', ['session: Path=/; host-only; HttpOnly; not Secure; SameSite=Lax; session']]]);
+		const state = JSON.parse(await readFile(join(dir, 'state', 'admin.old.json'), 'utf8')) as { cookies: { name: string; value: string }[] };
+		assert.equal(state.cookies[0]!.value, Buffer.from('ada@harbour.example').toString('base64url'), 'the signed-in state is kept for reuse as a storage state file');
+	});
+
+	test('a Cloudflare-style challenge on OLD stops the route with what to do; the staging pass as a header or cookie gets through', async () => {
+		const report = await runCheck({ oldOrigin: walled.origin, newOrigin: twin.origin, routes: ['/en'], browser });
+		const [route] = report.routes;
+		assert.equal(report.ok, false);
+		assert.deepEqual(route!.failures, [], 'a wall is not reported as differences');
+		assert.ok(Object.values(route!.dimensions).every((d) => d === 'skipped'));
+		assert.equal(route!.blocked!.message, 'blocked by Cloudflare on OLD (403, header cf-mitigated: challenge): use a staging URL or pass --header/--cookie with a bypass token');
+		assert.match(summarize(report), /BLOCKED +\/en +blocked by Cloudflare on OLD/);
+		const header = await runCheck({ oldOrigin: walled.origin, newOrigin: twin.origin, routes: ['/en'], browser, headers: { 'x-staging-pass': WALL } });
+		assert.deepEqual(redDimensions(header), [], summarize(header));
+		assert.equal(header.routes[0]!.blocked, undefined);
+		const cookie = await runCheck({ oldOrigin: walled.origin, newOrigin: twin.origin, routes: ['/en/about'], browser, cookies: [{ name: 'staging_pass', value: WALL }] });
+		assert.deepEqual(redDimensions(cookie), [], summarize(cookie));
+		assert.equal(cookie.routes[0]!.blocked, undefined);
+	});
+
+	for (const mutation of AUTH_MUTATIONS) {
+		test(`auth mutation "${mutation.name}" turns ${Object.entries(mutation.red).filter(([, d]) => d.length).map(([role, d]) => `${d.join(' + ')} red as ${role}`).join(', ')} and nothing else`, async () => {
+			const auth = await writeAuth({ loginRoute: '/en/login', member: 'mia@harbour.example', admin: 'ada@harbour.example', landing: '/en/members' });
+			const report = await runCheck({ oldOrigin: old.origin, newOrigin: mutants.get(mutation.name)!.origin, routes: [mutation.route], browser, auth });
+			if (process.env.SHOW_SUMMARY) process.stdout.write(`\n${summarize(report)}`);
+			assert.deepEqual(redByRole(report), mutation.red, summarize(report));
+			mutation.expect(report);
+		});
+	}
 
 	for (const mutation of MUTATIONS) {
 		test(`mutation "${mutation.name}" ${mutation.red.length ? `turns ${mutation.red.join(' + ')} red and nothing else` : 'stays green'}`, async () => {

@@ -1,10 +1,11 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { openSync } from 'node:fs';
-import { copyFile, cp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { copyFile, cp, mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { createServer as createHttpServer, request as httpRequest } from 'node:http';
-import { networkInterfaces } from 'node:os';
+import { networkInterfaces, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { readAuthFile, type AuthConfig } from '../../src/check/auth.ts';
 import { recorderEnv } from '../../src/check/recorder.ts';
 import type { Dimension, Report } from '../../src/check/types.ts';
 
@@ -94,8 +95,8 @@ export async function buildVite(name: string, edits: readonly Edit[] = []): Prom
 }
 
 /** Environment of a fixture server: the CMS it renders from, and the request recorder loaded into it. */
-export function serverEnv(cms: string): NodeJS.ProcessEnv {
-	return { ...process.env, CMS_URL: cms, NEXT_TELEMETRY_DISABLED: '1', ...recorderEnv('') };
+export function serverEnv(cms: string, extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+	return { ...process.env, CMS_URL: cms, NEXT_TELEMETRY_DISABLED: '1', ...recorderEnv(''), ...extra };
 }
 
 function stopChild(child: ChildProcess): Promise<void> {
@@ -107,8 +108,8 @@ function stopChild(child: ChildProcess): Promise<void> {
 }
 
 /** Serves a Vite build with the fixture's own server (it renders CMS content into the HTML), in its own Node process. */
-export async function startStatic(dist: string, cms: string): Promise<App> {
-	const child = spawn(process.execPath, [join(dirname(dist), 'serve.ts'), dist], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...serverEnv(cms), PORT: '0' } });
+export async function startStatic(dist: string, cms: string, env: NodeJS.ProcessEnv = {}): Promise<App> {
+	const child = spawn(process.execPath, [join(dirname(dist), 'serve.ts'), dist], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...serverEnv(cms, env), PORT: '0' } });
 	const origin = await new Promise<string>((resolve, reject) => {
 		let output = '';
 		child.stdout!.on('data', (chunk) => {
@@ -154,11 +155,11 @@ async function waitForReady(origin: string, child: ChildProcess): Promise<void> 
 	throw new Error(`${origin} did not answer within 30s`);
 }
 
-export async function startNext(dir: string, cms: string): Promise<App> {
+export async function startNext(dir: string, cms: string, env: NodeJS.ProcessEnv = {}): Promise<App> {
 	for (let attempt = 0; ; attempt++) {
 		const port = await freePort();
 		const log = openSync(join(dir, `server-${port}.log`), 'w');
-		const child = spawn(join(dir, 'node_modules/.bin/next'), ['start', '-p', String(port), '-H', '127.0.0.1'], { cwd: dir, stdio: ['ignore', log, log], env: serverEnv(cms) });
+		const child = spawn(join(dir, 'node_modules/.bin/next'), ['start', '-p', String(port), '-H', '127.0.0.1'], { cwd: dir, stdio: ['ignore', log, log], env: serverEnv(cms, env) });
 		const origin = `http://127.0.0.1:${port}`;
 		try {
 			await waitForReady(origin, child);
@@ -232,4 +233,23 @@ export async function limited<T, R>(items: readonly T[], concurrency: number, ta
 
 export function redDimensions(report: Report): Dimension[] {
 	return [...new Set(report.routes.flatMap((r) => r.failures.map((f) => f.dimension)))].sort();
+}
+
+/** An auth file with a member who signs in through the login form and an admin from a storage state file. */
+export async function writeAuth(options: { loginRoute: string; member: string; admin: string; landing: string }): Promise<AuthConfig> {
+	const dir = await mkdtemp(join(tmpdir(), 'mm-auth-'));
+	const admin = { cookies: [{ name: 'session', value: Buffer.from(options.admin).toString('base64url'), domain: '127.0.0.1', path: '/', expires: -1, httpOnly: true, secure: false, sameSite: 'Lax' }], origins: [] };
+	await writeFile(join(dir, 'admin.json'), JSON.stringify(admin));
+	const steps = [{ goto: options.loginRoute }, { fill: { label: 'Email' }, value: options.member }, { fill: { label: 'Password' }, value: '${FIXTURE_MEMBER_PASSWORD}' }, { click: { role: 'button', name: 'Sign in' } }, { wait: options.landing }];
+	await writeFile(join(dir, 'auth.json'), JSON.stringify({ loginRoute: options.loginRoute, roles: { member: { login: steps }, admin: { storageState: 'admin.json' } } }));
+	return readAuthFile(join(dir, 'auth.json'));
+}
+
+/** Red dimensions per role, sign-in failures included under their role. */
+export function redByRole(report: Report): Record<string, Dimension[]> {
+	const out: Record<string, Set<Dimension>> = {};
+	for (const role of report.roles ?? []) out[role] = new Set();
+	for (const r of report.routes) for (const f of r.failures) out[r.role!]!.add(f.dimension);
+	for (const l of report.logins ?? []) for (const f of l.failures) out[l.role]!.add(f.dimension);
+	return Object.fromEntries(Object.entries(out).map(([role, set]) => [role, [...set].sort()]));
 }

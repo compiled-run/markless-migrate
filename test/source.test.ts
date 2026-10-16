@@ -168,19 +168,24 @@ test('the Next.js app fixture: routes, the form that posts to its route handler,
 	assert.equal(facts.framework, 'next');
 	assert.deepEqual(
 		facts.routes.map((r) => `${r.kind} ${r.path}`),
-		['page /:lang', 'page /:lang/about', 'page /:lang/contact', 'endpoint /api/contact'],
+		['page /:lang', 'page /:lang/about', 'page /:lang/admin', 'page /:lang/contact', 'page /:lang/login', 'page /:lang/members', 'endpoint /api/contact', 'endpoint /api/login'],
 	);
 	assert.ok(facts.writes.some((w) => w.method === 'POST' && w.path === '/api/contact' && w.via === 'route-handler' && w.handler.file === 'app/api/contact/route.ts'));
 	assert.ok(!facts.writes.some((w) => w.via === 'form' && w.path === '/api/contact'), 'the form is answered by the route handler, so it is not listed twice');
 	assert.ok(facts.nondeterminism.some((n) => n.kind === 'personalisation' && n.file === 'proxy.ts'));
-	assert.deepEqual(facts.authGuards, [], 'the proxy redirects by language, not by sign-in');
+	assert.deepEqual(
+		facts.authGuards.map((g) => `${g.role ?? 'signed-in'} ${g.routes.join(',')} ${g.file}`),
+		['admin /:lang/admin app/[lang]/admin/page.tsx', 'signed-in /:lang/members app/[lang]/members/page.tsx'],
+		'the pages guard by sign-in and role; the proxy redirects by language and walls bots, which is not sign-in',
+	);
 	assert.ok(facts.components.some((c) => c.kind === 'layout' && c.uses.some((u) => u.endsWith('#Menu'))));
 });
 
 test('the Vite multi-page fixture: one route per HTML page, its form and its clock', async () => {
 	const facts = await scanSource(join(fixtures, 'vite-site'));
 	assert.equal(facts.framework, 'vite');
-	assert.deepEqual(facts.routes.map((r) => r.path), ['/', '/about/', '/ar/', '/fr/']);
+	assert.deepEqual(facts.routes.map((r) => r.path), ['/', '/about/', '/admin/', '/ar/', '/fr/', '/login/', '/members/']);
+	assert.deepEqual(facts.authGuards.map((g) => [g.file, g.role, g.redirectTo, g.routes]), [['middleware.ts', 'admin', '/login/', ['/admin/', '/members/']]]);
 	assert.ok(facts.writes.some((w) => w.method === 'POST' && w.path === '/api/subscribe' && w.via === 'form' && w.handler.file === 'about/index.html'));
 	assert.ok(facts.nondeterminism.some((n) => n.kind === 'time' && n.file === 'src/main.ts' && n.what === 'new Date()'));
 });
@@ -189,7 +194,7 @@ test('plan --source keeps the file routes older readers expect and adds the scan
 	const { readSource, summarizeInventory } = await import('../src/plan/inventory.ts');
 	const source = await readSource(join(fixtures, 'next-app'));
 	assert.equal(source.framework, 'next');
-	assert.deepEqual(source.fileRoutes, ['/[lang]', '/[lang]/about', '/[lang]/contact', '/api/contact']);
+	assert.deepEqual(source.fileRoutes, ['/[lang]', '/[lang]/about', '/[lang]/admin', '/[lang]/contact', '/[lang]/login', '/[lang]/members', '/api/contact', '/api/login']);
 	assert.ok(source.order.some((s) => s.kind === 'layout'));
 	const text = summarizeInventory({ version: 1, origin: 'http://old', generatedAt: '', limit: 1, truncated: false, routes: [], locales: [], localeRouting: { prefixes: [], negotiation: {} }, source, routeUnion: unionRoutes(['/en', '/'], source.routes) });
 	assert.match(text, /Source: next at /);

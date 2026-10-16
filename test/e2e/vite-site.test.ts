@@ -14,7 +14,8 @@ import { summarize } from '../../src/check/summary.ts';
 import { VIEWPORTS } from '../../src/check/types.ts';
 import { plan } from '../../src/plan/inventory.ts';
 import { connect, firstText } from '../mcp-client.ts';
-import { buildVite, failuresIn, OTHER_FONT, redDimensions, startGuard, startStatic, type App, type Mutation } from './harness.ts';
+import { buildVite, failuresIn, OTHER_FONT, redByRole, redDimensions, startGuard, startStatic, writeAuth, type App, type Edit, type Mutation } from './harness.ts';
+import type { Dimension, Report } from '../../src/check/types.ts';
 
 const ROUTES = ['/', '/about/', '/fr/', '/ar/', '/old-about', '/missing'];
 
@@ -415,6 +416,75 @@ const MUTATIONS: Mutation[] = [
 	},
 ];
 
+const WALL = 'lighthouse-staging-pass';
+const CLI = join(import.meta.dirname, '../../src/cli.ts');
+process.env.FIXTURE_MEMBER_PASSWORD = 'night-route';
+
+function cli(args: string[], cwd: string, env: NodeJS.ProcessEnv = {}): Promise<{ status: number; stdout: string; stderr: string }> {
+	return new Promise((resolve) => {
+		const child = spawn(process.execPath, [CLI, ...args], { cwd, env: { ...process.env, ...env } });
+		let stdout = '';
+		let stderr = '';
+		child.stdout.on('data', (chunk) => (stdout += chunk));
+		child.stderr.on('data', (chunk) => (stderr += chunk));
+		child.on('exit', (code) => resolve({ status: code ?? -1, stdout, stderr }));
+	});
+}
+
+interface AuthMutation {
+	readonly name: string;
+	readonly route: string;
+	readonly edits: readonly Edit[];
+	readonly red: Readonly<Record<'anonymous' | 'member' | 'admin', readonly Dimension[]>>;
+	readonly expect: (report: Report) => void;
+}
+
+const authFailure = (report: Report, role: string) => [...report.routes.filter((r) => r.role === role).flatMap((r) => r.failures), ...(report.logins ?? []).filter((l) => l.role === role).flatMap((l) => l.failures)].filter((f) => f.dimension === 'auth');
+
+const AUTH_MUTATIONS: AuthMutation[] = [
+	{
+		name: 'auth-anonymous-members',
+		route: '/members/',
+		edits: [{ file: 'middleware.ts', find: "pathname.startsWith('/members/') || ", replace: '' }],
+		red: { anonymous: ['auth', 'http'], member: [], admin: [] },
+		expect: (report) => {
+			const [f] = authFailure(report, 'anonymous');
+			assert.deepEqual([f!.check, f!.expected, f!.actual], ['access as anonymous', 'denied: 302 to /login/ (200)', 'let in: 200']);
+		},
+	},
+	{
+		name: 'auth-admin-for-members',
+		route: '/admin/',
+		edits: [{ file: 'middleware.ts', find: " && user.role !== 'admin'", replace: " && user.role === 'nobody'" }],
+		red: { anonymous: [], member: ['auth', 'http'], admin: [] },
+		expect: (report) => {
+			const [f] = authFailure(report, 'member');
+			assert.deepEqual([f!.check, f!.expected, f!.actual], ['access as member', 'denied: 403', 'let in: 200']);
+		},
+	},
+	{
+		name: 'auth-login-target',
+		route: '/members/',
+		edits: [{ file: 'middleware.ts', find: "redirect('/login/')", replace: 'redirect(`/login/?next=${encodeURIComponent(pathname)}`)' }],
+		red: { anonymous: ['auth', 'http'], member: [], admin: [] },
+		expect: (report) => {
+			const [f] = authFailure(report, 'anonymous');
+			assert.deepEqual([f!.check, f!.expected, f!.actual], ['where anonymous is sent', '/login/', '/login/?next=%2Fmembers%2F']);
+		},
+	},
+	{
+		name: 'auth-session-cookie',
+		route: '/members/',
+		edits: [{ file: 'middleware.ts', find: 'Path=/; HttpOnly; SameSite=Lax', replace: 'Path=/; SameSite=Strict' }],
+		red: { anonymous: [], member: ['auth'], admin: [] },
+		expect: (report) => {
+			const [f] = authFailure(report, 'member');
+			assert.equal(f!.check, 'session cookie session after signing in as member');
+			assert.equal(f!.actual, 'session: Path=/; host-only; readable by scripts; not Secure; SameSite=Strict; session');
+		},
+	},
+];
+
 describe('vite multi-page site', { concurrency: 4 }, () => {
 	let browser: Browser;
 	let cms: Cms;
@@ -423,19 +493,21 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 	let twin: App;
 	let twinOnOtherCms: App;
 	const mutants = new Map<string, App>();
+	let walled: App;
 
 	before(async () => {
 		browser = await chromium.launch();
 		cms = await startCms();
 		otherCms = await startCms({ walks: { ...CONTENT.walks!, news: CONTENT.walks!.news.map((n) => ({ ...n, title: `${n.title} (staging copy)` })), hours: { today: 'Booking office closed for staff training' } } });
-		const [dist, ...dists] = await Promise.all([buildVite('original'), buildVite('rebuild'), ...MUTATIONS.map((m) => buildVite(m.name, m.edits))]);
-		[old, twin, twinOnOtherCms] = await Promise.all([startStatic(dist!, cms.origin), startStatic(dists[0]!, cms.origin), startStatic(dists[0]!, otherCms.origin)]);
-		const apps = await Promise.all(MUTATIONS.map((_, i) => startStatic(dists[i + 1]!, cms.origin)));
-		MUTATIONS.forEach((m, i) => mutants.set(m.name, apps[i]!));
+		const all = [...MUTATIONS, ...AUTH_MUTATIONS];
+		const [dist, ...dists] = await Promise.all([buildVite('original'), buildVite('rebuild'), ...all.map((m) => buildVite(m.name, m.edits))]);
+		[old, twin, twinOnOtherCms, walled] = await Promise.all([startStatic(dist!, cms.origin), startStatic(dists[0]!, cms.origin), startStatic(dists[0]!, otherCms.origin), startStatic(dist!, cms.origin, { BOT_WALL: WALL })]);
+		const apps = await Promise.all(all.map((_, i) => startStatic(dists[i + 1]!, cms.origin)));
+		all.forEach((m, i) => mutants.set(m.name, apps[i]!));
 	});
 
 	after(async () => {
-		await Promise.all([old?.stop(), twin?.stop(), twinOnOtherCms?.stop(), ...[...mutants.values()].map((m) => m.stop())]);
+		await Promise.all([old?.stop(), twin?.stop(), twinOnOtherCms?.stop(), walled?.stop(), ...[...mutants.values()].map((m) => m.stop())]);
 		await Promise.all([cms?.stop(), otherCms?.stop()]);
 		await browser?.close();
 	});
@@ -555,6 +627,56 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 			await page.close();
 		}
 	});
+
+	test('plan --source writes a starter auth file from the guards, and check --auth with it checks every role green', async () => {
+		const cwd = await realpath(await mkdtemp(join(tmpdir(), 'mm-auth-cli-')));
+		const fixture = join(import.meta.dirname, '../../fixtures/vite-site');
+		const planned = await cli(['plan', '--old', old.origin, '--source', fixture], cwd);
+		assert.equal(planned.status, 0, planned.stderr);
+		assert.match(planned.stdout, /Roles to check \(from auth guards\): signed-in, admin, and anonymous; login at \/login\//);
+		assert.match(planned.stdout, /Wrote .*auth\.json: set the credentials/);
+		const starter = JSON.parse(await readFile(join(cwd, '.migrate', 'auth.json'), 'utf8'));
+		assert.deepEqual(starter.guards, ['/admin/: admin (middleware.ts:28)', '/members/: admin (middleware.ts:28)'], 'one guard checks sign-in and the admin role together, so the scan names admin for both paths');
+		const credentials = { SIGNED_IN_EMAIL: 'sam@lighthouse.example', SIGNED_IN_PASSWORD: 'night-route', ADMIN_EMAIL: 'kit@lighthouse.example', ADMIN_PASSWORD: 'godrevy' };
+		const checked = await cli(['check', '--old', old.origin, '--new', twin.origin, '--route', '/members/', '--route', '/admin/', '--auth', join(cwd, '.migrate', 'auth.json')], cwd, credentials);
+		assert.equal(checked.status, 0, checked.stdout + checked.stderr);
+		assert.match(checked.stdout, /As anonymous:\npass +\/members\//);
+		assert.match(checked.stdout, /As signed-in:\n {6}sign-in: same session cookies \(session: Path=\/; host-only; HttpOnly; not Secure; SameSite=Lax; session\)\npass +\/members\//);
+		assert.match(checked.stdout, /6 of 6 route checks \(route and role\) green\./);
+		const html = await readFile(join(cwd, '.migrate', 'report.html'), 'utf8');
+		assert.deepEqual([...html.matchAll(/<h2>As ([\w-]+)<\/h2>/g)].map((m) => m[1]), ['anonymous', 'signed-in', 'admin']);
+		assert.match(await readFile(join(cwd, '.migrate', 'auth', 'admin.new.json'), 'utf8'), /"name": "session"/);
+	});
+
+	test('a Cloudflare-style challenge stops the route over the CLI and MCP, and --header or a cookie with the staging pass gets through', async () => {
+		const cwd = await realpath(await mkdtemp(join(tmpdir(), 'mm-wall-')));
+		const stopped = await cli(['check', '--old', walled.origin, '--new', twin.origin, '--route', '/about/'], cwd);
+		assert.equal(stopped.status, 1);
+		assert.match(stopped.stdout, /BLOCKED +\/about\/ +blocked by Cloudflare on OLD \(403, header cf-mitigated: challenge\): use a staging URL or pass --header\/--cookie with a bypass token/);
+		assert.match(stopped.stdout, /0 of 1 routes green, 1 blocked by bot protection\./);
+		const passed = await cli(['check', '--old', walled.origin, '--new', twin.origin, '--route', '/about/', '--header', `x-staging-pass: ${WALL}`], cwd);
+		assert.equal(passed.status, 0, passed.stdout);
+		const client = await connect(cwd);
+		try {
+			const blocked = await client.callTool({ name: 'check_route', arguments: { old: twin.origin, new: walled.origin, route: '/' } });
+			assert.deepEqual((blocked.structuredContent as { blocked: { message: string }[] }).blocked.map((b) => b.message.split(':')[0]), ['blocked by Cloudflare on NEW (403, header cf-mitigated']);
+			assert.match(firstText(await client.callTool({ name: 'status', arguments: {} })), /blocked +\//);
+			const through = await client.callTool({ name: 'check_route', arguments: { old: twin.origin, new: walled.origin, route: '/', cookie: [`staging_pass=${WALL}`] } });
+			assert.equal((through.structuredContent as { ok: boolean }).ok, true, firstText(through));
+		} finally {
+			await client.close();
+		}
+	});
+
+	for (const mutation of AUTH_MUTATIONS) {
+		test(`auth mutation "${mutation.name}" turns ${Object.entries(mutation.red).filter(([, d]) => d.length).map(([role, d]) => `${d.join(' + ')} red as ${role}`).join(', ')} and nothing else`, async () => {
+			const auth = await writeAuth({ loginRoute: '/login/', member: 'sam@lighthouse.example', admin: 'kit@lighthouse.example', landing: '/members/' });
+			const report = await runCheck({ oldOrigin: old.origin, newOrigin: mutants.get(mutation.name)!.origin, routes: [mutation.route], browser, auth });
+			if (process.env.SHOW_SUMMARY) process.stdout.write(`\n${summarize(report)}`);
+			assert.deepEqual(redByRole(report), mutation.red, summarize(report));
+			mutation.expect(report);
+		});
+	}
 
 	for (const mutation of MUTATIONS) {
 		test(`mutation "${mutation.name}" ${mutation.red.length ? `turns ${mutation.red.join(' + ')} red and nothing else` : 'stays green'}`, async () => {

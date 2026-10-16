@@ -1,6 +1,7 @@
 import { createServer, type Server } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
+import { botWall, currentUser, guard, login } from './middleware.ts';
 
 const TYPES: Record<string, string> = {
 	'.html': 'text/html; charset=utf-8',
@@ -44,6 +45,11 @@ async function render(html: string): Promise<string> {
 	return out;
 }
 
+function personal(html: string, req: Parameters<typeof currentUser>[0], url: URL): string {
+	const out = html.replaceAll('<!--user:name-->', escapeHtml(currentUser(req)?.name ?? 'guest'));
+	return url.searchParams.has('error') ? out.replace('data-login-error hidden', 'data-login-error') : out;
+}
+
 async function isFile(path: string): Promise<boolean> {
 	return (await stat(path).catch(() => undefined))?.isFile() ?? false;
 }
@@ -51,7 +57,19 @@ async function isFile(path: string): Promise<boolean> {
 export async function serve(dir: string, port = 0, host = '127.0.0.1'): Promise<{ server: Server; origin: string }> {
 	const config: ServeConfig = JSON.parse(await readFile(join(dir, 'serve.json'), 'utf8').catch(() => '{}'));
 	const server = createServer(async (req, res) => {
-		const path = decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname);
+		if (botWall(req, res)) return;
+		const url = new URL(req.url ?? '/', 'http://x');
+		const path = decodeURIComponent(url.pathname);
+		if (req.method === 'POST' && path === '/api/login') return login(req, res);
+		const decision = guard(req, path);
+		if (decision?.status === 302) {
+			res.writeHead(302, { location: decision.location }).end();
+			return;
+		}
+		if (decision?.status === 403) {
+			res.writeHead(403, { 'content-type': TYPES['.html'] }).end(await readFile(join(dir, decision.page)));
+			return;
+		}
 		const form = config.forms?.[path];
 		if (req.method === 'POST' && form) {
 			req.resume();
@@ -81,7 +99,7 @@ export async function serve(dir: string, port = 0, host = '127.0.0.1'): Promise<
 		}
 		const target = path.endsWith('/') ? join(file, 'index.html') : file;
 		if (await isFile(target)) {
-			const body = extname(target) === '.html' ? await render(await readFile(target, 'utf8')) : await readFile(target);
+			const body = extname(target) === '.html' ? personal(await render(await readFile(target, 'utf8')), req, url) : await readFile(target);
 			res.writeHead(200, { 'content-type': TYPES[extname(target)] ?? 'application/octet-stream' });
 			res.end(body);
 			return;
