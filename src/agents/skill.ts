@@ -41,6 +41,10 @@ export function managedSkill(): string {
 	return PAYLOAD.replace('---\n\n#', `---\n<!-- markless-migrate-managed sha256:${sha256(PAYLOAD)} -->\n\n#`);
 }
 
+export function skillBody(): string {
+	return PAYLOAD.slice(PAYLOAD.indexOf('\n#') + 1);
+}
+
 export function isManagedSkill(contents: string): boolean {
 	const match = contents.match(MARKER);
 	return Boolean(match && sha256(contents.replace(match[0], '')) === match[1]);

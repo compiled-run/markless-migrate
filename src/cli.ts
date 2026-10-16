@@ -4,11 +4,13 @@ import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { AGENTS, detectAgents, type HostEnv, type ServerCommand } from './agents/registry.ts';
+import { AGENTS, detectAgents, findBinary, type HostEnv, type ServerCommand } from './agents/registry.ts';
 import { applySetup, describeChanges, planSetup } from './agents/setup.ts';
 import { runCheck, writeReport } from './check/run.ts';
 import { summarize } from './check/summary.ts';
 import { plan, summarizeInventory, writeInventory } from './plan/inventory.ts';
+import { DRIVERS, driver } from './run/drivers.ts';
+import { runRoutes } from './run/loop.ts';
 import { readInventory, recordResults, STATE_DIR, status, summarizeStatus } from './status.ts';
 import { VERSION } from './version.ts';
 
@@ -24,7 +26,10 @@ const USAGE = `markless-migrate ${VERSION}
           Agents: ${AGENTS.map((a) => a.id).join(', ')}.
   mcp     Run the MCP server on stdio (started by your agent).
   switch  Not yet: move a green route from the pass-through to Markless.
-  run     Not yet: drive your agent's own CLI route by route until every route is green.
+  run     --agent <id> --old <origin> --new <origin> [--route <path>]... [--attempts <n>] [--model <name>]
+          Drive your agent's own CLI headless, one route at a time, until each route is green or
+          needs a human after n attempts (default 3). Logs to .migrate/run.log.
+          Agents: ${DRIVERS.map((d) => d.id).join(', ')}.
 `;
 
 const out = (text: string) => process.stdout.write(text);
@@ -91,6 +96,43 @@ async function setup(args: string[]): Promise<number> {
 	return 0;
 }
 
+async function run(args: string[], cwd: string): Promise<number> {
+	const { values } = parseArgs({
+		args,
+		options: { agent: { type: 'string' }, old: { type: 'string' }, new: { type: 'string' }, route: { type: 'string', multiple: true }, routes: { type: 'string' }, attempts: { type: 'string' }, model: { type: 'string' } },
+	});
+	if (!values.agent) fail(`run needs --agent <id> (${DRIVERS.map((d) => d.id).join(', ')})`);
+	if (!values.old || !values.new) fail('run needs --old <origin> and --new <origin>');
+	const attempts = values.attempts ? Number(values.attempts) : 3;
+	if (!Number.isInteger(attempts) || attempts < 1) fail('--attempts must be a whole number of at least 1');
+	const agent = driver(values.agent);
+	if (!(await findBinary(agent.binary, { home: process.env.HOME || homedir(), env: process.env }))) fail(`${agent.binary} is not on PATH; install it and sign in first`);
+	const named = [...(values.route ?? []), ...(values.routes?.split(',').map((r) => r.trim()).filter(Boolean) ?? [])];
+	const routes = named.length ? named : (await readInventory(cwd))?.routes.map((r) => r.route);
+	if (!routes?.length) fail('no routes: pass --route <path> or run plan first');
+	const { old, new: next } = values;
+	const outcomes = await runRoutes({
+		cwd,
+		driver: agent,
+		old,
+		new: next,
+		routes,
+		attempts,
+		model: values.model,
+		cli: [serverCommand().command, ...serverCommand().args.slice(0, -1)].join(' '),
+		progress: out,
+		check: async (route) => {
+			const report = await runCheck({ oldOrigin: old, newOrigin: next, routes: [route] });
+			await writeReport(report, join(cwd, STATE_DIR));
+			await recordResults(cwd, report);
+			return { ok: report.ok, summary: summarize(report) };
+		},
+	});
+	const human = outcomes.filter((o) => o.outcome === 'needs a human');
+	out(`\n${outcomes.length - human.length} of ${outcomes.length} routes green.${human.length ? ` Needs a human: ${human.map((o) => o.route).join(', ')}.` : ''} Log: ${join(cwd, STATE_DIR, 'run.log')}\n`);
+	return human.length ? 1 : 0;
+}
+
 async function main(argv: string[]): Promise<number> {
 	const [command, ...rest] = argv;
 	const cwd = process.cwd();
@@ -130,8 +172,9 @@ async function main(argv: string[]): Promise<number> {
 			await serveStdio(cwd);
 			return -1;
 		}
-		case 'switch':
 		case 'run':
+			return run(rest, cwd);
+		case 'switch':
 			err(`markless-migrate ${command}: not yet. See docs/plan.md for the build order.\n`);
 			return 1;
 		default:
