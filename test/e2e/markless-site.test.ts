@@ -87,6 +87,12 @@ describe('markless port of the vite site', () => {
 		const submit = located.find((f) => f.dimension === 'behaviour');
 		assert.match(submit?.where ?? '', /^old about\/index\.html:\d+ renders button "Subscribe"; new pages\/about\/index\.tsrx:9 renders it$/, all);
 
+		const weight = report.routes[0]!.weight.new;
+		const preloaded = (await (await fetch(new URL('/about/', port.origin))).text()).match(/<link rel="modulepreload"/g)?.length ?? 0;
+		assert.ok(preloaded > 10, 'the Markless page preloads its modules');
+		assert.ok(weight.downloaded > 10_000, `modules preloaded but never run are downloaded all the same: ${JSON.stringify(weight)}`);
+		assert.ok(weight.executed > 0 && weight.executed < weight.source, JSON.stringify(weight));
+
 		const dir = join(ROOT, '.mutants', 'markless-report');
 		await writeReport(report, dir);
 		const html = await readFile(join(dir, 'report.html'), 'utf8');

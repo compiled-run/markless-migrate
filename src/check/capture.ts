@@ -86,7 +86,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		const pending: Promise<Omit<AssetRecord, 'fingerprinted'> | undefined>[] = [];
 		const stylesheets: { url: string; text: string }[] = [];
 		const fontHashes = new Map<string, string>();
-		const scriptBytes = new Map<string, number>();
+		const scriptBytes = new Map<string, { bytes: number; source: number }>();
 		page.on('response', (response: Response) => {
 			const type = response.request().resourceType();
 			if (!ASSET_TYPES.has(type)) return;
@@ -94,7 +94,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 				(async () => {
 					const sizes = await response.request().sizes().catch(() => undefined);
 					const bytes = sizes?.responseBodySize ?? 0;
-					if (type === 'script') scriptBytes.set(response.url(), bytes);
+					if (type === 'script') scriptBytes.set(response.url(), { bytes, source: response.ok() ? (await response.body().catch(() => Buffer.alloc(0))).length : 0 });
 					if (type === 'font' && response.ok()) fontHashes.set(response.url(), createHash('sha256').update(await response.body()).digest('hex'));
 					if (type === 'stylesheet' && response.ok()) stylesheets.push({ url: toLocal(response.url(), origin), text: await response.text() });
 					return { url: toLocal(response.url(), origin), type, status: response.status(), contentType: mime(response.headers()['content-type']), bytes };
@@ -125,14 +125,17 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		const decodedAbsolute = await page.evaluate(decodeImages, imageUrls);
 		const decoded = Object.fromEntries(Object.entries(decodedAbsolute).map(([url, size]) => [toLocal(url, origin), size]));
 		const pageUrl = page.url();
-		const scripts: ScriptWeight[] = coverage
-			.filter((entry) => entry.url && entry.url !== pageUrl)
-			.map((entry) => ({
+		const ran = coverage.filter((entry) => entry.url && entry.url !== pageUrl);
+		// Preloaded modules that never run are downloaded all the same, so every script response counts, not only the ones coverage saw.
+		const scripts: ScriptWeight[] = [
+			...ran.map((entry) => ({
 				url: toLocal(entry.url, origin),
-				bytes: scriptBytes.get(entry.url) ?? 0,
+				bytes: scriptBytes.get(entry.url)?.bytes ?? 0,
 				source: (entry.source ?? '').length,
 				executed: executedBytes(entry.source ?? '', entry.functions),
-			}));
+			})),
+			...[...scriptBytes].filter(([url]) => !ran.some((entry) => entry.url === url)).map(([url, size]) => ({ url: toLocal(url, origin), bytes: size.bytes, source: size.source, executed: 0 })),
+		];
 		const inline = coverage.filter((entry) => entry.url === pageUrl);
 		const inlineExecuted = inline.reduce((sum, entry) => sum + executedBytes(entry.source ?? '', entry.functions), 0);
 		await log.settled();
