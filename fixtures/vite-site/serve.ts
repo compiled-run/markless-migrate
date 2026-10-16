@@ -72,6 +72,11 @@ export async function serve(dir: string, port = 0, host = '127.0.0.1'): Promise<
 		const url = new URL(req.url ?? '/', 'http://x');
 		const path = decodeURIComponent(url.pathname);
 		if (req.method === 'POST' && path === '/api/login') return login(req, res);
+		if (path === '/api/me') {
+			const user = currentUser(req);
+			res.writeHead(user ? 200 : 401, { 'content-type': TYPES['.json'] }).end(JSON.stringify(user ? { name: user.name, role: user.role } : { error: 'signed out' }));
+			return;
+		}
 		const decision = guard(req, path);
 		if (decision?.status === 302) {
 			res.writeHead(302, { location: decision.location }).end();

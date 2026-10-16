@@ -287,8 +287,8 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 					await writeRecording(data.dir, { route, recordedFrom: options.oldOrigin, at: startedAt, responses: recordable(records) });
 				}
 			}
+			for (const route of endpoints) routes.push(asRole(await checkEndpoint(roleRun, route), role));
 		}
-		for (const route of endpoints) routes.push(asRole(await checkEndpoint(base, route), roles[0]));
 		const sources = options.source?.nondeterminism.map((f) => ({ ...f, pinned: pinnedBy(`${f.kind} ${f.what ?? ''}`, f.side, freeze) }));
 		return {
 			version: 1,

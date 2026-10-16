@@ -481,6 +481,17 @@ const authFailure = (report: Report, role: string) => [...report.routes.filter((
 
 const AUTH_MUTATIONS: AuthMutation[] = [
 	{
+		name: 'auth-endpoint',
+		route: '/api/me',
+		edits: [{ file: 'serve.ts', find: '{ name: user.name, role: user.role }', replace: "{ name: user.name, role: user.role === 'admin' ? 'staff' : user.role }" }],
+		red: { anonymous: [], member: [], admin: ['data'] },
+		expect: (report) => {
+			assert.deepEqual(report.routes.map((r) => [r.role, r.route, r.endpoint]), [['anonymous', '/api/me', 'json'], ['member', '/api/me', 'json'], ['admin', '/api/me', 'json']]);
+			const [f] = report.routes.find((r) => r.role === 'admin')!.failures;
+			assert.deepEqual([f!.check, f!.expected, f!.actual], ['JSON field role', '"admin"', '"staff"']);
+		},
+	},
+	{
 		name: 'auth-anonymous-members',
 		route: '/members/',
 		edits: [{ file: 'middleware.ts', find: "pathname.startsWith('/members/') || ", replace: '' }],
