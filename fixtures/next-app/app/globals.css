@@ -1,0 +1,30 @@
+:root {
+	--ink: #1d1a16;
+	--paper: #faf6ef;
+	--accent: #a4471f;
+}
+* { box-sizing: border-box; }
+body {
+	margin: 0;
+	background: var(--paper);
+	color: var(--ink);
+	font-family: var(--font-inter), system-ui, sans-serif;
+	line-height: 1.5;
+}
+.site-header, .site-footer, main { max-width: 720px; margin: 0 auto; padding: 16px 24px; }
+.site-header { display: flex; justify-content: space-between; align-items: center; }
+.site-header nav { display: flex; gap: 16px; }
+.site-header a { color: var(--accent); text-decoration: none; }
+.brand { font-weight: 700; font-size: 18px; }
+h1 { font-size: 36px; line-height: 1.15; margin: 24px 0 12px; }
+.lede { font-size: 18px; color: #4a4239; }
+.hero { display: block; width: 100%; height: auto; border-radius: 8px; }
+.counter { display: flex; align-items: center; gap: 12px; margin: 24px 0; }
+.counter button, form button {
+	font: inherit; padding: 8px 16px; border: 0; border-radius: 6px;
+	background: var(--accent); color: white; cursor: pointer;
+}
+form { display: grid; gap: 12px; max-width: 420px; }
+label { display: grid; gap: 4px; font-weight: 600; }
+input, textarea { font: inherit; padding: 8px; border: 1px solid #b9ad9c; border-radius: 6px; }
+.site-footer { color: #7a6f62; font-size: 14px; }

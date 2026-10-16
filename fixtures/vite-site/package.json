@@ -1,0 +1,12 @@
+{
+	"name": "fixture-vite-site",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "vite build",
+		"start": "node serve.ts dist"
+	},
+	"devDependencies": {
+		"vite": "8.3.4"
+	}
+}

@@ -1,0 +1,4 @@
+{
+	"redirects": { "/old-about": "/about/" },
+	"notFoundStatus": 404
+}

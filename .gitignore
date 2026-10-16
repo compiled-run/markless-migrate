@@ -4,3 +4,5 @@ dist/
 fixtures/*/node_modules/
 fixtures/*/.next/
 fixtures/*/.output/
+fixtures/*/dist/
+.mutants/
