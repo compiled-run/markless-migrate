@@ -87,6 +87,7 @@ describe('markless port of the vite site', () => {
 		const submit = located.find((f) => f.dimension === 'behaviour');
 		assert.match(submit?.where ?? '', /^old about\/index\.html:\d+ renders button "Subscribe"; new pages\/about\/index\.tsrx:9 renders it$/, all);
 
+		assert.ok(report.routes[0]!.newFiles?.includes('pages/about/index.tsrx'), 'the files the route is rendered from, for check --changed');
 		const weight = report.routes[0]!.weight.new;
 		const preloaded = (await (await fetch(new URL('/about/', port.origin))).text()).match(/<link rel="modulepreload"/g)?.length ?? 0;
 		assert.ok(preloaded > 10, 'the Markless page preloads its modules');

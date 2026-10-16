@@ -21,6 +21,9 @@ export interface RouteState {
 	readonly blocked?: string;
 	/** What a non-page route was compared as (feed, json, robots...). */
 	readonly endpoint?: string;
+	/** The new app's commit when it was checked, and the files the route is rendered from, for check --changed. */
+	readonly commit?: string;
+	readonly files?: readonly string[];
 }
 
 async function readJson<T>(path: string): Promise<T | undefined> {
@@ -32,11 +35,15 @@ async function readJson<T>(path: string): Promise<T | undefined> {
 	}
 }
 
+export async function readResults(cwd: string): Promise<Record<string, RouteState> | undefined> {
+	return readJson<Record<string, RouteState>>(join(cwd, STATE_DIR, 'results.json'));
+}
+
 export async function readInventory(cwd: string): Promise<Inventory | undefined> {
 	return readJson<Inventory>(join(cwd, STATE_DIR, 'inventory.json'));
 }
 
-export async function recordResults(cwd: string, report: Report): Promise<void> {
+export async function recordResults(cwd: string, report: Report, extra: { readonly commit?: string } = {}): Promise<void> {
 	const path = join(cwd, STATE_DIR, 'results.json');
 	const results = (await readJson<Record<string, RouteState>>(path)) ?? {};
 	for (const route of report.routes) {
@@ -50,6 +57,8 @@ export async function recordResults(cwd: string, report: Report): Promise<void> 
 			new: report.new,
 			red: Object.entries(route.dimensions).filter(([, s]) => s === 'fail').map(([d]) => d as Dimension),
 			failures: route.failures,
+			...(extra.commit ? { commit: extra.commit } : {}),
+			...(route.newFiles ? { files: route.newFiles } : {}),
 		};
 	}
 	await mkdir(join(cwd, STATE_DIR), { recursive: true });

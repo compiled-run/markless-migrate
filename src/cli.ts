@@ -23,7 +23,8 @@ import { plan, summarizeInventory, writeInventory } from './plan/inventory.ts';
 import { copiedLogin, DRIVERS, driver } from './run/drivers.ts';
 import { startAppServer } from './run/server.ts';
 import { runRoutes } from './run/loop.ts';
-import { readInventory, recordResults, STATE_DIR, status, summarizeStatus } from './status.ts';
+import { readInventory, readResults, recordResults, STATE_DIR, status, summarizeStatus } from './status.ts';
+import { changedSince, gitHead, selectChanged } from './check/changed.ts';
 import { VERSION } from './version.ts';
 import { nitroSnippet, notServedBy, pageAssets, vercelConfig } from './switch/deploy.ts';
 import { startProxy } from './switch/proxy.ts';
@@ -40,7 +41,7 @@ const USAGE = `markless-migrate ${VERSION}
           [--source <path>] [--data record|replay] [--staging] [--block <host>]... [--allow <host>]...
           [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
-          [--all] [--allow-unchecked] [--new-source <path>]
+          [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
           Compare routes old vs new (default: every route in the inventory). Exits 1 when any is red.
           --all adds every route the source scan knows (dynamic segments filled from crawled paths or
           .migrate/samples.json; check exits 1 while any is left unchecked, unless --allow-unchecked),
@@ -48,6 +49,9 @@ const USAGE = `markless-migrate ${VERSION}
           trailing-slash form of every page, compared by status and redirect chain) and the non-page endpoints: robots.txt, sitemaps, feeds, the manifest,
           /.well-known files and JSON route handlers, compared as data.
           --source and --new-source map each failing element to its old and new source file and line.
+          --concurrency checks that many routes at once (default half the cores, at most 4).
+          --changed checks only routes not green last time, and routes whose files in the new app
+          (--new-source, else this directory) changed since the commit of their last check.
           Writes .migrate/report.json and .migrate/report.html; --open opens the HTML report.
           Pages load with a fixed clock, seeded randomness, a fixed timezone and locale, and trackers
           blocked. --source scans the old app's code for what varies and which handlers write.
@@ -311,6 +315,8 @@ async function main(argv: string[]): Promise<number> {
 					'user-agent': { type: 'string' },
 					all: { type: 'boolean' },
 					'allow-unchecked': { type: 'boolean' },
+					changed: { type: 'boolean' },
+					concurrency: { type: 'string' },
 					'new-source': { type: 'string' },
 				},
 			});
@@ -337,6 +343,19 @@ async function main(argv: string[]): Promise<number> {
 				targets = { endpoints: await discoverEndpoints(defaultEnv(values.old), all.pages, all.endpoints), unchecked: all.needsSample, redirects: redirectTargets(all.pages, inventory.source?.redirects) };
 			}
 			if (!routes?.length && !targets?.endpoints.length) fail('no routes: pass --route <path> or run plan first');
+			const concurrency = values.concurrency ? Number(values.concurrency) : undefined;
+			if (concurrency !== undefined && (!Number.isInteger(concurrency) || concurrency < 1)) fail('--concurrency must be a whole number of at least 1');
+			const newDir = resolve(values['new-source'] ?? cwd);
+			const commit = await gitHead(newDir);
+			if (values.changed) {
+				const previous = (await readResults(cwd)) ?? {};
+				const picked = await selectChanged([...(routes ?? []), ...(targets?.endpoints ?? []), ...(targets?.redirects ?? [])], previous, (since) => changedSince(newDir, since));
+				const keep = new Set(picked.check);
+				routes = (routes ?? []).filter((r) => keep.has(r));
+				if (targets) targets = { ...targets, endpoints: targets.endpoints.filter((r) => keep.has(r)), redirects: targets.redirects.filter((r) => keep.has(r)) };
+				out(`--changed: ${picked.check.length} route${picked.check.length === 1 ? '' : 's'} to check, ${picked.skipped.length} green and unchanged since their last check${picked.skipped.length ? ` (${picked.skipped.join(', ')})` : ''}.\n`);
+				if (!picked.check.length) return 0;
+			}
 			let source: CheckOptions['source'];
 			if (values.source) {
 				const scanned = await loadSourceFacts(resolve(values.source));
@@ -360,9 +379,11 @@ async function main(argv: string[]): Promise<number> {
 				...(targets ? { endpoints: targets.endpoints, unchecked: targets.unchecked, redirects: targets.redirects } : {}),
 				...(values.source || values['new-source'] ? { sourceDirs: { ...(values.source ? { old: resolve(values.source) } : {}), ...(values['new-source'] ? { new: resolve(values['new-source']) } : {}) } } : {}),
 				accepted: await readAccepted(join(cwd, STATE_DIR, ACCEPTED_FILE)).catch((error: Error) => fail(error.message)),
+				...(concurrency ? { concurrency } : {}),
+				...(!values['new-source'] && !values.changed ? {} : { sourceDirs: { ...(values.source ? { old: resolve(values.source) } : {}), new: newDir } }),
 			});
 			const path = await writeReport(report, join(cwd, STATE_DIR));
-			await recordResults(cwd, report);
+			await recordResults(cwd, report, commit ? { commit } : {});
 			const html = join(dirname(path), 'report.html');
 			out(values.json ? `${JSON.stringify(jsonReport(report), null, 2)}\n` : `${summarize(report)}Report: ${path}\nVisual report: ${html}\n`);
 			if (values.open) await openFile(html);

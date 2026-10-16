@@ -21,7 +21,7 @@ markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [
     [--source ../old-app] [--data record|replay] [--staging] [--block <host>]... [--allow <host>]...
     [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
     [--auth .migrate/auth.json] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
-    [--all] [--new-source ../markless-app]
+    [--all] [--allow-unchecked] [--new-source ../markless-app] [--concurrency 4] [--changed]
 markless-migrate switch <route> [--force <reason>]
 markless-migrate unswitch <route>
 markless-migrate proxy --old http://localhost:3000 --new http://localhost:5173 [--port 4300] [--host 127.0.0.1]
@@ -44,7 +44,12 @@ differing regions boxed and every failure listed with its fix; `--open` opens it
 PNG files in `.migrate/shots/`, each stored once and loaded lazily, so publish that folder with the page),
 screenshot diffs in `.migrate/diffs/`, and the interactions it explored in `.migrate/journeys/`.
 `check --all` also takes every route the source scan knows (see below) and the old app's non-page
-endpoints. `plan` prints the migration order and `status` shows progress in that order. `setup` registers the `markless-migrate mcp` server and installs a migration skill for
+endpoints. Routes are checked `--concurrency` at a time (default half the cores, at most 4: the
+Vite fixture's ten routes take 39 s one at a time and 18 s four at a time on an 18-core machine,
+`scripts/bench-check.ts`). `--changed` checks only routes that were not green last time, were never
+checked, or whose files in the new app (`--new-source`, else the current directory) changed since the
+commit recorded with their last check (committed, staged, unstaged or new files, by git); a changed file
+that no route is known to be rendered from re-checks every route. `plan` prints the migration order and `status` shows progress in that order. `setup` registers the `markless-migrate mcp` server and installs a migration skill for
 Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot CLI, VS Code (Copilot agent mode) and opencode. It
 shows every file it will change and keeps a backup of each. Paths and their sources: [docs/notes/agents.md](docs/notes/agents.md).
 

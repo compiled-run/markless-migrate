@@ -204,6 +204,6 @@ export async function locateFailures(result: RouteResult, input: LocateInput): P
 			return { ...f, ...(oldLink ? { old: oldLink } : {}), ...(newLink ? { new: newLink } : {}), where };
 		}),
 	);
-	return { ...result, failures };
+	return { ...result, failures, ...(newIndex && preferNew.length ? { newFiles: preferNew } : {}) };
 }
 

@@ -201,6 +201,8 @@ export interface RouteResult {
 	readonly writes?: readonly (WriteLine & { readonly during: string })[];
 	/** Set when the route is not a page (robots.txt, a sitemap, a feed, JSON): what it was compared as. */
 	readonly endpoint?: string;
+	/** The new app's source files this route is rendered from, relative to its checkout, when check had it. */
+	readonly newFiles?: readonly string[];
 }
 
 export interface Blocked {

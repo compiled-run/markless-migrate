@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
+import { availableParallelism } from 'node:os';
 import { join } from 'node:path';
 import { chromium, type Browser } from 'playwright';
 import { applyAccepted, type Accept } from './accepted.ts';
@@ -63,6 +64,23 @@ export interface CheckOptions {
 	readonly sourceDirs?: { readonly old?: string; readonly new?: string };
 	/** Intended differences (`.migrate/accepted.json`): failures they match are reported as accepted, not red. */
 	readonly accepted?: readonly Accept[];
+	/** Routes checked at once; default half the cores, at most 4. */
+	readonly concurrency?: number;
+}
+
+export const DEFAULT_CONCURRENCY = Math.max(1, Math.min(4, Math.floor(availableParallelism() / 2)));
+
+async function pool<T, R>(items: readonly T[], size: number, task: (item: T) => Promise<R>): Promise<R[]> {
+	const out: R[] = new Array(items.length);
+	let next = 0;
+	const worker = async () => {
+		while (next < items.length) {
+			const i = next++;
+			out[i] = await task(items[i]!);
+		}
+	};
+	await Promise.all(Array.from({ length: Math.max(1, Math.min(size, items.length)) }, worker));
+	return out;
 }
 
 interface Run {
@@ -298,17 +316,17 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				roleRun = signed.run;
 			}
 			const data = options.data && role && role !== ANONYMOUS ? { ...options.data, dir: join(options.data.dir, slug(role)) } : options.data;
-			for (const route of options.routes) {
-				if (endpoints.has(route)) continue;
+			const checked = await pool(options.routes.filter((route) => !endpoints.has(route)), options.concurrency ?? DEFAULT_CONCURRENCY, async (route) => {
 				const { run, failures } = data?.mode === 'replay' ? await replayRoute(roleRun, data.dir, route) : { run: roleRun, failures: [] };
 				const result = await checkAs(browser, run, route, role, loginPaths, options);
-				routes.push(asRole(failures.length ? withFailures(result, [...failures, ...result.failures]) : result, role));
 				const old = oldCaptures.get(result);
 				if (data?.mode === 'record' && old) {
 					const records = Object.values(old.pages)[0]?.network?.records ?? [];
 					await writeRecording(data.dir, { route, recordedFrom: options.oldOrigin, at: startedAt, responses: recordable(records) });
 				}
-			}
+				return asRole(failures.length ? withFailures(result, [...failures, ...result.failures]) : result, role);
+			});
+			routes.push(...checked);
 			for (const route of endpoints) routes.push(asRole(await checkEndpoint(roleRun, route), role));
 			for (const route of options.redirects ?? []) routes.push(asRole(await checkRedirect(roleRun, route), role));
 		}
