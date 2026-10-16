@@ -37,7 +37,7 @@ export function createServer(cwd: string): McpServer {
 		'check_route',
 		{
 			title: 'Check one route, old vs new',
-			description: 'Load the route on both origins in Chromium (desktop and mobile) and compare HTTP, accessibility tree and text, screenshots, SEO, assets, computed CSS and JavaScript weight. Returns every failure with expected, actual and a likely fix.',
+			description: 'Load the route on both origins in Chromium (desktop and mobile) and compare HTTP, accessibility tree and text, screenshots, SEO, assets, computed CSS in every state the old CSS styles (with the old rule that set it), fonts, accessibility (axe, focus order, keyboard, landmarks, motion), internationalisation per locale, every replayed interaction, and JavaScript weight. Writes .migrate/report.html with old/new/diff images. Returns every failure with expected, actual and a likely fix.',
 			inputSchema: { old: z.string().url(), new: z.string().url(), route: z.string().startsWith('/') },
 		},
 		async (args) => {

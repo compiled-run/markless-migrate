@@ -31,6 +31,11 @@ matches it in a real browser. A route is done when its check is green, not when 
   evidence to the user.
 - \`visual\` failures that come with \`css\` or \`rendered\` failures usually disappear once those are
   fixed: fix the DOM and CSS failures first.
+- \`css\` failures name the old rule (selector, file, line) that set the value; port that rule's intent.
+- \`behaviour\` failures come from replaying recorded interactions (\`.migrate/journeys/\`): match what
+  appears, the URL, the requests and the focus after each step, not just the final screen.
+- \`a11y\` and \`i18n\` failures are as blocking as visual ones; check every locale the inventory lists.
+- \`.migrate/report.html\` shows old, new and diff images; tell the user to open it when a failure is visual.
 `;
 
 function sha256(text: string): string {
