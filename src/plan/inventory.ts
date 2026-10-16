@@ -21,6 +21,8 @@ export interface Inventory {
 	readonly truncated: boolean;
 	readonly routes: readonly InventoryRoute[];
 	readonly locales: readonly string[];
+	/** How the old app routes locales: path prefixes in use, and where / sends a browser by Accept-Language. */
+	readonly localeRouting: { readonly prefixes: readonly string[]; readonly negotiation: Readonly<Record<string, string>> };
 	readonly source?: SourceInfo;
 }
 
@@ -176,6 +178,11 @@ export async function plan(options: PlanOptions): Promise<Inventory> {
 			else if (key.startsWith('hreflang:') && key !== 'hreflang:x-default') locales.add(key.slice('hreflang:'.length));
 		}
 	}
+	const sortedLocales = [...locales].sort();
+	const prefixes = sortedLocales.filter((locale) => routes.some((r) => r.route === `/${locale}` || r.route.startsWith(`/${locale}/`)));
+	const landing: Record<string, string> = {};
+	for (const locale of sortedLocales) landing[locale] = (await captureHttp(origin, '/', { 'accept-language': locale })).chain.at(-1)!.url;
+	const negotiation = new Set(Object.values(landing)).size > 1 ? landing : {};
 	return {
 		version: 1,
 		origin,
@@ -183,7 +190,8 @@ export async function plan(options: PlanOptions): Promise<Inventory> {
 		limit,
 		truncated: [...found.keys()].some((r) => !done.has(r)),
 		routes: routes.map((r) => ({ ...r, foundIn: [...found.get(r.route)!].sort() })).sort((a, b) => a.route.localeCompare(b.route)),
-		locales: [...locales].sort(),
+		locales: sortedLocales,
+		localeRouting: { prefixes, negotiation },
 		...(options.source ? { source: await inspectSource(options.source) } : {}),
 	};
 }
@@ -201,6 +209,9 @@ export function summarizeInventory(inventory: Inventory): string {
 		lines.push(`  ${String(r.status).padEnd(4)}${r.route}${r.redirectsTo ? ` -> ${r.redirectsTo}` : ''}${r.seo.title ? `  "${r.seo.title}"` : ''}`);
 	}
 	lines.push(`Locales: ${inventory.locales.join(', ') || '(none declared)'}`);
+	if (inventory.localeRouting.prefixes.length) lines.push(`Locale prefixes: ${inventory.localeRouting.prefixes.map((p) => `/${p}`).join(', ')}`);
+	const negotiated = Object.entries(inventory.localeRouting.negotiation);
+	if (negotiated.length) lines.push(`Accept-Language at /: ${negotiated.map(([locale, to]) => `${locale} -> ${to}`).join(', ')}`);
 	if (inventory.source) lines.push(`Source: ${inventory.source.framework} at ${inventory.source.path}, ${inventory.source.fileRoutes.length} file routes`);
 	return `${lines.join('\n')}\n`;
 }

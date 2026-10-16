@@ -167,6 +167,13 @@ function hintWith(rule: string | undefined, base: string): string {
 	return rule ? `Old rule: ${rule}. ${base}` : base;
 }
 
+// Text whose width varies moves the rest of its line (right-aligned and centred text most visibly), so the whole block around it is noise.
+function blockAround(elements: readonly ElementSnapshot[], el: ElementSnapshot): Box {
+	const inside = (outer: Box, inner: Box) => outer.x <= inner.x && outer.y <= inner.y && outer.x + outer.width >= inner.x + inner.width && outer.y + outer.height >= inner.y + inner.height;
+	const blocks = elements.filter((other) => !other.style.display?.startsWith('inline') && inside(other.box, el.box) && other.box.height <= el.box.height * 3);
+	return blocks.sort((a, b) => a.box.width * a.box.height - b.box.width * b.box.height)[0]?.box ?? el.box;
+}
+
 function union(boxes: readonly Box[]): Box | undefined {
 	if (!boxes.length) return undefined;
 	const x0 = Math.min(...boxes.map((b) => b.x));
@@ -304,7 +311,7 @@ export async function compareStates(input: StateInput): Promise<StateOutput> {
 				const clip = pageWide ? undefined : union([...changedBoxes, ...targets.map((i) => o1.base[i]!.box)]);
 				const [shot1, shot2, shotN] = await Promise.all([screenshot(o1.page, clip), screenshot(o2.page, clip), screenshot(n.page, clip)]);
 				const shift = (b: Box): Box => (clip ? { ...b, x: b.x - Math.max(0, clip.x - CLIP_PADDING), y: b.y - Math.max(0, clip.y - CLIP_PADDING) } : b);
-				const noisyBoxes = s1.flatMap((el, i) => (textNoise.has(i) || s2[p12.get(i) ?? -1]?.text !== el.text ? [shift(el.box)] : []));
+				const noisyBoxes = s1.flatMap((el, i) => (textNoise.has(i) || s2[p12.get(i) ?? -1]?.text !== el.text ? [shift(blockAround(s1, el))] : []));
 				const diff = compareScreenshots(shot1, shotN, visualNoise(shot1, [shot2], noisyBoxes));
 				const different = visuallyDifferent(diff);
 				if (different) {

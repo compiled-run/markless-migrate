@@ -1,4 +1,6 @@
+import { compareA11y } from './a11y.ts';
 import { HINTS, seoHint } from './hints.ts';
+import { compareI18n } from './i18n.ts';
 import { describe, matchElements } from './match.ts';
 import { diffFields, diffLines, fieldTemplates, lineTemplates, type LineDiff } from './noise.ts';
 import type { AssetRecord, Box, Dimension, ElementSnapshot, Failure, PageCapture, RouteCapture, RouteResult, Shot } from './types.ts';
@@ -6,6 +8,8 @@ import { DIMENSIONS } from './types.ts';
 import { compareScreenshots, visualNoise, visuallyDifferent } from './visual.ts';
 
 const LIMIT = 20;
+// lang and dir are compared as internationalisation, not SEO.
+const LOCALE_KEYS = new Set(['html:lang', 'html:dir']);
 // font-family names are compared by the font files that render, so generated family names do not differ.
 const RENDERED_ELSEWHERE = new Set(['font-family']);
 const WEIGHT_SLACK_BYTES = 1024;
@@ -177,6 +181,7 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 		}
 
 		failures.push(...cssFailures(route, viewport, a, bs, n));
+		if (a.a11y && n.a11y) failures.push(...compareA11y(route, viewport, a.a11y, bs.flatMap((b) => (b.a11y ? [b.a11y] : [])), n.a11y));
 
 		a.images.forEach((img, i) => {
 			const other = n.images[i];
@@ -189,7 +194,9 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 	}
 
 	const desktop = Object.keys(oldA.pages)[0]!;
-	const seo = diffFields(fieldTemplates(oldA.pages[desktop]!.seo, ...others.map((o) => o.pages[desktop]!.seo)), next.pages[desktop]?.seo ?? {});
+	const withoutLocale = (seo: Readonly<Record<string, string>>) => Object.fromEntries(Object.entries(seo).filter(([key]) => !LOCALE_KEYS.has(key)));
+	const seo = diffFields(fieldTemplates(withoutLocale(oldA.pages[desktop]!.seo), ...others.map((o) => withoutLocale(o.pages[desktop]!.seo))), withoutLocale(next.pages[desktop]?.seo ?? {}));
+	if (next.pages[desktop]) failures.push(...compareI18n(route, desktop, oldA.pages[desktop]!, others.map((o) => o.pages[desktop]!), next.pages[desktop]!));
 	for (const d of seo) failures.push({ route, dimension: 'seo', check: d.key, expected: fmt(d.expected), actual: fmt(d.actual), hint: seoHint(d.key) });
 
 	const stableIn = others.map((o) => new Set(uniqueAssets(o).map((a) => a.url)));

@@ -60,10 +60,11 @@ const MUTATIONS: Mutation[] = [
 		name: 'alt-text',
 		route: '/',
 		edits: [{ file: 'index.html', find: ' alt="Cliff path leading to a white lighthouse"', replace: '' }],
-		red: ['rendered'],
+		red: ['a11y', 'rendered'],
 		expect: (report) => {
 			const f = failure(report, 'rendered').find((x) => x.check === 'accessibility tree');
 			assert.match(f!.expected, /img "Cliff path leading to a white lighthouse"/);
+			assert.ok(failure(report, 'a11y').some((x) => x.check.startsWith('axe image-alt:') && x.expected === '0 elements'));
 		},
 	},
 	{
@@ -210,6 +211,105 @@ const MUTATIONS: Mutation[] = [
 			assert.ok(failure(report, 'css').some((f) => /`\.ro(ute|ast)` inside @container \((min-width:|width>=)480px\) \(.+\) sets display with `grid`/.test(f.hint)), JSON.stringify(failure(report, 'css').map((f) => f.hint), null, 1));
 		},
 	},
+	{
+		name: 'removed-label',
+		route: '/about/',
+		edits: [{ file: 'about/index.html', find: '<label for="email">Email</label>', replace: '<span>Email</span>' }],
+		red: ['a11y', 'rendered', 'visual'],
+		expect: (report) => {
+			const axe = failure(report, 'a11y').find((f) => f.check.startsWith('axe label:'));
+			assert.ok(axe, JSON.stringify(failure(report, 'a11y'), null, 1));
+			assert.equal(axe.expected, '0 elements');
+			assert.match(axe.actual, /#email/);
+		},
+	},
+	{
+		name: 'tab-order',
+		route: '/',
+		edits: [{ file: 'index.html', find: '<a href="/about/">About</a>', replace: '<a href="/about/" tabindex="1">About</a>' }],
+		red: ['a11y'],
+		expect: (report) => {
+			const f = failure(report, 'a11y').find((x) => x.check.startsWith('focus order'));
+			assert.equal(f?.check, 'focus order (Tab), first difference at stop 1');
+			assert.ok(failure(report, 'a11y').some((x) => x.check.startsWith('axe tabindex:')));
+			assert.match(f!.expected, /^1\. link "Home" → 2\. link "About"/);
+			assert.match(f!.actual, /^1\. link "About" → 2\. link "Home"/);
+		},
+	},
+	{
+		name: 'button-as-div',
+		route: '/',
+		edits: [{ file: 'index.html', find: '<button type="button" data-book>Book a walk</button>', replace: '<div data-book>Book a walk</div>' }],
+		red: ['a11y', 'rendered', 'visual'],
+		expect: (report) => {
+			const order = failure(report, 'a11y').find((f) => f.check.startsWith('focus order'));
+			assert.match(order!.expected, /button "Book a walk"/);
+			assert.doesNotMatch(order!.actual, /Book a walk/);
+		},
+	},
+	{
+		name: 'landmark',
+		route: '/about/',
+		edits: [
+			{ file: 'about/index.html', find: '<nav aria-label="Main">', replace: '<div aria-label="Main">' },
+			{ file: 'about/index.html', find: '</nav>', replace: '</div>' },
+		],
+		red: ['a11y', 'css', 'rendered', 'visual'],
+		expect: (report) => {
+			const landmarks = failure(report, 'a11y').filter((f) => f.check === 'landmarks');
+			assert.deepEqual(landmarks.map((f) => [f.expected, f.actual]), [['navigation "Main"', '(absent)']]);
+		},
+	},
+	{
+		name: 'reduced-motion',
+		route: '/about/',
+		edits: [{ file: 'src/style.css', find: '@media (prefers-reduced-motion: no-preference) {', replace: '@media all {' }],
+		red: ['a11y', 'css'],
+		expect: (report) => {
+			const motion = failure(report, 'a11y').find((f) => f.check === 'motion under prefers-reduced-motion: reduce');
+			assert.equal(motion?.expected, 'no running animations');
+			assert.match(motion!.actual, /^running: .*glow/);
+		},
+	},
+	{
+		name: 'date-format',
+		route: '/fr/',
+		edits: [{ file: 'fr/index.html', find: '27 octobre 2026', replace: 'October 27, 2026' }],
+		red: ['i18n', 'rendered', 'visual'],
+		expect: (report) => {
+			const [f, ...rest] = failure(report, 'i18n');
+			assert.equal(rest.length, 0, JSON.stringify(rest, null, 1));
+			assert.equal(f?.check, 'date or number format for fr');
+			assert.equal(f?.expected, '# MMMM # (27 octobre 2026)');
+			assert.equal(f?.actual, 'MMMM #, # (October 27, 2026)');
+		},
+	},
+	{
+		name: 'accept-language',
+		route: '/',
+		edits: [{ file: 'public/serve.json', find: '"negotiate": { "/": { "en": "", "fr": "/fr/", "ar": "/ar/" } },', replace: '' }],
+		red: ['i18n'],
+		expect: (report) => {
+			const failures = failure(report, 'i18n');
+			assert.deepEqual(failures.map((f) => [f.check, f.expected, f.actual]), [
+				['page a browser sending Accept-Language: ar lands on', '/ar/', '/'],
+				['page a browser sending Accept-Language: fr lands on', '/fr/', '/'],
+			]);
+		},
+	},
+	{
+		name: 'rtl',
+		route: '/ar/',
+		edits: [{ file: 'ar/index.html', find: '<html lang="ar" dir="rtl">', replace: '<html lang="ar">' }],
+		red: ['css', 'i18n', 'visual'],
+		expect: (report) => {
+			const i18n = failure(report, 'i18n').map((f) => [f.check, f.expected, f.actual]);
+			assert.deepEqual(i18n, [
+				['<html dir>', 'rtl', '(absent)'],
+				['text direction of the page', 'rtl', 'ltr'],
+			]);
+		},
+	},
 ];
 
 describe('vite multi-page site', { concurrency: 4 }, () => {
@@ -249,6 +349,7 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		assert.deepEqual(inventory.routes.map((r) => r.route), ['/', '/about/', '/ar/', '/fr/']);
 		assert.deepEqual(inventory.routes[0]!.foundIn, ['crawl', 'hreflang', 'sitemap']);
 		assert.deepEqual(inventory.locales, ['ar', 'en', 'fr']);
+		assert.deepEqual(inventory.localeRouting, { prefixes: ['ar', 'fr'], negotiation: { ar: '/ar/', en: '/', fr: '/fr/' } });
 		assert.equal(inventory.routes[1]!.seo.title, 'About | Lighthouse Walks');
 		assert.ok(inventory.routes[0]!.assets.some((a) => a.url === '/hero.png' && a.contentType === 'image/png'));
 		assert.equal(inventory.source?.framework, 'vite');

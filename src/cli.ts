@@ -156,9 +156,10 @@ async function main(argv: string[]): Promise<number> {
 		case 'check': {
 			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, new: { type: 'string' }, route: { type: 'string', multiple: true }, json: { type: 'boolean' }, open: { type: 'boolean' } } });
 			if (!values.old || !values.new) fail('check needs --old <origin> and --new <origin>');
-			const routes = values.route?.length ? values.route : (await readInventory(cwd))?.routes.map((r) => r.route);
+			const inventory = await readInventory(cwd);
+			const routes = values.route?.length ? values.route : inventory?.routes.map((r) => r.route);
 			if (!routes?.length) fail('no routes: pass --route <path> or run plan first');
-			const report = await runCheck({ oldOrigin: values.old, newOrigin: values.new, routes });
+			const report = await runCheck({ oldOrigin: values.old, newOrigin: values.new, routes, locales: inventory?.locales });
 			const path = await writeReport(report, join(cwd, STATE_DIR));
 			await recordResults(cwd, report);
 			const html = join(dirname(path), 'report.html');

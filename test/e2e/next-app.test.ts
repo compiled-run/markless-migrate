@@ -201,6 +201,111 @@ const MUTATIONS: Mutation[] = [
 			assert.ok(failure(report, 'css').some((f) => /`\.ro(ute|ast)` inside @container \((min-width:|width>=)480px\) \(.+\) sets display with `grid`/.test(f.hint)), JSON.stringify(failure(report, 'css').map((f) => f.hint), null, 1));
 		},
 	},
+	{
+		name: 'removed-label',
+		route: '/en/contact',
+		edits: [
+			{ file: 'app/[lang]/contact/page.tsx', find: '<label>\n\t\t\t\t\t{t.name}', replace: '<div>\n\t\t\t\t\t{t.name}' },
+			{ file: 'app/[lang]/contact/page.tsx', find: '</label>', replace: '</div>' },
+		],
+		red: ['a11y', 'css', 'rendered', 'visual'],
+		expect: (report) => {
+			const axe = failure(report, 'a11y').find((f) => f.check.startsWith('axe label:'));
+			assert.ok(axe, JSON.stringify(failure(report, 'a11y'), null, 1));
+			assert.equal(axe.expected, '0 elements');
+			assert.match(axe.hint, /dequeuniversity\.com\/rules\/axe\/.*\/label/);
+		},
+	},
+	{
+		name: 'tab-order',
+		route: '/en',
+		edits: [{ file: 'app/[lang]/layout.tsx', find: '<Link href={`/${lang}/contact`}>', replace: '<Link href={`/${lang}/contact`} tabIndex={1}>' }],
+		red: ['a11y'],
+		expect: (report) => {
+			const f = failure(report, 'a11y').find((x) => x.check.startsWith('focus order'));
+			assert.equal(f?.check, 'focus order (Tab), first difference at stop 1');
+			assert.ok(failure(report, 'a11y').some((x) => x.check.startsWith('axe tabindex:')));
+			assert.match(f!.expected, /^1\. link "Home" → 2\. link "About" → 3\. link "Contact"/);
+			assert.match(f!.actual, /^1\. link "Contact" → 2\. link "Home"/);
+		},
+	},
+	{
+		name: 'button-as-div',
+		route: '/en',
+		edits: [
+			{ file: 'app/[lang]/counter.tsx', find: '<button type="button" onClick', replace: '<div onClick' },
+			{ file: 'app/[lang]/counter.tsx', find: '</button>', replace: '</div>' },
+		],
+		red: ['a11y', 'rendered', 'visual'],
+		expect: (report) => {
+			const order = failure(report, 'a11y').find((f) => f.check.startsWith('focus order'));
+			assert.match(order!.expected, /button "Pour a cup"/);
+			assert.doesNotMatch(order!.actual, /Pour a cup/);
+		},
+	},
+	{
+		name: 'landmark',
+		route: '/en/about',
+		edits: [
+			{ file: 'app/[lang]/layout.tsx', find: '<nav aria-label="Main">', replace: '<div aria-label="Main">' },
+			{ file: 'app/[lang]/layout.tsx', find: '</nav>', replace: '</div>' },
+		],
+		red: ['a11y', 'css', 'rendered', 'visual'],
+		expect: (report) => {
+			const landmarks = failure(report, 'a11y').filter((f) => f.check === 'landmarks');
+			assert.deepEqual(landmarks.map((f) => [f.expected, f.actual]), [['navigation "Main"', '(absent)']]);
+		},
+	},
+	{
+		name: 'reduced-motion',
+		route: '/en/about',
+		edits: [{ file: 'app/globals.css', find: '@media (prefers-reduced-motion: no-preference) {', replace: '@media all {' }],
+		red: ['a11y', 'css'],
+		expect: (report) => {
+			const motion = failure(report, 'a11y').find((f) => f.check === 'motion under prefers-reduced-motion: reduce');
+			assert.equal(motion?.expected, 'no running animations');
+			assert.match(motion!.actual, /^running: .*glow/);
+		},
+	},
+	{
+		name: 'date-format',
+		route: '/fr',
+		edits: [{ file: 'app/dictionaries.ts', find: "dateLocale: 'fr-FR'", replace: "dateLocale: 'en-US'" }],
+		red: ['i18n', 'rendered', 'visual'],
+		expect: (report) => {
+			const [f, ...rest] = failure(report, 'i18n');
+			assert.equal(rest.length, 0, JSON.stringify(rest, null, 1));
+			assert.equal(f?.check, 'date or number format for fr');
+			assert.equal(f?.expected, '# MMMM # (27 octobre 2026)');
+			assert.equal(f?.actual, 'MMMM #, # (October 27, 2026)');
+		},
+	},
+	{
+		name: 'accept-language',
+		route: '/',
+		edits: [{ file: 'proxy.ts', find: "const locale = wanted.find(isLocale) ?? 'en';", replace: "const locale = wanted.some(isLocale) ? 'en' : 'en';" }],
+		red: ['i18n'],
+		expect: (report) => {
+			const failures = failure(report, 'i18n');
+			assert.deepEqual(failures.map((f) => [f.check, f.expected, f.actual]), [
+				['page a browser sending Accept-Language: ar lands on', '/ar', '/en'],
+				['page a browser sending Accept-Language: fr lands on', '/fr', '/en'],
+			]);
+		},
+	},
+	{
+		name: 'rtl',
+		route: '/ar',
+		edits: [{ file: 'app/[lang]/layout.tsx', find: "dir={lang === 'ar' ? 'rtl' : 'ltr'}", replace: 'dir="ltr"' }],
+		red: ['css', 'i18n', 'visual'],
+		expect: (report) => {
+			const i18n = failure(report, 'i18n').map((f) => [f.check, f.expected, f.actual]);
+			assert.deepEqual(i18n, [
+				['<html dir>', 'rtl', 'ltr'],
+				['text direction of the page', 'rtl', 'ltr'],
+			]);
+		},
+	},
 ];
 
 describe('next.js app router app', { concurrency: 4 }, () => {
@@ -242,6 +347,7 @@ describe('next.js app router app', { concurrency: 4 }, () => {
 		assert.deepEqual(inventory.routes.map((r) => r.route), ['/', '/ar', '/ar/about', '/ar/contact', '/en', '/en/about', '/en/contact', '/fr', '/fr/about', '/fr/contact']);
 		assert.equal(inventory.routes[0]!.redirectsTo, '/en');
 		assert.deepEqual(inventory.locales, ['ar', 'en', 'fr']);
+		assert.deepEqual(inventory.localeRouting, { prefixes: ['ar', 'en', 'fr'], negotiation: { ar: '/ar', en: '/en', fr: '/fr' } });
 		assert.equal(inventory.source?.framework, 'next');
 		assert.deepEqual(inventory.source?.fileRoutes, ['/[lang]', '/[lang]/about', '/[lang]/contact', '/api/contact']);
 	});

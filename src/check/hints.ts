@@ -33,5 +33,13 @@ export const HINTS = {
 	css: 'Port the rule that sets this property for this element in the old stylesheet; computed values must match.',
 	cssState: 'The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.',
 	visualState: 'The page looks different in this state or condition. Compare the computed-style failures for the same state first.',
+	axe: 'axe-core finds this accessibility violation on the new page more often than on the old one. Fix the elements it names:',
+	landmarks: 'The page landmarks differ: keep the same header, nav, main, footer, aside and labelled regions, with the same names.',
+	focusOrder: 'Tab reaches elements in a different order. Keep the old DOM order for interactive elements, remove positive tabindex values, and keep buttons and links as real buttons and links.',
+	reducedMotion: 'An animation runs although the visitor asked for reduced motion. Wrap it in @media (prefers-reduced-motion: no-preference), as the old page does.',
+	lang: 'Set the same lang attribute on <html>; screen readers pick their voice from it and search engines the language.',
+	dir: 'Set the same dir attribute on <html> (rtl for Arabic, Hebrew, Persian and Urdu), so the layout mirrors as it did.',
+	formats: 'Format dates and numbers for this locale as the old page did, for example with Intl.DateTimeFormat and Intl.NumberFormat and the same locale and options.',
+	negotiation: 'Send a browser to the same locale by its Accept-Language header as the old app did (the http check compares the redirect status).',
 	weight: 'The new route downloads or runs more JavaScript at load than the old one. Look at the scripts only the new route loads.',
 } as const;

@@ -1,4 +1,4 @@
-export const DIMENSIONS = ['http', 'rendered', 'visual', 'seo', 'assets', 'css', 'weight'] as const;
+export const DIMENSIONS = ['http', 'rendered', 'visual', 'seo', 'assets', 'css', 'a11y', 'i18n', 'weight'] as const;
 export type Dimension = (typeof DIMENSIONS)[number];
 
 export interface Viewport {
@@ -76,6 +76,16 @@ export interface Weight {
 	readonly scripts: readonly ScriptWeight[];
 }
 
+export interface A11yCapture {
+	/** axe-core violations by rule id. */
+	readonly violations: Readonly<Record<string, { readonly impact: string; readonly help: string; readonly helpUrl: string; readonly count: number; readonly targets: readonly string[] }>>;
+	readonly landmarks: readonly string[];
+	/** Role and name of each element Tab reaches, from Chromium's accessibility tree. */
+	readonly focusOrder: readonly string[];
+	/** Animations still running while prefers-reduced-motion is reduce. */
+	readonly motion: readonly string[];
+}
+
 export interface PageCapture {
 	readonly viewport: string;
 	readonly finalUrl: string;
@@ -90,6 +100,7 @@ export interface PageCapture {
 	readonly elements: readonly ElementSnapshot[];
 	readonly screenshot: Buffer;
 	readonly weight: Weight;
+	readonly a11y?: A11yCapture;
 }
 
 export interface RouteCapture {

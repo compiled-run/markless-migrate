@@ -1,6 +1,7 @@
 import type { Browser, BrowserContextOptions, Page, Response } from 'playwright';
 import { collectPage, decodeImages } from './collect.ts';
 import { createHash } from 'node:crypto';
+import { captureA11y } from './a11y.ts';
 import { isFingerprinted } from './assets.ts';
 import { renderedFonts } from './fonts.ts';
 import type { AssetRecord, HttpCapture, HttpHop, PageCapture, RouteCapture, ScriptWeight, Viewport } from './types.ts';
@@ -17,11 +18,11 @@ export function mime(contentType: string | null | undefined): string {
 	return (contentType ?? '').split(';')[0]!.trim().toLowerCase();
 }
 
-export async function captureHttp(origin: string, route: string): Promise<HttpCapture> {
+export async function captureHttp(origin: string, route: string, headers: Record<string, string> = {}): Promise<HttpCapture> {
 	const chain: HttpHop[] = [];
 	let url = new URL(route, origin).href;
 	for (let hop = 0; hop < 10; hop++) {
-		const response = await fetch(url, { redirect: 'manual' });
+		const response = await fetch(url, { redirect: 'manual', headers });
 		await response.body?.cancel();
 		chain.push({ url: toLocal(url, origin), status: response.status });
 		const location = response.headers.get('location');
@@ -100,6 +101,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 		const coverage = await page.coverage.stopJSCoverage();
 		await Promise.all(pending);
 		const elements = await renderedFonts(page, collected.elements, fontHashes);
+		const a11y = viewport.isMobile ? undefined : await captureA11y(page);
 		for (const [i, text] of (await page.evaluate(() => [...document.querySelectorAll('style')].map((style) => style.textContent ?? ''))).entries()) {
 			if (text.trim()) stylesheets.push({ url: `${toLocal(pageUrlBefore(page), origin)} <style> #${i + 1}`, text });
 		}
@@ -132,6 +134,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 			fonts: collected.fonts,
 			elements,
 			screenshot,
+			...(a11y ? { a11y } : {}),
 			weight: {
 				downloaded: scripts.reduce((sum, s) => sum + s.bytes, 0),
 				source: scripts.reduce((sum, s) => sum + s.source, 0) + inline.reduce((sum, entry) => sum + (entry.source ?? '').length, 0),
