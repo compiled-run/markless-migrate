@@ -240,7 +240,7 @@ export async function remixFlatRoutes(ctx: Context, base = 'app/routes'): Promis
 
 export function htmlRoutes(ctx: Context): SourceRoute[] {
 	return ctx.project.files
-		.filter((f) => /\.html$/.test(f) && !/^(public|dist|static)\//.test(f) && !/(^|\/)(404|500)\.html$/.test(f) && !f.includes('/node_modules/'))
+		.filter((f) => /\.html$/.test(f) && !/^(public|dist|static)\//.test(f) && !/(^|\/)(401|403|404|500)\.html$/.test(f) && !f.includes('/node_modules/'))
 		.map((file) => {
 			const path = `/${file}`.replace(/(^|\/)index\.html$/, '$1');
 			return { path: path || '/', file, line: 1, dynamic: false, kind: 'page' as const };

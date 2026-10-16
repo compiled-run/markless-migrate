@@ -8,6 +8,7 @@ import { DATA_DIR } from '../check/data.ts';
 import { runCheck, writeReport } from '../check/run.ts';
 import { loadSourceFacts } from '../check/source-facts.ts';
 import { summarize } from '../check/summary.ts';
+import { writeStarterAuth } from '../plan/auth.ts';
 import { plan, summarizeInventory, writeInventory } from '../plan/inventory.ts';
 import { recordResults, STATE_DIR, status, summarizeStatus } from '../status.ts';
 import { VERSION } from '../version.ts';
@@ -33,7 +34,9 @@ export function createServer(cwd: string): McpServer {
 		async ({ old, source, limit }) => {
 			const inventory = await plan({ origin: old, source, limit });
 			const path = await writeInventory(inventory, join(cwd, STATE_DIR));
-			return text(`${summarizeInventory(inventory)}Wrote ${path}`);
+			const authPath = join(cwd, STATE_DIR, 'auth.json');
+			const wroteAuth = inventory.auth ? await writeStarterAuth(authPath, inventory.auth) : false;
+			return text(`${summarizeInventory(inventory)}Wrote ${path}${wroteAuth ? `\nWrote ${authPath}: a starter auth file for check_route's auth argument; the credentials it names must be set in the environment.` : ''}`);
 		},
 	);
 

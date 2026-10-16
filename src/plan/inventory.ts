@@ -3,6 +3,7 @@ import { dirname, join, relative, sep } from 'node:path';
 import { chromium, type Browser } from 'playwright';
 import { captureHttp, mime, toLocal } from '../check/capture.ts';
 import { collectPage } from '../check/collect.ts';
+import { proposeAuth, readLoginForm, withLoginForm, type ProposedAuth } from './auth.ts';
 import { scanForInventory, summarizeSource, unionRoutes, type RouteUnionEntry, type SourceInventory } from './source.ts';
 
 export interface InventoryRoute {
@@ -27,6 +28,8 @@ export interface Inventory {
 	readonly source?: SourceInventory;
 	/** Crawled and source routes together; an entry known by one side only is flagged by `knownBy`. */
 	readonly routeUnion?: readonly RouteUnionEntry[];
+	/** Roles and the login route proposed from the source's auth guards: the starter for check --auth. */
+	readonly auth?: ProposedAuth;
 }
 
 export interface SourceInfo {
@@ -195,6 +198,16 @@ export async function plan(options: PlanOptions): Promise<Inventory> {
 	const negotiation = new Set(Object.values(landing)).size > 1 ? landing : {};
 	const source = options.source ? await readSource(options.source) : undefined;
 	const crawled = [...found.keys()].map((r) => r.split(/[?#]/)[0]!);
+	const union = source ? unionRoutes([...new Set(crawled)], source.routes) : [];
+	let auth = source ? proposeAuth(source.authGuards, source.routes, union, routes.find((r) => r.route === '/')?.redirectsTo) : undefined;
+	if (auth?.loginRoute) {
+		const formBrowser = options.browser ?? (await chromium.launch());
+		try {
+			auth = withLoginForm(auth, await readLoginForm(formBrowser, new URL(auth.loginRoute, origin).href));
+		} finally {
+			if (!options.browser) await formBrowser.close();
+		}
+	}
 	return {
 		version: 1,
 		origin,
@@ -204,7 +217,8 @@ export async function plan(options: PlanOptions): Promise<Inventory> {
 		routes: routes.map((r) => ({ ...r, foundIn: [...found.get(r.route)!].sort() })).sort((a, b) => a.route.localeCompare(b.route)),
 		locales: sortedLocales,
 		localeRouting: { prefixes, negotiation },
-		...(source ? { source, routeUnion: unionRoutes([...new Set(crawled)], source.routes) } : {}),
+		...(source ? { source, routeUnion: union } : {}),
+		...(auth ? { auth } : {}),
 	};
 }
 
@@ -224,5 +238,9 @@ export function summarizeInventory(inventory: Inventory): string {
 	if (inventory.localeRouting.prefixes.length) lines.push(`Locale prefixes: ${inventory.localeRouting.prefixes.map((p) => `/${p}`).join(', ')}`);
 	const negotiated = Object.entries(inventory.localeRouting.negotiation);
 	if (negotiated.length) lines.push(`Accept-Language at /: ${negotiated.map(([locale, to]) => `${locale} -> ${to}`).join(', ')}`);
+	if (inventory.auth) {
+		lines.push(`Roles to check (from auth guards): ${Object.keys(inventory.auth.roles).join(', ')}, and anonymous; login at ${inventory.auth.loginRoute ?? '(not found: set loginRoute)'}`);
+		for (const guarded of inventory.auth.guards) lines.push(`  ${guarded}`);
+	}
 	return `${lines.join('\n')}\n${inventory.source ? summarizeSource(inventory.source, inventory.routeUnion) : ''}`;
 }

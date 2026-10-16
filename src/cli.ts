@@ -14,6 +14,7 @@ import { RECORDER, recorderEnv } from './check/recorder.ts';
 import { jsonReport, runCheck, writeReport, type CheckOptions } from './check/run.ts';
 import { loadSourceFacts } from './check/source-facts.ts';
 import { summarize } from './check/summary.ts';
+import { writeStarterAuth } from './plan/auth.ts';
 import { plan, summarizeInventory, writeInventory } from './plan/inventory.ts';
 import { DRIVERS, driver } from './run/drivers.ts';
 import { runRoutes } from './run/loop.ts';
@@ -24,6 +25,7 @@ const USAGE = `markless-migrate ${VERSION}
 
   plan    --old <origin> [--source <path>] [--limit <n>]
           Inventory the old app's routes, SEO, assets and locales into .migrate/inventory.json.
+          With --source, auth guards propose roles and the login route in a starter .migrate/auth.json.
   check   --old <origin> --new <origin> [--route <path>]... [--json] [--open]
           [--source <path>] [--data record|replay] [--staging] [--block <host>]... [--allow <host>]...
           [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
@@ -170,6 +172,8 @@ async function main(argv: string[]): Promise<number> {
 			const inventory = await plan({ origin: values.old, source: values.source ? resolve(values.source) : undefined, limit: values.limit ? Number(values.limit) : undefined });
 			const path = await writeInventory(inventory, join(cwd, STATE_DIR));
 			out(`${summarizeInventory(inventory)}Wrote ${path}\n`);
+			const authPath = join(cwd, STATE_DIR, 'auth.json');
+			if (inventory.auth) out((await writeStarterAuth(authPath, inventory.auth)) ? `Wrote ${authPath}: set the credentials it names in the environment, check its login steps, then pass --auth ${authPath} to check.\n` : `Kept ${authPath} (already there); roles found: ${Object.keys(inventory.auth.roles).join(', ')}.\n`);
 			return 0;
 		}
 		case 'check': {

@@ -31,7 +31,8 @@ export function summarize(report: Report): string {
 		}
 		const failed = Object.entries(route.dimensions).filter(([, state]) => state === 'fail').map(([d]) => d);
 		const w = route.weight;
-		const js = `JS on the wire ${kb(w.old.downloaded)} -> ${kb(w.new.downloaded)}, run at load ${kb(w.old.executed)} -> ${kb(w.new.executed)} (uncompressed)`;
+		const stopped = Object.entries(route.dimensions).some(([, state]) => state === 'skipped');
+		const js = stopped ? 'page not compared: the two apps did not let this role in alike' : `JS on the wire ${kb(w.old.downloaded)} -> ${kb(w.new.downloaded)}, run at load ${kb(w.old.executed)} -> ${kb(w.new.executed)} (uncompressed)`;
 		lines.push(`${route.ok ? 'pass' : 'FAIL'}  ${route.route.padEnd(width)}  ${route.ok ? '' : `[${failed.join(', ')}]  `}${js}`);
 		for (const f of route.failures) {
 			lines.push(`      ${f.dimension}${f.viewport ? ` (${f.viewport})` : ''}: ${f.check}`);

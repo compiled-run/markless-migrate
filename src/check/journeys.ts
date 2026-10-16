@@ -285,6 +285,9 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 	page.on('pageerror', (error) => errors.push(error.message.split(origin).join('')));
 	await page.goto(new URL(route, origin).href, { waitUntil: 'load' });
 	await quiet(page, inflight);
+	// Where a redirect landed is the http and auth checks' business; a step that stays there compares alike.
+	const landing = localUrl(page.url(), origin);
+	const redirected = landing !== localUrl(new URL(route, origin).href, origin);
 	return {
 		context,
 		page,
@@ -310,7 +313,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 			const writes = log.writes.slice(writesBefore);
 			const writeOf = new Map(writes.map((w) => [w.request, w.line]));
 			return {
-				url: localUrl(page.url(), origin),
+				url: redirected && localUrl(page.url(), origin) === landing ? 'the page the route redirected to' : localUrl(page.url(), origin),
 				navigated: documentLoaded || new URL(page.url()).pathname !== startPath || (href !== null && new URL(href, page.url()).href === page.url()),
 				added,
 				removed,

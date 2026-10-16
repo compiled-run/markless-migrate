@@ -18,7 +18,7 @@ interface Rule {
 
 const RULES: readonly Rule[] = [
 	{ vendor: 'Cloudflare', header: /^cf-mitigated: challenge$/i },
-	{ vendor: 'Cloudflare', body: /<title>(Just a moment\.\.\.|Attention Required! \| Cloudflare)<\/title>|challenges\.cloudflare\.com\/cdn-cgi\/challenge-platform|cf_chl_opt|cf-browser-verification/i },
+	{ vendor: 'Cloudflare', body: /<title>(Just a moment\.\.\.|Attention Required! \| Cloudflare)<\/title>|\/cdn-cgi\/challenge-platform\/|cf_chl_opt|cf-browser-verification/i },
 	{ vendor: 'Vercel', header: /^x-vercel-mitigated: challenge$/i },
 	{ vendor: 'AWS WAF', header: /^x-amzn-waf-action: (challenge|captcha)$/i },
 	{ vendor: 'AWS WAF', body: /awswaf\.com|AwsWafIntegration/i, refusedOnly: true },
