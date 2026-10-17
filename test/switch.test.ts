@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { convertRewrites } from '@vercel/routing-utils';
-import { assetPaths, assetSources, nitroPattern, nitroRouteRules, notServedBy, vercelConfig, vercelPattern } from '../src/switch/deploy.ts';
+import { assetPaths, assetSources, moduleImports, nitroPattern, nitroRouteRules, notServedBy, vercelConfig, vercelPattern } from '../src/switch/deploy.ts';
 import { rewriteLocation, rewriteSetCookie, route } from '../src/switch/proxy.ts';
 import { status, summarizeStatus } from '../src/status.ts';
 import { isSwitched, readSwitched, switchRoute, unswitchRoute } from '../src/switch/state.ts';
@@ -123,4 +123,9 @@ test('an asset the old app answers only by redirecting (a soft 404) is not serve
 	} finally {
 		server.close();
 	}
+});
+
+test('config follows the modules the pages\' scripts import, so chunks loaded on interaction reach the new app too', () => {
+	const code = 'import{t as e}from"./chunk-A.js";const l=()=>import("./chunk-B.js");import "/build/chunk-C.js";fetch("/api/x.js?");import("https://cdn.example/x.js")';
+	assert.deepEqual(moduleImports(code, 'https://new.example/build/entry.js', 'https://new.example').sort(), ['/build/chunk-A.js', '/build/chunk-B.js', '/build/chunk-C.js']);
 });

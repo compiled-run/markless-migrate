@@ -134,13 +134,44 @@ async function serves(origin: string, path: string): Promise<boolean> {
 	}
 }
 
-/** The same-origin asset paths the given pages load, read from each page's HTML. */
+const MODULE_SPECIFIER = /(?:\bimport\s*\(\s*|\bfrom\s*|\bimport\s*)["'`]([^"'`\s]+\.m?js)["'`]/g;
+
+/** Same-origin modules a script imports, statically or with import(): chunks loaded on interaction or route change. */
+export function moduleImports(code: string, scriptUrl: string, origin: string): string[] {
+	const out = new Set<string>();
+	for (const match of code.matchAll(MODULE_SPECIFIER)) {
+		try {
+			const url = new URL(match[1]!, scriptUrl);
+			if (url.origin === new URL(origin).origin) out.add(url.pathname);
+		} catch {
+			// not a URL
+		}
+	}
+	return [...out];
+}
+
+/** The same-origin asset paths the given pages load, read from each page's HTML, and every module their scripts import. */
 export async function pageAssets(origin: string, pages: readonly string[]): Promise<string[]> {
 	const paths = new Set<string>();
 	for (const page of pages) {
 		const response = await fetch(new URL(page, origin)).catch(() => undefined);
 		if (!response?.ok) continue;
 		for (const path of assetPaths(await response.text(), origin)) paths.add(path);
+	}
+	const queue = [...paths].filter((path) => /\.m?js$/.test(path));
+	const seen = new Set(queue);
+	while (queue.length && seen.size < 5000) {
+		const path = queue.shift()!;
+		const url = new URL(path, origin).href;
+		const response = await fetch(url).catch(() => undefined);
+		if (!response?.ok) continue;
+		for (const imported of moduleImports(await response.text(), url, origin)) {
+			paths.add(imported);
+			if (!seen.has(imported)) {
+				seen.add(imported);
+				queue.push(imported);
+			}
+		}
 	}
 	return [...paths].sort();
 }
