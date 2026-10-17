@@ -1,0 +1,16 @@
+{
+	"rewrites": [
+		{
+			"source": "/",
+			"destination": "https://vite-dev-old.vercel.app/"
+		},
+		{
+			"source": "/:path*/",
+			"destination": "https://vite-dev-old.vercel.app/:path*/"
+		},
+		{
+			"source": "/:path*",
+			"destination": "https://vite-dev-old.vercel.app/:path*"
+		}
+	]
+}

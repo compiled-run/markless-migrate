@@ -1,0 +1,99 @@
+{
+	"cleanUrls": true,
+	"redirects": [
+		{
+			"source": "/guide/api-vite-runtime",
+			"destination": "/guide/api-environment",
+			"permanent": true
+		},
+		{
+			"source": "/guide/api-vite-runtime.html",
+			"destination": "/guide/api-environment",
+			"permanent": true
+		},
+		{
+			"source": "/guide/api-vite-environment",
+			"destination": "/guide/api-environment",
+			"permanent": true
+		},
+		{
+			"source": "/guide/api-vite-environment.html",
+			"destination": "/guide/api-environment",
+			"permanent": true
+		},
+		{
+			"source": "/guide/comparisons",
+			"destination": "/guide/why#how-vite-relates-to-other-unbundled-build-tools",
+			"permanent": true
+		},
+		{
+			"source": "/guide/comparisons.html",
+			"destination": "/guide/why#how-vite-relates-to-other-unbundled-build-tools",
+			"permanent": true
+		},
+		{
+			"source": "/guide/rolldown",
+			"destination": "https://v7.vite.dev/guide/rolldown",
+			"permanent": true
+		},
+		{
+			"source": "/guide/rolldown.html",
+			"destination": "https://v7.vite.dev/guide/rolldown",
+			"permanent": true
+		},
+		{
+			"source": "/:path((?!llms\\.txt$|llms-full\\.txt$).*)\\.txt",
+			"destination": "/:path.md",
+			"permanent": true
+		},
+		{
+			"source": "/llms.md",
+			"destination": "/llms.txt",
+			"permanent": true
+		},
+		{
+			"source": "/rolldown",
+			"destination": "/guide/rolldown",
+			"permanent": true
+		}
+	],
+	"rewrites": [],
+	"headers": [
+		{
+			"source": "/assets/:splat*",
+			"headers": [
+				{
+					"key": "cache-control",
+					"value": "max-age=31536000, immutable"
+				}
+			]
+		},
+		{
+			"source": "/:splat*.svg",
+			"headers": [
+				{
+					"key": "cache-control",
+					"value": "max-age=604800, immutable"
+				}
+			]
+		},
+		{
+			"source": "/:splat*.png",
+			"headers": [
+				{
+					"key": "cache-control",
+					"value": "max-age=604800, immutable"
+				}
+			]
+		},
+		{
+			"source": "/:splat*.webp",
+			"headers": [
+				{
+					"key": "cache-control",
+					"value": "max-age=604800, immutable"
+				}
+			]
+		}
+	]
+}

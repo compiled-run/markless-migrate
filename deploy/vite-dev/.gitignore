@@ -1,0 +1,5 @@
+old/public/
+.vercel/
+front/public/_migrate/shots/
+front/public/_migrate/report.html
+front/public/_migrate/report.json
