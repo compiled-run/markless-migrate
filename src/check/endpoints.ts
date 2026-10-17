@@ -300,7 +300,8 @@ export function compareEndpoint(route: string, olds: readonly EndpointCapture[],
 	const status = (c: EndpointCapture) => `${c.http.chain.at(-1)!.status} ${c.http.chain.at(-1)!.url}`;
 	if (others.every((o) => status(o) === status(a)) && status(a) !== status(next)) failures.push({ route, dimension: 'http', check: 'status', expected: status(a), actual: status(next), hint: HINTS.status });
 	if (others.every((o) => o.http.contentType === a.http.contentType) && a.http.contentType !== next.http.contentType) failures.push({ route, dimension: 'http', check: 'content-type', expected: a.http.contentType, actual: next.http.contentType, hint: HINTS.contentType });
-	if (next.http.status >= 400) return failures;
+	// A role the endpoint sends to a page (a signed-in visitor redirected to the dashboard): the page has its own check.
+	if (next.http.status >= 400 || (isPage(a.http.contentType) && isPage(next.http.contentType))) return failures;
 	const dimension = dimensionOf(a.kind);
 	if (a.kind !== next.kind) {
 		failures.push({ route, dimension, check: 'format', expected: a.kind, actual: next.kind, hint: HINTS.kind });

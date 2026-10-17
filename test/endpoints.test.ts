@@ -60,3 +60,9 @@ test('check --all adds the config redirects and the other trailing-slash form of
 	const { redirectTargets } = await import('../src/check/endpoints.ts');
 	assert.deepEqual(redirectTargets(['/', '/about/', '/blog', '/feed.xml', '/x?y=1', '/blog/'], [{ from: '/old-about' }, { from: '/old/:slug' }]), ['/about', '/old-about']);
 });
+
+test('an endpoint that sends this visitor to a page compares where it sends them, not the page markup', () => {
+	const page = (path: string, body: string): EndpointCapture => ({ http: { chain: [{ url: '/query', status: 302 }, { url: path, status: 200 }], status: 200, contentType: 'text/html' }, kind: endpointKind(path, 'text/html', body), body });
+	assert.deepEqual(compareEndpoint('/query', [page('/dashboard', '<!DOCTYPE html><p>old</p>')], page('/dashboard', '<!doctype html><p>new</p>')), []);
+	assert.equal(compareEndpoint('/query', [page('/dashboard', '<p>old</p>')], page('/elsewhere', '<p>new</p>'))[0]?.check, 'status');
+});
