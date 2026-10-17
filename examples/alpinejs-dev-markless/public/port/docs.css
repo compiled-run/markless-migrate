@@ -1,0 +1,114 @@
+/* From the inline <style> blocks in the body of alpinejs.dev docs pages. */
+[hover-scrollbar] { overflow-x: 'visible'; overflow-y: hidden; } [hover-scrollbar]:hover { overflow-y: auto }
+.markdown>*+* { margin-top: 1.5rem; }
+            .markdown p { line-height: 1.75; }
+            .markdown h1, .markdown h2, .markdown h3 { color: #2d3342; scroll-margin-top: 4.5rem; font-weight: 800; letter-spacing: -.025em; }
+            .markdown h1, .markdown h2 { border-bottom-width: 1px; border-color: #edf2f7; }
+            .markdown h1 { font-size: 2.25rem; }
+            .markdown h2 { font-size: 1.5rem; }
+            .markdown h3 { font-size: 1.25rem; }
+            .markdown ul { list-style-type: disc; }
+            .markdown a { color: hsl(192deg 51% 46%); font-weight: 600; }
+            .markdown h1 a, .markdown h2 a, .markdown h3 a { position: relative; color: #2d3342; font-weight: 800; }
+            .markdown h1 a::before, .markdown h2 a::before, .markdown h3 a::before {
+                position: absolute;
+                left: -1.35rem;
+                content: "# ";
+                color: rgba(175, 187, 199);
+                font-weight: 600;
+            }
+            .markdown h1 a:hover::before, .markdown h2 a:hover::before, .markdown h3 a:hover::before {
+                color: #7e8a9e;
+            }
+            .markdown code { white-space: nowrap; padding-top: .1rem; padding-bottom: .1rem; padding-left: .25rem; padding-right: .25rem; font-size: .875rem; font-weight: 600; border-radius: .25rem; background-color: #edf2f7; }
+            pre {
+                overflow-y: auto;
+                background: #f6f7f9;
+                font-size: .875rem;
+                border-radius: .25rem;
+                margin-top: 1rem;
+                margin-bottom: 1rem;
+                overflow-x: auto;
+                background: #f6f7f9;
+            }
+            pre code.torchlight {
+                display: block;
+                min-width: -webkit-max-content;
+                min-width: -moz-max-content;
+                min-width: max-content;
+                padding-top: 1rem;
+                padding-bottom: 1rem;
+                padding-left: 0;
+                padding-right: 0;
+                background-color: #f6f7f9 !important;
+                white-space: pre;
+                font-weight: 400;
+            }
+            pre code.torchlight .line {
+                padding-left: 1rem;
+                padding-right: 1rem;
+            }
+            pre code.torchlight .line-number,
+            pre code.torchlight .summary-caret {
+                margin-right: 1rem;
+            }
+            .markdown blockquote { font-size: .95em; color: #2d3748; padding: 1rem; border-left-width: 4px; border-color: rgba(119, 193, 210); background: #f6f7f9; }
+            .markdown table tbody td { border-color: #d8dee9; border-width: 1px; padding: .25rem .5rem }
+            .demo { background: white; padding: 1rem; border-width: 1px; border-radius: .25rem; border-color: #d8dee9; }
+            .demo li { list-style-position: inside; }
+            .demo button { padding: 0 .5rem; border-width: 1px; border-radius: .25rem; border-color: #a0aec0; background-color: #e2e8f0; }
+            .demo button:hover { background-color: #edf2f7; }
+            .demo input, .demo textarea, .demo select { padding: .25rem .5rem; border-width: 1px; border-radius: .25rem; border-color: #cbd5e0; }
+            .demo input[type="checkbox"] { padding: 0; }
+            .demo input[type="radio"] { padding: 0; border-radius: 999px; }
+            .demo select { padding-right: 2.5rem; }
+            /* .demo input[type="radio"] { border-radius: 999px; } */
+#crbnad {
+  width: 135px;
+  background-color: #fff;
+  border-radius: 3px;
+  font-size: 11px;
+}
+#crbnad a {
+  display: inline-block;
+  color: #4f5959;
+  font-weight: normal;
+}
+#crbnad span {
+  color: #4f5959;
+  display: block;
+}
+#crbnad img {
+  width: 125px;
+}
+#crbnad .carbon-img,
+#crbnad .carbon-text {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: normal;
+  color: #304455;
+}
+#crbnad .carbon-poweredby {
+  color: #aaa;
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  font-weight: normal;
+}
+/* Port: Alpine's x-transition on the mobile menu (transition ease-in-out duration-300 transform, translate-x-full <-> translate-x-0). */
+@keyframes menu-in {
+	from {
+		transform: translateX(100%);
+	}
+}
+@keyframes menu-out {
+	to {
+		transform: translateX(100%);
+	}
+}
+.menu-enter {
+	animation: menu-in 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.menu-leave {
+	animation: menu-out 300ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}

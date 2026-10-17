@@ -1,0 +1,120 @@
+OLD http://127.0.0.1:4410  vs  NEW http://127.0.0.1:4411
+
+pass  /examples/  (55 accepted) JS on the wire 281.2 kB -> 183.0 kB, run at load 96.9 kB -> 18.3 kB (uncompressed)
+      accepted rendered (desktop): accessibility tree  [e21cc14e56]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [1518916f0a]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [67b5ed883e]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [37664ad663]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [28a1e27627]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [6df81e3cdd]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [db3ade7c85]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [61c524bd45]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [fae23538b7]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [84566be49f]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [d313f6cbb7]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): visible text  [b84c9cd31d]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot  [f9cfec687e]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. Matches only a difference that starts at the badge's own link or covers just the badge's box (desktop and mobile). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [74ad66b0c4]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [ed0d635778]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [3a82d42f63]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [1c9b674bb1]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [b308f96b74]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [acd9ffdf62]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [100a074ab5]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [4a636052f2]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [e526a6ee54]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [772534984b]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [d02dcb45f5]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): visible text  [50faf65cf3]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (mobile): screenshot  [e1a620b457]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. Matches only a difference that starts at the badge's own link or covers just the badge's box (desktop and mobile). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted assets: script /js/class-tools.js  [b2937895f8]
+        reason:   htmx.org's own runtime (htmx.js, class-tools.js, preload.js, _hyperscript.js, and demo.js on the demo page): every old page loads it; the Markless port replaces what it did (boosted links aside, see below) and has none of it to serve. Unswitched routes still get these files from the old origin through the front door. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted assets: script /js/preload.js  [6cc0af0cf7]
+        reason:   htmx.org's own runtime (htmx.js, class-tools.js, preload.js, _hyperscript.js, and demo.js on the demo page): every old page loads it; the Markless port replaces what it did (boosted links aside, see below) and has none of it to serve. Unswitched routes still get these files from the old origin through the front door. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted assets: script /js/htmx.js  [fe144cb8b2]
+        reason:   htmx.org's own runtime (htmx.js, class-tools.js, preload.js, _hyperscript.js, and demo.js on the demo page): every old page loads it; the Markless port replaces what it did (boosted links aside, see below) and has none of it to serve. Unswitched routes still get these files from the old origin through the front door. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted assets: script /js/_hyperscript.js  [4705a092c9]
+        reason:   htmx.org's own runtime (htmx.js, class-tools.js, preload.js, _hyperscript.js, and demo.js on the demo page): every old page loads it; the Markless port replaces what it did (boosted links aside, see below) and has none of it to serve. Unswitched routes still get these files from the old origin through the front door. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in prefers-color-scheme: dark  [0d44d0d037]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in prefers-color-scheme: light  [f1f344cbcb]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 720px  [cab6edc095]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 721px  [16710a1abc]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 719px  [ca806c8ce4]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 639px  [70407ebfb7]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 640px  [99c4e97c4b]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 767px  [4ddd9033c3]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 768px  [2dacb71b91]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 1023px  [f9291b3594]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 1024px  [83c1da6821]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 1279px  [e6014acb39]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 1280px  [3f4f75bf04]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 1535px  [7e02561914]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 1536px  [3201897757]
+        reason:   Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted behaviour: click link "docs"  [2f33a7914a]
+        reason:   hx-boost and preload="mouseover": htmx turns a nav-link click into an XHR GET of the next page and a body swap (and fetches it again on hover). The port navigates normally to the same URL and page. Markless's client-side navigation is off because document.tsrx reads the URL to write each page's head (the router then loads whole pages), and most nav targets (reference, talk, essays) stay htmx pages during the migration. Owner decision: keep plain navigation, or move per-page heads into the pages and use Link. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted a11y: press Enter on link "docs"  [148bfeab97]
+        reason:   Same as the click: hx-boost fetches the next page by XHR; the port navigates normally to the same URL and page. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted behaviour: click link "reference"  [f339fb7213]
+        reason:   hx-boost and preload="mouseover": htmx turns a nav-link click into an XHR GET of the next page and a body swap (and fetches it again on hover). The port navigates normally to the same URL and page. Markless's client-side navigation is off because document.tsrx reads the URL to write each page's head (the router then loads whole pages), and most nav targets (reference, talk, essays) stay htmx pages during the migration. Owner decision: keep plain navigation, or move per-page heads into the pages and use Link. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted a11y: press Enter on link "reference"  [c825186da6]
+        reason:   Same as the click: hx-boost fetches the next page by XHR; the port navigates normally to the same URL and page. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted behaviour: click link "examples"  [b66cc85cc1]
+        reason:   hx-boost and preload="mouseover": htmx turns a nav-link click into an XHR GET of the next page and a body swap (and fetches it again on hover). The port navigates normally to the same URL and page. Markless's client-side navigation is off because document.tsrx reads the URL to write each page's head (the router then loads whole pages), and most nav targets (reference, talk, essays) stay htmx pages during the migration. Owner decision: keep plain navigation, or move per-page heads into the pages and use Link. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted a11y: press Enter on link "examples"  [025bf7a896]
+        reason:   Same as the click: hx-boost fetches the next page by XHR; the port navigates normally to the same URL and page. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted behaviour: click link "talk"  [667b05b126]
+        reason:   hx-boost and preload="mouseover": htmx turns a nav-link click into an XHR GET of the next page and a body swap (and fetches it again on hover). The port navigates normally to the same URL and page. Markless's client-side navigation is off because document.tsrx reads the URL to write each page's head (the router then loads whole pages), and most nav targets (reference, talk, essays) stay htmx pages during the migration. Owner decision: keep plain navigation, or move per-page heads into the pages and use Link. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted a11y: press Enter on link "talk"  [e28869a686]
+        reason:   Same as the click: hx-boost fetches the next page by XHR; the port navigates normally to the same URL and page. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted behaviour: click link "essays"  [f0cb3de577]
+        reason:   hx-boost and preload="mouseover": htmx turns a nav-link click into an XHR GET of the next page and a body swap (and fetches it again on hover). The port navigates normally to the same URL and page. Markless's client-side navigation is off because document.tsrx reads the URL to write each page's head (the router then loads whole pages), and most nav targets (reference, talk, essays) stay htmx pages during the migration. Owner decision: keep plain navigation, or move per-page heads into the pages and use Link. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted a11y: press Enter on link "essays"  [1a7163953c]
+        reason:   Same as the click: hx-boost fetches the next page by XHR; the port navigates normally to the same URL and page. (Claude Code (converting agent), for owner review, 2026-10-17)
+
+Accepted differences that no longer match anything (remove them from .migrate/accepted.json):
+  ** a11y: focus order (Tab)*  (Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. Its three links are the last tab stops.)
+
+1 of 1 routes green, 55 accepted differences.
+Report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/htmx-org-markless/.migrate/report.json
+Visual report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/htmx-org-markless/.migrate/report.html

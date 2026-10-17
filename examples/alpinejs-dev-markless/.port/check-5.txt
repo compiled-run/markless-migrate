@@ -1,0 +1,102 @@
+OLD http://127.0.0.1:4420  vs  NEW http://127.0.0.1:4421
+
+FAIL  /directives/model  [rendered, assets, css, a11y, behaviour, network, weight]  JS on the wire 267.6 kB -> 829.1 kB, run at load 100.7 kB -> 17.7 kB (uncompressed)
+      rendered (desktop): accessibility tree  [211694bfd4]
+        expected:   - link "ads via Carbon":
+        actual:   (absent)
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders link "ads via Carbon" (source not found); new pages/directives/model.tsrx:10 doesn't
+      rendered (desktop): accessibility tree  [b2d2019aa3]
+        expected:     - /url: https://srv.carbonads.net/ads/click/x/GTND4277CVYI52JNCESLYKQUF67D5K7YCWYD6Z3JCAAI62JLC6SIVKQKC6SIVK37CTSITK7NCWAIP2JUF6ADP5QLHEYI55QLC6AIE53ECTNCYB...
+        actual:   (absent)
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders span "click" (source not found); new pages/directives/model.tsrx:23 renders it
+      rendered (desktop): accessibility tree  [87b70fbd3b]
+        expected:     - img "ads via Carbon"
+        actual:   (absent)
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders img "ads via Carbon" (source not found); new pages/directives/model.tsrx:10 doesn't
+      rendered (desktop): accessibility tree  [de5cec9804]
+        expected:   - link "Evaluate how Google Cloud products perform in real-world scenarios with $300 free credit.":
+        actual:   (absent)
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders link "Evaluate how Google Cloud products perfo..." (source not found); new pages/directives/model.tsrx:10 doesn't
+      rendered (desktop): accessibility tree  [b2d2019aa3]
+        expected:     - /url: https://srv.carbonads.net/ads/click/x/GTND4277CVYI52JNCESLYKQUF67D5K7YCWYD6Z3JCAAI62JLC6SIVKQKC6SIVK37CTSITK7NCWAIP2JUF6ADP5QLHEYI55QLC6AIE53ECTNCYB...
+        actual:   (absent)
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders span "click" (source not found); new pages/directives/model.tsrx:23 renders it
+      rendered (desktop): accessibility tree  [211694bfd4]
+        expected:   - link "ads via Carbon":
+        actual:   (absent)
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders link "ads via Carbon" (source not found); new pages/directives/model.tsrx:10 doesn't
+      rendered (desktop): accessibility tree  [8cf5732d59]
+        expected:     - /url: http://carbonads.net/?utm_source=alpinejsdev&utm_medium=ad_via_link&utm_campaign=in_unit&utm_term=carbon
+        actual:   (absent)
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): visible text  [db0c2e2e1c]
+        expected: Evaluate how Google Cloud products perform in real-world scenarios with $300 free credit.
+        actual:   (absent)
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders link "Evaluate how Google Cloud products perfo..." (source not found); new pages/directives/model.tsrx:10 doesn't
+      rendered (desktop): visible text  [36148044b2]
+        expected: ADS VIA CARBON
+        actual:   (absent)
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+      css (desktop): computed style of generic (complementary/div)  [affe893802]
+        expected: font-size: 11px; line-height: 16.5px
+        actual:   font-size: 16px; line-height: 24px
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:10 renders it
+      assets (desktop): image #4 https://srv.carbonads.net/static/30242/e1130b06f0096fbbd01a8d15bca68e6092cdebef  [e6a2d3946f]
+        expected: 260x200
+        actual:   (absent)
+        fix:      The image at this position in the page loads a different picture or fails to load.
+      assets (desktop): image #5 https://ad.doubleclick.net/ddm/trackimp/N5295.3091281BUYSELLADS/B34721851.453481139;dc_trk_aid=652439748;dc_trk_cid=246706990;ord=176847840;dc_lat=;dc_rdid=;tag_for_child_directed_treatment=;tfua=;gdpr=$;gdpr_consent=$;ltd=;dc_tdv=1?  [35da607786]
+        expected: broken
+        actual:   (absent)
+        fix:      The image at this position in the page loads a different picture or fails to load.
+      assets (mobile): image #4 https://srv.carbonads.net/static/30242/e1130b06f0096fbbd01a8d15bca68e6092cdebef  [ae8dda87ea]
+        expected: 260x200
+        actual:   (absent)
+        fix:      The image at this position in the page loads a different picture or fails to load.
+      assets (mobile): image #5 https://ad.doubleclick.net/ddm/trackimp/N5295.3091281BUYSELLADS/B34721851.453481151;dc_trk_aid=650200766;dc_trk_cid=246706990;ord=176847840;dc_lat=;dc_rdid=;tag_for_child_directed_treatment=;tfua=;gdpr=$;gdpr_consent=$;ltd=;dc_tdv=1?  [cea91069ad]
+        expected: broken
+        actual:   (absent)
+        fix:      The image at this position in the page loads a different picture or fails to load.
+      assets: script /livewire/livewire.js?id=de3fca26689cb5a39af4  [2b9e508e69]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      network: browser request missing  [13113fa828]
+        expected: browser GET srv.carbonads.net/ads/CESI52JU.json?segment=placement:alpinejsdev
+        actual:   (not requested)
+        fix:      The old page makes this request in the browser and the new one does not. Port the code that fetches it, or the page loses what the response fed.
+      network: browser request missing  [f9134ea277]
+        expected: browser GET alpinejs.dev/build/assets/app.9ea156ae.css
+        actual:   (not requested)
+        fix:      The old page makes this request in the browser and the new one does not. Port the code that fetches it, or the page loses what the response fed.
+      weight: JavaScript downloaded  [08deb35cf3]
+        expected: at most 275076 bytes (old: 274041)
+        actual:   848970 bytes; new-only scripts: /build/chunk-DayD5OiB.js (690393 B), /build/chunk-CIWOy3e9.js (10765 B), /build/chunk-5nRizQet2.js (7525 B)
+        fix:      The new route downloads or runs more JavaScript at load than the old one. Look at the scripts only the new route loads.
+      behaviour: click button "Change Message"  [f770c4351f]
+        expected: appears: - textbox "Type message...": changed; disappears: - textbox "Type message..."; console errors: (none)
+        actual:   appears: (nothing); disappears: (nothing); console errors: Resume locator c0:h8 expected <a> at DOM order index 10 but found <button>.
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders button "Change Message" (source not found); new components/model-demos.tsrx:28 renders it
+      a11y: press Enter on button "Change Message"  [fddfe59463]
+        expected: appears: - textbox "Type message...": changed; disappears: - textbox "Type message..."; console errors: (none)
+        actual:   appears: (nothing); disappears: (nothing); console errors: Resume locator c0:h8 expected <a> at DOM order index 10 but found <button>. | Resume locator c0:h8 ex...
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "Change Message" (source not found); new components/model-demos.tsrx:28 renders it
+      a11y: press Space on button "Change Message"  [d7e4755727]
+        expected: appears: - textbox "Type message...": changed; disappears: - textbox "Type message..."; console errors: (none)
+        actual:   appears: (nothing); disappears: (nothing); console errors: Resume locator c0:h8 expected <a> at DOM order index 10 but found <button>. | Resume locator c0:h8 ex...
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "Change Message" (source not found); new components/model-demos.tsrx:28 renders it
+
+0 of 1 routes green, 1 red.
+Report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.json
+Visual report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.html

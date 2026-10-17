@@ -1,0 +1,453 @@
+OLD http://127.0.0.1:4420  vs  NEW http://127.0.0.1:4421
+
+FAIL  /                  [rendered, visual, a11y]  (3 accepted) JS on the wire 256.8 kB -> 331.2 kB, run at load 76.6 kB -> 17.7 kB (uncompressed)
+      rendered (desktop): accessibility tree  [f0a4b497fa]
+        expected: (absent)
+        actual:   - paragraph:
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders paragraph "Declare a new Alpine component and its d..." (source not found); new pages/index.tsrx:119 renders it
+      rendered (desktop): accessibility tree  [4c9737aa79]
+        expected: (absent)
+        actual:     - text: Unofficial demo copy of
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [fde3c8d5d0]
+        expected: (absent)
+        actual:     - link "alpinejs.dev":
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/index.tsrx:551 renders link "alpinejs.dev"
+      rendered (desktop): accessibility tree  [4c8658f031]
+        expected: (absent)
+        actual:       - /url: https://alpinejs.dev
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/index.tsrx:551 renders link "alpinejs.dev"
+      rendered (desktop): accessibility tree  [137ad8d5d5]
+        expected: (absent)
+        actual:     - text: ", moved to"
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [a9f0a784b9]
+        expected: (absent)
+        actual:     - link "Markless":
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/index.tsrx:551 renders link "Markless"
+      rendered (desktop): accessibility tree  [9dd73e0362]
+        expected: (absent)
+        actual:       - /url: https://markless.dev
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [34d8efd8f9]
+        expected: (absent)
+        actual:     - text: with markless-migrate. Alpine.js and its documentation © Caleb Porzio and contributors,
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [380cc42a17]
+        expected: (absent)
+        actual:     - link "MIT license":
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/index.tsrx:551 renders link "MIT license"
+      rendered (desktop): accessibility tree  [6124545c34]
+        expected: (absent)
+        actual:       - /url: https://github.com/alpinejs/alpine/blob/main/LICENSE.md
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [feda957955]
+        expected: (absent)
+        actual:     - text: .
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): visible text  [c594f290f8]
+        expected: (absent)
+        actual:   Unofficial demo copy of alpinejs.dev, moved to Markless with markless-migrate. Alpine.js and its documentation © Caleb Porzio and contributors, MIT license.
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    new pages/index.tsrx:551 renders link "alpinejs.dev"
+      visual (desktop): screenshot  [731bdc6617]
+        expected: same pixels outside the noise mask
+        actual:   2570 pixels (0.04%) differ in x=914..1270, y=730..793, first near link "Markless" (paragraph>link/a), link "alpinejs.dev" (paragraph>link/a)
+        fix:      Pixels differ in the named region. If the DOM and CSS checks pass, look at fonts, images and stacking there.
+        where:    new pages/index.tsrx:551 renders link "Markless"
+      a11y (desktop): focus order (Tab), first difference at stop 11  [5ff7fd4dbc]
+        expected: ... 9. link "Neon Neon is a complete backend built around Lakebase Postgres, for developers, startups, and agent platforms, by Databricks. neon.com →" → 10. lin...
+        actual:   ... 9. link "Neon Neon is a complete backend built around Lakebase Postgres, for developers, startups, and agent platforms, by Databricks. neon.com →" → 10. lin...
+        fix:      Tab reaches elements in a different order. Keep the old DOM order for interactive elements, remove positive tabindex values, and keep buttons and links as real buttons and links.
+      rendered (mobile): accessibility tree  [cb4aa37050]
+        expected: (absent)
+        actual:   - paragraph:
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders paragraph "Declare a new Alpine component and its d..." (source not found); new pages/index.tsrx:119 renders it
+      rendered (mobile): accessibility tree  [9f0acaa539]
+        expected: (absent)
+        actual:     - text: Unofficial demo copy of
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [069bfbe9dc]
+        expected: (absent)
+        actual:     - link "alpinejs.dev":
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/index.tsrx:551 renders link "alpinejs.dev"
+      rendered (mobile): accessibility tree  [34c6233b59]
+        expected: (absent)
+        actual:       - /url: https://alpinejs.dev
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/index.tsrx:551 renders link "alpinejs.dev"
+      rendered (mobile): accessibility tree  [40ab8cccca]
+        expected: (absent)
+        actual:     - text: ", moved to"
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [057cf01a4f]
+        expected: (absent)
+        actual:     - link "Markless":
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/index.tsrx:551 renders link "Markless"
+      rendered (mobile): accessibility tree  [db8b2f5274]
+        expected: (absent)
+        actual:       - /url: https://markless.dev
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [494be624f1]
+        expected: (absent)
+        actual:     - text: with markless-migrate. Alpine.js and its documentation © Caleb Porzio and contributors,
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [bd6b24d914]
+        expected: (absent)
+        actual:     - link "MIT license":
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/index.tsrx:551 renders link "MIT license"
+      rendered (mobile): accessibility tree  [a1c03732eb]
+        expected: (absent)
+        actual:       - /url: https://github.com/alpinejs/alpine/blob/main/LICENSE.md
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [12ca773446]
+        expected: (absent)
+        actual:     - text: .
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): visible text  [c106de0425]
+        expected: (absent)
+        actual:   Unofficial demo copy of alpinejs.dev, moved to Markless with markless-migrate. Alpine.js and its documentation © Caleb Porzio and contributors, MIT license.
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    new pages/index.tsrx:551 renders link "alpinejs.dev"
+      visual (mobile): screenshot  [f90cc32e7e]
+        expected: same pixels outside the noise mask
+        actual:   2831 pixels (0.11%) differ in x=33..391, y=798..861, first near link "Markless" (paragraph>link/a), link "alpinejs.dev" (paragraph>link/a)
+        fix:      Pixels differ in the named region. If the DOM and CSS checks pass, look at fonts, images and stacking there.
+        where:    new pages/index.tsrx:551 renders link "Markless"
+      accepted assets: script /livewire/livewire.js?id=de3fca26689cb5a39af4  [7bd1f11b01]
+        reason:   Livewire's runtime: every old page loads it, but no page uses Livewire (no wire: components); the Markless port has no Livewire to serve. Unswitched routes still get it from the old origin through the front door. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted network: browser request missing  [a50de8545d]
+        reason:   Checked through a local mirror of production: the old page names its stylesheet by its absolute production URL (https://alpinejs.dev/build/assets/app.9ea156ae.css), which then reads as another origin. The port serves the same file at the same path from its own origin; against production both are the same-origin request. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted weight: JavaScript downloaded  [9b6648ba4c]
+        reason:   Markless 0.4.0 limitation, measured: it modulepreloads every page's whole template as client render data (630 kB on /directives/model, 295 kB on /start-here, about 70 kB on /), while the JavaScript that runs at load drops from 76 to 84 kB down to 18 kB. Nothing in the port avoids it; the render data is the framework's. (Claude Code (converting agent), for owner review, 2026-10-17)
+      visual (desktop): screenshot in viewport width 639px  [132f4fa3e0]
+        expected: same pixels outside the noise mask
+        actual:   2473 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 640px  [58dad15752]
+        expected: same pixels outside the noise mask
+        actual:   2473 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 767px  [7ed761c3c2]
+        expected: same pixels outside the noise mask
+        actual:   2473 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 768px  [52b78cd190]
+        expected: same pixels outside the noise mask
+        actual:   2230 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1023px  [6fd923ac39]
+        expected: same pixels outside the noise mask
+        actual:   2586 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1024px  [754fed0980]
+        expected: same pixels outside the noise mask
+        actual:   2586 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1279px  [8699c5dff9]
+        expected: same pixels outside the noise mask
+        actual:   2570 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1280px  [a4f46399f6]
+        expected: same pixels outside the noise mask
+        actual:   2570 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1535px  [df46384d60]
+        expected: same pixels outside the noise mask
+        actual:   2230 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+FAIL  /start-here        [rendered, visual, a11y]  (4 accepted) JS on the wire 258.0 kB -> 508.5 kB, run at load 83.7 kB -> 17.8 kB (uncompressed)
+      rendered (desktop): accessibility tree  [68bf4542ba]
+        expected: (absent)
+        actual:     - paragraph:
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [99e0b42177]
+        expected: (absent)
+        actual:       - text: Unofficial demo copy of
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [c3171dc753]
+        expected: (absent)
+        actual:       - link "alpinejs.dev":
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/start-here.tsrx:185 renders link "alpinejs.dev"
+      rendered (desktop): accessibility tree  [6bb9969f88]
+        expected: (absent)
+        actual:         - /url: https://alpinejs.dev
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/start-here.tsrx:185 renders link "alpinejs.dev"
+      rendered (desktop): accessibility tree  [be3efaa2b3]
+        expected: (absent)
+        actual:       - text: ", moved to"
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [300850ff25]
+        expected: (absent)
+        actual:       - link "Markless":
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/start-here.tsrx:185 renders link "Markless"
+      rendered (desktop): accessibility tree  [16a8a78759]
+        expected: (absent)
+        actual:         - /url: https://markless.dev
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [9b6e77b8c9]
+        expected: (absent)
+        actual:       - text: with markless-migrate. Alpine.js and its documentation © Caleb Porzio and contributors,
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [7d2daa4eb0]
+        expected: (absent)
+        actual:       - link "MIT license":
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/start-here.tsrx:185 renders link "MIT license"
+      rendered (desktop): accessibility tree  [44f81db524]
+        expected: (absent)
+        actual:         - /url: https://github.com/alpinejs/alpine/blob/main/LICENSE.md
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [bbc01cd8ef]
+        expected: (absent)
+        actual:       - text: .
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): visible text  [7cf919454e]
+        expected: (absent)
+        actual:   Unofficial demo copy of alpinejs.dev, moved to Markless with markless-migrate. Alpine.js and its documentation © Caleb Porzio and contributors, MIT license.
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    new pages/start-here.tsrx:185 renders link "alpinejs.dev"
+      visual (desktop): screenshot  [dd4ba7b1ee]
+        expected: same pixels outside the noise mask
+        actual:   2621 pixels (0.02%) differ in x=736..1270, y=374..793, first near generic ">" (main/span), generic "></" (main/span)
+        fix:      Pixels differ in the named region. If the DOM and CSS checks pass, look at fonts, images and stacking there.
+        where:    old renders span ">" (source not found); new pages/start-here.tsrx:23 renders it
+      a11y (desktop): axe color-contrast: Elements must meet minimum color contrast ratio thresholds  [1b5fc1d91e]
+        expected: 91 elements
+        actual:   94 (serious): #docsearch > .DocSearch.DocSearch-Button[type="button"] > .DocSearch-Button-Container > .DocSearch-Button-Placeholder, .left-0 > .space-y-2.text-g...
+        fix:      axe-core finds this accessibility violation on the new page more often than on the old one. Fix the elements it names: https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=axeAPI
+      rendered (mobile): accessibility tree  [d89c5debe2]
+        expected: (absent)
+        actual:     - paragraph:
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [6e1c1c034d]
+        expected: (absent)
+        actual:       - text: Unofficial demo copy of
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [d2a6d26996]
+        expected: (absent)
+        actual:       - link "alpinejs.dev":
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/start-here.tsrx:185 renders link "alpinejs.dev"
+      rendered (mobile): accessibility tree  [fcf6cd6b42]
+        expected: (absent)
+        actual:         - /url: https://alpinejs.dev
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/start-here.tsrx:185 renders link "alpinejs.dev"
+      rendered (mobile): accessibility tree  [0d95821246]
+        expected: (absent)
+        actual:       - text: ", moved to"
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [25e61fce54]
+        expected: (absent)
+        actual:       - link "Markless":
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/start-here.tsrx:185 renders link "Markless"
+      rendered (mobile): accessibility tree  [29f4c17251]
+        expected: (absent)
+        actual:         - /url: https://markless.dev
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [65383cf00e]
+        expected: (absent)
+        actual:       - text: with markless-migrate. Alpine.js and its documentation © Caleb Porzio and contributors,
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [6cc1c8c6fb]
+        expected: (absent)
+        actual:       - link "MIT license":
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/start-here.tsrx:185 renders link "MIT license"
+      rendered (mobile): accessibility tree  [5a978f2adf]
+        expected: (absent)
+        actual:         - /url: https://github.com/alpinejs/alpine/blob/main/LICENSE.md
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [1017694b70]
+        expected: (absent)
+        actual:       - text: .
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): visible text  [7fc6cd4e2a]
+        expected: (absent)
+        actual:   Unofficial demo copy of alpinejs.dev, moved to Markless with markless-migrate. Alpine.js and its documentation © Caleb Porzio and contributors, MIT license.
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    new pages/start-here.tsrx:185 renders link "alpinejs.dev"
+      visual (mobile): screenshot  [50645d884f]
+        expected: same pixels outside the noise mask
+        actual:   3444 pixels (0.08%) differ in x=24..380, y=783..837, first near link "Markless" (main>paragraph>link/a), link "alpinejs.dev" (main>paragraph>link/a)
+        fix:      Pixels differ in the named region. If the DOM and CSS checks pass, look at fonts, images and stacking there.
+        where:    new pages/start-here.tsrx:185 renders link "Markless"
+      accepted assets: script /cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js  [7f07805500]
+        reason:   Cloudflare's email-obfuscation decoder, injected by Cloudflare in front of the old site: it turned alpinejs@3.x.x inside the code samples into an [email protected] link and decodes it back in the browser. The port writes the decoded text, so there is nothing to decode. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted assets: script /livewire/livewire.js?id=de3fca26689cb5a39af4  [687ea9c164]
+        reason:   Livewire's runtime: every old page loads it, but no page uses Livewire (no wire: components); the Markless port has no Livewire to serve. Unswitched routes still get it from the old origin through the front door. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted network: browser request missing  [7acd9fa0b3]
+        reason:   Checked through a local mirror of production: the old page names its stylesheet by its absolute production URL (https://alpinejs.dev/build/assets/app.9ea156ae.css), which then reads as another origin. The port serves the same file at the same path from its own origin; against production both are the same-origin request. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted weight: JavaScript downloaded  [39b65f9d86]
+        reason:   Markless 0.4.0 limitation, measured: it modulepreloads every page's whole template as client render data (630 kB on /directives/model, 295 kB on /start-here, about 70 kB on /), while the JavaScript that runs at load drops from 76 to 84 kB down to 18 kB. Nothing in the port avoids it; the render data is the framework's. (Claude Code (converting agent), for owner review, 2026-10-17)
+      visual (desktop): screenshot in prefers-reduced-motion: no-preference  [1f0e956199]
+        expected: same pixels outside the noise mask
+        actual:   2621 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 768px  [e47ec6df28]
+        expected: same pixels outside the noise mask
+        actual:   2170 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 769px  [6ce61c0530]
+        expected: same pixels outside the noise mask
+        actual:   2203 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+FAIL  /directives/model  [rendered, visual, a11y]  (3 accepted) JS on the wire 256.8 kB -> 840.2 kB, run at load 84.0 kB -> 17.7 kB (uncompressed)
+      rendered (desktop): accessibility tree  [27933b2679]
+        expected: (absent)
+        actual:     - paragraph:
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders paragraph "The default throttle interval is 250 mil..." (source not found); new pages/directives/model.tsrx:188 renders it
+      rendered (desktop): accessibility tree  [ae6d134a13]
+        expected: (absent)
+        actual:       - text: Unofficial demo copy of
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [2254bf5184]
+        expected: (absent)
+        actual:       - link "alpinejs.dev":
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/directives/model.tsrx:233 renders link "alpinejs.dev"
+      rendered (desktop): accessibility tree  [0a09ce55c5]
+        expected: (absent)
+        actual:         - /url: https://alpinejs.dev
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/directives/model.tsrx:233 renders link "alpinejs.dev"
+      rendered (desktop): accessibility tree  [ef8a459cce]
+        expected: (absent)
+        actual:       - text: ", moved to"
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [f1367b837e]
+        expected: (absent)
+        actual:       - link "Markless":
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/directives/model.tsrx:233 renders link "Markless"
+      rendered (desktop): accessibility tree  [1e98293355]
+        expected: (absent)
+        actual:         - /url: https://markless.dev
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [d74c73e5b4]
+        expected: (absent)
+        actual:       - text: with markless-migrate. Alpine.js and its documentation © Caleb Porzio and contributors,
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [ea97156383]
+        expected: (absent)
+        actual:       - link "MIT license":
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/directives/model.tsrx:233 renders link "MIT license"
+      rendered (desktop): accessibility tree  [f726b34159]
+        expected: (absent)
+        actual:         - /url: https://github.com/alpinejs/alpine/blob/main/LICENSE.md
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [9fb592a647]
+        expected: (absent)
+        actual:       - text: .
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): visible text  [146272c971]
+        expected: (absent)
+        actual:   Unofficial demo copy of alpinejs.dev, moved to Markless with markless-migrate. Alpine.js and its documentation © Caleb Porzio and contributors, MIT license.
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    new pages/directives/model.tsrx:233 renders link "alpinejs.dev"
+      visual (desktop): screenshot  [5b5472771b]
+        expected: same pixels outside the noise mask
+        actual:   2823 pixels (0.02%) differ in x=912..1270, y=737..793, first near link "Markless" (main>paragraph>link/a), link "alpinejs.dev" (main>paragraph>link/a)
+        fix:      Pixels differ in the named region. If the DOM and CSS checks pass, look at fonts, images and stacking there.
+        where:    new pages/directives/model.tsrx:233 renders link "Markless"
+      a11y (desktop): axe color-contrast: Elements must meet minimum color contrast ratio thresholds  [e2b3c56399]
+        expected: 127 elements
+        actual:   130 (serious): #docsearch > .DocSearch.DocSearch-Button[type="button"] > .DocSearch-Button-Container > .DocSearch-Button-Placeholder, .left-0 > .space-y-2.text-...
+        fix:      axe-core finds this accessibility violation on the new page more often than on the old one. Fix the elements it names: https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=axeAPI
+      rendered (mobile): accessibility tree  [d61324602b]
+        expected: (absent)
+        actual:     - paragraph:
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders paragraph "The default throttle interval is 250 mil..." (source not found); new pages/directives/model.tsrx:188 renders it
+      rendered (mobile): accessibility tree  [93476e50bd]
+        expected: (absent)
+        actual:       - text: Unofficial demo copy of
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [a8a8b9e5d3]
+        expected: (absent)
+        actual:       - link "alpinejs.dev":
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/directives/model.tsrx:233 renders link "alpinejs.dev"
+      rendered (mobile): accessibility tree  [d2eba4372f]
+        expected: (absent)
+        actual:         - /url: https://alpinejs.dev
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/directives/model.tsrx:233 renders link "alpinejs.dev"
+      rendered (mobile): accessibility tree  [75a06a0077]
+        expected: (absent)
+        actual:       - text: ", moved to"
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [4d5e73d016]
+        expected: (absent)
+        actual:       - link "Markless":
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/directives/model.tsrx:233 renders link "Markless"
+      rendered (mobile): accessibility tree  [f5034559c0]
+        expected: (absent)
+        actual:         - /url: https://markless.dev
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [b95fac7625]
+        expected: (absent)
+        actual:       - text: with markless-migrate. Alpine.js and its documentation © Caleb Porzio and contributors,
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [d8d53b729f]
+        expected: (absent)
+        actual:       - link "MIT license":
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    new pages/directives/model.tsrx:233 renders link "MIT license"
+      rendered (mobile): accessibility tree  [0c533c4dce]
+        expected: (absent)
+        actual:         - /url: https://github.com/alpinejs/alpine/blob/main/LICENSE.md
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [9176972c28]
+        expected: (absent)
+        actual:       - text: .
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): visible text  [e8e3128883]
+        expected: (absent)
+        actual:   Unofficial demo copy of alpinejs.dev, moved to Markless with markless-migrate. Alpine.js and its documentation © Caleb Porzio and contributors, MIT license.
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    new pages/directives/model.tsrx:233 renders link "alpinejs.dev"
+      visual (mobile): screenshot  [445438fdd4]
+        expected: same pixels outside the noise mask
+        actual:   3083 pixels (0.07%) differ in x=24..380, y=783..837, first near link "Markless" (main>paragraph>link/a), link "alpinejs.dev" (main>paragraph>link/a)
+        fix:      Pixels differ in the named region. If the DOM and CSS checks pass, look at fonts, images and stacking there.
+        where:    new pages/directives/model.tsrx:233 renders link "Markless"
+      accepted assets: script /livewire/livewire.js?id=de3fca26689cb5a39af4  [2b9e508e69]
+        reason:   Livewire's runtime: every old page loads it, but no page uses Livewire (no wire: components); the Markless port has no Livewire to serve. Unswitched routes still get it from the old origin through the front door. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted network: browser request missing  [f9134ea277]
+        reason:   Checked through a local mirror of production: the old page names its stylesheet by its absolute production URL (https://alpinejs.dev/build/assets/app.9ea156ae.css), which then reads as another origin. The port serves the same file at the same path from its own origin; against production both are the same-origin request. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted weight: JavaScript downloaded  [40db4df353]
+        reason:   Markless 0.4.0 limitation, measured: it modulepreloads every page's whole template as client render data (630 kB on /directives/model, 295 kB on /start-here, about 70 kB on /), while the JavaScript that runs at load drops from 76 to 84 kB down to 18 kB. Nothing in the port avoids it; the render data is the framework's. (Claude Code (converting agent), for owner review, 2026-10-17)
+      visual (desktop): screenshot in prefers-reduced-motion: no-preference  [413b44cc5c]
+        expected: same pixels outside the noise mask
+        actual:   2823 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 768px  [6c4b72dada]
+        expected: same pixels outside the noise mask
+        actual:   2560 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 769px  [032b05c443]
+        expected: same pixels outside the noise mask
+        actual:   2561 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+
+0 of 3 routes green, 3 red, 10 accepted differences.
+Report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.json
+Visual report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.html

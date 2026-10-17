@@ -1,0 +1,312 @@
+OLD http://127.0.0.1:4420  vs  NEW http://127.0.0.1:4421
+
+FAIL  /      [css, a11y, behaviour]  (3 accepted) JS on the wire 259.4 kB -> 323.1 kB, run at load 76.6 kB -> 17.7 kB (uncompressed)
+      css (desktop): computed style of generic (body/div)  [430897c70e]
+        expected: align-items: center; caret-color: rgb(45, 52, 65); color: rgb(45, 52, 65); column-rule-color: rgb(45, 52, 65); display: flex; flex-direction: column; margin-inl...
+        actual:   align-items: normal; caret-color: rgb(0, 0, 0); color: rgb(0, 0, 0); column-rule-color: rgb(0, 0, 0); display: block; flex-direction: row; margin-inline-end: 0p...
+        fix:      Old rule: `.items-center` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36452) sets align-items with `center`; `.text-gray-800` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:54966) sets color with `rgb(45 52 65/var(--tw-text-opacity, 1))`, reading --tw-text-opacity from `.text-gray-800` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:54966) (` 1`); `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `.flex-col` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36278) sets flex-direction with `column`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-end with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-start with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-left with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-right with `auto`; `.pb-24` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50815) sets padding-bottom with `6rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-left with `2rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-right with `2rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`; `.text-center` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51659) sets text-align with `center`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:18 renders it
+      css (desktop): computed style of generic (body/div)  [5ff54e9e60]
+        expected: align-items: normal; display: block; flex-direction: row; margin-inline-end: 252.5px; margin-inline-start: 252.5px; margin-left: 252.5px; margin-right: 252.5px;...
+        actual:   align-items: center; display: flex; flex-direction: column; margin-inline-end: 315px; margin-inline-start: 315px; margin-left: 315px; margin-right: 315px; paddi...
+        fix:      Old rule: `.items-center` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36452) sets align-items with `center`; `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `.flex-col` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36278) sets flex-direction with `column`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-end with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-start with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-left with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-right with `auto`; `.pb-24` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50815) sets padding-bottom with `6rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-left with `2rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-right with `2rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`; `.text-center` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51659) sets text-align with `center`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:96 renders it
+      css (desktop): computed style of generic (body/div)  [47071a6e4e]
+        expected: background-color: rgb(255, 255, 255); border-block-end-color: rgb(45, 52, 65); border-block-end-width: 4px; border-block-start-color: rgb(45, 52, 65); border-bl...
+        actual:   background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); borde...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-end with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-start with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-left with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-right with `auto`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:102 renders it
+      css (desktop): computed style of generic (body/div)  [c4cee773b5]
+        expected: background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); borde...
+        actual:   background-color: rgb(255, 255, 255); border-block-end-color: rgb(45, 52, 65); border-block-end-width: 4px; border-block-start-color: rgb(45, 52, 65); border-bl...
+        fix:      Old rule: `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `.flex-col` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36278) sets flex-direction with `column`; `.pb-24` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50815) sets padding-bottom with `6rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-left with `2rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-right with `2rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:52 renders it
+      css (desktop): computed style of generic (body/div)  [d119437602]
+        expected: align-items: center; bottom: 0px; flex-direction: row; inset-block-end: 0px; inset-block-start: 0px; inset-inline-end: 0px; inset-inline-start: 0px; left: 0px; ...
+        actual:   align-items: normal; bottom: auto; flex-direction: column; inset-block-end: auto; inset-block-start: auto; inset-inline-end: auto; inset-inline-start: auto; lef...
+        fix:      Old rule: `.items-center` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36452) sets align-items with `center`; `.flex-col` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36278) sets flex-direction with `column`; `.pb-24` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50815) sets padding-bottom with `6rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-left with `2rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-right with `2rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:88 renders it
+      css (desktop): computed style of generic (body/div)  [300f560aa3]
+        expected: align-items: normal; border-block-end-color: rgb(45, 52, 65); border-block-end-width: 4px; border-block-start-color: rgb(45, 52, 65); border-block-start-width: ...
+        actual:   align-items: center; border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); border-block-start-w...
+        fix:      Old rule: `.items-center` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36452) sets align-items with `center`; `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-end with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-right with `auto`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:89 renders it
+      css (desktop): computed style of generic (body/div)  [e382c24926]
+        expected: border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); border-block-start-width: 0px; border-bot...
+        actual:   border-block-end-color: rgb(45, 52, 65); border-block-end-width: 4px; border-block-start-color: rgb(45, 52, 65); border-block-start-width: 4px; border-bottom-co...
+        fix:      Old rule: `.text-gray-800` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:54966) sets color with `rgb(45 52 65/var(--tw-text-opacity, 1))`, reading --tw-text-opacity from `.text-gray-800` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:54966) (` 1`); `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-end with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-right with `auto`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:52 renders it
+      css (desktop): computed style of generic (body/div)  [e0f5d1bcfa]
+        expected: caret-color: rgb(45, 52, 65); color: rgb(45, 52, 65); column-rule-color: rgb(45, 52, 65); margin-inline-end: 315px; margin-inline-start: 315px; margin-left: 315...
+        actual:   caret-color: rgb(0, 0, 0); color: rgb(0, 0, 0); column-rule-color: rgb(0, 0, 0); margin-inline-end: 0px; margin-inline-start: 0px; margin-left: 0px; margin-righ...
+        fix:      Old rule: `.text-gray-800` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:54966) sets color with `rgb(45 52 65/var(--tw-text-opacity, 1))`, reading --tw-text-opacity from `.text-gray-800` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:54966) (` 1`); `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-end with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-start with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-left with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-right with `auto`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-left with `2rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-right with `2rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:103 renders it
+      css (desktop): computed style of generic (body/div)  [60deb51b20]
+        expected: margin-inline-end: 0px; margin-inline-start: 0px; margin-left: 0px; margin-right: 0px; padding-block-start: 0px; padding-inline-end: 0px; padding-inline-start: ...
+        actual:   margin-inline-end: 315px; margin-inline-start: 315px; margin-left: 315px; margin-right: 315px; padding-block-start: 128px; padding-inline-end: 32px; padding-inl...
+        fix:      Old rule: `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-end with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-start with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-left with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-right with `auto`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-left with `2rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-right with `2rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:104 renders it
+      css (desktop): computed style of generic (body/div)  [612957aa6d]
+        expected: font-size: 20px; line-height: 28px; padding-block-start: 64px; padding-top: 64px
+        actual:   font-size: 16px; line-height: 24px; padding-block-start: 0px; padding-top: 0px
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:58 renders it
+      css (desktop): computed style of generic (body/div)  [4a91d34919]
+        expected: display: flex; font-size: 16px; justify-content: center; line-height: 24px
+        actual:   display: block; font-size: 20px; justify-content: normal; line-height: 28px
+        fix:      Old rule: `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:63 renders it
+      css (desktop): computed style of generic (body/div)  [386f32e379]
+        expected: bottom: 0px; display: block; inset-block-end: 0px; inset-block-start: 0px; inset-inline-end: 0px; inset-inline-start: 0px; justify-content: normal; left: 0px; o...
+        actual:   bottom: auto; display: flex; inset-block-end: auto; inset-block-start: auto; inset-inline-end: auto; inset-inline-start: auto; justify-content: center; left: au...
+        fix:      Old rule: `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-left with `2rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-right with `2rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:68 renders it
+      css (desktop): computed style of generic (body/div)  [d6705c64a2]
+        expected: bottom: auto; inset-block-end: auto; inset-block-start: auto; inset-inline-end: auto; inset-inline-start: auto; left: auto; margin-inline-end: 108px; margin-inl...
+        actual:   bottom: 0px; inset-block-end: 0px; inset-block-start: 0px; inset-inline-end: 0px; inset-inline-start: 0px; left: 0px; margin-inline-end: 0px; margin-inline-star...
+        fix:      Old rule: `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-end with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-start with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-left with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-right with `auto`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-left with `2rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-right with `2rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:109 renders it
+      css (desktop): computed style of generic (body/div)  [9a1569221e]
+        expected: margin-inline-end: 0px; margin-inline-start: 0px; margin-left: 0px; margin-right: 0px; padding-block-start: 0px; padding-top: 0px
+        actual:   margin-inline-end: 108px; margin-inline-start: 108px; margin-left: 108px; margin-right: 108px; padding-block-start: 48px; padding-top: 48px
+        fix:      Old rule: `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-end with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-start with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-left with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-right with `auto`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:93 renders it
+      css (desktop): computed style of generic (body/div)  [4bda0facbd]
+        expected: display: flex
+        actual:   display: block
+        fix:      Old rule: `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:94 renders it
+      css (desktop): computed style of generic (body/div)  [d673bd2b26]
+        expected: display: block; min-block-size: auto; min-height: auto; min-inline-size: auto; min-width: auto; padding-block-end: 32px; padding-block-start: 32px; padding-bott...
+        actual:   display: flex; min-block-size: 0px; min-height: 0px; min-inline-size: 0px; min-width: 0px; padding-block-end: 0px; padding-block-start: 0px; padding-bottom: 0px...
+        fix:      Old rule: `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `.pb-24` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50815) sets padding-bottom with `6rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:95 renders it
+      css (desktop): computed style of generic (body/div)  [afd501530c]
+        expected: padding-block-end: 0px; padding-block-start: 0px; padding-bottom: 0px; padding-top: 0px
+        actual:   padding-block-end: 32px; padding-block-start: 32px; padding-bottom: 32px; padding-top: 32px
+        fix:      Old rule: `.pb-24` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50815) sets padding-bottom with `6rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:96 renders it
+      css (desktop): computed style of generic (body/div)  [725b7ea074]
+        expected: background-color: rgb(255, 255, 255); border-block-end-color: rgb(45, 52, 65); border-block-start-color: rgb(45, 52, 65); border-block-start-width: 4px; border-...
+        actual:   background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-start-color: rgb(229, 229, 229); border-block-start-width: 0px; bor...
+        fix:      Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:102 renders it
+      css (desktop): computed style of generic (body/div)  [7592f0df15]
+        expected: background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-start-color: rgb(229, 229, 229); border-block-start-width: 0px; bor...
+        actual:   background-color: rgb(255, 255, 255); border-block-end-color: rgb(45, 52, 65); border-block-start-color: rgb(45, 52, 65); border-block-start-width: 4px; border-...
+        fix:      Old rule: `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `.flex-col` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36278) sets flex-direction with `column`; `.pb-24` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50815) sets padding-bottom with `6rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-left with `2rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-right with `2rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:103 renders it
+      css (desktop): computed style of generic (body/div)  [f3abb4c508]
+        expected: border-block-end-color: rgb(45, 52, 65); border-block-start-color: rgb(45, 52, 65); border-block-start-width: 4px; border-bottom-color: rgb(45, 52, 65); border-...
+        actual:   border-block-end-color: rgb(229, 229, 229); border-block-start-color: rgb(229, 229, 229); border-block-start-width: 0px; border-bottom-color: rgb(229, 229, 229)...
+        fix:      Old rule: `*` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2265) sets box-sizing with `border-box`; `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `.flex-col` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36278) sets flex-direction with `column`; `.pb-24` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50815) sets padding-bottom with `6rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-left with `2rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-right with `2rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:104 renders it
+      css (desktop): computed styles  [01e91f18c8]
+        expected: 
+        actual:   87 more elements differ
+        fix:      Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+      css (mobile): computed style of generic (body/div)  [4edc9dcd02]
+        expected: align-items: center; caret-color: rgb(45, 52, 65); color: rgb(45, 52, 65); column-rule-color: rgb(45, 52, 65); display: flex; flex-direction: column; outline-co...
+        actual:   align-items: normal; caret-color: rgb(0, 0, 0); color: rgb(0, 0, 0); column-rule-color: rgb(0, 0, 0); display: block; flex-direction: row; outline-color: rgb(0,...
+        fix:      Old rule: `.items-center` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36452) sets align-items with `center`; `.text-gray-800` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:54966) sets color with `rgb(45 52 65/var(--tw-text-opacity, 1))`, reading --tw-text-opacity from `.text-gray-800` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:54966) (` 1`); `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `.flex-col` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36278) sets flex-direction with `column`; `.pb-24` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50815) sets padding-bottom with `6rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-left with `2rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-right with `2rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`; `.text-center` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51659) sets text-align with `center`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:18 renders it
+      css (mobile): computed style of generic (body/div)  [a1789dcfa9]
+        expected: align-items: normal; display: block; flex-direction: row; padding-block-end: 0px; padding-block-start: 0px; padding-bottom: 0px; padding-inline-end: 16px; paddi...
+        actual:   align-items: center; display: flex; flex-direction: column; padding-block-end: 96px; padding-block-start: 128px; padding-bottom: 96px; padding-inline-end: 32px;...
+        fix:      Old rule: `.items-center` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36452) sets align-items with `center`; `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `.flex-col` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36278) sets flex-direction with `column`; `.pb-24` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50815) sets padding-bottom with `6rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-left with `2rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-right with `2rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`; `.text-center` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51659) sets text-align with `center`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:96 renders it
+      css (mobile): computed style of generic (body/div)  [4c2a6f50f9]
+        expected: background-color: rgb(255, 255, 255); border-block-end-color: rgb(45, 52, 65); border-block-end-width: 4px; border-block-start-color: rgb(45, 52, 65); border-bl...
+        actual:   background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); borde...
+        fix:      Old rule: `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-left with `2rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-right with `2rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:102 renders it
+      css (mobile): computed style of generic (body/div)  [a1db88219d]
+        expected: background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); borde...
+        actual:   background-color: rgb(255, 255, 255); border-block-end-color: rgb(45, 52, 65); border-block-end-width: 4px; border-block-start-color: rgb(45, 52, 65); border-bl...
+        fix:      Old rule: `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `.flex-col` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36278) sets flex-direction with `column`; `.pb-24` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50815) sets padding-bottom with `6rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-left with `2rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-right with `2rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:52 renders it
+      css (mobile): computed style of generic (body/div)  [160f9709b7]
+        expected: align-items: center; bottom: 0px; flex-direction: row; inset-block-end: 0px; inset-block-start: 0px; inset-inline-end: 0px; inset-inline-start: 0px; left: 0px; ...
+        actual:   align-items: normal; bottom: auto; flex-direction: column; inset-block-end: auto; inset-block-start: auto; inset-inline-end: auto; inset-inline-start: auto; lef...
+        fix:      Old rule: `.items-center` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36452) sets align-items with `center`; `.flex-col` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36278) sets flex-direction with `column`; `.pb-24` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50815) sets padding-bottom with `6rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-left with `2rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-right with `2rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:88 renders it
+      css (mobile): computed style of generic (body/div)  [a05063046f]
+        expected: align-items: normal; border-block-end-color: rgb(45, 52, 65); border-block-end-width: 4px; border-block-start-color: rgb(45, 52, 65); border-block-start-width: ...
+        actual:   align-items: center; border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); border-block-start-w...
+        fix:      Old rule: `.items-center` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36452) sets align-items with `center`; `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-end with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-right with `auto`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:89 renders it
+      css (mobile): computed style of generic (body/div)  [434dba5476]
+        expected: border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); border-block-start-width: 0px; border-bot...
+        actual:   border-block-end-color: rgb(45, 52, 65); border-block-end-width: 4px; border-block-start-color: rgb(45, 52, 65); border-block-start-width: 4px; border-bottom-co...
+        fix:      Old rule: `.text-gray-800` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:54966) sets color with `rgb(45 52 65/var(--tw-text-opacity, 1))`, reading --tw-text-opacity from `.text-gray-800` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:54966) (` 1`); `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-end with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-right with `auto`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:52 renders it
+      css (mobile): computed style of generic (body/div)  [16d2b7a3b0]
+        expected: caret-color: rgb(45, 52, 65); color: rgb(45, 52, 65); column-rule-color: rgb(45, 52, 65); outline-color: rgb(45, 52, 65); padding-block-start: 128px; padding-in...
+        actual:   caret-color: rgb(0, 0, 0); color: rgb(0, 0, 0); column-rule-color: rgb(0, 0, 0); outline-color: rgb(0, 0, 0); padding-block-start: 0px; padding-inline-end: 0px;...
+        fix:      Old rule: `.text-gray-800` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:54966) sets color with `rgb(45 52 65/var(--tw-text-opacity, 1))`, reading --tw-text-opacity from `.text-gray-800` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:54966) (` 1`); `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-left with `2rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-right with `2rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:103 renders it
+      css (mobile): computed style of generic (body/div)  [ff6435b06a]
+        expected: padding-block-start: 0px; padding-inline-end: 0px; padding-inline-start: 0px; padding-left: 0px; padding-right: 0px; padding-top: 0px
+        actual:   padding-block-start: 128px; padding-inline-end: 32px; padding-inline-start: 32px; padding-left: 32px; padding-right: 32px; padding-top: 128px
+        fix:      Old rule: `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-left with `2rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-right with `2rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:104 renders it
+      css (mobile): computed style of generic (body/div)  [b50a0522fe]
+        expected: font-size: 20px; line-height: 28px; padding-block-start: 64px; padding-top: 64px
+        actual:   font-size: 16px; line-height: 24px; padding-block-start: 0px; padding-top: 0px
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:58 renders it
+      css (mobile): computed style of generic (body/div)  [dcffffa4d9]
+        expected: display: flex; font-size: 16px; justify-content: center; line-height: 24px
+        actual:   display: block; font-size: 20px; justify-content: normal; line-height: 28px
+        fix:      Old rule: `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:63 renders it
+      css (mobile): computed style of generic (body/div)  [3d8e2ebe27]
+        expected: bottom: 0px; display: block; inset-block-end: 0px; inset-block-start: 0px; inset-inline-end: 0px; inset-inline-start: 0px; justify-content: normal; left: 0px; p...
+        actual:   bottom: auto; display: flex; inset-block-end: auto; inset-block-start: auto; inset-inline-end: auto; inset-inline-start: auto; justify-content: center; left: au...
+        fix:      Old rule: `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-left with `2rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-right with `2rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:68 renders it
+      css (mobile): computed style of generic (body/div)  [fe8f82c7d9]
+        expected: bottom: auto; inset-block-end: auto; inset-block-start: auto; inset-inline-end: auto; inset-inline-start: auto; left: auto; padding-block-end: 64px; padding-blo...
+        actual:   bottom: 0px; inset-block-end: 0px; inset-block-start: 0px; inset-inline-end: 0px; inset-inline-start: 0px; left: 0px; padding-block-end: 0px; padding-block-star...
+        fix:      Old rule: `.pb-24` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50815) sets padding-bottom with `6rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-left with `2rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-right with `2rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:109 renders it
+      css (mobile): computed style of generic (body/div)  [3291805237]
+        expected: padding-block-end: 0px; padding-block-start: 0px; padding-bottom: 0px; padding-top: 0px
+        actual:   padding-block-end: 64px; padding-block-start: 48px; padding-bottom: 64px; padding-top: 48px
+        fix:      Old rule: `.pb-24` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50815) sets padding-bottom with `6rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:93 renders it
+      css (mobile): computed style of generic (body/div)  [c0a83e4877]
+        expected: display: flex; flex-direction: column
+        actual:   display: block; flex-direction: row
+        fix:      Old rule: `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `.flex-col` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36278) sets flex-direction with `column`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:94 renders it
+      css (mobile): computed style of generic (body/div)  [301a22fc7c]
+        expected: display: block; flex-direction: row; min-block-size: auto; min-height: auto; min-inline-size: auto; min-width: auto; padding-block-end: 16px; padding-block-star...
+        actual:   display: flex; flex-direction: column; min-block-size: 0px; min-height: 0px; min-inline-size: 0px; min-width: 0px; padding-block-end: 0px; padding-block-start: ...
+        fix:      Old rule: `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `.flex-col` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36278) sets flex-direction with `column`; `.pb-24` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50815) sets padding-bottom with `6rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:95 renders it
+      css (mobile): computed style of generic (body/div)  [709b9839f9]
+        expected: background-color: rgb(255, 255, 255); border-block-end-color: rgb(45, 52, 65); border-block-end-width: 4px; border-block-start-color: rgb(45, 52, 65); border-bl...
+        actual:   background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); borde...
+        fix:      Old rule: `.pb-24` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50815) sets padding-bottom with `6rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:96 renders it
+      css (mobile): computed style of generic (body/div)  [abba2b8b27]
+        expected: background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); borde...
+        actual:   background-color: rgb(255, 255, 255); border-block-end-color: rgb(45, 52, 65); border-block-end-width: 4px; border-block-start-color: rgb(45, 52, 65); border-bl...
+        fix:      Old rule: `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `.flex-col` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36278) sets flex-direction with `column`; `.pb-24` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50815) sets padding-bottom with `6rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-left with `2rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-right with `2rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:103 renders it
+      css (mobile): computed style of generic (body/div)  [9f472c32e7]
+        expected: justify-content: normal; overflow-block: visible; overflow-inline: visible; overflow-x: visible; overflow-y: visible; padding-block-end: 0px; padding-block-star...
+        actual:   justify-content: center; overflow-block: auto; overflow-inline: hidden; overflow-x: hidden; overflow-y: auto; padding-block-end: 32px; padding-block-start: 32px...
+        fix:      Old rule: `.pb-24` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50815) sets padding-bottom with `6rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-left with `2rem`; `.px-8` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50002) sets padding-right with `2rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:104 renders it
+      css (mobile): computed style of generic (body/div)  [301a22fc7c]
+        expected: display: block; flex-direction: row; min-block-size: auto; min-height: auto; min-inline-size: auto; min-width: auto; padding-block-end: 16px; padding-block-star...
+        actual:   display: flex; flex-direction: column; min-block-size: 0px; min-height: 0px; min-inline-size: 0px; min-width: 0px; padding-block-end: 0px; padding-block-start: ...
+        fix:      Old rule: `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `.flex-col` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36278) sets flex-direction with `column`; `.pb-24` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50815) sets padding-bottom with `6rem`; `.pt-32` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51486) sets padding-top with `8rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:112 renders it
+      css (mobile): computed styles  [6e6065c32e]
+        expected: 
+        actual:   57 more elements differ
+        fix:      Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+      accepted assets: script /livewire/livewire.js?id=de3fca26689cb5a39af4  [7bd1f11b01]
+        reason:   Livewire's runtime: every old page loads it, but no page uses Livewire (no wire: components); the Markless port has no Livewire to serve. Unswitched routes still get it from the old origin through the front door. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted network: browser request missing  [a50de8545d]
+        reason:   Checked through a local mirror of production: the old page names its stylesheet by its absolute production URL (https://alpinejs.dev/build/assets/app.9ea156ae.css), which then reads as another origin. The port serves the same file at the same path from its own origin; against production both are the same-origin request. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted weight: JavaScript downloaded  [ac380cffd5]
+        reason:   Markless 0.4.0 limitation, measured: it modulepreloads every page's whole template as client render data (630 kB on /directives/model, 295 kB on /start-here), while the JavaScript that runs at load drops from 84 kB to 18 kB. Nothing in the port avoids it; the render data is the framework's. (Claude Code (converting agent), for owner review, 2026-10-17)
+      css (desktop): computed style in viewport width 768px: generic (body/div)  [baeebe1469]
+        expected: margin-inline-end: 59px; margin-inline-start: 59px; margin-left: 59px; margin-right: 59px
+        actual:   margin-inline-end: 0px; margin-inline-start: 0px; margin-left: 0px; margin-right: 0px
+        fix:      Old rule: `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-end with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-start with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-left with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-right with `auto`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders div (source not found); new pages/index.tsrx:18 renders it
+      css (desktop): computed style in viewport width 768px: generic (body/div)  [5d9191ab25]
+        expected: margin-inline-end: -7px; margin-inline-start: 0px; margin-left: 0px; margin-right: -7px
+        actual:   margin-inline-end: 59px; margin-inline-start: 59px; margin-left: 59px; margin-right: 59px
+        fix:      Old rule: `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-end with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-start with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-left with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-right with `auto`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders div (source not found); new pages/index.tsrx:18 renders it
+      css (desktop): computed style in viewport width 768px: generic (body/div)  [32b32d3eed]
+        expected: margin-inline-end: 0px; margin-right: 0px
+        actual:   margin-inline-end: -7px; margin-right: -7px
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders div (source not found); new pages/index.tsrx:18 renders it
+      css (desktop): computed style in viewport width 768px: generic (body/div)  [baeebe1469]
+        expected: margin-inline-end: 59px; margin-inline-start: 59px; margin-left: 59px; margin-right: 59px
+        actual:   margin-inline-end: 0px; margin-inline-start: 0px; margin-left: 0px; margin-right: 0px
+        fix:      Old rule: `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-end with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-start with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-left with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-right with `auto`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders div (source not found); new pages/index.tsrx:18 renders it
+      css (desktop): computed style in viewport width 768px: generic (body/div)  [656c760925]
+        expected: margin-inline-end: 0px; margin-inline-start: 0px; margin-left: 0px; margin-right: 0px
+        actual:   margin-inline-end: 59px; margin-inline-start: 59px; margin-left: 59px; margin-right: 59px
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders div (source not found); new pages/index.tsrx:18 renders it
+      css (desktop): computed style in viewport width 768px  [657909ee0f]
+        expected: 
+        actual:   5 more elements differ
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+      css (desktop): computed style in viewport width 769px: generic (body/div)  [e3f62b2a21]
+        expected: margin-inline-end: 59.5px; margin-inline-start: 59.5px; margin-left: 59.5px; margin-right: 59.5px
+        actual:   margin-inline-end: 0px; margin-inline-start: 0px; margin-left: 0px; margin-right: 0px
+        fix:      Old rule: `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-end with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-start with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-left with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-right with `auto`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders div (source not found); new pages/index.tsrx:18 renders it
+      css (desktop): computed style in viewport width 769px: generic (body/div)  [d68929e0aa]
+        expected: margin-inline-end: -6px; margin-inline-start: 0px; margin-left: 0px; margin-right: -6px
+        actual:   margin-inline-end: 59.5px; margin-inline-start: 59.5px; margin-left: 59.5px; margin-right: 59.5px
+        fix:      Old rule: `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-end with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-start with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-left with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-right with `auto`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders div (source not found); new pages/index.tsrx:18 renders it
+      css (desktop): computed style in viewport width 769px: generic (body/div)  [54af1b01cc]
+        expected: margin-inline-end: 0px; margin-right: 0px
+        actual:   margin-inline-end: -6px; margin-right: -6px
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders div (source not found); new pages/index.tsrx:18 renders it
+      css (desktop): computed style in viewport width 769px: generic (body/div)  [e3f62b2a21]
+        expected: margin-inline-end: 59.5px; margin-inline-start: 59.5px; margin-left: 59.5px; margin-right: 59.5px
+        actual:   margin-inline-end: 0px; margin-inline-start: 0px; margin-left: 0px; margin-right: 0px
+        fix:      Old rule: `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-end with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-inline-start with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-left with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-right with `auto`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders div (source not found); new pages/index.tsrx:18 renders it
+      css (desktop): computed style in viewport width 769px: generic (body/div)  [ebacf01b5d]
+        expected: margin-inline-end: 0px; margin-inline-start: 0px; margin-left: 0px; margin-right: 0px
+        actual:   margin-inline-end: 59.5px; margin-inline-start: 59.5px; margin-left: 59.5px; margin-right: 59.5px
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders div (source not found); new pages/index.tsrx:18 renders it
+      css (desktop): computed style in viewport width 769px  [0c284ac2d3]
+        expected: 
+        actual:   5 more elements differ
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+      behaviour: click button "6 Properties"  [6dae188c49]
+        expected: appears: - text: $store | - text: Access a global store registered using | - code: Alpine.store(...) | - code: <h1 x-text="$store.site.title"></h1> | - text: $e...
+        actual:   appears: (nothing); disappears: (nothing)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders button "6 Properties" (source not found); new pages/index.tsrx:70 renders it
+      a11y: press Enter on button "6 Properties"  [cba9179923]
+        expected: appears: - text: $store | - text: Access a global store registered using | - code: Alpine.store(...) | - code: <h1 x-text="$store.site.title"></h1> | - text: $e...
+        actual:   appears: (nothing); disappears: (nothing)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "6 Properties" (source not found); new pages/index.tsrx:70 renders it
+      a11y: press Space on button "6 Properties"  [126ccd84d4]
+        expected: appears: - text: $store | - text: Access a global store registered using | - code: Alpine.store(...) | - code: <h1 x-text="$store.site.title"></h1> | - text: $e...
+        actual:   appears: (nothing); disappears: (nothing)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "6 Properties" (source not found); new pages/index.tsrx:70 renders it
+      behaviour: click button "2 Methods"  [3e62960016]
+        expected: appears: - text: Alpine.data | - text: Reuse a data object and reference it using | - code: x-data | - code: <div x-data="dropdown"> | - code: "Alpine.data('dro...
+        actual:   appears: (nothing); disappears: (nothing); console errors: Cannot read properties of undefined (reading 'key') | Cannot read properties of undefined (reading 'k...
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders button "2 Methods" (source not found); new pages/index.tsrx:70 renders it
+      a11y: press Enter on button "2 Methods"  [34992d2cc6]
+        expected: appears: - text: Alpine.data | - text: Reuse a data object and reference it using | - code: x-data | - code: <div x-data="dropdown"> | - code: "Alpine.data('dro...
+        actual:   appears: (nothing); disappears: (nothing); console errors: Cannot read properties of undefined (reading 'key') | Cannot read properties of undefined (reading 'k...
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "2 Methods" (source not found); new pages/index.tsrx:70 renders it
+      a11y: press Space on button "2 Methods"  [cc40052c23]
+        expected: appears: - text: Alpine.data | - text: Reuse a data object and reference it using | - code: x-data | - code: <div x-data="dropdown"> | - code: "Alpine.data('dro...
+        actual:   appears: (nothing); disappears: (nothing); console errors: Cannot read properties of undefined (reading 'key') | Cannot read properties of undefined (reading 'k...
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "2 Methods" (source not found); new pages/index.tsrx:70 renders it
+
+Accepted differences that no longer match anything (remove them from .migrate/accepted.json):
+  ** assets: script /cdn-cgi/scripts/*/cloudflare-static/email-decode.min.js  (Cloudflare's email-obfuscation decoder, injected by Cloudflare in front of the old site: it turned alpinejs@3.x.x inside the code samples into an [email protected] link and decodes it back in the browser. The port writes the decoded text, so there is nothing to decode.)
+
+0 of 1 routes green, 1 red, 3 accepted differences.
+Report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.json
+Visual report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.html

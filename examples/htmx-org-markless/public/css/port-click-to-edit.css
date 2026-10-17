@@ -1,0 +1,51 @@
+/* From the inline <style> blocks in the body of https://htmx.org/examples/click-to-edit/ */
+#demo-server-info {
+      padding: 8px;
+      position: fixed;
+      bottom: 0;
+      right: 0;
+      left: 0;
+      height: 64px;
+      width: 100vw;
+      background-color: whitesmoke;
+      border-top: 2px solid gray;
+      overflow: hide;
+      margin: 0px;
+      z-index: 1;
+  }
+  #demo-server-info.show {
+      max-height: 45vh;
+      height: 500px;
+      overflow: scroll;
+  }
+  #demo-activity {
+      height:300px
+  }
+
+  #demo-activity div {
+      vertical-align: top
+  }
+
+  #demo-activity ol li {
+      list-style-position: inside;
+  }
+
+  #demo-canvas {
+      margin-bottom: 500px;
+      padding-top: 12px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    #demo-server-info {
+      background-color: var(--footerBackground);
+    }
+  }
+/* Port: htmx focuses the swapped-in form's autofocus field; this no-op animation's start tells the page the form is visible. */
+@keyframes swapped-in {
+	from {
+		opacity: 1;
+	}
+}
+.swapped-in {
+	animation: swapped-in 1ms;
+}

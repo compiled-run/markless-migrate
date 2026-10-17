@@ -1,0 +1,716 @@
+<body>
+	<header class="bg-white md:fixed md:left-0 md:right-0 md:top-0 md:z-30 md:h-[5rem]">
+		<div class="flex items-center justify-between pt-3">
+			<div class="py-0 pl-6 text-2xl font-semibold text-gray-800 hover:text-gray-900 md:w-64">
+				<a href="/" class="flex items-center">
+					<img src="/alpine_long.svg" class="w-[200px] md:w-[290px]" alt="" />
+				</a>
+			</div>
+			<div class="hidden items-center justify-end space-x-6 py-4 pr-6 text-gray-800 md:flex">
+				<div>
+					<div id="docsearch"></div>
+				</div>
+				<a href="https://github.com/alpinejs/alpine" class="block hover:text-gray-600">
+					<svg class="h-5 w-5 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+						<title>GitHub</title>
+						<path d="M10 0a10 10 0 0 0-3.16 19.49c.5.1.68-.22.68-.48l-.01-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.08 2.91.83.1-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.1.39-1.99 1.03-2.69a3.6 3.6 0 0 1 .1-2.64s.84-.27 2.75 1.02a9.58 9.58 0 0 1 5 0c1.91-1.3 2.75-1.02 2.75-1.02.55 1.37.2 2.4.1 2.64.64.7 1.03 1.6 1.03 2.69 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85l-.01 2.75c0 .26.18.58.69.48A10 10 0 0 0 10 0"></path>
+					</svg>
+				</a>
+				<a href="https://twitter.com/Alpine_JS" class="block hover:text-gray-600">
+					<svg class="h-5 w-5 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+						<title>Twitter</title>
+						<path d="M6.29 18.25c7.55 0 11.67-6.25 11.67-11.67v-.53c.8-.59 1.49-1.3 2.04-2.13-.75.33-1.54.55-2.36.65a4.12 4.12 0 0 0 1.8-2.27c-.8.48-1.68.81-2.6 1a4.1 4.1 0 0 0-7 3.74 11.65 11.65 0 0 1-8.45-4.3 4.1 4.1 0 0 0 1.27 5.49C2.01 8.2 1.37 8.03.8 7.7v.05a4.1 4.1 0 0 0 3.3 4.03 4.1 4.1 0 0 1-1.86.07 4.1 4.1 0 0 0 3.83 2.85A8.23 8.23 0 0 1 0 16.4a11.62 11.62 0 0 0 6.29 1.84"></path>
+					</svg>
+				</a>
+				<a href="https://alpinejs.codewithhugo.com/chat/" class="block hover:text-gray-600">
+					<svg class="h-5 w-5 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 146 146">
+						<title>Discord</title>
+						<path d="M107.75 125.001s-4.5-5.375-8.25-10.125c16.375-4.625 22.625-14.875 22.625-14.875-5.125 3.375-10 5.75-14.375 7.375-6.25 2.625-12.25 4.375-18.125 5.375-12 2.25-23 1.625-32.375-.125-7.125-1.375-13.25-3.375-18.375-5.375-2.875-1.125-6-2.5-9.125-4.25-.375-.25-.75-.375-1.125-.625-.25-.125-.375-.25-.5-.375-2.25-1.25-3.5-2.125-3.5-2.125s6 10 21.875 14.75c-3.75 4.75-8.375 10.375-8.375 10.375-27.625-.875-38.125-19-38.125-19 0-40.25 18-72.875 18-72.875 18-13.5 35.125-13.125 35.125-13.125l1.25 1.5c-22.5 6.5-32.875 16.375-32.875 16.375s2.75-1.5 7.375-3.625c13.375-5.875 24-7.5 28.375-7.875.75-.125 1.375-.25 2.125-.25 7.625-1 16.25-1.25 25.25-.25 11.875 1.375 24.625 4.875 37.625 12 0 0-9.875-9.375-31.125-15.875l1.75-2S110 19.626 128 33.126c0 0 18 32.625 18 72.875 0 0-10.625 18.125-38.25 19zM49.625 66.626c-7.125 0-12.75 6.25-12.75 13.875s5.75 13.875 12.75 13.875c7.125 0 12.75-6.25 12.75-13.875.125-7.625-5.625-13.875-12.75-13.875zm45.625 0c-7.125 0-12.75 6.25-12.75 13.875s5.75 13.875 12.75 13.875c7.125 0 12.75-6.25 12.75-13.875s-5.625-13.875-12.75-13.875z" fill-rule="nonzero"></path>
+					</svg>
+				</a>
+			</div>
+			<div class="flex items-center pr-6 md:hidden">
+				{" "}
+				<button class="text-gray-600 focus:outline-none">
+					<span class="sr-only">Show navigation</span>
+					<svg class="h-6 w-6 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+						<path d="M0 3h20v2H0V3zm0 6h20v2H0V9zm0 6h20v2H0v-2z"></path>
+					</svg>
+				</button>
+				{" "}
+				<div class="fixed top-0 bottom-0 right-0 z-[199] w-1/2 overflow-y-auto bg-gray-100 p-6 shadow-xl md:top-[4rem]">
+					<div class="flex justify-end">
+						<button class="text-gray-600 focus:outline-none">
+							<span class="sr-only">Close navigation</span>
+							<svg class="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24">
+								{" "}
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+								{" "}
+							</svg>
+						</button>
+					</div>
+					<ul class="space-y-2 text-gray-800">
+						<li class="-ml-6 border-l-4 border-gray-700 pl-5 font-semibold">
+							<a href="/start-here" class="hover:text-gray-900">Start Here</a>
+						</li>
+						<li class="font-medium">
+							<a href="/upgrade-guide" class="hover:text-gray-900">Upgrade From V2</a>
+						</li>
+						<li>
+							{" "}
+							<span class="font-medium">Essentials</span>
+							{" "}
+							<ul class="pl-3">
+								<li class="">
+									<a href="/essentials/installation" class="hover:text-gray-900">Installation</a>
+								</li>
+								<li class="">
+									<a href="/essentials/state" class="hover:text-gray-900">State</a>
+								</li>
+								<li class="">
+									<a href="/essentials/templating" class="hover:text-gray-900">Templating</a>
+								</li>
+								<li class="">
+									<a href="/essentials/events" class="hover:text-gray-900">Events</a>
+								</li>
+								<li class="">
+									<a href="/essentials/lifecycle" class="hover:text-gray-900">Lifecycle</a>
+								</li>
+							</ul>
+						</li>
+						<li>
+							{" "}
+							{" "}
+							<a href="/component/dropdown" class="font-medium hover:text-gray-900">
+								<div class="relative"> UI Components </div>
+							</a>
+							<ul class="relative pl-3 font-medium">
+								<a href="/component/dropdown" class="font-medium hover:text-gray-900">
+									<div class="absolute inset-0 bg-gradient-to-b from-[#fff2] to-gray-100"></div>
+								</a>
+								<li>
+									<a href="/component/dropdown" class="font-medium hover:text-gray-900"></a>
+									<a href="/component/dropdown">Dropdown</a>
+								</li>
+								<li>
+									<a href="/component/modal">Modal</a>
+								</li>
+							</ul>
+						</li>
+						<li>
+							{" "}
+							<span class="font-medium">Directives</span>
+							{" "}
+							<ul class="pl-3">
+								<li class="">
+									<a href="/directives/data" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>data</a>
+								</li>
+								<li class="">
+									<a href="/directives/init" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>init</a>
+								</li>
+								<li class="">
+									<a href="/directives/show" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>show</a>
+								</li>
+								<li class="">
+									<a href="/directives/bind" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>bind</a>
+								</li>
+								<li class="">
+									<a href="/directives/on" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>on</a>
+								</li>
+								<li class="">
+									<a href="/directives/text" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>text</a>
+								</li>
+								<li class="">
+									<a href="/directives/html" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>html</a>
+								</li>
+								<li class="">
+									<a href="/directives/model" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>model</a>
+								</li>
+								<li class="">
+									<a href="/directives/modelable" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>modelable</a>
+								</li>
+								<li class="">
+									<a href="/directives/for" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>for</a>
+								</li>
+								<li class="">
+									<a href="/directives/transition" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>transition</a>
+								</li>
+								<li class="">
+									<a href="/directives/effect" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>effect</a>
+								</li>
+								<li class="">
+									<a href="/directives/ignore" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>ignore</a>
+								</li>
+								<li class="">
+									<a href="/directives/ref" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>ref</a>
+								</li>
+								<li class="">
+									<a href="/directives/cloak" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>cloak</a>
+								</li>
+								<li class="">
+									<a href="/directives/teleport" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>teleport</a>
+								</li>
+								<li class="">
+									<a href="/directives/if" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>if</a>
+								</li>
+								<li class="">
+									<a href="/directives/id" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>id</a>
+								</li>
+							</ul>
+						</li>
+						<li>
+							{" "}
+							<span class="font-medium">Magics</span>
+							{" "}
+							<ul class="pl-3">
+								<li class="">
+									<a href="/magics/el" class="hover:text-gray-900">{" "}<span class="text-gray-300">$</span>el</a>
+								</li>
+								<li class="">
+									<a href="/magics/refs" class="hover:text-gray-900">{" "}<span class="text-gray-300">$</span>refs</a>
+								</li>
+								<li class="">
+									<a href="/magics/store" class="hover:text-gray-900">{" "}<span class="text-gray-300">$</span>store</a>
+								</li>
+								<li class="">
+									<a href="/magics/watch" class="hover:text-gray-900">{" "}<span class="text-gray-300">$</span>watch</a>
+								</li>
+								<li class="">
+									<a href="/magics/dispatch" class="hover:text-gray-900">{" "}<span class="text-gray-300">$</span>dispatch</a>
+								</li>
+								<li class="">
+									<a href="/magics/nextTick" class="hover:text-gray-900">{" "}<span class="text-gray-300">$</span>nextTick</a>
+								</li>
+								<li class="">
+									<a href="/magics/root" class="hover:text-gray-900">{" "}<span class="text-gray-300">$</span>root</a>
+								</li>
+								<li class="">
+									<a href="/magics/data" class="hover:text-gray-900">{" "}<span class="text-gray-300">$</span>data</a>
+								</li>
+								<li class="">
+									<a href="/magics/id" class="hover:text-gray-900">{" "}<span class="text-gray-300">$</span>id</a>
+								</li>
+							</ul>
+						</li>
+						<li>
+							{" "}
+							<span class="font-medium">Globals</span>
+							{" "}
+							<ul class="pl-3">
+								<li class="">
+									<a href="/globals/alpine-data" class="hover:text-gray-900">{" "}<span class="text-gray-300">Alpine.</span>data()</a>
+								</li>
+								<li class="">
+									<a href="/globals/alpine-store" class="hover:text-gray-900">{" "}<span class="text-gray-300">Alpine.</span>store()</a>
+								</li>
+								<li class="">
+									<a href="/globals/alpine-bind" class="hover:text-gray-900">{" "}<span class="text-gray-300">Alpine.</span>bind()</a>
+								</li>
+							</ul>
+						</li>
+						<li>
+							{" "}
+							<span class="font-medium">Plugins</span>
+							{" "}
+							<ul class="pl-3">
+								<li class="">
+									<a href="/plugins/mask" class="hover:text-gray-900">Mask</a>
+								</li>
+								<li class="">
+									<a href="/plugins/intersect" class="hover:text-gray-900">Intersect</a>
+								</li>
+								<li class="">
+									<a href="/plugins/resize" class="hover:text-gray-900">Resize</a>
+								</li>
+								<li class="">
+									<a href="/plugins/persist" class="hover:text-gray-900">Persist</a>
+								</li>
+								<li class="">
+									<a href="/plugins/focus" class="hover:text-gray-900">Focus</a>
+								</li>
+								<li class="">
+									<a href="/plugins/collapse" class="hover:text-gray-900">Collapse</a>
+								</li>
+								<li class="">
+									<a href="/plugins/anchor" class="hover:text-gray-900">Anchor</a>
+								</li>
+								<li class="">
+									<a href="/plugins/morph" class="hover:text-gray-900">Morph</a>
+								</li>
+								<li class="">
+									<a href="/plugins/sort" class="hover:text-gray-900">Sort</a>
+								</li>
+							</ul>
+						</li>
+						<li>
+							{" "}
+							<span class="font-medium">Advanced</span>
+							{" "}
+							<ul class="pl-3">
+								<li class="">
+									<a href="/advanced/csp" class="hover:text-gray-900">CSP</a>
+								</li>
+								<li class="">
+									<a href="/advanced/reactivity" class="hover:text-gray-900">Reactivity</a>
+								</li>
+								<li class="">
+									<a href="/advanced/extending" class="hover:text-gray-900">Extending</a>
+								</li>
+								<li class="">
+									<a href="/advanced/async" class="hover:text-gray-900">Async</a>
+								</li>
+							</ul>
+						</li>
+					</ul>
+				</div>
+			</div>
+		</div>
+	</header>
+	{/* moved <style> to a stylesheet */}
+	<aside class="fixed left-0 bottom-0 hidden w-48 px-8 pb-6 pt-8 md:block lg:w-64  md:top-[6rem] " hover-scrollbar="">
+		<ul class="space-y-2 text-gray-800">
+			<li class="-ml-8 border-l-4 border-gray-700 border-cyan-400 pl-7 font-semibold">
+				<a href="/start-here" class="hover:text-gray-900">Start Here</a>
+			</li>
+			<li class="font-medium">
+				<a href="/upgrade-guide" class="hover:text-gray-900">Upgrade From V2</a>
+			</li>
+			<li>
+				{" "}
+				<span class="font-medium">Essentials</span>
+				{" "}
+				<ul class="pl-3">
+					<li class="">
+						<a href="/essentials/installation" class="hover:text-gray-900">Installation</a>
+					</li>
+					<li class="">
+						<a href="/essentials/state" class="hover:text-gray-900">State</a>
+					</li>
+					<li class="">
+						<a href="/essentials/templating" class="hover:text-gray-900">Templating</a>
+					</li>
+					<li class="">
+						<a href="/essentials/events" class="hover:text-gray-900">Events</a>
+					</li>
+					<li class="">
+						<a href="/essentials/lifecycle" class="hover:text-gray-900">Lifecycle</a>
+					</li>
+				</ul>
+			</li>
+			<li>
+				{" "}
+				{" "}
+				<a href="/components" class="font-medium hover:text-gray-900">
+					<div class="relative"> UI Components </div>
+				</a>
+				<ul class="relative pl-3 font-medium">
+					<a href="/components" class="font-medium hover:text-gray-900">
+						<div class="absolute inset-0 bg-gradient-to-b from-[#fff2] to-white"></div>
+					</a>
+					<li>
+						<a href="/components" class="font-medium hover:text-gray-900"></a>
+						<a href="/component/dropdown">Dropdown</a>
+					</li>
+					<li>
+						<a href="/component/modal">Modal</a>
+					</li>
+				</ul>
+			</li>
+			<li>
+				{" "}
+				<span class="font-medium">Directives</span>
+				{" "}
+				<ul class="pl-3">
+					<li class="">
+						<a href="/directives/data" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>data</a>
+					</li>
+					<li class="">
+						<a href="/directives/init" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>init</a>
+					</li>
+					<li class="">
+						<a href="/directives/show" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>show</a>
+					</li>
+					<li class="">
+						<a href="/directives/bind" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>bind</a>
+					</li>
+					<li class="">
+						<a href="/directives/on" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>on</a>
+					</li>
+					<li class="">
+						<a href="/directives/text" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>text</a>
+					</li>
+					<li class="">
+						<a href="/directives/html" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>html</a>
+					</li>
+					<li class="">
+						<a href="/directives/model" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>model</a>
+					</li>
+					<li class="">
+						<a href="/directives/modelable" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>modelable</a>
+					</li>
+					<li class="">
+						<a href="/directives/for" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>for</a>
+					</li>
+					<li class="">
+						<a href="/directives/transition" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>transition</a>
+					</li>
+					<li class="">
+						<a href="/directives/effect" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>effect</a>
+					</li>
+					<li class="">
+						<a href="/directives/ignore" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>ignore</a>
+					</li>
+					<li class="">
+						<a href="/directives/ref" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>ref</a>
+					</li>
+					<li class="">
+						<a href="/directives/cloak" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>cloak</a>
+					</li>
+					<li class="">
+						<a href="/directives/teleport" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>teleport</a>
+					</li>
+					<li class="">
+						<a href="/directives/if" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>if</a>
+					</li>
+					<li class="">
+						<a href="/directives/id" class="hover:text-gray-900">{" "}<span class="text-gray-300">x-</span>id</a>
+					</li>
+				</ul>
+			</li>
+			<li>
+				{" "}
+				<span class="font-medium">Magics</span>
+				{" "}
+				<ul class="pl-3">
+					<li class="">
+						<a href="/magics/el" class="hover:text-gray-900">{" "}<span class="text-gray-300">$</span>el</a>
+					</li>
+					<li class="">
+						<a href="/magics/refs" class="hover:text-gray-900">{" "}<span class="text-gray-300">$</span>refs</a>
+					</li>
+					<li class="">
+						<a href="/magics/store" class="hover:text-gray-900">{" "}<span class="text-gray-300">$</span>store</a>
+					</li>
+					<li class="">
+						<a href="/magics/watch" class="hover:text-gray-900">{" "}<span class="text-gray-300">$</span>watch</a>
+					</li>
+					<li class="">
+						<a href="/magics/dispatch" class="hover:text-gray-900">{" "}<span class="text-gray-300">$</span>dispatch</a>
+					</li>
+					<li class="">
+						<a href="/magics/nextTick" class="hover:text-gray-900">{" "}<span class="text-gray-300">$</span>nextTick</a>
+					</li>
+					<li class="">
+						<a href="/magics/root" class="hover:text-gray-900">{" "}<span class="text-gray-300">$</span>root</a>
+					</li>
+					<li class="">
+						<a href="/magics/data" class="hover:text-gray-900">{" "}<span class="text-gray-300">$</span>data</a>
+					</li>
+					<li class="">
+						<a href="/magics/id" class="hover:text-gray-900">{" "}<span class="text-gray-300">$</span>id</a>
+					</li>
+				</ul>
+			</li>
+			<li>
+				{" "}
+				<span class="font-medium">Globals</span>
+				{" "}
+				<ul class="pl-3">
+					<li class="">
+						<a href="/globals/alpine-data" class="hover:text-gray-900">{" "}<span class="text-gray-300">Alpine.</span>data()</a>
+					</li>
+					<li class="">
+						<a href="/globals/alpine-store" class="hover:text-gray-900">{" "}<span class="text-gray-300">Alpine.</span>store()</a>
+					</li>
+					<li class="">
+						<a href="/globals/alpine-bind" class="hover:text-gray-900">{" "}<span class="text-gray-300">Alpine.</span>bind()</a>
+					</li>
+				</ul>
+			</li>
+			<li>
+				{" "}
+				<span class="font-medium">Plugins</span>
+				{" "}
+				<ul class="pl-3">
+					<li class="">
+						<a href="/plugins/mask" class="hover:text-gray-900">Mask</a>
+					</li>
+					<li class="">
+						<a href="/plugins/intersect" class="hover:text-gray-900">Intersect</a>
+					</li>
+					<li class="">
+						<a href="/plugins/resize" class="hover:text-gray-900">Resize</a>
+					</li>
+					<li class="">
+						<a href="/plugins/persist" class="hover:text-gray-900">Persist</a>
+					</li>
+					<li class="">
+						<a href="/plugins/focus" class="hover:text-gray-900">Focus</a>
+					</li>
+					<li class="">
+						<a href="/plugins/collapse" class="hover:text-gray-900">Collapse</a>
+					</li>
+					<li class="">
+						<a href="/plugins/anchor" class="hover:text-gray-900">Anchor</a>
+					</li>
+					<li class="">
+						<a href="/plugins/morph" class="hover:text-gray-900">Morph</a>
+					</li>
+					<li class="">
+						<a href="/plugins/sort" class="hover:text-gray-900">Sort</a>
+					</li>
+				</ul>
+			</li>
+			<li>
+				{" "}
+				<span class="font-medium">Advanced</span>
+				{" "}
+				<ul class="pl-3">
+					<li class="">
+						<a href="/advanced/csp" class="hover:text-gray-900">CSP</a>
+					</li>
+					<li class="">
+						<a href="/advanced/reactivity" class="hover:text-gray-900">Reactivity</a>
+					</li>
+					<li class="">
+						<a href="/advanced/extending" class="hover:text-gray-900">Extending</a>
+					</li>
+					<li class="">
+						<a href="/advanced/async" class="hover:text-gray-900">Async</a>
+					</li>
+				</ul>
+			</li>
+		</ul>
+	</aside>
+	<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64">
+		{/* moved <style> to a stylesheet */}
+		<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
+			<h1>Start Here</h1>
+			<p>Create a blank HTML file somewhere on your computer with a name like: <code>i-love-alpine.html</code></p>
+			<p>Using a text editor, fill the file with these contents:</p>
+			<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">&lt;</span><span style="color: #22863A;">html</span><span style="color: #24292E;">&gt;</span></div><div class="line"><span style="color: #24292E;">&lt;</span><span style="color: #22863A;">head</span><span style="color: #24292E;">&gt;</span></div><div class="line"><span style="color: #24292E;">{"    <"}</span><span style="color: #22863A;">script</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">defer</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">src</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"https://cdn.jsdelivr.net/npm/<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="33525f435a5d56594073001d4b1d4b">{"[email protected]"}</a>/dist/cdn.min.js"</span><span style="color: #24292E;">&gt;&lt;/</span><span style="color: #22863A;">script</span><span style="color: #24292E;">&gt;</span></div><div class="line"><span style="color: #24292E;">&lt;/</span><span style="color: #22863A;">head</span><span style="color: #24292E;">&gt;</span></div><div class="line"><span style="color: #24292E;">&lt;</span><span style="color: #22863A;">body</span><span style="color: #24292E;">&gt;</span></div><div class="line"><span style="color: #24292E;">{"    <"}</span><span style="color: #22863A;">h1</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">x-data</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"</span><span style="color: #24292E;">&#123; message: </span><span style="color: #032F62;">'I ❤️ Alpine'</span><span style="color: #24292E;"> &#125;</span><span style="color: #032F62;">"</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">x-text</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"</span><span style="color: #24292E;">message</span><span style="color: #032F62;">"</span><span style="color: #24292E;">&gt;&lt;/</span><span style="color: #22863A;">h1</span><span style="color: #24292E;">&gt;</span></div><div class="line"><span style="color: #24292E;">&lt;/</span><span style="color: #22863A;">body</span><span style="color: #24292E;">&gt;</span></div><div class="line"><span style="color: #24292E;">&lt;/</span><span style="color: #22863A;">html</span><span style="color: #24292E;">&gt;</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<html>\n<head>\n    <script defer src=\"https://cdn.jsdelivr.net/npm/"}<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="5c3d302c353239362f1c6f72247224">{"[email protected]"}</a>{"/dist/cdn.min.js\"></script>\n</head>\n<body>\n    <h1 x-data=\"{ message: 'I ❤️ Alpine' }\" x-text=\"message\"></h1>\n</body>\n</html>"}</div></code></pre>
+			<p>Open your file in a web browser, if you see <code>I ❤️ Alpine</code>, you're ready to rumble!</p>
+			<p>Now that you're all set up to play around, let's look at three practical examples as a foundation for teaching you the basics of Alpine. By the end of this exercise, you should be more than equipped to start building stuff on your own. Let's goooooo.</p>
+			<ul class="flex flex-col space-y-2 list-inside !list-decimal">
+				<li>
+					<a href="#building-a-counter">Building a counter</a>
+				</li>
+				<li>
+					<a href="#building-a-dropdown">Building a dropdown</a>
+				</li>
+				<li>
+					<a href="#building-a-search-input">Building a search Input</a>
+				</li>
+			</ul>
+			<h2 id="building-a-counter">
+				<a href="#building-a-counter">Building a counter</a>
+			</h2>
+			<p>Let's start with a simple "counter" component to demonstrate the basics of state and event listening in Alpine, two core features.</p>
+			<p>Insert the following into the <code>&lt;body&gt;</code> tag:</p>
+			<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">&lt;</span><span style="color: #22863A;">div</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">x-data</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"</span><span style="color: #24292E;">&#123; count: </span><span style="color: #005CC5;">0</span><span style="color: #24292E;"> &#125;</span><span style="color: #032F62;">"</span><span style="color: #24292E;">&gt;</span></div><div class="line"><span style="color: #24292E;">{"    <"}</span><span style="color: #22863A;">button</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">x-on</span><span style="color: #24292E;">:</span><span style="color: #6F42C1;">click</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"</span><span style="color: #24292E;">count</span><span style="color: #D73A49;">++</span><span style="color: #032F62;">"</span><span style="color: #24292E;">&gt;Increment&lt;/</span><span style="color: #22863A;">button</span><span style="color: #24292E;">&gt;</span></div><div class="line">{" "}</div><div class="line"><span style="color: #24292E;">{"    <"}</span><span style="color: #22863A;">span</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">x-text</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"</span><span style="color: #24292E;">count</span><span style="color: #032F62;">"</span><span style="color: #24292E;">&gt;&lt;/</span><span style="color: #22863A;">span</span><span style="color: #24292E;">&gt;</span></div><div class="line"><span style="color: #24292E;">&lt;/</span><span style="color: #22863A;">div</span><span style="color: #24292E;">&gt;</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<div x-data=\"{ count: 0 }\">\n    <button x-on:click=\"count++\">Increment</button>\n\n    <span x-text=\"count\"></span>\n</div>"}</div></code></pre>
+			<div class="demo">
+				<div>
+					{" "}
+					<button>Increment</button>
+					{" "}
+					<span></span>
+					{" "}
+				</div>
+			</div>
+			<p>Now, you can see with 3 bits of Alpine sprinkled into this HTML, we've created an interactive "counter" component.</p>
+			<p>Let's walk through what's happening briefly:</p>
+			<h3 id="declaring-data">
+				<a href="#declaring-data">Declaring data</a>
+			</h3>
+			<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">&lt;</span><span style="color: #22863A;">div</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">x-data</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"</span><span style="color: #24292E;">&#123; count: </span><span style="color: #005CC5;">0</span><span style="color: #24292E;"> &#125;</span><span style="color: #032F62;">"</span><span style="color: #24292E;">&gt;</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<div x-data=\"{ count: 0 }\">"}</div></code></pre>
+			<p>Everything in Alpine starts with an <code>x-data</code> directive. Inside of <code>x-data</code>, in plain JavaScript, you declare an object of data that Alpine will track.</p>
+			<p>Every property inside this object will be made available to other directives inside this HTML element. In addition, when one of these properties changes, everything that relies on it will change as well.</p>
+			<blockquote>
+				<p><code>x-data</code> is required on a parent element for most Alpine directives to work.</p>
+			</blockquote>
+			<p>
+				<a href="/directives/data">→ Read more about <code>x-data</code></a>
+			</p>
+			<p>Let's look at <code>x-on</code> and see how it can access and modify the <code>count</code> property from above:</p>
+			<h3 id="listening-for-events">
+				<a href="#listening-for-events">Listening for events</a>
+			</h3>
+			<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">&lt;</span><span style="color: #22863A;">button</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">x-on</span><span style="color: #24292E;">:</span><span style="color: #6F42C1;">click</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"</span><span style="color: #24292E;">count</span><span style="color: #D73A49;">++</span><span style="color: #032F62;">"</span><span style="color: #24292E;">&gt;Increment&lt;/</span><span style="color: #22863A;">button</span><span style="color: #24292E;">&gt;</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<button x-on:click=\"count++\">Increment</button>"}</div></code></pre>
+			<p><code>x-on</code> is a directive you can use to listen for any event on an element. We're listening for a <code>click</code> event in this case, so ours looks like <code>x-on:click</code>.</p>
+			<p>You can listen for other events as you'd imagine. For example, listening for a <code>mouseenter</code> event would look like this: <code>x-on:mouseenter</code>.</p>
+			<p>When a <code>click</code> event happens, Alpine will call the associated JavaScript expression, <code>count++</code> in our case. As you can see, we have direct access to data declared in the <code>x-data</code> expression.</p>
+			<blockquote>
+				<p>You will often see <code>&#64;</code> instead of <code>x-on:</code>. This is a shorter, friendlier syntax that many prefer. From now on, this documentation will likely use <code>&#64;</code> instead of <code>x-on:</code>.</p>
+			</blockquote>
+			<p>
+				<a href="/directives/on">→ Read more about <code>x-on</code></a>
+			</p>
+			<h3 id="reacting-to-changes">
+				<a href="#reacting-to-changes">Reacting to changes</a>
+			</h3>
+			<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">&lt;</span><span style="color: #22863A;">span</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">x-text</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"</span><span style="color: #24292E;">count</span><span style="color: #032F62;">"</span><span style="color: #24292E;">&gt;&lt;/</span><span style="color: #22863A;">span</span><span style="color: #24292E;">&gt;</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<span x-text=\"count\"></span>"}</div></code></pre>
+			<p><code>x-text</code> is an Alpine directive you can use to set the text content of an element to the result of a JavaScript expression.</p>
+			<p>In this case, we're telling Alpine to always make sure that the contents of this <code>span</code> tag reflect the value of the <code>count</code> property.</p>
+			<p>In case it's not clear, <code>x-text</code>, like most directives accepts a plain JavaScript expression as an argument. So for example, you could instead set its contents to: <code>x-text="count * 2"</code> and the text content of the <code>span</code> will now always be 2 times the value of <code>count</code>.</p>
+			<p>
+				<a href="/directives/text">→ Read more about <code>x-text</code></a>
+			</p>
+			<h2 id="building-a-dropdown">
+				<a href="#building-a-dropdown">Building a dropdown</a>
+			</h2>
+			<p>Now that we've seen some basic functionality, let's keep going and look at an important directive in Alpine: <code>x-show</code>, by building a contrived "dropdown" component.</p>
+			<p>Insert the following code into the <code>&lt;body&gt;</code> tag:</p>
+			<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">&lt;</span><span style="color: #22863A;">div</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">x-data</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"</span><span style="color: #24292E;">&#123; open: </span><span style="color: #005CC5;">false</span><span style="color: #24292E;"> &#125;</span><span style="color: #032F62;">"</span><span style="color: #24292E;">&gt;</span></div><div class="line"><span style="color: #24292E;">{"    <"}</span><span style="color: #22863A;">button</span><span style="color: #24292E;"> &#64;</span><span style="color: #6F42C1;">click</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"</span><span style="color: #24292E;">open </span><span style="color: #D73A49;">=</span><span style="color: #24292E;">{" "}</span><span style="color: #D73A49;">!</span><span style="color: #24292E;"> open</span><span style="color: #032F62;">"</span><span style="color: #24292E;">&gt;Toggle&lt;/</span><span style="color: #22863A;">button</span><span style="color: #24292E;">&gt;</span></div><div class="line">{" "}</div><div class="line"><span style="color: #24292E;">{"    <"}</span><span style="color: #22863A;">div</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">x-show</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"</span><span style="color: #24292E;">open</span><span style="color: #032F62;">"</span><span style="color: #24292E;"> &#64;</span><span style="color: #6F42C1;">click</span><span style="color: #24292E;">.</span><span style="color: #6F42C1;">outside</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"</span><span style="color: #24292E;">open </span><span style="color: #D73A49;">=</span><span style="color: #24292E;">{" "}</span><span style="color: #005CC5;">false</span><span style="color: #032F62;">"</span><span style="color: #24292E;">&gt;Contents...&lt;/</span><span style="color: #22863A;">div</span><span style="color: #24292E;">&gt;</span></div><div class="line"><span style="color: #24292E;">&lt;/</span><span style="color: #22863A;">div</span><span style="color: #24292E;">&gt;</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<div x-data=\"{ open: false }\">\n    <button @click=\"open = ! open\">Toggle</button>\n\n    <div x-show=\"open\" @click.outside=\"open = false\">Contents...</div>\n</div>"}</div></code></pre>
+			<div class="demo">
+				<div>
+					{" "}
+					<button>Toggle</button>
+					{" "}
+					<div>Contents...</div>
+				</div>
+			</div>
+			<p>If you load this component, you should see that the "Contents..." are hidden by default. You can toggle showing them on the page by clicking the "Toggle" button.</p>
+			<p>The <code>x-data</code> and <code>x-on</code> directives should be familiar to you from the previous example, so we'll skip those explanations.</p>
+			<h3 id="toggling-elements">
+				<a href="#toggling-elements">Toggling elements</a>
+			</h3>
+			<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">&lt;</span><span style="color: #22863A;">div</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">x-show</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"</span><span style="color: #24292E;">open</span><span style="color: #032F62;">"</span><span style="color: #24292E;"> ...&gt;Contents...&lt;/</span><span style="color: #22863A;">div</span><span style="color: #24292E;">&gt;</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<div x-show=\"open\" ...>Contents...</div>"}</div></code></pre>
+			<p><code>x-show</code> is an extremely powerful directive in Alpine that can be used to show and hide a block of HTML on a page based on the result of a JavaScript expression, in our case: <code>open</code>.</p>
+			<p>
+				<a href="/directives/show">→ Read more about <code>x-show</code></a>
+			</p>
+			<h3 id="listening-for-a-click-outside">
+				<a href="#listening-for-a-click-outside">Listening for a click outside</a>
+			</h3>
+			<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">&lt;</span><span style="color: #22863A;">div</span><span style="color: #24292E;"> ... &#64;</span><span style="color: #6F42C1;">click</span><span style="color: #24292E;">.</span><span style="color: #6F42C1;">outside</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"</span><span style="color: #24292E;">open </span><span style="color: #D73A49;">=</span><span style="color: #24292E;">{" "}</span><span style="color: #005CC5;">false</span><span style="color: #032F62;">"</span><span style="color: #24292E;">&gt;Contents...&lt;/</span><span style="color: #22863A;">div</span><span style="color: #24292E;">&gt;</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<div ... @click.outside=\"open = false\">Contents...</div>"}</div></code></pre>
+			<p>You'll notice something new in this example: <code>.outside</code>. Many directives in Alpine accept "modifiers" that are chained onto the end of the directive and are separated by periods.</p>
+			<p>In this case, <code>.outside</code> tells Alpine to instead of listening for a click INSIDE the <code>&lt;div&gt;</code>, to listen for the click only if it happens OUTSIDE the <code>&lt;div&gt;</code>.</p>
+			<p>This is a convenience helper built into Alpine because this is a common need and implementing it by hand is annoying and complex.</p>
+			<p>
+				<a href="/directives/on#modifiers">→ Read more about <code>x-on</code> modifiers</a>
+			</p>
+			<h2 id="building-a-search-input">
+				<a href="#building-a-search-input">Building a search input</a>
+			</h2>
+			<p>Let's now build a more complex component and introduce a handful of other directives and patterns.</p>
+			<p>Insert the following code into the <code>&lt;body&gt;</code> tag:</p>
+			<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">&lt;</span><span style="color: #22863A;">div</span></div><div class="line"><span style="color: #24292E;">{"    "}</span><span style="color: #6F42C1;">x-data</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"</span><span style="color: #24292E;">&#123;</span></div><div class="line"><span style="color: #24292E;">{"        search: "}</span><span style="color: #032F62;">''</span><span style="color: #24292E;">,</span></div><div class="line">{" "}</div><div class="line"><span style="color: #24292E;">{"        items: ["}</span><span style="color: #032F62;">'foo'</span><span style="color: #24292E;">, </span><span style="color: #032F62;">'bar'</span><span style="color: #24292E;">, </span><span style="color: #032F62;">'baz'</span><span style="color: #24292E;">],</span></div><div class="line">{" "}</div><div class="line"><span style="color: #24292E;">{"        "}</span><span style="color: #D73A49;">get</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">filteredItems</span><span style="color: #24292E;">() &#123;</span></div><div class="line"><span style="color: #24292E;">{"            "}</span><span style="color: #D73A49;">return</span><span style="color: #24292E;">{" "}</span><span style="color: #005CC5;">this</span><span style="color: #24292E;">.items.</span><span style="color: #6F42C1;">filter</span><span style="color: #24292E;">(</span></div><div class="line"><span style="color: #24292E;">{"                "}</span><span style="color: #E36209;">i</span><span style="color: #24292E;">{" "}</span><span style="color: #D73A49;">=&gt;</span><span style="color: #24292E;"> i.</span><span style="color: #6F42C1;">startsWith</span><span style="color: #24292E;">(</span><span style="color: #005CC5;">this</span><span style="color: #24292E;">.search)</span></div><div class="line"><span style="color: #24292E;">{"            )"}</span></div><div class="line"><span style="color: #24292E;">{"        }"}</span></div><div class="line"><span style="color: #24292E;">{"    }"}</span><span style="color: #032F62;">"</span></div><div class="line"><span style="color: #24292E;">&gt;</span></div><div class="line"><span style="color: #24292E;">{"    <"}</span><span style="color: #22863A;">input</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">x-model</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"</span><span style="color: #24292E;">search</span><span style="color: #032F62;">"</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">placeholder</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"Search..."</span><span style="color: #24292E;">&gt;</span></div><div class="line">{" "}</div><div class="line"><span style="color: #24292E;">{"    <"}</span><span style="color: #22863A;">ul</span><span style="color: #24292E;">&gt;</span></div><div class="line"><span style="color: #24292E;">{"        <"}</span><span style="color: #22863A;">template</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">x-for</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"</span><span style="color: #24292E;">item </span><span style="color: #D73A49;">in</span><span style="color: #24292E;"> filteredItems</span><span style="color: #032F62;">"</span><span style="color: #24292E;"> :</span><span style="color: #6F42C1;">key</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"</span><span style="color: #24292E;">item</span><span style="color: #032F62;">"</span><span style="color: #24292E;">&gt;</span></div><div class="line"><span style="color: #24292E;">{"            <"}</span><span style="color: #22863A;">li</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">x-text</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"</span><span style="color: #24292E;">item</span><span style="color: #032F62;">"</span><span style="color: #24292E;">&gt;&lt;/</span><span style="color: #22863A;">li</span><span style="color: #24292E;">&gt;</span></div><div class="line"><span style="color: #24292E;">{"        </"}</span><span style="color: #22863A;">template</span><span style="color: #24292E;">&gt;</span></div><div class="line"><span style="color: #24292E;">{"    </"}</span><span style="color: #22863A;">ul</span><span style="color: #24292E;">&gt;</span></div><div class="line"><span style="color: #24292E;">&lt;/</span><span style="color: #22863A;">div</span><span style="color: #24292E;">&gt;</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<div\n    x-data=\"{\n        search: '',\n\n        items: ['foo', 'bar', 'baz'],\n\n        get filteredItems() {\n            return this.items.filter(\n                i => i.startsWith(this.search)\n            )\n        }\n    }\"\n>\n    <input x-model=\"search\" placeholder=\"Search...\">\n\n    <ul>\n        <template x-for=\"item in filteredItems\" :key=\"item\">\n            <li x-text=\"item\"></li>\n        </template>\n    </ul>\n</div>"}</div></code></pre>
+			<div class="demo">
+				<div>
+					{" "}
+					<input placeholder="Search..." />
+					{" "}
+					<ul class="pl-6 pt-2">
+						{/* dropped <template> */}
+					</ul>
+				</div>
+			</div>
+			<p>By default, all of the "items" (foo, bar, and baz) will be shown on the page, but you can filter them by typing into the text input. As you type, the list of items will change to reflect what you're searching for.</p>
+			<p>Now there's quite a bit happening here, so let's go through this snippet piece by piece.</p>
+			<h3 id="multi-line-formatting">
+				<a href="#multi-line-formatting">Multi line formatting</a>
+			</h3>
+			<p>The first thing I'd like to point out is that <code>x-data</code> now has a lot more going on in it than before. To make it easier to write and read, we've split it up into multiple lines in our HTML. This is completely optional and we'll talk more in a bit about how to avoid this problem altogether, but for now, we'll keep all of this JavaScript directly in the HTML.</p>
+			<h3 id="binding-to-inputs">
+				<a href="#binding-to-inputs">Binding to inputs</a>
+			</h3>
+			<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">&lt;</span><span style="color: #22863A;">input</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">x-model</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"</span><span style="color: #24292E;">search</span><span style="color: #032F62;">"</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">placeholder</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"Search..."</span><span style="color: #24292E;">&gt;</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<input x-model=\"search\" placeholder=\"Search...\">"}</div></code></pre>
+			<p>You'll notice a new directive we haven't seen yet: <code>x-model</code>.</p>
+			<p><code>x-model</code> is used to "bind" the value of an input element with a data property: "search" from <code>x-data="&#123; search: '', ... &#125;"</code> in our case.</p>
+			<p>This means that anytime the value of the input changes, the value of "search" will change to reflect that.</p>
+			<p><code>x-model</code> is capable of much more than this simple example.</p>
+			<p>
+				<a href="/directives/model">→ Read more about <code>x-model</code></a>
+			</p>
+			<h3 id="computed-properties-using-getters">
+				<a href="#computed-properties-using-getters">Computed properties using getters</a>
+			</h3>
+			<p>The next bit I'd like to draw your attention to is the <code>items</code> and <code>filteredItems</code> properties from the <code>x-data</code> directive.</p>
+			<pre><code data-theme="github-light" data-lang="js" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">&#123;</span></div><div class="line"><span style="color: #24292E;">{"    "}</span><span style="color: #D73A49;">...</span></div><div class="line"><span style="color: #24292E;">{"    "}</span><span style="color: #6F42C1;">items</span><span style="color: #24292E;">: [</span><span style="color: #032F62;">'foo'</span><span style="color: #24292E;">, </span><span style="color: #032F62;">'bar'</span><span style="color: #24292E;">, </span><span style="color: #032F62;">'baz'</span><span style="color: #24292E;">],</span></div><div class="line">{" "}</div><div class="line"><span style="color: #24292E;">{"    get "}</span><span style="color: #6F42C1;">filteredItems</span><span style="color: #24292E;">() &#123;</span></div><div class="line"><span style="color: #24292E;">{"        "}</span><span style="color: #D73A49;">return</span><span style="color: #24292E;">{" "}</span><span style="color: #005CC5;">this</span><span style="color: #24292E;">.items.</span><span style="color: #6F42C1;">filter</span><span style="color: #24292E;">(</span></div><div class="line"><span style="color: #24292E;">{"            "}</span><span style="color: #E36209;">i</span><span style="color: #24292E;">{" "}</span><span style="color: #D73A49;">=&gt;</span><span style="color: #24292E;"> i.</span><span style="color: #6F42C1;">startsWith</span><span style="color: #24292E;">(</span><span style="color: #005CC5;">this</span><span style="color: #24292E;">.search)</span></div><div class="line"><span style="color: #24292E;">{"        )"}</span></div><div class="line"><span style="color: #24292E;">{"    }"}</span></div><div class="line"><span style="color: #24292E;">&#125;</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n{\n    ...\n    items: ['foo', 'bar', 'baz'],\n\n    get filteredItems() {\n        return this.items.filter(\n            i => i.startsWith(this.search)\n        )\n    }\n}"}</div></code></pre>
+			<p>The <code>items</code> property should be self-explanatory. Here we are setting the value of <code>items</code> to a JavaScript array of 3 different items (foo, bar, and baz).</p>
+			<p>The interesting part of this snippet is the <code>filteredItems</code> property.</p>
+			<p>Denoted by the <code>get</code> prefix for this property, <code>filteredItems</code> is a "getter" property in this object. This means we can access <code>filteredItems</code> as if it was a normal property in our data object, but when we do, JavaScript will evaluate the provided function under the hood and return the result.</p>
+			<p>It's completely acceptable to forgo the <code>get</code> and just make this a method that you can call from the template, but some prefer the nicer syntax of the getter.</p>
+			<p>
+				<a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Functions/get">→ Read more about JavaScript getters</a>
+			</p>
+			<p>Now let's look inside the <code>filteredItems</code> getter and make sure we understand what's going on there:</p>
+			<pre><code data-theme="github-light" data-lang="js" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #D73A49;">return</span><span style="color: #24292E;">{" "}</span><span style="color: #005CC5;">this</span><span style="color: #24292E;">.items.</span><span style="color: #6F42C1;">filter</span><span style="color: #24292E;">(</span></div><div class="line"><span style="color: #24292E;">{"    "}</span><span style="color: #E36209;">i</span><span style="color: #24292E;">{" "}</span><span style="color: #D73A49;">=&gt;</span><span style="color: #24292E;"> i.</span><span style="color: #6F42C1;">startsWith</span><span style="color: #24292E;">(</span><span style="color: #005CC5;">this</span><span style="color: #24292E;">.search)</span></div><div class="line"><span style="color: #24292E;">)</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\nreturn this.items.filter(\n    i => i.startsWith(this.search)\n)"}</div></code></pre>
+			<p>This is all plain JavaScript. We are first getting the array of items (foo, bar, and baz) and filtering them using the provided callback: <code>i =&gt; i.startsWith(this.search)</code>.</p>
+			<p>By passing in this callback to <code>filter</code>, we are telling JavaScript to only return the items that start with the string: <code>this.search</code>, which like we saw with <code>x-model</code> will always reflect the value of the input.</p>
+			<p>You may notice that up until now, we haven't had to use <code>this.</code> to reference properties. However, because we are working directly inside the <code>x-data</code> object, we must reference any properties using <code>this.[property]</code> instead of simply <code>[property]</code>.</p>
+			<p>Because Alpine is a "reactive" framework. Any time the value of <code>this.search</code> changes, parts of the template that use <code>filteredItems</code> will automatically be updated.</p>
+			<h3 id="looping-elements">
+				<a href="#looping-elements">Looping elements</a>
+			</h3>
+			<p>Now that we understand the data part of our component, let's understand what's happening in the template that allows us to loop through <code>filteredItems</code> on the page.</p>
+			<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">&lt;</span><span style="color: #22863A;">ul</span><span style="color: #24292E;">&gt;</span></div><div class="line"><span style="color: #24292E;">{"    <"}</span><span style="color: #22863A;">template</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">x-for</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"</span><span style="color: #24292E;">item </span><span style="color: #D73A49;">in</span><span style="color: #24292E;"> filteredItems</span><span style="color: #032F62;">"</span><span style="color: #24292E;">&gt;</span></div><div class="line"><span style="color: #24292E;">{"        <"}</span><span style="color: #22863A;">li</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">x-text</span><span style="color: #24292E;">=</span><span style="color: #032F62;">"</span><span style="color: #24292E;">item</span><span style="color: #032F62;">"</span><span style="color: #24292E;">&gt;&lt;/</span><span style="color: #22863A;">li</span><span style="color: #24292E;">&gt;</span></div><div class="line"><span style="color: #24292E;">{"    </"}</span><span style="color: #22863A;">template</span><span style="color: #24292E;">&gt;</span></div><div class="line"><span style="color: #24292E;">&lt;/</span><span style="color: #22863A;">ul</span><span style="color: #24292E;">&gt;</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<ul>\n    <template x-for=\"item in filteredItems\">\n        <li x-text=\"item\"></li>\n    </template>\n</ul>"}</div></code></pre>
+			<p>The first thing to notice here is the <code>x-for</code> directive. <code>x-for</code> expressions take the following form: <code>[item] in [items]</code> where [items] is any array of data, and [item] is the name of the variable that will be assigned to an iteration inside the loop.</p>
+			<p>Also notice that <code>x-for</code> is declared on a <code>&lt;template&gt;</code> element and not directly on the <code>&lt;li&gt;</code>. This is a requirement of using <code>x-for</code>. It allows Alpine to leverage the existing behavior of <code>&lt;template&gt;</code> tags in the browser to its advantage.</p>
+			<p>Now any element inside the <code>&lt;template&gt;</code> tag will be repeated for every item inside <code>filteredItems</code> and all expressions evaluated inside the loop will have direct access to the iteration variable (<code>item</code> in this case).</p>
+			<p>
+				<a href="/directives/for">→ Read more about <code>x-for</code></a>
+			</p>
+			<h2 id="recap">
+				<a href="#recap">Recap</a>
+			</h2>
+			<p>If you've made it this far, you've been exposed to the following directives in Alpine:</p>
+			<ul>
+				<li>x-data</li>
+				<li>x-on</li>
+				<li>x-text</li>
+				<li>x-show</li>
+				<li>x-model</li>
+				<li>x-for</li>
+			</ul>
+			<p>That's a great start, however, there are many more directives to sink your teeth into. The best way to absorb Alpine is to read through this documentation. No need to comb over every word, but if you at least glance through every page you will be MUCH more effective when using Alpine.</p>
+			<p>Happy Coding!</p>
+			<div class="my-12 border-y border-gray-200 py-6 xl:hidden">
+				<span class="mb-3 block text-xs font-semibold uppercase tracking-wider text-gray-400"> Ecosystem sponsor </span>
+				<a href="https://neon.com" target="_blank" rel="noopener" class="group block rounded-lg border border-gray-200 bg-[#F4FAF7] p-4 transition hover:border-gray-300 hover:bg-[#EDF8F3]">
+					<img src="/images/sponsors/neon-light.svg" alt="Neon" class="h-8 w-auto" />
+					<p class="mt-3 text-xs leading-5 text-gray-600"> Neon is a complete backend built around Lakebase Postgres, for developers, startups, and agent platforms, by Databricks. </p>
+					{" "}
+					<span class="mt-3 inline-block text-xs font-semibold text-gray-900 group-hover:text-cyan-600 transition-colors"> neon.com → </span>
+					{" "}
+				</a>
+			</div>
+			<div class="flex justify-between border-t border-gray-200 pt-4 text-gray-700">
+				<div>{" "}</div>
+				<div>
+					{" "}
+					<a class="font-bold text-cyan-400" href="/upgrade-guide">Upgrade From V2 →</a>
+					{" "}
+				</div>
+			</div>
+			<p class="mt-6 text-center text-sm text-gray-600">Code highlighting provided by <a href="https://torchlight.dev" target="__blank" class="font-semibold text-cyan-400">Torchlight</a></p>
+			<div class="mt-6 flex items-center justify-center gap-4 text-center text-sm text-gray-600">{" "}</div>
+		</div>
+	</main>
+	<aside class="fixed right-0 bottom-0 hidden w-64 overflow-y-auto py-8 px-6 xl:block  md:top-[4rem] " "="">
+		<span class="mb-2 block text-sm font-semibold uppercase tracking-wider text-gray-300">On this page</span>
+		<ul class="space-y-3 text-gray-800">
+			{/* dropped <template> */}
+		</ul>
+		<div class="mt-8">
+			<span class="mb-3 block text-xs font-semibold uppercase tracking-wider text-gray-300"> Ecosystem sponsor </span>
+			<a href="https://neon.com" target="_blank" rel="noopener" class="group block rounded-lg border border-gray-200 bg-[#F4FAF7] p-4 transition hover:border-gray-300 hover:bg-[#EDF8F3]">
+				<img src="/images/sponsors/neon-light.svg" alt="Neon" class="h-8 w-auto" />
+				<p class="mt-3 text-xs leading-5 text-gray-600"> Neon is a complete backend built around Lakebase Postgres, for developers, startups, and agent platforms, by Databricks. </p>
+				{" "}
+				<span class="mt-3 inline-block text-xs font-semibold text-gray-900 group-hover:text-cyan-600 transition-colors"> neon.com → </span>
+				{" "}
+			</a>
+		</div>
+		<div id="crbnad" class="mt-8">
+			{/* moved <style> to a stylesheet */}
+			{/* dropped <script> */}
+			{/* dropped <script> */}
+		</div>
+	</aside>
+	{/* dropped <script> */}
+	{/* dropped <script> */}
+	{/* dropped <script> */}
+	{/* dropped <script> */}
+	{/* dropped <script> */}
+</body>

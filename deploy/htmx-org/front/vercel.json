@@ -1,0 +1,56 @@
+{
+	"rewrites": [
+		{
+			"source": "/",
+			"destination": "https://mm-htmx-org-new.vercel.app/"
+		},
+		{
+			"source": "/docs/",
+			"destination": "https://mm-htmx-org-new.vercel.app/docs/"
+		},
+		{
+			"source": "/docs",
+			"destination": "https://mm-htmx-org-new.vercel.app/docs"
+		},
+		{
+			"source": "/examples/",
+			"destination": "https://mm-htmx-org-new.vercel.app/examples/"
+		},
+		{
+			"source": "/examples",
+			"destination": "https://mm-htmx-org-new.vercel.app/examples"
+		},
+		{
+			"source": "/examples/click-to-edit/",
+			"destination": "https://mm-htmx-org-new.vercel.app/examples/click-to-edit/"
+		},
+		{
+			"source": "/examples/click-to-edit",
+			"destination": "https://mm-htmx-org-new.vercel.app/examples/click-to-edit"
+		},
+		{
+			"source": "/build/:path*",
+			"destination": "https://mm-htmx-org-new.vercel.app/build/:path*"
+		},
+		{
+			"source": "/css/port-click-to-edit.css",
+			"destination": "https://mm-htmx-org-new.vercel.app/css/port-click-to-edit.css"
+		},
+		{
+			"source": "/css/port-home.css",
+			"destination": "https://mm-htmx-org-new.vercel.app/css/port-home.css"
+		},
+		{
+			"source": "/",
+			"destination": "https://htmx.org/"
+		},
+		{
+			"source": "/:path*/",
+			"destination": "https://htmx.org/:path*/"
+		},
+		{
+			"source": "/:path*",
+			"destination": "https://htmx.org/:path*"
+		}
+	]
+}

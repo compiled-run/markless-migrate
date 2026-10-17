@@ -1,0 +1,77 @@
+/* From the inline <style> blocks in the body of https://htmx.org/ */
+.wuw {
+  display:none;
+}
+.uwu {
+  display:none;
+}
+body.lmao .dark-hero .main {
+    display:none;
+}
+body.lmao .dark-hero .wuw {
+    display:block;
+    padding-top: 24px;
+}
+body.lmao .dark-hero .uwu {
+    display:none;
+}
+body.kawaii .dark-hero .main {
+    display:none;
+}
+body.kawaii .dark-hero .wuw {
+    display:none;
+}
+body.kawaii .dark-hero .uwu {
+    display:block;
+    padding-top: 24px;
+}
+
+body.ads .ad {
+  display: block;
+  text-align: center;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+}
+
+body.ads .ad a:hover {
+  opacity: 100%;
+}
+
+body .ad {
+  display: none;
+}
+
+body.ads .ad img {
+  max-width: 90vw;
+}
+#sponsor-table td {
+  text-align: center;
+  padding: 16px;
+  min-height: 100px;
+  border-bottom: none;
+  width:33%;
+}
+
+@media only screen and (max-width: 760px)  {
+
+	/* Force table to not be like tables anymore */
+	table, thead, tbody, th, td, tr {
+		display: block;
+	}
+    #sponsor-table td {
+      width:90%;
+    }
+    #sponsor-table td * {
+      margin: auto;
+    }
+}
+#silver-sponsors div {
+  text-align: center;
+  padding: 12px;
+}
+#silver-sponsors div a * {
+    width: 80%;
+}
+#silver-sponsors img {
+    min-width: 150px;
+}

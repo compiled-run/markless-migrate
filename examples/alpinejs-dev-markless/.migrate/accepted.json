@@ -1,0 +1,113 @@
+{
+	"accepted": [
+		{
+			"route": "**",
+			"dimension": "assets",
+			"check": "script /livewire/livewire.js*",
+			"match": {
+				"expected": "200 application/javascript"
+			},
+			"reason": "Livewire's runtime: every old page loads it, but no page uses Livewire (no wire: components); the Markless port has no Livewire to serve. Unswitched routes still get it from the old origin through the front door.",
+			"by": "Claude Code (converting agent), for owner review",
+			"date": "2026-10-17"
+		},
+		{
+			"route": "/start-here",
+			"dimension": "assets",
+			"check": "script /cdn-cgi/scripts/*/cloudflare-static/email-decode.min.js",
+			"match": {
+				"expected": "200 application/javascript"
+			},
+			"reason": "Cloudflare's email-obfuscation decoder, injected by Cloudflare in front of the old site: it turned alpinejs@3.x.x inside the code samples into an [email protected] link and decodes it back in the browser. The port writes the decoded text, so there is nothing to decode.",
+			"by": "Claude Code (converting agent), for owner review",
+			"date": "2026-10-17"
+		},
+		{
+			"route": "**",
+			"dimension": "network",
+			"check": "browser request missing",
+			"match": {
+				"expected": "browser GET alpinejs.dev/build/assets/app.9ea156ae.css"
+			},
+			"reason": "Checked through a local mirror of production: the old page names its stylesheet by its absolute production URL (https://alpinejs.dev/build/assets/app.9ea156ae.css), which then reads as another origin. The port serves the same file at the same path from its own origin; against production both are the same-origin request.",
+			"by": "Claude Code (converting agent), for owner review",
+			"date": "2026-10-17"
+		},
+		{
+			"route": "**",
+			"dimension": "weight",
+			"check": "JavaScript downloaded",
+			"reason": "Markless 0.4.0 modulepreloads every page's whole template as client render data. Measured uncompressed in this check (the mirror and the local server do not compress): 630 kB of it on /directives/model, 295 kB on /start-here. Compressed as served (alpinejs.dev against the deployed front door): / 144.6 -> 117.4 kB, /start-here 145.9 -> 145.2 kB, /directives/model 144.5 -> 160.8 kB. JavaScript that runs at load drops from 76 to 84 kB to 18 kB on every route. Nothing in the port avoids the render data; it is the framework's.",
+			"by": "Claude Code (converting agent), for owner review",
+			"date": "2026-10-17"
+		},
+		{
+			"route": "**",
+			"dimension": "rendered",
+			"check": "accessibility tree",
+			"match": {
+				"expected": "(absent)",
+				"actual": "/^\\s*- (paragraph:|text: Unofficial demo copy of|text: \", moved to\"|text: with markless-migrate\\..*|text: \\.|link \"(alpinejs\\.dev|Markless|MIT license)\":|\\/url: https:\\/\\/(alpinejs\\.dev|markless\\.dev|github\\.com\\/alpinejs\\/alpine\\/blob\\/main\\/LICENSE\\.md))$/"
+			},
+			"reason": "Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares.",
+			"by": "Claude Code (converting agent), for owner review",
+			"date": "2026-10-17"
+		},
+		{
+			"route": "**",
+			"dimension": "rendered",
+			"check": "visible text",
+			"match": {
+				"expected": "(absent)",
+				"actual": "/^Unofficial demo copy of /"
+			},
+			"reason": "Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares.",
+			"by": "Claude Code (converting agent), for owner review",
+			"date": "2026-10-17"
+		},
+		{
+			"route": "**",
+			"dimension": "visual",
+			"check": "screenshot",
+			"match": {
+				"actual": "/first near link \"(alpinejs\\.dev|Markless|MIT license)\"|differ in x=(9[01]\\d\\.\\.12[67]\\d, y=7[0-4]\\d\\.\\.79\\d|[1-4]\\d\\.\\.3[89]\\d, y=(7[5-9]|8[0-2])\\d\\.\\.8[3-7]\\d),/"
+			},
+			"reason": "Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only a difference that starts at the badge's own link or covers just the badge's box (desktop and mobile).",
+			"by": "Claude Code (converting agent), for owner review",
+			"date": "2026-10-17"
+		},
+		{
+			"route": "**",
+			"dimension": "visual",
+			"check": "screenshot in *",
+			"match": {
+				"actual": "/^(\\d{1,4}|1[0-9]\\d{3}) pixels differ( around the state target)?$/"
+			},
+			"reason": "Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels).",
+			"by": "Claude Code (converting agent), for owner review",
+			"date": "2026-10-17"
+		},
+		{
+			"route": "**",
+			"dimension": "a11y",
+			"check": "focus order (Tab)*",
+			"match": {
+				"actual": "/link \"alpinejs\\.dev\" \u2192 \\d+\\. link \"Markless\" \u2192 \\d+\\. link \"MIT license\"/"
+			},
+			"reason": "Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Its three links are the last tab stops.",
+			"by": "Claude Code (converting agent), for owner review",
+			"date": "2026-10-17"
+		},
+		{
+			"route": "/start-here",
+			"dimension": "visual",
+			"check": "screenshot*",
+			"match": {
+				"actual": "/^\\d{1,4} pixels( \\([\\d.]+%\\) differ in x=7[0-9]\\d\\.\\.12[67]\\d, y=3[0-9]\\d\\.\\.79\\d,.*| differ( around the state target)?)$/"
+			},
+			"reason": "Cloudflare's email decoder (see the assets entry) inserts the decoded alpinejs@3.x.x as a text node of its own inside the code sample, and Chrome shapes a few glyphs at text-node edges differently; static HTML cannot express two adjacent text nodes, so the port's one node differs by a few pixels there. The region also takes in the attribution badge.",
+			"by": "Claude Code (converting agent), for owner review",
+			"date": "2026-10-17"
+		}
+	]
+}

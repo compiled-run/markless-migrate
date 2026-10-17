@@ -1,0 +1,276 @@
+OLD http://127.0.0.1:4410  vs  NEW http://127.0.0.1:4411
+
+FAIL  /                         [assets, a11y, behaviour]  JS on the wire 388.4 kB -> 360.1 kB, run at load 98.6 kB -> 18.3 kB (uncompressed)
+      assets: script /js/class-tools.js  [f52490cc59]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/htmx.js  [9c24c5c763]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/preload.js  [4965a9cc76]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/_hyperscript.js  [72e996fd24]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      behaviour: click link "docs"  [597db8ef55]
+        expected: requests: GET /docs/, GET /docs/, GET /docs/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "docs" (source not found); new components/site-footer.tsrx:13 renders it
+      behaviour: click link "reference"  [89fb2f9e5c]
+        expected: requests: GET /reference/, GET /reference/, GET /reference/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "reference" (source not found); new components/site-footer.tsrx:16 renders it
+      a11y: press Enter on link "reference"  [eae4a0aee7]
+        expected: requests: GET /reference/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "reference" (source not found); new components/site-footer.tsrx:16 renders it
+      behaviour: click link "examples"  [db2b42a536]
+        expected: requests: GET /examples/, GET /examples/, GET /examples/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "examples" (source not found); new components/site-footer.tsrx:19 renders it
+      a11y: press Enter on link "examples"  [22086c603a]
+        expected: requests: GET /examples/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "examples" (source not found); new components/site-footer.tsrx:19 renders it
+      behaviour: click link "talk"  [5a8909cd2b]
+        expected: requests: GET /talk/, GET /talk/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "talk" (source not found); new components/site-footer.tsrx:22 renders it
+      a11y: press Enter on link "talk"  [a8e97e6a34]
+        expected: requests: GET /talk/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "talk" (source not found); new components/site-footer.tsrx:22 renders it
+      behaviour: click link "essays"  [1f33b915ed]
+        expected: requests: GET /essays/, GET /essays/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "essays" (source not found); new components/site-footer.tsrx:25 renders it
+      a11y: press Enter on link "essays"  [342c146a2d]
+        expected: requests: GET /essays/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "essays" (source not found); new components/site-footer.tsrx:25 renders it
+FAIL  /docs/                    [assets, a11y, behaviour, weight]  JS on the wire 281.2 kB -> 1444.9 kB, run at load 96.6 kB -> 18.1 kB (uncompressed)
+      assets: script /js/class-tools.js  [9806ffaa7d]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/preload.js  [aaff95e44a]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/htmx.js  [7acbc52afb]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/_hyperscript.js  [f70ea6d4e2]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      weight: JavaScript downloaded  [994fe878e4]
+        expected: at most 288961 bytes (old: 287936)
+        actual:   1479593 bytes; new-only scripts: /build/chunk-CbjVugfa.js (1339966 B), /build/chunk-L_F22qwH.js (29745 B), /build/chunk-DnSWqWJy.js (14309 B)
+        fix:      The new route downloads or runs more JavaScript at load than the old one. Look at the scripts only the new route loads.
+      behaviour: click link "docs"  [12a7c9af45]
+        expected: requests: GET /docs/, GET /docs/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "docs" (source not found); new components/site-footer.tsrx:13 renders it
+      a11y: press Enter on link "docs"  [41c9ee687e]
+        expected: requests: GET /docs/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "docs" (source not found); new components/site-footer.tsrx:13 renders it
+      behaviour: click link "reference"  [98d1e1ec6d]
+        expected: requests: GET /reference/, GET /reference/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "reference" (source not found); new components/site-footer.tsrx:16 renders it
+      a11y: press Enter on link "reference"  [63406e9442]
+        expected: requests: GET /reference/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "reference" (source not found); new components/site-footer.tsrx:16 renders it
+      behaviour: click link "examples"  [bf1846f8e5]
+        expected: requests: GET /examples/, GET /examples/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "examples" (source not found); new components/site-footer.tsrx:19 renders it
+      a11y: press Enter on link "examples"  [ad4c9b8b77]
+        expected: requests: GET /examples/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "examples" (source not found); new components/site-footer.tsrx:19 renders it
+      behaviour: click link "talk"  [df1e6c6daa]
+        expected: requests: GET /talk/, GET /talk/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "talk" (source not found); new components/site-footer.tsrx:22 renders it
+      a11y: press Enter on link "talk"  [4215eeed71]
+        expected: requests: GET /talk/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "talk" (source not found); new components/site-footer.tsrx:22 renders it
+      behaviour: click link "essays"  [2471432793]
+        expected: requests: GET /essays/, GET /essays/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "essays" (source not found); new components/site-footer.tsrx:25 renders it
+      a11y: press Enter on link "essays"  [040caf7628]
+        expected: requests: GET /essays/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "essays" (source not found); new components/site-footer.tsrx:25 renders it
+FAIL  /examples/                [assets, a11y, behaviour]  JS on the wire 281.2 kB -> 181.1 kB, run at load 96.9 kB -> 18.3 kB (uncompressed)
+      assets: script /js/class-tools.js  [b2937895f8]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/preload.js  [6cc0af0cf7]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/_hyperscript.js  [4705a092c9]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/htmx.js  [fe144cb8b2]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      behaviour: click link "docs"  [2f33a7914a]
+        expected: requests: GET /docs/, GET /docs/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "docs" (source not found); new components/site-footer.tsrx:13 renders it
+      a11y: press Enter on link "docs"  [148bfeab97]
+        expected: requests: GET /docs/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "docs" (source not found); new components/site-footer.tsrx:13 renders it
+      behaviour: click link "reference"  [f339fb7213]
+        expected: requests: GET /reference/, GET /reference/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "reference" (source not found); new components/site-footer.tsrx:16 renders it
+      a11y: press Enter on link "reference"  [c825186da6]
+        expected: requests: GET /reference/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "reference" (source not found); new components/site-footer.tsrx:16 renders it
+      behaviour: click link "examples"  [b66cc85cc1]
+        expected: requests: GET /examples/, GET /examples/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "examples" (source not found); new components/site-footer.tsrx:19 renders it
+      a11y: press Enter on link "examples"  [025bf7a896]
+        expected: requests: GET /examples/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "examples" (source not found); new components/site-footer.tsrx:19 renders it
+      behaviour: click link "talk"  [667b05b126]
+        expected: requests: GET /talk/, GET /talk/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "talk" (source not found); new components/site-footer.tsrx:22 renders it
+      a11y: press Enter on link "talk"  [e28869a686]
+        expected: requests: GET /talk/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "talk" (source not found); new components/site-footer.tsrx:22 renders it
+      behaviour: click link "essays"  [f0cb3de577]
+        expected: requests: GET /essays/, GET /essays/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "essays" (source not found); new components/site-footer.tsrx:25 renders it
+      a11y: press Enter on link "essays"  [1a7163953c]
+        expected: requests: GET /essays/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "essays" (source not found); new components/site-footer.tsrx:25 renders it
+FAIL  /examples/click-to-edit/  [visual, assets, a11y, behaviour]  JS on the wire 896.8 kB -> 498.6 kB, run at load 1701.4 kB -> 30.9 kB (uncompressed)
+      assets: script /js/class-tools.js  [ac44eb9a4d]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/htmx.js  [64649a3da8]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/preload.js  [113893af96]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/_hyperscript.js  [7c2c2400d6]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/demo.js  [12dea61d48]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      visual (desktop): screenshot in prefers-color-scheme: dark  [6b30d37b82]
+        expected: same pixels outside the noise mask
+        actual:   258 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 721px  [4008b23bab]
+        expected: same pixels outside the noise mask
+        actual:   235 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 767px  [0893ebd783]
+        expected: same pixels outside the noise mask
+        actual:   237 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 768px  [205ec814d0]
+        expected: same pixels outside the noise mask
+        actual:   237 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1023px  [da71a0ed51]
+        expected: same pixels outside the noise mask
+        actual:   237 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1024px  [05e47d92dc]
+        expected: same pixels outside the noise mask
+        actual:   237 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      behaviour: click button "Click To Edit"  [bc5b2181c5]
+        expected: appears: - text: "Server Requests: 1 ↑ Show" | - listitem: GET /contact/1/edit | - text: "GET /contact/1/edit parameters: {} headers: {} Response" | - code: <fo...
+        actual:   appears: (nothing); disappears: (nothing); console errors: Resume locator c0:h31 expected <span> at DOM order index 33 but found <iframe>. | Resume locator c0:h...
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders button "Click To Edit" (source not found); new pages/examples/click-to-edit/index.tsrx:921 renders it
+      a11y: press Enter on button "Click To Edit"  [b6bb0f18d9]
+        expected: appears: - text: "Server Requests: 1 ↑ Show" | - listitem: GET /contact/1/edit | - text: "GET /contact/1/edit parameters: {} headers: {} Response" | - code: <fo...
+        actual:   appears: (nothing); disappears: (nothing); console errors: Resume locator c0:h31 expected <span> at DOM order index 33 but found <iframe>. | Resume locator c0:h...
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "Click To Edit" (source not found); new pages/examples/click-to-edit/index.tsrx:921 renders it
+      a11y: press Space on button "Click To Edit"  [895dc7b3f6]
+        expected: appears: - text: "Server Requests: 1 ↑ Show" | - listitem: GET /contact/1/edit | - text: "GET /contact/1/edit parameters: {} headers: {} Response" | - code: <fo...
+        actual:   appears: (nothing); disappears: (nothing); console errors: Resume locator c0:h31 expected <span> at DOM order index 33 but found <iframe>. | Resume locator c0:h...
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "Click To Edit" (source not found); new pages/examples/click-to-edit/index.tsrx:921 renders it
+      behaviour: click button "Click To Edit", then click button "Submit" (step 1)  [e7bc80fd86]
+        expected: appears: - text: "Server Requests: 1 ↑ Show" | - listitem: GET /contact/1/edit | - text: "GET /contact/1/edit parameters: {} headers: {} Response" | - code: <fo...
+        actual:   appears: (nothing); disappears: (nothing); console errors: Resume locator c0:h31 expected <span> at DOM order index 33 but found <iframe>. | Resume locator c0:h...
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders span "button" (source not found); new pages/examples/click-to-edit/index.tsrx:739 renders it
+      behaviour: click button "Click To Edit", then click button "Cancel" (step 1)  [bc049d71c9]
+        expected: appears: - text: "Server Requests: 1 ↑ Show" | - listitem: GET /contact/1/edit | - text: "GET /contact/1/edit parameters: {} headers: {} Response" | - code: <fo...
+        actual:   appears: (nothing); disappears: (nothing); console errors: Resume locator c0:h31 expected <span> at DOM order index 33 but found <iframe>. | Resume locator c0:h...
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders span "button" (source not found); new pages/examples/click-to-edit/index.tsrx:739 renders it
+
+0 of 4 routes green, 4 red.
+Report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/htmx-org-markless/.migrate/report.json
+Visual report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/htmx-org-markless/.migrate/report.html

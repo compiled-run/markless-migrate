@@ -1,0 +1,395 @@
+[
+ {
+  "kind": "link",
+  "cls": "font-medium",
+  "href": "/start-here",
+  "label": "Start Here",
+  "html": 93
+ },
+ {
+  "kind": "link",
+  "cls": "font-medium",
+  "href": "/upgrade-guide",
+  "label": "Upgrade From V2",
+  "html": 101
+ },
+ {
+  "kind": "section",
+  "title": "Essentials",
+  "items": [
+   {
+    "href": "/essentials/installation",
+    "prefix": "",
+    "label": "Installation",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/essentials/state",
+    "prefix": "",
+    "label": "State",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/essentials/templating",
+    "prefix": "",
+    "label": "Templating",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/essentials/events",
+    "prefix": "",
+    "label": "Events",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/essentials/lifecycle",
+    "prefix": "",
+    "label": "Lifecycle",
+    "cls": "",
+    "style": null
+   }
+  ]
+ },
+ {
+  "kind": "link",
+  "cls": "",
+  "href": "/components",
+  "label": "UI Components",
+  "html": 1116
+ },
+ {
+  "kind": "section",
+  "title": "Directives",
+  "items": [
+   {
+    "href": "/directives/data",
+    "prefix": "x-",
+    "label": "data",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/directives/init",
+    "prefix": "x-",
+    "label": "init",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/directives/show",
+    "prefix": "x-",
+    "label": "show",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/directives/bind",
+    "prefix": "x-",
+    "label": "bind",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/directives/on",
+    "prefix": "x-",
+    "label": "on",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/directives/text",
+    "prefix": "x-",
+    "label": "text",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/directives/html",
+    "prefix": "x-",
+    "label": "html",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/directives/model",
+    "prefix": "x-",
+    "label": "model",
+    "cls": "border-l-4 border-cyan-400 pl-10 font-semibold",
+    "style": "margin-left: -2.75rem"
+   },
+   {
+    "href": "/directives/modelable",
+    "prefix": "x-",
+    "label": "modelable",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/directives/for",
+    "prefix": "x-",
+    "label": "for",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/directives/transition",
+    "prefix": "x-",
+    "label": "transition",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/directives/effect",
+    "prefix": "x-",
+    "label": "effect",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/directives/ignore",
+    "prefix": "x-",
+    "label": "ignore",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/directives/ref",
+    "prefix": "x-",
+    "label": "ref",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/directives/cloak",
+    "prefix": "x-",
+    "label": "cloak",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/directives/teleport",
+    "prefix": "x-",
+    "label": "teleport",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/directives/if",
+    "prefix": "x-",
+    "label": "if",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/directives/id",
+    "prefix": "x-",
+    "label": "id",
+    "cls": "",
+    "style": null
+   }
+  ]
+ },
+ {
+  "kind": "section",
+  "title": "Magics",
+  "items": [
+   {
+    "href": "/magics/el",
+    "prefix": "$",
+    "label": "el",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/magics/refs",
+    "prefix": "$",
+    "label": "refs",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/magics/store",
+    "prefix": "$",
+    "label": "store",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/magics/watch",
+    "prefix": "$",
+    "label": "watch",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/magics/dispatch",
+    "prefix": "$",
+    "label": "dispatch",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/magics/nextTick",
+    "prefix": "$",
+    "label": "nextTick",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/magics/root",
+    "prefix": "$",
+    "label": "root",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/magics/data",
+    "prefix": "$",
+    "label": "data",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/magics/id",
+    "prefix": "$",
+    "label": "id",
+    "cls": "",
+    "style": null
+   }
+  ]
+ },
+ {
+  "kind": "section",
+  "title": "Globals",
+  "items": [
+   {
+    "href": "/globals/alpine-data",
+    "prefix": "Alpine.",
+    "label": "data()",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/globals/alpine-store",
+    "prefix": "Alpine.",
+    "label": "store()",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/globals/alpine-bind",
+    "prefix": "Alpine.",
+    "label": "bind()",
+    "cls": "",
+    "style": null
+   }
+  ]
+ },
+ {
+  "kind": "section",
+  "title": "Plugins",
+  "items": [
+   {
+    "href": "/plugins/mask",
+    "prefix": "",
+    "label": "Mask",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/plugins/intersect",
+    "prefix": "",
+    "label": "Intersect",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/plugins/resize",
+    "prefix": "",
+    "label": "Resize",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/plugins/persist",
+    "prefix": "",
+    "label": "Persist",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/plugins/focus",
+    "prefix": "",
+    "label": "Focus",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/plugins/collapse",
+    "prefix": "",
+    "label": "Collapse",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/plugins/anchor",
+    "prefix": "",
+    "label": "Anchor",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/plugins/morph",
+    "prefix": "",
+    "label": "Morph",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/plugins/sort",
+    "prefix": "",
+    "label": "Sort",
+    "cls": "",
+    "style": null
+   }
+  ]
+ },
+ {
+  "kind": "section",
+  "title": "Advanced",
+  "items": [
+   {
+    "href": "/advanced/csp",
+    "prefix": "",
+    "label": "CSP",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/advanced/reactivity",
+    "prefix": "",
+    "label": "Reactivity",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/advanced/extending",
+    "prefix": "",
+    "label": "Extending",
+    "cls": "",
+    "style": null
+   },
+   {
+    "href": "/advanced/async",
+    "prefix": "",
+    "label": "Async",
+    "cls": "",
+    "style": null
+   }
+  ]
+ }
+]

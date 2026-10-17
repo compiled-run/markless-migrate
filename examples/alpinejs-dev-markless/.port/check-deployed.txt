@@ -1,0 +1,269 @@
+OLD http://127.0.0.1:4420  vs  NEW https://mm-alpinejs-dev-new.vercel.app
+
+FAIL  /                  [a11y, behaviour]  (32 accepted) JS on the wire 256.8 kB -> 116.3 kB, run at load 76.6 kB -> 17.7 kB (uncompressed)
+      accepted rendered (desktop): accessibility tree  [f0a4b497fa]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [4c9737aa79]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [fde3c8d5d0]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [4c8658f031]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [137ad8d5d5]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [a9f0a784b9]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [9dd73e0362]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [34d8efd8f9]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [380cc42a17]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [6124545c34]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [feda957955]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): visible text  [c594f290f8]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot  [614b66a68a]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only a difference that starts at the badge's own link or covers just the badge's box (desktop and mobile). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted a11y (desktop): focus order (Tab), first difference at stop 11  [5ff7fd4dbc]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Its three links are the last tab stops. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [cb4aa37050]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [9f0acaa539]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [069bfbe9dc]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [34c6233b59]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [40ab8cccca]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [057cf01a4f]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [db8b2f5274]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [494be624f1]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [bd6b24d914]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [a1c03732eb]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [12ca773446]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): visible text  [c106de0425]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (mobile): screenshot  [4cafe5a797]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only a difference that starts at the badge's own link or covers just the badge's box (desktop and mobile). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted assets: script /livewire/livewire.js?id=de3fca26689cb5a39af4  [7bd1f11b01]
+        reason:   Livewire's runtime: every old page loads it, but no page uses Livewire (no wire: components); the Markless port has no Livewire to serve. Unswitched routes still get it from the old origin through the front door. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted network: browser request missing  [a50de8545d]
+        reason:   Checked through a local mirror of production: the old page names its stylesheet by its absolute production URL (https://alpinejs.dev/build/assets/app.9ea156ae.css), which then reads as another origin. The port serves the same file at the same path from its own origin; against production both are the same-origin request. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in prefers-reduced-motion: no-preference  [ae973d27a4]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 768px  [f45f6f0bc0]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 769px  [b6e97d5e46]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      behaviour: click button "Search (Command+K)"  [ded77223ab]
+        expected: appears: - button "Search" [expanded]: | - banner: | - text: Search | - searchbox "Search" | - paragraph: No recent searches | - contentinfo: | - link "Search b...
+        actual:   appears: - button "Search" [expanded]: | - banner: | - text: Search | - searchbox "Search" | - paragraph: No recent searches | - contentinfo: | - link "Search b...
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders button "Search (Command+K)" (source not found); new components/search-button.tsrx:7 renders it
+      a11y: press Enter on button "Search (Command+K)"  [6b0291d9c0]
+        expected: appears: - button "Search" [expanded]: | - banner: | - text: Search | - searchbox "Search" | - paragraph: No recent searches | - contentinfo: | - link "Search b...
+        actual:   appears: - button "Search" [expanded]: | - banner: | - text: Search | - searchbox "Search" | - paragraph: No recent searches | - contentinfo: | - link "Search b...
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "Search (Command+K)" (source not found); new components/search-button.tsrx:7 renders it
+      a11y: press Space on button "Search (Command+K)"  [1deae144c4]
+        expected: appears: - button "Search" [expanded]: | - banner: | - text: Search | - searchbox "Search" | - paragraph: No recent searches | - contentinfo: | - link "Search b...
+        actual:   appears: - button "Search" [expanded]: | - banner: | - text: Search | - searchbox "Search" | - paragraph: No recent searches | - contentinfo: | - link "Search b...
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "Search (Command+K)" (source not found); new components/search-button.tsrx:7 renders it
+      behaviour: click button "Search (Command+K)", then click button "Search" (step 1)  [88747e9407]
+        expected: appears: - button "Search" [expanded]: | - banner: | - text: Search | - searchbox "Search" | - paragraph: No recent searches | - contentinfo: | - link "Search b...
+        actual:   appears: - button "Search" [expanded]: | - banner: | - text: Search | - searchbox "Search" | - paragraph: No recent searches | - contentinfo: | - link "Search b...
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders span "Search" (source not found); new components/search-button.tsrx:12 renders it
+      behaviour: click button "Search (Command+K)", then click searchbox "Search" (step 1)  [1ee2218437]
+        expected: appears: - button "Search" [expanded]: | - banner: | - text: Search | - searchbox "Search" | - paragraph: No recent searches | - contentinfo: | - link "Search b...
+        actual:   appears: - button "Search" [expanded]: | - banner: | - text: Search | - searchbox "Search" | - paragraph: No recent searches | - contentinfo: | - link "Search b...
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders span "Search" (source not found); new components/search-button.tsrx:12 renders it
+FAIL  /start-here        [a11y, behaviour]  (38 accepted) JS on the wire 258.0 kB -> 144.3 kB, run at load 83.7 kB -> 17.8 kB (uncompressed)
+      accepted rendered (desktop): accessibility tree  [68bf4542ba]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [99e0b42177]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [c3171dc753]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [6bb9969f88]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [be3efaa2b3]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [300850ff25]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [16a8a78759]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [9b6e77b8c9]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [7d2daa4eb0]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [44f81db524]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [bbc01cd8ef]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): visible text  [7cf919454e]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot  [e0e2812d83]
+        reason:   Cloudflare's email decoder (see the assets entry) inserts the decoded alpinejs@3.x.x as a text node of its own inside the code sample, and Chrome shapes a few glyphs at text-node edges differently; static HTML cannot express two adjacent text nodes, so the port's one node differs by a few pixels there. The region also takes in the attribution badge. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [d89c5debe2]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [6e1c1c034d]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [d2a6d26996]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [fcf6cd6b42]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [0d95821246]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [25e61fce54]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [29f4c17251]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [65383cf00e]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [6cc1c8c6fb]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [5a978f2adf]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [1017694b70]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): visible text  [7fc6cd4e2a]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (mobile): screenshot  [32c1da72fa]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only a difference that starts at the badge's own link or covers just the badge's box (desktop and mobile). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted assets: script /cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js  [7f07805500]
+        reason:   Cloudflare's email-obfuscation decoder, injected by Cloudflare in front of the old site: it turned alpinejs@3.x.x inside the code samples into an [email protected] link and decodes it back in the browser. The port writes the decoded text, so there is nothing to decode. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted assets: script /livewire/livewire.js?id=de3fca26689cb5a39af4  [687ea9c164]
+        reason:   Livewire's runtime: every old page loads it, but no page uses Livewire (no wire: components); the Markless port has no Livewire to serve. Unswitched routes still get it from the old origin through the front door. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted network: browser request missing  [7acd9fa0b3]
+        reason:   Checked through a local mirror of production: the old page names its stylesheet by its absolute production URL (https://alpinejs.dev/build/assets/app.9ea156ae.css), which then reads as another origin. The port serves the same file at the same path from its own origin; against production both are the same-origin request. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 639px  [fd0c2778b3]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 640px  [d0e2c9f03f]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 767px  [b69c09be83]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 768px  [3ac05c6c19]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 1023px  [be1d68ddcf]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 1024px  [d4b3313606]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 1279px  [210dcf4880]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 1280px  [337d49def9]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 1535px  [d456950b03]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      behaviour: click button "Search (Command+K)"  [a9e4fbec89]
+        expected: appears: - button "Search" [expanded]: | - banner: | - text: Search | - searchbox "Search" | - paragraph: No recent searches | - contentinfo: | - link "Search b...
+        actual:   appears: - button "Search" [expanded]: | - banner: | - text: Search | - searchbox "Search" | - paragraph: No recent searches | - contentinfo: | - link "Search b...
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders button "Search (Command+K)" (source not found); new components/search-button.tsrx:7 renders it
+      a11y: press Enter on button "Search (Command+K)"  [c055c2f665]
+        expected: appears: - button "Search" [expanded]: | - banner: | - text: Search | - searchbox "Search" | - paragraph: No recent searches | - contentinfo: | - link "Search b...
+        actual:   appears: - button "Search" [expanded]: | - banner: | - text: Search | - searchbox "Search" | - paragraph: No recent searches | - contentinfo: | - link "Search b...
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "Search (Command+K)" (source not found); new components/search-button.tsrx:7 renders it
+      a11y: press Space on button "Search (Command+K)"  [83cfdc4ef1]
+        expected: appears: - button "Search" [expanded]: | - banner: | - text: Search | - searchbox "Search" | - paragraph: No recent searches | - contentinfo: | - link "Search b...
+        actual:   appears: - button "Search" [expanded]: | - banner: | - text: Search | - searchbox "Search" | - paragraph: No recent searches | - contentinfo: | - link "Search b...
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "Search (Command+K)" (source not found); new components/search-button.tsrx:7 renders it
+FAIL  /directives/model  [a11y, behaviour]  (31 accepted) JS on the wire 256.4 kB -> 159.6 kB, run at load 84.0 kB -> 17.7 kB (uncompressed)
+      accepted rendered (desktop): accessibility tree  [27933b2679]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [ae6d134a13]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [2254bf5184]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [0a09ce55c5]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [ef8a459cce]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [f1367b837e]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [1e98293355]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [d74c73e5b4]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [ea97156383]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [f726b34159]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [9fb592a647]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): visible text  [146272c971]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot  [be1729cbc8]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only a difference that starts at the badge's own link or covers just the badge's box (desktop and mobile). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [d61324602b]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [93476e50bd]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [a8a8b9e5d3]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [d2eba4372f]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [75a06a0077]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [4d5e73d016]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [f5034559c0]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [b95fac7625]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [d8d53b729f]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [0c533c4dce]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [9176972c28]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): visible text  [e8e3128883]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (mobile): screenshot  [fdec3b3d8b]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only a difference that starts at the badge's own link or covers just the badge's box (desktop and mobile). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted assets: script /livewire/livewire.js?id=de3fca26689cb5a39af4  [2b9e508e69]
+        reason:   Livewire's runtime: every old page loads it, but no page uses Livewire (no wire: components); the Markless port has no Livewire to serve. Unswitched routes still get it from the old origin through the front door. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted network: browser request missing  [f9134ea277]
+        reason:   Checked through a local mirror of production: the old page names its stylesheet by its absolute production URL (https://alpinejs.dev/build/assets/app.9ea156ae.css), which then reads as another origin. The port serves the same file at the same path from its own origin; against production both are the same-origin request. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in prefers-reduced-motion: no-preference  [d60ea47b3a]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 768px  [707bb3662c]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 769px  [97b5417377]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      behaviour: click button "Search (Command+K)"  [07f2b21121]
+        expected: appears: - button "Search" [expanded]: | - banner: | - text: Search | - searchbox "Search" | - paragraph: No recent searches | - contentinfo: | - link "Search b...
+        actual:   appears: - button "Search" [expanded]: | - banner: | - text: Search | - searchbox "Search" | - paragraph: No recent searches | - contentinfo: | - link "Search b...
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders button "Search (Command+K)" (source not found); new components/search-button.tsrx:7 renders it
+      a11y: press Enter on button "Search (Command+K)"  [290c912ca0]
+        expected: appears: - button "Search" [expanded]: | - banner: | - text: Search | - searchbox "Search" | - paragraph: No recent searches | - contentinfo: | - link "Search b...
+        actual:   appears: - button "Search" [expanded]: | - banner: | - text: Search | - searchbox "Search" | - paragraph: No recent searches | - contentinfo: | - link "Search b...
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "Search (Command+K)" (source not found); new components/search-button.tsrx:7 renders it
+      a11y: press Space on button "Search (Command+K)"  [6e7ae1077c]
+        expected: appears: - button "Search" [expanded]: | - banner: | - text: Search | - searchbox "Search" | - paragraph: No recent searches | - contentinfo: | - link "Search b...
+        actual:   appears: - button "Search" [expanded]: | - banner: | - text: Search | - searchbox "Search" | - paragraph: No recent searches | - contentinfo: | - link "Search b...
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "Search (Command+K)" (source not found); new components/search-button.tsrx:7 renders it
+
+Accepted differences that no longer match anything (remove them from .migrate/accepted.json):
+  ** weight: JavaScript downloaded  (Markless 0.4.0 limitation, measured: it modulepreloads every page's whole template as client render data (630 kB on /directives/model, 295 kB on /start-here, about 70 kB on /), while the JavaScript that runs at load drops from 76 to 84 kB down to 18 kB. Nothing in the port avoids it; the render data is the framework's.)
+
+0 of 3 routes green, 3 red, 101 accepted differences.
+Report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.json
+Visual report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.html

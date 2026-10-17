@@ -1,0 +1,38 @@
+OLD http://127.0.0.1:4420  vs  NEW http://127.0.0.1:4421
+
+FAIL  /start-here  [assets, a11y, behaviour, network, weight]  JS on the wire 258.0 kB -> 497.9 kB, run at load 83.9 kB -> 17.8 kB (uncompressed)
+      assets: script /cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js  [7f07805500]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /livewire/livewire.js?id=de3fca26689cb5a39af4  [687ea9c164]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      network: browser request missing  [7acd9fa0b3]
+        expected: browser GET alpinejs.dev/build/assets/app.9ea156ae.css
+        actual:   (not requested)
+        fix:      The old page makes this request in the browser and the new one does not. Port the code that fetches it, or the page loses what the response fed.
+      weight: JavaScript downloaded  [01b5a1e826]
+        expected: at most 265234 bytes (old: 264209)
+        actual:   509828 bytes; new-only scripts: /build/chunk-CHPLIpOR.js (295290 B), /build/chunk-DCaJnIB6.js (63266 B), /build/chunk-vx50aEwM.js (10765 B)
+        fix:      The new route downloads or runs more JavaScript at load than the old one. Look at the scripts only the new route loads.
+      behaviour: click button "Toggle"  [ab56104022]
+        expected: appears: - text: Contents...
+        actual:   appears: (nothing)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders button "Toggle" (source not found); new components/start-demos.tsrx:36 renders it
+      a11y: press Enter on button "Toggle"  [99ffd4a585]
+        expected: appears: - text: Contents...
+        actual:   appears: (nothing)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "Toggle" (source not found); new components/start-demos.tsrx:36 renders it
+      a11y: press Space on button "Toggle"  [be87de2dd3]
+        expected: appears: - text: Contents...
+        actual:   appears: (nothing)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "Toggle" (source not found); new components/start-demos.tsrx:36 renders it
+
+0 of 1 routes green, 1 red.
+Report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.json
+Visual report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.html

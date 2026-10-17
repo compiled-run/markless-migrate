@@ -1,0 +1,190 @@
+OLD http://127.0.0.1:4410  vs  NEW http://127.0.0.1:4411
+
+FAIL  /examples/click-to-edit/  [assets, a11y, behaviour]  JS on the wire 893.2 kB -> 498.0 kB, run at load 1693.7 kB -> 29.7 kB (uncompressed)
+      assets: script /js/class-tools.js  [ac44eb9a4d]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/preload.js  [113893af96]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/demo.js  [12dea61d48]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/htmx.js  [64649a3da8]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/_hyperscript.js  [7c2c2400d6]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      behaviour: click link "</> htmx"  [9ba9f5a383]
+        expected: console errors: (none)
+        actual:   console errors: Cannot read properties of null (reading 'replaceWith')
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "</> htmx" (source not found); new components/site-header.tsrx:12 renders it
+      a11y: press Enter on link "</> htmx"  [7edd24d0c7]
+        expected: console errors: (none)
+        actual:   console errors: Cannot read properties of null (reading 'replaceWith')
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "</> htmx" (source not found); new components/site-header.tsrx:12 renders it
+      behaviour: click link "docs"  [96ce8be6bb]
+        expected: console errors: (none)
+        actual:   console errors: Cannot read properties of null (reading 'replaceWith')
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "docs" (source not found); new components/site-footer.tsrx:13 renders it
+      a11y: press Enter on link "docs"  [714fee1406]
+        expected: console errors: (none)
+        actual:   console errors: Cannot read properties of null (reading 'replaceWith')
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "docs" (source not found); new components/site-footer.tsrx:13 renders it
+      behaviour: click link "examples"  [b1af40bebc]
+        expected: console errors: (none)
+        actual:   console errors: Cannot read properties of null (reading 'replaceWith')
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "examples" (source not found); new components/site-footer.tsrx:19 renders it
+      a11y: press Enter on link "examples"  [b26ca04a2a]
+        expected: console errors: (none)
+        actual:   console errors: Cannot read properties of null (reading 'replaceWith')
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "examples" (source not found); new components/site-footer.tsrx:19 renders it
+      behaviour: click link "docs" #2  [62cd4ab0e1]
+        expected: console errors: (none)
+        actual:   console errors: Cannot read properties of null (reading 'replaceWith')
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "docs" (source not found); new components/site-footer.tsrx:13 renders it
+      a11y: press Enter on link "docs" #2  [457fa059f8]
+        expected: console errors: (none)
+        actual:   console errors: Cannot read properties of null (reading 'replaceWith')
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "docs" (source not found); new components/site-footer.tsrx:13 renders it
+      behaviour: click link "examples" #2  [1c547260c2]
+        expected: console errors: (none)
+        actual:   console errors: Cannot read properties of null (reading 'replaceWith')
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "examples" (source not found); new components/site-footer.tsrx:19 renders it
+      a11y: press Enter on link "examples" #2  [e2d9833195]
+        expected: console errors: (none)
+        actual:   console errors: Cannot read properties of null (reading 'replaceWith')
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "examples" (source not found); new components/site-footer.tsrx:19 renders it
+FAIL  /                         [visual, assets, a11y, behaviour, network]  JS on the wire 388.4 kB -> 360.5 kB, run at load 98.6 kB -> 14.6 kB (uncompressed)
+      a11y (desktop): focus order (Tab), first difference at stop 8  [cdf50f182e]
+        expected: ... 6. link "essays" → 7. textbox → 8. none → 9. link "has been released" → 10. link "https://four.htmx.org" → 11. link "AJAX" → 12. link "CSS Transitions" → 13...
+        actual:   ... 6. link "essays" → 7. textbox → 8. link "has been released" → 9. link "https://four.htmx.org" → 10. link "AJAX" → 11. link "CSS Transitions" → 12. link "Web...
+        fix:      Tab reaches elements in a different order. Keep the old DOM order for interactive elements, remove positive tabindex values, and keep buttons and links as real buttons and links.
+      assets: script /js/class-tools.js  [f52490cc59]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/preload.js  [4965a9cc76]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/htmx.js  [9c24c5c763]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/_hyperscript.js  [72e996fd24]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      network: browser request missing  [e27ba9779d]
+        expected: browser GET api.github.com/repos/bigskysoftware/htmx
+        actual:   (not requested)
+        fix:      The old page makes this request in the browser and the new one does not. Port the code that fetches it, or the page loses what the response fed.
+      visual (desktop): screenshot in viewport width 721px  [6928ba7dbf]
+        expected: same pixels outside the noise mask
+        actual:   296 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 768px  [a58de9a177]
+        expected: same pixels outside the noise mask
+        actual:   292 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      behaviour: click link "</> htmx"  [8da5a24b1f]
+        expected: console errors: (none)
+        actual:   console errors: Cannot read properties of null (reading 'replaceWith')
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "</> htmx" (source not found); new components/site-header.tsrx:12 renders it
+      a11y: press Enter on link "</> htmx"  [60d41066a6]
+        expected: console errors: (none)
+        actual:   console errors: Cannot read properties of null (reading 'replaceWith')
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "</> htmx" (source not found); new components/site-header.tsrx:12 renders it
+      behaviour: click link "docs"  [2e1b42bc57]
+        expected: requests: GET /docs/, GET /docs/; console errors: (none)
+        actual:   requests: (none); console errors: Cannot read properties of null (reading 'replaceWith')
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "docs" (source not found); new components/site-footer.tsrx:13 renders it
+      a11y: press Enter on link "docs"  [fe0d40cc50]
+        expected: requests: GET /docs/; console errors: (none)
+        actual:   requests: (none); console errors: Cannot read properties of null (reading 'replaceWith')
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "docs" (source not found); new components/site-footer.tsrx:13 renders it
+      behaviour: click link "reference"  [4c3845efc8]
+        expected: requests: GET /reference/, GET /reference/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "reference" (source not found); new components/site-footer.tsrx:16 renders it
+      a11y: press Enter on link "reference"  [eae4a0aee7]
+        expected: requests: GET /reference/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "reference" (source not found); new components/site-footer.tsrx:16 renders it
+      behaviour: click link "examples"  [ee15edc317]
+        expected: requests: GET /examples/, GET /examples/; console errors: (none)
+        actual:   requests: (none); console errors: Cannot read properties of null (reading 'replaceWith')
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "examples" (source not found); new components/site-footer.tsrx:19 renders it
+      a11y: press Enter on link "examples"  [3368a12643]
+        expected: requests: GET /examples/; console errors: (none)
+        actual:   requests: (none); console errors: Cannot read properties of null (reading 'replaceWith')
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "examples" (source not found); new components/site-footer.tsrx:19 renders it
+      behaviour: click link "talk"  [5a8909cd2b]
+        expected: requests: GET /talk/, GET /talk/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "talk" (source not found); new components/site-footer.tsrx:22 renders it
+      a11y: press Enter on link "talk"  [a8e97e6a34]
+        expected: requests: GET /talk/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "talk" (source not found); new components/site-footer.tsrx:22 renders it
+      behaviour: click link "essays"  [1f33b915ed]
+        expected: requests: GET /essays/, GET /essays/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "essays" (source not found); new components/site-footer.tsrx:25 renders it
+      a11y: press Enter on link "essays"  [342c146a2d]
+        expected: requests: GET /essays/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "essays" (source not found); new components/site-footer.tsrx:25 renders it
+      behaviour: click link "docs" #2  [2a3d747026]
+        expected: console errors: (none)
+        actual:   console errors: Cannot read properties of null (reading 'replaceWith')
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "docs" (source not found); new components/site-footer.tsrx:13 renders it
+      a11y: press Enter on link "docs" #2  [a1c37dee11]
+        expected: console errors: (none)
+        actual:   console errors: Cannot read properties of null (reading 'replaceWith')
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "docs" (source not found); new components/site-footer.tsrx:13 renders it
+      behaviour: click link "examples" #2  [9e860cef2f]
+        expected: console errors: (none)
+        actual:   console errors: Cannot read properties of null (reading 'replaceWith')
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "examples" (source not found); new components/site-footer.tsrx:19 renders it
+      a11y: press Enter on link "examples" #2  [678db4d52b]
+        expected: console errors: (none)
+        actual:   console errors: Cannot read properties of null (reading 'replaceWith')
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "examples" (source not found); new components/site-footer.tsrx:19 renders it
+
+0 of 2 routes green, 2 red.
+Report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/htmx-org-markless/.migrate/report.json
+Visual report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/htmx-org-markless/.migrate/report.html

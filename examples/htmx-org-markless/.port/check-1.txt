@@ -1,0 +1,785 @@
+OLD http://127.0.0.1:4410  vs  NEW http://127.0.0.1:4411
+
+FAIL  /                         [rendered, visual, assets, css, a11y, behaviour]  JS on the wire 388.2 kB -> 353.5 kB, run at load 98.8 kB -> 17.8 kB (uncompressed)
+      rendered (desktop): accessibility tree  [6f6bb94f10]
+        expected: (absent)
+        actual:       - iframe
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      visual (desktop): screenshot  [aa9710f7be]
+        expected: same pixels outside the noise mask
+        actual:   7924 pixels (0.16%) differ in x=533..985, y=23..242, first near link "talk" (banner>navigation>link/a), generic (banner>navigation/div)
+        fix:      Pixels differ in the named region. If the DOM and CSS checks pass, look at fonts, images and stacking there.
+        where:    old renders link "talk" (source not found); new components/site-footer.tsrx:22 renders it
+      css (desktop): computed style of generic "< >" (main/span)  [cddb42725d]
+        expected: animation-delay: 0s; animation-duration: 0s; animation-fill-mode: none; animation-name: none; animation-timing-function: ease
+        actual:   animation-delay: 0.1s; animation-duration: 0.5s; animation-fill-mode: backwards; animation-name: htmx-hero-appear; animation-timing-function: ease-in
+        fix:      Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders span "< >" (source not found); new pages/index.tsrx:21 renders it
+      css (desktop): computed style of generic "/" (main/span)  [8848aa6975]
+        expected: animation-delay: 0s; animation-duration: 0s; animation-fill-mode: none; animation-name: none; animation-timing-function: ease
+        actual:   animation-delay: 0.1s; animation-duration: 0.5s; animation-fill-mode: backwards; animation-name: htmx-hero-appear; animation-timing-function: ease-in
+        fix:      Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders span "/" (source not found); new pages/index.tsrx:21 renders it
+      css (desktop): computed style of generic "htm" (main/span)  [ebe37a827a]
+        expected: animation-delay: 0s; animation-duration: 0s; animation-fill-mode: none; animation-name: none; animation-timing-function: ease
+        actual:   animation-delay: 0.1s; animation-duration: 0.5s; animation-fill-mode: backwards; animation-name: htmx-hero-appear; animation-timing-function: ease-in
+        fix:      Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders span "htm" (source not found); new pages/index.tsrx:21 renders it
+      css (desktop): computed style of generic "x" (main/span)  [a6fd24a4e8]
+        expected: animation-delay: 0s; animation-duration: 0s; animation-fill-mode: none; animation-name: none; animation-timing-function: ease
+        actual:   animation-delay: 0.1s; animation-duration: 0.5s; animation-fill-mode: backwards; animation-name: htmx-hero-appear; animation-timing-function: ease-in
+        fix:      Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders span "x" (source not found); new pages/index.tsrx:21 renders it
+      css (desktop): computed style of i "high power tools for HTML" (main/i)  [177620218c]
+        expected: animation-delay: 0s; animation-duration: 0s; animation-fill-mode: none; animation-name: none; animation-timing-function: ease
+        actual:   animation-delay: 0.1s; animation-duration: 0.5s; animation-fill-mode: backwards; animation-name: htmx-hero-appear; animation-timing-function: ease-in
+        fix:      Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders i "high power tools for HTML" (source not found); new pages/index.tsrx:24 renders it
+      css (desktop): computed style of generic (main/div)  [7677bd5e9e]
+        expected: animation-delay: 0s; animation-duration: 0s; animation-fill-mode: none; animation-name: none; animation-timing-function: ease
+        actual:   animation-delay: 0.1s; animation-duration: 0.5s; animation-fill-mode: backwards; animation-name: htmx-hero-appear; animation-timing-function: ease-in
+        fix:      Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:19 renders it
+      css (desktop): computed style of sub (main/sub)  [954bb8c48d]
+        expected: animation-delay: 0s; animation-duration: 0s; animation-fill-mode: none; animation-name: none; animation-timing-function: ease
+        actual:   animation-delay: 0.1s; animation-duration: 0.5s; animation-fill-mode: backwards; animation-name: htmx-hero-appear-sub; animation-timing-function: ease-in
+        fix:      Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders sub (source not found); new pages/index.tsrx:23 renders it
+      a11y (desktop): focus order (Tab), first difference at stop 8  [208d6ada8e]
+        expected: ... 6. link "essays" → 7. textbox → 8. none
+        actual:   ... 6. link "essays" → 7. textbox → 8. Iframe "Star bigskysoftware/htmx on GitHub"
+        fix:      Tab reaches elements in a different order. Keep the old DOM order for interactive elements, remove positive tabindex values, and keep buttons and links as real buttons and links.
+      rendered (mobile): accessibility tree  [44a3d7c64b]
+        expected: (absent)
+        actual:       - iframe
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      css (mobile): computed style of generic "< >" (main/span)  [8f591247f6]
+        expected: animation-delay: 0s; animation-duration: 0s; animation-fill-mode: none; animation-name: none; animation-timing-function: ease
+        actual:   animation-delay: 0.1s; animation-duration: 0.5s; animation-fill-mode: backwards; animation-name: htmx-hero-appear; animation-timing-function: ease-in
+        fix:      Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders span "< >" (source not found); new pages/index.tsrx:21 renders it
+      css (mobile): computed style of generic "/" (main/span)  [cf013da8cb]
+        expected: animation-delay: 0s; animation-duration: 0s; animation-fill-mode: none; animation-name: none; animation-timing-function: ease
+        actual:   animation-delay: 0.1s; animation-duration: 0.5s; animation-fill-mode: backwards; animation-name: htmx-hero-appear; animation-timing-function: ease-in
+        fix:      Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders span "/" (source not found); new pages/index.tsrx:21 renders it
+      css (mobile): computed style of generic (main/div)  [91201f616a]
+        expected: animation-delay: 0s; animation-duration: 0s; animation-fill-mode: none; animation-name: none; animation-timing-function: ease
+        actual:   animation-delay: 0.1s; animation-duration: 0.5s; animation-fill-mode: backwards; animation-name: htmx-hero-appear; animation-timing-function: ease-in
+        fix:      Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/index.tsrx:19 renders it
+      assets: script /js/class-tools.js  [f52490cc59]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/htmx.js  [9c24c5c763]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/preload.js  [4965a9cc76]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/_hyperscript.js  [72e996fd24]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      visual (desktop): screenshot in prefers-color-scheme: dark  [91d5a88b7d]
+        expected: same pixels outside the noise mask
+        actual:   756 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in prefers-color-scheme: light  [0606a4cd5a]
+        expected: same pixels outside the noise mask
+        actual:   715 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in viewport width 721px: generic "htm" (main/span)  [4e6f1f4842]
+        expected: opacity: 1
+        actual:   opacity: 0
+        fix:      Old rule: `.dark-hero.appear *` (/css/site.css:155:3) sets opacity with `1`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders span "htm" (source not found); new pages/index.tsrx:21 renders it
+      css (desktop): computed style in viewport width 721px: generic "x" (main/span)  [822bec41f8]
+        expected: opacity: 1
+        actual:   opacity: 0
+        fix:      Old rule: `.dark-hero.appear *` (/css/site.css:155:3) sets opacity with `1`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders span "x" (source not found); new pages/index.tsrx:21 renders it
+      css (desktop): computed style in viewport width 721px: sub (main/sub)  [4e41a0ce07]
+        expected: bottom: -10px; inset-block-end: -10px; inset-block-start: 10px; opacity: 1; top: 10px
+        actual:   bottom: -40px; inset-block-end: -40px; inset-block-start: 40px; opacity: 0; top: 40px
+        fix:      Old rule: `sub` (assets/app/assets/stylesheets/bundles/sponsors-embed/index.scss%23sass:7:9, served as https://github.githubassets.com/assets/sponsors-embed-6ea8f2873809fc34.css:1:193524) sets bottom with `-.25em`; `.dark-hero.appear *` (/css/site.css:155:3) sets opacity with `1`; `.dark-hero.appear *` (/css/site.css:155:3) sets top with `10px`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old assets/app/assets/stylesheets/bundles/sponsors-embed/index.scss%23sass:7 `sub` sets bottom; new pages/index.tsrx:23 renders it
+      css (desktop): computed style in viewport width 721px: i "high power tools for HTML" (main/i)  [08d37e5eda]
+        expected: opacity: 1
+        actual:   opacity: 0
+        fix:      Old rule: `.dark-hero.appear *` (/css/site.css:155:3) sets opacity with `1`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders i "high power tools for HTML" (source not found); new pages/index.tsrx:24 renders it
+      visual (desktop): screenshot in viewport width 721px  [15964c8296]
+        expected: same pixels outside the noise mask
+        actual:   7948 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in viewport width 767px: generic "htm" (main/span)  [5e6a02386e]
+        expected: opacity: 1
+        actual:   opacity: 0
+        fix:      Old rule: `.dark-hero.appear *` (/css/site.css:155:3) sets opacity with `1`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders span "htm" (source not found); new pages/index.tsrx:21 renders it
+      css (desktop): computed style in viewport width 767px: generic "x" (main/span)  [f91d15256d]
+        expected: opacity: 1
+        actual:   opacity: 0
+        fix:      Old rule: `.dark-hero.appear *` (/css/site.css:155:3) sets opacity with `1`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders span "x" (source not found); new pages/index.tsrx:21 renders it
+      css (desktop): computed style in viewport width 767px: sub (main/sub)  [b8ba5aec23]
+        expected: bottom: -10px; inset-block-end: -10px; inset-block-start: 10px; opacity: 1; top: 10px
+        actual:   bottom: -40px; inset-block-end: -40px; inset-block-start: 40px; opacity: 0; top: 40px
+        fix:      Old rule: `sub` (assets/app/assets/stylesheets/bundles/sponsors-embed/index.scss%23sass:7:9, served as https://github.githubassets.com/assets/sponsors-embed-6ea8f2873809fc34.css:1:193524) sets bottom with `-.25em`; `.dark-hero.appear *` (/css/site.css:155:3) sets opacity with `1`; `.dark-hero.appear *` (/css/site.css:155:3) sets top with `10px`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old assets/app/assets/stylesheets/bundles/sponsors-embed/index.scss%23sass:7 `sub` sets bottom; new pages/index.tsrx:23 renders it
+      css (desktop): computed style in viewport width 767px: i "high power tools for HTML" (main/i)  [81dcaaa3ec]
+        expected: opacity: 1
+        actual:   opacity: 0
+        fix:      Old rule: `.dark-hero.appear *` (/css/site.css:155:3) sets opacity with `1`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders i "high power tools for HTML" (source not found); new pages/index.tsrx:24 renders it
+      visual (desktop): screenshot in viewport width 767px  [0ba181cf1e]
+        expected: same pixels outside the noise mask
+        actual:   7909 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 768px  [247178f124]
+        expected: same pixels outside the noise mask
+        actual:   7824 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1023px  [36e9165cfb]
+        expected: same pixels outside the noise mask
+        actual:   7916 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1024px  [40e2abcfaf]
+        expected: same pixels outside the noise mask
+        actual:   7897 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1279px  [102d7d117b]
+        expected: same pixels outside the noise mask
+        actual:   8004 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1280px  [64a5d4723f]
+        expected: same pixels outside the noise mask
+        actual:   7924 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1535px  [36fb6b307f]
+        expected: same pixels outside the noise mask
+        actual:   7912 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1536px  [429a87b94a]
+        expected: same pixels outside the noise mask
+        actual:   7904 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      behaviour: click link "</> htmx"  [6e0a66f452]
+        expected: console errors: (none)
+        actual:   console errors: Unexpected token '&'
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "</> htmx" (source not found); new components/site-header.tsrx:10 renders it
+      a11y: press Enter on link "</> htmx"  [32a2bf46ba]
+        expected: console errors: (none)
+        actual:   console errors: Unexpected token '&'
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "</> htmx" (source not found); new components/site-header.tsrx:10 renders it
+      behaviour: click link "docs"  [ec0ea32fe1]
+        expected: requests: GET /docs/, GET /docs/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "docs" (source not found); new components/site-footer.tsrx:13 renders it
+      a11y: press Enter on link "docs"  [5e0ca5fe73]
+        expected: requests: GET /docs/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "docs" (source not found); new components/site-footer.tsrx:13 renders it
+      behaviour: click link "reference"  [4c3845efc8]
+        expected: requests: GET /reference/, GET /reference/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "reference" (source not found); new components/site-footer.tsrx:16 renders it
+      a11y: press Enter on link "reference"  [eae4a0aee7]
+        expected: requests: GET /reference/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "reference" (source not found); new components/site-footer.tsrx:16 renders it
+      behaviour: click link "examples"  [6d422f78bc]
+        expected: requests: GET /examples/, GET /examples/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "examples" (source not found); new components/site-footer.tsrx:19 renders it
+      a11y: press Enter on link "examples"  [22086c603a]
+        expected: requests: GET /examples/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "examples" (source not found); new components/site-footer.tsrx:19 renders it
+      behaviour: click link "talk"  [5a8909cd2b]
+        expected: requests: GET /talk/, GET /talk/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "talk" (source not found); new components/site-footer.tsrx:22 renders it
+      a11y: press Enter on link "talk"  [a8e97e6a34]
+        expected: requests: GET /talk/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "talk" (source not found); new components/site-footer.tsrx:22 renders it
+      behaviour: click link "essays"  [1f33b915ed]
+        expected: requests: GET /essays/, GET /essays/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "essays" (source not found); new components/site-footer.tsrx:25 renders it
+      a11y: press Enter on link "essays"  [342c146a2d]
+        expected: requests: GET /essays/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "essays" (source not found); new components/site-footer.tsrx:25 renders it
+      behaviour: click link "examples" #2  [54106ee4cf]
+        expected: URL /examples/; appears: - heading "Examples" [level=1] | - 'heading "Anchor link for: server-side-integration-examples" [level=2]': | - 'link "Anchor link for:...
+        actual:   link "examples" #2 could not be used: locator.click: Timeout 3000ms exceeded.
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "examples" (source not found); new components/site-footer.tsrx:19 renders it
+FAIL  /docs/                    [rendered, visual, assets, css, a11y, behaviour, weight]  JS on the wire 281.2 kB -> 1438.5 kB, run at load 96.9 kB -> 17.8 kB (uncompressed)
+      rendered (desktop): accessibility tree  [f3d3364d23]
+        expected: (absent)
+        actual:       - iframe
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      visual (desktop): screenshot  [5e399cfe37]
+        expected: same pixels outside the noise mask
+        actual:   5693 pixels (0.01%) differ in x=11..1268, y=23..33325, first near b "/" (banner>link/b), link "talk" (banner>navigation>link/a)
+        fix:      Pixels differ in the named region. If the DOM and CSS checks pass, look at fonts, images and stacking there.
+        where:    old renders b "/" (source not found); new components/site-header.tsrx:10 renders it
+      css (desktop): computed style of generic (contentinfo/div)  [439692d0b8]
+        expected: margin-inline-end: 0px; margin-inline-start: 0px; margin-left: 0px; margin-right: 0px; max-inline-size: 1280px; max-width: 1280px
+        actual:   margin-inline-end: 320px; margin-inline-start: 320px; margin-left: 320px; margin-right: 320px; max-inline-size: 640px; max-width: 640px
+        fix:      Old rule: `.c` (/css/site.css:331:1) sets margin-inline-end with `auto`; `.c` (/css/site.css:331:1) sets margin-inline-start with `auto`; `.c` (/css/site.css:331:1) sets margin-left with `auto`; `.c` (/css/site.css:331:1) sets margin-right with `auto`; `.c.wide-content` inside @media (min-width:1280px) (/css/site.css:360:3) sets max-width with `1280px`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/docs/index.tsrx:5 renders it
+      a11y (desktop): focus order (Tab), first difference at stop 8  [c4c30616b8]
+        expected: ... 6. link "essays" → 7. textbox → 8. none
+        actual:   ... 6. link "essays" → 7. textbox → 8. Iframe "Star bigskysoftware/htmx on GitHub"
+        fix:      Tab reaches elements in a different order. Keep the old DOM order for interactive elements, remove positive tabindex values, and keep buttons and links as real buttons and links.
+      rendered (mobile): accessibility tree  [2a6b07cbf8]
+        expected: (absent)
+        actual:       - iframe
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      assets: script /js/class-tools.js  [9806ffaa7d]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/preload.js  [aaff95e44a]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/htmx.js  [7acbc52afb]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/_hyperscript.js  [f70ea6d4e2]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      weight: JavaScript downloaded  [eacbc7043c]
+        expected: at most 288961 bytes (old: 287937)
+        actual:   1473072 bytes; new-only scripts: /build/chunk-BMWcYAJA.js (1339881 B), /build/chunk-BJo1S05W.js (22836 B), /build/chunk-DnSWqWJy.js (14309 B)
+        fix:      The new route downloads or runs more JavaScript at load than the old one. Look at the scripts only the new route loads.
+      visual (desktop): screenshot in prefers-color-scheme: dark  [10f48a3669]
+        expected: same pixels outside the noise mask
+        actual:   5880 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in prefers-color-scheme: light  [601ceabc11]
+        expected: same pixels outside the noise mask
+        actual:   5693 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in viewport width 768px: generic (contentinfo/div)  [3f5157949e]
+        expected: max-inline-size: 768px; max-width: 768px; margin-inline-end: 0px; margin-inline-start: 0px; margin-left: 0px; margin-right: 0px
+        actual:   max-inline-size: 640px; max-width: 640px; margin-inline-end: 64px; margin-inline-start: 64px; margin-left: 64px; margin-right: 64px
+        fix:      Old rule: `.c.wide-content` inside @media (min-width:768px) (/css/site.css:348:3) sets max-width with `768px`; `.c` (/css/site.css:331:1) sets margin-inline-end with `auto`; `.c` (/css/site.css:331:1) sets margin-inline-start with `auto`; `.c` (/css/site.css:331:1) sets margin-left with `auto`; `.c` (/css/site.css:331:1) sets margin-right with `auto`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders div (source not found); new pages/docs/index.tsrx:5 renders it
+      visual (desktop): screenshot in viewport width 768px  [854121e561]
+        expected: same pixels outside the noise mask
+        actual:   5589 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in viewport width 1023px: generic (contentinfo/div)  [a76785b00b]
+        expected: margin-inline-end: 127.5px; margin-inline-start: 127.5px; margin-left: 127.5px; margin-right: 127.5px; max-inline-size: 768px; max-width: 768px
+        actual:   margin-inline-end: 191.5px; margin-inline-start: 191.5px; margin-left: 191.5px; margin-right: 191.5px; max-inline-size: 640px; max-width: 640px
+        fix:      Old rule: `.c` (/css/site.css:331:1) sets margin-inline-end with `auto`; `.c` (/css/site.css:331:1) sets margin-inline-start with `auto`; `.c` (/css/site.css:331:1) sets margin-left with `auto`; `.c` (/css/site.css:331:1) sets margin-right with `auto`; `.c.wide-content` inside @media (min-width:768px) (/css/site.css:348:3) sets max-width with `768px`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders div (source not found); new pages/docs/index.tsrx:5 renders it
+      visual (desktop): screenshot in viewport width 1023px  [f6019d8689]
+        expected: same pixels outside the noise mask
+        actual:   5536 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in viewport width 1024px: generic (contentinfo/div)  [df0cb5e056]
+        expected: max-inline-size: 1024px; max-width: 1024px; margin-inline-end: 0px; margin-inline-start: 0px; margin-left: 0px; margin-right: 0px
+        actual:   max-inline-size: 640px; max-width: 640px; margin-inline-end: 192px; margin-inline-start: 192px; margin-left: 192px; margin-right: 192px
+        fix:      Old rule: `.c.wide-content` inside @media (min-width:1024px) (/css/site.css:354:3) sets max-width with `1024px`; `.c` (/css/site.css:331:1) sets margin-inline-end with `auto`; `.c` (/css/site.css:331:1) sets margin-inline-start with `auto`; `.c` (/css/site.css:331:1) sets margin-left with `auto`; `.c` (/css/site.css:331:1) sets margin-right with `auto`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders div (source not found); new pages/docs/index.tsrx:5 renders it
+      visual (desktop): screenshot in viewport width 1024px  [9b43b6babd]
+        expected: same pixels outside the noise mask
+        actual:   5726 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in viewport width 1279px: generic (contentinfo/div)  [b38b07ab65]
+        expected: margin-inline-end: 127.5px; margin-inline-start: 127.5px; margin-left: 127.5px; margin-right: 127.5px; max-inline-size: 1024px; max-width: 1024px
+        actual:   margin-inline-end: 319.5px; margin-inline-start: 319.5px; margin-left: 319.5px; margin-right: 319.5px; max-inline-size: 640px; max-width: 640px
+        fix:      Old rule: `.c` (/css/site.css:331:1) sets margin-inline-end with `auto`; `.c` (/css/site.css:331:1) sets margin-inline-start with `auto`; `.c` (/css/site.css:331:1) sets margin-left with `auto`; `.c` (/css/site.css:331:1) sets margin-right with `auto`; `.c.wide-content` inside @media (min-width:1024px) (/css/site.css:354:3) sets max-width with `1024px`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders div (source not found); new pages/docs/index.tsrx:5 renders it
+      visual (desktop): screenshot in viewport width 1279px  [47280606c3]
+        expected: same pixels outside the noise mask
+        actual:   5686 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1280px  [c35b25e37b]
+        expected: same pixels outside the noise mask
+        actual:   5693 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in viewport width 1535px: generic (contentinfo/div)  [3394f44577]
+        expected: margin-inline-end: 127.5px; margin-inline-start: 127.5px; margin-left: 127.5px; margin-right: 127.5px
+        actual:   margin-inline-end: 447.5px; margin-inline-start: 447.5px; margin-left: 447.5px; margin-right: 447.5px
+        fix:      Old rule: `.c` (/css/site.css:331:1) sets margin-inline-end with `auto`; `.c` (/css/site.css:331:1) sets margin-inline-start with `auto`; `.c` (/css/site.css:331:1) sets margin-left with `auto`; `.c` (/css/site.css:331:1) sets margin-right with `auto`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders div (source not found); new pages/docs/index.tsrx:5 renders it
+      visual (desktop): screenshot in viewport width 1535px  [6cc9a00211]
+        expected: same pixels outside the noise mask
+        actual:   5651 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in viewport width 1536px: generic (contentinfo/div)  [4f3acaa5f9]
+        expected: max-inline-size: 1536px; max-width: 1536px; margin-inline-end: 0px; margin-inline-start: 0px; margin-left: 0px; margin-right: 0px
+        actual:   max-inline-size: 640px; max-width: 640px; margin-inline-end: 448px; margin-inline-start: 448px; margin-left: 448px; margin-right: 448px
+        fix:      Old rule: `.c.wide-content` inside @media (min-width:1536px) (/css/site.css:366:3) sets max-width with `1536px`; `.c` (/css/site.css:331:1) sets margin-inline-end with `auto`; `.c` (/css/site.css:331:1) sets margin-inline-start with `auto`; `.c` (/css/site.css:331:1) sets margin-left with `auto`; `.c` (/css/site.css:331:1) sets margin-right with `auto`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders div (source not found); new pages/docs/index.tsrx:5 renders it
+      visual (desktop): screenshot in viewport width 1536px  [4a80bc8b91]
+        expected: same pixels outside the noise mask
+        actual:   5688 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      behaviour: click link "</> htmx"  [dea687f24b]
+        expected: console errors: (none)
+        actual:   console errors: Unexpected token '&'
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "</> htmx" (source not found); new components/site-header.tsrx:10 renders it
+      a11y: press Enter on link "</> htmx"  [574b96a9fc]
+        expected: console errors: (none)
+        actual:   console errors: Unexpected token '&'
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "</> htmx" (source not found); new components/site-header.tsrx:10 renders it
+      behaviour: click link "docs"  [12a7c9af45]
+        expected: requests: GET /docs/, GET /docs/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "docs" (source not found); new components/site-footer.tsrx:13 renders it
+      a11y: press Enter on link "docs"  [41c9ee687e]
+        expected: requests: GET /docs/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "docs" (source not found); new components/site-footer.tsrx:13 renders it
+      behaviour: click link "reference"  [98d1e1ec6d]
+        expected: requests: GET /reference/, GET /reference/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "reference" (source not found); new components/site-footer.tsrx:16 renders it
+      a11y: press Enter on link "reference"  [63406e9442]
+        expected: requests: GET /reference/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "reference" (source not found); new components/site-footer.tsrx:16 renders it
+      behaviour: click link "examples"  [bf1846f8e5]
+        expected: requests: GET /examples/, GET /examples/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "examples" (source not found); new components/site-footer.tsrx:19 renders it
+      a11y: press Enter on link "examples"  [ad4c9b8b77]
+        expected: requests: GET /examples/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "examples" (source not found); new components/site-footer.tsrx:19 renders it
+      behaviour: click link "talk"  [df1e6c6daa]
+        expected: requests: GET /talk/, GET /talk/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "talk" (source not found); new components/site-footer.tsrx:22 renders it
+      a11y: press Enter on link "talk"  [4215eeed71]
+        expected: requests: GET /talk/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "talk" (source not found); new components/site-footer.tsrx:22 renders it
+      behaviour: click link "essays"  [2471432793]
+        expected: requests: GET /essays/, GET /essays/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "essays" (source not found); new components/site-footer.tsrx:25 renders it
+      a11y: press Enter on link "essays"  [040caf7628]
+        expected: requests: GET /essays/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "essays" (source not found); new components/site-footer.tsrx:25 renders it
+FAIL  /examples/                [rendered, visual, assets, a11y, behaviour]  JS on the wire 281.2 kB -> 174.0 kB, run at load 96.9 kB -> 17.8 kB (uncompressed)
+      rendered (desktop): accessibility tree  [b69821a34b]
+        expected: (absent)
+        actual:       - iframe
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      visual (desktop): screenshot  [2051d361d3]
+        expected: same pixels outside the noise mask
+        actual:   716 pixels (0.03%) differ in x=885..985, y=23..45, first near iframe "Star bigskysoftware/htmx on GitHub" (banner>navigation/iframe), generic (banner>navigation...
+        fix:      Pixels differ in the named region. If the DOM and CSS checks pass, look at fonts, images and stacking there.
+        where:    new components/site-header.tsrx:48 renders iframe "Star bigskysoftware/htmx on GitHub"
+      a11y (desktop): focus order (Tab), first difference at stop 8  [f9038803fa]
+        expected: ... 6. link "essays" → 7. textbox → 8. none
+        actual:   ... 6. link "essays" → 7. textbox → 8. Iframe "Star bigskysoftware/htmx on GitHub"
+        fix:      Tab reaches elements in a different order. Keep the old DOM order for interactive elements, remove positive tabindex values, and keep buttons and links as real buttons and links.
+      rendered (mobile): accessibility tree  [ccab3b6b5b]
+        expected: (absent)
+        actual:       - iframe
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      assets: script /js/htmx.js  [fe144cb8b2]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/preload.js  [6cc0af0cf7]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/class-tools.js  [b2937895f8]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/_hyperscript.js  [4705a092c9]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      visual (desktop): screenshot in prefers-color-scheme: dark  [12fa09c4d8]
+        expected: same pixels outside the noise mask
+        actual:   754 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in prefers-color-scheme: light  [305102d3c3]
+        expected: same pixels outside the noise mask
+        actual:   716 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 721px  [af5ba68a7e]
+        expected: same pixels outside the noise mask
+        actual:   718 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 767px  [db77319416]
+        expected: same pixels outside the noise mask
+        actual:   751 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 768px  [66be92c2f8]
+        expected: same pixels outside the noise mask
+        actual:   708 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1023px  [7ead15b93f]
+        expected: same pixels outside the noise mask
+        actual:   708 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1024px  [a866512509]
+        expected: same pixels outside the noise mask
+        actual:   752 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1279px  [f7ff234a51]
+        expected: same pixels outside the noise mask
+        actual:   750 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1280px  [6213b4fd04]
+        expected: same pixels outside the noise mask
+        actual:   716 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1535px  [2327566e13]
+        expected: same pixels outside the noise mask
+        actual:   716 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1536px  [69d8af1481]
+        expected: same pixels outside the noise mask
+        actual:   714 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      behaviour: click link "</> htmx"  [9bdceea402]
+        expected: console errors: (none)
+        actual:   console errors: Unexpected token '&'
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "</> htmx" (source not found); new components/site-header.tsrx:10 renders it
+      a11y: press Enter on link "</> htmx"  [0daf5d9eac]
+        expected: console errors: (none)
+        actual:   console errors: Unexpected token '&'
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "</> htmx" (source not found); new components/site-header.tsrx:10 renders it
+      behaviour: click link "docs"  [2f33a7914a]
+        expected: requests: GET /docs/, GET /docs/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "docs" (source not found); new components/site-footer.tsrx:13 renders it
+      a11y: press Enter on link "docs"  [148bfeab97]
+        expected: requests: GET /docs/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "docs" (source not found); new components/site-footer.tsrx:13 renders it
+      behaviour: click link "reference"  [f339fb7213]
+        expected: requests: GET /reference/, GET /reference/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "reference" (source not found); new components/site-footer.tsrx:16 renders it
+      a11y: press Enter on link "reference"  [c825186da6]
+        expected: requests: GET /reference/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "reference" (source not found); new components/site-footer.tsrx:16 renders it
+      behaviour: click link "examples"  [b66cc85cc1]
+        expected: requests: GET /examples/, GET /examples/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "examples" (source not found); new components/site-footer.tsrx:19 renders it
+      a11y: press Enter on link "examples"  [025bf7a896]
+        expected: requests: GET /examples/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "examples" (source not found); new components/site-footer.tsrx:19 renders it
+      behaviour: click link "talk"  [667b05b126]
+        expected: requests: GET /talk/, GET /talk/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "talk" (source not found); new components/site-footer.tsrx:22 renders it
+      a11y: press Enter on link "talk"  [e28869a686]
+        expected: requests: GET /talk/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "talk" (source not found); new components/site-footer.tsrx:22 renders it
+      behaviour: click link "essays"  [f0cb3de577]
+        expected: requests: GET /essays/, GET /essays/
+        actual:   requests: (none)
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "essays" (source not found); new components/site-footer.tsrx:25 renders it
+      a11y: press Enter on link "essays"  [1a7163953c]
+        expected: requests: GET /essays/
+        actual:   requests: (none)
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "essays" (source not found); new components/site-footer.tsrx:25 renders it
+      behaviour: click link "(Experimental) moveBefore()-powered hx-preserve"  [163cf94ddf]
+        expected: URL /examples/move-before/
+        actual:   URL /examples/move-before
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "(Experimental) moveBefore()-powered hx-p..." (source not found); new pages/examples/index.tsrx:190 renders it
+      a11y: press Enter on link "(Experimental) moveBefore()-powered hx-preserve"  [5da7d5cfea]
+        expected: URL /examples/move-before/
+        actual:   URL /examples/move-before
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "(Experimental) moveBefore()-powered hx-p..." (source not found); new pages/examples/index.tsrx:190 renders it
+FAIL  /examples/click-to-edit/  [visual, assets, css, a11y, behaviour, network]  JS on the wire 896.8 kB -> 480.1 kB, run at load 1701.4 kB -> 17.8 kB (uncompressed)
+      visual (desktop): screenshot  [2ff473875c]
+        expected: same pixels outside the noise mask
+        actual:   439 pixels (0.02%) differ in x=885..930, y=19..45, first near iframe "Star bigskysoftware/htmx on GitHub" (banner>navigation/iframe), generic (banner>navigation...
+        fix:      Pixels differ in the named region. If the DOM and CSS checks pass, look at fonts, images and stacking there.
+        where:    new components/site-header.tsrx:48 renders iframe "Star bigskysoftware/htmx on GitHub"
+      a11y (desktop): focus order (Tab), first difference at stop 8  [8e665eefd1]
+        expected: ... 6. link "essays" → 7. textbox → 8. Iframe
+        actual:   ... 6. link "essays" → 7. textbox → 8. Iframe "Star bigskysoftware/htmx on GitHub"
+        fix:      Tab reaches elements in a different order. Keep the old DOM order for interactive elements, remove positive tabindex values, and keep buttons and links as real buttons and links.
+      assets: script /js/class-tools.js  [ac44eb9a4d]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/preload.js  [113893af96]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/htmx.js  [64649a3da8]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/demo.js  [12dea61d48]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/_hyperscript.js  [7c2c2400d6]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      network: browser request missing  [efb27febd8]
+        expected: browser GET buttons.github.io/buttons.html
+        actual:   (not requested)
+        fix:      The old page makes this request in the browser and the new one does not. Port the code that fetches it, or the page loses what the response fed.
+      css (desktop): computed style in prefers-color-scheme: dark: iframe (banner>navigation/iframe)  [fada5f5ecc]
+        expected: color-scheme: light; vertical-align: baseline
+        actual:   color-scheme: normal; vertical-align: middle
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders iframe (source not found); new components/site-header.tsrx:48 renders iframe "Star bigskysoftware/htmx on GitHub"
+      visual (desktop): screenshot in prefers-color-scheme: dark  [e8b6eeff00]
+        expected: same pixels outside the noise mask
+        actual:   890 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in prefers-color-scheme: light: iframe (banner>navigation/iframe)  [dd52aef541]
+        expected: color-scheme: light; vertical-align: baseline
+        actual:   color-scheme: normal; vertical-align: middle
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders iframe (source not found); new components/site-header.tsrx:48 renders iframe "Star bigskysoftware/htmx on GitHub"
+      visual (desktop): screenshot in prefers-color-scheme: light  [e230457ed2]
+        expected: same pixels outside the noise mask
+        actual:   830 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in viewport width 720px: iframe (banner>navigation/iframe)  [62451a9170]
+        expected: color-scheme: light; vertical-align: baseline
+        actual:   color-scheme: normal; vertical-align: middle
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders iframe (source not found); new components/site-header.tsrx:48 renders iframe "Star bigskysoftware/htmx on GitHub"
+      css (desktop): computed style in viewport width 721px: iframe (banner>navigation/iframe)  [af4b3c310f]
+        expected: color-scheme: light; vertical-align: baseline
+        actual:   color-scheme: normal; vertical-align: middle
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders iframe (source not found); new components/site-header.tsrx:48 renders iframe "Star bigskysoftware/htmx on GitHub"
+      visual (desktop): screenshot in viewport width 721px  [e572143961]
+        expected: same pixels outside the noise mask
+        actual:   831 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in viewport width 719px: iframe (banner>navigation/iframe)  [854d22bbf5]
+        expected: color-scheme: light; vertical-align: baseline
+        actual:   color-scheme: normal; vertical-align: middle
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders iframe (source not found); new components/site-header.tsrx:48 renders iframe "Star bigskysoftware/htmx on GitHub"
+      css (desktop): computed style in :hover on a[href]: iframe (banner>navigation/iframe)  [c8923ebe25]
+        expected: color-scheme: light; vertical-align: baseline
+        actual:   color-scheme: normal; vertical-align: middle
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders iframe (source not found); new components/site-header.tsrx:48 renders iframe "Star bigskysoftware/htmx on GitHub"
+      visual (desktop): screenshot in :hover on a[href]  [c3f369e97d]
+        expected: same pixels outside the noise mask
+        actual:   830 pixels differ around the state target
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in :hover on .btn: iframe (banner>navigation/iframe)  [558c3242f2]
+        expected: color-scheme: light; vertical-align: baseline
+        actual:   color-scheme: normal; vertical-align: middle
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders iframe (source not found); new components/site-header.tsrx:48 renders iframe "Star bigskysoftware/htmx on GitHub"
+      visual (desktop): screenshot in :hover on .btn  [0099aff1ea]
+        expected: same pixels outside the noise mask
+        actual:   830 pixels differ around the state target
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in viewport width 639px: iframe (banner>navigation/iframe)  [18d3e1b49d]
+        expected: color-scheme: light; vertical-align: baseline
+        actual:   color-scheme: normal; vertical-align: middle
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders iframe (source not found); new components/site-header.tsrx:48 renders iframe "Star bigskysoftware/htmx on GitHub"
+      css (desktop): computed style in viewport width 640px: iframe (banner>navigation/iframe)  [b160421d4c]
+        expected: color-scheme: light; vertical-align: baseline
+        actual:   color-scheme: normal; vertical-align: middle
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders iframe (source not found); new components/site-header.tsrx:48 renders iframe "Star bigskysoftware/htmx on GitHub"
+      css (desktop): computed style in viewport width 767px: iframe (banner>navigation/iframe)  [87c322a2d8]
+        expected: color-scheme: light; vertical-align: baseline
+        actual:   color-scheme: normal; vertical-align: middle
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders iframe (source not found); new components/site-header.tsrx:48 renders iframe "Star bigskysoftware/htmx on GitHub"
+      visual (desktop): screenshot in viewport width 767px  [877776416c]
+        expected: same pixels outside the noise mask
+        actual:   831 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in viewport width 768px: iframe (banner>navigation/iframe)  [14737ac3fa]
+        expected: color-scheme: light; vertical-align: baseline
+        actual:   color-scheme: normal; vertical-align: middle
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders iframe (source not found); new components/site-header.tsrx:48 renders iframe "Star bigskysoftware/htmx on GitHub"
+      visual (desktop): screenshot in viewport width 768px  [4d42ccd8a6]
+        expected: same pixels outside the noise mask
+        actual:   831 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in viewport width 1023px: iframe (banner>navigation/iframe)  [1f9ebbb04b]
+        expected: color-scheme: light; vertical-align: baseline
+        actual:   color-scheme: normal; vertical-align: middle
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders iframe (source not found); new components/site-header.tsrx:48 renders iframe "Star bigskysoftware/htmx on GitHub"
+      visual (desktop): screenshot in viewport width 1023px  [7ca1acd12b]
+        expected: same pixels outside the noise mask
+        actual:   830 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in viewport width 1024px: iframe (banner>navigation/iframe)  [1c389d647c]
+        expected: color-scheme: light; vertical-align: baseline
+        actual:   color-scheme: normal; vertical-align: middle
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders iframe (source not found); new components/site-header.tsrx:48 renders iframe "Star bigskysoftware/htmx on GitHub"
+      visual (desktop): screenshot in viewport width 1024px  [a274c788e5]
+        expected: same pixels outside the noise mask
+        actual:   832 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in viewport width 1279px: iframe (banner>navigation/iframe)  [899af44cc4]
+        expected: color-scheme: light; vertical-align: baseline
+        actual:   color-scheme: normal; vertical-align: middle
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders iframe (source not found); new components/site-header.tsrx:48 renders iframe "Star bigskysoftware/htmx on GitHub"
+      visual (desktop): screenshot in viewport width 1279px  [32325e089b]
+        expected: same pixels outside the noise mask
+        actual:   830 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in viewport width 1280px: iframe (banner>navigation/iframe)  [63bf6f9f9b]
+        expected: color-scheme: light; vertical-align: baseline
+        actual:   color-scheme: normal; vertical-align: middle
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders iframe (source not found); new components/site-header.tsrx:48 renders iframe "Star bigskysoftware/htmx on GitHub"
+      visual (desktop): screenshot in viewport width 1280px  [f86a58cafa]
+        expected: same pixels outside the noise mask
+        actual:   830 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in viewport width 1535px: iframe (banner>navigation/iframe)  [4e121d602f]
+        expected: color-scheme: light; vertical-align: baseline
+        actual:   color-scheme: normal; vertical-align: middle
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders iframe (source not found); new components/site-header.tsrx:48 renders iframe "Star bigskysoftware/htmx on GitHub"
+      visual (desktop): screenshot in viewport width 1535px  [39746cfa6b]
+        expected: same pixels outside the noise mask
+        actual:   830 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in viewport width 1536px: iframe (banner>navigation/iframe)  [884c5ae21a]
+        expected: color-scheme: light; vertical-align: baseline
+        actual:   color-scheme: normal; vertical-align: middle
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders iframe (source not found); new components/site-header.tsrx:48 renders iframe "Star bigskysoftware/htmx on GitHub"
+      visual (desktop): screenshot in viewport width 1536px  [a10ca6a57f]
+        expected: same pixels outside the noise mask
+        actual:   831 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in :hover on .search-box: iframe (banner>navigation/iframe)  [9e2e46af72]
+        expected: color-scheme: light; vertical-align: baseline
+        actual:   color-scheme: normal; vertical-align: middle
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders iframe (source not found); new components/site-header.tsrx:48 renders iframe "Star bigskysoftware/htmx on GitHub"
+      visual (desktop): screenshot in :hover on .search-box  [4ef68bcd86]
+        expected: same pixels outside the noise mask
+        actual:   830 pixels differ around the state target
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in :active on .search-box: iframe (banner>navigation/iframe)  [46d51d8b1f]
+        expected: color-scheme: light; vertical-align: baseline
+        actual:   color-scheme: normal; vertical-align: middle
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders iframe (source not found); new components/site-header.tsrx:48 renders iframe "Star bigskysoftware/htmx on GitHub"
+      css (desktop): computed style in :focus on .search-box: iframe (banner>navigation/iframe)  [0b23a13cea]
+        expected: color-scheme: light; vertical-align: baseline
+        actual:   color-scheme: normal; vertical-align: middle
+        fix:      The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders iframe (source not found); new components/site-header.tsrx:48 renders iframe "Star bigskysoftware/htmx on GitHub"
+      visual (desktop): screenshot in :focus on .search-box  [0e078bdae8]
+        expected: same pixels outside the noise mask
+        actual:   833 pixels differ around the state target
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      behaviour: click button "Click To Edit"  [aa118a2d26]
+        expected: appears: - text: "Server Requests: 1 ↑ Show" | - listitem: GET /contact/1/edit | - text: "GET /contact/1/edit parameters: {} headers: {} Response" | - code: <fo...
+        actual:   appears: - text: "Server Requests: 1 ↑ Show" | - listitem: GET /contact/1/edit | - text: "parameters: headers: {} Response" | - code | - text: First Name | - te...
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders button "Click To Edit" (source not found); new pages/examples/click-to-edit/index.tsrx:896 renders it
+      a11y: press Enter on button "Click To Edit"  [c847821706]
+        expected: appears: - text: "Server Requests: 1 ↑ Show" | - listitem: GET /contact/1/edit | - text: "GET /contact/1/edit parameters: {} headers: {} Response" | - code: <fo...
+        actual:   appears: - text: "Server Requests: 1 ↑ Show" | - listitem: GET /contact/1/edit | - text: "parameters: headers: {} Response" | - code | - text: First Name | - te...
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "Click To Edit" (source not found); new pages/examples/click-to-edit/index.tsrx:896 renders it
+      a11y: press Space on button "Click To Edit"  [19170a79cd]
+        expected: appears: - text: "Server Requests: 1 ↑ Show" | - listitem: GET /contact/1/edit | - text: "GET /contact/1/edit parameters: {} headers: {} Response" | - code: <fo...
+        actual:   appears: - text: "Server Requests: 1 ↑ Show" | - listitem: GET /contact/1/edit | - text: "parameters: headers: {} Response" | - code | - text: First Name | - te...
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "Click To Edit" (source not found); new pages/examples/click-to-edit/index.tsrx:896 renders it
+      behaviour: click link "</> htmx"  [53606f7f23]
+        expected: console errors: (none)
+        actual:   console errors: Unexpected token '&'
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "</> htmx" (source not found); new components/site-header.tsrx:10 renders it
+      a11y: press Enter on link "</> htmx"  [9d2c3d6868]
+        expected: console errors: (none)
+        actual:   console errors: Unexpected token '&'
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "</> htmx" (source not found); new components/site-header.tsrx:10 renders it
+      behaviour: click button "Click To Edit", then click button "Submit" (step 1)  [3e1c6ec835]
+        expected: appears: - text: "Server Requests: 1 ↑ Show" | - listitem: GET /contact/1/edit | - text: "GET /contact/1/edit parameters: {} headers: {} Response" | - code: <fo...
+        actual:   appears: - text: "Server Requests: 1 ↑ Show" | - listitem: GET /contact/1/edit | - text: "parameters: headers: {} Response" | - code | - text: First Name | - te...
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders span "button" (source not found); new pages/examples/click-to-edit/index.tsrx:714 renders it
+      behaviour: click button "Click To Edit", then click button "Cancel" (step 1)  [f9916dae52]
+        expected: appears: - text: "Server Requests: 1 ↑ Show" | - listitem: GET /contact/1/edit | - text: "GET /contact/1/edit parameters: {} headers: {} Response" | - code: <fo...
+        actual:   appears: - text: "Server Requests: 1 ↑ Show" | - listitem: GET /contact/1/edit | - text: "parameters: headers: {} Response" | - code | - text: First Name | - te...
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders span "button" (source not found); new pages/examples/click-to-edit/index.tsrx:714 renders it
+
+0 of 4 routes green, 4 red.
+Report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/htmx-org-markless/.migrate/report.json
+Visual report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/htmx-org-markless/.migrate/report.html

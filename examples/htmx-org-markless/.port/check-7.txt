@@ -1,0 +1,84 @@
+OLD http://127.0.0.1:4410  vs  NEW http://127.0.0.1:4411
+
+FAIL  /examples/click-to-edit/  [visual, assets, a11y, network]  JS on the wire 896.7 kB -> 499.3 kB, run at load 1701.8 kB -> 30.9 kB (uncompressed)
+      visual (desktop): screenshot  [1e9a8f4c28]
+        expected: same pixels outside the noise mask
+        actual:   409 pixels (0.02%) differ in x=885..930, y=19..43, first near generic (banner>navigation/span), generic (banner>navigation/div)
+        fix:      Pixels differ in the named region. If the DOM and CSS checks pass, look at fonts, images and stacking there.
+        where:    new pages/examples/click-to-edit/index.tsrx:749 renders span
+      a11y (desktop): focus order (Tab), first difference at stop 8  [aca42a75e3]
+        expected: ... 6. link "essays" → 7. textbox → 8. Iframe
+        actual:   ... 6. link "essays" → 7. textbox → 8. none
+        fix:      Tab reaches elements in a different order. Keep the old DOM order for interactive elements, remove positive tabindex values, and keep buttons and links as real buttons and links.
+      assets: script /js/class-tools.js  [ac44eb9a4d]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/htmx.js  [64649a3da8]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/preload.js  [113893af96]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/demo.js  [12dea61d48]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /js/_hyperscript.js  [7c2c2400d6]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      network: response fields the page shows from browser GET api.github.com/repos/bigskysoftware/htmx  [e4e824df11]
+        expected: homepage, name, organization.login, owner.login, topics[]
+        actual:   homepage, name, topics[]; no longer shown: organization.login, owner.login
+        fix:      The old page shows these fields of the response and the new page does not. Render them, or request them if the new query no longer asks for them.
+      visual (desktop): screenshot in prefers-color-scheme: dark  [99708bc9a0]
+        expected: same pixels outside the noise mask
+        actual:   738 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in prefers-color-scheme: light  [6ee944e48e]
+        expected: same pixels outside the noise mask
+        actual:   660 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 721px  [dc01a1eb29]
+        expected: same pixels outside the noise mask
+        actual:   667 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 767px  [5db8b756b6]
+        expected: same pixels outside the noise mask
+        actual:   669 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 768px  [8b79fd47f1]
+        expected: same pixels outside the noise mask
+        actual:   669 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1023px  [eacbaf3af2]
+        expected: same pixels outside the noise mask
+        actual:   669 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1024px  [82abb0245e]
+        expected: same pixels outside the noise mask
+        actual:   671 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1279px  [aa6bbddc4c]
+        expected: same pixels outside the noise mask
+        actual:   660 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1280px  [b663a5be0e]
+        expected: same pixels outside the noise mask
+        actual:   660 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1535px  [fd1e8aeb00]
+        expected: same pixels outside the noise mask
+        actual:   660 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 1536px  [bb0a59386c]
+        expected: same pixels outside the noise mask
+        actual:   669 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+
+0 of 1 routes green, 1 red.
+Report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/htmx-org-markless/.migrate/report.json
+Visual report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/htmx-org-markless/.migrate/report.html

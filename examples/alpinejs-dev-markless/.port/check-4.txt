@@ -1,0 +1,516 @@
+OLD http://127.0.0.1:4420  vs  NEW http://127.0.0.1:4421
+
+FAIL  /directives/model  [rendered, visual, assets, css, a11y, behaviour, network, weight]  JS on the wire 270.3 kB -> 795.7 kB, run at load 100.7 kB -> 17.7 kB (uncompressed)
+      rendered (desktop): accessibility tree  [8bb5807c29]
+        expected:   - code: "<div x-data=\"{ message: '' }\"> <input type=\"text\" x-model=\"message\"> <span x-text=\"message\"></span> </div>"
+        actual:     - code: "<divx-data=\"{ message: '' }\"> <inputtype=\"text\"x-model=\"message\"> <spanx-text=\"message\"></span> </div>"
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [0017dc7a15]
+        expected:   - code: "<div x-data=\"{ message: '' }\"> <input type=\"text\" x-model=\"message\"> <button x-on:click=\"message = 'changed'\">Change Message</button> </div>"
+        actual:     - code: "<divx-data=\"{ message: '' }\"> <inputtype=\"text\"x-model=\"message\"> <buttonx-on:click=\"message ='changed'\">Change Message</button> </div>"
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [340ec2d597]
+        expected:   - code: <input type="text" x-model="message"> <span x-text="message"></span>
+        actual:     - code: <inputtype="text"x-model="message"> <spanx-text="message"></span>
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [ec2cd6b937]
+        expected:   - code: <textarea x-model="message"></textarea> <span x-text="message"></span>
+        actual:     - code: <textareax-model="message"></textarea> <spanx-text="message"></span>
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [9fee277250]
+        expected:   - code: <input type="checkbox" id="checkbox" x-model="show"> <label for="checkbox" x-text="show"></label>
+        actual:     - code: <inputtype="checkbox"id="checkbox"x-model="show"> <labelfor="checkbox"x-text="show"></label>
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [38be7878d4]
+        expected:   - code: "<input type=\"checkbox\" value=\"red\" x-model=\"colors\"> <input type=\"checkbox\" value=\"orange\" x-model=\"colors\"> <input type=\"checkbox\" val...
+        actual:     - code: "<inputtype=\"checkbox\"value=\"red\"x-model=\"colors\"> <inputtype=\"checkbox\"value=\"orange\"x-model=\"colors\"> <inputtype=\"checkbox\"value=\"yel...
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [be1d76ed34]
+        expected:   - code: "<input type=\"radio\" value=\"yes\" x-model=\"answer\"> <input type=\"radio\" value=\"no\" x-model=\"answer\"> Answer: <span x-text=\"answer\"></span...
+        actual:     - code: "<inputtype=\"radio\"value=\"yes\"x-model=\"answer\"> <inputtype=\"radio\"value=\"no\"x-model=\"answer\"> Answer: <spanx-text=\"answer\"></span>"
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [e0d714a165]
+        expected:   - code: "<select x-model=\"color\"> <option>Red</option> <option>Orange</option> <option>Yellow</option> </select> Color: <span x-text=\"color\"></span>"
+        actual:     - code: "<selectx-model=\"color\"> <option>Red</option> <option>Orange</option> <option>Yellow</option> </select> Color: <spanx-text=\"color\"></span>"
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [ec5d59ee04]
+        expected:   - code: "<select x-model=\"color\"> <option value=\"\" disabled>Select A Color</option> <option>Red</option> <option>Orange</option> <option>Yellow</option> <...
+        actual:     - code: "<selectx-model=\"color\"> <optionvalue=\"\"disabled>Select A Color</option> <option>Red</option> <option>Orange</option> <option>Yellow</option> </se...
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [dda9d0ea4e]
+        expected:   - code: "<select x-model=\"color\" multiple> <option>Red</option> <option>Orange</option> <option>Yellow</option> </select> Colors: <span x-text=\"color\"></s...
+        actual:     - code: "<selectx-model=\"color\"multiple> <option>Red</option> <option>Orange</option> <option>Yellow</option> </select> Colors: <spanx-text=\"color\"></span...
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [8866c754c5]
+        expected:   - code: "<select x-model=\"color\"> <template x-for=\"color in ['Red', 'Orange', 'Yellow']\"> <option x-text=\"color\"></option> </template> </select> Color: ...
+        actual:     - code: "<selectx-model=\"color\"> <templatex-for=\"color in ['Red', 'Orange', 'Yellow']\"> <optionx-text=\"color\"></option> </template> </select> Color: <sp...
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [375cea0cf8]
+        expected:   - code: <input type="range" x-model="range" min="0" max="1" step="0.1"> <span x-text="range"></span>
+        actual:     - code: <inputtype="range"x-model="range"min="0"max="1"step="0.1"> <spanx-text="range"></span>
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [3cedf75992]
+        expected:   - code: <input type="text" x-model.lazy="username"> <span x-show="username.length > 20">The username is too long.</span>
+        actual:     - code: <inputtype="text"x-model.lazy="username"> <spanx-show="username.length>20">The username is too long.</span>
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [c6146d8eb5]
+        expected:   - code: <input type="text" x-model.change="username">
+        actual:     - code: <inputtype="text"x-model.change="username">
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [47b35fd330]
+        expected:   - code: <input type="text" x-model.blur="email">
+        actual:     - code: <inputtype="text"x-model.blur="email">
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [c6b3b7373d]
+        expected:   - code: <input type="text" x-model.enter="search">
+        actual:     - code: <inputtype="text"x-model.enter="search">
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [3f65237da1]
+        expected:   - code: <!-- Sync on blur OR enter --> <input type="text" x-model.blur.enter="search" placeholder="Press Enter or click away"> <!-- Sync on change, blur, OR e...
+        actual:     - code: <!-- Sync on blur OR enter --> <inputtype="text"x-model.blur.enter="search"placeholder="Press Enter or click away"> <!-- Sync on change, blur, OR ente...
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [275da24277]
+        expected:   - code: <input type="text" x-model.number="age"> <span x-text="typeof age"></span>
+        actual:     - code: <inputtype="text"x-model.number="age"> <spanx-text="typeof age"></span>
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [c4ba3f8e44]
+        expected:   - code: <select x-model.boolean="isActive"> <option value="true">Yes</option> <option value="false">No</option> </select> <span x-text="typeof isActive"></spa...
+        actual:     - code: <selectx-model.boolean="isActive"> <optionvalue="true">Yes</option> <optionvalue="false">No</option> </select> <spanx-text="typeof isActive"></span>
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): accessibility tree  [683a1c4315]
+        expected:   - code: <input type="text" x-model.debounce="search">
+        actual:     - code: <inputtype="text"x-model.debounce="search">
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): visible text  [70d3636250]
+        expected: <div x-data="{ message: '' }">
+        actual:   <divx-data="{ message: '' }">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "x-data" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (desktop): visible text  [f20fe20ab7]
+        expected: <input type="text" x-model="message">
+        actual:   <inputtype="text"x-model="message">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "input" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (desktop): visible text  [a2a2ef943f]
+        expected: <span x-text="message"></span>
+        actual:   <spanx-text="message"></span>
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "span" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (desktop): visible text  [70d3636250]
+        expected: <div x-data="{ message: '' }">
+        actual:   <divx-data="{ message: '' }">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "x-data" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (desktop): visible text  [f20fe20ab7]
+        expected: <input type="text" x-model="message">
+        actual:   <inputtype="text"x-model="message">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "input" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (desktop): visible text  [32ae4f0258]
+        expected: <button x-on:click="message = 'changed'">Change Message</button>
+        actual:   <buttonx-on:click="message ='changed'">Change Message</button>
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "button" (source not found); new pages/directives/model.tsrx:23 renders it
+      rendered (desktop): visible text  [f20fe20ab7]
+        expected: <input type="text" x-model="message">
+        actual:   <inputtype="text"x-model="message">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "input" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (desktop): visible text  [a2a2ef943f]
+        expected: <span x-text="message"></span>
+        actual:   <spanx-text="message"></span>
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "span" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (desktop): visible text  [19bdce84db]
+        expected: <textarea x-model="message"></textarea>
+        actual:   <textareax-model="message"></textarea>
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "textarea" (source not found); new pages/directives/model.tsrx:70 renders it
+      rendered (desktop): visible text  [a2a2ef943f]
+        expected: <span x-text="message"></span>
+        actual:   <spanx-text="message"></span>
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "span" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (desktop): visible text  [492d29fd04]
+        expected: <input type="checkbox" id="checkbox" x-model="show">
+        actual:   <inputtype="checkbox"id="checkbox"x-model="show">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "input" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (desktop): visible text  [bd8dbf8143]
+        expected: <label for="checkbox" x-text="show"></label>
+        actual:   <labelfor="checkbox"x-text="show"></label>
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "label" (source not found); new pages/directives/model.tsrx:78 renders it
+      rendered (desktop): visible text  [1dd3ce1a87]
+        expected: <input type="checkbox" value="red" x-model="colors">
+        actual:   <inputtype="checkbox"value="red"x-model="colors">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "input" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (desktop): visible text  [743c931c60]
+        expected: <input type="checkbox" value="orange" x-model="colors">
+        actual:   <inputtype="checkbox"value="orange"x-model="colors">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "input" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (desktop): visible text  [dbc99638e2]
+        expected: <input type="checkbox" value="yellow" x-model="colors">
+        actual:   <inputtype="checkbox"value="yellow"x-model="colors">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "input" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (desktop): visible text  [9f4fe4a147]
+        expected: Colors: <span x-text="colors"></span>
+        actual:   Colors: <spanx-text="colors"></span>
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "Colors: <" (source not found); new pages/directives/model.tsrx:83 renders it
+      rendered (desktop): visible text  [ab54204927]
+        expected: <input type="radio" value="yes" x-model="answer">
+        actual:   <inputtype="radio"value="yes"x-model="answer">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "input" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (desktop): visible text  [1661d57692]
+        expected: <input type="radio" value="no" x-model="answer">
+        actual:   <inputtype="radio"value="no"x-model="answer">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "input" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (desktop): visible text  [19d5048f79]
+        expected: Answer: <span x-text="answer"></span>
+        actual:   Answer: <spanx-text="answer"></span>
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "Answer: <" (source not found); new pages/directives/model.tsrx:88 renders it
+      rendered (desktop): visible text  [9988134e37]
+        expected: <select x-model="color">
+        actual:   <selectx-model="color">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "select" (source not found); new pages/directives/model.tsrx:96 renders it
+      visual (desktop): page size  [c1e8208647]
+        expected: 1280x9082
+        actual:   1280x8767; 277566 pixels (2.47%) differ in x=260..1255, y=129..8742, first near link "Text inputs" (complementary>list>listitem>link/a), listitem "Text inputs" ...
+        fix:      The page has a different size: an element is taller, shorter or missing. Compare the elements inside the region.
+      css (desktop): computed style of listitem "Text inputs" (complementary>list>listitem/li)  [cca1ff1375]
+        expected: margin-block-start: 12px; margin-top: 12px
+        actual:   margin-block-start: 0px; margin-top: 0px
+        fix:      Old rule: `.space-y-3>:not([hidden])~:not([hidden])` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:38629) sets margin-top with `calc(.75rem*calc(1 - var(--tw-space-y-reverse)))`, reading --tw-space-y-reverse from `.space-y-3>:not([hidden])~:not([hidden])` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:38629) (` 0`). Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders listitem "Text inputs" (source not found); new pages/directives/model.tsrx:28 renders it
+      css (desktop): computed style of generic (complementary/div)  [affe893802]
+        expected: font-size: 11px; line-height: 16.5px
+        actual:   font-size: 16px; line-height: 24px
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:10 renders it
+      assets (desktop): image #4 https://srv.carbonads.net/static/30242/e1130b06f0096fbbd01a8d15bca68e6092cdebef  [e6a2d3946f]
+        expected: 260x200
+        actual:   (absent)
+        fix:      The image at this position in the page loads a different picture or fails to load.
+      assets (desktop): image #5 https://ad.doubleclick.net/ddm/trackimp/N5295.3091281BUYSELLADS/B34721851.453481157;dc_trk_aid=650200766;dc_trk_cid=246706990;ord=176847840;dc_lat=;dc_rdid=;tag_for_child_directed_treatment=;tfua=;gdpr=$;gdpr_consent=$;ltd=;dc_tdv=1?  [b6a8c74a78]
+        expected: broken
+        actual:   (absent)
+        fix:      The image at this position in the page loads a different picture or fails to load.
+      rendered (mobile): accessibility tree  [a1c7c5b41e]
+        expected:   - code: "<div x-data=\"{ message: '' }\"> <input type=\"text\" x-model=\"message\"> <span x-text=\"message\"></span> </div>"
+        actual:     - code: "<divx-data=\"{ message: '' }\"> <inputtype=\"text\"x-model=\"message\"> <spanx-text=\"message\"></span> </div>"
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [f987e64ea9]
+        expected:   - code: "<div x-data=\"{ message: '' }\"> <input type=\"text\" x-model=\"message\"> <button x-on:click=\"message = 'changed'\">Change Message</button> </div>"
+        actual:     - code: "<divx-data=\"{ message: '' }\"> <inputtype=\"text\"x-model=\"message\"> <buttonx-on:click=\"message ='changed'\">Change Message</button> </div>"
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [06460f5d0b]
+        expected:   - code: <input type="text" x-model="message"> <span x-text="message"></span>
+        actual:     - code: <inputtype="text"x-model="message"> <spanx-text="message"></span>
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [c6dd249809]
+        expected:   - code: <textarea x-model="message"></textarea> <span x-text="message"></span>
+        actual:     - code: <textareax-model="message"></textarea> <spanx-text="message"></span>
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [061eef0ff3]
+        expected:   - code: <input type="checkbox" id="checkbox" x-model="show"> <label for="checkbox" x-text="show"></label>
+        actual:     - code: <inputtype="checkbox"id="checkbox"x-model="show"> <labelfor="checkbox"x-text="show"></label>
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [690bb461f0]
+        expected:   - code: "<input type=\"checkbox\" value=\"red\" x-model=\"colors\"> <input type=\"checkbox\" value=\"orange\" x-model=\"colors\"> <input type=\"checkbox\" val...
+        actual:     - code: "<inputtype=\"checkbox\"value=\"red\"x-model=\"colors\"> <inputtype=\"checkbox\"value=\"orange\"x-model=\"colors\"> <inputtype=\"checkbox\"value=\"yel...
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [eaa1049d47]
+        expected:   - code: "<input type=\"radio\" value=\"yes\" x-model=\"answer\"> <input type=\"radio\" value=\"no\" x-model=\"answer\"> Answer: <span x-text=\"answer\"></span...
+        actual:     - code: "<inputtype=\"radio\"value=\"yes\"x-model=\"answer\"> <inputtype=\"radio\"value=\"no\"x-model=\"answer\"> Answer: <spanx-text=\"answer\"></span>"
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [2a07c4482b]
+        expected:   - code: "<select x-model=\"color\"> <option>Red</option> <option>Orange</option> <option>Yellow</option> </select> Color: <span x-text=\"color\"></span>"
+        actual:     - code: "<selectx-model=\"color\"> <option>Red</option> <option>Orange</option> <option>Yellow</option> </select> Color: <spanx-text=\"color\"></span>"
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [4be0144e71]
+        expected:   - code: "<select x-model=\"color\"> <option value=\"\" disabled>Select A Color</option> <option>Red</option> <option>Orange</option> <option>Yellow</option> <...
+        actual:     - code: "<selectx-model=\"color\"> <optionvalue=\"\"disabled>Select A Color</option> <option>Red</option> <option>Orange</option> <option>Yellow</option> </se...
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [7171ac6504]
+        expected:   - code: "<select x-model=\"color\" multiple> <option>Red</option> <option>Orange</option> <option>Yellow</option> </select> Colors: <span x-text=\"color\"></s...
+        actual:     - code: "<selectx-model=\"color\"multiple> <option>Red</option> <option>Orange</option> <option>Yellow</option> </select> Colors: <spanx-text=\"color\"></span...
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [777137e38d]
+        expected:   - code: "<select x-model=\"color\"> <template x-for=\"color in ['Red', 'Orange', 'Yellow']\"> <option x-text=\"color\"></option> </template> </select> Color: ...
+        actual:     - code: "<selectx-model=\"color\"> <templatex-for=\"color in ['Red', 'Orange', 'Yellow']\"> <optionx-text=\"color\"></option> </template> </select> Color: <sp...
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [7cf1d08d81]
+        expected:   - code: <input type="range" x-model="range" min="0" max="1" step="0.1"> <span x-text="range"></span>
+        actual:     - code: <inputtype="range"x-model="range"min="0"max="1"step="0.1"> <spanx-text="range"></span>
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [c6eaaf7382]
+        expected:   - code: <input type="text" x-model.lazy="username"> <span x-show="username.length > 20">The username is too long.</span>
+        actual:     - code: <inputtype="text"x-model.lazy="username"> <spanx-show="username.length>20">The username is too long.</span>
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [57f9e0a9f1]
+        expected:   - code: <input type="text" x-model.change="username">
+        actual:     - code: <inputtype="text"x-model.change="username">
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [f75909bfd0]
+        expected:   - code: <input type="text" x-model.blur="email">
+        actual:     - code: <inputtype="text"x-model.blur="email">
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [d186d0d0a0]
+        expected:   - code: <input type="text" x-model.enter="search">
+        actual:     - code: <inputtype="text"x-model.enter="search">
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [ded7ea3c9a]
+        expected:   - code: <!-- Sync on blur OR enter --> <input type="text" x-model.blur.enter="search" placeholder="Press Enter or click away"> <!-- Sync on change, blur, OR e...
+        actual:     - code: <!-- Sync on blur OR enter --> <inputtype="text"x-model.blur.enter="search"placeholder="Press Enter or click away"> <!-- Sync on change, blur, OR ente...
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [47a0137454]
+        expected:   - code: <input type="text" x-model.number="age"> <span x-text="typeof age"></span>
+        actual:     - code: <inputtype="text"x-model.number="age"> <spanx-text="typeof age"></span>
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [3f627e000e]
+        expected:   - code: <select x-model.boolean="isActive"> <option value="true">Yes</option> <option value="false">No</option> </select> <span x-text="typeof isActive"></spa...
+        actual:     - code: <selectx-model.boolean="isActive"> <optionvalue="true">Yes</option> <optionvalue="false">No</option> </select> <spanx-text="typeof isActive"></span>
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): accessibility tree  [6cdd20d56f]
+        expected:   - code: <input type="text" x-model.debounce="search">
+        actual:     - code: <inputtype="text"x-model.debounce="search">
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (mobile): visible text  [86880330d2]
+        expected: <div x-data="{ message: '' }">
+        actual:   <divx-data="{ message: '' }">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "x-data" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (mobile): visible text  [4da8373ec7]
+        expected: <input type="text" x-model="message">
+        actual:   <inputtype="text"x-model="message">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "input" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (mobile): visible text  [bc4aee935e]
+        expected: <span x-text="message"></span>
+        actual:   <spanx-text="message"></span>
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "span" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (mobile): visible text  [86880330d2]
+        expected: <div x-data="{ message: '' }">
+        actual:   <divx-data="{ message: '' }">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "x-data" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (mobile): visible text  [4da8373ec7]
+        expected: <input type="text" x-model="message">
+        actual:   <inputtype="text"x-model="message">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "input" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (mobile): visible text  [7d04661ff1]
+        expected: <button x-on:click="message = 'changed'">Change Message</button>
+        actual:   <buttonx-on:click="message ='changed'">Change Message</button>
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "button" (source not found); new pages/directives/model.tsrx:23 renders it
+      rendered (mobile): visible text  [4da8373ec7]
+        expected: <input type="text" x-model="message">
+        actual:   <inputtype="text"x-model="message">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "input" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (mobile): visible text  [bc4aee935e]
+        expected: <span x-text="message"></span>
+        actual:   <spanx-text="message"></span>
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "span" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (mobile): visible text  [135c6f6676]
+        expected: <textarea x-model="message"></textarea>
+        actual:   <textareax-model="message"></textarea>
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "textarea" (source not found); new pages/directives/model.tsrx:70 renders it
+      rendered (mobile): visible text  [bc4aee935e]
+        expected: <span x-text="message"></span>
+        actual:   <spanx-text="message"></span>
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "span" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (mobile): visible text  [900a47e867]
+        expected: <input type="checkbox" id="checkbox" x-model="show">
+        actual:   <inputtype="checkbox"id="checkbox"x-model="show">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "input" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (mobile): visible text  [0d4292ed78]
+        expected: <label for="checkbox" x-text="show"></label>
+        actual:   <labelfor="checkbox"x-text="show"></label>
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "label" (source not found); new pages/directives/model.tsrx:78 renders it
+      rendered (mobile): visible text  [c945d875db]
+        expected: <input type="checkbox" value="red" x-model="colors">
+        actual:   <inputtype="checkbox"value="red"x-model="colors">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "input" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (mobile): visible text  [bb9637ae6c]
+        expected: <input type="checkbox" value="orange" x-model="colors">
+        actual:   <inputtype="checkbox"value="orange"x-model="colors">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "input" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (mobile): visible text  [2b4e8751f5]
+        expected: <input type="checkbox" value="yellow" x-model="colors">
+        actual:   <inputtype="checkbox"value="yellow"x-model="colors">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "input" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (mobile): visible text  [c3dddda972]
+        expected: Colors: <span x-text="colors"></span>
+        actual:   Colors: <spanx-text="colors"></span>
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "Colors: <" (source not found); new pages/directives/model.tsrx:83 renders it
+      rendered (mobile): visible text  [27731bfdbe]
+        expected: <input type="radio" value="yes" x-model="answer">
+        actual:   <inputtype="radio"value="yes"x-model="answer">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "input" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (mobile): visible text  [f3ea68866c]
+        expected: <input type="radio" value="no" x-model="answer">
+        actual:   <inputtype="radio"value="no"x-model="answer">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "input" (source not found); new pages/directives/model.tsrx:18 renders it
+      rendered (mobile): visible text  [02363807f4]
+        expected: Answer: <span x-text="answer"></span>
+        actual:   Answer: <spanx-text="answer"></span>
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "Answer: <" (source not found); new pages/directives/model.tsrx:88 renders it
+      rendered (mobile): visible text  [771308ce9b]
+        expected: <select x-model="color">
+        actual:   <selectx-model="color">
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "select" (source not found); new pages/directives/model.tsrx:96 renders it
+      visual (mobile): page size  [cd3400c34b]
+        expected: 390x10673
+        actual:   390x10358; 248152 pixels (6.14%) differ in x=4..366, y=465..10339, first near generic (main/span), generic (main/span)
+        fix:      The page has a different size: an element is taller, shorter or missing. Compare the elements inside the region.
+      assets (mobile): image #4 https://srv.carbonads.net/static/30242/e1130b06f0096fbbd01a8d15bca68e6092cdebef  [ae8dda87ea]
+        expected: 260x200
+        actual:   (absent)
+        fix:      The image at this position in the page loads a different picture or fails to load.
+      assets (mobile): image #5 https://ad.doubleclick.net/ddm/trackimp/N5295.3091281BUYSELLADS/B34721851.453481163;dc_trk_aid=652439709;dc_trk_cid=246706990;ord=176847840;dc_lat=;dc_rdid=;tag_for_child_directed_treatment=;tfua=;gdpr=$;gdpr_consent=$;ltd=;dc_tdv=1?  [cbc1e39b90]
+        expected: broken
+        actual:   (absent)
+        fix:      The image at this position in the page loads a different picture or fails to load.
+      assets: script /livewire/livewire.js?id=de3fca26689cb5a39af4  [2b9e508e69]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      network: browser request missing  [13113fa828]
+        expected: browser GET srv.carbonads.net/ads/CESI52JU.json?segment=placement:alpinejsdev
+        actual:   (not requested)
+        fix:      The old page makes this request in the browser and the new one does not. Port the code that fetches it, or the page loses what the response fed.
+      network: browser request missing  [f9134ea277]
+        expected: browser GET alpinejs.dev/build/assets/app.9ea156ae.css
+        actual:   (not requested)
+        fix:      The old page makes this request in the browser and the new one does not. Port the code that fetches it, or the page loses what the response fed.
+      weight: JavaScript downloaded  [ea47b0fc11]
+        expected: at most 278145 bytes (old: 276740)
+        actual:   814841 bytes; new-only scripts: /build/chunk-B2Gsz-yu.js (658031 B), /build/chunk-CIWOy3e9.js (10765 B), /build/chunk-5nRizQet2.js (7525 B)
+        fix:      The new route downloads or runs more JavaScript at load than the old one. Look at the scripts only the new route loads.
+      visual (desktop): screenshot in prefers-reduced-motion: no-preference  [bfd4ecf381]
+        expected: 1280x9082
+        actual:   1280x8767
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 768px  [1ddb24b574]
+        expected: 768x9776
+        actual:   768x9461
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in viewport width 769px  [cfa784541a]
+        expected: 769x9776
+        actual:   769x9461
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in :focus on [type=text]  [443c0b862b]
+        expected: same pixels outside the noise mask
+        actual:   10361 pixels differ around the state target
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in :focus on [multiple]  [e07c134e32]
+        expected: same pixels outside the noise mask
+        actual:   1481 pixels differ around the state target
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in :focus on textarea  [3378b13c30]
+        expected: same pixels outside the noise mask
+        actual:   1790 pixels differ around the state target
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in :focus on select  [c9a2911797]
+        expected: same pixels outside the noise mask
+        actual:   6596 pixels differ around the state target
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in :focus on [type=checkbox]  [dea7c8235b]
+        expected: same pixels outside the noise mask
+        actual:   1074 pixels differ around the state target
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in :focus on [type=radio]  [6ae9eb5e0e]
+        expected: same pixels outside the noise mask
+        actual:   175 pixels differ around the state target
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in :checked on [type=checkbox]  [d4dfe9944c]
+        expected: same pixels outside the noise mask
+        actual:   1265 pixels differ around the state target
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in :checked on [type=radio]  [5373272c45]
+        expected: same pixels outside the noise mask
+        actual:   160 pixels differ around the state target
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      behaviour: click button "Show navigation"  [1030f9c2d0]
+        expected: URL /directives/model; appears: (nothing)
+        actual:   button "Show navigation" could not be used: locator.click: Timeout 3000ms exceeded.
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders span "click" (source not found); new pages/directives/model.tsrx:23 renders it
+      a11y: press Enter on button "Show navigation"  [ee6474b6ff]
+        expected: URL /directives/model; appears: (nothing)
+        actual:   button "Show navigation" could not be used: locator.focus: Timeout 3000ms exceeded.
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders span "button" (source not found); new pages/directives/model.tsrx:23 renders it
+      a11y: press Space on button "Show navigation"  [533e620646]
+        expected: URL /directives/model; appears: (nothing)
+        actual:   button "Show navigation" could not be used: locator.focus: Timeout 3000ms exceeded.
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders span "button" (source not found); new pages/directives/model.tsrx:23 renders it
+      behaviour: click button "Close navigation"  [53f26f1486]
+        expected: URL /directives/model; appears: (nothing)
+        actual:   button "Close navigation" could not be used: locator.click: Timeout 3000ms exceeded.
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders span "click" (source not found); new pages/directives/model.tsrx:23 renders it
+      a11y: press Enter on button "Close navigation"  [86059a689f]
+        expected: URL /directives/model; appears: (nothing)
+        actual:   button "Close navigation" could not be used: locator.focus: Timeout 3000ms exceeded.
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders span "button" (source not found); new pages/directives/model.tsrx:23 renders it
+      a11y: press Space on button "Close navigation"  [49f291aace]
+        expected: URL /directives/model; appears: (nothing)
+        actual:   button "Close navigation" could not be used: locator.focus: Timeout 3000ms exceeded.
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders span "button" (source not found); new pages/directives/model.tsrx:23 renders it
+      behaviour: click button "Change Message"  [4aacd8fd4b]
+        expected: appears: (nothing); disappears: (nothing)
+        actual:   appears: - textbox "Type message...": changed; disappears: - textbox "Type message..."
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders button "Change Message" (source not found); new components/model-demos.tsrx:28 renders it
+      a11y: press Enter on button "Change Message"  [e4ab9eca42]
+        expected: appears: (nothing); disappears: (nothing)
+        actual:   appears: - textbox "Type message...": changed; disappears: - textbox "Type message..."
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "Change Message" (source not found); new components/model-demos.tsrx:28 renders it
+      a11y: press Space on button "Change Message"  [44178a14bc]
+        expected: appears: (nothing); disappears: (nothing)
+        actual:   appears: - textbox "Type message...": changed; disappears: - textbox "Type message..."
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "Change Message" (source not found); new components/model-demos.tsrx:28 renders it
+      behaviour: click link "UI Components"  [2a45e87796]
+        expected: URL /component/dropdown
+        actual:   URL /components
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "UI Components" (source not found); new pages/directives/model.tsrx:122 renders it
+      a11y: press Enter on link "UI Components"  [74b4333d5b]
+        expected: URL /component/dropdown
+        actual:   URL /components
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "UI Components" (source not found); new pages/directives/model.tsrx:122 renders it
+
+0 of 1 routes green, 1 red.
+Report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.json
+Visual report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.html

@@ -1,0 +1,430 @@
+OLD http://127.0.0.1:4420  vs  NEW http://127.0.0.1:4421
+
+FAIL  /directives/model  [rendered, visual, assets, css, a11y, behaviour, network, weight]  JS on the wire 270.3 kB -> 858.5 kB, run at load 100.7 kB -> 1.2 kB (uncompressed)
+      rendered (desktop): accessibility tree  [23bfe7aa7c]
+        expected:     - option "Select A Color" [disabled] [selected]
+        actual:       - option "Select A Color" [disabled]
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders span "option" (source not found); new pages/directives/model.tsrx:197 renders it
+      rendered (desktop): accessibility tree  [79d7e0171e]
+        expected:     - option "Red"
+        actual:       - option "Red" [selected]
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders option "Red" (source not found); new pages/directives/model.tsrx:236 renders it
+      rendered (desktop): accessibility tree  [cb39f8ea50]
+        expected:   - button "Search (Command+K)": Search ⌘ K
+        actual:   (absent)
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders button "Search (Command+K)" (source not found); new pages/directives/model.tsrx:30 doesn't
+      rendered (desktop): accessibility tree  [211694bfd4]
+        expected:   - link "ads via Carbon":
+        actual:   (absent)
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders link "ads via Carbon" (source not found); new pages/directives/model.tsrx:30 doesn't
+      rendered (desktop): accessibility tree  [a84a95f32c]
+        expected:     - /url: https://srv.carbonads.net/ads/click/x/GTND4277CVYIV27WCAALYKQUF67D52JUCAYD6Z3JCAAI62JLCY7ILKQKCKSIVK7ICK7IVKJMCYYD5KQ7CVSITK3KC6SILKJJF6BI6K3EHJNCLS...
+        actual:   (absent)
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders span "click" (source not found); new pages/directives/model.tsrx:63 renders it
+      rendered (desktop): accessibility tree  [87b70fbd3b]
+        expected:     - img "ads via Carbon"
+        actual:   (absent)
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders img "ads via Carbon" (source not found); new pages/directives/model.tsrx:30 doesn't
+      rendered (desktop): accessibility tree  [04e8a83394]
+        expected:   - link "Start free with 30 GB storage, 1 GB of outbound data transfers per month and more.":
+        actual:   (absent)
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders link "Start free with 30 GB storage, 1 GB of o..." (source not found); new pages/directives/model.tsrx:30 doesn't
+      rendered (desktop): accessibility tree  [a84a95f32c]
+        expected:     - /url: https://srv.carbonads.net/ads/click/x/GTND4277CVYIV27WCAALYKQUF67D52JUCAYD6Z3JCAAI62JLCY7ILKQKCKSIVK7ICK7IVKJMCYYD5KQ7CVSITK3KC6SILKJJF6BI6K3EHJNCLS...
+        actual:   (absent)
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders span "click" (source not found); new pages/directives/model.tsrx:63 renders it
+      rendered (desktop): accessibility tree  [211694bfd4]
+        expected:   - link "ads via Carbon":
+        actual:   (absent)
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders link "ads via Carbon" (source not found); new pages/directives/model.tsrx:30 doesn't
+      rendered (desktop): accessibility tree  [8cf5732d59]
+        expected:     - /url: http://carbonads.net/?utm_source=alpinejsdev&utm_medium=ad_via_link&utm_campaign=in_unit&utm_term=carbon
+        actual:   (absent)
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): visible text  [84b823c2cf]
+        expected: Search
+        actual:   (absent)
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders span "Search" (source not found); new pages/directives/model.tsrx:30 doesn't
+      rendered (desktop): visible text  [5dbf1bf924]
+        expected: ⌘
+        actual:   (absent)
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders kbd "⌘" (source not found); new pages/directives/model.tsrx:30 doesn't
+      rendered (desktop): visible text  [4b804fbfee]
+        expected: K
+        actual:   (absent)
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders kbd "K" (source not found); new pages/directives/model.tsrx:30 doesn't
+      rendered (desktop): visible text  [eb37f4ca4f]
+        expected: Start free with 30 GB storage, 1 GB of outbound data transfers per month and more.
+        actual:   (absent)
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders link "Start free with 30 GB storage, 1 GB of o..." (source not found); new pages/directives/model.tsrx:30 doesn't
+      rendered (desktop): visible text  [36148044b2]
+        expected: ADS VIA CARBON
+        actual:   (absent)
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+      visual (desktop): screenshot  [2d3c073685]
+        expected: same pixels outside the noise mask
+        actual:   11594 pixels (0.10%) differ in x=28..1256, y=23..3832, first near path (banner>link/path), path (banner>link/path)
+        fix:      Pixels differ in the named region. If the DOM and CSS checks pass, look at fonts, images and stacking there.
+        where:    new components/docs-header.tsrx:35 renders path
+      css (desktop): computed style of generic (banner/div)  [1f105196c2]
+        expected: align-items: center; display: flex; justify-content: space-between; padding-block-start: 12px; padding-top: 12px
+        actual:   align-items: normal; display: block; justify-content: normal; padding-block-start: 0px; padding-top: 0px
+        fix:      Old rule: `.items-center` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36452) sets align-items with `center`; `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `.justify-between` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36639) sets justify-content with `space-between`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:40 renders it
+      css (desktop): computed style of generic (banner/div)  [b14802be70]
+        expected: align-items: normal; caret-color: rgb(45, 52, 65); color: rgb(45, 52, 65); column-rule-color: rgb(45, 52, 65); display: block; font-size: 24px; font-weight: 600...
+        actual:   align-items: center; caret-color: rgb(0, 0, 0); color: rgb(0, 0, 0); column-rule-color: rgb(0, 0, 0); display: flex; font-size: 16px; font-weight: 400; justify-...
+        fix:      Old rule: `.items-center` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36452) sets align-items with `center`; `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `.justify-between` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36639) sets justify-content with `space-between`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:40 renders it
+      css (desktop): computed style of generic (banner/div)  [06304d2533]
+        expected: align-items: center; display: flex; font-size: 16px; font-weight: 400; justify-content: flex-end; line-height: 24px; padding-block-end: 16px; padding-block-star...
+        actual:   align-items: normal; display: block; font-size: 24px; font-weight: 600; justify-content: normal; line-height: 32px; padding-block-end: 0px; padding-block-start:...
+        fix:      Old rule: `.items-center` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36452) sets align-items with `center`; `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `.justify-between` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36639) sets justify-content with `space-between`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:42 renders it
+      css (desktop): computed style of generic (banner/div)  [9d15ffcd70]
+        expected: align-items: normal; display: block; justify-content: normal; padding-block-end: 0px; padding-block-start: 0px; padding-bottom: 0px; padding-inline-end: 0px; pa...
+        actual:   align-items: center; display: flex; justify-content: flex-end; padding-block-end: 16px; padding-block-start: 16px; padding-bottom: 16px; padding-inline-end: 24p...
+        fix:      Old rule: `.items-center` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36452) sets align-items with `center`; `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `.justify-between` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36639) sets justify-content with `space-between`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:42 renders it
+      css (desktop): computed style of generic (banner/div)  [46bcb28157]
+        expected: background-image: none; bottom: auto; cursor: auto; font-weight: 400; inset-block-end: auto; inset-block-start: auto; inset-inline-end: auto; inset-inline-start...
+        actual:   background-image: linear-gradient(rgba(255, 255, 255, 0.133), rgb(255, 255, 255)); bottom: 0px; cursor: pointer; font-weight: 500; inset-block-end: 0px; inset-b...
+        fix:      Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:40 renders it
+      css (desktop): computed style of generic (complementary>list>listitem>list>link/div)  [5bc6ae2ef6]
+        expected: background-image: linear-gradient(rgba(255, 255, 255, 0.133), rgb(255, 255, 255)); bottom: 0px; cursor: pointer; font-weight: 500; inset-block-end: 0px; inset-b...
+        actual:   background-image: none; bottom: auto; cursor: auto; font-weight: 400; inset-block-end: auto; inset-block-start: auto; inset-inline-end: auto; inset-inline-start...
+        fix:      Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:40 renders it
+      css (desktop): computed style of generic (main/div)  [a3df6f543f]
+        expected: font-size: 16px; line-height: 24px; max-inline-size: 768px; max-width: 768px; padding-block-end: 96px; padding-bottom: 96px; padding-inline-end: 24px; padding-i...
+        actual:   font-size: 14px; line-height: 21px; max-inline-size: none; max-width: none; padding-block-end: 0px; padding-bottom: 0px; padding-inline-end: 16px; padding-inlin...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:40 renders it
+      css (desktop): computed style of generic (main/div)  [3e64758f23]
+        expected: background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); borde...
+        actual:   background-color: rgb(255, 255, 255); border-block-end-color: rgb(216, 222, 233); border-block-end-width: 1px; border-block-start-color: rgb(216, 222, 233); bor...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-block-start with `0`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-top with `0`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:42 renders it
+      css (desktop): computed style of generic (main/div)  [c4e7f9033b]
+        expected: background-color: rgb(255, 255, 255); border-block-end-color: rgb(216, 222, 233); border-block-end-width: 1px; border-block-start-color: rgb(216, 222, 233); bor...
+        actual:   background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); borde...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-block-start with `0`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-top with `0`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:44 renders it
+      css (desktop): computed style of generic (main/div)  [b33facc758]
+        expected: padding-block-start: 0px; padding-top: 0px
+        actual:   padding-block-start: 16px; padding-top: 16px
+        fix:      Old rule: `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:44 renders it
+      css (desktop): computed style of generic (main/div)  [bbb78a9ab3]
+        expected: font-size: 16px; line-height: 24px; padding-block-start: 16px; padding-inline-end: 0px; padding-inline-start: 0px; padding-left: 0px; padding-right: 0px; paddin...
+        actual:   font-size: 14px; line-height: 21px; padding-block-start: 0px; padding-inline-end: 16px; padding-inline-start: 16px; padding-left: 16px; padding-right: 16px; pad...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:63 renders it
+      css (desktop): computed style of generic (main/div)  [3e64758f23]
+        expected: background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); borde...
+        actual:   background-color: rgb(255, 255, 255); border-block-end-color: rgb(216, 222, 233); border-block-end-width: 1px; border-block-start-color: rgb(216, 222, 233); bor...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-block-start with `0`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-top with `0`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:42 renders it
+      css (desktop): computed style of generic (main/div)  [c4e7f9033b]
+        expected: background-color: rgb(255, 255, 255); border-block-end-color: rgb(216, 222, 233); border-block-end-width: 1px; border-block-start-color: rgb(216, 222, 233); bor...
+        actual:   background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); borde...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-block-start with `0`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-top with `0`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:44 renders it
+      css (desktop): computed style of generic (main/div)  [4acec1821a]
+        expected: font-size: 16px; line-height: 24px; padding-inline-end: 0px; padding-inline-start: 0px; padding-left: 0px; padding-right: 0px; text-wrap-mode: wrap; white-space...
+        actual:   font-size: 14px; line-height: 21px; padding-inline-end: 16px; padding-inline-start: 16px; padding-left: 16px; padding-right: 16px; text-wrap-mode: nowrap; white...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:115 renders it
+      css (desktop): computed style of generic (main/div)  [3e64758f23]
+        expected: background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); borde...
+        actual:   background-color: rgb(255, 255, 255); border-block-end-color: rgb(216, 222, 233); border-block-end-width: 1px; border-block-start-color: rgb(216, 222, 233); bor...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-block-start with `0`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-top with `0`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:42 renders it
+      css (desktop): computed style of generic (main/div)  [c4e7f9033b]
+        expected: background-color: rgb(255, 255, 255); border-block-end-color: rgb(216, 222, 233); border-block-end-width: 1px; border-block-start-color: rgb(216, 222, 233); bor...
+        actual:   background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); borde...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-block-start with `0`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-top with `0`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:44 renders it
+      css (desktop): computed style of generic (main/div)  [b33facc758]
+        expected: padding-block-start: 0px; padding-top: 0px
+        actual:   padding-block-start: 16px; padding-top: 16px
+        fix:      Old rule: `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:119 renders it
+      css (desktop): computed style of generic (main/div)  [bbb78a9ab3]
+        expected: font-size: 16px; line-height: 24px; padding-block-start: 16px; padding-inline-end: 0px; padding-inline-start: 0px; padding-left: 0px; padding-right: 0px; paddin...
+        actual:   font-size: 14px; line-height: 21px; padding-block-start: 0px; padding-inline-end: 16px; padding-inline-start: 16px; padding-left: 16px; padding-right: 16px; pad...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:138 renders it
+      css (desktop): computed style of generic (main/div)  [3e64758f23]
+        expected: background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); borde...
+        actual:   background-color: rgb(255, 255, 255); border-block-end-color: rgb(216, 222, 233); border-block-end-width: 1px; border-block-start-color: rgb(216, 222, 233); bor...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-block-start with `0`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-top with `0`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:42 renders it
+      css (desktop): computed style of generic (main/div)  [c4e7f9033b]
+        expected: background-color: rgb(255, 255, 255); border-block-end-color: rgb(216, 222, 233); border-block-end-width: 1px; border-block-start-color: rgb(216, 222, 233); bor...
+        actual:   background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); borde...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-block-start with `0`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-top with `0`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:44 renders it
+      css (desktop): computed styles  [cc886dafa7]
+        expected: 
+        actual:   59 more elements differ
+        fix:      Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+      a11y (desktop): focus order (Tab), first difference at stop 2  [363065e546]
+        expected: 1. link → 2. button "Search (Command+K)" → 3. link "GitHub" → 4. link "Twitter" → 5. link "Discord" → 6. link "Start Here" → 7. link "Upgrade From V2" → 8. link...
+        actual:   1. link → 2. link "GitHub" → 3. link "Twitter" → 4. link "Discord" → 5. link "Start Here" → 6. link "Upgrade From V2" → 7. link "Installation" → 8. link "State"...
+        fix:      Tab reaches elements in a different order. Keep the old DOM order for interactive elements, remove positive tabindex values, and keep buttons and links as real buttons and links.
+      assets (desktop): image #4 https://srv.carbonads.net/static/30242/e1130b06f0096fbbd01a8d15bca68e6092cdebef  [e6a2d3946f]
+        expected: 260x200
+        actual:   (absent)
+        fix:      The image at this position in the page loads a different picture or fails to load.
+      assets (desktop): image #5 https://ad.doubleclick.net/ddm/trackimp/N5295.3091281BUYSELLADS/B34721851.453481151;dc_trk_aid=650200766;dc_trk_cid=246706990;ord=176847840;dc_lat=;dc_rdid=;tag_for_child_directed_treatment=;tfua=;gdpr=$;gdpr_consent=$;ltd=;dc_tdv=1?  [7a5b9bae92]
+        expected: broken
+        actual:   (absent)
+        fix:      The image at this position in the page loads a different picture or fails to load.
+      rendered (mobile): accessibility tree  [4ff6383a5a]
+        expected:     - option "Select A Color" [disabled] [selected]
+        actual:       - option "Select A Color" [disabled]
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders span "option" (source not found); new pages/directives/model.tsrx:197 renders it
+      rendered (mobile): accessibility tree  [2d4432e763]
+        expected:     - option "Red"
+        actual:       - option "Red" [selected]
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders option "Red" (source not found); new pages/directives/model.tsrx:236 renders it
+      css (mobile): computed style of generic (banner/div)  [bcec82a790]
+        expected: align-items: center; display: flex; justify-content: space-between; padding-block-start: 12px; padding-top: 12px
+        actual:   align-items: normal; display: block; justify-content: normal; padding-block-start: 0px; padding-top: 0px
+        fix:      Old rule: `.items-center` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36452) sets align-items with `center`; `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `.justify-between` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36639) sets justify-content with `space-between`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:40 renders it
+      css (mobile): computed style of generic (banner/div)  [6a79297a1a]
+        expected: align-items: normal; caret-color: rgb(45, 52, 65); color: rgb(45, 52, 65); column-rule-color: rgb(45, 52, 65); display: block; font-size: 24px; font-weight: 600...
+        actual:   align-items: center; caret-color: rgb(0, 0, 0); color: rgb(0, 0, 0); column-rule-color: rgb(0, 0, 0); display: flex; font-size: 16px; font-weight: 400; justify-...
+        fix:      Old rule: `.items-center` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36452) sets align-items with `center`; `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `.justify-between` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36639) sets justify-content with `space-between`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:40 renders it
+      css (mobile): computed style of generic (banner/div)  [35575e75a7]
+        expected: align-items: center; caret-color: rgb(0, 0, 0); color: rgb(0, 0, 0); column-rule-color: rgb(0, 0, 0); display: flex; font-size: 16px; font-weight: 400; line-hei...
+        actual:   align-items: normal; caret-color: rgb(45, 52, 65); color: rgb(45, 52, 65); column-rule-color: rgb(45, 52, 65); display: block; font-size: 24px; font-weight: 600...
+        fix:      Old rule: `.items-center` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36452) sets align-items with `center`; `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:42 renders it
+      css (mobile): computed style of generic (main/div)  [29eb21512b]
+        expected: align-items: normal; caret-color: rgb(45, 52, 65); color: rgb(45, 52, 65); column-rule-color: rgb(45, 52, 65); display: block; max-inline-size: 768px; max-width...
+        actual:   align-items: center; caret-color: rgb(0, 0, 0); color: rgb(0, 0, 0); column-rule-color: rgb(0, 0, 0); display: flex; max-inline-size: none; max-width: none; min...
+        fix:      Old rule: `.items-center` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:36452) sets align-items with `center`; `.flex` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:25768) sets display with `flex`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:42 renders it
+      css (mobile): computed style of generic (main/div)  [8140e33c62]
+        expected: font-size: 14px; line-height: 21px; max-inline-size: none; max-width: none; padding-block-end: 0px; padding-bottom: 0px; padding-inline-end: 16px; padding-inlin...
+        actual:   font-size: 16px; line-height: 24px; max-inline-size: 768px; max-width: 768px; padding-block-end: 96px; padding-bottom: 96px; padding-inline-end: 24px; padding-i...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:40 renders it
+      css (mobile): computed style of generic (main/div)  [5bb9280600]
+        expected: background-color: rgb(255, 255, 255); border-block-end-color: rgb(216, 222, 233); border-block-end-width: 1px; border-block-start-color: rgb(216, 222, 233); bor...
+        actual:   background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); borde...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-block-start with `0`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-top with `0`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:40 renders it
+      css (mobile): computed style of generic (main/div)  [e9f720f79c]
+        expected: background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); borde...
+        actual:   background-color: rgb(255, 255, 255); border-block-end-color: rgb(216, 222, 233); border-block-end-width: 1px; border-block-start-color: rgb(216, 222, 233); bor...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-block-start with `0`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-top with `0`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:42 renders it
+      css (mobile): computed style of generic (main/div)  [ce27852c8c]
+        expected: padding-block-start: 16px; padding-top: 16px
+        actual:   padding-block-start: 0px; padding-top: 0px
+        fix:      Old rule: `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:44 renders it
+      css (mobile): computed style of generic (main/div)  [5ed0077c46]
+        expected: font-size: 14px; line-height: 21px; padding-block-start: 0px; padding-inline-end: 16px; padding-inline-start: 16px; padding-left: 16px; padding-right: 16px; pad...
+        actual:   font-size: 16px; line-height: 24px; padding-block-start: 16px; padding-inline-end: 0px; padding-inline-start: 0px; padding-left: 0px; padding-right: 0px; paddin...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:44 renders it
+      css (mobile): computed style of generic (main/div)  [5bb9280600]
+        expected: background-color: rgb(255, 255, 255); border-block-end-color: rgb(216, 222, 233); border-block-end-width: 1px; border-block-start-color: rgb(216, 222, 233); bor...
+        actual:   background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); borde...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-block-start with `0`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-top with `0`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:63 renders it
+      css (mobile): computed style of generic (main/div)  [e9f720f79c]
+        expected: background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); borde...
+        actual:   background-color: rgb(255, 255, 255); border-block-end-color: rgb(216, 222, 233); border-block-end-width: 1px; border-block-start-color: rgb(216, 222, 233); bor...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-block-start with `0`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-top with `0`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:42 renders it
+      css (mobile): computed style of generic (main/div)  [b1cb8360bf]
+        expected: font-size: 14px; line-height: 21px; padding-inline-end: 16px; padding-inline-start: 16px; padding-left: 16px; padding-right: 16px; text-wrap-mode: nowrap; white...
+        actual:   font-size: 16px; line-height: 24px; padding-inline-end: 0px; padding-inline-start: 0px; padding-left: 0px; padding-right: 0px; text-wrap-mode: wrap; white-space...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:44 renders it
+      css (mobile): computed style of generic (main/div)  [5bb9280600]
+        expected: background-color: rgb(255, 255, 255); border-block-end-color: rgb(216, 222, 233); border-block-end-width: 1px; border-block-start-color: rgb(216, 222, 233); bor...
+        actual:   background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); borde...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-block-start with `0`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-top with `0`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:115 renders it
+      css (mobile): computed style of generic (main/div)  [e9f720f79c]
+        expected: background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); borde...
+        actual:   background-color: rgb(255, 255, 255); border-block-end-color: rgb(216, 222, 233); border-block-end-width: 1px; border-block-start-color: rgb(216, 222, 233); bor...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-block-start with `0`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-top with `0`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:42 renders it
+      css (mobile): computed style of generic (main/div)  [ce27852c8c]
+        expected: padding-block-start: 16px; padding-top: 16px
+        actual:   padding-block-start: 0px; padding-top: 0px
+        fix:      Old rule: `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:44 renders it
+      css (mobile): computed style of generic (main/div)  [5ed0077c46]
+        expected: font-size: 14px; line-height: 21px; padding-block-start: 0px; padding-inline-end: 16px; padding-inline-start: 16px; padding-left: 16px; padding-right: 16px; pad...
+        actual:   font-size: 16px; line-height: 24px; padding-block-start: 16px; padding-inline-end: 0px; padding-inline-start: 0px; padding-left: 0px; padding-right: 0px; paddin...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:119 renders it
+      css (mobile): computed style of generic (main/div)  [5bb9280600]
+        expected: background-color: rgb(255, 255, 255); border-block-end-color: rgb(216, 222, 233); border-block-end-width: 1px; border-block-start-color: rgb(216, 222, 233); bor...
+        actual:   background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); borde...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-block-start with `0`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-top with `0`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:138 renders it
+      css (mobile): computed style of generic (main/div)  [e9f720f79c]
+        expected: background-color: rgba(0, 0, 0, 0); border-block-end-color: rgb(229, 229, 229); border-block-end-width: 0px; border-block-start-color: rgb(229, 229, 229); borde...
+        actual:   background-color: rgb(255, 255, 255); border-block-end-color: rgb(216, 222, 233); border-block-end-width: 1px; border-block-start-color: rgb(216, 222, 233); bor...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-block-start with `0`; `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets margin-top with `0`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:42 renders it
+      css (mobile): computed style of generic (main/div)  [ce27852c8c]
+        expected: padding-block-start: 16px; padding-top: 16px
+        actual:   padding-block-start: 0px; padding-top: 0px
+        fix:      Old rule: `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:44 renders it
+      css (mobile): computed style of generic (main/div)  [5ed0077c46]
+        expected: font-size: 14px; line-height: 21px; padding-block-start: 0px; padding-inline-end: 16px; padding-inline-start: 16px; padding-left: 16px; padding-right: 16px; pad...
+        actual:   font-size: 16px; line-height: 24px; padding-block-start: 16px; padding-inline-end: 0px; padding-inline-start: 0px; padding-left: 0px; padding-right: 0px; paddin...
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`; `.pt-3` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:51461) sets padding-top with `.75rem`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:142 renders it
+      css (mobile): computed styles  [e5431f0e3a]
+        expected: 
+        actual:   35 more elements differ
+        fix:      Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+      assets (mobile): image #4 https://srv.carbonads.net/static/30242/e1130b06f0096fbbd01a8d15bca68e6092cdebef  [ae8dda87ea]
+        expected: 260x200
+        actual:   (absent)
+        fix:      The image at this position in the page loads a different picture or fails to load.
+      assets (mobile): image #5 https://ad.doubleclick.net/ddm/trackimp/N5295.3091281BUYSELLADS/B34721851.453481163;dc_trk_aid=652439709;dc_trk_cid=246706990;ord=176847840;dc_lat=;dc_rdid=;tag_for_child_directed_treatment=;tfua=;gdpr=$;gdpr_consent=$;ltd=;dc_tdv=1?  [cbc1e39b90]
+        expected: broken
+        actual:   (absent)
+        fix:      The image at this position in the page loads a different picture or fails to load.
+      assets: script /livewire/livewire.js?id=de3fca26689cb5a39af4  [2b9e508e69]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      network: browser request missing  [13113fa828]
+        expected: browser GET srv.carbonads.net/ads/CESI52JU.json?segment=placement:alpinejsdev
+        actual:   (not requested)
+        fix:      The old page makes this request in the browser and the new one does not. Port the code that fetches it, or the page loses what the response fed.
+      network: browser request missing  [f9134ea277]
+        expected: browser GET alpinejs.dev/build/assets/app.9ea156ae.css
+        actual:   (not requested)
+        fix:      The old page makes this request in the browser and the new one does not. Port the code that fetches it, or the page loses what the response fed.
+      weight: JavaScript downloaded  [f003e33d28]
+        expected: at most 277783 bytes (old: 276744)
+        actual:   879138 bytes; new-only scripts: /build/chunk-BM3pgjMo.js (754396 B), /build/chunk-DnSWqWJy.js (14309 B), /build/chunk-AmJarq9N2.js (7525 B)
+        fix:      The new route downloads or runs more JavaScript at load than the old one. Look at the scripts only the new route loads.
+      visual (desktop): screenshot in prefers-reduced-motion: no-preference  [89c21ef330]
+        expected: same pixels outside the noise mask
+        actual:   11594 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in viewport width 768px: generic (main/div)  [d37d1fb99e]
+        expected: border-block-end-width: 0px; border-block-start-width: 0px; border-bottom-width: 0px; border-top-width: 0px; margin-block-end: 0px; margin-block-start: 0px; mar...
+        actual:   border-block-end-width: 1px; border-block-start-width: 1px; border-bottom-width: 1px; border-top-width: 1px; margin-block-end: 48px; margin-block-start: 24px; m...
+        fix:      Old rule: `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-block-end with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-block-start with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-bottom with `auto`; `.markdown>*+*` (/directives/model <style> #4:2:13) sets margin-top with `1.5rem`; `.demo` (/directives/model <style> #4:56:13) sets padding-block-end with `1rem`; `.demo` (/directives/model <style> #4:56:13) sets padding-block-start with `1rem`; `.demo` (/directives/model <style> #4:56:13) sets padding-bottom with `1rem`; `.demo` (/directives/model <style> #4:56:13) sets padding-top with `1rem`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:40 renders it
+      css (desktop): computed style in viewport width 768px: generic (main/div)  [d41f3f342f]
+        expected: border-block-end-width: 1px; border-bottom-width: 1px; caret-color: rgb(45, 52, 65); color: rgb(45, 52, 65); column-rule-color: rgb(45, 52, 65); display: block;...
+        actual:   border-block-end-width: 0px; border-bottom-width: 0px; caret-color: rgb(74, 77, 84); color: rgb(74, 77, 84); column-rule-color: rgb(74, 77, 84); display: flex; ...
+        fix:      Old rule: `.border-y` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:41562) sets border-bottom-width with `1px`; `.text-gray-800` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:54966) sets color with `rgb(45 52 65/var(--tw-text-opacity, 1))`, reading --tw-text-opacity from `.text-gray-800` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:54966) (` 1`); `.my-12` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24287) sets margin-bottom with `3rem`; `.py-6` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50643) sets padding-bottom with `1.5rem`; `.py-6` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50643) sets padding-top with `1.5rem`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:40 renders it
+      visual (desktop): screenshot in viewport width 768px  [2a1ff0b6f6]
+        expected: same pixels outside the noise mask
+        actual:   2831 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      css (desktop): computed style in viewport width 769px: generic (main/div)  [fc450915bf]
+        expected: border-block-end-width: 0px; border-block-start-width: 0px; border-bottom-width: 0px; border-top-width: 0px; margin-block-end: 0px; margin-block-start: 0px; mar...
+        actual:   border-block-end-width: 1px; border-block-start-width: 1px; border-bottom-width: 1px; border-top-width: 1px; margin-block-end: 48px; margin-block-start: 24px; m...
+        fix:      Old rule: `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-block-end with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-block-start with `auto`; `.m-auto` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24127) sets margin-bottom with `auto`; `.markdown>*+*` (/directives/model <style> #4:2:13) sets margin-top with `1.5rem`; `.demo` (/directives/model <style> #4:56:13) sets padding-block-end with `1rem`; `.demo` (/directives/model <style> #4:56:13) sets padding-block-start with `1rem`; `.demo` (/directives/model <style> #4:56:13) sets padding-bottom with `1rem`; `.demo` (/directives/model <style> #4:56:13) sets padding-top with `1rem`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:40 renders it
+      css (desktop): computed style in viewport width 769px: generic (main/div)  [89b0878439]
+        expected: border-block-end-width: 1px; border-bottom-width: 1px; caret-color: rgb(45, 52, 65); color: rgb(45, 52, 65); column-rule-color: rgb(45, 52, 65); display: block;...
+        actual:   border-block-end-width: 0px; border-bottom-width: 0px; caret-color: rgb(74, 77, 84); color: rgb(74, 77, 84); column-rule-color: rgb(74, 77, 84); display: flex; ...
+        fix:      Old rule: `.border-y` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:41562) sets border-bottom-width with `1px`; `.text-gray-800` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:54966) sets color with `rgb(45 52 65/var(--tw-text-opacity, 1))`, reading --tw-text-opacity from `.text-gray-800` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:54966) (` 1`); `.my-12` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:24287) sets margin-bottom with `3rem`; `.py-6` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50643) sets padding-bottom with `1.5rem`; `.py-6` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:50643) sets padding-top with `1.5rem`. The old stylesheet styles this state or condition; port that rule so the new page matches while it holds.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:40 renders it
+      visual (desktop): screenshot in viewport width 769px  [5f0695ff7a]
+        expected: same pixels outside the noise mask
+        actual:   3156 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      visual (desktop): screenshot in :focus on select  [ee6e2f864e]
+        expected: same pixels outside the noise mask
+        actual:   188 pixels differ around the state target
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      behaviour: click button "Show navigation"  [1030f9c2d0]
+        expected: URL /directives/model; appears: (nothing)
+        actual:   button "Show navigation" could not be used: locator.click: Timeout 3000ms exceeded.
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders span "click" (source not found); new pages/directives/model.tsrx:63 renders it
+      a11y: press Enter on button "Show navigation"  [ee6474b6ff]
+        expected: URL /directives/model; appears: (nothing)
+        actual:   button "Show navigation" could not be used: locator.focus: Timeout 3000ms exceeded.
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders span "button" (source not found); new pages/directives/model.tsrx:63 renders it
+      a11y: press Space on button "Show navigation"  [533e620646]
+        expected: URL /directives/model; appears: (nothing)
+        actual:   button "Show navigation" could not be used: locator.focus: Timeout 3000ms exceeded.
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders span "button" (source not found); new pages/directives/model.tsrx:63 renders it
+      behaviour: click button "Close navigation"  [53f26f1486]
+        expected: URL /directives/model; appears: (nothing)
+        actual:   button "Close navigation" could not be used: locator.click: Timeout 3000ms exceeded.
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders span "click" (source not found); new pages/directives/model.tsrx:63 renders it
+      a11y: press Enter on button "Close navigation"  [86059a689f]
+        expected: URL /directives/model; appears: (nothing)
+        actual:   button "Close navigation" could not be used: locator.focus: Timeout 3000ms exceeded.
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders span "button" (source not found); new pages/directives/model.tsrx:63 renders it
+      a11y: press Space on button "Close navigation"  [49f291aace]
+        expected: URL /directives/model; appears: (nothing)
+        actual:   button "Close navigation" could not be used: locator.focus: Timeout 3000ms exceeded.
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders span "button" (source not found); new pages/directives/model.tsrx:63 renders it
+      behaviour: click button "Change Message"  [4aacd8fd4b]
+        expected: appears: (nothing); disappears: (nothing)
+        actual:   appears: - textbox "Type message...": changed; disappears: - textbox "Type message..."
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders button "Change Message" (source not found); new pages/directives/model.tsrx:68 renders it
+      a11y: press Enter on button "Change Message"  [e4ab9eca42]
+        expected: appears: (nothing); disappears: (nothing)
+        actual:   appears: - textbox "Type message...": changed; disappears: - textbox "Type message..."
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "Change Message" (source not found); new pages/directives/model.tsrx:68 renders it
+      a11y: press Space on button "Change Message"  [44178a14bc]
+        expected: appears: (nothing); disappears: (nothing)
+        actual:   appears: - textbox "Type message...": changed; disappears: - textbox "Type message..."
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "Change Message" (source not found); new pages/directives/model.tsrx:68 renders it
+      behaviour: click link "UI Components"  [2a45e87796]
+        expected: URL /component/dropdown
+        actual:   URL /components
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "UI Components" (source not found); new pages/directives/model.tsrx:277 renders it
+      a11y: press Enter on link "UI Components"  [74b4333d5b]
+        expected: URL /component/dropdown
+        actual:   URL /components
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "UI Components" (source not found); new pages/directives/model.tsrx:277 renders it
+
+0 of 1 routes green, 1 red.
+Report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.json
+Visual report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.html

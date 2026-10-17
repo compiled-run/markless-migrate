@@ -1,0 +1,22 @@
+// Drives the /directives/model demos on one origin and prints what each shows: node deploy/alpinejs-dev/smoke-model.mjs <origin>
+import { chromium } from 'playwright';
+const b = await chromium.launch(); const p = await b.newPage();
+p.on('pageerror', (e) => console.log('pageerror', e.message));
+await p.route(/usefathom|carbonads|doubleclick|cloudflareinsights|docsearch/, (r) => r.abort());
+await p.goto(process.argv[2] + '/directives/model', { waitUntil: 'networkidle' });
+const demo = (i) => p.locator('.demo').nth(i);
+const show = async (label, i) => { await p.waitForTimeout(400); console.log(label, JSON.stringify(await demo(i).innerText())); };
+await demo(0).locator('input').fill('hello'); await show('text', 0);
+await demo(1).locator('input').fill('x'); await demo(1).locator('button').click(); await p.waitForTimeout(400); console.log('changed', await demo(1).locator('input').inputValue());
+await demo(3).locator('textarea').fill('area'); await show('textarea', 3);
+await demo(4).locator('input').check(); await show('checkbox', 4); await demo(4).locator('input').uncheck(); await show('checkbox off', 4);
+await demo(5).locator('input').nth(2).check(); await demo(5).locator('input').nth(0).check(); await show('colors', 5);
+await demo(6).locator('input').nth(1).check(); await show('radio', 6);
+await demo(7).locator('select').selectOption('Orange'); await show('select', 7);
+await demo(8).locator('select').selectOption('Yellow'); await show('placeholder', 8);
+await demo(9).locator('select').selectOption(['Red', 'Yellow']); await show('multi', 9);
+await demo(10).locator('select').selectOption('Yellow'); await show('dynamic', 10);
+await demo(11).locator('input').fill('0.8'); await show('range', 11);
+await demo(12).locator('input').fill('abc'); await show('blur before', 12); await demo(12).locator('input').press('Enter'); await show('enter', 12);
+await demo(13).locator('button').click(); await show('programmatic', 13);
+await b.close();

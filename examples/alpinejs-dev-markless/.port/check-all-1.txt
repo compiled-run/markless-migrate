@@ -1,0 +1,29 @@
+OLD http://127.0.0.1:4420  vs  NEW http://127.0.0.1:4421
+
+pass  /                  (3 accepted) JS on the wire 256.8 kB -> 330.6 kB, run at load 76.6 kB -> 17.7 kB (uncompressed)
+      accepted assets: script /livewire/livewire.js?id=de3fca26689cb5a39af4  [7bd1f11b01]
+        reason:   Livewire's runtime: every old page loads it, but no page uses Livewire (no wire: components); the Markless port has no Livewire to serve. Unswitched routes still get it from the old origin through the front door. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted network: browser request missing  [a50de8545d]
+        reason:   Checked through a local mirror of production: the old page names its stylesheet by its absolute production URL (https://alpinejs.dev/build/assets/app.9ea156ae.css), which then reads as another origin. The port serves the same file at the same path from its own origin; against production both are the same-origin request. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted weight: JavaScript downloaded  [e9ff20d883]
+        reason:   Markless 0.4.0 limitation, measured: it modulepreloads every page's whole template as client render data (630 kB on /directives/model, 295 kB on /start-here, about 70 kB on /), while the JavaScript that runs at load drops from 76 to 84 kB down to 18 kB. Nothing in the port avoids it; the render data is the framework's. (Claude Code (converting agent), for owner review, 2026-10-17)
+pass  /start-here        (4 accepted) JS on the wire 258.0 kB -> 505.4 kB, run at load 83.9 kB -> 17.8 kB (uncompressed)
+      accepted assets: script /cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js  [7f07805500]
+        reason:   Cloudflare's email-obfuscation decoder, injected by Cloudflare in front of the old site: it turned alpinejs@3.x.x inside the code samples into an [email protected] link and decodes it back in the browser. The port writes the decoded text, so there is nothing to decode. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted assets: script /livewire/livewire.js?id=de3fca26689cb5a39af4  [687ea9c164]
+        reason:   Livewire's runtime: every old page loads it, but no page uses Livewire (no wire: components); the Markless port has no Livewire to serve. Unswitched routes still get it from the old origin through the front door. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted network: browser request missing  [7acd9fa0b3]
+        reason:   Checked through a local mirror of production: the old page names its stylesheet by its absolute production URL (https://alpinejs.dev/build/assets/app.9ea156ae.css), which then reads as another origin. The port serves the same file at the same path from its own origin; against production both are the same-origin request. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted weight: JavaScript downloaded  [cf69d70339]
+        reason:   Markless 0.4.0 limitation, measured: it modulepreloads every page's whole template as client render data (630 kB on /directives/model, 295 kB on /start-here, about 70 kB on /), while the JavaScript that runs at load drops from 76 to 84 kB down to 18 kB. Nothing in the port avoids it; the render data is the framework's. (Claude Code (converting agent), for owner review, 2026-10-17)
+pass  /directives/model  (3 accepted) JS on the wire 256.8 kB -> 838.5 kB, run at load 84.0 kB -> 17.7 kB (uncompressed)
+      accepted assets: script /livewire/livewire.js?id=de3fca26689cb5a39af4  [2b9e508e69]
+        reason:   Livewire's runtime: every old page loads it, but no page uses Livewire (no wire: components); the Markless port has no Livewire to serve. Unswitched routes still get it from the old origin through the front door. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted network: browser request missing  [f9134ea277]
+        reason:   Checked through a local mirror of production: the old page names its stylesheet by its absolute production URL (https://alpinejs.dev/build/assets/app.9ea156ae.css), which then reads as another origin. The port serves the same file at the same path from its own origin; against production both are the same-origin request. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted weight: JavaScript downloaded  [e8cb1535ef]
+        reason:   Markless 0.4.0 limitation, measured: it modulepreloads every page's whole template as client render data (630 kB on /directives/model, 295 kB on /start-here, about 70 kB on /), while the JavaScript that runs at load drops from 76 to 84 kB down to 18 kB. Nothing in the port avoids it; the render data is the framework's. (Claude Code (converting agent), for owner review, 2026-10-17)
+
+3 of 3 routes green, 10 accepted differences.
+Report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.json
+Visual report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.html

@@ -1,0 +1,229 @@
+OLD http://127.0.0.1:4420  vs  NEW http://127.0.0.1:4421
+
+pass  /                  (39 accepted) JS on the wire 256.8 kB -> 331.1 kB, run at load 76.2 kB -> 17.7 kB (uncompressed)
+      accepted rendered (desktop): accessibility tree  [f0a4b497fa]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [4c9737aa79]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [fde3c8d5d0]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [4c8658f031]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [137ad8d5d5]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [a9f0a784b9]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [9dd73e0362]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [34d8efd8f9]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [380cc42a17]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [6124545c34]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [feda957955]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): visible text  [c594f290f8]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot  [614b66a68a]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only a difference that starts at the badge's own link or covers just the badge's box (desktop and mobile). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted a11y (desktop): focus order (Tab), first difference at stop 11  [5ff7fd4dbc]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Its three links are the last tab stops. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [cb4aa37050]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [9f0acaa539]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [069bfbe9dc]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [34c6233b59]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [40ab8cccca]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [057cf01a4f]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [db8b2f5274]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [494be624f1]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [bd6b24d914]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [a1c03732eb]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [12ca773446]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): visible text  [c106de0425]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (mobile): screenshot  [4cafe5a797]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only a difference that starts at the badge's own link or covers just the badge's box (desktop and mobile). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted assets: script /livewire/livewire.js?id=de3fca26689cb5a39af4  [7bd1f11b01]
+        reason:   Livewire's runtime: every old page loads it, but no page uses Livewire (no wire: components); the Markless port has no Livewire to serve. Unswitched routes still get it from the old origin through the front door. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted network: browser request missing  [a50de8545d]
+        reason:   Checked through a local mirror of production: the old page names its stylesheet by its absolute production URL (https://alpinejs.dev/build/assets/app.9ea156ae.css), which then reads as another origin. The port serves the same file at the same path from its own origin; against production both are the same-origin request. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted weight: JavaScript downloaded  [1d7a759a3f]
+        reason:   Markless 0.4.0 modulepreloads every page's whole template as client render data. Measured uncompressed in this check (the mirror and the local server do not compress): 630 kB of it on /directives/model, 295 kB on /start-here. Compressed as served (alpinejs.dev against the deployed front door): / 144.6 -> 117.4 kB, /start-here 145.9 -> 145.2 kB, /directives/model 144.5 -> 160.8 kB. JavaScript that runs at load drops from 76 to 84 kB to 18 kB on every route. Nothing in the port avoids the render data; it is the framework's. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 639px  [3ecc590f34]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 640px  [344c123ea7]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 767px  [919cc38d11]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 768px  [f45f6f0bc0]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 1023px  [ec048ca42d]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 1024px  [8e0170fe69]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 1279px  [9faf4462aa]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 1280px  [a7cdfa63b3]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 1535px  [a3f098b75e]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+pass  /start-here        (33 accepted) JS on the wire 258.0 kB -> 509.0 kB, run at load 83.9 kB -> 17.8 kB (uncompressed)
+      accepted rendered (desktop): accessibility tree  [68bf4542ba]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [99e0b42177]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [c3171dc753]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [6bb9969f88]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [be3efaa2b3]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [300850ff25]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [16a8a78759]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [9b6e77b8c9]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [7d2daa4eb0]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [44f81db524]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [bbc01cd8ef]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): visible text  [7cf919454e]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot  [e0e2812d83]
+        reason:   Cloudflare's email decoder (see the assets entry) inserts the decoded alpinejs@3.x.x as a text node of its own inside the code sample, and Chrome shapes a few glyphs at text-node edges differently; static HTML cannot express two adjacent text nodes, so the port's one node differs by a few pixels there. The region also takes in the attribution badge. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [d89c5debe2]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [6e1c1c034d]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [d2a6d26996]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [fcf6cd6b42]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [0d95821246]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [25e61fce54]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [29f4c17251]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [65383cf00e]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [6cc1c8c6fb]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [5a978f2adf]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [1017694b70]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): visible text  [7fc6cd4e2a]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (mobile): screenshot  [32c1da72fa]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only a difference that starts at the badge's own link or covers just the badge's box (desktop and mobile). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted assets: script /cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js  [7f07805500]
+        reason:   Cloudflare's email-obfuscation decoder, injected by Cloudflare in front of the old site: it turned alpinejs@3.x.x inside the code samples into an [email protected] link and decodes it back in the browser. The port writes the decoded text, so there is nothing to decode. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted assets: script /livewire/livewire.js?id=de3fca26689cb5a39af4  [687ea9c164]
+        reason:   Livewire's runtime: every old page loads it, but no page uses Livewire (no wire: components); the Markless port has no Livewire to serve. Unswitched routes still get it from the old origin through the front door. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted network: browser request missing  [7acd9fa0b3]
+        reason:   Checked through a local mirror of production: the old page names its stylesheet by its absolute production URL (https://alpinejs.dev/build/assets/app.9ea156ae.css), which then reads as another origin. The port serves the same file at the same path from its own origin; against production both are the same-origin request. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted weight: JavaScript downloaded  [9abff5f19b]
+        reason:   Markless 0.4.0 modulepreloads every page's whole template as client render data. Measured uncompressed in this check (the mirror and the local server do not compress): 630 kB of it on /directives/model, 295 kB on /start-here. Compressed as served (alpinejs.dev against the deployed front door): / 144.6 -> 117.4 kB, /start-here 145.9 -> 145.2 kB, /directives/model 144.5 -> 160.8 kB. JavaScript that runs at load drops from 76 to 84 kB to 18 kB on every route. Nothing in the port avoids the render data; it is the framework's. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in prefers-reduced-motion: no-preference  [a868fa8440]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 768px  [3ac05c6c19]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 769px  [a63464c630]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+pass  /directives/model  (38 accepted) JS on the wire 256.4 kB -> 840.3 kB, run at load 83.9 kB -> 17.7 kB (uncompressed)
+      accepted rendered (desktop): accessibility tree  [27933b2679]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [ae6d134a13]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [2254bf5184]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [0a09ce55c5]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [ef8a459cce]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [f1367b837e]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [1e98293355]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [d74c73e5b4]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [ea97156383]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [f726b34159]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): accessibility tree  [9fb592a647]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (desktop): visible text  [146272c971]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot  [be1729cbc8]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only a difference that starts at the badge's own link or covers just the badge's box (desktop and mobile). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [d61324602b]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [93476e50bd]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [a8a8b9e5d3]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [d2eba4372f]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [75a06a0077]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [4d5e73d016]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [f5034559c0]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [b95fac7625]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [d8d53b729f]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [0c533c4dce]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): accessibility tree  [9176972c28]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted rendered (mobile): visible text  [e8e3128883]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (mobile): screenshot  [fdec3b3d8b]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only a difference that starts at the badge's own link or covers just the badge's box (desktop and mobile). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted assets: script /livewire/livewire.js?id=de3fca26689cb5a39af4  [2b9e508e69]
+        reason:   Livewire's runtime: every old page loads it, but no page uses Livewire (no wire: components); the Markless port has no Livewire to serve. Unswitched routes still get it from the old origin through the front door. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted network: browser request missing  [f9134ea277]
+        reason:   Checked through a local mirror of production: the old page names its stylesheet by its absolute production URL (https://alpinejs.dev/build/assets/app.9ea156ae.css), which then reads as another origin. The port serves the same file at the same path from its own origin; against production both are the same-origin request. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted weight: JavaScript downloaded  [08d1b9785e]
+        reason:   Markless 0.4.0 modulepreloads every page's whole template as client render data. Measured uncompressed in this check (the mirror and the local server do not compress): 630 kB of it on /directives/model, 295 kB on /start-here. Compressed as served (alpinejs.dev against the deployed front door): / 144.6 -> 117.4 kB, /start-here 145.9 -> 145.2 kB, /directives/model 144.5 -> 160.8 kB. JavaScript that runs at load drops from 76 to 84 kB to 18 kB on every route. Nothing in the port avoids the render data; it is the framework's. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 639px  [96d0c1b7f5]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 640px  [aff553211a]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 767px  [9a631536aa]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 768px  [707bb3662c]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 1023px  [8b6b4c3635]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 1024px  [7f390db94d]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 1279px  [f0ebc33365]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 1280px  [fb1b09da89]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted visual (desktop): screenshot in viewport width 1535px  [7a4e5fc06b]
+        reason:   Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels). (Claude Code (converting agent), for owner review, 2026-10-17)
+
+3 of 3 routes green, 110 accepted differences.
+Report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.json
+Visual report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.html

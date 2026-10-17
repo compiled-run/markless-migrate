@@ -1,0 +1,19 @@
+OLD http://127.0.0.1:4420  vs  NEW http://127.0.0.1:4421
+
+FAIL  /directives/model  [assets, network, weight]  JS on the wire 256.8 kB -> 832.8 kB, run at load 83.9 kB -> 17.7 kB (uncompressed)
+      assets: script /livewire/livewire.js?id=de3fca26689cb5a39af4  [2b9e508e69]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      network: browser request missing  [f9134ea277]
+        expected: browser GET alpinejs.dev/build/assets/app.9ea156ae.css
+        actual:   (not requested)
+        fix:      The old page makes this request in the browser and the new one does not. Port the code that fetches it, or the page loses what the response fed.
+      weight: JavaScript downloaded  [bc699ffd73]
+        expected: at most 264017 bytes (old: 262979)
+        actual:   852762 bytes; new-only scripts: /build/chunk-ZAy9wVhB.js (693572 B), /build/chunk-CIWOy3e9.js (10765 B), /build/chunk-5nRizQet2.js (7525 B)
+        fix:      The new route downloads or runs more JavaScript at load than the old one. Look at the scripts only the new route loads.
+
+0 of 1 routes green, 1 red.
+Report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.json
+Visual report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.html

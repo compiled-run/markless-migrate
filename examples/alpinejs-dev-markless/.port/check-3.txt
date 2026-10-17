@@ -1,0 +1,152 @@
+OLD http://127.0.0.1:4420  vs  NEW http://127.0.0.1:4421
+
+FAIL  /directives/model  [rendered, visual, assets, css, a11y, behaviour, network, weight]  JS on the wire 267.6 kB -> 894.2 kB, run at load 100.6 kB -> 17.7 kB (uncompressed)
+      rendered (desktop): accessibility tree  [211694bfd4]
+        expected:   - link "ads via Carbon":
+        actual:   (absent)
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders link "ads via Carbon" (source not found); new pages/directives/model.tsrx:30 doesn't
+      rendered (desktop): accessibility tree  [6450f1545b]
+        expected:     - /url: https://srv.carbonads.net/ads/click/x/GTND4277CVYIV27WCAALYKQUF67D52JUCAYD6Z3JCAAI62JLCY7IL2QKCEADL23JCEBIL53NF67IC5QJCVSIP27KC6SILKJJF6BI6K3EHJNCLS...
+        actual:   (absent)
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders span "click" (source not found); new pages/directives/model.tsrx:63 renders it
+      rendered (desktop): accessibility tree  [87b70fbd3b]
+        expected:     - img "ads via Carbon"
+        actual:   (absent)
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders img "ads via Carbon" (source not found); new pages/directives/model.tsrx:30 doesn't
+      rendered (desktop): accessibility tree  [7931271ec2]
+        expected:   - link "Build VMs, containers, AI, databases, storage—all in one place.":
+        actual:   (absent)
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders link "Build VMs, containers, AI, databases, st..." (source not found); new pages/directives/model.tsrx:30 doesn't
+      rendered (desktop): accessibility tree  [6450f1545b]
+        expected:     - /url: https://srv.carbonads.net/ads/click/x/GTND4277CVYIV27WCAALYKQUF67D52JUCAYD6Z3JCAAI62JLCY7IL2QKCEADL23JCEBIL53NF67IC5QJCVSIP27KC6SILKJJF6BI6K3EHJNCLS...
+        actual:   (absent)
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders span "click" (source not found); new pages/directives/model.tsrx:63 renders it
+      rendered (desktop): accessibility tree  [211694bfd4]
+        expected:   - link "ads via Carbon":
+        actual:   (absent)
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+        where:    old renders link "ads via Carbon" (source not found); new pages/directives/model.tsrx:30 doesn't
+      rendered (desktop): accessibility tree  [8cf5732d59]
+        expected:     - /url: http://carbonads.net/?utm_source=alpinejsdev&utm_medium=ad_via_link&utm_campaign=in_unit&utm_term=carbon
+        actual:   (absent)
+        fix:      The accessibility tree differs: check headings, landmarks, link and button names and image alt text in the new markup.
+      rendered (desktop): visible text  [513f326fee]
+        expected: Build VMs, containers, AI, databases, storage—all in one place.
+        actual:   (absent)
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+        where:    old renders link "Build VMs, containers, AI, databases, st..." (source not found); new pages/directives/model.tsrx:30 doesn't
+      rendered (desktop): visible text  [36148044b2]
+        expected: ADS VIA CARBON
+        actual:   (absent)
+        fix:      The visible text differs: port the missing copy or remove the extra copy.
+      visual (desktop): screenshot  [ab4ac7b19f]
+        expected: same pixels outside the noise mask
+        actual:   8438 pixels (0.07%) differ in x=1049..1255, y=129..800, first near link "Text inputs" (complementary>list>listitem>link/a), listitem "Text inputs" (complementar...
+        fix:      Pixels differ in the named region. If the DOM and CSS checks pass, look at fonts, images and stacking there.
+        where:    old renders link "Text inputs" (source not found); new pages/directives/model.tsrx:113 renders it
+      css (desktop): computed style of listitem "Text inputs" (complementary>list>listitem/li)  [cca1ff1375]
+        expected: margin-block-start: 12px; margin-top: 12px
+        actual:   margin-block-start: 0px; margin-top: 0px
+        fix:      Old rule: `.space-y-3>:not([hidden])~:not([hidden])` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:38629) sets margin-top with `calc(.75rem*calc(1 - var(--tw-space-y-reverse)))`, reading --tw-space-y-reverse from `.space-y-3>:not([hidden])~:not([hidden])` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:38629) (` 0`). Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders listitem "Text inputs" (source not found); new pages/directives/model.tsrx:81 renders it
+      css (desktop): computed style of generic (complementary/div)  [affe893802]
+        expected: font-size: 11px; line-height: 16.5px
+        actual:   font-size: 16px; line-height: 24px
+        fix:      Old rule: `body` (https://alpinejs.dev/build/assets/app.9ea156ae.css:1:2708) sets line-height with `inherit`. Port the rule that sets this property for this element in the old stylesheet; computed values must match.
+        where:    old renders div (source not found); new pages/directives/model.tsrx:40 renders it
+      assets (desktop): image #4 https://srv.carbonads.net/static/30242/e1130b06f0096fbbd01a8d15bca68e6092cdebef  [e6a2d3946f]
+        expected: 260x200
+        actual:   (absent)
+        fix:      The image at this position in the page loads a different picture or fails to load.
+      assets (desktop): image #5 https://ad.doubleclick.net/ddm/trackimp/N5295.3091281BUYSELLADS/B34721851.453481139;dc_trk_aid=652439748;dc_trk_cid=246706990;ord=176847840;dc_lat=;dc_rdid=;tag_for_child_directed_treatment=;tfua=;gdpr=$;gdpr_consent=$;ltd=;dc_tdv=1?  [35da607786]
+        expected: broken
+        actual:   (absent)
+        fix:      The image at this position in the page loads a different picture or fails to load.
+      assets (mobile): image #4 https://srv.carbonads.net/static/30242/e1130b06f0096fbbd01a8d15bca68e6092cdebef  [ae8dda87ea]
+        expected: 260x200
+        actual:   (absent)
+        fix:      The image at this position in the page loads a different picture or fails to load.
+      assets (mobile): image #5 https://ad.doubleclick.net/ddm/trackimp/N5295.3091281BUYSELLADS/B34721851.453481163;dc_trk_aid=652439709;dc_trk_cid=246706990;ord=176847840;dc_lat=;dc_rdid=;tag_for_child_directed_treatment=;tfua=;gdpr=$;gdpr_consent=$;ltd=;dc_tdv=1?  [cbc1e39b90]
+        expected: broken
+        actual:   (absent)
+        fix:      The image at this position in the page loads a different picture or fails to load.
+      assets: script /livewire/livewire.js?id=de3fca26689cb5a39af4  [2b9e508e69]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      network: browser request missing  [f9134ea277]
+        expected: browser GET alpinejs.dev/build/assets/app.9ea156ae.css
+        actual:   (not requested)
+        fix:      The old page makes this request in the browser and the new one does not. Port the code that fetches it, or the page loses what the response fed.
+      weight: JavaScript downloaded  [e77e1ff418]
+        expected: at most 275083 bytes (old: 274042)
+        actual:   915686 bytes; new-only scripts: /build/chunk-Dy7BuVAf.js (754408 B), /build/chunk-DnSWqWJy.js (14309 B), /build/chunk-AmJarq9N2.js (7525 B)
+        fix:      The new route downloads or runs more JavaScript at load than the old one. Look at the scripts only the new route loads.
+      visual (desktop): screenshot in prefers-reduced-motion: no-preference  [8f9fe3de2a]
+        expected: same pixels outside the noise mask
+        actual:   8438 pixels differ
+        fix:      The page looks different in this state or condition. Compare the computed-style failures for the same state first.
+      behaviour: click button "Show navigation"  [1030f9c2d0]
+        expected: URL /directives/model; appears: (nothing)
+        actual:   button "Show navigation" could not be used: locator.click: Timeout 3000ms exceeded.
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders span "click" (source not found); new pages/directives/model.tsrx:63 renders it
+      a11y: press Enter on button "Show navigation"  [ee6474b6ff]
+        expected: URL /directives/model; appears: (nothing)
+        actual:   button "Show navigation" could not be used: locator.focus: Timeout 3000ms exceeded.
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders span "button" (source not found); new pages/directives/model.tsrx:63 renders it
+      a11y: press Space on button "Show navigation"  [533e620646]
+        expected: URL /directives/model; appears: (nothing)
+        actual:   button "Show navigation" could not be used: locator.focus: Timeout 3000ms exceeded.
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders span "button" (source not found); new pages/directives/model.tsrx:63 renders it
+      behaviour: click button "Close navigation"  [53f26f1486]
+        expected: URL /directives/model; appears: (nothing)
+        actual:   button "Close navigation" could not be used: locator.click: Timeout 3000ms exceeded.
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders span "click" (source not found); new pages/directives/model.tsrx:63 renders it
+      a11y: press Enter on button "Close navigation"  [86059a689f]
+        expected: URL /directives/model; appears: (nothing)
+        actual:   button "Close navigation" could not be used: locator.focus: Timeout 3000ms exceeded.
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders span "button" (source not found); new pages/directives/model.tsrx:63 renders it
+      a11y: press Space on button "Close navigation"  [49f291aace]
+        expected: URL /directives/model; appears: (nothing)
+        actual:   button "Close navigation" could not be used: locator.focus: Timeout 3000ms exceeded.
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders span "button" (source not found); new pages/directives/model.tsrx:63 renders it
+      behaviour: click button "Change Message"  [4aacd8fd4b]
+        expected: appears: (nothing); disappears: (nothing)
+        actual:   appears: - textbox "Type message...": changed; disappears: - textbox "Type message..."
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders button "Change Message" (source not found); new pages/directives/model.tsrx:68 renders it
+      a11y: press Enter on button "Change Message"  [e4ab9eca42]
+        expected: appears: (nothing); disappears: (nothing)
+        actual:   appears: - textbox "Type message...": changed; disappears: - textbox "Type message..."
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "Change Message" (source not found); new pages/directives/model.tsrx:68 renders it
+      a11y: press Space on button "Change Message"  [44178a14bc]
+        expected: appears: (nothing); disappears: (nothing)
+        actual:   appears: - textbox "Type message...": changed; disappears: - textbox "Type message..."
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders button "Change Message" (source not found); new pages/directives/model.tsrx:68 renders it
+      behaviour: click link "UI Components"  [2a45e87796]
+        expected: URL /component/dropdown
+        actual:   URL /components
+        fix:      Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.
+        where:    old renders link "UI Components" (source not found); new pages/directives/model.tsrx:277 renders it
+      a11y: press Enter on link "UI Components"  [74b4333d5b]
+        expected: URL /component/dropdown
+        actual:   URL /components
+        fix:      This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.
+        where:    old renders link "UI Components" (source not found); new pages/directives/model.tsrx:277 renders it
+
+0 of 1 routes green, 1 red.
+Report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.json
+Visual report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.html

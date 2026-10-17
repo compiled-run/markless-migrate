@@ -1,0 +1,101 @@
+// The alpinejs.dev docs navigation, as its sidebar lists it.
+export interface NavItem {
+  readonly href: string;
+  readonly label: string;
+  readonly prefix: string;
+}
+
+export type NavEntry =
+  | { readonly kind: "link"; readonly href: string; readonly label: string }
+  | { readonly kind: "components" }
+  | { readonly kind: "section"; readonly title: string; readonly items: readonly NavItem[] };
+
+export const NAV: readonly NavEntry[] = [
+  { kind: "link", href: "/start-here", label: "Start Here" },
+  { kind: "link", href: "/upgrade-guide", label: "Upgrade From V2" },
+  {
+    kind: "section",
+    title: "Essentials",
+    items: [
+      { href: "/essentials/installation", prefix: "", label: "Installation" },
+      { href: "/essentials/state", prefix: "", label: "State" },
+      { href: "/essentials/templating", prefix: "", label: "Templating" },
+      { href: "/essentials/events", prefix: "", label: "Events" },
+      { href: "/essentials/lifecycle", prefix: "", label: "Lifecycle" },
+    ],
+  },
+  { kind: "components" },
+  {
+    kind: "section",
+    title: "Directives",
+    items: [
+      { href: "/directives/data", prefix: "x-", label: "data" },
+      { href: "/directives/init", prefix: "x-", label: "init" },
+      { href: "/directives/show", prefix: "x-", label: "show" },
+      { href: "/directives/bind", prefix: "x-", label: "bind" },
+      { href: "/directives/on", prefix: "x-", label: "on" },
+      { href: "/directives/text", prefix: "x-", label: "text" },
+      { href: "/directives/html", prefix: "x-", label: "html" },
+      { href: "/directives/model", prefix: "x-", label: "model" },
+      { href: "/directives/modelable", prefix: "x-", label: "modelable" },
+      { href: "/directives/for", prefix: "x-", label: "for" },
+      { href: "/directives/transition", prefix: "x-", label: "transition" },
+      { href: "/directives/effect", prefix: "x-", label: "effect" },
+      { href: "/directives/ignore", prefix: "x-", label: "ignore" },
+      { href: "/directives/ref", prefix: "x-", label: "ref" },
+      { href: "/directives/cloak", prefix: "x-", label: "cloak" },
+      { href: "/directives/teleport", prefix: "x-", label: "teleport" },
+      { href: "/directives/if", prefix: "x-", label: "if" },
+      { href: "/directives/id", prefix: "x-", label: "id" },
+    ],
+  },
+  {
+    kind: "section",
+    title: "Magics",
+    items: [
+      { href: "/magics/el", prefix: "$", label: "el" },
+      { href: "/magics/refs", prefix: "$", label: "refs" },
+      { href: "/magics/store", prefix: "$", label: "store" },
+      { href: "/magics/watch", prefix: "$", label: "watch" },
+      { href: "/magics/dispatch", prefix: "$", label: "dispatch" },
+      { href: "/magics/nextTick", prefix: "$", label: "nextTick" },
+      { href: "/magics/root", prefix: "$", label: "root" },
+      { href: "/magics/data", prefix: "$", label: "data" },
+      { href: "/magics/id", prefix: "$", label: "id" },
+    ],
+  },
+  {
+    kind: "section",
+    title: "Globals",
+    items: [
+      { href: "/globals/alpine-data", prefix: "Alpine.", label: "data()" },
+      { href: "/globals/alpine-store", prefix: "Alpine.", label: "store()" },
+      { href: "/globals/alpine-bind", prefix: "Alpine.", label: "bind()" },
+    ],
+  },
+  {
+    kind: "section",
+    title: "Plugins",
+    items: [
+      { href: "/plugins/mask", prefix: "", label: "Mask" },
+      { href: "/plugins/intersect", prefix: "", label: "Intersect" },
+      { href: "/plugins/resize", prefix: "", label: "Resize" },
+      { href: "/plugins/persist", prefix: "", label: "Persist" },
+      { href: "/plugins/focus", prefix: "", label: "Focus" },
+      { href: "/plugins/collapse", prefix: "", label: "Collapse" },
+      { href: "/plugins/anchor", prefix: "", label: "Anchor" },
+      { href: "/plugins/morph", prefix: "", label: "Morph" },
+      { href: "/plugins/sort", prefix: "", label: "Sort" },
+    ],
+  },
+  {
+    kind: "section",
+    title: "Advanced",
+    items: [
+      { href: "/advanced/csp", prefix: "", label: "CSP" },
+      { href: "/advanced/reactivity", prefix: "", label: "Reactivity" },
+      { href: "/advanced/extending", prefix: "", label: "Extending" },
+      { href: "/advanced/async", prefix: "", label: "Async" },
+    ],
+  },
+];

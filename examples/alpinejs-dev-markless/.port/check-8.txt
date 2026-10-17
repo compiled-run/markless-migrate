@@ -1,0 +1,35 @@
+OLD http://127.0.0.1:4420  vs  NEW http://127.0.0.1:4421
+
+FAIL  /start-here        [assets, network, weight]  JS on the wire 261.0 kB -> 499.8 kB, run at load 83.9 kB -> 17.8 kB (uncompressed)
+      assets: script /cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js  [7f07805500]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      assets: script /livewire/livewire.js?id=de3fca26689cb5a39af4  [687ea9c164]
+        expected: 200 application/javascript
+        actual:   404 text/plain
+        fix:      Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.
+      network: browser request missing  [7acd9fa0b3]
+        expected: browser GET alpinejs.dev/build/assets/app.9ea156ae.css
+        actual:   (not requested)
+        fix:      The old page makes this request in the browser and the new one does not. Port the code that fetches it, or the page loses what the response fed.
+      weight: JavaScript downloaded  [b3d8f44c20]
+        expected: at most 268641 bytes (old: 267267)
+        actual:   511768 bytes; new-only scripts: /build/chunk-DKd7PGGt.js (295312 B), /build/chunk-ChMWS3la.js (63302 B), /build/chunk-vx50aEwM.js (10765 B)
+        fix:      The new route downloads or runs more JavaScript at load than the old one. Look at the scripts only the new route loads.
+FAIL  /directives/model  [weight]  (2 accepted) JS on the wire 259.4 kB -> 833.9 kB, run at load 84.0 kB -> 17.7 kB (uncompressed)
+      accepted assets: script /livewire/livewire.js?id=de3fca26689cb5a39af4  [2b9e508e69]
+        reason:   Livewire's runtime: every old page loads it, but no page uses Livewire (no wire: components); the Markless port has no Livewire to serve. Unswitched routes still get it from the old origin through the front door. (Claude Code (converting agent), for owner review, 2026-10-17)
+      accepted network: browser request missing  [f9134ea277]
+        reason:   Checked through a local mirror of production: the old page names its stylesheet by its absolute production URL (https://alpinejs.dev/build/assets/app.9ea156ae.css), which then reads as another origin. The port serves the same file at the same path from its own origin; against production both are the same-origin request. (Claude Code (converting agent), for owner review, 2026-10-17)
+      weight: JavaScript downloaded  [1d71e31dbf]
+        expected: at most 267046 bytes (old: 265667)
+        actual:   853912 bytes; new-only scripts: /build/chunk-DUHLtEps.js (630494 B), /build/chunk-ChMWS3la.js (63302 B), /build/chunk-vx50aEwM.js (10765 B)
+        fix:      The new route downloads or runs more JavaScript at load than the old one. Look at the scripts only the new route loads.
+
+Accepted differences that no longer match anything (remove them from .migrate/accepted.json):
+  /directives/model weight: JavaScript downloaded  (Markless 0.4.0 limitation, measured: it modulepreloads every page's whole template as client render data (693 kB for this page's highlighted code and prose), although only 17.7 kB of JavaScript runs at load against the old page's 83.9 kB. Nothing in the port can avoid it; the render data is the framework's.)
+
+0 of 2 routes green, 2 red, 2 accepted differences.
+Report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.json
+Visual report: /Users/jacksm5pro/dev/open-source/markless-migrate/examples/alpinejs-dev-markless/.migrate/report.html

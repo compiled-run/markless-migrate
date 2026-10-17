@@ -1,0 +1,5 @@
+/* From the inline <style> in the head of every alpinejs.dev page. */
+h1, h2, h3, h4, .font-title { font-family: 'Karla', system-ui, -apple-system, /* Firefox supports this but not yet `system-ui` */ 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji'; }
+    code { font-family: MonoLisa, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace }
+    html { scroll-behavior: smooth;  }
+    ::selection { background-color: #c9f3fd; }
