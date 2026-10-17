@@ -20,6 +20,7 @@ interface Side {
 	readonly context: BrowserContext;
 	readonly page: Page;
 	readonly session: CDPSession;
+	readonly inflight: () => number;
 	base: ElementSnapshot[];
 }
 
@@ -50,25 +51,47 @@ export interface StateOutput {
 async function open(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<Side> {
 	const origin = env.origin;
 	const { context, page } = await openPage(browser, env, viewport);
+	const inflight = trackRequests(page);
 	await page.goto(new URL(route, origin).href, { waitUntil: 'load' });
 	await settle(page);
 	const session = await context.newCDPSession(page);
 	await session.send('DOM.enable');
 	await session.send('CSS.enable');
 	const base = (await page.evaluate(collectPage, { origin, full: true })).elements;
-	return { context, page, session, base };
+	return { context, page, session, inflight, base };
 }
 
 const collect = async (side: Side, origin: string) => (await side.page.evaluate(collectPage, { origin, full: true })).elements;
-// Animations a state starts are frozen at their first frame, so a sample mid-animation is not a difference.
-const settleState = (page: Page) =>
-	page.evaluate(async () => {
+/** Counts the page's requests in flight, so a state is sampled after the work it started has landed. */
+export function trackRequests(page: Page): () => number {
+	const pending = new Set<unknown>();
+	page.on('request', (request) => pending.add(request));
+	page.on('requestfinished', (request) => pending.delete(request));
+	page.on('requestfailed', (request) => pending.delete(request));
+	return () => pending.size;
+}
+
+const IDLE_MS = 150;
+const IDLE_LIMIT_MS = 3_000;
+
+// A state can start loading (a canvas redrawn for the new width, an image for a breakpoint), so the network goes quiet
+// first; animations it starts are then frozen at their first frame, so a sample mid-animation is not a difference.
+export async function settleState(page: Page, inflight: () => number): Promise<void> {
+	const deadline = Date.now() + IDLE_LIMIT_MS;
+	let idleSince = Date.now();
+	while (Date.now() < deadline) {
+		if (inflight() > 0) idleSince = Date.now();
+		else if (Date.now() - idleSince >= IDLE_MS) break;
+		await new Promise((done) => setTimeout(done, 25));
+	}
+	await page.evaluate(async () => {
 		for (const animation of document.getAnimations()) {
 			animation.pause();
 			animation.currentTime = 0;
 		}
 		await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
 	});
+}
 
 async function nodeId(side: Side, id: number): Promise<number | undefined> {
 	await side.session.send('DOM.getDocument', { depth: 0 });
@@ -270,7 +293,7 @@ export async function compareStates(input: StateInput): Promise<StateOutput> {
 						} else {
 							for (const id of idsOn(pairs, side, containers)) await side.page.evaluate(sizeContainer, { id, width: on ? state.width : null });
 						}
-						await settleState(side.page);
+						await settleState(side.page, side.inflight);
 					}),
 				);
 			};
