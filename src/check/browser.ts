@@ -184,24 +184,34 @@ function fromOldApp(request: Request, url: URL, door: NonNullable<SideEnv['front
 	try {
 		frame = request.frame();
 	} catch {}
-	if (request.isNavigationRequest() && frame && !frame.parentFrame()) {
+	// Only a page load goes by the switch list; a form post goes to the app that served the page it was posted from.
+	if (request.isNavigationRequest() && frame && !frame.parentFrame() && request.method() === 'GET') {
 		if (door.serves(url.pathname)) {
 			oldPages.delete(pageKey(url.href));
 			return false;
 		}
 		return true;
 	}
-	const from = request.headers().referer ?? frame?.url() ?? '';
-	return oldPages.has(pageKey(from));
+	// Everything that page's frame loads, a font its stylesheet names included, comes from the old app too.
+	return [frame?.url(), request.headers().referer].some((from) => from !== undefined && oldPages.has(pageKey(from)));
 }
 
-async function throughFrontDoor(route: Route, url: URL, old: string, oldPages: Set<string>): Promise<void> {
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+// A redirect to the old app, by any of its loopback names, comes back to the address the page was asked for.
+function toFrontDoor(location: string, from: URL, front: string): string {
+	const to = new URL(location, from);
+	const same = to.origin === from.origin || (LOOPBACK_HOSTS.has(to.hostname) && LOOPBACK_HOSTS.has(from.hostname) && to.port === from.port);
+	return same ? new URL(to.pathname + to.search + to.hash, front).href : location;
+}
+
+async function throughFrontDoor(route: Route, url: URL, old: string, oldPages: Set<string>, extra: Readonly<Record<string, string>>): Promise<void> {
 	const request = route.request();
 	const target = new URL(url.pathname + url.search, old);
 	try {
-		const response = await route.fetch({ url: target.href, maxRedirects: 0 });
+		const response = await route.fetch({ url: target.href, maxRedirects: 0, headers: { ...request.headers(), ...extra } });
 		const headers = { ...response.headers() };
-		if (headers.location) headers.location = headers.location.split(new URL(old).origin).join(url.origin);
+		if (headers.location) headers.location = toFrontDoor(headers.location, target, url.origin);
 		if (request.isNavigationRequest() && response.status() < 300) oldPages.add(pageKey(url.href));
 		await route.fulfill({ response, headers });
 	} catch {
@@ -282,7 +292,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 				return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } });
 			}
 		}
-		if (same && env.frontDoor && fromOldApp(request, url, env.frontDoor, oldPages)) return throughFrontDoor(route, url, env.frontDoor.old, oldPages);
+		if (same && env.frontDoor && fromOldApp(request, url, env.frontDoor, oldPages)) return throughFrontDoor(route, url, env.frontDoor.old, oldPages, extra);
 		if (!same) {
 			const hit = findRecorded(recorded, 'browser', request.method(), url, body);
 			if (hit) {
