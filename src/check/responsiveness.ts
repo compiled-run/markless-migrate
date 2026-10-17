@@ -542,14 +542,12 @@ export async function checkResponsiveness(browser: Browser, envs: { readonly old
 					const first = await pair(speed, step);
 					const olds = [first.o];
 					const news = [first.n];
-					let verdict = verdictFor(kind, speed, olds, news, budgetMs);
-					if (verdict.rerun) {
+					if (verdictFor(kind, speed, olds, news, budgetMs).rerun) {
 						const again = await pair(speed, step);
 						olds.push(again.o);
 						news.push(again.n);
-						verdict = verdictFor(kind, speed, olds, news, budgetMs);
 					}
-					timings.push(timing(speed, kind, olds, news, verdict, budgetMs));
+					timings.push(speedTiming(speed, kind, olds, news, budgetMs));
 				}
 				controls[i] = { control: describeTarget(step.target), step: describeStep(step), kind, speeds: timings };
 			}
@@ -582,9 +580,14 @@ async function addVariance(controls: ControlTiming[], steps: readonly { step: St
 		const olds = [...t.old, again.o];
 		const news = [...t.new, again.n];
 		const speedsCopy = [...c.speeds];
-		speedsCopy[at] = timing(speed, c.kind, olds, news, verdictFor(c.kind, speed, olds, news, budgetMs), budgetMs);
+		speedsCopy[at] = speedTiming(speed, c.kind, olds, news, budgetMs);
 		controls[worst] = { ...c, speeds: speedsCopy };
 	}
+}
+
+/** The verdict for one control at one speed from both sides' runs. */
+export function speedTiming(speed: Speed, kind: ControlTiming['kind'], olds: readonly Sample[], news: readonly Sample[], budgetMs: number): SpeedTiming {
+	return timing(speed, kind, olds, news, verdictFor(kind, speed, olds, news, budgetMs), budgetMs);
 }
 
 function verdictFor(kind: ControlTiming['kind'], speed: Speed, olds: readonly Sample[], news: readonly Sample[], budgetMs: number): Verdict {
@@ -604,8 +607,6 @@ function timing(speed: Speed, kind: ControlTiming['kind'], olds: readonly Sample
 	const newMs = verdict.newMs;
 	if (verdict.slower) problems.push(`slower than the old ${msText(oldMs)} by more than max(16 ms, 10%, the old runs' spread)`);
 	if (verdict.overBudget) problems.push(`over the ${budgetMs} ms budget`);
-	const oldChanged = olds.some((s) => s.result !== 'none');
-	if (kind === 'in-page' && oldChanged && news.length && news.every((s) => s.result === 'none' && !s.failed && !s.heldBack)) problems.push('no visible result on the new page, where the old page changed');
 	const code = news.flatMap((s) => (kind === 'in-page' ? s.fetches.filter((f) => f.kind === 'code') : []));
 	if (code.length) problems.push(`fetched code on the first interaction: ${[...new Set(code.map((f) => `${f.url} (${kB(f.bytes)})`))].join(', ')}`);
 	const spread = olds.length > 1 && news.length > 1 ? { old: range(olds), new: range(news) } : undefined;

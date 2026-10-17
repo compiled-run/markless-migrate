@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { applyAccepted, failureId } from '../src/check/accepted.ts';
 import { withFailures } from '../src/check/compare.ts';
 import type { RecordedJourney, StepResult } from '../src/check/journeys.ts';
-import { controlsToMeasure, fetchKind, headlines, judge, likelyCause, summarizeResponsiveness, worstLine, worstOf, type ControlTiming, type Responsiveness, type Sample } from '../src/check/responsiveness.ts';
+import { controlsToMeasure, fetchKind, headlines, judge, likelyCause, speeds, speedTiming, summarizeResponsiveness, worstLine, worstOf, type ControlTiming, type Responsiveness, type Sample } from '../src/check/responsiveness.ts';
 import { DIMENSIONS, type Failure, type RouteResult } from '../src/check/types.ts';
 import { recordResults, status, summarizeStatus } from '../src/status.ts';
 
@@ -50,6 +50,19 @@ test('the controls timed are the first steps of the journeys, by pointer or typi
 	const capped = controlsToMeasure(journeys, { maxControls: 3, maxLinks: 1 });
 	assert.deepEqual(capped.steps.map((s) => s.step.target.name), ['Add', 'Menu', 'Docs']);
 	assert.match(capped.notMeasured.find((n) => n.control === 'link "Blog"')!.reason, /over the 3-control limit/);
+});
+
+test('a control is judged on time and on code fetched; a text box the old app re-rendered and the new one did not is not slower for it', () => {
+	const [desktop, throttled] = speeds(4);
+	const typed = speedTiming(desktop!, 'in-page', [sample({ ms: 16 })], [sample({ ms: 16, result: 'none' })], 200);
+	assert.equal(typed.ok, true);
+	const code = speedTiming(throttled!, 'in-page', [sample({ ms: 30 })], [sample({ ms: 40, fetches: [{ url: '/c.js', kind: 'code', bytes: 2048 }] })], 200);
+	assert.deepEqual([code.ok, code.problems], [false, ['fetched code on the first interaction: /c.js (2.0 kB)']]);
+	assert.equal(code.cause, 'code fetch: /c.js (2.0 kB)');
+	const nav = sample({ ms: 300, result: 'reloaded', fetches: [{ url: '/next.js', kind: 'code', bytes: 2048 }] });
+	assert.equal(speedTiming(desktop!, 'navigation', [sample({ ms: 50, result: 'navigated' })], [nav, nav], 200).ok, true, 'navigation is judged at the throttled speed, and loading the next page is not an interaction fetching code');
+	assert.equal(speedTiming(throttled!, 'navigation', [sample({ ms: 50, result: 'navigated' })], [nav, nav], 200).ok, false);
+	assert.equal(speedTiming(throttled!, 'in-page', [sample({ ms: 30, heldBack: true })], [sample({ ms: 900, heldBack: true })], 200).ok, true, 'a held-back write is reported, not judged');
 });
 
 test('a fetch is code when it is a script or JavaScript or WebAssembly by type or name', () => {
