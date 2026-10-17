@@ -231,6 +231,13 @@ function partialResult(route: string, failures: readonly Failure[], compared: re
 	return { route, ok: false, dimensions, failures, weight: { old: zero, new: zero }, visualDiffs: [], shots: [], ...(blocked ? { blocked } : {}) };
 }
 
+/** A page that never finishes loading (a stalled third-party stylesheet) fails its own route, not the whole run. */
+export function loadTimeout(route: string, error: unknown, [oldOrigin, newOrigin]: readonly [string, string]): RouteResult | undefined {
+	if (!(error instanceof Error) || error.name !== 'TimeoutError') return undefined;
+	const message = error.message.split('\n')[0]!.split(oldOrigin).join('OLD').split(newOrigin).join('NEW');
+	return partialResult(route, [{ route, dimension: 'http', check: 'page load', expected: 'the page loads', actual: message, hint: HINTS.pageLoad }], []);
+}
+
 function asRole(result: RouteResult, role: string | undefined): RouteResult {
 	return role ? { ...result, role, failures: result.failures.map((f) => ({ ...f, role })) } : result;
 }
@@ -266,6 +273,8 @@ async function checkAs(browser: Browser, run: Run, route: string, role: string |
 		if (old) oldCaptures.set(gated, old);
 		return gated;
 	} catch (error) {
+		const timedOut = loadTimeout(route, error, [run.old.origin, run.new.origin]);
+		if (timedOut) return timedOut;
 		if (!(error instanceof BlockedError)) throw error;
 		return partialResult(route, [], [], blockedResult(error.origin === run.new.origin && error.origin !== run.old.origin ? 'new' : 'old', error.blocked.status, error.blocked));
 	}
