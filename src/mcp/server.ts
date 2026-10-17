@@ -61,6 +61,7 @@ export function createServer(cwd: string): McpServer {
 				header: z.array(z.string()).optional().describe('name:value headers sent only to both apps, for example a bot-protection bypass token'),
 				cookie: z.array(z.string()).optional().describe('name=value cookies set on both apps, for example a bot-protection bypass cookie'),
 				userAgent: z.string().optional(),
+				responsiveness: z.boolean().optional().describe('Time the first use of each control and each internal link (default true); false leaves it out'),
 			},
 		},
 		async (args) => {
@@ -78,7 +79,7 @@ export function createServer(cwd: string): McpServer {
 				...(args.userAgent ? { userAgent: args.userAgent } : {}),
 				...(auth ? { auth, authStateDir: join(cwd, STATE_DIR, 'auth') } : {}),
 				accepted: await readAccepted(join(cwd, STATE_DIR, ACCEPTED_FILE)),
-				responsiveness: {},
+				...(args.responsiveness === false ? {} : { responsiveness: {} }),
 				switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 			});
 			await recordResults(cwd, report);
