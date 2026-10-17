@@ -457,7 +457,9 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			if (!stable([a!.url, ...rest.map((r) => r.url)])(n.url)) parts.push('url');
 			const navigated = n.navigated || oldSteps.some((x) => x!.navigated);
 			for (const field of navigated ? (['requests'] as const) : (['added', 'removed', 'requests', 'announcements'] as const)) {
-				const diff = diffLines(lineTemplates(a![field], ...rest.map((r) => r[field])), n[field]);
+				// Requests in flight together finish in any order (a client retrying hosts it shuffled), so they count as a set.
+				const lines = (r: StepResult) => (field === 'requests' ? [...r[field]].sort() : r[field]);
+				const diff = diffLines(lineTemplates(lines(a!), ...rest.map(lines)), lines(n));
 				if (diff.changed.length || diff.missing.length || diff.unexpected.length) parts.push(field);
 			}
 			const errors = diffLines(lineTemplates(a!.errors, ...rest.map((r) => r.errors)), n.errors);

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { PNG } from 'pngjs';
 import { executedBytes } from '../src/check/capture.ts';
 import { fontSignature } from '../src/check/fonts.ts';
-import { hasContentHash, isFingerprinted } from '../src/check/assets.ts';
+import { hasContentHash, isFingerprinted, sameContentType } from '../src/check/assets.ts';
 import { matchElements } from '../src/check/match.ts';
 import type { ElementSnapshot } from '../src/check/types.ts';
 import { compareScreenshots, visualNoise, visuallyDifferent } from '../src/check/visual.ts';
@@ -18,6 +18,15 @@ test('only a hashed name the built output refers to is fingerprinted; public fil
 	assert.ok(!isFingerprinted('/logo-2024.png', ['<img src="/logo-2024.png">']), 'referenced, but its name has no hash');
 	assert.ok(isFingerprinted('/_next/image?url=%2Fhero.png&w=640', []), "the framework's own output directory");
 	assert.ok(!isFingerprinted('https://cdn.example/app-1a2b3c4d.js', ['app-1a2b3c4d.js']));
+	// Webpack writes chunk ids and hashes apart: {17698:"64a0fc96bb"} becomes /assets/js/17698.64a0fc96bb.js.
+	assert.ok(isFingerprinted('/assets/js/17698.64a0fc96bb.js', ['r.u=e=>"assets/js/"+e+"."+{17698:"64a0fc96bb"}[e]+".js"']));
+	assert.ok(!isFingerprinted('/assets/js/17698.64a0fc96bb.js', ['nothing refers to it']));
+});
+
+test('Content-Type values that browsers treat alike are the same type', () => {
+	assert.ok(sameContentType('application/javascript; charset=UTF-8', 'text/javascript'));
+	assert.ok(sameContentType('text/css', 'text/css; charset=utf-8'));
+	assert.ok(!sameContentType('text/html', 'application/javascript'));
 });
 
 test('executed bytes count only ranges that ran, with inner ranges overriding outer ones', () => {

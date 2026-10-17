@@ -1,0 +1,14 @@
+import { chromium } from 'playwright';
+const b = await chromium.launch();
+const p = await b.newPage({ viewport: { width: 1280, height: 800 } });
+await p.goto(`${process.argv[2] ?? 'http://127.0.0.1:4471'}/sign-in`, { waitUntil: 'networkidle' });
+await p.fill('input[name=email]', 'ada@example.com');
+await p.fill('input[name=password]', 'Sample text');
+await p.click('button:has-text("Sign in")');
+await p.waitForTimeout(400);
+console.log(await p.evaluate(() => document.querySelector('section[aria-label^="Notifications"]').outerHTML));
+console.log('styles:', await p.evaluate(() => [...document.querySelectorAll('style')].map((s) => s.textContent.slice(0, 80))));
+await p.screenshot({ path: `/tmp/toast-${new URL(process.argv[2] ?? 'http://x:4471').port}.png` });
+await p.waitForTimeout(2200);
+console.log(p.url(), await p.evaluate(() => document.querySelector('section[aria-label^="Notifications"]').innerText));
+await b.close();

@@ -1,3 +1,4 @@
+import { sameContentType } from './assets.ts';
 import { compareA11y } from './a11y.ts';
 import { HINTS, seoHint } from './hints.ts';
 import { failureElements, failureOccurrence } from './locate.ts';
@@ -265,7 +266,7 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 		if (!found || found.status >= 400) {
 			reported.add(asset.url);
 			failures.push({ route, dimension: 'assets', check: `${asset.type} ${asset.url}`, expected: `${asset.status} ${asset.contentType}`, actual: found ? `${found.status} ${found.contentType}` : 'not served', hint: HINTS.assetMissing });
-		} else if (found.contentType !== asset.contentType) {
+		} else if (!sameContentType(found.contentType, asset.contentType)) {
 			failures.push({ route, dimension: 'assets', check: `${asset.type} ${asset.url}`, expected: asset.contentType, actual: found.contentType, hint: HINTS.assetType });
 		}
 	}

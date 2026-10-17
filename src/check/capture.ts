@@ -67,11 +67,40 @@ export function executedBytes(source: string, functions: readonly { ranges: read
 	return total;
 }
 
+// After a scroll, until no request has been in flight for a moment: a script lazy loader (IntersectionObserver, a
+// waypoint) starts its fetch on the scroll and may cancel it on the next one, so it gets to finish first.
+async function quietAfter(page: Page, scroll: () => Promise<void>): Promise<void> {
+	const pending = new Set<unknown>();
+	const add = (request: unknown) => pending.add(request);
+	const done = (request: unknown) => pending.delete(request);
+	page.on('request', add);
+	page.on('requestfinished', done);
+	page.on('requestfailed', done);
+	try {
+		await scroll();
+		const deadline = Date.now() + 3_000;
+		let quietSince = Date.now();
+		while (Date.now() < deadline) {
+			if (pending.size) quietSince = Date.now();
+			else if (Date.now() - quietSince >= 200) break;
+			await new Promise((wake) => setTimeout(wake, 25));
+		}
+	} finally {
+		page.off('request', add);
+		page.off('requestfinished', done);
+		page.off('requestfailed', done);
+	}
+}
+
 export async function settle(page: Page): Promise<void> {
 	await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+	await quietAfter(page, () =>
+		page.evaluate(async () => {
+			scrollTo(0, document.documentElement.scrollHeight);
+			await new Promise(requestAnimationFrame);
+		}),
+	);
 	await page.evaluate(async () => {
-		scrollTo(0, document.documentElement.scrollHeight);
-		await new Promise(requestAnimationFrame);
 		for (const img of document.images) {
 			if (img.complete || img.loading !== 'lazy' || !img.getClientRects().length) continue;
 			img.scrollIntoView({ block: 'center' });
@@ -89,6 +118,19 @@ export async function settle(page: Page): Promise<void> {
 					})
 			).then(() => img.decode().catch(() => {}));
 		await Promise.all([...document.images].map((img) => Promise.race([ready(img), new Promise((done) => setTimeout(done, 5000))])));
+	});
+}
+
+// A finite animation (an entrance effect) is still running or already done depending on how long the page took to
+// settle, so computed styles are read at its end. What was moving is kept first for the reduced-motion check.
+export async function finishAnimations(page: Page): Promise<void> {
+	await page.evaluate(() => {
+		const running = document.getAnimations().filter((a) => a.playState === 'running');
+		(window as unknown as { __mmMotion?: string[] }).__mmMotion = running.map((a) => (a as CSSAnimation).animationName ?? (a as CSSTransition).transitionProperty ?? 'script animation').sort();
+		for (const animation of running) {
+			const end = animation.effect?.getComputedTiming().endTime;
+			if (typeof end === 'number' && Number.isFinite(end)) animation.finish();
+		}
 	});
 }
 
@@ -126,6 +168,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		const wall = navigation && detectChallenge({ status: navigation.status(), headers: await navigation.allHeaders(), body: html });
 		if (wall) throw new BlockedError({ status: navigation!.status(), ...wall }, origin);
 		await settle(page);
+		await finishAnimations(page);
 		const collected = await page.evaluate(collectPage, { origin, full: true });
 		const aria = (await page.locator('body').ariaSnapshot()).split(origin).join('').split('\n');
 		const screenshot = await page.screenshot({ fullPage: true, animations: 'disabled', caret: 'hide' });

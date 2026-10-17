@@ -33,9 +33,9 @@ function markTextElements(indices: number[]) {
 			visit(sheet.cssRules, sheet.href ?? location.href);
 		} catch {}
 	}
-	const elements = indices.map((i) => {
+	const elements = indices.map((i, k) => {
 		const el = scope.__mmElements![i]!;
-		el.setAttribute('data-mm-font', '');
+		el.setAttribute('data-mm-font', String(k));
 		const style = getComputedStyle(el);
 		return { families: style.fontFamily.split(',').map(unquote), weight: style.fontWeight, style: style.fontStyle };
 	});
@@ -83,9 +83,13 @@ export async function renderedFonts(page: Page, elements: readonly ElementSnapsh
 		const { root } = await session.send('DOM.getDocument', { depth: 0 });
 		const { nodeIds } = await session.send('DOM.querySelectorAll', { nodeId: root.nodeId, selector: '[data-mm-font]' });
 		const out = [...elements];
-		for (const [k, nodeId] of nodeIds.entries()) {
+		// Marked nodes come back in document order, which need not be the snapshot's order (and an element the page
+		// replaced since is no longer there), so each node names its own index.
+		for (const nodeId of nodeIds) {
+			const attributes = ((await session.send('DOM.getAttributes', { nodeId })) as { attributes: string[] }).attributes;
+			const k = Number(attributes[attributes.indexOf('data-mm-font') + 1]);
 			const i = indices[k];
-			if (i === undefined) break;
+			if (i === undefined) continue;
 			const { fonts } = (await session.send('CSS.getPlatformFontsForNode', { nodeId })) as { fonts: PlatformFont[] };
 			const file = fonts.some((f) => f.isCustomFont) ? fontFile(info[k]!, faces, hashes) : undefined;
 			out[i] = { ...out[i]!, font: fontSignature(fonts, file) };

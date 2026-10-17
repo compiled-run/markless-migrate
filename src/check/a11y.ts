@@ -45,12 +45,14 @@ export async function captureA11y(page: Page): Promise<A11yCapture> {
 		const { nodes } = (await session.send('Accessibility.getFullAXTree')) as { nodes: AxNode[] };
 		const landmarks = nodes.filter((n) => !n.ignored && LANDMARKS.has(n.role?.value ?? '')).map(label).sort();
 
-		const motion = await page.evaluate(() =>
-			document
-				.getAnimations()
-				.filter((a) => a.playState === 'running')
-				.map((a) => (a as CSSAnimation).animationName ?? (a as CSSTransition).transitionProperty ?? 'script animation')
-				.sort(),
+		const motion = await page.evaluate(
+			() =>
+				(window as unknown as { __mmMotion?: string[] }).__mmMotion ??
+				document
+					.getAnimations()
+					.filter((a) => a.playState === 'running')
+					.map((a) => (a as CSSAnimation).animationName ?? (a as CSSTransition).transitionProperty ?? 'script animation')
+					.sort(),
 		);
 
 		await page.evaluate(() => {

@@ -486,33 +486,43 @@ export async function bootProfile(root: El): Promise<void> {
     following: false,
   };
   fill(root, render.profilePage(outer.data.profile, profile.isUser, favorites));
+  let currentFavorites = favorites;
   // Angular reuses ProfileComponent for any /profile/:username, reading the name only once, and swaps the child route.
   onSoftNavigation((url) => {
     const match = /^\/profile\/([^/]+)(\/favorites)?\/?$/.exec(url.pathname);
     if (!match || url.search) return false;
-    return () => void showProfileTab(root, decodeURIComponent(match[1]!), Boolean(match[2]));
+    const nextFavorites = Boolean(match[2]);
+    // The same child route stays mounted, so only the address and the tabs' active state change.
+    if (nextFavorites === currentFavorites) return () => markProfileTabs(root);
+    currentFavorites = nextFavorites;
+    return () => void showProfileTab(root, decodeURIComponent(match[1]!), nextFavorites);
   });
   await loadProfileTab(root, username, favorites);
 }
 
+// The old child component asks for the profile again and then for its articles; the list here is keyed by the
+// name in the address, so both requests go out together and the page settles one round trip sooner.
 async function loadProfileTab(root: Element, username: string, favorites: boolean): Promise<void> {
-  const inner = await api<ProfileResponse>("GET", `/profiles/${username}`);
-  if (!inner.ok) return;
-  const name = inner.data.profile.username;
-  await startList(
+  const inner = api<ProfileResponse>("GET", `/profiles/${username}`);
+  const list = startList(
     root.querySelector("app-article-list"),
     "/articles",
-    favorites ? { favorited: name } : { author: name },
+    favorites ? { favorited: username } : { author: username },
     1,
     false,
     false,
   );
+  await Promise.all([inner, list]);
 }
 
 // The profile page stays; only its child route (posts or favorites) is replaced, as Angular's router-outlet did.
-async function showProfileTab(root: Element, username: string, favorites: boolean): Promise<void> {
+function markProfileTabs(root: Element): void {
   for (const link of root.querySelectorAll(".articles-toggle a.nav-link"))
     link.classList.toggle("active", link.getAttribute("href") === window.location.pathname);
+}
+
+async function showProfileTab(root: Element, username: string, favorites: boolean): Promise<void> {
+  markProfileTabs(root);
   const child = root.querySelector("app-profile-articles, app-profile-favorites");
   if (child)
     child.outerHTML = `<${favorites ? "app-profile-favorites" : "app-profile-articles"}><app-article-list></app-article-list></${favorites ? "app-profile-favorites" : "app-profile-articles"}>`;
@@ -553,6 +563,7 @@ function value(el: El): string {
 export async function bootGuestOnly(page: El): Promise<void> {
   const session = await currentUser();
   if (session.status === "authenticated") {
+    (window as { __conduitUnmatched?: boolean }).__conduitUnmatched = true;
     window.history.replaceState(null, "", "/");
     page?.remove();
   }

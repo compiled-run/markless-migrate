@@ -23,6 +23,12 @@ test('a step whose result differs on NEW fails; keyboard steps count as accessib
 	assert.match(failures[0]!.actual, /announced: output: 2/);
 });
 
+test('the same requests in another order are the same step result', () => {
+	const old = [[result({ requests: ['POST a.example/q', 'POST b.example/q'] })], [result({ requests: ['POST a.example/q', 'POST b.example/q'] })]];
+	assert.deepEqual(compareJourneys('/', [old, old], journeys, [[result({ requests: ['POST b.example/q', 'POST a.example/q'] })], [result({ requests: ['POST b.example/q', 'POST a.example/q'] })]]), []);
+	assert.equal(compareJourneys('/', [old, old], journeys, [[result({ requests: ['POST a.example/q'] })], [result({ requests: ['POST a.example/q'] })]]).length, 2);
+});
+
 test('a missing target stops the journey with the reason', () => {
 	const old = [[counted(1)], [counted(1)]];
 	const [f] = compareJourneys('/', [old, old], journeys.slice(0, 1), [[result({ failed: 'button "Pour a cup" could not be used: timeout' })]]);

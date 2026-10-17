@@ -25,7 +25,10 @@ export function installNavigation(): void {
 		if (!(anchor instanceof HTMLAnchorElement) || (anchor.target && anchor.target !== '_self')) return;
 		const url = new URL(anchor.href);
 		if (url.origin !== window.location.origin) return;
-		if (url.pathname === window.location.pathname && url.search === window.location.search) {
+		// After the old app's first navigation failed (an unknown route, a guarded page) its router is on no route, so
+		// a link to the address shown still loads it.
+		const unmatched = (window as { __conduitUnmatched?: boolean }).__conduitUnmatched === true;
+		if (!unmatched && url.pathname === window.location.pathname && url.search === window.location.search) {
 			event.preventDefault();
 			return;
 		}

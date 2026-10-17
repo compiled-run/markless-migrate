@@ -30,5 +30,19 @@ export function isFingerprinted(url: string, builtTexts: readonly string[]): boo
 	if (FRAMEWORK_OUTPUT.some((prefix) => path.startsWith(prefix))) return true;
 	if (!hasContentHash(path)) return false;
 	const name = fileName(path);
-	return builtTexts.some((text) => text.includes(name));
+	if (builtTexts.some((text) => text.includes(name))) return true;
+	// Webpack's runtime (Docusaurus, CRA) builds chunk names from an id and a hash map, so only the hash is written.
+	const hashes = name.replace(/\.[a-z0-9]+$/i, '').split(/[-.~]/).filter(isHashToken);
+	return hashes.length > 0 && hashes.every((hash) => builtTexts.some((text) => text.includes(`"${hash}"`)));
+}
+
+const JAVASCRIPT = new Set(['application/javascript', 'text/javascript', 'application/x-javascript', 'text/ecmascript', 'application/ecmascript']);
+
+// Two Content-Type values a browser treats alike: parameters aside, and the JavaScript MIME aliases as one.
+export function sameContentType(a: string | undefined, b: string | undefined): boolean {
+	const essence = (value: string | undefined) => {
+		const type = (value ?? '').split(';')[0]!.trim().toLowerCase();
+		return JAVASCRIPT.has(type) ? 'text/javascript' : type;
+	};
+	return essence(a) === essence(b);
 }
