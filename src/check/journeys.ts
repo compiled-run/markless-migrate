@@ -2,6 +2,7 @@ import type { Browser, BrowserContext, Locator, Page, Request } from 'playwright
 import { frameworkTransport, openPage, requestLine, type SideEnv } from './browser.ts';
 import { originInQuery } from './capture.ts';
 import { HINTS } from './hints.ts';
+import { storageKeys } from './storage.ts';
 import { diffLines, lineTemplates, template } from './noise.ts';
 import type { Dimension, Failure, Viewport, WriteLine } from './types.ts';
 
@@ -28,6 +29,8 @@ export interface StepResult {
 	readonly errors: readonly string[];
 	readonly announcements: readonly string[];
 	readonly focus: string;
+	/** What the page keeps in the browser after the step: storage keys, IndexedDB stores, cookies. */
+	readonly storage?: readonly string[];
 	/** The step loaded a document, changed the path or followed a link: the landing page's content and focus are that route's and router's own checks. */
 	readonly navigated: boolean;
 	/** Set when the step could not be performed, for example because its target is missing. */
@@ -433,6 +436,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 				errors: [...errors],
 				announcements: liveAfter.filter((line) => !liveBefore.includes(line)),
 				focus: await focusLabel(page),
+				storage: await storageKeys(page),
 				...(failed ? { failed } : {}),
 			};
 		},
@@ -702,6 +706,7 @@ function format(result: StepResult, parts: readonly string[]): string {
 	if (parts.includes('errors')) out.push(`console errors: ${result.errors.join(' | ') || '(none)'}`);
 	if (parts.includes('announcements')) out.push(`announced: ${result.announcements.join(' | ') || '(nothing)'}`);
 	if (parts.includes('focus')) out.push(`focus on ${result.focus}`);
+	if (parts.includes('storage')) out.push(`kept in the browser: ${result.storage?.join(', ') || '(nothing)'}`);
 	return out.join('; ');
 }
 
@@ -734,9 +739,9 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			const parts: string[] = [];
 			if (!stable([a!.url, ...rest.map((r) => r.url)])(n.url)) parts.push('url');
 			const navigated = n.navigated || oldSteps.some((x) => x!.navigated);
-			for (const field of navigated ? (['requests'] as const) : (['added', 'removed', 'requests', 'announcements'] as const)) {
+			for (const field of navigated ? (['requests', 'storage'] as const) : (['added', 'removed', 'requests', 'announcements', 'storage'] as const)) {
 				// Requests in flight together finish in any order (a client retrying hosts it shuffled), so they count as a set.
-				const lines = (r: StepResult) => (field === 'requests' ? [...r[field]].sort() : r[field]);
+				const lines = (r: StepResult) => (field === 'requests' ? [...r[field]].sort() : (r[field] ?? []));
 				const diff = diffLines(lineTemplates(lines(a!), ...rest.map(lines)), lines(n));
 				if (diff.changed.length || diff.missing.length || diff.unexpected.length) parts.push(field);
 			}

@@ -63,7 +63,7 @@ function targets(f: Failure, oldPage: PageCapture | undefined, newPage: PageCapt
 	if (!old && !next && f.check.startsWith(NOT_EXERCISED)) {
 		const named = /^([a-z]+) "((?:[^"\\]|\\.)*)"(?: #(\d+))?$/.exec(f.check.slice(NOT_EXERCISED.length));
 		if (named) old = oldPage?.elements.filter((e) => e.role === named[1] && e.name === quoted(named[2]!))[Number(named[3] ?? 1) - 1];
-	} else if (!old && !next) {
+	} else if (!old && !next && !f.check.startsWith('browser storage')) {
 		if (f.dimension === 'rendered' || f.dimension === 'behaviour' || (f.dimension === 'a11y' && /\(step \d+\)|^(click|press|type|fill|choose)\b/.test(f.check))) {
 			const nth = failureOccurrence.get(f);
 			old = byText(oldPage, f.dimension === 'rendered' ? f.expected : f.check, nth?.old);

@@ -117,6 +117,8 @@ export interface PageCapture {
 	readonly blocked?: Readonly<Record<string, number>>;
 	/** Writes the page made while loading, sent or held back. */
 	readonly writes?: readonly WriteLine[];
+	/** What the page keeps in the browser once loaded: storage keys, IndexedDB stores, cookies. */
+	readonly storage?: readonly string[];
 }
 
 export interface WriteLine {

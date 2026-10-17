@@ -11,6 +11,7 @@ import { diffFields, diffLines, fieldTemplates, lineTemplates, type LineDiff } f
 import type { AssetRecord, Box, Dimension, ElementSnapshot, Failure, HttpCapture, NoiseReport, PageCapture, RouteCapture, RouteResult, Shot } from './types.ts';
 import { DIMENSIONS } from './types.ts';
 import { compareScreenshots, visualNoise, visuallyDifferent } from './visual.ts';
+import { storageFailure } from './storage.ts';
 
 const LIMIT = 20;
 // lang and dir are compared as internationalisation, not SEO.
@@ -292,6 +293,9 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 		}
 	}
 
+	const kept = next.pages[desktop]?.storage;
+	const stored = kept && storageFailure(route, 'behaviour', 'browser storage after the page loads', olds.map((o) => o.pages[desktop]?.storage ?? []), kept);
+	if (stored) failures.push(stored);
 	failures.push(...compareNetwork(route, olds.map((o) => o.pages[desktop]?.network), next.pages[desktop]?.network, oldA.origin, next.origin, clients));
 	const oldNet = oldA.pages[desktop]?.network;
 	const newNet = next.pages[desktop]?.network;

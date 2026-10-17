@@ -43,6 +43,7 @@ export const HINTS = {
 	formats: 'Format dates and numbers for this locale as the old page did, for example with Intl.DateTimeFormat and Intl.NumberFormat and the same locale and options.',
 	negotiation: 'Send a browser to the same locale by its Accept-Language header as the old app did (the http check compares the redirect status).',
 	behaviour: 'Doing this on the new page gives a different result. Port the event handler, form action or state update behind this control so the URL, the page, the requests and the announcements match.',
+	storage: 'The new page keeps different keys in the browser (localStorage, sessionStorage, IndexedDB, cookies). Store the same keys under the same names, or what the old app saved (a theme, a cart, a session) is lost or not found after the switch.',
 	coverage: 'No journey used this control on the old page, so nothing proves the new page does the same with it. Raise --journey-budget (or --max-journeys) until check reaches it; if a person decides it needs no check, they accept it with `markless-migrate accept <id> --reason "..."`.',
 	keyboard: 'This keyboard path gives a different result. Use a real <button> or <a href>, or handle Enter and Space as the old control did, and keep focus where it went.',
 	networkChanged: 'The new page sends this request with a different query or body. Send the same parameters and fields as the old page (field lists, filters, locale, page size), so the backend returns the same data.',

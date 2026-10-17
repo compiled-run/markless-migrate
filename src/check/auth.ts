@@ -6,6 +6,7 @@ import { slug } from './data.ts';
 import { HINTS } from './hints.ts';
 import type { Failure, HttpCapture, LoginResult } from './types.ts';
 import { VIEWPORTS } from './types.ts';
+import { signedInStorage, storageFailure } from './storage.ts';
 
 export const ANONYMOUS = 'anonymous';
 
@@ -160,6 +161,8 @@ export function compareLogin(role: string, route: string, old: StorageState, nex
 	}
 	const names = new Set(a.map((c) => c.name));
 	for (const c of b) if (!names.has(c.name)) failures.push({ route, role, dimension: 'auth', check: `cookie ${c.name} after signing in as ${role}`, expected: '(not set)', actual: cookieLine(c), hint: HINTS.cookieExtra });
+	const stored = storageFailure(route, 'auth', `browser storage after signing in as ${role}`, [signedInStorage(old, oldOrigin)], signedInStorage(next, newOrigin));
+	if (stored) failures.push({ ...stored, role });
 	return { role, ok: failures.length === 0, failures, cookies: { old: a.map(cookieLine), new: b.map(cookieLine) } };
 }
 
