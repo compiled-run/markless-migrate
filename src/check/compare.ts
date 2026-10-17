@@ -94,7 +94,16 @@ export function noisyStyles(a: readonly ElementSnapshot[], others: readonly (rea
 	return noisy;
 }
 
-function fontFailures(route: string, viewport: string, oldA: PageCapture, others: readonly PageCapture[], next: PageCapture): Failure[] {
+// The font of an element's text, or, when its text sits in child elements (a span inside a button), of the first descendant with text.
+function textFont(elements: readonly ElementSnapshot[], el: ElementSnapshot): string | undefined {
+	if (el.font || !el.chain) return el.font;
+	return elements.find((e) => e.font && e.chain?.startsWith(`${el.chain}>`))?.font;
+}
+
+// The words a font check is about: the element's own visible text before its accessible name (sr-only "Go to page 1" plus "1" reads "Go to page 11").
+const describeText = (el: ElementSnapshot) => describe(el.text ? { ...el, name: el.text } : el);
+
+export function fontFailures(route: string, viewport: string, oldA: PageCapture, others: readonly PageCapture[], next: PageCapture): Failure[] {
 	const stable = new Set(oldA.elements.map((_, i) => i));
 	for (const other of others) {
 		const pairs = matchElements(oldA.elements, other.elements);
@@ -103,8 +112,9 @@ function fontFailures(route: string, viewport: string, oldA: PageCapture, others
 	const groups = new Map<string, { expected: string; actual: string; elements: ElementSnapshot[] }>();
 	for (const [i, j] of matchElements(oldA.elements, next.elements)) {
 		const expected = oldA.elements[i]!;
-		if (!stable.has(i) || !expected.font || expected.font === next.elements[j]!.font) continue;
-		const actual = next.elements[j]!.font ?? '(no text)';
+		const font = textFont(next.elements, next.elements[j]!);
+		if (!stable.has(i) || !expected.font || expected.font === font) continue;
+		const actual = font ?? '(no text)';
 		const key = `${expected.font}\n${actual}`;
 		const group = groups.get(key) ?? { expected: expected.font, actual, elements: [] };
 		group.elements.push(expected);
@@ -114,7 +124,7 @@ function fontFailures(route: string, viewport: string, oldA: PageCapture, others
 		const failure: Failure = {
 			route,
 			dimension: 'assets',
-			check: `rendered font of ${describe(g.elements[0]!)}${g.elements.length > 1 ? ` and ${g.elements.length - 1} more elements` : ''}`,
+			check: `rendered font of ${describeText(g.elements[0]!)}${g.elements.length > 1 ? ` and ${g.elements.length - 1} more elements` : ''}`,
 			viewport,
 			expected: g.expected,
 			actual: g.actual,

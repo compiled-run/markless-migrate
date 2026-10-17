@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { PNG } from 'pngjs';
 import { executedBytes } from '../src/check/capture.ts';
 import { fontSignature } from '../src/check/fonts.ts';
+import type { PageCapture } from '../src/check/types.ts';
 import { hasContentHash, isFingerprinted, sameContentType } from '../src/check/assets.ts';
 import { matchElements } from '../src/check/match.ts';
 import type { ElementSnapshot } from '../src/check/types.ts';
@@ -110,4 +111,18 @@ test('a font signature names web fonts by family and file hash, system fonts by 
 		{ familyName: 'Arial', isCustomFont: false, glyphCount: 0 },
 	];
 	assert.equal(fontSignature(fonts, 'f7ab715caa2c0d1e'), 'web font Inter Variable (sha256 f7ab715caa2c) + Geeza Pro');
+});
+
+test('a font check reads the text a new element keeps in a child span, and names the element by its visible text', async () => {
+	const { fontFailures } = await import('../src/check/compare.ts');
+	const box = { x: 0, y: 0, width: 20, height: 20 };
+	const el = (over: Partial<ElementSnapshot>): ElementSnapshot => ({ id: 1, role: 'button', name: 'Go to page 1', tag: 'button', text: '', path: 'body/main/nav/button', chain: 'html:0>body:0>main:0>nav:0>button:0', box, style: {}, ...over });
+	const page = (elements: ElementSnapshot[]) => ({ elements }) as unknown as PageCapture;
+	const inter = 'web font Inter (sha256 aaaaaaaaaaaa)';
+	const old = page([el({ text: '1', name: 'Go to page 1', font: inter })]);
+	const span = (font: string) => el({ id: 2, role: 'generic', name: '', tag: 'span', text: '1', path: 'body/main/nav/button/span', chain: 'html:0>body:0>main:0>nav:0>button:0>span:0', font });
+	assert.deepEqual(fontFailures('/', 'desktop', old, [old], page([el({}), span(inter)])), []);
+	const [f] = fontFailures('/', 'desktop', old, [old], page([el({}), span('Times')]));
+	assert.equal(f!.actual, 'Times');
+	assert.match(f!.check, /^rendered font of button "1" /);
 });
