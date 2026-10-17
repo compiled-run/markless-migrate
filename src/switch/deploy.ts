@@ -1,6 +1,7 @@
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { isSwitched } from './state.ts';
+import { request } from '../check/http.ts';
 
 export interface DeployInput {
 	/** Production (or preview) deployment URLs of each app. */
@@ -129,7 +130,7 @@ const isPagePath = (path: string) => !/\.[a-z0-9]+$/i.test(path) || /\.html?$/i.
 
 async function serves(origin: string, path: string): Promise<boolean> {
 	try {
-		const response = await fetch(new URL(path, origin), { method: 'GET', redirect: 'manual' });
+		const response = await request(new URL(path, origin), { method: 'GET', redirect: 'manual' });
 		await response.body?.cancel();
 		if (!((response.status >= 200 && response.status < 300) || response.status === 304)) return false;
 		return isPagePath(path) || !(response.headers.get('content-type') ?? '').toLowerCase().startsWith('text/html');
@@ -173,7 +174,7 @@ export function moduleImports(code: string, scriptUrl: string, origin: string): 
 export async function pageAssets(origin: string, pages: readonly string[]): Promise<string[]> {
 	const paths = new Set<string>();
 	for (const page of pages) {
-		const response = await fetch(new URL(page, origin)).catch(() => undefined);
+		const response = await request(new URL(page, origin)).catch(() => undefined);
 		if (!response?.ok) continue;
 		for (const path of assetPaths(await response.text(), origin)) paths.add(path);
 	}
@@ -182,7 +183,7 @@ export async function pageAssets(origin: string, pages: readonly string[]): Prom
 	while (queue.length && seen.size < 5000) {
 		const path = queue.shift()!;
 		const url = new URL(path, origin).href;
-		const response = await fetch(url).catch(() => undefined);
+		const response = await request(url).catch(() => undefined);
 		if (!response?.ok) continue;
 		for (const imported of moduleImports(await response.text(), url, origin)) {
 			paths.add(imported);

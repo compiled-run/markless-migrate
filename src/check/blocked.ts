@@ -1,5 +1,6 @@
 import { tagHeaders, type SideEnv } from './browser.ts';
 import type { Blocked } from './types.ts';
+import { bodyText, request } from './http.ts';
 
 export interface Answer {
 	readonly status: number;
@@ -90,8 +91,8 @@ export async function probeWall(env: SideEnv, route: string, side: 'old' | 'new'
 	let url = new URL(route, env.origin);
 	try {
 		for (let hop = 0; hop < 10 && url.origin === home; hop++) {
-			const response = await fetch(url, { headers: tagHeaders(env), redirect: 'manual' });
-			const body = (await response.text()).slice(0, MAX_BODY);
+			const response = await request(url, { headers: tagHeaders(env), redirect: 'manual' });
+			const body = (await bodyText(response, url)).slice(0, MAX_BODY);
 			const headers: Record<string, string> = {};
 			response.headers.forEach((value, key) => (headers[key] = value));
 			const setCookie = response.headers.getSetCookie();

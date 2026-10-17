@@ -7,6 +7,7 @@ import { collectPage } from '../check/collect.ts';
 import { blocker } from '../check/trackers.ts';
 import { proposeAuth, readLoginForm, withLoginForm, type ProposedAuth } from './auth.ts';
 import { scanForInventory, summarizeSource, unionRoutes, type RouteUnionEntry, type SourceInventory } from './source.ts';
+import { request } from '../check/http.ts';
 
 export interface InventoryRoute {
 	readonly route: string;
@@ -82,7 +83,7 @@ function routeOf(url: string, origin: string): string | undefined {
 
 async function text(url: string, headers: Record<string, string> = {}): Promise<string | undefined> {
 	try {
-		const response = await fetch(url, { headers });
+		const response = await request(url, { headers });
 		return response.ok ? await response.text() : undefined;
 	} catch {
 		return undefined;

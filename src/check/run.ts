@@ -28,6 +28,7 @@ import { blocker, type BlockList } from './trackers.ts';
 import { matchRoute } from '../source/pattern.ts';
 import type { Blocked, Coverage, Dimension, Failure, HttpCapture, LoginResult, PageCapture, Report, RouteCapture, RouteResult, Shot, Viewport } from './types.ts';
 import { DIMENSIONS, VIEWPORTS } from './types.ts';
+import { bodyText, request } from './http.ts';
 
 export interface CheckOptions {
 	readonly oldOrigin: string;
@@ -97,7 +98,7 @@ interface Run {
 
 async function probe(env: SideEnv, url: string): Promise<Probe> {
 	try {
-		const response = await fetch(new URL(url, env.origin), { redirect: 'follow', headers: tagHeaders(env) });
+		const response = await request(new URL(url, env.origin), { redirect: 'follow', headers: tagHeaders(env) });
 		const headers: Record<string, string> = {};
 		response.headers.forEach((value, key) => (headers[key] = value));
 		const wall = detectChallenge({ status: response.status, headers, body: '' });
@@ -280,8 +281,9 @@ function asRole(result: RouteResult, role: string | undefined): RouteResult {
 
 async function deniedPage(env: SideEnv, http: HttpCapture): Promise<boolean> {
 	if (http.status !== 200) return false;
-	const response = await fetch(new URL(http.chain.at(-1)!.url, env.origin), { headers: tagHeaders(env) }).catch(() => undefined);
-	return response ? saysDenied(await response.text()) : false;
+	const url = new URL(http.chain.at(-1)!.url, env.origin);
+	const response = await request(url, { headers: tagHeaders(env) }).catch(() => undefined);
+	return response ? saysDenied(await bodyText(response, url).catch(() => '')) : false;
 }
 
 /** Checks one route as one role: a bot wall stops it, a different access decision is reported without comparing two different pages. */

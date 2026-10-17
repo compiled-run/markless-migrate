@@ -6,6 +6,7 @@ import { at, writeHandler, type WriteFact } from './source-facts.ts';
 import { detectChallenge } from './blocked.ts';
 import { blocker } from './trackers.ts';
 import type { Viewport } from './types.ts';
+import { request } from './http.ts';
 
 /** How the checker treats one app: what it freezes and blocks, whether writes are sent, and which recorded data it serves. */
 export interface SideEnv {
@@ -291,7 +292,7 @@ function tokenHeaders(): Record<string, string> {
 /** What the server fetched while rendering this load, when it runs with the request recorder; undefined when it does not. */
 export async function serverRecords(env: SideEnv, load: string): Promise<NetworkRecord[] | undefined> {
 	try {
-		const response = await fetch(new URL(`/__markless-migrate/requests?load=${encodeURIComponent(load)}`, env.origin), { headers: { ...appHeaders(env), ...tokenHeaders() } });
+		const response = await request(new URL(`/__markless-migrate/requests?load=${encodeURIComponent(load)}`, env.origin), { headers: { ...appHeaders(env), ...tokenHeaders() } });
 		if (!response.ok || !mime(response.headers.get('content-type') ?? '').includes('json')) {
 			await response.body?.cancel();
 			return undefined;
@@ -308,10 +309,10 @@ export async function pushRecording(env: SideEnv): Promise<boolean> {
 	if (!env.replay) return true;
 	const headers = { ...appHeaders(env), ...tokenHeaders() };
 	try {
-		const hello = await fetch(new URL('/__markless-migrate/', env.origin), { headers });
+		const hello = await request(new URL('/__markless-migrate/', env.origin), { headers });
 		const recorder = hello.ok && (hello.headers.get('content-type') ?? '').includes('json') && ((await hello.json()) as { recorder?: number }).recorder === 1;
 		if (!recorder) return false;
-		const response = await fetch(new URL(`/__markless-migrate/data?set=${encodeURIComponent(env.replay.set)}`, env.origin), {
+		const response = await request(new URL(`/__markless-migrate/data?set=${encodeURIComponent(env.replay.set)}`, env.origin), {
 			method: 'PUT',
 			headers: { 'content-type': 'application/json', ...headers },
 			body: JSON.stringify({ responses: env.replay.responses.filter((r) => r.side === 'server') }),

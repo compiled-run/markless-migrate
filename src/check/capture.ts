@@ -8,6 +8,7 @@ import { defaultEnv, openPage, serverRecords, tagHeaders, type SideEnv } from '.
 import { renderedFonts } from './fonts.ts';
 import { captureSourceHints } from './hints-page.ts';
 import type { AssetRecord, HttpCapture, HttpHop, PageCapture, RouteCapture, ScriptWeight, Viewport } from './types.ts';
+import { request } from './http.ts';
 
 const ASSET_TYPES = new Set(['image', 'font', 'stylesheet', 'script', 'media']);
 
@@ -44,7 +45,7 @@ export async function captureHttp(origin: string, route: string, headers: Record
 	const home = new URL(origin).origin;
 	for (let hop = 0; hop < 10; hop++) {
 		// Cookies, tokens and bypass headers go only to the app's own origin, never to a host a redirect points at.
-		const response = await fetch(url, { redirect: 'manual', headers: new URL(url).origin === home ? headers : Object.fromEntries(Object.entries(headers).filter(([k]) => /^(accept-language|user-agent)$/i.test(k))) });
+		const response = await request(url, { redirect: 'manual', headers: new URL(url).origin === home ? headers : Object.fromEntries(Object.entries(headers).filter(([k]) => /^(accept-language|user-agent)$/i.test(k))) });
 		await response.body?.cancel();
 		chain.push({ url: toLocal(url, origin), status: response.status });
 		const location = response.headers.get('location');

@@ -3,6 +3,7 @@ import { captureHttp, mime } from './capture.ts';
 import { httpFailures, withFailures } from './compare.ts';
 import { diffFields, diffLines, fieldTemplates, lineTemplates } from './noise.ts';
 import type { Dimension, Failure, HttpCapture, RouteResult } from './types.ts';
+import { bodyText, request } from './http.ts';
 
 export type EndpointKind = 'robots' | 'sitemap' | 'feed' | 'json' | 'xml' | 'text';
 
@@ -54,8 +55,9 @@ export function endpointKind(path: string, contentType: string, body: string): E
 
 export async function captureEndpoint(env: SideEnv, path: string): Promise<EndpointCapture> {
 	const http = await captureHttp(env.origin, path, tagHeaders(env));
-	const response = await fetch(new URL(http.chain.at(-1)!.url, env.origin), { headers: tagHeaders(env) });
-	const raw = await response.text();
+	const url = new URL(http.chain.at(-1)!.url, env.origin);
+	const response = await request(url, { headers: tagHeaders(env) });
+	const raw = await bodyText(response, url);
 	const host = new URL(env.origin).host;
 	const body = raw.split(env.origin).join('{origin}').split(host).join('{host}');
 	return { http, kind: endpointKind(path, mime(response.headers.get('content-type')), body), body };
@@ -421,10 +423,10 @@ export async function discoverEndpoints(env: SideEnv, pages: readonly string[], 
 			if (url.origin === origin.origin) candidates.add(url.pathname + url.search);
 		} catch {}
 	};
-	const robots = await fetch(new URL('/robots.txt', env.origin), { headers: tagHeaders(env) }).then((r) => (r.ok ? r.text() : '')).catch(() => '');
+	const robots = await request(new URL('/robots.txt', env.origin), { headers: tagHeaders(env) }).then((r) => (r.ok ? r.text() : '')).catch(() => '');
 	for (const m of robots.matchAll(/^\s*sitemap:\s*(\S+)/gim)) add(new URL(m[1]!, env.origin).pathname);
 	for (const page of pages.slice(0, 20)) {
-		const html = await fetch(new URL(page, env.origin), { headers: tagHeaders(env) }).then((r) => r.text()).catch(() => '');
+		const html = await request(new URL(page, env.origin), { headers: tagHeaders(env) }).then((r) => r.text()).catch(() => '');
 		for (const href of declaredEndpoints(html)) add(href);
 	}
 	const found: string[] = [];
