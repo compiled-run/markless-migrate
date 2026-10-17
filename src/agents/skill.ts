@@ -45,6 +45,13 @@ matches it in a real browser. A route is done when its check is green, not when 
 - \`css\` failures name the old rule (selector, file, line) that set the value; port that rule's intent.
 - \`behaviour\` failures come from replaying recorded interactions (\`.migrate/journeys/\`): match what
   appears, the URL, the requests and the focus after each step, not just the final screen.
+- \`responsiveness\` failures time the first use of a control on a fresh page load, and following an
+  internal link, at desktop speed and with the CPU slowed 4x on a phone-sized page. The failure names the
+  control, old and new milliseconds and the likely cause. An interaction must never fetch code: make the
+  handler run from code the page already has. A long task names its top script; a big gap between the
+  first and the second use is start-up work the first interaction pays for. For a link, a full page load
+  where the old app navigated in the page, a cold server function, or a missing prefetch are the usual
+  causes. Do not raise \`--interaction-budget\` to make it pass; that is a person's call.
 - \`network\` failures compare the requests each page makes, in the browser and (when the servers run
   the request recorder, see \`markless-migrate recorder\`) while the server renders it: the same
   endpoints, query parameters, body fields and number of calls, and the response fields the old page

@@ -416,3 +416,37 @@ cookie set by NEW), the Vercel rewrites compiled with `@vercel/routing-utils`, a
 - Redirects come from Next.js `redirects()`, `vercel.json`, `serve.json` and `_redirects`, plus the other
   trailing-slash form of every page; dynamic redirect sources (`/blog/:slug`), middleware redirects and
   Nuxt/SvelteKit/Astro config are not read. Only the status and redirect chain are compared for them.
+
+## Responsiveness (2026-10-17)
+
+Built: a `responsiveness` dimension (`src/check/responsiveness.ts`). Every first step of a recorded
+journey that uses a control by pointer or typing, and every internal link the journeys followed, is used
+once on a fresh load, old then new, at desktop speed and on a 412x823 touch page with the CPU slowed 4x
+through CDP (`Emulation.setCPUThrottlingRate`). An in-page probe, injected before the page's scripts,
+times the trusted `pointerdown` to the frame after the first DOM change the interaction causes
+(`requestAnimationFrame` then a message), takes Event Timing's `duration` when longer, and keeps long
+animation frames with their scripts. A new document is timed to its first contentful paint through both
+documents' real `timeOrigin` (the freeze overrides the instance's, the probe reads the prototype's).
+Verdict: red when every run of NEW exceeds the slower OLD run by max(16 ms, 10%) (either speed for
+interactions, 4x for navigation), a first interaction is over 200 ms at 4x, or it fetches code; one run
+over asks for a second of each side. Proven by `test/e2e/responsiveness.test.ts` on
+`fixtures/responsiveness` (a button that imports 500 KB on first click and a link that loads the next
+page in full from a 300 ms server go red with the cause and the source line; the same handlers stay
+green) and `test/responsiveness.test.ts` (verdict, noise rule, control choice, causes, ids, headline).
+The CLI and MCP time it by default; the fixture suites call `runCheck` without it, so their 70 mutants
+are not slowed or exposed to timing noise from four suites sharing the CPU.
+
+### What still slips through, from this work
+
+- Only the first step of each journey is timed on a fresh load: a control a click reveals (a menu item)
+  is timed only as part of its opener. Keyboard-only and select-only controls are listed, not timed.
+- The first DOM change counts as the result: a handler that first shows a spinner and the content later
+  is timed to the spinner. For a same-document navigation the first change in `main`, `article` or `h1`
+  after the URL changed counts, which a router that swaps content before `pushState` reports late.
+- Server time cold against warm: the first hit in the run against an immediate refetch. A function that
+  is already warm from the crawl or the journeys shows warm both times; forcing an idle function cold
+  would need waiting out the host's idle timeout, which check does not do.
+- Throttling slows the CPU, not the network; a code fetch on a phone's network costs more than it does
+  here. Requests pass through Playwright's interception, which adds a little to every fetch on both sides.
+- An old app served from a local caching mirror (htmx.org, alpinejs.dev) has no network latency for its
+  documents, so navigation compares a loopback server against a deployed one.

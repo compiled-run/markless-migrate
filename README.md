@@ -9,7 +9,9 @@ Your agent (Claude Code, Codex, Cursor...) does the converting. This tool does t
 - **switch** moves a route to Markless only when its check is green, behind a proxy (local) or
   generated Vercel and Nitro routing (production) that sends every other route to the old app.
 
-Every report also shows how much JavaScript runs at load on each route, before and after.
+Every report also shows how much JavaScript runs at load on each route, before and after, and how soon
+each control answers its first use and each link shows the next page, on a desktop and on a phone with
+the CPU slowed 4x: `First interaction: old 40 ms → new 230 ms (4x CPU)`.
 
 Status: early. `plan`, `check`, `status`, `switch`, `proxy`, `config`, `setup`, `run` and the MCP server work. See [docs/plan.md](docs/plan.md).
 
@@ -23,6 +25,7 @@ markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [
     [--auth .migrate/auth.json] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
     [--all] [--allow-unchecked] [--new-source ../markless-app] [--concurrency 4] [--changed]
     [--journey-budget 120] [--max-journeys <n>]
+    [--no-responsiveness] [--interaction-budget 200] [--cpu-throttle 4] [--interaction-controls 16]
 markless-migrate switch <route> [--force --by <name> --reason <why>]
 markless-migrate unswitch <route>
 markless-migrate proxy --old http://localhost:3000 --new http://localhost:5173 [--port 4300] [--host 127.0.0.1]
@@ -101,6 +104,40 @@ only within the same kind of character (digits stay digits); everything else mus
 | `network` | every request the page makes, in the browser and, when the server runs the request recorder, while the server renders it: method, URL (the app's own origin, ids, timestamps and cache-busters normalised, query keys and values kept), body shape, how many times, and which response fields the page shows |
 | `data` | non-page endpoints as data, with the same noise rules as pages: feeds item by item (keyed by guid, id or link), JSON field by field, `/.well-known` files, the manifest; robots.txt lines and sitemap entries count as `seo` |
 | `weight` | JavaScript on the wire and run at load (Chromium coverage); red when the new route is heavier |
+| `responsiveness` | the first use of every control the journeys exercised, and every internal link they followed, timed on a fresh page load, old then new, at desktop speed and on a 412x823 touch page with the CPU slowed 4x (`--cpu-throttle`). See below |
+
+### Responsiveness: the first interaction and the next page
+
+Owners feel a slow first click on a phone, not on a fast laptop, and in resumable frameworks the handler
+runs after the event, so Event Timing alone under-reports. For each control, check loads the page fresh,
+waits until it is quiet, watches 300 ms for nodes that change on their own (a clock, a carousel), then
+uses the control with real input (Playwright mouse or touch, keystrokes for a text box) and times the
+trusted `pointerdown` (or first `keydown`) to the next frame after the first DOM change it causes, or
+Event Timing's `duration` when that is longer. It also records what the interaction fetched (code, data
+and other files, with bytes; a fetch is code when it is a script or JavaScript or WebAssembly), scripts
+first evaluated (a runtime starting) and long animation frames with their longest script, then uses the
+control again on the same page for a warm figure. A link that navigates in the page is timed to the
+frame after the main content changes; a link that loads a new document, to that document's first
+contentful paint (both clocks are the documents' own `timeOrigin`), with the document's server time to
+first byte, the same document fetched again straight after (a cold server function shows as a big gap;
+an idle function cannot be forced cold from here), its HTML bytes, what the host says about it
+(`x-vercel-cache`, `age`, `cache-control`) and the prefetch hints the old and new page had when the
+pointer went down. The new app is timed on its own, not through the front door; a link into a page it
+answers with 404 is reported, not timed.
+
+A first interaction is red when it is slower than the old app's by more than max(16 ms, 10%) at either
+speed, over `--interaction-budget` (200 ms) at 4x, or fetches code (an interaction never fetches code in
+Markless). A link is red when the next page shows later than on the old app by more than max(16 ms,
+10%) at 4x; its desktop figure is reported. A control that exceeds once is measured again, old and new,
+and is red only when both runs exceed (the slower is then kept); the slowest control at each speed is
+always measured twice so the report states how much runs vary. Up to `--interaction-controls` (16)
+controls per route are timed, in-page ones first and at most 6 links; what was left out, and controls
+reached only by keyboard or by choosing an option, are listed. Writes stay held back, so an interaction
+that writes is reported but not judged. The summary, report.html and `status` lead with the slowest
+figure on each side, `First interaction: old X ms → new Y ms (4x CPU)` and `Navigation: ...`, with each
+route's slowest control and a table per route; `report.json` carries the same as `responsiveness`
+(`interaction` and `navigation`, each `desktop` and `throttled` with `old`, `new`, `oldAt`, `newAt`, and
+`routes`), and each route's full timings under its own `responsiveness`. `--no-responsiveness` leaves it out.
 
 ### Which routes, and where a failure comes from
 

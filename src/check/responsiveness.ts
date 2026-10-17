@@ -571,9 +571,9 @@ async function addVariance(controls: ControlTiming[], steps: readonly { step: St
 		controls.forEach((c, i) => {
 			const t = c.speeds.find((x) => x.speed === speed.name)!;
 			const w = worst >= 0 ? controls[worst]!.speeds.find((x) => x.speed === speed.name)! : undefined;
-			if (t.new.length < 2 && (t.newMs ?? -1) > (w?.newMs ?? -1)) worst = i;
+			if ((t.newMs ?? -1) > (w?.newMs ?? -1)) worst = i;
 		});
-		if (worst < 0) continue;
+		if (worst < 0 || controls[worst]!.speeds.find((x) => x.speed === speed.name)!.new.length > 1) continue;
 		const c = controls[worst]!;
 		const at = c.speeds.findIndex((x) => x.speed === speed.name);
 		const t = c.speeds[at]!;
