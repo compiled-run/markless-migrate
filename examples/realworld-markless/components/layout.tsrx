@@ -9,6 +9,6 @@ export default function Layout({ children }: { children?: Children }) @{
 		{children}
 		<Footer />
 		<span data-boot="" hidden={true} onBoot={() => {}}></span>
-		<script>{"addEventListener('load',function(){document.querySelectorAll('[data-boot]').forEach(function(e){e.dispatchEvent(new Event('boot',{bubbles:true}))})})"}</script>
+		<script>{"function b(){document.querySelectorAll('[data-boot]').forEach(function(e){e.dispatchEvent(new Event('boot',{bubbles:true}))})}document.addEventListener('DOMContentLoaded',b);addEventListener('load',b)"}</script>
 	</app-root>
 }

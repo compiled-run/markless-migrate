@@ -122,6 +122,8 @@ export async function listClick(event: Event): Promise<void> {
         `${window.location.pathname}${search ? `?${search}` : ""}`,
       );
     }
+    // On the home page Angular queries twice: the list on the click, then again when the new ?page reaches it.
+    if (list.syncUrl) void runQuery();
     await runQuery();
     return;
   }
@@ -563,7 +565,6 @@ function value(el: El): string {
 export async function bootGuestOnly(page: El): Promise<void> {
   const session = await currentUser();
   if (session.status === "authenticated") {
-    (window as { __conduitUnmatched?: boolean }).__conduitUnmatched = true;
     window.history.replaceState(null, "", "/");
     page?.remove();
   }
