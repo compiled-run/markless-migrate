@@ -26,7 +26,7 @@ markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [
 markless-migrate switch <route> [--force --by <name> --reason <why>]
 markless-migrate unswitch <route>
 markless-migrate proxy --old http://localhost:3000 --new http://localhost:5173 [--port 4300] [--host 127.0.0.1]
-markless-migrate config --old https://old.example.com --new https://new.example.com [--vercel vercel.json] [--nitro nitro.ts] [--index public/_migrate/index.html]
+markless-migrate config --old https://old.example.com --new https://new.example.com [--vercel vercel.json] [--nitro nitro.ts] [--new-build .output/public] [--index public/_migrate/index.html]
 markless-migrate accept <failure-id> --reason "why" [--by <name>]
 markless-migrate recorder
 markless-migrate status
@@ -230,9 +230,13 @@ breakage Shopify Hydrogen's proxy hit. Each response carries `x-markless-migrate
 
 `config` writes production routing for the same list. `--vercel` writes a `vercel.json` for a project in
 front of both deployments: a rewrite per switched route (with and without the trailing slash) and per
-asset its NEW page loads that OLD does not serve (a whole directory when OLD has nothing in it), then
-`/:path*` to OLD. `--nitro` writes `routeRules` for a Markless app in front: a `proxy` rule per
-inventoried route and endpoint not switched yet, and per asset OLD's pages load that NEW does not serve.
+asset its NEW page loads, and per file of the new build (`--new-build`, default `.output/public`), that
+OLD does not serve (a whole directory when OLD has nothing in it), then `/:path*` to OLD. A file path
+OLD answers with an HTML page is not served by OLD: that is an SPA's `index.html` fallback, which would
+otherwise keep the new app's scripts on the old deployment. `--nitro` writes the top-level
+`nitro.routeRules` of the Markless app's `vite.config.ts` (which `router()` passes to Nitro): a `proxy`
+rule per inventoried route and endpoint not switched yet, and per asset OLD's pages load that NEW does
+not serve.
 
 ## Demo
 

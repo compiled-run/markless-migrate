@@ -126,6 +126,39 @@ test('an asset the old app answers only by redirecting (a soft 404) is not serve
 	}
 });
 
+test('an SPA old app answering every path with its index.html does not keep the new build\'s files: they go to the new deployment', async () => {
+	const { buildAssets } = await import('../src/switch/deploy.ts');
+	const dir = await mkdtemp(join(tmpdir(), 'mm-build-'));
+	for (const file of ['build/chunk-DPNrrZYU.js', 'parity/recharts.js', 'assets/index-DNwRI-6w.css', '.vite/markless-router-client-manifest.json', 'images/logo.png', '404.html']) {
+		await mkdir(join(dir, file, '..'), { recursive: true });
+		await writeFile(join(dir, file), 'x');
+	}
+	assert.deepEqual(await buildAssets(dir), ['/.vite/markless-router-client-manifest.json', '/assets/index-DNwRI-6w.css', '/build/chunk-DPNrrZYU.js', '/images/logo.png', '/parity/recharts.js']);
+	const spa = createServer((request, response) => {
+		if (request.url === '/images/logo.png') response.writeHead(200, { 'content-type': 'image/png' }).end('png');
+		else response.writeHead(200, { 'content-type': 'text/html' }).end('<!doctype html><div id=root></div>');
+	});
+	await new Promise<void>((done) => spa.listen(0, '127.0.0.1', done));
+	const old = `http://127.0.0.1:${(spa.address() as AddressInfo).port}`;
+	try {
+		const newAssets = await notServedBy(old, await buildAssets(dir));
+		assert.deepEqual(newAssets, ['/.vite/markless-router-client-manifest.json', '/assets/index-DNwRI-6w.css', '/build/chunk-DPNrrZYU.js', '/parity/recharts.js']);
+		assert.deepEqual(await notServedBy(old, ['/about', '/docs/index.html']), [], 'a page path answered with HTML is served');
+		const config = vercelConfig({ old, new: 'https://new.example', switched: ['/users'], newAssets, oldPaths: ['/images/logo.png'] });
+		const toNew = config.rewrites.filter((r) => r.destination.startsWith('https://new.example')).map((r) => r.source);
+		assert.ok(['/build/:path*', '/parity/:path*', '/assets/:path*'].every((p) => toNew.includes(p)), toNew.join(' '));
+	} finally {
+		spa.close();
+	}
+});
+
+test('the Nitro snippet puts routeRules under the top-level nitro key that router() reads', async () => {
+	const { nitroSnippet } = await import('../src/switch/deploy.ts');
+	const text = nitroSnippet({ old: 'https://old.example', new: 'https://new.example', switched: [], oldRoutes: ['/a'] });
+	assert.match(text, /plugins: \[markless\(\), router\(\)\],\n\tnitro: \{\n\t\trouteRules: \{\n\t\t\t"\/a": \{ proxy: "https:\/\/old.example\/a" \}/);
+	assert.doesNotMatch(text, /markless\(\{/);
+});
+
 test('config follows the modules the pages\' scripts import, so chunks loaded on interaction reach the new app too', () => {
 	const code = 'import{t as e}from"./chunk-A.js";const l=()=>import("./chunk-B.js");import "/build/chunk-C.js";o=[1,["./chunk-D.js"]];j="[\\"/build/chunk-E.js\\"]";fetch("/api/x.js?");import("https://cdn.example/x.js")';
 	assert.deepEqual(moduleImports(code, 'https://new.example/build/entry.js', 'https://new.example').sort(), ['/build/chunk-A.js', '/build/chunk-B.js', '/build/chunk-C.js', '/build/chunk-D.js', '/build/chunk-E.js']);

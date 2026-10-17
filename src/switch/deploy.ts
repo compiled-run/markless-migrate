@@ -1,3 +1,5 @@
+import { readdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import { isSwitched } from './state.ts';
 
 export interface DeployInput {
@@ -87,19 +89,17 @@ export function nitroSnippet(input: DeployInput): string {
 		.map(([path, rule]) => `\t\t\t${JSON.stringify(path)}: { proxy: ${JSON.stringify(rule.proxy)} },`)
 		.join('\n');
 	return `// markless-migrate: paths the old app still serves. Paths not listed here are answered by the Markless app.
-// vite.config.ts
-import { markless } from '@markless/router/vite';
+// vite.config.ts: router() reads Nitro's options from the top-level nitro key.
+import { markless } from '@markless/core/vite';
+import { router } from '@markless/router/vite';
 
 export default {
-	plugins: [
-		markless({
-			nitro: {
-				routeRules: {
+	plugins: [markless(), router()],
+	nitro: {
+		routeRules: {
 ${body}
-				},
-			},
-		}),
-	],
+		},
+	},
 };
 `;
 }
@@ -124,14 +124,32 @@ export function assetPaths(html: string, origin: string): string[] {
 	return [...out].sort();
 }
 
+// A file path an app answers with an HTML page is its fallback (an SPA's index.html for every path), not the file.
+const isPagePath = (path: string) => !/\.[a-z0-9]+$/i.test(path) || /\.html?$/i.test(path);
+
 async function serves(origin: string, path: string): Promise<boolean> {
 	try {
 		const response = await fetch(new URL(path, origin), { method: 'GET', redirect: 'manual' });
 		await response.body?.cancel();
-		return (response.status >= 200 && response.status < 300) || response.status === 304;
+		if (!((response.status >= 200 && response.status < 300) || response.status === 304)) return false;
+		return isPagePath(path) || !(response.headers.get('content-type') ?? '').toLowerCase().startsWith('text/html');
 	} catch {
 		return false;
 	}
+}
+
+/** Every file of the new app's static build output (Nitro's .output/public, Vercel's .vercel/output/static) as a URL path. */
+export async function buildAssets(dir: string): Promise<string[]> {
+	const out: string[] = [];
+	const visit = async (rel: string) => {
+		for (const entry of await readdir(join(dir, rel), { withFileTypes: true }).catch(() => [])) {
+			const path = rel ? `${rel}/${entry.name}` : entry.name;
+			if (entry.isDirectory()) await visit(path);
+			else if (entry.isFile() && !isPagePath(`/${path}`)) out.push(`/${path}`);
+		}
+	};
+	await visit('');
+	return out.sort();
 }
 
 // A quoted path to a script: import specifiers, and the chunk tables bundlers resolve import() calls through.

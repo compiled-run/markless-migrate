@@ -27,7 +27,7 @@ import { runRoutes } from './run/loop.ts';
 import { readInventory, readResults, recordResults, STATE_DIR, status, summarizeStatus } from './status.ts';
 import { changedSince, gitHead, selectChanged } from './check/changed.ts';
 import { VERSION } from './version.ts';
-import { nitroSnippet, notServedBy, pageAssets, vercelConfig } from './switch/deploy.ts';
+import { buildAssets, nitroSnippet, notServedBy, pageAssets, vercelConfig } from './switch/deploy.ts';
 import { startProxy } from './switch/proxy.ts';
 import { AGENT_ENV, readSwitched, switchRoute, unswitchRoute } from './switch/state.ts';
 import { ACCEPTED_FILE, acceptFailure, readAccepted, writeAccepted } from './check/accepted.ts';
@@ -102,11 +102,14 @@ const USAGE = `markless-migrate ${VERSION}
           method, body, headers and cookies passed through, redirects to either app pointed back at the
           proxy, cookie Domains that would not apply dropped, and each asset taken from the app that
           served the page it was loaded from (falling back to the other app).
-  config  --old <deployment> --new <deployment> [--vercel <file>] [--nitro <file>] [--index <file>]
+  config  --old <deployment> --new <deployment> [--vercel <file>] [--nitro <file>] [--new-build <dir>] [--index <file>]
           Production routing for the switched routes: a vercel.json (switched routes and the assets
           their pages load to NEW, the rest to OLD) and Nitro routeRules for the Markless app in front
-          (every inventoried route and asset not switched yet proxied to OLD). --index writes the
-          front door's status page: every planned route, what serves it, and what is not ported yet.
+          (every inventoried route and asset not switched yet proxied to OLD). Every file of the new
+          build (--new-build, default .output/public or .vercel/output/static) goes to NEW unless the
+          old app serves that file itself; an SPA's index.html answer to every path does not count.
+          --index writes the front door's status page: every planned route, what serves it, and what
+          is not ported yet.
   run     --agent <id> --old <origin> --new <origin> [--route <path>]... [--all] [--attempts <n>] [--model <name>]
           [--source <path>] [--new-source <path>] [--auth <file>] [--header <name:value>]... [--cookie <name=value>]...
           [--serve <command>] [--build <command>] [--restart-on <path>]
@@ -135,6 +138,12 @@ function journeyOptions(budget: string | undefined, max: string | undefined): No
 	const cap = max === undefined ? undefined : Number(max);
 	if (cap !== undefined && (!Number.isInteger(cap) || cap < 1)) fail('--max-journeys must be a whole number of at least 1');
 	return { ...(seconds !== undefined ? { budgetMs: seconds * 1000 } : {}), ...(cap !== undefined ? { maxJourneys: cap } : {}) };
+}
+
+async function firstDir(cwd: string, dirs: readonly string[]): Promise<string | undefined> {
+	const { stat } = await import('node:fs/promises');
+	for (const dir of dirs) if (await stat(join(cwd, dir)).then((s) => s.isDirectory(), () => false)) return dir;
+	return undefined;
 }
 
 function serverCommand(): ServerCommand {
@@ -528,13 +537,15 @@ async function main(argv: string[]): Promise<number> {
 			return -1;
 		}
 		case 'config': {
-			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, new: { type: 'string' }, vercel: { type: 'string' }, nitro: { type: 'string' }, index: { type: 'string' } } });
+			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, new: { type: 'string' }, vercel: { type: 'string' }, nitro: { type: 'string' }, 'new-build': { type: 'string' }, index: { type: 'string' } } });
 			if (!values.old || !values.new) fail('config needs --old <deployment> and --new <deployment>');
 			if (values.index) await writeFile(values.index, renderStatusPage(await status(cwd), { old: values.old, new: values.new }));
+			const buildDir = values['new-build'] ?? (await firstDir(cwd, ['.output/public', '.vercel/output/static']));
 			const switched = (await readSwitched(cwd)).routes.map((r) => r.route);
 			const inventory = await readInventory(cwd);
 			const concrete = switched.filter((r) => !/[:*]/.test(r));
-			const newAssets = await notServedBy(values.old, await pageAssets(values.new, concrete));
+			const built = buildDir ? await buildAssets(resolve(cwd, buildDir)) : [];
+			const newAssets = await notServedBy(values.old, [...new Set([...(await pageAssets(values.new, concrete)), ...built])].sort());
 			const oldPaths = [...new Set(inventory?.routes.flatMap((r) => r.assets.map((a) => a.url)).filter((u) => u.startsWith('/')) ?? [])].sort();
 			const oldAssets = await notServedBy(values.new, oldPaths);
 			const input = { old: values.old, new: values.new, switched, newAssets, oldAssets, oldPaths, oldRoutes: [...new Set([...(inventory?.routes.map((r) => r.route) ?? []), ...(inventory?.source?.routes.map((r) => r.path) ?? [])])] };
