@@ -38,7 +38,7 @@ test('check --all leaves out a source GET endpoint whose handler writes, and say
 			{ route: '/query', knownBy: ['source'], crawled: [], dynamic: false, kind: 'endpoint', file: 'app/query/route.ts', line: 16 },
 			{ route: '/seed', knownBy: ['source'], crawled: [], dynamic: false, kind: 'endpoint', file: 'app/seed/route.ts', line: 104 },
 		],
-		source: { writes: [{ method: 'SDK', path: null, handler: { file: 'app/seed/route.ts', line: 8 }, via: 'sdk', touches: ['sql'] }] },
+		source: { writes: [{ method: 'SDK', path: null, handler: { file: 'app/seed/route.ts', line: 8 }, via: 'sdk', touches: ['sql'] }, { method: 'POST', path: '/query', handler: { file: 'app/query/route.ts', line: 20 }, via: 'form' }] },
 	} as unknown as Inventory;
 	const targets = routeTargets(seeding);
 	assert.deepEqual(targets.endpoints, ['/query']);

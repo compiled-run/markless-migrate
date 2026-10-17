@@ -84,7 +84,8 @@ export function routeTargets(inventory: Inventory, samples: Samples = {}): Route
 		}
 	}
 	for (const [key, value] of Object.entries(samples)) if (!key.startsWith('/')) known[key] = value;
-	const writing = new Map((inventory.source?.writes ?? []).map((w) => [w.handler.file, w.handler.line] as const));
+	// Writes a GET can trigger: an SDK call or a handler for any method; a POST-only action (a form's) is not fetched by a GET.
+	const writing = new Map((inventory.source?.writes ?? []).filter((w) => !['POST', 'PUT', 'PATCH', 'DELETE'].includes(w.method)).map((w) => [w.handler.file, w.handler.line] as const));
 	for (const entry of union) {
 		const target = entry.kind === 'endpoint' ? endpoints : pages;
 		const writes = entry.kind === 'endpoint' && entry.file ? writing.get(entry.file) : undefined;
