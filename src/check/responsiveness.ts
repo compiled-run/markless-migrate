@@ -250,7 +250,7 @@ export function fetchKind(resourceType: string, url: string, contentType: string
 const short = (url: string, origin: string) => {
 	try {
 		const u = new URL(url);
-		return u.origin === new URL(origin).origin ? u.pathname + u.search : u.href;
+		return u.origin === new URL(origin).origin ? u.pathname + u.search : `${u.host}${u.pathname}`;
 	} catch {
 		return url || '(inline)';
 	}
@@ -591,7 +591,7 @@ export function speedTiming(speed: Speed, kind: ControlTiming['kind'], olds: rea
 }
 
 function verdictFor(kind: ControlTiming['kind'], speed: Speed, olds: readonly Sample[], news: readonly Sample[], budgetMs: number): Verdict {
-	if (olds.some((s) => s.heldBack) || news.some((s) => s.heldBack)) return { ok: true, rerun: false, slower: false, overBudget: false };
+	if (olds.some((s) => s.heldBack) || news.some((s) => s.heldBack)) return { ...judge(olds.map((s) => s.ms), news.map((s) => s.ms)), ok: true, rerun: false, slower: false, overBudget: false };
 	// Navigation is held to the old app at the throttled speed only; the desktop figures are reported.
 	if (kind === 'navigation' && speed.name !== 'throttled') return { ...judge(olds.map((s) => s.ms), news.map((s) => s.ms)), ok: true, rerun: false, slower: false, overBudget: false };
 	return judge(

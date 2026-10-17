@@ -62,7 +62,9 @@ test('a control is judged on time and on code fetched; a text box the old app re
 	const nav = sample({ ms: 300, result: 'reloaded', fetches: [{ url: '/next.js', kind: 'code', bytes: 2048 }] });
 	assert.equal(speedTiming(desktop!, 'navigation', [sample({ ms: 50, result: 'navigated' })], [nav, nav], 200).ok, true, 'navigation is judged at the throttled speed, and loading the next page is not an interaction fetching code');
 	assert.equal(speedTiming(throttled!, 'navigation', [sample({ ms: 50, result: 'navigated' })], [nav, nav], 200).ok, false);
-	assert.equal(speedTiming(throttled!, 'in-page', [sample({ ms: 30, heldBack: true })], [sample({ ms: 900, heldBack: true })], 200).ok, true, 'a held-back write is reported, not judged');
+	const held = speedTiming(throttled!, 'in-page', [sample({ ms: 30, heldBack: true })], [sample({ ms: 900, heldBack: true })], 200);
+	assert.deepEqual([held.ok, held.oldMs, held.newMs], [true, 30, 900], 'a held-back write is reported, not judged');
+	assert.equal(speedTiming(throttled!, 'in-page', [sample({ ms: 30, heldBack: true })], [sample({ ms: 40, heldBack: true, fetches: [{ url: '/c.js', kind: 'code', bytes: 2048 }] })], 200).ok, false, 'code it fetched is still code fetched');
 });
 
 test('a fetch is code when it is a script or JavaScript or WebAssembly by type or name', () => {
