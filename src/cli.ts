@@ -399,8 +399,9 @@ async function main(argv: string[]): Promise<number> {
 			const html = join(dirname(path), 'report.html');
 			out(values.json ? `${JSON.stringify(jsonReport(report), null, 2)}\n` : `${summarize(report)}Report: ${path}\nVisual report: ${html}\n`);
 			if (values.open) await openFile(html);
-			if (report.ok && report.unchecked?.length && !values['allow-unchecked']) {
-				err(`markless-migrate: ${report.unchecked.length} route${report.unchecked.length === 1 ? '' : 's'} not checked for want of a sample value; add them to .migrate/samples.json, or pass --allow-unchecked.\n`);
+			const needSample = report.unchecked?.filter((u) => !u.reason) ?? [];
+			if (report.ok && needSample.length && !values['allow-unchecked']) {
+				err(`markless-migrate: ${needSample.length} route${needSample.length === 1 ? '' : 's'} not checked for want of a sample value; add them to .migrate/samples.json, or pass --allow-unchecked.\n`);
 				return 1;
 			}
 			return report.ok ? 0 : 1;
