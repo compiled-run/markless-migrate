@@ -2,7 +2,7 @@ import type { Browser, BrowserContext, Locator, Page, Request } from 'playwright
 import { frameworkTransport, openPage, requestLine, type SideEnv } from './browser.ts';
 import { originInQuery } from './capture.ts';
 import { HINTS } from './hints.ts';
-import { storageKeys } from './storage.ts';
+import { signInCookies, storageKeys } from './storage.ts';
 import { diffLines, lineTemplates, template } from './noise.ts';
 import type { Dimension, Failure, Viewport, WriteLine } from './types.ts';
 
@@ -29,7 +29,7 @@ export interface StepResult {
 	readonly errors: readonly string[];
 	readonly announcements: readonly string[];
 	readonly focus: string;
-	/** What the page keeps in the browser after the step: storage keys, IndexedDB stores, cookies. */
+	/** What the step added to (`+`) and removed from (`-`) what the page keeps in the browser: storage keys, IndexedDB stores, cookies. */
 	readonly storage?: readonly string[];
 	/** The step loaded a document, changed the path or followed a link: the landing page's content and focus are that route's and router's own checks. */
 	readonly navigated: boolean;
@@ -256,6 +256,11 @@ function appRequest(request: Request, origin: string): string | undefined {
 	return requestLine(request.method(), url, origin, request.postData(), request.headers()['content-type'] ?? '');
 }
 
+function storageChange(before: readonly string[], after: readonly string[]): string[] {
+	const { added, removed } = multisetDiff(before, after);
+	return [...added.map((k) => `+ ${k}`), ...removed.map((k) => `- ${k}`)];
+}
+
 function multisetDiff(before: readonly string[], after: readonly string[]): { added: string[]; removed: string[] } {
 	const counts = new Map<string, number>();
 	for (const line of before) counts.set(line, (counts.get(line) ?? 0) + 1);
@@ -389,6 +394,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		documents++;
 	});
 	const navigations = () => documents;
+	const signedIn = signInCookies(env.storageState);
 	page.on('console', (message) => {
 		// A failed resource load is reported by the assets check of the page that loads it.
 		if (message.type() === 'error' && !message.text().startsWith('Failed to load resource')) errors.push(message.text().split(origin).join(''));
@@ -411,6 +417,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 			requests = [];
 			errors = [];
 			const writesBefore = log.writes.length;
+			const keptBefore = await storageKeys(page, signedIn);
 			let failed: string | undefined;
 			try {
 				await perform(page, step);
@@ -436,7 +443,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 				errors: [...errors],
 				announcements: liveAfter.filter((line) => !liveBefore.includes(line)),
 				focus: await focusLabel(page),
-				storage: await storageKeys(page),
+				storage: storageChange(keptBefore, await storageKeys(page, signedIn)),
 				...(failed ? { failed } : {}),
 			};
 		},
@@ -706,7 +713,7 @@ function format(result: StepResult, parts: readonly string[]): string {
 	if (parts.includes('errors')) out.push(`console errors: ${result.errors.join(' | ') || '(none)'}`);
 	if (parts.includes('announcements')) out.push(`announced: ${result.announcements.join(' | ') || '(nothing)'}`);
 	if (parts.includes('focus')) out.push(`focus on ${result.focus}`);
-	if (parts.includes('storage')) out.push(`kept in the browser: ${result.storage?.join(', ') || '(nothing)'}`);
+	if (parts.includes('storage')) out.push(`kept in the browser: ${result.storage?.join(', ') || '(no change)'}`);
 	return out.join('; ');
 }
 

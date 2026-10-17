@@ -39,8 +39,9 @@ test('the keys a page keeps in the browser after loading and after each step are
 	assert.equal(load!.dimension, 'behaviour');
 	assert.match(load!.actual, /missing indexedDB shop\/products, sessionStorage cart; extra indexedDB shop\/items, sessionStorage basket/);
 	const step = report.routes[0]!.failures.find((f) => f.check === 'click button "Dismiss"');
-	assert.match(step!.expected, /kept in the browser: cookie visit SameSite=Lax session, indexedDB shop\/products, localStorage seen-banner, localStorage theme, sessionStorage cart/);
-	assert.match(step!.actual, /localStorage seenBanner/);
+	assert.match(step!.expected, /kept in the browser: \+ localStorage seen-banner$/);
+	assert.match(step!.actual, /kept in the browser: \+ localStorage seenBanner$/);
+	assert.deepEqual(report.routes[0]!.failures.filter((f) => !/Dismiss/.test(f.check) && /kept in the browser/.test(f.expected)), [], 'a difference from load is reported once, not again on every step');
 });
 
 test('an app that keeps the same keys has no storage failure', async () => {

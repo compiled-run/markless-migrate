@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { captureA11y } from './a11y.ts';
 import { isFingerprinted } from './assets.ts';
 import { BlockedError, detectChallenge } from './blocked.ts';
-import { storageKeys } from './storage.ts';
+import { signInCookies, storageKeys } from './storage.ts';
 import { defaultEnv, openPage, serverRecords, tagHeaders, type SideEnv } from './browser.ts';
 import { renderedFonts } from './fonts.ts';
 import { captureSourceHints } from './hints-page.ts';
@@ -178,7 +178,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		await Promise.all(pending);
 		const shown = await page.evaluate(shownText);
 		const elements = await captureSourceHints(page, await renderedFonts(page, collected.elements, fontHashes));
-		const storage = await storageKeys(page);
+		const storage = await storageKeys(page, signInCookies(env.storageState));
 		const a11y = viewport.isMobile ? undefined : await captureA11y(page);
 		for (const [i, text] of (await page.evaluate(() => [...document.querySelectorAll('style')].map((style) => style.textContent ?? ''))).entries()) {
 			if (text.trim()) stylesheets.push({ url: `${toLocal(pageUrlBefore(page), origin)} <style> #${i + 1}`, text });

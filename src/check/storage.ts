@@ -31,10 +31,10 @@ async function keysInPage(): Promise<string[]> {
 	return out;
 }
 
-/** What the page keeps in the browser, by key: local and session storage, IndexedDB stores, and the cookies its origin holds with their attributes. */
-export async function storageKeys(page: Page): Promise<string[]> {
+/** What the page keeps in the browser, by key: local and session storage, IndexedDB stores, and the cookies its origin holds with their attributes; a role's sign-in cookies are auth's to compare. */
+export async function storageKeys(page: Page, signedIn: ReadonlySet<string> = new Set()): Promise<string[]> {
 	const kept = await page.evaluate(keysInPage).catch(() => [] as string[]);
-	const cookies = (await page.context().cookies(page.url()).catch(() => [])).map((c) => `cookie ${c.name}${c.httpOnly ? ' HttpOnly' : ''}${c.secure ? ' Secure' : ''} SameSite=${c.sameSite}${c.expires === -1 ? ' session' : ''}`);
+	const cookies = (await page.context().cookies(page.url()).catch(() => [])).filter((c) => !signedIn.has(c.name)).map((c) => `cookie ${c.name}${c.httpOnly ? ' HttpOnly' : ''}${c.secure ? ' Secure' : ''} SameSite=${c.sameSite}${c.expires === -1 ? ' session' : ''}`);
 	return [...kept, ...cookies].sort();
 }
 
@@ -46,6 +46,9 @@ export function storageFailure(route: string, dimension: Dimension, check: strin
 	if (!missing.length && !extra.length) return undefined;
 	return { route, dimension, check, expected: missing.length ? `kept: ${missing.join(', ')}` : '(no other keys)', actual: [missing.length ? `missing ${missing.join(', ')}` : '', extra.length ? `extra ${extra.join(', ')}` : ''].filter(Boolean).join('; '), hint: HINTS.storage };
 }
+
+/** The names of the cookies a role's sign-in left. */
+export const signInCookies = (state: StorageState | undefined) => new Set((state?.cookies ?? []).map((c) => c.name));
 
 /** Local storage keys a sign-in left for the app's own origin. */
 export function signedInStorage(state: StorageState, origin: string): string[] {
