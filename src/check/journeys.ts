@@ -290,15 +290,45 @@ const IDLE_LIMIT_MS = 3_000;
 
 const pendingTimers = (page: Page) => page.evaluate(() => (globalThis as { __markless_migrate_pending_timers__?: () => number }).__markless_migrate_pending_timers__?.() ?? 0).catch(() => 0);
 
-// Settled: the page has loaded, no request has been in flight and no timeout of up to a second is due for 150ms (at most 3s), then two frames.
-async function quiet(page: Page, inflight: () => number): Promise<void> {
-	await page.waitForLoadState('load', { timeout: 10_000 }).catch(() => {});
+const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
+
+// A <meta http-equiv="refresh"> that sends the visitor to another address within a few seconds.
+function scheduledRefresh(): { delay: number } | null {
+	const meta = document.querySelector('meta[http-equiv="refresh" i]');
+	const [delay, rest = ''] = (meta?.getAttribute('content') ?? '').split(/[;,](.*)/s);
+	const seconds = Number.parseFloat(delay ?? '');
+	const target = /url\s*=\s*['"]?([^'"\s]+)/i.exec(rest)?.[1];
+	if (!meta || !(seconds >= 0 && seconds <= 5) || !target || new URL(target, location.href).href === location.href) return null;
+	return { delay: seconds };
+}
+
+// No request in flight and no timeout of up to a second due for 150 ms (at most 3 s); a poll that came back late means the checker itself was held up, and what began meanwhile may not have been seen yet.
+async function idle(page: Page, inflight: () => number): Promise<void> {
 	const deadline = Date.now() + IDLE_LIMIT_MS;
 	let idleSince = Date.now();
+	let last = idleSince;
 	while (Date.now() < deadline) {
-		if (inflight() > 0 || (await pendingTimers(page)) > 0) idleSince = Date.now();
-		else if (Date.now() - idleSince >= IDLE_MS) break;
-		await new Promise((done) => setTimeout(done, 25));
+		const busy = inflight() > 0 || (await pendingTimers(page)) > 0;
+		const now = Date.now();
+		if (busy || now - last > IDLE_MS / 2) idleSince = now;
+		else if (now - idleSince >= IDLE_MS) break;
+		last = now;
+		await sleep(25);
+	}
+}
+
+/** Settled: the page has loaded and gone idle; a redirect that loads another document (a script's or a meta refresh's) is followed, and that document waited for the same way; then two frames. */
+export async function quiet(page: Page, inflight: () => number, navigations: () => number = () => 0): Promise<void> {
+	for (let round = 0; round < 5; round++) {
+		await page.waitForLoadState('load', { timeout: 10_000 }).catch(() => {});
+		const before = navigations();
+		await idle(page, inflight);
+		const refresh = await page.evaluate(scheduledRefresh).catch(() => null);
+		if (refresh && typeof refresh === 'object') {
+			const until = Date.now() + refresh.delay * 1000 + 2_000;
+			while (navigations() === before && Date.now() < until) await sleep(25);
+		}
+		if (navigations() === before) break;
 	}
 	await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))).catch(() => {});
 }
@@ -349,16 +379,20 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 	page.on('requestfailed', (request) => pending.delete(request));
 	const inflight = () => pending.size;
 	let documentLoaded = false;
+	let documents = 0;
 	page.on('request', (request) => {
-		if (request.isNavigationRequest() && request.frame() === page.mainFrame()) documentLoaded = true;
+		if (!request.isNavigationRequest() || request.frame() !== page.mainFrame()) return;
+		documentLoaded = true;
+		documents++;
 	});
+	const navigations = () => documents;
 	page.on('console', (message) => {
 		// A failed resource load is reported by the assets check of the page that loads it.
 		if (message.type() === 'error' && !message.text().startsWith('Failed to load resource')) errors.push(message.text().split(origin).join(''));
 	});
 	page.on('pageerror', (error) => errors.push(error.message.split(origin).join('')));
 	await page.goto(new URL(route, origin).href, { waitUntil: 'load' });
-	await quiet(page, inflight);
+	await quiet(page, inflight, navigations);
 	// Where a redirect landed is the http and auth checks' business; a step that stays there compares alike.
 	const landing = localUrl(page.url(), origin);
 	const redirected = landing !== localUrl(new URL(route, origin).href, origin);
@@ -380,7 +414,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 			} catch (error) {
 				failed = `${describeTarget(step.target)} could not be used: ${(error as Error).message.split('\n')[0]}`;
 			}
-			await quiet(page, inflight);
+			await quiet(page, inflight, navigations);
 			const after = await snapshot(page, origin);
 			const liveAfter = await page.evaluate(liveRegions).catch(() => [] as string[]);
 			const { added, removed } = multisetDiff(before, after);
