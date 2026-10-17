@@ -18,6 +18,8 @@ export function hasContentHash(url: string): boolean {
 	// Vite and Rollup hash in base64url, so an eight-character hash may itself contain '-' or '_'.
 	const tail = /[-.]([A-Za-z0-9_-]{8})$/.exec(base)?.[1];
 	if (tail && /[-_]/.test(tail) && isHashToken(tail.replace(/-/g, '_'))) return true;
+	// Angular's esbuild builder hashes in upper-case base32: chunk-BBLBSSIH.js, styles-V7LOWGDA.css.
+	if (/-[A-Z2-7]{8}$/.test(base)) return true;
 	return base.split(/[-.~]/).some(isHashToken);
 }
 

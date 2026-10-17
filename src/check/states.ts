@@ -75,7 +75,8 @@ const IDLE_MS = 150;
 const IDLE_LIMIT_MS = 3_000;
 
 // A state can start loading (a canvas redrawn for the new width, an image for a breakpoint), so the network goes quiet
-// first; animations it starts are then frozen at their first frame, so a sample mid-animation is not a difference.
+// first; animations it starts are then frozen at their first frame and transitions run to their end, so a sample
+// mid-animation or mid-transition is not a difference.
 export async function settleState(page: Page, inflight: () => number): Promise<void> {
 	const deadline = Date.now() + IDLE_LIMIT_MS;
 	let idleSince = Date.now();
@@ -86,6 +87,11 @@ export async function settleState(page: Page, inflight: () => number): Promise<v
 	}
 	await page.evaluate(async () => {
 		for (const animation of document.getAnimations()) {
+			// A transition the state started ends at the state's own value; paused at 0 it would still show the old one.
+			if (animation instanceof CSSTransition) {
+				animation.finish();
+				continue;
+			}
 			animation.pause();
 			animation.currentTime = 0;
 		}

@@ -37,3 +37,24 @@ test('a forced state is sampled after the requests it started have finished', as
 		await context.close();
 	}
 });
+
+test('a forced state is sampled at the end of the transition it starts, not at its first frame', async () => {
+	const env = defaultEnv('http://127.0.0.1:1');
+	const { context, page } = await openPage(browser, env, VIEWPORTS[0]!);
+	try {
+		const html = '<!doctype html><style>button{background-color:rgb(0,0,255);transition:background-color 2s ease}button:hover{background-color:rgb(255,0,0)}</style><button>go</button>';
+		await page.route('http://127.0.0.1:1/', (route) => route.fulfill({ body: html, contentType: 'text/html' }));
+		const inflight = trackRequests(page);
+		await page.goto('http://127.0.0.1:1/');
+		const session = await context.newCDPSession(page);
+		await session.send('DOM.enable');
+		await session.send('CSS.enable');
+		const { root } = await session.send('DOM.getDocument', { depth: -1 });
+		const { nodeId } = await session.send('DOM.querySelector', { nodeId: root.nodeId, selector: 'button' });
+		await session.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: ['hover'] });
+		await settleState(page, inflight);
+		assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('button')!).backgroundColor), 'rgb(255, 0, 0)');
+	} finally {
+		await context.close();
+	}
+});
