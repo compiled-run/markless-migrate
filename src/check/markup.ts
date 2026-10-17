@@ -32,7 +32,7 @@ export interface MarkupIndex {
 }
 
 const SKIP = new Set(['node_modules', 'dist', 'build', 'out', 'coverage', 'vendor', 'tmp', 'target']);
-const MARKUP = /\.(tsrx|[cm]?[jt]sx?|vue|svelte|astro|html?|css)$/;
+const MARKUP = /\.(tsrx|[cm]?[jt]sx?|vue|svelte|astro|html?|css|mdx?)$/;
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
 // Framework components that render one host element of a known tag.
 const ALIASES: Record<string, string> = { Link: 'a', NavLink: 'a', RouterLink: 'a', NuxtLink: 'a', Image: 'img', NuxtImg: 'img', Html: 'html' };
@@ -179,6 +179,24 @@ function fromHtml(file: string, text: string, template: string, elements: Markup
 	for (const open of stack.reverse()) close(open);
 }
 
+// Each line of a Markdown page as the words it renders: headings, list items, quotes, links and emphasis without their syntax.
+function fromMarkdown(file: string, text: string, strings: MarkupIndex['strings'][number][]): void {
+	const lines = text.split('\n');
+	let start = 0;
+	if (lines[0]?.trim() === '---') start = lines.findIndex((l, i) => i > 0 && l.trim() === '---') + 1;
+	for (let i = start; i < lines.length; i++) {
+		const value = clean(
+			lines[i]!
+				.replace(/^\s*(#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+|:::\w*\s*)/, '')
+				.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+				.replace(/`([^`]*)`/g, '$1')
+				.replace(/(\*\*|__|\*|_)(\S(?:.*?\S)?)\1/g, '$2')
+				.replace(/\s*\{#[\w-]+\}\s*$/, ''),
+		);
+		if (value && !/^(```|~~~|import\s|export\s|<\/?\w)/.test(value)) strings.push({ file, line: i + 1, value });
+	}
+}
+
 const indexes = new Map<string, Promise<MarkupIndex>>();
 
 /** Every element written in an app's source, read once per checkout. */
@@ -203,6 +221,10 @@ async function build(root: string): Promise<MarkupIndex> {
 			if (file.endsWith('.css')) css.push(...parseRules([{ url: file, text }]));
 			else if (file.endsWith('.tsrx')) fromJsx(file, text, parseTsrx(text, { lang: 'tsx' }).program, elements, strings);
 			else if (/\.[cm]?[jt]sx?$/.test(file)) fromJsx(file, text, parseSync(file, text, { sourceType: 'module' }).program, elements, strings);
+			else if (/\.mdx?$/.test(file)) {
+				fromMarkdown(file, text, strings);
+				fromHtml(file, text, text, elements);
+			}
 			else {
 				const { template } = /\.html?$/.test(file) ? { template: text } : splitComponent(file, text);
 				fromHtml(file, text, template, elements);

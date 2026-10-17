@@ -8,6 +8,7 @@ import { scanNondeterminism } from './nondeterminism.ts';
 import { scanRedirects } from './redirects.ts';
 import { codeRoutes, routesConfig } from './routes/config.ts';
 import { djangoRoutes } from './routes/django.ts';
+import { docusaurusRoutes, vitepressRoutes } from './routes/docs.ts';
 import { astroRoutes, htmlRoutes, nextRoutes, nuxtRoutes, remixFlatRoutes, solidStartRoutes, svelteKitRoutes, tanstackRoutes } from './routes/files.ts';
 import { laravelRoutes } from './routes/laravel.ts';
 import { railsRoutes } from './routes/rails.ts';
@@ -28,6 +29,8 @@ const FILE_ROUTERS: Record<string, (ctx: ReturnType<typeof createContext>) => Pr
 	'solid-start': solidStartRoutes,
 	'tanstack-router': tanstackRoutes,
 	'tanstack-start': tanstackRoutes,
+	docusaurus: docusaurusRoutes,
+	vitepress: vitepressRoutes,
 };
 
 function mergeRoutes(routes: SourceRoute[]): SourceRoute[] {

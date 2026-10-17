@@ -223,3 +223,25 @@ test('the source scan leaves out git submodules: a .gitmodules path or a directo
 	const scanned = [...new Set(facts.nondeterminism.map((n) => n.file))];
 	assert.deepEqual(scanned, ['server.js']);
 });
+
+test('plan recognises Docusaurus and VitePress and maps every page to its Markdown file, so failures name the old line', async () => {
+	const { scanSource } = await import('../src/source/index.ts');
+	const { indexMarkup, findText } = await import('../src/check/markup.ts');
+	const fixture = (name: string) => new URL(`./source-fixtures/${name}`, import.meta.url).pathname;
+	const docusaurus = await scanSource(fixture('docusaurus'));
+	assert.equal(docusaurus.framework, 'docusaurus');
+	assert.deepEqual(docusaurus.routes.map((r) => `${r.path} ${r.file}:${r.line}`), [
+		'/ src/pages/index.tsx:1',
+		'/blog/2026/01/02/hello blog/2026-01-02-hello.md:4',
+		'/docs/api docs/api/index.md:1',
+		'/docs/installation docs/01-guides/02-installation.md:4',
+		'/docs/intro docs/intro.md:4',
+		'/showcase src/pages/showcase.md:1',
+	]);
+	const vitepress = await scanSource(fixture('vitepress'));
+	assert.equal(vitepress.framework, 'vitepress');
+	assert.deepEqual(vitepress.routes.map((r) => `${r.path} ${r.file}`), ['/ docs/index.md', '/guide/ docs/guide/index.md', '/guide/getting-started docs/guide/getting-started.md']);
+	const index = await indexMarkup(fixture('docusaurus'));
+	assert.deepEqual(findText(index, 'Let us discover Docusaurus in less than 5 minutes.'), { file: 'docs/intro.md', line: 7 });
+	assert.deepEqual(findText(index, 'Run npm init docusaurus.'), { file: 'docs/01-guides/02-installation.md', line: 7 });
+});

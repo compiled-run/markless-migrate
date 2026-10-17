@@ -1,6 +1,8 @@
 import type { Project } from './files.ts';
 
 const BY_DEPENDENCY: [string, string][] = [
+	['@docusaurus/core', 'docusaurus'],
+	['vitepress', 'vitepress'],
 	['next', 'next'],
 	['nuxt', 'nuxt'],
 	['@sveltejs/kit', 'sveltekit'],
