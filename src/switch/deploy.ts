@@ -134,9 +134,10 @@ async function serves(origin: string, path: string): Promise<boolean> {
 	}
 }
 
-const MODULE_SPECIFIER = /(?:\bimport\s*\(\s*|\bfrom\s*|\bimport\s*)["'`]([^"'`\s]+\.m?js)["'`]/g;
+// A quoted path to a script: import specifiers, and the chunk tables bundlers resolve import() calls through.
+const MODULE_SPECIFIER = /["'`]((?:\.{1,2}\/|\/)[^"'`\\\s]+\.m?js)\\?["'`]/g;
 
-/** Same-origin modules a script imports, statically or with import(): chunks loaded on interaction or route change. */
+/** Same-origin modules a script names, statically, with import() or in a chunk table: chunks loaded on interaction or route change. */
 export function moduleImports(code: string, scriptUrl: string, origin: string): string[] {
 	const out = new Set<string>();
 	for (const match of code.matchAll(MODULE_SPECIFIER)) {

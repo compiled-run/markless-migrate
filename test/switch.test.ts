@@ -126,6 +126,6 @@ test('an asset the old app answers only by redirecting (a soft 404) is not serve
 });
 
 test('config follows the modules the pages\' scripts import, so chunks loaded on interaction reach the new app too', () => {
-	const code = 'import{t as e}from"./chunk-A.js";const l=()=>import("./chunk-B.js");import "/build/chunk-C.js";fetch("/api/x.js?");import("https://cdn.example/x.js")';
-	assert.deepEqual(moduleImports(code, 'https://new.example/build/entry.js', 'https://new.example').sort(), ['/build/chunk-A.js', '/build/chunk-B.js', '/build/chunk-C.js']);
+	const code = 'import{t as e}from"./chunk-A.js";const l=()=>import("./chunk-B.js");import "/build/chunk-C.js";o=[1,["./chunk-D.js"]];j="[\\"/build/chunk-E.js\\"]";fetch("/api/x.js?");import("https://cdn.example/x.js")';
+	assert.deepEqual(moduleImports(code, 'https://new.example/build/entry.js', 'https://new.example').sort(), ['/build/chunk-A.js', '/build/chunk-B.js', '/build/chunk-C.js', '/build/chunk-D.js', '/build/chunk-E.js']);
 });
