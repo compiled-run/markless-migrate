@@ -3,6 +3,7 @@ import { appendFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { skillBody } from '../agents/skill.ts';
 import { STATE_DIR } from '../status.ts';
+import { AGENT_ENV } from '../switch/state.ts';
 import type { Driver } from './drivers.ts';
 import type { AppServer } from './server.ts';
 import type { ServerCommand } from '../agents/registry.ts';
@@ -93,7 +94,7 @@ interface AgentRun {
 function invoke(o: RunOptions, prompt: string): Promise<AgentRun> {
 	const started = Date.now();
 	return new Promise((resolve) => {
-		const child = spawn(o.driver.binary, o.driver.args(prompt, o.model, o.mcp), { cwd: o.cwd, env: o.env ?? process.env, stdio: ['ignore', 'pipe', 'pipe'] });
+		const child = spawn(o.driver.binary, o.driver.args(prompt, o.model, o.mcp), { cwd: o.cwd, env: { ...(o.env ?? process.env), [AGENT_ENV]: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
 		let output = '';
 		child.stdout.on('data', (chunk) => (output += chunk));
 		child.stderr.on('data', (chunk) => (output += chunk));

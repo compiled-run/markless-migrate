@@ -1,4 +1,5 @@
 import type { Box, Failure, LoginResult, Report, RouteResult, Shot, SourceLink } from './types.ts';
+import { remaining, type Status } from '../status.ts';
 
 const list = (items: readonly string[], cls = '') => `<ul>${items.map((x) => `<li${cls ? ` class="${cls}"` : ''}>${esc(x)}</li>`).join('')}</ul>`;
 
@@ -78,6 +79,18 @@ function shot(s: Shot, id: string): string {
 </div>`;
 }
 
+function coverage(r: RouteResult): string {
+	const c = r.coverage;
+	if (!c) return '';
+	const missing = c.total - c.exercised;
+	const item = (e: (typeof c.elements)[number]) => {
+		const failure = r.failures.find((f) => f.check.startsWith(`not exercised: ${e.element}`));
+		const how = e.by ? `exercised by ${e.by}` : e.shared && !failure ? `in a layout shared with ${e.shared}, exercised there` : `not exercised: ${failure?.actual ?? e.reason ?? ''}${failure?.accepted ? ` (accepted: ${failure.accepted.reason})` : ''}`;
+		return `<li${!e.by && (!e.shared || failure) && !failure?.accepted ? ' class="differs"' : ''}><strong>${esc(e.element)}</strong> ${esc(how)}${failure ? where(failure) : ''}</li>`;
+	};
+	return `<details class="states coverage"${missing ? ' open' : ''}><summary>Interactive elements exercised: ${c.exercised} of ${c.total}${missing ? `, <strong>${missing} not exercised</strong>` : ''}${c.skipped ? `, ${c.skipped} keyboard journeys left out for the budget` : ''}</summary><ul>${[...c.elements].sort((a, b) => Number(Boolean(a.by || a.shared)) - Number(Boolean(b.by || b.shared))).map(item).join('')}</ul></details>`;
+}
+
 function failedJourneys(r: RouteResult): number {
 	return r.journeys?.filter((j) => r.failures.some((f) => f.check.startsWith(j.name))).length ?? 0;
 }
@@ -100,8 +113,9 @@ function login(l: LoginResult): string {
 	return `<details class="states login"${l.ok ? '' : ' open'}><summary><span class="badge ${l.ok ? 'pass' : 'fail'}">${l.ok ? 'same' : 'differs'}</span> Signing in as ${esc(l.role)}: cookies it leaves</summary>${cookies}${rows ? `<table><thead><tr><th>Check</th><th>Expected (old)</th><th>Actual (new)</th><th>Fix</th></tr></thead><tbody>${rows}</tbody></table>` : ''}</details>`;
 }
 
-function route(r: RouteResult, index: number): string {
+function route(r: RouteResult, index: number, forced?: { readonly reason: string; readonly by?: string }): string {
 	if (r.blocked) return blockedSection(r, index);
+	const warning = forced ? `<p class="forced"><span class="badge fail">forced, not proven</span> Served from the new app although this check is not green${forced.by ? `; forced by ${esc(forced.by)}` : ''}: ${esc(forced.reason)}</p>` : '';
 	const dims = Object.entries(r.dimensions)
 		.map(([d, state]) => `<li class="${state}">${esc(d)}</li>`)
 		.join('');
@@ -113,13 +127,15 @@ function route(r: RouteResult, index: number): string {
 		: '<p>Every check passed.</p>';
 	const w = r.weight;
 	return `<section class="route" id="route-${index}">
-<h2><span class="badge ${r.ok ? 'pass' : 'fail'}">${r.ok ? 'green' : 'red'}</span> ${esc(r.route)}${r.role ? ` <small>as ${esc(r.role)}</small>` : ''}</h2>
+<h2><span class="badge ${r.ok ? 'pass' : 'fail'}">${r.ok ? 'green' : r.notPorted ? 'not ported' : 'red'}</span> ${esc(r.route)}${r.role ? ` <small>as ${esc(r.role)}</small>` : ''}</h2>
+${warning}
 <ul class="dims" aria-label="Dimensions">${dims}</ul>
 <p class="weight">${r.endpoint ? `Not a page: compared as ${esc(r.endpoint)}` : `JavaScript on the wire ${kb(w.old.downloaded)} → ${kb(w.new.downloaded)}, run at load ${kb(w.old.executed)} → ${kb(w.new.executed)} (uncompressed)`}</p>
 ${r.states ? `<details class="states"><summary>CSS states and conditions from the old stylesheets: ${r.states.checked.length} forced and compared${r.states.skipped.length ? `, ${r.states.skipped.length} not forced` : ''}</summary><ul>${r.states.checked.map((x) => `<li>${esc(x)}</li>`).join('')}${r.states.skipped.map((x) => `<li class="skipped">not forced: ${esc(x)}</li>`).join('')}</ul></details>` : ''}
 ${network(r)}
 ${noise(r)}
 ${writes(r)}
+${coverage(r)}
 ${r.journeys?.length ? `<details class="states"><summary>Interactions explored on the old page and replayed on the new one: ${r.journeys.length}${failedJourneys(r) ? `, ${failedJourneys(r)} differ` : ''}</summary><ul>${r.journeys.map((j) => `<li${r.failures.some((f) => f.check.startsWith(j.name)) ? ' class="differs"' : ''}>${esc(j.name)}</li>`).join('')}</ul></details>` : ''}
 <h3>Failures (${r.failures.filter((f) => !f.accepted).length}${r.failures.some((f) => f.accepted) ? `, and ${r.failures.filter((f) => f.accepted).length} accepted differences` : ''})</h3>
 ${table}
@@ -169,6 +185,7 @@ figcaption { font-weight: 600; margin-bottom: 4px; }
 .slider input { width: 100%; }
 .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; } .pair h4 { margin: 8px 0 4px; } .network code { font-size: 12px; word-break: break-all; }
 .where { margin-top: 6px; color: var(--muted); } .where a { color: #1a73e8; }
+.forced { color: var(--fail); font-weight: 600; } tr.forced td { background: rgb(179 38 30 / 0.06); }
 .states { margin: 8px 0; } .states .skipped { color: var(--muted); } .states .differs { color: var(--fail); font-weight: 600; }
 `;
 
@@ -197,19 +214,34 @@ for (const shot of document.querySelectorAll('.shot')) {
 }
 `;
 
-/** `image` turns a screenshot into the img src: inline by default; writeReport stores each one once, next to the page. */
-export function renderHtml(report: Report, image: (buffer: Buffer) => string = inline): string {
+const STATE_CLASS: Record<Status['routes'][number]['state'], string> = { green: 'pass', red: 'fail', 'not ported': 'fail', blocked: 'blocked', unchecked: 'blocked', 'needs a sample': 'blocked' };
+
+/** Every route of the plan with how far it has come: green, red, not ported or not checked, and whether it is switched or forced. */
+export function migrationSection(s: Status): string {
+	if (!s.routes.length) return '';
+	const rows = s.routes.map((r) => {
+		const served = r.forced ? `<span class="badge fail">forced, not proven</span> ${esc(r.forced.reason)}${r.forced.by ? ` <small>(${esc(r.forced.by)})</small>` : ''}` : r.switched ? 'switched to the new app' : 'old app';
+		return `<tr${r.forced ? ' class="forced"' : ''}><td><span class="badge ${STATE_CLASS[r.state]}">${esc(r.state)}</span></td><td><code>${esc(r.route)}</code></td><td>${served}</td><td>${r.coverage ? `${r.coverage.exercised} of ${r.coverage.total}` : ''}</td><td>${esc(r.red.join(', '))}</td></tr>`;
+	});
+	const head = s.done ? '<strong>Migration done:</strong> every planned route is green and switched.' : `<strong>Migration not done:</strong> ${esc(remaining(s))}.`;
+	return `<section class="migration"><h2>Every planned route</h2><p>${head}</p><table><thead><tr><th>State</th><th>Route</th><th>Served by</th><th>Interactions exercised</th><th>Red</th></tr></thead><tbody>${rows.join('')}</tbody></table></section>`;
+}
+
+/** `image` turns a screenshot into the img src: inline by default; writeReport stores each one once, next to the page. `status` adds every planned route, checked in this run or not. */
+export function renderHtml(report: Report, image: (buffer: Buffer) => string = inline, status?: Status): string {
 	png = image;
 	try {
-		return renderPage(report);
+		return renderPage(report, status);
 	} finally {
 		png = inline;
 	}
 }
 
-function renderPage(report: Report): string {
+function renderPage(report: Report, status?: Status): string {
+	const forced = new Map((status?.routes ?? []).filter((r) => r.forced).map((r) => [r.route, r.forced!]));
 	const green = report.routes.filter((r) => r.ok).length;
-	const badge = (r: RouteResult) => (r.blocked ? '<span class="badge blocked">blocked</span>' : `<span class="badge ${r.ok ? 'pass' : 'fail'}">${r.ok ? 'green' : 'red'}</span>`);
+	const key = (r: RouteResult) => (r.role && r.role !== 'anonymous' ? `${r.route} as ${r.role}` : r.route);
+	const badge = (r: RouteResult) => `${r.blocked ? '<span class="badge blocked">blocked</span>' : `<span class="badge ${r.ok ? 'pass' : 'fail'}">${r.ok ? 'green' : r.notPorted ? 'not ported' : 'red'}</span>`}${forced.has(key(r)) ? ' <span class="badge fail">forced, not proven</span>' : ''}`;
 	const tocItems = (items: readonly [RouteResult, number][]) => items.map(([r, i]) => `<li><a href="#route-${i}">${badge(r)} ${esc(r.route)}</a></li>`).join('');
 	const indexed = report.routes.map((r, i) => [r, i] as [RouteResult, number]);
 	const groups = report.roles ? report.roles.map((role) => ({ role, items: indexed.filter(([r]) => r.role === role) })) : [{ role: undefined, items: indexed }];
@@ -217,7 +249,7 @@ function renderPage(report: Report): string {
 	const body = groups.map((g) => {
 		const signIn = report.logins?.find((l) => l.role === g.role);
 		const head = g.role ? `<section class="role"><h2>As ${esc(g.role)}</h2>${signIn ? login(signIn) : ''}${!g.items.length && signIn ? '<p>Not checked: signing in on the old app failed.</p>' : ''}</section>\n` : '';
-		return head + g.items.map(([r, i]) => route(r, i)).join('\n');
+		return head + g.items.map(([r, i]) => route(r, i, forced.get(key(r)))).join('\n');
 	}).join('\n');
 	return `<!doctype html>
 <html lang="en">
@@ -235,11 +267,35 @@ ${run(report)}
 <p><small>Red boxes mark where the screenshots differ outside the noise mask. Slider: drag to wipe between old (left of the line) and new. Blink: alternates old and new in place.</small></p>
 ${report.staleAccepts?.length ? `<p><strong>Accepted differences that no longer match anything</strong> (remove them from .migrate/accepted.json):</p><ul>${report.staleAccepts.map((a) => `<li>${esc(a.route)} ${esc(a.dimension)}: ${esc(a.check)}: ${esc(a.reason)}</li>`).join('')}</ul>` : ''}
 <ul class="toc">${toc}</ul>
+${status ? migrationSection(status) : ''}
 </header>
 <main>
 ${body}
 </main>
 <script>${SCRIPT}</script>
+</body>
+</html>
+`;
+}
+
+/** The front door's index page: every planned route, what serves it, and what is not ported yet. */
+export function renderStatusPage(status: Status, origins: { readonly old: string; readonly new: string }): string {
+	const missing = status.routes.filter((r) => r.state === 'not ported' || r.state === 'unchecked' || r.state === 'needs a sample');
+	return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${status.done ? 'Migration done' : 'Migration in progress'}</title>
+<style>${STYLE}</style>
+</head>
+<body>
+<header>
+<h1>Migration to Markless</h1>
+<p>Old app <code>${esc(origins.old)}</code>, new app <code>${esc(origins.new)}</code>. Switched routes are served by the new app, every other route by the old one.</p>
+${missing.length ? `<h2>Not ported yet</h2><ul>${missing.map((r) => `<li><code>${esc(r.route)}</code> ${esc(r.state)}</li>`).join('')}</ul>` : ''}
+${migrationSection(status)}
+</header>
 </body>
 </html>
 `;

@@ -22,10 +22,11 @@ markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [
     [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
     [--auth .migrate/auth.json] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
     [--all] [--allow-unchecked] [--new-source ../markless-app] [--concurrency 4] [--changed]
-markless-migrate switch <route> [--force <reason>]
+    [--journey-budget 120] [--max-journeys <n>]
+markless-migrate switch <route> [--force --by <name> --reason <why>]
 markless-migrate unswitch <route>
 markless-migrate proxy --old http://localhost:3000 --new http://localhost:5173 [--port 4300] [--host 127.0.0.1]
-markless-migrate config --old https://old.example.com --new https://new.example.com [--vercel vercel.json] [--nitro nitro.ts]
+markless-migrate config --old https://old.example.com --new https://new.example.com [--vercel vercel.json] [--nitro nitro.ts] [--index public/_migrate/index.html]
 markless-migrate accept <failure-id> --reason "why" [--by <name>]
 markless-migrate recorder
 markless-migrate status
@@ -96,7 +97,7 @@ only within the same kind of character (digits stay digits); everything else mus
 | `css` | computed styles of every visible element, paired by accessibility role, name and landmark path, in the default state and in every state the old stylesheets style (`:hover`, `:focus-visible`, `:checked`, `[open]`, each viewport and container width edge, `prefers-color-scheme`, `prefers-reduced-motion`), each difference traced to the old rule's selector, file, line and column |
 | `a11y` | axe-core violations (the new page may not add any), landmarks, focus order by Tab, animations under reduced motion, and every keyboard path (Enter and Space on controls, Escape and ArrowDown in what they open) |
 | `i18n` | `lang`, `dir` and text direction, the formats of dates and numbers in the text, and the page each Accept-Language lands on |
-| `behaviour` | interactions explored on the old page and replayed on the new one: the URL, what appears and disappears, app requests (method, path, body shape), console errors, live-region announcements and focus after each step |
+| `behaviour` | interactions explored on the old page and replayed on the new one: the URL, what appears and disappears, app requests (method, path, body shape), console errors, live-region announcements and focus after each step; and coverage: every interactive element of the old page, including what a click reveals, is used by at least one journey (main content, tables and forms first, until `--journey-budget` runs out), and one that is not keeps the route red until a person accepts it; a shared header or sidebar control is exercised by the first route of the run that has it, and every route sharing it carries its result |
 | `network` | every request the page makes, in the browser and, when the server runs the request recorder, while the server renders it: method, URL (the app's own origin, ids, timestamps and cache-busters normalised, query keys and values kept), body shape, how many times, and which response fields the page shows |
 | `data` | non-page endpoints as data, with the same noise rules as pages: feeds item by item (keyed by guid, id or link), JSON field by field, `/.well-known` files, the manifest; robots.txt lines and sitemap entries count as `seo` |
 | `weight` | JavaScript on the wire and run at load (Chromium coverage); red when the new route is heavier |
@@ -203,9 +204,19 @@ accept tool.
 ## Switching routes over
 
 `switch <route>` adds the route (a path, or a pattern like `/blog/:slug`) to `.migrate/switched.json`.
-It refuses unless the route's last check is green for every role it was checked as; `--force <reason>`
-switches it anyway and records the reason and the checks it overrode. `unswitch` sends it back. The
-MCP server's `switch_route` never forces. `status` marks switched routes.
+It refuses unless the route's last check is green for every role it was checked as. Forcing a route
+that is not green is a person's decision, like `accept`: `--force --by <name> --reason <why>`, or
+`--force` alone at a terminal, which asks for both and for the route typed back. It records who forced
+it, why, and the checks it overrode. The MCP server's `switch_route` never forces, and an agent driven
+by `run` cannot force or accept (`run` marks its environment and the CLI refuses). `unswitch` sends a
+route back. A route must be a path or a `:param` / `*rest` pattern; Vercel's `/docs/:path*` is refused
+with the pattern to write instead (`/docs/*rest`).
+
+`status` lists every planned route as green, red, not ported (the old app serves it and the new one
+answers 404) or not checked, marks switched routes, and shows forced ones in red as "forced, not
+proven". The migration is done only when every planned route is green and switched without force.
+`report.html` carries the same table, and `config --index <file>` writes it as the front door's index
+page, with the routes not ported yet listed first.
 
 `proxy` serves both apps on one origin while you migrate: page loads of switched routes go to NEW,
 every other page load to OLD. Everything else (scripts, styles, images, fonts, fetches, form posts) goes

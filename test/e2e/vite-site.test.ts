@@ -800,7 +800,7 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		assert.match(second.stdout, /1 of 1 routes green, 1 accepted difference\./);
 		assert.match(await readFile(join(cwd, '.migrate', 'report.html'), 'utf8'), /<span class="badge accepted">accepted<\/span>/);
 		const listed = await cli(['status'], cwd);
-		assert.match(listed.stdout, /green +\/about\/  \(1 accepted\)\n +accepted seo: title: Marketing renamed the page/);
+		assert.match(listed.stdout, /green +\/about\/  \(\d+ of \d+ interactions exercised\)  \(1 accepted\)\n +accepted seo: title: Marketing renamed the page/);
 		const stale = await cli(['check', '--old', old.origin, '--new', twin.origin, '--route', '/about/'], cwd);
 		assert.equal(stale.status, 0, stale.stdout);
 		assert.match(stale.stdout, /Accepted differences that no longer match anything \(remove them from \.migrate\/accepted\.json\):\n +\/about\/ seo: title +\(Marketing renamed the page\)/);

@@ -150,10 +150,10 @@ describe('switch and the pass-through proxy', { concurrency: 1 }, () => {
 		const refused = await cli(['switch', '/'], cwd);
 		assert.equal(refused.status, 1);
 		assert.match(refused.stderr, /not switching \/: it has not been checked yet/);
-		const forced = await cli(['switch', '/', '--force', 'launch day'], cwd);
+		const forced = await cli(['switch', '/', '--force', '--by', 'Jo', '--reason', 'launch day'], cwd);
 		assert.equal(forced.status, 0, forced.stderr);
 		const entry = (JSON.parse(await readFile(join(cwd, '.migrate', 'switched.json'), 'utf8')) as { routes: { route: string; forced?: { reason: string } }[] }).routes.find((r) => r.route === '/');
-		assert.deepEqual(entry?.forced, { reason: 'launch day' });
+		assert.deepEqual(entry?.forced, { reason: 'launch day', by: 'Jo' });
 		assert.equal((await fetch(`${proxy.origin}/`)).headers.get('x-markless-migrate-side'), 'new', 'the running proxy picks up the switch');
 		assert.match((await cli(['unswitch', '/'], cwd)).stdout, /goes to the old app again/);
 		assert.equal((await fetch(`${proxy.origin}/`)).headers.get('x-markless-migrate-side'), 'old');

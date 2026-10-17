@@ -26,13 +26,14 @@ test('switch needs every role of the route green; --force records the reason and
 	assert.equal(red.ok, false);
 	assert.match(!red.ok ? red.reason : '', /\/members\/ as admin: red \[auth\]/);
 	assert.equal((await switchRoute(cwd, '/x')).ok, false, 'a blocked route is not green');
-	const forced = await switchRoute(cwd, '/members/', { force: 'admin page ships separately' });
+	const forced = await switchRoute(cwd, '/members/', { force: { reason: 'admin page ships separately', by: 'Jo' } });
 	assert.ok(forced.ok);
-	assert.deepEqual(forced.ok && forced.entry.forced, { reason: 'admin page ships separately' });
+	assert.deepEqual(forced.ok && forced.entry.forced, { reason: 'admin page ships separately', by: 'Jo' });
 	assert.deepEqual(forced.ok && forced.entry.checks, ['/members/: green', '/members/ as admin: red [auth]']);
 	assert.deepEqual((await readSwitched(cwd)).routes.map((r) => r.route), ['/about', '/members/']);
 	const listed = summarizeStatus(await status(cwd));
-	assert.match(listed, /3 switched to Markless/);
+	assert.match(listed, /3 switched to Markless, 2 FORCED \(not proven\)/);
+	assert.match(listed, /\/members\/  \(FORCED, not proven: admin page ships separately, by Jo\)/);
 	assert.match(listed, /green +\/about\/  \(switched\)/);
 	assert.equal((await unswitchRoute(cwd, '/about')).removed, true);
 	assert.equal((await unswitchRoute(cwd, '/about')).removed, false);
@@ -128,4 +129,56 @@ test('an asset the old app answers only by redirecting (a soft 404) is not serve
 test('config follows the modules the pages\' scripts import, so chunks loaded on interaction reach the new app too', () => {
 	const code = 'import{t as e}from"./chunk-A.js";const l=()=>import("./chunk-B.js");import "/build/chunk-C.js";o=[1,["./chunk-D.js"]];j="[\\"/build/chunk-E.js\\"]";fetch("/api/x.js?");import("https://cdn.example/x.js")';
 	assert.deepEqual(moduleImports(code, 'https://new.example/build/entry.js', 'https://new.example').sort(), ['/build/chunk-A.js', '/build/chunk-B.js', '/build/chunk-C.js', '/build/chunk-D.js', '/build/chunk-E.js']);
+});
+
+test('a route in Vercel or path-to-regexp syntax is refused with the pattern to write instead', async () => {
+	const { routeProblem } = await import('../src/switch/state.ts');
+	assert.match(routeProblem('/docs/:path*')!, /Vercel or path-to-regexp syntax \(:path\*\).*\/docs\/\*rest/);
+	assert.match(routeProblem('/admin(.*)')!, /path-to-regexp/);
+	assert.match(routeProblem('/docs/a*')!, /fills a whole segment/);
+	assert.match(routeProblem('/blog/post-:id')!, /fills a whole segment/);
+	for (const ok of ['/', '/about/', '/blog/:slug', '/blog/:slug?', '/docs/*rest', '/docs/*rest?', '/docs/*']) assert.equal(routeProblem(ok), undefined, ok);
+	const cwd = await project({ '/docs/a': { route: '/docs/a', ok: true } });
+	const outcome = await switchRoute(cwd, '/docs/:path*');
+	assert.equal(outcome.ok, false);
+	assert.deepEqual((await readSwitched(cwd)).routes, []);
+});
+
+test('only a person forces a switch: never without a name and a reason off a terminal, never from an agent run drives, and not by MCP', async () => {
+	const { spawnSync } = await import('node:child_process');
+	const cli = new URL('../src/cli.ts', import.meta.url).pathname;
+	const cwd = await project({ '/x': { route: '/x', ok: false, red: ['behaviour'] } });
+	const run = (args: string[], env: NodeJS.ProcessEnv = {}) => spawnSync(process.execPath, [cli, ...args], { cwd, encoding: 'utf8', input: '', env: { ...process.env, MARKLESS_MIGRATE_AGENT: '', ...env } });
+	assert.equal(run(['switch', '/x']).status, 1);
+	const bare = run(['switch', '/x', '--force']);
+	assert.equal(bare.status, 2);
+	assert.match(bare.stderr, /needs --by <name> and --reason <why>/);
+	const agent = run(['switch', '/x', '--force', '--by', 'bot', '--reason', 'r'], { MARKLESS_MIGRATE_AGENT: '1' });
+	assert.equal(agent.status, 2);
+	assert.match(agent.stderr, /is for a person/);
+	assert.match(run(['accept', 'abc', '--reason', 'r'], { MARKLESS_MIGRATE_AGENT: '1' }).stderr, /accept is for a person/);
+	assert.deepEqual((await readSwitched(cwd)).routes, []);
+	const person = run(['switch', '/x', '--force', '--by', 'Jo', '--reason', 'ships behind a flag']);
+	assert.equal(person.status, 0, person.stderr);
+	assert.match(person.stdout, /forced by Jo, not proven: ships behind a flag/);
+	assert.deepEqual((await readSwitched(cwd)).routes[0]!.forced, { reason: 'ships behind a flag', by: 'Jo' });
+	const { createServer: mcpServer } = await import('../src/mcp/server.ts');
+	const tools = (mcpServer(cwd) as unknown as { _registeredTools: Record<string, { inputSchema?: { shape?: Record<string, unknown> } }> })._registeredTools;
+	assert.deepEqual(Object.keys(tools.switch_route!.inputSchema?.shape ?? {}), ['route']);
+});
+
+test('an agent that run drives cannot force a switch through the CLI', async () => {
+	const { chmod } = await import('node:fs/promises');
+	const { driver } = await import('../src/run/drivers.ts');
+	const { runRoutes } = await import('../src/run/loop.ts');
+	const cli = new URL('../src/cli.ts', import.meta.url).pathname;
+	const cwd = await project({ '/about/': { route: '/about/', ok: false, red: ['behaviour'] } });
+	const bin = join(cwd, 'bin');
+	await mkdir(bin);
+	await writeFile(join(bin, 'codex'), `#!/bin/sh\n"${process.execPath}" "${cli}" switch /about/ --force --by agent --reason "looks fine" 2> forced.err\necho $? > forced.code\n`);
+	await chmod(join(bin, 'codex'), 0o755);
+	await runRoutes({ cwd, driver: driver('codex'), old: 'http://old.test', new: 'http://new.test', routes: ['/about/'], attempts: 1, cli: 'markless-migrate', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, check: async () => ({ ok: false, summary: 'FAIL /about/\n' }) });
+	assert.equal((await readFile(join(cwd, 'forced.code'), 'utf8')).trim(), '2');
+	assert.match(await readFile(join(cwd, 'forced.err'), 'utf8'), /is for a person/);
+	assert.deepEqual((await readSwitched(cwd)).routes, []);
 });

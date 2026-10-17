@@ -28,6 +28,7 @@ export interface Side {
 }
 
 const quoted = (value: string) => value.replace(/\\(.)/g, '$1');
+export const NOT_EXERCISED = 'not exercised: ';
 
 // Role and name from an ARIA snapshot line or a journey step: the last `role "name"` it mentions.
 function roleAndName(text: string): { role: string; name: string } | undefined {
@@ -59,7 +60,10 @@ function targets(f: Failure, oldPage: PageCapture | undefined, newPage: PageCapt
 	const known = failureElements.get(f);
 	let old = known?.old;
 	let next = known?.new;
-	if (!old && !next) {
+	if (!old && !next && f.check.startsWith(NOT_EXERCISED)) {
+		const named = /^([a-z]+) "((?:[^"\\]|\\.)*)"(?: #(\d+))?$/.exec(f.check.slice(NOT_EXERCISED.length));
+		if (named) old = oldPage?.elements.filter((e) => e.role === named[1] && e.name === quoted(named[2]!))[Number(named[3] ?? 1) - 1];
+	} else if (!old && !next) {
 		if (f.dimension === 'rendered' || f.dimension === 'behaviour' || (f.dimension === 'a11y' && /\(step \d+\)|^(click|press|type|fill|choose)\b/.test(f.check))) {
 			const nth = failureOccurrence.get(f);
 			old = byText(oldPage, f.dimension === 'rendered' ? f.expected : f.check, nth?.old);

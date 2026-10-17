@@ -24,6 +24,9 @@ export interface RouteState {
 	/** The new app's commit when it was checked, and the files the route is rendered from, for check --changed. */
 	readonly commit?: string;
 	readonly files?: readonly string[];
+	/** The old app serves the route and the new one answers 404: it has not been ported. */
+	readonly notPorted?: boolean;
+	readonly coverage?: { readonly exercised: number; readonly total: number };
 }
 
 async function readJson<T>(path: string): Promise<T | undefined> {
@@ -59,16 +62,22 @@ export async function recordResults(cwd: string, report: Report, extra: { readon
 			failures: route.failures,
 			...(extra.commit ? { commit: extra.commit } : {}),
 			...(route.newFiles ? { files: route.newFiles } : {}),
+			...(route.notPorted ? { notPorted: true } : {}),
+			...(route.coverage ? { coverage: { exercised: route.coverage.exercised, total: route.coverage.total } } : {}),
 		};
 	}
 	await mkdir(join(cwd, STATE_DIR), { recursive: true });
 	await writeFile(path, `${JSON.stringify(results, null, '\t')}\n`);
 }
 
+export type RouteStatus = 'green' | 'red' | 'not ported' | 'blocked' | 'unchecked' | 'needs a sample';
+
 export interface Status {
 	readonly planned: boolean;
+	/** Every planned route is green and switched, none of them forced. */
+	readonly done: boolean;
 	/** In migration order when the inventory has the source's plan, alphabetical otherwise. */
-	readonly routes: readonly { route: string; state: 'green' | 'red' | 'blocked' | 'unchecked' | 'needs a sample'; red: readonly Dimension[]; checkedAt?: string; switched?: boolean; accepted?: readonly string[] }[];
+	readonly routes: readonly { route: string; state: RouteStatus; red: readonly Dimension[]; checkedAt?: string; switched?: boolean; forced?: { readonly reason: string; readonly by?: string }; accepted?: readonly string[]; coverage?: { readonly exercised: number; readonly total: number } }[];
 	/** Each step of the migration order with how far the routes it is part of have come. */
 	readonly order?: readonly { readonly kind: string; readonly name: string; readonly file: string; readonly routes: readonly string[]; readonly green: number; readonly state: 'green' | 'red' | 'started' | 'unchecked' }[];
 }
@@ -92,25 +101,32 @@ export async function status(cwd: string): Promise<Status> {
 		const r = results[route];
 		if (!r) return { route, state: 'unchecked', red: [] };
 		const accepted = (r.failures ?? []).flatMap((f) => (f.accepted ? [`${f.dimension}: ${f.check}: ${f.accepted.reason}`] : []));
-		return { route, state: r.blocked ? 'blocked' : r.ok ? 'green' : 'red', red: r.red, checkedAt: r.checkedAt, ...(accepted.length ? { accepted } : {}) };
+		return { route, state: r.blocked ? 'blocked' : r.ok ? 'green' : r.notPorted ? 'not ported' : 'red', red: r.red, checkedAt: r.checkedAt, ...(accepted.length ? { accepted } : {}), ...(r.coverage ? { coverage: r.coverage } : {}) };
 	};
 	const routes = names.map(stateOf).sort((a, b) => rank(a.route) - rank(b.route) || a.route.localeCompare(b.route));
 	for (const n of targets?.needsSample ?? []) routes.push({ route: n.route, state: 'needs a sample', red: [] });
-	const switched = (await readSwitched(cwd)).routes.map((r) => r.route);
-	for (const [i, r] of routes.entries()) if (isSwitched(switched, r.route.replace(/ as .*$/, ''))) routes[i] = { ...r, switched: true };
+	const entries = (await readSwitched(cwd)).routes;
+	for (const [i, r] of routes.entries()) {
+		const path = r.route.replace(/ as .*$/, '');
+		const by = entries.filter((e) => isSwitched([e.route], path));
+		if (!by.length) continue;
+		const forced = by.find((e) => e.forced)?.forced;
+		routes[i] = { ...r, switched: true, ...(forced ? { forced } : {}) };
+	}
 	const order = steps.map(({ step, patterns }) => {
 		const mine = routes.filter((r) => r.state !== 'needs a sample' && page(r.route) && patterns.some((p) => matchRoute(p, r.route.replace(/ as .*$/, ''))));
 		const green = mine.filter((r) => r.state === 'green').length;
 		const state = mine.some((r) => r.state === 'red') ? 'red' : mine.length && green === mine.length ? 'green' : green ? 'started' : 'unchecked';
 		return { kind: step.kind, name: step.name, file: step.file, routes: mine.map((r) => r.route), green, state } as const;
 	});
-	return { planned: Boolean(inventory), routes, ...(order.length ? { order } : {}) };
+	const done = Boolean(inventory) && routes.length > 0 && routes.every((r) => !page(r.route) || (r.state === 'green' && r.switched && !r.forced));
+	return { planned: Boolean(inventory), done, routes, ...(order.length ? { order } : {}) };
 }
 
 export function summarizeStatus(s: Status): string {
 	if (!s.planned && !s.routes.length) return 'No inventory yet. Run plan against the old app first.\n';
 	const count = (state: string) => s.routes.filter((r) => r.state === state).length;
-	const lines = [`${count('green')} green, ${count('red')} red, ${count('blocked') ? `${count('blocked')} blocked by bot protection, ` : ''}${count('unchecked')} not checked${s.planned ? '' : ' (no inventory: only checked routes are listed)'}`];
+	const lines = [`${count('green')} green, ${count('red')} red, ${count('not ported') ? `${count('not ported')} not ported, ` : ''}${count('blocked') ? `${count('blocked')} blocked by bot protection, ` : ''}${count('unchecked')} not checked${s.planned ? '' : ' (no inventory: only checked routes are listed)'}`];
 	if (count('needs a sample')) lines[0] += `, ${count('needs a sample')} need a sample value (.migrate/samples.json)`;
 	if (s.order?.length) {
 		lines.push('Migration order:');
@@ -118,9 +134,27 @@ export function summarizeStatus(s: Status): string {
 		lines.push('Routes, in that order:');
 	}
 	if (s.routes.some((r) => r.switched)) lines[0] += `, ${s.routes.filter((r) => r.switched).length} switched to Markless`;
+	const forced = s.routes.filter((r) => r.forced);
+	if (forced.length) lines[0] += `, ${forced.length} FORCED (not proven)`;
 	for (const r of s.routes) {
-		lines.push(`  ${r.state.padEnd(9)} ${r.route}${r.red.length ? `  [${r.red.join(', ')}]` : ''}${r.accepted ? `  (${r.accepted.length} accepted)` : ''}${r.switched ? '  (switched)' : ''}`);
+		lines.push(`  ${r.state.padEnd(10)} ${r.route}${r.red.length ? `  [${r.red.join(', ')}]` : ''}${r.coverage ? `  (${r.coverage.exercised} of ${r.coverage.total} interactions exercised)` : ''}${r.accepted ? `  (${r.accepted.length} accepted)` : ''}${r.forced ? `  (FORCED, not proven: ${r.forced.reason}${r.forced.by ? `, by ${r.forced.by}` : ''})` : r.switched ? '  (switched)' : ''}`);
 		for (const a of r.accepted ?? []) lines.push(`              accepted ${a}`);
 	}
+	if (s.planned) lines.push(s.done ? 'Migration done: every planned route is green and switched.' : `Migration not done: ${remaining(s)}.`);
 	return `${lines.join('\n')}\n`;
+}
+
+export function remaining(s: Status): string {
+	const left = s.routes.filter((r) => !(r.state === 'green' && r.switched && !r.forced));
+	const by = (test: (r: Status['routes'][number]) => boolean, label: string) => {
+		const n = left.filter(test).length;
+		return n ? [`${n} ${label}`] : [];
+	};
+	return [
+		...by((r) => r.state === 'not ported', 'not ported'),
+		...by((r) => r.state === 'unchecked' || r.state === 'needs a sample', 'not checked'),
+		...by((r) => r.state === 'red' || r.state === 'blocked', 'red'),
+		...by((r) => Boolean(r.forced), 'forced without proof'),
+		...by((r) => r.state === 'green' && !r.switched, 'green but not switched'),
+	].join(', ') || 'nothing left';
 }

@@ -1,5 +1,5 @@
 import type { RawSource } from './hints-page.ts';
-import type { RecordedJourney } from './journeys.ts';
+import type { ElementCoverage, RecordedJourney } from './journeys.ts';
 import type { NetworkCapture } from './network.ts';
 import type { NondeterminismFact } from './source-facts.ts';
 
@@ -193,6 +193,8 @@ export interface RouteResult {
 	readonly states?: { readonly checked: readonly string[]; readonly skipped: readonly string[] };
 	/** Interactions explored on the OLD page and replayed on NEW, with what OLD did at each step. */
 	readonly journeys?: readonly RecordedJourney[];
+	/** Every interactive element of the OLD page and the journey that exercised it; one that none did keeps the route red. */
+	readonly coverage?: Coverage;
 	/** What still varied between OLD loads after freezing, and what was blocked. */
 	readonly noise?: NoiseReport;
 	/** The request contract of each side's first load: `browser GET host/path?query {body shape}`. */
@@ -203,6 +205,16 @@ export interface RouteResult {
 	readonly endpoint?: string;
 	/** The new app's source files this route is rendered from, relative to its checkout, when check had it. */
 	readonly newFiles?: readonly string[];
+	/** The old app serves the route and the new one answers 404 or 410. */
+	readonly notPorted?: boolean;
+}
+
+export interface Coverage {
+	readonly total: number;
+	readonly exercised: number;
+	readonly elements: readonly ElementCoverage[];
+	/** Keyboard and dismiss journeys left out when the budget ran out. */
+	readonly skipped: number;
 }
 
 export interface Blocked {

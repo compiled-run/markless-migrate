@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { AGENTS, detectAgents, findBinary, type HostEnv, type ServerCommand } from './agents/registry.ts';
 import { applySetup, describeChanges, planSetup } from './agents/setup.ts';
+import { renderStatusPage } from './check/html.ts';
 import { openFile } from './check/open.ts';
 import { readAuthFile } from './check/auth.ts';
 import { bypassOptions } from './check/blocked.ts';
@@ -28,7 +29,7 @@ import { changedSince, gitHead, selectChanged } from './check/changed.ts';
 import { VERSION } from './version.ts';
 import { nitroSnippet, notServedBy, pageAssets, vercelConfig } from './switch/deploy.ts';
 import { startProxy } from './switch/proxy.ts';
-import { readSwitched, switchRoute, unswitchRoute } from './switch/state.ts';
+import { AGENT_ENV, readSwitched, switchRoute, unswitchRoute } from './switch/state.ts';
 import { ACCEPTED_FILE, acceptFailure, readAccepted, writeAccepted } from './check/accepted.ts';
 import { LIBRARIES_FILE, planLibraries, readLibraries, summarizeParity, writeParity } from './library/index.ts';
 import type { RouteState } from './status.ts';
@@ -45,7 +46,14 @@ const USAGE = `markless-migrate ${VERSION}
           [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
+          [--journey-budget <seconds>] [--max-journeys <n>]
           Compare routes old vs new (default: every route in the inventory). Exits 1 when any is red.
+          Every interactive element of the old page (including those a click reveals, such as a
+          dialog's controls) must be used by a journey, or the route stays red until a person accepts
+          it: journeys are explored main content first (tables, forms), until each element is used or
+          --journey-budget (default 120 s per route) runs out; --max-journeys caps their number. A
+          control in a shared header, nav, sidebar or footer is exercised by the first route of the
+          run that has it, and the others carry its result.
           --all adds every route the source scan knows (dynamic segments filled from crawled paths or
           .migrate/samples.json; check exits 1 while any is left unchecked, unless --allow-unchecked),
           a path no app has (the not-found page), redirects (the config's own and the other
@@ -75,14 +83,17 @@ const USAGE = `markless-migrate ${VERSION}
   recorder
           Print the NODE_OPTIONS that loads the request recorder into a Node server, so check compares
           what the server fetches while rendering and can replay recorded data to it.
-  status  Show which routes are green, red or not checked yet.
+  status  Show every planned route as green, red, not ported or not checked yet, which are switched
+          (and which were forced without proof), and whether the migration is done.
   setup   [--agent <id>]... [--yes] [--dry-run]
           Register the MCP server and install the migration skill for your coding agents.
           Agents: ${AGENTS.map((a) => a.id).join(', ')}.
   mcp     Run the MCP server on stdio (started by your agent).
-  switch  <route> [--force <reason>]
-          Serve a route from the new app: refused unless its last check (every role) is green; --force
-          switches anyway and records the reason in .migrate/switched.json. A route may be a pattern
+  switch  <route> [--force --by <name> --reason <why>]
+          Serve a route from the new app: refused unless its last check (every role) is green. Only a
+          person may --force a route that is not: with --by and --reason, or confirmed at a terminal;
+          never from an agent that run drives. A forced route is recorded in .migrate/switched.json
+          and shown in red as "forced, not proven" in status and the report. A route may be a pattern
           (/blog/:slug, /docs/*rest).
   unswitch <route>
           Send a route back to the old app.
@@ -91,10 +102,11 @@ const USAGE = `markless-migrate ${VERSION}
           method, body, headers and cookies passed through, redirects to either app pointed back at the
           proxy, cookie Domains that would not apply dropped, and each asset taken from the app that
           served the page it was loaded from (falling back to the other app).
-  config  --old <deployment> --new <deployment> [--vercel <file>] [--nitro <file>]
+  config  --old <deployment> --new <deployment> [--vercel <file>] [--nitro <file>] [--index <file>]
           Production routing for the switched routes: a vercel.json (switched routes and the assets
           their pages load to NEW, the rest to OLD) and Nitro routeRules for the Markless app in front
-          (every inventoried route and asset not switched yet proxied to OLD).
+          (every inventoried route and asset not switched yet proxied to OLD). --index writes the
+          front door's status page: every planned route, what serves it, and what is not ported yet.
   run     --agent <id> --old <origin> --new <origin> [--route <path>]... [--all] [--attempts <n>] [--model <name>]
           [--source <path>] [--new-source <path>] [--auth <file>] [--header <name:value>]... [--cookie <name=value>]...
           [--serve <command>] [--build <command>] [--restart-on <path>]
@@ -117,6 +129,14 @@ function fail(message: string): never {
 	process.exit(2);
 }
 
+function journeyOptions(budget: string | undefined, max: string | undefined): NonNullable<CheckOptions['journeys']> {
+	const seconds = budget === undefined ? undefined : Number(budget);
+	if (seconds !== undefined && !(seconds > 0)) fail('--journey-budget must be a number of seconds above 0');
+	const cap = max === undefined ? undefined : Number(max);
+	if (cap !== undefined && (!Number.isInteger(cap) || cap < 1)) fail('--max-journeys must be a whole number of at least 1');
+	return { ...(seconds !== undefined ? { budgetMs: seconds * 1000 } : {}), ...(cap !== undefined ? { maxJourneys: cap } : {}) };
+}
+
 function serverCommand(): ServerCommand {
 	const cli = fileURLToPath(import.meta.url);
 	if (cli.includes('/_npx/')) return { command: 'npx', args: ['-y', `@markless/migrate@${VERSION}`, 'mcp'] };
@@ -127,6 +147,24 @@ async function confirm(question: string): Promise<boolean> {
 	const rl = createInterface({ input: process.stdin, output: process.stderr });
 	try {
 		return /^y(es)?$/i.test((await rl.question(question)).trim());
+	} finally {
+		rl.close();
+	}
+}
+
+/** A forced switch is a person's decision: named with --by and --reason, or confirmed at a terminal. */
+async function forceDecision(route: string, reason: string | undefined, by: string | undefined): Promise<{ reason: string; by: string }> {
+	if (process.env[AGENT_ENV]) fail('switch --force is for a person: an agent run by markless-migrate run may not force a route');
+	if (reason?.trim() && by?.trim()) return { reason: reason.trim(), by: by.trim() };
+	if (!process.stdin.isTTY || !process.stderr.isTTY) fail('switch --force needs --by <name> and --reason <why> (or a terminal to confirm at): a forced route is served from the new app without proof that it works');
+	const rl = createInterface({ input: process.stdin, output: process.stderr });
+	try {
+		err(`Forcing ${route} serves it from the new app although its check is not green. The report will show it as "forced, not proven".\n`);
+		const why = reason?.trim() || (await rl.question('Why? ')).trim();
+		const who = by?.trim() || (await rl.question('Your name: ')).trim();
+		const typed = (await rl.question(`Type the route (${route}) to confirm: `)).trim();
+		if (!why || !who || typed !== route) fail('not forced: a reason, a name and the route typed back are all needed');
+		return { reason: why, by: who };
 	} finally {
 		rl.close();
 	}
@@ -193,8 +231,11 @@ async function run(args: string[], cwd: string): Promise<number> {
 			serve: { type: 'string' },
 			build: { type: 'string' },
 			'restart-on': { type: 'string' },
+			'journey-budget': { type: 'string' },
+			'max-journeys': { type: 'string' },
 		},
 	});
+	const journeys = journeyOptions(values['journey-budget'], values['max-journeys']);
 	if (!values.agent) fail(`run needs --agent <id> (${DRIVERS.map((d) => d.id).join(', ')})`);
 	if (!values.old || !values.new) fail('run needs --old <origin> and --new <origin>');
 	const attempts = values.attempts ? Number(values.attempts) : 3;
@@ -242,7 +283,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 			model: values.model,
 			cli: [mcp.command, ...mcp.args.slice(0, -1)].join(' '),
 			mcp,
-			context: { ...(source ? { source } : {}), ...(newSource ? { newSource } : {}), ...(values.auth ? { auth: resolve(values.auth) } : {}), flags: [...(values.header ?? []).flatMap((h) => ['--header', h]), ...(values.cookie ?? []).flatMap((c) => ['--cookie', c])] },
+			context: { ...(source ? { source } : {}), ...(newSource ? { newSource } : {}), ...(values.auth ? { auth: resolve(values.auth) } : {}), flags: [...(values.header ?? []).flatMap((h) => ['--header', h]), ...(values.cookie ?? []).flatMap((c) => ['--cookie', c]), ...(values['journey-budget'] ? ['--journey-budget', values['journey-budget']] : []), ...(values['max-journeys'] ? ['--max-journeys', values['max-journeys']] : [])] },
 			...(server ? { server, serving: { ...(values.build ? { build: values.build } : {}), ...(values['restart-on'] ? { restartOn: values['restart-on'] } : {}) } } : {}),
 			progress: out,
 			check: async (route) => {
@@ -257,9 +298,10 @@ async function run(args: string[], cwd: string): Promise<number> {
 					...(source || newSource ? { sourceDirs: { ...(source ? { old: source } : {}), ...(newSource ? { new: newSource } : {}) } } : {}),
 					...(auth ? { auth, authStateDir: join(cwd, STATE_DIR, 'auth') } : {}),
 					...bypass,
+					journeys,
 				});
-				await writeReport(report, join(cwd, STATE_DIR));
 				await recordResults(cwd, report);
+				await writeReport(report, join(cwd, STATE_DIR), await status(cwd));
 				return { ok: report.ok, summary: summarize(report) };
 			},
 		});
@@ -330,9 +372,12 @@ async function main(argv: string[]): Promise<number> {
 					changed: { type: 'boolean' },
 					concurrency: { type: 'string' },
 					'new-source': { type: 'string' },
+					'journey-budget': { type: 'string' },
+					'max-journeys': { type: 'string' },
 				},
 			});
 			if (!values.old || !values.new) fail('check needs --old <origin> and --new <origin>');
+			const journeys = journeyOptions(values['journey-budget'], values['max-journeys']);
 			let bypass: ReturnType<typeof bypassOptions> = {};
 			try {
 				bypass = bypassOptions(values.header, values.cookie);
@@ -392,10 +437,11 @@ async function main(argv: string[]): Promise<number> {
 				...(values.source || values['new-source'] ? { sourceDirs: { ...(values.source ? { old: resolve(values.source) } : {}), ...(values['new-source'] ? { new: resolve(values['new-source']) } : {}) } } : {}),
 				accepted: await readAccepted(join(cwd, STATE_DIR, ACCEPTED_FILE)).catch((error: Error) => fail(error.message)),
 				...(concurrency ? { concurrency } : {}),
+				journeys,
 				...(!values['new-source'] && !values.changed ? {} : { sourceDirs: { ...(values.source ? { old: resolve(values.source) } : {}), new: newDir } }),
 			});
-			const path = await writeReport(report, join(cwd, STATE_DIR));
 			await recordResults(cwd, report, commit ? { commit } : {});
+			const path = await writeReport(report, join(cwd, STATE_DIR), await status(cwd));
 			const html = join(dirname(path), 'report.html');
 			out(values.json ? `${JSON.stringify(jsonReport(report), null, 2)}\n` : `${summarize(report)}Report: ${path}\nVisual report: ${html}\n`);
 			if (values.open) await openFile(html);
@@ -431,6 +477,7 @@ async function main(argv: string[]): Promise<number> {
 		case 'run':
 			return run(rest, cwd);
 		case 'accept': {
+			if (process.env[AGENT_ENV]) fail('accept is for a person: an agent run by markless-migrate run may not accept a difference');
 			const { values, positionals } = parseArgs({ args: rest, allowPositionals: true, options: { reason: { type: 'string' }, by: { type: 'string' } } });
 			if (positionals.length !== 1) fail('accept needs one failure id, as printed in [brackets] after a failure');
 			if (!values.reason?.trim()) fail('accept needs --reason: why this difference is intended');
@@ -451,14 +498,16 @@ async function main(argv: string[]): Promise<number> {
 			return 0;
 		}
 		case 'switch': {
-			const { values, positionals } = parseArgs({ args: rest, allowPositionals: true, options: { force: { type: 'string' } } });
+			const { values, positionals } = parseArgs({ args: rest, allowPositionals: true, options: { force: { type: 'boolean' }, reason: { type: 'string' }, by: { type: 'string' } } });
 			if (positionals.length !== 1) fail('switch needs one route, for example switch /about/');
-			const outcome = await switchRoute(cwd, positionals[0]!, values.force !== undefined ? { force: values.force } : {});
+			const route = positionals[0]!;
+			const force = values.force ? await forceDecision(route, values.reason, values.by) : undefined;
+			const outcome = await switchRoute(cwd, route, force ? { force } : {});
 			if (!outcome.ok) {
 				err(`markless-migrate: ${outcome.reason}\n`);
 				return 1;
 			}
-			out(`${outcome.already ? 'Still switched' : 'Switched'} ${outcome.entry.route} to the new app${outcome.entry.forced ? ` (forced: ${outcome.entry.forced.reason}; last check ${outcome.entry.checks.join('; ') || 'none'})` : ''}. ${outcome.path}\n`);
+			out(`${outcome.already ? 'Still switched' : 'Switched'} ${outcome.entry.route} to the new app${outcome.entry.forced ? ` (forced by ${outcome.entry.forced.by}, not proven: ${outcome.entry.forced.reason}; last check ${outcome.entry.checks.join('; ') || 'none'})` : ''}. ${outcome.path}\n`);
 			return 0;
 		}
 		case 'unswitch': {
@@ -479,8 +528,9 @@ async function main(argv: string[]): Promise<number> {
 			return -1;
 		}
 		case 'config': {
-			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, new: { type: 'string' }, vercel: { type: 'string' }, nitro: { type: 'string' } } });
+			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, new: { type: 'string' }, vercel: { type: 'string' }, nitro: { type: 'string' }, index: { type: 'string' } } });
 			if (!values.old || !values.new) fail('config needs --old <deployment> and --new <deployment>');
+			if (values.index) await writeFile(values.index, renderStatusPage(await status(cwd), { old: values.old, new: values.new }));
 			const switched = (await readSwitched(cwd)).routes.map((r) => r.route);
 			const inventory = await readInventory(cwd);
 			const concrete = switched.filter((r) => !/[:*]/.test(r));
@@ -492,8 +542,8 @@ async function main(argv: string[]): Promise<number> {
 			const nitro = nitroSnippet(input);
 			if (values.vercel) await writeFile(values.vercel, vercel);
 			if (values.nitro) await writeFile(values.nitro, nitro);
-			if (!values.vercel && !values.nitro) out(`vercel.json:\n${vercel}\nNitro routeRules:\n${nitro}`);
-			else out(`Wrote ${[values.vercel, values.nitro].filter(Boolean).join(' and ')} for ${switched.length} switched route${switched.length === 1 ? '' : 's'}.\n`);
+			if (!values.vercel && !values.nitro && !values.index) out(`vercel.json:\n${vercel}\nNitro routeRules:\n${nitro}`);
+			else out(`Wrote ${[values.vercel, values.nitro, values.index].filter(Boolean).join(' and ')} for ${switched.length} switched route${switched.length === 1 ? '' : 's'}.\n`);
 			return 0;
 		}
 		default:

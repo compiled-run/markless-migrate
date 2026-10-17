@@ -45,7 +45,9 @@ export interface RecordedJourney extends Journey {
 
 const ROLES = ['button', 'link', 'checkbox', 'radio', 'switch', 'tab', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'option', 'textbox', 'searchbox', 'spinbutton', 'combobox'] as const;
 const DESTRUCTIVE = /\b(log ?out|sign ?out|delete|remove|destroy|unsubscribe|deactivate|close (my|your) account)\b/i;
-const MAX_JOURNEYS = 30;
+/** How long exploring one route may take by default; what is left is listed as not exercised. */
+export const DEFAULT_JOURNEY_BUDGET_MS = 120_000;
+const MAX_DEPTH = 4;
 const CONCURRENCY = 8;
 const STEP_TIMEOUT = 3_000;
 
@@ -60,7 +62,6 @@ export function localUrl(url: string, origin: string): string {
 }
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const key = (t: Target) => `${t.role}|${t.name}|${t.nth}`;
 
 export function describeTarget(t: Target): string {
 	return `${t.role}${t.name ? ` "${t.name}"` : ''}${t.nth ? ` #${t.nth + 1}` : ''}`;
@@ -103,43 +104,104 @@ interface Candidate {
 	readonly href?: string;
 	readonly type?: string;
 	readonly options?: readonly string[];
+	/** Where it sits: main content, a shared layout landmark (header, nav, aside, footer) or neither. */
+	readonly region: string;
+	readonly importance: number;
+	/** Same on every route that renders the same layout control; per route otherwise. */
+	readonly signature: string;
+	/** Why check does not use it, when it does not. */
+	readonly skip?: string;
+	/** Exercised by another dimension rather than by a journey. */
+	readonly covered?: string;
 }
+
+const LAYOUT = new Set(['header', 'banner', 'nav', 'navigation', 'aside', 'complementary', 'footer', 'contentinfo']);
+
+/** Main content first, and in it tables and forms: a page's own controls before the shared header and sidebar. */
+function importance(place: { region: string; table: boolean; form: boolean; dialog: boolean }): number {
+	if (place.table) return 4;
+	if (place.form) return 3;
+	if (place.region === 'main' || place.dialog) return 2;
+	return LAYOUT.has(place.region) ? 0 : 1;
+}
+
+export const isLayout = (c: Pick<Candidate, 'region'>) => LAYOUT.has(c.region);
 
 async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 	const out: Candidate[] = [];
+	const inRegion = new Map<string, number>();
+	const add = (c: Omit<Candidate, 'signature'>) => {
+		const group = `${c.region}|${c.target.role}|${c.target.name}`;
+		const n = inRegion.get(group) ?? 0;
+		inRegion.set(group, n + 1);
+		out.push({ ...c, signature: isLayout(c) ? `${group}|${n}` : `page|${c.target.role}|${c.target.name}|${c.target.nth}` });
+	};
 	for (const role of ROLES) {
 		const seen = new Map<string, number>();
 		for (const locator of await page.getByRole(role).all()) {
-			const line = (await locator.ariaSnapshot().catch(() => '')).split('\n')[0] ?? '';
+			const line = (await locator.ariaSnapshot({ timeout: STEP_TIMEOUT }).catch(() => '')).split('\n')[0] ?? '';
 			const name = /^- [\w-]+ "((?:[^"\\]|\\.)*)"/.exec(line)?.[1]?.replace(/\\(.)/g, '$1') ?? '';
 			const nth = seen.get(name) ?? 0;
 			seen.set(name, nth + 1);
 			if (!(await locator.isVisible().catch(() => false)) || (await locator.isDisabled().catch(() => true))) continue;
-			const info = await locator
-				.evaluate((el) => ({ href: el.getAttribute('href') ?? undefined, type: (el.getAttribute('type') ?? '').toLowerCase(), options: el instanceof HTMLSelectElement ? [...el.options].map((o) => o.value) : [] }))
-				.catch(() => undefined);
+			const info = await locator.evaluate(describeElement, undefined, { timeout: STEP_TIMEOUT }).catch(() => undefined);
 			if (!info) continue;
+			const target = { role, name, nth };
+			const base = { target, href: info.href, type: info.type, options: info.options, region: info.region, importance: importance(info) };
 			if (role === 'link') {
-				if (!info.href || /^(mailto|tel|javascript):/i.test(info.href)) continue;
+				if (!info.href || /^(mailto|tel):/i.test(info.href)) {
+					add({ ...base, covered: 'its address is compared by the rendered check' });
+					continue;
+				}
+				if (/^javascript:/i.test(info.href)) {
+					add(base);
+					continue;
+				}
 				const url = new URL(info.href, page.url());
-				if (url.origin !== origin || DESTRUCTIVE.test(url.pathname)) continue;
+				if (url.origin !== origin) {
+					add({ ...base, covered: 'it leaves the app: its address is compared by the rendered check' });
+					continue;
+				}
+				if (DESTRUCTIVE.test(url.pathname)) {
+					add({ ...base, skip: 'its address looks destructive (sign out, delete...), so check does not follow it' });
+					continue;
+				}
 			}
-			if (DESTRUCTIVE.test(name)) continue;
-			out.push({ target: { role, name, nth }, href: info.href, type: info.type, options: info.options });
+			if (DESTRUCTIVE.test(name)) {
+				add({ ...base, skip: 'its name looks destructive (sign out, delete...), so check does not use it' });
+				continue;
+			}
+			add(base);
 		}
 	}
 	const summaries = await page.locator('summary').all();
 	const seen = new Map<string, number>();
 	for (const locator of summaries) {
-		const name = ((await locator.textContent()) ?? '').replace(/\s+/g, ' ').trim();
+		const name = ((await locator.textContent({ timeout: STEP_TIMEOUT }).catch(() => '')) ?? '').replace(/\s+/g, ' ').trim();
 		const nth = seen.get(name) ?? 0;
 		seen.set(name, nth + 1);
-		if (await locator.isVisible().catch(() => false)) out.push({ target: { role: 'summary', name, nth } });
+		if (!(await locator.isVisible().catch(() => false))) continue;
+		const info = await locator.evaluate(describeElement, undefined, { timeout: STEP_TIMEOUT }).catch(() => undefined);
+		if (info) add({ target: { role: 'summary', name, nth }, region: info.region, importance: importance(info) });
 	}
 	return out;
 }
 
-async function forms(page: Page, origin: string): Promise<Step[]> {
+function describeElement(el: Element) {
+	const main = el.closest('main, [role="main"]');
+	const landmark = main ? null : el.closest('header, nav, aside, footer, [role="banner"], [role="navigation"], [role="complementary"], [role="contentinfo"]');
+	return {
+		href: el.getAttribute('href') ?? undefined,
+		type: (el.getAttribute('type') ?? '').toLowerCase(),
+		options: el instanceof HTMLSelectElement ? [...el.options].map((o) => o.value) : [],
+		region: main ? 'main' : landmark ? (landmark.getAttribute('role') ?? landmark.tagName.toLowerCase()) : '',
+		table: Boolean(el.closest('table, [role="table"], [role="grid"], [role="treegrid"]')),
+		form: Boolean(el.closest('form')) || /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName),
+		dialog: Boolean(el.closest('dialog, [role="dialog"], [role="alertdialog"]')),
+	};
+}
+
+async function forms(page: Page, origin: string, found: readonly Candidate[]): Promise<Step[]> {
 	const steps: Step[] = [];
 	const all = await page.locator('form').all();
 	for (const form of all) {
@@ -147,7 +209,8 @@ async function forms(page: Page, origin: string): Promise<Step[]> {
 		if (action && new URL(action).origin !== origin) continue;
 		const fields: { target: Target; value: string; check?: boolean }[] = [];
 		let submit: Target | undefined;
-		for (const c of await candidates(page, origin)) {
+		for (const c of found) {
+			if (c.skip || c.covered) continue;
 			const inForm = await locate(page, c.target)
 				.evaluate((el, f) => f.contains(el), await form.elementHandle())
 				.catch(() => false);
@@ -161,18 +224,23 @@ async function forms(page: Page, origin: string): Promise<Step[]> {
 	return steps;
 }
 
-function firstSteps(found: readonly Candidate[]): Step[] {
-	const steps: Step[] = [];
-	for (const c of found) {
-		const t = c.target;
-		if (t.role === 'link') steps.push({ action: 'click', target: t }, { action: 'press', key: 'Enter', target: t });
-		else if (t.role === 'button' && c.type === 'submit') steps.push({ action: 'press', key: 'Enter', target: t });
-		else if (t.role === 'button' || t.role === 'summary' || t.role === 'tab' || t.role.startsWith('menuitem') || t.role === 'option') steps.push({ action: 'click', target: t }, { action: 'press', key: 'Enter', target: t }, { action: 'press', key: 'Space', target: t });
-		else if (t.role === 'checkbox' || t.role === 'radio' || t.role === 'switch') steps.push({ action: 'click', target: t }, { action: 'press', key: 'Space', target: t });
-		else if (t.role === 'textbox' || t.role === 'searchbox' || t.role === 'spinbutton') steps.push({ action: 'fill', target: t, value: sample(c.type ?? '', t.name) });
-		else if (t.role === 'combobox' && c.options && c.options.length > 1) steps.push({ action: 'select', target: t, value: c.options[1]! });
-	}
-	return steps;
+/** The one step that uses an element as a visitor would, so a journey made of it exercises the element. */
+function primaryStep(c: Candidate): Step | undefined {
+	const t = c.target;
+	if (t.role === 'textbox' || t.role === 'searchbox' || t.role === 'spinbutton') return { action: 'fill', target: t, value: sample(c.type ?? '', t.name) };
+	if (t.role === 'combobox' && c.options?.length) return c.options.length > 1 ? { action: 'select', target: t, value: c.options[1]! } : undefined;
+	if (t.role === 'button' && c.type === 'submit') return { action: 'press', key: 'Enter', target: t };
+	return { action: 'click', target: t };
+}
+
+/** The keyboard paths to the same element: Enter on links and buttons, Space on buttons and toggles. */
+function keyboardSteps(c: Candidate): Step[] {
+	const t = c.target;
+	if (t.role === 'link') return [{ action: 'press', key: 'Enter', target: t }];
+	if (t.role === 'button' && c.type === 'submit') return [];
+	if (t.role === 'button' || t.role === 'summary' || t.role === 'tab' || t.role.startsWith('menuitem') || t.role === 'option') return [{ action: 'press', key: 'Enter', target: t }, { action: 'press', key: 'Space', target: t }];
+	if (t.role === 'checkbox' || t.role === 'radio' || t.role === 'switch') return [{ action: 'press', key: 'Space', target: t }];
+	return [];
 }
 
 // App requests only: framework transport (React Server Component payloads, server-action posts, /_next/ data) and plain page loads are left to the URL.
@@ -367,47 +435,223 @@ async function pool<T, R>(items: readonly T[], task: (item: T) => Promise<R>): P
 	return out;
 }
 
-/** Breadth first over the OLD page to depth 2: every control once from a fresh load, then whatever a step revealed. */
-export async function explore(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<RecordedJourney[]> {
+export interface ExploreOptions {
+	/** Wall-clock time exploring may take; elements not reached by then are listed as not exercised. */
+	readonly budgetMs?: number;
+	/** At most this many journeys, most important elements first. */
+	readonly maxJourneys?: number;
+	/** The route of this run that exercises a shared layout control, when it is another route. */
+	readonly owner?: (signature: string) => string | undefined;
+}
+
+/** One interactive element of the OLD page and how check used it. */
+export interface ElementCoverage {
+	/** Role and name, and the steps that reveal it when it is not on the page at load. */
+	readonly element: string;
+	readonly signature: string;
+	/** In a shared header, nav, sidebar or footer: exercised once per run, by the first route that has it. */
+	readonly layout: boolean;
+	/** The journey that uses it, or the check that covers it. */
+	readonly by?: string;
+	/** Why no journey used it. */
+	readonly reason?: string;
+	/** The route of this run whose journeys exercise it. */
+	readonly shared?: string;
+	/** The journeys of this route that use it. */
+	readonly journeys?: readonly string[];
+}
+
+export interface Exploration {
+	readonly journeys: RecordedJourney[];
+	readonly elements: readonly ElementCoverage[];
+	/** Keyboard and dismiss journeys left out when the budget ran out. */
+	readonly skipped: number;
+}
+
+interface Item {
+	readonly journey: Journey;
+	readonly element?: Tracked;
+	readonly depth: number;
+	/** Expand after it: collect what the last step revealed. */
+	readonly expand: boolean;
+}
+
+interface Tracked {
+	readonly candidate: Candidate;
+	readonly element: string;
+	readonly signature: string;
+	readonly layout: boolean;
+	readonly prefix: readonly Step[];
+	by?: string;
+	reason?: string;
+	shared?: string;
+	readonly journeys: string[];
+}
+
+/** Explores the OLD page until every interactive element is used by a journey or the budget runs out: the page's own controls first, then what each reveals, then keyboard paths. */
+export async function explore(browser: Browser, env: SideEnv, route: string, viewport: Viewport, options: ExploreOptions = {}): Promise<Exploration> {
 	const origin = env.origin;
 	const host = new URL(origin).origin;
+	const started = Date.now();
+	const budget = options.budgetMs ?? DEFAULT_JOURNEY_BUDGET_MS;
+	const cap = options.maxJourneys ?? Number.POSITIVE_INFINITY;
+	const tracked: Tracked[] = [];
+	const known = new Set<string>();
+	const journeys: RecordedJourney[] = [];
+	const later: Item[] = [];
+	let formSteps: Step[] = [];
+
+	const track = (found: readonly Candidate[], prefix: readonly Step[], parent: Tracked | undefined): Tracked[] => {
+		const fresh: Tracked[] = [];
+		for (const c of found) {
+			const id = `${c.target.role}|${c.target.name}|${c.target.nth}`;
+			if (known.has(id)) continue;
+			known.add(id);
+			const layout = parent ? parent.layout : isLayout(c);
+			const signature = parent ? `${parent.signature} > ${c.target.role}|${c.target.name}|${c.target.nth}` : c.signature;
+			const element = `${describeTarget(c.target)}${prefix.length ? ` (after ${prefix.map(describeStep).join(', then ')})` : ''}`;
+			const t: Tracked = { candidate: c, element, signature, layout, prefix, journeys: [] };
+			const owner = layout ? options.owner?.(signature) : undefined;
+			if (owner && owner !== route) t.shared = owner;
+			else if (c.covered) t.by = c.covered;
+			else if (c.skip) t.reason = c.skip;
+			tracked.push(t);
+			fresh.push(t);
+		}
+		return fresh;
+	};
+	const itemsFor = (elements: readonly Tracked[], depth: number): { primary: Item[]; keyboard: Item[] } => {
+		const primary: Item[] = [];
+		const keyboard: Item[] = [];
+		for (const t of [...elements].sort((a, b) => b.candidate.importance - a.candidate.importance)) {
+			if (t.shared || t.by || t.reason) continue;
+			const step = primaryStep(t.candidate);
+			if (!step) {
+				t.reason = 'it offers nothing to choose';
+				continue;
+			}
+			const steps = [...t.prefix, step];
+			primary.push({ journey: { name: steps.map(describeStep).join(', then '), steps }, element: t, depth, expand: step.action === 'click' || step.action === 'fill' || step.action === 'select' });
+			for (const k of keyboardSteps(t.candidate)) {
+				const ks = [...t.prefix, k];
+				keyboard.push({ journey: { name: ks.map(describeStep).join(', then '), steps: ks }, depth, expand: false });
+			}
+		}
+		return { primary, keyboard };
+	};
+	const outOfBudget = () => Date.now() - started > budget || journeys.length >= cap;
+
 	const start = await openSession(browser, env, route, viewport);
-	let first: Step[];
-	let initial: Set<string>;
+	let wave: Item[];
 	try {
 		const found = await candidates(start.page, host);
-		initial = new Set(found.map((c) => key(c.target)));
-		first = [...firstSteps(found), ...(await forms(start.page, host))];
+		const first = itemsFor(track(found, [], undefined), 1);
+		formSteps = await forms(start.page, host, found);
+		wave = [...first.primary, ...formSteps.map((step): Item => ({ journey: { name: describeStep(step), steps: [step] }, depth: 1, expand: false }))];
+		later.push(...first.keyboard);
 	} finally {
 		await start.close();
 	}
-	const journeys: RecordedJourney[] = [];
-	const level1 = await pool(first.slice(0, MAX_JOURNEYS), async (step) => {
+
+	const runItem = async (item: Item) => {
 		const session = await openSession(browser, env, route, viewport);
 		try {
-			const result = await session.run(step);
-			const path = new URL(session.page.url()).pathname;
-			const stayed = !result.failed && path === new URL(route, origin).pathname;
-			const revealed = stayed ? (await candidates(session.page, host)).filter((c) => !initial.has(key(c.target))) : [];
-			const expanded = stayed && step.action === 'click' && (await locate(session.page, step.target).getAttribute('aria-expanded').catch(() => null)) === 'true';
-			return { step, result, revealed, expanded };
+			const expected: StepResult[] = [];
+			for (const step of item.journey.steps) {
+				const result = await session.run(step);
+				expected.push(result);
+				if (result.failed) break;
+			}
+			const last = expected.at(-1)!;
+			const done = expected.length === item.journey.steps.length && !last.failed;
+			const stayed = done && new URL(session.page.url()).pathname === new URL(route, origin).pathname;
+			const revealed = item.expand && stayed ? await candidates(session.page, host) : [];
+			const step = item.journey.steps.at(-1)!;
+			const expanded = stayed && step.action === 'click' && (await locate(session.page, step.target).getAttribute('aria-expanded', { timeout: 500 }).catch(() => null)) === 'true';
+			return { item, expected, done, failed: last.failed, revealed, expanded };
 		} finally {
 			await session.close();
 		}
-	});
-	const second: Journey[] = [];
-	for (const { step, result, revealed, expanded } of level1) {
-		journeys.push({ name: describeStep(step), steps: [step], expected: [result] });
-		if (step.action !== 'click') continue;
-		for (const c of revealed) second.push({ name: `${describeStep(step)}, then click ${describeTarget(c.target)}`, steps: [step, { action: 'click', target: c.target }] });
-		if (expanded) {
-			second.push({ name: `${describeStep(step)}, then press Escape`, steps: [step, { action: 'press', key: 'Escape', target: step.target }] });
-			second.push({ name: `${describeStep(step)}, then press ArrowDown`, steps: [step, { action: 'press', key: 'ArrowDown', target: step.target }] });
+	};
+
+	for (let depth = 1; wave.length; depth++) {
+		const room = Math.max(0, cap - journeys.length);
+		const runnable = wave.slice(0, room);
+		for (const item of wave.slice(room)) if (item.element) item.element.reason = `out of the journey budget (${options.maxJourneys} journeys)`;
+		const results = await pool(runnable, async (item) => (outOfBudget() ? undefined : runItem(item)));
+		const next: Item[] = [];
+		for (const [i, r] of results.entries()) {
+			const item = runnable[i]!;
+			if (!r) {
+				if (item.element) item.element.reason = budgetReason(budget, options.maxJourneys);
+				continue;
+			}
+			journeys.push({ ...item.journey, expected: r.expected });
+			if (item.element) {
+				if (r.done) item.element.by = item.journey.name;
+				else item.element.reason = `it could not be used on the old page: ${r.failed ?? 'the journey stopped before it'}`;
+			}
+			if (r.expanded) {
+				for (const key of ['Escape', 'ArrowDown'] as const) {
+					const steps = [...item.journey.steps, { action: 'press' as const, key, target: item.journey.steps.at(-1)!.target }];
+					later.push({ journey: { name: steps.map(describeStep).join(', then '), steps }, depth, expand: false });
+				}
+			}
+			if (!r.revealed.length) continue;
+			const fresh = track(r.revealed, item.journey.steps, item.element);
+			if (depth >= MAX_DEPTH) {
+				for (const t of fresh) if (!t.shared && !t.by && !t.reason) t.reason = `it appears only after ${MAX_DEPTH} steps, deeper than check explores`;
+				continue;
+			}
+			const items = itemsFor(fresh, depth + 1);
+			next.push(...items.primary);
+			later.push(...items.keyboard);
 		}
+		wave = next;
 	}
-	const room = Math.max(0, MAX_JOURNEYS - journeys.length);
-	const level2 = await pool(second.slice(0, room), async (journey) => ({ ...journey, expected: await replay(browser, env, route, viewport, journey) }));
-	return [...journeys, ...level2];
+
+	const room = Math.max(0, cap - journeys.length);
+	const extra = await pool(later.slice(0, room), async (item) => (outOfBudget() ? undefined : runItem(item)));
+	let skipped = Math.max(0, later.length - room);
+	for (const [i, r] of extra.entries()) {
+		if (!r) {
+			skipped++;
+			continue;
+		}
+		const item = later[i]!;
+		journeys.push({ ...item.journey, expected: r.expected });
+	}
+	for (const t of tracked) {
+		const at = t.prefix.length;
+		for (const j of journeys) if (j.steps.length > at && sameSteps(t.prefix, j.steps.slice(0, at)) && sameTarget(j.steps[at]!.target, t.candidate.target)) t.journeys.push(j.name);
+	}
+	const elements = tracked.map((t): ElementCoverage => ({
+		element: t.element,
+		signature: t.signature,
+		layout: t.layout,
+		...(t.by ? { by: t.by } : {}),
+		...(t.reason && !t.by ? { reason: t.reason } : {}),
+		...(t.shared ? { shared: t.shared } : {}),
+		...(t.journeys.length ? { journeys: t.journeys } : {}),
+	}));
+	return { journeys, elements, skipped };
+}
+
+function budgetReason(budgetMs: number, maxJourneys: number | undefined): string {
+	return `out of the journey budget (${Math.round(budgetMs / 1000)} s${maxJourneys !== undefined ? ` or ${maxJourneys} journeys` : ''}): raise --journey-budget${maxJourneys !== undefined ? ' or --max-journeys' : ''}`;
+}
+
+const sameTarget = (a: Target, b: Target) => a.role === b.role && a.name === b.name && a.nth === b.nth;
+const sameSteps = (a: readonly Step[], b: readonly Step[]) => a.length === b.length && a.every((s, i) => s.action === b[i]!.action && sameTarget(s.target, b[i]!.target));
+
+/** The initial interactive elements of the OLD page, to decide which route of a run exercises each shared layout control. */
+export async function survey(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<string[]> {
+	const session = await openSession(browser, env, route, viewport);
+	try {
+		return (await candidates(session.page, new URL(env.origin).origin)).filter(isLayout).map((c) => c.signature);
+	} finally {
+		await session.close();
+	}
 }
 
 function stable(values: readonly string[]): (value: string) => boolean {

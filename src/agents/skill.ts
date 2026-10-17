@@ -21,11 +21,14 @@ matches it in a real browser. A route is done when its check is green, not when 
 4. Run the Markless app and call \`check_route\` with both origins and the route
    (or \`markless-migrate check --old <origin> --new <origin> --routes <route>\`).
 5. Every failure names the route, the dimension, the expected and actual values and a likely fix.
-   Fix them and check again until the route is green.
+   Fix them and check again until the route is green. A "not exercised" failure means no journey
+   used that control on the old page: port it (a dialog, a menu, a table control left out shows up
+   here) and raise \`--journey-budget\` if check ran out of time before reaching it.
 6. When the route is green, call \`switch_route\` (or \`markless-migrate switch <route>\`) so the proxy
    (\`markless-migrate proxy\`) and the deploy config (\`markless-migrate config\`) serve it from Markless.
    Never pass \`--force\`: only a human switches a route that is not green.
-7. Call \`status\` to see which routes are green, red or not checked yet, then repeat from step 3.
+7. Call \`status\` to see which routes are green, red, not ported or not checked yet, then repeat from
+   step 3. The migration is not done while any planned route is not ported.
 
 ## Rules
 

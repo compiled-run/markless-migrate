@@ -1,4 +1,4 @@
-import type { Failure, LoginResult, Report } from './types.ts';
+import type { Coverage, Failure, LoginResult, Report } from './types.ts';
 
 function kb(bytes: number): string {
 	return `${(bytes / 1024).toFixed(1)} kB`;
@@ -19,6 +19,11 @@ function loginLines(login: LoginResult): string[] {
 	const lines = [`      sign-in: ${login.ok ? 'same session cookies' : 'differs'}${login.cookies.old.length ? ` (${login.cookies.old.join(', ')})` : ''}`];
 	for (const f of login.failures) lines.push(...failureLines(f));
 	return lines;
+}
+
+export function coverageLine(c: Coverage): string {
+	const shared = c.elements.filter((e) => e.shared).length;
+	return `interactions exercised: ${c.exercised} of ${c.total}${shared ? ` (${shared} in a layout shared with another route)` : ''}${c.skipped ? `; ${c.skipped} keyboard journeys left out for the budget` : ''}`;
 }
 
 export function summarize(report: Report): string {
@@ -42,6 +47,7 @@ export function summarize(report: Report): string {
 		const stopped = Object.entries(route.dimensions).some(([, state]) => state === 'skipped');
 		const js = stopped ? 'page not compared: the two apps did not let this role in alike' : `JS on the wire ${kb(w.old.downloaded)} -> ${kb(w.new.downloaded)}, run at load ${kb(w.old.executed)} -> ${kb(w.new.executed)} (uncompressed)`;
 		lines.push(`${route.ok ? 'pass' : 'FAIL'}  ${route.route.padEnd(width)}  ${route.ok ? '' : `[${failed.join(', ')}]  `}${accepted ? `(${accepted} accepted) ` : ''}${route.endpoint ? `compared as ${route.endpoint}` : js}`);
+		if (route.coverage) lines.push(`      ${coverageLine(route.coverage)}`);
 		for (const f of route.failures) lines.push(...failureLines(f));
 	}
 	const samples = report.unchecked?.filter((u) => !u.reason) ?? [];

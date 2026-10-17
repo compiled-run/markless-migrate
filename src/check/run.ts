@@ -12,10 +12,10 @@ import { readRecording, recordable, slug, writeRecording } from './data.ts';
 import { checkEndpoint, checkRedirect, isPage } from './endpoints.ts';
 import { DEFAULT_FREEZE, pinnedBy, pinnedSummary, type FreezeOptions } from './freeze.ts';
 import { HINTS } from './hints.ts';
-import { locateFailures } from './locate.ts';
+import { locateFailures, NOT_EXERCISED } from './locate.ts';
 import { mapRules } from './sourcemap.ts';
 import { negotiationFailures } from './i18n.ts';
-import { compareJourneys, explore, replayAll } from './journeys.ts';
+import { compareJourneys, explore, replayAll, survey, type ExploreOptions } from './journeys.ts';
 import { assetsToProbe, compareRoute, cssTargets, httpFailures, noiseReport, noisyStyles, withFailures, type Probe } from './compare.ts';
 import { matchElements } from './match.ts';
 import { contractLines } from './network.ts';
@@ -23,9 +23,10 @@ import type { SourceFacts } from './source-facts.ts';
 import { compareStates, type StateInput } from './states.ts';
 import { discoverStates, parseRules } from './stylesheet.ts';
 import { renderHtml } from './html.ts';
+import type { Status } from '../status.ts';
 import { blocker, type BlockList } from './trackers.ts';
 import { matchRoute } from '../source/pattern.ts';
-import type { Blocked, Dimension, Failure, HttpCapture, LoginResult, PageCapture, Report, RouteCapture, RouteResult, Shot, Viewport } from './types.ts';
+import type { Blocked, Coverage, Dimension, Failure, HttpCapture, LoginResult, PageCapture, Report, RouteCapture, RouteResult, Shot, Viewport } from './types.ts';
 import { DIMENSIONS, VIEWPORTS } from './types.ts';
 
 export interface CheckOptions {
@@ -66,6 +67,8 @@ export interface CheckOptions {
 	readonly accepted?: readonly Accept[];
 	/** Routes checked at once; default half the cores, at most 4. */
 	readonly concurrency?: number;
+	/** How long exploring each route's interactions may take, and at most how many journeys it records. */
+	readonly journeys?: Pick<ExploreOptions, 'budgetMs' | 'maxJourneys'>;
 }
 
 export const DEFAULT_CONCURRENCY = Math.max(1, Math.min(4, Math.floor(availableParallelism() / 2)));
@@ -89,6 +92,7 @@ interface Run {
 	readonly frozen: boolean;
 	readonly source?: SourceFacts;
 	readonly sourceDirs?: { readonly old?: string; readonly new?: string };
+	readonly journeys?: ExploreOptions;
 }
 
 async function probe(env: SideEnv, url: string): Promise<Probe> {
@@ -150,20 +154,52 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 	const loadWrites = (Object.values(oldA.pages)[0]?.writes ?? []).map((w) => ({ ...w, during: 'page load' }));
 	const result = withFailures(compared, [...compared.failures, ...negotiationFailures(route, languages, [negotiatedA, negotiatedB], negotiatedNew)], { noise, writes: loadWrites });
 	const checked = await checkJourneys(browser, run, route, viewports[0]!, await checkStates(browser, run, route, viewports, olds, result));
-	const done = await locateFailures(checked, { route, old: oldA, next, sides: { old: { origin: oldOrigin, dir: run.sourceDirs?.old }, new: { origin: newOrigin, dir: run.sourceDirs?.new } }, ...(run.source ? { facts: run.source } : {}) });
+	const located = await locateFailures(checked, { route, old: oldA, next, sides: { old: { origin: oldOrigin, dir: run.sourceDirs?.old }, new: { origin: newOrigin, dir: run.sourceDirs?.new } }, ...(run.source ? { facts: run.source } : {}) });
+	const done = oldA.http.status < 400 && (next.http.status === 404 || next.http.status === 410) ? { ...located, notPorted: true } : located;
 	oldCaptures.set(done, oldA);
 	return done;
 }
 
 // Explores OLD, then replays every journey on OLD again and on NEW; a third OLD replay confirms noise when the first two differ.
 async function checkJourneys(browser: Browser, run: Run, route: string, viewport: Viewport, result: RouteResult): Promise<RouteResult> {
-	const journeys = await explore(browser, run.old, route, viewport);
+	const explored = await explore(browser, run.old, route, viewport, run.journeys);
+	const journeys = explored.journeys;
 	const recorded = journeys.map((j) => j.expected);
 	const [again, next] = await Promise.all([replayAll(browser, run.old, route, viewport, journeys), replayAll(browser, run.new, route, viewport, journeys)]);
 	const runs = [recorded, again];
 	if (JSON.stringify(recorded) !== JSON.stringify(again)) runs.push(await replayAll(browser, run.old, route, viewport, journeys));
 	const writes = journeys.flatMap((j) => j.expected.flatMap((step) => (step.writes ?? []).map((w) => ({ ...w, during: j.name }))));
-	return withFailures(result, [...result.failures, ...compareJourneys(route, runs, journeys, next)], { journeys, writes: [...(result.writes ?? []), ...writes] });
+	const coverage: Coverage = { total: explored.elements.length, exercised: explored.elements.filter((e) => e.by).length, elements: explored.elements, skipped: explored.skipped };
+	const unexercised = explored.elements.filter((e) => !e.by && !e.shared).map((e) => notExercised(route, e.element, e.reason ?? 'no journey used it'));
+	return withFailures(result, [...result.failures, ...compareJourneys(route, runs, journeys, next), ...unexercised], { journeys, coverage, writes: [...(result.writes ?? []), ...writes] });
+}
+
+export function notExercised(route: string, element: string, reason: string): Failure {
+	return { route, dimension: 'behaviour', check: `${NOT_EXERCISED}${element}`, expected: 'a journey that uses it on the old page, replayed on the new one', actual: reason, hint: HINTS.coverage };
+}
+
+/** Each shared layout control is exercised by the first route of the run that has it; the others carry its verdict. */
+export function shareLayout(results: readonly RouteResult[]): RouteResult[] {
+	const byRoute = new Map(results.map((r) => [r.route, r]));
+	return results.map((r) => {
+		const shared = r.coverage?.elements.filter((e) => e.shared) ?? [];
+		if (!shared.length) return r;
+		const added: Failure[] = [];
+		let exercised = r.coverage!.exercised;
+		for (const e of shared) {
+			const owner = byRoute.get(e.shared!);
+			const theirs = owner?.coverage?.elements.find((o) => o.signature === e.signature);
+			if (!theirs || !theirs.by) {
+				added.push(notExercised(r.route, `${e.element}, shared with ${e.shared}`, theirs?.reason ?? `${e.shared} was not compared, so its shared controls were not exercised`));
+				continue;
+			}
+			exercised++;
+			const names = theirs.journeys ?? [];
+			for (const f of owner!.failures) if (names.some((n) => f.check === n || f.check.startsWith(`${n} (step `))) added.push({ ...f, route: r.route, check: `${f.check}, in the layout shared with ${e.shared}` });
+		}
+		const coverage = { ...r.coverage!, exercised };
+		return added.length ? withFailures({ ...r, coverage }, [...r.failures, ...added]) : { ...r, coverage };
+	});
 }
 
 // Forces every state the OLD stylesheets style, on the first viewport, and names the OLD rule behind each computed-style failure.
@@ -301,6 +337,17 @@ async function signInAs(browser: Browser, base: Run, role: string, spec: RoleSpe
 	};
 }
 
+/** Which route exercises each shared layout control: the first, in the order the routes were given, that has it. */
+async function layoutOwners(browser: Browser, run: Run, routes: readonly string[], options: CheckOptions): Promise<Map<string, string>> {
+	const viewport = (options.viewports ?? VIEWPORTS)[0]!;
+	const found = await pool(routes, options.concurrency ?? DEFAULT_CONCURRENCY, (route) => survey(browser, run.old, route, viewport).catch(() => [] as string[]));
+	const owners = new Map<string, string>();
+	routes.forEach((route, i) => {
+		for (const signature of found[i]!) if (!owners.has(signature)) owners.set(signature, route);
+	});
+	return owners;
+}
+
 export async function runCheck(options: CheckOptions): Promise<Report> {
 	const startedAt = new Date().toISOString();
 	const browser = options.browser ?? (await chromium.launch());
@@ -325,7 +372,10 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				roleRun = signed.run;
 			}
 			const data = options.data && role && role !== ANONYMOUS ? { ...options.data, dir: join(options.data.dir, slug(role)) } : options.data;
-			const checked = await pool(options.routes.filter((route) => !endpoints.has(route)), options.concurrency ?? DEFAULT_CONCURRENCY, async (route) => {
+			const pages = options.routes.filter((route) => !endpoints.has(route));
+			const owners = pages.length > 1 ? await layoutOwners(browser, roleRun, pages, options) : new Map<string, string>();
+			roleRun = { ...roleRun, journeys: { ...options.journeys, owner: (signature) => owners.get(signature.split(' > ')[0]!) } };
+			const checked = await pool(pages, options.concurrency ?? DEFAULT_CONCURRENCY, async (route) => {
 				const { run, failures } = data?.mode === 'replay' ? await replayRoute(roleRun, data.dir, route) : { run: roleRun, failures: [] };
 				const result = await checkAs(browser, run, route, role, loginPaths, options);
 				const old = oldCaptures.get(result);
@@ -335,7 +385,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				}
 				return asRole(failures.length ? withFailures(result, [...failures, ...result.failures]) : result, role);
 			});
-			routes.push(...checked);
+			routes.push(...shareLayout(checked));
 			for (const route of endpoints) routes.push(asRole(await checkEndpoint(roleRun, route), role));
 			for (const route of options.redirects ?? []) routes.push(asRole(await checkRedirect(roleRun, route), role));
 		}
@@ -363,7 +413,7 @@ export function jsonReport(report: Report, diffs: Readonly<Record<string, string
 	return { ...report, routes: report.routes.map(({ visualDiffs: _, shots: __, journeys, ...route }) => ({ ...route, visualDiffs: diffs[route.route] ?? [], journeys: journeys?.length ?? 0 })) };
 }
 
-export async function writeReport(report: Report, dir: string): Promise<string> {
+export async function writeReport(report: Report, dir: string, status?: Status): Promise<string> {
 	await mkdir(dir, { recursive: true });
 	const diffs: Record<string, string[]> = {};
 	for (const route of report.routes) {
@@ -386,7 +436,7 @@ export async function writeReport(report: Report, dir: string): Promise<string> 
 		const name = `shots/${createHash('sha256').update(png).digest('hex').slice(0, 16)}.png`;
 		images.set(name, png);
 		return name;
-	});
+	}, status);
 	if (images.size) await mkdir(join(dir, 'shots'), { recursive: true });
 	for (const [name, png] of images) await writeFile(join(dir, name), png);
 	await writeFile(join(dir, 'report.html'), html);
