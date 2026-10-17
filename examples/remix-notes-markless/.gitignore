@@ -7,3 +7,6 @@ dist/
 .env
 .vercel/
 data/notes.db
+server/seed-db.mjs
+.vercel
+.env*

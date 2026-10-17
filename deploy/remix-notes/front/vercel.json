@@ -1,0 +1,648 @@
+{
+	"rewrites": [
+		{
+			"source": "/",
+			"destination": "https://mm-remix-notes-new.vercel.app/"
+		},
+		{
+			"source": "/join",
+			"destination": "https://mm-remix-notes-new.vercel.app/join"
+		},
+		{
+			"source": "/join/",
+			"destination": "https://mm-remix-notes-new.vercel.app/join/"
+		},
+		{
+			"source": "/login",
+			"destination": "https://mm-remix-notes-new.vercel.app/login"
+		},
+		{
+			"source": "/login/",
+			"destination": "https://mm-remix-notes-new.vercel.app/login/"
+		},
+		{
+			"source": "/notes",
+			"destination": "https://mm-remix-notes-new.vercel.app/notes"
+		},
+		{
+			"source": "/notes/",
+			"destination": "https://mm-remix-notes-new.vercel.app/notes/"
+		},
+		{
+			"source": "/notes/new",
+			"destination": "https://mm-remix-notes-new.vercel.app/notes/new"
+		},
+		{
+			"source": "/notes/new/",
+			"destination": "https://mm-remix-notes-new.vercel.app/notes/new/"
+		},
+		{
+			"source": "/notes/:noteId",
+			"destination": "https://mm-remix-notes-new.vercel.app/notes/:noteId"
+		},
+		{
+			"source": "/notes/:noteId/",
+			"destination": "https://mm-remix-notes-new.vercel.app/notes/:noteId/"
+		},
+		{
+			"source": "/healthcheck",
+			"destination": "https://mm-remix-notes-new.vercel.app/healthcheck"
+		},
+		{
+			"source": "/healthcheck/",
+			"destination": "https://mm-remix-notes-new.vercel.app/healthcheck/"
+		},
+		{
+			"source": "/assets/:path*",
+			"destination": "https://mm-remix-notes-new.vercel.app/assets/:path*"
+		},
+		{
+			"source": "/build/chunk-0zgip4_7.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-0zgip4_7.js"
+		},
+		{
+			"source": "/build/chunk-1PJwrub-2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-1PJwrub-2.js"
+		},
+		{
+			"source": "/build/chunk-1m0oZ5HL2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-1m0oZ5HL2.js"
+		},
+		{
+			"source": "/build/chunk-4CYyPA042.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-4CYyPA042.js"
+		},
+		{
+			"source": "/build/chunk-4zc1Pauf.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-4zc1Pauf.js"
+		},
+		{
+			"source": "/build/chunk-5e17fKnw2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-5e17fKnw2.js"
+		},
+		{
+			"source": "/build/chunk-7cIQst0l.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-7cIQst0l.js"
+		},
+		{
+			"source": "/build/chunk-B-UqUEBU2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-B-UqUEBU2.js"
+		},
+		{
+			"source": "/build/chunk-B0eh0sjN.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-B0eh0sjN.js"
+		},
+		{
+			"source": "/build/chunk-B2AzFS-X.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-B2AzFS-X.js"
+		},
+		{
+			"source": "/build/chunk-B8C4qaVK.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-B8C4qaVK.js"
+		},
+		{
+			"source": "/build/chunk-B9-NMQNt.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-B9-NMQNt.js"
+		},
+		{
+			"source": "/build/chunk-BAu6L5B3.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BAu6L5B3.js"
+		},
+		{
+			"source": "/build/chunk-BBvkq1jO.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BBvkq1jO.js"
+		},
+		{
+			"source": "/build/chunk-BC9hWwHi2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BC9hWwHi2.js"
+		},
+		{
+			"source": "/build/chunk-BCpozS492.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BCpozS492.js"
+		},
+		{
+			"source": "/build/chunk-BESpo--U.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BESpo--U.js"
+		},
+		{
+			"source": "/build/chunk-BF8GAg8E.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BF8GAg8E.js"
+		},
+		{
+			"source": "/build/chunk-BFfgvVme2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BFfgvVme2.js"
+		},
+		{
+			"source": "/build/chunk-BJIqDFrq2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BJIqDFrq2.js"
+		},
+		{
+			"source": "/build/chunk-BKtt9VZh2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BKtt9VZh2.js"
+		},
+		{
+			"source": "/build/chunk-BL4pQqmg2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BL4pQqmg2.js"
+		},
+		{
+			"source": "/build/chunk-BLzyrjeV.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BLzyrjeV.js"
+		},
+		{
+			"source": "/build/chunk-BRQARcbM.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BRQARcbM.js"
+		},
+		{
+			"source": "/build/chunk-BSBLq9Tr.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BSBLq9Tr.js"
+		},
+		{
+			"source": "/build/chunk-BSQ4HQXa2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BSQ4HQXa2.js"
+		},
+		{
+			"source": "/build/chunk-BTzH6uOO.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BTzH6uOO.js"
+		},
+		{
+			"source": "/build/chunk-BVL7j_NK2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BVL7j_NK2.js"
+		},
+		{
+			"source": "/build/chunk-BV_m-yoR.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BV_m-yoR.js"
+		},
+		{
+			"source": "/build/chunk-BWVlALjy2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BWVlALjy2.js"
+		},
+		{
+			"source": "/build/chunk-BWbykW7B2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BWbykW7B2.js"
+		},
+		{
+			"source": "/build/chunk-BhClDku5.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BhClDku5.js"
+		},
+		{
+			"source": "/build/chunk-BjTPE2rl2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BjTPE2rl2.js"
+		},
+		{
+			"source": "/build/chunk-BjWmiX1T.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BjWmiX1T.js"
+		},
+		{
+			"source": "/build/chunk-BkU5rVB02.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BkU5rVB02.js"
+		},
+		{
+			"source": "/build/chunk-BlEHakdW.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BlEHakdW.js"
+		},
+		{
+			"source": "/build/chunk-BlecuKKE2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BlecuKKE2.js"
+		},
+		{
+			"source": "/build/chunk-BoWZlxHg.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BoWZlxHg.js"
+		},
+		{
+			"source": "/build/chunk-BqJezA5A.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BqJezA5A.js"
+		},
+		{
+			"source": "/build/chunk-BqVpTfNv.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BqVpTfNv.js"
+		},
+		{
+			"source": "/build/chunk-BqehEO8c.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BqehEO8c.js"
+		},
+		{
+			"source": "/build/chunk-Bqf6nDsw2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-Bqf6nDsw2.js"
+		},
+		{
+			"source": "/build/chunk-BqnVp9zs2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BqnVp9zs2.js"
+		},
+		{
+			"source": "/build/chunk-Br6FZ9w4.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-Br6FZ9w4.js"
+		},
+		{
+			"source": "/build/chunk-BtWIfj0d2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BtWIfj0d2.js"
+		},
+		{
+			"source": "/build/chunk-Bu0OCtjc.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-Bu0OCtjc.js"
+		},
+		{
+			"source": "/build/chunk-BuO8WNNg.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BuO8WNNg.js"
+		},
+		{
+			"source": "/build/chunk-ByegXILN2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-ByegXILN2.js"
+		},
+		{
+			"source": "/build/chunk-BzHLJtQO2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-BzHLJtQO2.js"
+		},
+		{
+			"source": "/build/chunk-C28qy1gh.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-C28qy1gh.js"
+		},
+		{
+			"source": "/build/chunk-C308tFii.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-C308tFii.js"
+		},
+		{
+			"source": "/build/chunk-C38BrWdW2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-C38BrWdW2.js"
+		},
+		{
+			"source": "/build/chunk-C3Godrqu.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-C3Godrqu.js"
+		},
+		{
+			"source": "/build/chunk-C4BRo0zJ.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-C4BRo0zJ.js"
+		},
+		{
+			"source": "/build/chunk-C5sHCGld.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-C5sHCGld.js"
+		},
+		{
+			"source": "/build/chunk-C6mRu6wk.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-C6mRu6wk.js"
+		},
+		{
+			"source": "/build/chunk-C7f8QgyJ2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-C7f8QgyJ2.js"
+		},
+		{
+			"source": "/build/chunk-C7jCOmhC.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-C7jCOmhC.js"
+		},
+		{
+			"source": "/build/chunk-C8h69Puv2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-C8h69Puv2.js"
+		},
+		{
+			"source": "/build/chunk-C9On7nMG.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-C9On7nMG.js"
+		},
+		{
+			"source": "/build/chunk-CAAuBPPz.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-CAAuBPPz.js"
+		},
+		{
+			"source": "/build/chunk-CC2XoUxr.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-CC2XoUxr.js"
+		},
+		{
+			"source": "/build/chunk-CLieg31k.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-CLieg31k.js"
+		},
+		{
+			"source": "/build/chunk-CPTysLEv.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-CPTysLEv.js"
+		},
+		{
+			"source": "/build/chunk-CRKuXh9I.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-CRKuXh9I.js"
+		},
+		{
+			"source": "/build/chunk-CT7WIN8D2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-CT7WIN8D2.js"
+		},
+		{
+			"source": "/build/chunk-CTiCxQqd.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-CTiCxQqd.js"
+		},
+		{
+			"source": "/build/chunk-CW9bgFnC.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-CW9bgFnC.js"
+		},
+		{
+			"source": "/build/chunk-CW9uOCeN2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-CW9uOCeN2.js"
+		},
+		{
+			"source": "/build/chunk-CXWOOviV2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-CXWOOviV2.js"
+		},
+		{
+			"source": "/build/chunk-CYznQuG_.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-CYznQuG_.js"
+		},
+		{
+			"source": "/build/chunk-CaGYTHge2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-CaGYTHge2.js"
+		},
+		{
+			"source": "/build/chunk-Cc0tzR6L.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-Cc0tzR6L.js"
+		},
+		{
+			"source": "/build/chunk-CijMSuLf.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-CijMSuLf.js"
+		},
+		{
+			"source": "/build/chunk-CisSVH5Q.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-CisSVH5Q.js"
+		},
+		{
+			"source": "/build/chunk-Cj2tUXa0.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-Cj2tUXa0.js"
+		},
+		{
+			"source": "/build/chunk-CnuokEAt2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-CnuokEAt2.js"
+		},
+		{
+			"source": "/build/chunk-CqNgL8fd.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-CqNgL8fd.js"
+		},
+		{
+			"source": "/build/chunk-Cr3ez9XI.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-Cr3ez9XI.js"
+		},
+		{
+			"source": "/build/chunk-Cr8UEVSy2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-Cr8UEVSy2.js"
+		},
+		{
+			"source": "/build/chunk-CrkdhzmT.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-CrkdhzmT.js"
+		},
+		{
+			"source": "/build/chunk-CrrmxfSs.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-CrrmxfSs.js"
+		},
+		{
+			"source": "/build/chunk-Cx7jqO3C2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-Cx7jqO3C2.js"
+		},
+		{
+			"source": "/build/chunk-CyTcFskX.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-CyTcFskX.js"
+		},
+		{
+			"source": "/build/chunk-D0oYmIZE.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-D0oYmIZE.js"
+		},
+		{
+			"source": "/build/chunk-D1NCjrRX.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-D1NCjrRX.js"
+		},
+		{
+			"source": "/build/chunk-D2ibe-5Y.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-D2ibe-5Y.js"
+		},
+		{
+			"source": "/build/chunk-D4nbbGjP.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-D4nbbGjP.js"
+		},
+		{
+			"source": "/build/chunk-D62wOHY72.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-D62wOHY72.js"
+		},
+		{
+			"source": "/build/chunk-D8tSsvd12.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-D8tSsvd12.js"
+		},
+		{
+			"source": "/build/chunk-DAvPXSxQ.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DAvPXSxQ.js"
+		},
+		{
+			"source": "/build/chunk-DEJzArPF.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DEJzArPF.js"
+		},
+		{
+			"source": "/build/chunk-DF6GKeJ12.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DF6GKeJ12.js"
+		},
+		{
+			"source": "/build/chunk-DGL4Ivar2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DGL4Ivar2.js"
+		},
+		{
+			"source": "/build/chunk-DIGAoAqG.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DIGAoAqG.js"
+		},
+		{
+			"source": "/build/chunk-DIjwd7NK2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DIjwd7NK2.js"
+		},
+		{
+			"source": "/build/chunk-DKdx0Awx.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DKdx0Awx.js"
+		},
+		{
+			"source": "/build/chunk-DLWNSSkO.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DLWNSSkO.js"
+		},
+		{
+			"source": "/build/chunk-DNvi-Rf_2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DNvi-Rf_2.js"
+		},
+		{
+			"source": "/build/chunk-DPlnmUCE.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DPlnmUCE.js"
+		},
+		{
+			"source": "/build/chunk-DPpqD7Gg.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DPpqD7Gg.js"
+		},
+		{
+			"source": "/build/chunk-DUTWCf-l.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DUTWCf-l.js"
+		},
+		{
+			"source": "/build/chunk-DXqzCLqP.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DXqzCLqP.js"
+		},
+		{
+			"source": "/build/chunk-DYoRvKYd.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DYoRvKYd.js"
+		},
+		{
+			"source": "/build/chunk-D_WsZsyq.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-D_WsZsyq.js"
+		},
+		{
+			"source": "/build/chunk-D_gw-J_D2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-D_gw-J_D2.js"
+		},
+		{
+			"source": "/build/chunk-DcEUaSLH.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DcEUaSLH.js"
+		},
+		{
+			"source": "/build/chunk-DcZTsDAx.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DcZTsDAx.js"
+		},
+		{
+			"source": "/build/chunk-Df_sCWZl2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-Df_sCWZl2.js"
+		},
+		{
+			"source": "/build/chunk-DgQ9QOLv.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DgQ9QOLv.js"
+		},
+		{
+			"source": "/build/chunk-DhUuePVF2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DhUuePVF2.js"
+		},
+		{
+			"source": "/build/chunk-DkfnSkWc.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DkfnSkWc.js"
+		},
+		{
+			"source": "/build/chunk-DmITKXl92.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DmITKXl92.js"
+		},
+		{
+			"source": "/build/chunk-DnCiIF3G.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DnCiIF3G.js"
+		},
+		{
+			"source": "/build/chunk-Dn_Dgkjo.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-Dn_Dgkjo.js"
+		},
+		{
+			"source": "/build/chunk-DnuSh_Jz.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DnuSh_Jz.js"
+		},
+		{
+			"source": "/build/chunk-DpKPQHpE2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DpKPQHpE2.js"
+		},
+		{
+			"source": "/build/chunk-Dsu-Xt59.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-Dsu-Xt59.js"
+		},
+		{
+			"source": "/build/chunk-DucuQHMM.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DucuQHMM.js"
+		},
+		{
+			"source": "/build/chunk-DvGE9MxT2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DvGE9MxT2.js"
+		},
+		{
+			"source": "/build/chunk-DvsPVoO8.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DvsPVoO8.js"
+		},
+		{
+			"source": "/build/chunk-DwWnYW5p.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DwWnYW5p.js"
+		},
+		{
+			"source": "/build/chunk-DxHvcxSP.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-DxHvcxSP.js"
+		},
+		{
+			"source": "/build/chunk-Dyvc-u3S.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-Dyvc-u3S.js"
+		},
+		{
+			"source": "/build/chunk-IONGjA1Y.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-IONGjA1Y.js"
+		},
+		{
+			"source": "/build/chunk-J9ixrIJi.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-J9ixrIJi.js"
+		},
+		{
+			"source": "/build/chunk-JozAHymX2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-JozAHymX2.js"
+		},
+		{
+			"source": "/build/chunk-L-gSN4db.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-L-gSN4db.js"
+		},
+		{
+			"source": "/build/chunk-TyEDsXIZ.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-TyEDsXIZ.js"
+		},
+		{
+			"source": "/build/chunk-ZYNZA3r6.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-ZYNZA3r6.js"
+		},
+		{
+			"source": "/build/chunk-fXYQqQpP.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-fXYQqQpP.js"
+		},
+		{
+			"source": "/build/chunk-gUKCdg9t.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-gUKCdg9t.js"
+		},
+		{
+			"source": "/build/chunk-hT8QtZkg2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-hT8QtZkg2.js"
+		},
+		{
+			"source": "/build/chunk-jw1iXjQl.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-jw1iXjQl.js"
+		},
+		{
+			"source": "/build/chunk-mwEYMYuZ.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-mwEYMYuZ.js"
+		},
+		{
+			"source": "/build/chunk-n4acfVqa.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-n4acfVqa.js"
+		},
+		{
+			"source": "/build/chunk-oDM17Nek.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-oDM17Nek.js"
+		},
+		{
+			"source": "/build/chunk-qqfMKhPf.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-qqfMKhPf.js"
+		},
+		{
+			"source": "/build/chunk-tUxd10DL.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-tUxd10DL.js"
+		},
+		{
+			"source": "/build/chunk-uZbWqj6R2.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-uZbWqj6R2.js"
+		},
+		{
+			"source": "/build/chunk-xEuJyn5Q.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-xEuJyn5Q.js"
+		},
+		{
+			"source": "/build/chunk-xSpygEQ62.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-xSpygEQ62.js"
+		},
+		{
+			"source": "/build/chunk-xu6Ng3V72.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-xu6Ng3V72.js"
+		},
+		{
+			"source": "/build/chunk-y5-s7T5-.js",
+			"destination": "https://mm-remix-notes-new.vercel.app/build/chunk-y5-s7T5-.js"
+		},
+		{
+			"source": "/",
+			"destination": "https://mm-remix-notes-old.vercel.app/"
+		},
+		{
+			"source": "/:path*/",
+			"destination": "https://mm-remix-notes-old.vercel.app/:path*/"
+		},
+		{
+			"source": "/:path*",
+			"destination": "https://mm-remix-notes-old.vercel.app/:path*"
+		}
+	]
+}
