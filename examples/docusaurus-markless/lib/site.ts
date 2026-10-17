@@ -241,7 +241,10 @@ function dismissAnnouncement(): void {
 let searching: Promise<void> | undefined;
 
 function openSearch(): void {
-	searching ??= import('./search.ts').then((search) => search.open());
+	searching ??= import('./search.ts').then(async (search) => {
+		await search.load();
+		search.open();
+	});
 	void searching.then(() => import('./search.ts')).then((search) => search.show());
 }
 

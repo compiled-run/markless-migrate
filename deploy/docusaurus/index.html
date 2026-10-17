@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>docusaurus.io: a migration to Markless</title>
+<style>
+body { font: 16px/1.5 system-ui, sans-serif; max-width: 42rem; margin: 3rem auto; padding: 0 1rem; color: #1b2a33; }
+a { color: #0a5c8a; }
+li { margin: 0.5rem 0; }
+</style>
+</head>
+<body>
+<h1>docusaurus.io: a migration to Markless</h1>
+<p>The docusaurus.io home page, <a href="/docs">Introduction</a> and <a href="/docs/installation">Installation</a>,
+ported to Markless with <code>@markless/migrate</code> and Claude Code and checked against the original. Every other
+page is still the old Docusaurus site, served through the front door.</p>
+<ul>
+<li><a href="https://mm-docusaurus-old.vercel.app/">The old site</a> (Docusaurus 4, built with its <code>build:fast</code> script; its Google Analytics tags removed)</li>
+<li><a href="https://mm-docusaurus-new.vercel.app/">The new app</a> (Markless 0.4.0; only the three ported routes)</li>
+<li><a href="/">The front door</a>: the three switched routes from the new app, the rest from the old one</li>
+<li><a href="/_migrate/report.html">The check report</a></li>
+</ul>
+</body>
+</html>
