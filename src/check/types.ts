@@ -251,7 +251,7 @@ export interface Report {
 	/** Whether writes were sent to the apps or held back and compared unsent. */
 	readonly writes?: 'sent' | 'held back';
 	/** Source routes not checked because no crawled path or sample gave their dynamic segments a value. */
-	readonly unchecked?: readonly { readonly route: string; readonly params: readonly string[]; readonly file?: string; readonly line?: number }[];
+	readonly unchecked?: readonly { readonly route: string; readonly params: readonly string[]; readonly file?: string; readonly line?: number; readonly reason?: string }[];
 	/** Roles checked, `anonymous` first, when check ran with --auth; routes are grouped in this order. */
 	readonly roles?: readonly string[];
 	readonly logins?: readonly LoginResult[];

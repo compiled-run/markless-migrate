@@ -30,3 +30,19 @@ test('.migrate/samples.json fills a segment by name or names a path for a patter
 	assert.deepEqual(routeTargets(inventory, { slug: 'first-post' }).pages.filter((p) => p.includes('news')), ['/en/news/first-post']);
 	assert.deepEqual(routeTargets(inventory, { '/:lang/news/:slug': '/fr/news/bonjour' }).needsSample, []);
 });
+
+test('check --all leaves out a source GET endpoint whose handler writes, and says why', () => {
+	const seeding = {
+		routes: [{ route: '/' }],
+		routeUnion: [
+			{ route: '/query', knownBy: ['source'], crawled: [], dynamic: false, kind: 'endpoint', file: 'app/query/route.ts', line: 16 },
+			{ route: '/seed', knownBy: ['source'], crawled: [], dynamic: false, kind: 'endpoint', file: 'app/seed/route.ts', line: 104 },
+		],
+		source: { writes: [{ method: 'SDK', path: null, handler: { file: 'app/seed/route.ts', line: 8 }, via: 'sdk', touches: ['sql'] }] },
+	} as unknown as Inventory;
+	const targets = routeTargets(seeding);
+	assert.deepEqual(targets.endpoints, ['/query']);
+	assert.equal(targets.needsSample.length, 1);
+	assert.equal(targets.needsSample[0]!.route, '/seed');
+	assert.match(targets.needsSample[0]!.reason!, /writes/);
+});

@@ -44,12 +44,15 @@ export function summarize(report: Report): string {
 		lines.push(`${route.ok ? 'pass' : 'FAIL'}  ${route.route.padEnd(width)}  ${route.ok ? '' : `[${failed.join(', ')}]  `}${accepted ? `(${accepted} accepted) ` : ''}${route.endpoint ? `compared as ${route.endpoint}` : js}`);
 		for (const f of route.failures) lines.push(...failureLines(f));
 	}
-	if (report.unchecked?.length) lines.push('', `Not checked, needs a sample (add one to .migrate/samples.json):`, ...report.unchecked.map((u) => `  ${u.route}  no value for ${u.params.map((p) => `:${p}`).join(', ')}${u.file ? `  ${u.file}:${u.line}` : ''}`));
+	const samples = report.unchecked?.filter((u) => !u.reason) ?? [];
+	const writes = report.unchecked?.filter((u) => u.reason) ?? [];
+	if (samples.length) lines.push('', `Not checked, needs a sample (add one to .migrate/samples.json):`, ...samples.map((u) => `  ${u.route}  no value for ${u.params.map((p) => `:${p}`).join(', ')}${u.file ? `  ${u.file}:${u.line}` : ''}`));
+	if (writes.length) lines.push('', `Not checked, fetching it writes (check it with --route against staging copies):`, ...writes.map((u) => `  ${u.route}  ${u.reason}${u.file ? `  ${u.file}:${u.line}` : ''}`));
 	for (const login of report.logins ?? []) if (!report.routes.some((r) => r.role === login.role)) lines.push(`As ${login.role}: not checked`, ...loginLines(login));
 	const green = report.routes.filter((r) => r.ok).length;
 	const blocked = report.routes.filter((r) => r.blocked).length;
 	const red = report.routes.length - green - blocked;
 	if (report.staleAccepts?.length) lines.push('', 'Accepted differences that no longer match anything (remove them from .migrate/accepted.json):', ...report.staleAccepts.map((a) => `  ${a.route}${a.role ? ` as ${a.role}` : ''} ${a.dimension}: ${a.check}  (${a.reason})`));
-	lines.push('', `${green} of ${report.routes.length} ${report.roles ? 'route checks (route and role)' : 'routes'} green${red ? `, ${red} red` : ''}${blocked ? `, ${blocked} blocked by bot protection` : ''}${report.acceptedCount ? `, ${report.acceptedCount} accepted difference${report.acceptedCount === 1 ? '' : 's'}` : ''}${report.unchecked?.length ? `; ${report.unchecked.length} route${report.unchecked.length === 1 ? '' : 's'} not checked (needs a sample)` : ''}.`);
+	lines.push('', `${green} of ${report.routes.length} ${report.roles ? 'route checks (route and role)' : 'routes'} green${red ? `, ${red} red` : ''}${blocked ? `, ${blocked} blocked by bot protection` : ''}${report.acceptedCount ? `, ${report.acceptedCount} accepted difference${report.acceptedCount === 1 ? '' : 's'}` : ''}${samples.length ? `; ${samples.length} route${samples.length === 1 ? '' : 's'} not checked (needs a sample)` : ''}${writes.length ? `; ${writes.length} not checked (fetching it writes)` : ''}.`);
 	return `${lines.join('\n')}\n`;
 }

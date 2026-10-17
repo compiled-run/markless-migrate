@@ -9,6 +9,8 @@ export interface NeedsSample {
 	readonly params: readonly string[];
 	readonly file?: string;
 	readonly line?: number;
+	/** Why the route is left out when it is not a missing sample: a GET endpoint whose handler writes. */
+	readonly reason?: string;
 }
 
 export interface RouteTargets {
@@ -82,8 +84,14 @@ export function routeTargets(inventory: Inventory, samples: Samples = {}): Route
 		}
 	}
 	for (const [key, value] of Object.entries(samples)) if (!key.startsWith('/')) known[key] = value;
+	const writing = new Map((inventory.source?.writes ?? []).map((w) => [w.handler.file, w.handler.line] as const));
 	for (const entry of union) {
 		const target = entry.kind === 'endpoint' ? endpoints : pages;
+		const writes = entry.kind === 'endpoint' && entry.file ? writing.get(entry.file) : undefined;
+		if (writes !== undefined && !entry.knownBy.includes('crawl')) {
+			needsSample.push({ route: entry.route, params: [], file: entry.file!, line: writes, reason: 'its handler writes, per the source: every load would change what the other routes show' });
+			continue;
+		}
 		if (entry.knownBy.includes('crawl')) {
 			for (const path of entry.crawled) target.add(path);
 			continue;
