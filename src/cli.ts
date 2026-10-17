@@ -47,6 +47,7 @@ const USAGE = `markless-migrate ${VERSION}
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
           [--journey-budget <seconds>] [--max-journeys <n>]
+          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--interaction-controls <n>]
           Compare routes old vs new (default: every route in the inventory). Exits 1 when any is red.
           Every interactive element of the old page (including those a click reveals, such as a
           dialog's controls) must be used by a journey, or the route stays red until a person accepts
@@ -59,6 +60,13 @@ const USAGE = `markless-migrate ${VERSION}
           a path no app has (the not-found page), redirects (the config's own and the other
           trailing-slash form of every page, compared by status and redirect chain) and the non-page endpoints: robots.txt, sitemaps, feeds, the manifest,
           /.well-known files and JSON route handlers, compared as data.
+          Responsiveness: each control the journeys used and each internal link they followed is used
+          once on a fresh page load, old then new, at desktop speed and on a phone-sized page with the
+          CPU slowed (--cpu-throttle, default 4x). A first interaction must stay within max(16 ms, 10%)
+          of the old app at both speeds, answer within --interaction-budget (default 200 ms) at the
+          slow speed and fetch no code; a link must show the next page within max(16 ms, 10%) of the
+          old app at the slow speed. --interaction-controls caps the controls timed per route (16).
+          --no-responsiveness leaves it out.
           --source and --new-source map each failing element to its old and new source file and line.
           --concurrency checks that many routes at once (default half the cores, at most 4).
           --changed checks only routes not green last time, and routes whose files in the new app
@@ -138,6 +146,35 @@ function journeyOptions(budget: string | undefined, max: string | undefined): No
 	const cap = max === undefined ? undefined : Number(max);
 	if (cap !== undefined && (!Number.isInteger(cap) || cap < 1)) fail('--max-journeys must be a whole number of at least 1');
 	return { ...(seconds !== undefined ? { budgetMs: seconds * 1000 } : {}), ...(cap !== undefined ? { maxJourneys: cap } : {}) };
+}
+
+const TIMING_FLAGS = {
+	'no-responsiveness': { type: 'boolean' },
+	'interaction-budget': { type: 'string' },
+	'cpu-throttle': { type: 'string' },
+	'interaction-controls': { type: 'string' },
+} as const;
+
+function timingOptions(values: { 'no-responsiveness'?: boolean; 'interaction-budget'?: string; 'cpu-throttle'?: string; 'interaction-controls'?: string }): CheckOptions['responsiveness'] {
+	if (values['no-responsiveness']) return undefined;
+	const number = (flag: 'interaction-budget' | 'cpu-throttle' | 'interaction-controls', test: (n: number) => boolean, what: string) => {
+		const raw = values[flag];
+		if (raw === undefined) return undefined;
+		const n = Number(raw);
+		if (!test(n)) fail(`--${flag} must be ${what}`);
+		return n;
+	};
+	const budgetMs = number('interaction-budget', (n) => n > 0, 'a number of milliseconds above 0');
+	const cpu = number('cpu-throttle', (n) => n >= 1, 'a slowdown rate of at least 1');
+	const maxControls = number('interaction-controls', (n) => Number.isInteger(n) && n >= 1, 'a whole number of at least 1');
+	return { ...(budgetMs !== undefined ? { budgetMs } : {}), ...(cpu !== undefined ? { cpu } : {}), ...(maxControls !== undefined ? { maxControls } : {}) };
+}
+
+function timingFlags(values: Partial<Record<keyof typeof TIMING_FLAGS, string | boolean>>): string[] {
+	return Object.keys(TIMING_FLAGS).flatMap((flag) => {
+		const value = values[flag as keyof typeof TIMING_FLAGS];
+		return value === undefined || value === false ? [] : value === true ? [`--${flag}`] : [`--${flag}`, value];
+	});
 }
 
 async function firstDir(cwd: string, dirs: readonly string[]): Promise<string | undefined> {
@@ -242,9 +279,11 @@ async function run(args: string[], cwd: string): Promise<number> {
 			'restart-on': { type: 'string' },
 			'journey-budget': { type: 'string' },
 			'max-journeys': { type: 'string' },
+			...TIMING_FLAGS,
 		},
 	});
 	const journeys = journeyOptions(values['journey-budget'], values['max-journeys']);
+	const timing = timingOptions(values);
 	if (!values.agent) fail(`run needs --agent <id> (${DRIVERS.map((d) => d.id).join(', ')})`);
 	if (!values.old || !values.new) fail('run needs --old <origin> and --new <origin>');
 	const attempts = values.attempts ? Number(values.attempts) : 3;
@@ -292,7 +331,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 			model: values.model,
 			cli: [mcp.command, ...mcp.args.slice(0, -1)].join(' '),
 			mcp,
-			context: { ...(source ? { source } : {}), ...(newSource ? { newSource } : {}), ...(values.auth ? { auth: resolve(values.auth) } : {}), flags: [...(values.header ?? []).flatMap((h) => ['--header', h]), ...(values.cookie ?? []).flatMap((c) => ['--cookie', c]), ...(values['journey-budget'] ? ['--journey-budget', values['journey-budget']] : []), ...(values['max-journeys'] ? ['--max-journeys', values['max-journeys']] : [])] },
+			context: { ...(source ? { source } : {}), ...(newSource ? { newSource } : {}), ...(values.auth ? { auth: resolve(values.auth) } : {}), flags: [...(values.header ?? []).flatMap((h) => ['--header', h]), ...(values.cookie ?? []).flatMap((c) => ['--cookie', c]), ...(values['journey-budget'] ? ['--journey-budget', values['journey-budget']] : []), ...(values['max-journeys'] ? ['--max-journeys', values['max-journeys']] : []), ...timingFlags(values)] },
 			...(server ? { server, serving: { ...(values.build ? { build: values.build } : {}), ...(values['restart-on'] ? { restartOn: values['restart-on'] } : {}) } } : {}),
 			progress: out,
 			check: async (route) => {
@@ -308,6 +347,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 					...(auth ? { auth, authStateDir: join(cwd, STATE_DIR, 'auth') } : {}),
 					...bypass,
 					journeys,
+					...(timing ? { responsiveness: timing } : {}),
 					switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 				});
 				await recordResults(cwd, report);
@@ -384,10 +424,12 @@ async function main(argv: string[]): Promise<number> {
 					'new-source': { type: 'string' },
 					'journey-budget': { type: 'string' },
 					'max-journeys': { type: 'string' },
+					...TIMING_FLAGS,
 				},
 			});
 			if (!values.old || !values.new) fail('check needs --old <origin> and --new <origin>');
 			const journeys = journeyOptions(values['journey-budget'], values['max-journeys']);
+			const timing = timingOptions(values);
 			let bypass: ReturnType<typeof bypassOptions> = {};
 			try {
 				bypass = bypassOptions(values.header, values.cookie);
@@ -448,6 +490,7 @@ async function main(argv: string[]): Promise<number> {
 				accepted: await readAccepted(join(cwd, STATE_DIR, ACCEPTED_FILE)).catch((error: Error) => fail(error.message)),
 				...(concurrency ? { concurrency } : {}),
 				journeys,
+				...(timing ? { responsiveness: timing } : {}),
 				switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 				...(!values['new-source'] && !values.changed ? {} : { sourceDirs: { ...(values.source ? { old: resolve(values.source) } : {}), new: newDir } }),
 			});

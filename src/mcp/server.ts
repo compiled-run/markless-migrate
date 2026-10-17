@@ -48,7 +48,7 @@ export function createServer(cwd: string): McpServer {
 		'check_route',
 		{
 			title: 'Check one route, old vs new',
-			description: 'Load the route on both origins in Chromium (desktop and mobile), with a fixed clock, seeded randomness, a fixed timezone and locale and ad/analytics hosts blocked, and compare HTTP, accessibility tree and text, screenshots, SEO, assets, computed CSS in every state the old CSS styles (with the old rule that set it), fonts, accessibility (axe, focus order, keyboard, landmarks, motion), internationalisation per locale, every replayed interaction, the network contract (each request the page makes in the browser and, when the server runs the request recorder, while the server renders it: method, URL, body shape, how often, and which response fields the page shows), and JavaScript weight. Writes (form posts, non-GET requests) are sent only when both origins are on this machine or marked staging; otherwise they are held back and compared as "would POST ...". Writes .migrate/report.html with old/new/diff images. Returns every failure with expected, actual and a likely fix.',
+			description: 'Load the route on both origins in Chromium (desktop and mobile), with a fixed clock, seeded randomness, a fixed timezone and locale and ad/analytics hosts blocked, and compare HTTP, accessibility tree and text, screenshots, SEO, assets, computed CSS in every state the old CSS styles (with the old rule that set it), fonts, accessibility (axe, focus order, keyboard, landmarks, motion), internationalisation per locale, every replayed interaction, the network contract (each request the page makes in the browser and, when the server runs the request recorder, while the server renders it: method, URL, body shape, how often, and which response fields the page shows), JavaScript weight, and responsiveness (the first use of each control on a fresh load and the next page of each internal link, old vs new, at desktop speed and with the CPU slowed 4x on a phone-sized page: within max(16 ms, 10%) of old, under 200 ms at 4x, no code fetched on an interaction). Writes (form posts, non-GET requests) are sent only when both origins are on this machine or marked staging; otherwise they are held back and compared as "would POST ...". Writes .migrate/report.html with old/new/diff images. Returns every failure with expected, actual and a likely fix.',
 			inputSchema: {
 				old: z.string().url(),
 				new: z.string().url(),
@@ -78,6 +78,7 @@ export function createServer(cwd: string): McpServer {
 				...(args.userAgent ? { userAgent: args.userAgent } : {}),
 				...(auth ? { auth, authStateDir: join(cwd, STATE_DIR, 'auth') } : {}),
 				accepted: await readAccepted(join(cwd, STATE_DIR, ACCEPTED_FILE)),
+				responsiveness: {},
 				switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 			});
 			await recordResults(cwd, report);
