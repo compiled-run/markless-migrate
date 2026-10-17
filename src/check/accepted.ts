@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { Dimension, Failure, Report, RouteResult } from './types.ts';
-import { DIMENSIONS } from './types.ts';
+import { DIMENSIONS, notCompared } from './types.ts';
 
 export const ACCEPTED_FILE = 'accepted.json';
 
@@ -90,7 +90,9 @@ export function matches(accept: Accept, failure: Failure, origins: Origins = { o
 /** The same failure gets the same id on every run: origins are replaced by OLD and NEW before hashing. */
 export function failureId(failure: Failure, origins: Origins): string {
 	const scrub = scrubber(origins);
-	const key = [failure.route, failure.role ?? '', failure.dimension, failure.check, failure.viewport ?? '', scrub(failure.expected), scrub(failure.actual)].join('\u0000');
+	// Timings differ on every run; the same slow control with the same cause is the same failure.
+	const timing = (value: string) => (failure.dimension === 'responsiveness' ? value.replace(/\d+(\.\d+)?/g, '#') : value);
+	const key = [failure.route, failure.role ?? '', failure.dimension, failure.check, failure.viewport ?? '', timing(scrub(failure.expected)), timing(scrub(failure.actual))].join('\u0000');
 	return createHash('sha256').update(key).digest('hex').slice(0, 10);
 }
 
@@ -99,7 +101,7 @@ function settle(route: RouteResult, failures: readonly Failure[]): RouteResult {
 	const open = failures.filter((f) => !f.accepted);
 	const failed = new Set(open.map((f) => f.dimension));
 	const dimensions = Object.fromEntries(DIMENSIONS.map((d) => [d, failed.has(d) ? 'fail' : route.dimensions[d] === 'skipped' ? 'skipped' : 'pass'])) as RouteResult['dimensions'];
-	const compared = !route.blocked && !Object.values(route.dimensions).includes('skipped');
+	const compared = !route.blocked && !notCompared(route.dimensions);
 	return { ...route, failures, dimensions, ok: open.length === 0 && compared };
 }
 

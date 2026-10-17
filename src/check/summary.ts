@@ -1,4 +1,5 @@
-import type { Coverage, Failure, LoginResult, Report } from './types.ts';
+import { headlines, worstLine } from './responsiveness.ts';
+import { notCompared, type Coverage, type Failure, type LoginResult, type Report } from './types.ts';
 
 function kb(bytes: number): string {
 	return `${(bytes / 1024).toFixed(1)} kB`;
@@ -27,7 +28,7 @@ export function coverageLine(c: Coverage): string {
 }
 
 export function summarize(report: Report): string {
-	const lines = [`OLD ${report.old}  vs  NEW ${report.new}`, ''];
+	const lines = [`OLD ${report.old}  vs  NEW ${report.new}`, ...(report.responsiveness ? headlines(report.responsiveness) : []), ''];
 	const width = Math.max(5, ...report.routes.map((r) => r.route.length));
 	let role: string | undefined;
 	for (const route of report.routes) {
@@ -44,10 +45,11 @@ export function summarize(report: Report): string {
 		const failed = Object.entries(route.dimensions).filter(([, state]) => state === 'fail').map(([d]) => d);
 		const accepted = route.failures.filter((f) => f.accepted).length;
 		const w = route.weight;
-		const stopped = Object.entries(route.dimensions).some(([, state]) => state === 'skipped');
+		const stopped = notCompared(route.dimensions);
 		const js = stopped ? 'page not compared: the two apps did not let this role in alike' : `JS on the wire ${kb(w.old.downloaded)} -> ${kb(w.new.downloaded)}, run at load ${kb(w.old.executed)} -> ${kb(w.new.executed)} (uncompressed)`;
 		lines.push(`${route.ok ? 'pass' : 'FAIL'}  ${route.route.padEnd(width)}  ${route.ok ? '' : `[${failed.join(', ')}]  `}${accepted ? `(${accepted} accepted) ` : ''}${route.endpoint ? `compared as ${route.endpoint}` : js}`);
 		if (route.coverage) lines.push(`      ${coverageLine(route.coverage)}`);
+		if (route.responsiveness) lines.push(`      ${worstLine(route.responsiveness)}`);
 		for (const f of route.failures) lines.push(...failureLines(f));
 	}
 	const samples = report.unchecked?.filter((u) => !u.reason) ?? [];

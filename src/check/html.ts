@@ -1,4 +1,5 @@
-import type { Box, Failure, LoginResult, Report, RouteResult, Shot, SourceLink } from './types.ts';
+import { headlines, type Sample } from './responsiveness.ts';
+import type { Box, Failure, LoginResult, Report, ResponsivenessSummary, RouteResult, Shot, SourceLink } from './types.ts';
 import { remaining, type Status } from '../status.ts';
 
 const list = (items: readonly string[], cls = '') => `<ul>${items.map((x) => `<li${cls ? ` class="${cls}"` : ''}>${esc(x)}</li>`).join('')}</ul>`;
@@ -18,6 +19,50 @@ function noise(r: RouteResult): string {
 	const blocked = Object.entries(r.noise.blocked).map(([host, n]) => `${host} (${n} request${n === 1 ? '' : 's'})`);
 	if (!r.noise.noisy.length && !blocked.length) return '';
 	return `<details class="states"><summary>Noise: ${r.noise.noisy.length} element${r.noise.noisy.length === 1 ? '' : 's'} still varied between old loads${blocked.length ? `, ${blocked.length} tracker host${blocked.length === 1 ? '' : 's'} blocked` : ''}</summary>${r.noise.noisy.length ? `<ul>${r.noise.noisy.map((n) => `<li><strong>${esc(n.element)}</strong> (${esc(n.viewport)}): ${esc(n.why)}</li>`).join('')}</ul>` : ''}${blocked.length ? `<p>Blocked:</p>${list(blocked, 'skipped')}` : ''}</details>`;
+}
+
+const ms = (n: number | undefined) => (n === undefined ? '–' : `${n} ms`);
+const versus = (w: { old?: number; new?: number } | undefined) => (w ? `${ms(w.old)} → ${ms(w.new)}` : '–');
+
+function responsivenessHeader(summary: ResponsivenessSummary): string {
+	const lines = headlines(summary).map((line) => `<p class="headline"><strong>${esc(line)}</strong></p>`).join('');
+	const rows = summary.routes
+		.map((r) => {
+			const i = r.interaction;
+			const n = r.navigation;
+			return `<tr${r.ok ? '' : ' class="differs"'}><td>${esc(r.route)}${r.role && r.role !== 'anonymous' ? ` <small>as ${esc(r.role)}</small>` : ''}</td><td>${esc(i?.throttled?.control ?? '–')}</td><td>${versus(i?.throttled)}</td><td>${versus(i?.desktop)}</td><td>${esc(n?.throttled?.control ?? '–')}</td><td>${versus(n?.throttled)}</td><td>${versus(n?.desktop)}</td></tr>`;
+		})
+		.join('');
+	const table = rows ? `<table class="timings"><thead><tr><th>Route</th><th>Slowest first interaction</th><th>${summary.cpu}x CPU, mobile</th><th>Desktop</th><th>Slowest navigation</th><th>${summary.cpu}x CPU, mobile</th><th>Desktop</th></tr></thead><tbody>${rows}</tbody></table>` : '';
+	return `${lines}${table}<p><small>Each control is used once on a fresh page load, old then new: trusted pointer input to the next frame after the change it causes (Event Timing's duration when that is longer); a link to the next page's first contentful paint. Old against new must stay within max(16 ms, 10%) at both speeds (navigation at ${summary.cpu}x CPU), and a first interaction must answer within ${summary.budgetMs} ms at ${summary.cpu}x CPU and fetch no code. A control fails only when every run of it exceeded.</small></p>`;
+}
+
+function sample(s: Sample): string {
+	const code = s.fetches.filter((f) => f.kind === 'code');
+	const other = s.fetches.length - code.length;
+	const bits = [
+		s.result === 'none' ? 'no visible change' : s.result === 'reloaded' ? 'full page load' : s.result === 'navigated' ? 'navigated in the page' : '',
+		s.warmMs !== undefined ? `second time ${s.warmMs} ms` : '',
+		code.length ? `<strong>fetched code: ${code.map((f) => esc(`${f.url} (${(f.bytes / 1024).toFixed(1)} kB)`)).join(', ')}</strong>` : '',
+		other ? `${other} other fetch${other === 1 ? '' : 'es'}` : '',
+		s.server ? esc(`server ${s.server.ttfb} ms to first byte${s.server.warmTtfb !== undefined ? `, ${s.server.warmTtfb} ms again` : ''}, ${(s.server.htmlBytes / 1024).toFixed(1)} kB HTML${s.server.served ? ` (${s.server.served})` : ''}`) : '',
+		s.heldBack ? 'a write was held back' : '',
+		s.failed ? esc(s.failed) : '',
+	].filter(Boolean);
+	return `${ms(s.ms)}${bits.length ? ` <small>${bits.join('; ')}</small>` : ''}`;
+}
+
+function timings(r: RouteResult): string {
+	const t = r.responsiveness;
+	if (!t) return '';
+	const failing = t.controls.filter((c) => c.speeds.some((x) => !x.ok)).length;
+	const rows = t.controls
+		.flatMap((c) =>
+			c.speeds.map((x) => `<tr${x.ok ? '' : ' class="differs"'}><td>${esc(c.control)} <small>${esc(c.kind)}</small></td><td>${x.speed === 'throttled' ? `${t.cpu}x CPU, mobile` : 'desktop'}</td><td>${x.old.map(sample).join('<br>')}</td><td>${x.new.map(sample).join('<br>')}</td><td>${x.spread ? `old ±${x.spread.old} ms, new ±${x.spread.new} ms` : 'one run'}</td><td>${esc([...x.problems, ...(x.cause ? [`likely cause: ${x.cause}`] : [])].join('; '))}</td></tr>`),
+		)
+		.join('');
+	const left = t.notMeasured.length ? `<p>Not timed:</p>${list(t.notMeasured.map((n) => `${n.control}: ${n.reason}`), 'skipped')}` : '';
+	return `<details class="states timings"${failing ? ' open' : ''}><summary>Responsiveness: ${t.controls.length} control${t.controls.length === 1 ? '' : 's'} timed on a fresh load${failing ? `, ${failing} slower` : ''}</summary><table><thead><tr><th>Control</th><th>Speed</th><th>Old</th><th>New</th><th>Between runs</th><th>Verdict</th></tr></thead><tbody>${rows}</tbody></table>${left}</details>`;
 }
 
 function writes(r: RouteResult): string {
@@ -136,6 +181,7 @@ ${network(r)}
 ${noise(r)}
 ${writes(r)}
 ${coverage(r)}
+${timings(r)}
 ${r.journeys?.length ? `<details class="states"><summary>Interactions explored on the old page and replayed on the new one: ${r.journeys.length}${failedJourneys(r) ? `, ${failedJourneys(r)} differ` : ''}</summary><ul>${r.journeys.map((j) => `<li${r.failures.some((f) => f.check.startsWith(j.name)) ? ' class="differs"' : ''}>${esc(j.name)}</li>`).join('')}</ul></details>` : ''}
 <h3>Failures (${r.failures.filter((f) => !f.accepted).length}${r.failures.some((f) => f.accepted) ? `, and ${r.failures.filter((f) => f.accepted).length} accepted differences` : ''})</h3>
 ${table}
@@ -263,6 +309,7 @@ function renderPage(report: Report, status?: Status): string {
 <header>
 <h1>Old vs new</h1>
 <p>Old <code>${esc(report.old)}</code> against new <code>${esc(report.new)}</code>, checked ${esc(report.startedAt)}. <strong>${green} of ${report.routes.length} routes green${report.unchecked?.length ? `, ${report.unchecked.length} not checked (needs a sample)` : ''}.</strong></p>
+${report.responsiveness ? responsivenessHeader(report.responsiveness) : ''}
 ${run(report)}
 <p><small>Red boxes mark where the screenshots differ outside the noise mask. Slider: drag to wipe between old (left of the line) and new. Blink: alternates old and new in place.</small></p>
 ${report.staleAccepts?.length ? `<p><strong>Accepted differences that no longer match anything</strong> (remove them from .migrate/accepted.json):</p><ul>${report.staleAccepts.map((a) => `<li>${esc(a.route)} ${esc(a.dimension)}: ${esc(a.check)}: ${esc(a.reason)}</li>`).join('')}</ul>` : ''}

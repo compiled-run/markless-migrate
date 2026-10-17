@@ -16,6 +16,7 @@ import { locateFailures, NOT_EXERCISED } from './locate.ts';
 import { mapRules } from './sourcemap.ts';
 import { negotiationFailures } from './i18n.ts';
 import { compareJourneys, explore, replayAll, survey, type ExploreOptions } from './journeys.ts';
+import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
 import { assetsToProbe, compareRoute, cssTargets, httpFailures, noiseReport, noisyStyles, withFailures, type Probe } from './compare.ts';
 import { matchElements } from './match.ts';
 import { contractLines } from './network.ts';
@@ -73,6 +74,8 @@ export interface CheckOptions {
 	readonly journeys?: Pick<ExploreOptions, 'budgetMs' | 'maxJourneys'>;
 	/** Routes served by the new app (`.migrate/switched.json`): a journey on NEW that reaches any other page gets the old app's, as through the front door. */
 	readonly switched?: readonly string[];
+	/** Time the first use of every control the journeys exercised and every internal link they followed, old and new, at desktop speed and on a throttled phone. */
+	readonly responsiveness?: ResponsivenessOptions;
 }
 
 export const DEFAULT_CONCURRENCY = Math.max(1, Math.min(4, Math.floor(availableParallelism() / 2)));
@@ -98,6 +101,7 @@ interface Run {
 	readonly sourceDirs?: { readonly old?: string; readonly new?: string };
 	readonly journeys?: ExploreOptions;
 	readonly switched?: readonly string[];
+	readonly responsiveness?: ResponsivenessOptions;
 }
 
 async function probe(env: SideEnv, url: string): Promise<Probe> {
@@ -158,7 +162,8 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 	const noise = noiseReport(olds, run.frozen, run.source?.nondeterminism);
 	const loadWrites = (Object.values(oldA.pages)[0]?.writes ?? []).map((w) => ({ ...w, during: 'page load' }));
 	const result = withFailures(compared, [...compared.failures, ...negotiationFailures(route, languages, [negotiatedA, negotiatedB], negotiatedNew)], { noise, writes: loadWrites });
-	const checked = await checkJourneys(browser, run, route, viewports[0]!, await checkStates(browser, run, route, viewports, olds, result));
+	const explored = await checkJourneys(browser, run, route, viewports[0]!, await checkStates(browser, run, route, viewports, olds, result));
+	const checked = run.responsiveness && explored.journeys?.length ? await checkTimings(browser, run, route, explored) : explored;
 	const located = await locateFailures(checked, { route, old: oldA, next, sides: { old: { origin: oldOrigin, dir: run.sourceDirs?.old }, new: { origin: newOrigin, dir: run.sourceDirs?.new } }, ...(run.source ? { facts: run.source } : {}) });
 	const done = oldA.http.status < 400 && (next.http.status === 404 || next.http.status === 410) ? { ...located, notPorted: true } : located;
 	oldCaptures.set(done, oldA);
@@ -178,6 +183,12 @@ async function checkJourneys(browser: Browser, run: Run, route: string, viewport
 	const coverage: Coverage = { total: explored.elements.length, exercised: explored.elements.filter((e) => e.by).length, elements: explored.elements, skipped: explored.skipped };
 	const unexercised = explored.elements.filter((e) => !e.by && !e.shared).map((e) => notExercised(route, e.element, e.reason ?? 'no journey used it'));
 	return withFailures(result, [...result.failures, ...compareJourneys(route, runs, journeys, next), ...unexercised], { journeys, coverage, writes: [...(result.writes ?? []), ...writes] });
+}
+
+async function checkTimings(browser: Browser, run: Run, route: string, result: RouteResult): Promise<RouteResult> {
+	// The new app is timed on its own, not through the front door: a link's target is its page as it will serve it.
+	const timed = await checkResponsiveness(browser, { old: run.old, new: run.new }, route, result.journeys ?? [], run.responsiveness);
+	return withFailures(result, [...result.failures, ...timed.failures], { responsiveness: timed.responsiveness });
 }
 
 export function notExercised(route: string, element: string, reason: string): Failure {
@@ -361,7 +372,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const freeze: FreezeOptions | false = options.freeze === false ? false : { ...DEFAULT_FREEZE, ...options.freeze };
 	const bypass = { ...(options.headers ? { headers: options.headers } : {}), ...(options.cookies?.length ? { cookies: options.cookies } : {}), ...(options.userAgent ? { userAgent: options.userAgent } : {}) };
 	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [], ...bypass };
-	const base: Run = { old: defaultEnv(options.oldOrigin, shared), new: defaultEnv(options.newOrigin, shared), frozen: Boolean(freeze), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
+	const base: Run = { old: defaultEnv(options.oldOrigin, shared), new: defaultEnv(options.newOrigin, shared), frozen: Boolean(freeze), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
 	const auth = options.auth;
 	const roles: (string | undefined)[] = auth ? [ANONYMOUS, ...Object.keys(auth.roles)] : [undefined];
 	const logins: LoginResult[] = [];
@@ -410,6 +421,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			writes: shared.sendWrites ? 'sent' : 'held back',
 			...(auth ? { roles: roles as string[], logins } : {}),
 			...(options.unchecked?.length ? { unchecked: options.unchecked } : {}),
+			...(options.responsiveness ? { responsiveness: summarizeResponsiveness(routes, options.responsiveness) } : {}),
 		}, options.accepted ?? []);
 	} finally {
 		if (!options.browser) await browser.close();

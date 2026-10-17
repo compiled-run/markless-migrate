@@ -6,6 +6,7 @@ import { stepRoutes } from './plan/source.ts';
 import { matchRoute } from './source/pattern.ts';
 import type { Dimension, Failure, Report } from './check/types.ts';
 import { isSwitched, readSwitched } from './switch/state.ts';
+import { timingHeadlines, type RouteTiming } from './check/responsiveness.ts';
 
 export const STATE_DIR = '.migrate';
 
@@ -27,6 +28,8 @@ export interface RouteState {
 	/** The old app serves the route and the new one answers 404: it has not been ported. */
 	readonly notPorted?: boolean;
 	readonly coverage?: { readonly exercised: number; readonly total: number };
+	/** Its slowest first interaction and navigation, old and new, per speed. */
+	readonly timing?: RouteTiming;
 }
 
 async function readJson<T>(path: string): Promise<T | undefined> {
@@ -64,6 +67,7 @@ export async function recordResults(cwd: string, report: Report, extra: { readon
 			...(route.newFiles ? { files: route.newFiles } : {}),
 			...(route.notPorted ? { notPorted: true } : {}),
 			...(route.coverage ? { coverage: { exercised: route.coverage.exercised, total: route.coverage.total } } : {}),
+			...(route.responsiveness ? { timing: { cpu: route.responsiveness.cpu, ...route.responsiveness.worst } } : {}),
 		};
 	}
 	await mkdir(join(cwd, STATE_DIR), { recursive: true });
@@ -77,7 +81,7 @@ export interface Status {
 	/** Every planned route is green and switched, none of them forced. */
 	readonly done: boolean;
 	/** In migration order when the inventory has the source's plan, alphabetical otherwise. */
-	readonly routes: readonly { route: string; state: RouteStatus; red: readonly Dimension[]; checkedAt?: string; switched?: boolean; forced?: { readonly reason: string; readonly by?: string }; accepted?: readonly string[]; coverage?: { readonly exercised: number; readonly total: number } }[];
+	readonly routes: readonly { route: string; state: RouteStatus; red: readonly Dimension[]; checkedAt?: string; switched?: boolean; forced?: { readonly reason: string; readonly by?: string }; accepted?: readonly string[]; coverage?: { readonly exercised: number; readonly total: number }; timing?: RouteTiming }[];
 	/** Each step of the migration order with how far the routes it is part of have come. */
 	readonly order?: readonly { readonly kind: string; readonly name: string; readonly file: string; readonly routes: readonly string[]; readonly green: number; readonly state: 'green' | 'red' | 'started' | 'unchecked' }[];
 }
@@ -101,7 +105,7 @@ export async function status(cwd: string): Promise<Status> {
 		const r = results[route];
 		if (!r) return { route, state: 'unchecked', red: [] };
 		const accepted = (r.failures ?? []).flatMap((f) => (f.accepted ? [`${f.dimension}: ${f.check}: ${f.accepted.reason}`] : []));
-		return { route, state: r.blocked ? 'blocked' : r.ok ? 'green' : r.notPorted ? 'not ported' : 'red', red: r.red, checkedAt: r.checkedAt, ...(accepted.length ? { accepted } : {}), ...(r.coverage ? { coverage: r.coverage } : {}) };
+		return { route, state: r.blocked ? 'blocked' : r.ok ? 'green' : r.notPorted ? 'not ported' : 'red', red: r.red, checkedAt: r.checkedAt, ...(accepted.length ? { accepted } : {}), ...(r.coverage ? { coverage: r.coverage } : {}), ...(r.timing ? { timing: r.timing } : {}) };
 	};
 	const routes = names.map(stateOf).sort((a, b) => rank(a.route) - rank(b.route) || a.route.localeCompare(b.route));
 	for (const n of targets?.needsSample ?? []) routes.push({ route: n.route, state: 'needs a sample', red: [] });
@@ -134,6 +138,7 @@ export function summarizeStatus(s: Status): string {
 		lines.push('Routes, in that order:');
 	}
 	if (s.routes.some((r) => r.switched)) lines[0] += `, ${s.routes.filter((r) => r.switched).length} switched to Markless`;
+	lines.push(...timingHeadlines(s.routes));
 	const forced = s.routes.filter((r) => r.forced);
 	if (forced.length) lines[0] += `, ${forced.length} FORCED (not proven)`;
 	for (const r of s.routes) {

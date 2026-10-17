@@ -2,9 +2,15 @@ import type { RawSource } from './hints-page.ts';
 import type { ElementCoverage, RecordedJourney } from './journeys.ts';
 import type { NetworkCapture } from './network.ts';
 import type { NondeterminismFact } from './source-facts.ts';
+import type { Responsiveness, SpeedName, Worst } from './responsiveness.ts';
 
-export const DIMENSIONS = ['http', 'auth', 'rendered', 'visual', 'seo', 'assets', 'css', 'a11y', 'i18n', 'behaviour', 'network', 'data', 'weight'] as const;
+export const DIMENSIONS = ['http', 'auth', 'rendered', 'visual', 'seo', 'assets', 'css', 'a11y', 'i18n', 'behaviour', 'network', 'data', 'weight', 'responsiveness'] as const;
 export type Dimension = (typeof DIMENSIONS)[number];
+
+/** A dimension was left out because a side was blocked or let this role in differently; an unmeasured responsiveness is not that. */
+export function notCompared(dimensions: RouteResult['dimensions']): boolean {
+	return Object.entries(dimensions).some(([d, state]) => state === 'skipped' && d !== 'responsiveness');
+}
 
 export interface Viewport {
 	readonly name: string;
@@ -209,6 +215,25 @@ export interface RouteResult {
 	readonly newFiles?: readonly string[];
 	/** The old app serves the route and the new one answers 404 or 410. */
 	readonly notPorted?: boolean;
+	/** How soon each control the journeys exercised answers its first use, and each internal link shows the next page, old and new, at desktop speed and on a throttled phone. */
+	readonly responsiveness?: Responsiveness;
+}
+
+/** The slowest timing on each side, and where: `route control`. */
+export interface Slowest {
+	readonly old?: number;
+	readonly oldAt?: string;
+	readonly new?: number;
+	readonly newAt?: string;
+}
+
+/** The run's slowest first interaction and slowest navigation on each side, and each route's. */
+export interface ResponsivenessSummary {
+	readonly cpu: number;
+	readonly budgetMs: number;
+	readonly interaction?: Partial<Record<SpeedName, Slowest>>;
+	readonly navigation?: Partial<Record<SpeedName, Slowest>>;
+	readonly routes: readonly { readonly route: string; readonly role?: string; readonly ok: boolean; readonly interaction?: Partial<Record<SpeedName, Worst>>; readonly navigation?: Partial<Record<SpeedName, Worst>> }[];
 }
 
 export interface Coverage {
@@ -271,6 +296,8 @@ export interface Report {
 	readonly logins?: readonly LoginResult[];
 	/** How many failures an accepted difference covered. */
 	readonly acceptedCount?: number;
+	/** First-interaction and navigation timings across the run, for the headline and the showcase. */
+	readonly responsiveness?: ResponsivenessSummary;
 	/** Accepted differences for routes checked in this run that no longer match any failure. */
 	readonly staleAccepts?: readonly import('./accepted.ts').Accept[];
 }

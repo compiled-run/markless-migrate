@@ -64,7 +64,7 @@ function targets(f: Failure, oldPage: PageCapture | undefined, newPage: PageCapt
 		const named = /^([a-z]+) "((?:[^"\\]|\\.)*)"(?: #(\d+))?$/.exec(f.check.slice(NOT_EXERCISED.length));
 		if (named) old = oldPage?.elements.filter((e) => e.role === named[1] && e.name === quoted(named[2]!))[Number(named[3] ?? 1) - 1];
 	} else if (!old && !next && !f.check.startsWith('browser storage')) {
-		if (f.dimension === 'rendered' || f.dimension === 'behaviour' || (f.dimension === 'a11y' && /\(step \d+\)|^(click|press|type|fill|choose)\b/.test(f.check))) {
+		if (f.dimension === 'rendered' || f.dimension === 'behaviour' || f.dimension === 'responsiveness' || (f.dimension === 'a11y' && /\(step \d+\)|^(click|press|type|fill|choose)\b/.test(f.check))) {
 			const nth = failureOccurrence.get(f);
 			old = byText(oldPage, f.dimension === 'rendered' ? f.expected : f.check, nth?.old);
 			next = byText(newPage, f.dimension === 'rendered' ? f.actual : f.check, nth?.new);
@@ -191,7 +191,7 @@ export async function locateFailures(result: RouteResult, input: LocateInput): P
 	const oldRouteLink = (): SourceLink | undefined => (preferOld[0] ? { file: preferOld[0], ...absolute(oldIndex, preferOld[0]), how: 'source route' } : undefined);
 	const failures = await Promise.all(
 		result.failures.map(async (f) => {
-			const viewport = f.viewport ?? first;
+			const viewport = f.viewport && input.old.pages[f.viewport] ? f.viewport : first;
 			const els = targets(f, input.old.pages[viewport], input.next.pages[viewport]);
 			const rule = failureRules.get(f);
 			if (!els.old && !els.new && !rule) return f;
