@@ -423,16 +423,20 @@ function servedBy(response: Response | undefined): { served?: string } {
 	return parts.length ? { served: parts.join(', ') } : {};
 }
 
+// The first fetch opens the connection; the second, on it, is comparable to the browser's request-to-first-byte.
 async function warmServer(env: SideEnv, url: string): Promise<number | undefined> {
-	const started = performance.now();
-	try {
-		const response = await fetchApp(new URL(url, env.origin), { headers: appHeaders(env) });
-		const ttfb = performance.now() - started;
-		await response.body?.cancel();
-		return Math.round(ttfb);
-	} catch {
-		return undefined;
+	let ttfb: number | undefined;
+	for (let i = 0; i < 2; i++) {
+		const started = performance.now();
+		try {
+			const response = await fetchApp(new URL(url, env.origin), { headers: appHeaders(env) });
+			ttfb = performance.now() - started;
+			await response.body?.cancel();
+		} catch {
+			return undefined;
+		}
 	}
+	return ttfb === undefined ? undefined : Math.round(ttfb);
 }
 
 /** Which first steps of the recorded journeys to time: pointer and typing steps, in-page controls before links, at most `max`. */
@@ -512,7 +516,8 @@ export function likelyCause(samples: readonly Sample[], kind: ControlTiming['kin
 		else if (!s.prefetch) causes.push('no prefetch');
 	}
 	const code = s.fetches.filter((f) => f.kind === 'code');
-	if (kind === 'in-page' && code.length) causes.push(`code fetch: ${code.map((f) => `${f.url} (${kB(f.bytes)})`).join(', ')}`);
+	if (kind === 'in-page' && s.result === 'reloaded' && old[0] && old[0].result !== 'reloaded') causes.push('a full page load where the old app stays on the page');
+	else if (kind === 'in-page' && code.length) causes.push(`code fetch: ${code.map((f) => `${f.url} (${kB(f.bytes)})`).join(', ')}`);
 	if (s.evaluated.length) causes.push(`runtime start: ${s.evaluated.join(', ')} evaluated on the interaction`);
 	const long = [...s.longTasks].sort((a, b) => b.ms - a.ms)[0];
 	if (long) causes.push(`long task ${long.ms} ms${long.script ? `, top script ${long.script}` : ''}`);
@@ -608,7 +613,8 @@ function timing(speed: Speed, kind: ControlTiming['kind'], olds: readonly Sample
 	const newMs = verdict.newMs;
 	if (verdict.slower) problems.push(`slower than the old ${msText(oldMs)} by more than max(16 ms, 10%, the old runs' spread)`);
 	if (verdict.overBudget) problems.push(`over the ${budgetMs} ms budget`);
-	const code = news.flatMap((s) => (kind === 'in-page' ? s.fetches.filter((f) => f.kind === 'code') : []));
+	// A new document loads its own scripts; that is a page load, not an interaction fetching code.
+	const code = news.flatMap((s) => (kind === 'in-page' && s.result !== 'reloaded' ? s.fetches.filter((f) => f.kind === 'code') : []));
 	if (code.length) problems.push(`fetched code on the first interaction: ${[...new Set(code.map((f) => `${f.url} (${kB(f.bytes)})`))].join(', ')}`);
 	const spread = olds.length > 1 && news.length > 1 ? { old: range(olds), new: range(news) } : undefined;
 	return {

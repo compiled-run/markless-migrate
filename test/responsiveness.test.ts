@@ -59,6 +59,8 @@ test('a control is judged on time and on code fetched; a text box the old app re
 	const code = speedTiming(throttled!, 'in-page', [sample({ ms: 30 })], [sample({ ms: 40, fetches: [{ url: '/c.js', kind: 'code', bytes: 2048 }] })], 200);
 	assert.deepEqual([code.ok, code.problems], [false, ['fetched code on the first interaction: /c.js (2.0 kB)']]);
 	assert.equal(code.cause, 'code fetch: /c.js (2.0 kB)');
+	const reloads = speedTiming(desktop!, 'in-page', [sample({ ms: 16, result: 'none' })], [sample({ ms: 170, result: 'reloaded', fetches: [{ url: '/build/chunk.js', kind: 'code', bytes: 1024 }] }), sample({ ms: 173, result: 'reloaded' })], 200);
+	assert.deepEqual([reloads.ok, reloads.problems, reloads.cause], [false, ['slower than the old 16 ms by more than max(16 ms, 10%, the old runs\' spread)'], 'a full page load where the old app stays on the page'], 'a button that reloads the page loads that page\'s scripts, which is not code fetched by an interaction');
 	const nav = sample({ ms: 300, result: 'reloaded', fetches: [{ url: '/next.js', kind: 'code', bytes: 2048 }] });
 	assert.equal(speedTiming(desktop!, 'navigation', [sample({ ms: 50, result: 'navigated' })], [nav, nav], 200).ok, true, 'navigation is judged at the throttled speed, and loading the next page is not an interaction fetching code');
 	assert.equal(speedTiming(throttled!, 'navigation', [sample({ ms: 50, result: 'navigated' })], [nav, nav], 200).ok, false);
