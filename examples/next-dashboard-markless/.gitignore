@@ -8,3 +8,5 @@ public/_img/
 .env
 .vercel/
 server/overview.snapshot.json
+.vercel
+.env*

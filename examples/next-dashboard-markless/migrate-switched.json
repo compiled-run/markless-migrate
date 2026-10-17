@@ -75,6 +75,14 @@
 				"/dashboard/invoices/043d764b-105c-4385-86b8-3af9692b27bb/edit as signed-in: green",
 				"/dashboard/invoices/043d764b-105c-4385-86b8-3af9692b27bb/edit/ as signed-in: green"
 			]
+		},
+		{
+			"route": "/api/*rest",
+			"at": "2026-10-17T13:51:51.048Z",
+			"checks": [],
+			"forced": {
+				"reason": "Endpoints only the new app has (login, logout, the search lists, invoice writes); the switched pages call them from their scripts. The old app serves nothing under /api."
+			}
 		}
 	]
 }

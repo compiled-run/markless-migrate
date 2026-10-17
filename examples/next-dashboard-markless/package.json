@@ -14,6 +14,8 @@
 	},
 	"dependencies": {
 		"@auth/core": "^0.37.2",
+		"@electric-sql/pglite": "^0.5.10",
+		"@electric-sql/pglite-socket": "^0.2.13",
 		"@markless/core": "^0.4.0",
 		"@markless/router": "^0.4.0",
 		"bcryptjs": "^3.0.3",

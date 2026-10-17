@@ -1,0 +1,3 @@
+.build-old/
+front/.vercel/
+embedded-postgres/node_modules/
