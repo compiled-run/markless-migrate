@@ -1,0 +1,41 @@
+{
+	"note": "Starter written by plan from the auth guards in the source. Set each role's credentials in the environment (never in this file), check the login steps against the login page, then pass this file to check --auth. A role can use \"storageState\": \"file.json\" instead of \"login\".",
+	"loginRoute": "/login",
+	"roles": {
+		"signed-in": {
+			"login": [
+				{
+					"goto": "/login"
+				},
+				{
+					"fill": {
+						"label": "Email"
+					},
+					"value": "${SIGNED_IN_EMAIL}"
+				},
+				{
+					"fill": {
+						"label": "Password"
+					},
+					"value": "${SIGNED_IN_PASSWORD}"
+				},
+				{
+					"click": {
+						"role": "button",
+						"name": "Log in"
+					}
+				},
+				{
+					"wait": "!/login"
+				}
+			]
+		}
+	},
+	"guards": [
+		"/dashboard: signed-in (proxy.ts:12)",
+		"/dashboard/customers: signed-in (proxy.ts:12)",
+		"/dashboard/invoices: signed-in (proxy.ts:12)",
+		"/dashboard/invoices/:id/edit: signed-in (proxy.ts:12)",
+		"/dashboard/invoices/create: signed-in (proxy.ts:12)"
+	]
+}

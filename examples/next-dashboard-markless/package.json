@@ -1,0 +1,35 @@
+{
+	"name": "next-dashboard-markless",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "vp dev",
+		"build": "vp build",
+		"preview": "vp preview",
+		"check": "vp check",
+		"doctor": "node scripts/markless-doctor.mjs",
+		"fmt": "vp fmt",
+		"test": "vp test",
+		"prebuild": "node scripts/images.mjs && node scripts/snapshot.ts"
+	},
+	"dependencies": {
+		"@auth/core": "^0.37.2",
+		"@markless/core": "^0.4.0",
+		"@markless/router": "^0.4.0",
+		"bcryptjs": "^3.0.3",
+		"nitro": "3.0.260429-beta",
+		"postgres": "^3.4.9",
+		"vite-plus": "0.1.20",
+		"zod": "^3.25.76"
+	},
+	"devDependencies": {
+		"@markless/analyzer": "^0.4.0",
+		"@markless/typescript-plugin": "^0.4.0",
+		"@tailwindcss/forms": "^0.5.11",
+		"autoprefixer": "^10.4.20",
+		"sharp": "^0.35.5",
+		"tailwindcss": "^3.4.17",
+		"typescript": "^5.9.3",
+		"vite": "^8.0.16"
+	}
+}
