@@ -84,7 +84,7 @@ describe('markless port of the vite site', () => {
 		const footer = located.find((f) => f.check === 'visible text' && /^Page rendered at/.test(f.expected));
 		assert.equal(footer?.where, `old about/index.html:${await lineOf(join(VITE, 'about/index.html'), '<p>Page rendered at')} renders paragraph "Page rendered at"; new pages/about/index.tsrx:2 doesn't`, all);
 		assert.equal(footer?.new?.how, 'markless route', 'the page file comes from the route script Markless renders');
-		const submit = located.find((f) => f.dimension === 'behaviour');
+		const submit = located.find((f) => f.dimension === 'behaviour' && /button "Subscribe"/.test(f.check) && !f.check.startsWith('not exercised'));
 		assert.match(submit?.where ?? '', /^old about\/index\.html:\d+ renders button "Subscribe"; new pages\/about\/index\.tsrx:9 renders it$/, all);
 
 		assert.ok(report.routes[0]!.newFiles?.includes('pages/about/index.tsrx'), 'the files the route is rendered from, for check --changed');
