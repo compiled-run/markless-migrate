@@ -3,12 +3,13 @@
 // and hands them to <Toaster toasts={toasts} />, which renders sonner's own markup for styles.css.
 export const DURATION = 5000;
 
-export type ToastType = 'loading' | 'success' | 'error';
+export type ToastType = 'loading' | 'success' | 'error' | 'default';
 
 export interface Toast {
 	readonly id: string;
 	readonly title: string;
 	readonly type: ToastType;
+	readonly description?: string;
 }
 
 function put(toasts: readonly Toast[], next: Toast): Toast[] {
@@ -32,4 +33,9 @@ export function promiseError(toasts: readonly Toast[], id: string, title: string
 /** The toasts once this one's time is up: the handler that raised it awaits DURATION and writes this back. */
 export function expired(toasts: readonly Toast[], id: string): Toast[] {
 	return toasts.filter((t) => t.id !== id);
+}
+
+/** toast.message(title, { description }): showSubmittedData's toast, the data as indented JSON. */
+export function message(toasts: readonly Toast[], id: string, title: string, description?: string): Toast[] {
+	return put(toasts, { id, title, type: 'default', ...(description ? { description } : {}) });
 }

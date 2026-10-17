@@ -1,0 +1,48 @@
+{
+	"rewrites": [
+		{
+			"source": "/sign-in",
+			"destination": "https://mm-shadcn-admin-new.vercel.app/sign-in"
+		},
+		{
+			"source": "/sign-in/",
+			"destination": "https://mm-shadcn-admin-new.vercel.app/sign-in/"
+		},
+		{
+			"source": "/",
+			"destination": "https://mm-shadcn-admin-new.vercel.app/"
+		},
+		{
+			"source": "/users",
+			"destination": "https://mm-shadcn-admin-new.vercel.app/users"
+		},
+		{
+			"source": "/users/",
+			"destination": "https://mm-shadcn-admin-new.vercel.app/users/"
+		},
+		{
+			"source": "/assets/index-DNwRI-6w.css",
+			"destination": "https://mm-shadcn-admin-new.vercel.app/assets/index-DNwRI-6w.css"
+		},
+		{
+			"source": "/build/:path*",
+			"destination": "https://mm-shadcn-admin-new.vercel.app/build/:path*"
+		},
+		{
+			"source": "/parity/:path*",
+			"destination": "https://mm-shadcn-admin-new.vercel.app/parity/:path*"
+		},
+		{
+			"source": "/",
+			"destination": "https://mm-shadcn-admin-old.vercel.app/"
+		},
+		{
+			"source": "/:path*/",
+			"destination": "https://mm-shadcn-admin-old.vercel.app/:path*/"
+		},
+		{
+			"source": "/:path*",
+			"destination": "https://mm-shadcn-admin-old.vercel.app/:path*"
+		}
+	]
+}

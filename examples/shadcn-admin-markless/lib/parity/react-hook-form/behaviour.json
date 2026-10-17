@@ -1,0 +1,169 @@
+{
+	"library": "react-hook-form",
+	"class": "parity",
+	"reason": "form state as React hooks and context; port the used hooks over Markless state()",
+	"routes": [
+		"/",
+		"/users",
+		"/sign-in"
+	],
+	"exports": [
+		{
+			"name": "useForm",
+			"kind": "hook",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/features/auth/sign-in/components/user-auth-form.tsx",
+						"line": 46,
+						"in": "src/features/auth/sign-in/components/user-auth-form.tsx#UserAuthForm",
+						"kind": "call",
+						"routes": [
+							"/sign-in"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"called with resolver, defaultValues; the result's ..., control, formState.dirtyFields.password, handleSubmit(), reset() read back",
+						"submitting invalid or empty input shows the schema's messages: \"Please enter your email.\", \"Please enter your password.\", \"Password must be at least 7 characters long.\""
+					],
+					"journeys": []
+				},
+				{
+					"site": {
+						"file": "src/features/users/components/users-action-dialog.tsx",
+						"line": 108,
+						"in": "src/features/users/components/users-action-dialog.tsx#UsersActionDialog",
+						"kind": "call",
+						"routes": [
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"called with resolver, defaultValues; the result's ..., control, formState.dirtyFields.password, handleSubmit(), reset() read back",
+						"submitting invalid or empty input shows the schema's messages: \"First Name is required.\", \"Last Name is required.\", \"Username is required.\", \"Phone number is required.\", \"Email is required.\", \"Role is required.\", \"Password is required.\", \"Password must be at least 8 characters long.\", \"Password must contain at least one lowercase letter.\", \"Password must contain at least one number.\", \"Passwords don't match.\""
+					],
+					"journeys": []
+				},
+				{
+					"site": {
+						"file": "src/features/users/components/users-invite-dialog.tsx",
+						"line": 49,
+						"in": "src/features/users/components/users-invite-dialog.tsx#UsersInviteDialog",
+						"kind": "call",
+						"routes": [
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"called with resolver, defaultValues; the result's ..., control, formState.dirtyFields.password, handleSubmit(), reset() read back",
+						"submitting invalid or empty input shows the schema's messages: \"Please enter an email to invite.\", \"Role is required.\""
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "FieldPath",
+			"kind": "type",
+			"port": true,
+			"sites": []
+		},
+		{
+			"name": "FieldValues",
+			"kind": "type",
+			"port": true,
+			"sites": []
+		},
+		{
+			"name": "Controller",
+			"kind": "component",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/form.tsx",
+						"line": 37,
+						"in": "src/components/ui/form.tsx#FormField",
+						"kind": "element",
+						"props": {
+							"...": "{...props}"
+						},
+						"routes": [
+							"/sign-in",
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with ...={...props}"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "ControllerProps",
+			"kind": "type",
+			"port": true,
+			"sites": []
+		},
+		{
+			"name": "FormProvider",
+			"kind": "value",
+			"port": true,
+			"sites": []
+		},
+		{
+			"name": "useFormContext",
+			"kind": "hook",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/form.tsx",
+						"line": 45,
+						"in": "src/components/ui/form.tsx#FormField",
+						"kind": "call",
+						"routes": [
+							"/sign-in",
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"called with no options; the result's getFieldState read back"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "useFormState",
+			"kind": "hook",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/form.tsx",
+						"line": 46,
+						"in": "src/components/ui/form.tsx#FormField",
+						"kind": "call",
+						"routes": [
+							"/sign-in",
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"called with name; the result's value read back"
+					],
+					"journeys": []
+				}
+			]
+		}
+	]
+}

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -160,6 +160,14 @@ test('parity writes a skeleton of exactly the used surface and a behaviour spec 
 	const again = await writeParity(file, 'react-hook-form', { newApp: app, routes: ['/sign-in'] });
 	assert.deepEqual(again.kept, ['lib/parity/react-hook-form/index.ts']);
 	assert.equal(await readFile(join(app, 'lib/parity/react-hook-form/index.ts'), 'utf8'), 'export function useForm() {}\n');
+
+	await rm(join(app, 'lib/parity/recharts'), { recursive: true });
+	await mkdir(join(app, 'lib/parity/recharts'), { recursive: true });
+	await writeFile(join(app, 'lib/parity/recharts/charts.tsrx'), 'export function OverviewChart() @{ <svg /> }\n');
+	const ported = await writeParity(file, 'recharts', { newApp: app });
+	assert.deepEqual(ported.kept, ['lib/parity/recharts/charts.tsrx'], 'a port under its own file names owns the code');
+	assert.deepEqual(ported.written.sort(), ['lib/parity/recharts/behaviour.json', 'lib/parity/recharts/behaviour.md']);
+	assert.deepEqual((await readdir(join(app, 'lib/parity/recharts'))).sort(), ['behaviour.json', 'behaviour.md', 'charts.tsrx']);
 
 	const zod = await writeParity(file, 'zod', { newApp: app });
 	assert.match(zod.notes[0]!, /framework-agnostic: import it from the Markless app unchanged/);

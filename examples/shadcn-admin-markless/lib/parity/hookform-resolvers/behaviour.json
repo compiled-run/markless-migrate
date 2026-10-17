@@ -1,0 +1,67 @@
+{
+	"library": "@hookform/resolvers",
+	"class": "parity",
+	"reason": "adapts a schema library to react-hook-form; ported with it (a few lines over the schema library)",
+	"routes": [
+		"/",
+		"/users",
+		"/sign-in"
+	],
+	"exports": [
+		{
+			"name": "zodResolver",
+			"kind": "function",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/features/auth/sign-in/components/user-auth-form.tsx",
+						"line": 47,
+						"in": "src/features/auth/sign-in/components/user-auth-form.tsx#UserAuthForm",
+						"kind": "call",
+						"routes": [
+							"/sign-in"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"called with no options; the result's value read back"
+					],
+					"journeys": []
+				},
+				{
+					"site": {
+						"file": "src/features/users/components/users-action-dialog.tsx",
+						"line": 109,
+						"in": "src/features/users/components/users-action-dialog.tsx#UsersActionDialog",
+						"kind": "call",
+						"routes": [
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"called with no options; the result's value read back"
+					],
+					"journeys": []
+				},
+				{
+					"site": {
+						"file": "src/features/users/components/users-invite-dialog.tsx",
+						"line": 50,
+						"in": "src/features/users/components/users-invite-dialog.tsx#UsersInviteDialog",
+						"kind": "call",
+						"routes": [
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"called with no options; the result's value read back"
+					],
+					"journeys": []
+				}
+			]
+		}
+	]
+}

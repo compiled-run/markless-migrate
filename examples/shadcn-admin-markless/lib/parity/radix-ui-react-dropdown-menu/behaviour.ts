@@ -1,6 +1,8 @@
 // The DOM half of the dropdown-menu port: placement, focus, and hiding the rest of the page while a modal
 // menu is open (Radix's hideOthers). Plain functions over the elements the menu parts bind; the open/closed
 // state itself stays in the parts, which write it in their own handlers.
+import { resetIn } from '../cmdk/behaviour.ts';
+
 type Side = 'top' | 'right' | 'bottom' | 'left';
 type Align = 'start' | 'center' | 'end';
 
@@ -14,7 +16,7 @@ const find = <T extends HTMLElement>(list: readonly T[] | T | undefined, name: s
 };
 
 export function items(content: HTMLElement): HTMLElement[] {
-	return [...content.querySelectorAll<HTMLElement>('[role=menuitem],[role=menuitemcheckbox],[role=menuitemradio]')].filter((el) => !el.hasAttribute('data-disabled') && el.offsetParent !== null);
+	return [...content.querySelectorAll<HTMLElement>('[role=menuitem],[role=menuitemcheckbox],[role=menuitemradio],[role=option]')].filter((el) => !el.hasAttribute('data-disabled') && el.offsetParent !== null);
 }
 
 function place(wrapper: HTMLElement, content: HTMLElement, trigger: HTMLElement): void {
@@ -75,12 +77,16 @@ export function showOthers(name: string): void {
 }
 
 /** Show the named menu: place it by its trigger, hide everything else from assistive technology, and focus the menu (a pointer open) or its first item (a keyboard open). */
-export function openMenu(contents: readonly HTMLElement[] | HTMLElement | undefined, triggers: readonly HTMLElement[] | HTMLElement | undefined, name: string, focus: 'content' | 'first', onOutside?: (refocus: boolean) => void): void {
+export function openMenu(contents: readonly HTMLElement[] | HTMLElement | undefined, triggers: readonly HTMLElement[] | HTMLElement | undefined, name: string, focus: 'content' | 'first', onOutside?: (refocus: boolean) => void, source?: EventTarget | null): void {
 	const content = find(contents, name);
-	const trigger = find(triggers, name);
+	// Several triggers may open one menu (a row's actions): the one pressed is the anchor.
+	const pressed = source instanceof Element ? (source.closest('[data-menu]') as HTMLElement | null) : null;
+	const trigger = pressed && pressed.dataset.menu === name ? pressed : find(triggers, name);
 	const wrapper = content?.parentElement;
 	if (!content || !trigger || !wrapper) return;
 	const modal = content.dataset.modal !== 'false';
+	// cmdk inside a Radix Popover mounts afresh on every open: empty query, first item selected.
+	if (content.querySelector('[cmdk-root]')) resetIn(content);
 	wrapper.hidden = false;
 	place(wrapper, content, trigger);
 	if (modal) {
@@ -89,7 +95,10 @@ export function openMenu(contents: readonly HTMLElement[] | HTMLElement | undefi
 		content.style.pointerEvents = 'auto';
 	}
 	restoreFocus.set(name, trigger);
-	(focus === 'first' ? (items(content)[0] ?? content) : content).focus();
+	const role = content.getAttribute('role');
+	// A popover focuses what it holds first (Radix FocusScope), a select its chosen option.
+	const start = role === 'dialog' ? content.querySelector<HTMLElement>('input, button, [tabindex="0"]') : role === 'listbox' ? content.querySelector<HTMLElement>('[aria-selected="true"]') : focus === 'first' ? items(content)[0] : undefined;
+	(start ?? content).focus();
 	const listener = (event: PointerEvent) => {
 		if (event.target instanceof Node && (content.contains(event.target) || trigger.contains(event.target))) return;
 		onOutside?.(modal);
@@ -130,4 +139,11 @@ export function moveFocus(contents: readonly HTMLElement[] | HTMLElement | undef
 	const at = list.indexOf(document.activeElement as HTMLElement);
 	const next = key === 'Home' ? 0 : key === 'End' ? list.length - 1 : key === 'ArrowDown' ? (at < 0 ? 0 : Math.min(at + 1, list.length - 1)) : at < 0 ? list.length - 1 : Math.max(at - 1, 0);
 	list[next]?.focus();
+}
+
+
+/** A pointer press on a trigger: close the menu if this trigger has it open, otherwise open it. */
+export function toggleMenu(contents: readonly HTMLElement[] | HTMLElement | undefined, triggers: readonly HTMLElement[] | HTMLElement | undefined, name: string, closing: boolean, source: EventTarget | null, onOutside: (refocus: boolean) => void): void {
+	if (closing) return closeMenu(contents, triggers, name, true);
+	openMenu(contents, triggers, name, 'content', onOutside, source);
 }

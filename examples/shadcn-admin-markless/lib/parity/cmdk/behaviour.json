@@ -1,0 +1,251 @@
+{
+	"library": "cmdk",
+	"class": "markless-ui",
+	"reason": "a filtered command list; @markless/ui combobox is a text field with a list attached",
+	"routes": [
+		"/",
+		"/users",
+		"/sign-in"
+	],
+	"exports": [
+		{
+			"name": "Command",
+			"kind": "component",
+			"port": false,
+			"maps": {
+				"target": "combobox.root",
+				"available": true
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/command.tsx",
+						"line": 18,
+						"in": "src/components/ui/command.tsx#Command",
+						"kind": "element",
+						"props": {
+							"data-slot": "\"command\"",
+							"className": "{cn( 'flex h-full w-full flex-col overflow-hidden rounded-md }",
+							"...": "{...props}"
+						},
+						"routes": [
+							"/",
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with data-slot=\"command\" className={cn( 'flex h-full w-full flex-col overflow-hidden rounded-md } ...={...props}",
+						"typing filters the list",
+						"ArrowDown and Enter choose an option"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "Command.Empty",
+			"kind": "component",
+			"port": false,
+			"maps": {
+				"target": "",
+				"available": true,
+				"note": "nothing to port: the Markless family needs no counterpart"
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/command.tsx",
+						"line": 102,
+						"in": "src/components/ui/command.tsx#CommandEmpty",
+						"kind": "element",
+						"props": {
+							"data-slot": "\"command-empty\"",
+							"className": "\"py-6 text-center text-sm\"",
+							"...": "{...props}"
+						},
+						"routes": [
+							"/",
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with data-slot=\"command-empty\" className=\"py-6 text-center text-sm\" ...={...props}"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "Command.Group",
+			"kind": "component",
+			"port": false,
+			"maps": {
+				"target": "",
+				"available": true,
+				"note": "nothing to port: the Markless family needs no counterpart"
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/command.tsx",
+						"line": 115,
+						"in": "src/components/ui/command.tsx#CommandGroup",
+						"kind": "element",
+						"props": {
+							"data-slot": "\"command-group\"",
+							"className": "{cn( 'overflow-hidden p-1 text-foreground **:[[cmdk-group-hea}",
+							"...": "{...props}"
+						},
+						"routes": [
+							"/",
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with data-slot=\"command-group\" className={cn( 'overflow-hidden p-1 text-foreground **:[[cmdk-group-hea} ...={...props}"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "Command.Input",
+			"kind": "component",
+			"port": false,
+			"maps": {
+				"target": "combobox.input",
+				"available": true
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/command.tsx",
+						"line": 70,
+						"in": "src/components/ui/command.tsx#CommandInput",
+						"kind": "element",
+						"props": {
+							"data-slot": "\"command-input\"",
+							"className": "{cn( 'flex h-10 w-full rounded-md bg-transparent py-3 text-sm}",
+							"...": "{...props}"
+						},
+						"routes": [
+							"/",
+							"/users"
+						]
+					},
+					"target": {
+						"role": "combobox"
+					},
+					"mustSee": [
+						"renders combobox with data-slot=\"command-input\" className={cn( 'flex h-10 w-full rounded-md bg-transparent py-3 text-sm} ...={...props}"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "Command.Item",
+			"kind": "component",
+			"port": false,
+			"maps": {
+				"target": "combobox.item",
+				"available": true
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/command.tsx",
+						"line": 144,
+						"in": "src/components/ui/command.tsx#CommandItem",
+						"kind": "element",
+						"props": {
+							"data-slot": "\"command-item\"",
+							"className": "{cn( \"relative flex cursor-default items-center gap-2 rounded}",
+							"...": "{...props}"
+						},
+						"routes": [
+							"/",
+							"/users"
+						]
+					},
+					"target": {
+						"role": "option"
+					},
+					"mustSee": [
+						"renders option with data-slot=\"command-item\" className={cn( \"relative flex cursor-default items-center gap-2 rounded} ...={...props}"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "Command.List",
+			"kind": "component",
+			"port": false,
+			"maps": {
+				"target": "combobox.content",
+				"available": true
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/command.tsx",
+						"line": 87,
+						"in": "src/components/ui/command.tsx#CommandList",
+						"kind": "element",
+						"props": {
+							"data-slot": "\"command-list\"",
+							"className": "{cn( 'max-h-75 scroll-py-1 overflow-x-hidden overflow-y-auto'}",
+							"...": "{...props}"
+						},
+						"routes": [
+							"/",
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with data-slot=\"command-list\" className={cn( 'max-h-75 scroll-py-1 overflow-x-hidden overflow-y-auto'} ...={...props}"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "Command.Separator",
+			"kind": "component",
+			"port": true,
+			"maps": {
+				"target": "base.separator",
+				"available": false
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/command.tsx",
+						"line": 131,
+						"in": "src/components/ui/command.tsx#CommandSeparator",
+						"kind": "element",
+						"props": {
+							"data-slot": "\"command-separator\"",
+							"className": "{cn('-mx-1 h-px bg-border', className)}",
+							"...": "{...props}"
+						},
+						"routes": [
+							"/",
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with data-slot=\"command-separator\" className={cn('-mx-1 h-px bg-border', className)} ...={...props}"
+					],
+					"journeys": []
+				}
+			]
+		}
+	]
+}

@@ -326,13 +326,16 @@ export async function writeParity(file: LibrariesFile, name: string, options: Pa
 	const written: string[] = [];
 	const kept: string[] = [];
 	await mkdir(dir, { recursive: true });
+	// A port already written by hand, under any file name, owns the code: only the behaviour spec is refreshed.
+	const ported: string[] = [];
+	for (const name of (await readdir(dir)).filter((n) => /\.(tsx?|tsrx|vue|svelte|js)$/.test(n)).sort()) {
+		const text = await readFile(join(dir, name), 'utf8').catch(() => '');
+		if (!text.includes(MARKER)) ported.push(relative(options.newApp, join(dir, name)));
+	}
 	const put = async (path: string, text: string, skeleton: boolean) => {
-		if (skeleton) {
-			const prior = await readFile(path, 'utf8').catch(() => undefined);
-			if (prior !== undefined && !prior.includes(MARKER)) {
-				kept.push(relative(options.newApp, path));
-				return;
-			}
+		if (skeleton && ported.length) {
+			kept.push(...ported.filter((p) => !kept.includes(p)));
+			return;
 		}
 		await writeFile(path, text);
 		written.push(relative(options.newApp, path));

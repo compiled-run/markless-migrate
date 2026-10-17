@@ -6,7 +6,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /* The font class is set on <html> from the font cookie before paint, so no template names it. */
-@source inline("font-inter font-manrope");
+@source inline("font-inter font-manrope shadow after:absolute after:inset-0 after:-z-10 after:bg-background/20 after:backdrop-blur-lg");
 
 @layer base {
   /* The router wraps each page in this element; the old app had nothing there. */
@@ -107,4 +107,29 @@
   to {
     height: 0;
   }
+}
+
+/* The users table's role icon: one per role is drawn, the cell's role picks it. */
+[data-role]:not([data-role='superadmin']) > .role-superadmin,
+[data-role]:not([data-role='admin']) > .role-admin,
+[data-role]:not([data-role='manager']) > .role-manager,
+[data-role]:not([data-role='cashier']) > .role-cashier {
+	display: none;
+}
+
+/* A column hidden from the View menu: its cells are not drawn. */
+table.hide-email [data-col='email'],
+table.hide-phoneNumber [data-col='phoneNumber'] {
+	display: none;
+}
+
+/* The users table keeps hidden row slots after its rows, so the last shown row is not :last-child. */
+tbody[data-slot='table-body'] > tr:not([hidden]):not(:has(~ tr:not([hidden]))) {
+	border-bottom-width: 0;
+}
+
+/* The users toolbar keeps its Reset button, which the old app leaves out, hidden after the filters: the filters
+   are then not :last-child and would keep the margin space-x gives an element with a next sibling. */
+[data-trailing-hidden] > :not([hidden]):not(:has(~ :not([hidden]))) {
+	margin-inline-end: 0;
 }

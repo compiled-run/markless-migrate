@@ -1,0 +1,65 @@
+{
+	"library": "sonner",
+	"class": "markless-ui",
+	"reason": "toasts; @markless/ui toaster owns the live region, timing and dismissal",
+	"routes": [
+		"/",
+		"/users",
+		"/sign-in"
+	],
+	"exports": [
+		{
+			"name": "toast",
+			"kind": "value",
+			"port": false,
+			"maps": {
+				"target": "toaster.item",
+				"available": true
+			},
+			"sites": []
+		},
+		{
+			"name": "ToasterProps",
+			"kind": "type",
+			"port": true,
+			"sites": []
+		},
+		{
+			"name": "Toaster",
+			"kind": "component",
+			"port": false,
+			"maps": {
+				"target": "toaster.root",
+				"available": true
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/sonner.tsx",
+						"line": 8,
+						"in": "src/components/ui/sonner.tsx#Toaster",
+						"kind": "element",
+						"props": {
+							"theme": "{theme as ToasterProps['theme']}",
+							"className": "\"toaster group [&_div[data-content]]:w-full\"",
+							"style": "{{ '--normal-bg': 'var(--popover)', '--normal-text': 'var(--p}",
+							"...": "{...props}"
+						},
+						"routes": [
+							"/",
+							"/sign-in",
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with theme={theme as ToasterProps['theme']} className=\"toaster group [&_div[data-content]]:w-full\" style={{ '--normal-bg': 'var(--popover)', '--normal-text': 'var(--p} ...={...props}",
+						"each message appears in a live region and is announced",
+						"a message leaves after its duration"
+					],
+					"journeys": []
+				}
+			]
+		}
+	]
+}

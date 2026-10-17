@@ -8,7 +8,7 @@
 import { computed, element, shared, state } from '@markless/core';
 import type { Children, PropsOf } from '@markless/core';
 import { cn } from '../../utils.ts';
-import { closeMenu, focusItem, moveFocus, openMenu, selectAndClose } from './behaviour.ts';
+import { closeMenu, focusItem, moveFocus, openMenu, selectAndClose, toggleMenu } from './behaviour.ts';
 
 export const CONTENT_CLASS =
 	'z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-32 origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95';
@@ -17,7 +17,7 @@ export const ITEM_CLASS =
 
 export const menus = shared(
 	() => {
-		const cells = state({ open: '' });
+		const cells = state({ open: '', at: '' });
 		const triggers = element<HTMLButtonElement[]>();
 		const contents = element<HTMLDivElement[]>();
 		return { ...cells, triggers, contents };
@@ -31,40 +31,46 @@ export type MenuAlign = 'start' | 'center' | 'end';
 export type DropdownMenuTriggerProps = PropsOf<'button'> & {
 	/** Names the menu this trigger opens; the content with the same `menu` is the one it shows. */
 	readonly menu: string;
+	/** `aria-haspopup`: `dialog` for a Radix Popover trigger, `listbox` for a Select trigger. */
+	readonly haspopup?: 'menu' | 'dialog' | 'listbox';
+	/** Tells apart triggers that share one menu, for their ids. */
+	readonly instance?: string;
+	/** shadcn's trigger data-slot: `popover-trigger` for a Popover's. */
+	readonly slot?: string;
 	readonly class?: string;
 	readonly children?: Children;
 };
 
-export function DropdownMenuTrigger({ menu, class: klass, children, ...rest }: DropdownMenuTriggerProps) @{
+export function DropdownMenuTrigger({ menu, haspopup, instance, slot, class: klass, children, ...rest }: DropdownMenuTriggerProps) @{
 	const m = menus();
 	// The menu's name as a cell: a comparison with a prop on one side stops refreshing after resume.
 	let name = state(menu);
-	const triggerExpanded = computed(() => (m.open === name ? 'true' : 'false'));
-	const triggerState = computed(() => (m.open === name ? 'open' : 'closed'));
-	const triggerId = computed(() => `radix-menu-${name}-trigger`);
+	let inst = state(instance ?? '');
+	const triggerExpanded = computed(() => (m.open === name && m.at === inst ? 'true' : 'false'));
+	const triggerState = computed(() => (m.open === name && m.at === inst ? 'open' : 'closed'));
+	const triggerId = computed(() => `radix-menu-${name}${inst}-trigger`);
 	const contentId = computed(() => `radix-menu-${name}-content`);
+	const popupKind = computed(() => haspopup ?? 'menu');
+	const triggerSlot = computed(() => slot ?? 'dropdown-menu-trigger');
 
 	<button
 		{...rest}
 		el={m.triggers}
 		type="button"
-		data-slot="dropdown-menu-trigger"
+		data-slot={triggerSlot}
 		class={klass}
 		id={triggerId}
-		aria-haspopup="menu"
+		aria-haspopup={popupKind}
 		aria-expanded={triggerExpanded}
 		aria-controls={contentId}
 		data-state={triggerState}
 		data-menu={name}
 		onPointerdown={(event) => {
-			if (event.button !== 0 || event.ctrlKey) return;
-			event.preventDefault();
-			if (m.open === name) {
-				m.open = '';
-				closeMenu(m.contents, m.triggers, name, true);
-			} else {
-				m.open = name;
-				openMenu(m.contents, m.triggers, name, 'content', (refocus) => {
+			if (event.button === 0) {
+				event.preventDefault();
+				m.open = m.open === name && m.at === inst ? '' : name;
+				m.at = inst;
+				toggleMenu(m.contents, m.triggers, name, m.open === '', event.target, (refocus) => {
 					m.open = '';
 					closeMenu(m.contents, m.triggers, name, refocus);
 				});
@@ -75,10 +81,11 @@ export function DropdownMenuTrigger({ menu, class: klass, children, ...rest }: D
 			if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown') {
 				event.preventDefault();
 				m.open = name;
+				m.at = inst;
 				openMenu(m.contents, m.triggers, name, 'first', (refocus) => {
 					m.open = '';
 					closeMenu(m.contents, m.triggers, name, refocus);
-				});
+				}, event.target);
 			}
 		}}
 	>
@@ -88,6 +95,10 @@ export function DropdownMenuTrigger({ menu, class: klass, children, ...rest }: D
 
 export type DropdownMenuContentProps = PropsOf<'div'> & {
 	readonly menu: string;
+	/** `listbox` for a Select's content. */
+	readonly role?: 'menu' | 'listbox';
+	/** shadcn's content data-slot: `popover-content`, `select-content`. */
+	readonly slot?: string;
 	/** Radix's `modal`: a modal menu hides the rest of the page and returns focus to its trigger when a press outside closes it. */
 	readonly modal?: boolean;
 	readonly side?: MenuSide;
@@ -97,7 +108,7 @@ export type DropdownMenuContentProps = PropsOf<'div'> & {
 	readonly children?: Children;
 };
 
-export function DropdownMenuContent({ menu, modal, side, align, sideOffset, class: klass, children, ...rest }: DropdownMenuContentProps) @{
+export function DropdownMenuContent({ menu, role, slot, modal, side, align, sideOffset, class: klass, children, ...rest }: DropdownMenuContentProps) @{
 	const m = menus();
 	let name = state(menu);
 	const contentClosed = computed(() => m.open !== name);
@@ -107,7 +118,9 @@ export function DropdownMenuContent({ menu, modal, side, align, sideOffset, clas
 	const contentAlign = computed(() => align ?? 'center');
 	const contentOffset = computed(() => String(sideOffset ?? 4));
 	const contentModal = computed(() => (modal === false ? 'false' : 'true'));
-	const labelledBy = computed(() => `radix-menu-${name}-trigger`);
+	const contentRole = computed(() => role ?? 'menu');
+	const contentSlot = computed(() => slot ?? 'dropdown-menu-content');
+	const labelledBy = computed(() => `radix-menu-${name}${m.at}-trigger`);
 	const contentDomId = computed(() => `radix-menu-${name}-content`);
 
 	<div data-radix-popper-content-wrapper="" dir="ltr" hidden={contentClosed} data-menu-wrapper={name} style="position: fixed; left: 0px; top: 0px; min-width: max-content; z-index: 50;">
@@ -119,14 +132,14 @@ export function DropdownMenuContent({ menu, modal, side, align, sideOffset, clas
 			data-align={contentAlign}
 			data-side-offset={contentOffset}
 			data-modal={contentModal}
-			role="menu"
+			role={contentRole}
 			aria-orientation="vertical"
 			data-state={contentState}
 			data-radix-menu-content=""
 			dir="ltr"
 			id={contentDomId}
 			aria-labelledby={labelledBy}
-			data-slot="dropdown-menu-content"
+			data-slot={contentSlot}
 			class={contentClass}
 			tabindex="-1"
 			data-orientation="vertical"
@@ -153,6 +166,8 @@ export function DropdownMenuContent({ menu, modal, side, align, sideOffset, clas
 
 export type DropdownMenuItemProps = PropsOf<'div'> & {
 	readonly menu: string;
+	/** `option` for a Select's item. */
+	readonly role?: 'menuitem' | 'option' | 'menuitemcheckbox';
 	readonly variant?: 'default' | 'destructive';
 	readonly class?: string;
 	/** Runs when the item is chosen, by pointer or keyboard, before the menu closes. */
@@ -160,15 +175,16 @@ export type DropdownMenuItemProps = PropsOf<'div'> & {
 	readonly children?: Children;
 };
 
-export function DropdownMenuItem({ menu, variant, class: klass, onSelect, children, ...rest }: DropdownMenuItemProps) @{
+export function DropdownMenuItem({ menu, role, variant, class: klass, onSelect, children, ...rest }: DropdownMenuItemProps) @{
 	const m = menus();
 	let name = state(menu);
 	const itemClass = computed(() => cn(ITEM_CLASS, klass));
 	const itemVariant = computed(() => variant ?? 'default');
+	const itemRole = computed(() => role ?? 'menuitem');
 
 	<div
 		{...rest}
-		role="menuitem"
+		role={itemRole}
 		data-slot="dropdown-menu-item"
 		data-variant={itemVariant}
 		class={itemClass}
@@ -210,4 +226,126 @@ export function DropdownMenuGroup({ children }: { readonly children?: Children }
 export function DropdownMenuShortcut({ class: klass, children }: { readonly class?: string; readonly children?: Children }) @{
 	const shortcutClass = computed(() => cn('ms-auto text-xs tracking-widest text-muted-foreground', klass));
 	<span data-slot="dropdown-menu-shortcut" class={shortcutClass}>{children}</span>
+}
+
+export type DropdownMenuCheckboxItemProps = {
+	readonly menu: string;
+	/** `true` or `false`, from the page's own state. */
+	readonly checked: string;
+	readonly class?: string;
+	readonly onSelect?: () => void;
+	readonly children?: Children;
+};
+
+/** Radix's CheckboxItem as shadcn styles it: a menuitemcheckbox with its check indicator; choosing it toggles and closes the menu. */
+export function DropdownMenuCheckboxItem({ menu, checked, class: klass, onSelect, children }: DropdownMenuCheckboxItemProps) @{
+	const m = menus();
+	let name = state(menu);
+	const checkboxItemClass = computed(() => cn("relative flex cursor-default items-center gap-2 rounded-sm py-1.5 pe-2 ps-8 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4", klass));
+	const checkboxItemState = computed(() => (checked === 'true' ? 'checked' : 'unchecked'));
+	const indicatorHidden = computed(() => checked !== 'true');
+
+	<div
+		role="menuitemcheckbox"
+		aria-checked={checked}
+		data-state={checkboxItemState}
+		data-slot="dropdown-menu-checkbox-item"
+		class={checkboxItemClass}
+		tabindex="-1"
+		data-orientation="vertical"
+		data-radix-collection-item=""
+		onClick={() => {
+			onSelect?.();
+			m.open = '';
+			selectAndClose(m.contents, m.triggers, name);
+		}}
+	>
+		<span class="pointer-events-none absolute inset-s-2 flex size-3.5 items-center justify-center">
+			<span data-state={checkboxItemState} hidden={indicatorHidden} style="pointer-events: none;"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check size-4" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg></span>
+		</span>
+		{children}
+	</div>
+}
+
+export type SelectItemProps = {
+	readonly menu: string;
+	/** `true` for the chosen option, from the page's own state. */
+	readonly selected: string;
+	readonly onSelect?: () => void;
+	readonly children?: Children;
+};
+
+/** shadcn's SelectItem over Radix Select: an option with its check, on the same open/close cell as the menus. */
+export function SelectItem({ menu, selected, onSelect, children }: SelectItemProps) @{
+	const m = menus();
+	let name = state(menu);
+	const selectItemState = computed(() => (selected === 'true' ? 'checked' : 'unchecked'));
+	const selectCheckHidden = computed(() => selected !== 'true');
+
+	<div
+		role="option"
+		aria-selected={selected}
+		data-state={selectItemState}
+		tabindex="-1"
+		data-slot="select-item"
+		class="relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 ps-2 pe-8 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2"
+		data-radix-collection-item=""
+		onClick={() => {
+			onSelect?.();
+			m.open = '';
+			selectAndClose(m.contents, m.triggers, name);
+		}}
+	>
+		<span class="absolute inset-e-2 flex size-3.5 items-center justify-center">
+			<span aria-hidden="true" hidden={selectCheckHidden}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check size-4" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg></span>
+		</span>
+		<span>{children}</span>
+	</div>
+}
+
+export type PopoverContentProps = {
+	readonly menu: string;
+	readonly align?: MenuAlign;
+	readonly side?: MenuSide;
+	readonly sideOffset?: number;
+	readonly class?: string;
+	readonly children?: Children;
+};
+
+/** Radix Popover's content (shadcn's popover.tsx), on the same open/close cell as the menus: not modal, and its keys belong to what it holds; Escape closes it. */
+export function PopoverContent({ menu, align, side, sideOffset, class: klass, children }: PopoverContentProps) @{
+	const m = menus();
+	let name = state(menu);
+	const popoverClosed = computed(() => m.open !== name);
+	const popoverState = computed(() => (m.open === name ? 'open' : 'closed'));
+	const popoverSide = computed(() => side ?? 'bottom');
+	const popoverAlign = computed(() => align ?? 'center');
+	const popoverOffset = computed(() => String(sideOffset ?? 4));
+	const popoverDomId = computed(() => `radix-menu-${name}-content`);
+
+	<div data-radix-popper-content-wrapper="" hidden={popoverClosed} data-menu-wrapper={name} style="position: fixed; left: 0px; top: 0px; min-width: max-content; z-index: 50;">
+		<div
+			el={m.contents}
+			data-menu={name}
+			data-side={popoverSide}
+			data-align={popoverAlign}
+			data-side-offset={popoverOffset}
+			data-modal="false"
+			data-state={popoverState}
+			role="dialog"
+			id={popoverDomId}
+			data-slot="popover-content"
+			class={klass}
+			tabindex="-1"
+			onKeydown={(event) => {
+				if (event.key === 'Escape') {
+					event.preventDefault();
+					m.open = '';
+					closeMenu(m.contents, m.triggers, name, true);
+				}
+			}}
+		>
+			{children}
+		</div>
+	</div>
 }

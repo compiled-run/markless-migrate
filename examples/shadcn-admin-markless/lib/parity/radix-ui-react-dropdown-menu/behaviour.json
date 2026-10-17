@@ -1,0 +1,596 @@
+{
+	"library": "@radix-ui/react-dropdown-menu",
+	"class": "markless-ui",
+	"reason": "a React primitive; @markless/ui menu owns the same keyboard, focus and ARIA behaviour",
+	"routes": [
+		"/",
+		"/users",
+		"/sign-in"
+	],
+	"exports": [
+		{
+			"name": "ItemIndicator",
+			"kind": "component",
+			"port": false,
+			"maps": {
+				"target": "",
+				"available": true,
+				"note": "nothing to port: the Markless family needs no counterpart"
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/dropdown-menu.tsx",
+						"line": 99,
+						"in": "src/components/ui/dropdown-menu.tsx#DropdownMenuCheckboxItem",
+						"kind": "element",
+						"props": {
+							"children": "{children}"
+						},
+						"routes": [
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders"
+					],
+					"journeys": []
+				},
+				{
+					"site": {
+						"file": "src/components/ui/dropdown-menu.tsx",
+						"line": 134,
+						"in": "src/components/ui/dropdown-menu.tsx#DropdownMenuRadioItem",
+						"kind": "element",
+						"props": {
+							"children": "{children}"
+						},
+						"routes": [
+							"/",
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "CheckboxItem",
+			"kind": "component",
+			"port": true,
+			"maps": {
+				"target": "menu.item",
+				"available": false
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/dropdown-menu.tsx",
+						"line": 89,
+						"in": "src/components/ui/dropdown-menu.tsx#DropdownMenuCheckboxItem",
+						"kind": "element",
+						"props": {
+							"data-slot": "\"dropdown-menu-checkbox-item\"",
+							"className": "{cn( \"relative flex cursor-default items-center gap-2 rounded}",
+							"checked": "{checked}",
+							"...": "{...props}",
+							"children": "{children}"
+						},
+						"routes": [
+							"/users"
+						]
+					},
+					"target": {
+						"role": "menuitem"
+					},
+					"mustSee": [
+						"renders menuitem with data-slot=\"dropdown-menu-checkbox-item\" className={cn( \"relative flex cursor-default items-center gap-2 rounded} checked={checked} ...={...props}"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "Content",
+			"kind": "component",
+			"port": true,
+			"maps": {
+				"target": "menu.content",
+				"available": false
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/dropdown-menu.tsx",
+						"line": 38,
+						"in": "src/components/ui/dropdown-menu.tsx#DropdownMenuContent",
+						"kind": "element",
+						"props": {
+							"data-slot": "\"dropdown-menu-content\"",
+							"sideOffset": "{sideOffset}",
+							"className": "{cn( 'z-50 max-h-(--radix-dropdown-menu-content-available-hei}",
+							"...": "{...props}"
+						},
+						"routes": [
+							"/",
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with data-slot=\"dropdown-menu-content\" sideOffset={sideOffset} className={cn( 'z-50 max-h-(--radix-dropdown-menu-content-available-hei} ...={...props}"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "DropdownMenuTrigger",
+			"kind": "component",
+			"port": true,
+			"maps": {
+				"target": "menu.trigger",
+				"available": false
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/data-table/view-options.tsx",
+						"line": 22,
+						"in": "src/components/data-table/view-options.tsx#DataTableViewOptions",
+						"kind": "element",
+						"props": {
+							"asChild": "true",
+							"children": "{children}"
+						},
+						"text": "View",
+						"routes": [
+							"/users"
+						]
+					},
+					"target": {
+						"role": "button",
+						"name": "View"
+					},
+					"mustSee": [
+						"renders button \"View\" with asChild=true",
+						"closed until its trigger is pressed",
+						"Enter, Space or ArrowDown on the trigger opens it with the first item focused",
+						"ArrowDown and ArrowUp move between items",
+						"Escape closes it and focus returns to the trigger",
+						"choosing an item runs its action and closes the menu"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "Group",
+			"kind": "component",
+			"port": false,
+			"maps": {
+				"target": "",
+				"available": true,
+				"note": "nothing to port: the Markless family needs no counterpart"
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/dropdown-menu.tsx",
+						"line": 55,
+						"in": "src/components/ui/dropdown-menu.tsx#DropdownMenuGroup",
+						"kind": "element",
+						"props": {
+							"data-slot": "\"dropdown-menu-group\"",
+							"...": "{...props}"
+						},
+						"routes": [
+							"/",
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with data-slot=\"dropdown-menu-group\" ...={...props}"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "Item",
+			"kind": "component",
+			"port": true,
+			"maps": {
+				"target": "menu.item",
+				"available": false
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/dropdown-menu.tsx",
+						"line": 69,
+						"in": "src/components/ui/dropdown-menu.tsx#DropdownMenuItem",
+						"kind": "element",
+						"props": {
+							"data-slot": "\"dropdown-menu-item\"",
+							"data-inset": "{inset}",
+							"data-variant": "{variant}",
+							"className": "{cn( \"relative flex cursor-default items-center gap-2 rounded}",
+							"...": "{...props}"
+						},
+						"routes": [
+							"/",
+							"/users"
+						]
+					},
+					"target": {
+						"role": "menuitem"
+					},
+					"mustSee": [
+						"renders menuitem with data-slot=\"dropdown-menu-item\" data-inset={inset} data-variant={variant} className={cn( \"relative flex cursor-default items-center gap-2 rounded} ...={...props}"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "Label",
+			"kind": "component",
+			"port": false,
+			"maps": {
+				"target": "",
+				"available": true,
+				"note": "nothing to port: the Markless family needs no counterpart"
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/dropdown-menu.tsx",
+						"line": 151,
+						"in": "src/components/ui/dropdown-menu.tsx#DropdownMenuLabel",
+						"kind": "element",
+						"props": {
+							"data-slot": "\"dropdown-menu-label\"",
+							"data-inset": "{inset}",
+							"className": "{cn( 'px-2 py-1.5 text-sm font-medium data-inset:ps-8', class}",
+							"...": "{...props}"
+						},
+						"routes": [
+							"/",
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with data-slot=\"dropdown-menu-label\" data-inset={inset} className={cn( 'px-2 py-1.5 text-sm font-medium data-inset:ps-8', class} ...={...props}"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "Portal",
+			"kind": "component",
+			"port": false,
+			"maps": {
+				"target": "",
+				"available": true,
+				"note": "nothing to port: the Markless family needs no counterpart"
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/dropdown-menu.tsx",
+						"line": 37,
+						"in": "src/components/ui/dropdown-menu.tsx#DropdownMenuContent",
+						"kind": "element",
+						"props": {
+							"children": "{children}"
+						},
+						"routes": [
+							"/",
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "RadioGroup",
+			"kind": "component",
+			"port": true,
+			"maps": {
+				"target": "menu.root",
+				"available": false
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/dropdown-menu.tsx",
+						"line": 112,
+						"in": "src/components/ui/dropdown-menu.tsx#DropdownMenuRadioGroup",
+						"kind": "element",
+						"props": {
+							"data-slot": "\"dropdown-menu-radio-group\"",
+							"...": "{...props}"
+						},
+						"routes": [
+							"/",
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with data-slot=\"dropdown-menu-radio-group\" ...={...props}",
+						"closed until its trigger is pressed",
+						"Enter, Space or ArrowDown on the trigger opens it with the first item focused",
+						"ArrowDown and ArrowUp move between items",
+						"Escape closes it and focus returns to the trigger",
+						"choosing an item runs its action and closes the menu"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "RadioItem",
+			"kind": "component",
+			"port": true,
+			"maps": {
+				"target": "menu.item",
+				"available": false
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/dropdown-menu.tsx",
+						"line": 125,
+						"in": "src/components/ui/dropdown-menu.tsx#DropdownMenuRadioItem",
+						"kind": "element",
+						"props": {
+							"data-slot": "\"dropdown-menu-radio-item\"",
+							"className": "{cn( \"relative flex cursor-default items-center gap-2 rounded}",
+							"...": "{...props}",
+							"children": "{children}"
+						},
+						"routes": [
+							"/",
+							"/users"
+						]
+					},
+					"target": {
+						"role": "menuitem"
+					},
+					"mustSee": [
+						"renders menuitem with data-slot=\"dropdown-menu-radio-item\" className={cn( \"relative flex cursor-default items-center gap-2 rounded} ...={...props}"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "Root",
+			"kind": "component",
+			"port": true,
+			"maps": {
+				"target": "menu.root",
+				"available": false
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/dropdown-menu.tsx",
+						"line": 9,
+						"in": "src/components/ui/dropdown-menu.tsx#DropdownMenu",
+						"kind": "element",
+						"props": {
+							"data-slot": "\"dropdown-menu\"",
+							"...": "{...props}"
+						},
+						"routes": [
+							"/",
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with data-slot=\"dropdown-menu\" ...={...props}",
+						"closed until its trigger is pressed",
+						"Enter, Space or ArrowDown on the trigger opens it with the first item focused",
+						"ArrowDown and ArrowUp move between items",
+						"Escape closes it and focus returns to the trigger",
+						"choosing an item runs its action and closes the menu"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "Separator",
+			"kind": "component",
+			"port": true,
+			"maps": {
+				"target": "base.separator",
+				"available": false
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/dropdown-menu.tsx",
+						"line": 168,
+						"in": "src/components/ui/dropdown-menu.tsx#DropdownMenuSeparator",
+						"kind": "element",
+						"props": {
+							"data-slot": "\"dropdown-menu-separator\"",
+							"className": "{cn('-mx-1 my-1 h-px bg-border', className)}",
+							"...": "{...props}"
+						},
+						"routes": [
+							"/",
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with data-slot=\"dropdown-menu-separator\" className={cn('-mx-1 my-1 h-px bg-border', className)} ...={...props}"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "Sub",
+			"kind": "component",
+			"port": true,
+			"maps": {
+				"target": "menu.item",
+				"available": false
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/dropdown-menu.tsx",
+						"line": 195,
+						"in": "src/components/ui/dropdown-menu.tsx#DropdownMenuSub",
+						"kind": "element",
+						"props": {
+							"data-slot": "\"dropdown-menu-sub\"",
+							"...": "{...props}"
+						},
+						"routes": [
+							"/",
+							"/users"
+						]
+					},
+					"target": {
+						"role": "menuitem"
+					},
+					"mustSee": [
+						"renders menuitem with data-slot=\"dropdown-menu-sub\" ...={...props}"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "SubContent",
+			"kind": "component",
+			"port": true,
+			"maps": {
+				"target": "menu.itemcontent",
+				"available": false
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/dropdown-menu.tsx",
+						"line": 227,
+						"in": "src/components/ui/dropdown-menu.tsx#DropdownMenuSubContent",
+						"kind": "element",
+						"props": {
+							"data-slot": "\"dropdown-menu-sub-content\"",
+							"className": "{cn( 'z-50 min-w-32 origin-(--radix-dropdown-menu-content-tra}",
+							"...": "{...props}"
+						},
+						"routes": [
+							"/",
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with data-slot=\"dropdown-menu-sub-content\" className={cn( 'z-50 min-w-32 origin-(--radix-dropdown-menu-content-tra} ...={...props}"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "SubTrigger",
+			"kind": "component",
+			"port": true,
+			"maps": {
+				"target": "menu.item",
+				"available": false
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/dropdown-menu.tsx",
+						"line": 207,
+						"in": "src/components/ui/dropdown-menu.tsx#DropdownMenuSubTrigger",
+						"kind": "element",
+						"props": {
+							"data-slot": "\"dropdown-menu-sub-trigger\"",
+							"data-inset": "{inset}",
+							"className": "{cn( 'flex cursor-default items-center rounded-sm px-2 py-1.5}",
+							"...": "{...props}",
+							"children": "{children}"
+						},
+						"routes": [
+							"/",
+							"/users"
+						]
+					},
+					"target": {
+						"role": "menuitem"
+					},
+					"mustSee": [
+						"renders menuitem with data-slot=\"dropdown-menu-sub-trigger\" data-inset={inset} className={cn( 'flex cursor-default items-center rounded-sm px-2 py-1.5} ...={...props}"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "Trigger",
+			"kind": "component",
+			"port": true,
+			"maps": {
+				"target": "menu.trigger",
+				"available": false
+			},
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/ui/dropdown-menu.tsx",
+						"line": 24,
+						"in": "src/components/ui/dropdown-menu.tsx#DropdownMenuTrigger",
+						"kind": "element",
+						"props": {
+							"data-slot": "\"dropdown-menu-trigger\"",
+							"...": "{...props}"
+						},
+						"routes": [
+							"/",
+							"/users"
+						]
+					},
+					"target": {
+						"role": "button"
+					},
+					"mustSee": [
+						"renders button with data-slot=\"dropdown-menu-trigger\" ...={...props}",
+						"closed until its trigger is pressed",
+						"Enter, Space or ArrowDown on the trigger opens it with the first item focused",
+						"ArrowDown and ArrowUp move between items",
+						"Escape closes it and focus returns to the trigger",
+						"choosing an item runs its action and closes the menu"
+					],
+					"journeys": []
+				}
+			]
+		}
+	]
+}

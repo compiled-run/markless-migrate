@@ -1,0 +1,267 @@
+{
+	"library": "@tanstack/react-table",
+	"class": "parity",
+	"reason": "TanStack Table is a framework-agnostic engine with a thin hook per framework: keep the engine, port only the adapter the app calls",
+	"core": "@tanstack/table-core",
+	"routes": [
+		"/",
+		"/users",
+		"/sign-in"
+	],
+	"exports": [
+		{
+			"name": "Table",
+			"kind": "type",
+			"port": true,
+			"sites": []
+		},
+		{
+			"name": "ColumnFiltersState",
+			"kind": "type",
+			"port": true,
+			"sites": []
+		},
+		{
+			"name": "OnChangeFn",
+			"kind": "type",
+			"port": true,
+			"sites": []
+		},
+		{
+			"name": "flexRender",
+			"kind": "function",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/features/users/components/users-table.tsx",
+						"line": 142,
+						"in": "src/features/users/components/users-table.tsx#UsersTable",
+						"kind": "call",
+						"routes": [
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"called with no options; the result's value read back"
+					],
+					"journeys": []
+				},
+				{
+					"site": {
+						"file": "src/features/users/components/users-table.tsx",
+						"line": 169,
+						"in": "src/features/users/components/users-table.tsx#UsersTable",
+						"kind": "call",
+						"routes": [
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"called with no options; the result's value read back"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "PaginationState",
+			"kind": "type",
+			"port": true,
+			"sites": []
+		},
+		{
+			"name": "Column",
+			"kind": "type",
+			"port": true,
+			"sites": []
+		},
+		{
+			"name": "ColumnDef",
+			"kind": "type",
+			"port": true,
+			"sites": []
+		},
+		{
+			"name": "getCoreRowModel",
+			"kind": "function",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/features/users/components/users-table.tsx",
+						"line": 84,
+						"in": "src/features/users/components/users-table.tsx#UsersTable",
+						"kind": "call",
+						"routes": [
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"called with no options; the result's value read back"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "getFacetedRowModel",
+			"kind": "function",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/features/users/components/users-table.tsx",
+						"line": 87,
+						"in": "src/features/users/components/users-table.tsx#UsersTable",
+						"kind": "call",
+						"routes": [
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"called with no options; the result's value read back"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "getFacetedUniqueValues",
+			"kind": "function",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/features/users/components/users-table.tsx",
+						"line": 88,
+						"in": "src/features/users/components/users-table.tsx#UsersTable",
+						"kind": "call",
+						"routes": [
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"called with no options; the result's value read back"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "getFilteredRowModel",
+			"kind": "function",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/features/users/components/users-table.tsx",
+						"line": 85,
+						"in": "src/features/users/components/users-table.tsx#UsersTable",
+						"kind": "call",
+						"routes": [
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"called with no options; the result's value read back"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "getPaginationRowModel",
+			"kind": "function",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/features/users/components/users-table.tsx",
+						"line": 83,
+						"in": "src/features/users/components/users-table.tsx#UsersTable",
+						"kind": "call",
+						"routes": [
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"called with no options; the result's value read back"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "getSortedRowModel",
+			"kind": "function",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/features/users/components/users-table.tsx",
+						"line": 86,
+						"in": "src/features/users/components/users-table.tsx#UsersTable",
+						"kind": "call",
+						"routes": [
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"called with no options; the result's value read back"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "Row",
+			"kind": "type",
+			"port": true,
+			"sites": []
+		},
+		{
+			"name": "SortingState",
+			"kind": "type",
+			"port": true,
+			"sites": []
+		},
+		{
+			"name": "useReactTable",
+			"kind": "hook",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/features/users/components/users-table.tsx",
+						"line": 67,
+						"in": "src/features/users/components/users-table.tsx#UsersTable",
+						"kind": "call",
+						"routes": [
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"called with data, columns, state, enableRowSelection, onRowSelectionChange, onSortingChange, onColumnVisibilityChange, getCoreRowModel, getFilteredRowModel, getPaginationRowModel, getSortedRowModel, getFacetedRowModel, getFacetedUniqueValues, onPaginationChange, onColumnFiltersChange; the result's getHeaderGroups(), getPageCount(), getRowModel().rows read back"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "VisibilityState",
+			"kind": "type",
+			"port": true,
+			"sites": []
+		}
+	]
+}

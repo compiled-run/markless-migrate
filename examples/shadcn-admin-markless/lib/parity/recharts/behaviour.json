@@ -1,0 +1,306 @@
+{
+	"library": "recharts",
+	"class": "parity",
+	"reason": "charts as React components; no @markless/ui family draws charts, port the used charts as SVG (d3-scale and d3-shape are framework-agnostic and usable as-is)",
+	"core": "d3-shape",
+	"routes": [
+		"/",
+		"/users",
+		"/sign-in"
+	],
+	"exports": [
+		{
+			"name": "Area",
+			"kind": "component",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/features/dashboard/components/analytics-chart.tsx",
+						"line": 58,
+						"in": "src/features/dashboard/components/analytics-chart.tsx#AnalyticsChart",
+						"kind": "element",
+						"props": {
+							"type": "\"monotone\"",
+							"dataKey": "\"clicks\"",
+							"stroke": "\"currentColor\"",
+							"className": "\"text-primary\"",
+							"fill": "\"currentColor\"",
+							"fillOpacity": "0.15"
+						},
+						"routes": [
+							"/"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with type=\"monotone\" dataKey=\"clicks\" stroke=\"currentColor\" className=\"text-primary\" fill=\"currentColor\" fillOpacity=0.15"
+					],
+					"journeys": []
+				},
+				{
+					"site": {
+						"file": "src/features/dashboard/components/analytics-chart.tsx",
+						"line": 66,
+						"in": "src/features/dashboard/components/analytics-chart.tsx#AnalyticsChart",
+						"kind": "element",
+						"props": {
+							"type": "\"monotone\"",
+							"dataKey": "\"uniques\"",
+							"stroke": "\"currentColor\"",
+							"className": "\"text-muted-foreground\"",
+							"fill": "\"currentColor\"",
+							"fillOpacity": "0.1"
+						},
+						"routes": [
+							"/"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with type=\"monotone\" dataKey=\"uniques\" stroke=\"currentColor\" className=\"text-muted-foreground\" fill=\"currentColor\" fillOpacity=0.1"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "ResponsiveContainer",
+			"kind": "component",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/features/dashboard/components/analytics-chart.tsx",
+						"line": 43,
+						"in": "src/features/dashboard/components/analytics-chart.tsx#AnalyticsChart",
+						"kind": "element",
+						"props": {
+							"width": "\"100%\"",
+							"height": "300",
+							"children": "{children}"
+						},
+						"routes": [
+							"/"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with width=\"100%\" height=300"
+					],
+					"journeys": []
+				},
+				{
+					"site": {
+						"file": "src/features/dashboard/components/overview.tsx",
+						"line": 56,
+						"in": "src/features/dashboard/components/overview.tsx#Overview",
+						"kind": "element",
+						"props": {
+							"width": "\"100%\"",
+							"height": "350",
+							"children": "{children}"
+						},
+						"routes": [
+							"/"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with width=\"100%\" height=350"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "XAxis",
+			"kind": "component",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/features/dashboard/components/analytics-chart.tsx",
+						"line": 45,
+						"in": "src/features/dashboard/components/analytics-chart.tsx#AnalyticsChart",
+						"kind": "element",
+						"props": {
+							"dataKey": "\"name\"",
+							"stroke": "\"#888888\"",
+							"fontSize": "12",
+							"tickLine": "false",
+							"axisLine": "false"
+						},
+						"routes": [
+							"/"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with dataKey=\"name\" stroke=\"#888888\" fontSize=12 tickLine=false axisLine=false"
+					],
+					"journeys": []
+				},
+				{
+					"site": {
+						"file": "src/features/dashboard/components/overview.tsx",
+						"line": 58,
+						"in": "src/features/dashboard/components/overview.tsx#Overview",
+						"kind": "element",
+						"props": {
+							"dataKey": "\"name\"",
+							"stroke": "\"#888888\"",
+							"fontSize": "12",
+							"tickLine": "false",
+							"axisLine": "false"
+						},
+						"routes": [
+							"/"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with dataKey=\"name\" stroke=\"#888888\" fontSize=12 tickLine=false axisLine=false"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "YAxis",
+			"kind": "component",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/features/dashboard/components/analytics-chart.tsx",
+						"line": 52,
+						"in": "src/features/dashboard/components/analytics-chart.tsx#AnalyticsChart",
+						"kind": "element",
+						"props": {
+							"stroke": "\"#888888\"",
+							"fontSize": "12",
+							"tickLine": "false",
+							"axisLine": "false"
+						},
+						"routes": [
+							"/"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with stroke=\"#888888\" fontSize=12 tickLine=false axisLine=false"
+					],
+					"journeys": []
+				},
+				{
+					"site": {
+						"file": "src/features/dashboard/components/overview.tsx",
+						"line": 65,
+						"in": "src/features/dashboard/components/overview.tsx#Overview",
+						"kind": "element",
+						"props": {
+							"direction": "\"ltr\"",
+							"stroke": "\"#888888\"",
+							"fontSize": "12",
+							"tickLine": "false",
+							"axisLine": "false",
+							"tickFormatter": "{(value) => `$${value}`}"
+						},
+						"routes": [
+							"/"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with direction=\"ltr\" stroke=\"#888888\" fontSize=12 tickLine=false axisLine=false tickFormatter={(value) => `$${value}`}"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "AreaChart",
+			"kind": "component",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/features/dashboard/components/analytics-chart.tsx",
+						"line": 44,
+						"in": "src/features/dashboard/components/analytics-chart.tsx#AnalyticsChart",
+						"kind": "element",
+						"props": {
+							"data": "{data}",
+							"children": "{children}"
+						},
+						"routes": [
+							"/"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with data={data}"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "Bar",
+			"kind": "component",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/features/dashboard/components/overview.tsx",
+						"line": 73,
+						"in": "src/features/dashboard/components/overview.tsx#Overview",
+						"kind": "element",
+						"props": {
+							"dataKey": "\"total\"",
+							"fill": "\"currentColor\"",
+							"radius": "{[4, 4, 0, 0]}",
+							"className": "\"fill-primary\""
+						},
+						"routes": [
+							"/"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with dataKey=\"total\" fill=\"currentColor\" radius={[4, 4, 0, 0]} className=\"fill-primary\""
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "BarChart",
+			"kind": "component",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/features/dashboard/components/overview.tsx",
+						"line": 57,
+						"in": "src/features/dashboard/components/overview.tsx#Overview",
+						"kind": "element",
+						"props": {
+							"data": "{data}",
+							"children": "{children}"
+						},
+						"routes": [
+							"/"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with data={data}"
+					],
+					"journeys": []
+				}
+			]
+		}
+	]
+}

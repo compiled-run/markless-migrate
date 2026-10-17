@@ -1,0 +1,49 @@
+{
+	"library": "react-top-loading-bar",
+	"class": "parity",
+	"reason": "a navigation progress bar component; a few lines over the router's navigation events",
+	"routes": [
+		"/",
+		"/users",
+		"/sign-in"
+	],
+	"exports": [
+		{
+			"name": "default",
+			"kind": "component",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/components/navigation-progress.tsx",
+						"line": 18,
+						"in": "src/components/navigation-progress.tsx#NavigationProgress",
+						"kind": "element",
+						"props": {
+							"color": "\"var(--muted-foreground)\"",
+							"ref": "{ref}",
+							"shadow": "true",
+							"height": "2"
+						},
+						"routes": [
+							"/",
+							"/sign-in",
+							"/users"
+						]
+					},
+					"target": {},
+					"mustSee": [
+						"renders with color=\"var(--muted-foreground)\" ref={ref} shadow=true height=2"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "LoadingBarRef",
+			"kind": "type",
+			"port": true,
+			"sites": []
+		}
+	]
+}

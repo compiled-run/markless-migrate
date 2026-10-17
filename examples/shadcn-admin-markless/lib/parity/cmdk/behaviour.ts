@@ -8,17 +8,21 @@ let opener: HTMLElement | null = null;
 
 const dialog = () => document.getElementById(KEY);
 const input = () => document.getElementById(`${KEY}-input`) as HTMLInputElement | null;
-const items = () => [...(dialog()?.querySelectorAll<HTMLElement>('[cmdk-item]') ?? [])];
-const visible = () => items().filter((el) => !el.hidden);
+const itemsIn = (root: Element | null) => [...(root?.querySelectorAll<HTMLElement>('[cmdk-item]') ?? [])];
+const items = () => itemsIn(dialog());
+const visibleIn = (root: Element | null) => itemsIn(root).filter((el) => !el.hidden && !el.closest('[hidden]'));
+const visible = () => visibleIn(dialog());
 
-function select(target: HTMLElement | undefined): void {
-	for (const el of items()) {
+function selectIn(root: Element | null, target: HTMLElement | undefined): void {
+	for (const el of itemsIn(root)) {
 		const on = el === target;
 		el.setAttribute('aria-selected', String(on));
 		el.setAttribute('data-selected', String(on));
 	}
 	target?.scrollIntoView({ block: 'nearest' });
 }
+
+const select = (target: HTMLElement | undefined) => selectIn(dialog(), target);
 
 export function openPalette(): void {
 	const el = dialog();
@@ -44,27 +48,44 @@ export function closePalette(): void {
 }
 
 /** cmdk's matching, simplified: every typed character in order in the item's value; groups and separators with nothing left are hidden. */
-export function filterCommands(query: string): void {
+export function filterIn(root: Element | null, query: string): void {
 	const q = query.trim().toLowerCase();
 	const matches = (value: string) => {
 		let at = 0;
 		for (const ch of value.toLowerCase()) if (ch === q[at]) at++;
 		return at === q.length;
 	};
-	for (const el of items()) el.hidden = !!q && !matches(el.dataset.value ?? el.textContent ?? '');
-	for (const group of dialog()?.querySelectorAll<HTMLElement>('[data-slot=command-group]') ?? []) group.hidden = !group.querySelector('[cmdk-item]:not([hidden])');
-	for (const sep of dialog()?.querySelectorAll<HTMLElement>('[cmdk-separator]') ?? []) sep.hidden = !!q;
-	const empty = dialog()?.querySelector<HTMLElement>('[cmdk-empty]');
-	if (empty) empty.hidden = visible().length > 0;
-	select(visible()[0]);
+	for (const el of itemsIn(root)) el.hidden = !!q && !matches(el.dataset.value ?? el.textContent ?? '');
+	for (const group of root?.querySelectorAll<HTMLElement>('[data-slot=command-group]') ?? []) group.hidden = !group.querySelector('[cmdk-item]:not([hidden])');
+	for (const sep of root?.querySelectorAll<HTMLElement>('[cmdk-separator]') ?? []) sep.hidden = !!q;
+	const empty = root?.querySelector<HTMLElement>('[cmdk-empty]');
+	if (empty) empty.hidden = visibleIn(root).length > 0;
+	selectIn(root, visibleIn(root)[0]);
 }
 
-export function moveSelection(key: string): void {
-	const list = visible();
+export const filterCommands = (query: string): void => filterIn(dialog(), query);
+
+export function moveIn(root: Element | null, key: string): void {
+	const list = visibleIn(root);
 	if (!list.length) return;
 	const at = list.findIndex((el) => el.getAttribute('aria-selected') === 'true');
 	const next = key === 'Home' ? 0 : key === 'End' ? list.length - 1 : key === 'ArrowDown' ? Math.min(at + 1, list.length - 1) : Math.max(at - 1, 0);
-	select(list[next]);
+	selectIn(root, list[next]);
+}
+
+export const moveSelection = (key: string): void => moveIn(dialog(), key);
+
+/** The `data-option` of the selected item in a list, or of the item under a press. */
+export function chosenIn(root: Element | null, target?: EventTarget | null): string | undefined {
+	const el = target instanceof Element ? (target.closest('[cmdk-item]') as HTMLElement | null) : visibleIn(root).find((item) => item.getAttribute('aria-selected') === 'true');
+	return el?.dataset.option;
+}
+
+/** A list opening afresh: the query cleared and its first item selected. */
+export function resetIn(root: Element | null): void {
+	const field = root?.querySelector<HTMLInputElement>('[cmdk-input]');
+	if (field) field.value = '';
+	filterIn(root, '');
 }
 
 /** What the selected item, or the item under a press, does: go to a page, or set the theme. */

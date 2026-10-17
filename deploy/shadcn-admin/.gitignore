@@ -1,3 +1,6 @@
 old/
+.vercel-old/
+.build.log
+front/.vercel/
 front/public/_migrate/report.*
 front/public/_migrate/shots/
