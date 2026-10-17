@@ -133,8 +133,10 @@ its desktop figure is reported. A control that exceeds once is measured again, o
 and is red only when both runs exceed (the slower is then kept); the slowest control at each speed is
 always measured twice so the report states how much runs vary. Up to `--interaction-controls` (16)
 controls per route are timed, in-page ones first and at most 6 links; what was left out, and controls
-reached only by keyboard or by choosing an option, are listed. Writes stay held back, so an interaction
-that writes is reported but not judged. The summary, report.html and `status` lead with the slowest
+reached only by keyboard or by choosing an option, are listed, and so is a control the phone layout
+hides. Writes stay held back, so the time of an interaction that writes is reported but not judged (code
+it fetches still counts). Whether a control's result is right is the `behaviour` dimension's business: a
+text box whose typing changes no DOM on the new page is not red here. The summary, report.html and `status` lead with the slowest
 figure on each side, `First interaction: old X ms → new Y ms (4x CPU)` and `Navigation: ...`, with each
 route's slowest control and a table per route; `report.json` carries the same as `responsiveness`
 (`interaction` and `navigation`, each `desktop` and `throttled` with `old`, `new`, `oldAt`, `newAt`, and
