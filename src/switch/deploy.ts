@@ -11,6 +11,8 @@ export interface DeployInput {
 	readonly oldRoutes?: readonly string[];
 	/** Paths the old app's pages load that the new app does not serve. */
 	readonly oldAssets?: readonly string[];
+	/** Every path the old app's pages load: a directory holding any of them is not the new app's alone. */
+	readonly oldPaths?: readonly string[];
 }
 
 const strip = (origin: string) => new URL(origin).origin;
@@ -55,7 +57,7 @@ export function vercelConfig(input: DeployInput): { rewrites: { source: string; 
 			rewrites.push({ source: pattern, destination: `${next}${pattern}` });
 		}
 	}
-	for (const source of assetSources(input.newAssets ?? [], input.oldAssets ?? [])) {
+	for (const source of assetSources(input.newAssets ?? [], [...(input.oldPaths ?? []), ...(input.oldAssets ?? [])])) {
 		const pattern = source.endsWith('/**') ? `${source.slice(0, -3)}/:path*` : source;
 		rewrites.push({ source: pattern, destination: `${next}${pattern}` });
 	}
@@ -126,7 +128,7 @@ async function serves(origin: string, path: string): Promise<boolean> {
 	try {
 		const response = await fetch(new URL(path, origin), { method: 'GET', redirect: 'manual' });
 		await response.body?.cancel();
-		return response.status < 400;
+		return (response.status >= 200 && response.status < 300) || response.status === 304;
 	} catch {
 		return false;
 	}

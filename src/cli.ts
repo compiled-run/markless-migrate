@@ -486,7 +486,7 @@ async function main(argv: string[]): Promise<number> {
 			const newAssets = await notServedBy(values.old, await pageAssets(values.new, concrete));
 			const oldPaths = [...new Set(inventory?.routes.flatMap((r) => r.assets.map((a) => a.url)).filter((u) => u.startsWith('/')) ?? [])].sort();
 			const oldAssets = await notServedBy(values.new, oldPaths);
-			const input = { old: values.old, new: values.new, switched, newAssets, oldAssets, oldRoutes: [...new Set([...(inventory?.routes.map((r) => r.route) ?? []), ...(inventory?.source?.routes.map((r) => r.path) ?? [])])] };
+			const input = { old: values.old, new: values.new, switched, newAssets, oldAssets, oldPaths, oldRoutes: [...new Set([...(inventory?.routes.map((r) => r.route) ?? []), ...(inventory?.source?.routes.map((r) => r.path) ?? [])])] };
 			const vercel = `${JSON.stringify(vercelConfig(input), null, '\t')}\n`;
 			const nitro = nitroSnippet(input);
 			if (values.vercel) await writeFile(values.vercel, vercel);

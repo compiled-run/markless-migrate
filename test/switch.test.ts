@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { convertRewrites } from '@vercel/routing-utils';
-import { assetPaths, assetSources, nitroPattern, nitroRouteRules, vercelConfig, vercelPattern } from '../src/switch/deploy.ts';
+import { assetPaths, assetSources, nitroPattern, nitroRouteRules, notServedBy, vercelConfig, vercelPattern } from '../src/switch/deploy.ts';
 import { rewriteLocation, rewriteSetCookie, route } from '../src/switch/proxy.ts';
 import { status, summarizeStatus } from '../src/status.ts';
 import { isSwitched, readSwitched, switchRoute, unswitchRoute } from '../src/switch/state.ts';
@@ -87,6 +89,13 @@ test('vercel.json, compiled the way Vercel compiles it, sends switched routes to
 	assert.equal(sends('/_markless/chunks/x.js'), 'https://new.example/_markless/chunks/x.js');
 });
 
+test('vercel.json keeps a directory per file when the old app loads anything from it, even a file both apps serve', () => {
+	const vercel = vercelConfig({ old: 'https://old.example', new: 'https://new.example', switched: ['/'], newAssets: ['/css/port-home.css'], oldPaths: ['/css/site.css'], oldAssets: [] });
+	const sends = (path: string) => vercelSends(vercel.rewrites, path);
+	assert.equal(sends('/css/port-home.css'), 'https://new.example/css/port-home.css');
+	assert.equal(sends('/css/other.css'), 'https://old.example/css/other.css');
+});
+
 test('deploy config: patterns in each router syntax, asset directories only when the other app has none there', () => {
 	assert.equal(vercelPattern('/docs/*rest'), '/docs/:rest+');
 	assert.equal(vercelPattern('/docs/*rest?'), '/docs/:rest*');
@@ -100,4 +109,18 @@ test('deploy config: patterns in each router syntax, asset directories only when
 		'/assets/i.js': { proxy: 'https://old.example/assets/i.js' },
 	});
 	assert.deepEqual(assetPaths('<link rel="canonical" href="/x/"><link rel="stylesheet" href="/a.css"><img srcset="/i-1.png 1x, /i-2.png 2x"><script src="https://cdn.example/x.js"></script><a href="/page/">p</a>', 'http://h'), ['/a.css', '/i-1.png', '/i-2.png']);
+});
+
+test('an asset the old app answers only by redirecting (a soft 404) is not served there', async () => {
+	const server = createServer((request, response) => {
+		if (request.url === '/app.css') response.writeHead(200, { 'content-type': 'text/css' }).end('a{}');
+		else response.writeHead(302, { location: '/' }).end();
+	});
+	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	try {
+		assert.deepEqual(await notServedBy(origin, ['/app.css', '/build/chunk-a.js']), ['/build/chunk-a.js']);
+	} finally {
+		server.close();
+	}
 });
