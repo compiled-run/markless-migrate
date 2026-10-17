@@ -160,6 +160,31 @@ function guardInModule(mod: Module): Found | undefined {
 	return undefined;
 }
 
+/** `export default NextAuth(authConfig).auth`: the guard is the config's `callbacks.authorized`, and a denial goes to `pages.signIn`. */
+async function nextAuthAuthorized(ctx: Context, mod: Module): Promise<Found | undefined> {
+	let def = unwrap(mod.exports.get('default'));
+	if (def?.type === 'MemberExpression') def = unwrap(def.object);
+	if (def?.type !== 'CallExpression' || !/^NextAuth$/.test(memberName(def.callee) ?? '')) return undefined;
+	const arg = unwrap(def.arguments[0]);
+	let config: N | undefined = arg?.type === 'ObjectExpression' ? arg : undefined;
+	let owner = mod;
+	const imported = arg?.type === 'Identifier' ? mod.imports.get(arg.name) : undefined;
+	if (imported?.source.startsWith('.')) {
+		const base = posix.join(posix.dirname(mod.file), imported.source);
+		const file = ['', '.ts', '.js', '.tsx', '.mjs'].map((ext) => base + ext).find((f) => ctx.project.has(f));
+		const other = file && (await ctx.module(file));
+		if (other) {
+			owner = other;
+			config = unwrap(other.exports.get(imported.imported));
+		}
+	} else if (arg?.type === 'Identifier') config = unwrap(mod.bindings.get(arg.name));
+	if (config?.type === 'VariableDeclarator') config = unwrap(config.init);
+	const authorized = unwrap(property(property(config, 'callbacks'), 'authorized'));
+	if (!authorized || !isFunction(authorized)) return undefined;
+	const signIn = str(property(property(config, 'pages'), 'signIn'), owner);
+	return { line: mod.line(mod.exports.get('default')!.start), role: null, how: `NextAuth callbacks.authorized (${owner.file}:${owner.line(authorized.start)})`, redirectTo: signIn ?? '/api/auth/signin', prefixes: prefixesIn(authorized, owner) };
+}
+
 function matchers(mod: Module): { include: string[]; exclude: string[] } {
 	const config = mod.exports.get('config');
 	const matcher = property(config, 'matcher');
@@ -196,7 +221,7 @@ export async function scanAuth(ctx: Context, routes: SourceRoute[]): Promise<Aut
 	for (const file of ['middleware.ts', 'middleware.js', 'src/middleware.ts', 'src/middleware.js', 'proxy.ts', 'proxy.js', 'src/proxy.ts', 'src/proxy.js', 'src/hooks.server.ts', 'src/hooks.server.js']) {
 		if (!ctx.project.has(file)) continue;
 		const mod = await ctx.module(file);
-		const g = mod && guardInModule(mod);
+		const g = mod && (guardInModule(mod) ?? (await nextAuthAuthorized(ctx, mod)));
 		if (!mod || !g) continue;
 		const { include, exclude } = matchers(mod);
 		const under = (prefixes: string[]) => {
