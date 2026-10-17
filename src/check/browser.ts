@@ -27,7 +27,7 @@ export interface SideEnv {
 }
 
 // On an asset or a fetch only a challenge header proves a wall; a CDN's server header on an ordinary 403 does not.
-export const DEFINITE = /^header (cf-mitigated|x-vercel-mitigated|x-amzn-waf-action):/i;
+export const DEFINITE = /^header (cf-mitigated|x-vercel-mitigated|x-amzn-waf-action):|^header server: Vercel, plain 403/i;
 
 export interface WallHit {
 	readonly status: number;

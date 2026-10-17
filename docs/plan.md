@@ -262,7 +262,7 @@ Logged-in pages (`--auth`):
 
 Bot protection:
 
-- A wall is recognised by headers (`cf-mitigated: challenge`, `x-vercel-mitigated`, `x-amzn-waf-action`,
+- A wall is recognised by headers (`cf-mitigated: challenge`, `x-vercel-mitigated` (challenge or deny), `x-amzn-waf-action`,
   `x-datadome`, `server: AkamaiGHost`), cookies it sets (`datadome`, `_px3`, `_abck`...) and page markers
   (Cloudflare's "Just a moment..." and challenge platform, PerimeterX, DataDome, Imperva, and hCaptcha,
   reCAPTCHA or Turnstile when the status is a refusal or the title says it is a check), plus 403 or 429
@@ -273,8 +273,10 @@ Bot protection:
   page load, and on every response from the app's own origin during the route's check: assets, fetches,
   journeys' posts, forced states, and the checker's asset probes. A wall seen anywhere stops the route as
   blocked. On assets and fetches only a challenge header (`cf-mitigated`, `x-vercel-mitigated`,
-  `x-amzn-waf-action`) counts, because a CDN's `server` header on an ordinary 403 is not a wall; a wall
-  that answers an asset with a plain 403 and no header still shows up as red `assets`. Proven on the
+  `x-amzn-waf-action`) counts, because a CDN's `server` header on an ordinary 403 is not a wall; the
+  exception is Vercel's own plain-text `403 Forbidden` (`server: Vercel`, not HTML or JSON), which its
+  firewall sends and an app's own 403 page does not. Another wall that answers an asset with a plain 403
+  and no header still shows up as red `assets`. Proven on the
   Vite fixture with a Cloudflare-style wall on its static files only and on its form posts only. Sign-in
   steps are not watched.
 - `--header` goes only to each app's own origin (never to third parties or a redirect's other host),

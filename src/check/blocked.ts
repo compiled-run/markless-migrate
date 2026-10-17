@@ -19,7 +19,7 @@ interface Rule {
 const RULES: readonly Rule[] = [
 	{ vendor: 'Cloudflare', header: /^cf-mitigated: challenge$/i },
 	{ vendor: 'Cloudflare', body: /<title>(Just a moment\.\.\.|Attention Required! \| Cloudflare)<\/title>|\/cdn-cgi\/challenge-platform\/|cf_chl_opt|cf-browser-verification/i },
-	{ vendor: 'Vercel', header: /^x-vercel-mitigated: challenge$/i },
+	{ vendor: 'Vercel', header: /^x-vercel-mitigated: (challenge|deny|block)$/i },
 	{ vendor: 'AWS WAF', header: /^x-amzn-waf-action: (challenge|captcha)$/i },
 	{ vendor: 'AWS WAF', body: /awswaf\.com|AwsWafIntegration/i, refusedOnly: true },
 	{ vendor: 'Akamai', body: /errors\.edgesuite\.net|Reference #\d+\.[0-9a-f]+\.\d+/i, refusedOnly: true },
@@ -39,6 +39,13 @@ const RULES: readonly Rule[] = [
 const INTERSTITIAL = /<title>[^<]*(captcha|are you (a )?(human|robot)|security check|verify(ing)? you|access denied|checking your browser|bot protection|one more step)[^<]*<\/title>/i;
 const GENERIC = /captcha|are you (a )?(human|robot)|checking your browser|unusual traffic|automated (queries|requests)/i;
 
+// Vercel's firewall and bot protection refuse with a bare "Forbidden" in plain text; an app's own 403 is a page.
+function vercelRefusal(answer: Answer): boolean {
+	const header = (name: string) => Object.entries(answer.headers).find(([k]) => k.toLowerCase() === name)?.[1] ?? '';
+	if (answer.status !== 403 || !/^vercel$/i.test(header('server')) || /html/i.test(header('content-type'))) return false;
+	return /^\s*(403\s*:?\s*)?forbidden\.?\s*$/i.test(answer.body) || (answer.body === '' && /^text\/plain/i.test(header('content-type')));
+}
+
 /** The bot wall that answered instead of the app, if any; an ordinary 403 or 429 without challenge markers is not one. */
 export function detectChallenge(answer: Answer): { vendor: string; evidence: string } | undefined {
 	const refused = [401, 403, 429, 503].includes(answer.status);
@@ -53,6 +60,7 @@ export function detectChallenge(answer: Answer): { vendor: string; evidence: str
 		const marker = rule.body?.exec(answer.body);
 		if (marker) return { vendor: rule.vendor, evidence: `page contains ${JSON.stringify(marker[0].slice(0, 80))}` };
 	}
+	if (vercelRefusal(answer)) return { vendor: 'Vercel', evidence: 'header server: Vercel, plain 403 Forbidden from the platform, not the app' };
 	if ((answer.status === 403 || answer.status === 429) && GENERIC.test(answer.body)) {
 		return { vendor: `an unrecognised bot wall (${answer.status})`, evidence: `page contains ${JSON.stringify(GENERIC.exec(answer.body)![0])}` };
 	}

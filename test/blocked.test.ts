@@ -18,6 +18,20 @@ test('challenge and block pages are recognised by vendor', () => {
 	assert.equal(vendor(429, '<p>Our systems have detected unusual traffic from your network.</p>'), 'an unrecognised bot wall (429)');
 });
 
+test("Vercel's plain 403 Forbidden is a wall on a page and on an asset; an app's own 403 page served by Vercel is not", async () => {
+	const { DEFINITE } = await import('../src/check/browser.ts');
+	const plain = { server: 'Vercel', 'content-type': 'text/plain; charset=utf-8', 'x-vercel-id': 'iad1::abc' };
+	assert.equal(vendor(403, 'Forbidden', plain), 'Vercel');
+	assert.equal(vendor(403, '403: Forbidden\n', plain), 'Vercel');
+	const asset = detectChallenge({ status: 403, headers: plain, body: '' });
+	assert.equal(asset?.vendor, 'Vercel');
+	assert.ok(DEFINITE.test(asset!.evidence), 'counted on assets and fetches too');
+	assert.equal(vendor(403, '', { 'x-vercel-mitigated': 'deny' }), 'Vercel');
+	assert.equal(vendor(403, '<title>Forbidden</title><h1>Admins only</h1>', { server: 'Vercel', 'content-type': 'text/html' }), undefined);
+	assert.equal(vendor(403, '{"error":"forbidden"}', { server: 'Vercel', 'content-type': 'application/json' }), undefined);
+	assert.equal(vendor(403, 'Forbidden', { server: 'nginx', 'content-type': 'text/plain' }), undefined);
+});
+
 test('ordinary pages, refusals and captchas inside real pages are not walls', () => {
 	assert.equal(vendor(403, '<title>Forbidden</title><h1>Admins only</h1>'), undefined, 'an app 403 is compared, not stopped');
 	assert.equal(vendor(429, 'Too many requests'), undefined, 'a plain rate limit is not a challenge');
