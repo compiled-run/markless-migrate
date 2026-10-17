@@ -220,13 +220,15 @@ async function snapshot(page: Page, origin: string): Promise<string[]> {
 const IDLE_MS = 150;
 const IDLE_LIMIT_MS = 3_000;
 
-// Settled: the page has loaded and no request has been in flight for 150ms (at most 3s), then two frames.
+const pendingTimers = (page: Page) => page.evaluate(() => (globalThis as { __markless_migrate_pending_timers__?: () => number }).__markless_migrate_pending_timers__?.() ?? 0).catch(() => 0);
+
+// Settled: the page has loaded, no request has been in flight and no timeout of up to a second is due for 150ms (at most 3s), then two frames.
 async function quiet(page: Page, inflight: () => number): Promise<void> {
 	await page.waitForLoadState('load', { timeout: 10_000 }).catch(() => {});
 	const deadline = Date.now() + IDLE_LIMIT_MS;
 	let idleSince = Date.now();
 	while (Date.now() < deadline) {
-		if (inflight() > 0) idleSince = Date.now();
+		if (inflight() > 0 || (await pendingTimers(page)) > 0) idleSince = Date.now();
 		else if (Date.now() - idleSince >= IDLE_MS) break;
 		await new Promise((done) => setTimeout(done, 25));
 	}

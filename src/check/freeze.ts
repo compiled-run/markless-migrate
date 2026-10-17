@@ -39,15 +39,26 @@ export function freezePage({ time, seed }: { time: number; seed: number }): void
 	Object.defineProperty(performance, 'timeOrigin', { get: () => time, configurable: true });
 
 	const realTimeout = globalThis.setTimeout;
+	const realClear = globalThis.clearTimeout;
 	const realInterval = globalThis.setInterval;
+	// Timeouts of up to a second still to fire (a debounced search, a delayed toast): a journey step waits them out.
+	const pending = new Set<unknown>();
+	Object.defineProperty(globalThis, '__markless_migrate_pending_timers__', { value: () => pending.size });
 	globalThis.setTimeout = function (handler: TimerHandler, ms?: number, ...rest: unknown[]) {
 		if (typeof handler !== 'function') return realTimeout(handler, ms, ...rest);
 		const due = elapsed + Math.max(0, Number(ms) || 0);
-		return realTimeout(function (this: unknown) {
+		const id = realTimeout(function (this: unknown) {
+			pending.delete(id);
 			advance(due);
 			return (handler as (...a: unknown[]) => unknown).apply(this, rest);
 		}, ms);
+		if ((Number(ms) || 0) > 0 && (Number(ms) || 0) <= 1000) pending.add(id);
+		return id;
 	} as typeof setTimeout;
+	globalThis.clearTimeout = function (id?: Parameters<typeof clearTimeout>[0]) {
+		pending.delete(id);
+		return realClear(id);
+	} as typeof clearTimeout;
 	globalThis.setInterval = function (handler: TimerHandler, ms?: number, ...rest: unknown[]) {
 		if (typeof handler !== 'function') return realInterval(handler, ms, ...rest);
 		const step = Math.max(0, Number(ms) || 0);

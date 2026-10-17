@@ -53,6 +53,30 @@ test('the clock starts at a fixed instant and moves only when a timer fires, by 
 	assert.equal(a.explicit, 0, 'a date built from a value is untouched');
 });
 
+test('a timeout of up to a second counts as pending until it fires or is cleared; longer ones do not', async () => {
+	const env = defaultEnv('http://127.0.0.1:1');
+	const { context, page } = await openPage(browser, env, VIEWPORTS[0]!);
+	try {
+		await page.route('http://127.0.0.1:1/', (route) => route.fulfill({ body: '<p>x</p>', contentType: 'text/html' }));
+		await page.goto('http://127.0.0.1:1/');
+		const counts = await page.evaluate(async () => {
+			const pending = () => (globalThis as unknown as { __markless_migrate_pending_timers__: () => number }).__markless_migrate_pending_timers__();
+			const debounce = setTimeout(() => {}, 300);
+			setTimeout(() => {}, 5000);
+			const one = pending();
+			clearTimeout(debounce);
+			const cleared = pending();
+			setTimeout(() => {}, 20);
+			const two = pending();
+			await new Promise((done) => setTimeout(done, 60));
+			return { one, cleared, two, fired: pending() };
+		});
+		assert.deepEqual(counts, { one: 1, cleared: 0, two: 1, fired: 0 });
+	} finally {
+		await context.close();
+	}
+});
+
 test('randomness is seeded: two pages draw the same numbers, bytes and UUIDs, and UUIDs keep the v4 format', async () => {
 	const [a, b] = [await sample(), await sample()];
 	assert.deepEqual(a.random, b.random);
