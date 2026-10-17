@@ -197,7 +197,30 @@ export async function scanComponents(ctx: Context, routes: SourceRoute[]): Promi
 		}
 	}
 	const routeFiles = new Set(routes.map((r) => r.file));
+	// A file that declares one route and names an imported component (TanStack Router's `component: Users`) renders it: the file stands for the route.
+	const routeOwners: Def[] = [];
+	for (const file of routeFiles) {
+		if (routes.filter((r) => r.file === file).length !== 1) continue;
+		const mod = mods.get(file) ?? (await ctx.module(file));
+		if (!mod) continue;
+		const named = new Set<string>();
+		let line = 0;
+		walk(mod.program, (n) => {
+			if (n.type !== 'Property' || n.value?.type !== 'Identifier') return;
+			const key = n.key?.type === 'Identifier' ? n.key.name : n.key?.type === 'Literal' ? String(n.key.value) : '';
+			if (!/^(component|pendingComponent|errorComponent|notFoundComponent)$/.test(key)) return;
+			named.add(n.value.name);
+			line ||= mod.line(n.start);
+		});
+		const local = new Set((byFile.get(file) ?? []).map((d) => d.name));
+		const targets = (await Promise.all([...named].filter((name) => !local.has(name)).map((name) => resolveName(mod, name)))).filter((d): d is Def => Boolean(d));
+		if (!targets.length) continue;
+		const owner: Def = { id: `${file}#Route`, name: 'Route', file, line, node: undefined };
+		routeOwners.push(owner);
+		for (const t of targets) link(owner.id, t);
+	}
 	const out: Component[] = [];
+	for (const d of routeOwners) out.push({ name: d.name, file: d.file, line: d.line, id: d.id, kind: 'route', uses: [...(uses.get(d.id) ?? [])].sort(), usedBy: [] });
 	for (const d of defs.values()) {
 		const mod = mods.get(d.file);
 		const isDefault = SFC.test(d.file) || (!!mod && (await exported(d.file, 'default'))?.id === d.id);

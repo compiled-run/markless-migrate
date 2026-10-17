@@ -312,6 +312,7 @@ const EXPECTED: Record<string, ReturnType<typeof view>> = {
 			'page / src/routes/index.tsx:3',
 			'page /posts/:postId src/routes/posts.$postId.tsx:4',
 			'page /settings auth=signed-in src/routes/_authed/settings.tsx:3',
+			'page /users src/routes/users.tsx:4',
 		],
 		nondeterminism: [],
 		writes: [
@@ -322,12 +323,18 @@ const EXPECTED: Record<string, ReturnType<typeof view>> = {
 			'signed-in context.auth routes=/settings login=/login src/routes/_authed.tsx:5',
 		],
 		components: [
+			'component src/features/users/index.tsx#Users uses src/features/users/table.tsx#UsersTable',
+			'component src/features/users/table.tsx#UsersTable',
 			'component src/routes/-components/helper.tsx#Helper',
 			'route src/routes/posts.$postId.tsx#Post',
+			'route src/routes/users.tsx#Route uses src/features/users/index.tsx#Users',
 		],
 		order: [
+			'UsersTable',
+			'Users',
 			'Helper',
 			'Post',
+			'Route',
 		],
 		limits: [],
 	},
@@ -532,6 +539,14 @@ const EXPECTED: Record<string, ReturnType<typeof view>> = {
 		],
 	},
 };
+
+test('a TanStack route file that names an imported component puts it, and what it renders, in that route\'s migration step', async () => {
+	const { scanSource } = await import('../src/source/index.ts');
+	const { stepRoutes } = await import('../src/plan/source.ts');
+	const facts = await scanSource(new URL('./source-fixtures/tanstack', import.meta.url).pathname);
+	const table = facts.components.find((c) => c.name === 'UsersTable')!;
+	assert.deepEqual(stepRoutes(facts, table), ['/users']);
+});
 
 for (const [name, expected] of Object.entries(EXPECTED)) {
 	test(`source scan of the ${name} fixture finds exactly its routes, nondeterminism, writes, clients, guards and components`, async () => {
