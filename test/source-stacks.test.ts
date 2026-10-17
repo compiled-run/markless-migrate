@@ -257,10 +257,12 @@ const EXPECTED: Record<string, ReturnType<typeof view>> = {
 		framework: 'angular',
 		routes: [
 			'page / src/app/app.routes.ts:6',
-			'page /*splat? src/app/app.routes.ts:9',
+			'page /*splat? src/app/app.routes.ts:11',
 			'page /admin auth=admin src/app/admin/admin.routes.ts:4',
 			'page /admin/users/:id auth=admin src/app/admin/admin.routes.ts:5',
+			'page /login src/app/app.routes.ts:9',
 			'page /products/:id src/app/app.routes.ts:7',
+			'page /register src/app/app.routes.ts:10',
 		],
 		nondeterminism: [],
 		writes: [],
@@ -539,6 +541,12 @@ const EXPECTED: Record<string, ReturnType<typeof view>> = {
 		],
 	},
 };
+
+test('a guard that lets in only visitors who are not signed in is not a sign-in guard', async () => {
+	const { guestOnly } = await import('../src/source/routes/config.ts');
+	for (const text of ['[() => inject(UserService).isAuthenticated.pipe(map((isAuth) => !isAuth))]', '[guestGuard]', '[noAuthGuard]', '[() => { return !auth.loggedIn(); }]']) assert.ok(guestOnly(text), text);
+	for (const text of ['[authGuard]', "[() => { if (!isAuth()) return router.parseUrl('/login'); return true; }]", '[() => inject(UserService).isAuthenticated]']) assert.ok(!guestOnly(text), text);
+});
 
 test('a TanStack route file that names an imported component puts it, and what it renders, in that route\'s migration step', async () => {
 	const { scanSource } = await import('../src/source/index.ts');

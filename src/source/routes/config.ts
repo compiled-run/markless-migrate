@@ -114,13 +114,20 @@ async function lazyChildren(ctx: Context, mod: Module, node: N | undefined): Pro
 	return exported ? { mod: other, node: exported } : undefined;
 }
 
+
+/** A guard that lets in only visitors who are not signed in (`map((isAuth) => !isAuth)`, `guestGuard`): the route is for guests. */
+export function guestOnly(text: string): boolean {
+	return /(=>|return)\s*!\s*\(?\s*[\w.$]*(auth|logged|signed)/i.test(text) || /\b(guest|noAuth|unauth|anonymous|loggedOut|signedOut|notAuth|notLoggedIn)\w*/i.test(text);
+}
+
 function guardOf(mod: Module, obj: N): { role: string | null; how: string } | undefined {
 	const meta = property(obj, 'meta');
 	const roles = property(meta, 'roles') ?? property(meta, 'role') ?? property(property(obj, 'data'), 'roles') ?? property(property(obj, 'data'), 'role');
 	const roleValue = roles ? (unwrap(roles)?.type === 'ArrayExpression' ? str(unwrap(roles)!.elements[0], mod) : str(roles, mod)) : undefined;
 	for (const key of ['canActivate', 'canMatch', 'canActivateChild', 'canLoad']) {
 		const value = property(obj, key);
-		if (value) return { role: roleValue ?? null, how: `${key}: ${mod.text.slice(value.start, value.end).replace(/\s+/g, ' ')}` };
+		const text = value ? mod.text.slice(value.start, value.end).replace(/\s+/g, ' ') : '';
+		if (value && !guestOnly(text)) return { role: roleValue ?? null, how: `${key}: ${text}` };
 	}
 	if (meta) {
 		for (const key of ['requiresAuth', 'requireAuth', 'auth', 'authenticated', 'requiresLogin']) {
