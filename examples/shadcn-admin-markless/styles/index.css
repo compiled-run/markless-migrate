@@ -26,7 +26,8 @@
     @apply overflow-x-hidden;
   }
   body {
-    @apply min-h-svh w-full bg-background text-foreground has-[div[data-variant='inset']]:bg-sidebar;
+    /* The old app has no inset sidebar element below md (it renders a sheet there); this one keeps it hidden. */
+    @apply min-h-svh w-full bg-background text-foreground md:has-[div[data-variant='inset']]:bg-sidebar;
   }
 
   /* Override Radix scroll locking for sticky headers */
@@ -67,6 +68,16 @@
 
 @utility faded-bottom {
   @apply after:pointer-events-none after:absolute after:inset-s-0 after:bottom-0 after:hidden after:h-32 after:w-full after:rounded-b-2xl after:bg-[linear-gradient(180deg,transparent_10%,var(--background)_70%)] md:after:block;
+}
+
+/* The scroll area's own rule (Radix writes it in a <style> inside the component). */
+[data-radix-scroll-area-viewport] {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+}
+[data-radix-scroll-area-viewport]::-webkit-scrollbar {
+  display: none;
 }
 
 /* styles.css */
