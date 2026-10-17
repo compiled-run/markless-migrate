@@ -7,3 +7,9 @@ fixtures/*/.output/
 fixtures/*/dist/
 .mutants/
 fixtures/*/.vite/
+**/.migrate/shots/
+**/.migrate/diffs/
+**/.migrate/journeys/
+**/.migrate/report.*
+**/_migrate/shots/
+**/_migrate/report.*
