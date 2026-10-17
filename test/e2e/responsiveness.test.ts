@@ -1,0 +1,78 @@
+import assert from 'node:assert/strict';
+import { after, before, describe, test } from 'node:test';
+import { chromium, type Browser } from 'playwright';
+import { dir, serve } from '../../fixtures/responsiveness/server.ts';
+import { renderHtml } from '../../src/check/html.ts';
+import { runCheck } from '../../src/check/run.ts';
+import { summarize } from '../../src/check/summary.ts';
+import type { Report } from '../../src/check/types.ts';
+
+const DESKTOP = [{ name: 'desktop', width: 1280, height: 800, isMobile: false }];
+
+describe('responsiveness: the first use of each control and each link, old vs new, at desktop speed and at 4x CPU', { concurrency: 2 }, () => {
+	let browser: Browser;
+	const servers: { close(): void }[] = [];
+	const app = async (variant: Parameters<typeof serve>[0], delay = 0) => {
+		const { origin, server } = await serve(variant, delay);
+		servers.push(server);
+		return origin;
+	};
+	before(async () => {
+		browser = await chromium.launch();
+	});
+	after(async () => {
+		for (const s of servers) s.close();
+		await browser?.close();
+	});
+	const check = (oldOrigin: string, newOrigin: string, sourceDirs?: { old: string; new: string }): Promise<Report> => runCheck({ oldOrigin, newOrigin, routes: ['/'], browser, viewports: DESKTOP, responsiveness: {}, ...(sourceDirs ? { sourceDirs } : {}) });
+
+	test('a click handler that imports a 500 KB module on first use, and a link that loads the next page in full from a slow server, fail', async () => {
+		const report = await check(await app('old'), await app('slow', 300), { old: dir('old'), new: dir('slow') });
+		const route = report.routes[0]!;
+		assert.equal(route.dimensions.responsiveness, 'fail');
+		const timing = route.responsiveness!;
+		const add = timing.controls.find((c) => c.control === 'button "Add"')!;
+		assert.equal(add.kind, 'in-page');
+		const throttled = add.speeds.find((s) => s.speed === 'throttled')!;
+		assert.equal(throttled.ok, false);
+		assert.match(throttled.problems.join('\n'), /fetched code on the first interaction: \/big\.js \(\d+\.\d kB\)/);
+		assert.match(throttled.cause ?? '', /code fetch: \/big\.js/);
+		const failure = route.failures.find((f) => f.dimension === 'responsiveness' && f.check === 'first interaction with button "Add" (4x CPU, mobile)');
+		assert.ok(failure, route.failures.map((f) => f.check).join('\n'));
+		assert.match(failure.expected, /^old \d+ ms \(runs [\d ms,]+\)/);
+		assert.match(failure.actual, /^new \d+ ms \(runs \d+ ms, \d+ ms\); likely cause: code fetch: \/big\.js/);
+		assert.match(failure.where ?? '', /^old index\.html:6 renders button "Add"; new index\.html:6 renders it$/);
+		const next = timing.controls.find((c) => c.control === 'link "Next page"')!;
+		assert.equal(next.kind, 'navigation');
+		const nav = next.speeds.find((s) => s.speed === 'throttled')!;
+		assert.equal(nav.ok, false);
+		assert.equal(nav.new.length, 2, 'a failing control is measured twice');
+		assert.ok(nav.new.every((s) => s.result === 'reloaded' && (s.server?.ttfb ?? 0) >= 290), JSON.stringify(nav.new));
+		assert.ok(nav.spread, 'the variance between the two runs is reported');
+		assert.match(nav.cause ?? '', /a full page load where the old app navigates in the page/);
+		assert.match(nav.cause ?? '', /server time \d+ ms to first byte/);
+		assert.ok(next.speeds.find((s) => s.speed === 'desktop')!.ok, 'navigation is held to the old app at the throttled speed only');
+		const text = summarize(report);
+		assert.match(text, /First interaction: old \d+ ms → new \d+ ms \(4x CPU\)/);
+		assert.match(text, /Navigation: old \d+ ms → new \d+ ms \(4x CPU\)/);
+		assert.match(text, /slowest first interaction button "Add": old \d+ ms → new \d+ ms/);
+		assert.ok(report.responsiveness?.navigation?.throttled?.new! > report.responsiveness!.navigation!.throttled!.old!);
+		const html = renderHtml(report);
+		assert.match(html, /<p class="headline"><strong>First interaction: old \d+ ms → new \d+ ms \(4x CPU\)/);
+		assert.match(html, /<table class="timings">/);
+	});
+
+	test('the same handlers on both sides pass, and the slowest control is measured twice so the report states the variance', async () => {
+		const report = await check(await app('old'), await app('equal'));
+		const route = report.routes[0]!;
+		assert.equal(route.dimensions.responsiveness, 'pass', route.failures.filter((f) => f.dimension === 'responsiveness').map((f) => `${f.check}: ${f.actual}`).join('\n'));
+		const timed = route.responsiveness!.controls;
+		assert.deepEqual(timed.map((c) => `${c.control} ${c.kind}`).sort(), ['button "Add" in-page', 'link "Next page" navigation']);
+		for (const c of timed) for (const s of c.speeds) assert.ok(s.new.every((x) => x.fetches.every((f) => f.kind !== 'code')));
+		const twice = timed.flatMap((c) => c.speeds).filter((s) => s.spread);
+		assert.ok(twice.length >= 1, 'the variance is measured');
+		const add = timed.find((c) => c.kind === 'in-page')!.speeds.find((s) => s.speed === 'desktop')!;
+		assert.ok(add.new.every((s) => s.result === 'changed' && s.warmMs !== undefined), JSON.stringify(add.new));
+		assert.ok((add.newMs ?? 999) < 200);
+	});
+});

@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<title>Counter</title>
+<main>
+	<h1>Counter</h1>
+	<button type="button" id="add">Add</button>
+	<output id="out">0</output>
+	<a href="/next" id="next">Next page</a>
+</main>
+<script type="module">
+	const out = document.getElementById('out');
+	let n = 0;
+	document.getElementById('add').addEventListener('click', async () => {
+		const big = await import('/big.js');
+		out.textContent = String(big.add(n++));
+	});
+</script>

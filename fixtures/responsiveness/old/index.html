@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<title>Counter</title>
+<main>
+	<h1>Counter</h1>
+	<button type="button" id="add">Add</button>
+	<output id="out">0</output>
+	<a href="/next" id="next">Next page</a>
+</main>
+<script type="module">
+	const out = document.getElementById('out');
+	let n = 0;
+	document.getElementById('add').addEventListener('click', () => {
+		out.textContent = String(++n);
+	});
+	document.getElementById('next').addEventListener('click', (event) => {
+		event.preventDefault();
+		history.pushState(null, '', '/next');
+		document.querySelector('h1').textContent = 'Next page';
+	});
+</script>
