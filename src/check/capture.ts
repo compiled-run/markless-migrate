@@ -22,8 +22,14 @@ function routeFile(html: string): { routeFile?: string } {
 	}
 }
 
+/** The URL on the app's own origin as a path, with the origin written into it (`?callbackUrl=http%3A%2F%2F...`) as `{origin}`. */
 export function toLocal(url: string, origin: string): string {
-	return url.startsWith(origin) ? url.slice(origin.length) || '/' : url;
+	const local = url.startsWith(origin) ? url.slice(origin.length) || '/' : url;
+	return local === url ? url : originInQuery(local, origin);
+}
+
+export function originInQuery(path: string, origin: string): string {
+	return path.split(encodeURIComponent(origin)).join(encodeURIComponent('{origin}')).split(origin).join('{origin}');
 }
 
 const pageUrlBefore = (page: Page) => page.url();

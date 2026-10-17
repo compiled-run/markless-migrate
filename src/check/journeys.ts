@@ -1,5 +1,6 @@
 import type { Browser, BrowserContext, Locator, Page, Request } from 'playwright';
 import { frameworkTransport, openPage, requestLine, type SideEnv } from './browser.ts';
+import { originInQuery } from './capture.ts';
 import { HINTS } from './hints.ts';
 import { diffLines, lineTemplates, template } from './noise.ts';
 import type { Dimension, Failure, Viewport, WriteLine } from './types.ts';
@@ -54,7 +55,7 @@ const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 export function localUrl(url: string, origin: string): string {
 	const u = new URL(url);
 	const o = new URL(origin);
-	if (u.origin === o.origin || (LOOPBACK.has(u.hostname) && LOOPBACK.has(o.hostname) && u.port === o.port)) return u.pathname + u.search + u.hash;
+	if (u.origin === o.origin || (LOOPBACK.has(u.hostname) && LOOPBACK.has(o.hostname) && u.port === o.port)) return originInQuery(originInQuery(u.pathname + u.search + u.hash, o.origin), u.origin);
 	return url;
 }
 
