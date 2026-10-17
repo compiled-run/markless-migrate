@@ -201,3 +201,25 @@ test('plan --source keeps the file routes older readers expect and adds the scan
 	assert.match(text, /\/:lang {2}crawled \/en/);
 	assert.match(text, /\/:lang\/about {2}\(only in source: not reached by the crawl\)/);
 });
+
+test('the source scan leaves out git submodules: a .gitmodules path or a directory with its own .git', async () => {
+	const { mkdtemp, mkdir, writeFile } = await import('node:fs/promises');
+	const { tmpdir } = await import('node:os');
+	const { scanSource } = await import('../src/source/index.ts');
+	const root = await mkdtemp(join(tmpdir(), 'mm-submodule-'));
+	const files: Record<string, string> = {
+		'package.json': '{"dependencies":{"express":"4"}}',
+		'.gitmodules': '[submodule "specs"]\n\tpath = specs\n\turl = https://example.com/specs.git\n',
+		'server.js': 'const app = require("express")(); app.get("/", (q, r) => r.send(String(Date.now())));',
+		'specs/api/hurl-to-bruno.js': 'console.log(Date.now(), Math.random());',
+		'vendor-lib/.git': 'gitdir: ../.git/modules/vendor-lib',
+		'vendor-lib/index.js': 'export const t = Date.now();',
+	};
+	for (const [file, text] of Object.entries(files)) {
+		await mkdir(join(root, file, '..'), { recursive: true });
+		await writeFile(join(root, file), text);
+	}
+	const facts = await scanSource(root);
+	const scanned = [...new Set(facts.nondeterminism.map((n) => n.file))];
+	assert.deepEqual(scanned, ['server.js']);
+});

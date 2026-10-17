@@ -17,14 +17,16 @@ export interface Project {
 	readonly deps: Readonly<Record<string, string>>;
 }
 
-async function walk(root: string, dir: string, out: string[]): Promise<void> {
+async function walk(root: string, dir: string, out: string[], skip: ReadonlySet<string>): Promise<void> {
 	const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+	// A git submodule (a `.git` file or directory of its own) is another project, not the app's source.
+	if (dir !== root && (entries.some((e) => e.name === '.git') || skip.has(relative(root, dir).split(sep).join('/')))) return;
 	await Promise.all(
 		entries.map(async (entry) => {
 			const path = join(dir, entry.name);
 			if (entry.isDirectory()) {
 				if (entry.name.startsWith('.') || SKIP_DIRS.has(entry.name)) return;
-				await walk(root, path, out);
+				await walk(root, path, out, skip);
 			} else if (entry.isFile() && TEXT.test(entry.name)) {
 				out.push(relative(root, path).split(sep).join('/'));
 			}
@@ -34,7 +36,9 @@ async function walk(root: string, dir: string, out: string[]): Promise<void> {
 
 export async function openProject(root: string): Promise<Project> {
 	const files: string[] = [];
-	await walk(root, root, files);
+	const modules = await readFile(join(root, '.gitmodules'), 'utf8').catch(() => '');
+	const skip = new Set([...modules.matchAll(/^\s*path\s*=\s*(.+?)\s*$/gm)].map((m) => m[1]!.replace(/^\.\/|\/$/g, '')));
+	await walk(root, root, files, skip);
 	files.sort();
 	const set = new Set(files);
 	const cache = new Map<string, Promise<string>>();
