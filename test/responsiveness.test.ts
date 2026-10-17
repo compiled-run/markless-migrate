@@ -21,6 +21,7 @@ test('NEW fails only when every run exceeds the slower OLD run by max(16 ms, 10%
 	assert.equal(judge([300], [331], undefined).rerun, true);
 	assert.deepEqual(judge([40], [90]), { ok: false, rerun: true, newMs: 90, slower: true, overBudget: false, oldMs: 40, allowedMs: 56 });
 	assert.deepEqual(judge([40, 44], [90, 120]), { ok: false, rerun: false, newMs: 120, slower: true, overBudget: false, oldMs: 44, allowedMs: 60 }, 'both runs over: the slower is kept');
+	assert.deepEqual(judge([73, 120], [128, 159]), { ok: true, rerun: false, newMs: 128, slower: false, overBudget: false, oldMs: 120, allowedMs: 167 }, 'the old runs varied by 47 ms, so that is the noise floor');
 	assert.deepEqual(judge([40, 44], [90, 50]), { ok: true, rerun: false, newMs: 50, slower: false, overBudget: false, oldMs: 44, allowedMs: 60 }, 'one run over: noise, the run within is kept');
 	assert.deepEqual(judge([250, 260], [262, 270], 200), { ok: false, rerun: false, newMs: 270, slower: false, overBudget: true, oldMs: 260, allowedMs: 286 }, 'the budget holds even when the old app was as slow');
 	assert.equal(judge([30], [undefined]).ok, true, 'no visible result is not a time');

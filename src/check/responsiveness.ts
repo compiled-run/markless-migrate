@@ -473,13 +473,14 @@ export interface Verdict {
 	readonly allowedMs?: number;
 }
 
-/** NEW fails only when every one of its runs exceeds the slower OLD run by max(16 ms, 10%), or the budget; one run over asks for another. */
+/** NEW fails only when every one of its runs exceeds the slower OLD run by max(16 ms, 10%, how much OLD's own runs varied), or the budget; one run over asks for another. */
 export function judge(old: readonly (number | undefined)[], next: readonly (number | undefined)[], budgetMs?: number): Verdict {
 	const olds = old.filter((n): n is number => n !== undefined);
 	const news = next.filter((n): n is number => n !== undefined);
 	if (!news.length) return { ok: true, rerun: false, slower: false, overBudget: false, ...(olds.length ? { oldMs: Math.max(...olds) } : {}) };
 	const oldMs = olds.length ? Math.max(...olds) : undefined;
-	const allowedMs = oldMs !== undefined ? oldMs + Math.max(SLACK_MS, oldMs * SLACK_RATIO) : undefined;
+	const oldSpread = olds.length > 1 ? oldMs! - Math.min(...olds) : 0;
+	const allowedMs = oldMs !== undefined ? oldMs + Math.max(SLACK_MS, oldMs * SLACK_RATIO, oldSpread) : undefined;
 	const slow = (n: number) => allowedMs !== undefined && n > allowedMs;
 	const over = (n: number) => budgetMs !== undefined && n > budgetMs;
 	const exceeds = (n: number) => slow(n) || over(n);
@@ -601,7 +602,7 @@ function timing(speed: Speed, kind: ControlTiming['kind'], olds: readonly Sample
 	const problems: string[] = [];
 	const oldMs = verdict.oldMs;
 	const newMs = verdict.newMs;
-	if (verdict.slower) problems.push(`slower than the old ${msText(oldMs)} by more than max(16 ms, 10%)`);
+	if (verdict.slower) problems.push(`slower than the old ${msText(oldMs)} by more than max(16 ms, 10%, the old runs' spread)`);
 	if (verdict.overBudget) problems.push(`over the ${budgetMs} ms budget`);
 	const oldChanged = olds.some((s) => s.result !== 'none');
 	if (kind === 'in-page' && oldChanged && news.length && news.every((s) => s.result === 'none' && !s.failed && !s.heldBack)) problems.push('no visible result on the new page, where the old page changed');
