@@ -233,6 +233,15 @@ export function pathParam(prefix: string): string | undefined {
 export async function bootHome(els: HomeEls): Promise<void> {
   const tag = pathParam("/tag/");
   const search = window.location.search;
+  // What the page asks for does not depend on who is signed in (the token rides along either way), so the lists
+  // start with the session check instead of after it; only "Your Feed" waits to know.
+  const early = new URLSearchParams(search);
+  const earlyPage = early.get("page") ? Number.parseInt(early.get("page")!, 10) : 1;
+  const tagsRequest = api<TagsResponse>("GET", "/tags");
+  const earlyArticles =
+    early.get("feed") === "following"
+      ? undefined
+      : startList(els.list, "/articles", tag ? { tag } : {}, earlyPage, false, true);
   const session = await currentUser();
   const signedIn = session.status === "authenticated";
   // Markless 0.4.0 writes <br> as <br></br>, which parses as two elements and shifts every handler after it.
@@ -254,16 +263,8 @@ export async function bootHome(els: HomeEls): Promise<void> {
     go("/login");
     return;
   }
-  const page = params.get("page") ? Number.parseInt(params.get("page")!, 10) : 1;
-  const type = tag ? "all" : feed === "following" ? "feed" : "all";
-  const articles = startList(
-    els.list,
-    type === "feed" ? "/articles/feed" : "/articles",
-    tag ? { tag } : {},
-    page,
-    type === "feed",
-    true,
-  );
+  const articles =
+    earlyArticles ?? startList(els.list, "/articles/feed", {}, earlyPage, true, true);
   // Angular reuses HomeComponent while the route record stays the same (the feeds on /, or one tag to another).
   onSoftNavigation((url) => {
     const nextTag = url.pathname.startsWith("/tag/")
@@ -298,7 +299,7 @@ export async function bootHome(els: HomeEls): Promise<void> {
       );
     };
   });
-  const tags = api<TagsResponse>("GET", "/tags").then((result) => {
+  const tags = tagsRequest.then((result) => {
     if (!result.ok) return;
     fill(els.tags, render.tagLinks(result.data.tags));
     show(els.sidebar, true);
