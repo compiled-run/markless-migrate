@@ -37,6 +37,13 @@ test('check rejects an unknown --data mode and a bad --time', () => {
 	assert.match(run('check', '--old', 'http://127.0.0.1:1', '--new', 'http://127.0.0.1:2', '--time', 'soon').stderr, /--time must be a date/);
 });
 
+test('check rejects a bad interaction budget, CPU slowdown or control limit', () => {
+	const check = (...args: string[]) => run('check', '--old', 'http://127.0.0.1:1', '--new', 'http://127.0.0.1:2', ...args);
+	assert.match(check('--interaction-budget', '0').stderr, /--interaction-budget must be a number of milliseconds above 0/);
+	assert.match(check('--cpu-throttle', '0.5').stderr, /--cpu-throttle must be a slowdown rate of at least 1/);
+	assert.match(check('--interaction-controls', '2.5').stderr, /--interaction-controls must be a whole number of at least 1/);
+});
+
 test('check --all with a route nothing gives a sample is not "all green": it counts the route unchecked and exits 1 unless --allow-unchecked', async () => {
 	const { createServer } = await import('node:http');
 	const { mkdtemp, mkdir, writeFile } = await import('node:fs/promises');
