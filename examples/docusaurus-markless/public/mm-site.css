@@ -1,0 +1,4 @@
+/* The router wraps the page in a div; let #__docusaurus stay the body's child for its full-height layout. */
+body > [data-async-container] {
+	display: contents;
+}

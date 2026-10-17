@@ -1,0 +1,813 @@
+{
+	"/": {
+		"title": "Build optimized websites quickly, focus on your content | Docusaurus",
+		"ld": "",
+		"slots": [
+			{
+				"charset": "UTF-8"
+			},
+			{
+				"name": "generator",
+				"content": "Docusaurus v4.0.0"
+			},
+			{
+				"data-rh": "true",
+				"name": "viewport",
+				"content": "width=device-width, initial-scale=1.0"
+			},
+			{
+				"data-rh": "true",
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:image",
+				"content": "https://docusaurus.io/img/docusaurus-social-card.jpg"
+			},
+			{
+				"data-rh": "true",
+				"name": "twitter:image",
+				"content": "https://docusaurus.io/img/docusaurus-social-card.jpg"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:url",
+				"content": "https://docusaurus.io/"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:locale",
+				"content": "en"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:locale:alternate",
+				"content": "fr"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:locale:alternate",
+				"content": "pt_BR"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:locale:alternate",
+				"content": "ko"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:locale:alternate",
+				"content": "zh_CN"
+			},
+			{
+				"data-rh": "true",
+				"name": "docusaurus_locale",
+				"content": "en"
+			},
+			{
+				"data-rh": "true",
+				"name": "docusaurus_tag",
+				"content": "default"
+			},
+			{
+				"data-rh": "true",
+				"name": "docsearch:language",
+				"content": "en"
+			},
+			{
+				"data-rh": "true",
+				"name": "docsearch:docusaurus_tag",
+				"content": "default"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:title",
+				"content": "Build optimized websites quickly, focus on your content | Docusaurus"
+			},
+			{
+				"data-rh": "true",
+				"name": "description",
+				"content": "An optimized site generator in React. Docusaurus helps you to move fast and write content. Build documentation websites, blogs, marketing pages, and more."
+			},
+			{
+				"data-rh": "true",
+				"property": "og:description",
+				"content": "An optimized site generator in React. Docusaurus helps you to move fast and write content. Build documentation websites, blogs, marketing pages, and more."
+			},
+			{
+				"data-rh": "true",
+				"rel": "icon",
+				"href": "/img/docusaurus.ico"
+			},
+			{
+				"data-rh": "true",
+				"rel": "canonical",
+				"href": "https://docusaurus.io/"
+			},
+			{
+				"data-rh": "true",
+				"rel": "alternate",
+				"href": "https://docusaurus.io/",
+				"hreflang": "en"
+			},
+			{
+				"data-rh": "true",
+				"rel": "alternate",
+				"href": "https://docusaurus.io/",
+				"hreflang": "fr"
+			},
+			{
+				"data-rh": "true",
+				"rel": "alternate",
+				"href": "https://docusaurus.io/",
+				"hreflang": "pt-BR"
+			},
+			{
+				"data-rh": "true",
+				"rel": "alternate",
+				"href": "https://docusaurus.io/",
+				"hreflang": "ko"
+			},
+			{
+				"data-rh": "true",
+				"rel": "alternate",
+				"href": "https://docusaurus.io/",
+				"hreflang": "zh-CN"
+			},
+			{
+				"data-rh": "true",
+				"rel": "alternate",
+				"href": "https://docusaurus.io/",
+				"hreflang": "x-default"
+			},
+			{
+				"data-rh": "true",
+				"rel": "preconnect",
+				"href": "https://X1Z85QJPUV-dsn.algolia.net",
+				"crossorigin": "anonymous"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog/rss.xml",
+				"title": "Docusaurus RSS Feed"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/atom+xml",
+				"href": "/blog/atom.xml",
+				"title": "Docusaurus Atom Feed"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/json",
+				"href": "/blog/feed.json",
+				"title": "Docusaurus JSON Feed"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://www.google-analytics.com"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://www.googletagmanager.com"
+			},
+			{
+				"rel": "search",
+				"type": "application/opensearchdescription+xml",
+				"title": "Docusaurus",
+				"href": "/opensearch.xml"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/changelog/rss.xml",
+				"title": "Docusaurus changelog RSS Feed"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/atom+xml",
+				"href": "/changelog/atom.xml",
+				"title": "Docusaurus changelog Atom Feed"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/json",
+				"href": "/changelog/feed.json",
+				"title": "Docusaurus changelog JSON Feed"
+			},
+			{
+				"rel": "icon",
+				"href": "/img/docusaurus.png"
+			},
+			{
+				"rel": "manifest",
+				"href": "/manifest.json"
+			},
+			{
+				"name": "theme-color",
+				"content": "rgb(37, 194, 160)"
+			},
+			{
+				"name": "apple-mobile-web-app-capable",
+				"content": "yes"
+			},
+			{
+				"name": "apple-mobile-web-app-status-bar-style",
+				"content": "#000"
+			},
+			{
+				"rel": "apple-touch-icon",
+				"href": "/img/docusaurus.png"
+			},
+			{
+				"rel": "mask-icon",
+				"href": "/img/docusaurus.png",
+				"color": "rgb(62, 204, 94)"
+			},
+			{
+				"name": "msapplication-TileImage",
+				"content": "/img/docusaurus.png"
+			},
+			{
+				"name": "msapplication-TileColor",
+				"content": "#000"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/tests/blog/rss.xml",
+				"title": "Docusaurus Tests Blog RSS Feed"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/atom+xml",
+				"href": "/tests/blog/atom.xml",
+				"title": "Docusaurus Tests Blog Atom Feed"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/json",
+				"href": "/tests/blog/feed.json",
+				"title": "Docusaurus Tests Blog JSON Feed"
+			},
+			{
+				"rel": "stylesheet",
+				"href": "/katex/katex.min.css",
+				"type": "text/css"
+			},
+			null,
+			null,
+			null
+		]
+	},
+	"/docs": {
+		"title": "Introduction | Docusaurus",
+		"ld": "{\"@context\":\"https://schema.org\",\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Introduction\",\"item\":\"https://docusaurus.io/docs\"}]}",
+		"slots": [
+			{
+				"charset": "UTF-8"
+			},
+			{
+				"name": "generator",
+				"content": "Docusaurus v4.0.0"
+			},
+			{
+				"data-rh": "true",
+				"name": "viewport",
+				"content": "width=device-width, initial-scale=1.0"
+			},
+			{
+				"data-rh": "true",
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:image",
+				"content": "https://docusaurus.io/img/docusaurus-social-card.jpg"
+			},
+			{
+				"data-rh": "true",
+				"name": "twitter:image",
+				"content": "https://docusaurus.io/img/docusaurus-social-card.jpg"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:url",
+				"content": "https://docusaurus.io/docs"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:locale",
+				"content": "en"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:locale:alternate",
+				"content": "fr"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:locale:alternate",
+				"content": "pt_BR"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:locale:alternate",
+				"content": "ko"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:locale:alternate",
+				"content": "zh_CN"
+			},
+			{
+				"data-rh": "true",
+				"name": "docusaurus_locale",
+				"content": "en"
+			},
+			{
+				"data-rh": "true",
+				"name": "docusaurus_tag",
+				"content": "docs-default-current"
+			},
+			{
+				"data-rh": "true",
+				"name": "docsearch:language",
+				"content": "en"
+			},
+			{
+				"data-rh": "true",
+				"name": "docsearch:docusaurus_tag",
+				"content": "docs-default-current"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:title",
+				"content": "Introduction | Docusaurus"
+			},
+			{
+				"data-rh": "true",
+				"name": "description",
+				"content": "Docusaurus was designed from the ground up to be easily installed and used to get your website up and running quickly."
+			},
+			{
+				"data-rh": "true",
+				"property": "og:description",
+				"content": "Docusaurus was designed from the ground up to be easily installed and used to get your website up and running quickly."
+			},
+			{
+				"data-rh": "true",
+				"rel": "icon",
+				"href": "/img/docusaurus.ico"
+			},
+			{
+				"data-rh": "true",
+				"rel": "canonical",
+				"href": "https://docusaurus.io/docs"
+			},
+			{
+				"data-rh": "true",
+				"rel": "alternate",
+				"href": "https://docusaurus.io/docs",
+				"hreflang": "en"
+			},
+			{
+				"data-rh": "true",
+				"rel": "alternate",
+				"href": "https://docusaurus.io/docs",
+				"hreflang": "fr"
+			},
+			{
+				"data-rh": "true",
+				"rel": "alternate",
+				"href": "https://docusaurus.io/docs",
+				"hreflang": "pt-BR"
+			},
+			{
+				"data-rh": "true",
+				"rel": "alternate",
+				"href": "https://docusaurus.io/docs",
+				"hreflang": "ko"
+			},
+			{
+				"data-rh": "true",
+				"rel": "alternate",
+				"href": "https://docusaurus.io/docs",
+				"hreflang": "zh-CN"
+			},
+			{
+				"data-rh": "true",
+				"rel": "alternate",
+				"href": "https://docusaurus.io/docs",
+				"hreflang": "x-default"
+			},
+			{
+				"data-rh": "true",
+				"rel": "preconnect",
+				"href": "https://X1Z85QJPUV-dsn.algolia.net",
+				"crossorigin": "anonymous"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog/rss.xml",
+				"title": "Docusaurus RSS Feed"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/atom+xml",
+				"href": "/blog/atom.xml",
+				"title": "Docusaurus Atom Feed"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/json",
+				"href": "/blog/feed.json",
+				"title": "Docusaurus JSON Feed"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://www.google-analytics.com"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://www.googletagmanager.com"
+			},
+			{
+				"rel": "search",
+				"type": "application/opensearchdescription+xml",
+				"title": "Docusaurus",
+				"href": "/opensearch.xml"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/changelog/rss.xml",
+				"title": "Docusaurus changelog RSS Feed"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/atom+xml",
+				"href": "/changelog/atom.xml",
+				"title": "Docusaurus changelog Atom Feed"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/json",
+				"href": "/changelog/feed.json",
+				"title": "Docusaurus changelog JSON Feed"
+			},
+			{
+				"rel": "icon",
+				"href": "/img/docusaurus.png"
+			},
+			{
+				"rel": "manifest",
+				"href": "/manifest.json"
+			},
+			{
+				"name": "theme-color",
+				"content": "rgb(37, 194, 160)"
+			},
+			{
+				"name": "apple-mobile-web-app-capable",
+				"content": "yes"
+			},
+			{
+				"name": "apple-mobile-web-app-status-bar-style",
+				"content": "#000"
+			},
+			{
+				"rel": "apple-touch-icon",
+				"href": "/img/docusaurus.png"
+			},
+			{
+				"rel": "mask-icon",
+				"href": "/img/docusaurus.png",
+				"color": "rgb(62, 204, 94)"
+			},
+			{
+				"name": "msapplication-TileImage",
+				"content": "/img/docusaurus.png"
+			},
+			{
+				"name": "msapplication-TileColor",
+				"content": "#000"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/tests/blog/rss.xml",
+				"title": "Docusaurus Tests Blog RSS Feed"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/atom+xml",
+				"href": "/tests/blog/atom.xml",
+				"title": "Docusaurus Tests Blog Atom Feed"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/json",
+				"href": "/tests/blog/feed.json",
+				"title": "Docusaurus Tests Blog JSON Feed"
+			},
+			{
+				"rel": "stylesheet",
+				"href": "/katex/katex.min.css",
+				"type": "text/css"
+			},
+			{
+				"data-rh": "true",
+				"name": "docusaurus_version",
+				"content": "current"
+			},
+			{
+				"data-rh": "true",
+				"name": "docsearch:version",
+				"content": "current"
+			},
+			{
+				"type": "application/ld+json",
+				"data-rh": "true"
+			}
+		]
+	},
+	"/docs/installation": {
+		"title": "Installation | Docusaurus",
+		"ld": "{\"@context\":\"https://schema.org\",\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Getting Started\",\"item\":\"https://docusaurus.io/docs/category/getting-started\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Installation\",\"item\":\"https://docusaurus.io/docs/installation\"}]}",
+		"slots": [
+			{
+				"charset": "UTF-8"
+			},
+			{
+				"name": "generator",
+				"content": "Docusaurus v4.0.0"
+			},
+			{
+				"data-rh": "true",
+				"name": "viewport",
+				"content": "width=device-width, initial-scale=1.0"
+			},
+			{
+				"data-rh": "true",
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:image",
+				"content": "https://docusaurus.io/img/docusaurus-social-card.jpg"
+			},
+			{
+				"data-rh": "true",
+				"name": "twitter:image",
+				"content": "https://docusaurus.io/img/docusaurus-social-card.jpg"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:url",
+				"content": "https://docusaurus.io/docs/installation"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:locale",
+				"content": "en"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:locale:alternate",
+				"content": "fr"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:locale:alternate",
+				"content": "pt_BR"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:locale:alternate",
+				"content": "ko"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:locale:alternate",
+				"content": "zh_CN"
+			},
+			{
+				"data-rh": "true",
+				"name": "docusaurus_locale",
+				"content": "en"
+			},
+			{
+				"data-rh": "true",
+				"name": "docusaurus_tag",
+				"content": "docs-default-current"
+			},
+			{
+				"data-rh": "true",
+				"name": "docsearch:language",
+				"content": "en"
+			},
+			{
+				"data-rh": "true",
+				"name": "docsearch:docusaurus_tag",
+				"content": "docs-default-current"
+			},
+			{
+				"data-rh": "true",
+				"property": "og:title",
+				"content": "Installation | Docusaurus"
+			},
+			{
+				"data-rh": "true",
+				"name": "description",
+				"content": "How to install Docusaurus locally, and start a Docusaurus site in no time."
+			},
+			{
+				"data-rh": "true",
+				"property": "og:description",
+				"content": "How to install Docusaurus locally, and start a Docusaurus site in no time."
+			},
+			{
+				"data-rh": "true",
+				"rel": "icon",
+				"href": "/img/docusaurus.ico"
+			},
+			{
+				"data-rh": "true",
+				"rel": "canonical",
+				"href": "https://docusaurus.io/docs/installation"
+			},
+			{
+				"data-rh": "true",
+				"rel": "alternate",
+				"href": "https://docusaurus.io/docs/installation",
+				"hreflang": "en"
+			},
+			{
+				"data-rh": "true",
+				"rel": "alternate",
+				"href": "https://docusaurus.io/docs/installation",
+				"hreflang": "fr"
+			},
+			{
+				"data-rh": "true",
+				"rel": "alternate",
+				"href": "https://docusaurus.io/docs/installation",
+				"hreflang": "pt-BR"
+			},
+			{
+				"data-rh": "true",
+				"rel": "alternate",
+				"href": "https://docusaurus.io/docs/installation",
+				"hreflang": "ko"
+			},
+			{
+				"data-rh": "true",
+				"rel": "alternate",
+				"href": "https://docusaurus.io/docs/installation",
+				"hreflang": "zh-CN"
+			},
+			{
+				"data-rh": "true",
+				"rel": "alternate",
+				"href": "https://docusaurus.io/docs/installation",
+				"hreflang": "x-default"
+			},
+			{
+				"data-rh": "true",
+				"rel": "preconnect",
+				"href": "https://X1Z85QJPUV-dsn.algolia.net",
+				"crossorigin": "anonymous"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog/rss.xml",
+				"title": "Docusaurus RSS Feed"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/atom+xml",
+				"href": "/blog/atom.xml",
+				"title": "Docusaurus Atom Feed"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/json",
+				"href": "/blog/feed.json",
+				"title": "Docusaurus JSON Feed"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://www.google-analytics.com"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://www.googletagmanager.com"
+			},
+			{
+				"rel": "search",
+				"type": "application/opensearchdescription+xml",
+				"title": "Docusaurus",
+				"href": "/opensearch.xml"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/changelog/rss.xml",
+				"title": "Docusaurus changelog RSS Feed"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/atom+xml",
+				"href": "/changelog/atom.xml",
+				"title": "Docusaurus changelog Atom Feed"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/json",
+				"href": "/changelog/feed.json",
+				"title": "Docusaurus changelog JSON Feed"
+			},
+			{
+				"rel": "icon",
+				"href": "/img/docusaurus.png"
+			},
+			{
+				"rel": "manifest",
+				"href": "/manifest.json"
+			},
+			{
+				"name": "theme-color",
+				"content": "rgb(37, 194, 160)"
+			},
+			{
+				"name": "apple-mobile-web-app-capable",
+				"content": "yes"
+			},
+			{
+				"name": "apple-mobile-web-app-status-bar-style",
+				"content": "#000"
+			},
+			{
+				"rel": "apple-touch-icon",
+				"href": "/img/docusaurus.png"
+			},
+			{
+				"rel": "mask-icon",
+				"href": "/img/docusaurus.png",
+				"color": "rgb(62, 204, 94)"
+			},
+			{
+				"name": "msapplication-TileImage",
+				"content": "/img/docusaurus.png"
+			},
+			{
+				"name": "msapplication-TileColor",
+				"content": "#000"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/tests/blog/rss.xml",
+				"title": "Docusaurus Tests Blog RSS Feed"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/atom+xml",
+				"href": "/tests/blog/atom.xml",
+				"title": "Docusaurus Tests Blog Atom Feed"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/json",
+				"href": "/tests/blog/feed.json",
+				"title": "Docusaurus Tests Blog JSON Feed"
+			},
+			{
+				"rel": "stylesheet",
+				"href": "/katex/katex.min.css",
+				"type": "text/css"
+			},
+			{
+				"data-rh": "true",
+				"name": "docusaurus_version",
+				"content": "current"
+			},
+			{
+				"data-rh": "true",
+				"name": "docsearch:version",
+				"content": "current"
+			},
+			{
+				"type": "application/ld+json",
+				"data-rh": "true"
+			}
+		]
+	}
+}
