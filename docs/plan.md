@@ -166,9 +166,15 @@ Internationalisation:
 
 Interactions:
 
-- Exploration is breadth first to depth 2, at most 30 journeys per route, on the desktop viewport. It
-  clicks, types fixed sample values, chooses the second option of a select, and presses Enter, Space,
-  and after opening something Escape and ArrowDown. It does not hover, drag, scroll, long-press or try
+- Exploration is driven by coverage, on the desktop viewport: every interactive element of the OLD
+  page, and every one a step reveals (to four steps deep), is used by one journey, main content first
+  (tables, then forms, then the rest of `main`, then shared header, nav, sidebar and footer controls),
+  then the keyboard paths, until `--journey-budget` (default 120 s) or `--max-journeys` runs out. An
+  element no journey used is a red `behaviour` failure, "not exercised", with the reason (out of budget,
+  looks destructive, could not be used on OLD) until a person accepts it. A shared layout control is
+  explored by the first route of the run that has it; the other routes carry its failures. It clicks,
+  types fixed sample values, chooses the second option of a select, and presses Enter, Space, and after
+  opening something Escape and ArrowDown. It does not hover, drag, scroll, long-press or try
   other shortcuts. Form values may fail a page's own validation patterns.
 - Requests to other origins are blocked during journeys (unless answered from recorded data), so
   third-party widgets do not run. Form posts and non-GET requests are sent only when both origins are on
@@ -366,8 +372,8 @@ written alike or the text is computed. Exact locations need, in order of value:
 ## Switching, intended differences, run and speed (2026-10-16)
 
 Built: `switch <route>` / `unswitch` maintain `.migrate/switched.json` (refused unless the last check of
-every role is green; `--force <reason>` records the reason and the checks it overrode; MCP
-`switch_route` never forces). `proxy` serves both apps on one origin; `config` writes `vercel.json` and
+every role is green; `--force --by <name> --reason <why>`, or a confirmation at a terminal, records who
+forced it and why, refused for agents `run` drives; MCP `switch_route` never forces). `proxy` serves both apps on one origin; `config` writes `vercel.json` and
 Nitro `routeRules`. `accept <failure-id> --reason` writes `.migrate/accepted.json`; accepted failures show
 as accepted with the reason, stale entries are listed. `run` checks like `check` (`--source`,
 `--new-source`, `--auth`, bypass flags, `--all`), owns the new app's server with `--serve`/`--build`/
