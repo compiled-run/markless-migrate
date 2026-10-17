@@ -30,13 +30,16 @@ import { nitroSnippet, notServedBy, pageAssets, vercelConfig } from './switch/de
 import { startProxy } from './switch/proxy.ts';
 import { readSwitched, switchRoute, unswitchRoute } from './switch/state.ts';
 import { ACCEPTED_FILE, acceptFailure, readAccepted, writeAccepted } from './check/accepted.ts';
+import { LIBRARIES_FILE, planLibraries, readLibraries, summarizeParity, writeParity } from './library/index.ts';
 import type { RouteState } from './status.ts';
 
 const USAGE = `markless-migrate ${VERSION}
 
   plan    --old <origin> [--source <path>] [--limit <n>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           Inventory the old app's routes, SEO, assets and locales into .migrate/inventory.json.
-          With --source, auth guards propose roles and the login route in a starter .migrate/auth.json.
+          With --source, auth guards propose roles and the login route in a starter .migrate/auth.json,
+          and every library the old app imports goes in .migrate/libraries.json: the exact surface used,
+          each usage site, and whether it maps to @markless/ui, stays as-is or needs a port.
   check   --old <origin> --new <origin> [--route <path>]... [--json] [--open]
           [--source <path>] [--data record|replay] [--staging] [--block <host>]... [--allow <host>]...
           [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
@@ -61,6 +64,11 @@ const USAGE = `markless-migrate ${VERSION}
           --auth names roles (a login script or a Playwright storage state file each, see plan's
           .migrate/auth.json); every route is checked once per role and once anonymous. A route a bot
           wall answers is stopped as blocked; --header and --cookie send a bypass token to both apps.
+  parity  <library> [--route <path>]... [--new-source <path>]
+          Write a port skeleton for one library into lib/parity/<library>/ of the new app: exactly the
+          components, props, hooks, options and fields the old app uses (narrowed to --route), plus
+          behaviour.md and behaviour.json: what each usage site must do, and the recorded journeys that
+          exercise it. Needs plan --source (it writes .migrate/libraries.json). Existing port files are kept.
   accept  <failure-id> --reason <why> [--by <name>]
           Record a failure as an intended difference in .migrate/accepted.json: from then on it shows as
           accepted (with the reason), not red. For a human only; ids are printed with every failure.
@@ -286,6 +294,10 @@ async function main(argv: string[]): Promise<number> {
 			const inventory = await plan({ origin: values.old, source: values.source ? resolve(values.source) : undefined, limit: values.limit ? Number(values.limit) : undefined, ...bypass, ...(values['user-agent'] ? { userAgent: values['user-agent'] } : {}) });
 			const path = await writeInventory(inventory, join(cwd, STATE_DIR));
 			out(`${summarizeInventory(inventory)}Wrote ${path}\n`);
+			if (inventory.source) {
+				const libraries = await planLibraries(inventory.source, join(cwd, STATE_DIR), cwd);
+				out(`${libraries.text}Wrote ${libraries.path}\n`);
+			}
 			const authPath = join(cwd, STATE_DIR, 'auth.json');
 			if (inventory.auth) out((await writeStarterAuth(authPath, inventory.auth)) ? `Wrote ${authPath}: set the credentials it names in the environment, check its login steps, then pass --auth ${authPath} to check.\n` : `Kept ${authPath} (already there); roles found: ${Object.keys(inventory.auth.roles).join(', ')}.\n`);
 			return 0;
@@ -396,6 +408,15 @@ async function main(argv: string[]): Promise<number> {
 		case 'status':
 			out(summarizeStatus(await status(cwd)));
 			return 0;
+		case 'parity': {
+			const { values, positionals } = parseArgs({ args: rest, allowPositionals: true, options: { route: { type: 'string', multiple: true }, 'new-source': { type: 'string' } } });
+			if (positionals.length !== 1) fail('parity needs one library name, as plan lists it (for example parity recharts)');
+			const libraries = await readLibraries(join(cwd, STATE_DIR));
+			if (!libraries) fail(`no ${join(STATE_DIR, LIBRARIES_FILE)}: run plan --source <old app> first`);
+			const result = await writeParity(libraries, positionals[0]!, { newApp: resolve(values['new-source'] ?? cwd), ...(values.route?.length ? { routes: values.route } : {}), journeysDir: join(cwd, STATE_DIR, 'journeys') }).catch((error: Error) => fail(error.message));
+			out(summarizeParity(result));
+			return 0;
+		}
 		case 'recorder':
 			out(`Start each Node server (old and new) with the request recorder loaded:\n\n  export NODE_OPTIONS="${recorderEnv().NODE_OPTIONS}"\n\nIt records what the server fetches while rendering each page check loads (fetch: method, URL, body and response; node:http and node:https: method, URL and status), and serves recordings on --data replay. It answers loopback callers only; set MARKLESS_MIGRATE_TOKEN in both the server and check environments to reach a remote server.\nModule: ${RECORDER.pathname}\n`);
 			return 0;

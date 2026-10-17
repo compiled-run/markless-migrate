@@ -68,6 +68,26 @@ matches it in a real browser. A route is done when its check is green, not when 
   in that order. \`check --all\` also checks routes only the source knows and the non-page endpoints
   (robots.txt, sitemaps, feeds, the manifest, \`/.well-known\`, JSON routes); a route whose dynamic
   segment has no value is listed as "needs a sample": add one to \`.migrate/samples.json\`.
+
+## Libraries
+
+\`plan --source\` lists every library the old app imports in \`.migrate/libraries.json\`, with exactly what it
+uses of each (components and their props and variants, hooks with the options passed and the fields read
+back, every usage site) and what to do with it:
+
+- **@markless/ui**: a family does the same job (a Radix or shadcn/ui dialog is \`modal\`, tabs are \`tabs\`, a
+  toast is \`toaster\`). Render the family and give it the old classes; translate selectors on the library's
+  own attributes (\`data-[state=open]\`) to the family's (\`[ui-open]\`). When the installed @markless/ui
+  lacks the family, port it like a library below and tell the user which family was missing.
+- **as-is**: framework-agnostic (zod, date-fns, clsx, a table or query core). Import it unchanged.
+- **port**: bound to the old framework (react-hook-form, recharts, a React hook). Run
+  \`markless-migrate parity <library> --route <route>\` (MCP \`parity\`): it writes
+  \`lib/parity/<library>/\` with a skeleton of exactly the used surface and \`behaviour.md\`, what every usage
+  site must do and the recorded journeys that exercise it. Fill the skeleton in with Markless state,
+  computed values and plain DOM; keep the library's framework-agnostic core (\`core\` in the file) as-is.
+- Port only the used surface: the same names, the props and options the app passes, the fields it reads,
+  nothing more. Never render React, Vue or Svelte inside the Markless app, and never load the old library
+  in the browser to "bridge" it. The route's check proves the port at every place it is used.
 `;
 
 function sha256(text: string): string {

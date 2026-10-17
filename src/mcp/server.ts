@@ -14,9 +14,10 @@ import { plan, summarizeInventory, writeInventory } from '../plan/inventory.ts';
 import { recordResults, STATE_DIR, status, summarizeStatus } from '../status.ts';
 import { switchRoute } from '../switch/state.ts';
 import { VERSION } from '../version.ts';
+import { LIBRARIES_FILE, planLibraries, readLibraries, summarizeParity, writeParity } from '../library/index.ts';
 
 const INSTRUCTIONS = `markless-migrate proves that a route moved to Markless still matches the old app.
-Loop: call plan once with the old app's origin, convert one route, run the new app, call check_route with both origins,
+Loop: call plan once with the old app's origin and source, convert one route (for its libraries: render the @markless/ui family plan maps, keep framework-agnostic ones as-is, call parity for each one that needs a port), run the new app, call check_route with both origins,
 fix every failure it lists, check again until green, then use status to pick the next route. Never edit the old app to make a check pass.`;
 
 function text(value: string) {
@@ -30,7 +31,7 @@ export function createServer(cwd: string): McpServer {
 		'plan',
 		{
 			title: 'Inventory the old app',
-			description: 'Discover the old app\'s routes (sitemap, robots.txt, crawl of same-origin links and hreflang alternates) with their SEO tags, assets and locales, and write .migrate/inventory.json.',
+			description: 'Discover the old app\'s routes (sitemap, robots.txt, crawl of same-origin links and hreflang alternates) with their SEO tags, assets and locales, and write .migrate/inventory.json. With source, also inventory every library the old app imports in .migrate/libraries.json: the exact surface used and every usage site, each classified as maps to @markless/ui, use as-is, or port with the parity tool.',
 			inputSchema: { old: z.string().url().describe('Origin of the running old app, e.g. http://localhost:3000'), source: z.string().optional().describe('Path to the old app source, to list file routes'), limit: z.number().int().positive().optional().describe('Maximum routes to visit (default 100)'), header: z.array(z.string()).optional().describe('name:value headers sent only to the old app, for example a bot-protection bypass token'), cookie: z.array(z.string()).optional(), userAgent: z.string().optional() },
 		},
 		async ({ old, source, limit, header, cookie, userAgent }) => {
@@ -38,7 +39,8 @@ export function createServer(cwd: string): McpServer {
 			const path = await writeInventory(inventory, join(cwd, STATE_DIR));
 			const authPath = join(cwd, STATE_DIR, 'auth.json');
 			const wroteAuth = inventory.auth ? await writeStarterAuth(authPath, inventory.auth) : false;
-			return text(`${summarizeInventory(inventory)}Wrote ${path}${wroteAuth ? `\nWrote ${authPath}: a starter auth file for check_route's auth argument; the credentials it names must be set in the environment.` : ''}`);
+			const libraries = inventory.source ? await planLibraries(inventory.source, join(cwd, STATE_DIR), cwd) : undefined;
+			return text(`${summarizeInventory(inventory)}Wrote ${path}${wroteAuth ? `\nWrote ${authPath}: a starter auth file for check_route's auth argument; the credentials it names must be set in the environment.` : ''}${libraries ? `\n${libraries.text}Wrote ${libraries.path}` : ''}`);
 		},
 	);
 
@@ -82,6 +84,21 @@ export function createServer(cwd: string): McpServer {
 			const failures = [...report.routes.flatMap((r) => r.failures), ...(report.logins ?? []).flatMap((l) => l.failures)].filter((f) => !f.accepted);
 			const blocked = report.routes.flatMap((r) => (r.blocked ? [{ ...(r.role ? { role: r.role } : {}), message: r.blocked.message }] : []));
 			return { ...text(summarize(report)), structuredContent: { ok: report.ok, failures, ...(blocked.length ? { blocked } : {}) } };
+		},
+	);
+
+	server.registerTool(
+		'parity',
+		{
+			title: 'Scaffold a parity port of one library',
+			description: 'For a library plan says needs a port (or a @markless/ui mapping the installed version lacks), write lib/parity/<library>/ in the new app: a skeleton exposing exactly the used surface (same names, props, options and fields read), and behaviour.md/behaviour.json listing what every usage site must do and the recorded journeys that exercise it. Port only that surface, prefer @markless/ui families, never embed React, Vue or Svelte. Existing port files are kept.',
+			inputSchema: { library: z.string().describe('The library name as plan lists it, e.g. recharts or @tanstack/react-table'), route: z.array(z.string()).optional().describe('Narrow the port to what these routes render'), new_source: z.string().optional().describe('The Markless app (default: the working directory)') },
+		},
+		async ({ library, route, new_source }) => {
+			const libraries = await readLibraries(join(cwd, STATE_DIR));
+			if (!libraries) return text(`No ${join(STATE_DIR, LIBRARIES_FILE)} yet: call plan with source first.`);
+			const result = await writeParity(libraries, library, { newApp: resolve(new_source ?? cwd), ...(route?.length ? { routes: route } : {}), journeysDir: join(cwd, STATE_DIR, 'journeys') });
+			return { ...text(summarizeParity(result)), structuredContent: { ...result } };
 		},
 	);
 
