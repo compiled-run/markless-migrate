@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { pageAsset } from '../src/check/browser.ts';
 import { compareJourneys, describeStep, localUrl, type Journey, type StepResult } from '../src/check/journeys.ts';
 
 const result = (over: Partial<StepResult>): StepResult => ({ url: '/', added: [], removed: [], requests: [], errors: [], announcements: [], focus: 'body', navigated: false, ...over });
@@ -48,4 +49,10 @@ test('steps describe themselves in plain words, and loopback redirects stay loca
 	assert.equal(localUrl('http://localhost:4000/en/contact?sent=1', 'http://127.0.0.1:4000'), '/en/contact?sent=1');
 	assert.equal(localUrl('http://localhost:4001/x', 'http://127.0.0.1:4000'), 'http://localhost:4001/x');
 	assert.equal(localUrl('https://shop.example/cart', 'http://127.0.0.1:4000'), 'https://shop.example/cart');
+});
+
+test("journeys load a page's own CDN scripts, styles, fonts and images, but not other origins' frames or data calls", () => {
+	for (const type of ['script', 'stylesheet', 'font', 'image']) assert.ok(pageAsset('GET', type), type);
+	for (const type of ['fetch', 'xhr', 'document', 'websocket', 'eventsource', 'other']) assert.ok(!pageAsset('GET', type), type);
+	assert.ok(!pageAsset('POST', 'script'));
 });

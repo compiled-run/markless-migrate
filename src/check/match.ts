@@ -1,9 +1,10 @@
 import type { ElementSnapshot } from './types.ts';
 
-type KeyFn = (el: ElementSnapshot) => string;
+type KeyFn = (el: ElementSnapshot) => string | undefined;
 
 const KEYS: readonly KeyFn[] = [
-	(el) => `${el.role}|${el.name}|${el.tag}|${el.text}`,
+	// Nameless, textless elements (wrapper divs) pair by landmark path: one extra wrapper must not shift every pair after it.
+	(el) => (el.name || el.text ? `${el.role}|${el.name}|${el.tag}|${el.text}` : undefined),
 	(el) => el.path,
 	(el) => `${el.role}|${el.name}|${el.tag}`,
 ];
@@ -12,6 +13,7 @@ function keyed(elements: readonly ElementSnapshot[], indices: readonly number[],
 	const groups = new Map<string, number[]>();
 	for (const i of indices) {
 		const k = key(elements[i]!);
+		if (k === undefined) continue;
 		const group = groups.get(k);
 		if (group) group.push(i);
 		else groups.set(k, [i]);

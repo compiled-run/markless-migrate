@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Browser, BrowserContext, BrowserContextOptions, Page, Request, Route } from 'playwright';
+import { request as playwrightRequest, type APIRequestContext, type Browser, type BrowserContext, type BrowserContextOptions, type Page, type Request, type Route } from 'playwright';
 import { DEFAULT_FREEZE, freezePage, type FreezeOptions } from './freeze.ts';
 import { bodyShape, MAX_BODY, sameApp, type NetworkRecord } from './network.ts';
 import { at, writeHandler, type WriteFact } from './source-facts.ts';
@@ -145,8 +145,35 @@ export function findRecorded(responses: readonly NetworkRecord[], side: 'browser
 	return responses.find((r) => same(r) && r.url === url.href) ?? responses.find((r) => same(r) && queryKey(new URL(r.url)) === queryKey(url));
 }
 
+// A page's own scripts, styles, fonts and images from a CDN still load in journeys (sites load their framework that way); widget frames and data calls do not.
+export function pageAsset(method: string, resourceType: string): boolean {
+	return method === 'GET' && ['script', 'stylesheet', 'font', 'image'].includes(resourceType);
+}
+
+// Each other-origin asset is fetched once per run, in a request context of its own (one tied to a closed journey page never settles): journeys open many pages at once and must not burst a CDN.
+const assets = new Map<string, Promise<{ status: number; headers: Record<string, string>; body: Buffer } | undefined>>();
+let fetcher: Promise<APIRequestContext> | undefined;
+
+async function fulfillAsset(route: Route): Promise<void> {
+	const url = route.request().url();
+	let hit = assets.get(url);
+	if (!hit) {
+		fetcher ??= playwrightRequest.newContext();
+		hit = fetcher
+			.then((api) => api.get(url, { headers: route.request().headers(), timeout: 15_000, failOnStatusCode: false }))
+			.then(async (response) => {
+				const headers = Object.fromEntries(Object.entries(response.headers()).filter(([name]) => !['content-encoding', 'content-length', 'transfer-encoding'].includes(name)));
+				return { status: response.status(), headers, body: await response.body() };
+			})
+			.catch(() => undefined);
+		assets.set(url, hit);
+	}
+	const got = await hit;
+	await (got ? route.fulfill(got) : route.abort()).catch(() => {});
+}
+
 export interface OpenOptions {
-	/** Abort requests to other origins (journeys keep third-party widgets out), except recorded and blocked ones. */
+	/** Abort requests to other origins (journeys keep third-party widgets out), except page assets and recorded and blocked ones. */
 	readonly sameOriginOnly?: boolean;
 }
 
@@ -224,7 +251,8 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 				log.records.push({ ...hit, url: url.href, replayed: true, recordedUrl: hit.url });
 				return route.fulfill({ status: hit.status, headers: { 'content-type': hit.contentType, 'access-control-allow-origin': '*' }, body: hit.body ?? '' });
 			}
-			return options.sameOriginOnly ? route.abort() : route.continue();
+			if (!options.sameOriginOnly) return route.continue();
+			return pageAsset(request.method(), request.resourceType()) ? fulfillAsset(route) : route.abort();
 		}
 		// The page load's id goes only on the page and its API calls: framework prefetches render other routes, whose fetches are not this page's.
 		const own = request.isNavigationRequest() || (['fetch', 'xhr'].includes(request.resourceType()) && !frameworkTransport(request, url));

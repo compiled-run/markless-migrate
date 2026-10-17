@@ -30,6 +30,14 @@ test('a noisy line whose token count changed still pins its stable words', () =>
 	assert.ok(!m.test('Edited 3 hours ago by Ana'));
 });
 
+test('a hyphen, caret or bracket seen in a varying stretch stays a literal inside the character class', () => {
+	const m = template('Ad: x-ray specs, now', 'Ad: carbon-free hosting, -20%');
+	assert.ok(m.test('Ad: carbon-free hosting, -20%'));
+	assert.ok(m.test('Ad: x-ray specs, now'));
+	const caret = template('Score a^b', 'Score [c]');
+	assert.ok(caret.test('Score [c]'));
+});
+
 test('lines that only some OLD loads had are optional, everything else is required', () => {
 	const diffLines = (...args: Parameters<typeof diffAt>) => {
 		const { at: _, ...rest } = diffAt(...args);

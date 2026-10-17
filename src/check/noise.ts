@@ -15,7 +15,7 @@ function charClass(char: string): string {
 	if (/\d/.test(char)) return '\\d';
 	if (/\p{L}/u.test(char)) return '\\p{L}';
 	if (/\s/.test(char)) return '\\s';
-	return escape(char);
+	return char.replace(/[\\\]\[^-]/g, '\\$&');
 }
 
 // Characters a varying stretch may hold: only the classes the OLD loads showed there, so digits stay digits.

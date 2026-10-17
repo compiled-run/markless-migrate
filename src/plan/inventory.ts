@@ -4,6 +4,7 @@ import { chromium, type Browser, type BrowserContext } from 'playwright';
 import { detectChallenge } from '../check/blocked.ts';
 import { captureHttp, mime, toLocal } from '../check/capture.ts';
 import { collectPage } from '../check/collect.ts';
+import { blocker } from '../check/trackers.ts';
 import { proposeAuth, readLoginForm, withLoginForm, type ProposedAuth } from './auth.ts';
 import { scanForInventory, summarizeSource, unionRoutes, type RouteUnionEntry, type SourceInventory } from './source.ts';
 
@@ -54,15 +55,18 @@ function ownHeaders(options: Pick<PlanOptions, 'headers' | 'cookies' | 'userAgen
 	return { ...options.headers, ...(options.cookies?.length ? { cookie: options.cookies.map((c) => `${c.name}=${c.value}`).join('; ') } : {}), ...(options.userAgent ? { 'user-agent': options.userAgent } : {}) };
 }
 
-/** A browser context that sends the bypass to the old app's own origin and nowhere else. */
+/** A browser context that sends the bypass to the old app's own origin and nowhere else, and, like check, never loads ads or analytics: crawling must not count as visits. */
 async function bypassContext(browser: Browser, origin: string, options: Pick<PlanOptions, 'headers' | 'cookies' | 'userAgent'>): Promise<BrowserContext> {
 	const context = await browser.newContext(options.userAgent ? { userAgent: options.userAgent } : {});
 	if (options.cookies?.length) await context.addCookies(options.cookies.map((c) => ({ ...c, url: origin })));
-	const headers = options.headers;
-	if (headers && Object.keys(headers).length) {
-		const home = new URL(origin).origin;
-		await context.route('**/*', (route) => (new URL(route.request().url()).origin === home ? route.continue({ headers: { ...route.request().headers(), ...headers } }) : route.continue()));
-	}
+	const headers = options.headers ?? {};
+	const home = new URL(origin).origin;
+	const blocked = blocker();
+	await context.route('**/*', (route) => {
+		const url = new URL(route.request().url());
+		if (/^https?:$/.test(url.protocol) && blocked(url.hostname)) return route.abort('blockedbyclient');
+		return url.origin === home && Object.keys(headers).length ? route.continue({ headers: { ...route.request().headers(), ...headers } }) : route.continue();
+	});
 	return context;
 }
 

@@ -40,6 +40,16 @@ test('elements pair by role and name before landmark path, and survive a renamed
 	]);
 });
 
+test('an extra wrapper div outside the landmarks does not shift how the divs inside them pair', () => {
+	const old = [el({ path: 'banner/div', style: { display: 'flex' } }), el({ path: 'banner/div', style: { display: 'block' } }), el({ path: 'main/div' })];
+	const wrapped = [el({ path: 'div' }), el({ path: 'div' }), ...old];
+	assert.deepEqual([...matchElements(old, wrapped)].sort(), [
+		[0, 2],
+		[1, 3],
+		[2, 4],
+	]);
+});
+
 function png(width: number, height: number, paint?: (x: number, y: number) => boolean): Buffer {
 	const image = new PNG({ width, height });
 	for (let i = 0; i < width * height; i++) {

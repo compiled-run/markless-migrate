@@ -76,6 +76,7 @@ test('tracker hosts and their subdomains are blocked; the list can be extended a
 	assert.equal(block('googletagmanager.com'), true);
 	assert.equal(block('notgoogletagmanager.com'), false);
 	assert.equal(block('cms.example.com'), false);
+	for (const host of ['cdn.carbonads.com', 'srv.carbonads.net', 'static.cloudflareinsights.com']) assert.equal(block(host), true, host);
 	const custom = blocker({ add: ['ads.example.com'], allow: ['googletagmanager.com'] });
 	assert.equal(custom('x.ads.example.com'), true);
 	assert.equal(custom('www.googletagmanager.com'), false);

@@ -50,6 +50,7 @@ export const TRACKER_HOSTS: readonly string[] = [
 	'nr-data.net',
 	'browser-intake-datadoghq.com',
 	'browser-intake-datadoghq.eu',
+	'cloudflareinsights.com',
 	// Ad exchanges and retargeting
 	'adnxs.com',
 	'criteo.com',
@@ -65,6 +66,10 @@ export const TRACKER_HOSTS: readonly string[] = [
 	'casalemedia.com',
 	'smartadserver.com',
 	'yieldmo.com',
+	'carbonads.com',
+	'carbonads.net',
+	'buysellads.com',
+	'buysellads.net',
 	// Tag managers and client-side experiments
 	'tags.tiqcdn.com',
 	'assets.adobedtm.com',
