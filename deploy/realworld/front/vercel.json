@@ -1,0 +1,92 @@
+{
+	"rewrites": [
+		{
+			"source": "/",
+			"destination": "https://mm-realworld-new.vercel.app/"
+		},
+		{
+			"source": "/article/:slug",
+			"destination": "https://mm-realworld-new.vercel.app/article/:slug"
+		},
+		{
+			"source": "/article/:slug/",
+			"destination": "https://mm-realworld-new.vercel.app/article/:slug/"
+		},
+		{
+			"source": "/tag/:tag",
+			"destination": "https://mm-realworld-new.vercel.app/tag/:tag"
+		},
+		{
+			"source": "/tag/:tag/",
+			"destination": "https://mm-realworld-new.vercel.app/tag/:tag/"
+		},
+		{
+			"source": "/profile/:username",
+			"destination": "https://mm-realworld-new.vercel.app/profile/:username"
+		},
+		{
+			"source": "/profile/:username/",
+			"destination": "https://mm-realworld-new.vercel.app/profile/:username/"
+		},
+		{
+			"source": "/profile/:username/favorites",
+			"destination": "https://mm-realworld-new.vercel.app/profile/:username/favorites"
+		},
+		{
+			"source": "/profile/:username/favorites/",
+			"destination": "https://mm-realworld-new.vercel.app/profile/:username/favorites/"
+		},
+		{
+			"source": "/login",
+			"destination": "https://mm-realworld-new.vercel.app/login"
+		},
+		{
+			"source": "/login/",
+			"destination": "https://mm-realworld-new.vercel.app/login/"
+		},
+		{
+			"source": "/register",
+			"destination": "https://mm-realworld-new.vercel.app/register"
+		},
+		{
+			"source": "/register/",
+			"destination": "https://mm-realworld-new.vercel.app/register/"
+		},
+		{
+			"source": "/settings",
+			"destination": "https://mm-realworld-new.vercel.app/settings"
+		},
+		{
+			"source": "/settings/",
+			"destination": "https://mm-realworld-new.vercel.app/settings/"
+		},
+		{
+			"source": "/editor",
+			"destination": "https://mm-realworld-new.vercel.app/editor"
+		},
+		{
+			"source": "/editor/",
+			"destination": "https://mm-realworld-new.vercel.app/editor/"
+		},
+		{
+			"source": "/editor/:slug",
+			"destination": "https://mm-realworld-new.vercel.app/editor/:slug"
+		},
+		{
+			"source": "/editor/:slug/",
+			"destination": "https://mm-realworld-new.vercel.app/editor/:slug/"
+		},
+		{
+			"source": "/",
+			"destination": "https://mm-realworld-old.vercel.app/"
+		},
+		{
+			"source": "/:path*/",
+			"destination": "https://mm-realworld-old.vercel.app/:path*/"
+		},
+		{
+			"source": "/:path*",
+			"destination": "https://mm-realworld-old.vercel.app/:path*"
+		}
+	]
+}

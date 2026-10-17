@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Conduit (RealWorld): a migration to Markless</title>
+<style>
+body { font: 16px/1.5 system-ui, sans-serif; max-width: 42rem; margin: 3rem auto; padding: 0 1rem; color: #1b2a33; }
+a { color: #0a5c8a; }
+li { margin: 0.5rem 0; }
+code { font-size: 0.95em; }
+</style>
+</head>
+<body>
+<h1>Conduit (RealWorld): a migration to Markless</h1>
+<p>The Angular RealWorld frontend, ported to Markless with <code>@markless/migrate</code> and Claude Code, and checked
+route by route against the original. Both apps use the same RealWorld backend (Nitro, Prisma, SQLite), so their
+API calls are compared request for request.</p>
+<ul>
+<li><a href="https://mm-realworld-old.vercel.app/">The old app</a> (Angular 21)</li>
+<li><a href="https://mm-realworld-new.vercel.app/">The new app</a> (Markless 0.4.0)</li>
+<li><a href="/">The front door</a>: switched routes from the new app, the rest from the old one</li>
+<li><a href="/_migrate/report.html">The check report</a>: every route and role, old against new</li>
+<li><a href="https://mm-realworld-api.vercel.app/api/articles">The API both apps read</a></li>
+</ul>
+<p>Demo login: <code>demo@conduit.test</code> / <code>demo-password-1</code>. Other seeded users:
+<code>ada@conduit.test</code> / <code>ada-password-1</code>, <code>grace@conduit.test</code> / <code>grace-password-1</code>.</p>
+<p>The demo backend copies its seeded database into each serverless instance when it starts, so what you write
+(articles, comments, follows) lasts only as long as that instance does.</p>
+</body>
+</html>
