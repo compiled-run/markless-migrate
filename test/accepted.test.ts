@@ -66,3 +66,24 @@ test('acceptFailure writes the failure as seen, with origins replaced so the nex
 	assert.deepEqual(entry, { route: '/blog/a', role: 'member', dimension: 'rendered', check: 'visible text', viewport: 'mobile', match: { expected: 'Hello', actual: 'redirect to NEW/login' }, reason: 'new login flow', by: 'Jo', date: '2026-10-16', id: 'abc' });
 	assert.ok(matches(entry, { ...f, actual: 'redirect to http://127.0.0.1:4100/login' }, { old: 'http://127.0.0.1:3100', new: 'http://127.0.0.1:4100' }));
 });
+
+test('a hand-written accept without date or by is read, applied and shown; one without what it matches is refused with where', async () => {
+	const { mkdtemp, writeFile } = await import('node:fs/promises');
+	const { tmpdir } = await import('node:os');
+	const { join } = await import('node:path');
+	const { readAccepted } = await import('../src/check/accepted.ts');
+	const { renderHtml } = await import('../src/check/html.ts');
+	const dir = await mkdtemp(join(tmpdir(), 'mm-accept-'));
+	const path = join(dir, 'accepted.json');
+	await writeFile(path, JSON.stringify({ accepted: [{ route: '/blog/*', dimension: 'rendered', check: 'visible text', reason: 'copy edit' }] }));
+	const accepted = await readAccepted(path);
+	assert.deepEqual(accepted.map((a) => [a.by, a.date]), [['(not named)', '(no date)']]);
+	const applied = applyAccepted(report([route([failure()])]), accepted);
+	assert.equal(applied.ok, true);
+	assert.match(summarize(applied), /copy edit \(\(not named\), \(no date\)\)/);
+	assert.match(renderHtml(applied), /Accepted by \(not named\) on \(no date\): copy edit/);
+	await writeFile(path, JSON.stringify([{ route: '/a', dimension: 'rendered', reason: 'x' }]));
+	await assert.rejects(readAccepted(path), /accepted\.json entry 1: "check" must be a non-empty string/);
+	await writeFile(path, JSON.stringify([{ route: '/a', dimension: 'colour', check: 'x', reason: 'x' }]));
+	await assert.rejects(readAccepted(path), /"dimension" must be one of http/);
+});

@@ -26,13 +26,23 @@ export interface Accept {
 }
 
 export async function readAccepted(path: string): Promise<Accept[]> {
+	let parsed: { accepted?: unknown[] } | unknown[];
 	try {
-		const parsed = JSON.parse(await readFile(path, 'utf8')) as { accepted?: Accept[] } | Accept[];
-		return Array.isArray(parsed) ? parsed : (parsed.accepted ?? []);
+		parsed = JSON.parse(await readFile(path, 'utf8')) as { accepted?: unknown[] } | unknown[];
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
 		throw new Error(`${path}: ${(error as Error).message}`);
 	}
+	return (Array.isArray(parsed) ? parsed : (parsed.accepted ?? [])).map((entry, i) => normalise(entry, `${path} entry ${i + 1}`));
+}
+
+// A hand-written entry may leave out who and when; what it matches and why must be there.
+function normalise(entry: unknown, where: string): Accept {
+	const e = (entry ?? {}) as Partial<Record<keyof Accept, unknown>>;
+	for (const field of ['route', 'check', 'reason'] as const) if (typeof e[field] !== 'string' || !(e[field] as string).trim()) throw new Error(`${where}: "${field}" must be a non-empty string`);
+	const dimension = e.dimension ?? '*';
+	if (dimension !== '*' && !(DIMENSIONS as readonly unknown[]).includes(dimension)) throw new Error(`${where}: "dimension" must be one of ${DIMENSIONS.join(', ')} or *`);
+	return { ...(e as unknown as Accept), dimension: dimension as Accept['dimension'], by: typeof e.by === 'string' && e.by ? e.by : '(not named)', date: typeof e.date === 'string' && e.date ? e.date : '(no date)' };
 }
 
 export async function writeAccepted(path: string, accepted: readonly Accept[]): Promise<void> {
