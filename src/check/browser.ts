@@ -94,7 +94,8 @@ export function writeReason(method: string, url: URL, origin: string, facts: rea
 }
 
 export function requestLine(method: string, url: URL, origin: string, body: string | null | undefined, contentType: string): string {
-	const query = [...new Set(url.searchParams.keys())].sort();
+	// Remix v2 names the route module that answers a fetch with ?_data=: framework transport, not part of the app's own URL.
+	const query = [...new Set(url.searchParams.keys())].filter((key) => !(key === '_data' && sameApp(url, origin))).sort();
 	return `${method} ${sameApp(url, origin) ? url.pathname : `${url.origin}${url.pathname}`}${query.length ? `?${query.join('&')}` : ''}${bodyShape(body, contentType)}`;
 }
 
@@ -122,7 +123,7 @@ const mime = (value: string | undefined) => (value ?? '').split(';')[0]!.trim().
 
 export function frameworkTransport(request: Request, url: URL): boolean {
 	const headers = request.headers();
-	return url.pathname.startsWith('/_next/') || url.searchParams.has('_rsc') || Boolean(headers.rsc || headers['next-router-state-tree'] || headers['next-action']);
+	return url.pathname.startsWith('/_next/') || url.searchParams.has('_rsc') || Boolean(headers.rsc || headers['next-router-state-tree'] || headers['next-action']) || (request.method() === 'GET' && url.searchParams.has('_data'));
 }
 
 /** Requests that make up the page's network contract: API calls anywhere, and documents from other origins. */

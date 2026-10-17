@@ -75,6 +75,7 @@ test('writes: non-GET requests, server actions and handlers the source marks as 
 	assert.equal(writeReason('DELETE', new URL('https://pay.example/v1/cards/1'), 'http://127.0.0.1:3000', facts), 'DELETE request');
 	assert.equal(writeHandler(facts, 'POST', '/api/cart'), undefined);
 	assert.equal(requestLine('POST', new URL('https://pay.example/v1/charge?x=1'), 'http://127.0.0.1:3000', '{"amount":5}', 'application/json'), 'POST https://pay.example/v1/charge?x {"amount":"number"}');
+	assert.equal(requestLine('POST', new URL('http://127.0.0.1:3000/login?_data=routes%2Flogin'), 'http://127.0.0.1:3000', 'email=a%40b.c', 'application/x-www-form-urlencoded'), requestLine('POST', new URL('http://127.0.0.1:3000/login'), 'http://127.0.0.1:3000', 'email=a%40b.c', 'application/x-www-form-urlencoded'));
 });
 
 test('writes are sent only when both apps are staging or on this machine', () => {
