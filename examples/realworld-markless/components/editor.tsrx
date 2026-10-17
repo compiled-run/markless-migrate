@@ -15,7 +15,7 @@ export default function Editor({ pathname }: { pathname: string }) @{
 		<app-editor-page>
 			<div
 				class="editor-page"
-				onVisible={() => {
+				data-boot="" onBoot={() => {
 					const els = { errors, fieldset, title, description, body, tagField, tags };
 					void bootEditor(els);
 				}}

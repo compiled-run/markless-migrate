@@ -11,7 +11,7 @@ export default function ArticlePage({ url }: PageProps<{ slug: string }>) @{
 			<div
 				el={root}
 				class="article-page"
-				onVisible={() => {
+				data-boot="" onBoot={() => {
 					const node = root;
 					void bootArticle(node);
 				}}

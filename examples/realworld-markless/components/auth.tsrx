@@ -15,7 +15,7 @@ export default function Auth({ pathname, register }: { pathname: string; registe
 	<Layout>
 		<app-auth-page
 			el={page}
-			onVisible={() => {
+			data-boot="" onBoot={() => {
 				const node = page;
 				void bootGuestOnly(node);
 			}}

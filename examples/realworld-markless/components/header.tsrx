@@ -7,7 +7,7 @@ export default function Header() @{
 	<app-layout-header>
 		<nav
 			class="navbar navbar-light"
-			onVisible={() => {
+			data-boot="" onBoot={() => {
 				const node = container;
 				void bootHeader(node);
 			}}

@@ -70,7 +70,11 @@ async function front(): Promise<void> {
 	const publicDir = join(dir, 'public/_migrate');
 	await mkdir(publicDir, { recursive: true });
 	for (const file of ['report.html', 'report.json']) await cp(join(app, '.migrate', file), join(publicDir, file)).catch(() => undefined);
-	await cp(join(app, '.migrate/shots'), join(publicDir, 'shots'), { recursive: true }).catch(() => undefined);
+	// Only the screenshots this report uses; .migrate/shots keeps every earlier run's too.
+	const report = await readFile(join(app, '.migrate/report.html'), 'utf8').catch(() => '');
+	await rm(join(publicDir, 'shots'), { recursive: true, force: true });
+	await mkdir(join(publicDir, 'shots'), { recursive: true });
+	for (const shot of new Set(report.match(/shots\/[A-Za-z0-9._-]+/g) ?? [])) await cp(join(app, '.migrate', shot), join(publicDir, shot)).catch(() => undefined);
 	await cp(join(root, 'index.html'), join(publicDir, 'index.html'));
 	run(process.execPath, [join(root, '../../src/cli.ts'), 'config', '--old', REALWORLD.old, '--new', REALWORLD.new, '--vercel', join(dir, 'vercel.json')], app);
 	run('vercel', ['build', '--prod', '--yes'], dir);

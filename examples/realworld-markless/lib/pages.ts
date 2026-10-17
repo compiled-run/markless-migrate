@@ -27,6 +27,15 @@ import { onSoftNavigation } from "./nav.ts";
 
 type El = Element | null | undefined;
 
+// The page wakes on DOMContentLoaded and again on load (the first can arrive before the runtime listens), so
+// each page's start-up runs once.
+const started = new Set<string>();
+function once(name: string): boolean {
+  if (started.has(name)) return false;
+  started.add(name);
+  return true;
+}
+
 function fill(el: El, markup: string): void {
   if (el) el.innerHTML = markup;
 }
@@ -231,6 +240,7 @@ export function pathParam(prefix: string): string | undefined {
 }
 
 export async function bootHome(els: HomeEls): Promise<void> {
+  if (!once("bootHome")) return;
   const tag = pathParam("/tag/");
   const search = window.location.search;
   // What the page asks for does not depend on who is signed in (the token rides along either way), so the lists
@@ -343,6 +353,7 @@ function drawComments(): void {
 }
 
 export async function bootArticle(root: El): Promise<void> {
+  if (!once("bootArticle")) return;
   if (!root) return;
   const slug = pathParam("/article/") ?? "";
   const [loaded, comments, session] = await Promise.all([
@@ -468,6 +479,7 @@ function drawProfile(): void {
 }
 
 export async function bootProfile(root: El): Promise<void> {
+  if (!once("bootProfile")) return;
   if (!root) return;
   const username = pathParam("/profile/") ?? "";
   const favorites = window.location.pathname.replace(/\/$/, "").endsWith("/favorites");
@@ -564,6 +576,7 @@ function value(el: El): string {
 }
 
 export async function bootGuestOnly(page: El): Promise<void> {
+  if (!once("bootGuestOnly")) return;
   const session = await currentUser();
   if (session.status === "authenticated") {
     window.history.replaceState(null, "", "/");
@@ -626,6 +639,7 @@ function setValue(el: El, text: string): void {
 }
 
 export async function bootSettings(els: SettingsEls): Promise<void> {
+  if (!once("bootSettings")) return;
   const user = await requireSignIn();
   if (!user) return;
   setValue(els.image, user.image ?? "");
@@ -677,6 +691,7 @@ function drawTags(): void {
 }
 
 export async function bootEditor(els: EditorEls): Promise<void> {
+  if (!once("bootEditor")) return;
   const slug = pathParam("/editor/") || undefined;
   editor = { els, tags: [], slug };
   const user = await requireSignIn();

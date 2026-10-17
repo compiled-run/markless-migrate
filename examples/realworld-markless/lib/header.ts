@@ -13,7 +13,11 @@ function under(path: string, prefix: string): boolean {
 	return path === prefix || path.startsWith(`${prefix}/`);
 }
 
+let started = false;
+
 export async function bootHeader(container: Element | null | undefined): Promise<void> {
+	if (started) return;
+	started = true;
 	installNavigation();
 	// Read before any guard rewrites the address; a route the old app had no match for leaves nothing active.
 	const unmatched = (window as { __conduitUnmatched?: boolean }).__conduitUnmatched === true;

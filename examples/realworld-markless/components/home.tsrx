@@ -18,7 +18,7 @@ export default function Home({ pathname, search, tag }: { pathname: string; sear
 		<app-home-page>
 			<div
 				class="home-page"
-				onVisible={() => {
+				data-boot="" onBoot={() => {
 					const els = { banner, bannerText, feedToggle, list, sidebar, tags, loadingTags, noTags };
 					void bootHome(els);
 				}}

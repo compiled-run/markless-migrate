@@ -10,7 +10,7 @@ export default function Profile({ pathname }: { pathname: string }) @{
 			<div
 				el={root}
 				class="profile-page"
-				onVisible={() => {
+				data-boot="" onBoot={() => {
 					const node = root;
 					void bootProfile(node);
 				}}
