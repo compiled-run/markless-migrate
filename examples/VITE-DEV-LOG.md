@@ -96,6 +96,9 @@ Commands, run in `examples/vite-dev-markless` (the ids are stable; 4 and 5 need 
 their ids vary or there are ten of them):
 
 ```sh
+# the two apps, if they are not still running:
+#   (cd ~/dev/scratch/vite/docs && npx vitepress serve --port 4710)
+#   npm run build && PORT=4712 HOST=127.0.0.1 node .output/server/index.mjs
 M="node ../../src/cli.ts"
 $M accept 6ffc3c1414 --reason "Icons are inlined as SVG at build time instead of fetched from the Iconify API"
 $M accept 63c8009f1d --reason "Icons are inlined as SVG at build time instead of fetched from the Iconify API"
