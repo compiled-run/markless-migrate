@@ -85,7 +85,8 @@ export function collectPage({ origin, full }: { origin: string; full: boolean })
 		const style: Record<string, string> = {};
 		for (const prop of computed) {
 			if (prop.startsWith('--') || GEOMETRY.has(prop)) continue;
-			style[prop] = computed.getPropertyValue(prop);
+			// A url() resolves against the page: the app's own origin is not part of the value.
+			style[prop] = computed.getPropertyValue(prop).split(`${location.origin}/`).join('/');
 		}
 		const text = clean([...el.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent).join(' ')).slice(0, 80);
 		const tag = el.tagName.toLowerCase();

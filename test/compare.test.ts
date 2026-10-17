@@ -50,6 +50,17 @@ test('an extra wrapper div outside the landmarks does not shift how the divs ins
 	]);
 });
 
+test('within a landmark path, a wrapper with no counterpart is skipped by box, and the rest still pair in order', () => {
+	const box = (x: number, width: number, height: number) => ({ x, y: 0, width, height });
+	const old = [el({ path: 'div', box: box(0, 650, 400) }), el({ path: 'div', box: box(250, 775, 300) }), el({ path: 'div', box: box(0, 1280, 900) })];
+	const wrapped = [el({ path: 'div', box: box(0, 1280, 4000) }), el({ path: 'div', box: box(0, 650, 400) }), el({ path: 'div', box: box(250, 775, 300) }), el({ path: 'div', box: box(0, 1280, 901) })];
+	assert.deepEqual([...matchElements(old, wrapped)].sort(), [
+		[0, 1],
+		[1, 2],
+		[2, 3],
+	]);
+});
+
 function png(width: number, height: number, paint?: (x: number, y: number) => boolean): Buffer {
 	const image = new PNG({ width, height });
 	for (let i = 0; i < width * height; i++) {

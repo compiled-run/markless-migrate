@@ -21,6 +21,38 @@ function keyed(elements: readonly ElementSnapshot[], indices: readonly number[],
 	return groups;
 }
 
+const sameBox = (x: ElementSnapshot, y: ElementSnapshot) => Math.abs(x.box.x - y.box.x) <= 2 && Math.abs(x.box.width - y.box.width) <= 2 && Math.abs(x.box.height - y.box.height) <= 2;
+
+// In order, but skipping what has no counterpart: elements whose boxes match (x, width and height; content above may move y) pair first, the rest by position among themselves.
+function pairInGroup(a: readonly ElementSnapshot[], b: readonly ElementSnapshot[], groupA: readonly number[], groupB: readonly number[]): [number, number][] {
+	const cols = groupB.length + 1;
+	const table = new Uint32Array((groupA.length + 1) * cols);
+	for (let i = groupA.length - 1; i >= 0; i--) {
+		for (let j = groupB.length - 1; j >= 0; j--) {
+			const hit = sameBox(a[groupA[i]!]!, b[groupB[j]!]!) ? table[(i + 1) * cols + j + 1]! + 1 : 0;
+			table[i * cols + j] = Math.max(hit, table[(i + 1) * cols + j]!, table[i * cols + j + 1]!);
+		}
+	}
+	const out: [number, number][] = [];
+	const leftA: number[] = [];
+	const leftB = new Set(groupB);
+	let i = 0;
+	let j = 0;
+	while (i < groupA.length && j < groupB.length) {
+		if (sameBox(a[groupA[i]!]!, b[groupB[j]!]!) && table[i * cols + j] === table[(i + 1) * cols + j + 1]! + 1) {
+			out.push([groupA[i]!, groupB[j]!]);
+			leftB.delete(groupB[j]!);
+			i++;
+			j++;
+		} else if (table[(i + 1) * cols + j]! >= table[i * cols + j + 1]!) leftA.push(groupA[i++]!);
+		else j++;
+	}
+	while (i < groupA.length) leftA.push(groupA[i++]!);
+	const restB = [...leftB];
+	for (let n = 0; n < Math.min(leftA.length, restB.length); n++) out.push([leftA[n]!, restB[n]!]);
+	return out;
+}
+
 // Pairs elements by accessible role, name and text first, then by landmark path, never by class name.
 export function matchElements(a: readonly ElementSnapshot[], b: readonly ElementSnapshot[]): Map<number, number> {
 	const pairs = new Map<number, number>();
@@ -32,9 +64,9 @@ export function matchElements(a: readonly ElementSnapshot[], b: readonly Element
 		for (const [k, groupA] of keyed(a, restA, key)) {
 			const groupB = groupsB.get(k);
 			if (!groupB) continue;
-			for (let n = 0; n < Math.min(groupA.length, groupB.length); n++) {
-				pairs.set(groupA[n]!, groupB[n]!);
-				usedB.add(groupB[n]!);
+			for (const [i, j] of pairInGroup(a, b, groupA, groupB)) {
+				pairs.set(i, j);
+				usedB.add(j);
 			}
 		}
 	}
