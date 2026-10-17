@@ -159,6 +159,8 @@ Each was reproduced on its own; minimal repros for the main ones are in `realwor
     only production builds were usable.
 17. **create-markless**: the next step it prints is `npm dev` (needs `npm run dev`), and its `doctor` script runs
     `pnpm exec vp build` in an npm project.
+18. **The client bundle embeds the build machine's absolute paths** (`filename:"/Users/<you>/.../pages/..."` in the
+    render-data chunks), so a production build publishes local paths.
 
 ## Tool bugs found and fixed (with tests)
 

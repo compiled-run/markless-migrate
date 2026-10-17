@@ -1,0 +1,30 @@
+{
+	"accepted": [
+		{
+			"route": "/",
+			"dimension": "behaviour",
+			"check": "click link \"Showcase\"",
+			"match": {
+				"expected": "requests: GET /assets/ideal-img/algolia.57a242c.640.png, GET /assets/ideal-img/datagit.66c812e.640.png, GET /assets/ideal-img/dyte.69931f1.640.png",
+				"actual": "requests: (none)"
+			},
+			"reason": "/showcase is not part of this migration: the new app has only the home page and two docs pages, so the link lands on the new app's 404 here. Through the front door it reaches the old site, whose showcase page makes the same image requests.",
+			"by": "Claude Code (converting agent)",
+			"date": "2026-10-17",
+			"id": "0a17e5ace4"
+		},
+		{
+			"route": "/",
+			"dimension": "a11y",
+			"check": "press Enter on link \"Showcase\"",
+			"match": {
+				"expected": "requests: GET /assets/ideal-img/algolia.57a242c.640.png, GET /assets/ideal-img/datagit.66c812e.640.png, GET /assets/ideal-img/dyte.69931f1.640.png",
+				"actual": "requests: (none)"
+			},
+			"reason": "/showcase is not part of this migration: the new app has only the home page and two docs pages, so the link lands on the new app's 404 here. Through the front door it reaches the old site, whose showcase page makes the same image requests.",
+			"by": "Claude Code (converting agent)",
+			"date": "2026-10-17",
+			"id": "e07cf60dbf"
+		}
+	]
+}

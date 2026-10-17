@@ -1,0 +1,25 @@
+{
+	"routes": [
+		{
+			"route": "/",
+			"at": "2026-10-17T15:07:14.954Z",
+			"checks": [
+				"/: green"
+			]
+		},
+		{
+			"route": "/docs",
+			"at": "2026-10-17T15:07:15.365Z",
+			"checks": [
+				"/docs: green"
+			]
+		},
+		{
+			"route": "/docs/installation",
+			"at": "2026-10-17T15:07:15.759Z",
+			"checks": [
+				"/docs/installation: green"
+			]
+		}
+	]
+}

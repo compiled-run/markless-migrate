@@ -67,11 +67,39 @@ limitations), which is why the content arrives through the importer rather than 
 | 3-6 | 0-1 green | lazy avatars loaded differently on each side (old: Waypoint + XHR + cancel on leave); TOC highlight; search modal missing |
 | 7 | 0 green | DocSearch modal in place; placeholder, labels and its position in the body differ |
 | 8-9 | 2 green | fonts attributed to the wrong elements and computed styles read mid-animation (tool bugs, fixed); Algolia's shuffled host order compared in order (tool, fixed) |
-| 10-11 | 2 green, home red only on a link into an unported route | |
+| 10-12 | 2 green, home red only on a link into an unported route | DocSearch (500 kB) module-preloaded on every page; now imported by URL on demand |
+| 13 | 3 of 3 green, 2 accepted | |
 
 ## Results
 
-(see the end of this file)
+`check --route / --route /docs --route /docs/installation`: **3 of 3 routes green**, two accepted differences, all
+three switched to the new app on the front door.
+
+| Route | Result |
+| --- | --- |
+| `/` | green, 2 accepted (the `Showcase` link, below) |
+| `/docs` | green |
+| `/docs/installation` | green |
+
+## Accepted differences
+
+| Failure | Why it cannot match |
+| --- | --- |
+| `/` behaviour `click link "Showcase"` and a11y `press Enter on link "Showcase"` (`0a17e5ace4`, `e07cf60dbf`) | `/showcase` is not part of this migration, so in the check the link lands on the new app's 404; through the front door it reaches the old site, whose showcase page makes the same image requests |
+
+Kept in `deploy/docusaurus/accepted.json` (a copy of `.migrate/accepted.json`, which is not committed).
+
+## Deployed
+
+| What | URL |
+| --- | --- |
+| Front door (index and report at `/_migrate/`) | https://mm-docusaurus.vercel.app |
+| Old site | https://mm-docusaurus-old.vercel.app |
+| New app | https://mm-docusaurus-new.vercel.app |
+
+`deploy/docusaurus/deploy.sh old|new|front` builds and deploys each. The deployed old site is the same build with
+its two Google Analytics `<script>` tags removed (so this copy does not report to docusaurus.io's analytics); the
+check ran against the local build, where `check` blocks those requests anyway.
 
 ## Weight
 
@@ -79,12 +107,13 @@ JavaScript per route, uncompressed (old Docusaurus/React -> new Markless):
 
 | Route | On the wire | Run at load |
 | --- | --- | --- |
-| `/` | 1267.6 kB -> 846 kB | 570 kB -> 92 kB |
-| `/docs` | 1573.9 kB -> 1031 kB | 699 kB -> 83 kB |
-| `/docs/installation` | 1594.3 kB -> 1271 kB | 697 kB -> 83 kB |
+| `/` | 1267.6 kB -> 366 kB | 565 kB -> 92 kB |
+| `/docs` | 1573.9 kB -> 551 kB | 705 kB -> 83 kB |
+| `/docs/installation` | 1594.3 kB -> 791 kB | 697 kB -> 83 kB |
 
-What runs at load drops by about 85%. What is still downloaded is mostly the DocSearch chunk Markless
-module-preloads although it runs only when search opens (about 500 kB), and Markless's runtime.
+What runs at load drops by 84-88%. Most of what is still downloaded is each page's "render data", its static
+markup as a JavaScript module (200 kB for the home page, 390 kB for `/docs`, 640 kB for `/docs/installation`),
+which Markless module-preloads although nothing runs it at load; DocSearch is fetched only when search opens.
 
 ## Markless limitations hit (0.4.0, the published packages)
 
@@ -109,8 +138,11 @@ module-preloads although it runs only when search opens (about 500 kB), and Mark
    skip link; the behaviour is installed as native listeners from one boot handler.
 6. **`onVisible` needs the runtime awake first**, the `<Html>` attributes are ignored, and the page is wrapped in
    `<div data-async-container>` (as in the RealWorld log).
-7. **Lazy chunks are module-preloaded on every page**, so DocSearch (about 500 kB, run only on demand) is
-   downloaded on every load; that is the gap between "on the wire" and "run at load" above.
+7. **Every lazy chunk is module-preloaded on every page**: a dynamic `import('@docsearch/js')` behind a click
+   still put its 500 kB on every page's wire (it is now imported by URL from `public/vendor/`), and each page's
+   render data (its whole static markup as a module) is preloaded though it does not run.
+8. **The client bundle embeds the build machine's absolute paths**: the render-data chunks carry
+   `filename:"/Users/<you>/.../components/generated/installation.tsrx"`, so a production build publishes local paths.
 
 ## Tool bugs found and fixed
 
@@ -118,6 +150,9 @@ See the RealWorld log: the fixes to font attribution, animation timing, lazy-loa
 webpack chunk hashes came from this site.
 
 ## Tool problems not fixed
+
+- `config --vercel` reads asset paths out of page text too: the installation page's inline code
+  `/docusaurus.config.js` and `/sidebars.js` became rewrites to the new app (harmless, nothing serves them).
 
 - `plan --source` does not recognise Docusaurus (`framework not recognised`), so routes come from the crawl only
   and the 289 crawled pages include no docs page in the first 20; the routes were named with `--route`.
