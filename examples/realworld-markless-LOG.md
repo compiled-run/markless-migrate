@@ -235,16 +235,17 @@ and that commit swept up what was staged here.
 ## Tool problems not fixed
 
 - `plan` reads Angular's guest-only guards (`canActivate: [() => isAuthenticated.pipe(map(isAuth => !isAuth))]`)
-  as "signed-in" guards: `/login` and `/register` are listed as needing a session.
+  as "signed-in" guards: `/login` and `/register` are listed as needing a session. Fixed in c651dfb.
 - `plan --source` scans the old app's git submodule (`realworld/specs/api/hurl-to-bruno.js` shows up as a source
-  of server nondeterminism).
+  of server nondeterminism). Fixed in f8c3470.
 - Browser storage is not compared, although `docs/plan.md` lists it; the port's extra `sessionStorage` key is
-  invisible to `check`.
+  invisible to `check`. Fixed in 025219c.
 - A journey that follows a link into a route the new app does not have yet is compared against the new app's own
-  404, not against the old app the front door would send it to.
+  404, not against the old app the front door would send it to. Fixed in 70ef676.
 - After a route redirects with a new document load (the port's editor sending a non-author to `/`), journeys can
   start before that second document has drawn its data, so the first step sometimes finds an empty list. A
   settle fix (count the new document as in flight until its `load`) was tried, but no test could tell the fixed
-  and unfixed code apart, so it was not kept; the route and role are accepted instead (above).
+  and unfixed code apart, so it was not kept; the route and role are accepted instead (above). Fixed in 290f112,
+  with witnesses that fail on the code before it (`test/redirect-settle.test.ts`).
 - External CDNs (`code.ionicframework.com`, `fonts.gstatic.com`) stall now and then, which makes one route red
   for that run; a rerun of that route is green.

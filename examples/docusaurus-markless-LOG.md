@@ -155,6 +155,6 @@ webpack chunk hashes came from this site.
   `/docusaurus.config.js` and `/sidebars.js` became rewrites to the new app (harmless, nothing serves them).
 
 - `plan --source` does not recognise Docusaurus (`framework not recognised`), so routes come from the crawl only
-  and the 289 crawled pages include no docs page in the first 20; the routes were named with `--route`.
+  and the 289 crawled pages include no docs page in the first 20; the routes were named with `--route`. Fixed in dd2be12.
 - A journey that follows a link to a page the new app does not have (`Showcase`) is compared against the new
-  app's 404; through the front door that link reaches the old site.
+  app's 404; through the front door that link reaches the old site. Fixed in 70ef676.

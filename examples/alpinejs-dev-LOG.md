@@ -137,9 +137,9 @@ the environment, not the port.
 6. Computed `url()` values kept the app's origin, so the same file at the same path differed (7e04fd5).
 7. `config --vercel` treated a redirect (alpinejs.dev's answer to every unknown path) as "served", so the front door
    sent the Markless chunks to alpinejs.dev (abf01ca).
-8. Not fixed: a plain `403 Forbidden` from Vercel's own protection (it blocked my address from the deployed htmx app
-   after a check's journey bursts) is not recognised as a wall, so the route reports failures instead of "blocked";
-   `check` reports "fetch failed" without naming the unreachable origin; `plan --limit` takes routes in
+8. Fixed later: a plain `403 Forbidden` from Vercel's own protection (it blocked my address from the deployed htmx app
+   after a check's journey bursts) was not recognised as a wall, so the route reported failures instead of "blocked"
+   (7a121ee); `check` reported "fetch failed" without naming the unreachable origin (85ffbe5). Not fixed: `plan --limit` takes routes in
    sitemap order, not by distance from `/` (on htmx.org a limit of 40 stopped inside `/attributes/` and never reached
    `/docs/` or `/examples/`); there is no way to treat an old
    page's absolute production URLs as its own origin when checking a mirror or staging copy.

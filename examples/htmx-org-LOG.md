@@ -78,7 +78,7 @@ mixes compressed and uncompressed responses here (see the alpinejs.dev log). The
 Checked against the deployed Markless app (old: the mirror), `/docs/` and `/examples/` passed, then Vercel's own
 protection started answering my address with a plain `403 Forbidden` for the deployed app, and the rest failed on
 blocked chunks. The front door, which reaches the app from Vercel's edge, kept working, and the demo passes through it
-(`deploy/htmx-org/smoke.mjs https://mm-htmx-org.vercel.app`). The tool did not recognise the plain 403 as a wall.
+(`deploy/htmx-org/smoke.mjs https://mm-htmx-org.vercel.app`). The tool did not recognise the plain 403 as a wall (fixed in 7a121ee).
 
 ## URL-only: what the tool could and could not tell
 
