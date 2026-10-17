@@ -1,0 +1,24 @@
+{
+	"accepted": [
+		{
+			"route": "**",
+			"dimension": "weight",
+			"check": "JavaScript downloaded",
+			"reason": "Markless modulepreloads its router runtime on every page (about 108 kB uncompressed even on the static 404 page, where Remix sends no script) and the render data of each component a page could re-render, so it downloads more (for example /notes/:noteId 90 kB to 209 kB) while running far less at load (93 kB to 1.2 kB). Not reducible from app code; logged as a Markless limitation.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-17"
+		},
+		{
+			"route": "/notes/new",
+			"dimension": "behaviour",
+			"check": "fill textbox \"Title:\", textbox \"Body:\" and submit with button \"Save\"",
+			"match": {
+				"expected": "/^URL \\/notes\\/c[a-z0-9]{24}$/",
+				"actual": "/^URL \\/notes\\/c[a-z0-9]{24}$/"
+			},
+			"reason": "A new note's id is a fresh cuid (time, counter, host fingerprint, randomness), so the URL the form redirects to differs on every run and between the two servers; both go to /notes/<new cuid>.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-17"
+		}
+	]
+}

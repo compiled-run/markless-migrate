@@ -1,0 +1,74 @@
+{
+	"routes": [
+		{
+			"route": "/",
+			"at": "2026-10-17T13:15:27.009Z",
+			"checks": [
+				"/: green",
+				"/ as signed-in: green"
+			]
+		},
+		{
+			"route": "/join",
+			"at": "2026-10-17T13:15:27.642Z",
+			"checks": [
+				"/join: green",
+				"/join/: green",
+				"/join as signed-in: green",
+				"/join/ as signed-in: green"
+			]
+		},
+		{
+			"route": "/login",
+			"at": "2026-10-17T13:15:28.266Z",
+			"checks": [
+				"/login: green",
+				"/login/: green",
+				"/login as signed-in: green",
+				"/login/ as signed-in: green"
+			]
+		},
+		{
+			"route": "/notes",
+			"at": "2026-10-17T13:15:28.892Z",
+			"checks": [
+				"/notes: green",
+				"/notes/: green",
+				"/notes as signed-in: green",
+				"/notes/ as signed-in: green"
+			]
+		},
+		{
+			"route": "/notes/new",
+			"at": "2026-10-17T13:15:29.503Z",
+			"checks": [
+				"/notes/new: green",
+				"/notes/new/: green",
+				"/notes/new as signed-in: green",
+				"/notes/new/ as signed-in: green"
+			]
+		},
+		{
+			"route": "/notes/:noteId",
+			"at": "2026-10-17T13:15:30.078Z",
+			"checks": [
+				"/notes/cmvcee9oe0002ag8afyyiylz8: green",
+				"/notes/new: green",
+				"/notes/cmvcee9oe0002ag8afyyiylz8/: green",
+				"/notes/new/: green",
+				"/notes/cmvcee9oe0002ag8afyyiylz8 as signed-in: green",
+				"/notes/new as signed-in: green",
+				"/notes/cmvcee9oe0002ag8afyyiylz8/ as signed-in: green",
+				"/notes/new/ as signed-in: green"
+			]
+		},
+		{
+			"route": "/healthcheck",
+			"at": "2026-10-17T13:15:30.665Z",
+			"checks": [
+				"/healthcheck: green",
+				"/healthcheck as signed-in: green"
+			]
+		}
+	]
+}
