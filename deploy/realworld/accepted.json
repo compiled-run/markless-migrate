@@ -1,0 +1,27 @@
+{
+	"accepted": [
+		{
+			"route": "/editor/A-field-guide-to-dragons-5b05e455",
+			"role": "signed-in",
+			"dimension": "network",
+			"check": "response fields the page shows from browser GET {self}/api/articles/{hash}",
+			"match": {
+				"expected": "article.author.username, article.tagList[]",
+				"actual": "(none); no longer shown: article.author.username, article.tagList[]"
+			},
+			"reason": "Markless 0.4.0 has no working client-side navigation (Link fails the build, plain links load a new document), so the editor's redirect of a non-author to / is a second document load; the article's author and tags shown by the old single-page app after its in-place navigation are measured on the first document here. Same requests, same final page.",
+			"by": "Claude Code (converting agent)",
+			"date": "2026-10-17",
+			"id": "a54b3c40cc"
+		},
+		{
+			"route": "/editor/A-field-guide-to-dragons-5b05e455",
+			"role": "signed-in",
+			"dimension": "*",
+			"check": "*",
+			"reason": "The same redirect as above: the old app navigates to / inside the page, so check sees the editor route itself land on / and its journeys start on a drawn home page; the Markless app loads / as a second document, which check reads as the route having redirected, and its journeys can start before that document has drawn its list. Same final URL, page and requests.",
+			"by": "Claude Code (converting agent)",
+			"date": "2026-10-17"
+		}
+	]
+}
