@@ -1,0 +1,5 @@
+/* The router wraps the page in a div; let app-root stay the body's flex child, as in the old app. */
+body > [data-async-container] {
+	display: contents;
+}
+
