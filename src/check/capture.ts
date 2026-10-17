@@ -66,10 +66,23 @@ export async function settle(page: Page): Promise<void> {
 	await page.evaluate(async () => {
 		scrollTo(0, document.documentElement.scrollHeight);
 		await new Promise(requestAnimationFrame);
+		for (const img of document.images) {
+			if (img.complete || img.loading !== 'lazy' || !img.getClientRects().length) continue;
+			img.scrollIntoView({ block: 'center' });
+			await new Promise(requestAnimationFrame);
+		}
 		scrollTo(0, 0);
 		await document.fonts.ready;
-		const loaded = (img: HTMLImageElement) => (img.complete ? Promise.resolve() : new Promise((done) => img.addEventListener('loadend', done, { once: true })));
-		await Promise.all([...document.images].map((img) => loaded(img).then(() => img.decode().catch(() => {}))));
+		// <img> fires load or error, never loadend; a lazy one that is not rendered never loads, and neither load nor decode settles.
+		const ready = (img: HTMLImageElement) =>
+			(img.complete
+				? Promise.resolve()
+				: new Promise((done) => {
+						img.addEventListener('load', done, { once: true });
+						img.addEventListener('error', done, { once: true });
+					})
+			).then(() => img.decode().catch(() => {}));
+		await Promise.all([...document.images].map((img) => Promise.race([ready(img), new Promise((done) => setTimeout(done, 5000))])));
 	});
 }
 
