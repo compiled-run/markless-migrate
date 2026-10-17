@@ -125,10 +125,11 @@ an idle function cannot be forced cold from here), its HTML bytes, what the host
 pointer went down. The new app is timed on its own, not through the front door; a link into a page it
 answers with 404 is reported, not timed.
 
-A first interaction is red when it is slower than the old app's by more than max(16 ms, 10%) at either
+A first interaction is red when it is slower than the old app's slower run by more than max(16 ms, 10%,
+how much the old runs differed) at either
 speed, over `--interaction-budget` (200 ms) at 4x, or fetches code (an interaction never fetches code in
-Markless). A link is red when the next page shows later than on the old app by more than max(16 ms,
-10%) at 4x; its desktop figure is reported. A control that exceeds once is measured again, old and new,
+Markless). A link is red when the next page shows later than on the old app by the same margin at 4x;
+its desktop figure is reported. A control that exceeds once is measured again, old and new,
 and is red only when both runs exceed (the slower is then kept); the slowest control at each speed is
 always measured twice so the report states how much runs vary. Up to `--interaction-controls` (16)
 controls per route are timed, in-page ones first and at most 6 links; what was left out, and controls

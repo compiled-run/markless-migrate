@@ -427,7 +427,8 @@ times the trusted `pointerdown` to the frame after the first DOM change the inte
 (`requestAnimationFrame` then a message), takes Event Timing's `duration` when longer, and keeps long
 animation frames with their scripts. A new document is timed to its first contentful paint through both
 documents' real `timeOrigin` (the freeze overrides the instance's, the probe reads the prototype's).
-Verdict: red when every run of NEW exceeds the slower OLD run by max(16 ms, 10%) (either speed for
+Verdict: red when every run of NEW exceeds the slower OLD run by max(16 ms, 10%, the spread of the OLD
+runs) (either speed for
 interactions, 4x for navigation), a first interaction is over 200 ms at 4x, or it fetches code; one run
 over asks for a second of each side. Proven by `test/e2e/responsiveness.test.ts` on
 `fixtures/responsiveness` (a button that imports 500 KB on first click and a link that loads the next
