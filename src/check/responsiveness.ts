@@ -313,6 +313,7 @@ export async function measureOnce(browser: Browser, env: SideEnv, route: string,
 		watched = [];
 		const writesBefore = log.writes.length;
 		const before = documents;
+		if (!(await locate(page, step.target).isVisible().catch(() => false))) return { result: 'none', fetches: [], longTasks: [], evaluated: [], failed: `${describeTarget(step.target)} is not shown at ${speed.viewport.width}x${speed.viewport.height}` };
 		try {
 			await act(page, step, speed.viewport.isMobile);
 		} catch (error) {

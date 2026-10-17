@@ -1,11 +1,20 @@
 <!doctype html>
 <html lang="en">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Counter</title>
+<style>
+	@media (max-width: 600px) {
+		.wide {
+			display: none;
+		}
+	}
+</style>
 <main>
 	<h1>Counter</h1>
 	<button type="button" id="add">Add</button>
 	<output id="out">0</output>
 	<a href="/next" id="next">Next page</a>
+	<button type="button" class="wide" onclick="this.textContent = 'Wide, used'">Wide only</button>
 </main>
 <script type="module">
 	const out = document.getElementById('out');

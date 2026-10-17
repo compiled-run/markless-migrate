@@ -41,7 +41,7 @@ describe('responsiveness: the first use of each control and each link, old vs ne
 		assert.ok(failure, route.failures.map((f) => f.check).join('\n'));
 		assert.match(failure.expected, /^old \d+ ms \(runs [\d ms,]+\)/);
 		assert.match(failure.actual, /^new \d+ ms \(runs \d+ ms, \d+ ms\); likely cause: code fetch: \/big\.js/);
-		assert.match(failure.where ?? '', /^old index\.html:6 renders button "Add"; new index\.html:6 renders it$/);
+		assert.match(failure.where ?? '', /^old index\.html:14 renders button "Add"; new index\.html:14 renders it$/);
 		const next = timing.controls.find((c) => c.control === 'link "Next page"')!;
 		assert.equal(next.kind, 'navigation');
 		const nav = next.speeds.find((s) => s.speed === 'throttled')!;
@@ -67,7 +67,9 @@ describe('responsiveness: the first use of each control and each link, old vs ne
 		const route = report.routes[0]!;
 		assert.equal(route.dimensions.responsiveness, 'pass', route.failures.filter((f) => f.dimension === 'responsiveness').map((f) => `${f.check}: ${f.actual}`).join('\n'));
 		const timed = route.responsiveness!.controls;
-		assert.deepEqual(timed.map((c) => `${c.control} ${c.kind}`).sort(), ['button "Add" in-page', 'link "Next page" navigation']);
+		assert.deepEqual(timed.map((c) => `${c.control} ${c.kind}`).sort(), ['button "Add" in-page', 'button "Wide only" in-page', 'link "Next page" navigation']);
+		const wide = timed.find((c) => c.control === 'button "Wide only"')!.speeds.find((s) => s.speed === 'throttled')!;
+		assert.deepEqual([wide.ok, wide.new[0]?.failed], [true, 'button "Wide only" is not shown at 412x823'], 'a control the phone layout hides is reported, not timed');
 		for (const c of timed) for (const s of c.speeds) assert.ok(s.new.every((x) => x.fetches.every((f) => f.kind !== 'code')));
 		const twice = timed.flatMap((c) => c.speeds).filter((s) => s.spread);
 		assert.ok(twice.length >= 1, 'the variance is measured');
