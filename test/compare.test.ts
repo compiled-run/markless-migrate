@@ -8,6 +8,13 @@ import { matchElements } from '../src/check/match.ts';
 import type { ElementSnapshot } from '../src/check/types.ts';
 import { compareScreenshots, visualNoise, visuallyDifferent } from '../src/check/visual.ts';
 
+test('a bundler chunk whose hash reads like a word is build output when the built code names it', () => {
+	const built = ['import("./users-Bkzkyznz.js");const a="/assets/sign-in-Leyasppu.js",b="logo-yviHajhk.js",c="user-auth-form-BruTwSak.js",d="index-DNwRI-6w.css"'];
+	for (const url of ['/assets/users-Bkzkyznz.js', '/assets/sign-in-Leyasppu.js', '/assets/logo-yviHajhk.js', '/assets/user-auth-form-BruTwSak.js', '/assets/index-DNwRI-6w.css']) assert.ok(isFingerprinted(url, built), url);
+	assert.ok(!isFingerprinted('/assets/users-Bkzkyznz.js', ['<script src="/app.js"></script>']), 'named by nothing built');
+	for (const url of ['/js/site-settings.js', '/js/bootstrap-datepicker.js', '/css/print-friendly.css', '/images/hero-Mountain.png']) assert.ok(!isFingerprinted(url, [`<script src="${url}"></script><link href="${url}">`]), url);
+});
+
 test('only a hashed name the built output refers to is fingerprinted; public files keep their URLs', () => {
 	for (const url of ['/assets/main-DPvuoccY.css', '/assets/main-Bo_Cokpq.js', '/assets/main-D6x1mVz-.js', '/assets/index-a-B3cd9Z.js', '/static/app.3f9a1c2e.js', '/fonts/a1b2c3d4e5-s.p.woff2', '/chunk-BBLBSSIH.js', '/main-TNZ7TRFT.js', '/styles-V7LOWGDA.css']) assert.ok(hasContentHash(url), url);
 	for (const url of ['/hero.png', '/logo-2024.png', '/inter-latin.woff2', '/HeroImage.png', '/images/background-v12.jpg', '/release-20261016.zip', '/deadbeef.png', '/photo-hero-v2.png', '/my-long-file-name.pdf']) assert.ok(!hasContentHash(url), url);

@@ -23,13 +23,19 @@ export function hasContentHash(url: string): boolean {
 	return base.split(/[-.~]/).some(isHashToken);
 }
 
+// A bundler chunk (Vite, Rollup, esbuild, webpack): a script or stylesheet ending in an eight-character base64url hash, which may read like a word (users-Bkzkyznz.js); it counts only when the built output names it.
+function chunkName(name: string): boolean {
+	const hash = /[-.]([A-Za-z0-9_-]{8})\.(?:m?js|css)$/.exec(name)?.[1];
+	return Boolean(hash && /[A-Z0-9_-]/.test(hash));
+}
+
 // Fingerprinted: the framework's own output directory, or a hashed name that the page's built HTML, JS or CSS refers to.
 export function isFingerprinted(url: string, builtTexts: readonly string[]): boolean {
 	if (!url.startsWith('/')) return false;
 	const path = url.split(/[?#]/)[0]!;
 	if (FRAMEWORK_OUTPUT.some((prefix) => path.startsWith(prefix))) return true;
-	if (!hasContentHash(path)) return false;
 	const name = fileName(path);
+	if (!hasContentHash(path) && !chunkName(name)) return false;
 	if (builtTexts.some((text) => text.includes(name))) return true;
 	// Webpack's runtime (Docusaurus, CRA) builds chunk names from an id and a hash map, so only the hash is written.
 	const hashes = name.replace(/\.[a-z0-9]+$/i, '').split(/[-.~]/).filter(isHashToken);
