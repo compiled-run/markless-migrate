@@ -308,6 +308,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 					...(auth ? { auth, authStateDir: join(cwd, STATE_DIR, 'auth') } : {}),
 					...bypass,
 					journeys,
+					switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 				});
 				await recordResults(cwd, report);
 				await writeReport(report, join(cwd, STATE_DIR), await status(cwd));
@@ -447,6 +448,7 @@ async function main(argv: string[]): Promise<number> {
 				accepted: await readAccepted(join(cwd, STATE_DIR, ACCEPTED_FILE)).catch((error: Error) => fail(error.message)),
 				...(concurrency ? { concurrency } : {}),
 				journeys,
+				switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 				...(!values['new-source'] && !values.changed ? {} : { sourceDirs: { ...(values.source ? { old: resolve(values.source) } : {}), new: newDir } }),
 			});
 			await recordResults(cwd, report, commit ? { commit } : {});

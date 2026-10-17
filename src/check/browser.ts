@@ -25,6 +25,8 @@ export interface SideEnv {
 	readonly userAgent?: string;
 	/** Bot walls that answered any of this app's own requests during one route's check: pages, assets, journeys and states. */
 	readonly walls?: WallHit[];
+	/** As the front door routes it: a page this app does not serve yet comes from the old app, with what that page loads. */
+	readonly frontDoor?: { readonly old: string; readonly serves: (path: string) => boolean };
 }
 
 // On an asset or a fetch only a challenge header proves a wall; a CDN's server header on an ordinary 403 does not.
@@ -174,6 +176,39 @@ async function fulfillAsset(route: Route): Promise<void> {
 	await (got ? route.fulfill(got) : route.abort()).catch(() => {});
 }
 
+const pageKey = (href: string) => href.split('#')[0]!;
+
+// A top-level page the front door would send to the old app, or anything such a page loads.
+function fromOldApp(request: Request, url: URL, door: NonNullable<SideEnv['frontDoor']>, oldPages: Set<string>): boolean {
+	let frame: ReturnType<Request['frame']> | undefined;
+	try {
+		frame = request.frame();
+	} catch {}
+	if (request.isNavigationRequest() && frame && !frame.parentFrame()) {
+		if (door.serves(url.pathname)) {
+			oldPages.delete(pageKey(url.href));
+			return false;
+		}
+		return true;
+	}
+	const from = request.headers().referer ?? frame?.url() ?? '';
+	return oldPages.has(pageKey(from));
+}
+
+async function throughFrontDoor(route: Route, url: URL, old: string, oldPages: Set<string>): Promise<void> {
+	const request = route.request();
+	const target = new URL(url.pathname + url.search, old);
+	try {
+		const response = await route.fetch({ url: target.href, maxRedirects: 0 });
+		const headers = { ...response.headers() };
+		if (headers.location) headers.location = headers.location.split(new URL(old).origin).join(url.origin);
+		if (request.isNavigationRequest() && response.status() < 300) oldPages.add(pageKey(url.href));
+		await route.fulfill({ response, headers });
+	} catch {
+		await route.abort().catch(() => {});
+	}
+}
+
 export interface OpenOptions {
 	/** Abort requests to other origins (journeys keep third-party widgets out), except page assets and recorded and blocked ones. */
 	readonly sameOriginOnly?: boolean;
@@ -223,6 +258,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 		});
 	}
 	const recorded = env.replay?.responses.filter((r) => r.side === 'browser') ?? [];
+	const oldPages = new Set<string>();
 	await context.route('**/*', async (route: Route) => {
 		const request = route.request();
 		const url = new URL(request.url());
@@ -246,6 +282,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 				return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } });
 			}
 		}
+		if (same && env.frontDoor && fromOldApp(request, url, env.frontDoor, oldPages)) return throughFrontDoor(route, url, env.frontDoor.old, oldPages);
 		if (!same) {
 			const hit = findRecorded(recorded, 'browser', request.method(), url, body);
 			if (hit) {

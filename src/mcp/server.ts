@@ -12,7 +12,7 @@ import { summarize } from '../check/summary.ts';
 import { writeStarterAuth } from '../plan/auth.ts';
 import { plan, summarizeInventory, writeInventory } from '../plan/inventory.ts';
 import { recordResults, STATE_DIR, status, summarizeStatus } from '../status.ts';
-import { switchRoute } from '../switch/state.ts';
+import { readSwitched, switchRoute } from '../switch/state.ts';
 import { VERSION } from '../version.ts';
 import { LIBRARIES_FILE, planLibraries, readLibraries, summarizeParity, writeParity } from '../library/index.ts';
 
@@ -78,6 +78,7 @@ export function createServer(cwd: string): McpServer {
 				...(args.userAgent ? { userAgent: args.userAgent } : {}),
 				...(auth ? { auth, authStateDir: join(cwd, STATE_DIR, 'auth') } : {}),
 				accepted: await readAccepted(join(cwd, STATE_DIR, ACCEPTED_FILE)),
+				switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 			});
 			await recordResults(cwd, report);
 			await writeReport(report, join(cwd, STATE_DIR), await status(cwd));

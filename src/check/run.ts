@@ -26,6 +26,7 @@ import { renderHtml } from './html.ts';
 import type { Status } from '../status.ts';
 import { blocker, type BlockList } from './trackers.ts';
 import { matchRoute } from '../source/pattern.ts';
+import { isSwitched } from '../switch/state.ts';
 import type { Blocked, Coverage, Dimension, Failure, HttpCapture, LoginResult, PageCapture, Report, RouteCapture, RouteResult, Shot, Viewport } from './types.ts';
 import { DIMENSIONS, VIEWPORTS } from './types.ts';
 import { bodyText, request } from './http.ts';
@@ -70,6 +71,8 @@ export interface CheckOptions {
 	readonly concurrency?: number;
 	/** How long exploring each route's interactions may take, and at most how many journeys it records. */
 	readonly journeys?: Pick<ExploreOptions, 'budgetMs' | 'maxJourneys'>;
+	/** Routes served by the new app (`.migrate/switched.json`): a journey on NEW that reaches any other page gets the old app's, as through the front door. */
+	readonly switched?: readonly string[];
 }
 
 export const DEFAULT_CONCURRENCY = Math.max(1, Math.min(4, Math.floor(availableParallelism() / 2)));
@@ -94,6 +97,7 @@ interface Run {
 	readonly source?: SourceFacts;
 	readonly sourceDirs?: { readonly old?: string; readonly new?: string };
 	readonly journeys?: ExploreOptions;
+	readonly switched?: readonly string[];
 }
 
 async function probe(env: SideEnv, url: string): Promise<Probe> {
@@ -166,7 +170,8 @@ async function checkJourneys(browser: Browser, run: Run, route: string, viewport
 	const explored = await explore(browser, run.old, route, viewport, run.journeys);
 	const journeys = explored.journeys;
 	const recorded = journeys.map((j) => j.expected);
-	const [again, next] = await Promise.all([replayAll(browser, run.old, route, viewport, journeys), replayAll(browser, run.new, route, viewport, journeys)]);
+	const door = { old: run.old.origin, serves: (path: string) => isSwitched([route, ...(run.switched ?? [])], path) };
+	const [again, next] = await Promise.all([replayAll(browser, run.old, route, viewport, journeys), replayAll(browser, { ...run.new, frontDoor: door }, route, viewport, journeys)]);
 	const runs = [recorded, again];
 	if (JSON.stringify(recorded) !== JSON.stringify(again)) runs.push(await replayAll(browser, run.old, route, viewport, journeys));
 	const writes = journeys.flatMap((j) => j.expected.flatMap((step) => (step.writes ?? []).map((w) => ({ ...w, during: j.name }))));
@@ -356,7 +361,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const freeze: FreezeOptions | false = options.freeze === false ? false : { ...DEFAULT_FREEZE, ...options.freeze };
 	const bypass = { ...(options.headers ? { headers: options.headers } : {}), ...(options.cookies?.length ? { cookies: options.cookies } : {}), ...(options.userAgent ? { userAgent: options.userAgent } : {}) };
 	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [], ...bypass };
-	const base: Run = { old: defaultEnv(options.oldOrigin, shared), new: defaultEnv(options.newOrigin, shared), frozen: Boolean(freeze), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
+	const base: Run = { old: defaultEnv(options.oldOrigin, shared), new: defaultEnv(options.newOrigin, shared), frozen: Boolean(freeze), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
 	const auth = options.auth;
 	const roles: (string | undefined)[] = auth ? [ANONYMOUS, ...Object.keys(auth.roles)] : [undefined];
 	const logins: LoginResult[] = [];
