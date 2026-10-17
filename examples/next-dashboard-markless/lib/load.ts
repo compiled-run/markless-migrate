@@ -15,7 +15,7 @@ export async function loadInvoices(_search: string, _version: number) {
 	const query = url.searchParams.get('query') ?? '';
 	const currentPage = Number(url.searchParams.get('page')) || 1;
 	let page: InvoicesPage;
-	if (import.meta.env.SSR) page = await (await import('../server/pages.ts')).invoicesPage(query, currentPage);
+	if (import.meta.env.SSR) page = await (await import('../server/pages.ts')).invoicesPageFor(query, currentPage);
 	else {
 		const response = await fetch(`/api/data/invoices?${new URLSearchParams({ query, page: String(currentPage) })}`);
 		if (!response.ok) throw new Error('Failed to fetch invoices.');
@@ -26,7 +26,7 @@ export async function loadInvoices(_search: string, _version: number) {
 
 export async function loadCustomers(_search: string) {
 	const query = (await here()).searchParams.get('query') ?? '';
-	if (import.meta.env.SSR) return (await import('../server/pages.ts')).customersPage(query);
+	if (import.meta.env.SSR) return (await import('../server/pages.ts')).customersPageFor(query);
 	const response = await fetch(`/api/data/customers?${new URLSearchParams({ query })}`);
 	if (!response.ok) throw new Error('Failed to fetch customer table.');
 	return (await response.json()) as CustomersPage;
@@ -43,10 +43,10 @@ export async function loadOverview() {
 
 export async function loadCreate() {
 	if (!import.meta.env.SSR) throw new Error('The form renders on the server.');
-	return (await import('../server/pages.ts')).createPage();
+	return (await import('../server/pages.ts')).createPageFor();
 }
 
 export async function loadEdit(id: string) {
 	if (!import.meta.env.SSR) throw new Error('The form renders on the server.');
-	return (await import('../server/pages.ts')).editPage(id);
+	return (await import('../server/pages.ts')).editPageFor(id);
 }

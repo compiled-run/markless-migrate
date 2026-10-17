@@ -12,9 +12,11 @@ export default function LoginForm({ callbackUrl }: { readonly callbackUrl: strin
 		class="space-y-3"
 		onSubmit={(event) => {
 			event.preventDefault();
-			void post<{ error?: string; redirect?: string }>('/api/auth/login', event.target as HTMLFormElement).then((result) => {
-				if (result.redirect) go(result.redirect);
-				else errorMessage = result.error ?? 'Something went wrong.';
+			const form = event.target as HTMLFormElement;
+			void post<{ error?: string; redirect?: string }>('/api/auth/login', form).then((result) => {
+				if (result.redirect) return go(result.redirect);
+				form.reset();
+				errorMessage = result.error ?? 'Something went wrong.';
 			});
 		}}
 	>

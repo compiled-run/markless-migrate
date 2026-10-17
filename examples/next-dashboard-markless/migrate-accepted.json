@@ -1,0 +1,72 @@
+{
+	"accepted": [
+		{
+			"route": "**",
+			"dimension": "rendered",
+			"check": "accessibility tree",
+			"match": {
+				"expected": "- alert",
+				"actual": "(absent)"
+			},
+			"reason": "Next.js mounts an empty route announcer (<next-route-announcer>, role=alert, aria-live=assertive) on every page to announce client-side navigations. The Markless port navigates with document loads, which assistive tech announces itself, so it has no announcer.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-17"
+		},
+		{
+			"route": "**",
+			"dimension": "weight",
+			"check": "JavaScript downloaded",
+			"reason": "Markless modulepreloads the render data of every component a page could re-render (component statics plus absolute source paths), so it downloads more than Next on signed-in pages (for example /dashboard/invoices 151 kB to 369 kB uncompressed) while running far less at load (255 kB to 1.2 kB). Not reducible from app code beyond what was done (one module per icon and skeleton, static dashboard without async boundaries); logged as Markless limitation 15.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-17"
+		},
+		{
+			"route": "/dashboard/invoices",
+			"dimension": "behaviour",
+			"check": "type * into textbox \"Search invoices...\"",
+			"match": {
+				"expected": "/requests: \\(none\\)/",
+				"actual": "/requests: GET \\/api\\/data\\/invoices\\?page&query/"
+			},
+			"reason": "Next re-renders the page on the server after router.replace and sends it as an RSC payload, which the check counts as framework transport, not an app request. Markless has no server-rendered partial navigation, so the search reads the list from a JSON endpoint; the URL, the list shown and the focus match.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-17"
+		},
+		{
+			"route": "/dashboard/customers",
+			"dimension": "behaviour",
+			"check": "type * into textbox \"Search customers...\"",
+			"match": {
+				"expected": "/requests: \\(none\\)/",
+				"actual": "/requests: GET \\/api\\/data\\/customers\\?query/"
+			},
+			"reason": "Same as the invoices search: Next refetches the page as an RSC payload; Markless reads the customers from a JSON endpoint.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-17"
+		},
+		{
+			"route": "/dashboard/invoices/*/edit",
+			"dimension": "*",
+			"check": "*Edit Invoice*",
+			"match": {
+				"expected": "/requests: POST \\/dashboard\\/invoices\\/[^ ]+\\/edit \\{0, 1_\\$ACTION/",
+				"actual": "/requests: POST \\/api\\/invoices\\/[^ ]+ \\{amount, customerId, status\\}/"
+			},
+			"reason": "Next posts the form to the page as a server action (multipart fields 1_$ACTION_*, 1_amount, 1_customerId, 1_status). Markless has no server actions, so the form posts the same three fields to an API endpoint; validation messages, the redirect to /dashboard/invoices and the database write match.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-17"
+		},
+		{
+			"route": "/dashboard/invoices/create",
+			"dimension": "*",
+			"check": "*Create Invoice*",
+			"match": {
+				"expected": "/requests: POST \\/dashboard\\/invoices\\/create \\{0, 1_\\$ACTION/",
+				"actual": "/requests: POST \\/api\\/invoices \\{amount\\}/"
+			},
+			"reason": "Next posts the form to the page as a server action; Markless posts the same fields to an API endpoint. The validation messages shown and the form reset after a failed action match.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-17"
+		}
+	]
+}

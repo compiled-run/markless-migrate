@@ -1,6 +1,8 @@
 import type { MiddlewareHttpContext } from '@markless/router';
 import { cookie, cookieNames, csrfToken, readCookie, sessionFor } from '../server/session.ts';
 import { listInvoices, seed } from '../server/routes.ts';
+import { createPage, customersPage, editPage, invoicesPage } from '../server/pages.ts';
+import { remember } from '../server/prefetch.ts';
 
 // The old proxy matcher: everything but /api, the framework's static files and .png files.
 const UNMATCHED = /^\/(api(\/|$)|build\/|assets\/|fonts\/|_next\/static|_next\/image)|\.png$/;
@@ -28,6 +30,15 @@ export default async function request(http: MiddlewareHttpContext) {
 	if (request.method === 'GET' && url.pathname === '/query') return withCookies(await listInvoices(), cookies);
 	if (request.method === 'GET' && url.pathname === '/seed') return withCookies(await seed(), cookies);
 	for (const c of cookies) http.response.headers.append('set-cookie', c);
+	const query = url.searchParams.get('query') ?? '';
+	if (request.method === 'GET' && url.pathname === '/dashboard/invoices') {
+		const page = Number(url.searchParams.get('page')) || 1;
+		remember(request, `invoices:${query}:${page}`, await invoicesPage(query, page).catch(() => undefined));
+	}
+	if (request.method === 'GET' && url.pathname === '/dashboard/customers') remember(request, `customers:${query}`, await customersPage(query).catch(() => undefined));
+	if (request.method === 'GET' && url.pathname === '/dashboard/invoices/create') remember(request, 'create', await createPage().catch(() => undefined));
+	const edit = request.method === 'GET' ? /^\/dashboard\/invoices\/([^/]+)\/edit$/.exec(url.pathname) : null;
+	if (edit) remember(request, `edit:${edit[1]}`, await editPage(edit[1]!).catch(() => undefined));
 }
 
 function withCookies(response: Response, cookies: string[]): Response {

@@ -1,0 +1,80 @@
+{
+	"routes": [
+		{
+			"route": "/",
+			"at": "2026-10-17T06:23:00.826Z",
+			"checks": [
+				"/: green",
+				"/ as signed-in: green"
+			]
+		},
+		{
+			"route": "/login",
+			"at": "2026-10-17T06:23:01.134Z",
+			"checks": [
+				"/login: green",
+				"/login/: green",
+				"/login as signed-in: green",
+				"/login/ as signed-in: green"
+			]
+		},
+		{
+			"route": "/dashboard",
+			"at": "2026-10-17T06:23:01.570Z",
+			"checks": [
+				"/dashboard: green",
+				"/dashboard/: green",
+				"/dashboard as signed-in: green",
+				"/dashboard/ as signed-in: green"
+			]
+		},
+		{
+			"route": "/dashboard/customers",
+			"at": "2026-10-17T06:23:02.052Z",
+			"checks": [
+				"/dashboard/customers: green",
+				"/dashboard/customers/: green",
+				"/dashboard/customers as signed-in: green",
+				"/dashboard/customers/ as signed-in: green"
+			]
+		},
+		{
+			"route": "/dashboard/invoices",
+			"at": "2026-10-17T06:23:02.566Z",
+			"checks": [
+				"/dashboard/invoices: green",
+				"/dashboard/invoices/: green",
+				"/dashboard/invoices as signed-in: green",
+				"/dashboard/invoices/ as signed-in: green"
+			]
+		},
+		{
+			"route": "/dashboard/invoices/create",
+			"at": "2026-10-17T06:23:03.065Z",
+			"checks": [
+				"/dashboard/invoices/create: green",
+				"/dashboard/invoices/create/: green",
+				"/dashboard/invoices/create as signed-in: green",
+				"/dashboard/invoices/create/ as signed-in: green"
+			]
+		},
+		{
+			"route": "/query",
+			"at": "2026-10-17T06:23:04.105Z",
+			"checks": [
+				"/query: green",
+				"/query as signed-in: green"
+			]
+		},
+		{
+			"route": "/dashboard/invoices/:id/edit",
+			"at": "2026-10-17T06:23:09.736Z",
+			"checks": [
+				"/dashboard/invoices/043d764b-105c-4385-86b8-3af9692b27bb/edit: green",
+				"/dashboard/invoices/043d764b-105c-4385-86b8-3af9692b27bb/edit/: green",
+				"/dashboard/invoices/043d764b-105c-4385-86b8-3af9692b27bb/edit as signed-in: green",
+				"/dashboard/invoices/043d764b-105c-4385-86b8-3af9692b27bb/edit/ as signed-in: green"
+			]
+		}
+	]
+}

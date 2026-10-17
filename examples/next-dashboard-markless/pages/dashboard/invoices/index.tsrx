@@ -46,19 +46,17 @@ export default function Page({ url }: PageProps) @{
 				<CreateInvoice />
 			</div>
 			@try {
-				<InvoicesTable invoices={data.invoices} onDeleted={() => version++} />
+				<>
+					<InvoicesTable invoices={data.invoices} onDeleted={() => version++} />
+					<div class="mt-5 flex w-full justify-center">
+						<Pagination items={data.items} left={data.left} right={data.right} />
+					</div>
+				</>
 			} @pending {
 				<InvoicesTableSkeleton />
 			} @catch {
 				<InvoicesError />
 			}
-			<div class="mt-5 flex w-full justify-center">
-				@try {
-					<Pagination items={data.items} left={data.left} right={data.right} />
-				} @pending {
-					<></>
-				}
-			</div>
 		</div>
 	</DashboardLayout>
 }

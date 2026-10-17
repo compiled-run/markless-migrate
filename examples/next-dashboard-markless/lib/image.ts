@@ -3,7 +3,7 @@ const SIZES = [16, 32, 48, 64, 96, 128, 256, 384, 640, 750, 828, 1080, 1200, 192
 
 const pick = (width: number) => SIZES.find((size) => size >= width) ?? SIZES[SIZES.length - 1]!;
 
-export const variant = (src: string, width: number) => `/_img/w${pick(width)}${src}`;
+export const variant = (src: string, width: number) => `/_img/w${pick(width)}${src.replace(/\.png$/, '.webp')}`;
 
 export function image(src: string, width: number) {
 	return { src: variant(src, width * 2), srcset: `${variant(src, width)} 1x, ${variant(src, width * 2)} 2x` };

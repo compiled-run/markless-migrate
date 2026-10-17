@@ -10,7 +10,8 @@ export POSTGRES_URL=postgres://postgres:postgres@localhost:55432/dashboard
 export AUTH_SECRET=local-dev-secret-for-markless-migrate-0123456789
 export AUTH_TRUST_HOST=true
 export NODE_OPTIONS="--import=file://$ROOT/src/check/record-server.mjs"
-stop() { [ -f "$DATA/$1.pid" ] && kill "$(cat "$DATA/$1.pid")" 2>/dev/null || true; rm -f "$DATA/$1.pid"; }
+# A Nitro server with an open database pool does not exit on SIGTERM, so it is killed outright.
+stop() { [ -f "$DATA/$1.pid" ] && kill -9 "$(cat "$DATA/$1.pid")" 2>/dev/null || true; rm -f "$DATA/$1.pid"; sleep 0.3; }
 wait_for() { for _ in $(seq 1 60); do curl -s -o /dev/null "$1" && return 0; sleep 0.5; done; echo "no answer from $1" >&2; return 1; }
 case "${1:-}" in
 	db) "$PG/pg_ctl" -D "$DATA/data" -l "$DATA/log.txt" status >/dev/null || "$PG/pg_ctl" -D "$DATA/data" -l "$DATA/log.txt" start ;;

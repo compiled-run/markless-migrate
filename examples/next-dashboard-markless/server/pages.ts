@@ -2,6 +2,8 @@ import snapshot from './overview.snapshot.json' with { type: 'json' };
 import { fetchCardData, fetchCustomers, fetchFilteredCustomers, fetchFilteredInvoices, fetchInvoiceById, fetchInvoicesPages, fetchLatestInvoices, fetchRevenue } from './data.ts';
 import { formatCurrency, formatDateToLocal, generateYAxis } from '../lib/utils.ts';
 import { variant } from '../lib/image.ts';
+import { useRequest } from 'nitro/context';
+import { recall } from './prefetch.ts';
 
 const avatar = (src: string, width: number) => ({ src: variant(src, width * 2), srcset: `${variant(src, width)} 1x, ${variant(src, width * 2)} 2x` });
 
@@ -38,3 +40,9 @@ export async function editPage(id: string) {
 	const [invoice, customers] = await Promise.all([fetchInvoiceById(id), fetchCustomers()]);
 	return invoice ? { invoice, customers } : null;
 }
+
+// The middleware has usually read these already (server/prefetch.ts).
+export const invoicesPageFor = (query: string, currentPage: number) => recall<ReturnType<typeof invoicesPage>>(useRequest(), `invoices:${query}:${currentPage}`) ?? invoicesPage(query, currentPage);
+export const customersPageFor = (query: string) => recall<ReturnType<typeof customersPage>>(useRequest(), `customers:${query}`) ?? customersPage(query);
+export const createPageFor = () => recall<ReturnType<typeof createPage>>(useRequest(), 'create') ?? createPage();
+export const editPageFor = (id: string) => recall<ReturnType<typeof editPage>>(useRequest(), `edit:${id}`) ?? editPage(id);

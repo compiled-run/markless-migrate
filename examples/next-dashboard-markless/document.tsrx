@@ -15,12 +15,12 @@ export default function Document({ url, status, children }: { readonly url?: { r
 			<link rel="preload" href="/fonts/f179d0d12a27c502-s.p.2481f41b.woff2" as="font" crossorigin="" type="font/woff2" />
 			<link rel="stylesheet" href={stylesheet} />
 			@if (notFound) {
-				<>
-					<meta name="robots" content="noindex" />
-					<title>404: This page could not be found.</title>
-				</>
+				<meta name="robots" content="noindex" />
 			}
 			<title>{title}</title>
+			@if (notFound) {
+				<title>404: This page could not be found.</title>
+			}
 			<meta name="description" content="The official Next.js Learn Dashboard built with App Router." />
 			<meta property="og:title" content={title} />
 			<meta property="og:description" content="The official Next.js Learn Dashboard built with App Router." />

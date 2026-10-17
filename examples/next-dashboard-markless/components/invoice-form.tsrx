@@ -25,6 +25,7 @@ export default function InvoiceForm({ action, customers, customerId, amount, sta
 			const form = event.target as HTMLFormElement;
 			void post<Result>(form.dataset.action ?? '', form).then((next) => {
 				if (next.redirect) return go(next.redirect);
+				form.reset();
 				customerError = next.errors?.customerId?.[0] ?? '';
 				amountError = next.errors?.amount?.[0] ?? '';
 				statusError = next.errors?.status?.[0] ?? '';
