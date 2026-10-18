@@ -203,7 +203,9 @@ export function render(value) {
 		if (props.dangerouslySetInnerHTML) children.push(...render(raw(props.dangerouslySetInnerHTML.__html)));
 		else children.push(...render(props.children));
 		const attrs = attributes(type, props);
-		push({ tag: type, attrs, children: type === 'textarea' && props.value !== undefined ? [String(props.value)] : children });
+		const node = { tag: type, attrs, children: type === 'textarea' && props.value !== undefined ? [String(props.value)] : children };
+		if (type === 'img' && props.src != null && typeof props.src !== 'string') node.noPreload = true;
+		push(node);
 	};
 	walk(value);
 	return out;
@@ -239,6 +241,12 @@ const tsrxAttr = (name, value) => {
 	return ` ${name}="${value}"`;
 };
 const hasText = (nodes) => nodes.some((n) => typeof n === 'string' || (n.children && hasText(n.children)));
+// A <style> in TSRX markup is the component's scoped CSS, so a page's own <style> element (an SVG's, a page's) is
+// written as a script that puts the same element in its place while the page is parsed.
+function styleScript(node) {
+	const attrs = node.attrs.map(([n, v]) => `e.setAttribute(${JSON.stringify(n)},${JSON.stringify(v)});`).join('');
+	return `(function(s){var e=document.createElementNS(s.parentNode.namespaceURI,"style");${attrs}e.textContent=${JSON.stringify(node.children.join(''))};s.replaceWith(e)})(document.currentScript)`;
+}
 function inline(nodes, options) {
 	return nodes
 		.map((node) => {
@@ -246,6 +254,7 @@ function inline(nodes, options) {
 			if (node.expression !== undefined) return node.expression;
 			const attrs = node.attrs.map(([n, v]) => tsrxAttr(n, v)).join('') + (options.extra?.(node) ?? '');
 			if (VOID.has(node.tag)) return `<${node.tag}${attrs} />`;
+			if (node.tag === 'style') return `<script>{${JSON.stringify(styleScript(node))}}</script>`;
 			if (RAW_TEXT.has(node.tag)) return `<${node.tag}${attrs}>{${JSON.stringify(node.children.join(''))}}</${node.tag}>`;
 			return `<${node.tag}${attrs}>${inline(node.children, options)}</${node.tag}>`;
 		})

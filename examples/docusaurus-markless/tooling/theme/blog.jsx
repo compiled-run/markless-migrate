@@ -3,7 +3,7 @@
 import { join } from 'node:path';
 import { clsx, useContext, styles, siteStyles, ThemeClassNames, translate, Translate, Link, withBaseUrl, samePath, themeConfig, Head, Heading } from './core.jsx';
 import { Layout, PageMetadata, SearchMetadata } from './chrome.jsx';
-import { TOC, PaginatorNavLink, EditMetaRow, TagsListInline, Tag } from './docs.jsx';
+import { TOC, PaginatorNavLink, EditMetaRow, TagsListInline, Tag, ContentVisibility, Unlisted, TagsListByLetter } from './docs.jsx';
 
 const plural = (count, message) => {
 	const [one, other] = message.split('|');
@@ -384,7 +384,6 @@ export function BlogPostPage({ content: Content, sidebar }) {
 		const blogMetadata = useContext().blogMetadata;
 		const structured = { '@context': 'https://schema.org', ...postStructuredData(Content), isPartOf: { '@type': 'Blog', '@id': absoluteUrl(blogMetadata.blogBasePath), name: blogMetadata.blogTitle } };
 		const { metadata } = post();
-		if (metadata.unlisted || metadata.frontMatter?.unlisted || metadata.frontMatter?.draft) throw new Error('unlisted/draft blog banners are not ported');
 		return renderNow(
 			<>
 				<BlogPostPageMetadata />
@@ -392,6 +391,7 @@ export function BlogPostPage({ content: Content, sidebar }) {
 					<script type="application/ld+json">{JSON.stringify(structured)}</script>
 				</Head>
 				<BlogLayout sidebar={sidebar} toc={postPageToc()}>
+					<ContentVisibility metadata={metadata} />
 					<BlogPostItem>
 						<Content />
 					</BlogPostItem>
@@ -400,34 +400,6 @@ export function BlogPostPage({ content: Content, sidebar }) {
 			</>,
 		);
 	});
-}
-
-function TagsListByLetter({ tags }) {
-	const groups = {};
-	for (const tag of Object.values(tags)) (groups[tag.label[0].toUpperCase()] ??= []).push(tag);
-	const letters = Object.entries(groups)
-		.sort(([a], [b]) => a.localeCompare(b))
-		.map(([letter, list]) => ({ letter, tags: list.sort((a, b) => a.label.localeCompare(b.label)) }));
-	const s = styles('TagsListByLetter');
-	return (
-		<section className="margin-vert--lg">
-			{letters.map((entry) => (
-				<article>
-					<Heading as="h2" id={entry.letter}>
-						{entry.letter}
-					</Heading>
-					<ul className="padding--none">
-						{entry.tags.map((tag) => (
-							<li className={s.tag}>
-								<Tag {...tag} />
-							</li>
-						))}
-					</ul>
-					<hr />
-				</article>
-			))}
-		</section>
-	);
 }
 
 export function BlogTagsListPage({ tags, sidebar }) {
@@ -446,12 +418,12 @@ export function BlogTagsListPage({ tags, sidebar }) {
 
 export function BlogTagsPostsPage({ tag, items, sidebar, listMetadata }) {
 	const title = blogTagsPostsPageTitle(tag);
-	if (tag.unlisted) throw new Error('unlisted tag banners are not ported');
 	return (
 		<>
 			<PageMetadata title={title} description={tag.description} />
 			<SearchMetadata tag="blog_tags_posts" />
 			<BlogLayout sidebar={sidebar}>
+				{tag.unlisted && <Unlisted />}
 				<header className="margin-bottom--xl">
 					<Heading as="h1">{title}</Heading>
 					{tag.description && <p>{tag.description}</p>}

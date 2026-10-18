@@ -35,7 +35,11 @@ export async function drawMermaid(values, themeConfig) {
 					return (await mermaid.render(id, text)).svg;
 				},
 				{ text: value, config: { startOnLoad: false, ...themeConfig.options, theme: themeConfig.theme[mode] }, id: `mermaid-svg-${n++}` },
-			);
+			).catch((error) => {
+				// A diagram mermaid cannot draw shows the theme's error fallback, with mermaid's message.
+				result.error = error.message.replace(/^page\.evaluate: (?:\w*Error: )?/, '').split('\n')[0];
+				return null;
+			});
 		}
 		writeFileSync(file, JSON.stringify(result));
 		out.set(value, result);

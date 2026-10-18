@@ -1,5 +1,6 @@
 // website/src/components/Versions: rendered as before the npm registry answers; lib/site.ts fetches the latest
-// canary version from the registry as the original does and fills it in.
+// canary version from the registry as the original does and fills it in. The parts shown only once it is known
+// are in the page hidden (data-mm-canary), and lib/site.ts keeps them aside until then.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Link, Translate } from '../theme/core.jsx';
@@ -38,10 +39,20 @@ export function MainBranchLink() {
 	);
 }
 export function InsertIfCanaryVersionUnknown({ children }) {
-	return <>{children}</>;
+	return (
+		<>
+			<span hidden data-mm-canary="unknown-start"></span>
+			{children}
+			<span hidden data-mm-canary="unknown-end"></span>
+		</>
+	);
 }
-export function InsertIfCanaryVersionKnown() {
-	return null;
+export function InsertIfCanaryVersionKnown({ children }) {
+	return (
+		<div hidden data-mm-canary="known">
+			{children}
+		</div>
+	);
 }
 export function PackageJSONDiff() {
 	const stable = useStableVersion();
@@ -56,5 +67,5 @@ export function PackageJSONDiff() {
 	);
 }
 export function PublishTime() {
-	return null;
+	return <span hidden data-mm-canary="publish"></span>;
 }

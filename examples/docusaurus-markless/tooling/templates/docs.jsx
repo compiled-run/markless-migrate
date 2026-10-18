@@ -2,7 +2,7 @@
 // (@theme/DocCategoryGeneratedIndexPage), inside the docs layout with the version's sidebar.
 import { join } from 'node:path';
 import { Layout, SearchMetadata, PageMetadata } from '../theme/chrome.jsx';
-import { DocRootLayout, DocItem, DocCategoryGeneratedIndexPage } from '../theme/docs.jsx';
+import { DocRootLayout, DocItem, DocCategoryGeneratedIndexPage, DocTagsListPage, DocTagDocListPage } from '../theme/docs.jsx';
 import { readGenerated, website } from '../source/site.mjs';
 import { importMdx } from '../source/mdx.mjs';
 
@@ -20,17 +20,32 @@ async function docsContext(route, site) {
 	};
 }
 
-function DocsPage({ version, children }) {
+function DocsPage({ version, children, root = true }) {
 	return (
 		<Layout>
 			<SearchMetadata version={version.version} tag={`docs-${version.pluginId}-${version.version}`} />
 			<PageMetadata>{version.noIndex && <meta name="robots" content="noindex, nofollow" />}</PageMetadata>
-			<DocRootLayout>{children}</DocRootLayout>
+			{root ? <DocRootLayout>{children}</DocRootLayout> : children}
 		</Layout>
 	);
 }
 
+const tagsPage = (Component, htmlClass) => async (route, site) => {
+	const base = await docsContext(route, site);
+	const props = JSON.parse(JSON.stringify(route.props ?? {}));
+	return {
+		context: { ...base, sidebar: null, htmlClasses: [base.version.className, htmlClass] },
+		element: () => (
+			<DocsPage version={base.version} root={false}>
+				<Component {...props} />
+			</DocsPage>
+		),
+	};
+};
+
 export const templates = {
+	'@theme/DocTagsListPage': tagsPage(DocTagsListPage, 'docs-tags-list-page'),
+	'@theme/DocTagDocListPage': tagsPage(DocTagDocListPage, 'docs-tags-doc-list-page'),
 	'@theme/DocItem': async (route, site) => {
 		const base = await docsContext(route, site);
 		const file = join(website, route.modules.content.replace(/^@site\//, ''));

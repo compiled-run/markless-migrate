@@ -1,4 +1,5 @@
-// Every route of the old site's sitemap must answer 200 on the new app with the same <title> and first <h1>:
+// Every route of the old site's sitemap must answer 200 on the new app with the same <title> and first <h1>, and every
+// same-site link on any page reachable from them must answer on the new app as it does on the old one:
 // `node deploy/docusaurus/verify-routes.ts [old-origin] [new-origin]` (default: the two deployments).
 import { DOCUSAURUS } from './urls.ts';
 
@@ -44,4 +45,44 @@ await Promise.all(
 );
 process.stdout.write(`${checked} sitemap routes checked: ${checked - misses.length} answer 200 with the old title and h1\n`);
 for (const miss of misses.sort()) process.stdout.write(`  ${miss}\n`);
-process.exit(misses.length ? 1 : 0);
+
+const links = (html: string, base: string) =>
+	[...html.matchAll(/<a\b[^>]*?\shref="([^"#]*)(?:#[^"]*)?"/g)]
+		.map((m) => m[1]!.replace(/&amp;/g, '&'))
+		.filter((href) => href !== '')
+		.map((href) => new URL(href, base))
+		.filter((url) => url.origin === new URL(base).origin)
+		.map((url) => url.pathname + url.search);
+const statusOf = async (origin: string, path: string) => (await fetch(origin + path, { redirect: 'follow' })).status;
+const seen = new Set<string>(routes);
+const pages = [...routes];
+const broken: string[] = [];
+const upstream: string[] = [];
+const from = new Map<string, string>();
+let crawled = 0;
+await Promise.all(
+	Array.from({ length: 8 }, async () => {
+		while (pages.length) {
+			const path = pages.shift()!;
+			const res = await fetch(newOrigin + path);
+			crawled++;
+			const type = res.headers.get('content-type') ?? '';
+			const body = type.includes('text/html') ? await res.text() : '';
+			if (res.status !== 200) {
+				const before = await statusOf(oldOrigin, path);
+				(before === res.status ? upstream : broken).push(`${path}: new ${res.status}, old ${before} (linked from ${from.get(path) ?? 'the sitemap'})`);
+				continue;
+			}
+			for (const link of links(body, newOrigin + path)) {
+				if (seen.has(link)) continue;
+				seen.add(link);
+				from.set(link, path);
+				pages.push(link);
+			}
+		}
+	}),
+);
+process.stdout.write(`${crawled} same-site addresses crawled from those pages on the new app: ${broken.length} fail there but not on the old one\n`);
+for (const line of broken.sort()) process.stdout.write(`  ${line}\n`);
+if (upstream.length) process.stdout.write(`${upstream.length} fail the same way on the old site (the old site's own broken links):\n${upstream.sort().map((l) => `  ${l}\n`).join('')}`);
+process.exit(misses.length || broken.length ? 1 : 0);

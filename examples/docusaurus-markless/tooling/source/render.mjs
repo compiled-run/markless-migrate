@@ -47,7 +47,7 @@ function hoistPreloads(root) {
 			const attr = (name) => node.attrs.find(([n]) => n === name)?.[1];
 			const dark = attr('data-mm-ssr-dark');
 			node.attrs = node.attrs.filter(([n]) => n !== 'data-mm-ssr-dark');
-			if (!node.raw && attr('loading') !== 'lazy' && attr('src')) images.push(attr('src'), ...(dark ? [dark] : []));
+			if (!node.raw && !node.noPreload && attr('loading') !== 'lazy' && attr('fetchpriority') !== 'low' && attr('src')) images.push(attr('src'), ...(dark ? [dark] : []));
 		}
 		if (node.tag === 'link' && parent && !node.raw) {
 			links.push(node);
@@ -71,9 +71,12 @@ function mermaid({ value }) {
 		mermaidPending.add(value);
 		return null;
 	}
+	if (svg.error !== undefined) return h('div', { className: errorStyles().errorBoundaryFallback }, h('p', null, svg.error), h('button', { type: 'button' }, 'Try again'));
 	return h('div', { className: `docusaurus-mermaid-container ${mermaidStyles().container}`, dangerouslySetInnerHTML: { __html: svg.light }, 'data-mm-mermaid-dark': svg.dark });
 }
 let mermaidStyleMap;
+let errorStyleMap;
+const errorStyles = () => (errorStyleMap ??= cssModuleMap(join(website, '../packages/docusaurus-theme-common/src/utils/errorBoundaryUtils.module.css')));
 const mermaidStyles = () => (mermaidStyleMap ??= cssModuleMap(join(website, '../packages/docusaurus-theme-mermaid/src/theme/Mermaid/styles.module.css')));
 
 export async function renderRoute(route, site, extraComponents = {}) {
@@ -86,6 +89,7 @@ export async function renderRoute(route, site, extraComponents = {}) {
 		siteConfig: site.context.siteConfig,
 		i18n: site.context.i18n,
 		globalData: site.globalData,
+		siteMetadata: site.siteMetadata,
 		codeTranslations: site.context.codeTranslations,
 		path: routePath(route.path),
 		plugin,
@@ -99,7 +103,8 @@ export async function renderRoute(route, site, extraComponents = {}) {
 		hoistPreloads(body[0]);
 		const heads = [];
 		for (const children of head) {
-			const nodes = render(children).filter((n) => typeof n !== 'string');
+			// Helmet's <html>/<body> children set attributes on those elements, which document.tsrx writes itself.
+			const nodes = render(children).filter((n) => typeof n !== 'string' && n.tag !== 'html' && n.tag !== 'body');
 			const keys = new Set(nodes.map(headKey).filter(Boolean));
 			for (const list of heads) for (let i = list.length - 1; i >= 0; i--) if (keys.has(headKey(list[i]))) list.splice(i, 1);
 			heads.push(nodes);

@@ -1,4 +1,7 @@
 // What MDX content and ported components may call on React: rendering happens once, so state is its initial value.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { website } from './site.mjs';
 import { h, Fragment, isElement, toArray, useContext as pageContext } from './h.mjs';
 export { Fragment };
 export const createElement = h;
@@ -34,7 +37,7 @@ export const Children = {
 	count: (children) => toArray(children).length,
 	only: (children) => toArray(children)[0],
 };
-export const version = '19.0.0';
+export const version = JSON.parse(readFileSync(join(website, '../node_modules/react/package.json'), 'utf8')).version;
 void pageContext;
 const React = { createElement, Fragment, isValidElement, useState, useReducer, useRef, useMemo, useCallback, useEffect, useLayoutEffect, useId, createContext, useContext, memo, forwardRef, lazy, Suspense, StrictMode, cloneElement, Children, version };
 export default React;

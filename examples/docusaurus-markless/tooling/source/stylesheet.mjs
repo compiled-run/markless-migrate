@@ -41,7 +41,25 @@ export function cssModuleMap(file) {
 			anchors.push(built.indexOf(`.${matching[0]}`));
 		} else ambiguous.push([local, matching.length ? matching : candidates]);
 	}
+	// The bundler rewrites values (units, colours), so property names decide when rules do not match exactly.
+	const properties = (css, name) => new Set([...css.matchAll(new RegExp(`\\.${name.replace(/-/g, '\\-')}(?![\\w-])[^{}]*\\{([^{}]*)\\}`, 'g'))].flatMap((m) => m[1].split(';').map((d) => d.split(':')[0].trim()).filter(Boolean)));
+	for (const entry of ambiguous) {
+		const [local, candidates] = entry;
+		const wanted = properties(source, local);
+		const scored = candidates.map((name) => {
+			const got = properties(built, name);
+			const shared = [...wanted].filter((p) => got.has(p)).length;
+			return [name, shared / (new Set([...wanted, ...got]).size || 1)];
+		});
+		const best = Math.max(...scored.map(([, score]) => score));
+		const top = scored.filter(([, score]) => score === best).map(([name]) => name);
+		if (top.length === 1) {
+			map[local] = top[0];
+			entry[1] = [];
+		} else entry[1] = top;
+	}
 	for (const [local, candidates] of ambiguous) {
+		if (!candidates.length) continue;
 		const center = anchors.length ? anchors.sort((a, b) => a - b)[Math.floor(anchors.length / 2)] : 0;
 		map[local] = candidates.map((name) => [name, Math.abs(built.indexOf(`.${name}`) - center)]).sort((a, b) => a[1] - b[1])[0][0];
 	}

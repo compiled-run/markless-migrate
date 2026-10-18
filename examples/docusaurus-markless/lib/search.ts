@@ -2,11 +2,14 @@
 // loaded only when someone opens search, with the old site's Algolia settings. It is imported by URL from public/
 // so the bundler does not module-preload its 500 kB on every page.
 import type docsearchType from '@docsearch/js';
+import docsVersions from './docs-versions.json';
 import translations from './search-translations.json';
+import { docsVersionCandidates } from './site.ts';
 
 type Instance = ReturnType<typeof docsearchType>;
 let instance: Instance | undefined;
 let mounted: Element | null = null;
+let shownTags = '';
 let docsearch: typeof docsearchType | undefined;
 
 export async function load(): Promise<void> {
@@ -20,9 +23,11 @@ function meta(name: string): string | undefined {
 export function open(): void {
 	if (!docsearch) return;
 	// A client-side navigation replaces the navbar, and with it the container DocSearch rendered into.
-	if (instance && mounted?.isConnected) return;
+	const tags = ['default', ...Object.keys(docsVersions).map((plugin) => `docs-${plugin}-${docsVersionCandidates(plugin)[0]?.name}`)].map((tag) => `docusaurus_tag:${tag}`);
+	if (instance && mounted?.isConnected && JSON.stringify(tags) === shownTags) return;
+	instance?.destroy();
+	shownTags = JSON.stringify(tags);
 	mounted = document.querySelector('.navbarSearchContainer_dDCC');
-	const tag = meta('docsearch:docusaurus_tag');
 	instance = docsearch({
 		container: '.navbarSearchContainer_dDCC',
 		appId: 'X1Z85QJPUV',
@@ -35,12 +40,13 @@ export function open(): void {
 		// element is a plain vnode object (constructor undefined, as Preact requires of one not built by createElement).
 		resultsFooterComponent: ({ state }: { state: { query: string; context: { nbHits?: number } } }) => ({
 			type: 'a',
-			props: { href: `/search?q=${encodeURIComponent(state.query)}`, children: `See all ${state.context.nbHits ?? 0} results` },
+			props: { href: `/search?q=${encodeURIComponent(state.query)}`, onClick: () => instance?.close(), children: `See all ${state.context.nbHits ?? 0} results` },
 			key: null,
 			ref: null,
 			constructor: undefined,
 		}),
-		searchParameters: { facetFilters: [`language:${meta('docsearch:language') ?? 'en'}`, [tag ? `docusaurus_tag:${tag}` : 'docusaurus_tag:default', 'docusaurus_tag:default'].filter((v, i, all) => all.indexOf(v) === i)] },
+		// Docusaurus's contextual search: the default tag plus, per docs plugin, its active, preferred or latest version.
+		searchParameters: { facetFilters: [`language:${meta('docsearch:language') ?? 'en'}`, tags] },
 	} as Parameters<typeof docsearchType>[0]);
 }
 

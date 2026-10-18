@@ -1,13 +1,13 @@
 // The pages plugin's templates: Markdown/MDX pages (@theme/MDXPage) and the site's React pages (the home page,
 // showcase, versions, feature requests), plus the search plugin's search page.
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { clsx, styles, ThemeClassNames, translate, Translate, Heading } from '../theme/core.jsx';
 import { Layout, PageMetadata } from '../theme/chrome.jsx';
-import { TOC, EditMetaRow } from '../theme/docs.jsx';
+import { TOC, EditMetaRow, ContentVisibility } from '../theme/docs.jsx';
 import { SearchPage } from '../theme/search.jsx';
 import { readGenerated, website } from '../source/site.mjs';
-import { importMdx, resolveSync } from '../source/mdx.mjs';
+import { importMdx, resolveSync, compileSiteMdxImports } from '../source/mdx.mjs';
+import { existsSync } from 'node:fs';
 
 function MDXPage({ content: Content }) {
 	const { metadata, assets = {} } = Content;
@@ -20,6 +20,7 @@ function MDXPage({ content: Content }) {
 			<main className="container container--fluid margin-vert--lg">
 				<div className={clsx('row', s.mdxPageWrapper)}>
 					<div className={clsx('col', !hideToc && 'col--8')}>
+						<ContentVisibility metadata={metadata} />
 						<article>
 							<Content />
 						</article>
@@ -36,7 +37,9 @@ function MDXPage({ content: Content }) {
 	);
 }
 
-async function siteComponent(alias) {
+async function siteComponent(alias, rules) {
+	const file = join(website, alias.replace(/^@site\//, ''));
+	await compileSiteMdxImports(existsSync(file) ? file : `${file}.tsx`, rules);
 	const resolved = resolveSync(alias, join(website, 'docusaurus.config.ts'));
 	return (await import(resolved)).default;
 }
@@ -87,9 +90,15 @@ export const templates = {
 
 // A page whose component is one of the site's own modules (src/pages/*.tsx, a plugin's page component).
 export async function sitePageTemplate(route, site) {
-	const Component = await siteComponent(route.component.startsWith('@site/') ? route.component : `@site/${route.component}`);
+	const Component = await siteComponent(route.component.startsWith('@site/') ? route.component : `@site/${route.component}`, site.rules);
 	const props = JSON.parse(JSON.stringify(route.props ?? {}));
 	Object.assign(props, await routeModules(route, site));
 	return { context: { htmlClasses: [] }, element: () => <Component {...props} /> };
 }
-void pathToFileURL;
+
+// A page whose component is a plugin's own theme component (the debug panel's pages).
+export async function pluginThemeTemplate(route) {
+	const Component = (await import(resolveSync(route.component, join(website, 'docusaurus.config.ts')))).default;
+	const props = JSON.parse(JSON.stringify(route.props ?? {}));
+	return { context: { htmlClasses: [] }, element: () => <Component {...props} /> };
+}

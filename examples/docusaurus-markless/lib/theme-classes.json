@@ -101,6 +101,9 @@
 	"TabItem": {
 		"tabItem": "tabItem_pnkT"
 	},
+	"BlogSidebar/Mobile": {
+		"yearGroupHeading": "yearGroupHeading_Ruz9"
+	},
 	"ThemedComponent": {
 		"themedComponent": "themedComponent_bJGS",
 		"themedComponent--light": "themedComponent--light_LEkC",

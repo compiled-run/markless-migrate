@@ -8,12 +8,13 @@ import { loadSite, readGenerated } from './source/site.mjs';
 import { renderRoute, registerTemplates, routePath, mermaidPending, mermaidRendered } from './source/render.mjs';
 import { drawMermaid } from './source/mermaid.mjs';
 import { toHtml } from './source/h.mjs';
-import { missingPorts, loadRequirable, resolveSync } from './source/mdx.mjs';
-import { setSiteResolver } from './source/jsx-loader.mjs';
+import { existsSync } from 'node:fs';
+import { missingPorts, loadRequirable, resolveSync, assetUrlsIn, provideGenerated, debugTheme, jsonViewLite } from './source/mdx.mjs';
+import { setSiteResolver, addSiteRoot } from './source/jsx-loader.mjs';
 import { templates as docsTemplates } from './templates/docs.jsx';
 import { templates as blogTemplates } from './templates/blog.jsx';
-import { templates as pagesTemplates, sitePageTemplate } from './templates/pages.jsx';
-import { app, pageFile, writePage, writeFooter, writeHeads, pluginHtmlTags, copyFiles, clearPages, writeClientData, runPostBuild } from './source/output.mjs';
+import { templates as pagesTemplates, sitePageTemplate, pluginThemeTemplate } from './templates/pages.jsx';
+import { app, fileRoute, pageFile, writePage, writeFooter, writeHeads, pluginHtmlTags, copyFiles, clearPages, writeClientData, runPostBuild } from './source/output.mjs';
 
 const args = process.argv.slice(2);
 const only = args.filter((a, i) => args[i - 1] === '--only');
@@ -27,26 +28,23 @@ const site = await loadSite();
 setSiteResolver((specifier, parent) => {
 	const resolved = resolveSync(specifier, parent);
 	return typeof resolved === 'string' ? resolved : null;
-});
+}, assetUrlsIn);
 await loadRequirable(['@docusaurus/useBaseUrl'], site.rules);
+addSiteRoot(debugTheme);
+addSiteRoot(jsonViewLite);
+const routeTreeData = (list) => list.map(({ path, exact, routes }) => ({ path, exact, ...(routes ? { routes: routeTreeData(routes) } : {}) }));
+provideGenerated('@generated/routes', [...routeTreeData(site.routeTree), { path: '*' }]);
+provideGenerated('@generated/registry', Object.fromEntries(site.registry.map(([chunk, modulePath]) => [chunk, [null, modulePath, modulePath]])));
+for (const route of site.routes) if (existsSync(join(debugTheme, route.component.replace(/^@theme\//, ''), 'index.js'))) registerTemplates({ [route.component]: pluginThemeTemplate });
 for (const route of site.routes) if (route.component.startsWith('@site/')) registerTemplates({ [route.component]: sitePageTemplate });
 
 const sitemap = site.plugins.find((p) => p.name === 'docusaurus-plugin-sitemap');
 const ignore = (sitemap?.options.ignorePatterns ?? []).map((pattern) => new RegExp(`^${pattern.replace(/\{([^}]+)\}/g, (_, list) => `(${list.split(',').join('|')})`).replace(/\/\*\*/g, '(/.*)?')}$`));
 
-// The routes a visitor can reach and the sitemap lists: every page route but the debug pages, the 404 page,
-// the sitemap's ignored patterns and versions marked noIndex.
+// Every page route the old site serves: its sitemap's routes and the rest (the dogfooding test pages, the debug
+// pages), all but the catch-all not-found route, which becomes pages/404.tsrx.
 async function pageRoutes() {
-	const out = [];
-	for (const route of site.routes) {
-		const path = routePath(route.path);
-		if (path.startsWith('/__docusaurus') || path.includes('*') || route.path === '/404.html') continue;
-		if (ignore.some((re) => re.test(path))) continue;
-		const versionRoute = route.ancestors.find((a) => a.context?.data?.docsVersion);
-		if (versionRoute && (await readGenerated(site.context, versionRoute.context.data.docsVersion)).noIndex) continue;
-		out.push(route);
-	}
-	return out;
+	return site.routes.filter((route) => !route.path.includes('*') && route.path !== '/404.html');
 }
 
 // The site's own MDXComponents (website/src/theme/MDXComponents.tsx) add these to the theme's.
@@ -67,11 +65,15 @@ const pages = new Map();
 let footer;
 // A page with Mermaid diagrams renders twice: once to collect them, again once they are drawn.
 async function renderWithDiagrams(route) {
+	mermaidPending.clear();
 	const page = await renderRoute(route, site, siteMdxComponents);
 	if (!mermaidPending.size) return page;
-	const drawn = await drawMermaid([...mermaidPending], site.context.siteConfig.themeConfig.mermaid);
-	for (const [value, svg] of drawn) mermaidRendered.set(value, svg);
-	mermaidPending.clear();
+	try {
+		const drawn = await drawMermaid([...mermaidPending], site.context.siteConfig.themeConfig.mermaid);
+		for (const [value, svg] of drawn) mermaidRendered.set(value, svg);
+	} finally {
+		mermaidPending.clear();
+	}
 	return renderRoute(route, site, siteMdxComponents);
 }
 for (const route of routes) {
@@ -88,14 +90,16 @@ for (const route of routes) {
 	}
 }
 if (footer) await writeFooter(footer);
+for (const failure of failures) process.stdout.write(`  ${failure}\n`);
 if (!only.length) {
 	const tags = pluginHtmlTags(site);
 	await writeHeads(pages, tags.head, tags.body);
 	await writeClientData(site, pages);
 	await runPostBuild(site, pages);
 	await writeFile(join(app, 'lib/routes.json'), `${JSON.stringify([...pages.keys()].filter((p) => p !== '/404').sort(), null, '\t')}\n`);
+	const aliases = Object.fromEntries([...pages.keys()].filter((p) => fileRoute(p) !== p).map((p) => [encodeURI(p), encodeURI(fileRoute(p))]));
+	await writeFile(join(app, 'lib/route-aliases.json'), `${JSON.stringify(aliases, null, '\t')}\n`);
 	await copyFiles(site);
 }
 process.stdout.write(`${pages.size} of ${routes.length} routes written${skipped.length ? `, ${skipped.length} left out (noindex): ${skipped.join(', ')}` : ''}\n`);
-for (const failure of failures) process.stdout.write(`  ${failure}\n`);
 for (const [specifier, files] of missingPorts) process.stdout.write(`missing port: ${specifier} (${[...files].slice(0, 3).join(', ')})\n`);

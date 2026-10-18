@@ -17,44 +17,45 @@ export default function Document({ url, children }: { readonly url?: { readonly 
 		<head>
 			<meta charset="UTF-8" />
 			<title>{head.title}</title>
-			<meta name={s[0]?.["name"]} content={s[0]?.["content"]} />
-			<link rel={s[1]?.["rel"]} href={s[1]?.["href"]} />
-			<meta name={s[2]?.["name"]} content={s[2]?.["content"]} />
-			<meta property={s[3]?.["property"]} content={s[3]?.["content"]} />
-			<meta name={s[4]?.["name"]} content={s[4]?.["content"]} />
-			<meta property={s[5]?.["property"]} content={s[5]?.["content"]} />
-			<link rel={s[6]?.["rel"]} href={s[6]?.["href"]} />
-			<link rel={s[7]?.["rel"]} href={s[7]?.["href"]} hrefLang={s[7]?.["hrefLang"]} />
+			<meta property={s[0]?.["property"]} content={s[0]?.["content"]} />
+			<meta name={s[1]?.["name"]} content={s[1]?.["content"]} />
+			<link rel={s[2]?.["rel"]} href={s[2]?.["href"]} />
+			<meta name={s[3]?.["name"]} content={s[3]?.["content"]} />
+			<meta property={s[4]?.["property"]} content={s[4]?.["content"]} />
+			<meta name={s[5]?.["name"]} content={s[5]?.["content"]} />
+			<meta property={s[6]?.["property"]} content={s[6]?.["content"]} />
+			<link rel={s[7]?.["rel"]} href={s[7]?.["href"]} />
 			<link rel={s[8]?.["rel"]} href={s[8]?.["href"]} hrefLang={s[8]?.["hrefLang"]} />
 			<link rel={s[9]?.["rel"]} href={s[9]?.["href"]} hrefLang={s[9]?.["hrefLang"]} />
 			<link rel={s[10]?.["rel"]} href={s[10]?.["href"]} hrefLang={s[10]?.["hrefLang"]} />
 			<link rel={s[11]?.["rel"]} href={s[11]?.["href"]} hrefLang={s[11]?.["hrefLang"]} />
 			<link rel={s[12]?.["rel"]} href={s[12]?.["href"]} hrefLang={s[12]?.["hrefLang"]} />
-			<meta property={s[13]?.["property"]} content={s[13]?.["content"]} />
+			<link rel={s[13]?.["rel"]} href={s[13]?.["href"]} hrefLang={s[13]?.["hrefLang"]} />
 			<meta property={s[14]?.["property"]} content={s[14]?.["content"]} />
 			<meta property={s[15]?.["property"]} content={s[15]?.["content"]} />
 			<meta property={s[16]?.["property"]} content={s[16]?.["content"]} />
 			<meta property={s[17]?.["property"]} content={s[17]?.["content"]} />
-			<meta name={s[18]?.["name"]} content={s[18]?.["content"]} />
+			<meta property={s[18]?.["property"]} content={s[18]?.["content"]} />
 			<meta name={s[19]?.["name"]} content={s[19]?.["content"]} />
-			<meta property={s[20]?.["property"]} content={s[20]?.["content"]} />
+			<meta name={s[20]?.["name"]} content={s[20]?.["content"]} />
 			<meta name={s[21]?.["name"]} content={s[21]?.["content"]} />
-			<meta property={s[22]?.["property"]} content={s[22]?.["content"]} />
-			<meta name={s[23]?.["name"]} content={s[23]?.["content"]} />
+			<meta name={s[22]?.["name"]} content={s[22]?.["content"]} />
+			<html lang={s[23]?.["lang"]} class={s[23]?.["class"]} />
 			<meta name={s[24]?.["name"]} content={s[24]?.["content"]} />
-			<script type={s[25]?.["type"]}>{head.ld}</script>
+			<meta name={s[25]?.["name"]} content={s[25]?.["content"]} />
 			<meta property={s[26]?.["property"]} content={s[26]?.["content"]} />
-			<meta property={s[27]?.["property"]} content={s[27]?.["content"]} />
+			<script type={s[27]?.["type"]}>{head.ld}</script>
 			<meta property={s[28]?.["property"]} content={s[28]?.["content"]} />
 			<meta property={s[29]?.["property"]} content={s[29]?.["content"]} />
-			<meta name={s[30]?.["name"]} content={s[30]?.["content"]} />
+			<meta property={s[30]?.["property"]} content={s[30]?.["content"]} />
 			<meta property={s[31]?.["property"]} content={s[31]?.["content"]} />
-			<meta name={s[32]?.["name"]} content={s[32]?.["content"]} />
-			<meta name={s[33]?.["name"]} content={s[33]?.["content"]} />
+			<meta property={s[32]?.["property"]} content={s[32]?.["content"]} />
+			<meta name={s[33]?.["name"]} value={s[33]?.["value"]} />
 			<meta name={s[34]?.["name"]} content={s[34]?.["content"]} />
-			<html class={s[35]?.["class"]} />
-			<body class={s[36]?.["class"]} />
-			<meta charSet={s[37]?.["charSet"]} />
+			<meta name={s[35]?.["name"]} content={s[35]?.["content"]} />
+			<meta name={s[36]?.["name"]} content={s[36]?.["content"]} />
+			<body class={s[37]?.["class"]} />
+			<meta charSet={s[38]?.["charSet"]} />
 			<link rel="alternate" type="application/rss+xml" href="/blog/rss.xml" title="Docusaurus RSS Feed" />
 			<link rel="alternate" type="application/atom+xml" href="/blog/atom.xml" title="Docusaurus Atom Feed" />
 			<link rel="alternate" type="application/json" href="/blog/feed.json" title="Docusaurus JSON Feed" />

@@ -220,14 +220,14 @@ function DocNavbarItem({ docId, label, docsPluginId, ...props }) {
 	const doc = layoutDoc(docId, docsPluginId);
 	const pageActive = activeDoc?.path === doc?.path;
 	if (doc === null || (doc.unlisted && !pageActive)) return null;
-	return <DefaultNavbarItem exact {...props} isActive={() => pageActive || (!!activeDoc?.sidebar && activeDoc.sidebar === doc.sidebar)} label={label ?? doc.id} to={doc.path} />;
+	return <DefaultNavbarItem exact {...props} data-mm-doc-link={JSON.stringify({ plugin: docsPluginId ?? 'default', docId })} isActive={() => pageActive || (!!activeDoc?.sidebar && activeDoc.sidebar === doc.sidebar)} label={label ?? doc.id} to={doc.path} />;
 }
 
 function DocSidebarNavbarItem({ sidebarId, label, docsPluginId, ...props }) {
 	const { activeDoc, activeVersion } = activeDocContext(docsPluginId);
 	const version = activeVersion ?? latestVersion(docsPluginId);
 	const sidebarLink = version.sidebars[sidebarId].link;
-	return <DefaultNavbarItem exact {...props} isActive={() => activeDoc?.sidebar === sidebarId} label={label ?? sidebarLink.label} to={sidebarLink.path} />;
+	return <DefaultNavbarItem exact {...props} data-mm-sidebar-link={JSON.stringify({ plugin: docsPluginId ?? 'default', sidebarId })} isActive={() => activeDoc?.sidebar === sidebarId} label={label ?? sidebarLink.label} to={sidebarLink.path} />;
 }
 
 function DocsVersionDropdownNavbarItem({ mobile, docsPluginId, dropdownActiveClassDisabled, dropdownItemsBefore = [], dropdownItemsAfter = [], versions: _configs, ...props }) {
@@ -236,11 +236,12 @@ function DocsVersionDropdownNavbarItem({ mobile, docsPluginId, dropdownActiveCla
 	const versionItems = plugin.versions.map((version) => ({ version, label: version.label }));
 	const target = (version) => context.alternateDocVersions[version.name] ?? version.docs.find((doc) => doc.id === version.mainDocId);
 	const displayed = versionItems.find((item) => item.version === context.activeVersion) ?? versionItems.find((item) => item.version.isLast) ?? versionItems[0];
-	const items = [...dropdownItemsBefore, ...versionItems.map(({ version, label }) => ({ label, to: target(version).path, isActive: () => version === context.activeVersion })), ...dropdownItemsAfter];
+	const plugin_ = docsPluginId ?? 'default';
+	const items = [...dropdownItemsBefore, ...versionItems.map(({ version, label }) => ({ label, to: target(version).path, isActive: () => version === context.activeVersion, 'data-mm-version-item': JSON.stringify({ plugin: plugin_, name: version.name }) })), ...dropdownItemsAfter];
 	const dropdownLabel = mobile && items.length > 1 ? translate({ id: 'theme.navbar.mobileVersionsDropdown.label', message: 'Versions' }) : displayed.label;
 	const dropdownTo = mobile && items.length > 1 ? undefined : target(displayed.version).path;
 	if (items.length <= 1) return <DefaultNavbarItem {...props} mobile={mobile} label={dropdownLabel} to={dropdownTo} isActive={dropdownActiveClassDisabled ? () => false : undefined} />;
-	return <DropdownNavbarItem {...props} mobile={mobile} label={dropdownLabel} to={dropdownTo} items={items} isActive={dropdownActiveClassDisabled ? () => false : undefined} />;
+	return <DropdownNavbarItem {...props} {...(!mobile && { 'data-mm-version-toggle': plugin_ })} mobile={mobile} label={dropdownLabel} to={dropdownTo} items={items} isActive={dropdownActiveClassDisabled ? () => false : undefined} />;
 }
 
 export function alternateUrl(locale, fullyQualified) {
@@ -260,6 +261,7 @@ function LocaleDropdownNavbarItem({ mobile, dropdownItemsBefore = [], dropdownIt
 		target: '_self',
 		autoAddBaseUrl: false,
 		className: locale === i18n.currentLocale ? (mobile ? 'menu__link--active' : 'dropdown__link--active') : '',
+		'data-mm-keep-location': '',
 	}));
 	const label = mobile ? translate({ message: 'Languages', id: 'theme.navbar.mobileLanguageDropdown.label' }) : i18n.localeConfigs[i18n.currentLocale].label;
 	return (

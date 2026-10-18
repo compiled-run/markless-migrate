@@ -2,8 +2,13 @@
 // Storage keys and class names are the old site's own, so a visitor's saved choices carry over.
 import classes from './theme-classes.json';
 import prismThemes from './prism-themes.json';
+import docsVersions from './docs-versions.json';
 import sidebarData from './sidebars.json';
 import { init as initSearchPage } from './search-page.ts';
+import { initShowcase } from './showcase.ts';
+import { initJsonViews } from './json-view.ts';
+import { init as initImageZoom } from './image-zoom.ts';
+import { initColorGenerator, onColorModeChange } from './color-generator.ts';
 
 type Choice = 'light' | 'dark' | null;
 type Dict = Record<string, Record<string, string> | undefined>;
@@ -150,6 +155,71 @@ function cycleColorMode(): void {
 	if (next) storage()?.setItem(THEME_KEY, next);
 	else storage()?.removeItem(THEME_KEY);
 	applyColorMode(next);
+	onColorModeChange(next);
+}
+
+// Docs versions: the version a docs page belongs to, else the reader's preferred one (saved when they pick one in
+// the version dropdown or the version banner), else the latest, decides where the navbar's doc links point.
+type DocsVersion = { name: string; label: string; isLast: boolean; path: string; mainDoc?: string; docs: Record<string, string>; sidebars: Record<string, string> };
+const plugins = docsVersions as Record<string, { path: string; versions: DocsVersion[] }>;
+const PREFERRED_KEY = (plugin: string) => `docs-preferred-version-${plugin}${SUFFIX}`;
+const underPath = (path: string, base: string) => {
+	const a = path.replace(/\/$/, '');
+	const b = base.replace(/\/$/, '');
+	return a === b || a.startsWith(b === '' ? '/' : `${b}/`);
+};
+function activeDocsVersion(plugin: string): DocsVersion | undefined {
+	const path = currentPath();
+	const active = Object.entries(plugins)
+		.sort((a, b) => b[1].path.localeCompare(a[1].path))
+		.find(([, data]) => underPath(path, data.path));
+	if (active?.[0] !== plugin) return undefined;
+	const versions = plugins[plugin]!.versions;
+	const latest = versions.find((v) => v.isLast);
+	return [...versions.filter((v) => v !== latest), ...(latest ? [latest] : [])].find((v) => underPath(path, v.path));
+}
+export function docsVersionCandidates(plugin: string): DocsVersion[] {
+	const versions = plugins[plugin]?.versions ?? [];
+	const preferred = versions.find((v) => v.name === storage()?.getItem(PREFERRED_KEY(plugin)));
+	return [activeDocsVersion(plugin), preferred, versions.find((v) => v.isLast) ?? versions[0]].filter((v): v is DocsVersion => Boolean(v));
+}
+function applyDocsVersions(): void {
+	for (const link of document.querySelectorAll<HTMLAnchorElement>('.navbar__inner a')) {
+		const doc = hint(link, 'doc-link');
+		const sidebar = hint(link, 'sidebar-link');
+		const toggle = hint(link, 'version-toggle');
+		if (doc) {
+			const { plugin, docId } = JSON.parse(doc) as { plugin: string; docId: string };
+			const path = docsVersionCandidates(plugin).map((v) => v.docs[docId]).find(Boolean);
+			if (path) link.setAttribute('href', linkHref(path));
+		} else if (sidebar) {
+			const { plugin, sidebarId } = JSON.parse(sidebar) as { plugin: string; sidebarId: string };
+			const path = docsVersionCandidates(plugin)[0]?.sidebars[sidebarId];
+			if (path) link.setAttribute('href', linkHref(path));
+		} else if (toggle && !activeDocsVersion(toggle)) {
+			const shown = docsVersionCandidates(toggle)[0];
+			if (shown?.mainDoc) {
+				link.setAttribute('href', linkHref(shown.mainDoc));
+				link.textContent = shown.label;
+			}
+		}
+	}
+	keepLocation();
+}
+// Version and language links keep the page's ?query#hash.
+function keepLocation(): void {
+	for (const link of document.querySelectorAll<HTMLAnchorElement>('.navbar__inner .dropdown__link, .navbar-sidebar .menu__link')) {
+		if (!hint(link, 'version-item') && !hint(link, 'keep-location')) continue;
+		const base = (link.getAttribute('href') ?? '').replace(/[?#].*$/, '');
+		link.setAttribute('href', `${base}${location.search}${location.hash}`);
+	}
+}
+function savePreferredVersion(link: HTMLAnchorElement): void {
+	const desktop = link.closest('.navbar-sidebar') ? [...document.querySelectorAll<HTMLAnchorElement>('.navbar__inner .dropdown__link')].find((a) => a.pathname === link.pathname && hint(a, 'version-item')) : link;
+	const item = hint(desktop, 'version-item');
+	if (!item) return;
+	const { plugin, name } = JSON.parse(item) as { plugin: string; name: string };
+	storage()?.setItem(PREFERRED_KEY(plugin), name);
 }
 
 // Tabs: a choice is saved per groupId and every tab group with that id follows it; a queryString tab group also
@@ -198,6 +268,7 @@ function selectTab(tab: HTMLElement): void {
 		const url = new URL(window.location.href);
 		url.searchParams.set(key, value);
 		history.replaceState(history.state, '', url);
+		keepLocation();
 	}
 	updateWordWrap();
 }
@@ -274,7 +345,14 @@ function toggleDetails(event: Event, summary: HTMLElement): void {
 
 // Sidebar categories: a collapsed category's items are rendered when it is first opened (from lib/sidebars.json);
 // opening one closes its open siblings (autoCollapseCategories).
-const data = sidebarData as { classes: Record<string, string>; sidebars: Record<string, SidebarItem[]> };
+const data = sidebarData as { classes: Record<string, string>; sidebars: Record<string, SidebarItem[]>; trailingSlash?: boolean };
+// @docusaurus/Link's trailing-slash rule for internal links.
+function linkHref(href: string | undefined): string {
+	if (href === undefined || data.trailingSlash === undefined || !href.startsWith('/')) return href ?? '';
+	const [pathname = '', ...rest] = href.split(/(?=[?#])/);
+	if (pathname === '/') return href;
+	return (data.trailingSlash ? (pathname.endsWith('/') ? pathname : `${pathname}/`) : pathname.replace(/\/$/, '')) + rest.join('');
+}
 function isActive(item: SidebarItem, path: string): boolean {
 	if (item.type === 'link') return samePath(item.href, path);
 	if (item.type === 'category') return samePath(item.href, path) || (item.items ?? []).some((sub) => isActive(sub, path));
@@ -318,7 +396,7 @@ function itemsMarkup(items: SidebarItem[], level: number, tabIndex: number, path
 				const caret = item.href && item.collapsible ? `<button aria-label="${collapsed ? 'Expand' : 'Collapse'} sidebar category '${label}'" aria-expanded="${!collapsed}" type="button" class="clean-btn menu__caret"></button>` : '';
 				const role = item.collapsible && !item.href ? ` role="button" aria-expanded="${!collapsed}"` : '';
 				const children = collapsed ? '' : `<ul class="menu__list" style="display: block; overflow: visible; height: auto;">${itemsMarkup(item.items ?? [], level + 1, 0, path)}</ul>`;
-				return `<li class="${['theme-doc-sidebar-item-category', `theme-doc-sidebar-item-category-level-${level}`, 'menu__list-item', collapsed ? 'menu__list-item--collapsed' : '', item.className ?? ''].filter(Boolean).join(' ')}"><div class="menu__list-item-collapsible${current ? ' menu__list-item-collapsible--active' : ''}"><a class="${linkClass}"${current ? ' aria-current="page"' : ''}${role} tabindex="${tabIndex}" href="${escapeHtml(item.collapsible ? (href ?? '#') : (href ?? ''))}"><span class="${data.classes.categoryLinkLabel}">${label}</span></a>${caret}</div>${children}</li>`;
+				return `<li class="${['theme-doc-sidebar-item-category', `theme-doc-sidebar-item-category-level-${level}`, 'menu__list-item', collapsed ? 'menu__list-item--collapsed' : '', item.className ?? ''].filter(Boolean).join(' ')}"><div class="menu__list-item-collapsible${current ? ' menu__list-item-collapsible--active' : ''}"><a class="${linkClass}"${current ? ' aria-current="page"' : ''}${role} tabindex="${tabIndex}" href="${escapeHtml(item.collapsible ? linkHref(href ?? '#') : linkHref(href))}"><span class="${data.classes.categoryLinkLabel}">${label}</span></a>${caret}</div>${children}</li>`;
 			}
 			return linkMarkup(item, level, tabIndex, path);
 		})
@@ -329,7 +407,7 @@ function linkMarkup(item: SidebarItem, level: number, tabIndex: number, path: st
 	const active = isActive(item, path);
 	const linkClass = ['menu__link', external ? data.classes.menuExternalLink : '', active ? 'menu__link--active' : ''].filter(Boolean).join(' ');
 	const target = external ? ' target="_blank" rel="noopener noreferrer"' : '';
-	return `<li class="${['theme-doc-sidebar-item-link', `theme-doc-sidebar-item-link-level-${level}`, 'menu__list-item', item.className ?? ''].filter(Boolean).join(' ')}"><a class="${linkClass}"${active ? ' aria-current="page"' : ''} tabindex="${tabIndex}"${external ? ` href="${escapeHtml(item.href ?? '')}"${target}` : ` href="${escapeHtml(item.href ?? '')}"`}><span class="${data.classes.linkLabel}">${escapeHtml(item.label)}</span>${external ? externalIcon : ''}</a></li>`;
+	return `<li class="${['theme-doc-sidebar-item-link', `theme-doc-sidebar-item-link-level-${level}`, 'menu__list-item', item.className ?? ''].filter(Boolean).join(' ')}"><a class="${linkClass}"${active ? ' aria-current="page"' : ''} tabindex="${tabIndex}"${external ? ` href="${escapeHtml(item.href ?? '')}"${target}` : ` href="${escapeHtml(linkHref(item.href))}"`}><span class="${data.classes.linkLabel}">${escapeHtml(item.label)}</span>${external ? externalIcon : ''}</a></li>`;
 }
 function sidebarOf(element: Element): SidebarItem[] | undefined {
 	const aside = document.querySelector('aside.theme-doc-sidebar-container');
@@ -337,9 +415,13 @@ function sidebarOf(element: Element): SidebarItem[] | undefined {
 	void element;
 	return key ? data.sidebars[key] : undefined;
 }
-function categoryItem(li: Element): SidebarItem | undefined {
+function categoryPath(li: Element): string[] {
 	const path: string[] = [];
 	for (let at: Element | null = li; at; at = at.parentElement?.closest('li.theme-doc-sidebar-item-category') ?? null) path.unshift(at.querySelector(':scope > .menu__list-item-collapsible > a')?.textContent ?? '');
+	return path;
+}
+function categoryItem(li: Element): SidebarItem | undefined {
+	const path = categoryPath(li);
 	let items = sidebarOf(li);
 	let found: SidebarItem | undefined;
 	for (const label of path) {
@@ -352,7 +434,54 @@ function levelOf(li: Element): number {
 	const match = /theme-doc-sidebar-item-category-level-(\d+)/.exec(li.className);
 	return match ? Number(match[1]) : 1;
 }
-function setCategory(item: Element, collapse: boolean): void {
+// The doc sidebar stays mounted while the reader moves between the pages it lists: the next page gets the same
+// sidebar element back (its open categories, scroll offset and running transitions), with the active link moved.
+const sidebarMemory: { key?: string; aside?: Element; hidden: boolean } = { hidden: false };
+const desktopSidebarKey = () => hint(document.querySelector('aside.theme-doc-sidebar-container'), 'sidebar');
+function restoreSidebar(): void {
+	const aside = document.querySelector('aside.theme-doc-sidebar-container') ?? undefined;
+	const key = desktopSidebarKey();
+	const kept = sidebarMemory.aside;
+	if (!aside || key !== sidebarMemory.key || !kept || kept === aside || isMobile() || !kept.querySelector('nav[aria-label="Docs sidebar"]')) {
+		sidebarMemory.key = key;
+		sidebarMemory.aside = aside;
+		if (kept !== aside) sidebarMemory.hidden = false;
+		return;
+	}
+	const scrolled = aside.querySelector('nav[aria-label="Docs sidebar"]')?.scrollTop ?? 0;
+	hints.set(kept, hints.get(aside) ?? {});
+	aside.replaceWith(kept);
+	const nav = kept.querySelector('nav[aria-label="Docs sidebar"]');
+	if (nav) nav.scrollTop = scrolled;
+	if (sidebarMemory.hidden) setSidebarHidden(true, false);
+	// Styled first, so moving the active link runs its colour transitions as on a sidebar that never left the page.
+	void kept.getBoundingClientRect();
+	if (nav) markActive(nav);
+}
+function markActive(nav: Element): void {
+	const path = currentPath();
+	for (const li of nav.querySelectorAll('li.theme-doc-sidebar-item-link')) {
+		const link = li.querySelector(':scope > a.menu__link');
+		if (!link || link.classList.contains(data.classes.menuExternalLink)) continue;
+		const active = samePath(link.getAttribute('href') ?? undefined, path);
+		link.classList.toggle('menu__link--active', active);
+		if (active) link.setAttribute('aria-current', 'page');
+		else link.removeAttribute('aria-current');
+	}
+	for (const li of nav.querySelectorAll('li.theme-doc-sidebar-item-category')) {
+		const item = categoryItem(li);
+		const link = li.querySelector(':scope > .menu__list-item-collapsible > a.menu__link');
+		if (!item || !link) continue;
+		const active = isActive(item, path);
+		const current = samePath(item.href, path);
+		link.classList.toggle('menu__link--active', active);
+		if (current) link.setAttribute('aria-current', 'page');
+		else link.removeAttribute('aria-current');
+		li.querySelector(':scope > .menu__list-item-collapsible')?.classList.toggle('menu__list-item-collapsible--active', current);
+		if (active && li.classList.contains('menu__list-item--collapsed')) setCategory(li, false);
+	}
+}
+function setCategory(item: Element, collapse: boolean, animate = true): void {
 	const button = item.querySelector(':scope > .menu__list-item-collapsible > button.menu__caret');
 	const roleLink = item.querySelector(':scope > .menu__list-item-collapsible > a[role=button]');
 	let list = item.querySelector(':scope > ul.menu__list') as HTMLElement | null;
@@ -371,7 +500,8 @@ function setCategory(item: Element, collapse: boolean): void {
 	roleLink?.setAttribute('aria-expanded', collapse ? 'false' : 'true');
 	if (!list) return;
 	for (const link of list.querySelectorAll(':scope > li > a, :scope > li > .menu__list-item-collapsible > a')) link.setAttribute('tabindex', collapse ? '-1' : '0');
-	animateCollapsible(list, collapse);
+	if (animate) animateCollapsible(list, collapse);
+	else collapseStyle(list, collapse);
 }
 function toggleCategory(item: Element): void {
 	const collapse = !item.classList.contains('menu__list-item--collapsed');
@@ -406,15 +536,27 @@ function updateTocHighlight(): void {
 
 const EXPAND_ICON =
 	'<svg width="20" height="20" aria-hidden="true" class="EXPAND_ICON"><g fill="#7a7a7a"><path d="M9.992 10.023c0 .2-.062.399-.172.547l-4.996 7.492a.982.982 0 01-.828.454H1c-.55 0-1-.453-1-1 0-.2.059-.403.168-.551l4.629-6.942L.168 3.078A.939.939 0 010 2.528c0-.548.45-.997 1-.997h2.996c.352 0 .649.18.828.45L9.82 9.472c.11.148.172.347.172.55zm0 0"></path><path d="M19.98 10.023c0 .2-.058.399-.168.547l-4.996 7.492a.987.987 0 01-.828.454h-3c-.547 0-.996-.453-.996-1 0-.2.059-.403.168-.551l4.625-6.942-4.625-6.945a.939.939 0 01-.168-.55 1 1 0 01.996-.997h3c.348 0 .649.18.828.45l4.996 7.492c.11.148.168.347.168.55zm0 0"></path></g></svg>';
-function setSidebarHidden(hidden: boolean): void {
-	const aside = document.querySelector('aside.theme-doc-sidebar-container');
-	const sidebar = aside?.querySelector(`.${cls('DocSidebar/Desktop', 'sidebar')}`);
+// Hiding the doc sidebar narrows its container first; the sidebar itself hides, and the expand button appears, once
+// that width transition has ended (at once when motion is reduced). Showing it again is immediate.
+function setSidebarHidden(hidden: boolean, animate = true): void {
+	sidebarMemory.hidden = hidden;
+	const aside = document.querySelector('aside.theme-doc-sidebar-container') as HTMLElement | null;
 	const main = document.querySelector(`main.${cls('DocRoot/Layout/Main', 'docMainContainer')}`);
-	const wrapper = main?.querySelector(':scope > .container');
 	aside?.classList.toggle(cls('DocRoot/Layout/Sidebar', 'docSidebarContainerHidden'), hidden);
-	sidebar?.classList.toggle(cls('DocSidebar/Desktop', 'sidebarHidden'), hidden);
 	main?.classList.toggle(cls('DocRoot/Layout/Main', 'docMainContainerEnhanced'), hidden);
-	wrapper?.classList.toggle(cls('DocRoot/Layout/Main', 'docItemWrapperEnhanced'), hidden);
+	main?.querySelector(':scope > .container')?.classList.toggle(cls('DocRoot/Layout/Main', 'docItemWrapperEnhanced'), hidden);
+	if (!hidden || !aside) return setSidebarContentHidden(false);
+	if (!animate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return setSidebarContentHidden(true);
+	const end = (event: TransitionEvent) => {
+		if (event.target !== aside) return;
+		aside.removeEventListener('transitionend', end);
+		if (sidebarMemory.hidden) setSidebarContentHidden(true);
+	};
+	aside.addEventListener('transitionend', end);
+}
+function setSidebarContentHidden(hidden: boolean): void {
+	const aside = document.querySelector('aside.theme-doc-sidebar-container');
+	aside?.querySelector(`.${cls('DocSidebar/Desktop', 'sidebar')}`)?.classList.toggle(cls('DocSidebar/Desktop', 'sidebarHidden'), hidden);
 	const viewport = aside?.querySelector(`.${cls('DocRoot/Layout/Sidebar', 'sidebarViewport')}`);
 	const expand = viewport?.querySelector(`:scope > .${cls('DocRoot/Layout/Sidebar/ExpandButton', 'expandButton')}`);
 	if (hidden && viewport && !expand) viewport.insertAdjacentHTML('beforeend', `<div class="${cls('DocRoot/Layout/Sidebar/ExpandButton', 'expandButton')}" title="Expand sidebar" aria-label="Expand sidebar" tabindex="0" role="button">${EXPAND_ICON.replace('EXPAND_ICON', cls('DocRoot/Layout/Sidebar/ExpandButton', 'expandButtonIcon'))}</div>`);
@@ -551,6 +693,7 @@ function mobileDropdown(dropdown: Element, label: string, labelIcon: string): st
 	return `<li class="menu__list-item${collapsed ? ' menu__list-item--collapsed' : ''}"><div class="menu__list-item-collapsible"><a href="#" role="button" class="${cls('NavbarItem/DropdownNavbarItem/Mobile', 'dropdownNavbarItemMobile')} menu__link menu__link--sublist">${labelIcon}${label}</a><button aria-label="${collapsed ? 'Expand' : 'Collapse'} the dropdown" aria-expanded="${!collapsed}" type="button" class="clean-btn menu__caret"></button></div>${collapsed ? '' : `<ul class="menu__list" style="display: block; overflow: visible; height: auto;">${list}</ul>`}</li>`;
 }
 const pendingDropdownLists = new WeakMap<Element, string>();
+let keptDrawer: Element | undefined;
 function buildDrawer(nav: Element): void {
 	const inner = nav.querySelector(':scope > .navbar__inner');
 	if (!inner) return;
@@ -581,7 +724,23 @@ function buildDrawer(nav: Element): void {
 	const close = '<svg viewBox="0 0 15 15" width="21" height="21"><g stroke="var(--ifm-color-emphasis-600)" stroke-width="1.2"><path d="M.75.75l13.5 13.5M14.25.75L.75 14.25"></path></g></svg>';
 	const panel = 'theme-layout-navbar-sidebar-panel navbar-sidebar__item menu';
 	const markup = `<div class="theme-layout-navbar-sidebar navbar-sidebar"><div class="navbar-sidebar__brand">${brand}${toggleCopy?.outerHTML ?? ''}<button type="button" aria-label="Close navigation bar" class="clean-btn navbar-sidebar__close">${close}</button></div><div class="navbar-sidebar__items${showSecondary ? ' navbar-sidebar__items--show-secondary' : ''}"><div class="${panel}"${showSecondary ? ' inert=""' : ''}><ul class="menu__list">${primary.join('')}</ul></div><div class="${panel}"${showSecondary ? '' : ' inert=""'}><button type="button" class="clean-btn navbar-sidebar__back">← Back to main menu</button>${secondary}</div></div></div>`;
-	nav.insertAdjacentHTML('beforeend', markup);
+	// The drawer stays mounted across navigations, so a close started by a link click keeps sliding out.
+	const kept = keptDrawer;
+	if (kept && !kept.isConnected) {
+		const fresh = document.createElement('div');
+		fresh.innerHTML = markup;
+		const next = fresh.firstElementChild!;
+		const items = kept.querySelector(':scope > .navbar-sidebar__items');
+		const nextItems = next.querySelector(':scope > .navbar-sidebar__items')!;
+		kept.querySelector(':scope > .navbar-sidebar__brand')?.replaceWith(next.querySelector(':scope > .navbar-sidebar__brand')!);
+		nav.append(kept);
+		void kept.getBoundingClientRect();
+		if (items) {
+			items.className = nextItems.className;
+			items.replaceChildren(...nextItems.childNodes);
+		} else kept.append(nextItems);
+	} else nav.insertAdjacentHTML('beforeend', markup);
+	keptDrawer = nav.querySelector(':scope > .theme-layout-navbar-sidebar') ?? undefined;
 	document.body.style.overflow = 'visible';
 	void pendingDropdownLists;
 	void dropdownLists;
@@ -589,7 +748,8 @@ function buildDrawer(nav: Element): void {
 function blogSidebarMobile(nav: Element): string {
 	const groups = [...nav.querySelectorAll(':scope > [role=group]')];
 	const list = (ul: Element) => `<ul class="menu__list">${[...ul.querySelectorAll(':scope > li > a')].map((a) => `<li class="menu__list-item"><a class="menu__link${a.getAttribute('aria-current') ? ' menu__link--active' : ''}"${a.getAttribute('aria-current') ? ' aria-current="page"' : ''} href="${a.getAttribute('href')}">${a.innerHTML}</a></li>`).join('')}</ul>`;
-	if (groups.length) return groups.map((g) => `<div role="group">${g.querySelector('h3')?.outerHTML ?? ''}${list(g.querySelector('ul')!)}</div>`).join('');
+	const heading = (h3: Element | null) => (h3 ? `<h3 class="${cls('BlogSidebar/Mobile', 'yearGroupHeading')}">${h3.innerHTML}</h3>` : '');
+	if (groups.length) return groups.map((g) => `<div role="group">${heading(g.querySelector('h3'))}${list(g.querySelector('ul')!)}</div>`).join('');
 	const ul = nav.querySelector(':scope > ul');
 	return ul ? list(ul) : '';
 }
@@ -769,46 +929,6 @@ function apiTableRow(event: Event): boolean {
 	return true;
 }
 
-// react-medium-image-zoom: the ghost button sits over the image; it opens the image in a dialog.
-function placeZoomGhosts(): void {
-	for (const wrap of document.querySelectorAll('[data-rmiz]')) {
-		const img = wrap.querySelector('[data-rmiz-content] img');
-		const ghost = wrap.querySelector<HTMLElement>('[data-rmiz-ghost]');
-		if (!img || !ghost) continue;
-		const imgRect = img.getBoundingClientRect();
-		const wrapRect = wrap.getBoundingClientRect();
-		ghost.style.height = `${imgRect.height}px`;
-		ghost.style.left = `${imgRect.left - wrapRect.left}px`;
-		ghost.style.width = `${imgRect.width}px`;
-		ghost.style.top = `${imgRect.top - wrapRect.top}px`;
-	}
-}
-function openZoom(button: HTMLElement): void {
-	const wrap = button.closest('[data-rmiz]');
-	const img = wrap?.querySelector<HTMLImageElement>('[data-rmiz-content] img');
-	if (!img) return;
-	const dialog = document.createElement('dialog');
-	dialog.setAttribute('aria-labelledby', 'rmiz-modal-img');
-	dialog.setAttribute('aria-modal', 'true');
-	dialog.className = 'rmiz-modal';
-	dialog.setAttribute('data-rmiz-modal', '');
-	dialog.innerHTML = `<div data-rmiz-modal-overlay="visible"></div><div data-rmiz-modal-content=""><img alt="${escapeHtml(img.alt)}" src="${escapeHtml(img.currentSrc || img.src)}" data-rmiz-modal-img="" id="rmiz-modal-img" style="width: 100%; height: auto; max-height: 100vh; object-fit: contain;"><button aria-label="Minimize image" data-rmiz-btn-unzoom="" type="button"><svg aria-hidden="true" data-rmiz-btn-unzoom-icon="true" fill="currentColor" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M 14.144531 1.148438 L 9 6.292969 L 9 3 L 8 3 L 8 8 L 13 8 L 13 7 L 9.707031 7 L 14.855469 1.851563 Z M 8 8 L 3 8 L 3 9 L 6.292969 9 L 1.148438 14.144531 L 1.851563 14.855469 L 7 9.707031 L 7 13 L 8 13 Z"></path></svg></button></div>`;
-	document.body.append(dialog);
-	const close = () => {
-		dialog.close();
-		dialog.remove();
-		button.focus();
-	};
-	dialog.addEventListener('click', (event) => {
-		if (!(event.target instanceof Element && event.target.closest('[data-rmiz-modal-img]'))) close();
-	});
-	dialog.addEventListener('cancel', (event) => {
-		event.preventDefault();
-		close();
-	});
-	dialog.showModal();
-}
-
 // react-lite-youtube-embed: preconnect on hover, the player iframe on click.
 let youtubeWarmed = false;
 function warmYoutube(): void {
@@ -863,17 +983,41 @@ function toggleChangelogAuthors(button: HTMLElement): void {
 	button.querySelector('path')?.setAttribute('d', path);
 }
 
-// The community pages' Versions component: the latest canary version, from npm, as the original fetches it.
+// The community pages' Versions component: the latest canary version, from npm, as the original fetches it. Until
+// it answers, the parts that need it wait aside (taken off the page at start).
 function loadCanaryVersion(): void {
-	const placeholders = document.querySelectorAll('span');
-	const target = [...placeholders].find((span) => hint(span, 'canary') === 'version');
-	if (!target) return;
+	const marked = [...document.querySelectorAll('[hidden]')].filter((el) => hint(el, 'canary'));
+	const version = [...document.querySelectorAll('span')].filter((span) => hint(span, 'canary') === 'version');
+	if (!marked.length && !version.length) return;
+	const find = (name: string) => marked.find((el) => hint(el, 'canary') === name);
+	const start = find('unknown-start');
+	const end = find('unknown-end');
+	const unknown: Node[] = [];
+	let anchor: Comment | undefined;
+	if (start && end) {
+		for (let node = start.nextSibling; node && node !== end; node = node.nextSibling) unknown.push(node);
+		anchor = document.createComment('');
+		start.replaceWith(anchor);
+		end.remove();
+	}
+	const known = find('known');
+	known?.remove();
+	const publish = find('publish');
+	const publishAt = publish ? { parent: publish.parentNode!, before: publish.nextSibling } : undefined;
+	publish?.remove();
 	void fetch('https://registry.npmjs.org/@docusaurus/core')
 		.then((res) => res.json())
 		.then((body: { versions: Record<string, unknown>; time: Record<string, string> }) => {
-			if (!target.isConnected) return;
 			const name = Object.keys(body.versions).at(-1)!;
-			target.innerHTML = `Current: <b>${escapeHtml(name)}</b>`;
+			const time = body.time[name];
+			for (const span of version) if (span.isConnected) span.innerHTML = `Current: <b>${escapeHtml(name)}</b>`;
+			if (anchor?.isConnected) {
+				for (const node of unknown) (node as ChildNode).remove();
+				if (known) anchor.replaceWith(document.createRange().createContextualFragment(known.innerHTML));
+				else anchor.remove();
+			}
+			if (time && publishAt?.parent.isConnected) publishAt.parent.insertBefore(document.createRange().createContextualFragment(`The latest canary version that's available on npm is published at <b>${escapeHtml(new Date(time).toLocaleString())}</b>.`), publishAt.before);
+			for (const token of document.querySelectorAll('.language-diff .token-line span')) if (token.textContent?.includes('0.0.0-4922')) token.textContent = token.textContent.replace('0.0.0-4922', name);
 		})
 		.catch(() => undefined);
 }
@@ -915,6 +1059,12 @@ function siteClick(event: Event): void {
 	// React Router keeps the page when a link points at the address already shown (the version dropdown's "Canary").
 	const link = closest(event, 'a[href]') as HTMLAnchorElement | null;
 	if (link && !link.target && link.origin === location.origin && link.pathname === location.pathname && link.search === location.search && !link.hash && link.getAttribute('href') !== '#') event.preventDefault();
+	if (link) savePreferredVersion(link);
+	if (link?.closest('.theme-doc-version-banner')) {
+		const latest = Object.entries(plugins).find(([id]) => activeDocsVersion(id));
+		const last = latest?.[1].versions.find((v) => v.isLast);
+		if (latest && last) storage()?.setItem(PREFERRED_KEY(latest[0]), last.name);
+	}
 	if (closest(event, `a.${cls('SkipToContent', 'skipToContent')}`)) return skipToContent(event);
 	if (closest(event, `.${cls('AnnouncementBar', 'announcementBarClose')}`)) return dismissAnnouncement();
 	if (closest(event, `.${cls('ColorModeToggle', 'toggle')} button`)) return cycleColorMode();
@@ -969,8 +1119,6 @@ function siteClick(event: Event): void {
 	const tocButton = closest(event, `button.${cls('TOCCollapsible/CollapseButton', 'tocCollapsibleButton')}`);
 	if (tocButton) return toggleTocCollapsible(tocButton);
 	if (apiTableRow(event)) return;
-	const zoom = closest(event, '[data-rmiz-btn-zoom]');
-	if (zoom) return openZoom(zoom);
 	const youtube = closest(event, 'article.yt-lite');
 	if (youtube) return playYoutube(youtube);
 	const authors = closest(event, `button.${cls('ChangelogAuthors', 'toggleButton')}`);
@@ -1015,16 +1163,26 @@ function pageInit(): void {
 	if (storage()?.getItem(DISMISS_KEY) === 'true') document.querySelector('.theme-announcement-bar')?.remove();
 	codeDark = false;
 	applyColorMode(choice());
+	// The navbar's body-scroll lock (useLockBodyScroll) writes the unlocked value as soon as it mounts.
+	if (document.querySelector('nav.navbar') && !document.querySelector('nav.navbar-sidebar--show')) document.body.style.overflow = 'visible';
+	restoreSidebar();
+	applyDocsVersions();
 	applyWindowSize();
 	queueMicrotask(checkLazyImages);
 	updateWordWrap();
 	lastScrollY = window.scrollY;
 	updateTocHighlight();
-	placeZoomGhosts();
 	watchAvatars(document);
 	loadCanaryVersion();
 	loadCanny();
 	initSearchPage();
+	initShowcase();
+	initJsonViews(hint);
+	initImageZoom();
+	initColorGenerator((mode) => {
+		storage()?.setItem(THEME_KEY, mode);
+		applyColorMode(mode);
+	});
 }
 
 export function siteBoot(): void {
@@ -1044,7 +1202,6 @@ export function siteBoot(): void {
 	window.addEventListener('scroll', checkLazyImages, { passive: true });
 	window.addEventListener('resize', checkLazyImages, { passive: true });
 	window.addEventListener('resize', updateWordWrap, { passive: true });
-	window.addEventListener('resize', placeZoomGhosts, { passive: true });
 	window.addEventListener('scroll', onScroll, { passive: true });
 	document.addEventListener('scroll', updateTocHighlight);
 	document.addEventListener('mouseover', (event) => {
@@ -1052,6 +1209,7 @@ export function siteBoot(): void {
 	});
 	// Docusaurus loads DocSearch's code when the pointer reaches the search button; here it loads at idle, so no click waits on it.
 	requestIdleCallback(() => void import('./search.ts').then((search) => search.load()));
+	window.addEventListener('hashchange', keepLocation);
 	window.addEventListener('hashchange', () => {
 		if (document.getElementById(decodeURIComponent(window.location.hash.slice(1)))) document.querySelector(`nav.${cls('Navbar/Layout', 'navbarHideable')}`)?.classList.add(cls('Navbar/Layout', 'navbarHidden'));
 	});

@@ -44,8 +44,17 @@ async function old(): Promise<void> {
 	);
 }
 
+// The new app is built from the old site's sources by its importer (pages, head data, and the files it copies),
+// then by Markless.
 async function next(): Promise<void> {
+	run(process.execPath, ['tooling/import.mjs'], app, { DOCUSAURUS_WEBSITE: website });
 	run('npm', ['run', 'build'], app, { NITRO_PRESET: 'vercel' });
+	// The old host's own rule for the site's static HTML files: `/x` serves `x.html` when that file exists.
+	const configFile = join(app, '.vercel/output/config.json');
+	const config = JSON.parse(await readFile(configFile, 'utf8')) as { routes: Record<string, unknown>[] };
+	const filesystem = config.routes.findIndex((route) => route.handle === 'filesystem');
+	config.routes.splice(filesystem + 1, 0, { src: '^/(.+?)/?$', dest: '/$1.html', check: true });
+	await writeFile(configFile, JSON.stringify(config, null, 2));
 }
 
 async function front(): Promise<void> {

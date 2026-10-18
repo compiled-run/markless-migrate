@@ -127,7 +127,7 @@ function applyTrailingSlash(path, trailingSlash) {
 }
 
 // @docusaurus/Link: a plain <a>; external targets open in a new tab, internal ones get the base URL.
-export function Link({ isNavLink, to, href, activeClassName, isActive, 'data-noBrokenLinkCheck': _skip, autoAddBaseUrl = true, exact, ...props }) {
+export function Link({ isNavLink, to, href, activeClassName, activeStyle, isActive, 'data-noBrokenLinkCheck': _skip, autoAddBaseUrl = true, exact, ...props }) {
 	const target = to || href;
 	const internal = isInternalUrl(target);
 	const withoutProtocol = target?.replace('pathname://', '');
@@ -143,7 +143,7 @@ export function Link({ isNavLink, to, href, activeClassName, isActive, 'data-noB
 		const path = useContext().path;
 		const active = isActive ? isActive(null, { pathname: path }) : exact ? samePath(link, path) : path.startsWith(link.replace(/\/$/, '')) && (path.length === link.replace(/\/$/, '').length || path[link.replace(/\/$/, '').length] === '/');
 		const className = clsx(props.className, active && (activeClassName ?? 'active'));
-		return <a {...(active ? { 'aria-current': 'page' } : {})} {...props} className={className} href={link} />;
+		return <a {...(active ? { 'aria-current': 'page' } : {})} {...props} className={className} style={active && activeStyle ? { ...props.style, ...activeStyle } : props.style} href={link} />;
 	}
 	return <a {...props} href={link} />;
 }

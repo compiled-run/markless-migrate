@@ -28,7 +28,12 @@ export async function loadSite() {
 		for (const rule of config?.module?.rules ?? []) rules.push({ plugin, include: rule.include ?? [''], use: rule.use });
 	}
 	rules.sort((a, b) => (a.include[0] === '') - (b.include[0] === ''));
-	return { context, plugins, routes: leaves, routeTree: routes, globalData, rules };
+	const { createSiteMetadata } = siteRequire('@docusaurus/core/lib/server/siteMetadata.js');
+	const siteMetadata = createSiteMetadata({ plugins, siteVersion: context.siteVersion });
+	const { generateRoutesCode } = siteRequire('@docusaurus/core/lib/server/codegen/codegenRoutes.js');
+	const { registry } = generateRoutesCode(routes);
+	const sortedRegistry = Object.entries(registry).sort((a, b) => a[0].localeCompare(b[0]));
+	return { context, plugins, routes: leaves, routeTree: routes, globalData, rules, siteMetadata, registry: sortedRegistry };
 }
 
 // `~blog/...`, `~docs/...` and `@generated/...` point into the generated files the plugins just wrote.

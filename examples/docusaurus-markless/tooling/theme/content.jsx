@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { clsx, useContext, styles, ThemeClassNames, translate, Translate, Link, Heading, useAnchorTargetClassName, themeConfig, IconCopy, IconSuccess, Head, BrowserOnly, ThemedImage, isInternalUrl } from './core.jsx';
 import { TOCItems } from './docs.jsx';
+import Playground from './Playground.jsx';
 import { isElement, toArray, Fragment } from '../source/h.mjs';
 import { website } from '../source/site.mjs';
 
@@ -58,7 +59,7 @@ export function tokenStyle(dict, { types, empty }) {
 	return Object.assign(empty != null ? { display: 'inline-block' } : {}, ...types.map((type) => dict[type]));
 }
 
-function tokenize(code, language) {
+export function tokenize(code, language) {
 	const grammar = Prism.languages[language];
 	if (grammar == null) return normalizeTokens([code]);
 	const env = { code, grammar, language, tokens: [] };
@@ -239,6 +240,7 @@ function CodeBlockElement({ children, className }) {
 }
 
 export function CodeBlock({ children, ...props }) {
+	if (props.metastring?.split(/\s+/).includes('live') && (typeof children === 'undefined' || typeof children === 'string')) return <Playground {...props}>{children}</Playground>;
 	const list = toArray(children);
 	const text = list.some((el) => isElement(el)) ? null : Array.isArray(children) ? children.join('') : children;
 	if (typeof text === 'string') return <CodeBlockString {...props}>{text}</CodeBlockString>;
@@ -257,6 +259,13 @@ const adIcons = {
 	warning: { viewBox: '0 0 16 16', d: 'M8.893 1.5c-.183-.31-.52-.5-.887-.5s-.703.19-.886.5L.138 13.499a.98.98 0 0 0 0 1.001c.193.31.53.501.886.501h13.964c.367 0 .704-.19.877-.5a1.03 1.03 0 0 0 .01-1.002L8.893 1.5zm.133 11.497H6.987v-2.003h2.039v2.003zm0-3.004H6.987V5.987h2.039v4.006z' },
 	danger: { viewBox: '0 0 12 16', d: 'M5.05.31c.81 2.17.41 3.38-.52 4.31C3.55 5.67 1.98 6.45.9 7.98c-1.45 2.05-1.7 6.53 3.53 7.7-2.2-1.16-2.67-4.52-.3-6.61-.61 2.03.53 3.33 1.94 2.86 1.39-.47 2.3.53 2.27 1.67-.02.78-.31 1.44-1.13 1.81 3.42-.59 4.78-3.42 4.78-5.56 0-2.84-2.53-3.22-1.25-5.61-1.52.13-2.03 1.13-1.89 2.75.09 1.08-1.02 1.8-1.86 1.33-.67-.41-.66-1.19-.06-1.78C8.18 5.31 8.68 2.45 5.05.32L5.03.3l.02.01z' },
 };
+export function AdmonitionIcon({ type, ...props }) {
+	return (
+		<svg viewBox={adIcons[type].viewBox} {...props}>
+			<path fillRule="evenodd" d={adIcons[type].d}></path>
+		</svg>
+	);
+}
 const adClasses = { note: 'alert alert--secondary', tip: 'alert alert--success', info: 'alert alert--info', warning: 'alert alert--warning', danger: 'alert alert--danger' };
 
 function AdmonitionLayout({ type, icon, title, children, className, id }) {
@@ -288,13 +297,8 @@ function MyCustomAdmonition(props) {
 export function Admonition(props) {
 	if (props.type === 'my-custom-admonition') return <MyCustomAdmonition {...props} />;
 	const type = adIcons[props.type] ? props.type : 'info';
-	const icon = adIcons[type];
 	const defaults = {
-		icon: (
-			<svg viewBox={icon.viewBox}>
-				<path fillRule="evenodd" d={icon.d}></path>
-			</svg>
-		),
+		icon: <AdmonitionIcon type={type} />,
 		title: <Translate id={`theme.admonition.${type}`}>{type}</Translate>,
 	};
 	return (

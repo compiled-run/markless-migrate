@@ -2,6 +2,7 @@
 // page (breadcrumbs, content, footer, pagination, table of contents), generated category index pages and doc cards.
 import { clsx, useContext, styles, ThemeClassNames, translate, Translate, Link, withBaseUrl, isInternalUrl, samePath, themeConfig, siteConfig, Head, Heading, IconArrow, IconHome, IconEdit, IconExternalLink } from './core.jsx';
 import { BackToTopButton, Logo, PageMetadata, SearchMetadata } from './chrome.jsx';
+import { Admonition } from './content.jsx';
 
 export const isActiveSidebarItem = (item, activePath) => {
 	if (item.type === 'link') return item.href !== undefined && samePath(item.href, activePath);
@@ -404,9 +405,33 @@ export function TagsListInline({ tags }) {
 	);
 }
 
-function ContentVisibility({ metadata }) {
-	if (metadata.unlisted || metadata.frontMatter?.unlisted || metadata.frontMatter?.draft) throw new Error(`unlisted/draft banners are not ported (${metadata.permalink})`);
-	return null;
+export function Unlisted({ className }) {
+	return (
+		<>
+			<Head>
+				<meta name="robots" content="noindex, nofollow" />
+			</Head>
+			<Admonition type="warning" title={<Translate id="theme.contentVisibility.unlistedBanner.title">Unlisted page</Translate>} className={clsx(className, ThemeClassNames.common.unlistedBanner)}>
+				<Translate id="theme.contentVisibility.unlistedBanner.message">This page is unlisted. Search engines will not index it, and only users having a direct link can access it.</Translate>
+			</Admonition>
+		</>
+	);
+}
+export function Draft({ className }) {
+	return (
+		<Admonition type="warning" title={<Translate id="theme.contentVisibility.draftBanner.title">Draft page</Translate>} className={clsx(className, ThemeClassNames.common.draftBanner)}>
+			<Translate id="theme.contentVisibility.draftBanner.message">This page is a draft. It will only be visible in dev and be excluded from the production build.</Translate>
+		</Admonition>
+	);
+}
+export function ContentVisibility({ metadata }) {
+	const { unlisted, frontMatter = {} } = metadata;
+	return (
+		<>
+			{(unlisted || frontMatter.unlisted) && <Unlisted />}
+			{frontMatter.draft && <Draft />}
+		</>
+	);
 }
 
 // @theme/DocItem: the doc's MDX content in its layout.
@@ -560,3 +585,85 @@ export function DocCategoryGeneratedIndexPage({ categoryGeneratedIndex: index })
 }
 
 export { SearchMetadata, siteConfig };
+
+function TagsListByLetter({ tags }) {
+	const groups = {};
+	for (const tag of Object.values(tags)) (groups[tag.label[0].toUpperCase()] ??= []).push(tag);
+	const letters = Object.entries(groups)
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([letter, list]) => ({ letter, tags: list.sort((a, b) => a.label.localeCompare(b.label)) }));
+	const s = styles('TagsListByLetter');
+	return (
+		<section className="margin-vert--lg">
+			{letters.map((entry) => (
+				<article>
+					<Heading as="h2" id={entry.letter}>
+						{entry.letter}
+					</Heading>
+					<ul className="padding--none">
+						{entry.tags.map((tag) => (
+							<li className={s.tag}>
+								<Tag {...tag} />
+							</li>
+						))}
+					</ul>
+					<hr />
+				</article>
+			))}
+		</section>
+	);
+}
+export { TagsListByLetter };
+
+export function DocTagsListPage({ tags }) {
+	const title = translate({ id: 'theme.tags.tagsPageTitle', message: 'Tags' });
+	return (
+		<>
+			<PageMetadata title={title} />
+			<SearchMetadata tag="doc_tags_list" />
+			<div className="container margin-vert--lg">
+				<div className="row">
+					<main className="col col--8 col--offset-2">
+						<Heading as="h1">{title}</Heading>
+						<TagsListByLetter tags={tags} />
+					</main>
+				</div>
+			</div>
+		</>
+	);
+}
+
+export function DocTagDocListPage({ tag }) {
+	const n = tag.count === 1 ? 'One doc tagged' : `${tag.count} docs tagged`;
+	const title = translate({ id: 'theme.docs.tagDocListPageTitle', message: '{nDocsTagged} with "{tagName}"' }, { nDocsTagged: n, tagName: tag.label });
+	return (
+		<>
+			<PageMetadata title={title} description={tag.description} />
+			<SearchMetadata tag="doc_tag_doc_list" />
+			<div className="container margin-vert--lg">
+				<div className="row">
+					<main className="col col--8 col--offset-2">
+						{tag.unlisted && <Unlisted />}
+						<header className="margin-bottom--xl">
+							<Heading as="h1">{title}</Heading>
+							{tag.description && <p>{tag.description}</p>}
+							<Link href={tag.allTagsPath}>
+								<Translate id="theme.tags.tagsPageLink">View all tags</Translate>
+							</Link>
+						</header>
+						<section className="margin-vert--lg">
+							{tag.items.map((doc) => (
+								<article className="margin-vert--lg">
+									<Link to={doc.permalink}>
+										<Heading as="h2">{doc.title}</Heading>
+									</Link>
+									{doc.description && <p>{doc.description}</p>}
+								</article>
+							))}
+						</section>
+					</main>
+				</div>
+			</div>
+		</>
+	);
+}
