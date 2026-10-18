@@ -10,7 +10,10 @@ export default defineConfig({
 	plugins: [markless(), router()],
 	nitro: {
 		compressPublicAssets: true,
-		handlers: [{ route: '/**', middleware: true, handler: './server/html-attributes.ts' }],
-		routeRules: Object.fromEntries(oldRoutes.paths.map((path) => [path, { proxy: `${old}${path}` }])),
+		routeRules: {
+			// The homepage is the same for every visitor; the CDN keeps it an hour, as the sponsors it lists change.
+			'/': { isr: 3600 },
+			...Object.fromEntries(oldRoutes.paths.map((path) => [path, { proxy: `${old}${path}` }])),
+		},
 	},
 });

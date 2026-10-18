@@ -4,7 +4,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vp dev",
-		"build": "rm -rf public/islands public/assets && vite build -c islands.config.ts && vp build",
+		"build": "rm -rf public/islands public/assets && vp build -c islands.config.ts && vp build",
 		"preview": "vp preview",
 		"check": "vp check",
 		"doctor": "node scripts/markless-doctor.mjs",
@@ -12,19 +12,22 @@
 		"test": "vp test"
 	},
 	"dependencies": {
-		"@markless/core": "^0.4.0",
-		"@markless/router": "^0.4.0",
+		"@markless/core": "0.5.0",
+		"@markless/router": "0.5.0",
 		"@rive-app/canvas-lite": "2.35.1",
 		"focus-trap": "8.2.2",
 		"mark.js": "8.11.1",
 		"minisearch": "7.2.0",
 		"nitro": "3.0.260429-beta",
-		"vite-plus": "0.1.20"
+		"vite-plus": "0.3.1"
 	},
 	"devDependencies": {
-		"@markless/analyzer": "^0.4.0",
-		"@markless/typescript-plugin": "^0.4.0",
+		"@markless/analyzer": "0.5.0",
+		"@markless/typescript-plugin": "0.5.0",
 		"typescript": "^5.9.3",
-		"vite": "^8.0.16"
+		"vite": "npm:@voidzero-dev/vite-plus-core@0.3.1"
+	},
+	"overrides": {
+		"vite": "$vite"
 	}
 }

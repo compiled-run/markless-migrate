@@ -3,13 +3,8 @@ import type { Children } from '@markless/core';
 import stylesheet from './styles/vite.css?url';
 import bannerBackground from './assets/vite/footer-background.jpg';
 
-// Markless 0.4.0 reads <Html> attributes only from document.tsx, so the router's hook is exported by hand.
-export function __marklessRouterHtmlAttributes() {
-	return { lang: 'en-US', dir: 'ltr', 'data-variant': 'vite', 'data-theme': 'dark' };
-}
-
 export default function Document({ children }: { readonly children?: Children }) @{
-	<Html>
+	<Html lang="en-US" dir="ltr" data-variant="vite" data-theme="dark">
 		<head>
 			<meta charset="utf-8" />
 			<meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -18,7 +13,7 @@ export default function Document({ children }: { readonly children?: Children })
 			<link rel="preload stylesheet" href={stylesheet} as="style" />
 			<link rel="preconnect" href="https://fonts.googleapis.com" />
 			<link rel="preload" href={bannerBackground} as="image" />
-			<script>{'if(localStorage.getItem(`banner-dismissed-viteconf-2026`)===`true`)document.documentElement.classList.add(`banner-dismissed`);'}</script>
+			<script>{'if(localStorage.getItem("banner-dismissed-viteconf-2026")==="true")document.documentElement.classList.add("banner-dismissed");'}</script>
 			<link rel="icon" type="image/svg+xml" href="/logo-without-border.svg" />
 			<link rel="alternate" type="application/rss+xml" href="/blog.rss" />
 			<link rel="me" href="https://m.webtoo.ls/@vite" />
@@ -31,8 +26,8 @@ export default function Document({ children }: { readonly children?: Children })
 			<meta name="twitter:card" content="summary_large_image" />
 			<meta name="twitter:site" content="@vite_js" />
 			<meta name="theme-color" content="#646cff" />
-			<script id="check-dark-mode">{'(function(){let e=localStorage.getItem(`vitepress-theme-appearance`)||`auto`,t=window.matchMedia(`(prefers-color-scheme: dark)`).matches;if(!e||e===`auto`?t:e===`dark`)document.documentElement.classList.add(`dark`)})();'}</script>
-			<script id="check-mac-os">{'document.documentElement.classList.toggle(`mac`,/Mac|iPhone|iPod|iPad/i.test(navigator.platform));'}</script>
+			<script id="check-dark-mode">{'(function(){let e=localStorage.getItem("vitepress-theme-appearance")||"auto",t=window.matchMedia("(prefers-color-scheme: dark)").matches;if(!e||e==="auto"?t:e==="dark")document.documentElement.classList.add("dark")})();'}</script>
+			<script id="check-mac-os">{'document.documentElement.classList.toggle("mac",/Mac|iPhone|iPod|iPad/i.test(navigator.platform));'}</script>
 			<link rel="modulepreload" href="/islands/page.js" />
 			<link rel="canonical" href="https://vite.dev" />
 			<link href="/llms.txt" rel="describedby" />

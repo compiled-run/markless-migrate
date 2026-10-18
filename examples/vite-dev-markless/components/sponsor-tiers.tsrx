@@ -13,13 +13,13 @@ export default function SponsorTiers() @{
 					</div>
 					<div data-v-755ff878="" class={tier.gridClass}>
 						@for (const sponsor of tier.items; key sponsor.url) {
-							<a data-v-755ff878="" href={sponsor.url} target="_blank" rel="noopener noreferrer" class={sponsor.linkClass}>
-								<img data-v-755ff878="" src={sponsor.img} alt={sponsor.name} class={sponsor.logoClass} />
+							<a data-v-755ff878="" href={sponsor.url} target="_blank" rel="noopener noreferrer" class={tier.linkClass}>
+								<img data-v-755ff878="" src={sponsor.img} alt={sponsor.name} class={tier.logoClass} />
 								<span data-v-755ff878="" class="spsr-name ml-5">{sponsor.name}</span>
 							</a>;
 						}
 						@for (const cell of tier.empty; key cell.key) {
-							<div data-v-755ff878="" class={cell.emptyClass} aria-hidden="true"></div>;
+							<div data-v-755ff878="" class={tier.emptyClass} aria-hidden="true"></div>;
 						}
 					</div>
 				</div>;

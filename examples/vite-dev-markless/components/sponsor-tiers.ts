@@ -22,8 +22,11 @@ const GRID: Record<number, string> = {
 export interface Tier {
 	readonly tier: string;
 	readonly gridClass: string;
-	readonly items: readonly (Sponsor & { readonly linkClass: string; readonly logoClass: string })[];
-	readonly empty: readonly { readonly key: number; readonly emptyClass: string }[];
+	readonly linkClass: string;
+	readonly logoClass: string;
+	readonly emptyClass: string;
+	readonly items: readonly Sponsor[];
+	readonly empty: readonly { readonly key: number }[];
 }
 
 function tier(name: string, size: Size, items: readonly Sponsor[]): Tier {
@@ -33,13 +36,11 @@ function tier(name: string, size: Size, items: readonly Sponsor[]): Tier {
 	return {
 		tier: name,
 		gridClass: `grid *:border-r *:border-b *:border-nickel ${GRID[cols] ?? 'grid-cols-1'}`,
-		// Row classes ride on each row: a nested @for drops attributes that read the outer row.
-		items: items.map((sponsor) => ({
-			...sponsor,
-			linkClass: `spsr-link flex items-center justify-center px-8 transition-opacity opacity-85 hover:opacity-100 ${padding}`,
-			logoClass: `spsr-logo object-contain ${logoSize}`,
-		})),
-		empty: Array.from({ length: remainder === 0 ? 0 : cols - remainder }, (_, i) => ({ key: i + 1, emptyClass: `spsr-link flex items-center justify-center px-8 ${padding}` })),
+		linkClass: `spsr-link flex items-center justify-center px-8 transition-opacity opacity-85 hover:opacity-100 ${padding}`,
+		logoClass: `spsr-logo object-contain ${logoSize}`,
+		emptyClass: `spsr-link flex items-center justify-center px-8 ${padding}`,
+		items,
+		empty: Array.from({ length: remainder === 0 ? 0 : cols - remainder }, (_, i) => ({ key: i + 1 })),
 	};
 }
 
