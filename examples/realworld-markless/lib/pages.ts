@@ -259,7 +259,11 @@ export async function bootHome(els: HomeEls): Promise<void> {
   }
   const params = new URLSearchParams(search);
   const feed = params.get("feed");
+  // The CDN serves / for every query, so the active feed is set from the URL the browser has.
+  els.feedToggle?.querySelector('a.nav-link[href="/"]')?.classList.toggle("active", !tag && feed !== "following");
   if (feed === "following" && !signedIn) {
+    // Angular's article list asks for the global feed before the home page sends a signed-out visitor to /login.
+    void api("GET", `/articles?limit=${LIMIT}&offset=0`);
     go("/login");
     return;
   }
