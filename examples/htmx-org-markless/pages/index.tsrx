@@ -5,7 +5,7 @@ export default function Home() @{
 	<div style="display: contents">
 		<SiteHeader />
 		<main class="c content ">
-			<script type="application/javascript">{'var q = window.location.search; if (q == `?wuw=true` || q == `?suw=true`) document.body.classList.add(`lmao`); if (q == `?uwu=true`) document.body.classList.add(`kawaii`); if (q == `?ads=true`) document.body.classList.add(`ads`);'}</script>
+			<script type="application/javascript">{'var q = window.location.search; if (q == "?wuw=true" || q == "?suw=true") document.body.classList.add("lmao"); if (q == "?uwu=true") document.body.classList.add("kawaii"); if (q == "?ads=true") document.body.classList.add("ads");'}</script>
 			<div class="ad" style="margin-bottom: 30px">
 				{" "}
 				<a href="https://swag.htmx.org">
@@ -44,7 +44,7 @@ export default function Home() @{
 					{" "}
 				</div>
 			</div>
-			<script>{'setTimeout(function () { document.querySelector(`.dark-hero`).classList.add(`appear`); }, 100);'}</script>
+			<script>{'setTimeout(function () { document.querySelector(".dark-hero").classList.add("appear"); }, 100);'}</script>
 			<div class="ad">
 				{" "}
 				<a href="https://swag.htmx.org">

@@ -1,8 +1,7 @@
-// A plain plugin function: importing definePlugin from 'nitro' leaves the import unbundled in the Vercel build.
-import type { NitroAppPlugin } from "nitro/types";
+import { definePlugin } from "nitro";
 
 // htmx.org (Netlify) answers a page path without its trailing slash with a 301 to the slash form; so does the port.
-const plugin: NitroAppPlugin = (nitro) => {
+export default definePlugin((nitro) => {
   const fetch = nitro.fetch;
   nitro.fetch = async (request) => {
     const url = new URL(request.url);
@@ -21,6 +20,4 @@ const plugin: NitroAppPlugin = (nitro) => {
     }
     return fetch(request);
   };
-};
-
-export default plugin;
+});
