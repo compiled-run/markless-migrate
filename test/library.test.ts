@@ -351,3 +351,12 @@ export function Grid({ rows, id }) {
 	assert.match(tsrx, /readonly filter\?: string \| \{\n\t\t\treadonly component\?: \(\(value: \{/);
 	assert.match(await readFile(join(app, 'lib/parity/ag-grid-react/behaviour.md'), 'utf8'), /Members read on ref: api\.ensureIndexVisible\(\), api\.getRowNode\(\), api\.getRowNode\(\)\.setSelected\(\)/);
 });
+
+test('parity --route / finds a webpack app\'s libraries: the page is linked to the entry that renders the app', async () => {
+	const file = await scanLibraries(new URL('./source-fixtures/webpack', import.meta.url).pathname);
+	assert.deepEqual(exp(file, 'ag-grid-react', 'AgGridReact').sites.map((s) => s.routes), [['/', '/admin/']]);
+	const app = await newApp();
+	const result = await writeParity(file, 'ag-grid-react', { newApp: app, routes: ['/'] });
+	assert.equal(result.sites, 1);
+	await assert.rejects(writeParity(file, 'ag-grid-react', { newApp: app, routes: ['/panel.html'] }), /is not used on \/panel\.html/);
+});

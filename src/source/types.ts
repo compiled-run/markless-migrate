@@ -12,6 +12,8 @@ export interface SourceRoute {
 	auth?: string[];
 	kind: 'page' | 'endpoint';
 	methods?: string[];
+	/** Modules the page loads that a bundler builds from (webpack entries): what they render is this page's. */
+	entries?: string[];
 }
 
 export type NondeterminismKind = 'time' | 'random' | 'flag' | 'ads' | 'analytics' | 'personalisation';

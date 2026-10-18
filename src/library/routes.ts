@@ -27,15 +27,17 @@ export async function componentRoutes(ctx: Context, routes: readonly SourceRoute
 	const layoutFiles = [...new Set([...routes.map((r) => r.file), ...components.filter((c) => c.kind === 'layout').map((c) => c.file), ...ctx.project.files.filter((f) => LAYOUT_ROUTE.test(f) && routeDirs.some((d) => d === posix.dirname(f) || d.startsWith(`${posix.dirname(f)}/`)))])].filter((f) => LAYOUT_ROUTE.test(f) || components.some((c) => c.file === f && c.kind === 'layout'));
 	for (const file of layoutFiles) {
 		const dir = posix.dirname(file);
-		const below = pages.filter((r) => (dir === '.' ? true : r.file.startsWith(`${dir}/`)) || /(^|\/)__root\./.test(file)).map((r) => r.path);
+		// An HTML page is rendered by the scripts it loads, not by a layout that sits beside it.
+		const below = pages.filter((r) => !/\.html?$/.test(r.file) && ((dir === '.' ? true : r.file.startsWith(`${dir}/`)) || /(^|\/)__root\./.test(file))).map((r) => r.path);
 		if (below.length) routeFiles.set(file, [...new Set([...(routeFiles.get(file) ?? []), ...below])]);
 	}
 	// The browser entry (what index.html loads, or a conventional main file) is around every page.
 	const html = await ctx.project.read('index.html');
 	const entries = new Set([...html.matchAll(/<script[^>]*\ssrc=["']\/?([^"']+)["']/g)].map((m) => m[1]!).filter((f) => ctx.project.has(f)));
-	if (!entries.size) for (const f of ctx.project.files) if (/^(src\/)?(main|entry-client|index)\.[jt]sx$/.test(f)) entries.add(f);
+	if (!entries.size && !pages.some((r) => r.entries)) for (const f of ctx.project.files) if (/^(src\/)?(main|entry-client|index)\.[jt]sx$/.test(f)) entries.add(f);
 	const all = pages.map((r) => r.path);
 	for (const f of entries) if (all.length) routeFiles.set(f, all);
+	for (const r of pages) for (const f of r.entries ?? []) routeFiles.set(f, [...new Set([...(routeFiles.get(f) ?? []), r.path])]);
 	for (const [file, paths] of routeFiles) {
 		for (const c of components) if (c.file === file) add(c.id, paths);
 		const mod = await ctx.module(file);

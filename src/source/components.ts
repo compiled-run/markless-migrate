@@ -184,6 +184,8 @@ export async function scanComponents(ctx: Context, routes: SourceRoute[]): Promi
 					if (name && isPascal(name.split('.')[0]!)) tags.push(name);
 				}
 				if (n.type === 'CallExpression' && /^(React\.)?createElement$|^h$|^jsx$/.test(memberName(n.callee) ?? '') && n.arguments[0]?.type === 'Identifier') tags.push(n.arguments[0].name);
+				// A component handed to a library as data renders where the library puts it: `{ cellRenderer: Badge }`.
+				if (n.type === 'Property' && n.value?.type === 'Identifier' && isPascal(n.value.name)) tags.push(n.value.name);
 			});
 			for (const tag of new Set(tags)) link(def.id, await resolveName(mod, tag));
 		}
@@ -216,6 +218,24 @@ export async function scanComponents(ctx: Context, routes: SourceRoute[]): Promi
 		const targets = (await Promise.all([...named].filter((name) => !local.has(name)).map((name) => resolveName(mod, name)))).filter((d): d is Def => Boolean(d));
 		if (!targets.length) continue;
 		const owner: Def = { id: `${file}#Route`, name: 'Route', file, line, node: undefined };
+		routeOwners.push(owner);
+		for (const t of targets) link(owner.id, t);
+	}
+	// A bundler entry with no component of its own renders the app's root: `createRoot(el).render(<App />)`.
+	for (const file of new Set(routes.flatMap((r) => r.entries ?? []))) {
+		if (byFile.get(file)?.length) continue;
+		const mod = mods.get(file) ?? (await ctx.module(file));
+		if (!mod) continue;
+		const tags = new Set<string>();
+		let line = 0;
+		walk(mod.program, (n) => {
+			if (n.type !== 'JSXOpeningElement' || n.name.type !== 'JSXIdentifier' || !isPascal(n.name.name)) return;
+			tags.add(n.name.name);
+			line ||= mod.line(n.start);
+		});
+		const targets = (await Promise.all([...tags].map((name) => resolveName(mod, name)))).filter((d): d is Def => Boolean(d));
+		if (!targets.length) continue;
+		const owner: Def = { id: `${file}#Entry`, name: 'Entry', file, line, node: undefined };
 		routeOwners.push(owner);
 		for (const t of targets) link(owner.id, t);
 	}

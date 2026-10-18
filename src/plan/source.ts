@@ -60,7 +60,7 @@ export function stepRoutes(source: Pick<SourceInventory, 'routes' | 'components'
 	const pages = source.routes.filter((r) => r.kind === 'page');
 	const below = (file: string) => {
 		const dir = file.includes('/') ? file.slice(0, file.lastIndexOf('/') + 1) : '';
-		return pages.filter((r) => r.file.startsWith(dir));
+		return pages.filter((r) => r.file.startsWith(dir) && !/\.html?$/.test(r.file));
 	};
 	const byId = new Map(source.components.map((c) => [c.id, c]));
 	const files = new Set<string>();
@@ -77,7 +77,7 @@ export function stepRoutes(source: Pick<SourceInventory, 'routes' | 'components'
 	}
 	if (!byId.has(step.id)) files.add(step.file);
 	const kindOf = (file: string) => byId.get([...byId.keys()].find((id) => byId.get(id)!.file === file) ?? '')?.kind;
-	const matched = [...files].flatMap((file) => (kindOf(file) === 'layout' ? below(file) : pages.filter((r) => r.file === file)));
+	const matched = [...files].flatMap((file) => [...(kindOf(file) === 'layout' ? below(file) : []), ...pages.filter((r) => (kindOf(file) !== 'layout' && r.file === file) || r.entries?.includes(file))]);
 	return [...new Set(matched.map((r) => r.path))].sort();
 }
 

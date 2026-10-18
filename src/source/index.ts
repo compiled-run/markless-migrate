@@ -13,6 +13,7 @@ import { astroRoutes, htmlRoutes, nextRoutes, nuxtRoutes, remixFlatRoutes, solid
 import { laravelRoutes } from './routes/laravel.ts';
 import { railsRoutes } from './routes/rails.ts';
 import { serverRoutes } from './routes/servers.ts';
+import { webpackRoutes } from './routes/webpack.ts';
 import { wordpressRoutes } from './routes/wordpress.ts';
 import type { AuthGuard, SourceFacts, SourceRoute, Write } from './types.ts';
 import { scanWrites, settleWrites } from './writes.ts';
@@ -38,8 +39,11 @@ function mergeRoutes(routes: SourceRoute[]): SourceRoute[] {
 	for (const r of routes) {
 		const key = `${r.kind} ${r.path.toLowerCase()}`;
 		const prior = out.get(key);
-		if (!prior) out.set(key, { ...r, ...(r.methods ? { methods: [...r.methods] } : {}) });
-		else if (r.methods) prior.methods = [...new Set([...(prior.methods ?? []), ...r.methods])];
+		if (!prior) out.set(key, { ...r, ...(r.methods ? { methods: [...r.methods] } : {}), ...(r.entries ? { entries: [...r.entries] } : {}) });
+		else {
+			if (r.methods) prior.methods = [...new Set([...(prior.methods ?? []), ...r.methods])];
+			if (r.entries) prior.entries = [...new Set([...(prior.entries ?? []), ...r.entries])];
+		}
 	}
 	return [...out.values()].sort((a, b) => a.path.localeCompare(b.path) || a.kind.localeCompare(b.kind));
 }
@@ -56,7 +60,12 @@ export async function scanSource(dir: string): Promise<SourceFacts> {
 	if (framework === 'remix' || framework === 'react-router') {
 		routes.push(...((await routesConfig(ctx)) ?? (project.files.some((f) => f.startsWith('app/routes/')) ? await remixFlatRoutes(ctx) : [])));
 	}
-	if (framework === 'vite' || framework === null) routes.push(...htmlRoutes(ctx));
+	if (framework === 'vite' || framework === null) {
+		const webpack = await webpackRoutes(ctx);
+		routes.push(...webpack);
+		// With a webpack build, HTML in the source tree is served only as what the build emits.
+		if (!webpack.length) routes.push(...htmlRoutes(ctx));
+	}
 	const code = await codeRoutes(ctx);
 	routes.push(...code.routes);
 	guards.push(...code.guards);

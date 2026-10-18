@@ -257,3 +257,23 @@ test('an uninitialised declaration is a binding, not an import', async () => {
 	const facts = await scanSource(dir);
 	assert.deepEqual(facts.components.map((c) => c.name), ['App']);
 });
+
+test('a webpack app: pages are what HtmlWebpackPlugin and CopyPlugin emit, each linked to the entries it loads and what they render', async () => {
+	const dir = new URL('./source-fixtures/webpack', import.meta.url).pathname;
+	const facts = await scanSource(dir);
+	assert.deepEqual(facts.routes.map((r) => [r.path, r.file, r.entries]), [
+		['/', 'src/index.html', ['src/index.tsx']],
+		['/admin/', 'src/index.html', ['src/index.tsx']],
+		['/docs/help.html', 'src/static/help.html', undefined],
+		['/panel.html', 'src/panel.html', ['src/worker.ts']],
+	]);
+	const { componentRoutes } = await import('../src/library/routes.ts');
+	const { createContext } = await import('../src/source/context.ts');
+	const { openProject } = await import('../src/source/files.ts');
+	const { byComponent } = await componentRoutes(createContext(await openProject(dir)), facts.routes, facts.components);
+	assert.deepEqual(byComponent.get('src/App.tsx#App'), ['/', '/admin/']);
+	assert.deepEqual(byComponent.get('src/Badge.tsx#Badge'), ['/', '/admin/'], 'a component handed to a library as data renders on the page that library is on');
+	const inventory = { ...facts, path: dir, fileRoutes: [], order: planOrder(facts) };
+	const { stepRoutes } = await import('../src/plan/source.ts');
+	assert.deepEqual(inventory.order.map((s) => `${s.name} ${stepRoutes(inventory, s).join(',')}`), ['Badge /,/admin/', 'App /,/admin/', 'Entry /,/admin/']);
+});
