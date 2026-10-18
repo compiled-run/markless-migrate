@@ -35,7 +35,8 @@ async function focused(session: CDPSession): Promise<string | undefined> {
 export async function captureA11y(page: Page): Promise<A11yCapture> {
 	const session = await page.context().newCDPSession(page);
 	try {
-		await page.addScriptTag({ content: axe() });
+		// Evaluated, not added as a <script>: a page whose Content-Security-Policy forbids inline scripts still gets audited.
+		await page.evaluate(`${axe()}\n;void 0;`);
 		const results = (await page.evaluate(() => (window as unknown as { axe: { run: (ctx: Document, opts: object) => Promise<unknown> } }).axe.run(document, { resultTypes: ['violations'] }))) as {
 			violations: { id: string; impact: string | null; help: string; helpUrl: string; nodes: { target: unknown[] }[] }[];
 		};
