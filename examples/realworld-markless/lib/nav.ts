@@ -43,9 +43,13 @@ export function installNavigation(): void {
 			if (run) {
 				event.preventDefault();
 				window.history.pushState(null, '', url.pathname + url.search);
-				run();
-				for (const [owner, callback] of afterSoft) if (owner?.isConnected) callback();
-				else afterSoft.delete(owner);
+				// Redrawn after the click has finished dispatching: Markless throws MARKLESS_EVENT_DISPATCH_UNMATCHED for a click
+				// whose target was removed by an earlier listener.
+				setTimeout(() => {
+					run();
+					for (const [owner, callback] of afterSoft) if (owner?.isConnected) callback();
+					else afterSoft.delete(owner);
+				});
 				return;
 			}
 		}
