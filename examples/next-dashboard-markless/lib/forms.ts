@@ -3,8 +3,14 @@ export async function post<T>(action: string, form: HTMLFormElement): Promise<T>
 	return (await response.json()) as T;
 }
 
+// Next follows a server action's redirect in place; a click on a link to the page does the same through the router.
 export function go(path: string) {
-	window.location.assign(path);
+	const link = document.createElement('a');
+	link.href = path;
+	link.hidden = true;
+	document.body.append(link);
+	link.click();
+	link.remove();
 }
 
 let timer: ReturnType<typeof setTimeout> | undefined;

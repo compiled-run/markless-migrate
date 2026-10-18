@@ -38,7 +38,12 @@ export default async function request(http: MiddlewareHttpContext) {
 	if (request.method === 'GET' && url.pathname === '/dashboard/customers') remember(request, `customers:${query}`, await customersPage(query).catch(() => undefined));
 	if (request.method === 'GET' && url.pathname === '/dashboard/invoices/create') remember(request, 'create', await createPage().catch(() => undefined));
 	const edit = request.method === 'GET' ? /^\/dashboard\/invoices\/([^/]+)\/edit$/.exec(url.pathname) : null;
-	if (edit) remember(request, `edit:${edit[1]}`, await editPage(edit[1]!).catch(() => undefined));
+	if (edit) {
+		const page = await editPage(edit[1]!).catch(() => undefined);
+		remember(request, `edit:${edit[1]}`, page);
+		// Next's notFound(): the edit page of an invoice that does not exist answers 404.
+		if (page === null) (http.locals as { notFound?: boolean }).notFound = true;
+	}
 }
 
 function withCookies(response: Response, cookies: string[]): Response {

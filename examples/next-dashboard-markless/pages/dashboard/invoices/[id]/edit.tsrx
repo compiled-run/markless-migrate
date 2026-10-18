@@ -7,7 +7,8 @@ import InvoiceNotFound from '../../../../components/invoice-not-found.tsrx';
 import InvoicesError from '../../../../components/invoices-error.tsrx';
 import { loadEdit } from '../../../../lib/load.ts';
 
-export default function Page({ url, params }: PageProps<{ id: string }>) @{
+export default function Page({ url, params, http }: PageProps<{ id: string }, { notFound?: boolean }>) @{
+	if (http.locals.notFound) http.response.status = 404;
 	const data = computed(async () => {
 		const id = params.id;
 		const found = await loadEdit(id);

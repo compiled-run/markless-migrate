@@ -30,8 +30,7 @@ export default function InvoicesTable({ invoices, onDeleted }: { readonly invoic
 								<div class="flex justify-end gap-2">
 									<UpdateInvoice id={invoice.id} />
 									<form
-										action="javascript:void 0"
-										data-invoice={invoice.id}
+																		data-invoice={invoice.id}
 										onSubmit={(event) => {
 											event.preventDefault();
 											void deleteInvoice((event.target as HTMLFormElement).dataset.invoice ?? '').then(() => onDeleted());
@@ -75,8 +74,7 @@ export default function InvoicesTable({ invoices, onDeleted }: { readonly invoic
 									<div class="flex justify-end gap-3">
 										<UpdateInvoice id={invoice.id} />
 										<form
-										action="javascript:void 0"
-										data-invoice={invoice.id}
+																		data-invoice={invoice.id}
 										onSubmit={(event) => {
 											event.preventDefault();
 											void deleteInvoice((event.target as HTMLFormElement).dataset.invoice ?? '').then(() => onDeleted());

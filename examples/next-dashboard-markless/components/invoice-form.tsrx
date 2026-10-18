@@ -18,7 +18,6 @@ export default function InvoiceForm({ action, customers, customerId, amount, sta
 	const pendingClass = computed(() => (edit ? 'h-4 w-4 border-gray-300 bg-gray-100 text-gray-600 focus:ring-2' : 'text-white-600 h-4 w-4 cursor-pointer border-gray-300 bg-gray-100 focus:ring-2'));
 	const paidClass = computed(() => (edit ? 'h-4 w-4 border-gray-300 bg-gray-100 text-gray-600 focus:ring-2' : 'h-4 w-4 cursor-pointer border-gray-300 bg-gray-100 text-gray-600 focus:ring-2'));
 	<form
-		action="javascript:void 0"
 		data-action={action}
 		onSubmit={(event) => {
 			event.preventDefault();
