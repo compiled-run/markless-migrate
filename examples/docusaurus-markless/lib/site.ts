@@ -60,6 +60,20 @@ function applyColorMode(next: Choice): void {
 		button.setAttribute('aria-label', `Switch between dark and light mode (currently ${label})`);
 	}
 	applyCodeTheme(dark);
+	applyThemedImages(dark);
+}
+
+// ThemedImage renders the image for the current colour mode: the class names the mode, and the navbar logo has its own dark file.
+const THEMED_SOURCES: readonly (readonly [light: string, dark: string])[] = [['/img/docusaurus.svg', '/img/docusaurus_keytar.svg']];
+
+function applyThemedImages(dark: boolean): void {
+	for (const img of document.querySelectorAll<HTMLImageElement>('img.themedComponent_bJGS')) {
+		img.classList.toggle('themedComponent--light_LEkC', !dark);
+		img.classList.toggle('themedComponent--dark_jnGk', dark);
+		const src = img.getAttribute('src');
+		const pair = THEMED_SOURCES.find((sources) => sources.includes(src ?? ''));
+		if (pair && src !== pair[dark ? 1 : 0]) img.setAttribute('src', pair[dark ? 1 : 0]);
+	}
 }
 
 function cycleColorMode(): void {
@@ -97,7 +111,8 @@ function isNpm2Yarn(container: Element): boolean {
 
 function selectTab(tab: HTMLElement): void {
 	const container = tab.closest('.theme-tabs-container');
-	if (!container) return;
+	// Docusaurus changes (and saves) the choice only when another tab is picked.
+	if (!container || tab.getAttribute('aria-selected') === 'true') return;
 	const label = tab.textContent ?? '';
 	if (isNpm2Yarn(container)) {
 		storage()?.setItem(TAB_KEY('npm2yarn'), label.toLowerCase());
@@ -241,11 +256,11 @@ function dismissAnnouncement(): void {
 let searching: Promise<void> | undefined;
 
 function openSearch(): void {
-	searching ??= import('./search.ts').then(async (search) => {
-		await search.load();
+	searching ??= import('./search.ts').then((search) => search.load());
+	void searching.then(() => import('./search.ts')).then((search) => {
 		search.open();
+		search.show();
 	});
-	void searching.then(() => import('./search.ts')).then((search) => search.show());
 }
 
 function setDropdown(dropdown: Element, show: boolean): void {
@@ -317,6 +332,9 @@ function onScroll(): void {
 }
 
 function siteClick(event: Event): void {
+	// React Router keeps the page when a link points at the address already shown (the version dropdown's "Canary").
+	const link = closest(event, 'a[href]') as HTMLAnchorElement | null;
+	if (link && !link.target && link.origin === location.origin && link.pathname === location.pathname && link.search === location.search && !link.hash) event.preventDefault();
 	if (closest(event, 'a.skipToContent_UHvc')) return skipToContent(event);
 	if (closest(event, '.announcementBarClose_UFLi')) return dismissAnnouncement();
 	if (closest(event, '.colorModeToggle_UolE button')) return cycleColorMode();
@@ -476,41 +494,45 @@ function checkLazyImages(): void {
 	});
 }
 
-function watchLazyImages(): void {
-	if (!routeParts()?.lazy.length) return;
-	window.addEventListener('scroll', checkLazyImages, { passive: true });
-	window.addEventListener('resize', checkLazyImages, { passive: true });
-	queueMicrotask(checkLazyImages);
-}
-
 let booted = false;
 
-export function siteBoot(): void {
-	if (booted) return;
-	booted = true;
+// What Docusaurus redoes on every route: the router's client-side navigation swaps in a fresh page, so this runs again then.
+function pageInit(): void {
+	parked.clear();
 	document.documentElement.setAttribute('data-has-hydrated', 'true');
 	const saved = storage()?.getItem(TAB_KEY('npm2yarn'));
 	const label = NPM2YARN.find((item) => item.toLowerCase() === saved);
 	if (label && label !== 'npm') for (const container of document.querySelectorAll('.theme-tabs-container')) if (isNpm2Yarn(container)) selectInContainer(container, label);
+	if (storage()?.getItem(DISMISS_KEY) === 'true') document.querySelector('.theme-announcement-bar')?.remove();
+	applyColorMode(choice());
+	applyWindowSize();
+	queueMicrotask(checkLazyImages);
+	updateWordWrap();
+	lastScrollY = window.scrollY;
+	updateTocHighlight();
+}
+
+export function siteBoot(): void {
+	if (booted) return;
+	booted = true;
 	const viewed = storage()?.getItem(ANNOUNCEMENT_ID_KEY);
 	const fresh = viewed !== ANNOUNCEMENT_ID;
 	storage()?.setItem(ANNOUNCEMENT_ID_KEY, ANNOUNCEMENT_ID);
 	if (fresh) storage()?.setItem(DISMISS_KEY, 'false');
-	if (!fresh && storage()?.getItem(DISMISS_KEY) === 'true') document.querySelector('.theme-announcement-bar')?.remove();
-	applyColorMode(choice());
+	pageInit();
+	document.addEventListener('marklessrouterrendered', pageInit);
 	window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
 		if (choice() === null) applyColorMode(null);
 	});
 	document.addEventListener('click', siteClick);
-	applyWindowSize();
 	window.addEventListener('resize', applyWindowSize);
-	watchLazyImages();
-	updateWordWrap();
+	window.addEventListener('scroll', checkLazyImages, { passive: true });
+	window.addEventListener('resize', checkLazyImages, { passive: true });
 	window.addEventListener('resize', updateWordWrap, { passive: true });
-	lastScrollY = window.scrollY;
 	window.addEventListener('scroll', onScroll, { passive: true });
 	document.addEventListener('scroll', updateTocHighlight);
-	updateTocHighlight();
+	// Docusaurus loads DocSearch's code when the pointer reaches the search button; here it loads at idle, so no click waits on it.
+	requestIdleCallback(() => void import('./search.ts').then((search) => search.load()));
 	window.addEventListener('hashchange', () => {
 		if (document.getElementById(decodeURIComponent(window.location.hash.slice(1)))) document.querySelector('nav.navbarHideable_uAgx')?.classList.add('navbarHidden_QgM6');
 	});

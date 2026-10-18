@@ -6,6 +6,7 @@ import translations from './search-translations.json';
 
 type Instance = ReturnType<typeof docsearchType>;
 let instance: Instance | undefined;
+let mounted: Element | null = null;
 let docsearch: typeof docsearchType | undefined;
 
 export async function load(): Promise<void> {
@@ -17,7 +18,10 @@ function meta(name: string): string | undefined {
 }
 
 export function open(): void {
-	if (instance || !docsearch) return;
+	if (!docsearch) return;
+	// A client-side navigation replaces the navbar, and with it the container DocSearch rendered into.
+	if (instance && mounted?.isConnected) return;
+	mounted = document.querySelector('.navbarSearchContainer_dDCC');
 	const tag = meta('docsearch:docusaurus_tag');
 	instance = docsearch({
 		container: '.navbarSearchContainer_dDCC',

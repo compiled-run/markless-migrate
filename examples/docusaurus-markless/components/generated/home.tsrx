@@ -2,7 +2,7 @@
 import { siteBoot } from '../../lib/site.ts';
 
 export default function Home() @{
-	<div id="__docusaurus" data-boot="" onBoot={() => siteBoot()}>
+	<div id="__docusaurus" onIdle={() => siteBoot()}>
 		<link rel="preload" as="image" href="/img/docusaurus.svg" />
 		<link rel="preload" as="image" href="/img/docusaurus_keytar.svg" />
 		<link rel="preload" as="image" href="/img/meta_opensource_logo_negative.svg" />
