@@ -3,6 +3,7 @@ import { join, relative } from 'node:path';
 import type { RecordedJourney, StepResult } from '../check/journeys.ts';
 import { matchRoute } from '../source/pattern.ts';
 import { PART_BEHAVIOUR, PART_ROLE } from './catalog.ts';
+import { decisionLine } from './decide.ts';
 import type { ExportUsage, LibrariesFile, LibraryUsage, PropUsage, UsageSite } from './types.ts';
 
 export interface ParityOptions {
@@ -172,7 +173,8 @@ function sitesDoc(e: ExportUsage, limit = 6): string {
 	return `${where.join('; ')}${e.sites.length > limit ? `; and ${e.sites.length - limit} more` : ''}`;
 }
 
-const needsPort = (lib: LibraryUsage, e: ExportUsage) => lib.class === 'parity' || lib.class === 'dom' || lib.class === 'unknown' || (lib.class === 'markless-ui' && (!e.maps || e.maps.available === false) && !(e.maps?.target.startsWith('<')));
+const usedDirectly = (lib: LibraryUsage) => lib.class === 'dom' && lib.decision?.choice === 'direct' && lib.name === lib.decision.engine;
+const needsPort = (lib: LibraryUsage, e: ExportUsage) => lib.class === 'parity' || (lib.class === 'dom' && !usedDirectly(lib)) || lib.class === 'unknown' || (lib.class === 'markless-ui' && (!e.maps || e.maps.available === false) && !(e.maps?.target.startsWith('<')));
 
 function componentSkeleton(lib: LibraryUsage, e: ExportUsage): { name: string; code: string; namespace?: [string, string] } {
 	const elementSites = e.sites.filter((s) => s.kind === 'element').length || 1;
@@ -323,6 +325,16 @@ interface SiteSpec {
 	readonly journeys: { route: string; journey: string; expect: string[] }[];
 }
 
+const LAZY = (engine: string) => `create ${engine} from an \`onVisible\` handler on the element it draws into (\`onIdle\` when it must be ready before it scrolls into view), importing it there with \`await import('${engine}')\` and mounting it on \`event.currentTarget\`, so it never loads with the page; destroy it when the element leaves`;
+
+function domNote(lib: LibraryUsage): string {
+	const d = lib.decision;
+	const decided = `Decided by plan: ${decisionLine(lib) ?? `port the parts of ${lib.name} this app uses`}. To change it, set "${d?.engine ?? lib.name}": "port" or "direct" under "libraries" in .migrate/overrides.json and run plan again.`;
+	if (d?.choice !== 'direct') return `${decided} Fill in the skeleton below with Markless state, computed values and plain DOM, so ${d?.engine ?? lib.name} does not ship.`;
+	if (lib.name === d.engine) return `${decided} Nothing to port for ${lib.name} itself: ${LAZY(lib.name)}. Pass it the same options and data the old app passed (listed below).`;
+	return `${decided} The skeleton below replaces ${lib.name}; inside it, ${LAZY(d.engine)}. Never render ${lib.framework === 'none' ? 'the old framework' : lib.framework} in the Markless app.`;
+}
+
 /** Writes the port skeleton (only what the app uses) and the behaviour spec for each usage site. */
 export async function writeParity(file: LibrariesFile, name: string, options: ParityOptions): Promise<ParityResult> {
 	const found = findLibrary(file, name);
@@ -333,7 +345,7 @@ export async function writeParity(file: LibrariesFile, name: string, options: Pa
 	const dir = join(options.newApp, 'lib', 'parity', slug);
 	const notes: string[] = [];
 	if (lib.class === 'as-is') notes.push(`${lib.name} is framework-agnostic: import it from the Markless app unchanged (install ${lib.name}${lib.version ? `@${lib.version}` : ''}); nothing to port.`);
-	if (lib.class === 'dom') notes.push(`${lib.name} renders its own UI into the page. Before writing code, ask the owner which: port the surface below to Markless (the skeleton here), so ${lib.name} does not ship; or keep it as a DOM island, mounted from attach on an element the page renders, which ships ${lib.name} to the browser and runs its code on first use. Never import it unchanged and call that done.`);
+	if (lib.class === 'dom') notes.push(domNote(lib));
 	if (lib.class === 'framework') notes.push(`${lib.name} is replaced by ${lib.replacement ?? 'Markless'}; nothing to port.`);
 	if (lib.class === 'drop') notes.push(`${lib.name}: ${lib.reason}.`);
 	const port = lib.exports.filter((e) => needsPort(lib, e) && e.name !== SIDE_EFFECT);

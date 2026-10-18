@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { markupTags, narrowLibrary, packageName, readLibraries, scanLibraries, summarizeLibraries, writeLibraries, writeParity, type ExportUsage, type LibrariesFile } from '../src/library/index.ts';
+import { decideLibraries, MAX_PORT_SURFACE, markupTags, narrowLibrary, packageName, readLibraries, scanLibraries, summarizeLibraries, surfaceSize, writeLibraries, writeParity, type ExportUsage, type LibrariesFile } from '../src/library/index.ts';
 
 const fixtures = join(import.meta.dirname, 'library-fixtures');
 const react = join(fixtures, 'react-app');
@@ -268,10 +268,12 @@ test('bare imports count: a font package adds its stylesheet, an unknown module 
 	assert.ok(!result.written.some((f) => f.endsWith('index.ts')));
 });
 
-test('a framework-agnostic library that renders UI is never as-is: catalogued or found writing DOM, it needs a port or a DOM-island decision', async () => {
+test('a framework-agnostic library that draws UI is never as-is: catalogued or found writing DOM, plan decides it without asking', async () => {
 	const builds = Array.from({ length: 12 }, (_, i) => `const c${i} = document.createElement('div'); root.appendChild(c${i});`).join('\n');
 	const dir = await project({
 		'package.json': JSON.stringify({ dependencies: { react: '19.0.0', 'ag-grid-community': '34.2.0', 'ag-grid-react': '34.2.0', 'tiny-grid': '1.0.0', 'tiny-util': '1.0.0' } }),
+		'node_modules/ag-grid-community/package.json': JSON.stringify({ name: 'ag-grid-community', version: '34.2.0', module: 'main.esm.mjs' }),
+		'node_modules/ag-grid-community/main.esm.mjs': `export const themeQuartz = {};\n${'// grid\n'.repeat(40_000)}`,
 		'node_modules/tiny-grid/package.json': JSON.stringify({ name: 'tiny-grid', version: '1.0.0', main: 'index.js' }),
 		'node_modules/tiny-grid/index.js': `export function mount(root) {\n${builds}\n}\n`,
 		'node_modules/tiny-util/package.json': JSON.stringify({ name: 'tiny-util', version: '1.0.0', main: 'index.js' }),
@@ -281,11 +283,72 @@ test('a framework-agnostic library that renders UI is never as-is: catalogued or
 	const file = await scanLibraries(dir);
 	assert.deepEqual(['ag-grid-community', 'ag-grid-react', 'tiny-grid', 'tiny-util'].map((n) => [n, lib(file, n).class]), [['ag-grid-community', 'dom'], ['ag-grid-react', 'dom'], ['tiny-grid', 'dom'], ['tiny-util', 'as-is']]);
 	assert.match(lib(file, 'tiny-grid').reason, /builds DOM/);
-	assert.match(summarizeLibraries(file), /Renders its own UI: port the used surface, or a person decides on a DOM island \(never as-is\): 3/);
+	assert.equal(lib(file, 'ag-grid-react').engine?.name, 'ag-grid-community', 'a wrapper is decided with the library it drives');
+	assert.deepEqual([lib(file, 'ag-grid-community').decision?.choice, lib(file, 'ag-grid-react').decision?.choice], ['port', 'port']);
+	assert.equal(lib(file, 'ag-grid-community').decision?.rule, 'small-surface');
+	assert.equal(lib(file, 'tiny-grid').decision?.choice, 'direct', 'tiny-grid is smaller than a port of what the app uses');
+	assert.equal(lib(file, 'tiny-grid').decision?.rule, 'engine-smaller');
+	const text = summarizeLibraries(file);
+	assert.match(text, /Draws its own UI: decided below, port the parts the app uses or use the library directly \(never at load\): 3/);
+	assert.match(text, /decided: ports the parts of ag-grid-community this app uses, because the app uses \d+ of its names \(limit 120\)/);
+	assert.match(text, /decided: ag-grid-react is replaced by a Markless port of what this app uses, which ports the parts of ag-grid-community/);
+	assert.match(text, /decided: uses tiny-grid directly, loaded only when its element is needed, because it is 0\.8 KB, no more than a port of the 1 names the app uses \(about 1\.0 KB\)/);
+	assert.doesNotMatch(text, /island|a person|ask/i);
 	const app = await newApp();
 	const grid = await writeParity(file, 'ag-grid-community', { newApp: app });
-	assert.match(grid.notes.join('\n'), /renders its own UI into the page\. Before writing code, ask the owner/);
-	assert.ok(grid.written.includes('lib/parity/ag-grid-community/index.ts'), 'the port skeleton is written for the port option');
+	assert.match(grid.notes.join('\n'), /^Decided by plan: ports the parts of ag-grid-community this app uses, because .*To change it, set "ag-grid-community": "port" or "direct" under "libraries" in \.migrate\/overrides\.json/);
+	assert.ok(grid.written.includes('lib/parity/ag-grid-community/index.ts'), 'a port gets its skeleton');
+	const tiny = await writeParity(file, 'tiny-grid', { newApp: app });
+	assert.match(tiny.notes.join('\n'), /Nothing to port for tiny-grid itself: create tiny-grid from an `onVisible` handler .*await import\('tiny-grid'\).*so it never loads with the page/);
+	assert.ok(!tiny.written.some((f) => f.endsWith('index.ts')), 'a library used directly gets no skeleton');
+	for (const notes of [grid.notes, tiny.notes]) assert.doesNotMatch(notes.join('\n'), /island|ask the|a person/i);
+});
+
+test('library decisions follow measured rules: pixels, gestures and a large surface keep the library, a small checkable surface is ported, an override wins', async () => {
+	const paints = Array.from({ length: 25 }, (_, i) => `ctx.fillRect(${i}, 0, 1, 1);`).join('\n');
+	const options = Array.from({ length: 130 }, (_, i) => `o${i}: ${i}`).join(', ');
+	const dir = await project({
+		'package.json': JSON.stringify({ dependencies: { react: '19.0.0', 'react-chartjs-2': '5.0.0', 'chart.js': '4.0.0', leaflet: '1.9.0', 'paint-lib': '1.0.0', 'gl-lib': '1.0.0', 'measure-grid': '1.0.0', 'huge-grid': '1.0.0' } }),
+		'node_modules/paint-lib/package.json': JSON.stringify({ name: 'paint-lib', version: '1.0.0', main: 'index.js', keywords: ['charts'] }),
+		'node_modules/paint-lib/index.js': `export function draw(c) { const ctx = c.getContext('2d');\n${paints}\n}\n`,
+		'node_modules/gl-lib/package.json': JSON.stringify({ name: 'gl-lib', version: '1.0.0', main: 'index.js', keywords: ['widget'] }),
+		'node_modules/gl-lib/index.js': "export function draw(c) { return c.getContext('webgl2'); }\n",
+		'node_modules/measure-grid/package.json': JSON.stringify({ name: 'measure-grid', version: '1.0.0', main: 'index.js', keywords: ['grid'] }),
+		'node_modules/measure-grid/index.js': `export function grid(el) { const ctx = document.createElement('canvas').getContext('2d'); return ctx.measureText('x'); }\n${'// grid\n'.repeat(20_000)}`,
+		'node_modules/huge-grid/package.json': JSON.stringify({ name: 'huge-grid', version: '1.0.0', main: 'index.js', keywords: ['grid'] }),
+		'node_modules/huge-grid/index.js': `export function grid() {}\n${'// grid\n'.repeat(40_000)}`,
+		'src/App.tsx': `import { Bar } from 'react-chartjs-2';\nimport { map } from 'leaflet';\nimport { draw } from 'paint-lib';\nimport { draw as gl } from 'gl-lib';\nimport { grid } from 'measure-grid';\nimport { grid as huge } from 'huge-grid';\nexport function App() { map('m'); draw(1); gl(1); grid(1); huge({ ${options} }); return <Bar data={[]} />; }\n`,
+	});
+	const file = await scanLibraries(dir);
+	const rule = (name: string) => [lib(file, name).decision?.choice, lib(file, name).decision?.rule];
+	assert.deepEqual(rule('react-chartjs-2'), ['direct', 'draws-pixels'], 'Chart.js draws into a canvas, known from the catalog');
+	assert.equal(lib(file, 'react-chartjs-2').decision?.engine, 'chart.js');
+	assert.match(lib(file, 'react-chartjs-2').decision!.reason, /draws into a canvas, so check would see only its pixels/);
+	assert.deepEqual(rule('leaflet'), ['direct', 'unchecked-behaviour']);
+	assert.deepEqual(rule('paint-lib'), ['direct', 'draws-pixels'], 'a 2D canvas it paints on, found in its code');
+	assert.equal(lib(file, 'paint-lib').engine?.draws, 'canvas');
+	assert.deepEqual(rule('gl-lib'), ['direct', 'draws-pixels']);
+	assert.equal(lib(file, 'gl-lib').engine?.draws, 'webgl');
+	assert.deepEqual(rule('measure-grid'), ['port', 'small-surface'], 'a canvas used only to measure text is not drawing');
+	assert.deepEqual(rule('huge-grid'), ['direct', 'large-surface']);
+	const app = await newApp();
+	const chart = await writeParity(file, 'react-chartjs-2', { newApp: app });
+	assert.match(chart.notes.join('\n'), /The skeleton below replaces react-chartjs-2; inside it, create chart\.js from an `onVisible` handler.*Never render react in the Markless app/);
+	assert.ok(chart.written.some((f) => f.endsWith('components.tsrx')), 'the wrapper is always ported');
+
+	const overridden = decideLibraries(file, { libraries: { 'chart.js': 'port', 'huge-grid': 'port', leaflet: 'direct' } });
+	const o = (name: string) => overridden.libraries.find((l) => l.name === name)!.decision!;
+	assert.deepEqual([o('react-chartjs-2').choice, o('react-chartjs-2').rule], ['port', 'override']);
+	assert.deepEqual([o('huge-grid').choice, o('huge-grid').rule], ['port', 'override']);
+	assert.match(o('huge-grid').reason, /set to port in \.migrate\/overrides\.json/);
+});
+
+test('the surface counted for a decision is every used name: exports, props, options, data keys, members and reads', () => {
+	const e = (over: Partial<ExportUsage>): ExportUsage => ({ name: 'X', kind: 'component', imports: [], sites: [], props: {}, options: {}, reads: [], members: {}, ...over });
+	const used = { values: [], dynamic: 0, sites: 1 };
+	const library = { name: 'x', framework: 'none', class: 'dom', reason: '', exports: [e({ props: { a: used, b: used }, data: { 'a[].k': used } }), e({ name: 'f', kind: 'function', options: { o: used }, reads: ['r'], members: { '': ['m'] } }), e({ name: 'T', kind: 'type' })], css: { imports: [], injected: [], styled: [] }, surface: { used: 3, total: null, members: 0 }, sites: 0 } as const;
+	assert.equal(surfaceSize(library as never), 8);
+	assert.ok(MAX_PORT_SURFACE > 74, 'AG Grid in the Devtron panel (74 names) is ported');
 });
 
 test('the used surface includes what is passed as data: column definitions, the props a custom component is given, and calls through a ref or an instance', async () => {

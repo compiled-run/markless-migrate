@@ -6,10 +6,12 @@ import { createContext } from '../source/context.ts';
 import { isConfigFile, isScript, isTestFile, openProject, resolveImport, type Project } from '../source/files.ts';
 import { functionOf, isFunction, keyName, localInit, memberName, parseJsonc, staticValue, known, unwrap, walk, type Module, type N } from '../source/js.ts';
 import type { Component, SourceRoute } from '../source/types.ts';
-import { catalogEntry, type CatalogEntry } from './catalog.ts';
+import { catalogEntry, engineTraits, wrappedEngine, type CatalogEntry } from './catalog.ts';
 import { componentRoutes, fileRoutes } from './routes.ts';
-import { cssPackage, exportedNames, injectedTokens, installedPackage, packageFramework, rendersDom } from './package.ts';
-import type { ExportUsage, LibrariesFile, LibraryClass, LibraryUsage, PropUsage, Site, UsageSite } from './types.ts';
+import { decideLibraries } from './decide.ts';
+import type { Overrides } from '../overrides.ts';
+import { cssPackage, drawsPixels, entryBytes, exportedNames, injectedTokens, installedPackage, packageFramework, rendersDom, type InstalledPackage } from './package.ts';
+import type { EngineFacts, ExportUsage, LibrariesFile, LibraryClass, LibraryUsage, PropUsage, Site, UsageSite } from './types.ts';
 
 const BUILTIN = new Set(builtinModules);
 const SKIP_SPEC = /^(node:|virtual:|~icons\/|\/|#|bun:|data:)|\?(url|raw|inline|worker)$/;
@@ -24,6 +26,8 @@ export interface LibraryScanOptions {
 	/** The new Markless app, whose installed @markless/ui decides which families are available. */
 	readonly newApp?: string;
 	readonly framework?: string | null;
+	/** Expert settings from `.migrate/overrides.json`, replacing what plan decides for a library. */
+	readonly overrides?: Overrides;
 }
 
 interface ImportLocal {
@@ -283,6 +287,14 @@ async function kitDir(project: Project): Promise<{ dir: string; name: string } |
 
 function blankExport(name: string): ExportUsage {
 	return { name, kind: 'value', imports: [], sites: [], props: {}, options: {}, reads: [], members: {} };
+}
+
+async function engineFacts(root: string, name: string, installed: InstalledPackage | undefined): Promise<EngineFacts> {
+	const traits = engineTraits(name);
+	const pkg = installed ?? (await installedPackage(root, name));
+	const bytes = pkg ? await entryBytes(pkg) : undefined;
+	const draws = traits.draws ?? (pkg ? await drawsPixels(pkg) : undefined);
+	return { name, ...(draws ? { draws } : {}), ...(traits.needs ? { needs: traits.needs } : {}), ...(bytes !== undefined ? { bytes } : {}) };
 }
 
 function frameworkFor(name: string, entry: CatalogEntry): LibraryUsage['framework'] {
@@ -812,7 +824,8 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 		const framework: LibraryUsage['framework'] = d.name === kit?.name ? 'react' : entry ? frameworkFor(d.name, entry) : pkg ? packageFramework(pkg) : 'unknown';
 		const widget = !entry && framework === 'none' && !!pkg && !cssPackage(pkg) && (await rendersDom(pkg));
 		const cls: LibraryClass = d.name === kit?.name ? 'markless-ui' : entry?.class ?? (framework === 'unknown' ? 'unknown' : widget ? 'dom' : framework === 'none' ? 'as-is' : 'parity');
-		const reason = d.name === kit?.name ? `the app's own copy of ${kit.name}: each used component maps to the @markless/ui family its primitive maps to, or to the styled element it renders` : entry?.reason ?? (framework === 'unknown' ? 'not in the catalog and not installed, so what it binds to could not be read' : widget ? 'no UI framework among its dependencies, but its code builds DOM (or its keywords name a widget): it renders its own UI into the page, so port the used surface (markless-migrate parity) or a person decides to keep it as a DOM island mounted from attach; never import it unchanged' : framework === 'none' ? 'framework-agnostic (no UI framework among its dependencies, and its code builds no DOM): import it unchanged' : `depends on ${framework}: port the used surface`);
+		const reason = d.name === kit?.name ? `the app's own copy of ${kit.name}: each used component maps to the @markless/ui family its primitive maps to, or to the styled element it renders` : entry?.reason ?? (framework === 'unknown' ? 'not in the catalog and not installed, so what it binds to could not be read' : widget ? 'no UI framework among its dependencies, but its code builds DOM (or its keywords name a widget): it draws its own UI into the page, so plan decides whether to port the parts the app uses or to use it directly from Markless code; never import it unchanged at load' : framework === 'none' ? 'framework-agnostic (no UI framework among its dependencies, and its code builds no DOM): import it unchanged' : `depends on ${framework}: port the used surface`);
+		const engine = cls === 'dom' ? await engineFacts(dir, framework === 'none' ? d.name : (wrappedEngine(d.name) ?? d.name), framework === 'none' ? pkg : undefined) : undefined;
 		const prefixes = [...new Set([...(entry?.tokens ?? []), ...(d.name.startsWith('@') ? [] : [`${d.name.replace(/^react-/, '')}-`])])];
 		const paints = cls === 'markless-ui' || cls === 'parity' || cls === 'dom' || cls === 'unknown';
 		const injected = pkg && paints ? await injectedTokens(pkg, prefixes) : [];
@@ -843,12 +856,13 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 			surface: { used: exports.filter((e) => e.sites.length).length, total: names?.size ?? kitTotal ?? null, members: members.size },
 			sites: allSites.length,
 			...(via ? { via } : {}),
+			...(engine ? { engine } : {}),
 		});
 	}
 	const order: Record<LibraryClass, number> = { dom: 0, parity: 1, 'markless-ui': 2, unknown: 3, 'as-is': 4, framework: 5, drop: 6 };
 	libraries.sort((a, b) => order[a.class] - order[b.class] || b.sites - a.sites || a.name.localeCompare(b.name));
 	if (!options.newApp || !ui) limits.push('@markless/ui is not installed in the new app, so `available` on each mapping is null (install it and run plan again)');
-	return { version: 1, generatedAt: new Date().toISOString(), source: dir, framework: options.framework ?? null, ...(ui ? { markless_ui: ui.version } : {}), libraries, limits: limits.sort() };
+	return decideLibraries({ version: 1, generatedAt: new Date().toISOString(), source: dir, framework: options.framework ?? null, ...(ui ? { markless_ui: ui.version } : {}), libraries, limits: limits.sort() }, options.overrides);
 }
 
 function seenIn(exp: ExportUsage, key: string, file: string): void {

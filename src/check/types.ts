@@ -1,3 +1,4 @@
+import type { AutomaticRule } from '../overrides.ts';
 import type { RawSource } from './hints-page.ts';
 import type { ElementCoverage, RecordedJourney } from './journeys.ts';
 import type { NetworkCapture } from './network.ts';
@@ -66,6 +67,8 @@ export interface AssetRecord {
 	readonly contentType: string;
 	readonly bytes: number;
 	readonly fingerprinted: boolean;
+	/** For a script: the UI framework whose runtime its code carries. */
+	readonly runtime?: string;
 }
 
 export interface ImageRecord {
@@ -125,6 +128,10 @@ export interface PageCapture {
 	readonly writes?: readonly WriteLine[];
 	/** What the page keeps in the browser once loaded: storage keys, IndexedDB stores, cookies. */
 	readonly storage?: readonly string[];
+	/** Markup the page's framework adds for itself (a route announcer), with the roles inside it. */
+	readonly internals?: readonly { readonly framework: string; readonly what: string; readonly selector: string; readonly roles: readonly string[]; readonly text: string }[];
+	/** Iframes and images from other origins, with their boxes in page coordinates. */
+	readonly embeds?: readonly { readonly tag: 'iframe' | 'img'; readonly src: string; readonly box: Box }[];
 }
 
 export interface WriteLine {
@@ -169,8 +176,10 @@ export interface Failure {
 	readonly where?: string;
 	/** Stable across runs: the same difference on the same route gets the same id, for `accept <id>`. */
 	readonly id?: string;
-	/** Set when `.migrate/accepted.json` lists this difference as intended: it does not turn the route red. */
-	readonly accepted?: { readonly reason: string; readonly by: string; readonly date: string };
+	/** Evidence the check found that this difference is no user-visible regression, and the rule it meets; granted by applyAccepted. */
+	readonly automatic?: { readonly rule: AutomaticRule; readonly reason: string };
+	/** Set when `.migrate/accepted.json` lists this difference as intended, or an automatic rule accepted it (`automatic`): it does not turn the route red. */
+	readonly accepted?: { readonly reason: string; readonly by: string; readonly date: string; readonly automatic?: AutomaticRule };
 }
 
 /** A pair of screenshots of one route in one viewport and state, with the boxes where they differ. */
@@ -294,8 +303,10 @@ export interface Report {
 	/** Roles checked, `anonymous` first, when check ran with --auth; routes are grouped in this order. */
 	readonly roles?: readonly string[];
 	readonly logins?: readonly LoginResult[];
-	/** How many failures an accepted difference covered. */
+	/** How many failures an accepted difference covered, automatic ones included. */
 	readonly acceptedCount?: number;
+	/** How many of those an automatic rule accepted. */
+	readonly automaticCount?: number;
 	/** First-interaction and navigation timings across the run, for the headline and the showcase. */
 	readonly responsiveness?: ResponsivenessSummary;
 	/** Accepted differences for routes checked in this run that no longer match any failure. */

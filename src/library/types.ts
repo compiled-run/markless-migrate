@@ -1,9 +1,11 @@
+import type { EngineChoice } from '../overrides.ts';
+
 /**
  * What a migration does with a library:
  * - `markless-ui`: a @markless/ui family does the same job; render that family.
  * - `as-is`: framework-agnostic code that renders nothing; import it unchanged from the Markless app.
- * - `dom`: renders its own UI into the page (a grid, chart, editor, map), with or without a framework
- *   wrapper; port the used surface, or a person decides to keep it as a DOM island. Never as-is.
+ * - `dom`: draws its own UI into the page (a grid, chart, editor, map), with or without a framework
+ *   wrapper. A wrapper is always ported; `decision` says whether the library underneath is ported too or used directly.
  * - `parity`: bound to the old framework; port exactly the used surface into `lib/parity/<library>/`.
  * - `framework`: the old framework or its router; Markless itself replaces it.
  * - `drop`: needed only by the old framework (providers, devtools, slots); nothing to port.
@@ -103,6 +105,30 @@ export interface LibraryUsage {
 	readonly sites: number;
 	/** Libraries whose usage is only through this one (a Radix primitive used only inside shadcn/ui files). */
 	readonly via?: string;
+	/** For a `dom` library: what was measured about the library that draws the UI (itself, or the one a wrapper drives). */
+	readonly engine?: EngineFacts;
+	/** For a `dom` library: port it or use it directly, decided by plan from `engine` and the used surface. */
+	decision?: LibraryDecision;
+}
+
+export interface EngineFacts {
+	readonly name: string;
+	/** It draws into a canvas or a WebGL context, so check sees only its pixels. */
+	readonly draws?: 'canvas' | 'webgl';
+	/** Behaviour check's journeys never perform (they click, type into fields and press keys). */
+	readonly needs?: 'text editing' | 'dragging, panning or zooming';
+	/** Bytes of its main entry when installed. */
+	readonly bytes?: number;
+}
+
+export interface LibraryDecision {
+	readonly choice: EngineChoice;
+	/** Which rule decided: `override`, `draws-pixels`, `unchecked-behaviour`, `large-surface`, `engine-smaller`, `small-surface`. */
+	readonly rule: string;
+	readonly reason: string;
+	/** Used names counted: exports, props, options, data keys, members and fields read, across the library and its wrappers. */
+	readonly surface: number;
+	readonly engine: string;
 }
 
 export interface LibrariesFile {

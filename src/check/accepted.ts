@@ -3,6 +3,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { Dimension, Failure, Report, RouteResult } from './types.ts';
 import { DIMENSIONS, notCompared } from './types.ts';
+import { grantAutomatic, type AutomaticRule } from './automatic.ts';
 
 export const ACCEPTED_FILE = 'accepted.json';
 
@@ -106,10 +107,11 @@ function settle(route: RouteResult, failures: readonly Failure[]): RouteResult {
 }
 
 /**
- * Gives every failure its id and marks the ones an accepted difference covers. A route whose failures are all accepted is
- * green. An accept whose route was checked in this run but that matched nothing is returned as stale.
+ * Gives every failure its id and marks the ones an accepted difference covers, then the ones an automatic rule proves are no
+ * user-visible regression (unless `off` names the rule). A route whose failures are all accepted is green. An accept whose
+ * route was checked in this run but that matched nothing is returned as stale.
  */
-export function applyAccepted(report: Report, accepted: readonly Accept[]): Report {
+export function applyAccepted(report: Report, accepted: readonly Accept[], off: readonly AutomaticRule[] = []): Report {
 	const origins = { old: report.old, new: report.new };
 	const used = new Set<Accept>();
 	const mark = (f: Failure): Failure => {
@@ -118,7 +120,8 @@ export function applyAccepted(report: Report, accepted: readonly Accept[]): Repo
 		if (hit) used.add(hit);
 		return { ...f, id, ...(hit ? { accepted: { reason: hit.reason, by: hit.by, date: hit.date } } : {}) };
 	};
-	const routes = report.routes.map((route) => settle(route, route.failures.map(mark)));
+	const date = report.startedAt.slice(0, 10);
+	const routes = report.routes.map((route) => settle(route, grantAutomatic(route.failures.map(mark), off, date)));
 	const logins = report.logins?.map((login) => {
 		const failures = login.failures.map(mark);
 		return { ...login, failures, ok: failures.every((f) => f.accepted) };
@@ -132,6 +135,7 @@ export function applyAccepted(report: Report, accepted: readonly Accept[]): Repo
 		...(logins ? { logins } : {}),
 		ok: routes.every((r) => r.ok) && (logins ?? []).every((l) => l.ok),
 		...(all.some((f) => f.accepted) ? { acceptedCount: all.filter((f) => f.accepted).length } : {}),
+		...(all.some((f) => f.accepted?.automatic) ? { automaticCount: all.filter((f) => f.accepted?.automatic).length } : {}),
 		...(stale.length ? { staleAccepts: stale } : {}),
 	};
 }

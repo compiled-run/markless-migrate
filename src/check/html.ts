@@ -1,3 +1,4 @@
+import { acceptedLabel } from './automatic.ts';
 import { headlines, type Sample } from './responsiveness.ts';
 import type { Box, Failure, LoginResult, Report, ResponsivenessSummary, RouteResult, Shot, SourceLink } from './types.ts';
 import { remaining, type Status } from '../status.ts';
@@ -130,7 +131,7 @@ function coverage(r: RouteResult): string {
 	const missing = c.total - c.exercised;
 	const item = (e: (typeof c.elements)[number]) => {
 		const failure = r.failures.find((f) => f.check.startsWith(`not exercised: ${e.element}`));
-		const how = e.by ? `exercised by ${e.by}` : e.shared && !failure ? `in a layout shared with ${e.shared}, exercised there` : `not exercised: ${failure?.actual ?? e.reason ?? ''}${failure?.accepted ? ` (accepted: ${failure.accepted.reason})` : ''}`;
+		const how = e.by ? `exercised by ${e.by}` : e.shared && !failure ? `in a layout shared with ${e.shared}, exercised there` : `not exercised: ${failure?.actual ?? e.reason ?? ''}${failure?.accepted ? ` (${failure.accepted.automatic ? acceptedLabel(failure.accepted) : 'accepted'}: ${failure.accepted.reason})` : ''}`;
 		return `<li${!e.by && (!e.shared || failure) && !failure?.accepted ? ' class="differs"' : ''}><strong>${esc(e.element)}</strong> ${esc(how)}${failure ? where(failure) : ''}</li>`;
 	};
 	return `<details class="states coverage"${missing ? ' open' : ''}><summary>Interactive elements exercised: ${c.exercised} of ${c.total}${missing ? `, <strong>${missing} not exercised</strong>` : ''}${c.skipped ? `, ${c.skipped} keyboard journeys left out for the budget` : ''}</summary><ul>${[...c.elements].sort((a, b) => Number(Boolean(a.by || a.shared)) - Number(Boolean(b.by || b.shared))).map(item).join('')}</ul></details>`;
@@ -165,7 +166,7 @@ function route(r: RouteResult, index: number, forced?: { readonly reason: string
 		.map(([d, state]) => `<li class="${state}">${esc(d)}</li>`)
 		.join('');
 	const rows = r.failures
-		.map((f) => `<tr${f.accepted ? ' class="accepted"' : ''}><td>${f.accepted ? '<span class="badge accepted">accepted</span> ' : ''}${esc(f.dimension)}</td><td>${esc(f.viewport ?? '')}</td><td>${esc(f.check)}${f.id ? `<br><small>id ${esc(f.id)}</small>` : ''}</td><td><code>${esc(f.expected)}</code></td><td><code>${esc(f.actual)}</code></td><td>${f.accepted ? `Accepted by ${esc(f.accepted.by)} on ${esc(f.accepted.date)}: ${esc(f.accepted.reason)}` : `${esc(f.hint)}${where(f)}`}</td></tr>`)
+		.map((f) => `<tr${f.accepted ? ' class="accepted"' : ''}><td>${f.accepted ? `<span class="badge accepted">${f.accepted.automatic ? 'accepted automatically' : 'accepted'}</span> ` : ''}${esc(f.dimension)}</td><td>${esc(f.viewport ?? '')}</td><td>${esc(f.check)}${f.id ? `<br><small>id ${esc(f.id)}</small>` : ''}</td><td><code>${esc(f.expected)}</code></td><td><code>${esc(f.actual)}</code></td><td>${f.accepted?.automatic ? `${esc(acceptedLabel(f.accepted))}. Evidence: ${esc(f.accepted.reason)}` : f.accepted ? `Accepted by ${esc(f.accepted.by)} on ${esc(f.accepted.date)}: ${esc(f.accepted.reason)}` : `${esc(f.hint)}${where(f)}`}</td></tr>`)
 		.join('');
 	const table = r.failures.length
 		? `<table><thead><tr><th>Dimension</th><th>Viewport</th><th>Check</th><th>Expected (old)</th><th>Actual (new)</th><th>Fix</th></tr></thead><tbody>${rows}</tbody></table>`
@@ -262,12 +263,18 @@ for (const shot of document.querySelectorAll('.shot')) {
 
 const STATE_CLASS: Record<Status['routes'][number]['state'], string> = { green: 'pass', red: 'fail', 'not ported': 'fail', blocked: 'blocked', unchecked: 'blocked', 'needs a sample': 'blocked' };
 
+function acceptedNote(accepted: readonly string[]): string {
+	const automatic = accepted.filter((a) => a.startsWith('accepted automatically'));
+	const people = accepted.length - automatic.length;
+	return [people ? `${people} accepted by a person` : '', automatic.length ? `${automatic.length} accepted automatically (${[...new Set(automatic.map((a) => a.slice('accepted automatically: '.length).split(': ')[0]))].join('; ')})` : ''].filter(Boolean).join(', ');
+}
+
 /** Every route of the plan with how far it has come: green, red, not ported or not checked, and whether it is switched or forced. */
 export function migrationSection(s: Status): string {
 	if (!s.routes.length) return '';
 	const rows = s.routes.map((r) => {
 		const served = r.forced ? `<span class="badge fail">forced, not proven</span> ${esc(r.forced.reason)}${r.forced.by ? ` <small>(${esc(r.forced.by)})</small>` : ''}` : r.switched ? 'switched to the new app' : 'old app';
-		return `<tr${r.forced ? ' class="forced"' : ''}><td><span class="badge ${STATE_CLASS[r.state]}">${esc(r.state)}</span></td><td><code>${esc(r.route)}</code></td><td>${served}</td><td>${r.coverage ? `${r.coverage.exercised} of ${r.coverage.total}` : ''}</td><td>${esc(r.red.join(', '))}</td></tr>`;
+		return `<tr${r.forced ? ' class="forced"' : ''}><td><span class="badge ${STATE_CLASS[r.state]}">${esc(r.state)}</span></td><td><code>${esc(r.route)}</code></td><td>${served}</td><td>${r.coverage ? `${r.coverage.exercised} of ${r.coverage.total}` : ''}</td><td>${esc(r.red.join(', '))}${r.accepted?.length ? `${r.red.length ? '<br>' : ''}<small>${esc(acceptedNote(r.accepted))}</small>` : ''}</td></tr>`;
 	});
 	const head = s.done ? '<strong>Migration done:</strong> every planned route is green and switched.' : `<strong>Migration not done:</strong> ${esc(remaining(s))}.`;
 	return `<section class="migration"><h2>Every planned route</h2><p>${head}</p><table><thead><tr><th>State</th><th>Route</th><th>Served by</th><th>Interactions exercised</th><th>Red</th></tr></thead><tbody>${rows.join('')}</tbody></table></section>`;

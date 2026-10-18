@@ -1,6 +1,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Component, SourceRoute } from '../source/types.ts';
+import { readOverrides } from '../overrides.ts';
+import { decisionLine } from './decide.ts';
 import { scanLibraries } from './inventory.ts';
 import type { ParityResult } from './parity.ts';
 import type { ExportUsage, LibrariesFile, LibraryClass, LibraryUsage } from './types.ts';
@@ -20,7 +22,7 @@ export async function readLibraries(dir: string): Promise<LibrariesFile | undefi
 }
 
 const HEADINGS: Record<LibraryClass, string> = {
-	dom: 'Renders its own UI: port the used surface, or a person decides on a DOM island (never as-is)',
+	dom: 'Draws its own UI: decided below, port the parts the app uses or use the library directly (never at load)',
 	parity: 'Port the used surface (markless-migrate parity <library>)',
 	'markless-ui': 'Map to @markless/ui',
 	unknown: 'Not classified (not in the catalog and not installed)',
@@ -56,6 +58,8 @@ export function summarizeLibraries(file: LibrariesFile, detail = 6): string {
 		for (const l of libs) {
 			lines.push(`    ${l.name}${l.version ? ` ${l.version}` : ''}  ${surface(l)}${l.via ? `, only through ${l.via}` : ''}${l.core ? `; keep ${l.core} as-is` : ''}${l.replacement && brief ? ` -> ${l.replacement}` : ''}`);
 			if (brief) continue;
+			const decided = decisionLine(l);
+			if (decided) lines.push(`      decided: ${decided}`);
 			for (const e of l.exports.slice(0, detail)) lines.push(`      ${exportLine(e)}`);
 			if (l.exports.length > detail) lines.push(`      ... ${l.exports.length - detail} more in libraries.json`);
 			const styled = l.css.styled.map((s) => `${s.token} (${s.sites.length})`);
@@ -68,7 +72,7 @@ export function summarizeLibraries(file: LibrariesFile, detail = 6): string {
 
 /** Scans the old app's libraries for plan: writes `libraries.json` next to the inventory and returns the summary. */
 export async function planLibraries(source: { readonly path: string; readonly routes: SourceRoute[]; readonly components: Component[]; readonly framework: string | null }, stateDir: string, newApp: string): Promise<{ path: string; text: string; file: LibrariesFile }> {
-	const file = await scanLibraries(source.path, { routes: source.routes, components: source.components, framework: source.framework, newApp });
+	const file = await scanLibraries(source.path, { routes: source.routes, components: source.components, framework: source.framework, newApp, overrides: await readOverrides(stateDir) });
 	return { path: await writeLibraries(file, stateDir), text: summarizeLibraries(file), file };
 }
 

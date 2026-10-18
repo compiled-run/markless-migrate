@@ -216,7 +216,7 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 	for (const c of await page.evaluate(clickables).catch(() => [])) {
 		const target = { role: CLICKABLE, name: c.name, nth: c.name ? c.nth : unnamed++ };
 		const base = { target, region: c.region, importance: importance(c), ...(c.focusable ? { focusable: true } : {}) };
-		if (!c.name) add({ ...base, skip: `it answers clicks or keys but has no text or label${c.near ? ` (it sits in ${c.near})` : ''}, so check cannot find it again on the new page: label it in the old app, or accept it` });
+		if (!c.name) add({ ...base, skip: `it answers clicks or keys but has no text or label${c.near ? ` (it sits in ${c.near})` : ''}, so check cannot find it again on the new page; it stays listed as not exercised, for the final report` });
 		else if (DESTRUCTIVE.test(c.name)) add({ ...base, skip: 'its name looks destructive (sign out, delete...), so check does not use it' });
 		else add(base);
 	}

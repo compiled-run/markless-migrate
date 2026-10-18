@@ -1,4 +1,5 @@
 import { sameContentType } from './assets.ts';
+import { embedCandidate, embedImageCandidate, markupCandidate, runtimeCandidate } from './automatic.ts';
 import { compareA11y } from './a11y.ts';
 import { HINTS, seoHint } from './hints.ts';
 import { failureElements, failureOccurrence } from './locate.ts';
@@ -48,7 +49,7 @@ function fmt(value: string | undefined): string {
 // How many identical lines come before this one, so the failure can name the right one of several elements written alike.
 const occurrence = (lines: readonly string[] | undefined, index: number | undefined) => (lines && index !== undefined ? lines.slice(0, index).filter((l) => l === lines[index]).length : undefined);
 
-function lineFailures(route: string, dimension: Dimension, check: string, viewport: string, diff: LineDiff, hint: string, lines?: { readonly old: readonly string[]; readonly new: readonly string[] }): Failure[] {
+function lineFailures(route: string, dimension: Dimension, check: string, viewport: string, diff: LineDiff, hint: string, lines?: { readonly old: readonly string[]; readonly new: readonly string[] }, automatic?: (expected: string, actual: string) => Failure['automatic']): Failure[] {
 	const out: Failure[] = [];
 	const note = (f: Failure, old?: number, next?: number) => {
 		const o = occurrence(lines?.old, old);
@@ -57,7 +58,10 @@ function lineFailures(route: string, dimension: Dimension, check: string, viewpo
 		out.push(f);
 	};
 	diff.changed.forEach((c, k) => note({ route, dimension, check, viewport, expected: c.expected, actual: c.actual, hint }, diff.at?.changed[k]?.expected, diff.at?.changed[k]?.actual));
-	diff.missing.forEach((line, k) => note({ route, dimension, check, viewport, expected: line, actual: '(absent)', hint }, diff.at?.missing[k]));
+	diff.missing.forEach((line, k) => {
+		const auto = automatic?.(line, '(absent)');
+		note({ route, dimension, check, viewport, expected: line, actual: '(absent)', hint, ...(auto ? { automatic: auto } : {}) }, diff.at?.missing[k]);
+	});
 	diff.unexpected.forEach((line, k) => note({ route, dimension, check, viewport, expected: '(absent)', actual: line, hint }, undefined, diff.at?.unexpected[k]));
 	return out;
 }
@@ -227,7 +231,7 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 		const bs = others.map((o) => o.pages[viewport]!);
 		const n = next.pages[viewport];
 		if (!n) continue;
-		failures.push(...lineFailures(route, 'rendered', 'accessibility tree', viewport, diffLines(lineTemplates(a.aria, ...bs.map((b) => b.aria)), n.aria), HINTS.aria, { old: a.aria, new: n.aria }).slice(0, LIMIT));
+		failures.push(...lineFailures(route, 'rendered', 'accessibility tree', viewport, diffLines(lineTemplates(a.aria, ...bs.map((b) => b.aria)), n.aria), HINTS.aria, { old: a.aria, new: n.aria }, (line, actual) => markupCandidate(line, actual, a, n)).slice(0, LIMIT));
 		failures.push(...lineFailures(route, 'rendered', 'visible text', viewport, diffLines(lineTemplates(a.text, ...bs.map((b) => b.text)), n.text), HINTS.text, { old: a.text, new: n.text }).slice(0, LIMIT));
 
 		const noise = visualNoise(a.screenshot, bs.map((b) => b.screenshot), noisyTextBoxes(a.elements, bs.map((b) => b.elements)));
@@ -242,7 +246,8 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 			if (diff.sizeMismatch) {
 				failures.push({ route, dimension: 'visual', check: 'page size', viewport, expected: diff.sizeMismatch.expected, actual: `${diff.sizeMismatch.actual}; ${where}`, hint: HINTS.visualSize });
 			} else {
-				const failure: Failure = { route, dimension: 'visual', check: 'screenshot', viewport, expected: 'same pixels outside the noise mask', actual: where, hint: HINTS.visual };
+				const auto = embedCandidate(diff.regions, a, n);
+				const failure: Failure = { route, dimension: 'visual', check: 'screenshot', viewport, expected: 'same pixels outside the noise mask', actual: where, hint: HINTS.visual, ...(auto ? { automatic: auto } : {}) };
 				if (nearest[0]) failureElements.set(failure, { new: nearest[0] });
 				failures.push(failure);
 			}
@@ -257,7 +262,8 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 			if (bs.some((b) => !b.images[i] || b.images[i]!.naturalWidth !== img.naturalWidth || b.images[i]!.broken !== img.broken)) return;
 			const expected = img.broken ? 'broken' : `${img.naturalWidth}x${img.naturalHeight}`;
 			const actual = !other ? '(absent)' : other.broken ? 'broken' : `${other.naturalWidth}x${other.naturalHeight}`;
-			if (expected !== actual) failures.push({ route, dimension: 'assets', check: `image #${i + 1} ${img.src}`, viewport, expected, actual, hint: HINTS.image });
+			const auto = other && other.src === img.src && /^https?:/.test(img.src) ? embedImageCandidate(img.src, a, n) : undefined;
+			if (expected !== actual) failures.push({ route, dimension: 'assets', check: `image #${i + 1} ${img.src}`, viewport, expected, actual, hint: HINTS.image, ...(auto ? { automatic: auto } : {}) });
 		});
 		failures.push(...fontFailures(route, viewport, a, bs, n));
 	}
@@ -276,7 +282,8 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 		const found = newAssets.get(asset.url) ?? probes.get(asset.url);
 		if (!found || found.status >= 400) {
 			reported.add(asset.url);
-			failures.push({ route, dimension: 'assets', check: `${asset.type} ${asset.url}`, expected: `${asset.status} ${asset.contentType}`, actual: found ? `${found.status} ${found.contentType}` : 'not served', hint: HINTS.assetMissing });
+			const auto = runtimeCandidate(asset, newAssets.has(asset.url));
+			failures.push({ route, dimension: 'assets', check: `${asset.type} ${asset.url}`, expected: `${asset.status} ${asset.contentType}`, actual: found ? `${found.status} ${found.contentType}` : 'not served', hint: HINTS.assetMissing, ...(auto ? { automatic: auto } : {}) });
 		} else if (!sameContentType(found.contentType, asset.contentType)) {
 			failures.push({ route, dimension: 'assets', check: `${asset.type} ${asset.url}`, expected: asset.contentType, actual: found.contentType, hint: HINTS.assetType });
 		}
@@ -289,7 +296,8 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 	for (const [url, size] of Object.entries(oldA.pages[desktop]!.decoded)) {
 		const other = next.pages[desktop]?.decoded[url];
 		if (other && (other.width !== size.width || other.height !== size.height)) {
-			failures.push({ route, dimension: 'assets', check: `decoded size of ${url}`, expected: `${size.width}x${size.height}`, actual: `${other.width}x${other.height}`, hint: HINTS.assetDimensions });
+			const auto = /^https?:/.test(url) ? embedImageCandidate(url, oldA.pages[desktop]!, next.pages[desktop]!) : undefined;
+			failures.push({ route, dimension: 'assets', check: `decoded size of ${url}`, expected: `${size.width}x${size.height}`, actual: `${other.width}x${other.height}`, hint: HINTS.assetDimensions, ...(auto ? { automatic: auto } : {}) });
 		}
 	}
 

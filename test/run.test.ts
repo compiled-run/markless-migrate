@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { copiedLogin, DRIVERS, driver } from '../src/run/drivers.ts';
-import { buildPrompt, runRoutes, type RunOptions } from '../src/run/loop.ts';
+import { buildPrompt, runRoutes, summarizeRun, type RunOptions } from '../src/run/loop.ts';
 import { startAppServer } from '../src/run/server.ts';
 import { symlink } from 'node:fs/promises';
 import { createServer } from 'node:net';
@@ -62,6 +62,8 @@ test('a route the agent fixes on its second attempt ends green after two agent r
 	assert.match(prompt, /check_route` tool \(old: http:\/\/old\.test, new: http:\/\/new\.test, route: \/about\/\)/);
 	assert.match(prompt, /actual: {3}Meet the guides/);
 	assert.match(await readFile(join(cwd, 'prompt.2'), 'utf8'), /This is attempt 2\./);
+	assert.match(prompt, /Never ask a question or wait for an\n  answer: nobody is there to reply/);
+	assert.match(prompt, /Never ask them anything and never wait for an answer or an approval during the migration/);
 
 	const log = await readFile(join(cwd, '.migrate', 'run.log'), 'utf8');
 	assert.match(log, /run --agent codex, 1 route\(s\), up to 3 attempt\(s\) each/);
@@ -72,11 +74,12 @@ test('a route the agent fixes on its second attempt ends green after two agent r
 	assert.ok(lines.some((l) => /^green +\/about\/ after 2 attempt/.test(l)));
 });
 
-test('a route still red after the last attempt stops as "needs a human", and a failing agent exit still counts as an attempt', async () => {
-	const { cwd, options, calls } = await sandbox(99, { FAKE_EXIT: '1' });
-	const outcomes = await runRoutes({ ...options, attempts: 2 });
-	assert.deepEqual(outcomes.map((o) => [o.outcome, o.attempts]), [['needs a human', 2]]);
-	assert.equal(await calls(), 2);
+test('a route still red after the last attempt is left red and the run goes on with the next route; a failing agent exit still counts as an attempt', async () => {
+	const { cwd, options, calls, checks } = await sandbox(99, { FAKE_EXIT: '1' });
+	const outcomes = await runRoutes({ ...options, routes: ['/about/', '/next/'], attempts: 2 });
+	assert.deepEqual(outcomes.map((o) => [o.route, o.outcome, o.attempts]), [['/about/', 'left red', 2], ['/next/', 'left red', 2]]);
+	assert.deepEqual(checks, ['/about/', '/about/', '/about/', '/next/', '/next/', '/next/']);
+	assert.equal(await calls(), 4);
 	assert.match(await readFile(join(cwd, '.migrate', 'run.log'), 'utf8'), /attempt 2: codex exit 1/);
 });
 
@@ -100,7 +103,7 @@ test('an agent killed by the timeout counts as an attempt', async () => {
 	const { cwd, options } = await sandbox(99);
 	await writeFile(join(cwd, 'bin', 'codex'), '#!/bin/sh\nexec sleep 30\n');
 	const outcomes = await runRoutes({ ...options, attempts: 1, timeoutMs: 200 });
-	assert.equal(outcomes[0]!.outcome, 'needs a human');
+	assert.equal(outcomes[0]!.outcome, 'left red');
 	assert.match(await readFile(join(cwd, '.migrate', 'run.log'), 'utf8'), /codex killed by SIGTERM/);
 });
 
@@ -233,4 +236,22 @@ test('a CODEX_HOME holding a copy of the real auth.json is refused; the real hom
 	await mkdir(linked);
 	await symlink(join(home, '.codex', 'auth.json'), join(linked, 'auth.json'));
 	assert.equal(await copiedLogin('codex', { CODEX_HOME: linked }, home), undefined);
+});
+
+test('the run ends with one report: green routes, library decisions, automatic acceptances, and what to look at, with no question in it', () => {
+	const text = summarizeRun(
+		[
+			{ route: '/', outcome: 'green', attempts: 1, summary: '' },
+			{ route: '/settings', outcome: 'left red', attempts: 3, summary: '', open: ['visual: screenshot (desktop) [abc1234567]', 'css: color of button "Save" [def1234567]'] },
+		],
+		{ libraries: ['chart.js: uses chart.js directly, loaded only when its element is needed, because it draws into a canvas'], automatic: ['/ assets: script /react.js, accepted automatically: x (y)'], needsSample: ['/blog/:slug'], log: '/tmp/run.log' },
+	);
+	assert.match(text, /^1 of 2 routes green\./);
+	assert.match(text, /Libraries, decided by plan:\n  chart\.js: uses chart\.js directly/);
+	assert.match(text, /nothing needs changing/);
+	assert.match(text, /Accepted automatically, with the evidence:\n  \/ assets: script \/react\.js/);
+	assert.match(text, /What to look at if you care \(nothing here stops the migration\):\n  \/settings is still red after 3 attempt\(s\) and stays on the old app: visual: screenshot \(desktop\) \[abc1234567\]; css: color/);
+	assert.match(text, /\/blog\/:slug/);
+	assert.doesNotMatch(text, /\?|needs a human|ask/i);
+	assert.doesNotMatch(summarizeRun([{ route: '/', outcome: 'green', attempts: 0, summary: '' }], { log: 'l' }), /What to look at/);
 });

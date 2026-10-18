@@ -181,3 +181,46 @@ export async function injectedTokens(pkg: InstalledPackage, prefixes: readonly s
 	}
 	return [...found].sort().slice(0, 400);
 }
+
+function codeEntry(json: InstalledPackage['json']): string | undefined {
+	const pick = (value: unknown): string | undefined => {
+		if (typeof value === 'string') return /\.(m?js|cjs)$/.test(value) ? value : undefined;
+		if (value && typeof value === 'object') {
+			const o = value as Record<string, unknown>;
+			for (const key of ['browser', 'import', 'module', 'default', 'require']) {
+				const hit = pick(o[key]);
+				if (hit) return hit;
+			}
+		}
+		return undefined;
+	};
+	const map = json.exports && typeof json.exports === 'object' && !Array.isArray(json.exports) ? (json.exports as Record<string, unknown>) : undefined;
+	return pick(map ? (map['.'] ?? map) : json.exports) ?? json.module ?? json.main ?? 'index.js';
+}
+
+/** Bytes of the code a bundler takes for the package's main import (its ESM entry when it has one), when installed. */
+export async function entryBytes(pkg: InstalledPackage): Promise<number | undefined> {
+	const entry = codeEntry(pkg.json);
+	return entry ? stat(join(pkg.dir, entry)).then((s) => (s.isFile() ? s.size : undefined), () => undefined) : undefined;
+}
+
+const WEBGL = /getContext\(\s*['"](webgl2?|experimental-webgl)['"]/;
+const CANVAS_2D = /getContext\(\s*['"]2d['"]/;
+const CANVAS_DRAWS = /\.(fillRect|fillText|strokeText|lineTo|bezierCurveTo|quadraticCurveTo|drawImage|strokeRect|arc)\(/g;
+const DRAWS_TO_COUNT = 20;
+
+/** Whether the package draws its UI as pixels: a WebGL context, or a 2D canvas it paints on many times (not one used only to measure text). */
+export async function drawsPixels(pkg: InstalledPackage): Promise<'canvas' | 'webgl' | undefined> {
+	let budget = BUDGET;
+	let canvas = false;
+	let draws = 0;
+	for (const file of await codeFiles(pkg)) {
+		if (budget <= 0 || !/\.(m?js|cjs)$/.test(file)) continue;
+		const text = await readFile(file, 'utf8').catch(() => '');
+		budget -= text.length;
+		if (WEBGL.test(text)) return 'webgl';
+		canvas ||= CANVAS_2D.test(text);
+		draws += text.match(CANVAS_DRAWS)?.length ?? 0;
+	}
+	return canvas && draws >= DRAWS_TO_COUNT ? 'canvas' : undefined;
+}

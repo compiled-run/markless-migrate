@@ -67,7 +67,7 @@ const describe = (key: string, r: RouteState) => `${key}: ${r.blocked ? 'blocked
 
 export type SwitchOutcome = { readonly ok: true; readonly path: string; readonly entry: SwitchedRoute; readonly already: boolean } | { readonly ok: false; readonly reason: string };
 
-/** Set in the environment of every agent `run` drives: forcing a switch or accepting a difference is a person's decision. */
+/** Set in the environment of every agent `run` drives: forcing a switch and accepting a difference are expert overrides it refuses. */
 export const AGENT_ENV = 'MARKLESS_MIGRATE_AGENT';
 
 /** Moves a route to the new app when every last check of it (each role) is green; a person's `force` records who sent it anyway and why. */
@@ -80,7 +80,7 @@ export async function switchRoute(cwd: string, route: string, options: { force?:
 	const green = checks.length > 0 && checks.every(({ state }) => state.ok && !state.blocked);
 	if (!green && options.force === undefined) {
 		const why = checks.length ? `its last check is not green (${checked.join('; ')})` : 'it has not been checked yet';
-		return { ok: false, reason: `not switching ${route}: ${why}. Run check until it is green; only a person may force it (switch --force --by <name> --reason <why>).` };
+		return { ok: false, reason: `not switching ${route}: ${why}. Run check until it is green; until then the route stays on the old app (an expert override exists: switch --force --by <name> --reason <why>).` };
 	}
 	const current = await readSwitched(cwd);
 	const existing = current.routes.find((r) => r.route === route);

@@ -12,6 +12,11 @@ description: Use when moving an existing web app (Next.js, Vite, or another fram
 You convert the code. \`markless-migrate\` takes stock of the old app and proves each converted route
 matches it in a real browser. A route is done when its check is green, not when it looks right.
 
+The person who asked for the migration wants their app migrated and is not there to answer technical
+questions. Never ask them anything and never wait for an answer or an approval during the migration:
+every choice below has a default the tool or this skill decides. Work through every route, then report
+once at the end.
+
 ## The loop
 
 1. Run the old app and note its origin (for example \`http://localhost:3000\`).
@@ -26,20 +31,27 @@ matches it in a real browser. A route is done when its check is green, not when 
    here) and raise \`--journey-budget\` if check ran out of time before reaching it.
 6. When the route is green, call \`switch_route\` (or \`markless-migrate switch <route>\`) so the proxy
    (\`markless-migrate proxy\`) and the deploy config (\`markless-migrate config\`) serve it from Markless.
-   Never pass \`--force\`: only a human switches a route that is not green.
+   Never pass \`--force\`: a route that is not green stays on the old app and goes in the final report.
 7. Call \`status\` to see which routes are green, red, not ported or not checked yet, then repeat from
-   step 3. The migration is not done while any planned route is not ported.
+   step 3. The migration is not done while any planned route is not ported. A route you cannot make
+   green goes in the final report; move on to the next one.
+8. At the end, write one report: which routes are green and switched, how each library was handled
+   (plan's "decided" lines), what was accepted automatically, and a section "What to look at if you care":
+   each route still red with its failure ids, what differs, what you tried and what you think it needs.
+   Mention \`.migrate/report.html\` for anything visual.
 
 ## Rules
 
 - Never edit the old app to make a check pass; the old app is the reference.
-- Do not weaken or skip a failing dimension. If you think a failure is wrong, say so and show the
-  evidence to the user.
-- A difference the user intends (a redesigned heading, a dropped tracker) can be accepted, but only by a
-  human: propose it to the user with the failure's id (printed in [brackets]) and your reason, and let
-  them run \`markless-migrate accept <id> --reason "..."\`. Never write \`.migrate/accepted.json\`
-  yourself. Accepted failures show as "accepted" with the reason; an accepted difference that no longer
-  matches anything is listed as stale.
+- Do not weaken or skip a failing dimension. If you think a failure is wrong, keep going and put it in
+  the final report's "What to look at if you care" with the failure id and your evidence.
+- check accepts some differences automatically when its evidence proves they are no user-visible
+  regression: the old framework's own scripts the new page no longer loads, markup the old framework adds
+  for itself (Next's route announcer) when the accessibility tree and announcements otherwise match, and
+  live content (counts, timestamps) inside a third-party embed both pages show. They are labelled
+  "accepted automatically: <rule>" with the evidence. Any other difference stays red until it is fixed:
+  never write \`.migrate/accepted.json\` and never run \`accept\`; list the difference, with its id
+  (printed in [brackets]) and why you think it is intended, in the final report instead.
 - \`visual\` failures that come with \`css\` or \`rendered\` failures usually disappear once those are
   fixed: fix the DOM and CSS failures first.
 - \`css\` failures name the old rule (selector, file, line) that set the value; port that rule's intent.
@@ -51,7 +63,7 @@ matches it in a real browser. A route is done when its check is green, not when 
   handler run from code the page already has. A long task names its top script; a big gap between the
   first and the second use is start-up work the first interaction pays for. For a link, a full page load
   where the old app navigated in the page, a cold server function, or a missing prefetch are the usual
-  causes. Do not raise \`--interaction-budget\` to make it pass; that is a person's call.
+  causes. Never raise \`--interaction-budget\` to make it pass.
 - \`network\` failures compare the requests each page makes, in the browser and (when the servers run
   the request recorder, see \`markless-migrate recorder\`) while the server renders it: the same
   endpoints, query parameters, body fields and number of calls, and the response fields the old page
@@ -66,11 +78,14 @@ matches it in a real browser. A route is done when its check is green, not when 
 - Logged-in pages: \`plan --source\` writes a starter \`.migrate/auth.json\` with the roles and login route it
   found; fill in the login steps (credentials as \`\${ENV}\`) and pass it as \`--auth\` (\`auth\`). Every route is
   then checked once per role and anonymous; \`auth\` failures mean the new app lets a role in, keeps it out,
-  sends it elsewhere, or sets the session cookie differently than the old app did.
+  sends it elsewhere, or sets the session cookie differently than the old app did. When the credentials it
+  names are not in the environment, check the routes anonymous and list the roles left unchecked in the final report.
 - A route reported as blocked was answered by bot protection, not the app: point the check at a staging
   URL or pass the bypass token with \`--header\`/\`--cookie\` (\`header\`/\`cookie\`); never weaken the wall.
+  With neither at hand, list the route as blocked in the final report and go on with the next one.
 - \`a11y\` and \`i18n\` failures are as blocking as visual ones; check every locale the inventory lists.
-- \`.migrate/report.html\` shows old, new and diff images; tell the user to open it when a failure is visual.
+- \`.migrate/report.html\` shows old, new and diff images; open it yourself when a failure is visual, and
+  point to it in the final report.
 - Pass the old app's source (\`source\`, \`--source\`) and the Markless app's (\`new_source\`, \`--new-source\`):
   each failing element then carries a \`where\` line naming the old file and line that renders it and the
   \`.tsrx\` file and line that renders it now, or the \`.tsrx\` page that is missing it. Start there.
@@ -88,20 +103,24 @@ back, every usage site) and what to do with it:
 - **@markless/ui**: a family does the same job (a Radix or shadcn/ui dialog is \`modal\`, tabs are \`tabs\`, a
   toast is \`toaster\`). Render the family and give it the old classes; translate selectors on the library's
   own attributes (\`data-[state=open]\`) to the family's (\`[ui-open]\`). When the installed @markless/ui
-  lacks the family, port it like a library below and tell the user which family was missing.
+  lacks the family, port it like a library below and name the missing family in the final report.
 - **as-is**: framework-agnostic and renders nothing (zod, date-fns, clsx, a table or query core). Import it unchanged.
-- **dom**: renders its own UI into the page (AG Grid, Handsontable, Chart.js, ECharts, Monaco, Leaflet), alone or
-  under a React or Vue wrapper. Never import it unchanged. Ask the user which: port the used surface like a
-  library below, or keep it as a DOM island (mounted from \`attach\` on an element the page renders), which
-  ships the library to the browser.
+- **dom**: draws its own UI into the page (AG Grid, Handsontable, Chart.js, ECharts, Monaco, Leaflet), alone or
+  under a React or Vue wrapper. \`plan\` has already decided what to do; follow its "decided" line (also in
+  \`behaviour.md\`). A wrapper (ag-grid-react, react-chartjs-2, @monaco-editor/react) is always replaced by a
+  Markless port of what the app uses. The library underneath is either ported too (AG Grid's grid: the parts
+  this app uses become Markless code) or used directly as an ordinary JavaScript library from Markless code
+  (Chart.js, Leaflet, Monaco): import it with \`await import(...)\` inside an \`onVisible\` (or \`onIdle\`)
+  handler on the element it draws into and create it there, so it never loads with the page.
 - **port**: bound to the old framework (react-hook-form, recharts, a React hook). Run
   \`markless-migrate parity <library> --route <route>\` (MCP \`parity\`): it writes
   \`lib/parity/<library>/\` with a skeleton of exactly the used surface and \`behaviour.md\`, what every usage
   site must do and the recorded journeys that exercise it. Fill the skeleton in with Markless state,
   computed values and plain DOM; keep the library's framework-agnostic core (\`core\` in the file) as-is.
 - Port only the used surface: the same names, the props and options the app passes, the fields it reads,
-  nothing more. Never render React, Vue or Svelte inside the Markless app, and never load the old library
-  in the browser to "bridge" it. The route's check proves the port at every place it is used.
+  nothing more. Never render React, Vue, Svelte or any other UI framework inside the Markless app, and never
+  load a framework-bound library in the browser to "bridge" it. The route's check proves the port at every
+  place it is used.
 `;
 
 function sha256(text: string): string {

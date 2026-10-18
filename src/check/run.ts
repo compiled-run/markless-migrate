@@ -4,6 +4,7 @@ import { availableParallelism } from 'node:os';
 import { join } from 'node:path';
 import { chromium, type Browser } from 'playwright';
 import { applyAccepted, type Accept } from './accepted.ts';
+import type { AutomaticRule } from './automatic.ts';
 import { accessFailures, ANONYMOUS, saysDenied, compareLogin, loginRoutes, saveState, signIn, type AuthConfig, type RoleSpec } from './auth.ts';
 import { BlockedError, blockedResult, detectChallenge, probeWall } from './blocked.ts';
 import { DEFINITE, defaultEnv, isLoopback, pushRecording, tagHeaders, type SideEnv, type StorageState, type WallHit } from './browser.ts';
@@ -68,6 +69,8 @@ export interface CheckOptions {
 	readonly sourceDirs?: { readonly old?: string; readonly new?: string };
 	/** Intended differences (`.migrate/accepted.json`): failures they match are reported as accepted, not red. */
 	readonly accepted?: readonly Accept[];
+	/** Automatic acceptance rules turned off in `.migrate/overrides.json`. */
+	readonly automaticOff?: readonly AutomaticRule[];
 	/** Routes checked at once; default half the cores, at most 4. */
 	readonly concurrency?: number;
 	/** How long exploring each route's interactions may take, and at most how many journeys it records. */
@@ -422,7 +425,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			...(auth ? { roles: roles as string[], logins } : {}),
 			...(options.unchecked?.length ? { unchecked: options.unchecked } : {}),
 			...(options.responsiveness ? { responsiveness: summarizeResponsiveness(routes, options.responsiveness) } : {}),
-		}, options.accepted ?? []);
+		}, options.accepted ?? [], options.automaticOff ?? []);
 	} finally {
 		if (!options.browser) await browser.close();
 	}

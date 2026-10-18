@@ -74,8 +74,8 @@ export const CATALOG: readonly CatalogEntry[] = [
 	{ match: /^zustand(\/.*)?$/, framework: 'react', class: 'parity', reason: 'a store with a React hook; the store is framework-agnostic (zustand/vanilla), the hook becomes shared() state', core: 'zustand/vanilla' },
 	{ match: /^react-top-loading-bar$/, framework: 'react', class: 'parity', reason: 'a navigation progress bar component; a few lines over the router\'s navigation events' },
 	{ match: /^@clerk\/(react|nextjs|clerk-react)$/, framework: 'react', class: 'parity', reason: 'auth UI and hooks for React; port the used components over @clerk/clerk-js', core: '@clerk/clerk-js' },
-	{ match: /^(ag-grid-(community|enterprise)|@ag-grid-(community|enterprise)\/.+|handsontable|tabulator-tables|gridjs|datatables\.net(-.+)?|chart\.js|echarts|highcharts|apexcharts|plotly\.js(-dist(-min)?)?|uplot|lightweight-charts|monaco-editor|codemirror|@codemirror\/view|quill|@tiptap\/core|prosemirror-view|leaflet|mapbox-gl|maplibre-gl|ol|swiper|flatpickr|tom-select|choices\.js|@fullcalendar\/core|video\.js|xterm|@xterm\/xterm|three)$/, framework: 'none', class: 'dom', reason: `a framework-agnostic widget that ${'renders its own UI into the page: port the used surface to Markless (markless-migrate parity), or a person decides to keep it as a DOM island mounted from attach, which ships it to the browser; never import it unchanged'}` },
-	{ match: /^(ag-grid-(react|vue3?|angular)|@handsontable\/(react|vue3?)|react-chartjs-2|vue-chartjs|echarts-for-react|vue-echarts|highcharts-react-official|highcharts-vue|react-apexcharts|vue3-apexcharts|react-plotly\.js|@monaco-editor\/react|@guolao\/vue-monaco-editor|@uiw\/react-codemirror|react-quill(-new)?|@vueup\/vue-quill|@tiptap\/(react|vue-3)|react-leaflet|@vue-leaflet\/vue-leaflet|react-map-gl|@fullcalendar\/(react|vue3?)|swiper\/(react|vue))$/, framework: 'react', class: 'dom', reason: `a framework wrapper over a widget that ${'renders its own UI into the page: port the used surface to Markless (markless-migrate parity), or a person decides to keep it as a DOM island mounted from attach, which ships it to the browser; never import it unchanged'}` },
+	{ match: /^(ag-grid-(community|enterprise)|@ag-grid-(community|enterprise)\/.+|handsontable|tabulator-tables|gridjs|datatables\.net(-.+)?|chart\.js|echarts|highcharts|apexcharts|plotly\.js(-dist(-min)?)?|uplot|lightweight-charts|monaco-editor|codemirror|@codemirror\/view|quill|@tiptap\/core|prosemirror-view|leaflet|mapbox-gl|maplibre-gl|ol|swiper|flatpickr|tom-select|choices\.js|@fullcalendar\/core|video\.js|xterm|@xterm\/xterm|three)$/, framework: 'none', class: 'dom', reason: 'a framework-agnostic library that draws its own UI into the page: plan decides whether to port the parts the app uses or to use it directly from Markless code, loaded when needed' },
+	{ match: /^(ag-grid-(react|vue3?|angular)|@handsontable\/(react|vue3?)|react-chartjs-2|vue-chartjs|echarts-for-react|vue-echarts|highcharts-react-official|highcharts-vue|react-apexcharts|vue3-apexcharts|react-plotly\.js|@monaco-editor\/react|@guolao\/vue-monaco-editor|@uiw\/react-codemirror|react-quill(-new)?|@vueup\/vue-quill|@tiptap\/(react|vue-3)|react-leaflet|@vue-leaflet\/vue-leaflet|react-map-gl|@fullcalendar\/(react|vue3?)|swiper\/(react|vue))$/, framework: 'react', class: 'dom', reason: 'a framework wrapper over a library that draws its own UI: the wrapper is always replaced by a Markless port of the parts the app uses; plan decides whether that port uses the library underneath directly or replaces it too' },
 	{ match: /^(zod|valibot|yup|date-fns|dayjs|clsx|classnames|tailwind-merge|class-variance-authority|axios|ky|lodash(-es)?|nanoid|uuid|@faker-js\/faker|immer|superjson|d3-.*|marked|dompurify)(\/.*)?$/, framework: 'none', class: 'as-is', reason: 'framework-agnostic: import it unchanged from the Markless app' },
 	{ match: /^@fontsource(-variable)?\//, framework: 'none', class: 'as-is', reason: 'self-hosted font files with their @font-face CSS: import the same stylesheets from the Markless app', css: true },
 	{ match: /^tailwindcss$|^@tailwindcss\/vite$|^tw-animate-css$/, framework: 'none', class: 'as-is', reason: 'CSS tooling: keep it in the Markless app\'s Vite config and stylesheet' },
@@ -87,6 +87,40 @@ export const CATALOG: readonly CatalogEntry[] = [
 	{ match: /^sveltekit-superforms(\/.*)?$/, framework: 'svelte', class: 'parity', reason: 'form state as Svelte stores; port the used surface over state() and computed()' },
 	{ match: /^svelte-sonner$|^vue-sonner$/, framework: 'svelte', class: 'markless-ui', reason: 'toasts; @markless/ui toaster', replacement: '@markless/ui toaster', parts: { Toaster: 'toaster.root', toast: 'toaster.item' } },
 ];
+
+/** The framework-agnostic library a framework wrapper drives. */
+const WRAPPED: readonly [RegExp, string][] = [
+	[/^ag-grid-(react|vue3?|angular)$/, 'ag-grid-community'],
+	[/^@handsontable\//, 'handsontable'],
+	[/^(react|vue)-chartjs(-2)?$/, 'chart.js'],
+	[/^(echarts-for-react|vue-echarts)$/, 'echarts'],
+	[/^highcharts-(react-official|vue)$/, 'highcharts'],
+	[/^(react|vue3)-apexcharts$/, 'apexcharts'],
+	[/^react-plotly\.js$/, 'plotly.js'],
+	[/^(@monaco-editor\/react|@guolao\/vue-monaco-editor)$/, 'monaco-editor'],
+	[/^@uiw\/react-codemirror$/, '@codemirror/view'],
+	[/^(react-quill(-new)?|@vueup\/vue-quill)$/, 'quill'],
+	[/^@tiptap\/(react|vue-3)$/, '@tiptap/core'],
+	[/^(react-leaflet|@vue-leaflet\/vue-leaflet)$/, 'leaflet'],
+	[/^react-map-gl$/, 'maplibre-gl'],
+	[/^@fullcalendar\/(react|vue3?)$/, '@fullcalendar/core'],
+];
+
+export function wrappedEngine(name: string): string | undefined {
+	return WRAPPED.find(([re]) => re.test(name))?.[1];
+}
+
+/** What check cannot verify about a catalogued engine: it draws pixels, or its behaviour is gestures the journeys never make. */
+const TRAITS: readonly [RegExp, { draws?: 'canvas' | 'webgl'; needs?: 'text editing' | 'dragging, panning or zooming' }][] = [
+	[/^(chart\.js|echarts|uplot|lightweight-charts)$/, { draws: 'canvas' }],
+	[/^(mapbox-gl|maplibre-gl|three)$/, { draws: 'webgl', needs: 'dragging, panning or zooming' }],
+	[/^(monaco-editor|codemirror|@codemirror\/view|quill|@tiptap\/core|prosemirror-view|xterm|@xterm\/xterm)$/, { needs: 'text editing' }],
+	[/^(leaflet|ol|swiper)$/, { needs: 'dragging, panning or zooming' }],
+];
+
+export function engineTraits(name: string): { draws?: 'canvas' | 'webgl'; needs?: 'text editing' | 'dragging, panning or zooming' } {
+	return TRAITS.find(([re]) => re.test(name))?.[1] ?? {};
+}
 
 export function catalogEntry(name: string): CatalogEntry | undefined {
 	return CATALOG.find((c) => c.match.test(name));

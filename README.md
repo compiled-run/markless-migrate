@@ -61,7 +61,10 @@ shows every file it will change and keeps a backup of each. Paths and their sour
 `run` drives your agent's own CLI headless (`codex exec`, `claude -p`, `gemini -p`, `cursor-agent -p`,
 `copilot -p`, `opencode run`) on whatever login it already has, one route at a time: it checks the route,
 gives the agent the migration skill and the failing report, checks again after the agent finishes, and
-stops the route as "needs a human" after `--attempts` tries. Every attempt, with the agent's output, is
+leaves the route red after `--attempts` tries and goes on with the next one. Nothing in a run waits for
+an answer: the skill and the prompt tell the agent never to ask, and the run ends with one report (green
+routes, how each library that draws its own UI was handled, what was accepted automatically, and "What to
+look at if you care": each route still red with its open failure ids, and routes that need a sample). Every attempt, with the agent's output, is
 appended to `.migrate/run.log`. Each route is checked with the same `--source`, `--new-source`, `--auth`,
 `--header` and `--cookie` as `check` (and `--all` takes the same routes and endpoints), and the prompt
 names the old source, the roles and the exact check command. A sandboxed agent cannot keep a server
@@ -276,15 +279,54 @@ Entries may be edited by hand: `route` is a glob (`*` within a segment, `**` acr
 (exact, or `/regex/flags`) or `element: { role, name }` (a failure about that element). A failure an
 entry matches is shown as accepted, with the reason, in the summary, report.html and `status`, and does
 not turn its route red; a route that was not fully compared (blocked, or let in differently) stays red.
-An entry for a route checked in this run that matched nothing is listed as stale. The skill tells
-agents to propose an accept to the user and never write the file themselves; the MCP server has no
-accept tool.
+An entry for a route checked in this run that matched nothing is listed as stale. `accept` is an
+expert's tool, never needed to finish a migration: the skill tells agents never to write the file or
+run `accept`, and to list a difference they believe is intended in their final report instead; the MCP
+server has no accept tool, and an agent `run` drives is refused.
+
+Some differences are accepted automatically, because the check has evidence that no visitor can see
+them. Each is labelled `accepted automatically: <rule>` with its evidence in the summary, report.html
+and `status`, and carries `accepted.automatic` (the rule) and `by: "markless-migrate"` in report.json and
+results.json, apart from differences a person accepted:
+
+| Rule | Accepted when |
+| --- | --- |
+| the old framework's own code, which the new page no longer loads | an `assets` failure for a script the old page loaded and the new page does not request, whose code carries a UI framework's runtime (React, Next.js, Vue, Svelte, Angular, Solid, Preact, htmx, Alpine.js, by markers only that runtime has). A script the new page requests and does not get is still red, and so is one without a runtime, which another site may embed |
+| markup the old framework adds for itself, with the accessibility tree and announcements otherwise the same | a missing accessibility tree line that is exactly the role and text of a framework's own markup the old page has and the new page lacks (Next.js's `next-route-announcer`, Gatsby's, SvelteKit's and Nuxt's announcers), and only while no other line of that route's tree and no announcement after an interaction differs |
+| live content inside a third-party embed that both pages show | screenshot differences that all lie inside iframes or images from another origin that both pages load from the same address at the same place, or a third-party image at the same address that came back a different size |
+
+Anything else stays red until it is fixed or a person accepts it. An expert may turn a rule off in
+`.migrate/overrides.json` (`{ "automatic": { "live-embed": false } }`); the file is optional.
+
+## Libraries that draw their own UI
+
+`plan --source` decides, for every library that draws its own UI into the page (AG Grid, Handsontable,
+Chart.js, ECharts, Monaco, Leaflet, Three.js, or an installed package found writing DOM), whether the new
+app ports the parts the app uses or uses the library directly, and prints the decision with its reason in
+the plan output, `libraries.json` (`decision`), `behaviour.md` and the run report. A framework wrapper
+(ag-grid-react, react-chartjs-2, @monaco-editor/react) is always replaced by a Markless port of what the
+app uses: React or another UI framework never ships in the Markless app. The library underneath (decided
+together with its wrappers, from their combined use) follows the first rule that applies:
+
+1. Set in `.migrate/overrides.json` (`{ "libraries": { "chart.js": "port" } }`, `"port"` or `"direct"`).
+2. It draws into a canvas or WebGL (from the catalog, or its code: a WebGL context, or a 2D canvas painted
+   20 times or more, not one only measuring text): used directly, because check sees only its pixels.
+3. Its behaviour is text editing, or dragging, panning and zooming (editors, maps, carousels): used
+   directly, because check's journeys do not perform it.
+4. The app uses more than 120 of its names (exports, props, options, keys of the data passed, members and
+   fields read; AG Grid in the Devtron panel uses 74): used directly.
+5. Its main entry is no bigger than about 1 KB per used name: used directly, since a port would not run
+   less code.
+6. Otherwise the used parts are ported (`markless-migrate parity`).
+
+A library used directly is created from an `onVisible` handler (or `onIdle`) on the element it draws
+into, imported there with `import()`, so it never loads with the page.
 
 ## Switching routes over
 
 `switch <route>` adds the route (a path, or a pattern like `/blog/:slug`) to `.migrate/switched.json`.
 It refuses unless the route's last check is green for every role it was checked as. Forcing a route
-that is not green is a person's decision, like `accept`: `--force --by <name> --reason <why>`, or
+that is not green is an expert override, like `accept`: `--force --by <name> --reason <why>`, or
 `--force` alone at a terminal, which asks for both and for the route typed back. It records who forced
 it, why, and the checks it overrode. The MCP server's `switch_route` never forces, and an agent driven
 by `run` cannot force or accept (`run` marks its environment and the CLI refuses). `unswitch` sends a

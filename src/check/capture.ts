@@ -1,3 +1,4 @@
+import { frameworkMarkup, frameworkRuntime, thirdPartyEmbeds } from './automatic.ts';
 import type { Browser, Page, Response } from 'playwright';
 import { collectPage, decodeImages } from './collect.ts';
 import { createHash } from 'node:crypto';
@@ -150,6 +151,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		const stylesheets: { url: string; text: string }[] = [];
 		const fontHashes = new Map<string, string>();
 		const scriptBytes = new Map<string, { bytes: number; source: number }>();
+		const runtimes = new Map<string, string>();
 		page.on('response', (response: Response) => {
 			const type = response.request().resourceType();
 			if (!ASSET_TYPES.has(type)) return;
@@ -157,7 +159,12 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 				(async () => {
 					const sizes = await response.request().sizes().catch(() => undefined);
 					const bytes = sizes?.responseBodySize ?? 0;
-					if (type === 'script') scriptBytes.set(response.url(), { bytes, source: response.ok() ? (await response.body().catch(() => Buffer.alloc(0))).length : 0 });
+					if (type === 'script') {
+						const body = response.ok() ? await response.body().catch(() => Buffer.alloc(0)) : Buffer.alloc(0);
+						scriptBytes.set(response.url(), { bytes, source: body.length });
+						const runtime = frameworkRuntime(body.toString('utf8'));
+						if (runtime) runtimes.set(toLocal(response.url(), origin), runtime);
+					}
 					if (type === 'font' && response.ok()) fontHashes.set(response.url(), createHash('sha256').update(await response.body()).digest('hex'));
 					if (type === 'stylesheet' && response.ok()) stylesheets.push({ url: toLocal(response.url(), origin), text: await response.text() });
 					return { url: toLocal(response.url(), origin), type, status: response.status(), contentType: mime(response.headers()['content-type']), bytes };
@@ -184,7 +191,9 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 			if (text.trim()) stylesheets.push({ url: `${toLocal(pageUrlBefore(page), origin)} <style> #${i + 1}`, text });
 		}
 		const builtTexts = [html, ...stylesheets.map((s) => s.text), ...coverage.map((entry) => entry.source ?? '')];
-		const assets: AssetRecord[] = (await Promise.all(pending)).filter((a) => a !== undefined).map((a) => ({ ...a, fingerprinted: isFingerprinted(a.url, builtTexts) }));
+		const assets: AssetRecord[] = (await Promise.all(pending)).filter((a) => a !== undefined).map((a) => ({ ...a, fingerprinted: isFingerprinted(a.url, builtTexts), ...(runtimes.has(a.url) ? { runtime: runtimes.get(a.url)! } : {}) }));
+		const internals = await page.evaluate(frameworkMarkup).catch(() => []);
+		const embeds = await page.evaluate(thirdPartyEmbeds).catch(() => []);
 		const imageUrls = [...new Set(assets.filter((a) => a.type === 'image' && a.status < 400).map((a) => new URL(a.url, origin).href))];
 		log.stop();
 		const decodedAbsolute = await page.evaluate(decodeImages, imageUrls);
@@ -224,6 +233,8 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 			blocked: Object.fromEntries(log.blocked),
 			writes: log.writes.map((w) => ({ line: w.line, reason: w.reason, sent: w.sent })),
 			storage,
+			...(internals.length ? { internals } : {}),
+			...(embeds.length ? { embeds } : {}),
 			weight: {
 				downloaded: scripts.reduce((sum, s) => sum + s.bytes, 0),
 				source: scripts.reduce((sum, s) => sum + s.source, 0) + inline.reduce((sum, entry) => sum + (entry.source ?? '').length, 0),

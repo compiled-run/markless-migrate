@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readOverrides, rulesOff } from './overrides.ts';
 import { readFile, writeFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline/promises';
 import { dirname, join, resolve } from 'node:path';
@@ -23,7 +24,8 @@ import { writeStarterAuth } from './plan/auth.ts';
 import { plan, summarizeInventory, writeInventory } from './plan/inventory.ts';
 import { copiedLogin, DRIVERS, driver } from './run/drivers.ts';
 import { startAppServer } from './run/server.ts';
-import { runRoutes } from './run/loop.ts';
+import { runRoutes, summarizeRun } from './run/loop.ts';
+import { acceptedLabel } from './check/automatic.ts';
 import { readInventory, readResults, recordResults, STATE_DIR, status, summarizeStatus } from './status.ts';
 import { changedSince, gitHead, selectChanged } from './check/changed.ts';
 import { VERSION } from './version.ts';
@@ -31,7 +33,7 @@ import { buildAssets, nitroSnippet, notServedBy, pageAssets, vercelConfig } from
 import { startProxy } from './switch/proxy.ts';
 import { AGENT_ENV, readSwitched, switchRoute, unswitchRoute } from './switch/state.ts';
 import { ACCEPTED_FILE, acceptFailure, readAccepted, writeAccepted } from './check/accepted.ts';
-import { LIBRARIES_FILE, planLibraries, readLibraries, summarizeParity, writeParity } from './library/index.ts';
+import { decisionLine, LIBRARIES_FILE, planLibraries, readLibraries, summarizeParity, writeParity } from './library/index.ts';
 import type { RouteState } from './status.ts';
 import { CLI_CONFIG, CLI_REPORT, readCliConfig, runCliCheck, summarizeCli } from './check/cli/conform.ts';
 
@@ -41,8 +43,10 @@ const USAGE = `markless-migrate ${VERSION}
           Inventory the old app's routes, SEO, assets and locales into .migrate/inventory.json.
           With --source, auth guards propose roles and the login route in a starter .migrate/auth.json,
           and every library the old app imports goes in .migrate/libraries.json: the exact surface used,
-          each usage site, and whether it maps to @markless/ui, stays as-is, needs a port, or renders
-          its own UI (a grid, chart or editor: port it or a person decides on a DOM island).
+          each usage site, and whether it maps to @markless/ui, stays as-is, needs a port, or draws
+          its own UI (a grid, chart or editor). For those, plan decides by measured rules whether to port
+          the parts the app uses or to use the library directly, loaded when needed, and says why; a
+          framework wrapper (ag-grid-react) is always ported. .migrate/overrides.json may change it.
           A webpack app's pages are what HtmlWebpackPlugin and CopyPlugin emit, linked to their entries.
   check   --old <origin> --new <origin> [--route <path>]... [--json] [--open]
           [--source <path>] [--data record|replay] [--staging] [--block <host>]... [--allow <host>]...
@@ -53,8 +57,7 @@ const USAGE = `markless-migrate ${VERSION}
           [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--interaction-controls <n>]
           Compare routes old vs new (default: every route in the inventory). Exits 1 when any is red.
           Every interactive element of the old page (including those a click reveals, such as a
-          dialog's controls) must be used by a journey, or the route stays red until a person accepts
-          it: journeys are explored main content first (tables, forms), until each element is used or
+          dialog's controls) must be used by a journey, or the route stays red: journeys are explored main content first (tables, forms), until each element is used or
           --journey-budget (default 120 s per route) runs out; --max-journeys caps their number. A
           control in a shared header, nav, sidebar or footer is exercised by the first route of the
           run that has it, and the others carry its result.
@@ -100,7 +103,12 @@ const USAGE = `markless-migrate ${VERSION}
           case differs.
   accept  <failure-id> --reason <why> [--by <name>]
           Record a failure as an intended difference in .migrate/accepted.json: from then on it shows as
-          accepted (with the reason), not red. For a human only; ids are printed with every failure.
+          accepted (with the reason), not red. An expert's tool, never needed to finish a migration;
+          ids are printed with every failure. check also accepts on its own, labelled "accepted
+          automatically", the old framework's scripts the new page no longer loads, markup the old
+          framework adds for itself when the accessibility tree and announcements otherwise match, and
+          live content in a third-party embed both pages show (each rule may be turned off under
+          "automatic" in .migrate/overrides.json).
   recorder
           Print the NODE_OPTIONS that loads the request recorder into a Node server, so check compares
           what the server fetches while rendering and can replay recorded data to it.
@@ -111,9 +119,9 @@ const USAGE = `markless-migrate ${VERSION}
           Agents: ${AGENTS.map((a) => a.id).join(', ')}.
   mcp     Run the MCP server on stdio (started by your agent).
   switch  <route> [--force --by <name> --reason <why>]
-          Serve a route from the new app: refused unless its last check (every role) is green. Only a
-          person may --force a route that is not: with --by and --reason, or confirmed at a terminal;
-          never from an agent that run drives. A forced route is recorded in .migrate/switched.json
+          Serve a route from the new app: refused unless its last check (every role) is green. --force
+          is an expert override for a route that is not, with --by and --reason, or confirmed at a
+          terminal; never from an agent that run drives. A forced route is recorded in .migrate/switched.json
           and shown in red as "forced, not proven" in status and the report. A route may be a pattern
           (/blog/:slug, /docs/*rest).
   unswitch <route>
@@ -134,8 +142,10 @@ const USAGE = `markless-migrate ${VERSION}
   run     --agent <id> --old <origin> --new <origin> [--route <path>]... [--all] [--attempts <n>] [--model <name>]
           [--source <path>] [--new-source <path>] [--auth <file>] [--header <name:value>]... [--cookie <name=value>]...
           [--serve <command>] [--build <command>] [--restart-on <path>]
-          Drive your agent's own CLI headless, one route at a time, until each route is green or
-          needs a human after n attempts (default 3). Logs to .migrate/run.log. Each route is checked
+          Drive your agent's own CLI headless, one route at a time, until each route is green or is
+          left red after n attempts (default 3), then go on with the next; it never waits for an answer.
+          It ends with one report: green routes, library decisions, automatic acceptances, and what to
+          look at if you care. Logs to .migrate/run.log. Each route is checked
           with the same --source, --new-source, --auth and bypass flags as check (--all as in check),
           and the prompt names them. --serve makes run own the new app's server: it runs --build and
           restarts the server after every attempt and waits until --new answers; with --restart-on it
@@ -211,7 +221,7 @@ async function confirm(question: string): Promise<boolean> {
 	}
 }
 
-/** A forced switch is a person's decision: named with --by and --reason, or confirmed at a terminal. */
+/** A forced switch is an expert override: named with --by and --reason, or confirmed at a terminal. */
 async function forceDecision(route: string, reason: string | undefined, by: string | undefined): Promise<{ reason: string; by: string }> {
 	if (process.env[AGENT_ENV]) fail('switch --force is for a person: an agent run by markless-migrate run may not force a route');
 	if (reason?.trim() && by?.trim()) return { reason: reason.trim(), by: by.trim() };
@@ -333,6 +343,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 	const { old, new: next } = values;
 	const server = values.serve ? await startAppServer({ cwd, serve: values.serve, ...(values.build ? { build: values.build } : {}), ...(values['restart-on'] ? { restartOn: values['restart-on'] } : {}), origin: next, log: (line) => out(`server: ${line}\n`) }).catch((error: Error) => fail(error.message)) : undefined;
 	const mcp = serverCommand();
+	const automatic = new Map<string, string>();
 	try {
 		const outcomes = await runRoutes({
 			cwd,
@@ -355,6 +366,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 					...(redirects.has(route) ? { redirects: [route] } : {}),
 					locales: inventory?.locales,
 					accepted: await readAccepted(join(cwd, STATE_DIR, ACCEPTED_FILE)),
+					automaticOff: rulesOff(await readOverrides(join(cwd, STATE_DIR))),
 					...(facts ? { source: facts } : {}),
 					...(source || newSource ? { sourceDirs: { ...(source ? { old: source } : {}), ...(newSource ? { new: newSource } : {}) } } : {}),
 					...(auth ? { auth, authStateDir: join(cwd, STATE_DIR, 'auth') } : {}),
@@ -365,13 +377,15 @@ async function run(args: string[], cwd: string): Promise<number> {
 				});
 				await recordResults(cwd, report);
 				await writeReport(report, join(cwd, STATE_DIR), await status(cwd));
-				return { ok: report.ok, summary: summarize(report) };
+				const open = [...report.routes.flatMap((r) => r.failures), ...(report.logins ?? []).flatMap((l) => l.failures)].filter((f) => !f.accepted).map((f) => `${f.dimension}: ${f.check}${f.viewport ? ` (${f.viewport})` : ''}${f.id ? ` [${f.id}]` : ''}`);
+				for (const f of report.routes.flatMap((r) => r.failures)) if (f.accepted?.automatic) automatic.set(`${f.route} ${f.dimension}: ${f.check}`, `${f.route} ${f.dimension}: ${f.check}, ${acceptedLabel(f.accepted)} (${f.accepted.reason})`);
+				return { ok: report.ok, summary: summarize(report), open: [...new Set(open)] };
 			},
 		});
-		const human = outcomes.filter((o) => o.outcome === 'needs a human');
-		const left = unchecked?.length ? ` Not checked, needs a sample: ${unchecked.map((u) => u.route).join(', ')}.` : '';
-		out(`\n${outcomes.length - human.length} of ${outcomes.length} routes green.${human.length ? ` Needs a human: ${human.map((o) => o.route).join(', ')}.` : ''}${left} Log: ${join(cwd, STATE_DIR, 'run.log')}\n`);
-		return human.length || unchecked?.length ? 1 : 0;
+		const red = outcomes.filter((o) => o.outcome === 'left red');
+		const libraries = (await readLibraries(join(cwd, STATE_DIR)))?.libraries.flatMap((l) => (l.decision ? [`${l.name}: ${decisionLine(l)}`] : [])) ?? [];
+		out(`\n${summarizeRun(outcomes, { libraries, automatic: [...automatic.values()], needsSample: unchecked?.map((u) => u.route), log: join(cwd, STATE_DIR, 'run.log') })}`);
+		return red.length || unchecked?.length ? 1 : 0;
 	} finally {
 		await server?.stop();
 	}
@@ -501,6 +515,7 @@ async function main(argv: string[]): Promise<number> {
 				...(targets ? { endpoints: targets.endpoints, unchecked: targets.unchecked, redirects: targets.redirects } : {}),
 				...(values.source || values['new-source'] ? { sourceDirs: { ...(values.source ? { old: resolve(values.source) } : {}), ...(values['new-source'] ? { new: resolve(values['new-source']) } : {}) } } : {}),
 				accepted: await readAccepted(join(cwd, STATE_DIR, ACCEPTED_FILE)).catch((error: Error) => fail(error.message)),
+				automaticOff: rulesOff(await readOverrides(join(cwd, STATE_DIR)).catch((error: Error) => fail(error.message))),
 				...(concurrency ? { concurrency } : {}),
 				journeys,
 				...(timing ? { responsiveness: timing } : {}),

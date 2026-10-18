@@ -1,3 +1,4 @@
+import { acceptedLabel } from './check/automatic.ts';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Inventory } from './plan/inventory.ts';
@@ -104,7 +105,7 @@ export async function status(cwd: string): Promise<Status> {
 	const stateOf = (route: string): Status['routes'][number] => {
 		const r = results[route];
 		if (!r) return { route, state: 'unchecked', red: [] };
-		const accepted = (r.failures ?? []).flatMap((f) => (f.accepted ? [`${f.dimension}: ${f.check}: ${f.accepted.reason}`] : []));
+		const accepted = (r.failures ?? []).flatMap((f) => (f.accepted ? [`${f.accepted.automatic ? `${acceptedLabel(f.accepted)}: ` : ''}${f.dimension}: ${f.check}: ${f.accepted.reason}`] : []));
 		return { route, state: r.blocked ? 'blocked' : r.ok ? 'green' : r.notPorted ? 'not ported' : 'red', red: r.red, checkedAt: r.checkedAt, ...(accepted.length ? { accepted } : {}), ...(r.coverage ? { coverage: r.coverage } : {}), ...(r.timing ? { timing: r.timing } : {}) };
 	};
 	const routes = names.map(stateOf).sort((a, b) => rank(a.route) - rank(b.route) || a.route.localeCompare(b.route));
@@ -143,7 +144,7 @@ export function summarizeStatus(s: Status): string {
 	if (forced.length) lines[0] += `, ${forced.length} FORCED (not proven)`;
 	for (const r of s.routes) {
 		lines.push(`  ${r.state.padEnd(10)} ${r.route}${r.red.length ? `  [${r.red.join(', ')}]` : ''}${r.coverage ? `  (${r.coverage.exercised} of ${r.coverage.total} interactions exercised)` : ''}${r.accepted ? `  (${r.accepted.length} accepted)` : ''}${r.forced ? `  (FORCED, not proven: ${r.forced.reason}${r.forced.by ? `, by ${r.forced.by}` : ''})` : r.switched ? '  (switched)' : ''}`);
-		for (const a of r.accepted ?? []) lines.push(`              accepted ${a}`);
+		for (const a of r.accepted ?? []) lines.push(`              ${a.startsWith('accepted automatically') ? a : `accepted ${a}`}`);
 	}
 	if (s.planned) lines.push(s.done ? 'Migration done: every planned route is green and switched.' : `Migration not done: ${remaining(s)}.`);
 	return `${lines.join('\n')}\n`;

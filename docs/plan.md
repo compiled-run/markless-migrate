@@ -31,8 +31,9 @@ in with their own plan:
   status. Every result is evidence plus a fix the agent can act on.
 - Unattended mode: `markless-migrate run --agent claude|codex|gemini|cursor|copilot|opencode` drives the
   agent's own CLI headless (claude -p, codex exec, gemini -p, cursor-agent, copilot -p, opencode run)
-  route by route until every route is green or a route needs a human. It uses whatever login that CLI
-  already has, so it runs on the developer's subscription.
+  route by route; a route still red after its attempts is left on the old app and the run goes on. It
+  never waits for an answer and ends with one report. It uses whatever login that CLI already has, so it
+  runs on the developer's subscription.
 
 ## Drop-in replacement: what the inventory finds and the suite checks
 
@@ -463,8 +464,8 @@ From the AG Grid migration's tool bugs (`examples/ag-grid-LOG.md`, T1 to T9):
 - A new library class, `dom`: a framework-agnostic library that renders its own UI (AG Grid,
   Handsontable, Chart.js, ECharts, Monaco, Leaflet, and their React and Vue wrappers in the catalog; any
   other installed package with no UI framework whose keywords name a widget or whose shipped code writes
-  DOM in 12 places or more). It is never `as-is`: port the used surface, or a person decides to keep it
-  as a DOM island, which ships it.
+  DOM in 12 places or more). It is never `as-is`; plan decides what happens to it (see "No questions
+  during a migration" below).
 - The used surface includes data: keys and literal values of the objects and arrays passed to a library
   component's props or a library function's arguments (through local consts, `useMemo`, spreads and
   conditionals), with paths such as `columnDefs[].filter.component`; what the functions passed that way
@@ -499,7 +500,50 @@ server gone, a port that drops a request, a config field and an exit code is red
   listed as not exercised. Rows and cells beyond the first two of a grid are not exercised.
 - Data passed through values the scan cannot follow statically (built in a loop, fetched, returned from
   another module's function) is listed as an expression, not by its keys.
-- `dom` detection by DOM writes can call a DOM-reading engine (axe-core) a widget; that costs one question.
+- `dom` detection by DOM writes can call a DOM-reading engine (axe-core) a widget; the decision rules
+  then usually say to use it directly, which is what it was.
 - Webpack configs built by a function of `env`, `merge()` of several configs, or entries computed at
   runtime are read only as far as their literals go.
 - CLI: non-Node tools' requests, `node:http` replay, and tools that need a TTY (see the README limits).
+
+## No questions during a migration (2026-10-18)
+
+The people who run a migration want their app moved and cannot be expected to answer technical
+questions. Nothing the tool or its agent says during a migration asks them anything or waits for an
+answer: every choice has a default the tool decides, explains in its output, and an expert may change
+afterwards in the optional `.migrate/overrides.json`. `test/no-questions.test.ts` scans the skill, the run
+prompt, the hints, the CLI help, the MCP server, the library, run and switch code, the README and this
+plan for phrases that hand a decision to a person.
+
+Libraries that draw their own UI (`src/library/decide.ts`): a framework wrapper is always replaced by a
+Markless port of what the app uses; the framework-agnostic library underneath, decided together with its
+wrappers, is used directly (created from `onVisible`/`onIdle` with `import()`, never at load) when it draws
+into a canvas or WebGL, when its behaviour is text editing or dragging, panning and zooming, when the app
+uses more than 120 of its names, or when its main entry is no bigger than about 1 KB per used name;
+otherwise the used parts are ported. AG Grid in the Devtron panel (74 names, a 2 MB entry, page elements
+check compares) is ported; Chart.js under react-chartjs-2 is used directly. Proven by
+`test/library.test.ts` (each rule, the override, the wrapper, the notes `parity` writes for both outcomes).
+
+Accepted differences (`src/check/automatic.ts`): only a person can accept an arbitrary difference, but
+three kinds are accepted automatically from evidence the capture collects, labelled `accepted
+automatically: <rule>`: a script the old page loaded and the new page does not request whose code carries
+a UI framework's runtime; a missing accessibility tree line that is exactly a framework's own markup
+(Next's route announcer and others) when nothing else in that tree and no announcement differs; and pixel
+or image-size differences confined to a third-party iframe or image both pages load from the same address
+at the same place. Proven by `test/automatic.test.ts`, including a check of a page whose old side loads a
+React bundle that mounts a route announcer, which ends green with both accepted, and red with the rules
+turned off.
+
+`run` leaves a route red after its attempts and goes on; its final report lists green routes, the library
+decisions, what was accepted automatically, and "What to look at if you care" (`summarizeRun`,
+`test/run.test.ts`).
+
+### What still slips through, from this work
+
+- Runtime markers are a list: a framework not on it (Lit, Ember, Qwik), or a bundle minified past its
+  markers, leaves its retired script red.
+- The embed rule sees iframes and images only; a third-party script that writes its live count into the
+  page's own DOM (Disqus counts, some star widgets) still shows as a text difference.
+- Surface size counts names, not how hard each one is to port; a few names with deep behaviour (an
+  editable grid with custom editors) can still be ported when using the library directly would be wiser.
+  The 120-name limit and the 1 KB per name allowance are calibrated on one app.

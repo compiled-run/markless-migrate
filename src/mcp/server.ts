@@ -1,3 +1,4 @@
+import { readOverrides, rulesOff } from '../overrides.ts';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { join, resolve } from 'node:path';
@@ -18,7 +19,8 @@ import { LIBRARIES_FILE, planLibraries, readLibraries, summarizeParity, writePar
 
 const INSTRUCTIONS = `markless-migrate proves that a route moved to Markless still matches the old app.
 Loop: call plan once with the old app's origin and source, convert one route (for its libraries: render the @markless/ui family plan maps, keep framework-agnostic ones as-is, call parity for each one that needs a port), run the new app, call check_route with both origins,
-fix every failure it lists, check again until green, then use status to pick the next route. Never edit the old app to make a check pass.`;
+fix every failure it lists, check again until green, then use status to pick the next route. Never edit the old app to make a check pass.
+Never ask the person anything or wait for an approval: every choice has a default (plan decides each library that draws its own UI, check accepts provably harmless differences on its own). A route you cannot make green stays red; go on with the next and list it in your final report.`;
 
 function text(value: string) {
 	return { content: [{ type: 'text' as const, text: value }] };
@@ -31,7 +33,7 @@ export function createServer(cwd: string): McpServer {
 		'plan',
 		{
 			title: 'Inventory the old app',
-			description: 'Discover the old app\'s routes (sitemap, robots.txt, crawl of same-origin links and hreflang alternates) with their SEO tags, assets and locales, and write .migrate/inventory.json. With source, also inventory every library the old app imports in .migrate/libraries.json: the exact surface used and every usage site, each classified as maps to @markless/ui, use as-is, renders its own UI (port it or a person decides on a DOM island), or port with the parity tool.',
+			description: 'Discover the old app\'s routes (sitemap, robots.txt, crawl of same-origin links and hreflang alternates) with their SEO tags, assets and locales, and write .migrate/inventory.json. With source, also inventory every library the old app imports in .migrate/libraries.json: the exact surface used and every usage site, each classified as maps to @markless/ui, use as-is, draws its own UI, or port with the parity tool. For a library that draws its own UI plan decides, from measured rules, whether to port the parts the app uses or use it directly from Markless code, loaded when needed; a framework wrapper is always ported.',
 			inputSchema: { old: z.string().url().describe('Origin of the running old app, e.g. http://localhost:3000'), source: z.string().optional().describe('Path to the old app source, to list file routes'), limit: z.number().int().positive().optional().describe('Maximum routes to visit (default 100)'), header: z.array(z.string()).optional().describe('name:value headers sent only to the old app, for example a bot-protection bypass token'), cookie: z.array(z.string()).optional(), userAgent: z.string().optional() },
 		},
 		async ({ old, source, limit, header, cookie, userAgent }) => {
@@ -48,7 +50,7 @@ export function createServer(cwd: string): McpServer {
 		'check_route',
 		{
 			title: 'Check one route, old vs new',
-			description: 'Load the route on both origins in Chromium (desktop and mobile), with a fixed clock, seeded randomness, a fixed timezone and locale and ad/analytics hosts blocked, and compare HTTP, accessibility tree and text, screenshots, SEO, assets, computed CSS in every state the old CSS styles (with the old rule that set it), fonts, accessibility (axe, focus order, keyboard, landmarks, motion), internationalisation per locale, every replayed interaction, the network contract (each request the page makes in the browser and, when the server runs the request recorder, while the server renders it: method, URL, body shape, how often, and which response fields the page shows), JavaScript weight, and responsiveness (the first use of each control on a fresh load and the next page of each internal link, old vs new, at desktop speed and with the CPU slowed 4x on a phone-sized page: within max(16 ms, 10%) of old, under 200 ms at 4x, no code fetched on an interaction). Writes (form posts, non-GET requests) are sent only when both origins are on this machine or marked staging; otherwise they are held back and compared as "would POST ...". Writes .migrate/report.html with old/new/diff images. Returns every failure with expected, actual and a likely fix.',
+			description: 'Load the route on both origins in Chromium (desktop and mobile), with a fixed clock, seeded randomness, a fixed timezone and locale and ad/analytics hosts blocked, and compare HTTP, accessibility tree and text, screenshots, SEO, assets, computed CSS in every state the old CSS styles (with the old rule that set it), fonts, accessibility (axe, focus order, keyboard, landmarks, motion), internationalisation per locale, every replayed interaction, the network contract (each request the page makes in the browser and, when the server runs the request recorder, while the server renders it: method, URL, body shape, how often, and which response fields the page shows), JavaScript weight, and responsiveness (the first use of each control on a fresh load and the next page of each internal link, old vs new, at desktop speed and with the CPU slowed 4x on a phone-sized page: within max(16 ms, 10%) of old, under 200 ms at 4x, no code fetched on an interaction). Writes (form posts, non-GET requests) are sent only when both origins are on this machine or marked staging; otherwise they are held back and compared as "would POST ...". Writes .migrate/report.html with old/new/diff images. Returns every failure with expected, actual and a likely fix. Differences the evidence proves harmless (the old framework\'s scripts no longer loaded, its own markup such as a route announcer, live content in a third-party embed) are accepted automatically and labelled so; nothing else can be accepted from here.',
 			inputSchema: {
 				old: z.string().url(),
 				new: z.string().url(),
@@ -79,6 +81,7 @@ export function createServer(cwd: string): McpServer {
 				...(args.userAgent ? { userAgent: args.userAgent } : {}),
 				...(auth ? { auth, authStateDir: join(cwd, STATE_DIR, 'auth') } : {}),
 				accepted: await readAccepted(join(cwd, STATE_DIR, ACCEPTED_FILE)),
+				automaticOff: rulesOff(await readOverrides(join(cwd, STATE_DIR))),
 				...(args.responsiveness === false ? {} : { responsiveness: {} }),
 				switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 			});
@@ -122,7 +125,7 @@ export function createServer(cwd: string): McpServer {
 		'switch_route',
 		{
 			title: 'Serve a green route from the new app',
-			description: 'Add the route to .migrate/switched.json so the proxy and the deploy config serve it from the new app. Refused unless its last check, for every role, is green; only a human may force a route that is not.',
+			description: 'Add the route to .migrate/switched.json so the proxy and the deploy config serve it from the new app. Refused unless its last check, for every role, is green; a route that is not stays on the old app.',
 			inputSchema: { route: z.string().startsWith('/') },
 		},
 		async ({ route }) => {

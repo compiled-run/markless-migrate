@@ -71,7 +71,7 @@ document.addEventListener('click', (e) => { const props = e.target['__reactProps
 		assert.deepEqual(elements.map((e) => [e.element, e.by ?? e.reason]), [
 			['columnheader "Name"', 'click columnheader "Name"'],
 			['clickable "Load more"', 'click clickable "Load more"'],
-			['clickable', 'it answers clicks or keys but has no text or label (it sits in columnheader "Name"), so check cannot find it again on the new page: label it in the old app, or accept it'],
+			['clickable', 'it answers clicks or keys but has no text or label (it sits in columnheader "Name"), so check cannot find it again on the new page; it stays listed as not exercised, for the final report'],
 		]);
 		assert.deepEqual(journeys.find((j) => j.name === 'click clickable "Load more"')!.expected[0]!.added, ['- paragraph: more loaded']);
 	} finally {
