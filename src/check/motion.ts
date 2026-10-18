@@ -107,7 +107,7 @@ type MotionWindow = Window & { __mmMotionRecorder?: { records(): PageRecord[]; h
 
 // Runs in the page: records every transition and animation that starts from now on, and holds finite ones at their start when `pause` is set so frames can be taken at fixed offsets.
 function armMotion(pause: boolean): void {
-	// A property a script writes on six frames or more is animated by it; fewer is set-up (a height set before a transition, then cleared).
+	// A property a script writes on six frames or more is animated by it; fewer is set-up (a height set before a transition, then cleared). The caret blink a screenshot hides is not motion.
 	const SCRIPT_FRAMES = 6;
 	const w = window as unknown as MotionWindow;
 	w.__mmMotionRecorder?.stop();
@@ -183,7 +183,7 @@ function armMotion(pause: boolean): void {
 			if (!(m.target instanceof Element)) continue;
 			const a = parse(m.oldValue ?? '');
 			const b = parse(m.target.getAttribute('style') ?? '');
-			const props = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => a[k] !== b[k]);
+			const props = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => a[k] !== b[k] && k !== 'caret-color');
 			if (!props.length) continue;
 			const now = performance.now();
 			const entry = styled.get(m.target) ?? { props: new Map<string, Set<number>>(), first: now, last: now };
