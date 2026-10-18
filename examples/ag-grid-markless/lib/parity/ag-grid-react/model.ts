@@ -305,7 +305,7 @@ export function formatTimestamp(timestamp: number): string {
 	return date.toLocaleTimeString() + '.' + date.getMilliseconds().toString().padStart(3, '0');
 }
 
-export type CellView = { readonly style: string; readonly cls: string };
+export type CellView = { readonly style: string; readonly cls: string; readonly ariaIndex: number };
 
 export type RowView = {
 	readonly id: string;
@@ -359,7 +359,8 @@ export function rowWindow(rows: readonly Row[], cols: readonly ColDef[] | undefi
 	const classes = cellClasses(cols);
 	const at = (colId: string) => {
 		const i = order.indexOf(colId);
-		return { style: `left: ${left[i] ?? 0}px; width: ${widths[i] ?? 0}px;`, cls: classes[i] ?? CELL };
+		if (i < 0) return { style: 'display: none;', cls: CELL, ariaIndex: 0 };
+		return { style: `left: ${left[i] ?? 0}px; width: ${widths[i] ?? 0}px;`, cls: classes[i] ?? CELL, ariaIndex: i + 1 };
 	};
 	const c = [at('serialNumber'), at('timestamp'), at('direction'), at('channel'), at('args')];
 	const wanted = new Map<number, number>();
@@ -502,4 +503,102 @@ export function directionOptions(selected: string): DirectionOptionView[] {
 			info: directionInfo(dir),
 		};
 	});
+}
+
+/** The columns in display order: `order` lists colIds once the user has dragged a header (AG Grid's column move). */
+export function orderCols(cols: readonly ColDef[] | undefined, order: string): ColDef[] {
+	if (!cols) return [];
+	if (!order) return cols.slice();
+	const ids = order.split(',');
+	return ids.map((id) => cols.find((c) => c.colId === id)!).filter(Boolean);
+}
+
+/** AG Grid hides a column whose header is dragged out of the grid; `hidden` lists them. */
+export function visibleOrder(order: string, cols: readonly ColDef[] | undefined, hidden: string): string {
+	if (!hidden) return order;
+	const gone = hidden.split(',');
+	return orderCols(cols, order)
+		.map((c) => c.colId)
+		.filter((id) => !gone.includes(id))
+		.join(',');
+}
+
+/** Moves a column to display index `to`; widths and flexes are kept in display order, so they move with it. */
+export function moveColumn(cols: readonly ColDef[], order: string, baseWidths: string, flexes: string, colId: string, to: number): { order: string; baseWidths: string; flexes: string } {
+	const shown = orderCols(cols, order);
+	const ids = shown.map((c) => c.colId);
+	const widths = parseNumbers(baseWidths || initialWidths(shown));
+	const flex = parseNumbers(flexes || initialFlexes(shown));
+	const from = ids.indexOf(colId);
+	if (from < 0 || from === to) return { order: ids.join(','), baseWidths: widths.join(','), flexes: flex.join(',') };
+	const move = <T,>(list: T[]) => {
+		const [item] = list.splice(from, 1);
+		list.splice(to, 0, item!);
+		return list;
+	};
+	return { order: move(ids).join(','), baseWidths: move(widths).join(','), flexes: move(flex).join(',') };
+}
+
+/** Where a dragged header lands: after every other column whose middle the pointer has passed. */
+export function dropIndex(cols: readonly ColDef[], order: string, widthsText: string, colId: string, x: number): number {
+	const shown = orderCols(cols, order);
+	const widths = parseNumbers(widthsText);
+	const left = lefts(widthsText);
+	let index = 0;
+	shown.forEach((c, i) => {
+		if (c.colId !== colId && left[i]! + widths[i]! / 2 < x) index++;
+	});
+	return index;
+}
+
+export function hideColumn(hidden: string, colId: string, out: boolean): string {
+	const list = hidden ? hidden.split(',').filter((id) => id !== colId) : [];
+	return (out ? [...list, colId] : list).join(',');
+}
+
+/** Base widths and flexes are kept for every column in display order; layout uses the shown ones. */
+function shownParts(cols: readonly ColDef[] | undefined, order: string, hidden: string, baseWidths: string, flexes: string) {
+	const all = orderCols(cols, order);
+	const gone = hidden ? hidden.split(',') : [];
+	const widths = parseNumbers(baseWidths || initialWidths(all));
+	const flex = parseNumbers(flexes || initialFlexes(all));
+	const keep = all.map((c) => !gone.includes(c.colId));
+	return { shown: all.filter((_, i) => keep[i]), widths: widths.filter((_, i) => keep[i]).join(','), flexes: flex.filter((_, i) => keep[i]).join(','), all, keep };
+}
+
+export function shownCols(cols: readonly ColDef[] | undefined, order: string, hidden: string): ColDef[] {
+	return orderCols(cols, visibleOrder(order, cols, hidden));
+}
+
+export function shownWidths(cols: readonly ColDef[] | undefined, order: string, hidden: string, baseWidths: string, flexes: string, total: number): string {
+	const p = shownParts(cols, order, hidden, baseWidths, flexes);
+	return layoutWidths(p.shown, p.widths, p.flexes, total);
+}
+
+export function shownTotal(cols: readonly ColDef[] | undefined, order: string, hidden: string, baseWidths: string, flexes: string, total: number): number {
+	return parseNumbers(shownWidths(cols, order, hidden, baseWidths, flexes, total)).reduce((a, b) => a + b, 0);
+}
+
+export function shownWindow(rows: readonly Row[] | undefined, sort: string, channel: string, args: string, direction: string, cols: readonly ColDef[] | undefined, order: string, hidden: string, baseWidths: string, flexes: string, total: number, top: number, height: number, selected: number, focused: number, hovered: number): RowView[] {
+	const p = shownParts(cols, order, hidden, baseWidths, flexes);
+	return windowView(rows, sort, channel, args, direction, p.shown, p.widths, p.flexes, total, top, height, selected, focused, hovered);
+}
+
+/** Resizes a shown column; the result is written back for every column, the hidden ones unchanged. */
+export function resizeShown(cols: readonly ColDef[] | undefined, order: string, hidden: string, baseWidths: string, flexes: string, total: number, colId: string, width: number): { widths: string; flexes: string } {
+	const p = shownParts(cols, order, hidden, baseWidths, flexes);
+	const at = p.shown.findIndex((c) => c.colId === colId);
+	const next = resizeColumn(layoutWidths(p.shown, p.widths, p.flexes, total), p.flexes, total, at, width);
+	const w = parseNumbers(next.widths);
+	const f = parseNumbers(next.flexes);
+	const allW = parseNumbers(baseWidths || initialWidths(p.all));
+	const allF = parseNumbers(flexes || initialFlexes(p.all));
+	let k = 0;
+	p.keep.forEach((kept, i) => {
+		if (!kept) return;
+		allW[i] = w[k]!;
+		allF[i] = f[k]!;
+		k++;
+	});
+	return { widths: allW.join(','), flexes: allF.join(',') };
 }

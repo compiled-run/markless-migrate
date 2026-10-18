@@ -66,6 +66,8 @@ const SCENARIOS = {
 	'keyboard row': [['click', R(4995)], ['press', 'ArrowUp'], ['wait', 400], ['press', 'Tab'], ['press', 'Tab']],
 	'resize Channel': [['drag', '.ag-header-cell[col-id=channel] .ag-header-cell-resize', 60, 0, 30]],
 	'resize Time': [['drag', '.ag-header-cell[col-id=timestamp] .ag-header-cell-resize', 40, 0, 30]],
+	'move Direction after Channel': [['drag', '.ag-header-cell[col-id=direction] .ag-header-cell-label', 300, 0, 20], ['wait', 300]],
+	'move Data to front then sort': [['drag', '.ag-header-cell[col-id=args] .ag-header-cell-label', -900, 0, 30], ['wait', 300], ['click', H('timestamp')]],
 	'dark theme': [['click', 'button[title^="Switch between"]']],
 	'detail below': [['click', R(4999)], ['click', 'button[title^="Toggle Detail"]'], ['wait', 300]],
 	'clear events': [['click', R(4999)], ['click', 'button[title="Clear all events"]'], ['wait', 400]],
@@ -90,7 +92,7 @@ const state = (page) =>
 		const json = document.querySelector('.react-json-view');
 		return {
 			focus: describe(document.activeElement),
-			headers: [...document.querySelectorAll('.ag-header-cell')].map((h) => `${h.getAttribute('col-id')}:${h.getAttribute('aria-sort')}:${h.style.width}:${h.querySelector('.ag-sort-order:not(.ag-hidden)')?.textContent ?? ''}${h.classList.contains('ag-header-cell-filtered') ? ':filtered' : ''}`).join(' '),
+			headers: [...document.querySelectorAll('.ag-header-cell')].filter(visible).map((h) => `${h.getAttribute('col-id')}:${h.getAttribute('aria-sort')}:${h.style.width}:${h.querySelector('.ag-sort-order:not(.ag-hidden)')?.textContent ?? ''}${h.classList.contains('ag-header-cell-filtered') ? ':filtered' : ''}`).join(' '),
 			rowcount: document.querySelector('[role=grid]')?.getAttribute('aria-rowcount'),
 			rendered: rows.length ? `${rows[0].getAttribute('row-index')}..${rows.at(-1).getAttribute('row-index')} (${rows.length})` : 'none',
 			shown: shown.map((r) => `${r.getAttribute('aria-rowindex')}:${r.getAttribute('row-id')}${r.getAttribute('aria-selected') === 'true' ? '*' : ''}`).join(' '),

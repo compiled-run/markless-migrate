@@ -289,3 +289,44 @@ export function onOutsidePointer(close: () => void): void {
 		true,
 	);
 }
+
+let dragged = false;
+/** Whether the click being handled ends a header drag (AG Grid does not sort a column it has just moved). */
+export function wasDragged(): boolean {
+	const was = dragged;
+	dragged = false;
+	return was;
+}
+
+/** The header container's left edge, the origin for column positions while a header is dragged. */
+export function headerBox(): number {
+	return document.querySelector('.ag-header-container')?.getBoundingClientRect().left ?? 0;
+}
+
+function outsideGrid(e: PointerEvent): boolean {
+	const box = document.querySelector('.ag-root-wrapper')?.getBoundingClientRect();
+	return !box || e.clientX < box.left || e.clientX > box.right || e.clientY < box.top || e.clientY > box.bottom;
+}
+
+/** A header drag: once the pointer has moved 4 px (AG Grid's dragStartPixels), `move` gets the pointer's x on every
+ * move and once more when the button is released, and whether the pointer is outside the grid (which hides it). */
+export function dragMove(start: PointerEvent, move: (x: number, done: boolean, outside: boolean) => void): void {
+	if (start.button !== 0) return;
+	const x0 = start.clientX;
+	const y0 = start.clientY;
+	let moving = false;
+	dragged = false;
+	const onMove = (e: PointerEvent) => {
+		if (!moving && Math.abs(e.clientX - x0) < 4 && Math.abs(e.clientY - y0) < 4) return;
+		moving = true;
+		dragged = true;
+		move(e.clientX, false, outsideGrid(e));
+	};
+	const onUp = (e: PointerEvent) => {
+		window.removeEventListener('pointermove', onMove);
+		window.removeEventListener('pointerup', onUp);
+		if (moving) move(e.clientX, true, outsideGrid(e));
+	};
+	window.addEventListener('pointermove', onMove);
+	window.addEventListener('pointerup', onUp);
+}

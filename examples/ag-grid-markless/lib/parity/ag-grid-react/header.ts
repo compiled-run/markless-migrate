@@ -1,5 +1,5 @@
 // Header cell views for AG Grid's header row: classes, aria, sort indicators and filter button per column.
-import { layoutWidths, lefts, parseNumbers, sortIndexOf, sortOf, textActive } from './model.ts';
+import { layoutWidths, lefts, parseNumbers, shownCols, shownWidths, sortIndexOf, sortOf, textActive } from './model.ts';
 import type { ColDef } from './model.ts';
 
 export type HeaderView = {
@@ -68,7 +68,10 @@ export function headerDescription(col: ColDef | undefined, filtered: boolean): s
 		.join('. ');
 }
 
-export function headerView(index: number, cols: readonly ColDef[] | undefined, baseWidths: string, flexes: string, total: number, sort: string, sortTouched: boolean, channel: string, args: string, direction: string, active: string): HeaderView {
-	const list = cols ?? [];
-	return headerViews(list, layoutWidths(list, baseWidths, flexes, total), sort, sortTouched, channel, args, direction, active)[index]!;
+export function headerView(colId: string, cols: readonly ColDef[] | undefined, order: string, hidden: string, baseWidths: string, flexes: string, total: number, sort: string, sortTouched: boolean, channel: string, args: string, direction: string, active: string, moving: string): HeaderView {
+	const list = shownCols(cols, order, hidden);
+	const views = headerViews(list, shownWidths(cols, order, hidden, baseWidths, flexes, total), sort, sortTouched, channel, args, direction, active);
+	const view = views.find((v) => v.colId === colId);
+	if (!view) return { ...headerViews(cols ?? [], layoutWidths(cols ?? [], '', '', total), '', false, '', '', '', '').find((v) => v.colId === colId)!, style: 'display: none;' };
+	return moving === colId ? { ...view, cls: `${view.cls} ag-header-cell-moving` } : view;
 }

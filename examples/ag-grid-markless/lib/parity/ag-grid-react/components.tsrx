@@ -4,9 +4,9 @@
 // One component: rows, header cells and filter options written inline, because handlers in a child
 // component per row or per column did not reach this component's state after resume (see the log).
 import { computed, element, state } from '@markless/core';
-import { afterScroll, announce, keepRowFocus, debounceFilter, dragX, firstTime, focusHeader, listUnder, focusPicker, focusWhenShown, onOutsidePointer, onGuardFocus, onHeaderKey, measureScrollbar, popupUnder, rowOf, scrollFromFake, setScrollTop, wasProgrammatic, watchSize } from './api.ts';
+import { afterScroll, announce, dragMove, headerBox, wasDragged, keepRowFocus, debounceFilter, dragX, firstTime, focusHeader, listUnder, focusPicker, focusWhenShown, onOutsidePointer, onGuardFocus, onHeaderKey, measureScrollbar, popupUnder, rowOf, scrollFromFake, setScrollTop, wasProgrammatic, watchSize } from './api.ts';
 import { headerView } from './header.ts';
-import { ROW_HEIGHT, TEXT_OPTIONS, blankType, countOf, directionOptions, layoutFlexes, layoutWidths, nextSort, optionIndex, optionLabel, parseNumbers, parseText, pickerView, resizeColumn, secondShown, toggleDirection, totalWidthOf, windowView, withFilterType, withFilterValue, withJoin } from './model.ts';
+import { ROW_HEIGHT, TEXT_OPTIONS, blankType, countOf, directionOptions, dropIndex, hideColumn, moveColumn, nextSort, optionIndex, optionLabel, parseNumbers, parseText, pickerView, resizeShown, secondShown, shownCols, shownTotal, shownWidths, shownWindow, toggleDirection, withFilterType, withFilterValue, withJoin } from './model.ts';
 import type { ColDef, Row } from './model.ts';
 
 const THEME_CLASSES = 'ag-theme-params-1 ag-theme-buttonStyle-1 ag-theme-columnDropStyle-2 ag-theme-batchEditStyle-3 ag-theme-checkboxStyle-4 ag-theme-iconSet-5 ag-theme-tabStyle-6 ag-theme-inputStyle-7';
@@ -32,6 +32,9 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 		sbw: 16,
 		baseWidths: '',
 		flexes: '',
+		order: '',
+		moving: '',
+		hidden: '',
 		focused: 0,
 		hovered: 0,
 		activeHeader: '',
@@ -40,22 +43,21 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 	const body = element<HTMLDivElement>();
 	const fakeV = element<HTMLDivElement>();
 	const directions = computed(() => directionOptions(g.fDirection));
-	const widths = computed(() => layoutWidths(columnDefs, g.baseWidths, g.flexes, g.total));
-	const flex = computed(() => layoutFlexes(columnDefs, g.flexes));
+	const widths = computed(() => shownWidths(columnDefs, g.order, g.hidden, g.baseWidths, g.flexes, g.total));
 	const count = computed(() => countOf(rowData, g.sort, g.fChannel, g.fArgs, g.fDirection));
-	const win = computed(() => windowView(rowData, g.sort, g.fChannel, g.fArgs, g.fDirection, columnDefs, g.baseWidths, g.flexes, g.total, g.top, g.height, selected, g.focused, g.hovered));
-	const h0 = computed(() => headerView(0, columnDefs, g.baseWidths, g.flexes, g.total, g.sort, g.sortTouched, g.fChannel, g.fArgs, g.fDirection, g.activeHeader));
-	const h1 = computed(() => headerView(1, columnDefs, g.baseWidths, g.flexes, g.total, g.sort, g.sortTouched, g.fChannel, g.fArgs, g.fDirection, g.activeHeader));
-	const h2 = computed(() => headerView(2, columnDefs, g.baseWidths, g.flexes, g.total, g.sort, g.sortTouched, g.fChannel, g.fArgs, g.fDirection, g.activeHeader));
-	const h3 = computed(() => headerView(3, columnDefs, g.baseWidths, g.flexes, g.total, g.sort, g.sortTouched, g.fChannel, g.fArgs, g.fDirection, g.activeHeader));
-	const h4 = computed(() => headerView(4, columnDefs, g.baseWidths, g.flexes, g.total, g.sort, g.sortTouched, g.fChannel, g.fArgs, g.fDirection, g.activeHeader));
-	const widthStyle = computed(() => `width: ${totalWidthOf(columnDefs, g.baseWidths, g.flexes, g.total)}px;`);
-	const headerRowStyle = computed(() => `height: 25px; top: 0px; width: ${totalWidthOf(columnDefs, g.baseWidths, g.flexes, g.total)}px;`);
+	const win = computed(() => shownWindow(rowData, g.sort, g.fChannel, g.fArgs, g.fDirection, columnDefs, g.order, g.hidden, g.baseWidths, g.flexes, g.total, g.top, g.height, selected, g.focused, g.hovered));
+	const h0 = computed(() => headerView('serialNumber', columnDefs, g.order, g.hidden, g.baseWidths, g.flexes, g.total, g.sort, g.sortTouched, g.fChannel, g.fArgs, g.fDirection, g.activeHeader, g.moving));
+	const h1 = computed(() => headerView('timestamp', columnDefs, g.order, g.hidden, g.baseWidths, g.flexes, g.total, g.sort, g.sortTouched, g.fChannel, g.fArgs, g.fDirection, g.activeHeader, g.moving));
+	const h2 = computed(() => headerView('direction', columnDefs, g.order, g.hidden, g.baseWidths, g.flexes, g.total, g.sort, g.sortTouched, g.fChannel, g.fArgs, g.fDirection, g.activeHeader, g.moving));
+	const h3 = computed(() => headerView('channel', columnDefs, g.order, g.hidden, g.baseWidths, g.flexes, g.total, g.sort, g.sortTouched, g.fChannel, g.fArgs, g.fDirection, g.activeHeader, g.moving));
+	const h4 = computed(() => headerView('args', columnDefs, g.order, g.hidden, g.baseWidths, g.flexes, g.total, g.sort, g.sortTouched, g.fChannel, g.fArgs, g.fDirection, g.activeHeader, g.moving));
+	const widthStyle = computed(() => `width: ${shownTotal(columnDefs, g.order, g.hidden, g.baseWidths, g.flexes, g.total)}px;`);
+	const headerRowStyle = computed(() => `height: 25px; top: 0px; width: ${shownTotal(columnDefs, g.order, g.hidden, g.baseWidths, g.flexes, g.total)}px;`);
 	const pinnedStyle = computed(() => `height: ${Math.max(1, countOf(rowData, g.sort, g.fChannel, g.fArgs, g.fDirection) * ROW_HEIGHT)}px; width: 0px; max-width: 0px; min-width: 0px;`);
 	const heightStyle = computed(() => `height: ${Math.max(1, countOf(rowData, g.sort, g.fChannel, g.fArgs, g.fDirection) * ROW_HEIGHT)}px;`);
-	const centerStyle = computed(() => `width: ${totalWidthOf(columnDefs, g.baseWidths, g.flexes, g.total)}px; height: ${Math.max(1, countOf(rowData, g.sort, g.fChannel, g.fArgs, g.fDirection) * ROW_HEIGHT)}px;`);
+	const centerStyle = computed(() => `width: ${shownTotal(columnDefs, g.order, g.hidden, g.baseWidths, g.flexes, g.total)}px; height: ${Math.max(1, countOf(rowData, g.sort, g.fChannel, g.fArgs, g.fDirection) * ROW_HEIGHT)}px;`);
 	const fakeContainerStyle = computed(() => `width: 16px; max-width: 16px; min-width: 16px; height: ${Math.max(1, countOf(rowData, g.sort, g.fChannel, g.fArgs, g.fDirection) * ROW_HEIGHT)}px;`);
-	const hScrollStyle = computed(() => `width: ${totalWidthOf(columnDefs, g.baseWidths, g.flexes, g.total)}px; height: 16px; max-height: 16px; min-height: 16px;`);
+	const hScrollStyle = computed(() => `width: ${shownTotal(columnDefs, g.order, g.hidden, g.baseWidths, g.flexes, g.total)}px; height: 16px; max-height: 16px; min-height: 16px;`);
 	const rowCount = computed(() => countOf(rowData, g.sort, g.fChannel, g.fArgs, g.fDirection) + 1);
 	const wrapperStyle = computed(() => `height: 100%; --ag-internal-row-border-width: ${dark ? 1 : 2}px; --ag-line-height: ${ROW_HEIGHT}px;`);
 	const viewportStyle = computed(() => `width: calc(100% + ${g.sbw}px);`);
@@ -71,6 +73,7 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 	const picker1FieldCls = computed(() => (secondShown(g.draft) ? 'ag-picker-field ag-labeled ag-label-align-left ag-select ag-filter-select' : 'ag-picker-field ag-labeled ag-label-align-left ag-select ag-filter-select ag-hidden'));
 	const overlayTextStyle = computed(() => ((rowData ?? []).length === 0 ? '' : 'display: none;'));
 	const rootCls = computed(() => `ag-root ag-unselectable ag-layout-normal${countOf(rowData, g.sort, g.fChannel, g.fArgs, g.fDirection) * ROW_HEIGHT >= g.height && g.height > 0 ? ' ag-body-vertical-content-no-gap' : ''} ag-body-horizontal-content-no-gap`);
+	const colCount = computed(() => shownCols(columnDefs, g.order, g.hidden).length);
 	const textOpen = computed(() => g.openFilter === 'channel' || g.openFilter === 'args');
 	const op0 = computed(() => parseText(g.draft).conditions[0]!.type);
 	const op1 = computed(() => parseText(g.draft).conditions[1]!.type);
@@ -114,13 +117,13 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 		<div class="ag-root-wrapper ag-ltr ag-layout-normal" role="presentation" grid-id="1">
 			<div class="ag-root-wrapper-body ag-focus-managed ag-layout-normal" role="presentation">
 				<div class="ag-tab-guard ag-tab-guard-top" role="presentation" tabindex="0" onFocus={(e) => onGuardFocus(e, true)}></div>
-				<div class={rootCls} role="grid" aria-colcount="5" aria-rowcount={rowCount}>
+				<div class={rootCls} role="grid" aria-colcount={colCount} aria-rowcount={rowCount}>
 					<div class="ag-header ag-pivot-off ag-header-allow-overflow" role="presentation" style="height: 26px; min-height: 26px;">
 						<div class="ag-pinned-left-header ag-hidden" aria-hidden="true" role="rowgroup" style="width: 0px; min-width: 0px; max-width: 0px;"></div>
 						<div class="ag-header-viewport " role="rowgroup" tabindex="-1">
 							<div class="ag-header-container" role="presentation" style={widthStyle}>
 								<div class="ag-header-row ag-header-row-column" role="row" tabindex="0" aria-rowindex="1" style={headerRowStyle}>
-				<div class={h0.cls} role="columnheader" col-id="serialNumber" aria-colindex="1" tabindex="-1" aria-sort={h0.ariaSort} style={h0.style} onFocus={() => announce(h0.desc, (text) => onAnnounce(text))} onMouseEnter={() => (g.activeHeader = 'serialNumber')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
+				<div class={h0.cls} role="columnheader" col-id="serialNumber" aria-colindex={h0.ariaIndex} tabindex="-1" aria-sort={h0.ariaSort} style={h0.style} onFocus={() => announce(h0.desc, (text) => onAnnounce(text))} onMouseEnter={() => (g.activeHeader = 'serialNumber')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
 					if (e.key === 'Tab' || e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'Enter') e.preventDefault();
 					if (onHeaderKey(e)) return;
 					if (e.key !== 'Enter') return;
@@ -128,19 +131,34 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 					g.sortTouched = true;
 				}}>
 					<div class={h0.resizeCls} role="presentation" aria-hidden={h0.resizeHidden} onPointerDown={(e) => {
-						const fromWidths = layoutWidths(columnDefs, g.baseWidths, g.flexes, g.total);
-						const fromFlexes = layoutFlexes(columnDefs, g.flexes);
 						const total = g.total;
-						const start = parseNumbers(fromWidths)[0] ?? 0;
+						const order = g.order;
+						const hidden = g.hidden;
+						const fromWidths = g.baseWidths;
+						const fromFlexes = g.flexes;
+						const start = parseNumbers(shownWidths(columnDefs, order, hidden, fromWidths, fromFlexes, total))[h0.ariaIndex - 1] ?? 0;
 						dragX(e, (dx) => {
-							const next = resizeColumn(fromWidths, fromFlexes, total, 0, start + dx);
+							const next = resizeShown(columnDefs, order, hidden, fromWidths, fromFlexes, total, 'serialNumber', start + dx);
 							g.baseWidths = next.widths;
 							g.flexes = next.flexes;
 						});
 					}}></div>
 					<div class="ag-header-cell-comp-wrapper" role="presentation">
 					<div class={h0.labelCls} role="presentation">
-						<div class="ag-header-cell-label" data-ref="eLabel" role="presentation" onClick={(e) => {
+						<div class="ag-header-cell-label" data-ref="eLabel" role="presentation" onPointerDown={(e) => {
+							const box = headerBox();
+							dragMove(e, (x, done, outside) => {
+								g.moving = done ? '' : 'serialNumber';
+								g.hidden = hideColumn(g.hidden, 'serialNumber', outside);
+								if (outside) return;
+								const at = dropIndex(columnDefs, g.order, shownWidths(columnDefs, g.order, '', g.baseWidths, g.flexes, g.total), 'serialNumber', x - box);
+								const next = moveColumn(columnDefs, g.order, g.baseWidths, g.flexes, 'serialNumber', at);
+								g.order = next.order;
+								g.baseWidths = next.baseWidths;
+								g.flexes = next.flexes;
+							});
+						}} onClick={(e) => {
+							if (wasDragged()) return;
 							g.sort = nextSort(g.sort, 'serialNumber', e.shiftKey);
 							g.sortTouched = true;
 						}}>
@@ -157,7 +175,7 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 					</div>
 					</div>
 				</div>
-				<div class={h1.cls} role="columnheader" col-id="timestamp" aria-colindex="2" tabindex="-1" aria-sort={h1.ariaSort} style={h1.style} onFocus={() => announce(h1.desc, (text) => onAnnounce(text))} onMouseEnter={() => (g.activeHeader = 'timestamp')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
+				<div class={h1.cls} role="columnheader" col-id="timestamp" aria-colindex={h1.ariaIndex} tabindex="-1" aria-sort={h1.ariaSort} style={h1.style} onFocus={() => announce(h1.desc, (text) => onAnnounce(text))} onMouseEnter={() => (g.activeHeader = 'timestamp')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
 					if (e.key === 'Tab' || e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'Enter') e.preventDefault();
 					if (onHeaderKey(e)) return;
 					if (e.key !== 'Enter') return;
@@ -165,19 +183,34 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 					g.sortTouched = true;
 				}}>
 					<div class={h1.resizeCls} role="presentation" aria-hidden={h1.resizeHidden} onPointerDown={(e) => {
-						const fromWidths = layoutWidths(columnDefs, g.baseWidths, g.flexes, g.total);
-						const fromFlexes = layoutFlexes(columnDefs, g.flexes);
 						const total = g.total;
-						const start = parseNumbers(fromWidths)[1] ?? 0;
+						const order = g.order;
+						const hidden = g.hidden;
+						const fromWidths = g.baseWidths;
+						const fromFlexes = g.flexes;
+						const start = parseNumbers(shownWidths(columnDefs, order, hidden, fromWidths, fromFlexes, total))[h1.ariaIndex - 1] ?? 0;
 						dragX(e, (dx) => {
-							const next = resizeColumn(fromWidths, fromFlexes, total, 1, start + dx);
+							const next = resizeShown(columnDefs, order, hidden, fromWidths, fromFlexes, total, 'timestamp', start + dx);
 							g.baseWidths = next.widths;
 							g.flexes = next.flexes;
 						});
 					}}></div>
 					<div class="ag-header-cell-comp-wrapper" role="presentation">
 					<div class={h1.labelCls} role="presentation">
-						<div class="ag-header-cell-label" data-ref="eLabel" role="presentation" onClick={(e) => {
+						<div class="ag-header-cell-label" data-ref="eLabel" role="presentation" onPointerDown={(e) => {
+							const box = headerBox();
+							dragMove(e, (x, done, outside) => {
+								g.moving = done ? '' : 'timestamp';
+								g.hidden = hideColumn(g.hidden, 'timestamp', outside);
+								if (outside) return;
+								const at = dropIndex(columnDefs, g.order, shownWidths(columnDefs, g.order, '', g.baseWidths, g.flexes, g.total), 'timestamp', x - box);
+								const next = moveColumn(columnDefs, g.order, g.baseWidths, g.flexes, 'timestamp', at);
+								g.order = next.order;
+								g.baseWidths = next.baseWidths;
+								g.flexes = next.flexes;
+							});
+						}} onClick={(e) => {
+							if (wasDragged()) return;
 							g.sort = nextSort(g.sort, 'timestamp', e.shiftKey);
 							g.sortTouched = true;
 						}}>
@@ -194,7 +227,7 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 					</div>
 					</div>
 				</div>
-				<div class={h2.cls} role="columnheader" col-id="direction" aria-colindex="3" tabindex="-1" aria-sort={h2.ariaSort} style={h2.style} onFocus={() => announce(h2.desc, (text) => onAnnounce(text))} onMouseEnter={() => (g.activeHeader = 'direction')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
+				<div class={h2.cls} role="columnheader" col-id="direction" aria-colindex={h2.ariaIndex} tabindex="-1" aria-sort={h2.ariaSort} style={h2.style} onFocus={() => announce(h2.desc, (text) => onAnnounce(text))} onMouseEnter={() => (g.activeHeader = 'direction')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
 					if (e.key === 'Tab' || e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'Enter') e.preventDefault();
 					if (onHeaderKey(e)) return;
 					if (e.key !== 'Enter') return;
@@ -209,12 +242,14 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 					g.sortTouched = true;
 				}}>
 					<div class={h2.resizeCls} role="presentation" aria-hidden={h2.resizeHidden} onPointerDown={(e) => {
-						const fromWidths = layoutWidths(columnDefs, g.baseWidths, g.flexes, g.total);
-						const fromFlexes = layoutFlexes(columnDefs, g.flexes);
 						const total = g.total;
-						const start = parseNumbers(fromWidths)[2] ?? 0;
+						const order = g.order;
+						const hidden = g.hidden;
+						const fromWidths = g.baseWidths;
+						const fromFlexes = g.flexes;
+						const start = parseNumbers(shownWidths(columnDefs, order, hidden, fromWidths, fromFlexes, total))[h2.ariaIndex - 1] ?? 0;
 						dragX(e, (dx) => {
-							const next = resizeColumn(fromWidths, fromFlexes, total, 2, start + dx);
+							const next = resizeShown(columnDefs, order, hidden, fromWidths, fromFlexes, total, 'direction', start + dx);
 							g.baseWidths = next.widths;
 							g.flexes = next.flexes;
 						});
@@ -227,7 +262,20 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 							g.picker = -1;
 							g.openFilter = g.openFilter === 'direction' ? '' : 'direction';
 						}}><span class="ag-icon ag-icon-filter" role="presentation" unselectable="on"></span></span>
-						<div class="ag-header-cell-label" data-ref="eLabel" role="presentation" onClick={(e) => {
+						<div class="ag-header-cell-label" data-ref="eLabel" role="presentation" onPointerDown={(e) => {
+							const box = headerBox();
+							dragMove(e, (x, done, outside) => {
+								g.moving = done ? '' : 'direction';
+								g.hidden = hideColumn(g.hidden, 'direction', outside);
+								if (outside) return;
+								const at = dropIndex(columnDefs, g.order, shownWidths(columnDefs, g.order, '', g.baseWidths, g.flexes, g.total), 'direction', x - box);
+								const next = moveColumn(columnDefs, g.order, g.baseWidths, g.flexes, 'direction', at);
+								g.order = next.order;
+								g.baseWidths = next.baseWidths;
+								g.flexes = next.flexes;
+							});
+						}} onClick={(e) => {
+							if (wasDragged()) return;
 							g.sort = nextSort(g.sort, 'direction', e.shiftKey);
 							g.sortTouched = true;
 						}}>
@@ -243,7 +291,7 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 					</div>
 					</div>
 				</div>
-				<div class={h3.cls} role="columnheader" col-id="channel" aria-colindex="4" tabindex="-1" aria-sort={h3.ariaSort} style={h3.style} onFocus={() => announce(h3.desc, (text) => onAnnounce(text))} onMouseEnter={() => (g.activeHeader = 'channel')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
+				<div class={h3.cls} role="columnheader" col-id="channel" aria-colindex={h3.ariaIndex} tabindex="-1" aria-sort={h3.ariaSort} style={h3.style} onFocus={() => announce(h3.desc, (text) => onAnnounce(text))} onMouseEnter={() => (g.activeHeader = 'channel')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
 					if (e.key === 'Tab' || e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'Enter') e.preventDefault();
 					if (onHeaderKey(e)) return;
 					if (e.key !== 'Enter') return;
@@ -259,12 +307,14 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 					g.sortTouched = true;
 				}}>
 					<div class={h3.resizeCls} role="presentation" aria-hidden={h3.resizeHidden} onPointerDown={(e) => {
-						const fromWidths = layoutWidths(columnDefs, g.baseWidths, g.flexes, g.total);
-						const fromFlexes = layoutFlexes(columnDefs, g.flexes);
 						const total = g.total;
-						const start = parseNumbers(fromWidths)[3] ?? 0;
+						const order = g.order;
+						const hidden = g.hidden;
+						const fromWidths = g.baseWidths;
+						const fromFlexes = g.flexes;
+						const start = parseNumbers(shownWidths(columnDefs, order, hidden, fromWidths, fromFlexes, total))[h3.ariaIndex - 1] ?? 0;
 						dragX(e, (dx) => {
-							const next = resizeColumn(fromWidths, fromFlexes, total, 3, start + dx);
+							const next = resizeShown(columnDefs, order, hidden, fromWidths, fromFlexes, total, 'channel', start + dx);
 							g.baseWidths = next.widths;
 							g.flexes = next.flexes;
 						});
@@ -278,7 +328,20 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 							g.openFilter = g.openFilter === 'channel' ? '' : 'channel';
 							if (g.openFilter) focusWhenShown('.ag-popup[data-filter="text"]', 'input[aria-label="Filter Value"]');
 						}}><span class="ag-icon ag-icon-filter" role="presentation" unselectable="on"></span></span>
-						<div class="ag-header-cell-label" data-ref="eLabel" role="presentation" onClick={(e) => {
+						<div class="ag-header-cell-label" data-ref="eLabel" role="presentation" onPointerDown={(e) => {
+							const box = headerBox();
+							dragMove(e, (x, done, outside) => {
+								g.moving = done ? '' : 'channel';
+								g.hidden = hideColumn(g.hidden, 'channel', outside);
+								if (outside) return;
+								const at = dropIndex(columnDefs, g.order, shownWidths(columnDefs, g.order, '', g.baseWidths, g.flexes, g.total), 'channel', x - box);
+								const next = moveColumn(columnDefs, g.order, g.baseWidths, g.flexes, 'channel', at);
+								g.order = next.order;
+								g.baseWidths = next.baseWidths;
+								g.flexes = next.flexes;
+							});
+						}} onClick={(e) => {
+							if (wasDragged()) return;
 							g.sort = nextSort(g.sort, 'channel', e.shiftKey);
 							g.sortTouched = true;
 						}}>
@@ -294,7 +357,7 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 					</div>
 					</div>
 				</div>
-				<div class={h4.cls} role="columnheader" col-id="args" aria-colindex="5" tabindex="-1" aria-sort={h4.ariaSort} style={h4.style} onFocus={() => announce(h4.desc, (text) => onAnnounce(text))} onMouseEnter={() => (g.activeHeader = 'args')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
+				<div class={h4.cls} role="columnheader" col-id="args" aria-colindex={h4.ariaIndex} tabindex="-1" aria-sort={h4.ariaSort} style={h4.style} onFocus={() => announce(h4.desc, (text) => onAnnounce(text))} onMouseEnter={() => (g.activeHeader = 'args')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
 					if (e.key === 'Tab' || e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'Enter') e.preventDefault();
 					if (onHeaderKey(e)) return;
 					if (e.key !== 'Enter') return;
@@ -310,12 +373,14 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 					g.sortTouched = true;
 				}}>
 					<div class={h4.resizeCls} role="presentation" aria-hidden={h4.resizeHidden} onPointerDown={(e) => {
-						const fromWidths = layoutWidths(columnDefs, g.baseWidths, g.flexes, g.total);
-						const fromFlexes = layoutFlexes(columnDefs, g.flexes);
 						const total = g.total;
-						const start = parseNumbers(fromWidths)[4] ?? 0;
+						const order = g.order;
+						const hidden = g.hidden;
+						const fromWidths = g.baseWidths;
+						const fromFlexes = g.flexes;
+						const start = parseNumbers(shownWidths(columnDefs, order, hidden, fromWidths, fromFlexes, total))[h4.ariaIndex - 1] ?? 0;
 						dragX(e, (dx) => {
-							const next = resizeColumn(fromWidths, fromFlexes, total, 4, start + dx);
+							const next = resizeShown(columnDefs, order, hidden, fromWidths, fromFlexes, total, 'args', start + dx);
 							g.baseWidths = next.widths;
 							g.flexes = next.flexes;
 						});
@@ -329,7 +394,20 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 							g.openFilter = g.openFilter === 'args' ? '' : 'args';
 							if (g.openFilter) focusWhenShown('.ag-popup[data-filter="text"]', 'input[aria-label="Filter Value"]');
 						}}><span class="ag-icon ag-icon-filter" role="presentation" unselectable="on"></span></span>
-						<div class="ag-header-cell-label" data-ref="eLabel" role="presentation" onClick={(e) => {
+						<div class="ag-header-cell-label" data-ref="eLabel" role="presentation" onPointerDown={(e) => {
+							const box = headerBox();
+							dragMove(e, (x, done, outside) => {
+								g.moving = done ? '' : 'args';
+								g.hidden = hideColumn(g.hidden, 'args', outside);
+								if (outside) return;
+								const at = dropIndex(columnDefs, g.order, shownWidths(columnDefs, g.order, '', g.baseWidths, g.flexes, g.total), 'args', x - box);
+								const next = moveColumn(columnDefs, g.order, g.baseWidths, g.flexes, 'args', at);
+								g.order = next.order;
+								g.baseWidths = next.baseWidths;
+								g.flexes = next.flexes;
+							});
+						}} onClick={(e) => {
+							if (wasDragged()) return;
 							g.sort = nextSort(g.sort, 'args', e.shiftKey);
 							g.sortTouched = true;
 						}}>
@@ -377,11 +455,11 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 											announce(next === id ? 'Press SPACE to deselect this row' : 'Press SPACE to select this row', (text) => onAnnounce(text));
 											onRowClicked(id);
 										}}>
-											<div role="gridcell" col-id="serialNumber" class={row.c0.cls} aria-colindex="1" style={row.c0.style}>{row.serial}</div>
-											<div role="gridcell" col-id="timestamp" class={row.c1.cls} aria-colindex="2" style={row.c1.style}>{row.time}</div>
-											<div role="gridcell" col-id="direction" class={row.c2.cls} aria-colindex="3" style={row.c2.style}><span class={row.dir.cls} title={row.dir.title}>{row.dir.left}<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right mx-0.5 flex-shrink-0" aria-hidden="true" style={row.dir.arrowStyle}><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>{row.dir.right}</span></div>
-											<div role="gridcell" col-id="channel" class={row.c3.cls} aria-colindex="4" style={row.c3.style}><div title={row.channel}>{row.channel}<span class="ml-2 rounded bg-gray-200 px-1.5 py-0.5 text-xs dark:bg-charcoal-400" hidden={row.noResponse}>Response</span></div></div>
-											<div role="gridcell" col-id="args" class={row.c4.cls} aria-colindex="5" style={row.c4.style}><span class="truncate font-space-mono text-xs">{row.preview}</span></div>
+											<div role="gridcell" col-id="serialNumber" class={row.c0.cls} aria-colindex={row.c0.ariaIndex} style={row.c0.style}>{row.serial}</div>
+											<div role="gridcell" col-id="timestamp" class={row.c1.cls} aria-colindex={row.c1.ariaIndex} style={row.c1.style}>{row.time}</div>
+											<div role="gridcell" col-id="direction" class={row.c2.cls} aria-colindex={row.c2.ariaIndex} style={row.c2.style}><span class={row.dir.cls} title={row.dir.title}>{row.dir.left}<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right mx-0.5 flex-shrink-0" aria-hidden="true" style={row.dir.arrowStyle}><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>{row.dir.right}</span></div>
+											<div role="gridcell" col-id="channel" class={row.c3.cls} aria-colindex={row.c3.ariaIndex} style={row.c3.style}><div title={row.channel}>{row.channel}<span class="ml-2 rounded bg-gray-200 px-1.5 py-0.5 text-xs dark:bg-charcoal-400" hidden={row.noResponse}>Response</span></div></div>
+											<div role="gridcell" col-id="args" class={row.c4.cls} aria-colindex={row.c4.ariaIndex} style={row.c4.style}><span class="truncate font-space-mono text-xs">{row.preview}</span></div>
 										</div>
 									}
 								</div>
