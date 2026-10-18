@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { frameworkTransport } from '../src/check/browser.ts';
 import { recordable } from '../src/check/data.ts';
 import { bodyShape, compareNetwork, contractLines, normalizeUrl, usedFields, type NetworkCapture, type NetworkRecord } from '../src/check/network.ts';
 
@@ -70,4 +71,13 @@ test('only answered requests are recorded for replay, once each, under the URL t
 	const kept = recordable([news(), news(), { ...hours(), intercepted: true, status: 0 }, { ...hours(NEW), replayed: true, recordedUrl: `${OLD}/api/hours` }]);
 	assert.deepEqual(kept.map((r) => r.url), ['https://cms.example/news?fields=title,summary&locale=en', `${OLD}/api/hours`]);
 	assert.equal('replayed' in kept[1]!, false);
+});
+
+test('client-side navigation fetches are framework transport: Next RSC, Remix _data and the Markless router\'s page fetches', () => {
+	const request = (headers: Record<string, string>, method = 'GET') => ({ headers: () => headers, method: () => method });
+	assert.equal(frameworkTransport(request({ 'x-markless-fragment': '1' }), new URL(`${NEW}/docs/installation`)), true);
+	assert.equal(frameworkTransport(request({ 'x-markless-fragment': '1', purpose: 'prefetch' }), new URL(`${NEW}/docs`)), true);
+	assert.equal(frameworkTransport(request({ rsc: '1' }), new URL(`${OLD}/dashboard`)), true);
+	assert.equal(frameworkTransport(request({}), new URL(`${OLD}/notes?_data=routes%2Fnotes`)), true);
+	assert.equal(frameworkTransport(request({ accept: 'application/json' }), new URL(`${NEW}/api/hours`)), false);
 });

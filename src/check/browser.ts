@@ -124,9 +124,10 @@ const CONTRACT_TYPES = new Set(['fetch', 'xhr', 'eventsource', 'ping']);
 const textual = (type: string) => /json|text|xml|javascript|graphql/.test(type);
 const mime = (value: string | undefined) => (value ?? '').split(';')[0]!.trim().toLowerCase();
 
-export function frameworkTransport(request: Request, url: URL): boolean {
+// Markless's router fetches the next page's HTML with `x-markless-fragment: 1` (its client-side navigation and prefetch).
+export function frameworkTransport(request: Pick<Request, 'headers' | 'method'>, url: URL): boolean {
 	const headers = request.headers();
-	return url.pathname.startsWith('/_next/') || url.searchParams.has('_rsc') || Boolean(headers.rsc || headers['next-router-state-tree'] || headers['next-action']) || (request.method() === 'GET' && url.searchParams.has('_data'));
+	return url.pathname.startsWith('/_next/') || url.searchParams.has('_rsc') || Boolean(headers.rsc || headers['next-router-state-tree'] || headers['next-action'] || headers['x-markless-fragment']) || (request.method() === 'GET' && url.searchParams.has('_data'));
 }
 
 /** Requests that make up the page's network contract: API calls anywhere, and documents from other origins. */
