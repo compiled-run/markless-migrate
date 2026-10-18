@@ -14,11 +14,11 @@ code { background: #f2f4f5; padding: 0 0.2rem; }
 </head>
 <body>
 <h1>Remix Notes: a migration from Remix to Markless</h1>
-<p>The Remix Indie Stack notes app (<code>remix-run/indie-stack</code>, now archived: email and password sign-up and login with a cookie session, SQLite through Prisma, notes you create and delete), ported to Markless and proven with <code>@markless/migrate</code>: 26 of 26 route checks green, signed in and signed out, with every accepted difference listed in the report.</p>
+<p>The Remix Indie Stack notes app (<code>remix-run/indie-stack</code>, now archived: email and password sign-up and login with a cookie session, SQLite through Prisma, notes you create and delete), ported to Markless and checked with <code>@markless/migrate</code>. Rechecked against these deployments on Markless 0.5.0: 23 of 26 route checks green; the signed-in notes pages still differ in ways that need an owner decision, listed in the report.</p>
 <ul>
-<li><a href="/">The front door</a>: every checked route is switched to the Markless app; anything else still goes to the old app</li>
+<li><a href="/">The front door</a>: the routes green signed in and signed out are switched (<code>/</code>, <code>/join</code>, <code>/login</code>, <code>/healthcheck</code>); the notes pages still come from the old app. A session from one app works in the other.</li>
 <li><a href="https://mm-remix-notes-old.vercel.app/">The old app</a> (Remix 2, unchanged source)</li>
-<li><a href="https://mm-remix-notes-new.vercel.app/">The new app</a> (Markless 0.4.0)</li>
+<li><a href="https://mm-remix-notes-new.vercel.app/">The new app</a> (Markless 0.5.0)</li>
 <li><a href="/_migrate/report.html">The check report</a>: every route, old against new, as anonymous and signed in</li>
 </ul>
 <p><strong>Demo login:</strong> <code>rachel@remix.run</code> / <code>racheliscool</code> (the stack's seed user), or sign up with any email and a password of 8 characters or more. A session from one app works in the other.</p>

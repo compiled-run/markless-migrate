@@ -115,3 +115,31 @@ context in pages, no page status code, the `nitro` import that breaks Vercel dep
    order of the sign-up and login journeys decided whether login succeeded. `--concurrency 1` made it deterministic.
 5. (not fixed) `plan` lists `crypto.randomBytes()` in `remix.init/index.js` (the template's one-off setup script, not
    app code) as a source of nondeterminism.
+
+## Markless 0.5.0 (2026-10-17)
+
+Rebuilt on the published 0.5.0 packages (`@markless/*` 0.5.0, `vite-plus` 0.3.1).
+
+### Workarounds removed
+
+| Workaround (0.4.0 limitation) | Now |
+| --- | --- |
+| `deploy/remix-notes/patch-new.mjs`, which rewrote the `nitro` import the Vercel build left in the middleware bundle | deleted: 0.5.0 bundles it |
+| a plain `<html>` in `document.tsrx`, which the router nested inside its own `<html lang="en">` (the browser merged the two) | `<Html lang="en" class={...}>` |
+| links and redirects as document loads | links navigate in place through the router; the redirect after an action (sign in, join, save, delete, sign out) navigates in place too, as Remix's `<Form>` does |
+
+Sign-out now posts from the page script like the other forms (Remix posts it with `fetch` and follows the redirect in place). A form post answered without a body (the checker's held-back writes answer 204) changes nothing instead of logging a JSON parse error.
+
+Not cached: every page depends on the session.
+
+### Check (against the deployments)
+
+`check --all --concurrency 1 --auth .migrate/auth-deployed.json`, old https://mm-remix-notes-old.vercel.app, new https://mm-remix-notes-new.vercel.app. The signed-in role uses storage states saved by signing in on each deployment once (the checker holds back the login post on a deployment).
+
+**23 of 26 route checks green.** Signed out: everything green. Signed in: `/`, `/join`, `/login`, the 404 page, `/healthcheck` and the redirects green; `/notes`, `/notes/:noteId` and `/notes/new` red.
+
+Responsiveness (slowest each side): first interaction old 209 ms → new 32 ms at 4x CPU (desktop 131 → 48 ms); navigation old 200 ms → new 141 ms at 4x CPU (desktop 305 → 133 ms). JavaScript on the wire 91 → 60-72 kB, run at load 90-93 → 6.6-8.3 kB.
+
+What keeps the three notes pages red: the checker never presses "Logout" or "Delete" (destructive names), so their coverage needs a person's accept; and navigating between notes at 4x CPU is 127-141 ms against Remix's 44-46 ms (Remix fetches the loader's JSON, the router fetches and swaps the whole page's HTML).
+
+Routes switched: `/`, `/join`, `/login` and `/healthcheck` (green signed in and signed out). The notes pages stay on the old app; a session from either app works in the other, so signing in on the front door lands on the old app's notes signed in (verified in a browser).

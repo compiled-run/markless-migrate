@@ -2,7 +2,7 @@
 	"routes": [
 		{
 			"route": "/",
-			"at": "2026-10-17T13:15:27.009Z",
+			"at": "2026-10-18T04:53:09.015Z",
 			"checks": [
 				"/: green",
 				"/ as signed-in: green"
@@ -10,7 +10,7 @@
 		},
 		{
 			"route": "/join",
-			"at": "2026-10-17T13:15:27.642Z",
+			"at": "2026-10-18T04:53:10.149Z",
 			"checks": [
 				"/join: green",
 				"/join/: green",
@@ -20,7 +20,7 @@
 		},
 		{
 			"route": "/login",
-			"at": "2026-10-17T13:15:28.266Z",
+			"at": "2026-10-18T04:53:11.002Z",
 			"checks": [
 				"/login: green",
 				"/login/: green",
@@ -29,42 +29,8 @@
 			]
 		},
 		{
-			"route": "/notes",
-			"at": "2026-10-17T13:15:28.892Z",
-			"checks": [
-				"/notes: green",
-				"/notes/: green",
-				"/notes as signed-in: green",
-				"/notes/ as signed-in: green"
-			]
-		},
-		{
-			"route": "/notes/new",
-			"at": "2026-10-17T13:15:29.503Z",
-			"checks": [
-				"/notes/new: green",
-				"/notes/new/: green",
-				"/notes/new as signed-in: green",
-				"/notes/new/ as signed-in: green"
-			]
-		},
-		{
-			"route": "/notes/:noteId",
-			"at": "2026-10-17T13:15:30.078Z",
-			"checks": [
-				"/notes/cmvcee9oe0002ag8afyyiylz8: green",
-				"/notes/new: green",
-				"/notes/cmvcee9oe0002ag8afyyiylz8/: green",
-				"/notes/new/: green",
-				"/notes/cmvcee9oe0002ag8afyyiylz8 as signed-in: green",
-				"/notes/new as signed-in: green",
-				"/notes/cmvcee9oe0002ag8afyyiylz8/ as signed-in: green",
-				"/notes/new/ as signed-in: green"
-			]
-		},
-		{
 			"route": "/healthcheck",
-			"at": "2026-10-17T13:15:30.665Z",
+			"at": "2026-10-18T04:53:11.789Z",
 			"checks": [
 				"/healthcheck: green",
 				"/healthcheck as signed-in: green"
