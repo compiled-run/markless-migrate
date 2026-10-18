@@ -18,7 +18,7 @@ Status: early. `plan`, `check`, `cli`, `status`, `switch`, `proxy`, `config`, `s
 ## Commands
 
 ```bash
-markless-migrate plan --old http://localhost:3000 [--source ../old-app] [--limit 100] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
+markless-migrate plan --old http://localhost:3000 [--source ../old-app] [--auth .migrate/auth.json] [--limit 100] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
 markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [--route /about]... [--open]
     [--source ../old-app] [--data record|replay] [--staging] [--block <host>]... [--allow <host>]...
     [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]

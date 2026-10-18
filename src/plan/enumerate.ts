@@ -11,6 +11,8 @@ export interface PlannedRoute {
 	readonly status?: number;
 	readonly redirectsTo?: string;
 	readonly contentType?: string;
+	/** Roles a visitor reaches the route as, when plan crawled signed in too (absent: anonymous only). */
+	readonly roles?: readonly string[];
 }
 
 export interface Enumeration {

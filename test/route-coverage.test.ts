@@ -12,6 +12,7 @@ import { runCheck } from '../src/check/run.ts';
 import { summarize } from '../src/check/summary.ts';
 import { domSignature, urlPattern } from '../src/check/templates.ts';
 import { enumerateRoutes } from '../src/plan/enumerate.ts';
+import { plan } from '../src/plan/inventory.ts';
 import { recordResults, status } from '../src/status.ts';
 import { switchRoute } from '../src/switch/state.ts';
 
@@ -217,5 +218,42 @@ test('an app that answers every path with its HTML shell lists no robots.txt or 
 		assert.deepEqual(planned.sitemaps, []);
 	} finally {
 		shell.close();
+	}
+});
+
+test('coverage per role: a signed-in route the new app lacks is missing for that role, and an old rule sending unknown paths to the dashboard is no catch-all', async () => {
+	const signedIn = (cookie: string | undefined) => /session=yes/.test(cookie ?? '');
+	const app = (pages: readonly string[]) => {
+		const server = createServer((req, res) => {
+			const url = new URL(req.url ?? '/', 'http://x');
+			const known = ['/', '/login', ...pages];
+			if (!signedIn(req.headers.cookie)) {
+				if (url.pathname.startsWith('/dashboard')) return res.writeHead(307, { location: '/login' }).end();
+				return known.includes(url.pathname) ? res.writeHead(200, { 'content-type': 'text/html' }).end(page(url.pathname)) : res.writeHead(404).end(page('Not found'));
+			}
+			if (!url.pathname.startsWith('/dashboard')) return res.writeHead(302, { location: '/dashboard' }).end();
+			return known.includes(url.pathname) ? res.writeHead(200, { 'content-type': 'text/html' }).end(page(url.pathname, ['/dashboard/invoices'])) : res.writeHead(404).end(page('Not found'));
+		});
+		return new Promise<Server>((done) => server.listen(0, '127.0.0.1', () => done(server)));
+	};
+	const a = await app(['/dashboard', '/dashboard/invoices']);
+	const b = await app(['/dashboard']);
+	const dir = await mkdtemp(join(tmpdir(), 'mm-roles-'));
+	const state = (o: string) => ({ cookies: [{ name: 'session', value: 'yes', domain: new URL(o).hostname, path: '/', expires: -1, httpOnly: false, secure: false, sameSite: 'Lax' as const }], origins: [] });
+	await writeFile(join(dir, 'old.json'), JSON.stringify(state(origin(a))));
+	await writeFile(join(dir, 'new.json'), JSON.stringify(state(origin(b))));
+	const auth = { dir, loginRoute: '/login', roles: { 'signed-in': { storageState: { old: 'old.json', new: 'new.json' } } } };
+	try {
+		const inventory = await plan({ origin: origin(a), browser, auth, samples: {} });
+		const invoices = inventory.allRoutes!.find((r) => r.route === '/dashboard/invoices');
+		assert.deepEqual(invoices?.roles, ['signed-in'], 'plan --auth lists a route only a signed-in visitor is linked to');
+		const report = await runCheck({ oldOrigin: origin(a), newOrigin: origin(b), routes: [], coverage: ['/', '/login', '/dashboard', '/dashboard/invoices'], browser, auth });
+		assert.deepEqual(report.coverage!.missing, ['/dashboard/invoices']);
+		assert.deepEqual(report.coverage!.failures.map((f) => f.role), ['signed-in']);
+		assert.deepEqual(report.coverage!.roles, [{ role: 'anonymous', total: 4, present: 4, missing: 0 }, { role: 'signed-in', total: 4, present: 3, missing: 1 }]);
+		assert.match(summarize(report), /by role: anonymous 4 of 4, signed-in 3 of 4\n[\s\S]*\/dashboard\/invoices \(signed-in\) {2}old 200, new 404/);
+	} finally {
+		a.close();
+		b.close();
 	}
 });

@@ -31,9 +31,9 @@ import type { Status } from '../status.ts';
 import { blocker, type BlockList } from './trackers.ts';
 import { matchRoute } from '../source/pattern.ts';
 import { isSwitched } from '../switch/state.ts';
-import type { Blocked, Coverage, Dimension, Failure, HttpCapture, Infrastructure, LoginResult, PageCapture, Report, RouteCapture, RouteResult, Shot, Viewport } from './types.ts';
+import type { Blocked, Coverage, Dimension, Failure, HttpCapture, Infrastructure, LoginResult, PageCapture, Report, RouteCapture, RouteCoverage, RouteResult, Shot, Viewport } from './types.ts';
 import { DIMENSIONS, REPRESENTATIVE_ONLY, VIEWPORTS } from './types.ts';
-import { checkCoverage } from './coverage.ts';
+import { checkCoverage, mergeCoverage } from './coverage.ts';
 import { groupTemplates, TEMPLATE_THRESHOLD, type TemplateGroup } from './templates.ts';
 import { bodyText, request } from './http.ts';
 import { classify, InfrastructureError, Scope } from './infrastructure.ts';
@@ -521,6 +521,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			const group = groupOf.get(result.route);
 			return group ? { ...result, template: { pattern: group.pattern, representative: group.representative, members: group.members.length } } : result;
 		};
+		const coverages: RouteCoverage[] = [];
 		for (const role of roles) {
 			let roleRun = base;
 			if (auth && role && role !== ANONYMOUS) {
@@ -529,6 +530,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				if (!signed.run) continue;
 				roleRun = signed.run;
 			}
+			if (options.coverage) coverages.push(await checkCoverage(roleRun.old, roleRun.new, options.coverage, role));
 			const data = options.data && role && role !== ANONYMOUS ? { ...options.data, dir: join(options.data.dir, slug(role)) } : options.data;
 			const pages = allPages;
 			const full = pages.filter((route) => !light(route));
@@ -549,7 +551,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			for (const route of redirects) routes.push(asRole(await checkRedirect(roleRun, route).catch(unreachable(route)), role));
 		}
 		const sources = options.source?.nondeterminism.map((f) => ({ ...f, pinned: pinnedBy(`${f.kind} ${f.what ?? ''}`, f.side, freeze) }));
-		const coverage = options.coverage ? await checkCoverage(base.old, base.new, options.coverage) : undefined;
+		const coverage = options.coverage ? mergeCoverage(coverages) : undefined;
 		const checkedCount = new Set([...options.routes, ...(options.redirects ?? []), ...(options.endpoints ?? [])]).size;
 		const grouped = groups.filter((g) => g.members.length > 1);
 		return applyAccepted({

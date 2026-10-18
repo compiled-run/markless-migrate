@@ -40,13 +40,16 @@ import { CLI_CONFIG, CLI_REPORT, readCliConfig, runCliCheck, summarizeCli } from
 
 const USAGE = `markless-migrate ${VERSION}
 
-  plan    --old <origin> [--source <path>] [--limit <n>] [--crawl-limit <n>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
+  plan    --old <origin> [--source <path>] [--auth <file>] [--limit <n>] [--crawl-limit <n>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           Inventory the old app's routes, SEO, assets and locales into .migrate/inventory.json.
           Every route of the old site is listed with where it was found: the sitemaps (indexes
           followed), robots.txt, feeds, a same-origin link crawl of every page (pagination and
           redirects followed, at most --crawl-limit pages, default 10000), the source's routes with
           --source, and the non-page endpoints. --limit caps only the pages loaded in the browser for
-          their SEO tags and assets (default 100).
+          their SEO tags and assets (default 100). --auth (as for check) crawls again as each role,
+          in the browser and by links, so routes only a signed-in visitor reaches are listed too, with
+          the roles that reach them. Source routes with dynamic segments take their values from the
+          crawl or .migrate/samples.json.
           With --source, auth guards propose roles and the login route in a starter .migrate/auth.json,
           and every library the old app imports goes in .migrate/libraries.json: the exact surface used,
           each usage site, and whether it maps to @markless/ui, stays as-is, needs a port, or draws
@@ -444,7 +447,7 @@ async function main(argv: string[]): Promise<number> {
 			out(USAGE);
 			return 0;
 		case 'plan': {
-			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, limit: { type: 'string' }, 'crawl-limit': { type: 'string' }, header: { type: 'string', multiple: true }, cookie: { type: 'string', multiple: true }, 'user-agent': { type: 'string' } } });
+			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, limit: { type: 'string' }, 'crawl-limit': { type: 'string' }, header: { type: 'string', multiple: true }, cookie: { type: 'string', multiple: true }, 'user-agent': { type: 'string' }, auth: { type: 'string' } } });
 			if (!values.old) fail('plan needs --old <origin>');
 			const crawlBound = values['crawl-limit'] === undefined ? undefined : Number(values['crawl-limit']);
 			if (crawlBound !== undefined && (!Number.isInteger(crawlBound) || crawlBound < 1)) fail('--crawl-limit must be a whole number of at least 1');
@@ -454,7 +457,8 @@ async function main(argv: string[]): Promise<number> {
 			} catch (error) {
 				fail((error as Error).message);
 			}
-			const inventory = await plan({ origin: values.old, source: values.source ? resolve(values.source) : undefined, limit: values.limit ? Number(values.limit) : undefined, ...(crawlBound ? { crawlBound } : {}), ...bypass, ...(values['user-agent'] ? { userAgent: values['user-agent'] } : {}) });
+			const planAuth = values.auth ? await readAuthFile(values.auth).catch((error: Error) => fail(error.message)) : undefined;
+			const inventory = await plan({ origin: values.old, source: values.source ? resolve(values.source) : undefined, limit: values.limit ? Number(values.limit) : undefined, ...(crawlBound ? { crawlBound } : {}), ...bypass, ...(values['user-agent'] ? { userAgent: values['user-agent'] } : {}), ...(planAuth ? { auth: planAuth } : {}), samples: await readSamples(join(cwd, STATE_DIR)) });
 			const path = await writeInventory(inventory, join(cwd, STATE_DIR));
 			out(`${summarizeInventory(inventory)}Wrote ${path}\n`);
 			if (inventory.source) {

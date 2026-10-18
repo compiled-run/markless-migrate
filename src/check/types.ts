@@ -264,6 +264,8 @@ export interface RouteCoverage {
 	readonly notOnOld: readonly string[];
 	/** Planned routes an app did not answer after three tries (`/path (OLD)` or `/path (NEW)`), so not measured: coverage is not green while any is listed. */
 	readonly unreachable: readonly string[];
+	/** With --auth, the counts for each role: every route is fetched as each role, with its session, on both apps. */
+	readonly roles?: readonly { readonly role: string; readonly total: number; readonly present: number; readonly missing: number }[];
 }
 
 /** The slowest timing on each side, and where: `route control`. */

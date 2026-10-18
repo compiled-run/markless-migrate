@@ -11,7 +11,9 @@ import { request } from '../check/http.ts';
 import { defaultEnv } from '../check/browser.ts';
 import { discoverEndpoints } from '../check/endpoints.ts';
 import { DEFAULT_CRAWL_BOUND, enumerateRoutes, routesToPort, type PlannedRoute, type RouteSource } from './enumerate.ts';
-import { routeTargets } from './routes.ts';
+import { routeTargets, type Samples } from './routes.ts';
+import { ANONYMOUS, signIn, type AuthConfig } from '../check/auth.ts';
+import type { StorageState } from '../check/browser.ts';
 
 export interface InventoryRoute {
 	readonly route: string;
@@ -65,6 +67,10 @@ export interface PlanOptions {
 	readonly userAgent?: string;
 	/** At most this many pages fetched by the link crawl that lists every route (default 10,000). */
 	readonly crawlBound?: number;
+	/** Roles to crawl as besides anonymous: routes only a signed-in visitor reaches are listed too. */
+	readonly auth?: AuthConfig;
+	/** `.migrate/samples.json`: values for the dynamic segments of source routes no crawl reached. */
+	readonly samples?: Samples;
 }
 
 function ownHeaders(options: Pick<PlanOptions, 'headers' | 'cookies' | 'userAgent'>): Record<string, string> {
@@ -72,8 +78,8 @@ function ownHeaders(options: Pick<PlanOptions, 'headers' | 'cookies' | 'userAgen
 }
 
 /** A browser context that sends the bypass to the old app's own origin and nowhere else, and, like check, never loads ads or analytics: crawling must not count as visits. */
-async function bypassContext(browser: Browser, origin: string, options: Pick<PlanOptions, 'headers' | 'cookies' | 'userAgent'>): Promise<BrowserContext> {
-	const context = await browser.newContext(options.userAgent ? { userAgent: options.userAgent } : {});
+async function bypassContext(browser: Browser, origin: string, options: Pick<PlanOptions, 'headers' | 'cookies' | 'userAgent'>, storageState?: StorageState): Promise<BrowserContext> {
+	const context = await browser.newContext({ ...(options.userAgent ? { userAgent: options.userAgent } : {}), ...(storageState ? { storageState } : {}) });
 	if (options.cookies?.length) await context.addCookies(options.cookies.map((c) => ({ ...c, url: origin })));
 	const headers = options.headers ?? {};
 	const home = new URL(origin).origin;
@@ -94,6 +100,37 @@ function routeOf(url: string, origin: string): string | undefined {
 	} catch {
 		return undefined;
 	}
+}
+
+function cookieHeader(state: StorageState, origin: string): string {
+	const host = new URL(origin).hostname;
+	return state.cookies.filter((c) => host === c.domain.replace(/^\./, '') || host.endsWith(`.${c.domain.replace(/^\./, '')}`)).map((c) => `${c.name}=${c.value}`).join('; ');
+}
+
+/** Same-origin links of every page a signed-in visitor reaches from the seeds, loaded in the browser (an app that draws its links on the client shows them only there). */
+async function crawlAs(browser: Browser, origin: string, options: PlanOptions, state: StorageState, seeds: readonly string[], limit: number): Promise<string[]> {
+	const found = new Set(seeds);
+	const queue = [...found];
+	const context = await bypassContext(browser, origin, options, state);
+	try {
+		const page = await context.newPage();
+		for (let i = 0; i < queue.length && i < limit; i++) {
+			const navigation = await page.goto(new URL(queue[i]!, origin).href, { waitUntil: 'load' }).catch(() => null);
+			if (!navigation) continue;
+			await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
+			const collected = await page.evaluate(collectPage, { origin, full: false }).catch(() => ({ links: [] as string[] }));
+			for (const link of [page.url(), ...collected.links]) {
+				const target = routeOf(link.split('#')[0]!, origin);
+				if (target !== undefined && !found.has(target) && !/(log|sign)-?out/i.test(target)) {
+					found.add(target);
+					queue.push(target);
+				}
+			}
+		}
+	} finally {
+		await context.close();
+	}
+	return [...found];
 }
 
 async function text(url: string, headers: Record<string, string> = {}): Promise<string | undefined> {
@@ -256,9 +293,31 @@ export async function plan(options: PlanOptions): Promise<Inventory> {
 	};
 	const crawled = [...found.keys(), ...routesToPort(enumeration.routes).map((r) => r.route)].map((r) => r.split(/[?#]/)[0]!);
 	const union = source ? unionRoutes([...new Set(crawled)], source.routes) : [];
-	const fromSource = source ? routeTargets({ routes: [], routeUnion: union, source } as unknown as Inventory) : undefined;
+	const fromSource = source ? routeTargets({ routes: [], routeUnion: union, source } as unknown as Inventory, options.samples) : undefined;
 	for (const entry of union) if (entry.knownBy.includes('source')) for (const path of entry.crawled) add(path, 'source');
 	for (const path of fromSource?.pages ?? []) add(path, 'source');
+	const byRole = new Map<string, Set<string>>();
+	const anonymous = new Set(listed.keys());
+	if (options.auth) {
+		const roleBrowser = options.browser ?? (await chromium.launch());
+		try {
+			for (const [name, spec] of Object.entries(options.auth.roles)) {
+				const state = await signIn(roleBrowser, defaultEnv(origin, { ...(options.headers ? { headers: { ...options.headers } } : {}), ...(options.cookies?.length ? { cookies: options.cookies } : {}), ...(options.userAgent ? { userAgent: options.userAgent } : {}) }), 'old', name, spec, options.auth.dir);
+				const seen = new Set<string>();
+				for (const route of await crawlAs(roleBrowser, origin, options, state, [...listed.keys()].filter((r) => !/\.[a-z0-9]+$/i.test(r)), limit)) seen.add(route.split('#')[0]!);
+				const signed = await enumerateRoutes(origin, { headers: { ...own, cookie: [own.cookie, cookieHeader(state, origin)].filter(Boolean).join('; ') }, bound: options.crawlBound ?? DEFAULT_CRAWL_BOUND, seeds: new Map([...seen].map((r) => [r, ['crawl'] as RouteSource[]])) });
+				const facts = new Map(signed.routes.map((r) => [r.route, r]));
+				for (const r of routesToPort(signed.routes)) seen.add(r.route);
+				byRole.set(name, seen);
+				for (const route of seen) {
+					const fact = facts.get(route);
+					if (!listed.has(route)) listed.set(route, fact && routesToPort([fact]).length ? { ...fact, sources: ['crawl'] } : { route, sources: ['crawl'] });
+				}
+			}
+		} finally {
+			if (!options.browser) await roleBrowser.close();
+		}
+	}
 	const pages = [...listed.values()].filter((r) => r.status === undefined || (r.status < 400 && /html/.test(r.contentType ?? 'text/html'))).map((r) => r.route);
 	for (const path of await discoverEndpoints(defaultEnv(origin, { headers: own }), pages, fromSource?.endpoints ?? [])) add(path, 'endpoint');
 	let auth = source ? proposeAuth(source.authGuards, source.routes, union, routes.find((r) => r.route === '/')?.redirectsTo) : undefined;
@@ -281,7 +340,10 @@ export async function plan(options: PlanOptions): Promise<Inventory> {
 		localeRouting: { prefixes, negotiation },
 		...(source ? { source, routeUnion: union } : {}),
 		...(auth ? { auth } : {}),
-		allRoutes: [...listed.values()].sort((a, b) => a.route.localeCompare(b.route)),
+		allRoutes: [...listed.values()].map((r) => {
+			const roles = [...byRole].filter(([, seen]) => seen.has(r.route)).map(([name]) => name);
+			return roles.length ? { ...r, roles: anonymous.has(r.route) ? [ANONYMOUS, ...roles] : roles } : r;
+		}).sort((a, b) => a.route.localeCompare(b.route)),
 		crawl: { fetched: enumeration.fetched, bound: enumeration.bound, truncated: enumeration.truncated, sitemaps: enumeration.sitemaps },
 	};
 }
@@ -301,6 +363,8 @@ export function summarizeInventory(inventory: Inventory): string {
 		for (const r of port) for (const how of r.sources) by.set(how, (by.get(how) ?? 0) + 1);
 		const broken = inventory.allRoutes.length - port.length;
 		lines.push(`${port.length} routes on the old site to port, from ${[...by].map(([how, n]) => `${how} ${n}`).join(', ')}${broken ? `; ${broken} linked or listed paths the old site answers with an error, left out` : ''}`);
+		const signedOnly = port.filter((r) => r.roles && !r.roles.includes(ANONYMOUS));
+		if (signedOnly.length) lines.push(`  ${signedOnly.length} of them reached only signed in (${[...new Set(signedOnly.flatMap((r) => r.roles!))].join(', ')})`);
 		if (inventory.crawl) lines.push(`  link crawl fetched ${inventory.crawl.fetched} pages${inventory.crawl.truncated ? `, and STOPPED at its bound of ${inventory.crawl.bound}: raise --crawl-limit, routes linked only from the pages left unfetched are not listed` : ', and every link was followed'}${inventory.crawl.sitemaps.length ? `; sitemaps read: ${inventory.crawl.sitemaps.join(', ')}` : '; no sitemap found'}`);
 	}
 	lines.push(`${inventory.routes.length} routes inventoried in the browser (SEO, assets, locales) on ${inventory.origin}${inventory.truncated ? ` (stopped at the limit of ${inventory.limit}; check still checks every route above)` : ''}`);
