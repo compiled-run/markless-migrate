@@ -24,6 +24,16 @@ const pages: Record<string, string> = {
 		}, 200);
 	});
 </script>`,
+	// Like Next: no main element, and a script with more text than the page beside the content.
+	'/plain': `<!doctype html><html lang="en"><title>App</title>
+<div id="app"><a href="/plain/next" id="next">Next page</a><p>First page</p></div>
+<script>self.payload = ${JSON.stringify('x'.repeat(5000))};
+	document.getElementById('next').addEventListener('click', (event) => {
+		event.preventDefault();
+		history.pushState(null, '', '/plain/next');
+		setTimeout(() => (document.querySelector('#app p').textContent = 'Second page'), 200);
+	});
+</script>`,
 	// A debounce that reads Date.now, as lodash's does: it fires 300 ms after the last keystroke.
 	'/search': `<!doctype html><html lang="en"><title>Search</title>
 <main><input aria-label="Search" id="q"><output id="out"></output></main>
@@ -55,7 +65,7 @@ before(async () => {
 	browser = await chromium.launch();
 	server = createServer((request, response) => {
 		const path = new URL(request.url ?? '/', 'http://x').pathname;
-		const body = pages[path === '/nav/next' ? '/nav' : path];
+		const body = pages[path.replace(/\/next$/, '')];
 		if (!body) return void response.writeHead(404).end();
 		response.writeHead(200, { 'content-type': 'text/html' }).end(body);
 	});
@@ -73,6 +83,12 @@ test('a navigation ends when the next page content paints, not when <html>, <hea
 	const sample = await measureOnce(browser, defaultEnv(origin), '/nav', desktop, { action: 'click', target: { role: 'link', name: 'Next page', nth: 0 } });
 	assert.equal(sample.result, 'navigated', JSON.stringify(sample));
 	assert.ok((sample.ms ?? 0) >= 200, `navigation measured at ${sample.ms} ms, before its content painted at 200 ms`);
+});
+
+test('without a main element, the content is the rendered body child with the most text, never a script', async () => {
+	const sample = await measureOnce(browser, defaultEnv(origin), '/plain', desktop, { action: 'click', target: { role: 'link', name: 'Next page', nth: 0 } });
+	assert.equal(sample.result, 'navigated', JSON.stringify(sample));
+	assert.ok((sample.ms ?? 0) >= 200, `navigation measured at ${sample.ms} ms; its content changed at 200 ms`);
 });
 
 test('while timing, the clock runs in real time, so a Date.now debounce waits from the last keystroke', async () => {

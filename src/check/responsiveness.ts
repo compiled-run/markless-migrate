@@ -156,6 +156,8 @@ export function responsivenessProbe(): void {
 		let best: Element = body;
 		let most = -1;
 		for (const child of body.children) {
+			// A script's innerText is its source (Next's RSC payload): only rendered children hold content.
+			if (/^(SCRIPT|STYLE|TEMPLATE|NOSCRIPT)$/.test(child.tagName) || !child.checkVisibility()) continue;
 			const n = (child as HTMLElement).innerText?.length ?? 0;
 			if (n > most) [best, most] = [child, n];
 		}
