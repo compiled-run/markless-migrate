@@ -19,13 +19,13 @@ import { negotiationFailures } from './i18n.ts';
 import { compareJourneys, DEFAULT_JOURNEY_BUDGET_MS, explore, replayAll, replayDestructive, survey, type ElementCoverage, type Exploration, type ExploreOptions, type RecordedJourney, type Run as RunResults } from './journeys.ts';
 import { storageOwner, unreachableCandidate, type StorageOwner } from './automatic.ts';
 import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
-import { checkMotion, type MotionOptions } from './motion.ts';
+import { checkMotion, motionRules, type MotionOptions } from './motion.ts';
 import { assetsToProbe, compareRoute, cssTargets, httpFailures, noiseReport, noisyStyles, withFailures, type Probe } from './compare.ts';
 import { matchElements } from './match.ts';
 import { contractLines } from './network.ts';
 import type { SourceFacts } from './source-facts.ts';
 import { compareStates, type StateInput } from './states.ts';
-import { discoverStates, parseRules } from './stylesheet.ts';
+import { discoverStates, parseRules, type StyleSource } from './stylesheet.ts';
 import { renderHtml } from './html.ts';
 import type { Status } from '../status.ts';
 import { blocker, type BlockList } from './trackers.ts';
@@ -183,7 +183,7 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 	const result = withFailures(compared, [...compared.failures, ...negotiationFailures(route, languages, [negotiatedA, negotiatedB], negotiatedNew)], { noise, writes: loadWrites });
 	const owner = storageOwner(olds.flatMap((o) => Object.values(o.pages)), Object.values(next.pages));
 	const explored = await checkJourneys(browser, run, route, viewports[0]!, await checkStates(browser, run, route, viewports, olds, result), owner);
-	const moved = run.motion && explored.journeys?.length ? await checkMoves(browser, run, route, viewports[0]!, explored) : explored;
+	const moved = run.motion && explored.journeys?.length ? await checkMoves(browser, run, route, viewports[0]!, explored, oldA.pages[viewports[0]!.name]?.stylesheets ?? []) : explored;
 	const checked = run.responsiveness && moved.journeys?.length ? await checkTimings(browser, run, route, moved) : moved;
 	const located = await locateFailures(checked, { route, old: oldA, next, sides: { old: { origin: oldOrigin, dir: run.sourceDirs?.old }, new: { origin: newOrigin, dir: run.sourceDirs?.new } }, ...(run.source ? { facts: run.source } : {}) });
 	const done = oldA.http.status < 400 && (next.http.status === 404 || next.http.status === 410) ? { ...located, notPorted: true } : located;
@@ -264,8 +264,8 @@ async function unreachableOnBoth(browser: Browser, env: SideEnv, route: string, 
 	return out;
 }
 
-async function checkMoves(browser: Browser, run: Run, route: string, viewport: Viewport, result: RouteResult): Promise<RouteResult> {
-	const moved = await checkMotion(browser, { old: run.old, new: run.new }, route, viewport, result.journeys ?? [], run.motion);
+async function checkMoves(browser: Browser, run: Run, route: string, viewport: Viewport, result: RouteResult, sources: readonly StyleSource[]): Promise<RouteResult> {
+	const moved = await checkMotion(browser, { old: run.old, new: run.new }, route, viewport, result.journeys ?? [], { ...run.motion, rules: motionRules(parseRules(sources)) });
 	return withFailures(result, [...result.failures, ...moved.failures], { motion: moved.motion, ...(moved.filmstrips.length ? { filmstrips: moved.filmstrips } : {}) });
 }
 

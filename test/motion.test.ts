@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { compareMotion, motionJourneys, sameEasing, type MotionCapture, type MotionRecord } from '../src/check/motion.ts';
+import { compareMotion, motionJourneys, motionRules, sameEasing, type MotionCapture, type MotionRecord } from '../src/check/motion.ts';
 import type { RecordedJourney, StepResult } from '../src/check/journeys.ts';
 import type { ElementSnapshot } from '../src/check/types.ts';
 
@@ -81,4 +81,10 @@ test('journeys that lead to another page or could not be used are not recorded',
 	const { take, skipped } = motionJourneys([journey('a', [step()]), journey('b', [step({ navigated: true })]), journey('c', [step({ failed: 'gone' })])]);
 	assert.deepEqual(take.map((j) => j.name), ['a']);
 	assert.deepEqual(skipped, ['b: it leads to another page', 'c: it could not be used on the old page']);
+});
+
+test('the old rules that make something move are those with a transition or animation, outside reduced motion', () => {
+	const rule = (selector: string, property: string, value: string, conditions: { kind: 'media'; text: string }[] = []) => ({ selector, file: 'a.css', line: 1, column: 1, order: 0, specificity: [0, 1, 0] as const, conditions, declarations: [{ property, value, important: false }] });
+	const found = motionRules([rule('.items', 'transition', 'height 250ms ease-in-out'), rule('.items', 'transition', 'none', [{ kind: 'media', text: '(prefers-reduced-motion: reduce)' }]), rule('.x', 'transition-duration', '0s'), rule('.spin', 'animation', 'spin 1s linear infinite'), rule('.y', 'color', 'red')]);
+	assert.deepEqual(found.map((r) => r.selector), ['.items', '.spin']);
 });

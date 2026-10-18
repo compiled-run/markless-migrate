@@ -59,6 +59,7 @@ describe('motion: the transitions and animations each interaction starts, old vs
 		assert.ok(![...interaction.reduced!.old, ...interaction.reduced!.new].some((l) => /height/.test(l)), 'reduced motion drops the height transition on both sides');
 		assert.ok(route.motion!.interactions.some((i) => i.name === 'hover button "Getting Started"' && i.ok && i.old.some((l) => /background-color rgb\(255, 255, 255\)→rgb\(238, 238, 238\) over 150 ms ease$/.test(l))), JSON.stringify(route.motion!.interactions));
 		assert.equal(route.filmstrips, undefined);
+		assert.ok(!(route.motion!.unexercised ?? []).some((r) => r.startsWith('`.items`') || r.startsWith('`.toggle`')), 'both motion rules of the old stylesheet ran');
 	});
 
 	test('a page that keeps animating when the visitor asks for reduced motion is red', async () => {

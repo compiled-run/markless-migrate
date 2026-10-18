@@ -576,3 +576,6 @@ focus of each control a journey used and one screen of scrolling are recorded on
 and 250 ms ease-in-out, with a filmstrip; identical sides are green; a page that keeps animating under
 reduced motion is red) and `test/motion.test.ts`. The CLI and MCP record it by default; `runCheck` takes
 `motion: {}`.
+The report also lists the old stylesheets' motion rules (a transition or animation outside reduced motion)
+whose selector matched no element that moved in any recorded interaction; their values stay the css
+dimension's business.

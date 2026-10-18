@@ -4,6 +4,7 @@ import { collectPage } from './collect.ts';
 import { HINTS } from './hints.ts';
 import { describeTarget, locate, openSession, pool, type RecordedJourney, type Target } from './journeys.ts';
 import { describe, matchElements } from './match.ts';
+import { describeRule, type CssRule } from './stylesheet.ts';
 import type { Box, ElementSnapshot, Failure, Viewport } from './types.ts';
 
 export interface MotionOptions {
@@ -11,6 +12,8 @@ export interface MotionOptions {
 	readonly maxInteractions?: number;
 	/** At most this many controls hovered and focused per route; default 24. */
 	readonly maxHovers?: number;
+	/** The old stylesheets' rules that declare a transition or an animation, to list those no recorded interaction ran. */
+	readonly rules?: readonly { readonly selector: string; readonly label: string }[];
 }
 
 export type MotionKind = 'transition' | 'animation' | 'web animation' | 'script' | 'media';
@@ -40,6 +43,8 @@ export interface MotionCapture {
 	readonly failed?: string;
 	/** Every element on the page, to find the counterpart of one that moves on the other side only. */
 	readonly elements?: readonly ElementSnapshot[];
+	/** Indices of the rules whose selector matches an element that moved. */
+	readonly hits?: readonly number[];
 }
 
 /** Frames of one interaction on both sides, at the same offsets into the old side's longest animation. */
@@ -65,6 +70,8 @@ export interface MotionResult {
 	readonly interactions: readonly MotionInteraction[];
 	/** Interactions not recorded, with why (a navigation, a step that failed, the cap). */
 	readonly skipped: readonly string[];
+	/** Old rules declaring a transition or animation that no recorded interaction ran on the old page; the css dimension compares their values. */
+	readonly unexercised?: readonly string[];
 }
 
 const DEFAULT_MAX_INTERACTIONS = 40;
@@ -96,7 +103,7 @@ interface PageRecord {
 	readonly pseudo?: string;
 }
 
-type MotionWindow = Window & { __mmMotionRecorder?: { records(): PageRecord[]; span(): number; clip(): Box | null; seek(t: number): void; release(): void; busy(): boolean; stop(): void } };
+type MotionWindow = Window & { __mmMotionRecorder?: { records(): PageRecord[]; hits(selectors: string[]): number[]; span(): number; clip(): Box | null; seek(t: number): void; release(): void; busy(): boolean; stop(): void } };
 
 // Runs in the page: records every transition and animation that starts from now on, and holds finite ones at their start when `pause` is set so frames can be taken at fixed offsets.
 function armMotion(pause: boolean): void {
@@ -258,6 +265,17 @@ function armMotion(pause: boolean): void {
 		busy() {
 			return document.getAnimations().some((a) => a.playState === 'running' && end(a) !== undefined);
 		},
+		hits(selectors: string[]) {
+			const targets = [...found.map((a) => (a.effect as KeyframeEffect | null)?.target), ...styled.keys()].filter((el): el is Element => Boolean(el));
+			const plain = (s: string) => s.replace(/::?(before|after|hover|focus-visible|focus-within|focus|active|placeholder|marker)\b/g, '').trim() || '*';
+			return selectors.flatMap((s, i) => {
+				try {
+					return targets.some((el) => el.matches(plain(s))) ? [i] : [];
+				} catch {
+					return [];
+				}
+			});
+		},
 		stop() {
 			stopped = true;
 			observer.disconnect();
@@ -285,7 +303,8 @@ async function still(page: Page, cap = 2_000): Promise<void> {
 const shown = (page: Page) => page.evaluate(collectPage, { origin: new URL(page.url()).origin, full: true, styles: false }).then((c) => c.elements as ElementSnapshot[], () => [] as ElementSnapshot[]);
 
 // Elements are described as the other dimensions describe them, from while they moved (`earlier`) when they are hidden by the end.
-async function records(page: Page, earlier: readonly ElementSnapshot[] = []): Promise<{ motions: MotionRecord[]; elements: ElementSnapshot[] }> {
+async function records(page: Page, earlier: readonly ElementSnapshot[] = [], selectors: readonly string[] = []): Promise<{ motions: MotionRecord[]; elements: ElementSnapshot[]; hits?: number[] }> {
+	const hits = selectors.length ? await page.evaluate((s) => (window as unknown as MotionWindow).__mmMotionRecorder?.hits(s) ?? [], [...selectors]).catch(() => []) : [];
 	const byId = new Map([...(await shown(page)), ...earlier].map((el) => [el.id, el]));
 	const raw = ((await page.evaluate(() => (window as unknown as MotionWindow).__mmMotionRecorder?.records()).catch(() => undefined)) ?? []) as PageRecord[];
 	const hidden: ElementSnapshot[] = [];
@@ -296,7 +315,7 @@ async function records(page: Page, earlier: readonly ElementSnapshot[] = []): Pr
 		if (!element) hidden.push((element = { id: -1 - hidden.length, role: '', name: '', tag, text, path: `(not shown)/${tag}`, box: { x: 0, y: 0, width: 0, height: 0 }, style: {} }));
 		return [{ ...r, element }];
 	});
-	return { motions, elements: [...byId.values(), ...hidden] };
+	return { motions, elements: [...byId.values(), ...hidden], ...(hits.length ? { hits } : {}) };
 }
 
 interface Film {
@@ -315,7 +334,7 @@ export function motionEnv(env: SideEnv, reduced: boolean): SideEnv {
 }
 
 /** Replays a journey and records the motion its last step starts; with `film`, frames at fixed offsets across the longest animation. */
-async function recordJourney(browser: Browser, env: SideEnv, route: string, viewport: Viewport, journey: RecordedJourney, film?: Film | 'self'): Promise<Recorded> {
+async function recordJourney(browser: Browser, env: SideEnv, route: string, viewport: Viewport, journey: RecordedJourney, film?: Film | 'self', selectors: readonly string[] = []): Promise<Recorded> {
 	const session = await openSession(browser, env, route, viewport);
 	try {
 		const steps = journey.steps;
@@ -345,7 +364,7 @@ async function recordJourney(browser: Browser, env: SideEnv, route: string, view
 			await release(session.page);
 		}
 		await still(session.page);
-		return { interaction: journey.name, ...(await records(session.page, earlier)), ...(made ? { film: made } : {}), ...(shots?.every((s) => s.length) ? { frames: shots } : {}) };
+		return { interaction: journey.name, ...(await records(session.page, earlier, selectors)), ...(made ? { film: made } : {}), ...(shots?.every((s) => s.length) ? { frames: shots } : {}) };
 	} catch (error) {
 		return { interaction: journey.name, motions: [], failed: (error as Error).message.split('\n')[0] };
 	} finally {
@@ -356,7 +375,7 @@ async function recordJourney(browser: Browser, env: SideEnv, route: string, view
 export const SCROLL = 'scroll down one screen';
 
 /** Hovers and keyboard-focuses each target in turn on one page, recording the transitions each starts; with `scroll`, then scrolls down one screen and records what that starts. */
-async function recordHovers(browser: Browser, env: SideEnv, route: string, viewport: Viewport, targets: readonly Target[], scroll: boolean): Promise<MotionCapture[]> {
+async function recordHovers(browser: Browser, env: SideEnv, route: string, viewport: Viewport, targets: readonly Target[], scroll: boolean, selectors: readonly string[] = []): Promise<MotionCapture[]> {
 	const session = await openSession(browser, env, route, viewport);
 	const page = session.page;
 	const out: MotionCapture[] = [];
@@ -380,7 +399,7 @@ async function recordHovers(browser: Browser, env: SideEnv, route: string, viewp
 				}
 				await frames(page);
 				await still(page, 1_500);
-				out.push({ interaction, ...(await records(page)) });
+				out.push({ interaction, ...(await records(page, [], selectors)) });
 			}
 		}
 		if (scroll) {
@@ -392,7 +411,7 @@ async function recordHovers(browser: Browser, env: SideEnv, route: string, viewp
 			await page.mouse.wheel(0, viewport.height).catch(() => {});
 			await frames(page);
 			await still(page, 1_500);
-			out.push({ interaction: SCROLL, ...(await records(page)) });
+			out.push({ interaction: SCROLL, ...(await records(page, [], selectors)) });
 		}
 		return out;
 	} finally {
@@ -539,6 +558,15 @@ export function compareMotion(route: string, label: string, viewport: string, ol
 	return [...groups.values()].map(([d, ...more]) => (more.length ? { ...d!.failure, check: `${d!.failure.check} and ${more.length} more element${more.length === 1 ? '' : 's'} alike` } : d!.failure));
 }
 
+/** Old rules that make an element move: a transition or animation with a duration, outside prefers-reduced-motion: reduce. */
+export function motionRules(rules: readonly CssRule[]): { selector: string; label: string }[] {
+	const inert = (v: string) => /^(none|0m?s|initial|unset)$/i.test(v.trim()) || v.trim().split(/\s*,\s*/).every((x) => /^(none|0m?s)\b/.test(x));
+	return rules
+		.filter((r) => !r.conditions.some((c) => /prefers-reduced-motion:\s*reduce/.test(c.text)))
+		.filter((r) => r.declarations.some((d) => /^(transition|animation)(-name|-duration)?$/.test(d.property) && !inert(d.value) && !(d.property === 'transition' && /^(all\s+)?0m?s/.test(d.value.trim()))))
+		.map((r) => ({ selector: r.selector, label: describeRule(r) }));
+}
+
 /** Journeys whose last step stays on the page: their motion is recorded. */
 export function motionJourneys(journeys: readonly RecordedJourney[]): { take: RecordedJourney[]; skipped: string[] } {
 	const take: RecordedJourney[] = [];
@@ -571,9 +599,12 @@ export async function checkMotion(browser: Browser, envs: { readonly old: SideEn
 	const failures: Failure[] = [];
 	const filmstrips: Filmstrip[] = [];
 	const name = viewport.name;
+	const selectors = (options.rules ?? []).map((r) => r.selector);
+	const hit = new Set<number>();
 	const interactions = await pool(take.slice(0, cap), CONCURRENCY, async (journey): Promise<MotionInteraction & { failures: Failure[] }> => {
-		const old = await recordJourney(browser, oldEnv, route, viewport, journey, 'self');
+		const old = await recordJourney(browser, oldEnv, route, viewport, journey, 'self', selectors);
 		const next = await recordJourney(browser, newEnv, route, viewport, journey, old.film ?? 'self');
+		for (const i of old.hits ?? []) hit.add(i);
 		let found = compareMotion(route, journey.name, name, [old], next);
 		let again: Recorded | undefined;
 		if (found.length) {
@@ -610,7 +641,7 @@ export async function checkMotion(browser: Browser, envs: { readonly old: SideEn
 	const hovered = targets.slice(0, hoverCap);
 	if (targets.length > hoverCap) skipped.push(`hover and focus of ${targets.length - hoverCap} more controls: past the ${hoverCap} recorded per route`);
 	const hovers: MotionInteraction[] = [];
-	const [oldHovers, newHovers] = await Promise.all([recordHovers(browser, oldEnv, route, viewport, hovered, true), recordHovers(browser, newEnv, route, viewport, hovered, true)]);
+	const [oldHovers, newHovers] = await Promise.all([recordHovers(browser, oldEnv, route, viewport, hovered, true, selectors), recordHovers(browser, newEnv, route, viewport, hovered, true)]);
 	const hint = (o: MotionCapture) => (o.interaction === SCROLL ? HINTS.motionScroll : HINTS.motionHover);
 	const first = oldHovers.map((o, i) => compareMotion(route, o.interaction, name, [o], newHovers[i]!, hint(o)));
 	const differ = new Set(oldHovers.filter((_, i) => first[i]!.length).map((o) => o.interaction));
@@ -627,5 +658,7 @@ export async function checkMotion(browser: Browser, envs: { readonly old: SideEn
 	const all = [...interactions.map(({ failures: _, ...i }) => i), ...hovers];
 	const shown = failures.slice(0, LIMIT);
 	if (failures.length > LIMIT) shown.push({ route, dimension: 'motion', check: 'motion', viewport: name, expected: '', actual: `${failures.length - LIMIT} more motion differences`, hint: HINTS.motion });
-	return { failures: shown, motion: { checked: interactions.length + oldHovers.filter((o) => !o.failed).length, interactions: all, skipped }, filmstrips };
+	for (const o of oldHovers) for (const i of o.hits ?? []) hit.add(i);
+	const unexercised = [...new Set((options.rules ?? []).filter((_, i) => !hit.has(i)).map((r) => r.label))];
+	return { failures: shown, motion: { checked: interactions.length + oldHovers.filter((o) => !o.failed).length, interactions: all, skipped, ...(unexercised.length ? { unexercised } : {}) }, filmstrips };
 }
