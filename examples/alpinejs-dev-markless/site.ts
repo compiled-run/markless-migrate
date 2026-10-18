@@ -32,25 +32,22 @@ export function normalize(pathname: string | undefined): string {
   return (pathname ?? "/").replace(/\/+$/, "") || "/";
 }
 
-// Behaviours start on the first event the page registers; scrolling starts with one of these.
-// Alpine's visibleNavHighlighter: the heading highlighted is the last one above a line across the middle of the window.
+// Alpine's visibleNavHighlighter: the heading highlighted is the last one above a line across the middle of the window
+// (headings at the same distance: the later one, as its object of distances keeps).
 function visibleHeading(main: HTMLElement): string | null {
   const middle = window.innerHeight / 2;
-  let best: string | null = null;
-  let bestTop = -Infinity;
-  for (const heading of main.querySelectorAll("h2, h3, h4")) {
-    const top = heading.getBoundingClientRect().top - middle;
-    if (top < 0 && top > bestTop) {
-      bestTop = top;
-      best = heading.id;
-    }
+  const byDistance: Record<string, HTMLElement> = {};
+  for (const heading of main.querySelectorAll<HTMLElement>("h2:not([no-sidebar]), h3:not([no-sidebar]), h4:not([no-sidebar])")) {
+    byDistance[heading.getBoundingClientRect().top - middle] = heading;
   }
-  return best;
+  const closest = Math.max(...Object.keys(byDistance).map(Number).filter((top) => top < 0));
+  if (closest >= 0 || !Number.isFinite(closest)) return null;
+  return byDistance[closest]?.id ?? null;
 }
 
 // Like Alpine's helper, this toggles the highlight classes itself; it stops once a client-side navigation removes its page.
 export function watchHeadings(main: HTMLElement): void {
-  let last = 0;
+  let throttled = false;
   const report = () => {
     if (!main.isConnected) return window.removeEventListener("scroll", onScroll);
     const id = visibleHeading(main);
@@ -59,11 +56,12 @@ export function watchHeadings(main: HTMLElement): void {
       link.classList.toggle("text-gray-900", link.hash === `#${id}`);
     }
   };
+  // x-on:scroll.window.throttle.50ms: the first scroll runs, then none until 50ms have passed (Alpine's throttle).
   const onScroll = () => {
-    const now = Date.now();
-    if (now - last < 50) return;
-    last = now;
+    if (throttled) return;
     report();
+    throttled = true;
+    setTimeout(() => (throttled = false), 50);
   };
   report();
   window.addEventListener("scroll", onScroll, { passive: true });

@@ -13,8 +13,9 @@ export const entities = (text: string) => text.replace(/&/g, '&amp;').replace(/<
 
 export function attribute(name: string, value: string): string {
 	if (value === '' && BOOLEAN.has(name)) return ` ${name}`;
-	if (/["{}\\\n]/.test(value)) return ` ${name}={${lit(value)}}`;
-	return ` ${name}="${value.replace(/&/g, '&amp;')}"`;
+	// A quoted attribute is taken as written (no entity decoding), so a value with &, quotes or braces is a string expression.
+	if (/["{}\\\n&]/.test(value)) return ` ${name}={${lit(value)}}`;
+	return ` ${name}="${value}"`;
 }
 
 export interface Emit {
@@ -34,8 +35,8 @@ function textOut(text: string, previous: Node | undefined, next: Node | undefine
 		if (parent && BLOCK.has(tag(parent)) && (!previous || !next)) return '';
 		return '{" "}';
 	}
-	const lead = collapsed.startsWith(' ') && !(parent && BLOCK.has(tag(parent)) && !previous) && !isBlock(previous) ? '{" "}' : '';
-	const trail = collapsed.endsWith(' ') && !(parent && BLOCK.has(tag(parent)) && !next) && !isBlock(next) ? '{" "}' : '';
+	const lead = collapsed.startsWith(' ') && (previous ? !isBlock(previous) : !(parent && BLOCK.has(tag(parent)))) ? '{" "}' : '';
+	const trail = collapsed.endsWith(' ') && (next ? !isBlock(next) : !(parent && BLOCK.has(tag(parent)))) ? '{" "}' : '';
 	const core = collapsed.trim();
 	return `${lead}${/[ ]/.test(core) ? `{${lit(core)}}` : entities(core)}${trail}`;
 }

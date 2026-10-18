@@ -5,6 +5,8 @@ const PAGES = new Set(PAGE_ROUTES);
 const LOCKED = new Set(LOCKED_COMPONENTS);
 // The old site's GitHub sign-in: its OAuth app, sending the visitor back to alpinejs.dev.
 const GITHUB_CLIENT = 'bccaeb7715c75b7341c5';
+// The old server names its own redirect targets by the site's configured URL, not the requested host.
+const SITE = 'http://alpinejs.dev';
 
 // alpinejs.dev's server answers every path that is not a page with a redirect (or a 404 under /component and /cdn-cgi).
 export default function request({ url }: MiddlewareHttpContext) {
@@ -15,9 +17,9 @@ export default function request({ url }: MiddlewareHttpContext) {
 		const authorize = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT}&redirect_uri=${encodeURIComponent('https://alpinejs.dev/login/github/callback')}&scope=${encodeURIComponent('user:email')}&response_type=code&state=${state}`;
 		return redirect(authorize);
 	}
-	if (LOCKED.has(path)) return redirect(new URL('/components', url).href);
+	if (LOCKED.has(path)) return redirect(`${SITE}/components`);
 	if (path.startsWith('/component/') || path.startsWith('/cdn-cgi/')) return new Response('Not Found', { status: 404, headers: { 'content-type': 'text/html; charset=UTF-8' } });
-	return redirect(new URL('/essentials/installation', url).href);
+	return redirect(`${SITE}/essentials/installation`);
 }
 
 function redirect(location: string): Response {

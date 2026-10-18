@@ -57,7 +57,8 @@ async function pool<T>(items: readonly T[], task: (item: T) => Promise<void>): P
 /**
  * Whether every route of the old site exists on the new app: each is fetched from both (redirects followed by hand), and a route
  * the old app answers without an error must get the same status class and redirect target from the new one. When the new app
- * answers a path no app has with a page, a route whose page is byte for byte that page counts as missing.
+ * answers a path no app has with a page, a route whose page is byte for byte that page counts as missing, unless the old app
+ * answers a path no app has with that same route (its catch-all redirects there), which the new app then rightly copies.
  */
 export async function checkCoverage(old: SideEnv, next: SideEnv, routes: readonly string[]): Promise<RouteCoverage> {
 	const failures: Failure[] = [];
@@ -67,6 +68,8 @@ export async function checkCoverage(old: SideEnv, next: SideEnv, routes: readonl
 	let present = 0;
 	const fallback = await captureHttp(next.origin, UNKNOWN_PATH, tagHeaders(next)).catch(() => undefined);
 	const catchAll = fallback && fallback.status < 300 ? await bodyHash(next, fallback.chain.at(-1)!.url) : undefined;
+	const oldFallback = catchAll ? await captureHttp(old.origin, UNKNOWN_PATH, tagHeaders(old)).catch(() => undefined) : undefined;
+	const oldCatchAll = oldFallback && oldFallback.status < 300 ? new URL(oldFallback.chain.at(-1)!.url, old.origin).pathname : undefined;
 	await pool([...new Set(routes)], async (route) => {
 		const a = await http(old, route);
 		if (!a) {
@@ -87,7 +90,8 @@ export async function checkCoverage(old: SideEnv, next: SideEnv, routes: readonl
 			failures.push(missingRoute(route, a, describeHttp(b)));
 			return;
 		}
-		if (catchAll && b.status < 300 && a.status < 300 && (await bodyHash(next, b.chain.at(-1)!.url)) === catchAll) failures.push(missingRoute(route, a, `${describeHttp(b)}, the same page the new app answers for a path no app has (${UNKNOWN_PATH})`));
+		const oldsOwnFallback = oldCatchAll !== undefined && new URL(a.chain.at(-1)!.url, old.origin).pathname === oldCatchAll;
+		if (catchAll && !oldsOwnFallback && b.status < 300 && a.status < 300 && (await bodyHash(next, b.chain.at(-1)!.url)) === catchAll) failures.push(missingRoute(route, a, `${describeHttp(b)}, the same page the new app answers for a path no app has (${UNKNOWN_PATH})`));
 		else present++;
 	});
 	failures.sort((x, y) => x.route.localeCompare(y.route));
