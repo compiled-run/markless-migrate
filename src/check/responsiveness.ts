@@ -365,8 +365,9 @@ export async function measureOnce(browser: Browser, env: SideEnv, route: string,
 		}
 		const fetches = await Promise.all(
 			(watched ?? []).filter((r) => !r.failure()).map(async (r): Promise<Fetch> => {
-				const response = await r.response().catch(() => null);
-				const sizes = await r.sizes().catch(() => ({ responseBodySize: 0 }));
+				// A request still open when the timing ends (a stream, a stalled CDN) never settles its response.
+				const response = await Promise.race([r.response().catch(() => null), new Promise<null>((done) => setTimeout(() => done(null), 5000))]);
+				const sizes = response ? await Promise.race([r.sizes().catch(() => ({ responseBodySize: 0 })), new Promise<{ responseBodySize: number }>((done) => setTimeout(() => done({ responseBodySize: 0 }), 5000))]) : { responseBodySize: 0 };
 				return { url: short(r.url(), env.origin), kind: fetchKind(r.resourceType(), r.url(), response?.headers()['content-type'] ?? ''), bytes: sizes.responseBodySize };
 			}),
 		);
