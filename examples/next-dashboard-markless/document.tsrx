@@ -24,14 +24,14 @@ export default function Document({ url, status, children }: { readonly url?: { r
 			<meta name="description" content="The official Next.js Learn Dashboard built with App Router." />
 			<meta property="og:title" content={title} />
 			<meta property="og:description" content="The official Next.js Learn Dashboard built with App Router." />
-			<meta property="og:image" content="https://next-learn-dashboard.vercel.sh/opengraph-image.png?opengraph-image.f8ba042a.png" />
+			<meta property="og:image" content="https://next-learn-dashboard.vercel.sh/opengraph-image.png?opengraph-image.324pokj2k5v8h.png" />
 			<meta property="og:image:width" content="1686" />
 			<meta property="og:image:height" content="882" />
 			<meta property="og:image:type" content="image/png" />
 			<meta name="twitter:card" content="summary_large_image" />
 			<meta name="twitter:title" content={title} />
 			<meta name="twitter:description" content="The official Next.js Learn Dashboard built with App Router." />
-			<meta name="twitter:image" content="https://next-learn-dashboard.vercel.sh/opengraph-image.png?opengraph-image.f8ba042a.png" />
+			<meta name="twitter:image" content="https://next-learn-dashboard.vercel.sh/opengraph-image.png?opengraph-image.324pokj2k5v8h.png" />
 			<meta name="twitter:image:width" content="1686" />
 			<meta name="twitter:image:height" content="882" />
 			<meta name="twitter:image:type" content="image/png" />

@@ -1,6 +1,8 @@
+import type { PageProps } from '@markless/router';
 import notFoundStyles from '../styles/not-found.css?url';
 
-export default function NotFound() @{
+export default function NotFound({ http }: PageProps<Record<string, string>, { cookies?: string[] }>) @{
+	for (const cookie of http.locals.cookies ?? []) http.response.headers.append('set-cookie', cookie);
 	<div style="font-family:system-ui,'Segoe UI',Roboto,Helvetica,Arial,sans-serif,'Apple Color Emoji','Segoe UI Emoji';height:100vh;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center">
 		<div>
 			<link rel="stylesheet" href={notFoundStyles} />

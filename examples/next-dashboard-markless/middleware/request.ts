@@ -30,6 +30,8 @@ export default async function request(http: MiddlewareHttpContext) {
 	if (request.method === 'GET' && url.pathname === '/query') return withCookies(await listInvoices(), cookies);
 	if (request.method === 'GET' && url.pathname === '/seed') return withCookies(await seed(), cookies);
 	for (const c of cookies) http.response.headers.append('set-cookie', c);
+	// Markless 0.5.0 drops the headers middleware sets when the router answers with its 404 page, so that page sets them again.
+	(http.locals as { cookies?: string[] }).cookies = cookies;
 	const query = url.searchParams.get('query') ?? '';
 	if (request.method === 'GET' && url.pathname === '/dashboard/invoices') {
 		const page = Number(url.searchParams.get('page')) || 1;
