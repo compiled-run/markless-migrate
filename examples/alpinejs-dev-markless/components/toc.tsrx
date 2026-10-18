@@ -8,7 +8,7 @@ export default function Toc({ headings }: { readonly headings: readonly Heading[
 		class="fixed right-0 bottom-0 hidden w-64 overflow-y-auto py-8 px-6 xl:block  md:top-[4rem] "
 		data-toc=""
 	>
-		<span class="mb-2 block text-sm font-semibold uppercase tracking-wider text-gray-300">On this page</span>
+		<span style={headings.length ? undefined : 'display: none;'} class="mb-2 block text-sm font-semibold uppercase tracking-wider text-gray-300">On this page</span>
 		<ul class="space-y-3 text-gray-800">
 			{/* Alpine leaves its x-for <template> first in this list, and .space-y-3 then gives the first item its top margin too. */}
 			<template></template>
