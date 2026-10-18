@@ -14,7 +14,7 @@ li { margin: 0.5rem 0; }
 <h1>htmx.org, moved to Markless from its URL alone</h1>
 <p>An unofficial demo: <code>markless-migrate</code> crawled the live site, Claude Code rewrote the switched pages in Markless without the site's source, and the check compared each one against production until it passed.</p>
 <ul>
-<li><a href="/">The front door</a>: /, /docs/, /examples/ and /examples/click-to-edit/ come from the Markless app; every other path goes to the real <a href="https://htmx.org/">htmx.org</a>.</li>
+<li><a href="/">The front door</a>: no route is switched yet. Rechecked on Markless 0.5.0, every ported page still has differences that need an owner decision (htmx's history cache in sessionStorage, links the check could not click on the old page), so every path goes to the real <a href="https://htmx.org/">htmx.org</a>.</li>
 <li><a href="https://mm-htmx-org-new.vercel.app/">The Markless app on its own</a>, with the click-to-edit demo (its fake server's request log included).</li>
 <li><a href="/_migrate/report.html">The check report</a>: old against new, per route, with the accepted differences and why.</li>
 </ul>

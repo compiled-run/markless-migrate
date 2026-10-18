@@ -143,3 +143,41 @@ the environment, not the port.
    sitemap order, not by distance from `/` (on htmx.org a limit of 40 stopped inside `/attributes/` and never reached
    `/docs/` or `/examples/`); there is no way to treat an old
    page's absolute production URLs as its own origin when checking a mirror or staging copy.
+
+## Markless 0.5.0 (2026-10-17)
+
+Rebuilt on the published 0.5.0 packages (`@markless/*` 0.5.0, `vite-plus` 0.3.1).
+
+### Workarounds removed
+
+| Workaround (0.4.0 bug) | Now |
+| --- | --- |
+| `plugins/void-end-tags.ts` (deleted `</br>` from every response) | removed: void elements have no closing tag |
+| `attach` relaying outside clicks as a custom `outside` event that a handler turned into state (dropdown demo, mobile menu) | the `attach` listener writes `open` / `leaving` itself |
+| the contents highlighter started from `attach` plus empty wheel/touch/keydown handlers to wake the page (`attach` ran only after a wake) | `onIdle={(event) => watchHeadings(event.target)}`; the module-level wrappers and `wake()` are gone; the highlighter stops when a client-side navigation replaces its page |
+| the search demo's empty `onFocus` wake (the first keystroke was lost) | removed; the first keystroke filters the list |
+
+0.5.0 also refused a pattern 0.4.0 accepted: a keyed `@for` over a module constant whose rows read a prop (`MARKLESS_REPEAT_ROWS_FROZEN`), so the nav list now builds its rows (with their active classes) from the `pathname` prop in the component body.
+
+Client-side navigation: `/start-here` and `/directives/model` link to each other and to `/`; those links swap in place. The three pages are kept on Vercel's CDN (`isr: true`).
+
+### Check (against the deployment)
+
+`check --route / --route /start-here --route /directives/model`, old = the read-only mirror of https://alpinejs.dev, new = https://mm-alpinejs-dev-new.vercel.app.
+
+| Route | Result | Interactions exercised | JS on the wire (uncompressed) | JS run at load |
+| --- | --- | --- | --- | --- |
+| `/` | red: behaviour, a11y | 14 of 14 | 262.9 → 159.0 kB | 78.0 → 23.9 kB |
+| `/start-here` | red: behaviour, a11y, responsiveness | 66 of 107 | 264.2 → 195.8 kB | 87.5 → 36.4 kB |
+| `/directives/model` | red: behaviour, a11y, responsiveness | 103 of 134 | 262.9 → 195.8 kB | 86.0 → 36.5 kB |
+
+Responsiveness (slowest each side): first interaction old 155 ms → new 122 ms at 4x CPU (desktop 72 → 58 ms); navigation old 149 ms → new 157 ms at 4x CPU (desktop 167 → 143 ms).
+
+What keeps the routes red:
+
+1. `alpinejs_session`: alpinejs.dev's Laravel server sets this HttpOnly cookie on every page; the port sets none. Every link step that lands on an unported page through the front door picks it up there, so it shows as an added cookie. Needs an owner decision.
+2. Responsiveness on the demos: the first use of a checkbox, radio or the counter costs 82 to 87 ms at 4x CPU against Alpine's 32 to 40 ms (the second use is 19 to 34 ms). No code is fetched; the cost is Markless starting the handler the first time (see the findings).
+3. Coverage: controls the journeys could not use on the old page, or did not reach in the budget, keep the route red until a person accepts them.
+4. The tab buttons on `/` lose focus to the body after a click (old: focus stays on the button).
+
+Routes switched: none. Front door: every path goes to alpinejs.dev.

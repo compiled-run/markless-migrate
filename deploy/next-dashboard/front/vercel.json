@@ -1,72 +1,12 @@
 {
 	"rewrites": [
 		{
-			"source": "/",
-			"destination": "https://mm-next-dashboard-new.vercel.app/"
-		},
-		{
-			"source": "/login",
-			"destination": "https://mm-next-dashboard-new.vercel.app/login"
-		},
-		{
-			"source": "/login/",
-			"destination": "https://mm-next-dashboard-new.vercel.app/login/"
-		},
-		{
-			"source": "/dashboard",
-			"destination": "https://mm-next-dashboard-new.vercel.app/dashboard"
-		},
-		{
-			"source": "/dashboard/",
-			"destination": "https://mm-next-dashboard-new.vercel.app/dashboard/"
-		},
-		{
-			"source": "/dashboard/customers",
-			"destination": "https://mm-next-dashboard-new.vercel.app/dashboard/customers"
-		},
-		{
-			"source": "/dashboard/customers/",
-			"destination": "https://mm-next-dashboard-new.vercel.app/dashboard/customers/"
-		},
-		{
-			"source": "/dashboard/invoices",
-			"destination": "https://mm-next-dashboard-new.vercel.app/dashboard/invoices"
-		},
-		{
-			"source": "/dashboard/invoices/",
-			"destination": "https://mm-next-dashboard-new.vercel.app/dashboard/invoices/"
-		},
-		{
-			"source": "/dashboard/invoices/create",
-			"destination": "https://mm-next-dashboard-new.vercel.app/dashboard/invoices/create"
-		},
-		{
-			"source": "/dashboard/invoices/create/",
-			"destination": "https://mm-next-dashboard-new.vercel.app/dashboard/invoices/create/"
-		},
-		{
 			"source": "/query",
 			"destination": "https://mm-next-dashboard-new.vercel.app/query"
 		},
 		{
 			"source": "/query/",
 			"destination": "https://mm-next-dashboard-new.vercel.app/query/"
-		},
-		{
-			"source": "/dashboard/invoices/:id/edit",
-			"destination": "https://mm-next-dashboard-new.vercel.app/dashboard/invoices/:id/edit"
-		},
-		{
-			"source": "/dashboard/invoices/:id/edit/",
-			"destination": "https://mm-next-dashboard-new.vercel.app/dashboard/invoices/:id/edit/"
-		},
-		{
-			"source": "/api/:rest+",
-			"destination": "https://mm-next-dashboard-new.vercel.app/api/:rest+"
-		},
-		{
-			"source": "/api/:rest+/",
-			"destination": "https://mm-next-dashboard-new.vercel.app/api/:rest+/"
 		},
 		{
 			"source": "/_img/:path*",

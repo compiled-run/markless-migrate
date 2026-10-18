@@ -1,712 +1,128 @@
 {
 	"rewrites": [
 		{
-			"source": "/",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/"
+			"source": "/build/bundle-graph.json",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/bundle-graph.json"
 		},
 		{
-			"source": "/start-here",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/start-here"
+			"source": "/build/byte-attribution.json",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/byte-attribution.json"
 		},
 		{
-			"source": "/start-here/",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/start-here/"
+			"source": "/build/chunk-1g5kk6Aa.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-1g5kk6Aa.js"
 		},
 		{
-			"source": "/directives/model",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/directives/model"
+			"source": "/build/chunk-2d7S6Ioj.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-2d7S6Ioj.js"
 		},
 		{
-			"source": "/directives/model/",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/directives/model/"
+			"source": "/build/chunk-34yz3qZ9.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-34yz3qZ9.js"
 		},
 		{
-			"source": "/build/chunk--cZ147_1.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk--cZ147_1.js"
+			"source": "/build/chunk-3lUy-KZn.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-3lUy-KZn.js"
 		},
 		{
-			"source": "/build/chunk--lqg-2Lb.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk--lqg-2Lb.js"
+			"source": "/build/chunk-5_JC-2P-.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-5_JC-2P-.js"
 		},
 		{
-			"source": "/build/chunk-0zgip4_7.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-0zgip4_7.js"
+			"source": "/build/chunk-BHD0eKzY.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BHD0eKzY.js"
 		},
 		{
-			"source": "/build/chunk-5b2rHbEV.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-5b2rHbEV.js"
+			"source": "/build/chunk-BohqzpEt.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BohqzpEt.js"
 		},
 		{
-			"source": "/build/chunk-5gAsJQ_N2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-5gAsJQ_N2.js"
+			"source": "/build/chunk-D9fkkVpm.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-D9fkkVpm.js"
 		},
 		{
-			"source": "/build/chunk-71DiGND-.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-71DiGND-.js"
+			"source": "/build/chunk-EWWYA_-A.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-EWWYA_-A.js"
 		},
 		{
-			"source": "/build/chunk-7cIQst0l.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-7cIQst0l.js"
+			"source": "/build/chunk-MIBeEDAG.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-MIBeEDAG.js"
 		},
 		{
-			"source": "/build/chunk-8uc20vQN2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-8uc20vQN2.js"
+			"source": "/build/chunk-Oa45OfG4.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-Oa45OfG4.js"
 		},
 		{
-			"source": "/build/chunk-AvH_vzwj2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-AvH_vzwj2.js"
+			"source": "/build/chunk-P8XtXEy_.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-P8XtXEy_.js"
 		},
 		{
-			"source": "/build/chunk-B-HcJXAC2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-B-HcJXAC2.js"
+			"source": "/build/chunk-TpdWh3Kr.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-TpdWh3Kr.js"
 		},
 		{
-			"source": "/build/chunk-B-sx6tZ52.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-B-sx6tZ52.js"
+			"source": "/build/chunk-VlAntohZ.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-VlAntohZ.js"
 		},
 		{
-			"source": "/build/chunk-B1_0RcpJ.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-B1_0RcpJ.js"
+			"source": "/build/chunk-ZTaZwnX3.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-ZTaZwnX3.js"
 		},
 		{
-			"source": "/build/chunk-B43yK1c62.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-B43yK1c62.js"
+			"source": "/build/chunk-_1fl5MQE.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-_1fl5MQE.js"
 		},
 		{
-			"source": "/build/chunk-B5QitNAn.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-B5QitNAn.js"
+			"source": "/build/chunk-_wGlFP8G.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-_wGlFP8G.js"
 		},
 		{
-			"source": "/build/chunk-B6GNUm2o.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-B6GNUm2o.js"
+			"source": "/build/chunk-bdgTh12X.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-bdgTh12X.js"
 		},
 		{
-			"source": "/build/chunk-B6qtlEET.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-B6qtlEET.js"
+			"source": "/build/chunk-gpzXMCRV.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-gpzXMCRV.js"
 		},
 		{
-			"source": "/build/chunk-B770f-Ua2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-B770f-Ua2.js"
+			"source": "/build/chunk-ovAuI4Cm.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-ovAuI4Cm.js"
 		},
 		{
-			"source": "/build/chunk-B7P6Rcm-2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-B7P6Rcm-2.js"
+			"source": "/build/chunk-shKQNfJy.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-shKQNfJy.js"
 		},
 		{
-			"source": "/build/chunk-B8FpVB83.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-B8FpVB83.js"
+			"source": "/build/chunk-t7uD_VNI.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-t7uD_VNI.js"
 		},
 		{
-			"source": "/build/chunk-B8VzO01Y2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-B8VzO01Y2.js"
+			"source": "/build/chunk-v9lhReR4.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-v9lhReR4.js"
 		},
 		{
-			"source": "/build/chunk-B9wLn0Zg.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-B9wLn0Zg.js"
+			"source": "/build/chunk-vAdcx3xV.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-vAdcx3xV.js"
 		},
 		{
-			"source": "/build/chunk-BABnBwFA.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BABnBwFA.js"
+			"source": "/build/chunk-vTbLwAfy.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-vTbLwAfy.js"
 		},
 		{
-			"source": "/build/chunk-BCFl_LZh2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BCFl_LZh2.js"
+			"source": "/build/chunk-zTrSBKrN.js",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-zTrSBKrN.js"
 		},
 		{
-			"source": "/build/chunk-BCaNjb_2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BCaNjb_2.js"
+			"source": "/build/execution-demand.json",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/execution-demand.json"
 		},
 		{
-			"source": "/build/chunk-BFqWgyUW2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BFqWgyUW2.js"
+			"source": "/build/execution-sizes.json",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/execution-sizes.json"
 		},
 		{
-			"source": "/build/chunk-BFu3TDsZ2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BFu3TDsZ2.js"
-		},
-		{
-			"source": "/build/chunk-BGPeGSMF2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BGPeGSMF2.js"
-		},
-		{
-			"source": "/build/chunk-BIUo1mGV.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BIUo1mGV.js"
-		},
-		{
-			"source": "/build/chunk-BJ0i3v8t.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BJ0i3v8t.js"
-		},
-		{
-			"source": "/build/chunk-BOcZ3KGK.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BOcZ3KGK.js"
-		},
-		{
-			"source": "/build/chunk-BOdIt3EF.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BOdIt3EF.js"
-		},
-		{
-			"source": "/build/chunk-BV281NGg2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BV281NGg2.js"
-		},
-		{
-			"source": "/build/chunk-BWFiQKbh2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BWFiQKbh2.js"
-		},
-		{
-			"source": "/build/chunk-BWK_HlrA.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BWK_HlrA.js"
-		},
-		{
-			"source": "/build/chunk-BWY_ntVF.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BWY_ntVF.js"
-		},
-		{
-			"source": "/build/chunk-BWnXCw7k.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BWnXCw7k.js"
-		},
-		{
-			"source": "/build/chunk-BYsKXVy3.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BYsKXVy3.js"
-		},
-		{
-			"source": "/build/chunk-B_ztOlfK.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-B_ztOlfK.js"
-		},
-		{
-			"source": "/build/chunk-BaVr6g5c.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BaVr6g5c.js"
-		},
-		{
-			"source": "/build/chunk-BaeqJmvc2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BaeqJmvc2.js"
-		},
-		{
-			"source": "/build/chunk-Be6T5APw2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-Be6T5APw2.js"
-		},
-		{
-			"source": "/build/chunk-Blw_QHZ8.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-Blw_QHZ8.js"
-		},
-		{
-			"source": "/build/chunk-BoWZlxHg.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BoWZlxHg.js"
-		},
-		{
-			"source": "/build/chunk-BofjYT6a.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BofjYT6a.js"
-		},
-		{
-			"source": "/build/chunk-Br4ERsNS.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-Br4ERsNS.js"
-		},
-		{
-			"source": "/build/chunk-Bs9GmLHT.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-Bs9GmLHT.js"
-		},
-		{
-			"source": "/build/chunk-BsxRks072.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BsxRks072.js"
-		},
-		{
-			"source": "/build/chunk-Bu0OCtjc.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-Bu0OCtjc.js"
-		},
-		{
-			"source": "/build/chunk-BwbxMbCk2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BwbxMbCk2.js"
-		},
-		{
-			"source": "/build/chunk-BxUYmGIa2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BxUYmGIa2.js"
-		},
-		{
-			"source": "/build/chunk-BzDK19182.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BzDK19182.js"
-		},
-		{
-			"source": "/build/chunk-BzPDKHJU2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-BzPDKHJU2.js"
-		},
-		{
-			"source": "/build/chunk-Bzx8-rYM.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-Bzx8-rYM.js"
-		},
-		{
-			"source": "/build/chunk-C-41cpp62.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-C-41cpp62.js"
-		},
-		{
-			"source": "/build/chunk-C-G_p6tO2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-C-G_p6tO2.js"
-		},
-		{
-			"source": "/build/chunk-C0pOHJHk2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-C0pOHJHk2.js"
-		},
-		{
-			"source": "/build/chunk-C0sx-zBi.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-C0sx-zBi.js"
-		},
-		{
-			"source": "/build/chunk-C29onQ0-.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-C29onQ0-.js"
-		},
-		{
-			"source": "/build/chunk-C2MTLFqc.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-C2MTLFqc.js"
-		},
-		{
-			"source": "/build/chunk-C2NMt6VD2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-C2NMt6VD2.js"
-		},
-		{
-			"source": "/build/chunk-C5t3DocJ.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-C5t3DocJ.js"
-		},
-		{
-			"source": "/build/chunk-C6NjLHqM2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-C6NjLHqM2.js"
-		},
-		{
-			"source": "/build/chunk-C7DhS8tK.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-C7DhS8tK.js"
-		},
-		{
-			"source": "/build/chunk-C7pArioY2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-C7pArioY2.js"
-		},
-		{
-			"source": "/build/chunk-C8_eoWaZ2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-C8_eoWaZ2.js"
-		},
-		{
-			"source": "/build/chunk-CDM3vejl.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CDM3vejl.js"
-		},
-		{
-			"source": "/build/chunk-CDhjBKRZ.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CDhjBKRZ.js"
-		},
-		{
-			"source": "/build/chunk-CEwpXgTo2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CEwpXgTo2.js"
-		},
-		{
-			"source": "/build/chunk-CGHHOJ5W2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CGHHOJ5W2.js"
-		},
-		{
-			"source": "/build/chunk-CGwHkDUk2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CGwHkDUk2.js"
-		},
-		{
-			"source": "/build/chunk-CIhWGJG42.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CIhWGJG42.js"
-		},
-		{
-			"source": "/build/chunk-CLP1ClDW.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CLP1ClDW.js"
-		},
-		{
-			"source": "/build/chunk-CLkVBNoP2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CLkVBNoP2.js"
-		},
-		{
-			"source": "/build/chunk-CMDkN6i_2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CMDkN6i_2.js"
-		},
-		{
-			"source": "/build/chunk-CNyFHVPC2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CNyFHVPC2.js"
-		},
-		{
-			"source": "/build/chunk-CSaP_tHf.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CSaP_tHf.js"
-		},
-		{
-			"source": "/build/chunk-CTey35yT2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CTey35yT2.js"
-		},
-		{
-			"source": "/build/chunk-CU8B4vBq2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CU8B4vBq2.js"
-		},
-		{
-			"source": "/build/chunk-CU_9RAFp2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CU_9RAFp2.js"
-		},
-		{
-			"source": "/build/chunk-CXAWhFpI.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CXAWhFpI.js"
-		},
-		{
-			"source": "/build/chunk-CZ65HC6F2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CZ65HC6F2.js"
-		},
-		{
-			"source": "/build/chunk-CZXvGl9q2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CZXvGl9q2.js"
-		},
-		{
-			"source": "/build/chunk-CcltA5-Z.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CcltA5-Z.js"
-		},
-		{
-			"source": "/build/chunk-CfGfN1xX2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CfGfN1xX2.js"
-		},
-		{
-			"source": "/build/chunk-CgRHo4oe.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CgRHo4oe.js"
-		},
-		{
-			"source": "/build/chunk-Chft3mgF.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-Chft3mgF.js"
-		},
-		{
-			"source": "/build/chunk-CjIaLk2z.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CjIaLk2z.js"
-		},
-		{
-			"source": "/build/chunk-CjPonGi7.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CjPonGi7.js"
-		},
-		{
-			"source": "/build/chunk-CpoILYhy2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CpoILYhy2.js"
-		},
-		{
-			"source": "/build/chunk-CqNgL8fd.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CqNgL8fd.js"
-		},
-		{
-			"source": "/build/chunk-CrF-6ELt.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CrF-6ELt.js"
-		},
-		{
-			"source": "/build/chunk-Crm1olN_.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-Crm1olN_.js"
-		},
-		{
-			"source": "/build/chunk-CrrmxfSs.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CrrmxfSs.js"
-		},
-		{
-			"source": "/build/chunk-CsK2ScwW.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CsK2ScwW.js"
-		},
-		{
-			"source": "/build/chunk-CsgOO24V.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-CsgOO24V.js"
-		},
-		{
-			"source": "/build/chunk-Cvzk03cQ2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-Cvzk03cQ2.js"
-		},
-		{
-			"source": "/build/chunk-D0oYmIZE.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-D0oYmIZE.js"
-		},
-		{
-			"source": "/build/chunk-D621EYfW.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-D621EYfW.js"
-		},
-		{
-			"source": "/build/chunk-D6NirhMp.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-D6NirhMp.js"
-		},
-		{
-			"source": "/build/chunk-D74CId1s.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-D74CId1s.js"
-		},
-		{
-			"source": "/build/chunk-DABQm14B2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DABQm14B2.js"
-		},
-		{
-			"source": "/build/chunk-DAY-JwTV2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DAY-JwTV2.js"
-		},
-		{
-			"source": "/build/chunk-DCa5NSyi.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DCa5NSyi.js"
-		},
-		{
-			"source": "/build/chunk-DDwlrhSl2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DDwlrhSl2.js"
-		},
-		{
-			"source": "/build/chunk-DEJzArPF.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DEJzArPF.js"
-		},
-		{
-			"source": "/build/chunk-DG6iwblg2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DG6iwblg2.js"
-		},
-		{
-			"source": "/build/chunk-DGUlSwbt2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DGUlSwbt2.js"
-		},
-		{
-			"source": "/build/chunk-DGn__HuZ.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DGn__HuZ.js"
-		},
-		{
-			"source": "/build/chunk-DHOXOQoC.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DHOXOQoC.js"
-		},
-		{
-			"source": "/build/chunk-DJw-q0u-.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DJw-q0u-.js"
-		},
-		{
-			"source": "/build/chunk-DLV586s4.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DLV586s4.js"
-		},
-		{
-			"source": "/build/chunk-DLWNSSkO.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DLWNSSkO.js"
-		},
-		{
-			"source": "/build/chunk-DMeW_nnG.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DMeW_nnG.js"
-		},
-		{
-			"source": "/build/chunk-DNUynUTY2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DNUynUTY2.js"
-		},
-		{
-			"source": "/build/chunk-DPT16jca2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DPT16jca2.js"
-		},
-		{
-			"source": "/build/chunk-DVQp4cHK.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DVQp4cHK.js"
-		},
-		{
-			"source": "/build/chunk-DW1w6Lf9.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DW1w6Lf9.js"
-		},
-		{
-			"source": "/build/chunk-DX4WU5RK2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DX4WU5RK2.js"
-		},
-		{
-			"source": "/build/chunk-DajiSkVw.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DajiSkVw.js"
-		},
-		{
-			"source": "/build/chunk-Dan0Gnl3.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-Dan0Gnl3.js"
-		},
-		{
-			"source": "/build/chunk-DbAgT41U2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DbAgT41U2.js"
-		},
-		{
-			"source": "/build/chunk-DbDanpaY.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DbDanpaY.js"
-		},
-		{
-			"source": "/build/chunk-DclIdQvv.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DclIdQvv.js"
-		},
-		{
-			"source": "/build/chunk-De14QW1Z.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-De14QW1Z.js"
-		},
-		{
-			"source": "/build/chunk-De4Zkq_M.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-De4Zkq_M.js"
-		},
-		{
-			"source": "/build/chunk-DeB3-VBh.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DeB3-VBh.js"
-		},
-		{
-			"source": "/build/chunk-DgQ9QOLv.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DgQ9QOLv.js"
-		},
-		{
-			"source": "/build/chunk-DkZKDjpB.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DkZKDjpB.js"
-		},
-		{
-			"source": "/build/chunk-DkkNHJhz2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DkkNHJhz2.js"
-		},
-		{
-			"source": "/build/chunk-Dpgl8AH1.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-Dpgl8AH1.js"
-		},
-		{
-			"source": "/build/chunk-Dt_OlEFd2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-Dt_OlEFd2.js"
-		},
-		{
-			"source": "/build/chunk-Duy5OEnm.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-Duy5OEnm.js"
-		},
-		{
-			"source": "/build/chunk-DvHflTFW2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DvHflTFW2.js"
-		},
-		{
-			"source": "/build/chunk-DvOCjNsG2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DvOCjNsG2.js"
-		},
-		{
-			"source": "/build/chunk-DwWnYW5p.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-DwWnYW5p.js"
-		},
-		{
-			"source": "/build/chunk-Dz0UYqzn.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-Dz0UYqzn.js"
-		},
-		{
-			"source": "/build/chunk-F__NDfEV2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-F__NDfEV2.js"
-		},
-		{
-			"source": "/build/chunk-Hd2LLDBd2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-Hd2LLDBd2.js"
-		},
-		{
-			"source": "/build/chunk-IONGjA1Y.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-IONGjA1Y.js"
-		},
-		{
-			"source": "/build/chunk-J9ixrIJi.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-J9ixrIJi.js"
-		},
-		{
-			"source": "/build/chunk-JNbDYjZd.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-JNbDYjZd.js"
-		},
-		{
-			"source": "/build/chunk-JthiEXTz.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-JthiEXTz.js"
-		},
-		{
-			"source": "/build/chunk-Jvtu9b-3.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-Jvtu9b-3.js"
-		},
-		{
-			"source": "/build/chunk-KjvVoSg9.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-KjvVoSg9.js"
-		},
-		{
-			"source": "/build/chunk-LjUU20c12.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-LjUU20c12.js"
-		},
-		{
-			"source": "/build/chunk-NOiJhw4j.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-NOiJhw4j.js"
-		},
-		{
-			"source": "/build/chunk-OLiMbjTp2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-OLiMbjTp2.js"
-		},
-		{
-			"source": "/build/chunk-PXvX5Pfz.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-PXvX5Pfz.js"
-		},
-		{
-			"source": "/build/chunk-Por5d6C-2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-Por5d6C-2.js"
-		},
-		{
-			"source": "/build/chunk-QWrQmIiI2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-QWrQmIiI2.js"
-		},
-		{
-			"source": "/build/chunk-Qs5ABnE52.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-Qs5ABnE52.js"
-		},
-		{
-			"source": "/build/chunk-RuN_OnS72.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-RuN_OnS72.js"
-		},
-		{
-			"source": "/build/chunk-S14nWaRl2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-S14nWaRl2.js"
-		},
-		{
-			"source": "/build/chunk-S8sNbxUq.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-S8sNbxUq.js"
-		},
-		{
-			"source": "/build/chunk-SYW_NmL6.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-SYW_NmL6.js"
-		},
-		{
-			"source": "/build/chunk-TDrI61NT.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-TDrI61NT.js"
-		},
-		{
-			"source": "/build/chunk-TFMOrntP2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-TFMOrntP2.js"
-		},
-		{
-			"source": "/build/chunk-Unrp941b2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-Unrp941b2.js"
-		},
-		{
-			"source": "/build/chunk-YRd8zhhe.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-YRd8zhhe.js"
-		},
-		{
-			"source": "/build/chunk-ZILj1dFb.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-ZILj1dFb.js"
-		},
-		{
-			"source": "/build/chunk-fC4Z_wAZ.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-fC4Z_wAZ.js"
-		},
-		{
-			"source": "/build/chunk-iDjkf1iP2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-iDjkf1iP2.js"
-		},
-		{
-			"source": "/build/chunk-ki3eFbow.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-ki3eFbow.js"
-		},
-		{
-			"source": "/build/chunk-mwEYMYuZ.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-mwEYMYuZ.js"
-		},
-		{
-			"source": "/build/chunk-myPh8bYK2.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-myPh8bYK2.js"
-		},
-		{
-			"source": "/build/chunk-nnjCncA8.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-nnjCncA8.js"
-		},
-		{
-			"source": "/build/chunk-nuAPp4b5.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-nuAPp4b5.js"
-		},
-		{
-			"source": "/build/chunk-oDM17Nek.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-oDM17Nek.js"
-		},
-		{
-			"source": "/build/chunk-tTmQmAAq.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-tTmQmAAq.js"
-		},
-		{
-			"source": "/build/chunk-vWPulwD32.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-vWPulwD32.js"
-		},
-		{
-			"source": "/build/chunk-yC2tj571.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-yC2tj571.js"
-		},
-		{
-			"source": "/build/chunk-yZD2YUWP.js",
-			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/chunk-yZD2YUWP.js"
+			"source": "/build/interaction-closures.json",
+			"destination": "https://mm-alpinejs-dev-new.vercel.app/build/interaction-closures.json"
 		},
 		{
 			"source": "/port/:path*",

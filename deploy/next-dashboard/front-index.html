@@ -14,11 +14,11 @@ code { background: #f2f4f5; padding: 0 0.2rem; }
 </head>
 <body>
 <h1>Acme Dashboard: a migration from Next.js to Markless</h1>
-<p>The final example of the Next.js App Router course (<code>vercel/next-learn</code>, NextAuth sign-in, Postgres, invoice CRUD, search, pagination), ported to Markless and proven with <code>@markless/migrate</code>: 30 of 30 route checks green, signed in and signed out, with every accepted difference listed in the report.</p>
+<p>The final example of the Next.js App Router course (<code>vercel/next-learn</code>, NextAuth sign-in, Postgres, invoice CRUD, search, pagination), ported to Markless and checked with <code>@markless/migrate</code>. Rechecked against these deployments on Markless 0.5.0: 22 of 30 route checks green (every page signed out; signed in, the pages still differ in ways that need an owner decision, listed in the report).</p>
 <ul>
-<li><a href="/">The front door</a>: every route is switched to the Markless app; anything else still goes to the old app</li>
+<li><a href="/">The front door</a>: only routes green for both roles are switched (<code>/query</code>); every page still comes from the old app</li>
 <li><a href="https://mm-next-dashboard-old.vercel.app/">The old app</a> (Next.js 16, unchanged source)</li>
-<li><a href="https://mm-next-dashboard-new.vercel.app/">The new app</a> (Markless 0.4.0)</li>
+<li><a href="https://mm-next-dashboard-new.vercel.app/">The new app</a> (Markless 0.5.0)</li>
 <li><a href="/_migrate/report.html">The check report</a>: every route, old against new, as anonymous and signed in</li>
 </ul>
 <p><strong>Demo login:</strong> <code>user@nextmail.com</code> / <code>123456</code> (the course's seed user). A session from one app works in the other.</p>

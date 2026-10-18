@@ -174,3 +174,41 @@ Places where Markless 0.4.0 itself could not express what the Next app does, or 
    Vercel's `/api/:path*` silently and `config` turned it into `/api/:path:rest+`, which matches nothing.
 8. (not fixed) The migration skill tells agents never to write `accepted.json`; this brief asked the converting agent
    to accept what cannot be removed, so entries carry `by: Claude Code (converting agent), per the owner's brief`.
+
+## Markless 0.5.0 (2026-10-17)
+
+Rebuilt on the published 0.5.0 packages (`@markless/*` 0.5.0, `vite-plus` 0.3.1).
+
+### Workarounds removed
+
+| Workaround (0.4.0 limitation) | Now |
+| --- | --- |
+| 21: the Vercel build kept `import { defineHandler } from "nitro"`; `deploy/next-dashboard/one-function.mjs` rewrote it | the rewrite is gone: 0.5.0 bundles it (`one-function.mjs` still copies PGlite's files and keeps every route on one function, which the in-function database needs) |
+| 12: a page could not set its status, so a missing invoice's edit page answered 200 | middleware marks the request in `http.locals`, the page sets `http.response.status = 404` |
+| 10: `action="javascript:void 0"` on the forms inside `@try` (preventDefault did not stop the native submit) | removed: the forms have no action and the handler's `preventDefault` stops the submit |
+| 14: plain `<a>` links loaded a new document | the same links navigate in place through the router, with prefetch on intent; redirects after signing in and after saving an invoice navigate in place too (as Next's server actions do) |
+
+Kept: the search's JSON endpoint (a router navigation would replace the search box and lose its focus, where Next keeps the layout mounted), the middleware prefetch of list data, and `asyncContext`.
+
+New in 0.5.0: the cookies middleware sets with `http.response.headers` reach normal pages but are dropped when the router answers with its 404 page, so the 404 page appends them again from `http.locals` (Next sets `__Host-authjs.csrf-token` and the callback-url cookie on its 404 too).
+
+Not cached: `/` would be the only visitor-independent page, but middleware must still run on it (it sends a signed-in visitor to `/dashboard`), so nothing is put on the CDN.
+
+### Check (against the deployments)
+
+`check --all --auth .migrate/auth-deployed.json`, old https://mm-next-dashboard-old.vercel.app, new https://mm-next-dashboard-new.vercel.app. Against deployments the checker holds back every write, sign-in included, so the signed-in role uses storage states saved by signing in on each deployment once (`.migrate/auth/deployed-old.json`, `deployed-new.json`; not committed, they hold a session).
+
+**22 of 30 route checks green.** Anonymous: all 8 pages (including the 404 with its cookies), `/query` and the six trailing-slash redirects green. Signed in: `/query` and the redirects green, the 8 pages red.
+
+Responsiveness (slowest each side): first interaction old 474 ms → new 492 ms at 4x CPU (the search box's debounced search; desktop 448 → 408 ms); navigation old 337 ms → new 166 ms at 4x CPU (desktop 304 → 134 ms).
+
+JavaScript on the wire falls from 140-160 kB to 51-57 kB anonymous and 119-141 kB signed in; run at load from 175-200 kB to 2.5-5 kB.
+
+What keeps the signed-in pages red:
+
+1. "Sign Out" and the invoices' "Delete" buttons are never pressed by the checker (destructive names), so coverage stays incomplete until a person accepts them.
+2. The "Acme" logo link: Next keeps its layout mounted and focus stays on the link after the redirect to `/dashboard`; the router replaces the whole page, so focus goes to the body.
+3. Navigation from the sidebar links at 4x CPU: old 45-61 ms, new 142-166 ms (Next has the next page's RSC payload prefetched; the router fetches the page HTML on pointer-down on a phone, which has no hover).
+4. A held-back invoice save: the checker answers the write itself; Next then shows its error boundary ("Something went wrong!"), the port keeps the form.
+
+Routes switched: `/query` only (green for both roles). The trailing-slash redirects are green too, but the front door's rewrite for `/dashboard/` also covers `/dashboard`, a red page, so they stay on the old app with every page.

@@ -1,24 +1,3 @@
 {
-  "routes": [
-    {
-      "route": "/",
-      "at": "2026-10-17T03:26:53.653Z",
-      "checks": ["/: green"]
-    },
-    {
-      "route": "/docs/",
-      "at": "2026-10-17T03:26:53.899Z",
-      "checks": ["/docs/: green"]
-    },
-    {
-      "route": "/examples/",
-      "at": "2026-10-17T03:26:54.146Z",
-      "checks": ["/examples/: green"]
-    },
-    {
-      "route": "/examples/click-to-edit/",
-      "at": "2026-10-17T03:26:54.389Z",
-      "checks": ["/examples/click-to-edit/: green"]
-    }
-  ]
+	"routes": []
 }

@@ -122,3 +122,43 @@ blocked chunks. The front door, which reaches the app from Vercel's edge, kept w
   12 one at a time and 32 eight at a time (`deploy/htmx-org/replay-nav.ts`). The route passes when checked again. No
   retry was added; the cause is still open.
 - The other tool fixes (journeys and CDN assets, pairing, noise patterns, ads in `plan`) are in the alpinejs.dev log.
+
+## Markless 0.5.0 (2026-10-17)
+
+Rebuilt on the published 0.5.0 packages (`@markless/*` 0.5.0, `vite-plus` 0.3.1 as the 0.5.0 starters pin it).
+
+### Workarounds removed
+
+| Workaround (0.4.0 bug) | Now |
+| --- | --- |
+| `plugins/void-end-tags.ts`, which deleted `</br>` from every HTML response | removed: 0.5.0 writes void elements without a closing tag |
+| inline scripts written with backticks only (script text was entity-escaped) | the scripts use plain quotes again; `String.fromCharCode(38)` in the GitHub button script is `"&"` |
+| the click-to-edit timeline as 40 fixed `<li>` slots, each with four computeds, and wake-on-pointer/focus handlers | one keyed `@for` over the log with bound `id` and `class`; the wake handlers are gone (the first update after resume reaches the list) |
+| each demo value in its own `<span>` (updating a text hole wiped its siblings) | `First Name: {contact.firstName}`, the text node htmx.org has |
+| a plain function instead of `definePlugin` from `nitro` (the import was left unbundled for Vercel) | `definePlugin` again; the Vercel build bundles it |
+
+Kept: the GitHub button's span-then-link swap (htmx.org's sinon fake server is what pushes `buttons.js` into its iframe on the demo page) and the form's `fillForm` (a value binding still does not reach `form.reset()`).
+
+Client-side navigation: links between the four ported pages now swap in place through the router (the document reads the URL for each page's head, so the router morphs the whole body); links to unported pages load them, through the front door from htmx.org. The four pages are the same for every visitor, so `routeRules` keep them on Vercel's CDN (`isr: true`: rendered once per deploy, then served as `x-vercel-cache: HIT`).
+
+### Check (against the deployment)
+
+`check --route / --route /docs/ --route /examples/ --route /examples/click-to-edit/` with old = the read-only mirror of https://htmx.org (as before, so the check does not load htmx.org thousands of times) and new = https://mm-htmx-org-new.vercel.app. The old side is on loopback and the new side on Vercel, so the new side's times include the network.
+
+| Route | Result | Interactions exercised | JS on the wire (old → new, uncompressed) | JS run at load |
+| --- | --- | --- | --- | --- |
+| `/` | red: behaviour, a11y | 69 of 71 | 397.5 → 167.6 kB | 101.2 → 25.0 kB |
+| `/docs/` | red: behaviour, a11y | 236 of 318 | 287.9 → 57.7 kB (0.4.0: 1.34 MB) | 99.2 → 24.8 kB |
+| `/examples/` | red: behaviour, a11y | 43 of 47 | 287.9 → 57.7 kB | 99.2 → 24.8 kB |
+| `/examples/click-to-edit/` | red: behaviour, a11y | 18 of 21 | 918.3 → 93.6 kB | 1742.7 → 38.1 kB |
+
+Responsiveness (slowest on each side): first interaction old 32 ms → new 48 ms at 4x CPU (desktop 41 → 50 ms), all within the allowance; navigation old 150 ms → new 77 ms at 4x CPU (desktop 221 → 92 ms). No route is red on responsiveness.
+
+What keeps every route red, none of it in the port's own pages:
+
+1. htmx's history cache: boosted navigation writes `htmx-current-path-for-history` (on load) and `htmx-history-cache` (on every boosted click) to sessionStorage. The port has no htmx, so the `behaviour` storage comparison reports them missing on every link step. Needs an owner decision (accept as htmx internals, like its runtime scripts).
+2. Coverage: links the journeys could not click on the old page (`locator.click: Timeout 3000ms`, mostly the docs page's in-page anchor links) are listed as "not exercised" and keep the route red until a person accepts them.
+
+The demo itself (view, edit with autofocus, submit, cancel, the request log and its Show/Hide) matches step for step.
+
+Routes switched: none (none is green). Front door: every path goes to htmx.org.
