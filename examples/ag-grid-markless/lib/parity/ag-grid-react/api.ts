@@ -270,3 +270,22 @@ export function onHeaderKey(e: KeyboardEvent): boolean {
 	}
 	return false;
 }
+
+/** Focuses a text filter's operator picker (condition 0 or 1), where AG Grid leaves focus after a pick. */
+export function focusPicker(which: number): void {
+	document.querySelectorAll<HTMLElement>('.ag-popup[data-filter="text"] .ag-picker-field-wrapper')[which]?.focus();
+}
+
+/** AG Grid's popup service closes popups on a pointer press outside them and outside the button that opened them. */
+export function onOutsidePointer(close: () => void): void {
+	document.addEventListener(
+		'mousedown',
+		(e) => {
+			const target = e.target as HTMLElement;
+			if (target.closest('.ag-popup:not(.ag-hidden)') || target.closest('.ag-header-cell-filter-button')) return;
+			if (!document.querySelector('.ag-popup:not(.ag-hidden)')) return;
+			close();
+		},
+		true,
+	);
+}

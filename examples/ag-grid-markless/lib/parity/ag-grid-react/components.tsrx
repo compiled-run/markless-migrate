@@ -4,9 +4,9 @@
 // One component: rows, header cells and filter options written inline, because handlers in a child
 // component per row or per column did not reach this component's state after resume (see the log).
 import { computed, element, state } from '@markless/core';
-import { afterScroll, announce, keepRowFocus, debounceFilter, dragX, firstTime, focusHeader, listUnder, focusWhenShown, onGuardFocus, onHeaderKey, measureScrollbar, popupUnder, rowOf, scrollFromFake, setScrollTop, wasProgrammatic, watchSize } from './api.ts';
+import { afterScroll, announce, keepRowFocus, debounceFilter, dragX, firstTime, focusHeader, listUnder, focusPicker, focusWhenShown, onOutsidePointer, onGuardFocus, onHeaderKey, measureScrollbar, popupUnder, rowOf, scrollFromFake, setScrollTop, wasProgrammatic, watchSize } from './api.ts';
 import { headerView } from './header.ts';
-import { ROW_HEIGHT, blankType, countOf, directionOptions, layoutFlexes, layoutWidths, nextSort, optionIndex, optionLabel, parseNumbers, parseText, pickerView, resizeColumn, secondShown, toggleDirection, totalWidthOf, windowView, withFilterType, withFilterValue, withJoin } from './model.ts';
+import { ROW_HEIGHT, TEXT_OPTIONS, blankType, countOf, directionOptions, layoutFlexes, layoutWidths, nextSort, optionIndex, optionLabel, parseNumbers, parseText, pickerView, resizeColumn, secondShown, toggleDirection, totalWidthOf, windowView, withFilterType, withFilterValue, withJoin } from './model.ts';
 import type { ColDef, Row } from './model.ts';
 
 const THEME_CLASSES = 'ag-theme-params-1 ag-theme-buttonStyle-1 ag-theme-columnDropStyle-2 ag-theme-batchEditStyle-3 ag-theme-checkboxStyle-4 ag-theme-iconSet-5 ag-theme-tabStyle-6 ag-theme-inputStyle-7';
@@ -82,8 +82,8 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 	const isOr = computed(() => parseText(g.draft).join === 'OR');
 	const body0Hidden = computed(() => blankType(parseText(g.draft).conditions[0]!.type));
 	const body1Hidden = computed(() => !secondShown(g.draft) || blankType(parseText(g.draft).conditions[1]!.type));
-	const picker0Cls = computed(() => (g.picker === 0 ? 'ag-wrapper ag-picker-field-wrapper ag-picker-expanded' : 'ag-wrapper ag-picker-field-wrapper ag-picker-collapsed'));
-	const picker1Cls = computed(() => (g.picker === 1 ? 'ag-wrapper ag-picker-field-wrapper ag-picker-expanded' : 'ag-wrapper ag-picker-field-wrapper ag-picker-collapsed'));
+	const picker0Cls = computed(() => (g.picker === 0 ? 'ag-wrapper ag-picker-field-wrapper ag-picker-expanded ag-has-popup-positioned-under' : 'ag-wrapper ag-picker-field-wrapper ag-picker-collapsed'));
+	const picker1Cls = computed(() => (g.picker === 1 ? 'ag-wrapper ag-picker-field-wrapper ag-picker-expanded ag-has-popup-positioned-under' : 'ag-wrapper ag-picker-field-wrapper ag-picker-collapsed'));
 	const andCls = computed(() => (parseText(g.draft).join === 'OR' ? 'ag-wrapper ag-input-wrapper ag-radio-button-input-wrapper' : 'ag-wrapper ag-input-wrapper ag-radio-button-input-wrapper ag-checked'));
 	const orCls = computed(() => (parseText(g.draft).join === 'OR' ? 'ag-wrapper ag-input-wrapper ag-radio-button-input-wrapper ag-checked' : 'ag-wrapper ag-input-wrapper ag-radio-button-input-wrapper'));
 	const pickerOptions = computed(() => pickerView(g.draft, g.picker, g.pickerActive));
@@ -94,6 +94,10 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 		g.sbw = bar.width + (bar.invisible ? 16 : 0);
 		const lost = bar.invisible ? 0 : bar.width;
 		keepRowFocus(document.querySelector<HTMLElement>('.ag-center-cols-container'));
+		onOutsidePointer(() => {
+			g.openFilter = '';
+			g.picker = -1;
+		});
 		watchSize(body, (width, height) => {
 			g.total = width - lost;
 			g.height = height;
@@ -194,6 +198,13 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 					if (e.key === 'Tab' || e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'Enter') e.preventDefault();
 					if (onHeaderKey(e)) return;
 					if (e.key !== 'Enter') return;
+					if (e.ctrlKey || e.metaKey) {
+						g.popupStyle = popupUnder(e.target, 0);
+						g.draft = '';
+						g.picker = -1;
+						g.openFilter = 'direction';
+						return;
+					}
 					g.sort = nextSort(g.sort, 'direction', e.shiftKey);
 					g.sortTouched = true;
 				}}>
@@ -236,6 +247,14 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 					if (e.key === 'Tab' || e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'Enter') e.preventDefault();
 					if (onHeaderKey(e)) return;
 					if (e.key !== 'Enter') return;
+					if (e.ctrlKey || e.metaKey) {
+						g.popupStyle = popupUnder(e.target, 206);
+						g.draft = g.fChannel;
+						g.picker = -1;
+						g.openFilter = 'channel';
+						focusWhenShown('.ag-popup[data-filter="text"]', 'input[aria-label="Filter Value"]');
+						return;
+					}
 					g.sort = nextSort(g.sort, 'channel', e.shiftKey);
 					g.sortTouched = true;
 				}}>
@@ -279,6 +298,14 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 					if (e.key === 'Tab' || e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'Enter') e.preventDefault();
 					if (onHeaderKey(e)) return;
 					if (e.key !== 'Enter') return;
+					if (e.ctrlKey || e.metaKey) {
+						g.popupStyle = popupUnder(e.target, 206);
+						g.draft = g.fArgs;
+						g.picker = -1;
+						g.openFilter = 'args';
+						focusWhenShown('.ag-popup[data-filter="text"]', 'input[aria-label="Filter Value"]');
+						return;
+					}
 					g.sort = nextSort(g.sort, 'args', e.shiftKey);
 					g.sortTouched = true;
 				}}>
@@ -406,9 +433,14 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 			<div class={textPopupCls} data-filter="text">
 				<div class="ag-menu ag-filter-menu ag-ltr ag-popup-child ag-popup-positioned-under" role="presentation" aria-label="Column Filter" style={g.popupStyle} onKeyDown={(e) => {
 					if (e.key !== 'Escape') return;
+					if (g.picker >= 0) {
+						const which = g.picker;
+						g.picker = -1;
+						focusPicker(which);
+						return;
+					}
 					const col = g.openFilter;
 					g.openFilter = '';
-					g.picker = -1;
 					focusHeader(col);
 				}}>
 					<div class="ag-filter">
@@ -420,6 +452,27 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 										g.pickerStyle = listUnder(e.target);
 										g.pickerActive = optionIndex(op0);
 										g.picker = g.picker === 0 ? -1 : 0;
+									}} onKeyDown={(e) => {
+										if (e.key === 'Enter' || e.key === 'ArrowDown' || e.key === 'ArrowUp') e.preventDefault();
+										if (g.picker !== 0) {
+											if (e.key !== 'Enter' && e.key !== 'ArrowDown') return;
+											g.pickerStyle = listUnder(e.target);
+											g.pickerActive = optionIndex(op0);
+											g.picker = 0;
+											return;
+										}
+										if (e.key === 'ArrowDown') g.pickerActive = Math.min(TEXT_OPTIONS.length - 1, g.pickerActive + 1);
+										else if (e.key === 'ArrowUp') g.pickerActive = Math.max(0, g.pickerActive - 1);
+										else if (e.key === 'Enter') {
+											g.draft = withFilterType(g.draft, 0, TEXT_OPTIONS[g.pickerActive]![0]);
+											g.picker = -1;
+											const col = g.openFilter;
+											const next = g.draft;
+											debounceFilter(() => {
+												if (col === 'channel') g.fChannel = next;
+												else if (col === 'args') g.fArgs = next;
+											});
+										}
 									}}>
 										<div class="ag-picker-field-display" data-ref="eDisplayField">{label0}</div>
 										<div class="ag-picker-field-icon" data-ref="eIcon" aria-hidden="true"><span class="ag-icon ag-icon-small-down" role="presentation" unselectable="on"></span></div>
@@ -449,22 +502,30 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 								</div>
 								<div class={conditionCls}>
 									<div role="presentation" class="ag-labeled ag-label-align-right ag-radio-button ag-input-field ag-filter-condition-operator ag-filter-condition-operator-and">
-										<div class="ag-input-field-label ag-label ag-radio-button-label" data-ref="eLabel" aria-hidden="false">AND</div>
+										<div class="ag-input-field-label ag-label ag-radio-button-label" data-ref="eLabel" aria-hidden="false" id="ag-mm-and-label">AND</div>
 										<div class={andCls} data-ref="eWrapper" role="presentation">
-											<input class="ag-input-field-input ag-radio-button-input" data-ref="eInput" type="radio" tabindex="0" name="ag-simple-filter-and-or" aria-label="AND" checked={!isOr} onChange={() => {
+											<input class="ag-input-field-input ag-radio-button-input" data-ref="eInput" type="radio" tabindex="0" name="ag-simple-filter-and-or" aria-labelledby="ag-mm-and-label" checked={!isOr} onChange={() => {
 												g.draft = withJoin(g.draft, 'AND');
-												if (g.openFilter === 'channel') g.fChannel = g.draft;
-												else if (g.openFilter === 'args') g.fArgs = g.draft;
+												const col = g.openFilter;
+												const next = g.draft;
+												debounceFilter(() => {
+													if (col === 'channel') g.fChannel = next;
+													else if (col === 'args') g.fArgs = next;
+												});
 											}} />
 										</div>
 									</div>
 									<div role="presentation" class="ag-labeled ag-label-align-right ag-radio-button ag-input-field ag-filter-condition-operator ag-filter-condition-operator-or">
-										<div class="ag-input-field-label ag-label ag-radio-button-label" data-ref="eLabel" aria-hidden="false">OR</div>
+										<div class="ag-input-field-label ag-label ag-radio-button-label" data-ref="eLabel" aria-hidden="false" id="ag-mm-or-label">OR</div>
 										<div class={orCls} data-ref="eWrapper" role="presentation">
-											<input class="ag-input-field-input ag-radio-button-input" data-ref="eInput" type="radio" tabindex="0" name="ag-simple-filter-and-or" aria-label="OR" checked={isOr} onChange={() => {
+											<input class="ag-input-field-input ag-radio-button-input" data-ref="eInput" type="radio" tabindex="0" name="ag-simple-filter-and-or" aria-labelledby="ag-mm-or-label" checked={isOr} onChange={() => {
 												g.draft = withJoin(g.draft, 'OR');
-												if (g.openFilter === 'channel') g.fChannel = g.draft;
-												else if (g.openFilter === 'args') g.fArgs = g.draft;
+												const col = g.openFilter;
+												const next = g.draft;
+												debounceFilter(() => {
+													if (col === 'channel') g.fChannel = next;
+													else if (col === 'args') g.fArgs = next;
+												});
 											}} />
 										</div>
 									</div>
@@ -475,6 +536,27 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 										g.pickerStyle = listUnder(e.target);
 										g.pickerActive = optionIndex(op1);
 										g.picker = g.picker === 1 ? -1 : 1;
+									}} onKeyDown={(e) => {
+										if (e.key === 'Enter' || e.key === 'ArrowDown' || e.key === 'ArrowUp') e.preventDefault();
+										if (g.picker !== 1) {
+											if (e.key !== 'Enter' && e.key !== 'ArrowDown') return;
+											g.pickerStyle = listUnder(e.target);
+											g.pickerActive = optionIndex(op1);
+											g.picker = 1;
+											return;
+										}
+										if (e.key === 'ArrowDown') g.pickerActive = Math.min(TEXT_OPTIONS.length - 1, g.pickerActive + 1);
+										else if (e.key === 'ArrowUp') g.pickerActive = Math.max(0, g.pickerActive - 1);
+										else if (e.key === 'Enter') {
+											g.draft = withFilterType(g.draft, 1, TEXT_OPTIONS[g.pickerActive]![0]);
+											g.picker = -1;
+											const col = g.openFilter;
+											const next = g.draft;
+											debounceFilter(() => {
+												if (col === 'channel') g.fChannel = next;
+												else if (col === 'args') g.fArgs = next;
+											});
+										}
 									}}>
 										<div class="ag-picker-field-display" data-ref="eDisplayField">{label1}</div>
 										<div class="ag-picker-field-icon" data-ref="eIcon" aria-hidden="true"><span class="ag-icon ag-icon-small-down" role="presentation" unselectable="on"></span></div>
@@ -530,10 +612,16 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 				<div class="ag-list ag-select-list ag-ltr ag-popup-child ag-popup-positioned-under" role="listbox" aria-label="Select Field" style={g.pickerStyle}>
 					@for (const option of pickerOptions; key option.key) {
 						<div class={option.cls} role="option" aria-posinset={option.pos} aria-setsize="8" aria-selected={option.selected} onMouseEnter={() => (g.pickerActive = option.pos - 1)} onClick={() => {
-							g.draft = withFilterType(g.draft, g.picker === 1 ? 1 : 0, option.key);
+							const which = g.picker === 1 ? 1 : 0;
+							g.draft = withFilterType(g.draft, which, option.key);
 							g.picker = -1;
-							if (g.openFilter === 'channel') g.fChannel = g.draft;
-							else if (g.openFilter === 'args') g.fArgs = g.draft;
+							focusPicker(which);
+							const col = g.openFilter;
+							const next = g.draft;
+							debounceFilter(() => {
+								if (col === 'channel') g.fChannel = next;
+								else if (col === 'args') g.fArgs = next;
+							});
 						}}><span data-ref="eText">{option.label}</span></div>
 					}
 				</div>

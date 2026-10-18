@@ -105,15 +105,15 @@ function valueOf(value: unknown, theme: string): { style: string; text: string; 
 
 /** The rendered tree for `src` named `name`: an object node per object or array, a variable row per value.
  * `toggled` lists the ids of nodes clicked an odd number of times (expanded unless empty, until toggled). */
-export function buildTree(src: unknown, name: string, theme: string, toggled: string): JsonNode {
+export function buildTree(src: unknown, name: string, theme: string, view: string): JsonNode {
 	const styles = stylesFor(theme);
-	const flipped = new Set(toggled ? toggled.split('\u0001') : []);
+	const stored = parseView(view).stored;
 	const build = (value: unknown, key: string, id: string, arrayKey: boolean, last: boolean): JsonNode => {
 		const type = typeOf(value);
 		if (type === 'object' || type === 'array') {
 			const keys = Object.keys(value as object);
 			const kids = keys.map((k, i) => build((value as Record<string, unknown>)[k], k, `${id}.${k}`, type === 'array', i === keys.length - 1));
-			const expanded = (keys.length > 0) !== flipped.has(id);
+			const expanded = stored[id] ?? keys.length > 0;
 			return {
 				id, object: true, array: type === 'array', name: key, arrayKey, open: type === 'array' ? '[' : '{', close: type === 'array' ? ']' : '}', size: keys.length, last, valueStyle: '', valueText: '', string: false, kids,
 				iconCls: expanded ? 'expanded-icon' : 'collapsed-icon',
@@ -151,23 +151,45 @@ export function buildTree(src: unknown, name: string, theme: string, toggled: st
 	return build(src, name, name, false, true);
 }
 
-export function toggle(toggled: string, id: string): string {
-	const list = toggled ? toggled.split('\u0001') : [];
-	return (list.includes(id) ? list.filter((t) => t !== id) : [...list, id]).join('\u0001');
+// What react-json-view keeps between renders: whether each node (by path) is expanded, in a store shared by every
+// value it shows, and which nested nodes have taken a click since the value last changed. A nested node's first
+// click after it renders a new value only re-reads that store (its getDerivedStateFromProps runs before the
+// toggled state is saved), so it takes a second click to fold; the root folds on the first. `epoch` counts the
+// times DetailPanel gave it a new value (another row, or the theme).
+type View = { stored: Record<string, boolean>; primed: string[]; serial: string };
+
+function parseView(view: string): View {
+	return view ? (JSON.parse(view) as View) : { stored: {}, primed: [], serial: '' };
 }
 
-export function docsFor(row: { serialNumber: number; args: unknown } | null | undefined, name: string, theme: string, toggled: string): { id: string; tree: JsonNode }[] {
-	return docsOf(String(row?.serialNumber ?? 0), row?.args ?? [], name, theme, toggled);
+export function jsonClick(view: string, row: { serialNumber: number; args: unknown } | null | undefined, epoch: number, name: string, id: string): string {
+	const state = parseView(view);
+	const serial = String(epoch);
+	if (state.serial !== serial) state.primed = [];
+	state.serial = serial;
+	if (id !== name && !state.primed.includes(id)) {
+		state.primed.push(id);
+		return JSON.stringify(state);
+	}
+	const tree = buildTree(row?.args ?? [], name, 'rjv-default', view);
+	const find = (node: JsonNode): JsonNode | undefined => (node.id === id ? node : node.kids.map(find).find(Boolean));
+	const node = find(tree);
+	if (node) state.stored[id] = node.pushedHidden;
+	return JSON.stringify(state);
 }
 
-export function docsOf(id: string, src: unknown, name: string, theme: string, toggled: string): { id: string; tree: JsonNode }[] {
-	return [{ id, tree: buildTree(src ?? [], name ?? 'data', theme ?? 'rjv-default', toggled ?? '') }];
+export function docsFor(row: { serialNumber: number; args: unknown } | null | undefined, name: string, theme: string, view: string): { id: string; tree: JsonNode }[] {
+	return docsOf(String(row?.serialNumber ?? 0), row?.args ?? [], name, theme, view);
 }
 
-export function treeFor(row: { serialNumber: number; args: unknown } | null | undefined, name: string, theme: string, toggled: string): JsonNode {
-	return docsFor(row, name, theme, toggled)[0]!.tree;
+export function docsOf(id: string, src: unknown, name: string, theme: string, view: string): { id: string; tree: JsonNode }[] {
+	return [{ id, tree: buildTree(src ?? [], name ?? 'data', theme ?? 'rjv-default', view ?? '') }];
 }
 
-export function kidsFor(row: { serialNumber: number; args: unknown } | null | undefined, name: string, theme: string, toggled: string): JsonNode[] {
-	return docsFor(row, name, theme, toggled)[0]!.tree.kids;
+export function treeFor(row: { serialNumber: number; args: unknown } | null | undefined, name: string, theme: string, view: string): JsonNode {
+	return docsFor(row, name, theme, view)[0]!.tree;
+}
+
+export function kidsFor(row: { serialNumber: number; args: unknown } | null | undefined, name: string, theme: string, view: string): JsonNode[] {
+	return docsFor(row, name, theme, view)[0]!.tree.kids;
 }

@@ -11,7 +11,7 @@ import { AgGridReact } from '../lib/parity/ag-grid-react/components.tsrx';
 import { afterRowsRendered, announce, ensureIndexVisible } from '../lib/parity/ag-grid-react/api.ts';
 import { Ban } from '../lib/parity/lucide-react/components.tsrx';
 import { clearEvents, connectPanel, firstTime } from '../lib/devtron/port.ts';
-import { kidsFor, rootStyle, stylesFor, toggle, treeFor } from '../lib/parity/microlink-react-json-view/tree.ts';
+import { jsonClick, kidsFor, rootStyle, stylesFor, treeFor } from '../lib/parity/microlink-react-json-view/tree.ts';
 import type { Row } from '../lib/parity/ag-grid-react/model.ts';
 
 export default function Panel() @{
@@ -20,6 +20,7 @@ export default function Panel() @{
 	let selected = state(0);
 	let gridSelected = state(0);
 	let live = state('No Rows To Show');
+	let jsonEpoch = state(0);
 	let showDetail = state(false);
 	let theme = state('light');
 	let position = state('right');
@@ -60,6 +61,7 @@ export default function Panel() @{
 				<div class="flex gap-2">
 					<CircularButton tooltip="Switch between Light and Dark theme" active={false} onClick={() => {
 						theme = theme === 'light' ? 'dark' : 'light';
+						jsonEpoch++;
 						localStorage.setItem('theme', theme);
 						document.body.classList.toggle('dark', theme === 'dark');
 					}}>
@@ -100,6 +102,7 @@ export default function Panel() @{
 			</div>
 			<div class="flex-1">
 				<AgGridReact rowData={events} columnDefs={cols} dark={dark} live={live} onAnnounce={(text) => (live = text)} selected={gridSelected} onSelectionChanged={(serial) => (gridSelected = serial)} onRowClicked={(serial) => {
+					if (serial !== selected) jsonEpoch++;
 					selected = serial;
 					selectedRow = events.find((e) => e.serialNumber === serial) ?? null;
 					showDetail = true;
@@ -117,19 +120,20 @@ export default function Panel() @{
 			ensureIndexVisible(index, 'bottom', events.length);
 			if (events.some((e) => e.serialNumber === serial)) {
 				gridSelected = serial;
+				if (serial !== selected) jsonEpoch++;
 				selected = serial;
 				selectedRow = events.find((e) => e.serialNumber === serial) ?? null;
 				showDetail = true;
 			}
 		}}>
-			<ReactJson row={selectedRow} theme={jsonTheme} name="data" background={jsonBackground} />
+			<ReactJson row={selectedRow} epoch={jsonEpoch} theme={jsonTheme} name="data" background={jsonBackground} />
 		</DetailPanel>
 	</div>
 }
 
 /** react-json-view's default export: `src` is `row.args`, passed as the row, because a computed here does not see
  * a value the caller computed from its own props (see the log). Clicks on a brace or ellipsis toggle a node. */
-function ReactJson({ row, theme, name, background }: { row: { serialNumber: number; args: unknown } | null; theme: string; name: string; background: string }) @{
+function ReactJson({ row, epoch, theme, name, background }: { row: { serialNumber: number; args: unknown } | null; epoch: number; theme: string; name: string; background: string }) @{
 	let toggled = state('');
 	const styles = computed(() => stylesFor(theme));
 	const style = computed(() => rootStyle(theme, background));
@@ -137,7 +141,7 @@ function ReactJson({ row, theme, name, background }: { row: { serialNumber: numb
 	const nodes = computed(() => kidsFor(row, name, theme, toggled));
 	<div class="react-json-view" style={style} onClick={(e) => {
 		const hit = (e.target as HTMLElement).closest('[data-toggle]')?.getAttribute('data-toggle');
-		if (hit) toggled = toggle(toggled, hit);
+		if (hit) toggled = jsonClick(toggled, row, epoch, name, hit);
 	}}>
 		<div class="pretty-json-container object-container">
 			<div class="object-content">
