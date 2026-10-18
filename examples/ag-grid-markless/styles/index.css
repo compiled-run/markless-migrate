@@ -3,21 +3,21 @@
 @tailwind utilities;
 
 .dark {
-  color-scheme: dark;
+	color-scheme: dark;
 }
 
 .ag-root-wrapper.ag-ltr.ag-layout-normal {
-  border: 0;
+	border: 0;
 }
 .ag-cell-focus {
-  border: none !important;
+	border: none !important;
 }
 .ag-header-container .ag-header-cell .ag-header-cell-resize::after {
-  height: 70%;
-  width: 20%;
-  top: 50%;
-  border-radius: 2px;
-  transform: translateY(-50%);
+	height: 70%;
+	width: 20%;
+	top: 50%;
+	border-radius: 2px;
+	transform: translateY(-50%);
 }
 
 /**
@@ -25,9 +25,9 @@
  * https://github.com/mac-s-g/react-json-view/issues/244
  */
 .react-json-view {
-  word-break: break-all;
+	word-break: break-all;
 }
 
 [data-async-container] {
-  display: contents;
+	display: contents;
 }

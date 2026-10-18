@@ -4,14 +4,20 @@ import type { Row } from '../parity/ag-grid-react/model.ts';
 
 export const MAX_EVENTS_TO_DISPLAY = 20000;
 
-type Port = { postMessage(message: unknown): void; onMessage: { addListener(f: (m: any) => void): void }; onDisconnect: { addListener(f: () => void): void } };
+type Port = {
+	postMessage(message: unknown): void;
+	onMessage: { addListener(f: (m: any) => void): void };
+	onDisconnect: { addListener(f: () => void): void };
+};
 
 let port: Port | null = null;
 const uuids = new Map<string, number>();
 
 /** Connects as the panel and asks for every recorded event; `onEvents` gets the linked list after each batch. */
 export function connectPanel(current: () => Row[], onEvents: (events: Row[]) => void): void {
-	const runtime = (globalThis as { chrome?: { runtime?: { connect?: (o: { name: string }) => Port } } }).chrome?.runtime;
+	const runtime = (
+		globalThis as { chrome?: { runtime?: { connect?: (o: { name: string }) => Port } } }
+	).chrome?.runtime;
 	if (!runtime?.connect) return;
 	port = runtime.connect({ name: 'devt-panel' });
 	let pending: Row[] = [];

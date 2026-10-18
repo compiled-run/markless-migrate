@@ -5,7 +5,11 @@ import { ROW_HEIGHT } from './model.ts';
 const viewport = () => document.querySelector<HTMLElement>('.ag-body-viewport');
 
 /** gridApi.ensureIndexVisible(index, position) for uniform row heights, no pinned or sticky rows. */
-export function ensureIndexVisible(index: number, position: 'top' | 'bottom' | 'middle' | null, count: number): void {
+export function ensureIndexVisible(
+	index: number,
+	position: 'top' | 'bottom' | 'middle' | null,
+	count: number,
+): void {
 	const body = viewport();
 	if (!body || index < 0 || index >= count) return;
 	const top = body.scrollTop;
@@ -65,7 +69,9 @@ export function scrollFromFake(body: HTMLElement | undefined | null, top: number
 
 /** The popup's position under a header's filter button, relative to the grid's root wrapper, kept inside it. */
 export function popupUnder(target: EventTarget | null, width: number): string {
-	const button = (target as HTMLElement | null)?.closest('.ag-header-cell')?.querySelector('.ag-header-cell-filter-button');
+	const button = (target as HTMLElement | null)
+		?.closest('.ag-header-cell')
+		?.querySelector('.ag-header-cell-filter-button');
 	const root = document.querySelector('.ag-root-wrapper');
 	if (!button || !root) return '';
 	const b = button.getBoundingClientRect();
@@ -115,7 +121,10 @@ export function dragX(start: PointerEvent, move: (dx: number) => void): void {
 }
 
 /** Watches the body viewport's size; AG Grid re-lays out columns and rows when it changes. */
-export function watchSize(el: HTMLElement | undefined | null, changed: (width: number, height: number) => void): void {
+export function watchSize(
+	el: HTMLElement | undefined | null,
+	changed: (width: number, height: number) => void,
+): void {
 	if (!el) return;
 	changed(el.clientWidth, el.clientHeight);
 	new ResizeObserver(() => changed(el.clientWidth, el.clientHeight)).observe(el);
@@ -184,7 +193,8 @@ export function keepRowFocus(container: HTMLElement | null): void {
 	document.addEventListener('focusin', away);
 	document.addEventListener('mousedown', away, true);
 	new MutationObserver(() => {
-		if (focused?.isConnected && document.activeElement === document.body) focused.focus({ preventScroll: true });
+		if (focused?.isConnected && document.activeElement === document.body)
+			focused.focus({ preventScroll: true });
 	}).observe(container, { childList: true });
 }
 
@@ -203,10 +213,13 @@ export function focusWhenShown(popup: string, field: string): void {
 	observer.observe(el, { attributes: true, attributeFilter: ['class'] });
 }
 
-const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]';
+const FOCUSABLE =
+	'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]';
 
 function tabbable(): HTMLElement[] {
-	return [...document.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.tabIndex >= 0 && el.getClientRects().length > 0);
+	return [...document.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+		(el) => el.tabIndex >= 0 && el.getClientRects().length > 0,
+	);
 }
 
 /** AG Grid's tab out of the grid: focus the first tabbable element after (or before) the grid, or leave focus on
@@ -216,7 +229,9 @@ export function tabOut(forward: boolean): void {
 	if (!grid) return;
 	const all = tabbable().filter((el) => !grid.contains(el));
 	const position = (el: HTMLElement) => grid.compareDocumentPosition(el);
-	const target = forward ? all.find((el) => position(el) & Node.DOCUMENT_POSITION_FOLLOWING) : all.reverse().find((el) => position(el) & Node.DOCUMENT_POSITION_PRECEDING);
+	const target = forward
+		? all.find((el) => position(el) & Node.DOCUMENT_POSITION_FOLLOWING)
+		: all.reverse().find((el) => position(el) & Node.DOCUMENT_POSITION_PRECEDING);
 	if (target) target.focus();
 	else (document.activeElement as HTMLElement | null)?.blur();
 }
@@ -255,8 +270,10 @@ export function onHeaderKey(e: KeyboardEvent): boolean {
 	const at = list.indexOf(e.target as HTMLElement);
 	if (at < 0) return false;
 	if (e.key === 'Tab') {
-		if (e.shiftKey) at === 0 ? tabOut(false) : focusHeaderAt(at - 1);
-		else at === list.length - 1 ? tabOut(true) : focusHeaderAt(at + 1);
+		if (e.shiftKey && at === 0) tabOut(false);
+		else if (e.shiftKey) focusHeaderAt(at - 1);
+		else if (at === list.length - 1) tabOut(true);
+		else focusHeaderAt(at + 1);
 		return true;
 	}
 	if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
@@ -273,7 +290,9 @@ export function onHeaderKey(e: KeyboardEvent): boolean {
 
 /** Focuses a text filter's operator picker (condition 0 or 1), where AG Grid leaves focus after a pick. */
 export function focusPicker(which: number): void {
-	document.querySelectorAll<HTMLElement>('.ag-popup[data-filter="text"] .ag-picker-field-wrapper')[which]?.focus();
+	document
+		.querySelectorAll<HTMLElement>('.ag-popup[data-filter="text"] .ag-picker-field-wrapper')
+		[which]?.focus();
 }
 
 /** AG Grid's popup service closes popups on a pointer press outside them and outside the button that opened them. */
@@ -282,7 +301,11 @@ export function onOutsidePointer(close: () => void): void {
 		'mousedown',
 		(e) => {
 			const target = e.target as HTMLElement;
-			if (target.closest('.ag-popup:not(.ag-hidden)') || target.closest('.ag-header-cell-filter-button')) return;
+			if (
+				target.closest('.ag-popup:not(.ag-hidden)') ||
+				target.closest('.ag-header-cell-filter-button')
+			)
+				return;
 			if (!document.querySelector('.ag-popup:not(.ag-hidden)')) return;
 			close();
 		},
@@ -305,12 +328,21 @@ export function headerBox(): number {
 
 function outsideGrid(e: PointerEvent): boolean {
 	const box = document.querySelector('.ag-root-wrapper')?.getBoundingClientRect();
-	return !box || e.clientX < box.left || e.clientX > box.right || e.clientY < box.top || e.clientY > box.bottom;
+	return (
+		!box ||
+		e.clientX < box.left ||
+		e.clientX > box.right ||
+		e.clientY < box.top ||
+		e.clientY > box.bottom
+	);
 }
 
 /** A header drag: once the pointer has moved 4 px (AG Grid's dragStartPixels), `move` gets the pointer's x on every
  * move and once more when the button is released, and whether the pointer is outside the grid (which hides it). */
-export function dragMove(start: PointerEvent, move: (x: number, done: boolean, outside: boolean) => void): void {
+export function dragMove(
+	start: PointerEvent,
+	move: (x: number, done: boolean, outside: boolean) => void,
+): void {
 	if (start.button !== 0) return;
 	const x0 = start.clientX;
 	const y0 = start.clientY;

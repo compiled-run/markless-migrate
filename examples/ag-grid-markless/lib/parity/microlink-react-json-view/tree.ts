@@ -1,10 +1,53 @@
 // @microlink/react-json-view 1.27 for the props DetailPanel passes (displayDataTypes, displayObjectSize and
 // enableClipboard off, collapsed false, name "data"): the tree it renders, with its inline styles per theme.
 
-type Palette = Record<'base00' | 'base02' | 'base04' | 'base05' | 'base07' | 'base08' | 'base09' | 'base0A' | 'base0B' | 'base0C' | 'base0D' | 'base0E' | 'base0F', string>;
+type Palette = Record<
+	| 'base00'
+	| 'base02'
+	| 'base04'
+	| 'base05'
+	| 'base07'
+	| 'base08'
+	| 'base09'
+	| 'base0A'
+	| 'base0B'
+	| 'base0C'
+	| 'base0D'
+	| 'base0E'
+	| 'base0F',
+	string
+>;
 
-const RJV_DEFAULT: Palette = { base00: 'rgba(0, 0, 0, 0)', base02: 'rgb(235, 235, 235)', base04: 'rgba(0, 0, 0, 0.3)', base05: 'rgb(88, 110, 117)', base07: 'rgb(0, 43, 54)', base08: 'rgb(211, 54, 130)', base09: 'rgb(203, 75, 22)', base0A: 'rgb(220, 50, 47)', base0B: 'rgb(133, 153, 0)', base0C: 'rgb(108, 113, 196)', base0D: 'rgb(88, 110, 117)', base0E: 'rgb(42, 161, 152)', base0F: 'rgb(38, 139, 210)' };
-const MONOKAI: Palette = { base00: 'rgb(39, 40, 34)', base02: 'rgb(73, 72, 62)', base04: 'rgb(165, 159, 133)', base05: 'rgb(248, 248, 242)', base07: 'rgb(249, 248, 245)', base08: 'rgb(249, 38, 114)', base09: 'rgb(253, 151, 31)', base0A: 'rgb(244, 191, 117)', base0B: 'rgb(166, 226, 46)', base0C: 'rgb(161, 239, 228)', base0D: 'rgb(102, 217, 239)', base0E: 'rgb(174, 129, 255)', base0F: 'rgb(204, 102, 51)' };
+const RJV_DEFAULT: Palette = {
+	base00: 'rgba(0, 0, 0, 0)',
+	base02: 'rgb(235, 235, 235)',
+	base04: 'rgba(0, 0, 0, 0.3)',
+	base05: 'rgb(88, 110, 117)',
+	base07: 'rgb(0, 43, 54)',
+	base08: 'rgb(211, 54, 130)',
+	base09: 'rgb(203, 75, 22)',
+	base0A: 'rgb(220, 50, 47)',
+	base0B: 'rgb(133, 153, 0)',
+	base0C: 'rgb(108, 113, 196)',
+	base0D: 'rgb(88, 110, 117)',
+	base0E: 'rgb(42, 161, 152)',
+	base0F: 'rgb(38, 139, 210)',
+};
+const MONOKAI: Palette = {
+	base00: 'rgb(39, 40, 34)',
+	base02: 'rgb(73, 72, 62)',
+	base04: 'rgb(165, 159, 133)',
+	base05: 'rgb(248, 248, 242)',
+	base07: 'rgb(249, 248, 245)',
+	base08: 'rgb(249, 38, 114)',
+	base09: 'rgb(253, 151, 31)',
+	base0A: 'rgb(244, 191, 117)',
+	base0B: 'rgb(166, 226, 46)',
+	base0C: 'rgb(161, 239, 228)',
+	base0D: 'rgb(102, 217, 239)',
+	base0E: 'rgb(174, 129, 255)',
+	base0F: 'rgb(204, 102, 51)',
+};
 
 export type Styles = {
 	readonly keyVal: string;
@@ -78,26 +121,53 @@ export type JsonNode = {
 function typeOf(value: unknown): string {
 	if (value === null) return 'null';
 	if (Array.isArray(value)) return 'array';
-	if (typeof value === 'number') return isNaN(value) ? 'nan' : (0 | value) != value ? 'float' : 'integer';
+	if (typeof value === 'number')
+		return isNaN(value) ? 'nan' : (0 | value) != value ? 'float' : 'integer';
 	if (typeof value === 'object') return 'object';
 	return typeof value;
 }
 
-export const escape = (s: string) => s.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/\t/g, '\\t').replace(/\r/g, '\\r').replace(/\f/g, '\\f');
+export const escape = (s: string) =>
+	s
+		.replace(/\\/g, '\\\\')
+		.replace(/\n/g, '\\n')
+		.replace(/\t/g, '\\t')
+		.replace(/\r/g, '\\r')
+		.replace(/\f/g, '\\f');
 
 function valueOf(value: unknown, theme: string): { style: string; text: string; string: boolean } {
 	const t = theme === 'monokai' ? MONOKAI : RJV_DEFAULT;
 	switch (typeOf(value)) {
 		case 'string':
-			return { style: `display: inline-block; color: ${t.base09};`, text: `"${escape(value as string)}"`, string: true };
+			return {
+				style: `display: inline-block; color: ${t.base09};`,
+				text: `"${escape(value as string)}"`,
+				string: true,
+			};
 		case 'integer':
-			return { style: `display: inline-block; color: ${t.base0F};`, text: String(value), string: false };
+			return {
+				style: `display: inline-block; color: ${t.base0F};`,
+				text: String(value),
+				string: false,
+			};
 		case 'float':
-			return { style: `display: inline-block; color: ${t.base0B};`, text: String(value), string: false };
+			return {
+				style: `display: inline-block; color: ${t.base0B};`,
+				text: String(value),
+				string: false,
+			};
 		case 'boolean':
-			return { style: `display: inline-block; color: ${t.base0E};`, text: String(value), string: false };
+			return {
+				style: `display: inline-block; color: ${t.base0E};`,
+				text: String(value),
+				string: false,
+			};
 		case 'null':
-			return { style: `display: inline-block; color: ${t.base0A}; font-size: 11px; font-weight: bold; background-color: ${t.base02}; padding: 1px 2px; border-radius: 3px;`, text: 'NULL', string: false };
+			return {
+				style: `display: inline-block; color: ${t.base0A}; font-size: 11px; font-weight: bold; background-color: ${t.base02}; padding: 1px 2px; border-radius: 3px;`,
+				text: 'NULL',
+				string: false,
+			};
 		default:
 			return { style: '', text: JSON.stringify(value) ?? '', string: false };
 	}
@@ -108,14 +178,40 @@ function valueOf(value: unknown, theme: string): { style: string; text: string; 
 export function buildTree(src: unknown, name: string, theme: string, view: string): JsonNode {
 	const styles = stylesFor(theme);
 	const stored = parseView(view).stored;
-	const build = (value: unknown, key: string, id: string, arrayKey: boolean, last: boolean): JsonNode => {
+	const build = (
+		value: unknown,
+		key: string,
+		id: string,
+		arrayKey: boolean,
+		last: boolean,
+	): JsonNode => {
 		const type = typeOf(value);
 		if (type === 'object' || type === 'array') {
 			const keys = Object.keys(value as object);
-			const kids = keys.map((k, i) => build((value as Record<string, unknown>)[k], k, `${id}.${k}`, type === 'array', i === keys.length - 1));
+			const kids = keys.map((k, i) =>
+				build(
+					(value as Record<string, unknown>)[k],
+					k,
+					`${id}.${k}`,
+					type === 'array',
+					i === keys.length - 1,
+				),
+			);
 			const expanded = stored[id] ?? keys.length > 0;
 			return {
-				id, object: true, array: type === 'array', name: key, arrayKey, open: type === 'array' ? '[' : '{', close: type === 'array' ? ']' : '}', size: keys.length, last, valueStyle: '', valueText: '', string: false, kids,
+				id,
+				object: true,
+				array: type === 'array',
+				name: key,
+				arrayKey,
+				open: type === 'array' ? '[' : '{',
+				close: type === 'array' ? ']' : '}',
+				size: keys.length,
+				last,
+				valueStyle: '',
+				valueText: '',
+				string: false,
+				kids,
 				iconCls: expanded ? 'expanded-icon' : 'collapsed-icon',
 				iconStyle: expanded ? styles.expandedIcon : styles.collapsedIcon,
 				iconPath: expanded ? 'M0 5l6 6 6-6z' : 'M0 14l6-6-6-6z',
@@ -127,12 +223,40 @@ export function buildTree(src: unknown, name: string, theme: string, view: strin
 			};
 		}
 		const v = valueOf(value, theme);
-		return { id, object: false, array: false, name: key, arrayKey, open: '', close: '', size: 0, last, valueStyle: v.style, valueText: v.text, string: v.string, kids: [], iconCls: '', iconStyle: '', iconPath: '', pushedHidden: true, ellipsisHidden: true, ellipsisStyle: 'display: none;', closeStyle: '', ...shape(false, arrayKey, last, v.string, true) };
+		return {
+			id,
+			object: false,
+			array: false,
+			name: key,
+			arrayKey,
+			open: '',
+			close: '',
+			size: 0,
+			last,
+			valueStyle: v.style,
+			valueText: v.text,
+			string: v.string,
+			kids: [],
+			iconCls: '',
+			iconStyle: '',
+			iconPath: '',
+			pushedHidden: true,
+			ellipsisHidden: true,
+			ellipsisStyle: 'display: none;',
+			closeStyle: '',
+			...shape(false, arrayKey, last, v.string, true),
+		};
 	};
 	// Every node renders both rjv shapes (an object row and a variable row) with the other one hidden: one
 	// component with nested @for loops, because an @if inside a @for row does not update (see the log).
 	const NONE = 'display: none;';
-	const shape = (object: boolean, arrayKey: boolean, last: boolean, string: boolean, collapsed: boolean) => ({
+	const shape = (
+		object: boolean,
+		arrayKey: boolean,
+		last: boolean,
+		string: boolean,
+		collapsed: boolean,
+	) => ({
 		objStyle: object ? styles.keyVal : NONE,
 		varStyle: object ? NONE : styles.keyVal,
 		keyStyle: arrayKey ? styles.arrayKey : styles.key,
@@ -162,7 +286,13 @@ function parseView(view: string): View {
 	return view ? (JSON.parse(view) as View) : { stored: {}, primed: [], serial: '' };
 }
 
-export function jsonClick(view: string, row: { serialNumber: number; args: unknown } | null | undefined, epoch: number, name: string, id: string): string {
+export function jsonClick(
+	view: string,
+	row: { serialNumber: number; args: unknown } | null | undefined,
+	epoch: number,
+	name: string,
+	id: string,
+): string {
 	const state = parseView(view);
 	const serial = String(epoch);
 	if (state.serial !== serial) state.primed = [];
@@ -172,24 +302,46 @@ export function jsonClick(view: string, row: { serialNumber: number; args: unkno
 		return JSON.stringify(state);
 	}
 	const tree = buildTree(row?.args ?? [], name, 'rjv-default', view);
-	const find = (node: JsonNode): JsonNode | undefined => (node.id === id ? node : node.kids.map(find).find(Boolean));
+	const find = (node: JsonNode): JsonNode | undefined =>
+		node.id === id ? node : node.kids.map(find).find(Boolean);
 	const node = find(tree);
 	if (node) state.stored[id] = node.pushedHidden;
 	return JSON.stringify(state);
 }
 
-export function docsFor(row: { serialNumber: number; args: unknown } | null | undefined, name: string, theme: string, view: string): { id: string; tree: JsonNode }[] {
+export function docsFor(
+	row: { serialNumber: number; args: unknown } | null | undefined,
+	name: string,
+	theme: string,
+	view: string,
+): { id: string; tree: JsonNode }[] {
 	return docsOf(String(row?.serialNumber ?? 0), row?.args ?? [], name, theme, view);
 }
 
-export function docsOf(id: string, src: unknown, name: string, theme: string, view: string): { id: string; tree: JsonNode }[] {
+export function docsOf(
+	id: string,
+	src: unknown,
+	name: string,
+	theme: string,
+	view: string,
+): { id: string; tree: JsonNode }[] {
 	return [{ id, tree: buildTree(src ?? [], name ?? 'data', theme ?? 'rjv-default', view ?? '') }];
 }
 
-export function treeFor(row: { serialNumber: number; args: unknown } | null | undefined, name: string, theme: string, view: string): JsonNode {
+export function treeFor(
+	row: { serialNumber: number; args: unknown } | null | undefined,
+	name: string,
+	theme: string,
+	view: string,
+): JsonNode {
 	return docsFor(row, name, theme, view)[0]!.tree;
 }
 
-export function kidsFor(row: { serialNumber: number; args: unknown } | null | undefined, name: string, theme: string, view: string): JsonNode[] {
+export function kidsFor(
+	row: { serialNumber: number; args: unknown } | null | undefined,
+	name: string,
+	theme: string,
+	view: string,
+): JsonNode[] {
 	return docsFor(row, name, theme, view)[0]!.tree.kids;
 }

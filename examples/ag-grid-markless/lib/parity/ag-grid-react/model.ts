@@ -2,7 +2,13 @@
 // Devtron's panel passes: sortable/resizable defaults, two flex columns, text filters, one custom filter,
 // single row selection, rowHeight 29, headerHeight 25, rowBuffer 10, getRowId by serial number.
 
-export type Direction = 'renderer-to-main' | 'main-to-renderer' | 'service-worker-to-main' | 'main-to-service-worker' | 'renderer' | 'main';
+export type Direction =
+	| 'renderer-to-main'
+	| 'main-to-renderer'
+	| 'service-worker-to-main'
+	| 'main-to-service-worker'
+	| 'renderer'
+	| 'main';
 
 export type Row = {
 	readonly serialNumber: number;
@@ -49,11 +55,23 @@ export function initialFlexes(cols: readonly ColDef[]): string {
 }
 
 /** colFlex.refreshFlexedColumns: the flexed columns after `after` share what the others leave of `total`. */
-export function flexWidths(widthsText: string, flexText: string, total: number, after = -1): string {
+export function flexWidths(
+	widthsText: string,
+	flexText: string,
+	total: number,
+	after = -1,
+): string {
 	const widths = parseNumbers(widthsText);
 	const flexes = parseNumbers(flexText);
 	if (!total) return widthsText;
-	const items = widths.map((w, i) => ({ flex: flexes[i] ?? 0, isFlex: (flexes[i] ?? 0) > 0 && i > after, size: w, frozen: null as number | null, target: 0, violation: '' }));
+	const items = widths.map((w, i) => ({
+		flex: flexes[i] ?? 0,
+		isFlex: (flexes[i] ?? 0) > 0 && i > after,
+		size: w,
+		frozen: null as number | null,
+		target: 0,
+		violation: '',
+	}));
 	if (!items.some((i) => i.isFlex)) return widthsText;
 	let unfrozenCount = items.length;
 	let unfrozenFlex = items.reduce((a, i) => a + i.flex, 0);
@@ -66,7 +84,9 @@ export function flexWidths(widthsText: string, flexText: string, total: number, 
 	};
 	for (const item of items) if (!item.isFlex) freeze(item, item.size);
 	while (unfrozenCount > 0) {
-		const spaceToFill = Math.round(unfrozenFlex < 1 ? unfrozenSpace * unfrozenFlex : unfrozenSpace);
+		const spaceToFill = Math.round(
+			unfrozenFlex < 1 ? unfrozenSpace * unfrozenFlex : unfrozenSpace,
+		);
 		let last: (typeof items)[number] | undefined;
 		let actualLeft = 0;
 		let idealRight = 0;
@@ -96,14 +116,23 @@ export function flexWidths(widthsText: string, flexText: string, total: number, 
 }
 
 /** Dragging a header's resize bar: the column takes its new width and the flexed columns after it absorb the rest. */
-export function resizeColumn(widthsText: string, flexText: string, total: number, index: number, width: number): { widths: string; flexes: string } {
+export function resizeColumn(
+	widthsText: string,
+	flexText: string,
+	total: number,
+	index: number,
+	width: number,
+): { widths: string; flexes: string } {
 	const widths = parseNumbers(widthsText);
 	const flexes = parseNumbers(flexText);
 	widths[index] = Math.max(MIN_WIDTH, Math.round(width));
 	const anyFlexAfter = flexes.some((f, i) => f > 0 && i > index);
 	if ((flexes[index] ?? 0) > 0 && anyFlexAfter) flexes[index] = 0;
 	const next = widths.join(',');
-	return { widths: anyFlexAfter ? flexWidths(next, flexes.join(','), total, index) : next, flexes: flexes.join(',') };
+	return {
+		widths: anyFlexAfter ? flexWidths(next, flexes.join(','), total, index) : next,
+		flexes: flexes.join(','),
+	};
 }
 
 export type SortItem = { colId: string; sort: 'asc' | 'desc' };
@@ -162,8 +191,16 @@ export type TextCondition = { type: string; filter: string };
 export type TextModel = { conditions: TextCondition[]; join: 'AND' | 'OR' };
 
 export function parseText(text: string): TextModel {
-	const [t1 = 'contains', f1 = '', join = 'AND', t2 = 'contains', f2 = ''] = text ? text.split('\u0001') : [];
-	return { conditions: [{ type: t1, filter: f1 }, { type: t2, filter: f2 }], join: join === 'OR' ? 'OR' : 'AND' };
+	const [t1 = 'contains', f1 = '', join = 'AND', t2 = 'contains', f2 = ''] = text
+		? text.split('\u0001')
+		: [];
+	return {
+		conditions: [
+			{ type: t1, filter: f1 },
+			{ type: t2, filter: f2 },
+		],
+		join: join === 'OR' ? 'OR' : 'AND',
+	};
 }
 
 export function writeText(model: TextModel): string {
@@ -191,8 +228,10 @@ export function secondShown(text: string): boolean {
 }
 
 function matches(c: TextCondition, raw: unknown): boolean {
-	if (c.type === 'blank') return raw == null || (typeof raw === 'string' && raw.trim().length === 0);
-	if (c.type === 'notBlank') return !(raw == null || (typeof raw === 'string' && raw.trim().length === 0));
+	if (c.type === 'blank')
+		return raw == null || (typeof raw === 'string' && raw.trim().length === 0);
+	if (c.type === 'notBlank')
+		return !(raw == null || (typeof raw === 'string' && raw.trim().length === 0));
 	if (raw == null) return c.type === 'notEqual' || c.type === 'notContains';
 	const value = String(raw).toLowerCase();
 	const text = c.filter.toLowerCase();
@@ -220,23 +259,45 @@ function textPasses(model: TextModel, raw: unknown): boolean {
 	const list = applied(model);
 	if (list.length === 0) return true;
 	if (list.length === 1) return matches(list[0]!, raw);
-	return model.join === 'OR' ? list.some((c) => matches(c, raw)) : list.every((c) => matches(c, raw));
+	return model.join === 'OR'
+		? list.some((c) => matches(c, raw))
+		: list.every((c) => matches(c, raw));
 }
 
-export type FilterState = { readonly channel: string; readonly args: string; readonly direction: string };
+export type FilterState = {
+	readonly channel: string;
+	readonly args: string;
+	readonly direction: string;
+};
 
 /** filterValueGetter for the Data column is JSON.stringify(args); the others filter on the field. */
 function filterValue(row: Row, colId: string): unknown {
 	return colId === 'args' ? JSON.stringify(row.args) : row[colId as 'channel'];
 }
 
-const displayedCache = { rows: null as readonly Row[] | null, sort: '', filters: '', result: [] as Row[] };
+const displayedCache = {
+	rows: null as readonly Row[] | null,
+	sort: '',
+	filters: '',
+	result: [] as Row[],
+};
 
 /** The rows in display order: the filters applied, then the sort (stable on the order the rows came in). */
-export function displayedRows(rows: readonly Row[] | undefined, sort: string, channel: string, args: string, direction: string): Row[] {
+export function displayedRows(
+	rows: readonly Row[] | undefined,
+	sort: string,
+	channel: string,
+	args: string,
+	direction: string,
+): Row[] {
 	if (!rows) return [];
 	const filters = [channel, args, direction].join('\u0002');
-	if (displayedCache.rows === rows && displayedCache.sort === sort && displayedCache.filters === filters) return displayedCache.result;
+	if (
+		displayedCache.rows === rows &&
+		displayedCache.sort === sort &&
+		displayedCache.filters === filters
+	)
+		return displayedCache.result;
 	const channelModel = parseText(channel);
 	const argsModel = parseText(args);
 	const directions = direction ? direction.split(',') : [];
@@ -250,7 +311,10 @@ export function displayedRows(rows: readonly Row[] | undefined, sort: string, ch
 		const indexed = out.map((row, at) => ({ row, at }));
 		indexed.sort((x, y) => {
 			for (const item of items) {
-				const result = compare(x.row[item.colId as 'channel'], y.row[item.colId as 'channel']);
+				const result = compare(
+					x.row[item.colId as 'channel'],
+					y.row[item.colId as 'channel'],
+				);
 				if (!isNaN(result) && result !== 0) return item.sort === 'asc' ? result : -result;
 			}
 			return x.at - y.at;
@@ -265,7 +329,11 @@ export function displayedRows(rows: readonly Row[] | undefined, sort: string, ch
 }
 
 /** rowRenderer.workOutFirstAndLastRowsToRender for uniform row heights. */
-export function renderRange(count: number, top: number, height: number): { first: number; last: number } {
+export function renderRange(
+	count: number,
+	top: number,
+	height: number,
+): { first: number; last: number } {
 	if (count === 0) return { first: 0, last: -1 };
 	const buffer = ROW_BUFFER * ROW_HEIGHT;
 	const pageLast = count * ROW_HEIGHT - 1;
@@ -275,30 +343,94 @@ export function renderRange(count: number, top: number, height: number): { first
 	return { first: at(firstPixel), last: at(lastPixel) };
 }
 
-export type DirectionInfo = { readonly cls: string; readonly title: string; readonly left: string; readonly right: string; readonly arrow: boolean; readonly arrowStyle: string };
+export type DirectionInfo = {
+	readonly cls: string;
+	readonly title: string;
+	readonly left: string;
+	readonly right: string;
+	readonly arrow: boolean;
+	readonly arrowStyle: string;
+};
 
-const BADGE = 'flex items-center overflow-hidden justify-center w-full px-2 py-0.5 rounded-sm text-xs font-medium border';
+const BADGE =
+	'flex items-center overflow-hidden justify-center w-full px-2 py-0.5 rounded-sm text-xs font-medium border';
 
 export function directionInfo(direction: string): DirectionInfo {
 	switch (direction) {
 		case 'renderer-to-main':
-			return { cls: `${BADGE} dark:bg-dark-blue dark:text-light-blue bg-blue-100 text-blue-800 border-blue-300 dark:border-light-blue`, title: 'Renderer to Main', left: 'R', right: 'Main', arrow: true, arrowStyle: '' };
+			return {
+				cls: `${BADGE} dark:bg-dark-blue dark:text-light-blue bg-blue-100 text-blue-800 border-blue-300 dark:border-light-blue`,
+				title: 'Renderer to Main',
+				left: 'R',
+				right: 'Main',
+				arrow: true,
+				arrowStyle: '',
+			};
 		case 'main-to-renderer':
-			return { cls: `${BADGE} dark:bg-dark-green dark:text-light-green bg-green-100 text-green-800 border-green-300 dark:border-light-green`, title: 'Main to Renderer', left: 'Main', right: 'R', arrow: true, arrowStyle: '' };
+			return {
+				cls: `${BADGE} dark:bg-dark-green dark:text-light-green bg-green-100 text-green-800 border-green-300 dark:border-light-green`,
+				title: 'Main to Renderer',
+				left: 'Main',
+				right: 'R',
+				arrow: true,
+				arrowStyle: '',
+			};
 		case 'service-worker-to-main':
-			return { cls: `${BADGE} dark:bg-dark-yellow dark:text-light-yellow bg-yellow-100 text-yellow-800 border-yellow-300 dark:border-light-yellow`, title: 'Service Worker to Main', left: 'SW', right: 'Main', arrow: true, arrowStyle: '' };
+			return {
+				cls: `${BADGE} dark:bg-dark-yellow dark:text-light-yellow bg-yellow-100 text-yellow-800 border-yellow-300 dark:border-light-yellow`,
+				title: 'Service Worker to Main',
+				left: 'SW',
+				right: 'Main',
+				arrow: true,
+				arrowStyle: '',
+			};
 		case 'main-to-service-worker':
-			return { cls: `${BADGE} dark:bg-dark-orange dark:text-light-orange bg-orange-100 text-orange-800 border-orange-300 dark:border-light-orange`, title: 'Main to Service Worker', left: 'Main', right: 'SW', arrow: true, arrowStyle: '' };
+			return {
+				cls: `${BADGE} dark:bg-dark-orange dark:text-light-orange bg-orange-100 text-orange-800 border-orange-300 dark:border-light-orange`,
+				title: 'Main to Service Worker',
+				left: 'Main',
+				right: 'SW',
+				arrow: true,
+				arrowStyle: '',
+			};
 		case 'renderer':
-			return { cls: `${BADGE} dark:bg-dark-purple dark:text-light-purple bg-purple-100 text-purple-800 border-purple-300 dark:border-light-purple`, title: 'Renderer', left: 'Renderer', right: '', arrow: false, arrowStyle: 'display: none;' };
+			return {
+				cls: `${BADGE} dark:bg-dark-purple dark:text-light-purple bg-purple-100 text-purple-800 border-purple-300 dark:border-light-purple`,
+				title: 'Renderer',
+				left: 'Renderer',
+				right: '',
+				arrow: false,
+				arrowStyle: 'display: none;',
+			};
 		case 'main':
-			return { cls: `${BADGE} dark:bg-dark-purple dark:text-light-purple bg-purple-100 text-purple-800 border-purple-300 dark:border-light-purple`, title: 'Main', left: 'Main', right: '', arrow: false, arrowStyle: 'display: none;' };
+			return {
+				cls: `${BADGE} dark:bg-dark-purple dark:text-light-purple bg-purple-100 text-purple-800 border-purple-300 dark:border-light-purple`,
+				title: 'Main',
+				left: 'Main',
+				right: '',
+				arrow: false,
+				arrowStyle: 'display: none;',
+			};
 		default:
-			return { cls: `${BADGE} dark:bg-charcoal-500 dark:text-charcoal-100 bg-gray-100 text-gray-800 border-gray-400 dark:border-charcoal-200`, title: 'Unknown direction', left: '', right: '', arrow: true, arrowStyle: '' };
+			return {
+				cls: `${BADGE} dark:bg-charcoal-500 dark:text-charcoal-100 bg-gray-100 text-gray-800 border-gray-400 dark:border-charcoal-200`,
+				title: 'Unknown direction',
+				left: '',
+				right: '',
+				arrow: true,
+				arrowStyle: '',
+			};
 	}
 }
 
-export const ALL_DIRECTIONS: readonly Direction[] = ['renderer-to-main', 'main-to-renderer', 'service-worker-to-main', 'main-to-service-worker', 'renderer', 'main'];
+export const ALL_DIRECTIONS: readonly Direction[] = [
+	'renderer-to-main',
+	'main-to-renderer',
+	'service-worker-to-main',
+	'main-to-service-worker',
+	'renderer',
+	'main',
+];
 
 export function formatTimestamp(timestamp: number): string {
 	const date = new Date(timestamp);
@@ -332,7 +464,17 @@ const CELL = 'ag-cell ag-cell-not-inline-editing ag-cell-normal-height';
 let domOrder: number[] = [];
 
 export function cellClasses(cols: readonly ColDef[]): string[] {
-	return cols.map((c, i) => [CELL, i === 0 ? 'ag-column-first' : '', i === cols.length - 1 ? 'ag-column-last' : '', c.cellClass, 'ag-cell-value'].filter(Boolean).join(' '));
+	return cols.map((c, i) =>
+		[
+			CELL,
+			i === 0 ? 'ag-column-first' : '',
+			i === cols.length - 1 ? 'ag-column-last' : '',
+			c.cellClass,
+			'ag-cell-value',
+		]
+			.filter(Boolean)
+			.join(' '),
+	);
 }
 
 export function lefts(widthsText: string): number[] {
@@ -351,7 +493,17 @@ export function preview(args: unknown): string {
 }
 
 /** The rows AG Grid has in the DOM: the render range, plus the focused row wherever it is. */
-export function rowWindow(rows: readonly Row[], cols: readonly ColDef[] | undefined, order: readonly string[], widthsText: string, top: number, height: number, selected: number, focused: number, hovered: number): RowView[] {
+export function rowWindow(
+	rows: readonly Row[],
+	cols: readonly ColDef[] | undefined,
+	order: readonly string[],
+	widthsText: string,
+	top: number,
+	height: number,
+	selected: number,
+	focused: number,
+	hovered: number,
+): RowView[] {
 	if (!cols) return [];
 	const { first, last } = renderRange(rows.length, top, height);
 	const widths = parseNumbers(widthsText);
@@ -360,7 +512,11 @@ export function rowWindow(rows: readonly Row[], cols: readonly ColDef[] | undefi
 	const at = (colId: string) => {
 		const i = order.indexOf(colId);
 		if (i < 0) return { style: 'display: none;', cls: CELL, ariaIndex: 0 };
-		return { style: `left: ${left[i] ?? 0}px; width: ${widths[i] ?? 0}px;`, cls: classes[i] ?? CELL, ariaIndex: i + 1 };
+		return {
+			style: `left: ${left[i] ?? 0}px; width: ${widths[i] ?? 0}px;`,
+			cls: classes[i] ?? CELL,
+			ariaIndex: i + 1,
+		};
 	};
 	const c = [at('serialNumber'), at('timestamp'), at('direction'), at('channel'), at('args')];
 	const wanted = new Map<number, number>();
@@ -382,7 +538,21 @@ export function rowWindow(rows: readonly Row[], cols: readonly ColDef[] | undefi
 		const row = rows[index]!;
 		const isSelected = row.serialNumber === selected;
 		const isFocused = row.serialNumber === focused;
-		const cls = [index % 2 === 0 ? 'ag-row-even' : 'ag-row-odd', isFocused ? '' : 'ag-row-no-focus', 'ag-row', 'ag-row-level-0', 'ag-row-position-absolute', index === 0 ? 'ag-row-first' : '', index === rows.length - 1 ? 'ag-row-last' : '', 'ag-after-created', row.serialNumber === hovered ? 'ag-row-hover' : '', isFocused ? 'ag-row-focus' : '', isSelected ? 'ag-row-selected' : ''].filter(Boolean).join(' ');
+		const cls = [
+			index % 2 === 0 ? 'ag-row-even' : 'ag-row-odd',
+			isFocused ? '' : 'ag-row-no-focus',
+			'ag-row',
+			'ag-row-level-0',
+			'ag-row-position-absolute',
+			index === 0 ? 'ag-row-first' : '',
+			index === rows.length - 1 ? 'ag-row-last' : '',
+			'ag-after-created',
+			row.serialNumber === hovered ? 'ag-row-hover' : '',
+			isFocused ? 'ag-row-focus' : '',
+			isSelected ? 'ag-row-selected' : '',
+		]
+			.filter(Boolean)
+			.join(' ');
 		return {
 			id: String(row.serialNumber),
 			serial: row.serialNumber,
@@ -407,18 +577,29 @@ export function rowWindow(rows: readonly Row[], cols: readonly ColDef[] | undefi
 }
 
 /** Panel.tsx's port messages: the events in, with request/response pairs linked through their uuid. */
-export function linkEvents(prev: readonly Row[], incoming: readonly Row[], uuids: Map<string, number>, max: number): Row[] {
+export function linkEvents(
+	prev: readonly Row[],
+	incoming: readonly Row[],
+	uuids: Map<string, number>,
+	max: number,
+): Row[] {
 	let updated = prev.slice();
 	for (const event of incoming) {
 		updated.push(event);
 		if (updated.length > max) updated = updated.slice(-max);
 		if (event.uuid && uuids.has(event.uuid)) {
 			const oldSerial = uuids.get(event.uuid)!;
-			if (oldSerial >= updated[0]!.serialNumber && oldSerial < updated[updated.length - 1]!.serialNumber) {
+			if (
+				oldSerial >= updated[0]!.serialNumber &&
+				oldSerial < updated[updated.length - 1]!.serialNumber
+			) {
 				const offset = updated[0]!.serialNumber;
 				const oldIndex = oldSerial - offset;
 				updated[oldIndex] = { ...updated[oldIndex]!, gotoSerialNumber: event.serialNumber };
-				updated[updated.length - 1] = { ...updated[updated.length - 1]!, gotoSerialNumber: oldSerial };
+				updated[updated.length - 1] = {
+					...updated[updated.length - 1]!,
+					gotoSerialNumber: oldSerial,
+				};
 			}
 			uuids.delete(event.uuid);
 		} else if (event.uuid) uuids.set(event.uuid, event.serialNumber);
@@ -446,7 +627,9 @@ export function withJoin(text: string, join: 'AND' | 'OR'): string {
 
 export function toggleDirection(list: string, direction: string): string {
 	const items = list ? list.split(',') : [];
-	return (items.includes(direction) ? items.filter((d) => d !== direction) : [...items, direction]).join(',');
+	return (
+		items.includes(direction) ? items.filter((d) => d !== direction) : [...items, direction]
+	).join(',');
 }
 
 export function optionLabel(type: string): string {
@@ -454,43 +637,110 @@ export function optionLabel(type: string): string {
 }
 
 export function optionIndex(type: string): number {
-	return Math.max(0, TEXT_OPTIONS.findIndex((o) => o[0] === type));
+	return Math.max(
+		0,
+		TEXT_OPTIONS.findIndex((o) => o[0] === type),
+	);
 }
 
 // One call per computed in the component: a Markless computed that reads another computed can see it undefined
 // after resume, so each view is worked out from state and props alone, with the costly steps cached here.
-export function layoutWidths(cols: readonly ColDef[] | undefined, baseWidths: string, flexes: string, total: number): string {
+export function layoutWidths(
+	cols: readonly ColDef[] | undefined,
+	baseWidths: string,
+	flexes: string,
+	total: number,
+): string {
 	if (!cols) return '';
-	return flexWidths(baseWidths || initialWidths(cols), flexes || initialFlexes(cols), total || 1280, -1);
+	return flexWidths(
+		baseWidths || initialWidths(cols),
+		flexes || initialFlexes(cols),
+		total || 1280,
+		-1,
+	);
 }
 
 export function layoutFlexes(cols: readonly ColDef[] | undefined, flexes: string): string {
 	return flexes || (cols ? initialFlexes(cols) : '');
 }
 
-export function totalWidthOf(cols: readonly ColDef[] | undefined, baseWidths: string, flexes: string, total: number): number {
+export function totalWidthOf(
+	cols: readonly ColDef[] | undefined,
+	baseWidths: string,
+	flexes: string,
+	total: number,
+): number {
 	return parseNumbers(layoutWidths(cols, baseWidths, flexes, total)).reduce((a, b) => a + b, 0);
 }
 
-export function windowView(rows: readonly Row[] | undefined, sort: string, channel: string, args: string, direction: string, cols: readonly ColDef[] | undefined, baseWidths: string, flexes: string, total: number, top: number, height: number, selected: number, focused: number, hovered: number): RowView[] {
+export function windowView(
+	rows: readonly Row[] | undefined,
+	sort: string,
+	channel: string,
+	args: string,
+	direction: string,
+	cols: readonly ColDef[] | undefined,
+	baseWidths: string,
+	flexes: string,
+	total: number,
+	top: number,
+	height: number,
+	selected: number,
+	focused: number,
+	hovered: number,
+): RowView[] {
 	if (!cols) return [];
 	const shown = displayedRows(rows, sort, channel, args, direction);
-	return rowWindow(shown, cols, cols.map((c) => c.colId), layoutWidths(cols, baseWidths, flexes, total), top, height, selected, focused, hovered);
+	return rowWindow(
+		shown,
+		cols,
+		cols.map((c) => c.colId),
+		layoutWidths(cols, baseWidths, flexes, total),
+		top,
+		height,
+		selected,
+		focused,
+		hovered,
+	);
 }
 
-export function countOf(rows: readonly Row[] | undefined, sort: string, channel: string, args: string, direction: string): number {
+export function countOf(
+	rows: readonly Row[] | undefined,
+	sort: string,
+	channel: string,
+	args: string,
+	direction: string,
+): number {
 	return displayedRows(rows, sort, channel, args, direction).length;
 }
 
 export const blankType = (type: string) => type === 'blank' || type === 'notBlank';
 
-export function pickerView(draft: string, picker: number, active: number): { key: string; label: string; pos: number; cls: string; selected: string }[] {
+export function pickerView(
+	draft: string,
+	picker: number,
+	active: number,
+): { key: string; label: string; pos: number; cls: string; selected: string }[] {
 	const model = parseText(draft);
 	const current = model.conditions[picker === 1 ? 1 : 0]!.type;
-	return TEXT_OPTIONS.map(([key, label], i) => ({ key, label, pos: i + 1, cls: i === active ? 'ag-list-item ag-select-list-item ag-active-item' : 'ag-list-item ag-select-list-item', selected: current === key ? 'true' : 'false' }));
+	return TEXT_OPTIONS.map(([key, label], i) => ({
+		key,
+		label,
+		pos: i + 1,
+		cls:
+			i === active
+				? 'ag-list-item ag-select-list-item ag-active-item'
+				: 'ag-list-item ag-select-list-item',
+		selected: current === key ? 'true' : 'false',
+	}));
 }
 
-export type DirectionOptionView = { readonly dir: string; readonly box: string; readonly checkStyle: string; readonly info: DirectionInfo };
+export type DirectionOptionView = {
+	readonly dir: string;
+	readonly box: string;
+	readonly checkStyle: string;
+	readonly info: DirectionInfo;
+};
 
 export function directionOptions(selected: string): DirectionOptionView[] {
 	const list = selected ? selected.split(',') : [];
@@ -514,7 +764,11 @@ export function orderCols(cols: readonly ColDef[] | undefined, order: string): C
 }
 
 /** AG Grid hides a column whose header is dragged out of the grid; `hidden` lists them. */
-export function visibleOrder(order: string, cols: readonly ColDef[] | undefined, hidden: string): string {
+export function visibleOrder(
+	order: string,
+	cols: readonly ColDef[] | undefined,
+	hidden: string,
+): string {
 	if (!hidden) return order;
 	const gone = hidden.split(',');
 	return orderCols(cols, order)
@@ -524,23 +778,41 @@ export function visibleOrder(order: string, cols: readonly ColDef[] | undefined,
 }
 
 /** Moves a column to display index `to`; widths and flexes are kept in display order, so they move with it. */
-export function moveColumn(cols: readonly ColDef[], order: string, baseWidths: string, flexes: string, colId: string, to: number): { order: string; baseWidths: string; flexes: string } {
+export function moveColumn(
+	cols: readonly ColDef[],
+	order: string,
+	baseWidths: string,
+	flexes: string,
+	colId: string,
+	to: number,
+): { order: string; baseWidths: string; flexes: string } {
 	const shown = orderCols(cols, order);
 	const ids = shown.map((c) => c.colId);
 	const widths = parseNumbers(baseWidths || initialWidths(shown));
 	const flex = parseNumbers(flexes || initialFlexes(shown));
 	const from = ids.indexOf(colId);
-	if (from < 0 || from === to) return { order: ids.join(','), baseWidths: widths.join(','), flexes: flex.join(',') };
-	const move = <T,>(list: T[]) => {
+	if (from < 0 || from === to)
+		return { order: ids.join(','), baseWidths: widths.join(','), flexes: flex.join(',') };
+	const move = <T>(list: T[]) => {
 		const [item] = list.splice(from, 1);
 		list.splice(to, 0, item!);
 		return list;
 	};
-	return { order: move(ids).join(','), baseWidths: move(widths).join(','), flexes: move(flex).join(',') };
+	return {
+		order: move(ids).join(','),
+		baseWidths: move(widths).join(','),
+		flexes: move(flex).join(','),
+	};
 }
 
 /** Where a dragged header lands: after every other column whose middle the pointer has passed. */
-export function dropIndex(cols: readonly ColDef[], order: string, widthsText: string, colId: string, x: number): number {
+export function dropIndex(
+	cols: readonly ColDef[],
+	order: string,
+	widthsText: string,
+	colId: string,
+	x: number,
+): number {
 	const shown = orderCols(cols, order);
 	const widths = parseNumbers(widthsText);
 	const left = lefts(widthsText);
@@ -557,38 +829,118 @@ export function hideColumn(hidden: string, colId: string, out: boolean): string 
 }
 
 /** Base widths and flexes are kept for every column in display order; layout uses the shown ones. */
-function shownParts(cols: readonly ColDef[] | undefined, order: string, hidden: string, baseWidths: string, flexes: string) {
+function shownParts(
+	cols: readonly ColDef[] | undefined,
+	order: string,
+	hidden: string,
+	baseWidths: string,
+	flexes: string,
+) {
 	const all = orderCols(cols, order);
 	const gone = hidden ? hidden.split(',') : [];
 	const widths = parseNumbers(baseWidths || initialWidths(all));
 	const flex = parseNumbers(flexes || initialFlexes(all));
 	const keep = all.map((c) => !gone.includes(c.colId));
-	return { shown: all.filter((_, i) => keep[i]), widths: widths.filter((_, i) => keep[i]).join(','), flexes: flex.filter((_, i) => keep[i]).join(','), all, keep };
+	return {
+		shown: all.filter((_, i) => keep[i]),
+		widths: widths.filter((_, i) => keep[i]).join(','),
+		flexes: flex.filter((_, i) => keep[i]).join(','),
+		all,
+		keep,
+	};
 }
 
-export function shownCols(cols: readonly ColDef[] | undefined, order: string, hidden: string): ColDef[] {
+export function shownCols(
+	cols: readonly ColDef[] | undefined,
+	order: string,
+	hidden: string,
+): ColDef[] {
 	return orderCols(cols, visibleOrder(order, cols, hidden));
 }
 
-export function shownWidths(cols: readonly ColDef[] | undefined, order: string, hidden: string, baseWidths: string, flexes: string, total: number): string {
+export function shownWidths(
+	cols: readonly ColDef[] | undefined,
+	order: string,
+	hidden: string,
+	baseWidths: string,
+	flexes: string,
+	total: number,
+): string {
 	const p = shownParts(cols, order, hidden, baseWidths, flexes);
 	return layoutWidths(p.shown, p.widths, p.flexes, total);
 }
 
-export function shownTotal(cols: readonly ColDef[] | undefined, order: string, hidden: string, baseWidths: string, flexes: string, total: number): number {
-	return parseNumbers(shownWidths(cols, order, hidden, baseWidths, flexes, total)).reduce((a, b) => a + b, 0);
+export function shownTotal(
+	cols: readonly ColDef[] | undefined,
+	order: string,
+	hidden: string,
+	baseWidths: string,
+	flexes: string,
+	total: number,
+): number {
+	return parseNumbers(shownWidths(cols, order, hidden, baseWidths, flexes, total)).reduce(
+		(a, b) => a + b,
+		0,
+	);
 }
 
-export function shownWindow(rows: readonly Row[] | undefined, sort: string, channel: string, args: string, direction: string, cols: readonly ColDef[] | undefined, order: string, hidden: string, baseWidths: string, flexes: string, total: number, top: number, height: number, selected: number, focused: number, hovered: number): RowView[] {
+export function shownWindow(
+	rows: readonly Row[] | undefined,
+	sort: string,
+	channel: string,
+	args: string,
+	direction: string,
+	cols: readonly ColDef[] | undefined,
+	order: string,
+	hidden: string,
+	baseWidths: string,
+	flexes: string,
+	total: number,
+	top: number,
+	height: number,
+	selected: number,
+	focused: number,
+	hovered: number,
+): RowView[] {
 	const p = shownParts(cols, order, hidden, baseWidths, flexes);
-	return windowView(rows, sort, channel, args, direction, p.shown, p.widths, p.flexes, total, top, height, selected, focused, hovered);
+	return windowView(
+		rows,
+		sort,
+		channel,
+		args,
+		direction,
+		p.shown,
+		p.widths,
+		p.flexes,
+		total,
+		top,
+		height,
+		selected,
+		focused,
+		hovered,
+	);
 }
 
 /** Resizes a shown column; the result is written back for every column, the hidden ones unchanged. */
-export function resizeShown(cols: readonly ColDef[] | undefined, order: string, hidden: string, baseWidths: string, flexes: string, total: number, colId: string, width: number): { widths: string; flexes: string } {
+export function resizeShown(
+	cols: readonly ColDef[] | undefined,
+	order: string,
+	hidden: string,
+	baseWidths: string,
+	flexes: string,
+	total: number,
+	colId: string,
+	width: number,
+): { widths: string; flexes: string } {
 	const p = shownParts(cols, order, hidden, baseWidths, flexes);
 	const at = p.shown.findIndex((c) => c.colId === colId);
-	const next = resizeColumn(layoutWidths(p.shown, p.widths, p.flexes, total), p.flexes, total, at, width);
+	const next = resizeColumn(
+		layoutWidths(p.shown, p.widths, p.flexes, total),
+		p.flexes,
+		total,
+		at,
+		width,
+	);
 	const w = parseNumbers(next.widths);
 	const f = parseNumbers(next.flexes);
 	const allW = parseNumbers(baseWidths || initialWidths(p.all));
