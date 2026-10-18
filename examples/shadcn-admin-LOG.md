@@ -153,3 +153,29 @@ were switched with `switch --force` and these reasons, so the front door could b
 | Check report | https://mm-shadcn-admin.vercel.app/_migrate/report.html |
 
 `deploy/shadcn-admin/deploy.sh old|new|front` rebuilds each (after `deploy/shadcn-admin/fetch-old.sh`).
+
+## Markless 0.5.0 (2026-10-17)
+
+Rebuilt on the published 0.5.0 framework packages (`@markless/*` 0.5.0, `vite-plus` 0.3.1). `@markless/ui` stays at 0.4.0: 0.5.0 of it is not on npm (the release held it back with `@markless/icons` and `@markless/ui-tools`), so U1 to U5 stand.
+
+### What changed
+
+0.5.0 refused two handlers 0.4.0 compiled: a key handler with a `preventDefault()` in each of several `if` blocks fails with `MARKLESS_SYNC_POLICY_SECOND_CANCEL` (only the first statement's cancel reaches the event). The dropdown menu's content, the command palette and the users table's facet filters now cancel once, at the top, for every key they handle (the generators `gen-users.py` and `shell.template.tsrx` write the same).
+
+Not removed: the users table's 50 fixed row slots, the toaster's fixed slots, `public/parity/*.js` for what runs at load (loading bar, chart drawing, header shadow), and the `<br>`-as-span. 0.5.0 fixes the bugs behind them (G2, G8, G12 for `onIdle`, G19, G22), but replacing them means regenerating the table and the shell, which this pass did not do.
+
+The settings cog ("Open theme settings") sets its state but the theme drawer it opens was never ported, so the cog does nothing on the Markless pages.
+
+### Check (against the deployments)
+
+`check --route / --route /users --route /sign-in`, old https://mm-shadcn-admin-old.vercel.app, new https://mm-shadcn-admin-new.vercel.app. Vercel's firewall had denied `/users` and `/sign-in` to the checker's address during an earlier run; a system bypass for that address is now on the demo projects.
+
+| Route | Result |
+| --- | --- |
+| `/` | not compared: the page loads in the check's journeys timed out after 30 s (twice; the same page loads in under a second outside the check) |
+| `/users` | not compared, the same |
+| `/sign-in` | red: css (one muted text colour), behaviour (coverage: controls past the journey budget, one typing step that lost focus); JS on the wire 238.7 → 94.5 kB, run at load 241.2 → 5.0 kB |
+
+Responsiveness on `/sign-in`: first interaction old 49 ms → new 57 ms at 4x CPU (desktop 50 → 61 ms).
+
+Routes switched: none. The three routes had been switched with `--force`; they are back on the old app, so the front door (https://mm-shadcn-admin.vercel.app) serves the old app everywhere and its settings cog opens the old drawer (checked in a browser).
