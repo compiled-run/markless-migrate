@@ -31,6 +31,15 @@ export function open(): void {
 		askAi: { assistantId: 'RgIMYFUmTfrN', indexName: 'docusaurus-markdown', suggestedQuestions: true },
 		placeholder: translations.placeholder,
 		translations,
+		// Docusaurus's ResultsFooter: a link to its search page with the hit count. DocSearch renders vnodes, so the
+		// element is a plain vnode object (constructor undefined, as Preact requires of one not built by createElement).
+		resultsFooterComponent: ({ state }: { state: { query: string; context: { nbHits?: number } } }) => ({
+			type: 'a',
+			props: { href: `/search?q=${encodeURIComponent(state.query)}`, children: `See all ${state.context.nbHits ?? 0} results` },
+			key: null,
+			ref: null,
+			constructor: undefined,
+		}),
 		searchParameters: { facetFilters: [`language:${meta('docsearch:language') ?? 'en'}`, [tag ? `docusaurus_tag:${tag}` : 'docusaurus_tag:default', 'docusaurus_tag:default'].filter((v, i, all) => all.indexOf(v) === i)] },
 	} as Parameters<typeof docsearchType>[0]);
 }
