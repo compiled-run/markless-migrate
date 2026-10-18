@@ -1,0 +1,148 @@
+{
+	"CodeBlock/Buttons": {
+		"buttonGroup": "buttonGroup_KXnS",
+		"theme-code-block": "theme-code-block"
+	},
+	"CodeBlock/Buttons/CopyButton": {
+		"copyButtonCopied": "copyButtonCopied_wDuR",
+		"copyButtonIcons": "copyButtonIcons_gMWc",
+		"copyButtonIcon": "copyButtonIcon_GXfb",
+		"copyButtonSuccessIcon": "copyButtonSuccessIcon_ktUX",
+		"theme-code-block": "theme-code-block"
+	},
+	"CodeBlock/Buttons/WordWrapButton": {
+		"wordWrapButtonIcon": "wordWrapButtonIcon___5r",
+		"wordWrapButtonEnabled": "wordWrapButtonEnabled_nam_"
+	},
+	"ColorModeToggle": {
+		"toggle": "toggle_bT41",
+		"toggleButton": "toggleButton_x9TT",
+		"toggleIcon": "toggleIcon_nCQi",
+		"systemToggleIcon": "systemToggleIcon_IWwm",
+		"lightToggleIcon": "lightToggleIcon_dnYY",
+		"darkToggleIcon": "darkToggleIcon_OBbf",
+		"toggleButtonDisabled": "toggleButtonDisabled_Dj8q"
+	},
+	"Navbar/Content": {
+		"colorModeToggle": "colorModeToggle_UolE",
+		"navbar__items--right": "navbar__items--right"
+	},
+	"Navbar/Layout": {
+		"navbarHideable": "navbarHideable_uAgx",
+		"navbarHidden": "navbarHidden_QgM6"
+	},
+	"Navbar/Search": {
+		"navbarSearchContainer": "navbarSearchContainer_dDCC"
+	},
+	"BackToTopButton": {
+		"backToTopButton": "backToTopButton_PuQw",
+		"backToTopButtonShow": "backToTopButtonShow_YSA3"
+	},
+	"SkipToContent": {
+		"skipToContent": "skipToContent_UHvc"
+	},
+	"AnnouncementBar": {
+		"announcementBar": "announcementBar_cTOO",
+		"announcementBarPlaceholder": "announcementBarPlaceholder_Lqfg",
+		"announcementBarClose": "announcementBarClose_UFLi",
+		"announcementBarContent": "announcementBarContent_PjqA"
+	},
+	"TOC": {
+		"tableOfContents": "tableOfContents_RLlU",
+		"docItemContainer": "docItemContainer_oucX"
+	},
+	"TOCCollapsible": {
+		"tocCollapsible": "tocCollapsible_BEWm",
+		"tocCollapsibleContent": "tocCollapsibleContent_FG8F",
+		"tocCollapsibleExpanded": "tocCollapsibleExpanded_FzA_"
+	},
+	"TOCCollapsible/CollapseButton": {
+		"tocCollapsibleButton": "tocCollapsibleButton_IbtT",
+		"tocCollapsibleButtonExpanded": "tocCollapsibleButtonExpanded_Nor3"
+	},
+	"DocItem/TOC/Mobile": {
+		"tocMobile": "tocMobile_NSfz"
+	},
+	"DocRoot/Layout/Main": {
+		"docMainContainer": "docMainContainer_EfwR",
+		"docMainContainerEnhanced": "docMainContainerEnhanced_r8nV",
+		"docItemWrapperEnhanced": "docItemWrapperEnhanced_nA1F"
+	},
+	"DocRoot/Layout/Sidebar": {
+		"docSidebarContainer": "docSidebarContainer_S51O",
+		"docSidebarContainerHidden": "docSidebarContainerHidden_gbDM",
+		"sidebarViewport": "sidebarViewport_K3q9"
+	},
+	"DocRoot/Layout/Sidebar/ExpandButton": {
+		"expandButton": "expandButton_ockD",
+		"expandButtonIcon": "expandButtonIcon_H1n0"
+	},
+	"DocSidebar/Desktop": {
+		"sidebar": "sidebar_vtcw",
+		"sidebarWithHideableNavbar": "sidebarWithHideableNavbar_tZ9s",
+		"sidebarHidden": "sidebarHidden_PrHU",
+		"sidebarLogo": "sidebarLogo_UK0N"
+	},
+	"DocSidebar/Desktop/Content": {
+		"menu": "menu_rWGR",
+		"menuWithAnnouncementBar": "menuWithAnnouncementBar_Pf08"
+	},
+	"DocSidebar/Desktop/CollapseButton": {
+		"collapseSidebarButton": "collapseSidebarButton_PUyN",
+		"collapseSidebarButtonIcon": "collapseSidebarButtonIcon_DI0B"
+	},
+	"NavbarItem/DropdownNavbarItem/Mobile": {
+		"dropdownNavbarItemMobile": "dropdownNavbarItemMobile_nhRg"
+	},
+	"Tabs": {
+		"tabList": "tabList_Qoir",
+		"tabItem": "tabItem_AQgk"
+	},
+	"TabItem": {
+		"tabItem": "tabItem_pnkT"
+	},
+	"ThemedComponent": {
+		"themedComponent": "themedComponent_bJGS",
+		"themedComponent--light": "themedComponent--light_LEkC",
+		"themedComponent--dark": "themedComponent--dark_jnGk"
+	},
+	"Details": {
+		"isBrowser": "isBrowser_QrB5",
+		"collapsibleContent": "collapsibleContent_EoA1",
+		"details": "details_Nokh"
+	},
+	"SearchPage": {
+		"searchQueryInput": "searchQueryInput_S_pS",
+		"searchVersionInput": "searchVersionInput_RZ74",
+		"searchResultsColumn": "searchResultsColumn_dGxU",
+		"searchLogoColumn": "searchLogoColumn_v5Xz",
+		"searchResultItem": "searchResultItem_jZK3",
+		"searchResultItemHeading": "searchResultItemHeading_Nbvf",
+		"searchResultItemPath": "searchResultItemPath_wcJo",
+		"searchResultItemSummary": "searchResultItemSummary_HbIg",
+		"searchQueryColumn": "searchQueryColumn_ourN",
+		"searchVersionColumn": "searchVersionColumn_n2Lb",
+		"loadingSpinner": "loadingSpinner_Jw0H",
+		"loader": "loader_rYmk",
+		"search-result-match": "search-result-match"
+	},
+	"APITable": {
+		"apiTable": "apiTable_e8hp"
+	},
+	"ChangelogAuthors": {
+		"authorCol": "authorCol_mDBc",
+		"imageOnlyAuthorCol": "imageOnlyAuthorCol_uiac",
+		"toggleButton": "toggleButton_WvRg",
+		"toggleButtonIconExpanded": "toggleButtonIconExpanded_ERxv",
+		"imageOnlyAuthorRow": "imageOnlyAuthorRow_WiD6"
+	},
+	"ChangelogAuthor": {
+		"image": "image_oRbT"
+	},
+	"ColorGenerator": {
+		"color": "color_mVUL",
+		"input": "input_HUC3",
+		"colorInput": "colorInput_C1YB",
+		"colorTable": "colorTable_Js7s"
+	}
+}

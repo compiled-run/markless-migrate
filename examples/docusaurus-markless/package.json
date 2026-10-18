@@ -4,7 +4,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vp dev",
-		"build": "vp build",
+		"build": "NODE_OPTIONS=--max-old-space-size=32768 vp build",
 		"preview": "vp preview",
 		"check": "vp check",
 		"doctor": "node scripts/markless-doctor.mjs",
