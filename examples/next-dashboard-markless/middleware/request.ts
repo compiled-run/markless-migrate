@@ -23,7 +23,11 @@ export default async function request(http: MiddlewareHttpContext) {
 		return new Response(null, { status, headers });
 	};
 	if (url.pathname.startsWith('/dashboard')) {
-		if (!isLoggedIn) return redirect(`/login?callbackUrl=${encodeURIComponent(url.href)}`, 307);
+		if (!isLoggedIn) {
+			const login = new URLSearchParams(url.search);
+			login.set('callbackUrl', url.href);
+			return redirect(`/login?${login}`, 307);
+		}
 	} else if (isLoggedIn) {
 		return redirect(new URL('/dashboard', url).href, 302);
 	}
