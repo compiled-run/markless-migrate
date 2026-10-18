@@ -4,7 +4,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vp dev",
-		"build": "rm -rf public/islands public/assets && vp build -c islands.config.ts && vp build",
+		"build": "rm -rf public/page-scripts public/assets && vp build -c page-scripts.config.ts && vp build",
 		"preview": "vp preview",
 		"check": "vp check",
 		"doctor": "node scripts/markless-doctor.mjs",

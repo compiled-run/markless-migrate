@@ -54,6 +54,15 @@ once at the end.
   "accepted automatically: <rule>" with the evidence. Any other difference stays red until it is fixed:
   never write \`.migrate/accepted.json\` and never run \`accept\`; list the difference, with its id
   (printed in [brackets]) and why you think it is intended, in the final report instead.
+- Never carry the old framework's runtime markers into the port: hydration flags (\`data-has-hydrated\`,
+  \`data-reactroot\`, \`data-server-rendered\`, \`data-v-app\`), head-manager attributes (\`data-rh\`), framework
+  data scripts (\`__NEXT_DATA__\`, \`__NUXT_DATA__\`, \`self.__next_f\`), Astro's component
+  wrapper elements, and its \`<meta name="generator">\` (the port is not built by Docusaurus, VitePress or
+  WordPress). They mean nothing in a Markless page. When an old stylesheet or script keys off one,
+  give it the port's own condition: drop the condition when the behaviour is always on in the port, or key
+  it off an attribute the port's own code sets, with a neutral name. check fails a page that carries one ("old framework runtime marker").
+- Name what you write after what it does. Never call anything "islands" (files, folders, identifiers,
+  scripts, comments), and never describe the port in terms of hydration; Markless does not hydrate.
 - \`visual\` failures that come with \`css\` or \`rendered\` failures usually disappear once those are
   fixed: fix the DOM and CSS failures first.
 - \`css\` failures name the old rule (selector, file, line) that set the value; port that rule's intent.

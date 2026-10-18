@@ -1,11 +1,12 @@
 // Imports the rendered docusaurus.io pages into TSRX: `node tooling/import.mjs http://127.0.0.1:4201`.
 // The old site is built by Docusaurus from MDX through its theme's React components; this reads the page each
-// route ends up as after hydration (light mode, desktop) and writes it as static Markless markup. The interactive
+// route ends up as once its scripts have run (light mode, desktop) and writes it as static Markless markup. The interactive
 // parts (tabs, copy buttons, colour mode, sidebar, dropdowns) are wired by hand in components/ and lib/.
 import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { chromium } from '../../../node_modules/playwright/index.mjs';
 import { toTsrx } from './serialize.js';
+import { RUNTIME_MARKERS } from '../../../src/check/residue.ts';
 
 const origin = (process.argv[2] ?? 'http://127.0.0.1:4201').replace(/\/$/, '');
 const app = join(import.meta.dirname, '..');
@@ -82,6 +83,9 @@ function componentName(name) {
 	return name.replace(/(^|-)(\w)/g, (_, __, c) => c.toUpperCase());
 }
 
+// Markers the old framework writes for itself, and its generator meta, stay out of the port.
+const MARKERS = new Set(RUNTIME_MARKERS.attributes.map(([name]) => name));
+const ownAttrs = (attrs) => Object.fromEntries(Object.entries(attrs).filter(([name]) => !MARKERS.has(name)));
 const heads = {};
 const themes = {};
 const responsiveParts = {};
@@ -91,7 +95,8 @@ for (const route of ROUTES) {
 	const light = await capture(route.path, 'light');
 	const dark = await capture(route.path, 'dark');
 	if (light.codeStyles.length !== dark.codeStyles.length) throw new Error(`${route.path}: light and dark code blocks differ in shape`);
-	heads[route.path] = { html: light.html, head: light.head };
+	const own = light.head.filter((element) => !(element.tag === 'meta' && element.attrs.name === 'generator'));
+	heads[route.path] = { html: ownAttrs(light.html), head: own.map((element) => ({ ...element, attrs: ownAttrs(element.attrs) })) };
 	firstBodyScript ||= light.bodyScript;
 	for (const asset of [...light.assets, ...dark.assets]) assets.add(asset);
 	themes[route.path] = { light: light.codeStyles, dark: dark.codeStyles };
@@ -168,8 +173,8 @@ await writeFile(join(app, 'lib/sidebar-categories.json'), `${JSON.stringify({ ..
 await writeFile(join(app, 'lib/heads.json'), `${JSON.stringify(heads, null, '\t')}\n`);
 
 // The old site's first inline script and each route's <html> attributes, which document.tsrx writes.
-const HTML_KEEP = ['dir', 'class', 'data-rh'];
-const htmlAttrs = Object.fromEntries(Object.entries(heads).map(([path, { html }]) => [path, Object.fromEntries(Object.entries(html).filter(([name]) => HTML_KEEP.includes(name)).concat([['data-has-hydrated', 'false']]))]));
+const HTML_KEEP = ['dir', 'class'];
+const htmlAttrs = Object.fromEntries(Object.entries(heads).map(([path, { html }]) => [path, Object.fromEntries(Object.entries(html).filter(([name]) => HTML_KEEP.includes(name)))]));
 await writeFile(join(app, 'lib/document-init.json'), `${JSON.stringify({ script: firstBodyScript, html: htmlAttrs }, null, '\t')}\n`);
 
 // Markless 0.4.0's document.tsrx cannot render child components or control flow, so every route shares one list of
@@ -242,7 +247,7 @@ export default function Document({ url, children }: { readonly url?: { readonly 
 	const s = head.slots;
 	const root = htmlAttributes[path] ?? htmlAttributes['/']!;
 
-	<Html lang="en" dir={root['dir']} class={root['class']} data-rh={root['data-rh']} data-has-hydrated="false">
+	<Html lang="en" dir={root['dir']} class={root['class']}>
 		<head>
 			<script>{init.script}</script>
 			<title>{head.title}</title>

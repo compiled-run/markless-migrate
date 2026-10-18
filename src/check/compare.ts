@@ -13,6 +13,7 @@ import type { AssetRecord, Box, Dimension, ElementSnapshot, Failure, HttpCapture
 import { DIMENSIONS } from './types.ts';
 import { compareScreenshots, visualNoise, visuallyDifferent } from './visual.ts';
 import { storageFailure } from './storage.ts';
+import { residueFailures } from './residue.ts';
 
 const LIMIT = 20;
 // lang and dir are compared as internationalisation, not SEO.
@@ -226,6 +227,7 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 	const shots: Shot[] = [];
 
 	failures.push(...httpFailures(route, olds.map((o) => o.http), next.http));
+	failures.push(...residueFailures(route, Object.values(next.pages)[0]));
 
 	for (const [viewport, a] of Object.entries(oldA.pages)) {
 		const bs = others.map((o) => o.pages[viewport]!);

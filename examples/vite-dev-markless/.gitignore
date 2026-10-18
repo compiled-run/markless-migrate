@@ -3,7 +3,7 @@ dist/
 .vite/
 *.log
 .DS_Store
-public/islands/
+public/page-scripts/
 public/assets/
 .vercel
 .env*

@@ -14,63 +14,62 @@ export default function Document({ url, children }: { readonly url?: { readonly 
 	const s = head.slots;
 	const root = htmlAttributes[path] ?? htmlAttributes['/']!;
 
-	<Html lang="en" dir={root['dir']} class={root['class']} data-rh={root['data-rh']} data-has-hydrated="false">
+	<Html lang="en" dir={root['dir']} class={root['class']}>
 		<head>
 			<script>{init.script}</script>
 			<title>{head.title}</title>
 			<meta charset={s[0]?.["charset"]} />
 			<meta name={s[1]?.["name"]} content={s[1]?.["content"]} />
-			<meta data-rh={s[2]?.["data-rh"]} name={s[2]?.["name"]} content={s[2]?.["content"]} />
-			<meta data-rh={s[3]?.["data-rh"]} name={s[3]?.["name"]} content={s[3]?.["content"]} />
-			<meta data-rh={s[4]?.["data-rh"]} property={s[4]?.["property"]} content={s[4]?.["content"]} />
-			<meta data-rh={s[5]?.["data-rh"]} name={s[5]?.["name"]} content={s[5]?.["content"]} />
-			<meta data-rh={s[6]?.["data-rh"]} property={s[6]?.["property"]} content={s[6]?.["content"]} />
-			<meta data-rh={s[7]?.["data-rh"]} property={s[7]?.["property"]} content={s[7]?.["content"]} />
-			<meta data-rh={s[8]?.["data-rh"]} property={s[8]?.["property"]} content={s[8]?.["content"]} />
-			<meta data-rh={s[9]?.["data-rh"]} property={s[9]?.["property"]} content={s[9]?.["content"]} />
-			<meta data-rh={s[10]?.["data-rh"]} property={s[10]?.["property"]} content={s[10]?.["content"]} />
-			<meta data-rh={s[11]?.["data-rh"]} property={s[11]?.["property"]} content={s[11]?.["content"]} />
-			<meta data-rh={s[12]?.["data-rh"]} name={s[12]?.["name"]} content={s[12]?.["content"]} />
-			<meta data-rh={s[13]?.["data-rh"]} name={s[13]?.["name"]} content={s[13]?.["content"]} />
-			<meta data-rh={s[14]?.["data-rh"]} name={s[14]?.["name"]} content={s[14]?.["content"]} />
-			<meta data-rh={s[15]?.["data-rh"]} name={s[15]?.["name"]} content={s[15]?.["content"]} />
-			<meta data-rh={s[16]?.["data-rh"]} property={s[16]?.["property"]} content={s[16]?.["content"]} />
-			<meta data-rh={s[17]?.["data-rh"]} name={s[17]?.["name"]} content={s[17]?.["content"]} />
-			<meta data-rh={s[18]?.["data-rh"]} property={s[18]?.["property"]} content={s[18]?.["content"]} />
-			<link data-rh={s[19]?.["data-rh"]} rel={s[19]?.["rel"]} href={s[19]?.["href"]} />
-			<link data-rh={s[20]?.["data-rh"]} rel={s[20]?.["rel"]} href={s[20]?.["href"]} />
-			<link data-rh={s[21]?.["data-rh"]} rel={s[21]?.["rel"]} href={s[21]?.["href"]} hreflang={s[21]?.["hreflang"]} />
-			<link data-rh={s[22]?.["data-rh"]} rel={s[22]?.["rel"]} href={s[22]?.["href"]} hreflang={s[22]?.["hreflang"]} />
-			<link data-rh={s[23]?.["data-rh"]} rel={s[23]?.["rel"]} href={s[23]?.["href"]} hreflang={s[23]?.["hreflang"]} />
-			<link data-rh={s[24]?.["data-rh"]} rel={s[24]?.["rel"]} href={s[24]?.["href"]} hreflang={s[24]?.["hreflang"]} />
-			<link data-rh={s[25]?.["data-rh"]} rel={s[25]?.["rel"]} href={s[25]?.["href"]} hreflang={s[25]?.["hreflang"]} />
-			<link data-rh={s[26]?.["data-rh"]} rel={s[26]?.["rel"]} href={s[26]?.["href"]} hreflang={s[26]?.["hreflang"]} />
-			<link data-rh={s[27]?.["data-rh"]} rel={s[27]?.["rel"]} href={s[27]?.["href"]} crossorigin={s[27]?.["crossorigin"]} />
+			<meta name={s[2]?.["name"]} content={s[2]?.["content"]} />
+			<meta property={s[3]?.["property"]} content={s[3]?.["content"]} />
+			<meta name={s[4]?.["name"]} content={s[4]?.["content"]} />
+			<meta property={s[5]?.["property"]} content={s[5]?.["content"]} />
+			<meta property={s[6]?.["property"]} content={s[6]?.["content"]} />
+			<meta property={s[7]?.["property"]} content={s[7]?.["content"]} />
+			<meta property={s[8]?.["property"]} content={s[8]?.["content"]} />
+			<meta property={s[9]?.["property"]} content={s[9]?.["content"]} />
+			<meta property={s[10]?.["property"]} content={s[10]?.["content"]} />
+			<meta name={s[11]?.["name"]} content={s[11]?.["content"]} />
+			<meta name={s[12]?.["name"]} content={s[12]?.["content"]} />
+			<meta name={s[13]?.["name"]} content={s[13]?.["content"]} />
+			<meta name={s[14]?.["name"]} content={s[14]?.["content"]} />
+			<meta property={s[15]?.["property"]} content={s[15]?.["content"]} />
+			<meta name={s[16]?.["name"]} content={s[16]?.["content"]} />
+			<meta property={s[17]?.["property"]} content={s[17]?.["content"]} />
+			<link rel={s[18]?.["rel"]} href={s[18]?.["href"]} />
+			<link rel={s[19]?.["rel"]} href={s[19]?.["href"]} />
+			<link rel={s[20]?.["rel"]} href={s[20]?.["href"]} hreflang={s[20]?.["hreflang"]} />
+			<link rel={s[21]?.["rel"]} href={s[21]?.["href"]} hreflang={s[21]?.["hreflang"]} />
+			<link rel={s[22]?.["rel"]} href={s[22]?.["href"]} hreflang={s[22]?.["hreflang"]} />
+			<link rel={s[23]?.["rel"]} href={s[23]?.["href"]} hreflang={s[23]?.["hreflang"]} />
+			<link rel={s[24]?.["rel"]} href={s[24]?.["href"]} hreflang={s[24]?.["hreflang"]} />
+			<link rel={s[25]?.["rel"]} href={s[25]?.["href"]} hreflang={s[25]?.["hreflang"]} />
+			<link rel={s[26]?.["rel"]} href={s[26]?.["href"]} crossorigin={s[26]?.["crossorigin"]} />
+			<link rel={s[27]?.["rel"]} type={s[27]?.["type"]} href={s[27]?.["href"]} title={s[27]?.["title"]} />
 			<link rel={s[28]?.["rel"]} type={s[28]?.["type"]} href={s[28]?.["href"]} title={s[28]?.["title"]} />
 			<link rel={s[29]?.["rel"]} type={s[29]?.["type"]} href={s[29]?.["href"]} title={s[29]?.["title"]} />
-			<link rel={s[30]?.["rel"]} type={s[30]?.["type"]} href={s[30]?.["href"]} title={s[30]?.["title"]} />
+			<link rel={s[30]?.["rel"]} href={s[30]?.["href"]} />
 			<link rel={s[31]?.["rel"]} href={s[31]?.["href"]} />
-			<link rel={s[32]?.["rel"]} href={s[32]?.["href"]} />
-			<link rel={s[33]?.["rel"]} type={s[33]?.["type"]} title={s[33]?.["title"]} href={s[33]?.["href"]} />
+			<link rel={s[32]?.["rel"]} type={s[32]?.["type"]} title={s[32]?.["title"]} href={s[32]?.["href"]} />
+			<link rel={s[33]?.["rel"]} type={s[33]?.["type"]} href={s[33]?.["href"]} title={s[33]?.["title"]} />
 			<link rel={s[34]?.["rel"]} type={s[34]?.["type"]} href={s[34]?.["href"]} title={s[34]?.["title"]} />
 			<link rel={s[35]?.["rel"]} type={s[35]?.["type"]} href={s[35]?.["href"]} title={s[35]?.["title"]} />
-			<link rel={s[36]?.["rel"]} type={s[36]?.["type"]} href={s[36]?.["href"]} title={s[36]?.["title"]} />
+			<link rel={s[36]?.["rel"]} href={s[36]?.["href"]} />
 			<link rel={s[37]?.["rel"]} href={s[37]?.["href"]} />
-			<link rel={s[38]?.["rel"]} href={s[38]?.["href"]} />
+			<meta name={s[38]?.["name"]} content={s[38]?.["content"]} />
 			<meta name={s[39]?.["name"]} content={s[39]?.["content"]} />
 			<meta name={s[40]?.["name"]} content={s[40]?.["content"]} />
-			<meta name={s[41]?.["name"]} content={s[41]?.["content"]} />
-			<link rel={s[42]?.["rel"]} href={s[42]?.["href"]} />
-			<link rel={s[43]?.["rel"]} href={s[43]?.["href"]} color={s[43]?.["color"]} />
+			<link rel={s[41]?.["rel"]} href={s[41]?.["href"]} />
+			<link rel={s[42]?.["rel"]} href={s[42]?.["href"]} color={s[42]?.["color"]} />
+			<meta name={s[43]?.["name"]} content={s[43]?.["content"]} />
 			<meta name={s[44]?.["name"]} content={s[44]?.["content"]} />
-			<meta name={s[45]?.["name"]} content={s[45]?.["content"]} />
+			<link rel={s[45]?.["rel"]} type={s[45]?.["type"]} href={s[45]?.["href"]} title={s[45]?.["title"]} />
 			<link rel={s[46]?.["rel"]} type={s[46]?.["type"]} href={s[46]?.["href"]} title={s[46]?.["title"]} />
 			<link rel={s[47]?.["rel"]} type={s[47]?.["type"]} href={s[47]?.["href"]} title={s[47]?.["title"]} />
-			<link rel={s[48]?.["rel"]} type={s[48]?.["type"]} href={s[48]?.["href"]} title={s[48]?.["title"]} />
-			<link rel={s[49]?.["rel"]} href={s[49]?.["href"]} type={s[49]?.["type"]} />
-			<meta data-rh={s[50]?.["data-rh"]} name={s[50]?.["name"]} content={s[50]?.["content"]} />
-			<meta data-rh={s[51]?.["data-rh"]} name={s[51]?.["name"]} content={s[51]?.["content"]} />
-			<script type={s[52]?.["type"]} data-rh={s[52]?.["data-rh"]}>{head.ld}</script>
+			<link rel={s[48]?.["rel"]} href={s[48]?.["href"]} type={s[48]?.["type"]} />
+			<meta name={s[49]?.["name"]} content={s[49]?.["content"]} />
+			<meta name={s[50]?.["name"]} content={s[50]?.["content"]} />
+			<script type={s[51]?.["type"]}>{head.ld}</script>
 			<link rel="stylesheet" href="/assets/css/styles.73b9aeb138.css" />
 			<link rel="stylesheet" href="/mm-site.css" />
 		</head>

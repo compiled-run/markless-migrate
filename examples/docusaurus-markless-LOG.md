@@ -33,17 +33,17 @@ No roles: the site has no sign-in.
 
 ## How the port is built, and why
 
-The old pages are what Docusaurus's React theme renders from MDX after hydration: CSS-module class names
+The old pages are what Docusaurus's React theme renders from MDX once its scripts have run: CSS-module class names
 (`codeBlockContainer_jDV4`), Prism token spans with inline colours per colour mode, a sidebar whose collapsed
 categories have no items in the DOM until opened, a navbar drawer that exists only below 997px, and so on. The
 check compares that DOM, its computed styles and its screenshots, so the port has to produce the same DOM.
 
 - `tooling/import.mjs` loads each old route in a browser (light and dark, desktop and mobile), and writes the
-  hydrated `#__docusaurus` subtree as TSRX (`components/generated/*.tsrx`), every route's `<head>`
+  rendered `#__docusaurus` subtree as TSRX (`components/generated/*.tsrx`), every route's `<head>`
   (`lib/head-slots.json`, rendered by `document.tsrx`), the dark-mode Prism styles (`lib/code-themes.json`), the
   lazily rendered sidebar categories (`lib/sidebar-categories.json`), the mobile-only drawer and the lazy images'
   loaded markup (`lib/responsive.json`), and copies the images and fonts the pages load into `public/`.
-- `lib/site.ts` is what the theme does after hydration, read from the theme's source and checked against the old
+- `lib/site.ts` is what the theme does in the browser, read from the theme's source and checked against the old
   site click by click: the three-way colour mode toggle (with the code blocks' Prism colours), npm2yarn tabs that
   stay in step and persist (`docusaurus.tab.npm2yarn-189`), copy and word-wrap buttons, sidebar categories with
   `autoCollapseCategories`, the collapsible sidebar, `<details>`, navbar dropdowns (Enter and Space), skip to
@@ -168,7 +168,7 @@ Rebuilt on the published 0.5.0 packages (`@markless/*` 0.5.0, `vite-plus` 0.3.1)
 | Workaround (0.4.0 limitation) | Now |
 | --- | --- |
 | 4: `server/void-elements.ts`, a Nitro plugin that deleted `</br>` and un-escaped `<script>` text (JSON-LD) in every response | removed: void elements have no closing tag and script text is written as is |
-| 6: `<Html>` attributes ignored, so `public/mm-init.js` set `dir`, `class`, `data-rh` and `data-has-hydrated` from a per-route table | `document.tsrx` writes them on `<Html>` from `lib/document-init.json`; the theme script is inline again, as on the old site (one request fewer) |
+| 6: `<Html>` attributes ignored, so `public/mm-init.js` set `dir` and `class` (and two Docusaurus runtime markers, since removed) from a per-route table | `document.tsrx` writes them on `<Html>` from `lib/document-init.json`; the theme script is inline again, as on the old site (one request fewer) |
 | 6: `onVisible` needed the runtime awake, so `public/mm-boot.js` dispatched a `boot` event on `load` to a `data-boot` element | `onIdle={() => siteBoot()}`; `mm-boot.js` and the `data-boot` attribute are gone |
 | every link a document load | links between the three ported pages swap in place through the router, as Docusaurus's React Router does; the per-route set-up (window-size parking, tabs, colour mode, lazy avatars, TOC) reruns on the router's `marklessrouterrendered` event |
 
@@ -198,3 +198,13 @@ What keeps the routes red:
 4. One external avatar (unavatar.io) did not load on the new side in one run.
 
 Routes switched: none (they had been switched under 0.4.0). The front door (https://mm-docusaurus.vercel.app) serves the old site everywhere; checked in a browser: styles load and the sidebar navigates in place.
+
+## Old-framework markers removed (2026-10-18)
+
+The port no longer carries what Docusaurus writes into its pages for itself: `data-has-hydrated` on `<html>`, react-helmet's
+`data-rh` attributes on `<html>` and the head tags, and `<meta name="generator" content="Docusaurus ...">`.
+`tooling/import.mjs` leaves them out of the imported heads (using the checker's own list), and `lib/site.ts` no longer
+sets the flag after load. Nothing in the port read them: no rule in the copied stylesheet
+(`public/assets/css/styles.73b9aeb138.css`) or in `public/mm-site.css`, and no script in `lib/` or `public/vendor/`
+selects on the flag or on `data-rh`. Upstream, no theme stylesheet reads the flag either; Docusaurus's own blog uses
+it to tell a visual-regression tool the page has finished starting up. The checker now fails a port that serves one of these markers.

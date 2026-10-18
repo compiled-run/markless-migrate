@@ -7,142 +7,112 @@
 				"charset": "UTF-8"
 			},
 			{
-				"name": "generator",
-				"content": "Docusaurus v4.0.0"
-			},
-			{
-				"data-rh": "true",
 				"name": "viewport",
 				"content": "width=device-width, initial-scale=1.0"
 			},
 			{
-				"data-rh": "true",
 				"name": "twitter:card",
 				"content": "summary_large_image"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:image",
 				"content": "https://docusaurus.io/img/docusaurus-social-card.jpg"
 			},
 			{
-				"data-rh": "true",
 				"name": "twitter:image",
 				"content": "https://docusaurus.io/img/docusaurus-social-card.jpg"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:url",
 				"content": "https://docusaurus.io/"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:locale",
 				"content": "en"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:locale:alternate",
 				"content": "fr"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:locale:alternate",
 				"content": "pt_BR"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:locale:alternate",
 				"content": "ko"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:locale:alternate",
 				"content": "zh_CN"
 			},
 			{
-				"data-rh": "true",
 				"name": "docusaurus_locale",
 				"content": "en"
 			},
 			{
-				"data-rh": "true",
 				"name": "docusaurus_tag",
 				"content": "default"
 			},
 			{
-				"data-rh": "true",
 				"name": "docsearch:language",
 				"content": "en"
 			},
 			{
-				"data-rh": "true",
 				"name": "docsearch:docusaurus_tag",
 				"content": "default"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:title",
 				"content": "Build optimized websites quickly, focus on your content | Docusaurus"
 			},
 			{
-				"data-rh": "true",
 				"name": "description",
 				"content": "An optimized site generator in React. Docusaurus helps you to move fast and write content. Build documentation websites, blogs, marketing pages, and more."
 			},
 			{
-				"data-rh": "true",
 				"property": "og:description",
 				"content": "An optimized site generator in React. Docusaurus helps you to move fast and write content. Build documentation websites, blogs, marketing pages, and more."
 			},
 			{
-				"data-rh": "true",
 				"rel": "icon",
 				"href": "/img/docusaurus.ico"
 			},
 			{
-				"data-rh": "true",
 				"rel": "canonical",
 				"href": "https://docusaurus.io/"
 			},
 			{
-				"data-rh": "true",
 				"rel": "alternate",
 				"href": "https://docusaurus.io/",
 				"hreflang": "en"
 			},
 			{
-				"data-rh": "true",
 				"rel": "alternate",
 				"href": "https://docusaurus.io/",
 				"hreflang": "fr"
 			},
 			{
-				"data-rh": "true",
 				"rel": "alternate",
 				"href": "https://docusaurus.io/",
 				"hreflang": "pt-BR"
 			},
 			{
-				"data-rh": "true",
 				"rel": "alternate",
 				"href": "https://docusaurus.io/",
 				"hreflang": "ko"
 			},
 			{
-				"data-rh": "true",
 				"rel": "alternate",
 				"href": "https://docusaurus.io/",
 				"hreflang": "zh-CN"
 			},
 			{
-				"data-rh": "true",
 				"rel": "alternate",
 				"href": "https://docusaurus.io/",
 				"hreflang": "x-default"
 			},
 			{
-				"data-rh": "true",
 				"rel": "preconnect",
 				"href": "https://X1Z85QJPUV-dsn.algolia.net",
 				"crossorigin": "anonymous"
@@ -270,142 +240,112 @@
 				"charset": "UTF-8"
 			},
 			{
-				"name": "generator",
-				"content": "Docusaurus v4.0.0"
-			},
-			{
-				"data-rh": "true",
 				"name": "viewport",
 				"content": "width=device-width, initial-scale=1.0"
 			},
 			{
-				"data-rh": "true",
 				"name": "twitter:card",
 				"content": "summary_large_image"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:image",
 				"content": "https://docusaurus.io/img/docusaurus-social-card.jpg"
 			},
 			{
-				"data-rh": "true",
 				"name": "twitter:image",
 				"content": "https://docusaurus.io/img/docusaurus-social-card.jpg"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:url",
 				"content": "https://docusaurus.io/docs"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:locale",
 				"content": "en"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:locale:alternate",
 				"content": "fr"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:locale:alternate",
 				"content": "pt_BR"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:locale:alternate",
 				"content": "ko"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:locale:alternate",
 				"content": "zh_CN"
 			},
 			{
-				"data-rh": "true",
 				"name": "docusaurus_locale",
 				"content": "en"
 			},
 			{
-				"data-rh": "true",
 				"name": "docusaurus_tag",
 				"content": "docs-default-current"
 			},
 			{
-				"data-rh": "true",
 				"name": "docsearch:language",
 				"content": "en"
 			},
 			{
-				"data-rh": "true",
 				"name": "docsearch:docusaurus_tag",
 				"content": "docs-default-current"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:title",
 				"content": "Introduction | Docusaurus"
 			},
 			{
-				"data-rh": "true",
 				"name": "description",
 				"content": "Docusaurus was designed from the ground up to be easily installed and used to get your website up and running quickly."
 			},
 			{
-				"data-rh": "true",
 				"property": "og:description",
 				"content": "Docusaurus was designed from the ground up to be easily installed and used to get your website up and running quickly."
 			},
 			{
-				"data-rh": "true",
 				"rel": "icon",
 				"href": "/img/docusaurus.ico"
 			},
 			{
-				"data-rh": "true",
 				"rel": "canonical",
 				"href": "https://docusaurus.io/docs"
 			},
 			{
-				"data-rh": "true",
 				"rel": "alternate",
 				"href": "https://docusaurus.io/docs",
 				"hreflang": "en"
 			},
 			{
-				"data-rh": "true",
 				"rel": "alternate",
 				"href": "https://docusaurus.io/docs",
 				"hreflang": "fr"
 			},
 			{
-				"data-rh": "true",
 				"rel": "alternate",
 				"href": "https://docusaurus.io/docs",
 				"hreflang": "pt-BR"
 			},
 			{
-				"data-rh": "true",
 				"rel": "alternate",
 				"href": "https://docusaurus.io/docs",
 				"hreflang": "ko"
 			},
 			{
-				"data-rh": "true",
 				"rel": "alternate",
 				"href": "https://docusaurus.io/docs",
 				"hreflang": "zh-CN"
 			},
 			{
-				"data-rh": "true",
 				"rel": "alternate",
 				"href": "https://docusaurus.io/docs",
 				"hreflang": "x-default"
 			},
 			{
-				"data-rh": "true",
 				"rel": "preconnect",
 				"href": "https://X1Z85QJPUV-dsn.algolia.net",
 				"crossorigin": "anonymous"
@@ -521,18 +461,15 @@
 				"type": "text/css"
 			},
 			{
-				"data-rh": "true",
 				"name": "docusaurus_version",
 				"content": "current"
 			},
 			{
-				"data-rh": "true",
 				"name": "docsearch:version",
 				"content": "current"
 			},
 			{
-				"type": "application/ld+json",
-				"data-rh": "true"
+				"type": "application/ld+json"
 			}
 		]
 	},
@@ -544,142 +481,112 @@
 				"charset": "UTF-8"
 			},
 			{
-				"name": "generator",
-				"content": "Docusaurus v4.0.0"
-			},
-			{
-				"data-rh": "true",
 				"name": "viewport",
 				"content": "width=device-width, initial-scale=1.0"
 			},
 			{
-				"data-rh": "true",
 				"name": "twitter:card",
 				"content": "summary_large_image"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:image",
 				"content": "https://docusaurus.io/img/docusaurus-social-card.jpg"
 			},
 			{
-				"data-rh": "true",
 				"name": "twitter:image",
 				"content": "https://docusaurus.io/img/docusaurus-social-card.jpg"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:url",
 				"content": "https://docusaurus.io/docs/installation"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:locale",
 				"content": "en"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:locale:alternate",
 				"content": "fr"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:locale:alternate",
 				"content": "pt_BR"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:locale:alternate",
 				"content": "ko"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:locale:alternate",
 				"content": "zh_CN"
 			},
 			{
-				"data-rh": "true",
 				"name": "docusaurus_locale",
 				"content": "en"
 			},
 			{
-				"data-rh": "true",
 				"name": "docusaurus_tag",
 				"content": "docs-default-current"
 			},
 			{
-				"data-rh": "true",
 				"name": "docsearch:language",
 				"content": "en"
 			},
 			{
-				"data-rh": "true",
 				"name": "docsearch:docusaurus_tag",
 				"content": "docs-default-current"
 			},
 			{
-				"data-rh": "true",
 				"property": "og:title",
 				"content": "Installation | Docusaurus"
 			},
 			{
-				"data-rh": "true",
 				"name": "description",
 				"content": "How to install Docusaurus locally, and start a Docusaurus site in no time."
 			},
 			{
-				"data-rh": "true",
 				"property": "og:description",
 				"content": "How to install Docusaurus locally, and start a Docusaurus site in no time."
 			},
 			{
-				"data-rh": "true",
 				"rel": "icon",
 				"href": "/img/docusaurus.ico"
 			},
 			{
-				"data-rh": "true",
 				"rel": "canonical",
 				"href": "https://docusaurus.io/docs/installation"
 			},
 			{
-				"data-rh": "true",
 				"rel": "alternate",
 				"href": "https://docusaurus.io/docs/installation",
 				"hreflang": "en"
 			},
 			{
-				"data-rh": "true",
 				"rel": "alternate",
 				"href": "https://docusaurus.io/docs/installation",
 				"hreflang": "fr"
 			},
 			{
-				"data-rh": "true",
 				"rel": "alternate",
 				"href": "https://docusaurus.io/docs/installation",
 				"hreflang": "pt-BR"
 			},
 			{
-				"data-rh": "true",
 				"rel": "alternate",
 				"href": "https://docusaurus.io/docs/installation",
 				"hreflang": "ko"
 			},
 			{
-				"data-rh": "true",
 				"rel": "alternate",
 				"href": "https://docusaurus.io/docs/installation",
 				"hreflang": "zh-CN"
 			},
 			{
-				"data-rh": "true",
 				"rel": "alternate",
 				"href": "https://docusaurus.io/docs/installation",
 				"hreflang": "x-default"
 			},
 			{
-				"data-rh": "true",
 				"rel": "preconnect",
 				"href": "https://X1Z85QJPUV-dsn.algolia.net",
 				"crossorigin": "anonymous"
@@ -795,18 +702,15 @@
 				"type": "text/css"
 			},
 			{
-				"data-rh": "true",
 				"name": "docusaurus_version",
 				"content": "current"
 			},
 			{
-				"data-rh": "true",
 				"name": "docsearch:version",
 				"content": "current"
 			},
 			{
-				"type": "application/ld+json",
-				"data-rh": "true"
+				"type": "application/ld+json"
 			}
 		]
 	}

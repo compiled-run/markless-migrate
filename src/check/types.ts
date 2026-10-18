@@ -1,3 +1,4 @@
+import type { RuntimeMarker } from './residue.ts';
 import type { AutomaticRule } from '../overrides.ts';
 import type { RawSource } from './hints-page.ts';
 import type { ElementCoverage, RecordedJourney } from './journeys.ts';
@@ -132,6 +133,8 @@ export interface PageCapture {
 	readonly sealed?: Readonly<Record<string, string>>;
 	/** Markup the page's framework adds for itself (a route announcer), with the roles inside it. */
 	readonly internals?: readonly { readonly framework: string; readonly what: string; readonly selector: string; readonly roles: readonly string[]; readonly text: string }[];
+	/** Markers an old framework's runtime writes for itself, in the served HTML or the loaded page. */
+	readonly residue?: readonly RuntimeMarker[];
 	/** Iframes and images from other origins, with their boxes in page coordinates. */
 	readonly embeds?: readonly { readonly tag: 'iframe' | 'img'; readonly src: string; readonly box: Box }[];
 }

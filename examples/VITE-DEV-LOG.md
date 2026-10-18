@@ -30,8 +30,8 @@ The repo pins `pnpm@12.11.2`, whose native binary fails to start on this machine
   copied from `docs/public` so they keep their URLs.
 - Interactions in Markless: the four header flyouts (hover, click, focus leaving), the mobile menu (accordions,
   Escape, focus trap, scroll lock), the install tabs and their copy buttons, the banner's close button.
-- Load-time JavaScript in `islands/page.ts`, a plain module script bundled by `islands.config.ts`: the three Rive
-  animations, the search shortcuts (`/`, Ctrl/Cmd+K) and the search buttons, which load `islands/search.ts` on first
+- Load-time JavaScript in `page-scripts/page.ts`, a plain module script bundled by `page-scripts.config.ts`: the three Rive
+  animations, the search shortcuts (`/`, Ctrl/Cmd+K) and the search buttons, which load `page-scripts/search.ts` on first
   use (a port of VPLocalSearchBox on the same MiniSearch index, copied from the old build by
   `scripts/search-index.mjs`).
 - Sponsors: rendered on the server from the same live `https://sponsors.vite.dev/sponsors.json` the old page fetches
@@ -129,7 +129,7 @@ Each is worked around in the app; the workaround is named.
 1. `onVisible` never fires until a user interaction wakes the page: the inline resumer skips `visible`, and the
    visibility observer is installed only by the full runtime (the visible primer that fixes this is in v0.5.0,
    unpublished). Its handler also receives `undefined` instead of the element. `attach` behaviours wait for the
-   same trigger. Workaround: the Rive canvases start from a plain module script (`islands/page.ts`).
+   same trigger. Workaround: the Rive canvases start from a plain module script (`page-scripts/page.ts`).
 2. `<Html lang="...">` attributes are read only from `document.tsx`/`.jsx`, but the starter scaffolds
    `document.tsrx`, which the router renders with a hard-coded `<html lang="en">`; a `document.tsx` is ignored, a
    plain `<html>` in `document.tsrx` is nested inside the router's, and a hand-exported
@@ -200,7 +200,7 @@ Each is worked around in the app; the workaround is named.
 
 ## Markless 0.5.0 (2026-10-17)
 
-Rebuilt on the published 0.5.0 packages (`@markless/*` 0.5.0, `vite-plus` 0.3.1). The islands build runs through `vp build -c islands.config.ts`: the starters alias `vite` to `@voidzero-dev/vite-plus-core`, which has no `vite` binary.
+Rebuilt on the published 0.5.0 packages (`@markless/*` 0.5.0, `vite-plus` 0.3.1). The page-scripts build runs through `vp build -c page-scripts.config.ts`: the starters alias `vite` to `@voidzero-dev/vite-plus-core`, which has no `vite` binary.
 
 ### Workarounds removed
 
@@ -211,7 +211,7 @@ Rebuilt on the published 0.5.0 packages (`@markless/*` 0.5.0, `vite-plus` 0.3.1)
 | 8: sponsor classes copied onto every inner row (a nested `@for` dropped attributes reading the outer row) | the inner rows read `tier.linkClass`, `tier.logoClass` and `tier.emptyClass` from the outer row |
 | 13: void elements closed (`</meta>`, `</img>`) | 0.5.0 writes them without a closing tag (no workaround was needed in the app) |
 
-Kept: the Rive canvases, search shortcuts and logo strip in `islands/page.ts`, a plain module script (`onVisible`/`attach` still do not run at load; `onIdle` would start them later than VitePress does).
+Kept: the Rive canvases, search shortcuts and logo strip in `page-scripts/page.ts`, a plain module script (`onVisible`/`attach` still do not run at load; `onIdle` would start them later than VitePress does).
 
 New: the homepage is the same for every visitor, so it is kept on Vercel's CDN for an hour (`isr: 3600`; the sponsors it renders come from a live file). The search box's code loads at idle, and the appearance and search choices are written to storage as VitePress writes them.
 

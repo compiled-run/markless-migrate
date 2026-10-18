@@ -1,4 +1,4 @@
-// The behaviour docusaurus.io's React theme adds after hydration, written against the imported markup.
+// The behaviour docusaurus.io's React theme adds in the browser, written against the imported markup.
 // Storage keys and class names are the old site's own, so a visitor's saved choices carry over.
 import themes from './code-themes.json';
 import categories from './sidebar-categories.json';
@@ -499,7 +499,6 @@ let booted = false;
 // What Docusaurus redoes on every route: the router's client-side navigation swaps in a fresh page, so this runs again then.
 function pageInit(): void {
 	parked.clear();
-	document.documentElement.setAttribute('data-has-hydrated', 'true');
 	const saved = storage()?.getItem(TAB_KEY('npm2yarn'));
 	const label = NPM2YARN.find((item) => item.toLowerCase() === saved);
 	if (label && label !== 'npm') for (const container of document.querySelectorAll('.theme-tabs-container')) if (isNpm2Yarn(container)) selectInContainer(container, label);

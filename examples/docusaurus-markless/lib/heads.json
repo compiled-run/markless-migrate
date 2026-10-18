@@ -4,25 +4,15 @@
 			"lang": "en",
 			"dir": "ltr",
 			"class": "plugin-pages plugin-id-default",
-			"data-has-hydrated": "true",
 			"data-theme": "light",
 			"data-theme-choice": "system",
-			"data-announcement-bar-initially-dismissed": "false",
-			"data-rh": "lang,dir,class,data-has-hydrated"
+			"data-announcement-bar-initially-dismissed": "false"
 		},
 		"head": [
 			{
 				"tag": "meta",
 				"attrs": {
 					"charset": "UTF-8"
-				},
-				"text": ""
-			},
-			{
-				"tag": "meta",
-				"attrs": {
-					"name": "generator",
-					"content": "Docusaurus v4.0.0"
 				},
 				"text": ""
 			},
@@ -34,7 +24,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "viewport",
 					"content": "width=device-width, initial-scale=1.0"
 				},
@@ -43,7 +32,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "twitter:card",
 					"content": "summary_large_image"
 				},
@@ -52,7 +40,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:image",
 					"content": "https://docusaurus.io/img/docusaurus-social-card.jpg"
 				},
@@ -61,7 +48,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "twitter:image",
 					"content": "https://docusaurus.io/img/docusaurus-social-card.jpg"
 				},
@@ -70,7 +56,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:url",
 					"content": "https://docusaurus.io/"
 				},
@@ -79,7 +64,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:locale",
 					"content": "en"
 				},
@@ -88,7 +72,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:locale:alternate",
 					"content": "fr"
 				},
@@ -97,7 +80,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:locale:alternate",
 					"content": "pt_BR"
 				},
@@ -106,7 +88,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:locale:alternate",
 					"content": "ko"
 				},
@@ -115,7 +96,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:locale:alternate",
 					"content": "zh_CN"
 				},
@@ -124,7 +104,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "docusaurus_locale",
 					"content": "en"
 				},
@@ -133,7 +112,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "docusaurus_tag",
 					"content": "default"
 				},
@@ -142,7 +120,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "docsearch:language",
 					"content": "en"
 				},
@@ -151,7 +128,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "docsearch:docusaurus_tag",
 					"content": "default"
 				},
@@ -160,7 +136,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:title",
 					"content": "Build optimized websites quickly, focus on your content | Docusaurus"
 				},
@@ -169,7 +144,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "description",
 					"content": "An optimized site generator in React. Docusaurus helps you to move fast and write content. Build documentation websites, blogs, marketing pages, and more."
 				},
@@ -178,7 +152,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:description",
 					"content": "An optimized site generator in React. Docusaurus helps you to move fast and write content. Build documentation websites, blogs, marketing pages, and more."
 				},
@@ -187,7 +160,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "icon",
 					"href": "/img/docusaurus.ico"
 				},
@@ -196,7 +168,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "canonical",
 					"href": "https://docusaurus.io/"
 				},
@@ -205,7 +176,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "alternate",
 					"href": "https://docusaurus.io/",
 					"hreflang": "en"
@@ -215,7 +185,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "alternate",
 					"href": "https://docusaurus.io/",
 					"hreflang": "fr"
@@ -225,7 +194,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "alternate",
 					"href": "https://docusaurus.io/",
 					"hreflang": "pt-BR"
@@ -235,7 +203,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "alternate",
 					"href": "https://docusaurus.io/",
 					"hreflang": "ko"
@@ -245,7 +212,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "alternate",
 					"href": "https://docusaurus.io/",
 					"hreflang": "zh-CN"
@@ -255,7 +221,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "alternate",
 					"href": "https://docusaurus.io/",
 					"hreflang": "x-default"
@@ -265,7 +230,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "preconnect",
 					"href": "https://X1Z85QJPUV-dsn.algolia.net",
 					"crossorigin": "anonymous"
@@ -477,25 +441,15 @@
 			"lang": "en",
 			"dir": "ltr",
 			"class": "plugin-docs plugin-id-default docs-version-current docs-doc-page docs-doc-id-introduction",
-			"data-has-hydrated": "true",
 			"data-theme": "light",
 			"data-theme-choice": "system",
-			"data-announcement-bar-initially-dismissed": "false",
-			"data-rh": "lang,dir,class,data-has-hydrated"
+			"data-announcement-bar-initially-dismissed": "false"
 		},
 		"head": [
 			{
 				"tag": "meta",
 				"attrs": {
 					"charset": "UTF-8"
-				},
-				"text": ""
-			},
-			{
-				"tag": "meta",
-				"attrs": {
-					"name": "generator",
-					"content": "Docusaurus v4.0.0"
 				},
 				"text": ""
 			},
@@ -507,7 +461,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "viewport",
 					"content": "width=device-width, initial-scale=1.0"
 				},
@@ -516,7 +469,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "twitter:card",
 					"content": "summary_large_image"
 				},
@@ -525,7 +477,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:image",
 					"content": "https://docusaurus.io/img/docusaurus-social-card.jpg"
 				},
@@ -534,7 +485,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "twitter:image",
 					"content": "https://docusaurus.io/img/docusaurus-social-card.jpg"
 				},
@@ -543,7 +493,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:url",
 					"content": "https://docusaurus.io/docs"
 				},
@@ -552,7 +501,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:locale",
 					"content": "en"
 				},
@@ -561,7 +509,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:locale:alternate",
 					"content": "fr"
 				},
@@ -570,7 +517,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:locale:alternate",
 					"content": "pt_BR"
 				},
@@ -579,7 +525,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:locale:alternate",
 					"content": "ko"
 				},
@@ -588,7 +533,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:locale:alternate",
 					"content": "zh_CN"
 				},
@@ -597,7 +541,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "docusaurus_locale",
 					"content": "en"
 				},
@@ -606,7 +549,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "docsearch:language",
 					"content": "en"
 				},
@@ -615,7 +557,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "docusaurus_version",
 					"content": "current"
 				},
@@ -624,7 +565,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "docusaurus_tag",
 					"content": "docs-default-current"
 				},
@@ -633,7 +573,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "docsearch:version",
 					"content": "current"
 				},
@@ -642,7 +581,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "docsearch:docusaurus_tag",
 					"content": "docs-default-current"
 				},
@@ -651,7 +589,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:title",
 					"content": "Introduction | Docusaurus"
 				},
@@ -660,7 +597,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "description",
 					"content": "Docusaurus was designed from the ground up to be easily installed and used to get your website up and running quickly."
 				},
@@ -669,7 +605,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:description",
 					"content": "Docusaurus was designed from the ground up to be easily installed and used to get your website up and running quickly."
 				},
@@ -678,7 +613,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "icon",
 					"href": "/img/docusaurus.ico"
 				},
@@ -687,7 +621,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "canonical",
 					"href": "https://docusaurus.io/docs"
 				},
@@ -696,7 +629,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "alternate",
 					"href": "https://docusaurus.io/docs",
 					"hreflang": "en"
@@ -706,7 +638,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "alternate",
 					"href": "https://docusaurus.io/docs",
 					"hreflang": "fr"
@@ -716,7 +647,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "alternate",
 					"href": "https://docusaurus.io/docs",
 					"hreflang": "pt-BR"
@@ -726,7 +656,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "alternate",
 					"href": "https://docusaurus.io/docs",
 					"hreflang": "ko"
@@ -736,7 +665,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "alternate",
 					"href": "https://docusaurus.io/docs",
 					"hreflang": "zh-CN"
@@ -746,7 +674,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "alternate",
 					"href": "https://docusaurus.io/docs",
 					"hreflang": "x-default"
@@ -756,7 +683,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "preconnect",
 					"href": "https://X1Z85QJPUV-dsn.algolia.net",
 					"crossorigin": "anonymous"
@@ -964,8 +890,7 @@
 			{
 				"tag": "script",
 				"attrs": {
-					"type": "application/ld+json",
-					"data-rh": "true"
+					"type": "application/ld+json"
 				},
 				"text": "{\"@context\":\"https://schema.org\",\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Introduction\",\"item\":\"https://docusaurus.io/docs\"}]}"
 			}
@@ -976,25 +901,15 @@
 			"lang": "en",
 			"dir": "ltr",
 			"class": "plugin-docs plugin-id-default docs-version-current docs-doc-page docs-doc-id-installation",
-			"data-has-hydrated": "true",
 			"data-theme": "light",
 			"data-theme-choice": "system",
-			"data-announcement-bar-initially-dismissed": "false",
-			"data-rh": "lang,dir,class,data-has-hydrated"
+			"data-announcement-bar-initially-dismissed": "false"
 		},
 		"head": [
 			{
 				"tag": "meta",
 				"attrs": {
 					"charset": "UTF-8"
-				},
-				"text": ""
-			},
-			{
-				"tag": "meta",
-				"attrs": {
-					"name": "generator",
-					"content": "Docusaurus v4.0.0"
 				},
 				"text": ""
 			},
@@ -1006,7 +921,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "viewport",
 					"content": "width=device-width, initial-scale=1.0"
 				},
@@ -1015,7 +929,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "twitter:card",
 					"content": "summary_large_image"
 				},
@@ -1024,7 +937,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:image",
 					"content": "https://docusaurus.io/img/docusaurus-social-card.jpg"
 				},
@@ -1033,7 +945,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "twitter:image",
 					"content": "https://docusaurus.io/img/docusaurus-social-card.jpg"
 				},
@@ -1042,7 +953,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:url",
 					"content": "https://docusaurus.io/docs/installation"
 				},
@@ -1051,7 +961,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:locale",
 					"content": "en"
 				},
@@ -1060,7 +969,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:locale:alternate",
 					"content": "fr"
 				},
@@ -1069,7 +977,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:locale:alternate",
 					"content": "pt_BR"
 				},
@@ -1078,7 +985,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:locale:alternate",
 					"content": "ko"
 				},
@@ -1087,7 +993,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:locale:alternate",
 					"content": "zh_CN"
 				},
@@ -1096,7 +1001,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "docusaurus_locale",
 					"content": "en"
 				},
@@ -1105,7 +1009,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "docsearch:language",
 					"content": "en"
 				},
@@ -1114,7 +1017,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "docusaurus_version",
 					"content": "current"
 				},
@@ -1123,7 +1025,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "docusaurus_tag",
 					"content": "docs-default-current"
 				},
@@ -1132,7 +1033,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "docsearch:version",
 					"content": "current"
 				},
@@ -1141,7 +1041,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "docsearch:docusaurus_tag",
 					"content": "docs-default-current"
 				},
@@ -1150,7 +1049,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:title",
 					"content": "Installation | Docusaurus"
 				},
@@ -1159,7 +1057,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"name": "description",
 					"content": "How to install Docusaurus locally, and start a Docusaurus site in no time."
 				},
@@ -1168,7 +1065,6 @@
 			{
 				"tag": "meta",
 				"attrs": {
-					"data-rh": "true",
 					"property": "og:description",
 					"content": "How to install Docusaurus locally, and start a Docusaurus site in no time."
 				},
@@ -1177,7 +1073,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "icon",
 					"href": "/img/docusaurus.ico"
 				},
@@ -1186,7 +1081,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "canonical",
 					"href": "https://docusaurus.io/docs/installation"
 				},
@@ -1195,7 +1089,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "alternate",
 					"href": "https://docusaurus.io/docs/installation",
 					"hreflang": "en"
@@ -1205,7 +1098,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "alternate",
 					"href": "https://docusaurus.io/docs/installation",
 					"hreflang": "fr"
@@ -1215,7 +1107,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "alternate",
 					"href": "https://docusaurus.io/docs/installation",
 					"hreflang": "pt-BR"
@@ -1225,7 +1116,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "alternate",
 					"href": "https://docusaurus.io/docs/installation",
 					"hreflang": "ko"
@@ -1235,7 +1125,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "alternate",
 					"href": "https://docusaurus.io/docs/installation",
 					"hreflang": "zh-CN"
@@ -1245,7 +1134,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "alternate",
 					"href": "https://docusaurus.io/docs/installation",
 					"hreflang": "x-default"
@@ -1255,7 +1143,6 @@
 			{
 				"tag": "link",
 				"attrs": {
-					"data-rh": "true",
 					"rel": "preconnect",
 					"href": "https://X1Z85QJPUV-dsn.algolia.net",
 					"crossorigin": "anonymous"
@@ -1463,8 +1350,7 @@
 			{
 				"tag": "script",
 				"attrs": {
-					"type": "application/ld+json",
-					"data-rh": "true"
+					"type": "application/ld+json"
 				},
 				"text": "{\"@context\":\"https://schema.org\",\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Getting Started\",\"item\":\"https://docusaurus.io/docs/category/getting-started\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Installation\",\"item\":\"https://docusaurus.io/docs/installation\"}]}"
 			}

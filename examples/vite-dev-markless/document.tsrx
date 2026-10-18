@@ -28,13 +28,13 @@ export default function Document({ children }: { readonly children?: Children })
 			<meta name="theme-color" content="#646cff" />
 			<script id="check-dark-mode">{'(function(){let e=localStorage.getItem("vitepress-theme-appearance")||"auto",t=window.matchMedia("(prefers-color-scheme: dark)").matches;if(!e||e==="auto"?t:e==="dark")document.documentElement.classList.add("dark")})();'}</script>
 			<script id="check-mac-os">{'document.documentElement.classList.toggle("mac",/Mac|iPhone|iPod|iPad/i.test(navigator.platform));'}</script>
-			<link rel="modulepreload" href="/islands/page.js" />
+			<link rel="modulepreload" href="/page-scripts/page.js" />
 			<link rel="canonical" href="https://vite.dev" />
 			<link href="/llms.txt" rel="describedby" />
 		</head>
 		<body>
 			{children}
-			<script type="module" src="/islands/page.js"></script>
+			<script type="module" src="/page-scripts/page.js"></script>
 		</body>
 	</Html>
 }

@@ -1,7 +1,7 @@
 import { state } from '@markless/core';
 
 export default function LogoGrid() @{
-	// LogoGrid.vue measures at mount whether the logos fit; islands/logo-grid.ts measures and reports it here.
+	// LogoGrid.vue measures at mount whether the logos fit; page-scripts/logo-grid.ts measures and reports it here.
 	let scrolling = state(false);
 
 	<section class="wrapper wrapper--ticks border-t" data-v-8a57af01="">

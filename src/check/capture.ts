@@ -12,6 +12,7 @@ import { captureSourceHints } from './hints-page.ts';
 import type { AssetRecord, HttpCapture, HttpHop, PageCapture, RouteCapture, ScriptWeight, Viewport } from './types.ts';
 import { request } from './http.ts';
 import { loadPage } from './infrastructure.ts';
+import { runtimeMarkers } from './residue.ts';
 
 const ASSET_TYPES = new Set(['image', 'font', 'stylesheet', 'script', 'media']);
 
@@ -199,6 +200,8 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		const assets: AssetRecord[] = (await Promise.all(pending)).filter((a) => a !== undefined).map((a) => ({ ...a, fingerprinted: isFingerprinted(a.url, builtTexts), ...(runtimes.has(a.url) ? { runtime: runtimes.get(a.url)! } : {}) }));
 		const internals = await page.evaluate(frameworkMarkup).catch(() => []);
 		const embeds = await page.evaluate(thirdPartyEmbeds).catch(() => []);
+		const served = runtimeMarkers(html, 'served');
+		const residue = [...served, ...runtimeMarkers(await page.content().catch(() => ''), 'page').filter((m) => !served.some((s) => s.marker === m.marker))];
 		const imageUrls = [...new Set(assets.filter((a) => a.type === 'image' && a.status < 400).map((a) => new URL(a.url, origin).href))];
 		log.stop();
 		const decodedAbsolute = await page.evaluate(decodeImages, imageUrls);
@@ -241,6 +244,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 			...(Object.keys(sealed).length ? { sealed } : {}),
 			...(internals.length ? { internals } : {}),
 			...(embeds.length ? { embeds } : {}),
+			...(residue.length ? { residue } : {}),
 			weight: {
 				downloaded: scripts.reduce((sum, s) => sum + s.bytes, 0),
 				source: scripts.reduce((sum, s) => sum + s.source, 0) + inline.reduce((sum, entry) => sum + (entry.source ?? '').length, 0),

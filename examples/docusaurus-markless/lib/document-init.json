@@ -3,21 +3,15 @@
 	"html": {
 		"/": {
 			"dir": "ltr",
-			"class": "plugin-pages plugin-id-default",
-			"data-rh": "lang,dir,class,data-has-hydrated",
-			"data-has-hydrated": "false"
+			"class": "plugin-pages plugin-id-default"
 		},
 		"/docs": {
 			"dir": "ltr",
-			"class": "plugin-docs plugin-id-default docs-version-current docs-doc-page docs-doc-id-introduction",
-			"data-rh": "lang,dir,class,data-has-hydrated",
-			"data-has-hydrated": "false"
+			"class": "plugin-docs plugin-id-default docs-version-current docs-doc-page docs-doc-id-introduction"
 		},
 		"/docs/installation": {
 			"dir": "ltr",
-			"class": "plugin-docs plugin-id-default docs-version-current docs-doc-page docs-doc-id-installation",
-			"data-rh": "lang,dir,class,data-has-hydrated",
-			"data-has-hydrated": "false"
+			"class": "plugin-docs plugin-id-default docs-version-current docs-doc-page docs-doc-id-installation"
 		}
 	}
 }
