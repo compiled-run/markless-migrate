@@ -233,11 +233,22 @@ export function tabOut(forward: boolean): void {
 		? all.find((el) => position(el) & Node.DOCUMENT_POSITION_FOLLOWING)
 		: all.reverse().find((el) => position(el) & Node.DOCUMENT_POSITION_PRECEDING);
 	if (target) target.focus();
-	else (document.activeElement as HTMLElement | null)?.blur();
+	else if (forward) {
+		// Nothing after the grid: focus the bottom guard and let the browser's own Tab (not prevented on the last
+		// header) carry focus off the page, so the next Shift+Tab comes back in through the guard.
+		quietGuard = true;
+		document.querySelector<HTMLElement>('.ag-tab-guard-bottom')?.focus();
+	} else (document.activeElement as HTMLElement | null)?.blur();
 }
 
 let headerAt = 0;
 let quietGuard = false;
+
+/** Whether a focus event landed on the last shown header cell (Tab there leaves the grid). */
+export function isLastHeader(e: Event): boolean {
+	const list = headers().filter((h) => h.getClientRects().length > 0);
+	return list[list.length - 1] === e.target;
+}
 
 function headers(): HTMLElement[] {
 	return [...document.querySelectorAll<HTMLElement>('.ag-header-cell[col-id]')];

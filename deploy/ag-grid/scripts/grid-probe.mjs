@@ -63,6 +63,7 @@ const SCENARIOS = {
 	'row Space and End': [['click', R(4980)], ['press', 'Space'], ['wait', 400], ['press', 'Home'], ['wait', 400]],
 	'json collapse': [['click', R(4990, 'args')], ['click', '.react-json-view .object-key-val .object-key-val > span > span']],
 	'keyboard header': [['click', 'button[title="Clear all events"]'], ['press', 'Shift+Tab'], ['press', 'Tab'], ['press', 'Tab'], ['press', 'ArrowRight'], ['press', 'ArrowRight'], ['press', 'Enter'], ['press', 'Enter'], ['press', 'ArrowLeft'], ['press', 'Tab'], ['press', 'Tab'], ['press', 'Tab']],
+	'tab out and back': [['click', 'button[title="Clear all events"]'], ['press', 'Tab'], ['press', 'Tab'], ['press', 'Tab'], ['press', 'Tab'], ['press', 'Tab'], ['press', 'Tab'], ['press', 'Shift+Tab'], ['press', 'ArrowDown'], ['press', 'Shift+Tab']],
 	'keyboard row': [['click', R(4995)], ['press', 'ArrowUp'], ['wait', 400], ['press', 'Tab'], ['press', 'Tab']],
 	'resize Channel': [['drag', '.ag-header-cell[col-id=channel] .ag-header-cell-resize', 60, 0, 30]],
 	'resize Time': [['drag', '.ag-header-cell[col-id=timestamp] .ag-header-cell-resize', 40, 0, 30]],

@@ -4,7 +4,7 @@
 // One component: rows, header cells and filter options written inline, because handlers in a child
 // component per row or per column did not reach this component's state after resume (see the log).
 import { computed, element, state } from '@markless/core';
-import { afterScroll, announce, dragMove, headerBox, wasDragged, keepRowFocus, debounceFilter, dragX, firstTime, focusHeader, listUnder, focusPicker, focusWhenShown, onOutsidePointer, onGuardFocus, onHeaderKey, measureScrollbar, popupUnder, rowOf, scrollFromFake, setScrollTop, wasProgrammatic, watchSize } from './api.ts';
+import { afterScroll, announce, isLastHeader, dragMove, headerBox, wasDragged, keepRowFocus, debounceFilter, dragX, firstTime, focusHeader, listUnder, focusPicker, focusWhenShown, onOutsidePointer, onGuardFocus, onHeaderKey, measureScrollbar, popupUnder, rowOf, scrollFromFake, setScrollTop, wasProgrammatic, watchSize } from './api.ts';
 import { headerView } from './header.ts';
 import { ROW_HEIGHT, TEXT_OPTIONS, blankType, countOf, directionOptions, dropIndex, hideColumn, moveColumn, nextSort, optionIndex, optionLabel, parseNumbers, parseText, pickerView, resizeShown, secondShown, shownCols, shownTotal, shownWidths, shownWindow, toggleDirection, withFilterType, withFilterValue, withJoin } from './model.ts';
 import type { ColDef, Row } from './model.ts';
@@ -38,6 +38,7 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 		focused: 0,
 		hovered: 0,
 		activeHeader: '',
+		atLastHeader: false,
 		scrolling: false,
 	});
 	const body = element<HTMLDivElement>();
@@ -123,8 +124,11 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 						<div class="ag-header-viewport " role="rowgroup" tabindex="-1">
 							<div class="ag-header-container" role="presentation" style={widthStyle}>
 								<div class="ag-header-row ag-header-row-column" role="row" tabindex="0" aria-rowindex="1" style={headerRowStyle}>
-				<div class={h0.cls} role="columnheader" col-id="serialNumber" aria-colindex={h0.ariaIndex} tabindex="-1" aria-sort={h0.ariaSort} style={h0.style} onFocus={() => announce(h0.desc, (text) => onAnnounce(text))} onMouseEnter={() => (g.activeHeader = 'serialNumber')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
-					if (e.key === 'Tab' || e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'Enter') e.preventDefault();
+				<div class={h0.cls} role="columnheader" col-id="serialNumber" aria-colindex={h0.ariaIndex} tabindex="-1" aria-sort={h0.ariaSort} style={h0.style} onFocus={(e) => {
+					g.atLastHeader = isLastHeader(e);
+					announce(h0.desc, (text) => onAnnounce(text));
+				}} onMouseEnter={() => (g.activeHeader = 'serialNumber')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
+					if ((e.key === 'Tab' && (e.shiftKey || !g.atLastHeader)) || e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'Enter') e.preventDefault();
 					if (onHeaderKey(e)) return;
 					if (e.key !== 'Enter') return;
 					g.sort = nextSort(g.sort, 'serialNumber', e.shiftKey);
@@ -175,8 +179,11 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 					</div>
 					</div>
 				</div>
-				<div class={h1.cls} role="columnheader" col-id="timestamp" aria-colindex={h1.ariaIndex} tabindex="-1" aria-sort={h1.ariaSort} style={h1.style} onFocus={() => announce(h1.desc, (text) => onAnnounce(text))} onMouseEnter={() => (g.activeHeader = 'timestamp')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
-					if (e.key === 'Tab' || e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'Enter') e.preventDefault();
+				<div class={h1.cls} role="columnheader" col-id="timestamp" aria-colindex={h1.ariaIndex} tabindex="-1" aria-sort={h1.ariaSort} style={h1.style} onFocus={(e) => {
+					g.atLastHeader = isLastHeader(e);
+					announce(h1.desc, (text) => onAnnounce(text));
+				}} onMouseEnter={() => (g.activeHeader = 'timestamp')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
+					if ((e.key === 'Tab' && (e.shiftKey || !g.atLastHeader)) || e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'Enter') e.preventDefault();
 					if (onHeaderKey(e)) return;
 					if (e.key !== 'Enter') return;
 					g.sort = nextSort(g.sort, 'timestamp', e.shiftKey);
@@ -227,8 +234,11 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 					</div>
 					</div>
 				</div>
-				<div class={h2.cls} role="columnheader" col-id="direction" aria-colindex={h2.ariaIndex} tabindex="-1" aria-sort={h2.ariaSort} style={h2.style} onFocus={() => announce(h2.desc, (text) => onAnnounce(text))} onMouseEnter={() => (g.activeHeader = 'direction')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
-					if (e.key === 'Tab' || e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'Enter') e.preventDefault();
+				<div class={h2.cls} role="columnheader" col-id="direction" aria-colindex={h2.ariaIndex} tabindex="-1" aria-sort={h2.ariaSort} style={h2.style} onFocus={(e) => {
+					g.atLastHeader = isLastHeader(e);
+					announce(h2.desc, (text) => onAnnounce(text));
+				}} onMouseEnter={() => (g.activeHeader = 'direction')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
+					if ((e.key === 'Tab' && (e.shiftKey || !g.atLastHeader)) || e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'Enter') e.preventDefault();
 					if (onHeaderKey(e)) return;
 					if (e.key !== 'Enter') return;
 					if (e.ctrlKey || e.metaKey) {
@@ -291,8 +301,11 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 					</div>
 					</div>
 				</div>
-				<div class={h3.cls} role="columnheader" col-id="channel" aria-colindex={h3.ariaIndex} tabindex="-1" aria-sort={h3.ariaSort} style={h3.style} onFocus={() => announce(h3.desc, (text) => onAnnounce(text))} onMouseEnter={() => (g.activeHeader = 'channel')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
-					if (e.key === 'Tab' || e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'Enter') e.preventDefault();
+				<div class={h3.cls} role="columnheader" col-id="channel" aria-colindex={h3.ariaIndex} tabindex="-1" aria-sort={h3.ariaSort} style={h3.style} onFocus={(e) => {
+					g.atLastHeader = isLastHeader(e);
+					announce(h3.desc, (text) => onAnnounce(text));
+				}} onMouseEnter={() => (g.activeHeader = 'channel')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
+					if ((e.key === 'Tab' && (e.shiftKey || !g.atLastHeader)) || e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'Enter') e.preventDefault();
 					if (onHeaderKey(e)) return;
 					if (e.key !== 'Enter') return;
 					if (e.ctrlKey || e.metaKey) {
@@ -357,8 +370,11 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 					</div>
 					</div>
 				</div>
-				<div class={h4.cls} role="columnheader" col-id="args" aria-colindex={h4.ariaIndex} tabindex="-1" aria-sort={h4.ariaSort} style={h4.style} onFocus={() => announce(h4.desc, (text) => onAnnounce(text))} onMouseEnter={() => (g.activeHeader = 'args')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
-					if (e.key === 'Tab' || e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'Enter') e.preventDefault();
+				<div class={h4.cls} role="columnheader" col-id="args" aria-colindex={h4.ariaIndex} tabindex="-1" aria-sort={h4.ariaSort} style={h4.style} onFocus={(e) => {
+					g.atLastHeader = isLastHeader(e);
+					announce(h4.desc, (text) => onAnnounce(text));
+				}} onMouseEnter={() => (g.activeHeader = 'args')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
+					if ((e.key === 'Tab' && (e.shiftKey || !g.atLastHeader)) || e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'Enter') e.preventDefault();
 					if (onHeaderKey(e)) return;
 					if (e.key !== 'Enter') return;
 					if (e.ctrlKey || e.metaKey) {

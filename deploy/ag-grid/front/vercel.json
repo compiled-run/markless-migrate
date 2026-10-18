@@ -1,0 +1,36 @@
+{
+	"rewrites": [
+		{
+			"source": "/manifest.json",
+			"destination": "https://mm-ag-grid-new.vercel.app/manifest.json"
+		},
+		{
+			"source": "/manifest.json/",
+			"destination": "https://mm-ag-grid-new.vercel.app/manifest.json/"
+		},
+		{
+			"source": "/.gitkeep",
+			"destination": "https://mm-ag-grid-new.vercel.app/.gitkeep"
+		},
+		{
+			"source": "/assets/:path*",
+			"destination": "https://mm-ag-grid-new.vercel.app/assets/:path*"
+		},
+		{
+			"source": "/build/:path*",
+			"destination": "https://mm-ag-grid-new.vercel.app/build/:path*"
+		},
+		{
+			"source": "/",
+			"destination": "https://mm-ag-grid-old.vercel.app/"
+		},
+		{
+			"source": "/:path*/",
+			"destination": "https://mm-ag-grid-old.vercel.app/:path*/"
+		},
+		{
+			"source": "/:path*",
+			"destination": "https://mm-ag-grid-old.vercel.app/:path*"
+		}
+	]
+}

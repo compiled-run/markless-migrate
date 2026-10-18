@@ -2,3 +2,6 @@ old/
 .vercel-old/
 .build.log
 old-panel/
+.vercel/
+front/.vercel/
+front/public/_migrate/shots/
