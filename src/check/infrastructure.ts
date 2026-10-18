@@ -52,6 +52,8 @@ export async function loadPage(page: Page, url: string, options: { timeout?: num
 		try {
 			return await page.goto(url, { waitUntil: 'load', timeout });
 		} catch (error) {
+			// The about:blank left before a retry can commit after its own goto returned, and abort the retried load.
+			if (attempt === 1 && /interrupted by another navigation to "about:blank"/.test(errorText(error))) continue;
 			const kind = classify(error);
 			if (!kind) throw error;
 			if (attempt === 0) {

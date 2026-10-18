@@ -106,3 +106,23 @@ test('a deployment that hangs part way cannot stall the run: the route stops at 
 		hung.close();
 	}
 });
+
+test('a retried load that the about:blank before it aborts is loaded again, not a crash of the whole check', async () => {
+	const calls: string[] = [];
+	const outcomes: (() => unknown)[] = [
+		() => Object.assign(new Error('page.goto: Timeout 500ms exceeded.'), { name: 'TimeoutError' }),
+		() => undefined,
+		() => new Error('page.goto: Navigation to "http://x/a/" is interrupted by another navigation to "about:blank"'),
+		() => undefined,
+	];
+	const page = {
+		goto: async (url: string) => {
+			calls.push(url);
+			const outcome = outcomes.shift()!();
+			if (outcome instanceof Error) throw outcome;
+			return url === 'about:blank' ? null : ({ ok: true } as unknown);
+		},
+	} as unknown as import('playwright').Page;
+	assert.deepEqual(await loadPage(page, 'http://x/a/', { timeout: 500, backoffMs: 1 }), { ok: true });
+	assert.deepEqual(calls, ['http://x/a/', 'about:blank', 'http://x/a/', 'http://x/a/']);
+});
