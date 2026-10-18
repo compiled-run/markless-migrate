@@ -13,7 +13,7 @@ Every report also shows how much JavaScript runs at load on each route, before a
 each control answers its first use and each link shows the next page, on a desktop and on a phone with
 the CPU slowed 4x: `First interaction: old 40 ms → new 230 ms (4x CPU)`.
 
-Status: early. `plan`, `check`, `status`, `switch`, `proxy`, `config`, `setup`, `run` and the MCP server work. See [docs/plan.md](docs/plan.md).
+Status: early. `plan`, `check`, `cli`, `status`, `switch`, `proxy`, `config`, `setup`, `run` and the MCP server work. See [docs/plan.md](docs/plan.md).
 
 ## Commands
 
@@ -30,6 +30,7 @@ markless-migrate switch <route> [--force --by <name> --reason <why>]
 markless-migrate unswitch <route>
 markless-migrate proxy --old http://localhost:3000 --new http://localhost:5173 [--port 4300] [--host 127.0.0.1]
 markless-migrate config --old https://old.example.com --new https://new.example.com [--vercel vercel.json] [--nitro nitro.ts] [--new-build .output/public] [--index public/_migrate/index.html]
+markless-migrate cli [--config .migrate/cli.json] [--case <name>]... [--record] [--json]
 markless-migrate accept <failure-id> --reason "why" [--by <name>]
 markless-migrate recorder
 markless-migrate status
@@ -100,7 +101,7 @@ only within the same kind of character (digits stay digits); everything else mus
 | `css` | computed styles of every visible element, paired by accessibility role, name and landmark path, in the default state and in every state the old stylesheets style (`:hover`, `:focus-visible`, `:checked`, `[open]`, each viewport and container width edge, `prefers-color-scheme`, `prefers-reduced-motion`), each difference traced to the old rule's selector, file, line and column |
 | `a11y` | axe-core violations (the new page may not add any), landmarks, focus order by Tab, animations under reduced motion, and every keyboard path (Enter and Space on controls, Escape and ArrowDown in what they open) |
 | `i18n` | `lang`, `dir` and text direction, the formats of dates and numbers in the text, and the page each Accept-Language lands on |
-| `behaviour` | interactions explored on the old page and replayed on the new one: the URL, what appears and disappears, app requests (method, path, body shape), console errors, live-region announcements, focus and what the page keeps in the browser (localStorage, sessionStorage and IndexedDB keys, cookies with their attributes) after each step and after the page loads; and coverage: every interactive element of the old page, including what a click reveals, is used by at least one journey (main content, tables and forms first, until `--journey-budget` runs out), and one that is not keeps the route red until a person accepts it; a shared header or sidebar control is exercised by the first route of the run that has it, and every route sharing it carries its result. On the new app a journey that reaches a page not switched yet (`.migrate/switched.json`) gets the old app's page and what it loads, as through the front door, not the new app's 404 |
+| `behaviour` | interactions explored on the old page and replayed on the new one: the URL, what appears and disappears, app requests (method, path, body shape), console errors, live-region announcements, focus and what the page keeps in the browser (localStorage, sessionStorage and IndexedDB keys, cookies with their attributes) after each step and after the page loads; a step that only reorders nodes (a sorted table) reports which nodes moved; and coverage: every interactive element of the old page, including what a click reveals, is used by at least one journey. Interactive means a native control, an ARIA widget (tab, option, menuitem, switch, checkbox, slider, treeitem; a column header that sorts or takes focus; a row or cell of a `grid` that takes focus or is selectable, the first two of each grid exercised and the rest counted as covered by them) or any element that listens for clicks or keys itself (Chromium's `DOMDebugger.getEventListeners`, or the handler props React, Vue, Svelte and Solid keep on the element when they delegate to the root), found again on the new page by its exact text or label. Headers are clicked and pressed Enter on, rows pressed Space, Enter and ArrowDown, cells arrowed through, sliders moved by key, and filter boxes a click reveals are typed into (main content, tables and forms first, until `--journey-budget` runs out), and one that is not keeps the route red until a person accepts it; a shared header or sidebar control is exercised by the first route of the run that has it, and every route sharing it carries its result. On the new app a journey that reaches a page not switched yet (`.migrate/switched.json`) gets the old app's page and what it loads, as through the front door, not the new app's 404 |
 | `network` | every request the page makes, in the browser and, when the server runs the request recorder, while the server renders it: method, URL (the app's own origin, ids, timestamps and cache-busters normalised, query keys and values kept), body shape, how many times, and which response fields the page shows |
 | `data` | non-page endpoints as data, with the same noise rules as pages: feeds item by item (keyed by guid, id or link), JSON field by field, `/.well-known` files, the manifest; robots.txt lines and sitemap entries count as `seo` |
 | `weight` | JavaScript on the wire and run at load (Chromium coverage); red when the new route is heavier |
@@ -220,6 +221,44 @@ and any request a handler the source scan marks as writing. They are sent only w
 on this machine or `--staging` marks them as staging apps with test data. Otherwise each write is
 answered by the checker without reaching the app, and compared old vs new as `would POST /path {shape}`.
 Server-side writes the app makes while handling a request cannot be held back.
+
+## Command-line tools
+
+When the product includes a command-line tool (a scaffolder, a code generator, shadcn's `shadcn add`),
+`markless-migrate cli` checks the new tool against the old one the way `check` checks pages. Cases live in
+`.migrate/cli.json`:
+
+```json
+{
+	"old": { "command": ["node", "../old-app/packages/cli/dist/index.js"] },
+	"new": { "command": ["node", "./bin/cli.js"] },
+	"ignore": ["node_modules/", "pnpm-lock.yaml"],
+	"replace": [{ "pattern": "id-[a-f0-9]{8}", "with": "id-<hex>" }],
+	"cases": [
+		{ "name": "init with answers", "args": ["init"], "env": { "REGISTRY_URL": "https://registry.example" },
+		  "files": { "package.json": "{\"name\":\"app\"}" },
+		  "stdin": [{ "expect": "Which style", "send": "\r" }, { "expect": "Base colour", "send": "\u001b[B\r" }] },
+		{ "name": "add a component", "args": ["add", "button", "--yes"], "files": { "components.json": "{}" } }
+	]
+}
+```
+
+Each case runs the old tool twice and the new tool once, each in its own temporary working directory with
+the case's `files` written first, a temporary HOME, a clean environment (PATH, TZ=UTC, LANG=en_US.UTF-8,
+NO_COLOR=1, then the case's `env` and the side's own `env`) and the case's stdin: plain text, or answers
+each sent once its `expect` pattern shows in the output since the last answer (a prompt that never shows
+is reported). Compared, with the run's directories, colours, durations, versions and ISO timestamps
+normalised in output and file contents (and `replace` applied after), and with whatever differed between
+the two old runs allowed to vary: the exit code, stdout and stderr line by line, every file the run left in
+the working directory and in `~/` (text contents line by line, binary and large files by hash; `ignore`
+leaves paths out), and every request made (method, URL and text body, as a set). A Node tool is started
+with `--import` of a network shim that logs `fetch`, `node:http` and `node:https` requests and, by default,
+answers `fetch` from `.migrate/cli-network/<case>.json` and refuses the rest, so both tools see the same
+registry; `--record` first runs the old tool against the real network and writes that file, and
+`"network": "live"` lets every request through. The report is `.migrate/cli-report.json`; `cli` exits 1
+when a case differs. Limits: requests a non-Node tool makes are not seen; `node:http` responses are not
+replayed (only logged, and refused under replay); prompts read stdin as a pipe, so a tool that needs a TTY
+(raw-mode key handling) has to be driven with its own non-interactive flags for now.
 
 ## Intended differences
 

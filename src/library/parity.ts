@@ -290,7 +290,7 @@ async function readJourneys(dir: string | undefined): Promise<JourneyFile[]> {
 
 function stepSummary(r: StepResult | undefined): string {
 	if (!r) return 'no recorded result';
-	const bits = [r.navigated ? `goes to ${r.url}` : '', r.added.length ? `shows ${r.added.slice(0, 3).map((a) => a.replace(/^- /, '')).join('; ')}${r.added.length > 3 ? ` (+${r.added.length - 3})` : ''}` : '', r.removed.length ? `hides ${r.removed.slice(0, 2).map((a) => a.replace(/^- /, '')).join('; ')}${r.removed.length > 2 ? ` (+${r.removed.length - 2})` : ''}` : '', r.announcements.length ? `announces ${r.announcements.join('; ')}` : '', r.focus ? `focus on ${r.focus}` : ''].filter(Boolean);
+	const bits = [r.navigated ? `goes to ${r.url}` : '', r.added.length ? `shows ${r.added.slice(0, 3).map((a) => a.replace(/^- /, '')).join('; ')}${r.added.length > 3 ? ` (+${r.added.length - 3})` : ''}` : '', r.removed.length ? `hides ${r.removed.slice(0, 2).map((a) => a.replace(/^- /, '')).join('; ')}${r.removed.length > 2 ? ` (+${r.removed.length - 2})` : ''}` : '', r.moved?.length ? `reorders ${r.moved.slice(0, 2).map((a) => a.replace(/^- /, '')).join('; ')}${r.moved.length > 2 ? ` (+${r.moved.length - 2})` : ''}` : '', r.announcements.length ? `announces ${r.announcements.join('; ')}` : '', r.focus ? `focus on ${r.focus}` : ''].filter(Boolean);
 	return bits.join(', ') || 'nothing changes';
 }
 

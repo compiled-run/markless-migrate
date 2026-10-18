@@ -33,6 +33,7 @@ import { AGENT_ENV, readSwitched, switchRoute, unswitchRoute } from './switch/st
 import { ACCEPTED_FILE, acceptFailure, readAccepted, writeAccepted } from './check/accepted.ts';
 import { LIBRARIES_FILE, planLibraries, readLibraries, summarizeParity, writeParity } from './library/index.ts';
 import type { RouteState } from './status.ts';
+import { CLI_CONFIG, CLI_REPORT, readCliConfig, runCliCheck, summarizeCli } from './check/cli/conform.ts';
 
 const USAGE = `markless-migrate ${VERSION}
 
@@ -40,7 +41,9 @@ const USAGE = `markless-migrate ${VERSION}
           Inventory the old app's routes, SEO, assets and locales into .migrate/inventory.json.
           With --source, auth guards propose roles and the login route in a starter .migrate/auth.json,
           and every library the old app imports goes in .migrate/libraries.json: the exact surface used,
-          each usage site, and whether it maps to @markless/ui, stays as-is or needs a port.
+          each usage site, and whether it maps to @markless/ui, stays as-is, needs a port, or renders
+          its own UI (a grid, chart or editor: port it or a person decides on a DOM island).
+          A webpack app's pages are what HtmlWebpackPlugin and CopyPlugin emit, linked to their entries.
   check   --old <origin> --new <origin> [--route <path>]... [--json] [--open]
           [--source <path>] [--data record|replay] [--staging] [--block <host>]... [--allow <host>]...
           [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
@@ -85,6 +88,16 @@ const USAGE = `markless-migrate ${VERSION}
           components, props, hooks, options and fields the old app uses (narrowed to --route), plus
           behaviour.md and behaviour.json: what each usage site must do, and the recorded journeys that
           exercise it. Needs plan --source (it writes .migrate/libraries.json). Existing port files are kept.
+  cli     [--config <file>] [--case <name>]... [--record] [--json]
+          Compare the old and new command-line tool (default config .migrate/cli.json): each case runs
+          the old tool twice and the new one once, each in fresh temporary directories with a clean
+          environment and a temporary HOME, the case's files, args, env and stdin answers (each sent
+          once its prompt shows). Exit codes, stdout and stderr, every file written (tree and
+          contents) and every request made must match; paths, colours, durations, versions and
+          timestamps are normalised, and what varied between the two old runs may vary. Node tools
+          get their fetch answered from .migrate/cli-network/<case>.json; --record first runs the old
+          tool against the real network to write it. Writes .migrate/cli-report.json; exits 1 when a
+          case differs.
   accept  <failure-id> --reason <why> [--by <name>]
           Record a failure as an intended difference in .migrate/accepted.json: from then on it shows as
           accepted (with the reason), not red. For a human only; ids are printed with every failure.
@@ -517,6 +530,16 @@ async function main(argv: string[]): Promise<number> {
 			const result = await writeParity(libraries, positionals[0]!, { newApp: resolve(values['new-source'] ?? cwd), ...(values.route?.length ? { routes: values.route } : {}), journeysDir: join(cwd, STATE_DIR, 'journeys') }).catch((error: Error) => fail(error.message));
 			out(summarizeParity(result));
 			return 0;
+		}
+		case 'cli': {
+			const { values } = parseArgs({ args: rest, options: { config: { type: 'string' }, case: { type: 'string', multiple: true }, record: { type: 'boolean' }, json: { type: 'boolean' } } });
+			const path = resolve(cwd, values.config ?? join(STATE_DIR, CLI_CONFIG));
+			const config = await readCliConfig(path).catch((error: Error) => fail(error.message));
+			const report = await runCliCheck({ config, base: dirname(path), fixturesDir: join(cwd, STATE_DIR, 'cli-network'), ...(values.case?.length ? { only: values.case } : {}), ...(values.record ? { record: true } : {}) });
+			if (values.case?.length && report.cases.length !== values.case.length) fail(`no case named ${values.case.filter((n) => !report.cases.some((c) => c.name === n)).join(', ')} in ${path}`);
+			await writeFile(join(cwd, STATE_DIR, CLI_REPORT), `${JSON.stringify(report, null, '\t')}\n`);
+			out(values.json ? `${JSON.stringify(report, null, '\t')}\n` : `${summarizeCli(report)}Wrote ${join(cwd, STATE_DIR, CLI_REPORT)}\n`);
+			return report.ok ? 0 : 1;
 		}
 		case 'recorder':
 			out(`Start each Node server (old and new) with the request recorder loaded:\n\n  export NODE_OPTIONS="${recorderEnv().NODE_OPTIONS}"\n\nIt records what the server fetches while rendering each page check loads (fetch: method, URL, body and response; node:http and node:https: method, URL and status), and serves recordings on --data replay. It answers loopback callers only; set MARKLESS_MIGRATE_TOKEN in both the server and check environments to reach a remote server.\nModule: ${RECORDER.pathname}\n`);

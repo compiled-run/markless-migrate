@@ -451,3 +451,55 @@ are not slowed or exposed to timing noise from four suites sharing the CPU.
   here. Requests pass through Playwright's interception, which adds a little to every fetch on both sides.
 - An old app served from a local caching mirror (htmx.org, alpinejs.dev) has no network latency for its
   documents, so navigation compares a loopback server against a deployed one.
+
+## Library surface, webpack pages, ARIA coverage and CLI conformance (2026-10-17)
+
+From the AG Grid migration's tool bugs (`examples/ag-grid-LOG.md`, T1 to T9):
+
+- `plan --source` no longer reads an uninitialised `let x;` as an import with a null source.
+- Bare imports count: `import '@fontsource-variable/roboto'` is a stylesheet import of a CSS-only package
+  (its entry, `main`, `exports` or `style`, is a stylesheet); any other bare import is listed as imported
+  for its side effects, and `parity` asks for that effect to be ported.
+- A new library class, `dom`: a framework-agnostic library that renders its own UI (AG Grid,
+  Handsontable, Chart.js, ECharts, Monaco, Leaflet, and their React and Vue wrappers in the catalog; any
+  other installed package with no UI framework whose keywords name a widget or whose shipped code writes
+  DOM in 12 places or more). It is never `as-is`: port the used surface, or a person decides to keep it
+  as a DOM island, which ships it.
+- The used surface includes data: keys and literal values of the objects and arrays passed to a library
+  component's props or a library function's arguments (through local consts, `useMemo`, spreads and
+  conditionals), with paths such as `columnDefs[].filter.component`; what the functions passed that way
+  read off their argument (a cell renderer's `params.value`, a custom filter's `model` and
+  `onModelChange`, also in another file); arguments of member calls on library values
+  (`themeQuartz.withParams({...})`); calls through a ref given to a library component
+  (`ref.current.api.getRowNode(id).setSelected(true)`, following `const node = ...` one name further);
+  and `new Chart(...)` as a call. `parity` types component props from them.
+- A webpack app's pages are what `HtmlWebpackPlugin` (at its `filename`, with the entry chunks it
+  injects) and `CopyPlugin` (HTML copied into the output, with the entries its scripts name) emit; its
+  HTML templates are not routes. Each page's `entries` link it to what the entries render
+  (`createRoot(...).render(<App />)`), so `parity --route /` and `status` attribute components and
+  libraries to it. A component handed to a library as data (`{ cellRenderer: Badge }`) renders where the
+  library is.
+- `parity` writes a default export as a named declaration exported as default.
+- `config` leaves `.gitkeep`, `.DS_Store` and other placeholder files out of the new build's assets.
+- Coverage counts ARIA widgets and elements that listen for input themselves, and journeys sort, filter,
+  select and move through grids (README, `behaviour`); proven on `fixtures/div-grid` by
+  `test/grid-coverage.test.ts`, where a new grid whose headers stopped sorting is red. A step's result now
+  includes nodes that moved, since a sort changes order and nothing else.
+
+CLI conformance (README, "Command-line tools"): `src/check/cli/conform.ts` runs cases in temporary
+directories, `src/check/cli/network.mjs` is the Node network shim; proven by `test/cli-conform.test.ts` on
+a pair of tiny CLIs in `test/cli-fixtures` (prompts answered, a registry recorded then replayed with the
+server gone, a port that drops a request, a config field and an exit code is red on each).
+
+### What still slips through, from this work
+
+- Listener detection sees native listeners and React, Vue, Svelte and Solid props; a framework that
+  delegates without leaving per-element props (Preact, Lit's event parts on a shadow root, jQuery's
+  delegated `.on`) hides its controls unless they carry a role. A clickable without text or a label is
+  listed as not exercised. Rows and cells beyond the first two of a grid are not exercised.
+- Data passed through values the scan cannot follow statically (built in a loop, fetched, returned from
+  another module's function) is listed as an expression, not by its keys.
+- `dom` detection by DOM writes can call a DOM-reading engine (axe-core) a widget; that costs one question.
+- Webpack configs built by a function of `env`, `merge()` of several configs, or entries computed at
+  runtime are read only as far as their literals go.
+- CLI: non-Node tools' requests, `node:http` replay, and tools that need a TTY (see the README limits).
