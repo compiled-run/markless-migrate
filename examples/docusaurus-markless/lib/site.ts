@@ -6,6 +6,7 @@ import docsVersions from './docs-versions.json';
 import sidebarData from './sidebars.json';
 import { init as initSearchPage } from './search-page.ts';
 import { initShowcase } from './showcase.ts';
+import { initPlaygrounds } from './playground.ts';
 import { initJsonViews } from './json-view.ts';
 import { init as initImageZoom } from './image-zoom.ts';
 import { initColorGenerator, onColorModeChange } from './color-generator.ts';
@@ -454,9 +455,29 @@ function restoreSidebar(): void {
 	const nav = kept.querySelector('nav[aria-label="Docs sidebar"]');
 	if (nav) nav.scrollTop = scrolled;
 	if (sidebarMemory.hidden) setSidebarHidden(true, false);
-	// Styled first, so moving the active link runs its colour transitions as on a sidebar that never left the page.
-	void kept.getBoundingClientRect();
-	if (nav) markActive(nav);
+	// Moving the active link waits until the browser has the pointer over the reinserted sidebar again (its hover
+	// styles carry the colour transition), as on the old site where the sidebar never leaves the page.
+	if (nav) markActiveWhenHovered(nav);
+}
+// The sidebar came back detached and re-inserted, which drops the hover state its colour transitions need, so the
+// links whose state changes run the stylesheet's own transition (its properties, duration and easing) by script.
+const TRANSITIONED = ['color', 'background-color'] as const;
+function markActiveWhenHovered(nav: Element): void {
+	requestAnimationFrame(() => {
+		const links = [...nav.querySelectorAll<HTMLElement>('a.menu__link, .menu__list-item-collapsible')];
+		const before = links.map((el) => TRANSITIONED.map((name) => getComputedStyle(el).getPropertyValue(name)));
+		markActive(nav);
+		links.forEach((el, i) => {
+			const style = getComputedStyle(el);
+			const after = TRANSITIONED.map((name) => style.getPropertyValue(name));
+			if (after.every((value, j) => value === before[i]![j])) return;
+			const duration = parseFloat(style.transitionDuration) * (style.transitionDuration.endsWith('ms') ? 1 : 1000);
+			const easing = style.transitionTimingFunction.split(/,(?![^(]*\))/)[0]!.trim();
+			if (!duration) return;
+			const frame = (values: string[]) => Object.fromEntries(TRANSITIONED.map((name, j) => [name === 'color' ? 'color' : 'backgroundColor', values[j]]));
+			el.animate([frame(before[i]!), frame(after)], { duration, easing });
+		});
+	});
 }
 function markActive(nav: Element): void {
 	const path = currentPath();
@@ -694,6 +715,7 @@ function mobileDropdown(dropdown: Element, label: string, labelIcon: string): st
 }
 const pendingDropdownLists = new WeakMap<Element, string>();
 let keptDrawer: Element | undefined;
+let drawerSidebarKey: string | undefined;
 function buildDrawer(nav: Element): void {
 	const inner = nav.querySelector(':scope > .navbar__inner');
 	if (!inner) return;
@@ -735,12 +757,22 @@ function buildDrawer(nav: Element): void {
 		kept.querySelector(':scope > .navbar-sidebar__brand')?.replaceWith(next.querySelector(':scope > .navbar-sidebar__brand')!);
 		nav.append(kept);
 		void kept.getBoundingClientRect();
+		const [, oldSecondary] = items?.querySelectorAll(':scope > .navbar-sidebar__item') ?? [];
+		const [, nextSecondary] = nextItems.querySelectorAll(':scope > .navbar-sidebar__item');
+		// The same docs sidebar keeps its menu (opened categories, running animations); only the active link moves.
+		const sameSidebar = sidebarMenu && drawerSidebarKey === desktopSidebarKey() && oldSecondary?.querySelector(':scope > ul.theme-doc-sidebar-menu');
 		if (items) {
 			items.className = nextItems.className;
+			if (sameSidebar && oldSecondary && nextSecondary) {
+				oldSecondary.toggleAttribute('inert', nextSecondary.hasAttribute('inert'));
+				nextSecondary.replaceWith(oldSecondary);
+				markActiveWhenHovered(oldSecondary);
+			}
 			items.replaceChildren(...nextItems.childNodes);
 		} else kept.append(nextItems);
 	} else nav.insertAdjacentHTML('beforeend', markup);
 	keptDrawer = nav.querySelector(':scope > .theme-layout-navbar-sidebar') ?? undefined;
+	drawerSidebarKey = desktopSidebarKey();
 	document.body.style.overflow = 'visible';
 	void pendingDropdownLists;
 	void dropdownLists;
@@ -1060,6 +1092,7 @@ function siteClick(event: Event): void {
 	const link = closest(event, 'a[href]') as HTMLAnchorElement | null;
 	if (link && !link.target && link.origin === location.origin && link.pathname === location.pathname && link.search === location.search && !link.hash && link.getAttribute('href') !== '#') event.preventDefault();
 	if (link) savePreferredVersion(link);
+	if (link?.hash && link.pathname === location.pathname) setTimeout(keepLocation);
 	if (link?.closest('.theme-doc-version-banner')) {
 		const latest = Object.entries(plugins).find(([id]) => activeDocsVersion(id));
 		const last = latest?.[1].versions.find((v) => v.isLast);
@@ -1158,6 +1191,7 @@ let booted = false;
 // What Docusaurus redoes on every route: the router's client-side navigation swaps in a fresh page, so this runs again then.
 function pageInit(): void {
 	parked.clear();
+	initPlaygrounds();
 	readHints(document.body);
 	restoreTabs();
 	if (storage()?.getItem(DISMISS_KEY) === 'true') document.querySelector('.theme-announcement-bar')?.remove();

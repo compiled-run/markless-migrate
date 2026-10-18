@@ -64,7 +64,12 @@ function renderCards(s: Showcase, users: Card[]): void {
 }
 
 /** Wires the showcase filters when the page has them. */
+let listening = false;
 export function initShowcase(): void {
+	if (!listening) {
+		listening = true;
+		window.addEventListener('popstate', () => current?.section.isConnected && render(current));
+	}
 	const filters = document.querySelector<HTMLElement>('main > section.container.margin-top--l.margin-bottom--lg');
 	const section = document.querySelector<HTMLElement>('main > section.margin-top--lg.margin-bottom--xl');
 	const tagList = filters?.querySelector(':scope > ul.clean-list');
@@ -113,4 +118,3 @@ export function initShowcase(): void {
 	render(s);
 }
 
-window.addEventListener('popstate', () => current?.section.isConnected && render(current));

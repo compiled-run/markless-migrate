@@ -40,22 +40,20 @@ export default function Document({ url, children }: { readonly url?: { readonly 
 			<meta name={s[20]?.["name"]} content={s[20]?.["content"]} />
 			<meta name={s[21]?.["name"]} content={s[21]?.["content"]} />
 			<meta name={s[22]?.["name"]} content={s[22]?.["content"]} />
-			<html lang={s[23]?.["lang"]} class={s[23]?.["class"]} />
+			<meta name={s[23]?.["name"]} content={s[23]?.["content"]} />
 			<meta name={s[24]?.["name"]} content={s[24]?.["content"]} />
-			<meta name={s[25]?.["name"]} content={s[25]?.["content"]} />
-			<meta property={s[26]?.["property"]} content={s[26]?.["content"]} />
-			<script type={s[27]?.["type"]}>{head.ld}</script>
+			<meta property={s[25]?.["property"]} content={s[25]?.["content"]} />
+			<script type={s[26]?.["type"]}>{head.ld}</script>
+			<meta property={s[27]?.["property"]} content={s[27]?.["content"]} />
 			<meta property={s[28]?.["property"]} content={s[28]?.["content"]} />
 			<meta property={s[29]?.["property"]} content={s[29]?.["content"]} />
 			<meta property={s[30]?.["property"]} content={s[30]?.["content"]} />
 			<meta property={s[31]?.["property"]} content={s[31]?.["content"]} />
-			<meta property={s[32]?.["property"]} content={s[32]?.["content"]} />
-			<meta name={s[33]?.["name"]} value={s[33]?.["value"]} />
+			<meta name={s[32]?.["name"]} value={s[32]?.["value"]} />
+			<meta name={s[33]?.["name"]} content={s[33]?.["content"]} />
 			<meta name={s[34]?.["name"]} content={s[34]?.["content"]} />
 			<meta name={s[35]?.["name"]} content={s[35]?.["content"]} />
-			<meta name={s[36]?.["name"]} content={s[36]?.["content"]} />
-			<body class={s[37]?.["class"]} />
-			<meta charSet={s[38]?.["charSet"]} />
+			<meta charSet={s[36]?.["charSet"]} />
 			<link rel="alternate" type="application/rss+xml" href="/blog/rss.xml" title="Docusaurus RSS Feed" />
 			<link rel="alternate" type="application/atom+xml" href="/blog/atom.xml" title="Docusaurus Atom Feed" />
 			<link rel="alternate" type="application/json" href="/blog/feed.json" title="Docusaurus JSON Feed" />

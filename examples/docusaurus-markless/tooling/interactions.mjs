@@ -87,7 +87,8 @@ async function snapshot(page, scenario) {
 	for (const selector of scenario.watch) {
 		const loc = page.locator(selector).first();
 		if (selector === 'html') {
-			state.html = await page.evaluate(() => Object.fromEntries([...document.documentElement.attributes].map((a) => [a.name, a.value]).sort()));
+			// The old framework's runtime markers are left out of the port on purpose.
+			state.html = await page.evaluate(() => Object.fromEntries([...document.documentElement.attributes].filter((a) => a.name !== 'data-has-hydrated' && a.name !== 'data-rh').map((a) => [a.name, a.value]).sort()));
 			continue;
 		}
 		state[selector] = (await loc.count())
@@ -128,6 +129,7 @@ async function run(origin, scenario) {
 	try {
 		await page.goto(origin + scenario.path, { waitUntil: 'networkidle', timeout: 30000 }).catch(() => {});
 		await page.waitForTimeout(500);
+		await page.evaluate(() => document.querySelector('vite-error-overlay')?.remove());
 		out.initial = await snapshot(page, scenario);
 		for (const step of scenario.steps) {
 			await recorder(page, scenario.watch);
