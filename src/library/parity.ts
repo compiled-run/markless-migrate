@@ -79,6 +79,11 @@ export function narrowLibrary(lib: LibraryUsage, routes: readonly string[]): Lib
 }
 
 const ident = (name: string) => name.replace(/[^\w$]/g, '_');
+const pascal = (name: string) => (name.split('/').pop() ?? name).replace(/(^|[^a-zA-Z0-9]+)([a-zA-Z0-9])/g, (_, __, c: string) => c.toUpperCase()).replace(/^(\d)/, '_$1');
+/** The local name of an export's skeleton: a default export takes the library's name, since `default` cannot be declared. */
+const localName = (lib: LibraryUsage, e: ExportUsage) => (e.name === 'default' ? (e.kind === 'component' || e.kind === 'type' ? pascal(lib.name) : pascal(lib.name).replace(/^./, (c) => c.toLowerCase())) : ident(e.name));
+const exportAs = (e: ExportUsage, keyword: 'function' | 'const' | 'type') => (e.name === 'default' ? `${keyword} ` : `export ${keyword} `);
+const defaultTail = (lib: LibraryUsage, e: ExportUsage) => (e.name === 'default' ? `\nexport ${e.kind === 'type' ? `type { ${localName(lib, e)} as default }` : `default ${localName(lib, e)}`};\n` : '');
 const RENAMES: Record<string, string> = { className: 'class', htmlFor: 'for' };
 
 function literalType(p: PropUsage, widen = false): string {
@@ -131,7 +136,7 @@ const needsPort = (lib: LibraryUsage, e: ExportUsage) => lib.class === 'parity' 
 
 function componentSkeleton(lib: LibraryUsage, e: ExportUsage): { name: string; code: string; namespace?: [string, string] } {
 	const elementSites = e.sites.filter((s) => s.kind === 'element').length || 1;
-	const name = ident(e.name);
+	const name = localName(lib, e);
 	const props = Object.entries(e.props).filter(([k]) => k !== '...');
 	const fields = props.map(([k, p]) => {
 		const key = RENAMES[k] ?? k;
@@ -146,10 +151,10 @@ export type ${name}Props = {
 ${fields.join('\n')}
 };
 
-export function ${name}(${hasChildren ? `{ children }: ${name}Props` : `_props: ${name}Props`}) @{
+${exportAs(e, 'function')}${name}(${hasChildren ? `{ children }: ${name}Props` : `_props: ${name}Props`}) @{
 	<div data-parity-todo=${JSON.stringify(`${lib.name} ${e.name}`)}>${hasChildren ? '{children}' : ''}</div>
 }
-`;
+${defaultTail(lib, e)}`;
 	const dot = e.name.indexOf('.');
 	return { name, code, ...(dot > 0 ? { namespace: [e.name.slice(0, dot), e.name.slice(dot + 1)] as [string, string] } : {}) };
 }
@@ -166,7 +171,7 @@ function optionsType(e: ExportUsage, calls: number): string {
 }
 
 function functionSkeleton(lib: LibraryUsage, e: ExportUsage): string {
-	const name = ident(e.name);
+	const name = localName(lib, e);
 	const typeName = name.charAt(0).toUpperCase() + name.slice(1);
 	const calls = e.sites.filter((s) => s.kind === 'call').length || 1;
 	const opts = optionsType(e, calls);
@@ -177,24 +182,26 @@ function functionSkeleton(lib: LibraryUsage, e: ExportUsage): string {
 	].filter(Boolean);
 	const doc = `/** ${lib.name} ${e.name}. Called at ${sitesDoc(e)}.${notes.length ? `\n * ${notes.join('\n * ')}` : ''} */`;
 	if (e.kind === 'value') {
-		return `${doc}\nexport const ${name}: ${result} = undefined as never;\n`;
+		return `${doc}\n${exportAs(e, 'const')}${name}: ${result} = undefined as never;\n${defaultTail(lib, e)}`;
 	}
 	return `${opts ? `export interface ${typeName}Options {\n${opts}\n}\n\n` : ''}export type ${typeName}Result = ${result};
 
 ${doc}
-export function ${name}(${opts ? `_options: ${typeName}Options` : '..._args: unknown[]'}): ${typeName}Result {
+${exportAs(e, 'function')}${name}(${opts ? `_options: ${typeName}Options` : '..._args: unknown[]'}): ${typeName}Result {
 	throw new Error(${JSON.stringify(`parity: ${lib.name} ${e.name} is not ported yet`)});
 }
-`;
+${defaultTail(lib, e)}`;
 }
 
 function typeSkeleton(lib: LibraryUsage, e: ExportUsage): string {
-	const name = ident(e.name);
+	const name = localName(lib, e);
+	const head = exportAs(e, 'type');
+	const tail = defaultTail(lib, e);
 	const direct = e.members[''] ?? [];
 	const contextual = Object.entries(e.members).filter(([k]) => k !== '');
 	const doc = `/** ${lib.name} ${e.name}. Written at ${sitesDoc(e)}. */`;
-	if (!direct.length && !contextual.length) return `${doc}\nexport type ${name} = unknown;\n`;
-	if (!contextual.length) return `${doc}\nexport type ${name} = ${treeType(tree(direct), '')};\n`;
+	if (!direct.length && !contextual.length) return `${doc}\n${head}${name} = unknown;\n${tail}`;
+	if (!contextual.length) return `${doc}\n${head}${name} = ${treeType(tree(direct), '')};\n${tail}`;
 	const groups = new Map<string, [string, string[]][]>();
 	for (const [path, list] of contextual) {
 		const [head, ...rest] = path.split('.');
@@ -206,7 +213,7 @@ function typeSkeleton(lib: LibraryUsage, e: ExportUsage): string {
 		const ctx = entries.map(([p, list]) => `\t\treadonly ${p}: ${treeType(tree(list), '\t\t')};`).join('\n');
 		return `\treadonly ${head}?: (context: {\n${ctx}\n\t}) => unknown;`;
 	});
-	return `${doc}\nexport type ${name} = ${direct.length ? `${treeType(tree(direct), '')} & ` : ''}{\n${fields.join('\n')}\n};\n`;
+	return `${doc}\n${head}${name} = ${direct.length ? `${treeType(tree(direct), '')} & ` : ''}{\n${fields.join('\n')}\n};\n${tail}`;
 }
 
 /** The ARIA role and accessible name a usage site renders, as far as its written props and text tell. */
@@ -348,12 +355,15 @@ export async function writeParity(file: LibrariesFile, name: string, options: Pa
 			const built = components.map((e) => componentSkeleton(lib, e));
 			const namespaces = new Map<string, [string, string][]>();
 			for (const b of built) if (b.namespace) namespaces.set(b.namespace[0], [...(namespaces.get(b.namespace[0]) ?? []), [b.namespace[1], b.name]]);
-			const tail = [...namespaces].filter(([ns]) => !built.some((b) => b.name === ns)).map(([ns, members]) => `export const ${ident(ns)} = { ${members.map(([m, fn]) => `${m}: ${fn}`).join(', ')} };\n`);
+			const tail = [...namespaces].filter(([ns]) => !built.some((b) => b.name === ns)).map(([ns, members]) => {
+			const object = `{ ${members.map(([m, fn]) => `${m}: ${fn}`).join(', ')} }`;
+			return ns === 'default' ? `const ${pascal(lib.name)} = ${object};\nexport default ${pascal(lib.name)};\n` : `export const ${ident(ns)} = ${object};\n`;
+		});
 			const needsChildren = components.some((e) => e.props.children);
 			await put(join(dir, 'components.tsrx'), `${head}${needsChildren ? "import type { Children } from '@markless/core';\n" : ''}\n${built.map((b) => b.code).join('\n')}${tail.length ? `\n${tail.join('')}` : ''}`, true);
 		}
 		const body = rest.map((e) => (e.kind === 'type' ? typeSkeleton(lib, e) : functionSkeleton(lib, e)));
-		const reexport = components.length ? `export * from './components.tsrx';\n` : '';
+		const reexport = components.length ? `export * from './components.tsrx';\n${components.some((e) => e.name === 'default' || e.name.startsWith('default.')) ? "export { default } from './components.tsrx';\n" : ''}` : '';
 		await put(join(dir, 'index.ts'), `${head}${reexport}${body.length ? `\n${body.join('\n')}` : ''}`, true);
 	}
 	const json = { library: lib.name, class: lib.class, reason: lib.reason, ...(lib.core ? { core: lib.core } : {}), ...(options.routes?.length ? { routes: options.routes } : {}), exports: lib.exports.map((e) => ({ name: e.name, kind: e.kind, port: needsPort(lib, e), ...(e.maps ? { maps: e.maps } : {}), sites: specs.get(e) ?? [] })) };

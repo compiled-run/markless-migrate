@@ -217,3 +217,35 @@ test('plan --source writes libraries.json and parity reads it from the CLI', asy
 	assert.equal(missing.status, 2);
 	assert.match(missing.stderr, /no library named nope/);
 });
+
+/** A throwaway app: each entry is a file path and its text. */
+async function project(files: Record<string, string>): Promise<string> {
+	const dir = await mkdtemp(join(tmpdir(), 'mm-lib-'));
+	for (const [path, text] of Object.entries(files)) {
+		await mkdir(join(dir, path, '..'), { recursive: true });
+		await writeFile(join(dir, path), text);
+	}
+	return dir;
+}
+
+test('parity skeletons for default exports declare a named binding and export it as default', async () => {
+	const dir = await project({
+		'package.json': JSON.stringify({ dependencies: { react: '19.0.0', '@microlink/react-json-view': '1.27.0', 'pretty-bytes': '6.0.0', 'kit-lib': '1.0.0' } }),
+		'src/App.tsx': "import ReactJson from '@microlink/react-json-view';\nimport prettyBytes from 'pretty-bytes';\nimport Kit from 'kit-lib';\nexport function App() { return <div><ReactJson src={{}} collapsed={2} /><Kit.Item>x</Kit.Item>{prettyBytes(1)}</div>; }\n",
+	});
+	const app = await newApp();
+	const file = await scanLibraries(dir, { newApp: app });
+	const { parse } = await import('yuku-tsrx');
+	const { parseSync } = await import('oxc-parser');
+	for (const name of ['@microlink/react-json-view', 'pretty-bytes', 'kit-lib']) await writeParity(file, name, { newApp: app });
+	const json = await readFile(join(app, 'lib/parity/microlink-react-json-view/components.tsrx'), 'utf8');
+	assert.match(json, /^function ReactJsonView\(_props: ReactJsonViewProps\) @\{/m);
+	assert.match(json, /^export default ReactJsonView;$/m);
+	assert.match(await readFile(join(app, 'lib/parity/microlink-react-json-view/index.ts'), 'utf8'), /export \{ default \} from '\.\/components\.tsrx';/);
+	assert.match(await readFile(join(app, 'lib/parity/kit-lib/components.tsrx'), 'utf8'), /const KitLib = \{ Item: default_Item \};\nexport default KitLib;/);
+	for (const path of ['microlink-react-json-view/components.tsrx', 'kit-lib/components.tsrx']) assert.deepEqual(parse(await readFile(join(app, 'lib/parity', path), 'utf8'), { lang: 'tsx' }).diagnostics.filter((d) => d.severity === 'error'), [], path);
+	const bytes = await readFile(join(app, 'lib/parity/pretty-bytes/index.ts'), 'utf8');
+	assert.match(bytes, /^function prettyBytes\(/m);
+	assert.match(bytes, /^export default prettyBytes;$/m);
+	assert.deepEqual(parseSync('index.ts', bytes).errors, []);
+});
