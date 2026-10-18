@@ -4,18 +4,14 @@ import DocsSidebar from '../../components/docs-sidebar.tsrx';
 import Sponsor from '../../components/sponsor.tsrx';
 import Toc from '../../components/toc.tsrx';
 import { TextDemo, ChangeMessageDemo, TextInputDemo, TextareaDemo, CheckboxDemo, ColorsDemo, RadioDemo, SelectDemo, PlaceholderSelectDemo, MultipleSelectDemo, DynamicSelectDemo, RangeDemo, BlurEnterDemo, ProgrammaticDemo } from '../../components/model-demos.tsrx';
-import { MODEL_HEADINGS, wake, watchHeadings as watch } from '../../site.ts';
+import { MODEL_HEADINGS, watchHeadings } from '../../site.ts';
 
-// An imported function inside attach is not carried into the compiled behaviour in Markless 0.4.0 ("is not defined"); a module-level one is.
-function watchHeadings(main: HTMLElement): () => void {
-	return watch(main);
-}
 
 export default function Model({ url }: PageProps) @{
 	<div style="display: contents">
 		<DocsHeader pathname={url.pathname} />
 		<DocsSidebar pathname={url.pathname} />
-		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64" attach={(main) => watchHeadings(main)} onWheel={() => wake()} onTouchStart={() => wake()} onKeyDown={() => wake()}>
+		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64" onIdle={(event) => watchHeadings(event.target as HTMLElement)}>
 			<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
 				<h1>x-model</h1>
 				<p><code>x-model</code> allows you to bind the value of an input element to Alpine data.</p>

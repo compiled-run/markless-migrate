@@ -44,18 +44,14 @@ export default function DocsHeader({ pathname }: { readonly pathname: string }) 
 			<div
 				class="flex items-center pr-6 md:hidden"
 				attach={(container) => {
-					// attach cannot write state in Markless 0.4.0: it reports a click outside the menu as an event a handler turns into state.
 					const outside = (event: MouseEvent) => {
-						if (!container.contains(event.target as Node)) container.dispatchEvent(new CustomEvent('outside'));
+						if (!container.contains(event.target as Node) && show && !leaving) {
+							leaving = true;
+							closeTrap();
+						}
 					};
 					document.addEventListener('click', outside);
 					return () => document.removeEventListener('click', outside);
-				}}
-				onOutside={() => {
-					if (show && !leaving) {
-						leaving = true;
-						closeTrap();
-					}
 				}}
 			>
 				<button

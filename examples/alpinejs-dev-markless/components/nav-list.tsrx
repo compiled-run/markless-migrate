@@ -6,12 +6,14 @@ const SECTIONS = NAV.flatMap((entry) => (entry.kind === 'section' ? [entry] : []
 const FIRST = SECTIONS.slice(0, 1);
 const REST = SECTIONS.slice(1);
 
-function Section({ title, items, pathname, mobile }: { readonly title: string; readonly items: readonly NavItem[]; readonly pathname: string; readonly mobile: boolean }) @{
+type Row = NavItem & { readonly cls: string; readonly style: string | undefined };
+
+function Section({ title, items }: { readonly title: string; readonly items: readonly Row[] }) @{
 	<li>
 		<span class="font-medium">{title}</span>
 		<ul class="pl-3">
 			@for (const item of items; key item.href) {
-				<li class={!mobile && item.href === pathname ? 'border-l-4 border-cyan-400 pl-10 font-semibold' : ''} style={!mobile && item.href === pathname ? 'margin-left: -2.75rem' : undefined}>
+				<li class={item.cls} style={item.style}>
 					<a href={item.href} class="hover:text-gray-900">
 						@if (item.prefix) {
 							<span class="text-gray-300">{item.prefix}</span>;
@@ -26,15 +28,19 @@ function Section({ title, items, pathname, mobile }: { readonly title: string; r
 
 export default function NavList({ pathname, mobile }: { readonly pathname: string; readonly mobile: boolean }) @{
 	const components = mobile ? '/component/dropdown' : '/components';
+	const rows = (section: (typeof SECTIONS)[number]) => ({ title: section.title, items: section.items.map((item) => ({ ...item, cls: !mobile && item.href === pathname ? 'border-l-4 border-cyan-400 pl-10 font-semibold' : '', style: !mobile && item.href === pathname ? 'margin-left: -2.75rem' : undefined })) });
+	const first = FIRST.map(rows);
+	const rest = REST.map(rows);
+	const top = TOP.map((link) => ({ ...link, cls: link.href === pathname ? LINK_ACTIVE[mobile ? 'mobile' : 'desktop'] : 'font-medium' }));
 
 	<ul class="space-y-2 text-gray-800">
-		@for (const link of TOP; key link.href) {
-			<li class={link.href === pathname ? LINK_ACTIVE[mobile ? 'mobile' : 'desktop'] : 'font-medium'}>
+		@for (const link of top; key link.href) {
+			<li class={link.cls}>
 				<a href={link.href} class="hover:text-gray-900">{link.label}</a>
 			</li>
 		}
-		@for (const section of FIRST; key section.title) {
-			<Section title={section.title} items={section.items} pathname={pathname} mobile={mobile} />
+		@for (const section of first; key section.title) {
+			<Section title={section.title} items={section.items} />
 		}
 		<li>
 			<a href={components} class="font-medium hover:text-gray-900">
@@ -53,8 +59,8 @@ export default function NavList({ pathname, mobile }: { readonly pathname: strin
 				</li>
 			</ul>
 		</li>
-		@for (const section of REST; key section.title) {
-			<Section title={section.title} items={section.items} pathname={pathname} mobile={mobile} />
+		@for (const section of rest; key section.title) {
+			<Section title={section.title} items={section.items} />
 		}
 	</ul>
 }

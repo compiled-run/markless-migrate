@@ -21,17 +21,15 @@ export function DropdownDemo() @{
 	<div class="demo">
 		<div
 			attach={(demo) => {
-				// attach cannot write state in Markless 0.4.0: it reports a click outside the contents as an event a handler turns into state.
 				// The Toggle button is left out, as Alpine's x-show (still hidden while the click that opens it runs) leaves it out.
 				const [toggle, contents] = [demo.firstElementChild!, demo.lastElementChild!];
 				const outside = (event: MouseEvent) => {
 					const target = event.target as Node;
-					if (!contents.contains(target) && !toggle.contains(target)) demo.dispatchEvent(new CustomEvent('outside'));
+					if (!contents.contains(target) && !toggle.contains(target)) open = false;
 				};
 				document.addEventListener('click', outside);
 				return () => document.removeEventListener('click', outside);
 			}}
-			onOutside={() => (open = false)}
 		>
 			<button onClick={() => (open = !open)}>Toggle</button>
 			<div style={open ? '' : 'display: none;'}>Contents...</div>
@@ -45,7 +43,7 @@ export function SearchDemo() @{
 
 	<div class="demo">
 		<div>
-			<input placeholder="Search..." value={search} onFocus={() => undefined} onInput={(event) => (search = (event.target as HTMLInputElement).value)} />
+			<input placeholder="Search..." value={search} onInput={(event) => (search = (event.target as HTMLInputElement).value)} />
 			<ul class="pl-6 pt-2">
 				<template></template>
 				@for (const item of filtered; key item) {

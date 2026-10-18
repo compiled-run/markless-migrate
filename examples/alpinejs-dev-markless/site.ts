@@ -80,8 +80,6 @@ export const START_HEADINGS: readonly Heading[] = [
 ];
 
 // Behaviours start on the first event the page registers; scrolling starts with one of these.
-export const wake = (): void => undefined;
-
 // Alpine's visibleNavHighlighter: the heading highlighted is the last one above a line across the middle of the window.
 function visibleHeading(main: HTMLElement): string | null {
   const middle = window.innerHeight / 2;
@@ -97,11 +95,11 @@ function visibleHeading(main: HTMLElement): string | null {
   return best;
 }
 
-// Like Alpine's helper, this toggles the highlight classes itself: in Markless 0.4.0 attach cannot write state, and rows of a
-// keyed list do not update after resume.
-export function watchHeadings(main: HTMLElement): () => void {
+// Like Alpine's helper, this toggles the highlight classes itself; it stops once a client-side navigation removes its page.
+export function watchHeadings(main: HTMLElement): void {
   let last = 0;
   const report = () => {
+    if (!main.isConnected) return window.removeEventListener("scroll", onScroll);
     const id = visibleHeading(main);
     for (const link of document.querySelectorAll<HTMLAnchorElement>("[data-toc] a")) {
       link.classList.toggle("font-medium", link.hash === `#${id}`);
@@ -116,5 +114,4 @@ export function watchHeadings(main: HTMLElement): () => void {
   };
   report();
   window.addEventListener("scroll", onScroll, { passive: true });
-  return () => window.removeEventListener("scroll", onScroll);
 }
