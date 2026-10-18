@@ -4,9 +4,8 @@ import app from './styles/app.css?url';
 import fonts from './styles/fonts.css?url';
 
 export default function Document({ children }: { readonly children?: Children }) @{
-	<Html>
+	<Html lang={undefined}>
 		<head>
-			<script>{"document.documentElement.removeAttribute('lang')"}</script>
 			<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
 			<meta charset="utf-8" />
 			<title>Conduit</title>

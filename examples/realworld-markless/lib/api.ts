@@ -1,3 +1,5 @@
+import { navigate } from './nav.ts';
+
 export interface Profile {
 	username: string;
 	bio: string | null;
@@ -55,7 +57,6 @@ export function saveToken(token: string): void {
 
 export function destroyToken(): void {
 	window.localStorage.removeItem(TOKEN_KEY);
-	window.sessionStorage.removeItem(SESSION_KEY);
 }
 
 export async function api<T>(method: string, path: string, body?: unknown): Promise<ApiResult<T>> {
@@ -113,29 +114,6 @@ export function currentUser(): Promise<SessionResult> {
 	return pending;
 }
 
-const SESSION_KEY = 'conduit:user';
-
-// The old app is one page: it asks GET /user when it starts and keeps the answer while you click around.
-// Every link here loads a new document, so the answer is kept for this tab and reused on in-app navigations only.
-function inAppNavigation(): boolean {
-	const entry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
-	if (entry?.type !== 'navigate' || !document.referrer) return false;
-	try {
-		return new URL(document.referrer).origin === window.location.origin;
-	} catch {
-		return false;
-	}
-}
-
-function sessionUser(token: string): User | undefined {
-	try {
-		const saved = JSON.parse(window.sessionStorage.getItem(SESSION_KEY) ?? 'null') as User | null;
-		return saved && saved.token === token ? saved : undefined;
-	} catch {
-		return undefined;
-	}
-}
-
 async function loadUser(): Promise<SessionResult> {
 	const token = getToken();
 	if (!token) {
@@ -144,11 +122,6 @@ async function loadUser(): Promise<SessionResult> {
 		return { status: 'unauthenticated', user: null };
 	}
 	if (cachedUser) return { status: 'authenticated', user: cachedUser };
-	const kept = inAppNavigation() ? sessionUser(token) : undefined;
-	if (kept) {
-		cachedUser = kept;
-		return { status: 'authenticated', user: kept };
-	}
 	const result = await api<UserResponse>('GET', '/user');
 	if (result.ok) {
 		rememberUser(result.data.user);
@@ -163,9 +136,9 @@ async function loadUser(): Promise<SessionResult> {
 
 export function rememberUser(user: User | null): void {
 	cachedUser = user;
+	pending = undefined;
 	if (user) {
 		saveToken(user.token);
-		window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(user));
 	} else {
 		destroyToken();
 	}
@@ -180,7 +153,7 @@ export type ProfileResponse = { profile: Profile };
 export type UserResponse = { user: User };
 
 export function go(path: string): void {
-	window.location.assign(path);
+	navigate(path);
 }
 
 export function isSignedIn(): boolean {

@@ -15,7 +15,7 @@ export default function Auth({ pathname, register }: { pathname: string; registe
 	<Layout>
 		<app-auth-page
 			el={page}
-			data-boot="" onBoot={() => {
+			onIdle={() => {
 				const node = page;
 				void bootGuestOnly(node);
 			}}

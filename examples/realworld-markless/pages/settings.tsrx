@@ -16,7 +16,7 @@ export default function Settings({ url }: PageProps) @{
 		<app-settings-page>
 			<div
 				class="settings-page"
-				data-boot="" onBoot={() => {
+				onIdle={() => {
 					const els = { errors, fieldset, image, username, bio, email, password };
 					void bootSettings(els);
 				}}

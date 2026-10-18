@@ -11,7 +11,7 @@ export default function ArticlePage({ url }: PageProps<{ slug: string }>) @{
 			<div
 				el={root}
 				class="article-page"
-				data-boot="" onBoot={() => {
+				onIdle={() => {
 					const node = root;
 					void bootArticle(node);
 				}}

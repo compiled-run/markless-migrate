@@ -3,7 +3,6 @@ import {
   api,
   articlesQuery,
   currentUser,
-  destroyToken,
   errorList,
   go,
   rememberUser,
@@ -23,18 +22,10 @@ import {
 } from "./api.ts";
 import { marked } from "marked";
 import * as render from "./render.ts";
-import { onSoftNavigation } from "./nav.ts";
+import { navigate, onSoftNavigation } from "./nav.ts";
 
 type El = Element | null | undefined;
 
-// The page wakes on DOMContentLoaded and again on load (the first can arrive before the runtime listens), so
-// each page's start-up runs once.
-const started = new Set<string>();
-function once(name: string): boolean {
-  if (started.has(name)) return false;
-  started.add(name);
-  return true;
-}
 
 function fill(el: El, markup: string): void {
   if (el) el.innerHTML = markup;
@@ -240,7 +231,6 @@ export function pathParam(prefix: string): string | undefined {
 }
 
 export async function bootHome(els: HomeEls): Promise<void> {
-  if (!once("bootHome")) return;
   const tag = pathParam("/tag/");
   const search = window.location.search;
   // What the page asks for does not depend on who is signed in (the token rides along either way), so the lists
@@ -276,7 +266,7 @@ export async function bootHome(els: HomeEls): Promise<void> {
   const articles =
     earlyArticles ?? startList(els.list, "/articles/feed", {}, earlyPage, true, true);
   // Angular reuses HomeComponent while the route record stays the same (the feeds on /, or one tag to another).
-  onSoftNavigation((url) => {
+  onSoftNavigation(els.list, (url) => {
     const nextTag = url.pathname.startsWith("/tag/")
       ? decodeURIComponent(url.pathname.slice(5))
       : undefined;
@@ -353,7 +343,6 @@ function drawComments(): void {
 }
 
 export async function bootArticle(root: El): Promise<void> {
-  if (!once("bootArticle")) return;
   if (!root) return;
   const slug = pathParam("/article/") ?? "";
   const [loaded, comments, session] = await Promise.all([
@@ -479,7 +468,6 @@ function drawProfile(): void {
 }
 
 export async function bootProfile(root: El): Promise<void> {
-  if (!once("bootProfile")) return;
   if (!root) return;
   const username = pathParam("/profile/") ?? "";
   const favorites = window.location.pathname.replace(/\/$/, "").endsWith("/favorites");
@@ -503,7 +491,7 @@ export async function bootProfile(root: El): Promise<void> {
   fill(root, render.profilePage(outer.data.profile, profile.isUser, favorites));
   let currentFavorites = favorites;
   // Angular reuses ProfileComponent for any /profile/:username, reading the name only once, and swaps the child route.
-  onSoftNavigation((url) => {
+  onSoftNavigation(root, (url) => {
     const match = /^\/profile\/([^/]+)(\/favorites)?\/?$/.exec(url.pathname);
     if (!match || url.search) return false;
     const nextFavorites = Boolean(match[2]);
@@ -576,7 +564,6 @@ function value(el: El): string {
 }
 
 export async function bootGuestOnly(page: El): Promise<void> {
-  if (!once("bootGuestOnly")) return;
   const session = await currentUser();
   if (session.status === "authenticated") {
     window.history.replaceState(null, "", "/");
@@ -618,7 +605,7 @@ export async function submitAuth(els: AuthEls, register: boolean): Promise<void>
 export async function requireSignIn(): Promise<SessionUser | undefined> {
   const session = await currentUser();
   if (session.status === "authenticated" && session.user) return session.user;
-  window.location.replace("/login");
+  navigate("/login", true);
   return undefined;
 }
 
@@ -639,7 +626,6 @@ function setValue(el: El, text: string): void {
 }
 
 export async function bootSettings(els: SettingsEls): Promise<void> {
-  if (!once("bootSettings")) return;
   const user = await requireSignIn();
   if (!user) return;
   setValue(els.image, user.image ?? "");
@@ -670,7 +656,7 @@ export async function submitSettings(els: SettingsEls): Promise<void> {
 }
 
 export function logout(): void {
-  destroyToken();
+  rememberUser(null);
   go("/");
 }
 
@@ -691,7 +677,6 @@ function drawTags(): void {
 }
 
 export async function bootEditor(els: EditorEls): Promise<void> {
-  if (!once("bootEditor")) return;
   const slug = pathParam("/editor/") || undefined;
   editor = { els, tags: [], slug };
   const user = await requireSignIn();

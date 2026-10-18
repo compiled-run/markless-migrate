@@ -13,11 +13,7 @@ function under(path: string, prefix: string): boolean {
 	return path === prefix || path.startsWith(`${prefix}/`);
 }
 
-let started = false;
-
 export async function bootHeader(container: Element | null | undefined): Promise<void> {
-	if (started) return;
-	started = true;
 	installNavigation();
 	// Read before any guard rewrites the address; a route the old app had no match for leaves nothing active.
 	const unmatched = (window as { __conduitUnmatched?: boolean }).__conduitUnmatched === true;
@@ -25,7 +21,7 @@ export async function bootHeader(container: Element | null | undefined): Promise
 	const result = await currentUser();
 	const draw = (path: string, homeActive: boolean) => drawNav(container, result, path, homeActive);
 	draw(unmatched ? '' : pathname, !unmatched && pathname === '/' && search === '');
-	afterSoftNavigation(() => draw(window.location.pathname, window.location.pathname === '/' && window.location.search === ''));
+	afterSoftNavigation(container, () => draw(window.location.pathname, window.location.pathname === '/' && window.location.search === ''));
 }
 
 function drawNav(container: Element | null | undefined, result: Awaited<ReturnType<typeof currentUser>>, path: string, homeActive: boolean): void {
