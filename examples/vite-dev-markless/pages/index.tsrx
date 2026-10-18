@@ -9,7 +9,6 @@ import FeatureGrid2 from '../components/feature-grid-2.tsrx';
 import Frameworks from '../components/frameworks.tsrx';
 import Community from '../components/community.tsrx';
 import Sponsors from '../components/sponsors.tsrx';
-import SponsorTiers from '../components/sponsor-tiers.tsrx';
 import Spacer from '../components/spacer.tsrx';
 import Footer from '../components/footer.tsrx';
 
@@ -31,7 +30,6 @@ export default function Home() @{
 				<Frameworks />
 				<Community />
 				<Sponsors />
-				<SponsorTiers />
 				<Spacer />
 				<Footer />
 			</div>

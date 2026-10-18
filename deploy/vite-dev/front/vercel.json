@@ -293,10 +293,6 @@
 			"destination": "https://vite-dev-markless.vercel.app/build/:path*"
 		},
 		{
-			"source": "/islands/:path*",
-			"destination": "https://vite-dev-markless.vercel.app/islands/:path*"
-		},
-		{
 			"source": "/logo-without-border.svg.br",
 			"destination": "https://vite-dev-markless.vercel.app/logo-without-border.svg.br"
 		},

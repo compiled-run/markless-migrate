@@ -20,9 +20,7 @@ export default function TopBanner() @{
 			</div>
 		</a>
 		<button onClick={() => dismissBanner()} aria-label="Close banner" class="absolute right-2 top-1/2 -translate-y-1/2 z-20 p-2 text-white hover:opacity-70 transition-opacity" type="button">
-			<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" aria-hidden="true" role="img" width="1em" height="1em" viewBox="0 0 24 24" class="iconify iconify--lucide size-5 cursor-pointer">
-				<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 6L6 18M6 6l12 12"></path>
-			</svg>
+			<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" aria-hidden="true" role="img" style="" width="1em" height="1em" viewBox="0 0 16 16" class="size-5 cursor-pointer" data-icon="lucide:x"></svg>
 		</button>
 	</div>
 }

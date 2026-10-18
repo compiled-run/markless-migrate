@@ -1,5 +1,7 @@
 import { riveAnimation, riveSource, type RiveName } from '../components/rive.ts';
+import { loadIcons } from './icons.ts';
 import { logoGrid } from './logo-grid.ts';
+import { loadSponsorTiers } from './sponsor-tiers.ts';
 
 const preload = document.createElement('link');
 preload.rel = 'preload';
@@ -19,6 +21,10 @@ for (const canvas of document.querySelectorAll<HTMLCanvasElement>('canvas[data-r
 		mobileHeight: Number(mobileHeight),
 	})(canvas);
 }
+
+loadIcons();
+const sponsors = document.querySelector('.wrapper--ticks.py-14[data-v-755ff878]');
+if (sponsors) void loadSponsorTiers(sponsors).catch(() => {});
 
 const logos = document.querySelector<HTMLElement>('.overflow-hidden.py-6[data-v-0fe532eb]');
 if (logos) logoGrid(logos);

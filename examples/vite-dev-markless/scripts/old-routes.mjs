@@ -9,7 +9,7 @@ if (!dist) throw new Error('usage: node scripts/old-routes.mjs <old-docs-dist>')
 const snippet = '/tmp/markless-migrate-nitro.ts';
 execFileSync(process.execPath, ['../../src/cli.ts', 'config', '--old', 'http://old.invalid', '--new', 'http://new.invalid', '--nitro', snippet], { stdio: 'inherit' });
 const pages = [...readFileSync(snippet, 'utf8').matchAll(/^\t+"([^"]+)": \{ proxy:/gm)].map((m) => m[1]).filter((path) => !path.startsWith('/assets/') && path !== '/');
-const ours = new Set(readdirSync('public'));
+const ours = new Set(readdirSync('public', { withFileTypes: true }).filter((entry) => entry.isFile()).map((entry) => entry.name));
 const files = readdirSync(dist)
 	.filter((name) => statSync(join(dist, name)).isFile() && !name.endsWith('.html') && !ours.has(name))
 	.map((name) => `/${name}`);
