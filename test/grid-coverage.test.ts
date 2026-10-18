@@ -35,7 +35,8 @@ test('a grid built from divs counts its headers, rows and listening spans as con
 	const { journeys, elements } = await explore(browser, defaultEnv(origin(old)), '/', desktop);
 	const names = elements.map((e) => e.element);
 	for (const expected of ['columnheader "Name"', 'columnheader "Size Filter"', 'clickable "Filter"', 'row "gamma 3 Open gamma"', 'row "alpha 12 Open alpha"', 'clickable "Open gamma"', 'spinbutton "Size at least" (after click clickable "Filter")']) assert.ok(names.includes(expected), `${expected} in ${names.join(', ')}`);
-	assert.match(elements.find((e) => e.element === 'row "beta 7 Open beta"')?.by ?? '', /another row of the same grid is exercised/);
+	assert.deepEqual(elements.filter((e) => e.signature.startsWith('sampled|')).map((e) => [e.element, e.by]), [['1 more row of the same grid', 'alike: the first 2 are exercised']]);
+	assert.ok(!names.includes('row "beta 7 Open beta"'), 'rows past the sample are counted, not listed');
 	assert.deepEqual(elements.filter((e) => !e.by), [], 'every control is exercised or covered');
 	const run = new Set(journeys.map((j) => j.name));
 	for (const expected of ['click columnheader "Name"', 'press Enter on columnheader "Name"', 'press Space on row "gamma 3 Open gamma"', 'press ArrowDown on row "gamma 3 Open gamma"', 'click clickable "Open gamma"', 'click clickable "Filter", then type "42" into spinbutton "Size at least"']) assert.ok(run.has(expected), `${expected} in ${[...run].join('\n')}`);
@@ -54,9 +55,11 @@ test('a new grid whose headers no longer sort is red on the header journeys', as
 	assert.ok(failures.some((f) => f.dimension === 'a11y' && f.check === 'press Enter on columnheader "Name"'), failures.map((f) => `${f.dimension} ${f.check}`).join('\n'));
 });
 
-test('a control whose listener a framework delegates to the root is found by the props the framework keeps on it', async () => {
-	const html = `<!doctype html><html lang="en"><head><title>Delegated</title></head><body><main><span id="go">Load more</span><p id="out"></p></main>
+test('a control whose listener a framework delegates to the root is found by the props the framework keeps on it; a header\'s own label is the header, and one with no text is reported', async () => {
+	const html = `<!doctype html><html lang="en"><head><title>Delegated</title></head><body><main><span id="go">Load more</span><p id="out"></p>
+<div role="grid" aria-label="Files"><div role="row"><div role="columnheader" aria-sort="none"><span id="label">Name</span><span id="grip" style="display:inline-block;width:4px;height:10px"></span></div></div></div></main>
 <script>
+for (const id of ['label', 'grip']) document.getElementById(id).addEventListener('mousedown', () => {});
 const go = document.getElementById('go');
 go['__reactProps$abc'] = { onClick: () => { document.getElementById('out').textContent = 'more loaded'; } };
 document.addEventListener('click', (e) => { const props = e.target['__reactProps$abc']; if (props?.onClick) props.onClick(e); });
@@ -65,8 +68,12 @@ document.addEventListener('click', (e) => { const props = e.target['__reactProps
 	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
 	try {
 		const { journeys, elements } = await explore(browser, defaultEnv(origin(server)), '/', desktop);
-		assert.deepEqual(elements.map((e) => [e.element, e.by]), [['clickable "Load more"', 'click clickable "Load more"']]);
-		assert.deepEqual(journeys[0]!.expected[0]!.added, ['- paragraph: more loaded']);
+		assert.deepEqual(elements.map((e) => [e.element, e.by ?? e.reason]), [
+			['columnheader "Name"', 'click columnheader "Name"'],
+			['clickable "Load more"', 'click clickable "Load more"'],
+			['clickable', 'it answers clicks or keys but has no text or label (it sits in columnheader "Name"), so check cannot find it again on the new page: label it in the old app, or accept it'],
+		]);
+		assert.deepEqual(journeys.find((j) => j.name === 'click clickable "Load more"')!.expected[0]!.added, ['- paragraph: more loaded']);
 	} finally {
 		server.close();
 	}

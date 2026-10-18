@@ -137,6 +137,8 @@ interface Candidate {
 	readonly covered?: string;
 	/** Takes keyboard focus (a tabindex or a native control). */
 	readonly focusable?: boolean;
+	/** Rows, cells and tree items of one grid or tree: alike, so only the first few of a group are exercised. */
+	readonly group?: string;
 }
 
 const LAYOUT = new Set(['header', 'banner', 'nav', 'navigation', 'aside', 'complementary', 'footer', 'contentinfo']);
@@ -161,7 +163,6 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 		out.push({ ...c, signature: isLayout(c) ? `${group}|${n}` : `page|${c.target.role}|${c.target.name}|${c.target.nth}` });
 	};
 	await markHandlers(page);
-	const samples = new Map<string, number>();
 	for (const role of ROLES) {
 		const seen = new Map<string, number>();
 		for (const locator of await page.getByRole(role).all()) {
@@ -174,16 +175,7 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 			if (!info) continue;
 			if (STRUCTURAL.has(role) && !(info.focusable || info.handler || info.sortable || info.selectable || (info.grid && role === 'row' && !info.header))) continue;
 			const target = { role, name, nth };
-			const base = { target, href: info.href, type: info.type, options: info.options, region: info.region, importance: importance(info), ...(info.focusable ? { focusable: true } : {}) };
-			if (SAMPLED.has(role)) {
-				const key = `${role}|${info.container}`;
-				const n = samples.get(key) ?? 0;
-				samples.set(key, n + 1);
-				if (n >= SAMPLES) {
-					add({ ...base, covered: `another ${role} of the same ${role === 'treeitem' ? 'tree' : 'grid'} is exercised (the first ${SAMPLES} of each are)` });
-					continue;
-				}
-			}
+			const base = { target, href: info.href, type: info.type, options: info.options, region: info.region, importance: importance(info), ...(info.focusable ? { focusable: true } : {}), ...(SAMPLED.has(role) ? { group: `${role}|${info.container}` } : {}) };
 			if (role === 'link') {
 				if (!info.href || /^(mailto|tel):/i.test(info.href)) {
 					add({ ...base, covered: 'its address is compared by the rendered check' });
@@ -220,10 +212,11 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 		const info = await locator.evaluate(describeElement, undefined, { timeout: STEP_TIMEOUT }).catch(() => undefined);
 		if (info) add({ target: { role: 'summary', name, nth }, region: info.region, importance: importance(info) });
 	}
+	let unnamed = 0;
 	for (const c of await page.evaluate(clickables).catch(() => [])) {
-		const target = { role: CLICKABLE, name: c.name, nth: c.nth };
+		const target = { role: CLICKABLE, name: c.name, nth: c.name ? c.nth : unnamed++ };
 		const base = { target, region: c.region, importance: importance(c), ...(c.focusable ? { focusable: true } : {}) };
-		if (!c.name) add({ ...base, skip: 'it answers clicks or keys but has no text or label, so check cannot find it again on the new page' });
+		if (!c.name) add({ ...base, skip: `it answers clicks or keys but has no text or label${c.near ? ` (it sits in ${c.near})` : ''}, so check cannot find it again on the new page: label it in the old app, or accept it` });
 		else if (DESTRUCTIVE.test(c.name)) add({ ...base, skip: 'its name looks destructive (sign out, delete...), so check does not use it' });
 		else add(base);
 	}
@@ -264,7 +257,10 @@ function clickables() {
 	};
 	const control = 'a[href], button, input, select, textarea, summary, label, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="switch"], [role="tab"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"], [role="textbox"], [role="searchbox"], [role="spinbutton"], [role="combobox"], [role="slider"], [role="treeitem"], [contenteditable=""], [contenteditable="true"]';
 	const label = (el: Element) => ((el.textContent ?? '').replace(/\s+/g, ' ').trim() || el.getAttribute('aria-label') || el.getAttribute('title') || '').slice(0, 80);
-	const hits = [...(document.body?.querySelectorAll('*') ?? [])].filter((el) => handlers.has(el) && !el.matches(control) && !el.closest(control) && !el.querySelector(control) && !el.matches('[role="columnheader"], [role="row"], [role="gridcell"]') && el.querySelectorAll('*').length <= 40 && el.checkVisibility({ visibilityProperty: true }));
+	const cell = '[role="columnheader"], [role="row"], [role="gridcell"]';
+	// A header's own label listening for the header's click is the header, already counted by its role.
+	const ownLabel = (el: Element) => !!el.closest(cell) && label(el.closest(cell)!) === label(el);
+	const hits = [...(document.body?.querySelectorAll('*') ?? [])].filter((el) => handlers.has(el) && !el.matches(control) && !el.closest(control) && !el.querySelector(control) && !el.matches(cell) && !(label(el) && ownLabel(el)) && el.querySelectorAll('*').length <= 40 && el.checkVisibility({ visibilityProperty: true }));
 	const outer = hits.filter((el) => !hits.some((other) => other !== el && other.contains(el)));
 	return outer.map((el) => {
 		const name = label(el);
@@ -281,9 +277,11 @@ function clickables() {
 		}
 		const main = el.closest('main, [role="main"]');
 		const landmark = main ? null : el.closest('header, nav, aside, footer, [role="banner"], [role="navigation"], [role="complementary"], [role="contentinfo"]');
+		const owner = name ? null : el.parentElement?.closest('[role]:not([role="presentation"]):not([role="none"]), button, a[href]');
 		return {
 			name,
 			nth,
+			near: owner ? `${owner.getAttribute('role') ?? owner.tagName.toLowerCase()} "${(owner.getAttribute('aria-label') || label(owner)).slice(0, 40)}"` : '',
 			region: main ? 'main' : landmark ? (landmark.getAttribute('role') ?? landmark.tagName.toLowerCase()) : '',
 			table: Boolean(el.closest('table, [role="table"], [role="grid"], [role="treegrid"]')),
 			form: Boolean(el.closest('form')),
@@ -688,12 +686,17 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	const later: Item[] = [];
 	let formSteps: Step[] = [];
 
+	const sampled = new Map<string, number>();
 	const track = (found: readonly Candidate[], prefix: readonly Step[], parent: Tracked | undefined): Tracked[] => {
 		const fresh: Tracked[] = [];
-		for (const c of found) {
-			const id = `${c.target.role}|${c.target.name}|${c.target.nth}`;
+		for (const raw of found) {
+			const id = `${raw.target.role}|${raw.target.name}|${raw.target.nth}`;
 			if (known.has(id)) continue;
 			known.add(id);
+			const seen = raw.group ? (sampled.get(raw.group) ?? 0) : 0;
+			if (raw.group) sampled.set(raw.group, seen + 1);
+			if (raw.group && seen >= SAMPLES) continue;
+			const c = raw;
 			const layout = parent ? parent.layout : isLayout(c);
 			const signature = parent ? `${parent.signature} > ${c.target.role}|${c.target.name}|${c.target.nth}` : c.signature;
 			const element = `${describeTarget(c.target)}${prefix.length ? ` (after ${prefix.map(describeStep).join(', then ')})` : ''}`;
@@ -821,6 +824,11 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		...(t.shared ? { shared: t.shared } : {}),
 		...(t.journeys.length ? { journeys: t.journeys } : {}),
 	}));
+	for (const [group, n] of sampled) {
+		if (n <= SAMPLES) continue;
+		const role = group.split('|')[0]!;
+		elements.push({ element: `${n - SAMPLES} more ${role}${n - SAMPLES === 1 ? '' : 's'} of the same ${role === 'treeitem' ? 'tree' : 'grid'}`, signature: `sampled|${group}`, layout: false, by: `alike: the first ${SAMPLES} are exercised` });
+	}
 	return { journeys, elements, skipped };
 }
 
