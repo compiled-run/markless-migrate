@@ -86,15 +86,13 @@ export function Shell({ active, topNav, children }: ShellProps) @{
 		closePalette();
 	};
 	const searchKeys = (event: KeyboardEvent) => {
+		if (event.key === 'Escape' || event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End' || event.key === 'Enter') event.preventDefault();
 		if (event.key === 'Escape') {
-			event.preventDefault();
 			searchOpen = false;
 			closePalette();
 		} else if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
-			event.preventDefault();
 			moveSelection(event.key);
 		} else if (event.key === 'Enter') {
-			event.preventDefault();
 			// Inline on purpose: a handler cannot call another function of the component (MARKLESS_EVENT_HANDLER_EMIT_UNSUPPORTED).
 			const command = chosenCommand();
 			if (command) {

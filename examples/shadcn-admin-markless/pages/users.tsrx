@@ -535,12 +535,9 @@ export default function Users({ url }: PageProps) @{
 		</div>
 	<PopoverContent menu="filter-status" align="start" class="z-50 origin-(--radix-popover-content-transform-origin) rounded-md border bg-popover text-popover-foreground shadow-md outline-hidden data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 w-50 p-0">
 		<div tabindex="-1" data-slot="command" class="flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground" cmdk-root="" id="filter-status-command" onKeydown={(event) => {
+			if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End' || event.key === 'Enter') event.preventDefault();
 			if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
-				event.preventDefault();
 				moveIn(document.getElementById('filter-status-command'), event.key);
-			}
-			if (event.key === 'Enter') {
-				event.preventDefault();
 			}
 			const option = event.key === 'Enter' ? chosenIn(document.getElementById('filter-status-command')) : undefined;
 			if (option) {
@@ -608,12 +605,9 @@ export default function Users({ url }: PageProps) @{
 	</PopoverContent>
 	<PopoverContent menu="filter-role" align="start" class="z-50 origin-(--radix-popover-content-transform-origin) rounded-md border bg-popover text-popover-foreground shadow-md outline-hidden data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 w-50 p-0">
 		<div tabindex="-1" data-slot="command" class="flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground" cmdk-root="" id="filter-role-command" onKeydown={(event) => {
+			if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End' || event.key === 'Enter') event.preventDefault();
 			if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
-				event.preventDefault();
 				moveIn(document.getElementById('filter-role-command'), event.key);
-			}
-			if (event.key === 'Enter') {
-				event.preventDefault();
 			}
 			const option = event.key === 'Enter' ? chosenIn(document.getElementById('filter-role-command')) : undefined;
 			if (option) {

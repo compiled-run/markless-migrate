@@ -144,17 +144,15 @@ export function DropdownMenuContent({ menu, role, slot, modal, side, align, side
 			tabindex="-1"
 			data-orientation="vertical"
 			onKeydown={(event) => {
+				if (event.key === 'Escape' || event.key === 'Tab' || event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End' || event.key === 'Enter' || event.key === ' ') event.preventDefault();
 				if (event.key === 'Escape' || event.key === 'Tab') {
-					event.preventDefault();
 					m.open = '';
 					closeMenu(m.contents, m.triggers, name, true);
 				}
 				if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
-					event.preventDefault();
 					moveFocus(m.contents, name, event.key);
 				}
 				if (event.key === 'Enter' || event.key === ' ') {
-					event.preventDefault();
 					focusItem(m.contents, name)?.click();
 				}
 			}}

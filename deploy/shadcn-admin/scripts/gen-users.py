@@ -85,12 +85,9 @@ def facet_content(column, title, options):
     lines = []
     lines.append(f'\t<PopoverContent menu="filter-{c}" align="start" class="{POPOVER}">')
     lines.append(f'\t\t<div tabindex="-1" data-slot="command" class="flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground" cmdk-root="" id="filter-{c}-command" onKeydown={{(event) => {{')
+    lines.append("\t\t\tif (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End' || event.key === 'Enter') event.preventDefault();")
     lines.append("\t\t\tif (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {")
-    lines.append('\t\t\t\tevent.preventDefault();')
     lines.append(f"\t\t\t\tmoveIn(document.getElementById('filter-{c}-command'), event.key);")
-    lines.append('\t\t\t}')
-    lines.append("\t\t\tif (event.key === 'Enter') {")
-    lines.append('\t\t\t\tevent.preventDefault();')
     lines.append('\t\t\t}')
     lines.append(f"\t\t\tconst option = event.key === 'Enter' ? chosenIn(document.getElementById('filter-{c}-command')) : undefined;")
     lines.append('\t\t\tif (option) {')
