@@ -21,6 +21,8 @@ export interface RouteState {
 	readonly failures: readonly Failure[];
 	/** Why nothing was compared: a bot wall answered instead of the app. */
 	readonly blocked?: string;
+	/** Why nothing was compared: an app could not be reached or did not answer in time. */
+	readonly infrastructure?: string;
 	/** What a non-page route was compared as (feed, json, robots...). */
 	readonly endpoint?: string;
 	/** The new app's commit when it was checked, and the files the route is rendered from, for check --changed. */
@@ -57,6 +59,7 @@ export async function recordResults(cwd: string, report: Report, extra: { readon
 		results[route.role && route.role !== 'anonymous' ? `${route.route} as ${route.role}` : route.route] = {
 			route: route.route,
 			...(route.blocked ? { blocked: route.blocked.message } : {}),
+			...(route.infrastructure ? { infrastructure: route.infrastructure.message } : {}),
 			...(route.endpoint ? { endpoint: route.endpoint } : {}),
 			ok: route.ok,
 			checkedAt: report.startedAt,
@@ -75,7 +78,7 @@ export async function recordResults(cwd: string, report: Report, extra: { readon
 	await writeFile(path, `${JSON.stringify(results, null, '\t')}\n`);
 }
 
-export type RouteStatus = 'green' | 'red' | 'not ported' | 'blocked' | 'unchecked' | 'needs a sample';
+export type RouteStatus = 'green' | 'red' | 'not ported' | 'blocked' | 'unreachable' | 'unchecked' | 'needs a sample';
 
 export interface Status {
 	readonly planned: boolean;
@@ -106,7 +109,7 @@ export async function status(cwd: string): Promise<Status> {
 		const r = results[route];
 		if (!r) return { route, state: 'unchecked', red: [] };
 		const accepted = (r.failures ?? []).flatMap((f) => (f.accepted ? [`${f.accepted.automatic ? `${acceptedLabel(f.accepted)}: ` : ''}${f.dimension}: ${f.check}: ${f.accepted.reason}`] : []));
-		return { route, state: r.blocked ? 'blocked' : r.ok ? 'green' : r.notPorted ? 'not ported' : 'red', red: r.red, checkedAt: r.checkedAt, ...(accepted.length ? { accepted } : {}), ...(r.coverage ? { coverage: r.coverage } : {}), ...(r.timing ? { timing: r.timing } : {}) };
+		return { route, state: r.blocked ? 'blocked' : r.infrastructure ? 'unreachable' : r.ok ? 'green' : r.notPorted ? 'not ported' : 'red', red: r.red, checkedAt: r.checkedAt, ...(accepted.length ? { accepted } : {}), ...(r.coverage ? { coverage: r.coverage } : {}), ...(r.timing ? { timing: r.timing } : {}) };
 	};
 	const routes = names.map(stateOf).sort((a, b) => rank(a.route) - rank(b.route) || a.route.localeCompare(b.route));
 	for (const n of targets?.needsSample ?? []) routes.push({ route: n.route, state: 'needs a sample', red: [] });
@@ -131,7 +134,7 @@ export async function status(cwd: string): Promise<Status> {
 export function summarizeStatus(s: Status): string {
 	if (!s.planned && !s.routes.length) return 'No inventory yet. Run plan against the old app first.\n';
 	const count = (state: string) => s.routes.filter((r) => r.state === state).length;
-	const lines = [`${count('green')} green, ${count('red')} red, ${count('not ported') ? `${count('not ported')} not ported, ` : ''}${count('blocked') ? `${count('blocked')} blocked by bot protection, ` : ''}${count('unchecked')} not checked${s.planned ? '' : ' (no inventory: only checked routes are listed)'}`];
+	const lines = [`${count('green')} green, ${count('red')} red, ${count('not ported') ? `${count('not ported')} not ported, ` : ''}${count('blocked') ? `${count('blocked')} blocked by bot protection, ` : ''}${count('unreachable') ? `${count('unreachable')} not checked for an infrastructure failure, ` : ''}${count('unchecked')} not checked${s.planned ? '' : ' (no inventory: only checked routes are listed)'}`];
 	if (count('needs a sample')) lines[0] += `, ${count('needs a sample')} need a sample value (.migrate/samples.json)`;
 	if (s.order?.length) {
 		lines.push('Migration order:');
@@ -158,7 +161,7 @@ export function remaining(s: Status): string {
 	};
 	return [
 		...by((r) => r.state === 'not ported', 'not ported'),
-		...by((r) => r.state === 'unchecked' || r.state === 'needs a sample', 'not checked'),
+		...by((r) => r.state === 'unchecked' || r.state === 'needs a sample' || r.state === 'unreachable', 'not checked'),
 		...by((r) => r.state === 'red' || r.state === 'blocked', 'red'),
 		...by((r) => Boolean(r.forced), 'forced without proof'),
 		...by((r) => r.state === 'green' && !r.switched, 'green but not switched'),

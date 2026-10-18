@@ -44,6 +44,10 @@ export function summarize(report: Report): string {
 			lines.push(`BLOCKED  ${route.route.padEnd(width)}  ${route.blocked.message}`);
 			continue;
 		}
+		if (route.infrastructure) {
+			lines.push(`NETWORK  ${route.route.padEnd(width)}  not checked, an infrastructure failure (not the app's): ${route.infrastructure.message}`);
+			continue;
+		}
 		const failed = Object.entries(route.dimensions).filter(([, state]) => state === 'fail').map(([d]) => d);
 		const accepted = route.failures.filter((f) => f.accepted).length;
 		const w = route.weight;
@@ -61,8 +65,9 @@ export function summarize(report: Report): string {
 	for (const login of report.logins ?? []) if (!report.routes.some((r) => r.role === login.role)) lines.push(`As ${login.role}: not checked`, ...loginLines(login));
 	const green = report.routes.filter((r) => r.ok).length;
 	const blocked = report.routes.filter((r) => r.blocked).length;
-	const red = report.routes.length - green - blocked;
+	const network = report.routes.filter((r) => r.infrastructure).length;
+	const red = report.routes.length - green - blocked - network;
 	if (report.staleAccepts?.length) lines.push('', 'Accepted differences that no longer match anything (remove them from .migrate/accepted.json):', ...report.staleAccepts.map((a) => `  ${a.route}${a.role ? ` as ${a.role}` : ''} ${a.dimension}: ${a.check}  (${a.reason})`));
-	lines.push('', `${green} of ${report.routes.length} ${report.roles ? 'route checks (route and role)' : 'routes'} green${red ? `, ${red} red` : ''}${blocked ? `, ${blocked} blocked by bot protection` : ''}${report.acceptedCount ? `, ${report.acceptedCount} accepted difference${report.acceptedCount === 1 ? '' : 's'}${report.automaticCount ? ` (${report.automaticCount} automatically)` : ''}` : ''}${samples.length ? `; ${samples.length} route${samples.length === 1 ? '' : 's'} not checked (needs a sample)` : ''}${writes.length ? `; ${writes.length} not checked (fetching it writes)` : ''}.`);
+	lines.push('', `${green} of ${report.routes.length} ${report.roles ? 'route checks (route and role)' : 'routes'} green${red ? `, ${red} red` : ''}${blocked ? `, ${blocked} blocked by bot protection` : ''}${network ? `, ${network} not checked for an infrastructure failure (DNS, connection or timeout)` : ''}${report.acceptedCount ? `, ${report.acceptedCount} accepted difference${report.acceptedCount === 1 ? '' : 's'}${report.automaticCount ? ` (${report.automaticCount} automatically)` : ''}` : ''}${samples.length ? `; ${samples.length} route${samples.length === 1 ? '' : 's'} not checked (needs a sample)` : ''}${writes.length ? `; ${writes.length} not checked (fetching it writes)` : ''}.`);
 	return `${lines.join('\n')}\n`;
 }

@@ -53,7 +53,7 @@ const USAGE = `markless-migrate ${VERSION}
           [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
-          [--journey-budget <seconds>] [--max-journeys <n>]
+          [--journey-budget <seconds>] [--max-journeys <n>] [--timeout <seconds>]
           [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--interaction-controls <n>]
           Compare routes old vs new (default: every route in the inventory). Exits 1 when any is red.
           Every interactive element of the old page (including those a click reveals, such as a
@@ -75,6 +75,11 @@ const USAGE = `markless-migrate ${VERSION}
           --no-responsiveness leaves it out.
           --source and --new-source map each failing element to its old and new source file and line.
           --concurrency checks that many routes at once (default half the cores, at most 4).
+          --timeout stops one route's check after that many seconds (default 600, or five journey
+          budgets when that is more). A page load that times out or cannot connect is tried again
+          once, 2 s later; a route the network still fails, or that passes --timeout, is reported
+          as not checked for an infrastructure failure (DNS, connection or timeout, named), not as
+          red. check exits 3 when nothing is red but such a route was not checked.
           --changed checks only routes not green last time, and routes whose files in the new app
           (--new-source, else this directory) changed since the commit of their last check.
           Writes .migrate/report.json and .migrate/report.html; --open opens the HTML report.
@@ -106,8 +111,10 @@ const USAGE = `markless-migrate ${VERSION}
           accepted (with the reason), not red. An expert's tool, never needed to finish a migration;
           ids are printed with every failure. check also accepts on its own, labelled "accepted
           automatically", the old framework's scripts the new page no longer loads, markup the old
-          framework adds for itself when the accessibility tree and announcements otherwise match, and
-          live content in a third-party embed both pages show (each rule may be turned off under
+          framework adds for itself when the accessibility tree and announcements otherwise match,
+          live content in a third-party embed both pages show, a control neither page lets a visitor
+          use for the same reason, and storage keys only the old framework writes (htmx's history
+          cache, Laravel's sealed cookies) when no journey differs (each rule may be turned off under
           "automatic" in .migrate/overrides.json).
   recorder
           Print the NODE_OPTIONS that loads the request recorder into a Node server, so check compares
@@ -172,6 +179,13 @@ function journeyOptions(budget: string | undefined, max: string | undefined): No
 	const cap = max === undefined ? undefined : Number(max);
 	if (cap !== undefined && (!Number.isInteger(cap) || cap < 1)) fail('--max-journeys must be a whole number of at least 1');
 	return { ...(seconds !== undefined ? { budgetMs: seconds * 1000 } : {}), ...(cap !== undefined ? { maxJourneys: cap } : {}) };
+}
+
+function timeoutOption(value: string | undefined): { timeoutMs?: number } {
+	if (value === undefined) return {};
+	const seconds = Number(value);
+	if (!(seconds > 0)) fail('--timeout must be a number of seconds above 0');
+	return { timeoutMs: seconds * 1000 };
 }
 
 const TIMING_FLAGS = {
@@ -300,9 +314,11 @@ async function run(args: string[], cwd: string): Promise<number> {
 			'restart-on': { type: 'string' },
 			'journey-budget': { type: 'string' },
 			'max-journeys': { type: 'string' },
+			timeout: { type: 'string' },
 			...TIMING_FLAGS,
 		},
 	});
+	const deadline = timeoutOption(values.timeout);
 	const journeys = journeyOptions(values['journey-budget'], values['max-journeys']);
 	const timing = timingOptions(values);
 	if (!values.agent) fail(`run needs --agent <id> (${DRIVERS.map((d) => d.id).join(', ')})`);
@@ -370,6 +386,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 					...(auth ? { auth, authStateDir: join(cwd, STATE_DIR, 'auth') } : {}),
 					...bypass,
 					journeys,
+					...deadline,
 					...(timing ? { responsiveness: timing } : {}),
 					switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 				});
@@ -377,13 +394,14 @@ async function run(args: string[], cwd: string): Promise<number> {
 				await writeReport(report, join(cwd, STATE_DIR), await status(cwd));
 				const open = [...report.routes.flatMap((r) => r.failures), ...(report.logins ?? []).flatMap((l) => l.failures)].filter((f) => !f.accepted).map((f) => `${f.dimension}: ${f.check}${f.viewport ? ` (${f.viewport})` : ''}${f.id ? ` [${f.id}]` : ''}`);
 				for (const f of report.routes.flatMap((r) => r.failures)) if (f.accepted?.automatic) automatic.set(`${f.route} ${f.dimension}: ${f.check}`, `${f.route} ${f.dimension}: ${f.check}, ${acceptedLabel(f.accepted)} (${f.accepted.reason})`);
-				return { ok: report.ok, summary: summarize(report), open: [...new Set(open)] };
+				const network = report.routes.flatMap((r) => (r.infrastructure ? [r.infrastructure.message] : []));
+				return { ok: report.ok, summary: summarize(report), open: [...new Set(open)], ...(network.length && !open.length ? { infrastructure: network.join('; ') } : {}) };
 			},
 		});
 		const red = outcomes.filter((o) => o.outcome === 'left red');
 		const libraries = (await readLibraries(join(cwd, STATE_DIR)))?.libraries.flatMap((l) => (l.decision ? [`${l.name}: ${decisionLine(l)}`] : [])) ?? [];
 		out(`\n${summarizeRun(outcomes, { libraries, automatic: [...automatic.values()], needsSample: unchecked?.map((u) => u.route), log: join(cwd, STATE_DIR, 'run.log') })}`);
-		return red.length || unchecked?.length ? 1 : 0;
+		return red.length || unchecked?.length ? 1 : outcomes.some((o) => o.outcome === 'not checked') ? 3 : 0;
 	} finally {
 		await server?.stop();
 	}
@@ -449,9 +467,11 @@ async function main(argv: string[]): Promise<number> {
 					'new-source': { type: 'string' },
 					'journey-budget': { type: 'string' },
 					'max-journeys': { type: 'string' },
+					timeout: { type: 'string' },
 					...TIMING_FLAGS,
 				},
 			});
+			const deadline = timeoutOption(values.timeout);
 			if (!values.old || !values.new) fail('check needs --old <origin> and --new <origin>');
 			const journeys = journeyOptions(values['journey-budget'], values['max-journeys']);
 			const timing = timingOptions(values);
@@ -516,6 +536,7 @@ async function main(argv: string[]): Promise<number> {
 				automaticOff: rulesOff(await readOverrides(join(cwd, STATE_DIR)).catch((error: Error) => fail(error.message))),
 				...(concurrency ? { concurrency } : {}),
 				journeys,
+				...deadline,
 				...(timing ? { responsiveness: timing } : {}),
 				switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 				...(!values['new-source'] && !values.changed ? {} : { sourceDirs: { ...(values.source ? { old: resolve(values.source) } : {}), new: newDir } }),
@@ -530,7 +551,10 @@ async function main(argv: string[]): Promise<number> {
 				err(`markless-migrate: ${needSample.length} route${needSample.length === 1 ? '' : 's'} not checked for want of a sample value; add them to .migrate/samples.json, or pass --allow-unchecked.\n`);
 				return 1;
 			}
-			return report.ok ? 0 : 1;
+			if (report.ok) return 0;
+			const red = report.routes.some((r) => !r.ok && !r.infrastructure) || (report.logins ?? []).some((l) => !l.ok);
+			if (!red) err(`markless-migrate: nothing is red, but ${report.routes.filter((r) => r.infrastructure).length} route check(s) could not be done for an infrastructure failure; check them again.\n`);
+			return red ? 1 : 3;
 		}
 		case 'status':
 			out(summarizeStatus(await status(cwd)));

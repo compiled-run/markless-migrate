@@ -7,6 +7,7 @@ import { detectChallenge } from './blocked.ts';
 import { blocker } from './trackers.ts';
 import type { Viewport } from './types.ts';
 import { request } from './http.ts';
+import type { Scope } from './infrastructure.ts';
 
 /** How the checker treats one app: what it freezes and blocks, whether writes are sent, and which recorded data it serves. */
 export interface SideEnv {
@@ -25,8 +26,12 @@ export interface SideEnv {
 	readonly userAgent?: string;
 	/** Bot walls that answered any of this app's own requests during one route's check: pages, assets, journeys and states. */
 	readonly walls?: WallHit[];
-	/** As the front door routes it: a page this app does not serve yet comes from the old app, with what that page loads. */
-	readonly frontDoor?: { readonly old: string; readonly serves: (path: string) => boolean };
+	/** As the front door routes it: a page this app does not serve yet loads from the old app's own origin, exactly as there, with the old side's sign-in. */
+	readonly frontDoor?: { readonly old: string; readonly serves: (path: string) => boolean; readonly storageState?: StorageState; readonly signIn?: () => Promise<StorageState> };
+	/** The route check this load belongs to, closed when the check passes its deadline. */
+	readonly scope?: Scope;
+	/** Signs the role in afresh from its login steps, for a journey that ends the session. */
+	readonly signIn?: () => Promise<StorageState>;
 }
 
 // On an asset or a fetch only a challenge header proves a wall; a CDN's server header on an ordinary 403 does not.
@@ -114,6 +119,8 @@ export interface PageLog {
 	readonly records: NetworkRecord[];
 	readonly writes: WriteRecord[];
 	readonly blocked: Map<string, number>;
+	/** While set, with writes held back, every page load and fetch to the app is held back too: a control that ends the session or deletes may do it with a GET. */
+	holdAll?: boolean;
 	/** Waits for response bodies still being read. */
 	settled(): Promise<void>;
 	/** Stops recording: requests the checker itself makes from the page afterwards are not the page's. */
@@ -177,47 +184,27 @@ async function fulfillAsset(route: Route): Promise<void> {
 	await (got ? route.fulfill(got) : route.abort()).catch(() => {});
 }
 
-const pageKey = (href: string) => href.split('#')[0]!;
-
-// A top-level page the front door would send to the old app, or anything such a page loads.
-function fromOldApp(request: Request, url: URL, door: NonNullable<SideEnv['frontDoor']>, oldPages: Set<string>): boolean {
-	let frame: ReturnType<Request['frame']> | undefined;
+function topLevelLoad(request: Request): boolean {
 	try {
-		frame = request.frame();
-	} catch {}
-	// Only a page load goes by the switch list; a form post goes to the app that served the page it was posted from.
-	if (request.isNavigationRequest() && frame && !frame.parentFrame() && request.method() === 'GET') {
-		if (door.serves(url.pathname)) {
-			oldPages.delete(pageKey(url.href));
-			return false;
-		}
-		return true;
-	}
-	// Everything that page's frame loads, a font its stylesheet names included, comes from the old app too.
-	return [frame?.url(), request.headers().referer].some((from) => from !== undefined && oldPages.has(pageKey(from)));
-}
-
-const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
-
-// A redirect to the old app, by any of its loopback names, comes back to the address the page was asked for.
-function toFrontDoor(location: string, from: URL, front: string): string {
-	const to = new URL(location, from);
-	const same = to.origin === from.origin || (LOOPBACK_HOSTS.has(to.hostname) && LOOPBACK_HOSTS.has(from.hostname) && to.port === from.port);
-	return same ? new URL(to.pathname + to.search + to.hash, front).href : location;
-}
-
-async function throughFrontDoor(route: Route, url: URL, old: string, oldPages: Set<string>, extra: Readonly<Record<string, string>>): Promise<void> {
-	const request = route.request();
-	const target = new URL(url.pathname + url.search, old);
-	try {
-		const response = await route.fetch({ url: target.href, maxRedirects: 0, headers: { ...request.headers(), ...extra } });
-		const headers = { ...response.headers() };
-		if (headers.location) headers.location = toFrontDoor(headers.location, target, url.origin);
-		if (request.isNavigationRequest() && response.status() < 300) oldPages.add(pageKey(url.href));
-		await route.fulfill({ response, headers });
+		return request.isNavigationRequest() && !request.frame().parentFrame() && request.method() === 'GET';
 	} catch {
-		await route.abort().catch(() => {});
+		return false;
 	}
+}
+
+/** Where the front door sends a page load: a path the new app does not serve yet to the old app's own origin, a switched one back to the new app. */
+export function frontDoorTarget(url: URL, origin: string, door: NonNullable<SideEnv['frontDoor']>): string | undefined {
+	if (sameApp(url, origin) && !door.serves(url.pathname)) return new URL(url.pathname + url.search + url.hash, door.old).href;
+	if (sameApp(url, door.old) && !sameApp(url, origin) && door.serves(url.pathname)) return new URL(url.pathname + url.search + url.hash, origin).href;
+	return undefined;
+}
+
+/** The new side's storage state with the old side's sign-in added for the old origin, so a page the front door sends there is signed in as on its own host. */
+export function withOldSession(state: StorageState | undefined, old: StorageState | undefined): StorageState | undefined {
+	if (!old) return state;
+	const key = (c: StorageState['cookies'][number]) => `${c.name}|${c.domain}|${c.path}`;
+	const mine = new Set((state?.cookies ?? []).map(key));
+	return { cookies: [...(state?.cookies ?? []), ...old.cookies.filter((c) => !mine.has(key(c)))], origins: [...(state?.origins ?? []), ...(old.origins ?? []).filter((o) => !(state?.origins ?? []).some((n) => n.origin === o.origin))] };
 }
 
 export interface OpenOptions {
@@ -233,7 +220,9 @@ export interface OpenPage {
 
 /** A fresh context with the clock and randomness frozen, trackers blocked, writes held back unless allowed, and recorded data served. */
 export async function openPage(browser: Browser, env: SideEnv, viewport: Viewport, options: OpenOptions = {}): Promise<OpenPage> {
-	const context = await browser.newContext({ ...contextOptions(viewport, env.freeze), ...(env.storageState ? { storageState: env.storageState } : {}), ...(env.userAgent ? { userAgent: env.userAgent } : {}) });
+	const storageState = env.frontDoor ? withOldSession(env.storageState, env.frontDoor.storageState) : env.storageState;
+	const context = await browser.newContext({ ...contextOptions(viewport, env.freeze), ...(storageState ? { storageState } : {}), ...(env.userAgent ? { userAgent: env.userAgent } : {}) });
+	env.scope?.track(context);
 	if (env.cookies?.length) await context.addCookies(env.cookies.map((c) => ({ ...c, url: env.origin })));
 	const extra = env.headers ?? {};
 	if (env.freeze) await context.addInitScript(freezePage, { time: env.freeze.time, seed: env.freeze.seed });
@@ -269,7 +258,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 		});
 	}
 	const recorded = env.replay?.responses.filter((r) => r.side === 'browser') ?? [];
-	const oldPages = new Set<string>();
+	const door = env.frontDoor;
 	await context.route('**/*', async (route: Route) => {
 		const request = route.request();
 		const url = new URL(request.url());
@@ -278,12 +267,13 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 			log.blocked.set(url.hostname, (log.blocked.get(url.hostname) ?? 0) + 1);
 			return route.abort('blockedbyclient');
 		}
-		const same = sameApp(url, env.origin);
+		const home = door && sameApp(url, door.old) && !sameApp(url, env.origin) ? door.old : env.origin;
+		const same = sameApp(url, home);
 		const body = request.postData() ?? undefined;
 		const type = mime(request.headers()['content-type']);
-		const reason = writeReason(request.method(), url, env.origin, env.writeFacts, request.headers());
+		const reason = writeReason(request.method(), url, home, env.writeFacts, request.headers()) ?? (log.holdAll && same && !env.sendWrites && (request.isNavigationRequest() || ['fetch', 'xhr'].includes(request.resourceType())) ? 'a request of a control that ends the session or deletes' : undefined);
 		if (reason) {
-			const line = requestLine(request.method(), url, env.origin, body, type);
+			const line = requestLine(request.method(), url, home, body, type);
 			log.writes.push({ line: env.sendWrites ? line : `would ${line}`, reason, sent: env.sendWrites, request });
 			if (!env.sendWrites) {
 				handled.add(request);
@@ -293,7 +283,8 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 				return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } });
 			}
 		}
-		if (same && env.frontDoor && fromOldApp(request, url, env.frontDoor, oldPages)) return throughFrontDoor(route, url, env.frontDoor.old, oldPages, extra);
+		const door302 = door && topLevelLoad(request) ? frontDoorTarget(url, env.origin, door) : undefined;
+		if (door302) return route.fulfill({ status: 302, headers: { location: door302 } });
 		if (!same) {
 			const hit = findRecorded(recorded, 'browser', request.method(), url, body);
 			if (hit) {

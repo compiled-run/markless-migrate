@@ -16,7 +16,8 @@ import { HINTS } from './hints.ts';
 import { locateFailures, NOT_EXERCISED } from './locate.ts';
 import { mapRules } from './sourcemap.ts';
 import { negotiationFailures } from './i18n.ts';
-import { compareJourneys, explore, replayAll, survey, type ExploreOptions } from './journeys.ts';
+import { compareJourneys, DEFAULT_JOURNEY_BUDGET_MS, explore, replayAll, replayDestructive, survey, type ElementCoverage, type Exploration, type ExploreOptions, type RecordedJourney, type Run as RunResults } from './journeys.ts';
+import { storageOwner, unreachableCandidate, type StorageOwner } from './automatic.ts';
 import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
 import { assetsToProbe, compareRoute, cssTargets, httpFailures, noiseReport, noisyStyles, withFailures, type Probe } from './compare.ts';
 import { matchElements } from './match.ts';
@@ -29,9 +30,10 @@ import type { Status } from '../status.ts';
 import { blocker, type BlockList } from './trackers.ts';
 import { matchRoute } from '../source/pattern.ts';
 import { isSwitched } from '../switch/state.ts';
-import type { Blocked, Coverage, Dimension, Failure, HttpCapture, LoginResult, PageCapture, Report, RouteCapture, RouteResult, Shot, Viewport } from './types.ts';
+import type { Blocked, Coverage, Dimension, Failure, HttpCapture, Infrastructure, LoginResult, PageCapture, Report, RouteCapture, RouteResult, Shot, Viewport } from './types.ts';
 import { DIMENSIONS, VIEWPORTS } from './types.ts';
 import { bodyText, request } from './http.ts';
+import { classify, InfrastructureError, Scope } from './infrastructure.ts';
 
 export interface CheckOptions {
 	readonly oldOrigin: string;
@@ -79,6 +81,8 @@ export interface CheckOptions {
 	readonly switched?: readonly string[];
 	/** Time the first use of every control the journeys exercised and every internal link they followed, old and new, at desktop speed and on a throttled phone. */
 	readonly responsiveness?: ResponsivenessOptions;
+	/** How long one route's check (as one role) may take before it is stopped and reported as an infrastructure failure. */
+	readonly timeoutMs?: number;
 }
 
 export const DEFAULT_CONCURRENCY = Math.max(1, Math.min(4, Math.floor(availableParallelism() / 2)));
@@ -165,7 +169,8 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 	const noise = noiseReport(olds, run.frozen, run.source?.nondeterminism);
 	const loadWrites = (Object.values(oldA.pages)[0]?.writes ?? []).map((w) => ({ ...w, during: 'page load' }));
 	const result = withFailures(compared, [...compared.failures, ...negotiationFailures(route, languages, [negotiatedA, negotiatedB], negotiatedNew)], { noise, writes: loadWrites });
-	const explored = await checkJourneys(browser, run, route, viewports[0]!, await checkStates(browser, run, route, viewports, olds, result));
+	const owner = storageOwner(olds.flatMap((o) => Object.values(o.pages)), Object.values(next.pages));
+	const explored = await checkJourneys(browser, run, route, viewports[0]!, await checkStates(browser, run, route, viewports, olds, result), owner);
 	const checked = run.responsiveness && explored.journeys?.length ? await checkTimings(browser, run, route, explored) : explored;
 	const located = await locateFailures(checked, { route, old: oldA, next, sides: { old: { origin: oldOrigin, dir: run.sourceDirs?.old }, new: { origin: newOrigin, dir: run.sourceDirs?.new } }, ...(run.source ? { facts: run.source } : {}) });
 	const done = oldA.http.status < 400 && (next.http.status === 404 || next.http.status === 410) ? { ...located, notPorted: true } : located;
@@ -174,28 +179,67 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 }
 
 // Explores OLD, then replays every journey on OLD again and on NEW; a third OLD replay confirms noise when the first two differ.
-async function checkJourneys(browser: Browser, run: Run, route: string, viewport: Viewport, result: RouteResult): Promise<RouteResult> {
+// Journeys that end the session or delete run last, each in a fresh session, so what they end or delete cannot change what the others saw.
+async function checkJourneys(browser: Browser, run: Run, route: string, viewport: Viewport, result: RouteResult, owner?: StorageOwner): Promise<RouteResult> {
 	const explored = await explore(browser, run.old, route, viewport, run.journeys);
-	const journeys = explored.journeys;
-	const recorded = journeys.map((j) => j.expected);
-	const door = { old: run.old.origin, serves: (path: string) => isSwitched([route, ...(run.switched ?? [])], path) };
-	const [again, next] = await Promise.all([replayAll(browser, run.old, route, viewport, journeys), replayAll(browser, { ...run.new, frontDoor: door }, route, viewport, journeys)]);
+	const plain = explored.journeys;
+	const recorded = plain.map((j) => j.expected);
+	const door = { old: run.old.origin, serves: (path: string) => isSwitched([route, ...(run.switched ?? [])], path), ...(run.old.storageState ? { storageState: run.old.storageState } : {}), ...(run.old.signIn ? { signIn: run.old.signIn } : {}) };
+	const front: SideEnv = { ...run.new, frontDoor: door };
+	const [again, next] = await Promise.all([replayAll(browser, run.old, route, viewport, plain), replayAll(browser, front, route, viewport, plain)]);
 	const runs = [recorded, again];
-	if (JSON.stringify(recorded) !== JSON.stringify(again)) runs.push(await replayAll(browser, run.old, route, viewport, journeys));
+	if (JSON.stringify(recorded) !== JSON.stringify(again)) runs.push(await replayAll(browser, run.old, route, viewport, plain));
+	const risky = explored.deferred.map((d) => d.journey);
+	const [oldRisky, newRisky] = risky.length ? await Promise.all([replayDestructive(browser, run.old, route, viewport, risky), replayDestructive(browser, front, route, viewport, risky)]) : [[], []];
+	// Sent, a delete cannot be done twice; held back, it can, and a second run shows what varies.
+	const oldRiskyAgain = risky.length && !run.old.sendWrites ? await replayDestructive(browser, run.old, route, viewport, risky) : oldRisky;
+	const journeys: RecordedJourney[] = [...plain, ...risky.map((j, i) => ({ ...j, expected: oldRisky[i]! }))];
+	const olds = runs.map((r, k) => [...r, ...(k === 0 ? oldRisky : oldRiskyAgain)]);
+	const elements = explored.elements.map((e) => destructiveCoverage(e, explored.deferred, oldRisky));
+	const reachable = await unreachableOnBoth(browser, front, route, viewport, elements);
 	const writes = journeys.flatMap((j) => j.expected.flatMap((step) => (step.writes ?? []).map((w) => ({ ...w, during: j.name }))));
-	const coverage: Coverage = { total: explored.elements.length, exercised: explored.elements.filter((e) => e.by).length, elements: explored.elements, skipped: explored.skipped };
-	const unexercised = explored.elements.filter((e) => !e.by && !e.shared).map((e) => notExercised(route, e.element, e.reason ?? 'no journey used it'));
-	return withFailures(result, [...result.failures, ...compareJourneys(route, runs, journeys, next), ...unexercised], { journeys, coverage, writes: [...(result.writes ?? []), ...writes] });
+	const coverage: Coverage = { total: elements.length, exercised: elements.filter((e) => e.by).length, elements, skipped: explored.skipped };
+	const unexercised = elements.filter((e) => !e.by && !e.shared).map((e) => notExercised(route, e.element, e.reason ?? 'no journey used it', reachable.get(e.signature)));
+	return withFailures(result, [...result.failures, ...compareJourneys(route, olds, journeys, [...next, ...newRisky], owner), ...unexercised], { journeys, coverage, writes: [...(result.writes ?? []), ...writes] });
+}
+
+/** How a control that ends the session or deletes was exercised: by its journey, with the requests it made held back or sent. */
+export function destructiveCoverage(e: ElementCoverage, deferred: Exploration['deferred'], results: RunResults): ElementCoverage {
+	const at = deferred.findIndex((d) => d.signature === e.signature);
+	if (at < 0) return e;
+	const journey = deferred[at]!.journey;
+	const steps = results[at] ?? [];
+	const last = steps.at(-1);
+	const { reason: _, ...rest } = e;
+	if (!last || last.failed || steps.length < journey.steps.length) return { ...rest, reason: `it could not be used on the old page: ${last?.failed ?? 'the journey stopped before it'}`, ...(last?.unreachable ? { unreachable: { journey, kind: last.unreachable } } : {}) };
+	const writes = steps.flatMap((s) => s.writes ?? []);
+	const held = writes.filter((w) => !w.sent).map((w) => w.line);
+	const how = held.length ? `; held back and compared unsent: ${held.join(', ')}` : writes.length ? '; its writes sent (staging or this machine), in a session of its own' : '';
+	return { ...rest, by: `${journey.name}${how}`, journeys: [journey.name] };
+}
+
+/** Elements the old page would not let a visitor use, tried on the new page too: the same reason on both is accepted automatically. */
+async function unreachableOnBoth(browser: Browser, env: SideEnv, route: string, viewport: Viewport, elements: readonly ElementCoverage[]): Promise<Map<string, NonNullable<Failure['automatic']>>> {
+	const tried = elements.filter((e) => e.unreachable && !e.by && !e.shared);
+	const out = new Map<string, NonNullable<Failure['automatic']>>();
+	if (!tried.length) return out;
+	const results = await replayAll(browser, env, route, viewport, tried.map((e) => e.unreachable!.journey));
+	tried.forEach((e, i) => {
+		const failed = results[i]!.find((r) => r.failed);
+		const candidate = unreachableCandidate(e.unreachable!.kind, e.reason ?? '', failed);
+		if (candidate) out.set(e.signature, candidate);
+	});
+	return out;
 }
 
 async function checkTimings(browser: Browser, run: Run, route: string, result: RouteResult): Promise<RouteResult> {
 	// The new app is timed on its own, not through the front door: a link's target is its page as it will serve it.
-	const timed = await checkResponsiveness(browser, { old: run.old, new: run.new }, route, result.journeys ?? [], run.responsiveness);
+	const timed = await checkResponsiveness(browser, { old: run.old, new: run.new }, route, (result.journeys ?? []).filter((j) => !j.destructive), run.responsiveness);
 	return withFailures(result, [...result.failures, ...timed.failures], { responsiveness: timed.responsiveness });
 }
 
-export function notExercised(route: string, element: string, reason: string): Failure {
-	return { route, dimension: 'behaviour', check: `${NOT_EXERCISED}${element}`, expected: 'a journey that uses it on the old page, replayed on the new one', actual: reason, hint: HINTS.coverage };
+export function notExercised(route: string, element: string, reason: string, automatic?: Failure['automatic']): Failure {
+	return { route, dimension: 'behaviour', check: `${NOT_EXERCISED}${element}`, expected: 'a journey that uses it on the old page, replayed on the new one', actual: reason, hint: HINTS.coverage, ...(automatic ? { automatic } : {}) };
 }
 
 /** Each shared layout control is exercised by the first route of the run that has it; the others carry its verdict. */
@@ -280,18 +324,45 @@ async function replayRoute(run: Run, dir: string, route: string): Promise<{ run:
 }
 
 /** A route that was not compared in full: only `compared` dimensions carry a verdict, the rest are skipped. */
-function partialResult(route: string, failures: readonly Failure[], compared: readonly Dimension[], blocked?: Blocked): RouteResult {
+function partialResult(route: string, failures: readonly Failure[], compared: readonly Dimension[], blocked?: Blocked, infrastructure?: Infrastructure): RouteResult {
 	const failed = new Set(failures.map((f) => f.dimension));
 	const dimensions = Object.fromEntries(DIMENSIONS.map((d) => [d, failed.has(d) ? 'fail' : compared.includes(d) ? 'pass' : 'skipped'])) as RouteResult['dimensions'];
 	const zero = { downloaded: 0, source: 0, executed: 0 };
-	return { route, ok: false, dimensions, failures, weight: { old: zero, new: zero }, visualDiffs: [], shots: [], ...(blocked ? { blocked } : {}) };
+	return { route, ok: false, dimensions, failures, weight: { old: zero, new: zero }, visualDiffs: [], shots: [], ...(blocked ? { blocked } : {}), ...(infrastructure ? { infrastructure } : {}) };
 }
 
-/** A page that never finishes loading (a stalled third-party stylesheet) fails its own route, not the whole run. */
+/** The route's result when the network failed it (a page that would not load after a retry, an origin that does not resolve or refuses the connection): an infrastructure failure, not the app's; undefined for any other error. */
 export function loadTimeout(route: string, error: unknown, [oldOrigin, newOrigin]: readonly [string, string]): RouteResult | undefined {
-	if (!(error instanceof Error) || error.name !== 'TimeoutError') return undefined;
+	const kind = classify(error);
+	if (!kind || !(error instanceof Error)) return undefined;
+	const origin = error instanceof InfrastructureError ? error.infrastructure.origin : undefined;
+	const at = (o: string) => origin !== undefined && new URL(origin).origin === new URL(o).origin;
+	const side = oldOrigin === newOrigin ? undefined : at(newOrigin) ? 'new' : at(oldOrigin) ? 'old' : undefined;
 	const message = error.message.split('\n')[0]!.split(oldOrigin).join('OLD').split(newOrigin).join('NEW');
-	return partialResult(route, [{ route, dimension: 'http', check: 'page load', expected: 'the page loads', actual: message, hint: HINTS.pageLoad }], []);
+	return partialResult(route, [], [], undefined, { ...(side ? { side } : {}), cause: kind.cause, ...(kind.code && kind.code !== 'timeout' ? { code: kind.code } : {}), ...(origin ? { origin } : {}), message: `${side ? `${side.toUpperCase()}: ` : ''}${message}` });
+}
+
+/** Default per route check: ten minutes, or five journey budgets when the budget is raised. */
+export function routeTimeout(options: Pick<CheckOptions, 'timeoutMs' | 'journeys'>): number {
+	return options.timeoutMs ?? Math.max(600_000, 5 * (options.journeys?.budgetMs ?? DEFAULT_JOURNEY_BUDGET_MS));
+}
+
+/** Runs one route's check under a deadline: past it, every page the check opened is closed and the route is reported as an infrastructure failure. */
+export async function withDeadline(route: string, run: Run, ms: number, work: (run: Run) => Promise<RouteResult>): Promise<RouteResult> {
+	const scope = new Scope();
+	const task = work({ ...run, old: { ...run.old, scope }, new: { ...run.new, scope } });
+	task.catch(() => {});
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const late = new Promise<'late'>((done) => (timer = setTimeout(() => done('late'), ms)));
+	try {
+		const first = await Promise.race([task, late]);
+		if (first !== 'late') return first;
+	} finally {
+		clearTimeout(timer);
+	}
+	await scope.close();
+	await Promise.race([task.catch(() => {}), new Promise((done) => setTimeout(done, 10_000))]);
+	return partialResult(route, [], [], undefined, { cause: 'check timeout', message: `the check of ${route} did not finish within ${Math.round(ms / 1000)} s (--timeout), so it was stopped: a server that stops answering part way through does this` });
 }
 
 function asRole(result: RouteResult, role: string | undefined): RouteResult {
@@ -330,6 +401,7 @@ async function checkAs(browser: Browser, run: Run, route: string, role: string |
 		if (old) oldCaptures.set(gated, old);
 		return gated;
 	} catch (error) {
+		if (run.old.scope?.closed) throw error;
 		const timedOut = loadTimeout(route, error, [run.old.origin, run.new.origin]);
 		if (timedOut) return timedOut;
 		if (!(error instanceof BlockedError)) throw error;
@@ -350,10 +422,12 @@ async function signInAs(browser: Browser, base: Run, role: string, spec: RoleSpe
 		}
 	}
 	if (!states.old) return { login: { role, ok: false, failures, cookies: { old: [], new: [] } } };
+	const saved = (side: 'old' | 'new') => (typeof spec.storageState === 'string' ? spec.storageState : spec.storageState?.[side]);
+	const fresh = (side: 'old' | 'new') => (spec.login?.length && !saved(side) ? { signIn: () => signIn(browser, base[side], side, role, spec, auth.dir) } : {});
 	const compared = states.new ? compareLogin(role, route, states.old, states.new, base.old.origin, base.new.origin) : undefined;
 	const all = [...failures, ...(compared?.failures ?? [])];
 	return {
-		run: { ...base, old: { ...base.old, storageState: states.old }, new: { ...base.new, ...(states.new ? { storageState: states.new } : {}) } },
+		run: { ...base, old: { ...base.old, storageState: states.old, ...fresh('old') }, new: { ...base.new, ...(states.new ? { storageState: states.new, ...fresh('new') } : {}) } },
 		login: { role, ok: all.length === 0, failures: all, cookies: compared?.cookies ?? { old: [], new: [] } },
 	};
 }
@@ -382,8 +456,16 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const loginPaths = auth ? loginRoutes(auth) : [];
 	try {
 		const routes: RouteResult[] = [];
+		const unreachable = (route: string) => (error: unknown) => {
+			const failed = loadTimeout(route, error, [options.oldOrigin, options.newOrigin]);
+			if (!failed) throw error;
+			return failed;
+		};
 		const endpoints = new Set(options.endpoints ?? []);
-		for (const route of options.routes) if (!isPage((await captureHttp(options.oldOrigin, route, tagHeaders(base.old)).catch(() => undefined))?.contentType ?? '')) endpoints.add(route);
+		for (const route of options.routes) {
+			const http = await captureHttp(options.oldOrigin, route, tagHeaders(base.old)).catch((error: unknown) => (classify(error) ? ('unreachable' as const) : undefined));
+			if (http !== 'unreachable' && !isPage(http?.contentType ?? '')) endpoints.add(route);
+		}
 		for (const role of roles) {
 			let roleRun = base;
 			if (auth && role && role !== ANONYMOUS) {
@@ -398,7 +480,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			roleRun = { ...roleRun, journeys: { ...options.journeys, owner: (signature) => owners.get(signature.split(' > ')[0]!) } };
 			const checked = await pool(pages, options.concurrency ?? DEFAULT_CONCURRENCY, async (route) => {
 				const { run, failures } = data?.mode === 'replay' ? await replayRoute(roleRun, data.dir, route) : { run: roleRun, failures: [] };
-				const result = await checkAs(browser, run, route, role, loginPaths, options);
+				const result = await withDeadline(route, run, routeTimeout(options), (scoped) => checkAs(browser, scoped, route, role, loginPaths, options)).catch(unreachable(route));
 				const old = oldCaptures.get(result);
 				if (data?.mode === 'record' && old) {
 					const records = Object.values(old.pages)[0]?.network?.records ?? [];
@@ -407,8 +489,8 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				return asRole(failures.length ? withFailures(result, [...failures, ...result.failures]) : result, role);
 			});
 			routes.push(...shareLayout(checked));
-			for (const route of endpoints) routes.push(asRole(await checkEndpoint(roleRun, route), role));
-			for (const route of options.redirects ?? []) routes.push(asRole(await checkRedirect(roleRun, route), role));
+			for (const route of endpoints) routes.push(asRole(await checkEndpoint(roleRun, route).catch(unreachable(route)), role));
+			for (const route of options.redirects ?? []) routes.push(asRole(await checkRedirect(roleRun, route).catch(unreachable(route)), role));
 		}
 		const sources = options.source?.nondeterminism.map((f) => ({ ...f, pinned: pinnedBy(`${f.kind} ${f.what ?? ''}`, f.side, freeze) }));
 		return applyAccepted({

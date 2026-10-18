@@ -1,4 +1,4 @@
-import { frameworkMarkup, frameworkRuntime, thirdPartyEmbeds } from './automatic.ts';
+import { frameworkMarkup, frameworkRuntime, sealedBy, thirdPartyEmbeds } from './automatic.ts';
 import type { Browser, Page, Response } from 'playwright';
 import { collectPage, decodeImages } from './collect.ts';
 import { createHash } from 'node:crypto';
@@ -11,6 +11,7 @@ import { renderedFonts } from './fonts.ts';
 import { captureSourceHints } from './hints-page.ts';
 import type { AssetRecord, HttpCapture, HttpHop, PageCapture, RouteCapture, ScriptWeight, Viewport } from './types.ts';
 import { request } from './http.ts';
+import { loadPage } from './infrastructure.ts';
 
 const ASSET_TYPES = new Set(['image', 'font', 'stylesheet', 'script', 'media']);
 
@@ -172,7 +173,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 			);
 		});
 		await page.coverage.startJSCoverage({ resetOnNavigation: false });
-		const navigation = await page.goto(new URL(route, origin).href, { waitUntil: 'load' });
+		const navigation = await loadPage(page, new URL(route, origin).href);
 		const html = (await navigation?.text().catch(() => '')) ?? '';
 		const wall = navigation && detectChallenge({ status: navigation.status(), headers: await navigation.allHeaders(), body: html });
 		if (wall) throw new BlockedError({ status: navigation!.status(), ...wall }, origin);
@@ -186,6 +187,10 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		const shown = await page.evaluate(shownText);
 		const elements = await captureSourceHints(page, await renderedFonts(page, collected.elements, fontHashes));
 		const storage = await storageKeys(page, signInCookies(env.storageState));
+		const sealed = Object.fromEntries((await context.cookies(page.url()).catch(() => [])).flatMap((c) => {
+			const framework = sealedBy(c.value);
+			return framework ? [[c.name, framework]] : [];
+		}));
 		const a11y = viewport.isMobile ? undefined : await captureA11y(page);
 		for (const [i, text] of (await page.evaluate(() => [...document.querySelectorAll('style')].map((style) => style.textContent ?? ''))).entries()) {
 			if (text.trim()) stylesheets.push({ url: `${toLocal(pageUrlBefore(page), origin)} <style> #${i + 1}`, text });
@@ -233,6 +238,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 			blocked: Object.fromEntries(log.blocked),
 			writes: log.writes.map((w) => ({ line: w.line, reason: w.reason, sent: w.sent })),
 			storage,
+			...(Object.keys(sealed).length ? { sealed } : {}),
 			...(internals.length ? { internals } : {}),
 			...(embeds.length ? { embeds } : {}),
 			weight: {

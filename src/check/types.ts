@@ -128,6 +128,8 @@ export interface PageCapture {
 	readonly writes?: readonly WriteLine[];
 	/** What the page keeps in the browser once loaded: storage keys, IndexedDB stores, cookies. */
 	readonly storage?: readonly string[];
+	/** Cookies whose value is in a server framework's own sealed format, by name: the framework that wrote them. */
+	readonly sealed?: Readonly<Record<string, string>>;
 	/** Markup the page's framework adds for itself (a route announcer), with the roles inside it. */
 	readonly internals?: readonly { readonly framework: string; readonly what: string; readonly selector: string; readonly roles: readonly string[]; readonly text: string }[];
 	/** Iframes and images from other origins, with their boxes in page coordinates. */
@@ -202,6 +204,8 @@ export interface RouteResult {
 	readonly dimensions: Readonly<Record<Dimension, 'pass' | 'fail' | 'skipped'>>;
 	/** A bot wall or challenge page answered instead of the app, so nothing was compared. */
 	readonly blocked?: Blocked;
+	/** An app could not be reached or did not answer in time, so the route was not compared: the network's failure, not the app's. */
+	readonly infrastructure?: Infrastructure;
 	readonly failures: readonly Failure[];
 	readonly weight: { readonly old: Omit<Weight, 'scripts'>; readonly new: Omit<Weight, 'scripts'> };
 	readonly visualDiffs: readonly { viewport: string; png: Buffer }[];
@@ -259,6 +263,17 @@ export interface Blocked {
 	readonly status: number;
 	/** What gave the challenge away: a header, a cookie or a marker in the page. */
 	readonly evidence: string;
+	readonly message: string;
+}
+
+export type InfrastructureCause = 'dns' | 'connect' | 'timeout' | 'check timeout';
+
+export interface Infrastructure {
+	readonly side?: 'old' | 'new';
+	readonly cause: InfrastructureCause;
+	/** The network error code (`ERR_NAME_NOT_RESOLVED`, `ECONNREFUSED`), when there was one. */
+	readonly code?: string;
+	readonly origin?: string;
 	readonly message: string;
 }
 

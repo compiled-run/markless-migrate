@@ -1,4 +1,6 @@
 import { AUTOMATIC_RULES, type AutomaticRule } from '../overrides.ts';
+import { HINTS } from './hints.ts';
+import { NOT_EXERCISED } from './locate.ts';
 import type { AssetRecord, Box, Failure, PageCapture } from './types.ts';
 
 export { AUTOMATIC_RULES, type AutomaticRule };
@@ -99,6 +101,52 @@ export function embedImageCandidate(src: string, old: PageCapture, next: PageCap
 	return has(old) && has(next) ? candidate('live-embed', `${new URL(src).host} served a different image at the same address to each page, so its content is live`) : undefined;
 }
 
+/** An element the old page would not let a visitor use, which the new page refuses for the same reason (covered, hidden, outside the page). */
+export function unreachableCandidate(kind: string, oldReason: string, onNew: { readonly failed?: string; readonly unreachable?: string } | undefined): Failure['automatic'] {
+	if (!onNew?.unreachable || onNew.unreachable !== kind || kind === 'missing' || kind === 'timeout') return undefined;
+	return candidate('unreachable-on-both', `neither page lets a visitor use it, for the same reason (${kind}): old ${oldReason.replace(/^it could not be used on the old page: /, '')}; new ${onNew.failed ?? kind}`);
+}
+
+/** Keys a framework's runtime writes for itself, never the app: htmx's history cache. */
+const FRAMEWORK_KEYS: readonly { readonly framework: string; readonly key: RegExp }[] = [{ framework: 'htmx', key: /^(sessionStorage|localStorage) htmx-(history-cache|current-path-for-history)$/ }];
+
+/** The server framework whose own sealed format a cookie value is in: Laravel encrypts every cookie it sets as base64 JSON with iv, value and mac. */
+export function sealedBy(value: string): string | undefined {
+	try {
+		const json = JSON.parse(Buffer.from(decodeURIComponent(value), 'base64').toString('utf8')) as Record<string, unknown>;
+		return typeof json.iv === 'string' && typeof json.value === 'string' && typeof json.mac === 'string' ? 'Laravel' : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/** Which framework a storage line (`sessionStorage htmx-history-cache`, `+ cookie x_session HttpOnly ...`) belongs to: one whose runtime or sealed cookies the old page carries and the new page does not. */
+export type StorageOwner = (line: string) => string | undefined;
+
+export function storageOwner(olds: readonly PageCapture[], next: readonly PageCapture[]): StorageOwner {
+	const runtimes = (pages: readonly PageCapture[]) => new Set(pages.flatMap((p) => p.assets.flatMap((a) => (a.runtime ? [a.runtime] : []))));
+	const sealed = (pages: readonly PageCapture[]) => new Map(pages.flatMap((p) => Object.entries(p.sealed ?? {})));
+	const [oldRuntimes, newRuntimes, oldSealed, newSealed] = [runtimes(olds), runtimes(next), sealed(olds), sealed(next)];
+	return (line) => {
+		const [kind = '', key = ''] = line.replace(/^[+-] /, '').split(' ');
+		if (kind === 'cookie') {
+			const framework = oldSealed.get(key);
+			return framework && !newSealed.has(key) && ![...newSealed.values()].includes(framework) ? framework : undefined;
+		}
+		return FRAMEWORK_KEYS.find((k) => k.key.test(`${kind} ${key}`) && oldRuntimes.has(k.framework) && !newRuntimes.has(k.framework))?.framework;
+	};
+}
+
+/** Storage differences that are all keys only the old framework's own code wrote, none of them kept by the new page. */
+export function storageCandidate(missing: readonly string[], extra: readonly string[], owner: StorageOwner | undefined): Failure['automatic'] {
+	if (!owner || !missing.length || extra.length) return undefined;
+	const owners = missing.map(owner);
+	if (owners.some((o) => !o)) return undefined;
+	return candidate('framework-storage', `${missing.map((m, i) => `${m.replace(/^[+-] /, '').split(' ').slice(0, 2).join(' ')} (${owners[i]})`).join(', ')}: written only by the old framework's own code, which the new page does not run`);
+}
+
+const journeyDifference = (f: Failure) => !f.check.startsWith(NOT_EXERCISED) && (f.hint === HINTS.behaviour || f.hint === HINTS.keyboard);
+
 const announces = (f: Failure) => /\bannounced:/.test(f.expected) || /\bannounced:/.test(f.actual);
 
 /**
@@ -113,6 +161,7 @@ export function grantAutomatic(failures: readonly Failure[], off: readonly Autom
 		const auto = f.automatic;
 		if (f.accepted || !auto || off.includes(auto.rule)) return f;
 		if (auto.rule === 'framework-markup' && (otherTree(f) || otherAnnouncements)) return f;
+		if (auto.rule === 'framework-storage' && open.some((o) => o !== f && o.route === f.route && o.role === f.role && o.automatic?.rule !== 'framework-storage' && journeyDifference(o))) return f;
 		return { ...f, accepted: { reason: auto.reason, by: 'markless-migrate', date, automatic: auto.rule } };
 	});
 }

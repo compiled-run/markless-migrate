@@ -47,8 +47,10 @@ once at the end.
   the final report's "What to look at if you care" with the failure id and your evidence.
 - check accepts some differences automatically when its evidence proves they are no user-visible
   regression: the old framework's own scripts the new page no longer loads, markup the old framework adds
-  for itself (Next's route announcer) when the accessibility tree and announcements otherwise match, and
-  live content (counts, timestamps) inside a third-party embed both pages show. They are labelled
+  for itself (Next's route announcer) when the accessibility tree and announcements otherwise match,
+  live content (counts, timestamps) inside a third-party embed both pages show, a control neither page
+  lets a visitor use for the same reason, and storage keys only the old framework writes (htmx's history
+  cache, Laravel's sealed cookies) when no journey differs. They are labelled
   "accepted automatically: <rule>" with the evidence. Any other difference stays red until it is fixed:
   never write \`.migrate/accepted.json\` and never run \`accept\`; list the difference, with its id
   (printed in [brackets]) and why you think it is intended, in the final report instead.
@@ -75,6 +77,10 @@ once at the end.
   see the old app's responses.
 - Writes (form posts, non-GET requests) are held back as "would POST ..." unless both origins are on
   this machine or marked \`--staging\` (\`staging: true\`). Never mark a production origin as staging.
+  Sign out and Delete controls are exercised too (last, each in a fresh session), and the login steps of
+  the \`--auth\` file are always sent.
+- A route reported as not checked for an infrastructure failure (DNS, connection, timeout) is the
+  network's, not the app's: check it again; do not change the app for it.
 - Logged-in pages: \`plan --source\` writes a starter \`.migrate/auth.json\` with the roles and login route it
   found; fill in the login steps (credentials as \`\${ENV}\`) and pass it as \`--auth\` (\`auth\`). Every route is
   then checked once per role and anonymous; \`auth\` failures mean the new app lets a role in, keeps it out,

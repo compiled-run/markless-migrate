@@ -7,6 +7,7 @@ import { HINTS } from './hints.ts';
 import type { Failure, HttpCapture, LoginResult } from './types.ts';
 import { VIEWPORTS } from './types.ts';
 import { signedInStorage, storageFailure } from './storage.ts';
+import { classify, RETRY_BACKOFF_MS, sleep } from './infrastructure.ts';
 
 export const ANONYMOUS = 'anonymous';
 
@@ -84,8 +85,7 @@ function locate(page: Page, target: Target): Locator {
 	return page.getByRole(target.role as Parameters<Page['getByRole']>[0], target.name ? { name: target.name, exact: true } : {});
 }
 
-async function runStep(page: Page, origin: string, step: LoginStep): Promise<void> {
-	const timeout = 15_000;
+async function runStep(page: Page, origin: string, step: LoginStep, timeout: number): Promise<void> {
 	if ('goto' in step) await page.goto(new URL(interpolate(step.goto), origin).href, { waitUntil: 'load', timeout });
 	else if ('fill' in step) await locate(page, step.fill).fill(interpolate(step.value), { timeout });
 	else if ('click' in step) await locate(page, step.click).click({ timeout });
@@ -101,22 +101,42 @@ async function runStep(page: Page, origin: string, step: LoginStep): Promise<voi
 
 const describeStep = (step: LoginStep) => JSON.stringify(step).replace(/"value":"[^"]*"/, '"value":"…"');
 
-/** Signs in as one role on one app: from its storage state file, or by running its login script in a fresh browser. */
-export async function signIn(browser: Browser, env: SideEnv, side: 'old' | 'new', name: string, spec: RoleSpec, dir: string): Promise<StorageState> {
+export interface SignInOptions {
+	readonly stepTimeout?: number;
+	readonly backoffMs?: number;
+}
+
+/**
+ * Signs in as one role on one app: from its storage state file, or by running its login script in a fresh browser.
+ * The login steps are the person's own sign-in for this check, so what they post is always sent, on any origin; a script
+ * the network fails (a deployment's cold start) is run once more after a backoff.
+ */
+export async function signIn(browser: Browser, env: SideEnv, side: 'old' | 'new', name: string, spec: RoleSpec, dir: string, options: SignInOptions = {}): Promise<StorageState> {
 	const file = typeof spec.storageState === 'string' ? spec.storageState : spec.storageState?.[side];
 	if (file) return JSON.parse(await readFile(resolve(dir, file), 'utf8')) as StorageState;
 	if (!spec.login?.length) throw new Error(`role "${name}" has no storage state for ${side.toUpperCase()} and no login steps`);
+	try {
+		return await runLogin(browser, env, spec.login, options.stepTimeout ?? 15_000);
+	} catch (error) {
+		if (!classify((error as Error).cause)) throw error;
+		await sleep(options.backoffMs ?? RETRY_BACKOFF_MS);
+		return runLogin(browser, env, spec.login, options.stepTimeout ?? 15_000);
+	}
+}
+
+async function runLogin(browser: Browser, env: SideEnv, login: readonly LoginStep[], timeout: number): Promise<StorageState> {
 	const context = await browser.newContext({ ...contextOptions(VIEWPORTS[0]!, false), ...(env.userAgent ? { userAgent: env.userAgent } : {}) });
+	env.scope?.track(context);
 	try {
 		if (env.cookies?.length) await context.addCookies(env.cookies.map((c) => ({ ...c, url: env.origin })));
 		const home = new URL(env.origin).origin;
 		if (env.headers) await context.route('**/*', (route) => (new URL(route.request().url()).origin === home ? route.continue({ headers: { ...route.request().headers(), ...env.headers } }) : route.continue()));
 		const page = await context.newPage();
-		for (const [i, step] of spec.login.entries()) {
+		for (const [i, step] of login.entries()) {
 			try {
-				await runStep(page, env.origin, step);
+				await runStep(page, env.origin, step, timeout);
 			} catch (error) {
-				throw new Error(`step ${i + 1} ${describeStep(step)} failed at ${page.url()}: ${(error as Error).message.split('\n')[0]}`);
+				throw new Error(`step ${i + 1} ${describeStep(step)} failed at ${page.url()}: ${(error as Error).message.split('\n')[0]}`, { cause: error });
 			}
 		}
 		await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});

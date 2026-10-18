@@ -1,5 +1,5 @@
 import { sameContentType } from './assets.ts';
-import { embedCandidate, embedImageCandidate, markupCandidate, runtimeCandidate } from './automatic.ts';
+import { embedCandidate, embedImageCandidate, markupCandidate, runtimeCandidate, storageOwner } from './automatic.ts';
 import { compareA11y } from './a11y.ts';
 import { HINTS, seoHint } from './hints.ts';
 import { failureElements, failureOccurrence } from './locate.ts';
@@ -302,7 +302,8 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 	}
 
 	const kept = next.pages[desktop]?.storage;
-	const stored = kept && storageFailure(route, 'behaviour', 'browser storage after the page loads', olds.map((o) => o.pages[desktop]?.storage ?? []), kept);
+	const owner = storageOwner(olds.flatMap((o) => Object.values(o.pages)), Object.values(next.pages));
+	const stored = kept && storageFailure(route, 'behaviour', 'browser storage after the page loads', olds.map((o) => o.pages[desktop]?.storage ?? []), kept, owner);
 	if (stored) failures.push(stored);
 	failures.push(...compareNetwork(route, olds.map((o) => o.pages[desktop]?.network), next.pages[desktop]?.network, oldA.origin, next.origin, clients));
 	const oldNet = oldA.pages[desktop]?.network;

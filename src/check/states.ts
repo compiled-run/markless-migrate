@@ -8,6 +8,7 @@ import { describe, matchElements } from './match.ts';
 import { describeRule, type CssRule, type CssState } from './stylesheet.ts';
 import type { Box, ElementSnapshot, Failure, Shot, Viewport } from './types.ts';
 import { compareScreenshots, visualNoise, visuallyDifferent } from './visual.ts';
+import { loadPage } from './infrastructure.ts';
 
 const MAX_STATES = 40;
 const TARGETS_PER_STATE = 2;
@@ -52,7 +53,7 @@ async function open(browser: Browser, env: SideEnv, route: string, viewport: Vie
 	const origin = env.origin;
 	const { context, page } = await openPage(browser, env, viewport);
 	const inflight = trackRequests(page);
-	await page.goto(new URL(route, origin).href, { waitUntil: 'load' });
+	await loadPage(page, new URL(route, origin).href);
 	await settle(page);
 	const session = await context.newCDPSession(page);
 	await session.send('DOM.enable');

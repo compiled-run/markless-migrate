@@ -11,6 +11,8 @@ export const AUTOMATIC_RULES = {
 	'old-framework-runtime': "the old framework's own code, which the new page no longer loads",
 	'framework-markup': 'markup the old framework adds for itself, with the accessibility tree and announcements otherwise the same',
 	'live-embed': 'live content inside a third-party embed that both pages show',
+	'unreachable-on-both': 'an element neither page lets a visitor use, for the same reason (covered, hidden or outside the page)',
+	'framework-storage': "browser storage only the old framework's own code writes, with no journey difference on the route",
 } as const;
 export type AutomaticRule = keyof typeof AUTOMATIC_RULES;
 

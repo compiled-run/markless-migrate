@@ -6,6 +6,8 @@ import { HINTS } from './hints.ts';
 import { signInCookies, storageKeys } from './storage.ts';
 import { diffLines, lineTemplates, template } from './noise.ts';
 import type { Dimension, Failure, Viewport, WriteLine } from './types.ts';
+import { storageCandidate, type StorageOwner } from './automatic.ts';
+import { loadPage } from './infrastructure.ts';
 
 export interface Target {
 	readonly role: string;
@@ -40,11 +42,19 @@ export interface StepResult {
 	readonly navigated: boolean;
 	/** Set when the step could not be performed, for example because its target is missing. */
 	readonly failed?: string;
+	/** How the step's target could not be reached, when it could not: `occluded`, `hidden`, `offscreen`, `disabled`, `missing` or `timeout`. */
+	readonly unreachable?: Unreachability;
+	/** Dialogs the step opened (`confirm: Delete this note?`); a step that ends the session or deletes accepts them, any other dismisses them. */
+	readonly dialogs?: readonly string[];
+	/** The step ended on a page the front door serves from the old app, on the old app's own origin: what that page keeps in the browser is the old app's, on another origin, so it is not compared. */
+	readonly door?: boolean;
 }
 
 export interface Journey {
 	readonly name: string;
 	readonly steps: readonly Step[];
+	/** Its last step uses a control that ends the session or deletes (Sign out, Delete): run after every other journey, each in a fresh session. */
+	readonly destructive?: boolean;
 }
 
 export interface RecordedJourney extends Journey {
@@ -139,6 +149,8 @@ interface Candidate {
 	readonly focusable?: boolean;
 	/** Rows, cells and tree items of one grid or tree: alike, so only the first few of a group are exercised. */
 	readonly group?: string;
+	/** It ends the session or deletes (its name or address says so). */
+	readonly destructive?: boolean;
 }
 
 const LAYOUT = new Set(['header', 'banner', 'nav', 'navigation', 'aside', 'complementary', 'footer', 'contentinfo']);
@@ -191,15 +203,11 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 					continue;
 				}
 				if (DESTRUCTIVE.test(url.pathname)) {
-					add({ ...base, skip: 'its address looks destructive (sign out, delete...), so check does not follow it' });
+					add({ ...base, destructive: true });
 					continue;
 				}
 			}
-			if (DESTRUCTIVE.test(name)) {
-				add({ ...base, skip: 'its name looks destructive (sign out, delete...), so check does not use it' });
-				continue;
-			}
-			add(base);
+			add(DESTRUCTIVE.test(name) ? { ...base, destructive: true } : base);
 		}
 	}
 	const summaries = await page.locator('summary').all();
@@ -217,8 +225,7 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 		const target = { role: CLICKABLE, name: c.name, nth: c.name ? c.nth : unnamed++ };
 		const base = { target, region: c.region, importance: importance(c), ...(c.focusable ? { focusable: true } : {}) };
 		if (!c.name) add({ ...base, skip: `it answers clicks or keys but has no text or label${c.near ? ` (it sits in ${c.near})` : ''}, so check cannot find it again on the new page; it stays listed as not exercised, for the final report` });
-		else if (DESTRUCTIVE.test(c.name)) add({ ...base, skip: 'its name looks destructive (sign out, delete...), so check does not use it' });
-		else add(base);
+		else add(DESTRUCTIVE.test(c.name) ? { ...base, destructive: true } : base);
 	}
 	return out;
 }
@@ -300,7 +307,7 @@ async function forms(page: Page, origin: string, found: readonly Candidate[]): P
 		const fields: { target: Target; value: string; check?: boolean }[] = [];
 		let submit: Target | undefined;
 		for (const c of found) {
-			if (c.skip || c.covered) continue;
+			if (c.skip || c.covered || c.destructive) continue;
 			const inForm = await locate(page, c.target)
 				.evaluate((el, f) => f.contains(el), await form.elementHandle())
 				.catch(() => false);
@@ -343,9 +350,10 @@ function keyboardSteps(c: Candidate): Step[] {
 }
 
 // App requests only: framework transport (React Server Component payloads, server-action posts, /_next/ data) and plain page loads are left to the URL.
-function appRequest(request: Request, origin: string): string | undefined {
+function appRequest(request: Request, origins: readonly string[]): string | undefined {
 	const url = new URL(request.url());
-	if (url.origin !== origin) return undefined;
+	const origin = origins.find((o) => url.origin === o);
+	if (!origin) return undefined;
 	const type = request.resourceType();
 	if (frameworkTransport(request, url)) return undefined;
 	if (type === 'document' ? request.method() === 'GET' : type !== 'fetch' && type !== 'xhr') return undefined;
@@ -424,12 +432,15 @@ async function focusLabel(page: Page): Promise<string> {
 	return line.replace(/^- /, '').replace(/:$/, '') || 'body';
 }
 
-async function snapshot(page: Page, origin: string): Promise<string[]> {
+async function snapshot(page: Page, origins: readonly string[]): Promise<string[]> {
 	// Indentation is structure, which the rendered check compares; a step's effect is which nodes appear and disappear.
 	// The app's own host name inside a URL's query (`utm_source=old.example`) is where the page runs, not what it shows.
-	const host = new URL(origin).hostname;
-	return (await page.locator('body').ariaSnapshot({ timeout: 5_000 }).catch(() => '')).split(origin).join('').split(`=${host}&`).join('={host}&').split('\n').map((line) => line.trim());
+	let text = await page.locator('body').ariaSnapshot({ timeout: 5_000 }).catch(() => '');
+	for (const origin of origins) text = text.split(origin).join('').split(`=${new URL(origin).hostname}&`).join('={host}&');
+	return text.split('\n').map((line) => line.trim());
 }
+
+const unOrigin = (text: string, origins: readonly string[]) => origins.reduce((t, o) => t.split(o).join(''), text);
 
 const IDLE_MS = 150;
 const IDLE_LIMIT_MS = 3_000;
@@ -479,33 +490,144 @@ export async function quiet(page: Page, inflight: () => number, navigations: () 
 	await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))).catch(() => {});
 }
 
+export type Unreachability = 'occluded' | 'hidden' | 'offscreen' | 'disabled' | 'missing' | 'timeout';
+
+/** A step's target that could not be used even after scrolling it to the middle, hovering what holds it, focusing it and dismissing overlays. */
+export class UnreachableError extends Error {
+	readonly kind: Unreachability;
+	constructor(kind: Unreachability, detail: string) {
+		super(`${kind}: ${detail}`);
+		this.kind = kind;
+	}
+}
+
+interface Diagnosis {
+	readonly kind: Unreachability | 'ok';
+	readonly detail: string;
+}
+
+// Runs in the page: why a visitor's pointer cannot reach the element.
+function diagnose(el: Element): Diagnosis {
+	const name = (e: Element) => `${e.tagName.toLowerCase()}${e.id ? `#${e.id}` : ''}${typeof e.className === 'string' && e.className.trim() ? `.${e.className.trim().split(/\s+/).slice(0, 2).join('.')}` : ''}${(e.textContent ?? '').trim() ? ` "${(e.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 40)}"` : ''}`;
+	if (el.matches(':disabled') || el.getAttribute('aria-disabled') === 'true') return { kind: 'disabled', detail: 'it is disabled' };
+	const r = el.getBoundingClientRect();
+	if (!el.checkVisibility({ visibilityProperty: true, opacityProperty: true }) || r.width < 1 || r.height < 1) {
+		let at: Element | null = el;
+		while (at) {
+			const style = getComputedStyle(at);
+			if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0' || at.hasAttribute('hidden')) return { kind: 'hidden', detail: `it is hidden (${at === el ? 'itself' : `inside ${name(at)}`}: ${style.display === 'none' ? 'display: none' : style.visibility === 'hidden' ? 'visibility: hidden' : style.opacity === '0' ? 'opacity: 0' : 'hidden'})` };
+			at = at.parentElement;
+		}
+		return { kind: 'hidden', detail: `it has no size (${Math.round(r.width)}x${Math.round(r.height)})` };
+	}
+	const left = r.left + scrollX;
+	const top = r.top + scrollY;
+	const doc = document.documentElement;
+	if (left + r.width <= 0 || top + r.height <= 0 || left >= doc.scrollWidth || top >= doc.scrollHeight) return { kind: 'offscreen', detail: `it sits outside the page at (${Math.round(left)}, ${Math.round(top)})` };
+	const x = r.left + r.width / 2;
+	const y = r.top + r.height / 2;
+	if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return { kind: 'offscreen', detail: `its centre (${Math.round(x)}, ${Math.round(y)}) cannot be scrolled into the ${innerWidth}x${innerHeight} viewport` };
+	const hit = document.elementFromPoint(x, y);
+	if (hit && hit !== el && hit.contains(el) && getComputedStyle(el).pointerEvents === 'none') return { kind: 'hidden', detail: 'it does not take the pointer (pointer-events: none)' };
+	if (hit && hit !== el && !el.contains(hit) && !hit.contains(el)) return { kind: 'occluded', detail: `covered by ${name(hit)} at its centre (${Math.round(x)}, ${Math.round(y)})` };
+	return { kind: 'ok', detail: '' };
+}
+
+// Runs in the page: marks the element's ancestors, nearest first, so each can be hovered in turn.
+function markAncestors(el: Element): number {
+	let n = 0;
+	for (let at = el.parentElement; at && at !== document.body && n < 6; at = at.parentElement) at.setAttribute('data-markless-migrate-holder', String(n++));
+	return n;
+}
+
+// Runs in the page: the button that dismisses the overlay covering the point, if one says so.
+function markDismiss(point: { x: number; y: number }): boolean {
+	const hit = document.elementFromPoint(point.x, point.y);
+	let layer: Element | null = hit;
+	while (layer && !['fixed', 'sticky'].includes(getComputedStyle(layer).position) && !layer.matches('dialog, [role="dialog"], [role="alertdialog"]')) layer = layer.parentElement;
+	const scope = layer ?? hit;
+	const button = scope && [...scope.querySelectorAll('button, [role="button"], a[href]')].find((b) => /^(accept( all)?( cookies)?|agree|i agree|allow( all)?|ok|okay|got it|close|dismiss|no,? thanks|reject( all)?|decline|continue|[x×✕✖])$/i.test(((b.textContent ?? '').trim() || b.getAttribute('aria-label') || '').trim()));
+	if (!button) return false;
+	button.setAttribute('data-markless-migrate-dismiss', '');
+	return true;
+}
+
+const QUICK = 1_500;
+
+/** Uses the target as a visitor would; when the pointer cannot reach it, scrolls it to the middle, focuses it, hovers what holds it and dismisses what covers it, and names why when nothing does. */
+async function reach(page: Page, target: Locator, act: (t: Locator, timeout: number) => Promise<unknown>): Promise<void> {
+	let first: unknown;
+	try {
+		await act(target, QUICK);
+		return;
+	} catch (error) {
+		first = error;
+	}
+	const tried: string[] = [];
+	const retry = async (remedy: string, apply: () => Promise<unknown>): Promise<boolean> => {
+		tried.push(remedy);
+		await apply().catch(() => {});
+		try {
+			await act(target, QUICK);
+			return true;
+		} catch {
+			return false;
+		}
+	};
+	const look = async (): Promise<Diagnosis> => (await target.count().catch(() => 0)) ? await target.evaluate(diagnose, undefined, { timeout: QUICK }).catch(() => ({ kind: 'timeout', detail: 'it did not settle' }) as Diagnosis) : { kind: 'missing', detail: 'it is not on the page' };
+	let found = await look();
+	if (found.kind === 'missing' || found.kind === 'disabled') throw new UnreachableError(found.kind, found.detail);
+	if (found.kind === 'hidden') {
+		const holders = await target.evaluate(markAncestors).catch(() => 0);
+		for (let i = 0; i < holders; i++) {
+			const holder = page.locator(`[data-markless-migrate-holder="${i}"]`).first();
+			if (!(await holder.isVisible().catch(() => false))) continue;
+			if (await retry('hovering what holds it', () => holder.hover({ timeout: QUICK }))) return;
+			break;
+		}
+		if (await retry('focusing it', () => target.focus({ timeout: QUICK }))) return;
+		found = await look();
+	}
+	if (found.kind === 'offscreen' || found.kind === 'occluded') {
+		if (await retry('scrolling it to the middle', () => target.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' })))) return;
+		if (await retry('focusing it', () => target.focus({ timeout: QUICK }))) return;
+		found = await look();
+	}
+	if (found.kind === 'occluded') {
+		if (await retry('pressing Escape', () => page.keyboard.press('Escape'))) return;
+		const box = await target.boundingBox().catch(() => null);
+		if (box && (await page.evaluate(markDismiss, { x: box.x + box.width / 2, y: box.y + box.height / 2 }).catch(() => false))) {
+			if (await retry('dismissing the overlay', () => page.locator('[data-markless-migrate-dismiss]').first().click({ timeout: QUICK }))) return;
+		}
+		found = await look();
+	}
+	if (found.kind === 'ok' || found.kind === 'timeout') throw new UnreachableError('timeout', `${(first as Error).message.split('\n')[0]}${tried.length ? `, also after ${tried.join(', ')}` : ''}`);
+	throw new UnreachableError(found.kind, `${found.detail}${tried.length ? `, still after ${[...new Set(tried)].join(', ')}` : ''}`);
+}
+
 async function perform(page: Page, step: Step): Promise<void> {
-	const options = { timeout: STEP_TIMEOUT };
 	const target = locate(page, step.target);
 	switch (step.action) {
 		case 'click':
-			return target.click(options);
+			return reach(page, target, (t, timeout) => t.click({ timeout }));
 		case 'press':
-			await target.focus(options);
+			await reach(page, target, (t, timeout) => t.focus({ timeout }));
 			return page.keyboard.press(step.key);
 		case 'fill':
-			return target.fill(step.value, options);
+			return reach(page, target, (t, timeout) => t.fill(step.value, { timeout }));
 		case 'select':
-			await target.selectOption(step.value, options);
-			return;
+			return reach(page, target, (t, timeout) => t.selectOption(step.value, { timeout }));
 		case 'submit':
-			for (const field of step.fields) {
-				if (field.check) await locate(page, field.target).check(options);
-				else await locate(page, field.target).fill(field.value, options);
-			}
-			return target.click(options);
+			for (const field of step.fields) await reach(page, locate(page, field.target), (t, timeout) => (field.check ? t.check({ timeout }) : t.fill(field.value, { timeout })));
+			return reach(page, target, (t, timeout) => t.click({ timeout }));
 	}
 }
 
 export interface Session {
 	readonly context: BrowserContext;
 	readonly page: Page;
-	run(step: Step): Promise<StepResult>;
+	/** `destructive`: the step uses a control that ends the session or deletes, so its dialogs are accepted and, when writes are held back, every request it makes to the app is held back too. */
+	run(step: Step, destructive?: boolean): Promise<StepResult>;
 	close(): Promise<void>;
 }
 
@@ -513,7 +635,16 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 	const origin = env.origin;
 	const { context, page, log } = await openPage(browser, env, viewport, { sameOriginOnly: true });
 	const host = new URL(origin).origin;
-	page.on('dialog', (dialog) => dialog.dismiss().catch(() => {}));
+	const oldHost = env.frontDoor ? new URL(env.frontDoor.old).origin : undefined;
+	const hosts = oldHost && oldHost !== host ? [host, oldHost] : [host];
+	const onOld = (url: string) => oldHost !== undefined && hosts.length > 1 && new URL(url).origin === oldHost;
+	const here = (url: string) => (onOld(url) ? localUrl(url, oldHost!) : localUrl(url, origin));
+	let dialogs: string[] = [];
+	let accepting = false;
+	page.on('dialog', (dialog) => {
+		dialogs.push(`${dialog.type()}: ${dialog.message()}`);
+		(accepting ? dialog.accept() : dialog.dismiss()).catch(() => {});
+	});
 	let requests: Request[] = [];
 	let errors: string[] = [];
 	const pending = new Set<Request>();
@@ -532,51 +663,58 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		documents++;
 	});
 	const navigations = () => documents;
-	const signedIn = signInCookies(env.storageState);
+	const signedIn = new Set([...signInCookies(env.storageState), ...signInCookies(env.frontDoor?.storageState)]);
 	page.on('console', (message) => {
 		// A failed resource load is reported by the assets check of the page that loads it.
-		if (message.type() === 'error' && !message.text().startsWith('Failed to load resource')) errors.push(message.text().split(origin).join(''));
+		if (message.type() === 'error' && !message.text().startsWith('Failed to load resource')) errors.push(unOrigin(message.text(), hosts));
 	});
-	page.on('pageerror', (error) => errors.push(error.message.split(origin).join('')));
-	await page.goto(new URL(route, origin).href, { waitUntil: 'load' });
+	page.on('pageerror', (error) => errors.push(unOrigin(error.message, hosts)));
+	await loadPage(page, new URL(route, origin).href);
 	await quiet(page, inflight, navigations);
 	// Where a redirect landed is the http and auth checks' business; a step that stays there compares alike.
-	const landing = localUrl(page.url(), origin);
+	const landing = here(page.url());
 	const redirected = landing !== localUrl(new URL(route, origin).href, origin);
 	return {
 		context,
 		page,
-		async run(step) {
+		async run(step, destructive = false) {
 			const startPath = new URL(page.url()).pathname;
 			const href = step.target.role === 'link' ? await locate(page, step.target).getAttribute('href', { timeout: STEP_TIMEOUT }).catch(() => null) : null;
 			documentLoaded = false;
-			const before = await snapshot(page, origin);
+			const before = await snapshot(page, hosts);
 			const liveBefore = await page.evaluate(liveRegions).catch(() => [] as string[]);
 			requests = [];
 			errors = [];
 			const writesBefore = log.writes.length;
 			const keptBefore = await storageKeys(page, signedIn);
 			let failed: string | undefined;
+			let unreachable: Unreachability | undefined;
+			dialogs = [];
+			accepting = destructive;
+			log.holdAll = destructive && !env.sendWrites;
 			try {
 				await perform(page, step);
 			} catch (error) {
 				failed = `${describeTarget(step.target)} could not be used: ${(error as Error).message.split('\n')[0]}`;
+				if (error instanceof UnreachableError) unreachable = error.kind;
 			}
 			await quiet(page, inflight, navigations);
-			const after = await snapshot(page, origin);
+			log.holdAll = false;
+			accepting = false;
+			const after = await snapshot(page, hosts);
 			const liveAfter = await page.evaluate(liveRegions).catch(() => [] as string[]);
 			const { added, removed } = multisetDiff(before, after);
 			const moved = documentLoaded ? [] : movedLines(before, after);
 			const writes = log.writes.slice(writesBefore);
 			const writeOf = new Map(writes.map((w) => [w.request, w.line]));
 			return {
-				url: redirected && localUrl(page.url(), origin) === landing ? 'the page the route redirected to' : localUrl(page.url(), origin),
+				url: redirected && here(page.url()) === landing ? 'the page the route redirected to' : here(page.url()),
 				navigated: documentLoaded || new URL(page.url()).pathname !== startPath || (href !== null && new URL(href, page.url()).href === page.url()),
 				added,
 				removed,
 				...(moved.length ? { moved } : {}),
 				requests: requests.flatMap((r) => {
-					const line = writeOf.get(r) ?? appRequest(r, host);
+					const line = writeOf.get(r) ?? appRequest(r, hosts);
 					return line ? [line] : [];
 				}),
 				...(writes.length ? { writes: writes.map((w) => ({ line: w.line, reason: w.reason, sent: w.sent })) } : {}),
@@ -585,6 +723,9 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 				focus: await focusLabel(page),
 				storage: storageChange(keptBefore, await storageKeys(page, signedIn)),
 				...(failed ? { failed } : {}),
+				...(unreachable ? { unreachable } : {}),
+				...(dialogs.length ? { dialogs: [...dialogs] } : {}),
+				...(onOld(page.url()) ? { door: true } : {}),
 			};
 		},
 		close: () => context.close(),
@@ -595,8 +736,8 @@ export async function replay(browser: Browser, env: SideEnv, route: string, view
 	const session = await openSession(browser, env, route, viewport);
 	try {
 		const results: StepResult[] = [];
-		for (const step of journey.steps) {
-			const result = await session.run(step);
+		for (const [i, step] of journey.steps.entries()) {
+			const result = await session.run(step, Boolean(journey.destructive) && i === journey.steps.length - 1);
 			results.push(result);
 			if (result.failed) break;
 		}
@@ -604,6 +745,25 @@ export async function replay(browser: Browser, env: SideEnv, route: string, view
 	} finally {
 		await session.close();
 	}
+}
+
+/** The session one journey that ends the session or deletes runs in: with writes sent and a signed-in role it signs in afresh, so ending it spends no other journey's session; a role with only a saved session holds that journey's writes back instead. */
+export async function destructiveEnv(env: SideEnv): Promise<SideEnv> {
+	if (!env.sendWrites) return env;
+	const door = env.frontDoor;
+	if ((env.storageState && !env.signIn) || (door?.storageState && !door.signIn)) return { ...env, sendWrites: false };
+	return {
+		...env,
+		...(env.storageState ? { storageState: await env.signIn!() } : {}),
+		...(door?.storageState ? { frontDoor: { ...door, storageState: await door.signIn!() } } : {}),
+	};
+}
+
+/** Journeys that end the session or delete, one at a time, each in a fresh session. */
+export async function replayDestructive(browser: Browser, env: SideEnv, route: string, viewport: Viewport, journeys: readonly Journey[]): Promise<Run> {
+	const out: StepResult[][] = [];
+	for (const journey of journeys) out.push(await replay(browser, await destructiveEnv(env), route, viewport, journey));
+	return out;
 }
 
 async function pool<T, R>(items: readonly T[], task: (item: T) => Promise<R>): Promise<R[]> {
@@ -644,6 +804,10 @@ export interface ElementCoverage {
 	readonly shared?: string;
 	/** The journeys of this route that use it. */
 	readonly journeys?: readonly string[];
+	/** It ends the session or deletes: used last, in a fresh session, and compared by the request it makes (held back unless writes are sent). */
+	readonly destructive?: boolean;
+	/** It could not be used on the old page: the journey that tried and why, to try it on the new page too. */
+	readonly unreachable?: { readonly journey: Journey; readonly kind: Unreachability };
 }
 
 export interface Exploration {
@@ -651,6 +815,8 @@ export interface Exploration {
 	readonly elements: readonly ElementCoverage[];
 	/** Keyboard and dismiss journeys left out when the budget ran out. */
 	readonly skipped: number;
+	/** Journeys that end the session or delete, not run here: run.ts runs them after every other journey on both sides. */
+	readonly deferred: readonly { readonly journey: Journey; readonly signature: string }[];
 }
 
 interface Item {
@@ -670,6 +836,7 @@ interface Tracked {
 	by?: string;
 	reason?: string;
 	shared?: string;
+	unreachable?: { readonly journey: Journey; readonly kind: Unreachability };
 	readonly journeys: string[];
 }
 
@@ -685,6 +852,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	const journeys: RecordedJourney[] = [];
 	const later: Item[] = [];
 	let formSteps: Step[] = [];
+	const deferred: { journey: Journey; signature: string }[] = [];
 
 	const sampled = new Map<string, number>();
 	const track = (found: readonly Candidate[], prefix: readonly Step[], parent: Tracked | undefined): Tracked[] => {
@@ -721,6 +889,11 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 				continue;
 			}
 			const steps = [...t.prefix, step];
+			if (t.candidate.destructive) {
+				deferred.push({ journey: { name: steps.map(describeStep).join(', then '), steps, destructive: true }, signature: t.signature });
+				t.reason = 'it ends the session or deletes, so it is used after every other journey';
+				continue;
+			}
 			primary.push({ journey: { name: steps.map(describeStep).join(', then '), steps }, element: t, depth, expand: step.action === 'click' || step.action === 'fill' || step.action === 'select' });
 			for (const k of keyboardSteps(t.candidate)) {
 				const ks = [...t.prefix, k];
@@ -758,7 +931,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			const revealed = item.expand && stayed ? await candidates(session.page, host) : [];
 			const step = item.journey.steps.at(-1)!;
 			const expanded = stayed && step.action === 'click' && (await locate(session.page, step.target).getAttribute('aria-expanded', { timeout: 500 }).catch(() => null)) === 'true';
-			return { item, expected, done, failed: last.failed, revealed, expanded };
+			return { item, expected, done, failed: last.failed, unreachable: last.unreachable, revealed, expanded };
 		} finally {
 			await session.close();
 		}
@@ -779,7 +952,10 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			journeys.push({ ...item.journey, expected: r.expected });
 			if (item.element) {
 				if (r.done) item.element.by = item.journey.name;
-				else item.element.reason = `it could not be used on the old page: ${r.failed ?? 'the journey stopped before it'}`;
+				else {
+					item.element.reason = `it could not be used on the old page: ${r.failed ?? 'the journey stopped before it'}`;
+					if (r.unreachable) item.element.unreachable = { journey: item.journey, kind: r.unreachable };
+				}
 			}
 			if (r.expanded) {
 				for (const key of ['Escape', 'ArrowDown'] as const) {
@@ -823,13 +999,15 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		...(t.reason && !t.by ? { reason: t.reason } : {}),
 		...(t.shared ? { shared: t.shared } : {}),
 		...(t.journeys.length ? { journeys: t.journeys } : {}),
+		...(t.candidate.destructive ? { destructive: true } : {}),
+		...(t.unreachable && !t.by ? { unreachable: t.unreachable } : {}),
 	}));
 	for (const [group, n] of sampled) {
 		if (n <= SAMPLES) continue;
 		const role = group.split('|')[0]!;
 		elements.push({ element: `${n - SAMPLES} more ${role}${n - SAMPLES === 1 ? '' : 's'} of the same ${role === 'treeitem' ? 'tree' : 'grid'}`, signature: `sampled|${group}`, layout: false, by: `alike: the first ${SAMPLES} are exercised` });
 	}
-	return { journeys, elements, skipped };
+	return { journeys, elements, skipped, deferred };
 }
 
 function budgetReason(budgetMs: number, maxJourneys: number | undefined): string {
@@ -865,6 +1043,7 @@ function format(result: StepResult, parts: readonly string[]): string {
 	if (parts.includes('announcements')) out.push(`announced: ${result.announcements.join(' | ') || '(nothing)'}`);
 	if (parts.includes('focus')) out.push(`focus on ${result.focus}`);
 	if (parts.includes('storage')) out.push(`kept in the browser: ${result.storage?.join(', ') || '(no change)'}`);
+	if (parts.includes('dialogs')) out.push(`dialogs: ${result.dialogs?.join(' | ') || '(none)'}`);
 	return out.join('; ');
 }
 
@@ -876,7 +1055,7 @@ export async function replayAll(browser: Browser, env: SideEnv, route: string, v
 	return pool(journeys, (journey) => replay(browser, env, route, viewport, journey));
 }
 
-export function compareJourneys(route: string, olds: readonly Run[], journeys: readonly Journey[], next: Run): Failure[] {
+export function compareJourneys(route: string, olds: readonly Run[], journeys: readonly Journey[], next: Run, owner?: StorageOwner): Failure[] {
 	const failures: Failure[] = [];
 	journeys.forEach((journey, j) => {
 		const runs = olds.map((o) => o[j]!);
@@ -897,17 +1076,20 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			const parts: string[] = [];
 			if (!stable([a!.url, ...rest.map((r) => r.url)])(n.url)) parts.push('url');
 			const navigated = n.navigated || oldSteps.some((x) => x!.navigated);
-			for (const field of navigated ? (['requests', 'storage'] as const) : (['added', 'removed', 'moved', 'requests', 'announcements', 'storage'] as const)) {
+			let automatic: Failure['automatic'];
+			const fields = navigated ? (['requests', 'storage', 'dialogs'] as const) : (['added', 'removed', 'moved', 'requests', 'announcements', 'storage', 'dialogs'] as const);
+			for (const field of fields.filter((f) => !(f === 'storage' && n.door))) {
 				// Requests in flight together finish in any order (a client retrying hosts it shuffled), so they count as a set.
 				const lines = (r: StepResult) => (field === 'requests' ? [...r[field]].sort() : (r[field] ?? []));
 				const diff = diffLines(lineTemplates(lines(a!), ...rest.map(lines)), lines(n));
 				if (diff.changed.length || diff.missing.length || diff.unexpected.length) parts.push(field);
+				if (field === 'storage') automatic = storageCandidate([...diff.missing, ...diff.changed.map((c) => c.expected)], [...diff.unexpected, ...diff.changed.map((c) => c.actual)], owner);
 			}
 			const errors = diffLines(lineTemplates(a!.errors, ...rest.map((r) => r.errors)), n.errors);
 			if (errors.unexpected.length || errors.changed.length) parts.push('errors');
 			if (!navigated && !stable([a!.focus, ...rest.map((r) => r.focus)])(n.focus)) parts.push('focus');
 			if (parts.length) {
-				failures.push({ route, dimension, check, expected: format(a!, parts), actual: format(n, parts), hint });
+				failures.push({ route, dimension, check, expected: format(a!, parts), actual: format(n, parts), hint, ...(automatic && parts.length === 1 && parts[0] === 'storage' ? { automatic } : {}) });
 				break;
 			}
 		}

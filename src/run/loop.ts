@@ -13,6 +13,8 @@ export interface RouteCheck {
 	readonly summary: string;
 	/** The differences still open, one line each (`dimension: check [id]`), for the final report. */
 	readonly open?: readonly string[];
+	/** Set when nothing differs but the network kept the route from being checked: no agent can fix that. */
+	readonly infrastructure?: string;
 }
 
 export interface RunOptions {
@@ -46,7 +48,7 @@ export interface RunContext {
 	readonly flags?: readonly string[];
 }
 
-export type Outcome = 'green' | 'already green' | 'left red';
+export type Outcome = 'green' | 'already green' | 'left red' | 'not checked';
 
 export interface RouteOutcome {
 	readonly route: string;
@@ -125,7 +127,13 @@ export async function runRoutes(o: RunOptions): Promise<RouteOutcome[]> {
 	const outcomes: RouteOutcome[] = [];
 	for (const route of o.routes) {
 		let check = await o.check(route);
-		await write(`-- ${route}: initial check ${check.ok ? 'green' : 'red'}\n`);
+		if (check.infrastructure) check = await o.check(route);
+		await write(`-- ${route}: initial check ${check.ok ? 'green' : check.infrastructure ? `not checked (${check.infrastructure})` : 'red'}\n`);
+		if (check.infrastructure) {
+			say(`not checked    ${route}: ${check.infrastructure}`);
+			outcomes.push({ route, outcome: 'not checked', attempts: 0, summary: check.summary });
+			continue;
+		}
 		if (check.ok) {
 			say(`green          ${route} (already)`);
 			outcomes.push({ route, outcome: 'already green', attempts: 0, summary: check.summary });
@@ -148,7 +156,7 @@ export async function runRoutes(o: RunOptions): Promise<RouteOutcome[]> {
 			check = await o.check(route);
 			await write(`-- ${route} attempt ${attempt}: check ${check.ok ? 'green' : 'red'}\n${check.ok ? '' : check.summary.replace(/^/gm, '   > ')}`);
 		}
-		const outcome: Outcome = check.ok ? 'green' : 'left red';
+		const outcome: Outcome = check.ok ? 'green' : check.infrastructure ? 'not checked' : 'left red';
 		say(`${outcome.padEnd(14)} ${route} after ${attempt} attempt(s)`);
 		outcomes.push({ route, outcome, attempts: attempt, summary: check.summary, ...(check.open?.length ? { open: check.open } : {}) });
 	}
@@ -168,13 +176,15 @@ export interface RunExtras {
 
 /** The run's one report: what got done, what was decided for the person, and what they may want to look at. Nothing in it is a question. */
 export function summarizeRun(outcomes: readonly RouteOutcome[], extras: RunExtras): string {
-	const green = outcomes.filter((o) => o.outcome !== 'left red');
+	const green = outcomes.filter((o) => o.outcome === 'green' || o.outcome === 'already green');
 	const red = outcomes.filter((o) => o.outcome === 'left red');
+	const network = outcomes.filter((o) => o.outcome === 'not checked');
 	const lines = [`${green.length} of ${outcomes.length} routes green.`];
 	if (extras.libraries?.length) lines.push('', 'Libraries, decided by plan:', ...extras.libraries.map((l) => `  ${l}`), '  An expert may change one in .migrate/overrides.json; nothing needs changing.');
 	if (extras.automatic?.length) lines.push('', 'Accepted automatically, with the evidence:', ...extras.automatic.map((l) => `  ${l}`));
 	const look = [
 		...red.map((o) => `  ${o.route} is still red after ${o.attempts} attempt(s) and stays on the old app${o.open?.length ? `: ${o.open.slice(0, 5).join('; ')}${o.open.length > 5 ? `; ${o.open.length - 5} more` : ''}` : ''}.`),
+		...network.map((o) => `  ${o.route} could not be checked, twice, for an infrastructure failure (not the app's); it stays on the old app until a check gets through.`),
 		...(extras.needsSample?.length ? [`  Not checked, because no page gave their dynamic segment a value (add one to .migrate/samples.json): ${extras.needsSample.join(', ')}.`] : []),
 	];
 	if (look.length) lines.push('', 'What to look at if you care (nothing here stops the migration):', ...look, '  The screenshots and every difference are in .migrate/report.html.');

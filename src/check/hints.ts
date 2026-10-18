@@ -26,7 +26,6 @@ export const HINTS = {
 	visualSize: 'The page has a different size: an element is taller, shorter or missing. Compare the elements inside the region.',
 	assetMissing: 'Serve this file at the same URL in the new app (for example from its public directory) or redirect it; other sites and caches link to it.',
 	assetType: 'Serve the file with the same Content-Type.',
-	pageLoad: 'The page did not finish loading in time; check it again, and look for a request that never answers (often a third-party stylesheet or font).',
 	assetDimensions: 'Serve the same image: its decoded size differs.',
 	assetBroken: 'This URL fails on the new side; fix the reference or serve the file.',
 	image: 'The image at this position in the page loads a different picture or fails to load.',

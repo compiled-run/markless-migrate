@@ -4,6 +4,7 @@ import { HINTS } from './hints.ts';
 import { request as fetchApp } from './http.ts';
 import { describeStep, describeTarget, locate, quiet, type RecordedJourney, type Step } from './journeys.ts';
 import type { Failure, ResponsivenessSummary, RouteResult, Slowest, Viewport } from './types.ts';
+import { loadPage } from './infrastructure.ts';
 
 export type SpeedName = 'desktop' | 'throttled';
 
@@ -306,7 +307,7 @@ export async function measureOnce(browser: Browser, env: SideEnv, route: string,
 		});
 		const inflight = () => pending.size;
 		const navigations = () => documents;
-		await page.goto(new URL(route, env.origin).href, { waitUntil: 'load' });
+		await loadPage(page, new URL(route, env.origin).href);
 		await quiet(page, inflight, navigations);
 		await probeCall(page, 'arm');
 		await sleep(NOISE_WINDOW_MS);

@@ -63,7 +63,7 @@ function checksFor(route: string, results: Readonly<Record<string, RouteState>>)
 		.map(([key, state]) => ({ key, state }));
 }
 
-const describe = (key: string, r: RouteState) => `${key}: ${r.blocked ? 'blocked' : r.ok ? 'green' : `red [${r.red.join(', ')}]`}`;
+const describe = (key: string, r: RouteState) => `${key}: ${r.blocked ? 'blocked' : r.infrastructure ? 'not checked (infrastructure)' : r.ok ? 'green' : `red [${r.red.join(', ')}]`}`;
 
 export type SwitchOutcome = { readonly ok: true; readonly path: string; readonly entry: SwitchedRoute; readonly already: boolean } | { readonly ok: false; readonly reason: string };
 
@@ -77,7 +77,7 @@ export async function switchRoute(cwd: string, route: string, options: { force?:
 	const results = JSON.parse(await readFile(join(stateDir(cwd), 'results.json'), 'utf8').catch(() => '{}')) as Record<string, RouteState>;
 	const checks = checksFor(route, results);
 	const checked = checks.map(({ key, state }) => describe(key, state));
-	const green = checks.length > 0 && checks.every(({ state }) => state.ok && !state.blocked);
+	const green = checks.length > 0 && checks.every(({ state }) => state.ok && !state.blocked && !state.infrastructure);
 	if (!green && options.force === undefined) {
 		const why = checks.length ? `its last check is not green (${checked.join('; ')})` : 'it has not been checked yet';
 		return { ok: false, reason: `not switching ${route}: ${why}. Run check until it is green; until then the route stays on the old app (an expert override exists: switch --force --by <name> --reason <why>).` };

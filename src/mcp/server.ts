@@ -89,7 +89,8 @@ export function createServer(cwd: string): McpServer {
 			await writeReport(report, join(cwd, STATE_DIR), await status(cwd));
 			const failures = [...report.routes.flatMap((r) => r.failures), ...(report.logins ?? []).flatMap((l) => l.failures)].filter((f) => !f.accepted);
 			const blocked = report.routes.flatMap((r) => (r.blocked ? [{ ...(r.role ? { role: r.role } : {}), message: r.blocked.message }] : []));
-			return { ...text(summarize(report)), structuredContent: { ok: report.ok, failures, ...(blocked.length ? { blocked } : {}) } };
+			const infrastructure = report.routes.flatMap((r) => (r.infrastructure ? [{ route: r.route, ...(r.role ? { role: r.role } : {}), message: r.infrastructure.message }] : []));
+			return { ...text(summarize(report)), structuredContent: { ok: report.ok, failures, ...(blocked.length ? { blocked } : {}), ...(infrastructure.length ? { infrastructure } : {}) } };
 		},
 	);
 

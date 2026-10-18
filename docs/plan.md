@@ -172,11 +172,16 @@ Interactions:
   (tables, then forms, then the rest of `main`, then shared header, nav, sidebar and footer controls),
   then the keyboard paths, until `--journey-budget` (default 120 s) or `--max-journeys` runs out. An
   element no journey used is a red `behaviour` failure, "not exercised", with the reason (out of budget,
-  looks destructive, could not be used on OLD) until a person accepts it. A shared layout control is
+  could not be used on OLD, with why: covered by, hidden inside, outside the page) until a person accepts
+  it; one the new page refuses for the same reason is accepted automatically. Controls that end the
+  session or delete run after every other journey, each in a fresh session (signed in again when writes
+  are sent), with their dialogs accepted; held back elsewhere, page loads included, and counted as
+  exercised either way. A shared layout control is
   explored by the first route of the run that has it; the other routes carry its failures. It clicks,
   types fixed sample values, chooses the second option of a select, and presses Enter, Space, and after
-  opening something Escape and ArrowDown. It does not hover, drag, scroll, long-press or try
-  other shortcuts. Form values may fail a page's own validation patterns.
+  opening something Escape and ArrowDown. A target the pointer cannot reach is scrolled to the middle,
+  focused, its holder hovered and a covering layer dismissed (Escape, then its Accept or Close button)
+  before it is reported. It does not drag, long-press or try other shortcuts. Form values may fail a page's own validation patterns.
 - Requests to other origins are blocked during journeys (unless answered from recorded data), so
   third-party widgets do not run. Form posts and non-GET requests are sent only when both origins are on
   this machine or marked `--staging`; otherwise they are answered by the checker and compared as
@@ -525,12 +530,15 @@ check compares) is ported; Chart.js under react-chartjs-2 is used directly. Prov
 `test/library.test.ts` (each rule, the override, the wrapper, the notes `parity` writes for both outcomes).
 
 Accepted differences (`src/check/automatic.ts`): only a person can accept an arbitrary difference, but
-three kinds are accepted automatically from evidence the capture collects, labelled `accepted
+five kinds are accepted automatically from evidence the capture collects, labelled `accepted
 automatically: <rule>`: a script the old page loaded and the new page does not request whose code carries
 a UI framework's runtime; a missing accessibility tree line that is exactly a framework's own markup
-(Next's route announcer and others) when nothing else in that tree and no announcement differs; and pixel
+(Next's route announcer and others) when nothing else in that tree and no announcement differs; pixel
 or image-size differences confined to a third-party iframe or image both pages load from the same address
-at the same place. Proven by `test/automatic.test.ts`, including a check of a page whose old side loads a
+at the same place; a control neither page lets the pointer reach, for the same reason
+(`test/unreachable.test.ts`); and storage keys only the old framework writes (htmx's history cache with
+htmx's runtime on the old page only, Laravel's sealed cookies) when no journey on the route differs
+(`test/framework-storage.test.ts`). Proven by `test/automatic.test.ts`, including a check of a page whose old side loads a
 React bundle that mounts a route announcer, which ends green with both accepted, and red with the rules
 turned off.
 

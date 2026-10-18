@@ -3,6 +3,7 @@ import type { StorageState } from './browser.ts';
 import { HINTS } from './hints.ts';
 import { diffLines, lineTemplates } from './noise.ts';
 import type { Dimension, Failure } from './types.ts';
+import { storageCandidate, type StorageOwner } from './automatic.ts';
 
 // Runs inside the page: the keys of its local and session storage and the IndexedDB databases and object stores it opened.
 async function keysInPage(): Promise<string[]> {
@@ -39,12 +40,13 @@ export async function storageKeys(page: Page, signedIn: ReadonlySet<string> = ne
 }
 
 /** Keys NEW keeps that OLD did not, and keys OLD kept that NEW does not; keys that varied between OLD runs may vary alike. */
-export function storageFailure(route: string, dimension: Dimension, check: string, olds: readonly (readonly string[])[], next: readonly string[]): Failure | undefined {
+export function storageFailure(route: string, dimension: Dimension, check: string, olds: readonly (readonly string[])[], next: readonly string[], owner?: StorageOwner): Failure | undefined {
 	const diff = diffLines(lineTemplates(olds[0]!, ...olds.slice(1)), next);
 	const missing = [...diff.missing, ...diff.changed.map((c) => c.expected)];
 	const extra = [...diff.unexpected, ...diff.changed.map((c) => c.actual)];
 	if (!missing.length && !extra.length) return undefined;
-	return { route, dimension, check, expected: missing.length ? `kept: ${missing.join(', ')}` : '(no other keys)', actual: [missing.length ? `missing ${missing.join(', ')}` : '', extra.length ? `extra ${extra.join(', ')}` : ''].filter(Boolean).join('; '), hint: HINTS.storage };
+	const automatic = storageCandidate(missing, extra, owner);
+	return { route, dimension, check, expected: missing.length ? `kept: ${missing.join(', ')}` : '(no other keys)', actual: [missing.length ? `missing ${missing.join(', ')}` : '', extra.length ? `extra ${extra.join(', ')}` : ''].filter(Boolean).join('; '), hint: HINTS.storage, ...(automatic ? { automatic } : {}) };
 }
 
 /** The names of the cookies a role's sign-in left. */

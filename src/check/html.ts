@@ -153,6 +153,14 @@ function blockedSection(r: RouteResult, index: number): string {
 </section>`;
 }
 
+function infrastructureSection(r: RouteResult, index: number): string {
+	return `<section class="route" id="route-${index}">
+<h2><span class="badge blocked">not checked</span> ${esc(r.route)}${r.role ? ` <small>as ${esc(r.role)}</small>` : ''}</h2>
+<p><strong>${esc(r.infrastructure!.message)}</strong></p>
+<p><small>Nothing was compared on this route: ${r.infrastructure!.side ? `the ${r.infrastructure!.side} app` : 'an app'} could not be reached or did not answer in time. This is the network's failure, not the app's; check it again.</small></p>
+</section>`;
+}
+
 function login(l: LoginResult): string {
 	const cookies = `<div class="pair"><div><h4>Old</h4>${list(l.cookies.old.length ? l.cookies.old : ['(none)'])}</div><div><h4>New</h4>${list(l.cookies.new.length ? l.cookies.new : ['(none)'])}</div></div>`;
 	const rows = l.failures.map((f) => `<tr><td>${esc(f.check)}</td><td><code>${esc(f.expected)}</code></td><td><code>${esc(f.actual)}</code></td><td>${esc(f.hint)}</td></tr>`).join('');
@@ -161,6 +169,7 @@ function login(l: LoginResult): string {
 
 function route(r: RouteResult, index: number, forced?: { readonly reason: string; readonly by?: string }): string {
 	if (r.blocked) return blockedSection(r, index);
+	if (r.infrastructure) return infrastructureSection(r, index);
 	const warning = forced ? `<p class="forced"><span class="badge fail">forced, not proven</span> Served from the new app although this check is not green${forced.by ? `; forced by ${esc(forced.by)}` : ''}: ${esc(forced.reason)}</p>` : '';
 	const dims = Object.entries(r.dimensions)
 		.map(([d, state]) => `<li class="${state}">${esc(d)}</li>`)
@@ -261,7 +270,7 @@ for (const shot of document.querySelectorAll('.shot')) {
 }
 `;
 
-const STATE_CLASS: Record<Status['routes'][number]['state'], string> = { green: 'pass', red: 'fail', 'not ported': 'fail', blocked: 'blocked', unchecked: 'blocked', 'needs a sample': 'blocked' };
+const STATE_CLASS: Record<Status['routes'][number]['state'], string> = { green: 'pass', red: 'fail', 'not ported': 'fail', blocked: 'blocked', unreachable: 'blocked', unchecked: 'blocked', 'needs a sample': 'blocked' };
 
 function acceptedNote(accepted: readonly string[]): string {
 	const automatic = accepted.filter((a) => a.startsWith('accepted automatically'));
@@ -294,7 +303,7 @@ function renderPage(report: Report, status?: Status): string {
 	const forced = new Map((status?.routes ?? []).filter((r) => r.forced).map((r) => [r.route, r.forced!]));
 	const green = report.routes.filter((r) => r.ok).length;
 	const key = (r: RouteResult) => (r.role && r.role !== 'anonymous' ? `${r.route} as ${r.role}` : r.route);
-	const badge = (r: RouteResult) => `${r.blocked ? '<span class="badge blocked">blocked</span>' : `<span class="badge ${r.ok ? 'pass' : 'fail'}">${r.ok ? 'green' : r.notPorted ? 'not ported' : 'red'}</span>`}${forced.has(key(r)) ? ' <span class="badge fail">forced, not proven</span>' : ''}`;
+	const badge = (r: RouteResult) => `${r.blocked ? '<span class="badge blocked">blocked</span>' : r.infrastructure ? '<span class="badge blocked">not checked</span>' : `<span class="badge ${r.ok ? 'pass' : 'fail'}">${r.ok ? 'green' : r.notPorted ? 'not ported' : 'red'}</span>`}${forced.has(key(r)) ? ' <span class="badge fail">forced, not proven</span>' : ''}`;
 	const tocItems = (items: readonly [RouteResult, number][]) => items.map(([r, i]) => `<li><a href="#route-${i}">${badge(r)} ${esc(r.route)}</a></li>`).join('');
 	const indexed = report.routes.map((r, i) => [r, i] as [RouteResult, number]);
 	const groups = report.roles ? report.roles.map((role) => ({ role, items: indexed.filter(([r]) => r.role === role) })) : [{ role: undefined, items: indexed }];
