@@ -24,6 +24,28 @@ const pages: Record<string, string> = {
 		}, 200);
 	});
 </script>`,
+	// A debounce that reads Date.now, as lodash's does: it fires 300 ms after the last keystroke.
+	'/search': `<!doctype html><html lang="en"><title>Search</title>
+<main><input aria-label="Search" id="q"><output id="out"></output></main>
+<script>
+	const q = document.getElementById('q');
+	const out = document.getElementById('out');
+	let last = 0;
+	let timer;
+	const expired = () => {
+		const since = Date.now() - last;
+		if (since >= 300) {
+			timer = undefined;
+			out.textContent = 'results for ' + q.value;
+		} else timer = setTimeout(expired, 300 - since);
+	};
+	q.addEventListener('input', () => {
+		const until = performance.now() + 15;
+		while (performance.now() < until);
+		last = Date.now();
+		if (timer === undefined) timer = setTimeout(expired, 300);
+	});
+</script>`,
 };
 
 let browser: Browser;
@@ -51,4 +73,12 @@ test('a navigation ends when the next page content paints, not when <html>, <hea
 	const sample = await measureOnce(browser, defaultEnv(origin), '/nav', desktop, { action: 'click', target: { role: 'link', name: 'Next page', nth: 0 } });
 	assert.equal(sample.result, 'navigated', JSON.stringify(sample));
 	assert.ok((sample.ms ?? 0) >= 200, `navigation measured at ${sample.ms} ms, before its content painted at 200 ms`);
+});
+
+test('while timing, the clock runs in real time, so a Date.now debounce waits from the last keystroke', async () => {
+	const value = 'a long search query typed out';
+	const sample = await measureOnce(browser, defaultEnv(origin), '/search', desktop, { action: 'fill', target: { role: 'textbox', name: 'Search', nth: 0 }, value });
+	assert.equal(sample.result, 'changed', JSON.stringify(sample));
+	const typing = value.length * 15;
+	assert.ok((sample.ms ?? 0) >= typing + 300, `result at ${sample.ms} ms; typing takes at least ${typing} ms, then the 300 ms debounce`);
 });

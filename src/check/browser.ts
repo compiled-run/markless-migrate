@@ -225,7 +225,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 	env.scope?.track(context);
 	if (env.cookies?.length) await context.addCookies(env.cookies.map((c) => ({ ...c, url: env.origin })));
 	const extra = env.headers ?? {};
-	if (env.freeze) await context.addInitScript(freezePage, { time: env.freeze.time, seed: env.freeze.seed });
+	if (env.freeze) await context.addInitScript(freezePage, { time: env.freeze.time, seed: env.freeze.seed, ...(env.freeze.clock ? { clock: env.freeze.clock } : {}) });
 	const load = randomUUID();
 	const tag = recorderTag(env, load);
 	const pending = new Set<Promise<void>>();

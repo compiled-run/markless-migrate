@@ -297,7 +297,9 @@ function measurable(step: Step): boolean {
 
 /** One fresh page load, one first interaction, and the same interaction again when it stayed on the page. */
 export async function measureOnce(browser: Browser, env: SideEnv, route: string, speed: Speed, step: Step, settleMs = 5_000): Promise<Sample> {
-	const { context, page, log } = await openPage(browser, env, speed.viewport, { sameOriginOnly: true });
+	// The clock runs in real time while timing, so a debounce waits from the last keystroke as it does for a person.
+	const timed: SideEnv = env.freeze ? { ...env, freeze: { ...env.freeze, clock: 'ticking' } } : env;
+	const { context, page, log } = await openPage(browser, timed, speed.viewport, { sameOriginOnly: true });
 	try {
 		let downAt: number | undefined;
 		await context.exposeBinding('__mmDown', (_source, at: number) => {

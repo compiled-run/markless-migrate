@@ -5,17 +5,21 @@ export interface FreezeOptions {
 	readonly seed: number;
 	readonly timezone: string;
 	readonly locale: string;
+	/** `ticking`: the clock starts at `time` and runs in real time, so a debounce reads the gaps a person leaves between keystrokes. */
+	readonly clock?: 'still' | 'ticking';
 }
 
 export const DEFAULT_FREEZE: FreezeOptions = { time: Date.UTC(2026, 0, 15, 12, 0, 0), seed: 20260115, timezone: 'UTC', locale: 'en-US' };
 
 /** Init script, run in every document before its own scripts: must stay self-contained. */
-export function freezePage({ time, seed }: { time: number; seed: number }): void {
+export function freezePage({ time, seed, clock = 'still' }: { time: number; seed: number; clock?: 'still' | 'ticking' }): void {
 	const RealDate = Date;
-	// The clock only moves when a timer fires, to the time it was due, so the same program sees the same times.
+	const realNow = performance.now.bind(performance);
+	// The still clock only moves when a timer fires, to the time it was due, so the same program sees the same times.
 	let elapsed = 0;
 	let reads = 0;
 	const now = () => {
+		if (clock === 'ticking') return time + realNow();
 		// A busy-wait on Date.now would never end on a still clock; after many reads in a row it creeps forward.
 		if (++reads > 10_000) elapsed += 1;
 		return time + elapsed;
@@ -111,7 +115,7 @@ export function freezePage({ time, seed }: { time: number; seed: number }): void
 export function pinnedSummary(freeze: FreezeOptions | false): string[] {
 	if (!freeze) return [];
 	return [
-		`clock: Date and Date.now start at ${new Date(freeze.time).toISOString()} and move only when a timer fires; performance.timeOrigin is the same instant`,
+		`clock: Date and Date.now start at ${new Date(freeze.time).toISOString()} and move only when a timer fires; performance.timeOrigin is the same instant; while responsiveness is timed the clock starts there and runs in real time, so debounces behave as for a person`,
 		`randomness: Math.random, crypto.getRandomValues and crypto.randomUUID seeded with ${freeze.seed}`,
 		`timezone ${freeze.timezone} and locale ${freeze.locale}`,
 		'CSS animations and transitions finished or cancelled for screenshots (not for the reduced-motion check)',
