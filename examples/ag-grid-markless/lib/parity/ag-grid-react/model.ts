@@ -381,7 +381,7 @@ export function rowWindow(rows: readonly Row[], cols: readonly ColDef[] | undefi
 		const row = rows[index]!;
 		const isSelected = row.serialNumber === selected;
 		const isFocused = row.serialNumber === focused;
-		const cls = [index % 2 === 0 ? 'ag-row-even' : 'ag-row-odd', isFocused ? '' : 'ag-row-no-focus', 'ag-row', 'ag-row-level-0', 'ag-row-position-absolute', 'ag-after-created', row.serialNumber === hovered ? 'ag-row-hover' : '', isFocused ? 'ag-row-focus' : '', isSelected ? 'ag-row-selected' : ''].filter(Boolean).join(' ');
+		const cls = [index % 2 === 0 ? 'ag-row-even' : 'ag-row-odd', isFocused ? '' : 'ag-row-no-focus', 'ag-row', 'ag-row-level-0', 'ag-row-position-absolute', index === 0 ? 'ag-row-first' : '', index === rows.length - 1 ? 'ag-row-last' : '', 'ag-after-created', row.serialNumber === hovered ? 'ag-row-hover' : '', isFocused ? 'ag-row-focus' : '', isSelected ? 'ag-row-selected' : ''].filter(Boolean).join(' ');
 		return {
 			id: String(row.serialNumber),
 			serial: row.serialNumber,

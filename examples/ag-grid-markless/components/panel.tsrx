@@ -8,7 +8,7 @@ import CircularButton from './circular-button.tsrx';
 import DetailPanel from './detail-panel.tsrx';
 import { columnDefs } from './columns.ts';
 import { AgGridReact } from '../lib/parity/ag-grid-react/components.tsrx';
-import { afterRowsRendered, ensureIndexVisible } from '../lib/parity/ag-grid-react/api.ts';
+import { afterRowsRendered, announce, ensureIndexVisible } from '../lib/parity/ag-grid-react/api.ts';
 import { Ban } from '../lib/parity/lucide-react/components.tsrx';
 import { clearEvents, connectPanel, firstTime } from '../lib/devtron/port.ts';
 import { kidsFor, rootStyle, stylesFor, toggle, treeFor } from '../lib/parity/microlink-react-json-view/tree.ts';
@@ -19,6 +19,7 @@ export default function Panel() @{
 	let cols = state(columnDefs);
 	let selected = state(0);
 	let gridSelected = state(0);
+	let live = state('No Rows To Show');
 	let showDetail = state(false);
 	let theme = state('light');
 	let position = state('right');
@@ -91,13 +92,14 @@ export default function Panel() @{
 					<CircularButton tooltip="Clear all events" active={false} onClick={() => {
 						clearEvents();
 						events = [];
+						announce('No Rows To Show', (text) => (live = text));
 					}}>
 						<Ban strokeWidth={3} size={15} />
 					</CircularButton>
 				</div>
 			</div>
 			<div class="flex-1">
-				<AgGridReact rowData={events} columnDefs={cols} dark={dark} selected={gridSelected} onSelectionChanged={(serial) => (gridSelected = serial)} onRowClicked={(serial) => {
+				<AgGridReact rowData={events} columnDefs={cols} dark={dark} live={live} onAnnounce={(text) => (live = text)} selected={gridSelected} onSelectionChanged={(serial) => (gridSelected = serial)} onRowClicked={(serial) => {
 					selected = serial;
 					selectedRow = events.find((e) => e.serialNumber === serial) ?? null;
 					showDetail = true;

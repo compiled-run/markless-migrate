@@ -4,15 +4,16 @@
 // One component: rows, header cells and filter options written inline, because handlers in a child
 // component per row or per column did not reach this component's state after resume (see the log).
 import { computed, element, state } from '@markless/core';
-import { afterScroll, announce, keepRowFocus, debounceFilter, dragX, firstTime, focusHeader, listUnder, focusWhenShown, measureScrollbar, popupUnder, rowOf, scrollFromFake, setScrollTop, watchSize } from './api.ts';
+import { afterScroll, announce, keepRowFocus, debounceFilter, dragX, firstTime, focusHeader, listUnder, focusWhenShown, onGuardFocus, onHeaderKey, measureScrollbar, popupUnder, rowOf, scrollFromFake, setScrollTop, wasProgrammatic, watchSize } from './api.ts';
 import { headerView } from './header.ts';
 import { ROW_HEIGHT, blankType, countOf, directionOptions, layoutFlexes, layoutWidths, nextSort, optionIndex, optionLabel, parseNumbers, parseText, pickerView, resizeColumn, secondShown, toggleDirection, totalWidthOf, windowView, withFilterType, withFilterValue, withJoin } from './model.ts';
 import type { ColDef, Row } from './model.ts';
 
 const THEME_CLASSES = 'ag-theme-params-1 ag-theme-buttonStyle-1 ag-theme-columnDropStyle-2 ag-theme-batchEditStyle-3 ag-theme-checkboxStyle-4 ag-theme-iconSet-5 ag-theme-tabStyle-6 ag-theme-inputStyle-7';
 
-/** AgGridReact. The panel's gridRef API (getRowNode(id).setSelected) is the `selected` prop and onSelectionChanged. */
-export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChanged, selected, dark }: { rowData: Row[]; columnDefs: ColDef[]; onRowClicked: (serial: number) => void; onSelectionChanged: (serial: number) => void; selected: number; dark: boolean }) @{
+/** AgGridReact. The panel's gridRef API (getRowNode(id).setSelected) is the `selected` prop and onSelectionChanged;
+ * the aria live region's text is `live`, kept by the panel so that clearing the rows can announce too. */
+export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChanged, selected, dark, live, onAnnounce }: { rowData: Row[]; columnDefs: ColDef[]; onRowClicked: (serial: number) => void; onSelectionChanged: (serial: number) => void; selected: number; dark: boolean; live: string; onAnnounce: (text: string) => void }) @{
 	let g = state({
 		sort: '',
 		sortTouched: false,
@@ -34,7 +35,6 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 		focused: 0,
 		hovered: 0,
 		activeHeader: '',
-		live: 'No Rows To Show',
 		scrolling: false,
 	});
 	const body = element<HTMLDivElement>();
@@ -59,8 +59,8 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 	const rowCount = computed(() => countOf(rowData, g.sort, g.fChannel, g.fArgs, g.fDirection) + 1);
 	const wrapperStyle = computed(() => `height: 100%; --ag-internal-row-border-width: ${dark ? 1 : 2}px; --ag-line-height: ${ROW_HEIGHT}px;`);
 	const viewportStyle = computed(() => `width: calc(100% + ${g.sbw}px);`);
-	const fakeVCls = computed(() => `ag-body-vertical-scroll ag-apple-scrollbar ag-scrollbar-invisible${g.scrolling ? ' ag-scrollbar-scrolling' : ''}`);
-	const overlayCls = computed(() => (countOf(rowData, g.sort, g.fChannel, g.fArgs, g.fDirection) === 0 ? 'ag-overlay' : 'ag-overlay ag-hidden'));
+	const fakeVCls = computed(() => `ag-body-vertical-scroll ag-apple-scrollbar ag-scrollbar-invisible${g.scrolling ? ' ag-scrollbar-scrolling' : ''}${countOf(rowData, g.sort, g.fChannel, g.fArgs, g.fDirection) * ROW_HEIGHT > g.height ? '' : ' ag-hidden'}`);
+	const overlayCls = computed(() => ((rowData ?? []).length === 0 ? 'ag-overlay' : 'ag-overlay ag-hidden'));
 	const clearStyle = computed(() => (g.fDirection === '' ? 'display: none;' : ''));
 	const textPopupCls = computed(() => `${THEME_CLASSES} ag-popup${g.openFilter === 'channel' || g.openFilter === 'args' ? '' : ' ag-hidden'}`);
 	const directionPopupCls = computed(() => `${THEME_CLASSES} ag-popup${g.openFilter === 'direction' ? '' : ' ag-hidden'}`);
@@ -69,6 +69,8 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 	const body1Cls = computed(() => (!secondShown(g.draft) || blankType(parseText(g.draft).conditions[1]!.type) ? 'ag-filter-body ag-hidden' : 'ag-filter-body'));
 	const conditionCls = computed(() => (secondShown(g.draft) ? 'ag-filter-condition' : 'ag-filter-condition ag-hidden'));
 	const picker1FieldCls = computed(() => (secondShown(g.draft) ? 'ag-picker-field ag-labeled ag-label-align-left ag-select ag-filter-select' : 'ag-picker-field ag-labeled ag-label-align-left ag-select ag-filter-select ag-hidden'));
+	const overlayTextStyle = computed(() => ((rowData ?? []).length === 0 ? '' : 'display: none;'));
+	const rootCls = computed(() => `ag-root ag-unselectable ag-layout-normal${countOf(rowData, g.sort, g.fChannel, g.fArgs, g.fDirection) * ROW_HEIGHT >= g.height && g.height > 0 ? ' ag-body-vertical-content-no-gap' : ''} ag-body-horizontal-content-no-gap`);
 	const textOpen = computed(() => g.openFilter === 'channel' || g.openFilter === 'args');
 	const op0 = computed(() => parseText(g.draft).conditions[0]!.type);
 	const op1 = computed(() => parseText(g.draft).conditions[1]!.type);
@@ -104,19 +106,20 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 			<div class="ag-measurement-element-border" style="--ag-internal-measurement-border: var(--ag-row-border, solid 15538px);"></div>
 			<div class="ag-measurement-element-border" style="--ag-internal-measurement-border: var(--ag-pinned-row-border, solid 15538px);"></div>
 		</div>
-		<div class="ag-aria-description-container" aria-live="polite" aria-relevant="additions text" aria-atomic="true">{g.live}</div>
+		<div class="ag-aria-description-container" aria-live="polite" aria-relevant="additions text" aria-atomic="true">{live}</div>
 		<div class="ag-root-wrapper ag-ltr ag-layout-normal" role="presentation" grid-id="1">
 			<div class="ag-root-wrapper-body ag-focus-managed ag-layout-normal" role="presentation">
-				<div class="ag-tab-guard ag-tab-guard-top" role="presentation" tabindex="0"></div>
-				<div class="ag-root ag-unselectable ag-layout-normal ag-body-vertical-content-no-gap ag-body-horizontal-content-no-gap" role="grid" aria-colcount="5" aria-rowcount={rowCount}>
+				<div class="ag-tab-guard ag-tab-guard-top" role="presentation" tabindex="0" onFocus={(e) => onGuardFocus(e, true)}></div>
+				<div class={rootCls} role="grid" aria-colcount="5" aria-rowcount={rowCount}>
 					<div class="ag-header ag-pivot-off ag-header-allow-overflow" role="presentation" style="height: 26px; min-height: 26px;">
 						<div class="ag-pinned-left-header ag-hidden" aria-hidden="true" role="rowgroup" style="width: 0px; min-width: 0px; max-width: 0px;"></div>
 						<div class="ag-header-viewport " role="rowgroup" tabindex="-1">
 							<div class="ag-header-container" role="presentation" style={widthStyle}>
 								<div class="ag-header-row ag-header-row-column" role="row" tabindex="0" aria-rowindex="1" style={headerRowStyle}>
-				<div class={h0.cls} role="columnheader" col-id="serialNumber" aria-colindex="1" tabindex="-1" aria-sort={h0.ariaSort} style={h0.style} onFocus={() => announce(h0.desc, (text) => (g.live = text))} onMouseEnter={() => (g.activeHeader = 'serialNumber')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
+				<div class={h0.cls} role="columnheader" col-id="serialNumber" aria-colindex="1" tabindex="-1" aria-sort={h0.ariaSort} style={h0.style} onFocus={() => announce(h0.desc, (text) => onAnnounce(text))} onMouseEnter={() => (g.activeHeader = 'serialNumber')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
+					if (e.key === 'Tab' || e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'Enter') e.preventDefault();
+					if (onHeaderKey(e)) return;
 					if (e.key !== 'Enter') return;
-					e.preventDefault();
 					g.sort = nextSort(g.sort, 'serialNumber', e.shiftKey);
 					g.sortTouched = true;
 				}}>
@@ -150,9 +153,10 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 					</div>
 					</div>
 				</div>
-				<div class={h1.cls} role="columnheader" col-id="timestamp" aria-colindex="2" tabindex="-1" aria-sort={h1.ariaSort} style={h1.style} onFocus={() => announce(h1.desc, (text) => (g.live = text))} onMouseEnter={() => (g.activeHeader = 'timestamp')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
+				<div class={h1.cls} role="columnheader" col-id="timestamp" aria-colindex="2" tabindex="-1" aria-sort={h1.ariaSort} style={h1.style} onFocus={() => announce(h1.desc, (text) => onAnnounce(text))} onMouseEnter={() => (g.activeHeader = 'timestamp')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
+					if (e.key === 'Tab' || e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'Enter') e.preventDefault();
+					if (onHeaderKey(e)) return;
 					if (e.key !== 'Enter') return;
-					e.preventDefault();
 					g.sort = nextSort(g.sort, 'timestamp', e.shiftKey);
 					g.sortTouched = true;
 				}}>
@@ -186,9 +190,10 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 					</div>
 					</div>
 				</div>
-				<div class={h2.cls} role="columnheader" col-id="direction" aria-colindex="3" tabindex="-1" aria-sort={h2.ariaSort} style={h2.style} onFocus={() => announce(h2.desc, (text) => (g.live = text))} onMouseEnter={() => (g.activeHeader = 'direction')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
+				<div class={h2.cls} role="columnheader" col-id="direction" aria-colindex="3" tabindex="-1" aria-sort={h2.ariaSort} style={h2.style} onFocus={() => announce(h2.desc, (text) => onAnnounce(text))} onMouseEnter={() => (g.activeHeader = 'direction')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
+					if (e.key === 'Tab' || e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'Enter') e.preventDefault();
+					if (onHeaderKey(e)) return;
 					if (e.key !== 'Enter') return;
-					e.preventDefault();
 					g.sort = nextSort(g.sort, 'direction', e.shiftKey);
 					g.sortTouched = true;
 				}}>
@@ -227,9 +232,10 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 					</div>
 					</div>
 				</div>
-				<div class={h3.cls} role="columnheader" col-id="channel" aria-colindex="4" tabindex="-1" aria-sort={h3.ariaSort} style={h3.style} onFocus={() => announce(h3.desc, (text) => (g.live = text))} onMouseEnter={() => (g.activeHeader = 'channel')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
+				<div class={h3.cls} role="columnheader" col-id="channel" aria-colindex="4" tabindex="-1" aria-sort={h3.ariaSort} style={h3.style} onFocus={() => announce(h3.desc, (text) => onAnnounce(text))} onMouseEnter={() => (g.activeHeader = 'channel')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
+					if (e.key === 'Tab' || e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'Enter') e.preventDefault();
+					if (onHeaderKey(e)) return;
 					if (e.key !== 'Enter') return;
-					e.preventDefault();
 					g.sort = nextSort(g.sort, 'channel', e.shiftKey);
 					g.sortTouched = true;
 				}}>
@@ -269,9 +275,10 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 					</div>
 					</div>
 				</div>
-				<div class={h4.cls} role="columnheader" col-id="args" aria-colindex="5" tabindex="-1" aria-sort={h4.ariaSort} style={h4.style} onFocus={() => announce(h4.desc, (text) => (g.live = text))} onMouseEnter={() => (g.activeHeader = 'args')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
+				<div class={h4.cls} role="columnheader" col-id="args" aria-colindex="5" tabindex="-1" aria-sort={h4.ariaSort} style={h4.style} onFocus={() => announce(h4.desc, (text) => onAnnounce(text))} onMouseEnter={() => (g.activeHeader = 'args')} onMouseLeave={() => (g.activeHeader = '')} onKeyDown={(e) => {
+					if (e.key === 'Tab' || e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'Enter') e.preventDefault();
+					if (onHeaderKey(e)) return;
 					if (e.key !== 'Enter') return;
-					e.preventDefault();
 					g.sort = nextSort(g.sort, 'args', e.shiftKey);
 					g.sortTouched = true;
 				}}>
@@ -326,6 +333,7 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 						<div el={body} class="ag-body-viewport ag-row-no-animation ag-layout-normal" role="presentation" style={viewportStyle} onScroll={(e) => {
 							g.top = (e.target as HTMLElement).scrollTop;
 							setScrollTop(fakeV, g.top);
+							if (wasProgrammatic()) return;
 							g.scrolling = true;
 							afterScroll(() => (g.scrolling = false));
 						}}>
@@ -339,7 +347,7 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 											rowOf(e)?.focus();
 											const next = (e.ctrlKey || e.metaKey) && selected === id ? 0 : id;
 											onSelectionChanged(next);
-											announce(next === id ? 'Press SPACE to deselect this row' : 'Press SPACE to select this row', (text) => (g.live = text));
+											announce(next === id ? 'Press SPACE to deselect this row' : 'Press SPACE to select this row', (text) => onAnnounce(text));
 											onRowClicked(id);
 										}}>
 											<div role="gridcell" col-id="serialNumber" class={row.c0.cls} aria-colindex="1" style={row.c0.style}>{row.serial}</div>
@@ -388,12 +396,12 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 					<div class={overlayCls} role="presentation">
 						<div class="ag-overlay-panel" role="presentation">
 							<div class="ag-overlay-wrapper ag-layout-normal ag-overlay-no-rows-wrapper" data-ref="eOverlayWrapper" role="presentation" style="padding-top: 25px;">
-								<span class="ag-overlay-no-rows-center" aria-hidden="true">No Rows To Show</span>
+								<span class="ag-overlay-no-rows-center" style={overlayTextStyle}>No Rows To Show</span>
 							</div>
 						</div>
 					</div>
 				</div>
-				<div class="ag-tab-guard ag-tab-guard-bottom" role="presentation" tabindex="0"></div>
+				<div class="ag-tab-guard ag-tab-guard-bottom" role="presentation" tabindex="0" onFocus={(e) => onGuardFocus(e, false)}></div>
 			</div>
 			<div class={textPopupCls} data-filter="text">
 				<div class="ag-menu ag-filter-menu ag-ltr ag-popup-child ag-popup-positioned-under" role="presentation" aria-label="Column Filter" style={g.popupStyle} onKeyDown={(e) => {

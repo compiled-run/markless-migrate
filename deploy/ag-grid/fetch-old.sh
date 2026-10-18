@@ -10,3 +10,6 @@ git -C "$DIR/old" fetch --quiet --depth 1 origin "$COMMIT" && git -C "$DIR/old" 
 rm -rf "$DIR/old-panel" && mkdir -p "$DIR/old-panel"
 (cd "$DIR/old" && tar cf - package.json tsconfig.json tailwind.config.js postcss.config.js manifest.json webpack.extension.config.ts src/extension src/types src/common) | (cd "$DIR/old-panel" && tar xf -)
 ln -s ../old/node_modules "$DIR/old-panel/node_modules"
+# The extension's other entries (service worker, content script, devtools page) are not part of the panel's UI and
+# carry over unchanged: the new app serves the old build's files at the same URLs.
+cp "$DIR/old/dist/extension/"{background.js,contentScript.js,devtools.js,devtools.html,manifest.json} "$DIR/../../examples/ag-grid-markless/public/"

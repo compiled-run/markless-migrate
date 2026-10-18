@@ -20,7 +20,19 @@ export function ensureIndexVisible(index: number, position: 'top' | 'bottom' | '
 	else if (position === 'middle') next = Math.min((pxTop + pxBottom) / 2, rowTop);
 	else if (top > rowTop) next = pxTop;
 	else if (top + height < rowBottom) next = pxBottom - pxTop > height ? pxTop : pxBottom;
-	if (next !== null) body.scrollTop = next;
+	if (next !== null && Math.abs(body.scrollTop - next) >= 1) {
+		programmatic = true;
+		body.scrollTop = next;
+	}
+}
+
+let programmatic = false;
+/** Whether the scroll event being handled came from ensureIndexVisible: AG Grid's own scrolls do not show the
+ * overlay scrollbar. */
+export function wasProgrammatic(): boolean {
+	const was = programmatic;
+	programmatic = false;
+	return was;
 }
 
 /** The browser's scrollbar width and whether scrollbars overlay the content, measured as AG Grid measures them. */
@@ -77,10 +89,10 @@ export function focusHeader(colId: string): void {
 }
 
 let scrollEnd = 0;
-/** AG Grid's bodyScrollEnd: `done` runs once scrolling has been quiet for a while. */
+/** AG Grid's bodyScrollEnd (150 ms of no scrolling) and the overlay scrollbar's 400 ms before it hides. */
 export function afterScroll(done: () => void): void {
 	clearTimeout(scrollEnd);
-	scrollEnd = window.setTimeout(done, 500);
+	scrollEnd = window.setTimeout(done, 550);
 }
 
 let debounce = 0;
@@ -142,7 +154,7 @@ export function afterRowsRendered(count: number, then: () => void): void {
 	observer.observe(container);
 }
 
-let lastAnnouncement = '';
+let lastAnnouncement = 'No Rows To Show';
 let announceTimer = 0;
 /** AG Grid's aria announcer: debounced 200 ms, then the live region is cleared and set 50 ms later, with a
  * zero-width space added when the text repeats so screen readers read it again. */
@@ -189,4 +201,72 @@ export function focusWhenShown(popup: string, field: string): void {
 		go();
 	});
 	observer.observe(el, { attributes: true, attributeFilter: ['class'] });
+}
+
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]';
+
+function tabbable(): HTMLElement[] {
+	return [...document.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.tabIndex >= 0 && el.getClientRects().length > 0);
+}
+
+/** AG Grid's tab out of the grid: focus the first tabbable element after (or before) the grid, or leave focus on
+ * the page when there is none. */
+export function tabOut(forward: boolean): void {
+	const grid = document.querySelector<HTMLElement>('.ag-root-wrapper');
+	if (!grid) return;
+	const all = tabbable().filter((el) => !grid.contains(el));
+	const position = (el: HTMLElement) => grid.compareDocumentPosition(el);
+	const target = forward ? all.find((el) => position(el) & Node.DOCUMENT_POSITION_FOLLOWING) : all.reverse().find((el) => position(el) & Node.DOCUMENT_POSITION_PRECEDING);
+	if (target) target.focus();
+	else (document.activeElement as HTMLElement | null)?.blur();
+}
+
+let headerAt = 0;
+let quietGuard = false;
+
+function headers(): HTMLElement[] {
+	return [...document.querySelectorAll<HTMLElement>('.ag-header-cell[col-id]')];
+}
+
+/** Focuses header cell `index` (clamped); AG Grid remembers it as where focus re-enters the header. */
+export function focusHeaderAt(index: number): void {
+	const list = headers();
+	if (!list.length) return;
+	headerAt = Math.max(0, Math.min(list.length - 1, index));
+	list[headerAt]!.focus();
+}
+
+/** A tab guard took focus: from outside the grid it hands focus to a header cell; from inside, focus leaves. */
+export function onGuardFocus(e: FocusEvent, top: boolean): void {
+	if (quietGuard) {
+		quietGuard = false;
+		return;
+	}
+	const grid = document.querySelector('.ag-root-wrapper');
+	const from = e.relatedTarget as Node | null;
+	if (from && grid?.contains(from)) return tabOut(!top);
+	focusHeaderAt(top ? headerAt : headers().length - 1);
+}
+
+/** Keys on a header cell that AG Grid handles itself: Tab and arrows between cells, ArrowDown to the grid body.
+ * The handler prevents the default for these keys itself, where Markless can see it. */
+export function onHeaderKey(e: KeyboardEvent): boolean {
+	const list = headers();
+	const at = list.indexOf(e.target as HTMLElement);
+	if (at < 0) return false;
+	if (e.key === 'Tab') {
+		if (e.shiftKey) at === 0 ? tabOut(false) : focusHeaderAt(at - 1);
+		else at === list.length - 1 ? tabOut(true) : focusHeaderAt(at + 1);
+		return true;
+	}
+	if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+		focusHeaderAt(at + (e.key === 'ArrowRight' ? 1 : -1));
+		return true;
+	}
+	if (e.key === 'ArrowDown') {
+		quietGuard = true;
+		document.querySelector<HTMLElement>('.ag-tab-guard-bottom')?.focus();
+		return true;
+	}
+	return false;
 }

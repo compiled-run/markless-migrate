@@ -1,7 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: 'class',
-  content: ['./pages/**/*.tsrx', './components/**/*.tsrx', './lib/**/*.{tsrx,ts}', './document.tsrx'],
+  content: ['./pages/**/*.tsrx', './components/**/*.{tsrx,ts}', './lib/**/*.{tsrx,ts}', './document.tsrx'],
   theme: {
     fontFamily: {
       sans: ['ui-sans-serif', 'system-ui'],
