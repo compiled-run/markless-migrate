@@ -212,3 +212,27 @@ What keeps the signed-in pages red:
 4. A held-back invoice save: the checker answers the write itself; Next then shows its error boundary ("Something went wrong!"), the port keeps the form.
 
 Routes switched: `/query` only (green for both roles). The trailing-slash redirects are green too, but the front door's rewrite for `/dashboard/` also covers `/dashboard`, a red page, so they stay on the old app with every page.
+
+## Every route, signed in too (2026-10-18)
+
+`plan --old https://mm-next-dashboard-old.vercel.app --source ../../deploy/next-dashboard/old-app --auth .migrate/auth-deployed.json` now crawls a second time as the signed-in user: 23 routes, 15 of them reached only signed in (the three `?page=` pages of the invoice list and the edit page of each of the 13 invoices on them). Before, plan counted only what a signed-out visitor reaches, so the gate said "0 missing" without having looked at the dashboard.
+
+`check --only coverage` now fetches every route once per role, with that role's session. Result before the fix below: anonymous 20 of 23, signed-in 23 of 23. The 3 missing were the invoice list's pages for a signed-out visitor: Next keeps the page's query on the way to the login page (`/login?page=2&callbackUrl=...`), the port dropped it. `middleware/request.ts` now keeps it.
+
+Two tool fixes came out of this: a signed-in visitor sent to `/dashboard` from any unknown path is the old app's own rule (NextAuth's `authorized` callback), not a catch-all of the port, so coverage no longer calls `/`, `/login` and `/query` missing for the signed-in role; and `check --all` now checks every planned route, so the 13 edit pages and the paged lists are checked too.
+
+### Check (against the deployments, new app redeployed)
+
+`check --all --concurrency 2 --auth .migrate/auth-deployed.json --source ../../deploy/next-dashboard/old-app --new-source .`
+
+**Routes: 23 of 23 for both roles.** **54 of 60 route checks green** (route and role), 6 red, none unchecked. Signed out: every page green. Signed in: the invoice list pages, 12 of the 13 edit pages (checked on the first as their template) and `/login` green; `/`, `/dashboard`, `/dashboard/customers`, the first edit page, `/dashboard/invoices/create` and the 404 page red.
+
+| Dimension | Result |
+| --- | --- |
+| coverage | green, 23 of 23 per role |
+| http, rendered, seo, visual, css, fonts, assets, network, weight | green (rendered carries the accepted route-announcer difference) |
+| behaviour | red signed in: "Sign Out" (the checker holds the sign-out post back; Next then re-renders the page it is on, the port follows its own logout URL); the held-back invoice save (Next shows its error page, the port keeps the form); the "Acme" link (Next keeps focus on the link after its redirect, the router's page swap puts it on the body) |
+| a11y | red signed in for the same "Acme" focus and the held-back saves, by keyboard |
+| responsiveness | red on some signed-in first uses: "Acme" at desktop speed, the customers search box at 4x CPU, the create page's links (the router fetches the next page's HTML; Next has the payload prefetched) |
+
+JavaScript on the wire 140-160 kB to 51-141 kB, run at load 175-280 kB to 2.5-10 kB.

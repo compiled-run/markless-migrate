@@ -229,3 +229,20 @@ G28 there (render data). Fixed since and relied on here: keyed rows updating in 
 | Migration index and check report | https://mm-ag-grid.vercel.app/_migrate/ and https://mm-ag-grid.vercel.app/_migrate/report.html |
 
 `deploy/ag-grid/deploy.sh old|new|front` rebuilds each (after `deploy/ag-grid/fetch-old.sh`).
+
+## Every route (2026-10-18)
+
+`plan --old https://mm-ag-grid-old.vercel.app --source ../../deploy/ag-grid/old-panel`: 3 routes (`/`, `/devtools.html`, `/manifest.json`); the panel has no sign-in, so there is no other role. `check --only coverage`: **3 of 3**, nothing missing, so no route was ported. The new app was redeployed from this tree (`deploy.sh new`).
+
+### Check (against the deployments)
+
+`check --all --source ../../deploy/ag-grid/old-panel --new-source .`: **3 of 4 checks green** (`/devtools.html`, `/manifest.json`, the 404 page), `/` red.
+
+| Dimension on `/` | Result |
+| --- | --- |
+| coverage | green, 3 of 3 |
+| http, rendered, seo, visual, css, fonts, a11y, assets, network, weight | green (`/react.js` accepted by the owner earlier) |
+| behaviour | red: 12 grid controls (header sort and filter spots, the row resize handles) have no text or label, so check cannot find the same control on the new page and they stay "not exercised" |
+| responsiveness | red at 4x CPU on a phone: the first click on a row or cell answers in 104-112 ms against the old 80 ms (a 50 ms long task in the row click handler); desktop is faster than the old (56 against 128 ms) |
+
+JavaScript on the wire 688.5 kB to 86.0 kB, run at load 1,013.6 kB to 208.6 kB.

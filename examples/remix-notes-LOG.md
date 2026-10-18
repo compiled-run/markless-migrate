@@ -143,3 +143,18 @@ Responsiveness (slowest each side): first interaction old 209 ms → new 32 ms a
 What keeps the three notes pages red: the checker never presses "Logout" or "Delete" (destructive names), so their coverage needs a person's accept; and navigating between notes at 4x CPU is 127-141 ms against Remix's 44-46 ms (Remix fetches the loader's JSON, the router fetches and swaps the whole page's HTML).
 
 Routes switched: `/`, `/join`, `/login` and `/healthcheck` (green signed in and signed out). The notes pages stay on the old app; a session from either app works in the other, so signing in on the front door lands on the old app's notes signed in (verified in a browser).
+
+## Every route, signed in too (2026-10-18)
+
+`plan --old https://mm-remix-notes-old.vercel.app --source ../../deploy/remix-notes/old-app --auth .migrate/auth-deployed.json` crawls a second time signed in: 8 routes, 1 reached only signed in (the second seeded note, `/notes/cmvcee9oe0004ag8a49ngpor2`). `check --only coverage` per role: **8 of 8 for both roles**, nothing missing, so no route was ported. The new app was not redeployed: nothing in it changed, and a new deployment reseeds its database with new note ids, which would break the saved signed-in session and the note sample.
+
+### Check (against the deployments)
+
+`check --all --concurrency 1 --auth .migrate/auth-deployed.json --source ../../deploy/remix-notes/old-app --new-source .`: **24 of 28 route checks green**, 4 red (the four notes pages, signed in).
+
+| Dimension | Result |
+| --- | --- |
+| coverage | green, 8 of 8 per role |
+| http, rendered, seo, visual, css, fonts, behaviour, assets, network, weight | green |
+| a11y | red on the notes pages: "Logout" and "Delete" pressed with Enter. The checker holds the post back; Remix then navigates to `/logout` (or reloads the note) and fetches it again, the port stays on the page with the one post |
+| responsiveness | red: going from one note to another at 4x CPU on a phone takes 127-160 ms against Remix's 45-49 ms (Remix fetches the loader's JSON, the router fetches and swaps the page's HTML) |
