@@ -134,7 +134,6 @@ export function responsivenessProbe(): void {
 		urlAt: -1,
 		navChange: -1,
 		navPaint: -1,
-		lastBefore: -1,
 		prefetch: 0,
 		url: location.href,
 		events: [] as { duration: number; start: number }[],
@@ -148,15 +147,38 @@ export function responsivenessProbe(): void {
 			channel.port1.onmessage = () => set(performance.now());
 			channel.port2.postMessage(0);
 		});
-	const inContent = (node: Node) => {
-		const el = node instanceof Element ? node : node.parentElement;
-		if (!el) return false;
-		if (!document.querySelector('main, [role="main"], article, h1')) return true;
-		return Boolean(el.closest('main, [role="main"], article, h1') || el.querySelector?.('main, [role="main"], article, h1'));
+	// The page's main content: main, [role=main] or article, else the body child holding the most text.
+	const region = () => {
+		const marked = document.querySelector('main, [role="main"], article');
+		if (marked) return marked;
+		const body = document.body;
+		if (!body) return document.documentElement;
+		let best: Element = body;
+		let most = -1;
+		for (const child of body.children) {
+			const n = (child as HTMLElement).innerText?.length ?? 0;
+			if (n > most) [best, most] = [child, n];
+		}
+		return best;
+	};
+	const contentText = () => ((region() as HTMLElement).innerText ?? region().textContent ?? '').trim();
+	let beforeText = '';
+	// Navigation ends on the first frame after the URL has changed and the main content no longer shows the previous page.
+	const navigated = (now: number) => {
+		if (s.down < 0 || s.navChange >= 0 || location.href === s.url) return;
+		if (s.urlAt < 0) s.urlAt = now;
+		if (contentText() === beforeText) return;
+		s.navChange = now;
+		paintAfter((t) => (s.navPaint = t));
+	};
+	const shell = (r: MutationRecord) => {
+		const t = r.target;
+		if (r.type === 'attributes' && (t === document.documentElement || t === document.head || t === document.body)) return true;
+		return Boolean(document.head?.contains(t));
 	};
 	new MutationObserver((records) => {
 		const now = performance.now();
-		if (s.down >= 0 && s.urlAt < 0 && location.href !== s.url) s.urlAt = now;
+		let content = false;
 		for (const r of records) {
 			// A node that changed between arming and the pointer going down (a clock, a carousel) is not the interaction's result.
 			if (s.down < 0) {
@@ -168,23 +190,18 @@ export function responsivenessProbe(): void {
 				s.change = now;
 				paintAfter((t) => (s.paint = t));
 			}
-			const content = inContent(r.target) || [...r.addedNodes].some(inContent);
-			if (s.urlAt < 0 && content) s.lastBefore = now;
-			if (s.urlAt >= 0 && s.navChange < 0 && content) {
-				s.navChange = now;
-				paintAfter((t) => (s.navPaint = t));
-			}
+			if (!shell(r)) content = true;
 		}
+		if (content || (s.urlAt < 0 && location.href !== s.url)) navigated(now);
 	}).observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
-	const onUrl = () => {
-		if (s.down >= 0 && s.urlAt < 0 && location.href !== s.url) s.urlAt = performance.now();
-	};
+	const onUrl = () => navigated(performance.now());
 	(globalThis as unknown as { navigation?: EventTarget }).navigation?.addEventListener('currententrychange', onUrl);
 	addEventListener('popstate', onUrl);
 	const start = (e: Event) => {
 		if (!e.isTrusted || s.down >= 0) return;
 		s.down = e.timeStamp;
 		s.url = location.href;
+		beforeText = contentText();
 		s.prefetch = document.querySelectorAll('link[rel~="prefetch"], link[rel~="prerender"], link[rel~="modulepreload"], script[type="speculationrules"]').length;
 		(globalThis as unknown as { __mmDown?: (at: number) => void }).__mmDown?.(realOrigin + e.timeStamp);
 	};
@@ -211,7 +228,7 @@ export function responsivenessProbe(): void {
 				armed = true;
 			},
 			reset: () => {
-				Object.assign(s, { down: -1, change: -1, paint: -1, urlAt: -1, navChange: -1, navPaint: -1, lastBefore: -1, prefetch: 0, url: location.href, events: [], frames: [] });
+				Object.assign(s, { down: -1, change: -1, paint: -1, urlAt: -1, navChange: -1, navPaint: -1, prefetch: 0, url: location.href, events: [], frames: [] });
 			},
 			loaded: () => {
 				const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
@@ -230,7 +247,6 @@ interface ProbeState {
 	urlAt: number;
 	navChange: number;
 	navPaint: number;
-	lastBefore: number;
 	prefetch: number;
 	events: { duration: number; start: number }[];
 	frames: { start: number; duration: number; scripts: { url: string; fn: string; invoker: string; type: string; duration: number; start: number }[] }[];
@@ -322,6 +338,8 @@ export async function measureOnce(browser: Browser, env: SideEnv, route: string,
 		}
 		const deadline = Date.now() + settleMs;
 		await quiet(page, inflight, navigations);
+		// A URL change whose content never differs (a hash link, a query filter) is not waited on to the full deadline.
+		const contentDeadline = Math.min(deadline, Date.now() + 2_000);
 		const reloaded = documents > before;
 		let state: ProbeState | undefined;
 		let ms: number | undefined;
@@ -348,16 +366,15 @@ export async function measureOnce(browser: Browser, env: SideEnv, route: string,
 		} else {
 			while (Date.now() < deadline) {
 				state = await readProbe(page);
-				if (!state || !((state.change >= 0 && state.paint < 0) || (state.navChange >= 0 && state.navPaint < 0))) break;
+				const content = state && state.urlAt >= 0 && state.navPaint < 0 && Date.now() < contentDeadline;
+				if (!state || !((state.change >= 0 && state.paint < 0) || content)) break;
 				await sleep(25);
 			}
 			if (state && state.down >= 0) {
 				const eventMs = state.events.length ? Math.max(...state.events.map((e) => e.duration)) : undefined;
 				if (state.urlAt >= 0) {
 					result = 'navigated';
-					// Content swapped before the URL changed has no frame probe of its own: its time is when both had happened.
-					const content = state.navPaint >= 0 ? state.navPaint : state.lastBefore >= 0 ? Math.max(state.lastBefore, state.urlAt) : state.paint;
-					if (content >= 0) ms = Math.max(content - state.down, eventMs ?? 0);
+					if (state.navPaint >= 0) ms = Math.max(state.navPaint - state.down, eventMs ?? 0);
 				} else if (state.paint >= 0) {
 					result = 'changed';
 					ms = Math.max(state.paint - state.down, eventMs ?? 0);
