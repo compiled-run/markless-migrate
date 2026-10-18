@@ -531,7 +531,7 @@ async function main(argv: string[]): Promise<number> {
 			if (values.all && !coverageOnly) {
 				if (!inventory) fail('check --all needs .migrate/inventory.json: run plan first');
 				const all = routeTargets(inventory, await readSamples(join(cwd, STATE_DIR)));
-				routes = [...new Set([...(values.route ?? []), ...all.pages, UNKNOWN_PATH])];
+				routes = [...new Set([...(values.route ?? []), ...(planned ?? []).filter((r) => !all.endpoints.includes(r)), ...all.pages, UNKNOWN_PATH])];
 				targets = { endpoints: await discoverEndpoints(defaultEnv(values.old), all.pages, all.endpoints), unchecked: all.needsSample, redirects: redirectTargets(all.pages, inventory.source?.redirects) };
 			}
 			if (!coverageOnly && !routes?.length && !targets?.endpoints.length) fail('no routes: pass --route <path> or run plan first');

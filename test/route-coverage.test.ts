@@ -257,3 +257,9 @@ test('coverage per role: a signed-in route the new app lacks is missing for that
 		b.close();
 	}
 });
+
+test('check --all checks every planned route, not only the ones the browser inventory and the source scan list', async () => {
+	const cwd = await planned();
+	const run = await cli(['check', '--all', '--old', origin(old), '--new', origin(old), '--no-responsiveness', '--journey-budget', '3'], cwd);
+	for (const route of SITEMAP_ROUTES) assert.match(run.stdout, new RegExp(`pass +${route.replace(/\//g, '\\/')} `), run.stdout + run.stderr);
+});
