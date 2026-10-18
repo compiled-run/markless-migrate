@@ -27,14 +27,9 @@ const isEditing = (target: EventTarget | null) =>
 	target instanceof HTMLElement && (target.isContentEditable || target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA');
 
 const openSearch = () => void import('./search.ts').then((search) => search.openSearch());
-// The search box loads at idle and its index when the pointer or focus reaches a search button, so opening search downloads nothing.
+// The search box loads at idle; its index (145 kB) loads when search opens, as VitePress loads its own.
 requestIdleCallback(() => void import('./search.ts'));
 const SEARCH_BUTTON = '.VPNavBarSearchButton, button[aria-label="Search"]';
-const loadIndex = (event: Event) => {
-	if ((event.target as Element | null)?.closest?.(SEARCH_BUTTON)) void import('./search-index.ts');
-};
-document.addEventListener('pointerover', loadIndex, { passive: true });
-document.addEventListener('focusin', loadIndex);
 // VitePress's useDark stores the appearance it starts with.
 if (localStorage.getItem('vitepress-theme-appearance') === null) localStorage.setItem('vitepress-theme-appearance', 'auto');
 
