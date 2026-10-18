@@ -290,7 +290,9 @@ async function focusLabel(page: Page): Promise<string> {
 
 async function snapshot(page: Page, origin: string): Promise<string[]> {
 	// Indentation is structure, which the rendered check compares; a step's effect is which nodes appear and disappear.
-	return (await page.locator('body').ariaSnapshot({ timeout: 5_000 }).catch(() => '')).split(origin).join('').split('\n').map((line) => line.trim());
+	// The app's own host name inside a URL's query (`utm_source=old.example`) is where the page runs, not what it shows.
+	const host = new URL(origin).hostname;
+	return (await page.locator('body').ariaSnapshot({ timeout: 5_000 }).catch(() => '')).split(origin).join('').split(`=${host}&`).join('={host}&').split('\n').map((line) => line.trim());
 }
 
 const IDLE_MS = 150;
