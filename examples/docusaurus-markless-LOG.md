@@ -158,3 +158,43 @@ webpack chunk hashes came from this site.
   and the 289 crawled pages include no docs page in the first 20; the routes were named with `--route`. Fixed in dd2be12.
 - A journey that follows a link to a page the new app does not have (`Showcase`) is compared against the new
   app's 404; through the front door that link reaches the old site. Fixed in 70ef676.
+
+## Markless 0.5.0 (2026-10-17)
+
+Rebuilt on the published 0.5.0 packages (`@markless/*` 0.5.0, `vite-plus` 0.3.1).
+
+### Workarounds removed
+
+| Workaround (0.4.0 limitation) | Now |
+| --- | --- |
+| 4: `server/void-elements.ts`, a Nitro plugin that deleted `</br>` and un-escaped `<script>` text (JSON-LD) in every response | removed: void elements have no closing tag and script text is written as is |
+| 6: `<Html>` attributes ignored, so `public/mm-init.js` set `dir`, `class`, `data-rh` and `data-has-hydrated` from a per-route table | `document.tsrx` writes them on `<Html>` from `lib/document-init.json`; the theme script is inline again, as on the old site (one request fewer) |
+| 6: `onVisible` needed the runtime awake, so `public/mm-boot.js` dispatched a `boot` event on `load` to a `data-boot` element | `onIdle={() => siteBoot()}`; `mm-boot.js` and the `data-boot` attribute are gone |
+| every link a document load | links between the three ported pages swap in place through the router, as Docusaurus's React Router does; the per-route set-up (window-size parking, tabs, colour mode, lazy avatars, TOC) reruns on the router's `marklessrouterrendered` event |
+
+`tooling/import.mjs` writes the new `document.tsrx` and `lib/document-init.json`. New behaviour found by the stricter checks: the version dropdown's "Canary" link (to the page already shown) keeps the page as React Router does instead of reloading it; DocSearch's code loads at idle, so opening search fetches no code (Docusaurus loads it when the pointer reaches the button); the navbar and footer logos follow the colour mode (ThemedImage); clicking the npm2yarn tab already selected no longer saves it; DocSearch shows Docusaurus's "See all N results" footer.
+
+The three pages are kept on Vercel's CDN (`isr: true`: rendered once per deploy, served as `x-vercel-cache: HIT`). Nitro's `prerender: true` was tried first: it renders every Markless page as a 404 at build time (Markless finding).
+
+### Check (against the deployments)
+
+`check --concurrency 1 --route / --route /docs --route /docs/installation`, old https://mm-docusaurus-old.vercel.app, new https://mm-docusaurus-new.vercel.app. With the default concurrency the journeys' page loads timed out after 30 s on this machine (both apps); one route at a time they did not.
+
+| Route | Result | Interactions exercised | JS on the wire (uncompressed) | JS run at load |
+| --- | --- | --- | --- | --- |
+| `/` | red: visual, assets, a11y, behaviour, responsiveness | 55 of 62 | 357.6 → 188.6 kB | 564.5 → 196.2 kB |
+| `/docs` | red: a11y, behaviour, responsiveness | 169 of 174 | 433.5 → 187.5 kB | 699.3 → 187.7 kB |
+| `/docs/installation` | red: a11y, behaviour, responsiveness | 131 of 133 | 438.3 → 187.6 kB | 704.0 → 187.7 kB |
+
+(0.4.0 downloaded 366 / 551 / 791 kB on these pages: packing and the smaller render data roughly halve it.)
+
+Responsiveness (slowest each side): first interaction old 64 ms → new 120 ms at 4x CPU (desktop 64 → 64 ms); navigation old 121 ms → new 164 ms at 4x CPU (desktop 48 → 61 ms).
+
+What keeps the routes red:
+
+1. Journeys into pages that are not ported (the sidebar's other docs, blog, community): the checker serves the old page to the new side as the front door would, but there the old page logs `registerSW failed ... reading 'waiting'` where on its own host it logs `window.gtag is not a function`, and some of those links cannot be clicked within the step's 3 s. These differences come from the checker's front-door emulation, not from the port; through the real front door those links reach the old site.
+2. Responsiveness: navigation between the ported pages at 4x CPU is 105-164 ms against 59-80 ms (the router's link script spends one 58-109 ms task swapping in a docs page); the sidebar's first category toggle is 40-48 ms against 16 ms on desktop.
+3. Search: the results footer reads "See all 0 results" in the check, where the old one shows the count.
+4. One external avatar (unavatar.io) did not load on the new side in one run.
+
+Routes switched: none (they had been switched under 0.4.0). The front door (https://mm-docusaurus.vercel.app) serves the old site everywhere; checked in a browser: styles load and the sidebar navigates in place.

@@ -1,52 +1,12 @@
 {
 	"rewrites": [
 		{
-			"source": "/",
-			"destination": "https://mm-docusaurus-new.vercel.app/"
-		},
-		{
-			"source": "/docs",
-			"destination": "https://mm-docusaurus-new.vercel.app/docs"
-		},
-		{
-			"source": "/docs/",
-			"destination": "https://mm-docusaurus-new.vercel.app/docs/"
-		},
-		{
-			"source": "/docs/installation",
-			"destination": "https://mm-docusaurus-new.vercel.app/docs/installation"
-		},
-		{
-			"source": "/docs/installation/",
-			"destination": "https://mm-docusaurus-new.vercel.app/docs/installation/"
-		},
-		{
 			"source": "/build/:path*",
 			"destination": "https://mm-docusaurus-new.vercel.app/build/:path*"
 		},
 		{
-			"source": "/dist/:path*",
-			"destination": "https://mm-docusaurus-new.vercel.app/dist/:path*"
-		},
-		{
-			"source": "/docusaurus.config.js",
-			"destination": "https://mm-docusaurus-new.vercel.app/docusaurus.config.js"
-		},
-		{
-			"source": "/mm-boot.js",
-			"destination": "https://mm-docusaurus-new.vercel.app/mm-boot.js"
-		},
-		{
-			"source": "/mm-init.js",
-			"destination": "https://mm-docusaurus-new.vercel.app/mm-init.js"
-		},
-		{
 			"source": "/mm-site.css",
 			"destination": "https://mm-docusaurus-new.vercel.app/mm-site.css"
-		},
-		{
-			"source": "/sidebars.js",
-			"destination": "https://mm-docusaurus-new.vercel.app/sidebars.js"
 		},
 		{
 			"source": "/vendor/:path*",
