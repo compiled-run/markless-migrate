@@ -287,3 +287,67 @@ test('a framework-agnostic library that renders UI is never as-is: catalogued or
 	assert.match(grid.notes.join('\n'), /renders its own UI into the page\. Before writing code, ask the owner/);
 	assert.ok(grid.written.includes('lib/parity/ag-grid-community/index.ts'), 'the port skeleton is written for the port option');
 });
+
+test('the used surface includes what is passed as data: column definitions, the props a custom component is given, and calls through a ref or an instance', async () => {
+	const dir = await project({
+		'package.json': JSON.stringify({ dependencies: { react: '19.0.0', 'ag-grid-react': '34.2.0', 'ag-grid-community': '34.2.0', 'chart.js': '4.0.0' } }),
+		'src/Filter.tsx': 'export default function Filter({ model, onModelChange }) {\n  return <button onClick={() => onModelChange(model.next)}>x</button>;\n}\n',
+		'src/Grid.tsx': `import { useMemo, useRef } from 'react';
+import { AgGridReact } from 'ag-grid-react';
+import { createGrid } from 'ag-grid-community';
+import { Chart } from 'chart.js';
+import Filter from './Filter';
+const base = { sortable: true };
+export function Grid({ rows, id }) {
+  const gridRef = useRef(null);
+  const columnDefs = useMemo(() => [
+    { headerName: 'No.', field: 'serialNumber', width: 55 },
+    { field: 'direction', filter: { component: Filter }, cellRenderer: (params) => params.data.direction },
+    { field: 'args', filter: 'agTextColumnFilter', flex: 3 },
+  ], []);
+  const go = () => {
+    gridRef.current.api.ensureIndexVisible(3, 'bottom');
+    const node = gridRef.current.api.getRowNode(id);
+    node.setSelected(true);
+  };
+  const api = createGrid(document.body, { rowData: rows, columnDefs: [{ field: 'a' }] });
+  api.setGridOption('rowData', rows);
+  const chart = new Chart(document.body, { type: 'bar', data: { labels: ['a'], datasets: [{ label: 'n', data: [1] }] } });
+  chart.update();
+  return <AgGridReact ref={gridRef} rowData={rows} columnDefs={columnDefs} defaultColDef={{ ...base, resizable: true }} onRowClicked={(e) => go(e.data)} />;
+}
+`,
+	});
+	const file = await scanLibraries(dir);
+	const grid = exp(file, 'ag-grid-react', 'AgGridReact');
+	assert.deepEqual(Object.fromEntries(Object.entries(grid.data ?? {}).map(([k, v]) => [k, v.values])), {
+		'columnDefs[].headerName': ['No.'],
+		'columnDefs[].field': ['serialNumber', 'direction', 'args'],
+		'columnDefs[].width': [55],
+		'columnDefs[].filter.component': [],
+		'columnDefs[].cellRenderer': [],
+		'columnDefs[].filter': ['agTextColumnFilter'],
+		'columnDefs[].flex': [3],
+		'defaultColDef.sortable': [true],
+		'defaultColDef.resizable': [true],
+	});
+	assert.deepEqual(grid.members['columnDefs[].filter.component'], ['model', 'model.next', 'onModelChange']);
+	assert.deepEqual(grid.members['columnDefs[].cellRenderer'], ['data.direction']);
+	assert.deepEqual(grid.members.ref, ['api.ensureIndexVisible()', 'api.getRowNode()', 'api.getRowNode().setSelected()']);
+	assert.deepEqual(grid.members.onRowClicked, ['data']);
+	const vanilla = exp(file, 'ag-grid-community', 'createGrid');
+	assert.deepEqual(vanilla.reads, ['setGridOption()']);
+	assert.deepEqual(Object.keys(vanilla.options), ['rowData', 'columnDefs']);
+	assert.deepEqual(vanilla.data?.['columnDefs[].field']?.values, ['a']);
+	const chart = exp(file, 'chart.js', 'Chart');
+	assert.equal(chart.kind, 'function');
+	assert.deepEqual(chart.reads, ['update()']);
+	assert.deepEqual(chart.data?.['data.datasets[].label']?.values, ['n']);
+	const app = await newApp();
+	await writeParity(file, 'ag-grid-react', { newApp: app });
+	const tsrx = await readFile(join(app, 'lib/parity/ag-grid-react/components.tsrx'), 'utf8');
+	assert.match(tsrx, /readonly ref: \{ current: \{\n\t\tapi: \{\n\t\t\tensureIndexVisible\(\.\.\.args: unknown\[\]\): unknown;/);
+	assert.match(tsrx, /readonly columnDefs: readonly \(\{\n\t\treadonly headerName\?: string;\n\t\treadonly field\?: string;/);
+	assert.match(tsrx, /readonly filter\?: string \| \{\n\t\t\treadonly component\?: \(\(value: \{/);
+	assert.match(await readFile(join(app, 'lib/parity/ag-grid-react/behaviour.md'), 'utf8'), /Members read on ref: api\.ensureIndexVisible\(\), api\.getRowNode\(\), api\.getRowNode\(\)\.setSelected\(\)/);
+});

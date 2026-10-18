@@ -38,6 +38,8 @@ function exportLine(e: ExportUsage): string {
 		props.length ? `props ${props.slice(0, 8).join(', ')}${props.length > 8 ? ', ...' : ''}` : '',
 		e.variants ? Object.entries(e.variants).map(([k, v]) => `${k} ${v.used.join('|') || 'default'} of ${v.available.length}`).join('; ') : '',
 		Object.keys(e.options).length ? `options ${Object.keys(e.options).filter((k) => !k.includes('.')).join(', ')}` : '',
+		e.data && Object.keys(e.data).length ? `data ${Object.keys(e.data).slice(0, 6).join(', ')}${Object.keys(e.data).length > 6 ? `, ... (${Object.keys(e.data).length})` : ''}` : '',
+		Object.keys(e.members).length ? `members ${Object.entries(e.members).flatMap(([k, list]) => list.map((m) => (k ? `${k}: ${m}` : m))).slice(0, 4).join(', ')}${Object.values(e.members).flat().length > 4 ? ', ...' : ''}` : '',
 		e.reads.length ? `reads ${e.reads.filter((r) => !r.startsWith('->')).slice(0, 6).join(', ')}${e.reads.length > 6 ? ', ...' : ''}` : '',
 	].filter(Boolean);
 	return `${e.name} (${e.kind}, ${e.sites.length})${bits.length ? `  ${bits.join('  ')}` : ''}`;

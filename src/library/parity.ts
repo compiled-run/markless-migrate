@@ -68,13 +68,14 @@ export function narrowLibrary(lib: LibraryUsage, routes: readonly string[]): Lib
 			}
 		}
 		const options = Object.fromEntries(Object.entries(e.options).filter(([k]) => seen(e, `option:${k}`)));
+		const data = e.data && Object.fromEntries(Object.entries(e.data).filter(([k]) => seen(e, `data:${k}`)));
 		const reads = e.reads.filter((r) => seen(e, `read:${r}`));
 		const members = Object.fromEntries(Object.entries(e.members).map(([path, list]) => [path, list.filter((m) => seen(e, `member:${path}:${m}`))]).filter(([, list]) => list!.length));
 		const variants = e.variants && Object.fromEntries(Object.entries(e.variants).map(([k, v]) => {
 			const used = (props[k]?.values ?? []).filter((x): x is string => typeof x === 'string');
 			return [k, { ...v, used, classes: Object.fromEntries(used.map((u) => [u, e.variants![k]!.classes[u] ?? ''])) }];
 		}));
-		exports.push({ ...e, sites, props: e.kind === 'component' ? props : e.props, options, reads, members, ...(variants ? { variants } : {}) });
+		exports.push({ ...e, sites, props: e.kind === 'component' ? props : e.props, options, reads, members, ...(variants ? { variants } : {}), ...(data ? { data } : {}) });
 	}
 	return { ...lib, exports, sites: exports.reduce((n, e) => n + e.sites.length, 0), surface: { ...lib.surface, used: exports.length } };
 }
@@ -96,10 +97,48 @@ function literalType(p: PropUsage, widen = false): string {
 	return [...kinds].join(' | ');
 }
 
-function propType(key: string, p: PropUsage): string {
+function propType(key: string, p: PropUsage, e?: ExportUsage): string {
 	if (key === 'children') return 'Children';
 	if (/^on[A-Z]|^on:/.test(key)) return '(value?: unknown) => void';
-	return literalType(p);
+	if (key === 'ref' && e?.members.ref?.length) return `{ current: ${treeType(tree(e.members.ref), '\t')} | null }`;
+	const shape = e && dataType(e, key);
+	return shape && literalType(p) === 'unknown' ? shape : literalType(p);
+}
+
+interface Shape {
+	leaf?: PropUsage;
+	path?: string;
+	readonly keys: Map<string, Shape>;
+	items?: Shape;
+}
+
+/** The type of what the app passes under `prop`, from the data paths it writes (`columnDefs[].field`) and what its callbacks read. */
+function dataType(e: ExportUsage, prop: string): string | undefined {
+	const paths = Object.entries(e.data ?? {}).filter(([k]) => k.startsWith(`${prop}.`) || k.startsWith(`${prop}[]`));
+	if (!paths.length) return undefined;
+	const root: Shape = { keys: new Map() };
+	for (const [path, usage] of paths) {
+		let node = root;
+		for (const token of path.slice(prop.length).match(/\[\]|[^.[\]]+/g) ?? []) {
+			if (token === '[]') node = node.items ??= { keys: new Map() };
+			else {
+				if (!node.keys.has(token)) node.keys.set(token, { keys: new Map() });
+				node = node.keys.get(token)!;
+			}
+		}
+		node.leaf = usage;
+		node.path = path;
+	}
+	const render = (s: Shape, indent: string): string => {
+		const parts: string[] = [];
+		const reads = s.path ? e.members[s.path] : undefined;
+		if (reads?.length) parts.push(`((value: ${treeType(tree(reads), indent)}) => unknown)`);
+		else if (s.leaf) parts.push(s.leaf.values.length ? literalType(s.leaf, true) : 'unknown');
+		if (s.keys.size) parts.push(`{\n${[...s.keys].map(([k, v]) => `${indent}\treadonly ${/^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k)}?: ${render(v, `${indent}\t`)};`).join('\n')}\n${indent}}`);
+		if (s.items) parts.push(`readonly (${render(s.items, indent)})[]`);
+		return [...new Set(parts)].join(' | ') || 'unknown';
+	};
+	return render(root, '\t');
 }
 
 interface Tree {
@@ -143,7 +182,8 @@ function componentSkeleton(lib: LibraryUsage, e: ExportUsage): { name: string; c
 		const key = RENAMES[k] ?? k;
 		const quoted = /^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key);
 		const values = p.values.length ? ` Written: ${p.values.map((v) => JSON.stringify(v)).join(', ')}${p.dynamic ? `, and an expression at ${p.dynamic} site${p.dynamic === 1 ? '' : 's'}` : ''}.` : p.dynamic ? ` An expression at ${p.dynamic} site${p.dynamic === 1 ? '' : 's'}.` : '';
-		return `\t/**${k !== key ? ` \`${k}\` in the old app.` : ''}${values} */\n\treadonly ${quoted}${p.sites >= elementSites ? '' : '?'}: ${propType(k, p)};`;
+		const reads = e.members[k]?.length && /^(on[A-Z]|get[A-Z])/.test(k) ? ` Reads ${e.members[k]!.join(', ')} off what it is called with.` : '';
+		return `\t/**${k !== key ? ` \`${k}\` in the old app.` : ''}${values}${reads} */\n\treadonly ${quoted}${p.sites >= elementSites ? '' : '?'}: ${propType(k, p, e)};`;
 	});
 	if (e.props['...']) fields.push(`\t/** The old app spreads props here at ${e.props['...']!.sites} site${e.props['...']!.sites === 1 ? '' : 's'}: check those sites for the props they carry. */\n\treadonly [prop: string]: unknown;`);
 	const hasChildren = !!e.props.children;
@@ -388,6 +428,7 @@ function behaviourMarkdown(lib: LibraryUsage, port: readonly ExportUsage[], spec
 		if (props.length) lines.push(`Props: ${props.map(([k, p]) => `${k}${p.values.length ? ` ${p.values.map((v) => JSON.stringify(v)).join('|')}` : ''}${p.dynamic ? ' {expr}' : ''}`).join('; ')}`, '');
 		if (e.variants) for (const [k, v] of Object.entries(e.variants)) lines.push(`Variant ${k}: uses ${v.used.join(', ') || 'only the default'} of ${v.available.join(', ')}${v.used.length ? `; classes: ${v.used.map((u) => `${u} = \`${v.classes[u]}\``).join('; ')}` : ''}`, '');
 		if (Object.keys(e.options).length) lines.push(`Options: ${Object.entries(e.options).map(([k, p]) => `${k}${p.values.length ? ` = ${p.values.map((v) => JSON.stringify(v)).join('|')}` : ''}`).join(', ')}`, '');
+		if (e.data && Object.keys(e.data).length) lines.push(`Data passed: ${Object.entries(e.data).map(([k, p]) => `${k}${p.values.length ? ` = ${p.values.map((v) => JSON.stringify(v)).join('|')}` : ''}${p.dynamic ? ' {expr}' : ''}`).join('; ')}`, '');
 		if (e.reads.length) lines.push(`Reads back: ${e.reads.join(', ')}`, '');
 		for (const [path, list] of Object.entries(e.members)) lines.push(`Members read${path ? ` on ${path}` : ''}: ${list.join(', ')}`, '');
 		for (const spec of specs.get(e) ?? []) {

@@ -54,6 +54,12 @@ export interface ExportUsage {
 	readonly props: Record<string, PropUsage>;
 	/** Hooks and functions: option keys of the first object argument (nested keys as `a.b`). */
 	readonly options: Record<string, PropUsage>;
+	/**
+	 * Keys of the object and array literals passed to it as data, by path from the prop or argument
+	 * (`columnDefs[].field`, `defaultColDef.sortable`, `args[1].rowData`), with the literal values written.
+	 * Members read on functions passed this way (a cell renderer's `params.value`) are in `members` under the same path.
+	 */
+	data?: Record<string, PropUsage>;
 	/** Fields and methods read from what a hook or function returns (`handleSubmit`, `getRowModel().rows`). */
 	readonly reads: string[];
 	/** Members read on values typed with this export, keyed by where the value came from (`` for a direct annotation, `cell.row` for a callback parameter). */

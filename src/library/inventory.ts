@@ -4,7 +4,7 @@ import { join, posix } from 'node:path';
 import { scanSource } from '../source/index.ts';
 import { createContext } from '../source/context.ts';
 import { isConfigFile, isScript, isTestFile, openProject, resolveImport, type Project } from '../source/files.ts';
-import { isFunction, keyName, localInit, parseJsonc, staticValue, known, walk, type Module, type N } from '../source/js.ts';
+import { functionOf, isFunction, keyName, localInit, memberName, parseJsonc, staticValue, known, unwrap, walk, type Module, type N } from '../source/js.ts';
 import type { Component, SourceRoute } from '../source/types.ts';
 import { catalogEntry, type CatalogEntry } from './catalog.ts';
 import { componentRoutes, fileRoutes } from './routes.ts';
@@ -57,7 +57,7 @@ const literal = (node: N | undefined, mod: Module): string | number | boolean | 
 	return known(v) && (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' || v === null) ? v : undefined;
 };
 
-const sourceText = (node: N, mod: Module) => mod.text.slice(node.start, node.end).replace(/\s+/g, ' ').slice(0, 60);
+const sourceText = (node: N, mod: Module, max = 60) => mod.text.slice(node.start, node.end).replace(/\s+/g, ' ').slice(0, max);
 
 function addProp(record: Record<string, PropUsage>, key: string, value: string | number | boolean | null | undefined): void {
 	const p = (record[key] ??= { values: [], dynamic: 0, sites: 0 });
@@ -99,7 +99,7 @@ function chainFrom(id: N, ancestors: readonly N[]): { segs: string[]; called: bo
 		const parent = ancestors[i]!;
 		if (parent.type === 'MemberExpression' && parent.object === node) {
 			segs.push(parent.computed ? (parent.property.type === 'Literal' ? String(parent.property.value) : '[]') : parent.property.name);
-		} else if (parent.type === 'CallExpression' && parent.callee === node) {
+		} else if ((parent.type === 'CallExpression' || parent.type === 'NewExpression') && parent.callee === node) {
 			if (segs.length) segs[segs.length - 1] += '()';
 			else called = true;
 		} else if (parent.type === 'ChainExpression' || parent.type === 'TSNonNullExpression' || parent.type === 'ParenthesizedExpression') {
@@ -112,12 +112,12 @@ function chainFrom(id: N, ancestors: readonly N[]): { segs: string[]; called: bo
 
 const ARRAY_TAIL = /^(map|forEach|filter|find|some|every|length|reduce|slice|join|includes|flatMap|at|\[\])(\(\))?$/;
 
-function chainLabel(segs: readonly string[]): string | undefined {
+function chainLabel(segs: readonly string[], max = 3): string | undefined {
 	const kept: string[] = [];
 	for (const s of segs) {
 		if (ARRAY_TAIL.test(s) && kept.length) break;
 		kept.push(s);
-		if (kept.length === 3) break;
+		if (kept.length === max) break;
 	}
 	return kept.length ? kept.join('.') : undefined;
 }
@@ -164,6 +164,58 @@ interface Binding {
 	readonly name: string;
 	readonly scope: N;
 	readonly onto: (label: string) => void;
+	/** Segments of a member chain kept in a label (3 unless the value is reached through a ref). */
+	readonly max?: number;
+}
+
+const MEMO = /^(React\.)?(useMemo|useCallback|computed|ref|shallowRef|reactive|readonly|createMemo)$/;
+
+/** The object, array or function a value is written as: through consts and `useMemo(() => [...])` and the like; an identifier when it is none of those. */
+function dataNode(node: N | undefined, mod: Module, scope: N, depth = 0): N | undefined {
+	const n = unwrap(node);
+	if (!n || depth > 6) return undefined;
+	if (n.type === 'ObjectExpression' || n.type === 'ArrayExpression' || isFunction(n)) return n;
+	if (n.type === 'Identifier') {
+		const init = localInit(scope, n.name);
+		if (init) return dataNode(init, mod, scope, depth + 1);
+		const bound = mod.bindings.get(n.name);
+		if (bound && bound.type !== 'VariableDeclarator') return isFunction(bound) ? bound : dataNode(bound, mod, mod.program, depth + 1);
+		return n;
+	}
+	if (n.type === 'CallExpression' && MEMO.test(memberName(n.callee) ?? '')) {
+		const arg = unwrap(n.arguments[0]);
+		if (/useMemo|computed|createMemo/.test(memberName(n.callee)!) && arg && isFunction(arg)) return dataNode(returned(arg), mod, arg, depth + 1);
+		return dataNode(arg, mod, scope, depth + 1);
+	}
+	return undefined;
+}
+
+type Push = (name: string, scope: N, onto: (label: string) => void) => void;
+
+/** What a function reads off the value a library hands it: its first parameter, whole or destructured. */
+function paramReads(fn: N, push: Push, record: (label: string) => void): void {
+	const raw = (fn.params as N[])[0];
+	const param = raw?.type === 'AssignmentPattern' ? raw.left : raw;
+	if (param?.type === 'Identifier') push(param.name, fn, (label) => !label.startsWith('->') && record(label));
+	else if (param?.type === 'ObjectPattern') {
+		for (const p of param.properties as N[]) {
+			const key = p.type === 'Property' ? keyName(p.key) : undefined;
+			if (!key) continue;
+			record(key);
+			const value = p.value?.type === 'AssignmentPattern' ? p.value.left : p.value;
+			if (value?.type === 'Identifier') push(value.name, fn, (label) => !label.startsWith('->') && record(`${key}.${label}`));
+		}
+	}
+}
+
+function returned(fn: N): N | undefined {
+	if (fn.body?.type !== 'BlockStatement') return fn.body;
+	let out: N | undefined;
+	walk(fn.body, (n) => {
+		if (out || (isFunction(n) && n !== fn)) return false;
+		if (n.type === 'ReturnStatement') out = n.argument ?? undefined;
+	});
+	return out;
 }
 
 function enclosing(ancestors: readonly N[], program: N): N {
@@ -287,6 +339,7 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 	const kitExports = new Map<string, KitExport>();
 	const files = project.files.filter((f) => isScript(f) && !isTestFile(f) && !isConfigFile(f) && !/\.gen\.[cm]?[jt]sx?$/.test(f));
 	const bindingsToTrack: { mod: Module; binding: Binding }[] = [];
+	const importedFns: { exp: ExportUsage; path: string; file: string; spec: string; imported: string }[] = [];
 	const importers = new Map<string, string[]>();
 
 	for (const file of files) {
@@ -402,6 +455,40 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 		}
 		const handled = new Set<N>();
 		const bind = (name: string, scope: N, onto: (label: string) => void) => bindingsToTrack.push({ mod, binding: { name, scope, onto } });
+		const passData = (exp: ExportUsage, path: string, value: N, scope: N, depth = 0): void => {
+			const either = unwrap(value);
+			if (either?.type === 'ConditionalExpression' || (either?.type === 'LogicalExpression' && depth)) {
+				for (const branch of either.type === 'ConditionalExpression' ? [either.consequent, either.alternate] : [either.left, either.right]) passData(exp, path, branch, scope, depth);
+				return;
+			}
+			const n = dataNode(value, mod, scope);
+			const leaf = (v: string | number | boolean | null | undefined) => {
+				if (!depth) return;
+				addProp((exp.data ??= {}), path, v);
+				seenIn(exp, `data:${path}`, file);
+			};
+			if (!n || depth > 8) return leaf(literal(value, mod));
+			if (isFunction(n)) {
+				leaf(undefined);
+				return paramReads(n, bind, (label) => addMember(exp, path, label, file));
+			}
+			if (n.type === 'Identifier') {
+				const imp = mod.imports.get(n.name);
+				if (imp && (imp.source.startsWith('.') || !packageName(imp.source) || project.aliases.some((a) => imp.source.startsWith(a.prefix)))) importedFns.push({ exp, path, file, spec: imp.source, imported: imp.imported });
+				return leaf(literal(n, mod));
+			}
+			if (n.type === 'ArrayExpression') {
+				for (const el of n.elements as N[]) if (el) passData(exp, el.type === 'SpreadElement' ? path : `${path}[]`, el.type === 'SpreadElement' ? el.argument : el, scope, depth + 1);
+				return;
+			}
+			for (const p of n.properties as N[]) {
+				if (p.type === 'SpreadElement') passData(exp, path, p.argument, scope, depth + 1);
+				else if (p.type === 'Property') {
+					const key = p.computed ? literal(p.key, mod) : keyName(p.key);
+					if (typeof key === 'string' || typeof key === 'number') passData(exp, path ? `${path}.${key}` : String(key), p.value, scope, depth + 1);
+				}
+			}
+		};
 		walk(mod.program, (n, ancestors) => {
 			if (n.type === 'ImportDeclaration') return false;
 			if (n.type === 'JSXOpeningElement') {
@@ -422,7 +509,12 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 					const key = attr.name.type === 'JSXNamespacedName' ? `${attr.name.namespace.name}:${attr.name.name.name}` : attr.name.name;
 					const value = attr.value === null ? true : attr.value.type === 'Literal' ? attr.value.value : attr.value.type === 'JSXExpressionContainer' ? literal(attr.value.expression, mod) : undefined;
 					addProp(exp.props, key, value as string | number | boolean | null | undefined);
-					props[key] = value === undefined ? `{${attr.value?.type === 'JSXExpressionContainer' ? sourceText(attr.value.expression, mod) : '...'}}` : JSON.stringify(value);
+					props[key] = value === undefined ? `{${attr.value?.type === 'JSXExpressionContainer' ? sourceText(attr.value.expression, mod, 200) : '...'}}` : JSON.stringify(value);
+					const expression = attr.value?.type === 'JSXExpressionContainer' && attr.value.expression.type !== 'JSXEmptyExpression' ? (attr.value.expression as N) : undefined;
+					if (!expression) continue;
+					const scope = enclosing(ancestors, mod.program);
+					if (key === 'ref' && expression.type === 'Identifier') bindingsToTrack.push({ mod, binding: { name: expression.name, scope, max: 6, onto: (label) => label.startsWith('current.') && addMember(exp, 'ref', label.slice(8), file) } });
+					else passData(exp, key, expression, scope);
 				}
 				const element = ancestors[ancestors.length - 1];
 				const text = element?.type === 'JSXElement' ? jsxText(element, mod) : undefined;
@@ -465,11 +557,16 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 				const exp = usage(imp.library, exportName);
 				const isCall = called || (imp.imported === '*' && segs[0]?.endsWith('()') === true);
 				const callNode = isCall ? top : undefined;
-				if (callNode?.type === 'CallExpression' || (isCall && rest.length === 0)) {
-					const call = callNode?.type === 'CallExpression' ? callNode : undefined;
+				if (callNode?.type === 'CallExpression' || callNode?.type === 'NewExpression' || (isCall && rest.length === 0)) {
+					const call = callNode?.type === 'CallExpression' || callNode?.type === 'NewExpression' ? callNode : undefined;
 					if (exp.kind !== 'component') exp.kind = /^use[A-Z]/.test(exportName) ? 'hook' : 'function';
 					exp.sites.push({ ...siteBase(mod.line(n.start)), kind: 'call' });
-					const arg = call?.arguments?.[0];
+					const callScope = enclosing(ancestors, mod.program);
+					const args = (call?.arguments ?? []) as N[];
+					const at = args.findIndex((a) => dataNode(a, mod, callScope)?.type === 'ObjectExpression');
+					const arg = at >= 0 ? dataNode(args[at], mod, callScope) : undefined;
+					args.forEach((a, i) => i !== at && a.type !== 'SpreadElement' && passData(exp, `args[${i}]`, a, callScope, 0));
+					for (const p of at >= 0 ? (arg!.properties as N[]) : []) if (p.type === 'Property' && (p.value.type === 'ArrayExpression' || p.value.type === 'ObjectExpression' || isFunction(p.value))) passData(exp, keyName(p.key) ?? '[]', p.value, callScope);
 					if (arg?.type === 'ObjectExpression') {
 						for (const p of arg.properties as N[]) {
 							if (p.type !== 'Property') continue;
@@ -510,6 +607,22 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 					if (label && !exp.reads.includes(label)) exp.reads.push(label);
 					if (exp.kind === 'value' && !exp.sites.length) exp.kind = 'value';
 					exp.sites.push({ ...siteBase(mod.line(n.start)), kind: 'reference' });
+					const scope = enclosing(ancestors, mod.program);
+					let path = '';
+					let skip = imp.imported === '*';
+					let node: N = n;
+					for (let i = ancestors.length - 1; i >= 0 && path.length < 120; i--) {
+						const parent = ancestors[i]!;
+						if (parent.type === 'MemberExpression' && parent.object === node) {
+							const seg = parent.computed ? '[]' : parent.property.name;
+							if (skip) skip = false;
+							else path = path ? `${path}.${seg}` : seg;
+						} else if ((parent.type === 'CallExpression' || parent.type === 'NewExpression') && parent.callee === node) {
+							path += '()';
+							(parent.arguments as N[]).forEach((arg, j) => arg.type !== 'SpreadElement' && passData(exp, `${path}.args[${j}]`, arg, scope, 1));
+						} else if (parent.type !== 'ChainExpression' && parent.type !== 'TSNonNullExpression') break;
+						node = parent;
+					}
 				} else {
 					exp.sites.push({ ...siteBase(mod.line(n.start)), kind: 'reference' });
 				}
@@ -527,6 +640,13 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 							bind(param.name, n, (label) => addMember(exp, '', label, file));
 						}
 					} else if (param.type === 'ObjectPattern') {
+						const direct = annotation.type === 'TSTypeReference' ? typeRefsIn(annotation, libTypes)[0] : undefined;
+						if (direct && !(annotation.typeName.type === 'Identifier' && aliases.has(annotation.typeName.name))) {
+							const imp = locals.get(direct)!;
+							const exp = usage(imp.library, imp.imported);
+							paramReads({ ...n, params: [param] } as N, bind, (label) => addMember(exp, '', label, file));
+							continue;
+						}
 						const props = annotation.type === 'TSTypeReference' && annotation.typeName.type === 'Identifier' ? aliases.get(annotation.typeName.name) : undefined;
 						for (const p of param.properties as N[]) {
 							if (p.type !== 'Property') continue;
@@ -565,7 +685,15 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 		});
 	}
 
-	for (const { binding } of bindingsToTrack) {
+	for (const f of importedFns) {
+		const target = resolveImport(project, f.file, f.spec);
+		const other = target ? await ctx.module(target) : undefined;
+		const fn = other && functionOf(other.exports.get(f.imported), other);
+		if (fn) paramReads(fn, (name, scope, onto) => bindingsToTrack.push({ mod: other, binding: { name, scope, onto } }), (label) => addMember(f.exp, f.path, label, target!));
+	}
+
+	for (let i = 0; i < bindingsToTrack.length && i < 20_000; i++) {
+		const { mod, binding } = bindingsToTrack[i]!;
 		walk(binding.scope, (n, ancestors) => {
 			if (n.type === 'Identifier' && n.name === binding.name) {
 				const parent = ancestors[ancestors.length - 1];
@@ -585,9 +713,11 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 					}
 					return;
 				}
-				const { segs } = chainFrom(n, ancestors);
-				const label = chainLabel(segs);
+				const { segs, top, parent: above } = chainFrom(n, ancestors);
+				const label = chainLabel(segs, binding.max);
 				if (label) binding.onto(label);
+				// `const node = api.getRowNode(id); node.setSelected(true)` reads on through the new name.
+				if (label && segs.length && above?.type === 'VariableDeclarator' && above.init === top && above.id.type === 'Identifier' && label.split('.').length < 6) bindingsToTrack.push({ mod, binding: { name: above.id.name, scope: binding.scope, max: binding.max, onto: (more) => !more.startsWith('->') && binding.onto(`${label}.${more}`) } });
 			}
 		});
 	}
