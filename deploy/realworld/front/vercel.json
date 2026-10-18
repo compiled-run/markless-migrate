@@ -1,26 +1,6 @@
 {
 	"rewrites": [
 		{
-			"source": "/",
-			"destination": "https://mm-realworld-new.vercel.app/"
-		},
-		{
-			"source": "/article/:slug",
-			"destination": "https://mm-realworld-new.vercel.app/article/:slug"
-		},
-		{
-			"source": "/article/:slug/",
-			"destination": "https://mm-realworld-new.vercel.app/article/:slug/"
-		},
-		{
-			"source": "/tag/:tag",
-			"destination": "https://mm-realworld-new.vercel.app/tag/:tag"
-		},
-		{
-			"source": "/tag/:tag/",
-			"destination": "https://mm-realworld-new.vercel.app/tag/:tag/"
-		},
-		{
 			"source": "/profile/:username",
 			"destination": "https://mm-realworld-new.vercel.app/profile/:username"
 		},
@@ -53,14 +33,6 @@
 			"destination": "https://mm-realworld-new.vercel.app/register/"
 		},
 		{
-			"source": "/settings",
-			"destination": "https://mm-realworld-new.vercel.app/settings"
-		},
-		{
-			"source": "/settings/",
-			"destination": "https://mm-realworld-new.vercel.app/settings/"
-		},
-		{
 			"source": "/editor",
 			"destination": "https://mm-realworld-new.vercel.app/editor"
 		},
@@ -75,6 +47,26 @@
 		{
 			"source": "/editor/:slug/",
 			"destination": "https://mm-realworld-new.vercel.app/editor/:slug/"
+		},
+		{
+			"source": "/_markless/:path*",
+			"destination": "https://mm-realworld-new.vercel.app/_markless/:path*"
+		},
+		{
+			"source": "/assets/app-b9OuJdp6.css",
+			"destination": "https://mm-realworld-new.vercel.app/assets/app-b9OuJdp6.css"
+		},
+		{
+			"source": "/assets/fonts-Xz14N6qV.css",
+			"destination": "https://mm-realworld-new.vercel.app/assets/fonts-Xz14N6qV.css"
+		},
+		{
+			"source": "/build/:path*",
+			"destination": "https://mm-realworld-new.vercel.app/build/:path*"
+		},
+		{
+			"source": "/styles/:path*",
+			"destination": "https://mm-realworld-new.vercel.app/styles/:path*"
 		},
 		{
 			"source": "/",

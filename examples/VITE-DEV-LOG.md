@@ -197,3 +197,38 @@ Each is worked around in the app; the workaround is named.
     side of every navigation step rather than as a failure.
 11. Several other agents ran migrations in this worktree at the same time; one served on port 4411, which my
     first baseline used, and its server restarts made that check hang (finding 4). Dedicated ports fixed it.
+
+## Markless 0.5.0 (2026-10-17)
+
+Rebuilt on the published 0.5.0 packages (`@markless/*` 0.5.0, `vite-plus` 0.3.1). The islands build runs through `vp build -c islands.config.ts`: the starters alias `vite` to `@voidzero-dev/vite-plus-core`, which has no `vite` binary.
+
+### Workarounds removed
+
+| Workaround (0.4.0 finding) | Now |
+| --- | --- |
+| 2: `server/html-attributes.ts` rewrote `<html lang="en">` in every response, and `document.tsrx` exported `__marklessRouterHtmlAttributes` by hand | `<Html lang="en-US" dir="ltr" data-variant="vite" data-theme="dark">`; the middleware and the hook are gone |
+| 3: the three head scripts written without `&`, `<`, `>` or quotes (script text was escaped) | the scripts use their quotes again |
+| 8: sponsor classes copied onto every inner row (a nested `@for` dropped attributes reading the outer row) | the inner rows read `tier.linkClass`, `tier.logoClass` and `tier.emptyClass` from the outer row |
+| 13: void elements closed (`</meta>`, `</img>`) | 0.5.0 writes them without a closing tag (no workaround was needed in the app) |
+
+Kept: the Rive canvases, search shortcuts and logo strip in `islands/page.ts`, a plain module script (`onVisible`/`attach` still do not run at load; `onIdle` would start them later than VitePress does).
+
+New: the homepage is the same for every visitor, so it is kept on Vercel's CDN for an hour (`isr: 3600`; the sponsors it renders come from a live file). The search box's code loads at idle, and the appearance and search choices are written to storage as VitePress writes them.
+
+### Check (against the deployments)
+
+`check --concurrency 1 --route /`, old https://vite-dev-old.vercel.app, new https://vite-dev-markless.vercel.app.
+
+`/`: red on a11y, behaviour, network, weight and responsiveness; 71 of 76 interactions exercised. JavaScript on the wire 143.3 → 145.6 kB (0.4.0: 192 kB in 155 requests), run at load 205.2 → 67.7 kB.
+
+Responsiveness (slowest each side): first interaction old 56 ms → new 67 ms at 4x CPU (desktop 60 → 49 ms); navigation old 351 ms → new 424 ms at 4x CPU (desktop 137 → 291 ms).
+
+What keeps it red:
+
+1. The five owner rulings from 0.4.0 (Iconify and sponsors fetched on the server, the FloatingVue error the old docs pages log, Rive frames in forced-state screenshots), still unruled.
+2. Weight: 1.2 kB over the old page (149.1 kB against an allowance of 147.9 kB).
+3. Opening search fetches its 145 kB index, as VitePress does; the check counts any code a Markless interaction fetches. Loading the index on hover was tried and dropped: the pointer rests over the nav when the page loads, so the index counted in the page's weight.
+4. Links from the homepage into the docs: the new app proxies those routes to the old one, so following one is a page load where VitePress navigates in place (205-271 ms → 277-424 ms at 4x CPU).
+5. The install tabs' radios could not be clicked on the old page within the step's 3 s, so their coverage needs a person's accept.
+
+Routes switched: none (as before). The front door (https://markless-migrate-demo.vercel.app) serves the old site everywhere.

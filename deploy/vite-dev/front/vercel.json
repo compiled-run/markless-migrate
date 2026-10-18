@@ -1,6 +1,410 @@
 {
 	"rewrites": [
 		{
+			"source": "/assets/563_x_420_rich_features.Gwgw8IXl.riv.br",
+			"destination": "https://vite-dev-markless.vercel.app/assets/563_x_420_rich_features.Gwgw8IXl.riv.br"
+		},
+		{
+			"source": "/assets/563_x_420_rich_features.Gwgw8IXl.riv.gz",
+			"destination": "https://vite-dev-markless.vercel.app/assets/563_x_420_rich_features.Gwgw8IXl.riv.gz"
+		},
+		{
+			"source": "/assets/563_x_420_rich_features.Gwgw8IXl.riv.zst",
+			"destination": "https://vite-dev-markless.vercel.app/assets/563_x_420_rich_features.Gwgw8IXl.riv.zst"
+		},
+		{
+			"source": "/assets/640_x_300_flexible_plugin.DzLLIuId.riv.br",
+			"destination": "https://vite-dev-markless.vercel.app/assets/640_x_300_flexible_plugin.DzLLIuId.riv.br"
+		},
+		{
+			"source": "/assets/640_x_300_flexible_plugin.DzLLIuId.riv.gz",
+			"destination": "https://vite-dev-markless.vercel.app/assets/640_x_300_flexible_plugin.DzLLIuId.riv.gz"
+		},
+		{
+			"source": "/assets/640_x_300_flexible_plugin.DzLLIuId.riv.zst",
+			"destination": "https://vite-dev-markless.vercel.app/assets/640_x_300_flexible_plugin.DzLLIuId.riv.zst"
+		},
+		{
+			"source": "/assets/641_x_629_vite_masthead.CJXD3cz6.riv.br",
+			"destination": "https://vite-dev-markless.vercel.app/assets/641_x_629_vite_masthead.CJXD3cz6.riv.br"
+		},
+		{
+			"source": "/assets/641_x_629_vite_masthead.CJXD3cz6.riv.gz",
+			"destination": "https://vite-dev-markless.vercel.app/assets/641_x_629_vite_masthead.CJXD3cz6.riv.gz"
+		},
+		{
+			"source": "/assets/641_x_629_vite_masthead.CJXD3cz6.riv.zst",
+			"destination": "https://vite-dev-markless.vercel.app/assets/641_x_629_vite_masthead.CJXD3cz6.riv.zst"
+		},
+		{
+			"source": "/assets/APK-Protocol-Medium-C7Mq9oGh.woff2",
+			"destination": "https://vite-dev-markless.vercel.app/assets/APK-Protocol-Medium-C7Mq9oGh.woff2"
+		},
+		{
+			"source": "/assets/APK-Protocol-Semi-Bold-CC2BASA5.woff2",
+			"destination": "https://vite-dev-markless.vercel.app/assets/APK-Protocol-Semi-Bold-CC2BASA5.woff2"
+		},
+		{
+			"source": "/assets/KHTekaMono-Medium-CxAWoJPq.woff2",
+			"destination": "https://vite-dev-markless.vercel.app/assets/KHTekaMono-Medium-CxAWoJPq.woff2"
+		},
+		{
+			"source": "/assets/KHTekaMono-Regular-CiZ9ZkmZ.woff2",
+			"destination": "https://vite-dev-markless.vercel.app/assets/KHTekaMono-Regular-CiZ9ZkmZ.woff2"
+		},
+		{
+			"source": "/assets/footer-background-BIgtbvhx.jpg",
+			"destination": "https://vite-dev-markless.vercel.app/assets/footer-background-BIgtbvhx.jpg"
+		},
+		{
+			"source": "/assets/inter-italic-cyrillic-By2_1cv3.woff2",
+			"destination": "https://vite-dev-markless.vercel.app/assets/inter-italic-cyrillic-By2_1cv3.woff2"
+		},
+		{
+			"source": "/assets/inter-italic-cyrillic-ext-r48I6akx.woff2",
+			"destination": "https://vite-dev-markless.vercel.app/assets/inter-italic-cyrillic-ext-r48I6akx.woff2"
+		},
+		{
+			"source": "/assets/inter-italic-greek-DJ8dCoTZ.woff2",
+			"destination": "https://vite-dev-markless.vercel.app/assets/inter-italic-greek-DJ8dCoTZ.woff2"
+		},
+		{
+			"source": "/assets/inter-italic-greek-ext-1u6EdAuj.woff2",
+			"destination": "https://vite-dev-markless.vercel.app/assets/inter-italic-greek-ext-1u6EdAuj.woff2"
+		},
+		{
+			"source": "/assets/inter-italic-latin-C2AdPX0b.woff2",
+			"destination": "https://vite-dev-markless.vercel.app/assets/inter-italic-latin-C2AdPX0b.woff2"
+		},
+		{
+			"source": "/assets/inter-italic-latin-ext-CN1xVJS-.woff2",
+			"destination": "https://vite-dev-markless.vercel.app/assets/inter-italic-latin-ext-CN1xVJS-.woff2"
+		},
+		{
+			"source": "/assets/inter-italic-vietnamese-BSbpV94h.woff2",
+			"destination": "https://vite-dev-markless.vercel.app/assets/inter-italic-vietnamese-BSbpV94h.woff2"
+		},
+		{
+			"source": "/assets/inter-roman-cyrillic-C5lxZ8CY.woff2",
+			"destination": "https://vite-dev-markless.vercel.app/assets/inter-roman-cyrillic-C5lxZ8CY.woff2"
+		},
+		{
+			"source": "/assets/inter-roman-cyrillic-ext-BBPuwvHQ.woff2",
+			"destination": "https://vite-dev-markless.vercel.app/assets/inter-roman-cyrillic-ext-BBPuwvHQ.woff2"
+		},
+		{
+			"source": "/assets/inter-roman-greek-BBVDIX6e.woff2",
+			"destination": "https://vite-dev-markless.vercel.app/assets/inter-roman-greek-BBVDIX6e.woff2"
+		},
+		{
+			"source": "/assets/inter-roman-greek-ext-CqjqNYQ-.woff2",
+			"destination": "https://vite-dev-markless.vercel.app/assets/inter-roman-greek-ext-CqjqNYQ-.woff2"
+		},
+		{
+			"source": "/assets/inter-roman-latin-Di8DUHzh.woff2",
+			"destination": "https://vite-dev-markless.vercel.app/assets/inter-roman-latin-Di8DUHzh.woff2"
+		},
+		{
+			"source": "/assets/inter-roman-latin-ext-4ZJIpNVo.woff2",
+			"destination": "https://vite-dev-markless.vercel.app/assets/inter-roman-latin-ext-4ZJIpNVo.woff2"
+		},
+		{
+			"source": "/assets/inter-roman-vietnamese-BjW4sHH5.woff2",
+			"destination": "https://vite-dev-markless.vercel.app/assets/inter-roman-vietnamese-BjW4sHH5.woff2"
+		},
+		{
+			"source": "/assets/primary-button-background-Bjk7gn3x.jpg",
+			"destination": "https://vite-dev-markless.vercel.app/assets/primary-button-background-Bjk7gn3x.jpg"
+		},
+		{
+			"source": "/assets/primary-button-background-CHnwvuqy.jpg",
+			"destination": "https://vite-dev-markless.vercel.app/assets/primary-button-background-CHnwvuqy.jpg"
+		},
+		{
+			"source": "/assets/primary-button-background-DQk9_E88.jpg",
+			"destination": "https://vite-dev-markless.vercel.app/assets/primary-button-background-DQk9_E88.jpg"
+		},
+		{
+			"source": "/assets/primary-button-background-DR4xgNht.jpg",
+			"destination": "https://vite-dev-markless.vercel.app/assets/primary-button-background-DR4xgNht.jpg"
+		},
+		{
+			"source": "/assets/primary-button-background-QdHMRZT6.jpg",
+			"destination": "https://vite-dev-markless.vercel.app/assets/primary-button-background-QdHMRZT6.jpg"
+		},
+		{
+			"source": "/assets/rive.BagEuNN0.wasm.br",
+			"destination": "https://vite-dev-markless.vercel.app/assets/rive.BagEuNN0.wasm.br"
+		},
+		{
+			"source": "/assets/rive.BagEuNN0.wasm.gz",
+			"destination": "https://vite-dev-markless.vercel.app/assets/rive.BagEuNN0.wasm.gz"
+		},
+		{
+			"source": "/assets/rive.BagEuNN0.wasm.zst",
+			"destination": "https://vite-dev-markless.vercel.app/assets/rive.BagEuNN0.wasm.zst"
+		},
+		{
+			"source": "/assets/terminal-background-DXvDA53U.jpg",
+			"destination": "https://vite-dev-markless.vercel.app/assets/terminal-background-DXvDA53U.jpg"
+		},
+		{
+			"source": "/assets/vite-by-voidzero-D7bblMgo.png",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-by-voidzero-D7bblMgo.png"
+		},
+		{
+			"source": "/assets/vite-ci-rfkpyz0p.svg",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-ci-rfkpyz0p.svg"
+		},
+		{
+			"source": "/assets/vite-ci-rfkpyz0p.svg.br",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-ci-rfkpyz0p.svg.br"
+		},
+		{
+			"source": "/assets/vite-ci-rfkpyz0p.svg.gz",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-ci-rfkpyz0p.svg.gz"
+		},
+		{
+			"source": "/assets/vite-ci-rfkpyz0p.svg.zst",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-ci-rfkpyz0p.svg.zst"
+		},
+		{
+			"source": "/assets/vite-dark-D2ACe7TL.svg",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-dark-D2ACe7TL.svg"
+		},
+		{
+			"source": "/assets/vite-dark-D2ACe7TL.svg.br",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-dark-D2ACe7TL.svg.br"
+		},
+		{
+			"source": "/assets/vite-dark-D2ACe7TL.svg.gz",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-dark-D2ACe7TL.svg.gz"
+		},
+		{
+			"source": "/assets/vite-dark-D2ACe7TL.svg.zst",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-dark-D2ACe7TL.svg.zst"
+		},
+		{
+			"source": "/assets/vite-featurepanel-1-background-BHnDg8j4.jpg",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-featurepanel-1-background-BHnDg8j4.jpg"
+		},
+		{
+			"source": "/assets/vite-featurepanel-1-terminal-CQVUoUSU.svg",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-featurepanel-1-terminal-CQVUoUSU.svg"
+		},
+		{
+			"source": "/assets/vite-featurepanel-1-terminal-CQVUoUSU.svg.br",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-featurepanel-1-terminal-CQVUoUSU.svg.br"
+		},
+		{
+			"source": "/assets/vite-featurepanel-1-terminal-CQVUoUSU.svg.gz",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-featurepanel-1-terminal-CQVUoUSU.svg.gz"
+		},
+		{
+			"source": "/assets/vite-featurepanel-1-terminal-CQVUoUSU.svg.zst",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-featurepanel-1-terminal-CQVUoUSU.svg.zst"
+		},
+		{
+			"source": "/assets/vite-featurepanel-2-terminal-ChpAU6sR.png",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-featurepanel-2-terminal-ChpAU6sR.png"
+		},
+		{
+			"source": "/assets/vite-featurepanel-4-background-Bnx0RZk-.jpg",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-featurepanel-4-background-Bnx0RZk-.jpg"
+		},
+		{
+			"source": "/assets/vite-featurepanel-4-terminal-BRnxuy_J.svg",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-featurepanel-4-terminal-BRnxuy_J.svg"
+		},
+		{
+			"source": "/assets/vite-featurepanel-4-terminal-BRnxuy_J.svg.br",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-featurepanel-4-terminal-BRnxuy_J.svg.br"
+		},
+		{
+			"source": "/assets/vite-featurepanel-4-terminal-BRnxuy_J.svg.gz",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-featurepanel-4-terminal-BRnxuy_J.svg.gz"
+		},
+		{
+			"source": "/assets/vite-featurepanel-4-terminal-BRnxuy_J.svg.zst",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-featurepanel-4-terminal-BRnxuy_J.svg.zst"
+		},
+		{
+			"source": "/assets/vite-frameworks-D3X8o4O8.png",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-frameworks-D3X8o4O8.png"
+		},
+		{
+			"source": "/assets/vite-frameworks-mobile-BooA3_E6.png",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-frameworks-mobile-BooA3_E6.png"
+		},
+		{
+			"source": "/assets/vite-kQK6nOhD.css",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-kQK6nOhD.css"
+		},
+		{
+			"source": "/assets/vite-kQK6nOhD.css.br",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-kQK6nOhD.css.br"
+		},
+		{
+			"source": "/assets/vite-kQK6nOhD.css.gz",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-kQK6nOhD.css.gz"
+		},
+		{
+			"source": "/assets/vite-kQK6nOhD.css.zst",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-kQK6nOhD.css.zst"
+		},
+		{
+			"source": "/assets/vite-light-t8GCa_VF.svg",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-light-t8GCa_VF.svg"
+		},
+		{
+			"source": "/assets/vite-light-t8GCa_VF.svg.br",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-light-t8GCa_VF.svg.br"
+		},
+		{
+			"source": "/assets/vite-light-t8GCa_VF.svg.gz",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-light-t8GCa_VF.svg.gz"
+		},
+		{
+			"source": "/assets/vite-light-t8GCa_VF.svg.zst",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-light-t8GCa_VF.svg.zst"
+		},
+		{
+			"source": "/assets/vite-ssr-support-DvdwoLgL.png",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-ssr-support-DvdwoLgL.png"
+		},
+		{
+			"source": "/assets/vite-typed-api-B7gyuuaS.svg",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-typed-api-B7gyuuaS.svg"
+		},
+		{
+			"source": "/assets/vite-typed-api-B7gyuuaS.svg.br",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-typed-api-B7gyuuaS.svg.br"
+		},
+		{
+			"source": "/assets/vite-typed-api-B7gyuuaS.svg.gz",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-typed-api-B7gyuuaS.svg.gz"
+		},
+		{
+			"source": "/assets/vite-typed-api-B7gyuuaS.svg.zst",
+			"destination": "https://vite-dev-markless.vercel.app/assets/vite-typed-api-B7gyuuaS.svg.zst"
+		},
+		{
+			"source": "/build/:path*",
+			"destination": "https://vite-dev-markless.vercel.app/build/:path*"
+		},
+		{
+			"source": "/islands/:path*",
+			"destination": "https://vite-dev-markless.vercel.app/islands/:path*"
+		},
+		{
+			"source": "/logo-without-border.svg.br",
+			"destination": "https://vite-dev-markless.vercel.app/logo-without-border.svg.br"
+		},
+		{
+			"source": "/logo-without-border.svg.gz",
+			"destination": "https://vite-dev-markless.vercel.app/logo-without-border.svg.gz"
+		},
+		{
+			"source": "/logo-without-border.svg.zst",
+			"destination": "https://vite-dev-markless.vercel.app/logo-without-border.svg.zst"
+		},
+		{
+			"source": "/trusted-by/clickup.svg.br",
+			"destination": "https://vite-dev-markless.vercel.app/trusted-by/clickup.svg.br"
+		},
+		{
+			"source": "/trusted-by/clickup.svg.gz",
+			"destination": "https://vite-dev-markless.vercel.app/trusted-by/clickup.svg.gz"
+		},
+		{
+			"source": "/trusted-by/clickup.svg.zst",
+			"destination": "https://vite-dev-markless.vercel.app/trusted-by/clickup.svg.zst"
+		},
+		{
+			"source": "/trusted-by/linear.svg.br",
+			"destination": "https://vite-dev-markless.vercel.app/trusted-by/linear.svg.br"
+		},
+		{
+			"source": "/trusted-by/linear.svg.gz",
+			"destination": "https://vite-dev-markless.vercel.app/trusted-by/linear.svg.gz"
+		},
+		{
+			"source": "/trusted-by/linear.svg.zst",
+			"destination": "https://vite-dev-markless.vercel.app/trusted-by/linear.svg.zst"
+		},
+		{
+			"source": "/trusted-by/openai.svg.br",
+			"destination": "https://vite-dev-markless.vercel.app/trusted-by/openai.svg.br"
+		},
+		{
+			"source": "/trusted-by/openai.svg.gz",
+			"destination": "https://vite-dev-markless.vercel.app/trusted-by/openai.svg.gz"
+		},
+		{
+			"source": "/trusted-by/openai.svg.zst",
+			"destination": "https://vite-dev-markless.vercel.app/trusted-by/openai.svg.zst"
+		},
+		{
+			"source": "/trusted-by/shopify.svg.br",
+			"destination": "https://vite-dev-markless.vercel.app/trusted-by/shopify.svg.br"
+		},
+		{
+			"source": "/trusted-by/shopify.svg.gz",
+			"destination": "https://vite-dev-markless.vercel.app/trusted-by/shopify.svg.gz"
+		},
+		{
+			"source": "/trusted-by/shopify.svg.zst",
+			"destination": "https://vite-dev-markless.vercel.app/trusted-by/shopify.svg.zst"
+		},
+		{
+			"source": "/trusted-by/stripe.svg.br",
+			"destination": "https://vite-dev-markless.vercel.app/trusted-by/stripe.svg.br"
+		},
+		{
+			"source": "/trusted-by/stripe.svg.gz",
+			"destination": "https://vite-dev-markless.vercel.app/trusted-by/stripe.svg.gz"
+		},
+		{
+			"source": "/trusted-by/stripe.svg.zst",
+			"destination": "https://vite-dev-markless.vercel.app/trusted-by/stripe.svg.zst"
+		},
+		{
+			"source": "/trusted-by/wiz.svg.br",
+			"destination": "https://vite-dev-markless.vercel.app/trusted-by/wiz.svg.br"
+		},
+		{
+			"source": "/trusted-by/wiz.svg.gz",
+			"destination": "https://vite-dev-markless.vercel.app/trusted-by/wiz.svg.gz"
+		},
+		{
+			"source": "/trusted-by/wiz.svg.zst",
+			"destination": "https://vite-dev-markless.vercel.app/trusted-by/wiz.svg.zst"
+		},
+		{
+			"source": "/vite-dark.svg.br",
+			"destination": "https://vite-dev-markless.vercel.app/vite-dark.svg.br"
+		},
+		{
+			"source": "/vite-dark.svg.gz",
+			"destination": "https://vite-dev-markless.vercel.app/vite-dark.svg.gz"
+		},
+		{
+			"source": "/vite-dark.svg.zst",
+			"destination": "https://vite-dev-markless.vercel.app/vite-dark.svg.zst"
+		},
+		{
+			"source": "/vite-light.svg.br",
+			"destination": "https://vite-dev-markless.vercel.app/vite-light.svg.br"
+		},
+		{
+			"source": "/vite-light.svg.gz",
+			"destination": "https://vite-dev-markless.vercel.app/vite-light.svg.gz"
+		},
+		{
+			"source": "/vite-light.svg.zst",
+			"destination": "https://vite-dev-markless.vercel.app/vite-light.svg.zst"
+		},
+		{
 			"source": "/",
 			"destination": "https://vite-dev-old.vercel.app/"
 		},
