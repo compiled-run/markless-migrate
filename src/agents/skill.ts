@@ -17,6 +17,25 @@ questions. Never ask them anything and never wait for an answer or an approval d
 every choice below has a default the tool or this skill decides. Work through every route, then report
 once at the end.
 
+## Port every route
+
+A migration that drops routes is not a migration. \`plan\` lists every route of the old site (sitemaps,
+a crawl of every link, the source, robots.txt, feeds and the non-page endpoints) in
+\`.migrate/inventory.json\`; every one of them must exist on the new app. Never stop at a sample, a
+showcase set or "the main pages": \`check\` without \`--route\` checks every route and reports
+"routes ported N of M" with every missing route listed as red, and \`switch\` refuses a front door while
+any route is missing.
+
+- Content-driven sites (docs, blogs, changelogs, marketing pages written in markdown, MDX or a CMS): build
+  the pages from the original content source, not by hand. Write one rule-based importer per template (a
+  docs page, a blog post, a tag listing, a changelog entry) that reads every content file or CMS entry and
+  emits that template's pages, so every page of the template exists and a new post needs no new code.
+  Port each template once, prove it on its representative, then let the importer produce the rest.
+- Pagination, tag and category listings, feeds, redirects and old URLs that still answer are routes too.
+- \`--route\` is for iterating on one route. A run limited by it is a partial run ("partial run: N of M
+  routes"): it is never overall green and never proves the migration. Finish with a run of \`check\`
+  without \`--route\`.
+
 ## The loop
 
 1. Run the old app and note its origin (for example \`http://localhost:3000\`).
@@ -24,7 +43,7 @@ once at the end.
    \`.migrate/inventory.json\`: every route, its SEO tags, assets and locales.
 3. Pick one route from the inventory. Convert it, and what it depends on, in the Markless app.
 4. Run the Markless app and call \`check_route\` with both origins and the route
-   (or \`markless-migrate check --old <origin> --new <origin> --routes <route>\`).
+   (or \`markless-migrate check --old <origin> --new <origin> --route <route>\`).
 5. Every failure names the route, the dimension, the expected and actual values and a likely fix.
    Fix them and check again until the route is green. A "not exercised" failure means no journey
    used that control on the old page: port it (a dialog, a menu, a table control left out shows up
@@ -33,9 +52,10 @@ once at the end.
    (\`markless-migrate proxy\`) and the deploy config (\`markless-migrate config\`) serve it from Markless.
    Never pass \`--force\`: a route that is not green stays on the old app and goes in the final report.
 7. Call \`status\` to see which routes are green, red, not ported or not checked yet, then repeat from
-   step 3. The migration is not done while any planned route is not ported. A route you cannot make
-   green goes in the final report; move on to the next one.
-8. At the end, write one report: which routes are green and switched, how each library was handled
+   step 3 until every route of the old site is ported. The migration is not done while any planned
+   route is missing or not ported: run \`check\` without \`--route\` to measure "routes ported N of M". A
+   route you cannot make green goes in the final report; move on to the next one.
+8. At the end, write one report: routes ported N of M (from \`status\`), which routes are green and switched, how each library was handled
    (plan's "decided" lines), what was accepted automatically, and a section "What to look at if you care":
    each route still red with its failure ids, what differs, what you tried and what you think it needs.
    Mention \`.migrate/report.html\` for anything visual.

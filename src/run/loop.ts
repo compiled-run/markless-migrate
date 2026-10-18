@@ -81,6 +81,9 @@ Make route ${route} of the new app match the old app. Work in the current direct
 ${serveLine(o)}
 - Check with the markless-migrate \`check_route\` tool (${toolArgs.join(', ')}),
   or run \`${command}\`.
+- When this page is one of many built from a content source (a docs page, a blog post, a CMS entry),
+  build it through that template's importer, from the original content, so every route of the
+  template exists and not this page alone.
 - Stop when the check is green, or when you cannot make progress. Never ask a question or wait for an
   answer: nobody is there to reply, and markless-migrate goes on with the next route. End with what is
   still different and what you think it needs, in plain words; it goes into the final report.

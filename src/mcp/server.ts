@@ -12,7 +12,8 @@ import { loadSourceFacts } from '../check/source-facts.ts';
 import { summarize } from '../check/summary.ts';
 import { writeStarterAuth } from '../plan/auth.ts';
 import { plan, summarizeInventory, writeInventory } from '../plan/inventory.ts';
-import { recordResults, STATE_DIR, status, summarizeStatus } from '../status.ts';
+import { readInventory, recordResults, STATE_DIR, status, summarizeStatus } from '../status.ts';
+import { plannedRoutes } from '../plan/inventory.ts';
 import { readSwitched, switchRoute } from '../switch/state.ts';
 import { VERSION } from '../version.ts';
 import { LIBRARIES_FILE, planLibraries, readLibraries, summarizeParity, writeParity } from '../library/index.ts';
@@ -20,6 +21,7 @@ import { LIBRARIES_FILE, planLibraries, readLibraries, summarizeParity, writePar
 const INSTRUCTIONS = `markless-migrate proves that a route moved to Markless still matches the old app.
 Loop: call plan once with the old app's origin and source, convert one route (for its libraries: render the @markless/ui family plan maps, keep framework-agnostic ones as-is, call parity for each one that needs a port), run the new app, call check_route with both origins,
 fix every failure it lists, check again until green, then use status to pick the next route. Never edit the old app to make a check pass. Never carry the old framework's runtime markers (hydration flags such as data-has-hydrated, data-reactroot or data-server-rendered, head-manager attributes such as data-rh, data scripts such as __NEXT_DATA__, Astro's component wrapper elements, its generator meta) into the port: give any rule or script that keys off one the port's own condition. Never name anything "islands".
+Port every route of the old site: plan lists them all, and a migration that drops routes is not a migration. For a content-driven site (docs, blog, marketing pages from markdown, MDX or a CMS) build the pages from the original content source with one rule-based importer per template, never by hand page by page, and never stop at a sample. check_route checks one route (a partial run); the migration is proven by markless-migrate check without --route, which reports routes ported N of M and lists every missing route.
 Never ask the person anything or wait for an approval: every choice has a default (plan decides each library that draws its own UI, check accepts provably harmless differences on its own). A route you cannot make green stays red; go on with the next and list it in your final report.`;
 
 function text(value: string) {
@@ -69,6 +71,7 @@ export function createServer(cwd: string): McpServer {
 		async (args) => {
 			const source = args.source ? (await loadSourceFacts(args.source)).facts : undefined;
 			const auth = args.auth ? await readAuthFile(args.auth) : undefined;
+			const inventory = await readInventory(cwd);
 			const report = await runCheck({
 				oldOrigin: args.old,
 				newOrigin: args.new,
@@ -84,13 +87,14 @@ export function createServer(cwd: string): McpServer {
 				automaticOff: rulesOff(await readOverrides(join(cwd, STATE_DIR))),
 				...(args.responsiveness === false ? {} : { responsiveness: {} }),
 				switched: (await readSwitched(cwd)).routes.map((r) => r.route),
+				partial: { total: inventory ? plannedRoutes(inventory).length : null },
 			});
 			await recordResults(cwd, report);
 			await writeReport(report, join(cwd, STATE_DIR), await status(cwd));
 			const failures = [...report.routes.flatMap((r) => r.failures), ...(report.logins ?? []).flatMap((l) => l.failures)].filter((f) => !f.accepted);
 			const blocked = report.routes.flatMap((r) => (r.blocked ? [{ ...(r.role ? { role: r.role } : {}), message: r.blocked.message }] : []));
 			const infrastructure = report.routes.flatMap((r) => (r.infrastructure ? [{ route: r.route, ...(r.role ? { role: r.role } : {}), message: r.infrastructure.message }] : []));
-			return { ...text(summarize(report)), structuredContent: { ok: report.ok, failures, ...(blocked.length ? { blocked } : {}), ...(infrastructure.length ? { infrastructure } : {}) } };
+			return { ...text(summarize(report)), structuredContent: { ok: report.checkedOk ?? report.ok, failures, ...(blocked.length ? { blocked } : {}), ...(infrastructure.length ? { infrastructure } : {}) } };
 		},
 	);
 

@@ -1,5 +1,6 @@
 import { acceptedLabel } from './automatic.ts';
 import { headlines, type Sample } from './responsiveness.ts';
+import { partialLine } from './summary.ts';
 import type { Box, Failure, LoginResult, Report, ResponsivenessSummary, RouteResult, Shot, SourceLink } from './types.ts';
 import { remaining, type Status } from '../status.ts';
 
@@ -318,13 +319,16 @@ function renderPage(report: Report, status?: Status): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${report.ok ? (report.unchecked?.length ? 'Unchecked routes' : 'Green') : 'Red'}: old vs new, ${green} of ${report.routes.length} routes green${report.unchecked?.length ? `, ${report.unchecked.length} not checked` : ''}</title>
+<title>${report.ok ? (report.unchecked?.length ? 'Unchecked routes' : 'Green') : report.partial && report.checkedOk ? 'Partial' : 'Red'}: old vs new, ${green} of ${report.routes.length} routes green${report.unchecked?.length ? `, ${report.unchecked.length} not checked` : ''}</title>
 <style>${STYLE}</style>
 </head>
 <body>
 <header>
 <h1>Old vs new</h1>
 <p>Old <code>${esc(report.old)}</code> against new <code>${esc(report.new)}</code>, checked ${esc(report.startedAt)}. <strong>${green} of ${report.routes.length} routes green${report.unchecked?.length ? `, ${report.unchecked.length} not checked (needs a sample)` : ''}.</strong></p>
+${report.partial ? `<p><strong>${esc(partialLine(report.partial))}</strong></p>` : ''}
+${report.coverage ? `<p><strong>Routes ported: ${report.coverage.present} of ${report.coverage.total} routes of the old site${report.coverage.missing.length ? `, ${report.coverage.missing.length} missing on the new app` : ''}${report.coverage.accepted.length ? `, ${report.coverage.accepted.length} left out on purpose (accepted)` : ''}.</strong></p>${report.coverage.failures.length ? `<details${report.coverage.missing.length ? ' open' : ''}><summary>Routes the new app lacks</summary><ul>${report.coverage.failures.map((f) => `<li><code>${esc(f.route)}</code> old ${esc(f.expected)}, new ${esc(f.actual)}${f.accepted ? ` (accepted: ${esc(f.accepted.reason)})` : f.id ? ` [${esc(f.id)}]` : ''}</li>`).join('')}</ul></details>` : ''}` : ''}
+${report.templates ? `<p>Every page got every check except visual, behaviour and responsiveness, which ran on one representative per template group (by URL pattern and page layout): ${report.templates.groups.map((g) => `<code>${esc(g.pattern)}</code> ${g.members.length} pages, on ${esc(g.representative)}`).join('; ')}.</p>` : ''}
 ${report.responsiveness ? responsivenessHeader(report.responsiveness) : ''}
 ${run(report)}
 <p><small>Red boxes mark where the screenshots differ outside the noise mask. Slider: drag to wipe between old (left of the line) and new. Blink: alternates old and new in place.</small></p>
@@ -356,6 +360,7 @@ export function renderStatusPage(status: Status, origins: { readonly old: string
 <header>
 <h1>Migration to Markless</h1>
 <p>Old app <code>${esc(origins.old)}</code>, new app <code>${esc(origins.new)}</code>. Switched routes are served by the new app, every other route by the old one.</p>
+<p><strong>${status.coverage ? `Routes ported: ${status.coverage.ported} of ${status.coverage.total} routes of the old site${status.coverage.missing.length ? `, ${status.coverage.missing.length} missing on the new app` : ''}.` : 'Routes ported: not measured yet.'}</strong></p>
 ${missing.length ? `<h2>Not ported yet</h2><ul>${missing.map((r) => `<li><code>${esc(r.route)}</code> ${esc(r.state)}</li>`).join('')}</ul>` : ''}
 ${migrationSection(status)}
 </header>

@@ -74,6 +74,8 @@ export const AGENT_ENV = 'MARKLESS_MIGRATE_AGENT';
 export async function switchRoute(cwd: string, route: string, options: { force?: { readonly reason: string; readonly by: string } } = {}): Promise<SwitchOutcome> {
 	const invalid = routeProblem(route);
 	if (invalid) return { ok: false, reason: invalid };
+	const lacking = await missingUnder(cwd, route);
+	if (lacking) return { ok: false, reason: lacking };
 	const results = JSON.parse(await readFile(join(stateDir(cwd), 'results.json'), 'utf8').catch(() => '{}')) as Record<string, RouteState>;
 	const checks = checksFor(route, results);
 	const checked = checks.map(({ key, state }) => describe(key, state));
@@ -87,6 +89,19 @@ export async function switchRoute(cwd: string, route: string, options: { force?:
 	const entry: SwitchedRoute = { route, at: new Date().toISOString(), checks: checked, ...(!green && options.force ? { forced: { reason: options.force.reason, by: options.force.by } } : {}) };
 	const path = await writeSwitched(cwd, { routes: [...current.routes.filter((r) => r.route !== route), entry] });
 	return { ok: true, path, entry, already: Boolean(existing) };
+}
+
+const readJson = async <T>(path: string): Promise<T | undefined> => JSON.parse(await readFile(path, 'utf8').catch(() => 'null')) ?? undefined;
+
+/** Why a switch would send routes the new app lacks to it: a route or pattern covering a missing route, or a catch-all front door before coverage was measured. No --force overrides it; a route left out on purpose is an accepted difference. */
+export async function missingUnder(cwd: string, route: string): Promise<string | undefined> {
+	const coverage = await readJson<{ missing?: readonly string[]; total?: number }>(join(stateDir(cwd), 'coverage.json'));
+	const planned = await readJson<{ allRoutes?: readonly unknown[] }>(join(stateDir(cwd), 'inventory.json'));
+	const catchAll = /[*]/.test(route) && isSwitched([route], '/markless-migrate/any/deep/path');
+	if (!coverage) return catchAll && planned?.allRoutes ? `not switching ${route}: it sends every path to the new app, and nothing has measured yet whether every route of the old site exists there. Run check without --route first.` : undefined;
+	const sent = (coverage.missing ?? []).filter((path) => isSwitched([route], path));
+	if (!sent.length) return undefined;
+	return `not switching ${route}: the new app lacks ${sent.length} route${sent.length === 1 ? '' : 's'} of the old site it would send there (${sent.length} of ${coverage.missing!.length} missing, ${coverage.total} routes in all): ${sent.join(', ')}. Port them, or record each one left out on purpose with accept <id> --reason <why>; --force does not override this.`;
 }
 
 export async function unswitchRoute(cwd: string, route: string): Promise<{ removed: boolean; path: string }> {

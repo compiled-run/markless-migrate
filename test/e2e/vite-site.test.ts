@@ -752,10 +752,10 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		assert.deepEqual(starter.roles.admin.login.at(-1), { wait: '!/login/' });
 		const credentials = { SIGNED_IN_EMAIL: 'sam@lighthouse.example', SIGNED_IN_PASSWORD: 'night-route', ADMIN_EMAIL: 'kit@lighthouse.example', ADMIN_PASSWORD: 'godrevy' };
 		const checked = await cli(['check', '--old', old.origin, '--new', twin.origin, '--route', '/members/', '--route', '/admin/', '--auth', join(cwd, '.migrate', 'auth.json'), '--no-responsiveness'], cwd, credentials);
-		assert.equal(checked.status, 0, checked.stdout + checked.stderr);
+		assert.equal(checked.status, 4, 'every route it checked is green; a --route run is partial, never overall green');
 		assert.match(checked.stdout, /As anonymous:\npass +\/members\//);
 		assert.match(checked.stdout, /As signed-in:\n {6}sign-in: same session cookies \(session: Path=\/; host-only; HttpOnly; not Secure; SameSite=Lax; session\)\npass +\/members\//);
-		assert.match(checked.stdout, /6 of 6 route checks \(route and role\) green\./);
+		assert.match(checked.stdout, /6 of 6 route checks \(route and role\) green\.\nPartial run: 2 of \d+ routes checked\./);
 		const html = await readFile(join(cwd, '.migrate', 'report.html'), 'utf8');
 		assert.deepEqual([...html.matchAll(/<h2>As ([\w-]+)<\/h2>/g)].map((m) => m[1]), ['anonymous', 'signed-in', 'admin']);
 		assert.match(await readFile(join(cwd, '.migrate', 'auth', 'admin.new.json'), 'utf8'), /"name": "session"/);
@@ -768,7 +768,7 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		assert.match(stopped.stdout, /BLOCKED +\/about\/ +blocked by Cloudflare on OLD \(403, header cf-mitigated: challenge\): use a staging URL or pass --header\/--cookie with a bypass token/);
 		assert.match(stopped.stdout, /0 of 1 routes green, 1 blocked by bot protection\./);
 		const passed = await cli(['check', '--old', walled.origin, '--new', twin.origin, '--route', '/about/', '--header', `x-staging-pass: ${WALL}`, '--no-responsiveness'], cwd);
-		assert.equal(passed.status, 0, passed.stdout);
+		assert.equal(passed.status, 4, passed.stdout);
 		const client = await connect(cwd);
 		try {
 			const blocked = await client.callTool({ name: 'check_route', arguments: { old: twin.origin, new: walled.origin, route: '/', responsiveness: false } });
@@ -794,7 +794,7 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		const entry = JSON.parse(await readFile(join(cwd, '.migrate', 'accepted.json'), 'utf8')).accepted[0];
 		assert.deepEqual([entry.route, entry.dimension, entry.check, entry.match, entry.by, entry.id], ['/about/', 'seo', 'title', { expected: '"About | Lighthouse Walks"', actual: '"About us | Lighthouse Walks"' }, 'Jack', id]);
 		const second = await cli(args, cwd);
-		assert.equal(second.status, 0, second.stdout);
+		assert.equal(second.status, 4, second.stdout);
 		assert.match(second.stdout, new RegExp(`pass +/about/ +\\(1 accepted\\)`));
 		assert.match(second.stdout, new RegExp(`accepted seo(?: \\(desktop\\))?: title  \\[${id}\\]\n +reason: +Marketing renamed the page \\(Jack, \\d{4}-\\d\\d-\\d\\d\\)`), 'the same failure has the same id on the next run');
 		assert.match(second.stdout, /1 of 1 routes green, 1 accepted difference\./);
@@ -802,7 +802,7 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		const listed = await cli(['status'], cwd);
 		assert.match(listed.stdout, /green +\/about\/  \(\d+ of \d+ interactions exercised\)  \(1 accepted\)\n +accepted seo: title: Marketing renamed the page/);
 		const stale = await cli(['check', '--old', old.origin, '--new', twin.origin, '--route', '/about/', '--no-responsiveness'], cwd);
-		assert.equal(stale.status, 0, stale.stdout);
+		assert.equal(stale.status, 4, stale.stdout);
 		assert.match(stale.stdout, /Accepted differences that no longer match anything \(remove them from \.migrate\/accepted\.json\):\n +\/about\/ seo: title +\(Marketing renamed the page\)/);
 	});
 

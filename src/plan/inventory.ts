@@ -8,6 +8,10 @@ import { blocker } from '../check/trackers.ts';
 import { proposeAuth, readLoginForm, withLoginForm, type ProposedAuth } from './auth.ts';
 import { scanForInventory, summarizeSource, unionRoutes, type RouteUnionEntry, type SourceInventory } from './source.ts';
 import { request } from '../check/http.ts';
+import { defaultEnv } from '../check/browser.ts';
+import { discoverEndpoints } from '../check/endpoints.ts';
+import { DEFAULT_CRAWL_BOUND, enumerateRoutes, routesToPort, type PlannedRoute, type RouteSource } from './enumerate.ts';
+import { routeTargets } from './routes.ts';
 
 export interface InventoryRoute {
 	readonly route: string;
@@ -33,6 +37,15 @@ export interface Inventory {
 	readonly routeUnion?: readonly RouteUnionEntry[];
 	/** Roles and the login route proposed from the source's auth guards: the starter for check --auth. */
 	readonly auth?: ProposedAuth;
+	/** Every route of the old site, from every source plan read (sitemaps, the link crawl, the source, robots.txt, feeds, fixed non-page paths): what check checks and the coverage dimension counts. */
+	readonly allRoutes?: readonly PlannedRoute[];
+	/** How far the link crawl went: pages fetched, its bound, and whether it stopped at the bound. */
+	readonly crawl?: { readonly fetched: number; readonly bound: number; readonly truncated: boolean; readonly sitemaps: readonly string[] };
+}
+
+/** Every route the migration must port: the full route list, or for an older inventory the routes plan visited. */
+export function plannedRoutes(inventory: Pick<Inventory, 'routes' | 'allRoutes'>): string[] {
+	return inventory.allRoutes ? routesToPort(inventory.allRoutes).map((r) => r.route) : inventory.routes.map((r) => r.route);
 }
 
 export interface SourceInfo {
@@ -50,6 +63,8 @@ export interface PlanOptions {
 	readonly headers?: Readonly<Record<string, string>>;
 	readonly cookies?: readonly { readonly name: string; readonly value: string }[];
 	readonly userAgent?: string;
+	/** At most this many pages fetched by the link crawl that lists every route (default 10,000). */
+	readonly crawlBound?: number;
 }
 
 function ownHeaders(options: Pick<PlanOptions, 'headers' | 'cookies' | 'userAgent'>): Record<string, string> {
@@ -226,8 +241,20 @@ export async function plan(options: PlanOptions): Promise<Inventory> {
 	for (const locale of sortedLocales) landing[locale] = (await captureHttp(origin, '/', { ...own, 'accept-language': locale })).chain.at(-1)!.url;
 	const negotiation = new Set(Object.values(landing)).size > 1 ? landing : {};
 	const source = options.source ? await readSource(options.source) : undefined;
-	const crawled = [...found.keys()].map((r) => r.split(/[?#]/)[0]!);
+	const seeds = new Map<string, RouteSource[]>([...found].map(([route, how]) => [route, [...how]]));
+	const enumeration = await enumerateRoutes(origin, { headers: own, bound: options.crawlBound ?? DEFAULT_CRAWL_BOUND, seeds });
+	const listed = new Map(enumeration.routes.map((r) => [r.route, r]));
+	const add = (route: string, how: RouteSource) => {
+		const known = listed.get(route);
+		listed.set(route, known ? (known.sources.includes(how) ? known : { ...known, sources: [...known.sources, how].sort() }) : { route, sources: [how] });
+	};
+	const crawled = [...found.keys(), ...routesToPort(enumeration.routes).map((r) => r.route)].map((r) => r.split(/[?#]/)[0]!);
 	const union = source ? unionRoutes([...new Set(crawled)], source.routes) : [];
+	const fromSource = source ? routeTargets({ routes: [], routeUnion: union, source } as unknown as Inventory) : undefined;
+	for (const entry of union) if (entry.knownBy.includes('source')) for (const path of entry.crawled) add(path, 'source');
+	for (const path of fromSource?.pages ?? []) add(path, 'source');
+	const pages = [...listed.values()].filter((r) => r.status === undefined || (r.status < 400 && /html/.test(r.contentType ?? 'text/html'))).map((r) => r.route);
+	for (const path of await discoverEndpoints(defaultEnv(origin, { headers: own }), pages, fromSource?.endpoints ?? [])) add(path, 'endpoint');
 	let auth = source ? proposeAuth(source.authGuards, source.routes, union, routes.find((r) => r.route === '/')?.redirectsTo) : undefined;
 	if (auth?.loginRoute) {
 		const formBrowser = options.browser ?? (await chromium.launch());
@@ -248,6 +275,8 @@ export async function plan(options: PlanOptions): Promise<Inventory> {
 		localeRouting: { prefixes, negotiation },
 		...(source ? { source, routeUnion: union } : {}),
 		...(auth ? { auth } : {}),
+		allRoutes: [...listed.values()].sort((a, b) => a.route.localeCompare(b.route)),
+		crawl: { fetched: enumeration.fetched, bound: enumeration.bound, truncated: enumeration.truncated, sitemaps: enumeration.sitemaps },
 	};
 }
 
@@ -259,7 +288,16 @@ export async function writeInventory(inventory: Inventory, dir: string): Promise
 }
 
 export function summarizeInventory(inventory: Inventory): string {
-	const lines = [`${inventory.routes.length} routes on ${inventory.origin}${inventory.truncated ? ` (stopped at the limit of ${inventory.limit})` : ''}`];
+	const lines: string[] = [];
+	if (inventory.allRoutes) {
+		const port = routesToPort(inventory.allRoutes);
+		const by = new Map<string, number>();
+		for (const r of port) for (const how of r.sources) by.set(how, (by.get(how) ?? 0) + 1);
+		const broken = inventory.allRoutes.length - port.length;
+		lines.push(`${port.length} routes on the old site to port, from ${[...by].map(([how, n]) => `${how} ${n}`).join(', ')}${broken ? `; ${broken} linked or listed paths the old site answers with an error, left out` : ''}`);
+		if (inventory.crawl) lines.push(`  link crawl fetched ${inventory.crawl.fetched} pages${inventory.crawl.truncated ? `, and STOPPED at its bound of ${inventory.crawl.bound}: raise --crawl-limit, routes linked only from the pages left unfetched are not listed` : ', and every link was followed'}${inventory.crawl.sitemaps.length ? `; sitemaps read: ${inventory.crawl.sitemaps.join(', ')}` : '; no sitemap found'}`);
+	}
+	lines.push(`${inventory.routes.length} routes inventoried in the browser (SEO, assets, locales) on ${inventory.origin}${inventory.truncated ? ` (stopped at the limit of ${inventory.limit}; check still checks every route above)` : ''}`);
 	for (const r of inventory.routes) {
 		lines.push(`  ${String(r.status).padEnd(4)}${r.route}${r.redirectsTo ? ` -> ${r.redirectsTo}` : ''}${r.seo.title ? `  "${r.seo.title}"` : ''}`);
 	}

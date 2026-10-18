@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path';
 import { readAuthFile, type AuthConfig } from '../../src/check/auth.ts';
 import { recorderEnv } from '../../src/check/recorder.ts';
 import type { CheckOptions } from '../../src/check/run.ts';
-import type { Dimension, Report } from '../../src/check/types.ts';
+import type { FailureDimension as Dimension, Report } from '../../src/check/types.ts';
 
 export const ROOT = new URL('../..', import.meta.url).pathname.replace(/\/$/, '');
 const MUTANTS = join(ROOT, '.mutants');

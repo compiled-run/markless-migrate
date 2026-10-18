@@ -8,10 +8,16 @@ import type { Responsiveness, SpeedName, Worst } from './responsiveness.ts';
 
 export const DIMENSIONS = ['http', 'auth', 'rendered', 'visual', 'seo', 'assets', 'css', 'a11y', 'i18n', 'behaviour', 'network', 'data', 'weight', 'responsiveness'] as const;
 export type Dimension = (typeof DIMENSIONS)[number];
+/** Route coverage is measured for the whole site, not per route: a failure of it names the route the new app lacks. */
+export type FailureDimension = Dimension | 'coverage';
 
-/** A dimension was left out because a side was blocked or let this role in differently; an unmeasured responsiveness is not that. */
-export function notCompared(dimensions: RouteResult['dimensions']): boolean {
-	return Object.entries(dimensions).some(([d, state]) => state === 'skipped' && d !== 'responsiveness');
+/** Checked only on its template group's representative: the rest of the group gets every other dimension. */
+export const REPRESENTATIVE_ONLY: readonly Dimension[] = ['visual', 'behaviour', 'responsiveness'];
+
+/** A dimension was left out because a side was blocked or let this role in differently; an unmeasured responsiveness, or one its template's representative checks, is not that. */
+export function notCompared(route: Pick<RouteResult, 'dimensions' | 'template' | 'route'>): boolean {
+	const byRepresentative = route.template && route.template.representative !== route.route;
+	return Object.entries(route.dimensions).some(([d, state]) => state === 'skipped' && d !== 'responsiveness' && !(byRepresentative && REPRESENTATIVE_ONLY.includes(d as Dimension)));
 }
 
 export interface Viewport {
@@ -168,7 +174,7 @@ export interface Failure {
 	readonly route: string;
 	/** The role the route was checked as, when check ran with --auth. */
 	readonly role?: string;
-	readonly dimension: Dimension;
+	readonly dimension: FailureDimension;
 	readonly check: string;
 	readonly viewport?: string;
 	readonly expected: string;
@@ -233,6 +239,26 @@ export interface RouteResult {
 	readonly notPorted?: boolean;
 	/** How soon each control the journeys exercised answers its first use, and each internal link shows the next page, old and new, at desktop speed and on a throttled phone. */
 	readonly responsiveness?: Responsiveness;
+	/** The template group the route was put in (by URL pattern and page structure); visual, behaviour and responsiveness were checked on its representative. */
+	readonly template?: { readonly pattern: string; readonly representative: string; readonly members: number };
+}
+
+/** Whether every route of the old site exists on the new app. */
+export interface RouteCoverage {
+	/** Planned routes the old app answers without an error. */
+	readonly total: number;
+	/** Of those, the ones the new app answers alike (same status class, same redirect target). */
+	readonly present: number;
+	/** Routes the new app lacks that no accepted difference covers. */
+	readonly missing: readonly string[];
+	/** Routes the new app lacks on purpose, by an owner-recorded accepted difference. */
+	readonly accepted: readonly string[];
+	/** One failure per route the new app lacks, accepted or not. */
+	readonly failures: readonly Failure[];
+	/** Planned routes the old app itself answers with an error: not routes of the old site, so not counted. */
+	readonly notOnOld: readonly string[];
+	/** Planned routes an app did not answer after three tries (`/path (OLD)` or `/path (NEW)`), so not measured: coverage is not green while any is listed. */
+	readonly unreachable: readonly string[];
 }
 
 /** The slowest timing on each side, and where: `route control`. */
@@ -329,4 +355,12 @@ export interface Report {
 	readonly responsiveness?: ResponsivenessSummary;
 	/** Accepted differences for routes checked in this run that no longer match any failure. */
 	readonly staleAccepts?: readonly import('./accepted.ts').Accept[];
+	/** Every checked route and sign-in is green: the verdict for the routes this run checked, which is the overall one only when the run is not partial. */
+	readonly checkedOk?: boolean;
+	/** Set when the run checked fewer routes than the plan lists (--route, --changed): it is never overall green. `total` is null without a plan. */
+	readonly partial?: { readonly checked: number; readonly total: number | null };
+	/** Every route of the old site checked for existence on the new app. */
+	readonly coverage?: RouteCoverage;
+	/** Pages grouped by template: every page got the other dimensions, visual, behaviour and responsiveness ran on each group's representative. */
+	readonly templates?: { readonly groups: readonly { readonly pattern: string; readonly representative: string; readonly members: readonly string[] }[] };
 }

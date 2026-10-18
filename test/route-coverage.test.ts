@@ -1,0 +1,221 @@
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { after, before, test } from 'node:test';
+import { chromium, type Browser } from 'playwright';
+import { acceptFailure } from '../src/check/accepted.ts';
+import { runCheck } from '../src/check/run.ts';
+import { summarize } from '../src/check/summary.ts';
+import { domSignature, urlPattern } from '../src/check/templates.ts';
+import { enumerateRoutes } from '../src/plan/enumerate.ts';
+import { recordResults, status } from '../src/status.ts';
+import { switchRoute } from '../src/switch/state.ts';
+
+const CLI = join(import.meta.dirname, '../src/cli.ts');
+const SITEMAP_ROUTES = ['/', '/about', '/docs/intro', '/docs/install', '/docs/config', '/docs/api', '/blog', '/blog/one', '/blog/two', '/contact'];
+
+const page = (title: string, links: readonly string[] = []) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title></head><body><main><h1>${title}</h1>${links.map((l) => `<a href="${l}">${l}</a>`).join(' ')}</main></body></html>`;
+
+type Handler = (path: string, search: string) => { status: number; type?: string; body?: string; location?: string } | undefined;
+
+function serve(handler: Handler): Promise<Server> {
+	const server = createServer((req, res) => {
+		const url = new URL(req.url ?? '/', 'http://x');
+		const out = handler(url.pathname, url.search) ?? { status: 404, body: page('Not found') };
+		res.writeHead(out.status, { 'content-type': out.type ?? 'text/html; charset=utf-8', ...(out.location ? { location: out.location } : {}) }).end(out.body ?? '');
+	});
+	return new Promise((done) => server.listen(0, '127.0.0.1', () => done(server)));
+}
+
+const origin = (s: Server) => `http://127.0.0.1:${(s.address() as AddressInfo).port}`;
+const sitemap = (base: string, routes: readonly string[]) => `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${routes.map((r) => `<url><loc>${base}${r}</loc></url>`).join('')}</urlset>`;
+
+let browser: Browser;
+let old: Server;
+let next: Server;
+let crawly: Server;
+before(async () => {
+	browser = await chromium.launch();
+	old = await serve((path) => {
+		if (path === '/sitemap.xml') return { status: 200, type: 'application/xml', body: sitemap('https://www.example.com', SITEMAP_ROUTES) };
+		return SITEMAP_ROUTES.includes(path) ? { status: 200, body: page(`Old ${path}`) } : undefined;
+	});
+	next = await serve((path) => (['/', '/about', '/blog'].includes(path) ? { status: 200, body: page(`Old ${path}`) } : undefined));
+	crawly = await serve((path, search) => {
+		const base = origin(crawly);
+		if (path === '/robots.txt') return { status: 200, type: 'text/plain', body: `User-agent: *\nAllow: /private/\nDisallow: /api/\nSitemap: ${base}/maps/index.xml\n` };
+		if (path === '/maps/index.xml') return { status: 200, type: 'application/xml', body: `<?xml version="1.0"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>${base}/maps/pages.xml</loc></sitemap></sitemapindex>` };
+		if (path === '/maps/pages.xml') return { status: 200, type: 'application/xml', body: sitemap(base, ['/', '/docs']) };
+		if (path === '/') return { status: 200, body: page('Home', ['/docs', '/blog', 'mailto:hi@example.com', 'https://elsewhere.example/x']) };
+		if (path === '/docs') return { status: 200, body: page('Docs', ['/docs/hidden', '/docs/hidden#part', '/old-docs']) };
+		if (path === '/docs/hidden') return { status: 200, body: page('Hidden') };
+		if (path === '/old-docs') return { status: 301, location: '/docs/moved' };
+		if (path === '/docs/moved') return { status: 200, body: page('Moved') };
+		if (path === '/blog' && search === '?page=2') return { status: 200, body: page('Blog 2', ['/blog/post-9']) };
+		if (path === '/blog') return { status: 200, body: `${page('Blog', ['/blog?page=2', '/blog?utm_source=x'])}<link rel="alternate" type="application/rss+xml" href="/rss.xml">` };
+		if (path === '/blog/post-9') return { status: 200, body: page('Post 9') };
+		if (path === '/rss.xml') return { status: 200, type: 'application/rss+xml', body: `<?xml version="1.0"?><rss version="2.0"><channel><title>Blog</title><link>${base}/blog</link><item><title>From the feed</title><link>${base}/posts/from-feed</link></item></channel></rss>` };
+		if (path === '/posts/from-feed') return { status: 200, body: page('From the feed') };
+		if (path === '/private/') return { status: 200, body: page('Private') };
+		return undefined;
+	});
+});
+after(async () => {
+	await browser?.close();
+	for (const s of [old, next, crawly]) s?.close();
+});
+
+test('an old site with 10 sitemap routes against a new app with 3: coverage is red and lists the 7 missing', async () => {
+	const planned = await enumerateRoutes(origin(old));
+	assert.deepEqual(planned.routes.map((r) => r.route).sort(), [...SITEMAP_ROUTES, '/sitemap.xml'].sort());
+	const pages = planned.routes.filter((r) => r.route !== '/sitemap.xml').map((r) => r.route);
+	const report = await runCheck({ oldOrigin: origin(old), newOrigin: origin(next), routes: [], coverage: pages, browser });
+	assert.equal(report.ok, false);
+	assert.equal(report.coverage!.total, 10);
+	assert.equal(report.coverage!.present, 3);
+	assert.deepEqual(report.coverage!.missing, ['/blog/one', '/blog/two', '/contact', '/docs/api', '/docs/config', '/docs/install', '/docs/intro']);
+	const text = summarize(report);
+	assert.match(text, /Routes on the new app: 3 of 10 routes of the old site present, 7 missing\./);
+	assert.match(text, /Missing on the new app \(7\):\n {2}\/blog\/one {2}old 200, new 404 {2}\[[0-9a-f]{10}\]/);
+	for (const route of report.coverage!.missing) assert.match(text, new RegExp(`^  ${route.replace(/\//g, '\\/')}  old 200, new 404`, 'm'));
+});
+
+test('a route left out on purpose, by an accepted difference, no longer counts as missing', async () => {
+	const pages = SITEMAP_ROUTES;
+	const first = await runCheck({ oldOrigin: origin(old), newOrigin: origin(next), routes: [], coverage: pages, browser });
+	const contact = first.coverage!.failures.find((f) => f.route === '/contact')!;
+	const accepted = [acceptFailure(contact, { old: first.old, new: first.new }, 'The contact form moved to the help centre', 'Jack')];
+	const second = await runCheck({ oldOrigin: origin(old), newOrigin: origin(next), routes: [], coverage: pages, browser, accepted });
+	assert.equal(second.coverage!.missing.length, 6);
+	assert.deepEqual(second.coverage!.accepted, ['/contact']);
+	assert.match(summarize(second), /3 of 10 routes of the old site present, 6 missing, 1 left out on purpose \(accepted\)/);
+});
+
+test('the link crawl finds routes the sitemap does not list: linked pages, pagination, redirect targets and feed items, and nothing off-site', async () => {
+	const planned = await enumerateRoutes(origin(crawly));
+	const by = Object.fromEntries(planned.routes.map((r) => [r.route, r.sources]));
+	assert.deepEqual(by['/docs'], ['crawl', 'sitemap']);
+	assert.deepEqual(by['/docs/hidden'], ['crawl'], 'linked from /docs only');
+	assert.deepEqual(by['/blog?page=2'], ['crawl'], 'a pagination query is kept');
+	assert.deepEqual(by['/blog/post-9'], ['crawl'], 'found by following pagination');
+	assert.deepEqual(by['/docs/moved'], ['redirect']);
+	assert.deepEqual(by['/posts/from-feed'], ['feed']);
+	assert.deepEqual(by['/private/'], ['robots']);
+	assert.ok(by['/rss.xml']!.includes('feed'));
+	assert.equal(planned.routes.find((r) => r.route === '/old-docs')?.status, 301);
+	assert.ok(!planned.routes.some((r) => r.route.startsWith('/api') || r.route.includes('utm_source') || r.route.includes('#') || r.route.startsWith('mailto')), planned.routes.map((r) => r.route).join(', '));
+	assert.deepEqual(planned.sitemaps, ['/maps/index.xml', '/maps/pages.xml']);
+	assert.equal(planned.truncated, false);
+	const bounded = await enumerateRoutes(origin(crawly), { bound: 2 });
+	assert.equal(bounded.truncated, true, 'a crawl stopped at its bound says so');
+});
+
+function cli(args: readonly string[], cwd: string): Promise<{ status: number; stdout: string; stderr: string }> {
+	return new Promise((done) => {
+		const child = spawn(process.execPath, [CLI, ...args], { cwd });
+		const r = { stdout: '', stderr: '' };
+		child.stdout.on('data', (c) => (r.stdout += c));
+		child.stderr.on('data', (c) => (r.stderr += c));
+		child.on('exit', (code) => done({ status: code ?? -1, ...r }));
+	});
+}
+
+async function planned(): Promise<string> {
+	const cwd = await mkdtemp(join(tmpdir(), 'mm-coverage-'));
+	await mkdir(join(cwd, '.migrate'));
+	const allRoutes = SITEMAP_ROUTES.map((route) => ({ route, sources: ['sitemap'], status: 200, contentType: 'text/html' }));
+	await writeFile(join(cwd, '.migrate', 'inventory.json'), JSON.stringify({ version: 1, origin: origin(old), routes: [], locales: [], localeRouting: { prefixes: [], negotiation: {} }, allRoutes }));
+	return cwd;
+}
+
+test('a --route run is a partial run: green for the route it checked, never overall green, and status is not done', async () => {
+	const cwd = await planned();
+	const run = await cli(['check', '--old', origin(old), '--new', origin(old), '--route', '/about', '--no-responsiveness', '--journey-budget', '5'], cwd);
+	assert.equal(run.status, 4, run.stdout + run.stderr);
+	assert.match(run.stdout, /pass +\/about/);
+	assert.match(run.stdout, /Partial run: 1 of 10 routes checked\. A run limited by --route or --changed is never overall green/);
+	assert.match(run.stderr, /partial run \(1 of 10 routes\): not an overall green/);
+	const report = JSON.parse(await readFile(join(cwd, '.migrate', 'report.json'), 'utf8'));
+	assert.equal(report.ok, false);
+	assert.equal(report.checkedOk, true);
+	assert.deepEqual(report.partial, { checked: 1, total: 10 });
+	assert.equal((await status(cwd)).done, false);
+});
+
+test('check --only coverage measures every planned route, status says routes ported N of M, and switch refuses a front door while routes are missing', async () => {
+	const cwd = await planned();
+	const run = await cli(['check', '--old', origin(old), '--new', origin(next), '--only', 'coverage'], cwd);
+	assert.equal(run.status, 1, run.stdout + run.stderr);
+	assert.match(run.stdout, /Routes on the new app: 3 of 10 routes of the old site present, 7 missing\./);
+	const report = JSON.parse(await readFile(join(cwd, '.migrate', 'report.json'), 'utf8'));
+	assert.equal(report.coverage.missing.length, 7);
+	const s = await status(cwd);
+	assert.deepEqual([s.coverage?.ported, s.coverage?.total], [3, 10]);
+	assert.equal(s.routes.find((r) => r.route === '/contact')?.state, 'not ported');
+	assert.match((await cli(['status'], cwd)).stdout, /Routes ported: 3 of 10 routes of the old site; 7 missing on the new app/);
+	const front = await switchRoute(cwd, '/*rest');
+	assert.equal(front.ok, false);
+	assert.match(!front.ok ? front.reason : '', /the new app lacks 7 routes of the old site it would send there/);
+	const docs = await switchRoute(cwd, '/docs/*rest', { force: { reason: 'try it', by: 'Jack' } });
+	assert.match(!docs.ok ? docs.reason : '', /lacks 4 routes .*--force does not override this/);
+	const configured = await cli(['config', '--old', origin(old), '--new', origin(next)], cwd);
+	assert.equal(configured.status, 0, 'no switched route, so no front door covers a missing route');
+});
+
+test('a catch-all front door is refused before coverage was ever measured', async () => {
+	const cwd = await planned();
+	const refused = await switchRoute(cwd, '/*rest');
+	assert.match(!refused.ok ? refused.reason : '', /nothing has measured yet whether every route of the old site exists there/);
+	await recordResults(cwd, { version: 1, old: origin(old), new: origin(old), startedAt: new Date().toISOString(), ok: true, routes: [], coverage: { total: 10, present: 10, missing: [], accepted: [], failures: [], notOnOld: [], unreachable: [] } });
+	const allowed = await switchRoute(cwd, '/*rest');
+	assert.match(allowed.ok ? '' : allowed.reason, /it has not been checked yet/, 'past coverage, the usual green-check rule applies');
+});
+
+test('template groups: URL pattern by source pattern or parent path, and the page layout', () => {
+	assert.equal(urlPattern('/docs/intro'), '/docs/:page');
+	assert.equal(urlPattern('/docs/intro/'), '/docs/:page/');
+	assert.equal(urlPattern('/blog/2024/hello', ['/blog/:year/:slug']), '/blog/:year/:slug');
+	assert.equal(urlPattern('/orders/1234/items'), '/orders/:id/:page');
+	assert.equal(urlPattern('/'), '/');
+	assert.equal(domSignature('<header></header><nav></nav><nav></nav><main><table></table></main><script>"<form>"</script><footer>'), 'header>nav>main>table>footer');
+});
+
+test('above the threshold, every page gets http, rendered and seo, and visual, behaviour and responsiveness run on the template representative, said in the report', async () => {
+	const docs = Array.from({ length: 22 }, (_, i) => `/docs/p${String(i + 1).padStart(2, '0')}`);
+	const site = await serve((path) => (docs.includes(path) ? { status: 200, body: page(`Doc ${path}`) } : undefined));
+	const changed = await serve((path) => (docs.includes(path) ? { status: 200, body: page(path === '/docs/p07' ? 'Renamed' : `Doc ${path}`) } : undefined));
+	try {
+		const report = await runCheck({ oldOrigin: origin(site), newOrigin: origin(changed), routes: docs, browser, journeys: { budgetMs: 5_000 } });
+		assert.deepEqual(report.templates?.groups.map((g) => [g.pattern, g.representative, g.members.length]), [['/docs/:page', '/docs/p01', 22]]);
+		const rep = report.routes.find((r) => r.route === '/docs/p01')!;
+		const member = report.routes.find((r) => r.route === '/docs/p02')!;
+		assert.equal(rep.dimensions.visual, 'pass');
+		assert.deepEqual([member.dimensions.http, member.dimensions.rendered, member.dimensions.seo, member.dimensions.visual, member.dimensions.behaviour], ['pass', 'pass', 'pass', 'skipped', 'skipped']);
+		assert.equal(member.ok, true, 'a dimension its representative carries does not count as not compared');
+		const renamed = report.routes.find((r) => r.route === '/docs/p07')!;
+		assert.deepEqual(renamed.failures.map((f) => f.dimension).filter((d, i, all) => all.indexOf(d) === i).sort(), ['rendered', 'seo']);
+		const text = summarize(report);
+		assert.match(text, /Visual, behaviour and responsiveness ran on one representative per template group \(grouped by URL pattern and page layout\): 1 group covering 22 pages\./);
+		assert.match(text, /pass +\/docs\/p02 .*\n {6}visual, behaviour and responsiveness: checked on \/docs\/p01, the representative of its template group \(\/docs\/:page, 22 pages\)/);
+		const every = await runCheck({ oldOrigin: origin(site), newOrigin: origin(site), routes: docs.slice(0, 1), browser, templates: false });
+		assert.equal(every.templates, undefined);
+	} finally {
+		site.close();
+		changed.close();
+	}
+});
+
+test('an app that answers every path with its HTML shell lists no robots.txt or sitemap as routes of its own', async () => {
+	const shell = await serve(() => ({ status: 200, body: page('App', ['/tasks']) }));
+	try {
+		const planned = await enumerateRoutes(origin(shell));
+		assert.deepEqual(planned.routes.map((r) => r.route), ['/', '/tasks']);
+		assert.deepEqual(planned.sitemaps, []);
+	} finally {
+		shell.close();
+	}
+});

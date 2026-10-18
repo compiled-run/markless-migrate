@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import type { Dimension, Failure, Report, RouteResult } from './types.ts';
+import type { Dimension, Failure, FailureDimension, Report, RouteResult } from './types.ts';
 import { DIMENSIONS, notCompared } from './types.ts';
+import { settleCoverage } from './coverage.ts';
 import { grantAutomatic, type AutomaticRule } from './automatic.ts';
 
 export const ACCEPTED_FILE = 'accepted.json';
@@ -13,7 +14,7 @@ export interface Accept {
 	readonly route: string;
 	/** The role the failure was seen as; absent matches every role. */
 	readonly role?: string;
-	readonly dimension: Dimension | '*';
+	readonly dimension: FailureDimension | '*';
 	/** The failure's check, as a glob. */
 	readonly check: string;
 	readonly viewport?: string;
@@ -102,7 +103,7 @@ function settle(route: RouteResult, failures: readonly Failure[]): RouteResult {
 	const open = failures.filter((f) => !f.accepted);
 	const failed = new Set(open.map((f) => f.dimension));
 	const dimensions = Object.fromEntries(DIMENSIONS.map((d) => [d, failed.has(d) ? 'fail' : route.dimensions[d] === 'skipped' ? 'skipped' : 'pass'])) as RouteResult['dimensions'];
-	const compared = !route.blocked && !notCompared(route.dimensions);
+	const compared = !route.blocked && !notCompared(route);
 	return { ...route, failures, dimensions, ok: open.length === 0 && compared };
 }
 
@@ -126,14 +127,18 @@ export function applyAccepted(report: Report, accepted: readonly Accept[], off: 
 		const failures = login.failures.map(mark);
 		return { ...login, failures, ok: failures.every((f) => f.accepted) };
 	});
-	const exercised = (a: Accept) => report.routes.some((r) => routeMatches(a.route, r.route) && (!a.role || a.role === (r.role ?? 'anonymous')));
+	const coverage = report.coverage ? settleCoverage(report.coverage, report.coverage.failures.map(mark)) : undefined;
+	const exercised = (a: Accept) => (a.dimension === 'coverage' ? Boolean(report.coverage) : report.routes.some((r) => routeMatches(a.route, r.route) && (!a.role || a.role === (r.role ?? 'anonymous'))));
 	const stale = accepted.filter((a) => !used.has(a) && exercised(a));
-	const all = [...routes.flatMap((r) => r.failures), ...(logins ?? []).flatMap((l) => l.failures)];
+	const all = [...routes.flatMap((r) => r.failures), ...(logins ?? []).flatMap((l) => l.failures), ...(coverage?.failures ?? [])];
+	const checkedOk = routes.every((r) => r.ok) && (logins ?? []).every((l) => l.ok) && !coverage?.missing.length && !coverage?.unreachable.length;
 	return {
 		...report,
 		routes,
 		...(logins ? { logins } : {}),
-		ok: routes.every((r) => r.ok) && (logins ?? []).every((l) => l.ok),
+		...(coverage ? { coverage } : {}),
+		checkedOk,
+		ok: checkedOk && !report.partial,
 		...(all.some((f) => f.accepted) ? { acceptedCount: all.filter((f) => f.accepted).length } : {}),
 		...(all.some((f) => f.accepted?.automatic) ? { automaticCount: all.filter((f) => f.accepted?.automatic).length } : {}),
 		...(stale.length ? { staleAccepts: stale } : {}),

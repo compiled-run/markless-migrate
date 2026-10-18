@@ -1,4 +1,5 @@
 import { acceptedLabel } from './automatic.ts';
+import { coverageLines } from './coverage.ts';
 import { headlines, worstLine } from './responsiveness.ts';
 import { notCompared, type Coverage, type Failure, type LoginResult, type Report } from './types.ts';
 
@@ -51,9 +52,10 @@ export function summarize(report: Report): string {
 		const failed = Object.entries(route.dimensions).filter(([, state]) => state === 'fail').map(([d]) => d);
 		const accepted = route.failures.filter((f) => f.accepted).length;
 		const w = route.weight;
-		const stopped = notCompared(route.dimensions);
+		const stopped = notCompared(route);
 		const js = stopped ? 'page not compared: the two apps did not let this role in alike' : `JS on the wire ${kb(w.old.downloaded)} -> ${kb(w.new.downloaded)}, run at load ${kb(w.old.executed)} -> ${kb(w.new.executed)} (uncompressed)`;
 		lines.push(`${route.ok ? 'pass' : 'FAIL'}  ${route.route.padEnd(width)}  ${route.ok ? '' : `[${failed.join(', ')}]  `}${accepted ? `(${accepted} accepted) ` : ''}${route.endpoint ? `compared as ${route.endpoint}` : js}`);
+		if (route.template && route.template.representative !== route.route) lines.push(`      visual, behaviour and responsiveness: checked on ${route.template.representative}, the representative of its template group (${route.template.pattern}, ${route.template.members} pages)`);
 		if (route.coverage) lines.push(`      ${coverageLine(route.coverage)}`);
 		if (route.responsiveness) lines.push(`      ${worstLine(route.responsiveness)}`);
 		for (const f of route.failures) lines.push(...failureLines(f));
@@ -67,7 +69,19 @@ export function summarize(report: Report): string {
 	const blocked = report.routes.filter((r) => r.blocked).length;
 	const network = report.routes.filter((r) => r.infrastructure).length;
 	const red = report.routes.length - green - blocked - network;
+	if (report.templates) {
+		const pages = report.templates.groups.reduce((n, g) => n + g.members.length, 0);
+		lines.push('', `Every page got the http, rendered, seo, assets, css, a11y, i18n, network and weight checks. Visual, behaviour and responsiveness ran on one representative per template group (grouped by URL pattern and page layout): ${report.templates.groups.length} group${report.templates.groups.length === 1 ? '' : 's'} covering ${pages} pages. Pass --every-dimension to run them on every page.`, ...report.templates.groups.map((g) => `  ${g.pattern}  ${g.members.length} pages, representative ${g.representative}`));
+	}
+	if (report.coverage) lines.push('', ...coverageLines(report.coverage));
 	if (report.staleAccepts?.length) lines.push('', 'Accepted differences that no longer match anything (remove them from .migrate/accepted.json):', ...report.staleAccepts.map((a) => `  ${a.route}${a.role ? ` as ${a.role}` : ''} ${a.dimension}: ${a.check}  (${a.reason})`));
 	lines.push('', `${green} of ${report.routes.length} ${report.roles ? 'route checks (route and role)' : 'routes'} green${red ? `, ${red} red` : ''}${blocked ? `, ${blocked} blocked by bot protection` : ''}${network ? `, ${network} not checked for an infrastructure failure (DNS, connection or timeout)` : ''}${report.acceptedCount ? `, ${report.acceptedCount} accepted difference${report.acceptedCount === 1 ? '' : 's'}${report.automaticCount ? ` (${report.automaticCount} automatically)` : ''}` : ''}${samples.length ? `; ${samples.length} route${samples.length === 1 ? '' : 's'} not checked (needs a sample)` : ''}${writes.length ? `; ${writes.length} not checked (fetching it writes)` : ''}.`);
+	if (report.partial) lines.push(partialLine(report.partial));
 	return `${lines.join('\n')}\n`;
+}
+
+export function partialLine(partial: NonNullable<Report['partial']>): string {
+	return partial.total === null
+		? `Partial run: ${partial.checked} route${partial.checked === 1 ? '' : 's'} checked and no plan lists the old site's routes (run plan): never overall green.`
+		: `Partial run: ${partial.checked} of ${partial.total} routes checked. A run limited by --route or --changed is never overall green; run check without --route to check every route.`;
 }

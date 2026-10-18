@@ -31,7 +31,9 @@ import { blocker, type BlockList } from './trackers.ts';
 import { matchRoute } from '../source/pattern.ts';
 import { isSwitched } from '../switch/state.ts';
 import type { Blocked, Coverage, Dimension, Failure, HttpCapture, Infrastructure, LoginResult, PageCapture, Report, RouteCapture, RouteResult, Shot, Viewport } from './types.ts';
-import { DIMENSIONS, VIEWPORTS } from './types.ts';
+import { DIMENSIONS, REPRESENTATIVE_ONLY, VIEWPORTS } from './types.ts';
+import { checkCoverage } from './coverage.ts';
+import { groupTemplates, TEMPLATE_THRESHOLD, type TemplateGroup } from './templates.ts';
 import { bodyText, request } from './http.ts';
 import { classify, InfrastructureError, Scope } from './infrastructure.ts';
 
@@ -83,6 +85,12 @@ export interface CheckOptions {
 	readonly responsiveness?: ResponsivenessOptions;
 	/** How long one route's check (as one role) may take before it is stopped and reported as an infrastructure failure. */
 	readonly timeoutMs?: number;
+	/** Every route of the old site, each checked for existence on the new app (the coverage dimension). */
+	readonly coverage?: readonly string[];
+	/** The run checks fewer routes than the plan lists (`total`, null without a plan): the report says so and is never overall green. */
+	readonly partial?: { readonly total: number | null };
+	/** Above TEMPLATE_THRESHOLD pages, visual, behaviour and responsiveness run on one representative per template group; false runs them on every page. `patterns` are the source's route patterns. */
+	readonly templates?: false | { readonly patterns?: readonly string[] };
 }
 
 export const DEFAULT_CONCURRENCY = Math.max(1, Math.min(4, Math.floor(availableParallelism() / 2)));
@@ -173,6 +181,25 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 	const explored = await checkJourneys(browser, run, route, viewports[0]!, await checkStates(browser, run, route, viewports, olds, result), owner);
 	const checked = run.responsiveness && explored.journeys?.length ? await checkTimings(browser, run, route, explored) : explored;
 	const located = await locateFailures(checked, { route, old: oldA, next, sides: { old: { origin: oldOrigin, dir: run.sourceDirs?.old }, new: { origin: newOrigin, dir: run.sourceDirs?.new } }, ...(run.source ? { facts: run.source } : {}) });
+	const done = oldA.http.status < 400 && (next.http.status === 404 || next.http.status === 410) ? { ...located, notPorted: true } : located;
+	oldCaptures.set(done, oldA);
+	return done;
+}
+
+/** One viewport's http, rendered, seo, assets, css, a11y, i18n, network and weight checks: what a page gets when its template group's representative carries visual, behaviour and responsiveness. */
+export async function checkLight(browser: Browser, run: Run, route: string, viewports: readonly Viewport[] = VIEWPORTS): Promise<RouteResult> {
+	const first = [viewports[0]!];
+	const oldA = await captureRoute(browser, run.old.origin, route, first, run.old);
+	const [oldB, next] = await Promise.all([captureRoute(browser, run.old.origin, route, first, run.old), captureRoute(browser, run.new.origin, route, first, run.new)]);
+	const olds = [oldA, oldB];
+	if (loadsDiffer(oldA, oldB)) olds.push(await captureRoute(browser, run.old.origin, route, first, run.old));
+	const probes = new Map<string, Probe>();
+	for (const url of assetsToProbe(oldA, next)) probes.set(url, await probe(run.new, url));
+	const compared = compareRoute(route, olds, next, probes, run.source?.clients);
+	const kept = compared.failures.filter((f) => !REPRESENTATIVE_ONLY.includes(f.dimension as Dimension));
+	const checked = withFailures({ ...compared, visualDiffs: [], shots: [] }, kept, { noise: noiseReport(olds, run.frozen, run.source?.nondeterminism) });
+	const skipped = { ...checked, dimensions: { ...checked.dimensions, ...Object.fromEntries(REPRESENTATIVE_ONLY.map((d) => [d, 'skipped'])) } as RouteResult['dimensions'] };
+	const located = await locateFailures(skipped, { route, old: oldA, next, sides: { old: { origin: run.old.origin, dir: run.sourceDirs?.old }, new: { origin: run.new.origin, dir: run.sourceDirs?.new } }, ...(run.source ? { facts: run.source } : {}) });
 	const done = oldA.http.status < 400 && (next.http.status === 404 || next.http.status === 410) ? { ...located, notPorted: true } : located;
 	oldCaptures.set(done, oldA);
 	return done;
@@ -377,7 +404,7 @@ async function deniedPage(env: SideEnv, http: HttpCapture): Promise<boolean> {
 }
 
 /** Checks one route as one role: a bot wall stops it, a different access decision is reported without comparing two different pages. */
-async function checkAs(browser: Browser, run: Run, route: string, role: string | undefined, logins: readonly string[], options: CheckOptions): Promise<RouteResult> {
+async function checkAs(browser: Browser, run: Run, route: string, role: string | undefined, logins: readonly string[], options: CheckOptions, light = false): Promise<RouteResult> {
 	const wall = (await probeWall(run.old, route, 'old')) ?? (await probeWall(run.new, route, 'new'));
 	if (wall) return partialResult(route, [], [], wall);
 	const gate: Failure[] = [];
@@ -391,7 +418,7 @@ async function checkAs(browser: Browser, run: Run, route: string, role: string |
 	const walls = { old: [] as WallHit[], new: [] as WallHit[] };
 	const watched: Run = { ...run, old: { ...run.old, walls: walls.old }, new: { ...run.new, walls: walls.new } };
 	try {
-		const result = await checkRoute(browser, watched, route, options.viewports, options.locales);
+		const result = light ? await checkLight(browser, watched, route, options.viewports) : await checkRoute(browser, watched, route, options.viewports, options.locales);
 		// A wall that started part way through (an asset, a journey's post, a forced state) stops the route like one at the door.
 		const hit = walls.old[0] ? ({ side: 'old', ...walls.old[0] } as const) : walls.new[0] ? ({ side: 'new', ...walls.new[0] } as const) : undefined;
 		if (hit) return partialResult(route, [], [], blockedResult(hit.side, hit.status, hit));
@@ -462,10 +489,19 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			return failed;
 		};
 		const endpoints = new Set(options.endpoints ?? []);
-		for (const route of options.routes) {
+		const notPages = await pool(options.routes, 8, async (route) => {
 			const http = await captureHttp(options.oldOrigin, route, tagHeaders(base.old)).catch((error: unknown) => (classify(error) ? ('unreachable' as const) : undefined));
-			if (http !== 'unreachable' && !isPage(http?.contentType ?? '')) endpoints.add(route);
-		}
+			return http !== 'unreachable' && !isPage(http?.contentType ?? '');
+		});
+		options.routes.forEach((route, i) => notPages[i] && endpoints.add(route));
+		const allPages = options.routes.filter((route) => !endpoints.has(route));
+		const groups: TemplateGroup[] = options.templates !== false && allPages.length > TEMPLATE_THRESHOLD ? await groupTemplates(base.old, allPages, options.templates?.patterns) : [];
+		const groupOf = new Map(groups.filter((g) => g.members.length > 1).flatMap((g) => g.members.map((m) => [m, g] as const)));
+		const light = (route: string) => groupOf.has(route) && groupOf.get(route)!.representative !== route;
+		const withTemplate = (result: RouteResult): RouteResult => {
+			const group = groupOf.get(result.route);
+			return group ? { ...result, template: { pattern: group.pattern, representative: group.representative, members: group.members.length } } : result;
+		};
 		for (const role of roles) {
 			let roleRun = base;
 			if (auth && role && role !== ANONYMOUS) {
@@ -475,12 +511,13 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				roleRun = signed.run;
 			}
 			const data = options.data && role && role !== ANONYMOUS ? { ...options.data, dir: join(options.data.dir, slug(role)) } : options.data;
-			const pages = options.routes.filter((route) => !endpoints.has(route));
-			const owners = pages.length > 1 ? await layoutOwners(browser, roleRun, pages, options) : new Map<string, string>();
+			const pages = allPages;
+			const full = pages.filter((route) => !light(route));
+			const owners = full.length > 1 ? await layoutOwners(browser, roleRun, full, options) : new Map<string, string>();
 			roleRun = { ...roleRun, journeys: { ...options.journeys, owner: (signature) => owners.get(signature.split(' > ')[0]!) } };
 			const checked = await pool(pages, options.concurrency ?? DEFAULT_CONCURRENCY, async (route) => {
 				const { run, failures } = data?.mode === 'replay' ? await replayRoute(roleRun, data.dir, route) : { run: roleRun, failures: [] };
-				const result = await withDeadline(route, run, routeTimeout(options), (scoped) => checkAs(browser, scoped, route, role, loginPaths, options)).catch(unreachable(route));
+				const result = withTemplate(await withDeadline(route, run, routeTimeout(options), (scoped) => checkAs(browser, scoped, route, role, loginPaths, options, light(route))).catch(unreachable(route)));
 				const old = oldCaptures.get(result);
 				if (data?.mode === 'record' && old) {
 					const records = Object.values(old.pages)[0]?.network?.records ?? [];
@@ -493,6 +530,9 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			for (const route of options.redirects ?? []) routes.push(asRole(await checkRedirect(roleRun, route).catch(unreachable(route)), role));
 		}
 		const sources = options.source?.nondeterminism.map((f) => ({ ...f, pinned: pinnedBy(`${f.kind} ${f.what ?? ''}`, f.side, freeze) }));
+		const coverage = options.coverage ? await checkCoverage(base.old, base.new, options.coverage) : undefined;
+		const checkedCount = new Set([...options.routes, ...(options.redirects ?? []), ...(options.endpoints ?? [])]).size;
+		const grouped = groups.filter((g) => g.members.length > 1);
 		return applyAccepted({
 			version: 1,
 			old: options.oldOrigin,
@@ -507,6 +547,9 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			...(auth ? { roles: roles as string[], logins } : {}),
 			...(options.unchecked?.length ? { unchecked: options.unchecked } : {}),
 			...(options.responsiveness ? { responsiveness: summarizeResponsiveness(routes, options.responsiveness) } : {}),
+			...(coverage ? { coverage } : {}),
+			...(options.partial ? { partial: { checked: checkedCount, total: options.partial.total } } : {}),
+			...(grouped.length ? { templates: { groups: grouped.map((g) => ({ pattern: g.pattern, representative: g.representative, members: g.members })) } } : {}),
 		}, options.accepted ?? [], options.automaticOff ?? []);
 	} finally {
 		if (!options.browser) await browser.close();

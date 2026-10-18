@@ -1,11 +1,11 @@
 import { acceptedLabel } from './check/automatic.ts';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Inventory } from './plan/inventory.ts';
+import { plannedRoutes, type Inventory } from './plan/inventory.ts';
 import { readSamples, routeTargets } from './plan/routes.ts';
 import { stepRoutes } from './plan/source.ts';
 import { matchRoute } from './source/pattern.ts';
-import type { Dimension, Failure, Report } from './check/types.ts';
+import type { FailureDimension as Dimension, Failure, Report, RouteCoverage } from './check/types.ts';
 import { isSwitched, readSwitched } from './switch/state.ts';
 import { timingHeadlines, type RouteTiming } from './check/responsiveness.ts';
 
@@ -33,6 +33,21 @@ export interface RouteState {
 	readonly coverage?: { readonly exercised: number; readonly total: number };
 	/** Its slowest first interaction and navigation, old and new, per speed. */
 	readonly timing?: RouteTiming;
+	/** Recorded by the coverage dimension, not by a check of the route: the old site serves it and the new app lacks it. */
+	readonly coverageOnly?: boolean;
+}
+
+export const COVERAGE_FILE = 'coverage.json';
+
+/** The last coverage measurement: whether every route of the old site exists on the new app. */
+export interface CoverageState extends RouteCoverage {
+	readonly checkedAt: string;
+	readonly old: string;
+	readonly new: string;
+}
+
+export async function readCoverage(cwd: string): Promise<CoverageState | undefined> {
+	return readJson<CoverageState>(join(cwd, STATE_DIR, COVERAGE_FILE));
 }
 
 async function readJson<T>(path: string): Promise<T | undefined> {
@@ -74,8 +89,18 @@ export async function recordResults(cwd: string, report: Report, extra: { readon
 			...(route.responsiveness ? { timing: { cpu: route.responsiveness.cpu, ...route.responsiveness.worst } } : {}),
 		};
 	}
+	const coverage = report.coverage;
+	if (coverage) {
+		const missing = new Map(coverage.failures.filter((f) => !f.accepted).map((f) => [f.route, f]));
+		for (const [key, state] of Object.entries(results)) if (state.coverageOnly && !missing.has(state.route)) delete results[key];
+		for (const [route, failure] of missing) {
+			if (results[route] && !results[route]!.coverageOnly) continue;
+			results[route] = { route, ok: false, checkedAt: report.startedAt, old: report.old, new: report.new, red: ['coverage'], failures: [failure], notPorted: true, coverageOnly: true };
+		}
+	}
 	await mkdir(join(cwd, STATE_DIR), { recursive: true });
 	await writeFile(path, `${JSON.stringify(results, null, '\t')}\n`);
+	if (coverage) await writeFile(join(cwd, STATE_DIR, COVERAGE_FILE), `${JSON.stringify({ checkedAt: report.startedAt, old: report.old, new: report.new, ...coverage }, null, '\t')}\n`);
 }
 
 export type RouteStatus = 'green' | 'red' | 'not ported' | 'blocked' | 'unreachable' | 'unchecked' | 'needs a sample';
@@ -86,6 +111,8 @@ export interface Status {
 	readonly done: boolean;
 	/** In migration order when the inventory has the source's plan, alphabetical otherwise. */
 	readonly routes: readonly { route: string; state: RouteStatus; red: readonly Dimension[]; checkedAt?: string; switched?: boolean; forced?: { readonly reason: string; readonly by?: string }; accepted?: readonly string[]; coverage?: { readonly exercised: number; readonly total: number }; timing?: RouteTiming }[];
+	/** Routes of the old site the new app has, from the last coverage measurement (check without --route): `ported` of `total`, and the ones it lacks. */
+	readonly coverage?: { readonly ported: number; readonly total: number; readonly missing: readonly string[]; readonly accepted: readonly string[]; readonly checkedAt: string };
 	/** Each step of the migration order with how far the routes it is part of have come. */
 	readonly order?: readonly { readonly kind: string; readonly name: string; readonly file: string; readonly routes: readonly string[]; readonly green: number; readonly state: 'green' | 'red' | 'started' | 'unchecked' }[];
 }
@@ -94,7 +121,8 @@ export async function status(cwd: string): Promise<Status> {
 	const inventory = await readInventory(cwd);
 	const results = (await readJson<Record<string, RouteState>>(join(cwd, STATE_DIR, 'results.json'))) ?? {};
 	const targets = inventory ? routeTargets(inventory, await readSamples(join(cwd, STATE_DIR))) : undefined;
-	const names = [...new Set([...(inventory?.routes.map((r) => r.route) ?? []), ...(targets?.pages ?? []), ...(targets?.endpoints ?? []), ...Object.keys(results)])].sort();
+	const names = [...new Set([...(inventory ? plannedRoutes(inventory) : []), ...(inventory?.routes.map((r) => r.route) ?? []), ...(targets?.pages ?? []), ...(targets?.endpoints ?? []), ...Object.keys(results)])].sort();
+	const measured = await readCoverage(cwd);
 	const source = inventory?.source;
 	const steps = (source?.order ?? []).map((step) => ({ step, patterns: stepRoutes(source!, step) }));
 	const endpoints = new Set([...(targets?.endpoints ?? []), ...Object.values(results).flatMap((r) => (r.endpoint ? [r.route] : []))]);
@@ -127,8 +155,9 @@ export async function status(cwd: string): Promise<Status> {
 		const state = mine.some((r) => r.state === 'red') ? 'red' : mine.length && green === mine.length ? 'green' : green ? 'started' : 'unchecked';
 		return { kind: step.kind, name: step.name, file: step.file, routes: mine.map((r) => r.route), green, state } as const;
 	});
-	const done = Boolean(inventory) && routes.length > 0 && routes.every((r) => !page(r.route) || (r.state === 'green' && r.switched && !r.forced));
-	return { planned: Boolean(inventory), done, routes, ...(order.length ? { order } : {}) };
+	const coverage = measured ? { ported: measured.present, total: measured.total, missing: measured.missing, accepted: measured.accepted, checkedAt: measured.checkedAt } : undefined;
+	const done = Boolean(inventory) && routes.length > 0 && routes.every((r) => !page(r.route) || (r.state === 'green' && r.switched && !r.forced)) && (!inventory?.allRoutes || Boolean(coverage && !coverage.missing.length));
+	return { planned: Boolean(inventory), done, routes, ...(coverage ? { coverage } : {}), ...(order.length ? { order } : {}) };
 }
 
 export function summarizeStatus(s: Status): string {
@@ -149,6 +178,9 @@ export function summarizeStatus(s: Status): string {
 		lines.push(`  ${r.state.padEnd(10)} ${r.route}${r.red.length ? `  [${r.red.join(', ')}]` : ''}${r.coverage ? `  (${r.coverage.exercised} of ${r.coverage.total} interactions exercised)` : ''}${r.accepted ? `  (${r.accepted.length} accepted)` : ''}${r.forced ? `  (FORCED, not proven: ${r.forced.reason}${r.forced.by ? `, by ${r.forced.by}` : ''})` : r.switched ? '  (switched)' : ''}`);
 		for (const a of r.accepted ?? []) lines.push(`              ${a.startsWith('accepted automatically') ? a : `accepted ${a}`}`);
 	}
+	if (s.coverage) {
+		lines.push(`Routes ported: ${s.coverage.ported} of ${s.coverage.total} routes of the old site${s.coverage.missing.length ? `; ${s.coverage.missing.length} missing on the new app` : ''}${s.coverage.accepted.length ? `; ${s.coverage.accepted.length} left out on purpose (accepted)` : ''} (measured ${s.coverage.checkedAt})`);
+	} else if (s.planned) lines.push('Routes ported: not measured yet; run check without --route to measure whether every route of the old site exists on the new app.');
 	if (s.planned) lines.push(s.done ? 'Migration done: every planned route is green and switched.' : `Migration not done: ${remaining(s)}.`);
 	return `${lines.join('\n')}\n`;
 }
@@ -159,7 +191,9 @@ export function remaining(s: Status): string {
 		const n = left.filter(test).length;
 		return n ? [`${n} ${label}`] : [];
 	};
+	const missing = s.coverage?.missing.length ? [`${s.coverage.missing.length} of ${s.coverage.total} routes of the old site missing on the new app`] : [];
 	return [
+		...missing,
 		...by((r) => r.state === 'not ported', 'not ported'),
 		...by((r) => r.state === 'unchecked' || r.state === 'needs a sample' || r.state === 'unreachable', 'not checked'),
 		...by((r) => r.state === 'red' || r.state === 'blocked', 'red'),

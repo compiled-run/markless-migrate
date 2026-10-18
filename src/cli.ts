@@ -16,22 +16,23 @@ import { DATA_DIR } from './check/data.ts';
 import { RECORDER, recorderEnv } from './check/recorder.ts';
 import { jsonReport, runCheck, writeReport, type CheckOptions } from './check/run.ts';
 import { loadSourceFacts } from './check/source-facts.ts';
-import { summarize } from './check/summary.ts';
+import { partialLine, summarize } from './check/summary.ts';
+import { TEMPLATE_THRESHOLD } from './check/templates.ts';
 import { defaultEnv } from './check/browser.ts';
 import { discoverEndpoints, redirectTargets, UNKNOWN_PATH } from './check/endpoints.ts';
 import { readSamples, routeTargets } from './plan/routes.ts';
 import { writeStarterAuth } from './plan/auth.ts';
-import { plan, summarizeInventory, writeInventory } from './plan/inventory.ts';
+import { plan, plannedRoutes, summarizeInventory, writeInventory } from './plan/inventory.ts';
 import { copiedLogin, DRIVERS, driver } from './run/drivers.ts';
 import { startAppServer } from './run/server.ts';
 import { runRoutes, summarizeRun } from './run/loop.ts';
 import { acceptedLabel } from './check/automatic.ts';
-import { readInventory, readResults, recordResults, STATE_DIR, status, summarizeStatus } from './status.ts';
+import { readCoverage, readInventory, readResults, recordResults, STATE_DIR, status, summarizeStatus } from './status.ts';
 import { changedSince, gitHead, selectChanged } from './check/changed.ts';
 import { VERSION } from './version.ts';
 import { buildAssets, nitroSnippet, notServedBy, pageAssets, vercelConfig } from './switch/deploy.ts';
 import { startProxy } from './switch/proxy.ts';
-import { AGENT_ENV, readSwitched, switchRoute, unswitchRoute } from './switch/state.ts';
+import { AGENT_ENV, missingUnder, readSwitched, switchRoute, unswitchRoute } from './switch/state.ts';
 import { ACCEPTED_FILE, acceptFailure, readAccepted, writeAccepted } from './check/accepted.ts';
 import { decisionLine, LIBRARIES_FILE, planLibraries, readLibraries, summarizeParity, writeParity } from './library/index.ts';
 import type { RouteState } from './status.ts';
@@ -39,8 +40,13 @@ import { CLI_CONFIG, CLI_REPORT, readCliConfig, runCliCheck, summarizeCli } from
 
 const USAGE = `markless-migrate ${VERSION}
 
-  plan    --old <origin> [--source <path>] [--limit <n>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
+  plan    --old <origin> [--source <path>] [--limit <n>] [--crawl-limit <n>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           Inventory the old app's routes, SEO, assets and locales into .migrate/inventory.json.
+          Every route of the old site is listed with where it was found: the sitemaps (indexes
+          followed), robots.txt, feeds, a same-origin link crawl of every page (pagination and
+          redirects followed, at most --crawl-limit pages, default 10000), the source's routes with
+          --source, and the non-page endpoints. --limit caps only the pages loaded in the browser for
+          their SEO tags and assets (default 100).
           With --source, auth guards propose roles and the login route in a starter .migrate/auth.json,
           and every library the old app imports goes in .migrate/libraries.json: the exact surface used,
           each usage site, and whether it maps to @markless/ui, stays as-is, needs a port, or draws
@@ -55,7 +61,15 @@ const USAGE = `markless-migrate ${VERSION}
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
           [--journey-budget <seconds>] [--max-journeys <n>] [--timeout <seconds>]
           [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--interaction-controls <n>]
-          Compare routes old vs new (default: every route in the inventory). Exits 1 when any is red.
+          Compare routes old vs new (default: every route of the old site plan listed). Exits 1 when any is red.
+          Coverage: every route of the old site must exist on the new app, with the same status class
+          and the same redirect target, or carry an accepted difference (accept <id>); each missing
+          route is red and listed. --only coverage measures just that, for every route.
+          --route checks only the routes named, for iterating: such a run (and --changed) is a partial
+          run, "partial run: N of M routes", never overall green; it exits 4 when what it checked is green.
+          Above ${TEMPLATE_THRESHOLD} pages, every page gets every check except visual, behaviour and
+          responsiveness, which run on one representative per template group (grouped by URL pattern
+          and page layout); the report lists the groups. --every-dimension runs them on every page.
           Every interactive element of the old page (including those a click reveals, such as a
           dialog's controls) must be used by a journey, or the route stays red: journeys are explored main content first (tables, forms), until each element is used or
           --journey-budget (default 120 s per route) runs out; --max-journeys caps their number. A
@@ -129,7 +143,9 @@ const USAGE = `markless-migrate ${VERSION}
           Agents: ${AGENTS.map((a) => a.id).join(', ')}.
   mcp     Run the MCP server on stdio (started by your agent).
   switch  <route> [--force --by <name> --reason <why>]
-          Serve a route from the new app: refused unless its last check (every role) is green. --force
+          Serve a route from the new app: refused unless its last check (every role) is green, and
+          refused, even with --force, while it would send a route the new app lacks there (a catch-all
+          front door such as /*rest before coverage is measured, or with any route missing). --force
           is an expert override for a route that is not, with --by and --reason, or confirmed at a
           terminal; never from an agent that run drives. A forced route is recorded in .migrate/switched.json
           and shown in red as "forced, not proven" in status and the report. A route may be a pattern
@@ -343,7 +359,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 	const facts = source ? (await loadSourceFacts(source)).facts : undefined;
 	const named = [...(values.route ?? []), ...(values.routes?.split(',').map((r) => r.trim()).filter(Boolean) ?? [])];
 	const inventory = await readInventory(cwd);
-	let routes = named.length ? named : inventory?.routes.map((r) => r.route);
+	let routes = named.length ? named : inventory ? plannedRoutes(inventory) : undefined;
 	let unchecked: CheckOptions['unchecked'] = [];
 	let redirects = new Set<string>();
 	if (values.all) {
@@ -389,19 +405,21 @@ async function run(args: string[], cwd: string): Promise<number> {
 					...deadline,
 					...(timing ? { responsiveness: timing } : {}),
 					switched: (await readSwitched(cwd)).routes.map((r) => r.route),
+					partial: { total: inventory ? plannedRoutes(inventory).length : null },
 				});
 				await recordResults(cwd, report);
 				await writeReport(report, join(cwd, STATE_DIR), await status(cwd));
 				const open = [...report.routes.flatMap((r) => r.failures), ...(report.logins ?? []).flatMap((l) => l.failures)].filter((f) => !f.accepted).map((f) => `${f.dimension}: ${f.check}${f.viewport ? ` (${f.viewport})` : ''}${f.id ? ` [${f.id}]` : ''}`);
 				for (const f of report.routes.flatMap((r) => r.failures)) if (f.accepted?.automatic) automatic.set(`${f.route} ${f.dimension}: ${f.check}`, `${f.route} ${f.dimension}: ${f.check}, ${acceptedLabel(f.accepted)} (${f.accepted.reason})`);
 				const network = report.routes.flatMap((r) => (r.infrastructure ? [r.infrastructure.message] : []));
-				return { ok: report.ok, summary: summarize(report), open: [...new Set(open)], ...(network.length && !open.length ? { infrastructure: network.join('; ') } : {}) };
+				return { ok: report.checkedOk ?? report.ok, summary: summarize(report), open: [...new Set(open)], ...(network.length && !open.length ? { infrastructure: network.join('; ') } : {}) };
 			},
 		});
 		const red = outcomes.filter((o) => o.outcome === 'left red');
 		const libraries = (await readLibraries(join(cwd, STATE_DIR)))?.libraries.flatMap((l) => (l.decision ? [`${l.name}: ${decisionLine(l)}`] : [])) ?? [];
 		out(`\n${summarizeRun(outcomes, { libraries, automatic: [...automatic.values()], needsSample: unchecked?.map((u) => u.route), log: join(cwd, STATE_DIR, 'run.log') })}`);
-		return red.length || unchecked?.length ? 1 : outcomes.some((o) => o.outcome === 'not checked') ? 3 : 0;
+		if (named.length && !red.length) out(`${partialLine({ checked: routes.length, total: inventory ? plannedRoutes(inventory).length : null })}\n`);
+		return red.length || unchecked?.length ? 1 : outcomes.some((o) => o.outcome === 'not checked') ? 3 : named.length ? 4 : 0;
 	} finally {
 		await server?.stop();
 	}
@@ -418,15 +436,17 @@ async function main(argv: string[]): Promise<number> {
 			out(USAGE);
 			return 0;
 		case 'plan': {
-			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, limit: { type: 'string' }, header: { type: 'string', multiple: true }, cookie: { type: 'string', multiple: true }, 'user-agent': { type: 'string' } } });
+			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, limit: { type: 'string' }, 'crawl-limit': { type: 'string' }, header: { type: 'string', multiple: true }, cookie: { type: 'string', multiple: true }, 'user-agent': { type: 'string' } } });
 			if (!values.old) fail('plan needs --old <origin>');
+			const crawlBound = values['crawl-limit'] === undefined ? undefined : Number(values['crawl-limit']);
+			if (crawlBound !== undefined && (!Number.isInteger(crawlBound) || crawlBound < 1)) fail('--crawl-limit must be a whole number of at least 1');
 			let bypass: ReturnType<typeof bypassOptions> = {};
 			try {
 				bypass = bypassOptions(values.header, values.cookie);
 			} catch (error) {
 				fail((error as Error).message);
 			}
-			const inventory = await plan({ origin: values.old, source: values.source ? resolve(values.source) : undefined, limit: values.limit ? Number(values.limit) : undefined, ...bypass, ...(values['user-agent'] ? { userAgent: values['user-agent'] } : {}) });
+			const inventory = await plan({ origin: values.old, source: values.source ? resolve(values.source) : undefined, limit: values.limit ? Number(values.limit) : undefined, ...(crawlBound ? { crawlBound } : {}), ...bypass, ...(values['user-agent'] ? { userAgent: values['user-agent'] } : {}) });
 			const path = await writeInventory(inventory, join(cwd, STATE_DIR));
 			out(`${summarizeInventory(inventory)}Wrote ${path}\n`);
 			if (inventory.source) {
@@ -468,11 +488,15 @@ async function main(argv: string[]): Promise<number> {
 					'journey-budget': { type: 'string' },
 					'max-journeys': { type: 'string' },
 					timeout: { type: 'string' },
+					only: { type: 'string' },
+					'every-dimension': { type: 'boolean' },
 					...TIMING_FLAGS,
 				},
 			});
 			const deadline = timeoutOption(values.timeout);
 			if (!values.old || !values.new) fail('check needs --old <origin> and --new <origin>');
+			if (values.only !== undefined && values.only !== 'coverage') fail('--only takes coverage: whether every route of the old site exists on the new app');
+			const coverageOnly = values.only === 'coverage';
 			const journeys = journeyOptions(values['journey-budget'], values['max-journeys']);
 			const timing = timingOptions(values);
 			let bypass: ReturnType<typeof bypassOptions> = {};
@@ -488,15 +512,18 @@ async function main(argv: string[]): Promise<number> {
 			const seed = values.seed ? Number(values.seed) : undefined;
 			if (seed !== undefined && !Number.isInteger(seed)) fail('--seed must be a whole number');
 			const inventory = await readInventory(cwd);
-			let routes = values.route?.length ? values.route : inventory?.routes.map((r) => r.route);
+			const planned = inventory ? plannedRoutes(inventory) : undefined;
+			if (coverageOnly && !planned?.length) fail('check --only coverage needs .migrate/inventory.json with the old site\'s routes: run plan first');
+			let routes = coverageOnly ? [] : values.route?.length ? values.route : planned;
 			let targets: { endpoints: string[]; unchecked: CheckOptions['unchecked']; redirects: string[] } | undefined;
-			if (values.all) {
+			if (values.all && !coverageOnly) {
 				if (!inventory) fail('check --all needs .migrate/inventory.json: run plan first');
 				const all = routeTargets(inventory, await readSamples(join(cwd, STATE_DIR)));
 				routes = [...new Set([...(values.route ?? []), ...all.pages, UNKNOWN_PATH])];
 				targets = { endpoints: await discoverEndpoints(defaultEnv(values.old), all.pages, all.endpoints), unchecked: all.needsSample, redirects: redirectTargets(all.pages, inventory.source?.redirects) };
 			}
-			if (!routes?.length && !targets?.endpoints.length) fail('no routes: pass --route <path> or run plan first');
+			if (!coverageOnly && !routes?.length && !targets?.endpoints.length) fail('no routes: pass --route <path> or run plan first');
+			const partial = !coverageOnly && Boolean(values.route?.length || values.changed);
 			const concurrency = values.concurrency ? Number(values.concurrency) : undefined;
 			if (concurrency !== undefined && (!Number.isInteger(concurrency) || concurrency < 1)) fail('--concurrency must be a whole number of at least 1');
 			const newDir = resolve(values['new-source'] ?? cwd);
@@ -540,6 +567,8 @@ async function main(argv: string[]): Promise<number> {
 				...(timing ? { responsiveness: timing } : {}),
 				switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 				...(!values['new-source'] && !values.changed ? {} : { sourceDirs: { ...(values.source ? { old: resolve(values.source) } : {}), new: newDir } }),
+				...(partial ? { partial: { total: planned?.length ?? null } } : planned?.length ? { coverage: planned } : {}),
+				templates: values['every-dimension'] ? false : { patterns: inventory?.source?.routes.map((r) => r.path) ?? [] },
 			});
 			await recordResults(cwd, report, commit ? { commit } : {});
 			const path = await writeReport(report, join(cwd, STATE_DIR), await status(cwd));
@@ -552,7 +581,11 @@ async function main(argv: string[]): Promise<number> {
 				return 1;
 			}
 			if (report.ok) return 0;
-			const red = report.routes.some((r) => !r.ok && !r.infrastructure) || (report.logins ?? []).some((l) => !l.ok);
+			const red = report.routes.some((r) => !r.ok && !r.infrastructure) || (report.logins ?? []).some((l) => !l.ok) || Boolean(report.coverage?.missing.length);
+			if (report.partial && !red && report.routes.every((r) => r.ok)) {
+				err(`markless-migrate: every route this run checked is green, but it was a partial run (${report.partial.total === null ? `${report.partial.checked} routes, no plan` : `${report.partial.checked} of ${report.partial.total} routes`}): not an overall green. Run check without --route to check every route.\n`);
+				return 4;
+			}
 			if (!red) err(`markless-migrate: nothing is red, but ${report.routes.filter((r) => r.infrastructure).length} route check(s) could not be done for an infrastructure failure; check them again.\n`);
 			return red ? 1 : 3;
 		}
@@ -597,7 +630,8 @@ async function main(argv: string[]): Promise<number> {
 			if (!values.reason?.trim()) fail('accept needs --reason: why this difference is intended');
 			const id = positionals[0]!;
 			const results = JSON.parse(await readFile(join(cwd, STATE_DIR, 'results.json'), 'utf8').catch(() => '{}')) as Record<string, RouteState>;
-			const found = Object.values(results).flatMap((r) => (r.failures ?? []).filter((f) => f.id === id).map((failure) => ({ failure, r })))[0];
+			const measured = await readCoverage(cwd);
+			const found = [...Object.values(results), ...(measured ? [{ old: measured.old, new: measured.new, failures: measured.failures }] : [])].flatMap((r) => (r.failures ?? []).filter((f) => f.id === id).map((failure) => ({ failure, r })))[0];
 			if (!found) fail(`no failure with id ${id} in ${join(STATE_DIR, 'results.json')}: run check first and copy an id from its output`);
 			const path = join(cwd, STATE_DIR, ACCEPTED_FILE);
 			const accepted = await readAccepted(path);
@@ -647,6 +681,10 @@ async function main(argv: string[]): Promise<number> {
 			if (values.index) await writeFile(values.index, renderStatusPage(await status(cwd), { old: values.old, new: values.new }));
 			const buildDir = values['new-build'] ?? (await firstDir(cwd, ['.output/public', '.vercel/output/static']));
 			const switched = (await readSwitched(cwd)).routes.map((r) => r.route);
+			for (const route of switched) {
+				const lacking = await missingUnder(cwd, route);
+				if (lacking) fail(`no front door written: .migrate/switched.json lists ${route}, and ${lacking.replace(/^not switching [^:]+: /, '')}`);
+			}
 			const inventory = await readInventory(cwd);
 			const concrete = switched.filter((r) => !/[:*]/.test(r));
 			const built = buildDir ? await buildAssets(resolve(cwd, buildDir)) : [];
