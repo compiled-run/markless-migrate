@@ -249,3 +249,21 @@ test('parity skeletons for default exports declare a named binding and export it
 	assert.match(bytes, /^export default prettyBytes;$/m);
 	assert.deepEqual(parseSync('index.ts', bytes).errors, []);
 });
+
+test('bare imports count: a font package adds its stylesheet, an unknown module is imported for its side effects', async () => {
+	const dir = await project({
+		'package.json': JSON.stringify({ dependencies: { react: '19.0.0', '@fontsource-variable/roboto': '5.2.8', 'css-only': '1.0.0', 'polyfill-x': '1.0.0' } }),
+		'node_modules/@fontsource-variable/roboto/package.json': JSON.stringify({ name: '@fontsource-variable/roboto', version: '5.2.8', main: 'index.css', exports: { '.': { sass: './index.css', default: './index.css' } } }),
+		'node_modules/css-only/package.json': JSON.stringify({ name: 'css-only', version: '1.0.0', style: 'dist/css-only.css' }),
+		'src/index.tsx': "import '@fontsource-variable/roboto';\nimport 'css-only';\nimport 'polyfill-x';\nexport function App() { return <p>hi</p>; }\n",
+	});
+	const file = await scanLibraries(dir);
+	assert.deepEqual(lib(file, '@fontsource-variable/roboto').css.imports, [{ file: 'src/index.tsx', line: 1 }]);
+	assert.equal(lib(file, '@fontsource-variable/roboto').class, 'as-is');
+	assert.deepEqual(lib(file, 'css-only').css.imports, [{ file: 'src/index.tsx', line: 2 }]);
+	assert.deepEqual(exp(file, 'polyfill-x', '(side effects)').sites.map((s) => [s.file, s.line, s.kind]), [['src/index.tsx', 3, 'reference']]);
+	const app = await newApp();
+	const result = await writeParity(file, 'polyfill-x', { newApp: app });
+	assert.match(result.notes.join('\n'), /imported for what it does on load \(src\/index\.tsx:3\)/);
+	assert.ok(!result.written.some((f) => f.endsWith('index.ts')));
+});

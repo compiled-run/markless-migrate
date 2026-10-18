@@ -28,6 +28,7 @@ export interface ParityResult {
 }
 
 const MARKER = 'markless-migrate parity skeleton';
+const SIDE_EFFECT = '(side effects)';
 
 export const paritySlug = (name: string) => name.replace(/^@/, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
 
@@ -294,7 +295,9 @@ export async function writeParity(file: LibrariesFile, name: string, options: Pa
 	if (lib.class === 'as-is') notes.push(`${lib.name} is framework-agnostic: import it from the Markless app unchanged (install ${lib.name}${lib.version ? `@${lib.version}` : ''}); nothing to port.`);
 	if (lib.class === 'framework') notes.push(`${lib.name} is replaced by ${lib.replacement ?? 'Markless'}; nothing to port.`);
 	if (lib.class === 'drop') notes.push(`${lib.name}: ${lib.reason}.`);
-	const port = lib.exports.filter((e) => needsPort(lib, e));
+	const port = lib.exports.filter((e) => needsPort(lib, e) && e.name !== SIDE_EFFECT);
+	const bare = lib.exports.find((e) => e.name === SIDE_EFFECT);
+	if (bare && needsPort(lib, bare)) notes.push(`${lib.name} is imported for what it does on load (${bare.sites.map((s) => `${s.file}:${s.line}`).join(', ')}): port that effect, or drop it if only the old framework needed it.`);
 	const journeys = await readJourneys(options.journeysDir);
 	const specs = new Map<ExportUsage, SiteSpec[]>();
 	let uncovered = 0;

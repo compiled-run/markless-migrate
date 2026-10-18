@@ -8,12 +8,13 @@ import { isFunction, keyName, localInit, parseJsonc, staticValue, known, walk, t
 import type { Component, SourceRoute } from '../source/types.ts';
 import { catalogEntry, type CatalogEntry } from './catalog.ts';
 import { componentRoutes, fileRoutes } from './routes.ts';
-import { exportedNames, injectedTokens, installedPackage, packageFramework } from './package.ts';
+import { cssPackage, exportedNames, injectedTokens, installedPackage, packageFramework } from './package.ts';
 import type { ExportUsage, LibrariesFile, LibraryClass, LibraryUsage, PropUsage, Site, UsageSite } from './types.ts';
 
 const BUILTIN = new Set(builtinModules);
 const SKIP_SPEC = /^(node:|virtual:|~icons\/|\/|#|bun:|data:)|\?(url|raw|inline|worker)$/;
 const MAX_TEXT = 80;
+const SIDE_EFFECT = '(side effects)';
 const TEST_LIBS = /^(vitest|jest|@jest\/|@testing-library\/|vitest-browser-|@playwright\/test|playwright|cypress|msw)(\/|$)/;
 
 export interface LibraryScanOptions {
@@ -38,6 +39,8 @@ interface Draft {
 	readonly name: string;
 	readonly exports: Map<string, ExportUsage>;
 	readonly cssImports: Site[];
+	/** `import 'pkg'` with nothing bound: a stylesheet or a module run for its side effects. */
+	readonly bare: Site[];
 }
 
 /** The package an import specifier names, or undefined for a relative path, an alias, a builtin or a virtual module. */
@@ -268,7 +271,7 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 	const drafts = new Map<string, Draft>();
 	const draft = (name: string) => {
 		let d = drafts.get(name);
-		if (!d) drafts.set(name, (d = { name, exports: new Map(), cssImports: [] }));
+		if (!d) drafts.set(name, (d = { name, exports: new Map(), cssImports: [], bare: [] }));
 		return d;
 	};
 	const usage = (library: string, name: string) => {
@@ -320,7 +323,7 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 				locals.set(s.local.name, { local: s.local.name, library, imported: exportName, typeOnly: typeOnly || s.importKind === 'type', line });
 				if (imported !== '*') usage(library, exportName).imports.push({ file, line });
 			}
-			if (!stmt.specifiers.length) draft(library);
+			if (!stmt.specifiers.length) draft(library).bare.push({ file, line });
 		}
 		if (inKit(file)) {
 			const tables = cvaTables(mod);
@@ -636,6 +639,10 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 	for (const d of drafts.values()) {
 		const entry = d.name === kit?.name ? undefined : catalogEntry(d.name);
 		const pkg = d.name === kit?.name ? undefined : await installedPackage(dir, d.name);
+		if (d.bare.length) {
+			if ((pkg && cssPackage(pkg)) || entry?.css) d.cssImports.push(...d.bare);
+			else usage(d.name, SIDE_EFFECT).sites.push(...d.bare.map((s) => ({ ...s, kind: 'reference' as const })));
+		}
 		const exports: ExportUsage[] = [];
 		for (const exp of d.exports.values()) {
 			// A kit export nothing in the app renders keeps the primitives it wraps out of the used surface.

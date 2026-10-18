@@ -6,7 +6,7 @@ import type { LibraryUsage } from './types.ts';
 
 export interface InstalledPackage {
 	readonly dir: string;
-	readonly json: { name?: string; version?: string; types?: string; typings?: string; exports?: unknown; dependencies?: Record<string, string>; peerDependencies?: Record<string, string> };
+	readonly json: { name?: string; version?: string; main?: string; module?: string; style?: string; types?: string; typings?: string; exports?: unknown; dependencies?: Record<string, string>; peerDependencies?: Record<string, string> };
 }
 
 /** The package as Node would resolve it from `root`: the nearest node_modules up the tree. */
@@ -117,6 +117,15 @@ export async function exportedNames(pkg: InstalledPackage, root: string): Promis
 	await visit(first, 0);
 	names.delete('');
 	return names;
+}
+
+/** A package whose entry is a stylesheet (fonts, CSS frameworks): importing it adds CSS, no code. */
+export function cssPackage(pkg: InstalledPackage): boolean {
+	const map = pkg.json.exports && typeof pkg.json.exports === 'object' && !Array.isArray(pkg.json.exports) ? (pkg.json.exports as Record<string, unknown>) : undefined;
+	const root = map ? (map['.'] ?? map) : pkg.json.exports;
+	const pick = (value: unknown): string | undefined => (typeof value === 'string' ? value : value && typeof value === 'object' ? pick((value as Record<string, unknown>).import ?? (value as Record<string, unknown>).default ?? (value as Record<string, unknown>).style) : undefined);
+	const entry = pick(root) ?? pkg.json.module ?? pkg.json.main;
+	return entry ? /\.(css|scss|sass|less)$/.test(entry) : !!pkg.json.style;
 }
 
 const CODE = /\.(m?js|cjs|css)$/;

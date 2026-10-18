@@ -12,6 +12,8 @@ export interface CatalogEntry {
 	readonly parts?: Readonly<Record<string, string>>;
 	/** Prefixes of the class names and custom properties the library writes into the page. */
 	readonly tokens?: readonly string[];
+	/** Importing it adds a stylesheet and no code. */
+	readonly css?: boolean;
 }
 
 const radix = (name: string, parts: Record<string, string>, family: string): CatalogEntry => ({
@@ -73,6 +75,7 @@ export const CATALOG: readonly CatalogEntry[] = [
 	{ match: /^react-top-loading-bar$/, framework: 'react', class: 'parity', reason: 'a navigation progress bar component; a few lines over the router\'s navigation events' },
 	{ match: /^@clerk\/(react|nextjs|clerk-react)$/, framework: 'react', class: 'parity', reason: 'auth UI and hooks for React; port the used components over @clerk/clerk-js', core: '@clerk/clerk-js' },
 	{ match: /^(zod|valibot|yup|date-fns|dayjs|clsx|classnames|tailwind-merge|class-variance-authority|axios|ky|lodash(-es)?|nanoid|uuid|@faker-js\/faker|immer|superjson|d3-.*|marked|dompurify)(\/.*)?$/, framework: 'none', class: 'as-is', reason: 'framework-agnostic: import it unchanged from the Markless app' },
+	{ match: /^@fontsource(-variable)?\//, framework: 'none', class: 'as-is', reason: 'self-hosted font files with their @font-face CSS: import the same stylesheets from the Markless app', css: true },
 	{ match: /^tailwindcss$|^@tailwindcss\/vite$|^tw-animate-css$/, framework: 'none', class: 'as-is', reason: 'CSS tooling: keep it in the Markless app\'s Vite config and stylesheet' },
 	{ match: /^@vueuse\/core$/, framework: 'vue', class: 'parity', reason: 'Vue composables; port each used composable over state(), computed() and attach (many are a few lines of DOM listening)' },
 	{ match: /^pinia$/, framework: 'vue', class: 'parity', reason: 'stores bound to Vue reactivity; each store becomes shared() state with plain functions for its actions', replacement: 'shared()' },
