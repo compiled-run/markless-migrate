@@ -27,6 +27,10 @@ const isEditing = (target: EventTarget | null) =>
 	target instanceof HTMLElement && (target.isContentEditable || target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA');
 
 const openSearch = () => void import('./search.ts').then((search) => search.openSearch());
+// VitePress loads its search box when the pointer reaches the button; here it loads at idle, so the first click runs no download.
+requestIdleCallback(() => void import('./search.ts'));
+// VitePress's useDark stores the appearance it starts with.
+if (localStorage.getItem('vitepress-theme-appearance') === null) localStorage.setItem('vitepress-theme-appearance', 'auto');
 
 window.addEventListener('keydown', (event) => {
 	if ((event.key === 'k' && (event.ctrlKey || event.metaKey)) || (event.key === '/' && !isEditing(event.target))) {

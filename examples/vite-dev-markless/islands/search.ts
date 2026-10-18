@@ -84,6 +84,9 @@ export function openSearch(): void {
 
 	let filterText = sessionStorage.getItem(FILTER_KEY) ?? '';
 	let detailed = localStorage.getItem(DETAILED_KEY) === 'true';
+	// VitePress keeps both choices with useStorage, which writes the defaults as soon as the box opens.
+	sessionStorage.setItem(FILTER_KEY, filterText);
+	localStorage.setItem(DETAILED_KEY, String(detailed));
 	let results: Hit[] = [];
 	let selectedIndex = -1;
 	let disableMouseOver = true;
