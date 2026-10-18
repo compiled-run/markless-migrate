@@ -52,7 +52,7 @@ grid, table, tooltip or JSON tree (U1).
 | --- | --- | --- | --- | --- |
 | ag-grid-react 34.2 | parity | 2 / 39 | 3 | `lib/parity/ag-grid-react/` (below) |
 | ag-grid-community 34.2 | as-is (T3: wrong, it is the grid) | 18 / 1,506, 9 members read | 20 | same port; its CSS is shipped as `styles/ag-grid.css` and `styles/ag-theme.css` |
-| @microlink/react-json-view 1.27 | parity | 1 | 1 | `lib/parity/microlink-react-json-view/tree.ts`, component `ReactJson` in `components/panel.tsrx` (G14) |
+| @microlink/react-json-view 1.27 | parity | 1 | 1 | `lib/parity/microlink-react-json-view/tree.ts`, component `ReactJson` in `components/panel.tsrx` (G5, G12) |
 | lucide-react 0.513 | parity | 11 / 5,419 | 14 | `lib/parity/lucide-react/components.tsrx`; the icons inside `@if` arms written out as SVG (G1) |
 | denque | as-is | 1 | 1 | only the background service worker uses it; that file is served unchanged |
 | @fontsource/space-mono (and @fontsource-variable/roboto, missing from the list, T2) | as-is | CSS | 1 | `styles/fonts.css`, files in `public/fonts/` |
