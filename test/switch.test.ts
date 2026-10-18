@@ -126,10 +126,10 @@ test('an asset the old app answers only by redirecting (a soft 404) is not serve
 	}
 });
 
-test('an SPA old app answering every path with its index.html does not keep the new build\'s files: they go to the new deployment', async () => {
+test('an SPA old app answering every path with its index.html does not keep the new build\'s files: they go to the new deployment, placeholders and OS files left out', async () => {
 	const { buildAssets } = await import('../src/switch/deploy.ts');
 	const dir = await mkdtemp(join(tmpdir(), 'mm-build-'));
-	for (const file of ['build/chunk-DPNrrZYU.js', 'parity/recharts.js', 'assets/index-DNwRI-6w.css', '.vite/markless-router-client-manifest.json', 'images/logo.png', '404.html']) {
+	for (const file of ['build/chunk-DPNrrZYU.js', 'parity/recharts.js', 'assets/index-DNwRI-6w.css', '.vite/markless-router-client-manifest.json', 'images/logo.png', '404.html', '.gitkeep', 'images/.DS_Store', 'fonts/.gitignore']) {
 		await mkdir(join(dir, file, '..'), { recursive: true });
 		await writeFile(join(dir, file), 'x');
 	}

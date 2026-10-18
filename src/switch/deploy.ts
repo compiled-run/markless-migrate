@@ -139,12 +139,15 @@ async function serves(origin: string, path: string): Promise<boolean> {
 	}
 }
 
+const NOT_ASSET = /^(\.(gitkeep|keep|gitignore|gitattributes|npmignore|DS_Store|nojekyll)|Thumbs\.db|desktop\.ini)$/i;
+
 /** Every file of the new app's static build output (Nitro's .output/public, Vercel's .vercel/output/static) as a URL path. */
 export async function buildAssets(dir: string): Promise<string[]> {
 	const out: string[] = [];
 	const visit = async (rel: string) => {
 		for (const entry of await readdir(join(dir, rel), { withFileTypes: true }).catch(() => [])) {
 			const path = rel ? `${rel}/${entry.name}` : entry.name;
+			if (NOT_ASSET.test(entry.name)) continue;
 			if (entry.isDirectory()) await visit(path);
 			else if (entry.isFile() && !isPagePath(`/${path}`)) out.push(`/${path}`);
 		}
