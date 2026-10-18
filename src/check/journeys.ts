@@ -1,5 +1,6 @@
 import type { Browser, BrowserContext, Locator, Page, Request } from 'playwright';
 import { frameworkTransport, openPage, requestLine, type SideEnv } from './browser.ts';
+import { markHandlers } from './handlers.ts';
 import { originInQuery } from './capture.ts';
 import { HINTS } from './hints.ts';
 import { signInCookies, storageKeys } from './storage.ts';
@@ -12,9 +13,11 @@ export interface Target {
 	readonly nth: number;
 }
 
+export type Key = 'Enter' | 'Space' | 'Escape' | 'ArrowDown' | 'ArrowUp' | 'ArrowLeft' | 'ArrowRight' | 'Home' | 'End';
+
 export type Step =
 	| { readonly action: 'click'; readonly target: Target }
-	| { readonly action: 'press'; readonly key: 'Enter' | 'Space' | 'Escape' | 'ArrowDown'; readonly target: Target }
+	| { readonly action: 'press'; readonly key: Key; readonly target: Target }
 	| { readonly action: 'fill'; readonly target: Target; readonly value: string }
 	| { readonly action: 'select'; readonly target: Target; readonly value: string }
 	| { readonly action: 'submit'; readonly target: Target; readonly fields: readonly { readonly target: Target; readonly value: string; readonly check?: boolean }[] };
@@ -23,6 +26,8 @@ export interface StepResult {
 	readonly url: string;
 	readonly added: readonly string[];
 	readonly removed: readonly string[];
+	/** Nodes on the page before and after the step, but in another order (a sorted table's rows). */
+	readonly moved?: readonly string[];
 	readonly requests: readonly string[];
 	/** Requests of this step that write, and whether each was sent or held back. */
 	readonly writes?: readonly WriteLine[];
@@ -46,7 +51,14 @@ export interface RecordedJourney extends Journey {
 	readonly expected: readonly StepResult[];
 }
 
-const ROLES = ['button', 'link', 'checkbox', 'radio', 'switch', 'tab', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'option', 'textbox', 'searchbox', 'spinbutton', 'combobox'] as const;
+const ROLES = ['button', 'link', 'checkbox', 'radio', 'switch', 'tab', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'option', 'textbox', 'searchbox', 'spinbutton', 'combobox', 'slider', 'treeitem', 'columnheader', 'row', 'gridcell'] as const;
+/** Roles that are structure as often as controls: one counts only when it is focusable, sortable, selectable, answers input itself, or is a row of an interactive grid. */
+const STRUCTURAL = new Set(['columnheader', 'row', 'gridcell']);
+/** Rows and cells of one grid are alike: the first few of each are exercised, the rest counted as covered by them. */
+const SAMPLED = new Set(['row', 'gridcell', 'treeitem']);
+const SAMPLES = 2;
+/** An element found by its listeners rather than its role: located by its text or label. */
+export const CLICKABLE = 'clickable';
 const DESTRUCTIVE = /\b(log ?out|sign ?out|delete|remove|destroy|unsubscribe|deactivate|close (my|your) account)\b/i;
 /** How long exploring one route may take by default; what is left is listed as not exercised. */
 export const DEFAULT_JOURNEY_BUDGET_MS = 120_000;
@@ -85,7 +97,14 @@ export function describeStep(step: Step): string {
 	}
 }
 
+/** Elements labelled `name`: the innermost one whose text is exactly it, or one with no text and that aria-label or title. */
+export function labelled(name: string): string {
+	const v = name.includes("'") ? `concat('${name.split("'").join(`', "'", '`)}')` : `'${name}'`;
+	return `//body//*[(normalize-space(.)=${v} and not(*[normalize-space(.)=${v}])) or (normalize-space(.)='' and (@aria-label=${v} or @title=${v}))]`;
+}
+
 export function locate(page: Page, t: Target): Locator {
+	if (t.role === CLICKABLE) return page.locator(`xpath=${labelled(t.name)}`).nth(t.nth);
 	if (t.role === 'summary') return page.locator('summary').filter({ hasText: new RegExp(`^\\s*${escapeRegex(t.name)}\\s*$`) }).nth(t.nth);
 	return page.getByRole(t.role as Parameters<Page['getByRole']>[0], { name: t.name, exact: true }).nth(t.nth);
 }
@@ -116,6 +135,8 @@ interface Candidate {
 	readonly skip?: string;
 	/** Exercised by another dimension rather than by a journey. */
 	readonly covered?: string;
+	/** Takes keyboard focus (a tabindex or a native control). */
+	readonly focusable?: boolean;
 }
 
 const LAYOUT = new Set(['header', 'banner', 'nav', 'navigation', 'aside', 'complementary', 'footer', 'contentinfo']);
@@ -139,6 +160,8 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 		inRegion.set(group, n + 1);
 		out.push({ ...c, signature: isLayout(c) ? `${group}|${n}` : `page|${c.target.role}|${c.target.name}|${c.target.nth}` });
 	};
+	await markHandlers(page);
+	const samples = new Map<string, number>();
 	for (const role of ROLES) {
 		const seen = new Map<string, number>();
 		for (const locator of await page.getByRole(role).all()) {
@@ -149,8 +172,18 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 			if (!(await locator.isVisible().catch(() => false)) || (await locator.isDisabled().catch(() => true))) continue;
 			const info = await locator.evaluate(describeElement, undefined, { timeout: STEP_TIMEOUT }).catch(() => undefined);
 			if (!info) continue;
+			if (STRUCTURAL.has(role) && !(info.focusable || info.handler || info.sortable || info.selectable || (info.grid && role === 'row' && !info.header))) continue;
 			const target = { role, name, nth };
-			const base = { target, href: info.href, type: info.type, options: info.options, region: info.region, importance: importance(info) };
+			const base = { target, href: info.href, type: info.type, options: info.options, region: info.region, importance: importance(info), ...(info.focusable ? { focusable: true } : {}) };
+			if (SAMPLED.has(role)) {
+				const key = `${role}|${info.container}`;
+				const n = samples.get(key) ?? 0;
+				samples.set(key, n + 1);
+				if (n >= SAMPLES) {
+					add({ ...base, covered: `another ${role} of the same ${role === 'treeitem' ? 'tree' : 'grid'} is exercised (the first ${SAMPLES} of each are)` });
+					continue;
+				}
+			}
 			if (role === 'link') {
 				if (!info.href || /^(mailto|tel):/i.test(info.href)) {
 					add({ ...base, covered: 'its address is compared by the rendered check' });
@@ -187,10 +220,19 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 		const info = await locator.evaluate(describeElement, undefined, { timeout: STEP_TIMEOUT }).catch(() => undefined);
 		if (info) add({ target: { role: 'summary', name, nth }, region: info.region, importance: importance(info) });
 	}
+	for (const c of await page.evaluate(clickables).catch(() => [])) {
+		const target = { role: CLICKABLE, name: c.name, nth: c.nth };
+		const base = { target, region: c.region, importance: importance(c), ...(c.focusable ? { focusable: true } : {}) };
+		if (!c.name) add({ ...base, skip: 'it answers clicks or keys but has no text or label, so check cannot find it again on the new page' });
+		else if (DESTRUCTIVE.test(c.name)) add({ ...base, skip: 'its name looks destructive (sign out, delete...), so check does not use it' });
+		else add(base);
+	}
 	return out;
 }
 
 function describeElement(el: Element) {
+	const handlers = (globalThis as { __markless_migrate_handlers__?: WeakSet<Element> }).__markless_migrate_handlers__;
+	const grid = el.closest('[role="grid"], [role="treegrid"], [role="tree"], [role="table"], table');
 	const main = el.closest('main, [role="main"]');
 	const landmark = main ? null : el.closest('header, nav, aside, footer, [role="banner"], [role="navigation"], [role="complementary"], [role="contentinfo"]');
 	return {
@@ -201,7 +243,54 @@ function describeElement(el: Element) {
 		table: Boolean(el.closest('table, [role="table"], [role="grid"], [role="treegrid"]')),
 		form: Boolean(el.closest('form')) || /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName),
 		dialog: Boolean(el.closest('dialog, [role="dialog"], [role="alertdialog"]')),
+		focusable: el.hasAttribute('tabindex') && (el as HTMLElement).tabIndex >= 0,
+		handler: Boolean(handlers?.has(el)),
+		sortable: el.hasAttribute('aria-sort'),
+		selectable: el.hasAttribute('aria-selected'),
+		grid: Boolean(grid && /^(grid|treegrid|tree)$/.test(grid.getAttribute('role') ?? '')),
+		header: Boolean(el.querySelector('[role="columnheader"], th')),
+		container: grid ? [...document.querySelectorAll('[role="grid"], [role="treegrid"], [role="tree"], [role="table"], table')].indexOf(grid) : -1,
 	};
+}
+
+/** Elements that answer a click or a key themselves but have no interactive role, each with its label and its index among the elements `labelled` finds for it. */
+function clickables() {
+	const handlers = (globalThis as { __markless_migrate_handlers__?: WeakSet<Element> }).__markless_migrate_handlers__;
+	if (!handlers) return [];
+	// The same expression as labelled(), written out here because a page with a CSP may refuse eval.
+	const xpathFor = (name: string) => {
+		const v = name.includes("'") ? `concat('${name.split("'").join(`', "'", '`)}')` : `'${name}'`;
+		return `//body//*[(normalize-space(.)=${v} and not(*[normalize-space(.)=${v}])) or (normalize-space(.)='' and (@aria-label=${v} or @title=${v}))]`;
+	};
+	const control = 'a[href], button, input, select, textarea, summary, label, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="switch"], [role="tab"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"], [role="textbox"], [role="searchbox"], [role="spinbutton"], [role="combobox"], [role="slider"], [role="treeitem"], [contenteditable=""], [contenteditable="true"]';
+	const label = (el: Element) => ((el.textContent ?? '').replace(/\s+/g, ' ').trim() || el.getAttribute('aria-label') || el.getAttribute('title') || '').slice(0, 80);
+	const hits = [...(document.body?.querySelectorAll('*') ?? [])].filter((el) => handlers.has(el) && !el.matches(control) && !el.closest(control) && !el.querySelector(control) && !el.matches('[role="columnheader"], [role="row"], [role="gridcell"]') && el.querySelectorAll('*').length <= 40 && el.checkVisibility({ visibilityProperty: true }));
+	const outer = hits.filter((el) => !hits.some((other) => other !== el && other.contains(el)));
+	return outer.map((el) => {
+		const name = label(el);
+		let nth = 0;
+		if (name) {
+			const found = document.evaluate(xpathFor(name), document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+			for (let i = 0; i < found.snapshotLength; i++) {
+				const node = found.snapshotItem(i)!;
+				if (node === el || el.contains(node)) {
+					nth = i;
+					break;
+				}
+			}
+		}
+		const main = el.closest('main, [role="main"]');
+		const landmark = main ? null : el.closest('header, nav, aside, footer, [role="banner"], [role="navigation"], [role="complementary"], [role="contentinfo"]');
+		return {
+			name,
+			nth,
+			region: main ? 'main' : landmark ? (landmark.getAttribute('role') ?? landmark.tagName.toLowerCase()) : '',
+			table: Boolean(el.closest('table, [role="table"], [role="grid"], [role="treegrid"]')),
+			form: Boolean(el.closest('form')),
+			dialog: Boolean(el.closest('dialog, [role="dialog"], [role="alertdialog"]')),
+			focusable: el.hasAttribute('tabindex') && (el as HTMLElement).tabIndex >= 0,
+		};
+	});
 }
 
 async function forms(page: Page, origin: string, found: readonly Candidate[]): Promise<Step[]> {
@@ -233,16 +322,25 @@ function primaryStep(c: Candidate): Step | undefined {
 	if (t.role === 'textbox' || t.role === 'searchbox' || t.role === 'spinbutton') return { action: 'fill', target: t, value: sample(c.type ?? '', t.name) };
 	if (t.role === 'combobox' && c.options?.length) return c.options.length > 1 ? { action: 'select', target: t, value: c.options[1]! } : undefined;
 	if (t.role === 'button' && c.type === 'submit') return { action: 'press', key: 'Enter', target: t };
+	if (t.role === 'slider') return { action: 'press', key: 'ArrowRight', target: t };
 	return { action: 'click', target: t };
 }
 
 /** The keyboard paths to the same element: Enter on links and buttons, Space on buttons and toggles. */
 function keyboardSteps(c: Candidate): Step[] {
 	const t = c.target;
-	if (t.role === 'link') return [{ action: 'press', key: 'Enter', target: t }];
+	const keys = (...list: Key[]): Step[] => list.map((key) => ({ action: 'press', key, target: t }));
+	if (t.role === 'link') return keys('Enter');
 	if (t.role === 'button' && c.type === 'submit') return [];
-	if (t.role === 'button' || t.role === 'summary' || t.role === 'tab' || t.role.startsWith('menuitem') || t.role === 'option') return [{ action: 'press', key: 'Enter', target: t }, { action: 'press', key: 'Space', target: t }];
-	if (t.role === 'checkbox' || t.role === 'radio' || t.role === 'switch') return [{ action: 'press', key: 'Space', target: t }];
+	if (t.role === 'tab') return keys('Enter', 'Space', 'ArrowRight');
+	if (t.role === 'button' || t.role === 'summary' || t.role.startsWith('menuitem') || t.role === 'option') return keys('Enter', 'Space');
+	if (t.role === 'checkbox' || t.role === 'radio' || t.role === 'switch') return keys('Space');
+	if (t.role === 'columnheader') return keys('Enter');
+	if (t.role === 'row') return keys('Space', 'Enter', 'ArrowDown');
+	if (t.role === 'gridcell') return keys('ArrowDown', 'ArrowRight', 'Enter');
+	if (t.role === 'treeitem') return keys('Enter', 'ArrowRight', 'ArrowDown');
+	if (t.role === 'slider') return keys('ArrowLeft', 'Home', 'End');
+	if (t.role === CLICKABLE && c.focusable) return keys('Enter', 'Space');
 	return [];
 }
 
@@ -259,6 +357,46 @@ function appRequest(request: Request, origin: string): string | undefined {
 function storageChange(before: readonly string[], after: readonly string[]): string[] {
 	const { added, removed } = multisetDiff(before, after);
 	return [...added.map((k) => `+ ${k}`), ...removed.map((k) => `- ${k}`)];
+}
+
+const MOVED_WINDOW = 800;
+const MOVED_MAX = 40;
+
+/** Lines both snapshots have that the step put in another order: what is outside the longest common subsequence of the lines both keep. */
+export function movedLines(before: readonly string[], after: readonly string[]): string[] {
+	const { added, removed } = multisetDiff(before, after);
+	const drop = (lines: readonly string[], gone: readonly string[]) => {
+		const counts = new Map<string, number>();
+		for (const g of gone) counts.set(g, (counts.get(g) ?? 0) + 1);
+		return lines.filter((l) => {
+			const n = counts.get(l) ?? 0;
+			if (!n) return true;
+			counts.set(l, n - 1);
+			return false;
+		});
+	};
+	const a = drop(before, removed);
+	const b = drop(after, added);
+	let start = 0;
+	while (start < a.length && a[start] === b[start]) start++;
+	let end = 0;
+	while (end < a.length - start && a[a.length - 1 - end] === b[b.length - 1 - end]) end++;
+	const x = a.slice(start, a.length - end);
+	const y = b.slice(start, b.length - end);
+	if (!x.length) return [];
+	if (x.length > MOVED_WINDOW) return [`${x.length} lines in another order`];
+	const table = Array.from({ length: x.length + 1 }, () => new Uint16Array(y.length + 1));
+	for (let i = x.length - 1; i >= 0; i--) for (let j = y.length - 1; j >= 0; j--) table[i]![j] = x[i] === y[j] ? table[i + 1]![j + 1]! + 1 : Math.max(table[i + 1]![j]!, table[i]![j + 1]!);
+	const kept = new Set<number>();
+	for (let i = 0, j = 0; i < x.length && j < y.length; ) {
+		if (x[i] === y[j]) {
+			kept.add(j);
+			i++;
+			j++;
+		} else if (table[i + 1]![j]! >= table[i]![j + 1]!) i++;
+		else j++;
+	}
+	return y.filter((_, j) => !kept.has(j)).slice(0, MOVED_MAX);
 }
 
 function multisetDiff(before: readonly string[], after: readonly string[]): { added: string[]; removed: string[] } {
@@ -430,6 +568,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 			const after = await snapshot(page, origin);
 			const liveAfter = await page.evaluate(liveRegions).catch(() => [] as string[]);
 			const { added, removed } = multisetDiff(before, after);
+			const moved = documentLoaded ? [] : movedLines(before, after);
 			const writes = log.writes.slice(writesBefore);
 			const writeOf = new Map(writes.map((w) => [w.request, w.line]));
 			return {
@@ -437,6 +576,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 				navigated: documentLoaded || new URL(page.url()).pathname !== startPath || (href !== null && new URL(href, page.url()).href === page.url()),
 				added,
 				removed,
+				...(moved.length ? { moved } : {}),
 				requests: requests.flatMap((r) => {
 					const line = writeOf.get(r) ?? appRequest(r, host);
 					return line ? [line] : [];
@@ -711,6 +851,7 @@ function format(result: StepResult, parts: readonly string[]): string {
 	if (parts.includes('url')) out.push(`URL ${result.url}`);
 	if (parts.includes('added')) out.push(`appears: ${result.added.join(' | ') || '(nothing)'}`);
 	if (parts.includes('removed')) out.push(`disappears: ${result.removed.join(' | ') || '(nothing)'}`);
+	if (parts.includes('moved')) out.push(`moves: ${result.moved?.join(' | ') || '(nothing)'}`);
 	if (parts.includes('requests')) out.push(`requests: ${result.requests.join(', ') || '(none)'}`);
 	if (parts.includes('errors')) out.push(`console errors: ${result.errors.join(' | ') || '(none)'}`);
 	if (parts.includes('announcements')) out.push(`announced: ${result.announcements.join(' | ') || '(nothing)'}`);
@@ -748,7 +889,7 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			const parts: string[] = [];
 			if (!stable([a!.url, ...rest.map((r) => r.url)])(n.url)) parts.push('url');
 			const navigated = n.navigated || oldSteps.some((x) => x!.navigated);
-			for (const field of navigated ? (['requests', 'storage'] as const) : (['added', 'removed', 'requests', 'announcements', 'storage'] as const)) {
+			for (const field of navigated ? (['requests', 'storage'] as const) : (['added', 'removed', 'moved', 'requests', 'announcements', 'storage'] as const)) {
 				// Requests in flight together finish in any order (a client retrying hosts it shuffled), so they count as a set.
 				const lines = (r: StepResult) => (field === 'requests' ? [...r[field]].sort() : (r[field] ?? []));
 				const diff = diffLines(lineTemplates(lines(a!), ...rest.map(lines)), lines(n));

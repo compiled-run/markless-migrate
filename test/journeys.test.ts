@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { pageAsset } from '../src/check/browser.ts';
-import { compareJourneys, describeStep, localUrl, type Journey, type StepResult } from '../src/check/journeys.ts';
+import { compareJourneys, describeStep, labelled, localUrl, movedLines, type Journey, type StepResult } from '../src/check/journeys.ts';
 
 const result = (over: Partial<StepResult>): StepResult => ({ url: '/', added: [], removed: [], requests: [], errors: [], announcements: [], focus: 'body', navigated: false, ...over });
 const pour = { role: 'button', name: 'Pour a cup', nth: 0 };
@@ -68,4 +68,19 @@ test('an app origin written into a redirect query is the same on both apps', asy
 	const { toLocal } = await import('../src/check/capture.ts');
 	assert.equal(toLocal('http://localhost:3100/login?callbackUrl=http%3A%2F%2Flocalhost%3A3100%2Fdashboard', 'http://localhost:3100'), toLocal('http://localhost:47310/login?callbackUrl=http%3A%2F%2Flocalhost%3A47310%2Fdashboard', 'http://localhost:47310'));
 	assert.equal(toLocal('https://elsewhere.example/?next=http://localhost:3100/a', 'http://localhost:3100'), 'https://elsewhere.example/?next=http://localhost:3100/a');
+});
+
+test('a step that only reorders nodes reports what moved, and a new page that leaves them in place differs', () => {
+	const rows = ['- grid', '- row "gamma"', '- row "alpha"', '- row "beta"'];
+	assert.deepEqual(movedLines(rows, ['- grid', '- row "alpha"', '- row "beta"', '- row "gamma"']), ['- row "gamma"']);
+	assert.deepEqual(movedLines(rows, rows), []);
+	assert.deepEqual(movedLines(rows, ['- grid', '- row "gamma"', '- row "alpha"', '- row "delta"']), [], 'a replaced node is added and removed, not moved');
+	const sort = [{ name: 'click columnheader "Name"', steps: [{ action: 'click' as const, target: { role: 'columnheader', name: 'Name', nth: 0 } }] }];
+	const old = [[result({ moved: ['- row "gamma"'] })]];
+	assert.deepEqual(compareJourneys('/', [old, old], sort, old), []);
+	assert.deepEqual(compareJourneys('/', [old, old], sort, [[result({})]]).map((f) => f.check), ['click columnheader "Name"']);
+});
+
+test('an element found by its listeners is located by its exact text, innermost first, or by its label when it has no text', () => {
+	assert.equal(labelled("it's"), `//body//*[(normalize-space(.)=concat('it', "'", 's') and not(*[normalize-space(.)=concat('it', "'", 's')])) or (normalize-space(.)='' and (@aria-label=concat('it', "'", 's') or @title=concat('it', "'", 's')))]`);
 });
