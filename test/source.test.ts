@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { parse } from 'graphql';
@@ -244,4 +246,14 @@ test('plan recognises Docusaurus and VitePress and maps every page to its Markdo
 	const index = await indexMarkup(fixture('docusaurus'));
 	assert.deepEqual(findText(index, 'Let us discover Docusaurus in less than 5 minutes.'), { file: 'docs/intro.md', line: 7 });
 	assert.deepEqual(findText(index, 'Run npm init docusaurus.'), { file: 'docs/01-guides/02-installation.md', line: 7 });
+});
+
+test('an uninitialised declaration is a binding, not an import', async () => {
+	const mod = parseModule('a.ts', "let sw;\nconst { a } = require('x');\nexport default sw;");
+	assert.deepEqual([...mod.imports].map(([name, i]) => [name, i.source]), [['a', 'x']]);
+	const dir = await mkdtemp(join(tmpdir(), 'mm-uninit-'));
+	await writeFile(join(dir, 'package.json'), '{"dependencies":{"react":"19.0.0"}}');
+	await writeFile(join(dir, 'index.tsx'), "let devtronSW;\nexport function App() { return <p>{String(devtronSW)}</p>; }\n");
+	const facts = await scanSource(dir);
+	assert.deepEqual(facts.components.map((c) => c.name), ['App']);
 });

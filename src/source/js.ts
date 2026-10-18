@@ -98,7 +98,7 @@ export function parseModule(file: string, text: string): Module {
 					bindings.set(name, d.init ?? d);
 					if (exported) exports.set(name, d.init ?? d);
 				}
-				const req = d.init && requireSource(d.init);
+				const req = d.init ? requireSource(d.init) : undefined;
 				if (req !== undefined) {
 					if (d.id.type === 'Identifier') imports.set(d.id.name, { source: req, imported: 'default', line: line(d.start) });
 					else if (d.id.type === 'ObjectPattern') for (const p of d.id.properties as N[]) if (p.type === 'Property' && p.value.type === 'Identifier') imports.set(p.value.name, { source: req, imported: keyName(p.key) ?? p.value.name, line: line(d.start) });
