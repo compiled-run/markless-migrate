@@ -6,6 +6,7 @@ import Sponsor from '../../components/sponsor.tsrx';
 import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
 import { watchHeadings } from '../../site.ts';
+import { Demo0 } from '../../demos/directives-html.tsrx';
 
 const HEADINGS = [] as const;
 
@@ -22,10 +23,10 @@ export default function DocsPage({ url }: PageProps) @{
 						⚠️ Only use on trusted content and never on user-provided content. ⚠️ Dynamically rendering HTML from third parties can easily lead to XSS vulnerabilities.
 					</p>
 				</blockquote>
-				<p>Here's a basic example of using{" "}<code>x-html</code>{" "}to display a user's username.</p>
+				<p>Here&#39;s a basic example of using{" "}<code>x-html</code>{" "}to display a user&#39;s username.</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-data"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"{ username: "}</span><span style="color: #032F62;">{"'<strong>calebporzio</strong>'"}</span><span style="color: #24292E;">{" }"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"    Username: <"}</span><span style="color: #22863A;">{"span"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-html"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"username"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"></"}</span><span style="color: #22863A;">{"span"}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"</"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<div x-data=\"{ username: '<strong>calebporzio</strong>' }\">\n    Username: <span x-html=\"username\"></span>\n</div>"}</div></code></pre>
-				<div class="demo"><div>Username:{" "}<span></span></div></div>
-				<p>Now the{" "}<code>&lt;span&gt;</code>{" "}tag's inner HTML will be set to "<strong>calebporzio</strong>".</p>
+				<Demo0 />
+				<p>Now the{" "}<code>&lt;span&gt;</code>{" "}tag&#39;s inner HTML will be set to "<strong>calebporzio</strong>".</p>
 				<Sponsor wrapper="my-12 border-y border-gray-200 py-6 xl:hidden" label="mb-3 block text-xs font-semibold uppercase tracking-wider text-gray-400" />
 				<div class="flex justify-between border-t border-gray-200 pt-4 text-gray-700">
 					<div>

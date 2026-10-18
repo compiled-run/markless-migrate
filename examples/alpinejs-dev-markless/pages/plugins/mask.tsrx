@@ -6,8 +6,9 @@ import Sponsor from '../../components/sponsor.tsrx';
 import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
 import { watchHeadings } from '../../site.ts';
+import { Demo0, Demo1, Demo2, Demo3, Demo4, Demo5 } from '../../demos/plugins-mask.tsrx';
 
-const HEADINGS = [{ id: "installation", text: "Installation", level: 2 }, { id: "via-cdn", text: "Via CDN", level: 3 }, { id: "via-npm", text: "Via NPM", level: 3 }, { id: "x-mask", text: "x-mask", level: 2 }, { id: "mask-functions", text: "Dynamic Masks", level: 2 }, { id: "money-inputs", text: "Money Inputs", level: 2 }] as const;
+const HEADINGS = [{ key: 0, id: "installation", text: "Installation", level: 2 }, { key: 1, id: "via-cdn", text: "Via CDN", level: 3 }, { key: 2, id: "via-npm", text: "Via NPM", level: 3 }, { key: 3, id: "x-mask", text: "x-mask", level: 2 }, { key: 4, id: "mask-functions", text: "Dynamic Masks", level: 2 }, { key: 5, id: "money-inputs", text: "Money Inputs", level: 2 }] as const;
 
 export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
@@ -16,16 +17,18 @@ export default function DocsPage({ url }: PageProps) @{
 		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64" onIdle={(event) => watchHeadings(event.target as HTMLElement)}>
 			<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
 				<h1>Mask Plugin</h1>
-				<p>Alpine's Mask plugin allows you to automatically format a text input field as a user types.</p>
+				<p>Alpine&#39;s Mask plugin allows you to automatically format a text input field as a user types.</p>
 				<p>This is useful for many different types of inputs: phone numbers, credit cards, dollar amounts, account numbers, dates, etc.</p>
 				<h2 id="installation"><a href="#installation">Installation</a></h2>
-				<div x-data={"{ expanded: false }"}>
+				<div>
 					<div class=" relative">
-						<div x-show="! expanded" class="absolute inset-0 flex justify-start items-end bg-gradient-to-t from-white to-[#ffffff66]"></div>
-						<div x-show="expanded" x-collapse.min.80px="" class="markdown">
+						<div class="absolute inset-0 flex justify-start items-end bg-gradient-to-t from-white to-[#ffffff66]"></div>
+						<div class="markdown">
 							<p>You can use this plugin by either including it from a{" "}<code>&lt;script&gt;</code>{" "}tag or installing it via NPM:</p>
 							<h3 id="via-cdn">Via CDN</h3>
-							<p>You can include the CDN build of this plugin as a{" "}<code>&lt;script&gt;</code>{" "}tag, just make sure to include it BEFORE Alpine's core JS file.</p>
+							<p>
+								You can include the CDN build of this plugin as a{" "}<code>&lt;script&gt;</code>{" "}tag, just make sure to include it BEFORE Alpine&#39;s core JS file.
+							</p>
 							<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #6A737D;">{"<!-- Alpine Plugins -->"}</span></div><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"script"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"defer"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"src"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\"https://cdn.jsdelivr.net/npm/@alpinejs/mask@3.x.x/dist/cdn.min.js\""}</span><span style="color: #24292E;">{"></"}</span><span style="color: #22863A;">{"script"}</span><span style="color: #24292E;">{">"}</span></div><div class="line">{" "}</div><div class="line"><span style="color: #6A737D;">{"<!-- Alpine Core -->"}</span></div><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"script"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"defer"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"src"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\"https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js\""}</span><span style="color: #24292E;">{"></"}</span><span style="color: #22863A;">{"script"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<!-- Alpine Plugins -->\n<script defer src=\"https://cdn.jsdelivr.net/npm/@alpinejs/mask@3.x.x/dist/cdn.min.js\"></script>\n\n<!-- Alpine Core -->\n<script defer src=\"https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js\"></script>"}</div></code></pre>
 							<h3 id="via-npm">Via NPM</h3>
 							<p>You can install Mask from NPM for use inside your bundle like so:</p>
@@ -35,21 +38,21 @@ export default function DocsPage({ url }: PageProps) @{
 						</div>
 					</div>
 					{" "}
-					<button :aria-expanded="expanded" @click="expanded = ! expanded" class="text-cyan-600 font-medium underline">
+					<button class="text-cyan-600 font-medium underline">
 						{" "}
-						<span x-text="expanded ? 'Hide' : 'Show more'">Show</span>
+						<span>Show</span>
 						{" "}
-						<span x-text="expanded ? '↑' : '↓'">↓</span>
+						<span>↓</span>
 						{" "}
 					</button>
 				</div>
 				<h2 id="x-mask"><a href="#x-mask">x-mask</a></h2>
 				<p>The primary API for using this plugin is the{" "}<code>x-mask</code>{" "}directive.</p>
-				<p>Let's start by looking at the following simple example of a date field:</p>
+				<p>Let&#39;s start by looking at the following simple example of a date field:</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"input"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-mask"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #005CC5;">{"99"}</span><span style="color: #D73A49;">{"/"}</span><span style="color: #005CC5;">{"99"}</span><span style="color: #D73A49;">{"/"}</span><span style="color: #005CC5;">{"9999"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"placeholder"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\"MM/DD/YYYY\""}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<input x-mask=\"99/99/9999\" placeholder=\"MM/DD/YYYY\">"}</div></code></pre>
-				<div class="demo"><input placeholder="MM/DD/YYYY" /></div>
+				<Demo0 />
 				<p>
-					Notice how the text you type into the input field must adhere to the format provided by{" "}<code>x-mask</code>. In addition to enforcing numeric characters, the forward slashes{" "}<code>/</code>{" "}are also automatically added if a user doesn't type them first.
+					Notice how the text you type into the input field must adhere to the format provided by{" "}<code>x-mask</code>. In addition to enforcing numeric characters, the forward slashes{" "}<code>/</code>{" "}are also automatically added if a user doesn&#39;t type them first.
 				</p>
 				<p>The following wildcard characters are supported in masks:</p>
 				<table>
@@ -79,14 +82,14 @@ export default function DocsPage({ url }: PageProps) @{
 					Sometimes simple mask literals (i.e.{" "}<code>(999) 999-9999</code>) are not sufficient. In these cases,{" "}<code>x-mask:dynamic</code>{" "}allows you to dynamically generate masks on the fly based on user input.
 				</p>
 				<p>
-					Here's an example of a credit card input that needs to change it's mask based on if the number starts with the numbers "34" or "37" (which means it's an Amex card and therefore has a different format).
+					Here&#39;s an example of a credit card input that needs to change it&#39;s mask based on if the number starts with the numbers "34" or "37" (which means it&#39;s an Amex card and therefore has a different format).
 				</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"input"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-mask"}</span><span style="color: #24292E;">{":"}</span><span style="color: #6F42C1;">{"dynamic"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span></div><div class="line"><span style="color: #24292E;">{"    $input."}</span><span style="color: #6F42C1;">{"startsWith"}</span><span style="color: #24292E;">{"("}</span><span style="color: #032F62;">{"'34'"}</span><span style="color: #24292E;">{") "}</span><span style="color: #D73A49;">{"||"}</span><span style="color: #24292E;">{" $input."}</span><span style="color: #6F42C1;">{"startsWith"}</span><span style="color: #24292E;">{"("}</span><span style="color: #032F62;">{"'37'"}</span><span style="color: #24292E;">{")"}</span></div><div class="line"><span style="color: #24292E;">{"        "}</span><span style="color: #D73A49;">{"?"}</span><span style="color: #24292E;">{" "}</span><span style="color: #032F62;">{"'9999 999999 99999'"}</span><span style="color: #24292E;">{" "}</span><span style="color: #D73A49;">{":"}</span><span style="color: #24292E;">{" "}</span><span style="color: #032F62;">{"'9999 9999 9999 9999'"}</span></div><div class="line"><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<input x-mask:dynamic=\"\n    $input.startsWith('34') || $input.startsWith('37')\n        ? '9999 999999 99999' : '9999 9999 9999 9999'\n\">"}</div></code></pre>
 				<p>
 					As you can see in the above example, every time a user types in the input, that value is passed to the expression as{" "}<code>$input</code>. Based on the{" "}<code>$input</code>, a different mask is utilized in the field.
 				</p>
-				<p>Try it for yourself by typing a number that starts with "34" and one that doesn't.</p>
-				<div class="demo"><input /></div>
+				<p>Try it for yourself by typing a number that starts with "34" and one that doesn&#39;t.</p>
+				<Demo1 />
 				<p>
 					<code>x-mask:dynamic</code>{" "}also accepts a function as a result of the expression and will automatically pass it the{" "}<code>$input</code>{" "}as the first parameter. For example:
 				</p>
@@ -97,16 +100,16 @@ export default function DocsPage({ url }: PageProps) @{
 				</p>
 				<p>Here is a fully functioning money input mask:</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"input"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-mask"}</span><span style="color: #24292E;">{":"}</span><span style="color: #6F42C1;">{"dynamic"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #6F42C1;">{"$money"}</span><span style="color: #24292E;">{"($input)"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<input x-mask:dynamic=\"$money($input)\">"}</div></code></pre>
-				<div class="demo"><input type="text" placeholder="0.00" /></div>
+				<Demo2 />
 				<p>If you wish to swap the periods for commas and vice versa (as is required in certain currencies), you can do so using the second optional parameter:</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"input"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-mask"}</span><span style="color: #24292E;">{":"}</span><span style="color: #6F42C1;">{"dynamic"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #6F42C1;">{"$money"}</span><span style="color: #24292E;">{"($input, "}</span><span style="color: #032F62;">{"','"}</span><span style="color: #24292E;">{")"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<input x-mask:dynamic=\"$money($input, ',')\">"}</div></code></pre>
-				<div class="demo"><input type="text" placeholder="0,00" /></div>
+				<Demo3 />
 				<p>You may also choose to override the thousands separator by supplying a third optional argument:</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"input"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-mask"}</span><span style="color: #24292E;">{":"}</span><span style="color: #6F42C1;">{"dynamic"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #6F42C1;">{"$money"}</span><span style="color: #24292E;">{"($input, "}</span><span style="color: #032F62;">{"'.'"}</span><span style="color: #24292E;">{", "}</span><span style="color: #032F62;">{"' '"}</span><span style="color: #24292E;">{")"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<input x-mask:dynamic=\"$money($input, '.', ' ')\">"}</div></code></pre>
-				<div class="demo"><input type="text" placeholder="3 000.00" /></div>
+				<Demo4 />
 				<p>You can also override the default precision of 2 digits by using any desired number of digits as the fourth optional argument:</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"input"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-mask"}</span><span style="color: #24292E;">{":"}</span><span style="color: #6F42C1;">{"dynamic"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #6F42C1;">{"$money"}</span><span style="color: #24292E;">{"($input, "}</span><span style="color: #032F62;">{"'.'"}</span><span style="color: #24292E;">{", "}</span><span style="color: #032F62;">{"','"}</span><span style="color: #24292E;">{", "}</span><span style="color: #005CC5;">{"4"}</span><span style="color: #24292E;">{")"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<input x-mask:dynamic=\"$money($input, '.', ',', 4)\">"}</div></code></pre>
-				<div class="demo"><input type="text" placeholder="0.0001" /></div>
+				<Demo5 />
 				<Sponsor wrapper="my-12 border-y border-gray-200 py-6 xl:hidden" label="mb-3 block text-xs font-semibold uppercase tracking-wider text-gray-400" />
 				<div class="flex justify-between border-t border-gray-200 pt-4 text-gray-700">
 					<div>

@@ -6,8 +6,9 @@ import Sponsor from '../../components/sponsor.tsrx';
 import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
 import { watchHeadings } from '../../site.ts';
+import { Demo0, Demo1 } from '../../demos/plugins-persist.tsrx';
 
-const HEADINGS = [{ id: "installation", text: "Installation", level: 2 }, { id: "via-cdn", text: "Via CDN", level: 3 }, { id: "via-npm", text: "Via NPM", level: 3 }, { id: "magic-persist", text: "$persist", level: 2 }, { id: "how-it-works", text: "How does it work?", level: 2 }, { id: "custom-key", text: "Setting a custom key", level: 2 }, { id: "custom-storage", text: "Using a custom storage", level: 2 }, { id: "using-persist-with-alpine-data", text: "Using $persist with Alpine.data", level: 2 }, { id: "using-alpine-persist-global", text: "Using the Alpine.$persist global", level: 2 }] as const;
+const HEADINGS = [{ key: 0, id: "installation", text: "Installation", level: 2 }, { key: 1, id: "via-cdn", text: "Via CDN", level: 3 }, { key: 2, id: "via-npm", text: "Via NPM", level: 3 }, { key: 3, id: "magic-persist", text: "$persist", level: 2 }, { key: 4, id: "how-it-works", text: "How does it work?", level: 2 }, { key: 5, id: "custom-key", text: "Setting a custom key", level: 2 }, { key: 6, id: "custom-storage", text: "Using a custom storage", level: 2 }, { key: 7, id: "using-persist-with-alpine-data", text: "Using $persist with Alpine.data", level: 2 }, { key: 8, id: "using-alpine-persist-global", text: "Using the Alpine.$persist global", level: 2 }] as const;
 
 export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
@@ -16,14 +17,14 @@ export default function DocsPage({ url }: PageProps) @{
 		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64" onIdle={(event) => watchHeadings(event.target as HTMLElement)}>
 			<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
 				<h1>Persist Plugin</h1>
-				<p>Alpine's Persist plugin allows you to persist Alpine state across page loads.</p>
+				<p>Alpine&#39;s Persist plugin allows you to persist Alpine state across page loads.</p>
 				<p>
 					This is useful for persisting search filters, active tabs, and other features where users will be frustrated if their configuration is reset after refreshing or leaving and revisiting a page.
 				</p>
 				<h2 id="installation"><a href="#installation">Installation</a></h2>
 				<p>You can use this plugin by either including it from a{" "}<code>&lt;script&gt;</code>{" "}tag or installing it via NPM:</p>
 				<h3 id="via-cdn">Via CDN</h3>
-				<p>You can include the CDN build of this plugin as a{" "}<code>&lt;script&gt;</code>{" "}tag, just make sure to include it BEFORE Alpine's core JS file.</p>
+				<p>You can include the CDN build of this plugin as a{" "}<code>&lt;script&gt;</code>{" "}tag, just make sure to include it BEFORE Alpine&#39;s core JS file.</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #6A737D;">{"<!-- Alpine Plugins -->"}</span></div><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"script"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"defer"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"src"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\"https://cdn.jsdelivr.net/npm/@alpinejs/persist@3.x.x/dist/cdn.min.js\""}</span><span style="color: #24292E;">{"></"}</span><span style="color: #22863A;">{"script"}</span><span style="color: #24292E;">{">"}</span></div><div class="line">{" "}</div><div class="line"><span style="color: #6A737D;">{"<!-- Alpine Core -->"}</span></div><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"script"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"defer"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"src"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\"https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js\""}</span><span style="color: #24292E;">{"></"}</span><span style="color: #22863A;">{"script"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<!-- Alpine Plugins -->\n<script defer src=\"https://cdn.jsdelivr.net/npm/@alpinejs/persist@3.x.x/dist/cdn.min.js\"></script>\n\n<!-- Alpine Core -->\n<script defer src=\"https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js\"></script>"}</div></code></pre>
 				<h3 id="via-npm">Via NPM</h3>
 				<p>You can install Persist from NPM for use inside your bundle like so:</p>
@@ -34,18 +35,12 @@ export default function DocsPage({ url }: PageProps) @{
 				<p>The primary API for using this plugin is the magic{" "}<code>$persist</code>{" "}method.</p>
 				<p>You can wrap any value inside{" "}<code>x-data</code>{" "}with{" "}<code>$persist</code>{" "}like below to persist its value across page loads:</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-data"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"{ count: "}</span><span style="color: #6F42C1;">{"$persist"}</span><span style="color: #24292E;">{"("}</span><span style="color: #005CC5;">{"0"}</span><span style="color: #24292E;">{") }"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"    <"}</span><span style="color: #22863A;">{"button"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-on"}</span><span style="color: #24292E;">{":"}</span><span style="color: #6F42C1;">{"click"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"count"}</span><span style="color: #D73A49;">{"++"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">Increment</"}</span><span style="color: #22863A;">{"button"}</span><span style="color: #24292E;">{">"}</span></div><div class="line">{" "}</div><div class="line"><span style="color: #24292E;">{"    <"}</span><span style="color: #22863A;">{"span"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-text"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"count"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"></"}</span><span style="color: #22863A;">{"span"}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"</"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<div x-data=\"{ count: $persist(0) }\">\n    <button x-on:click=\"count++\">Increment</button>\n\n    <span x-text=\"count\"></span>\n</div>"}</div></code></pre>
-				<div class="demo">
-					<div>
-						<button>Increment</button>
-						{" "}
-						<span></span>
-					</div>
-				</div>
+				<Demo0 />
 				<p>
 					In the above example, because we wrapped{" "}<code>0</code>{" "}in{" "}<code>$persist()</code>, Alpine will now intercept changes made to{" "}<code>count</code>{" "}and persist them across page loads.
 				</p>
 				<p>
-					You can try this for yourself by incrementing the "count" in the above example, then refreshing this page and observing that the "count" maintains its state and isn't reset to "0".
+					You can try this for yourself by incrementing the "count" in the above example, then refreshing this page and observing that the "count" maintains its state and isn&#39;t reset to "0".
 				</p>
 				<h2 id="how-it-works"><a href="#how-it-works">How does it work?</a></h2>
 				<p>
@@ -54,25 +49,19 @@ export default function DocsPage({ url }: PageProps) @{
 				<p>
 					Now when a page is reloaded, Alpine will check localStorage (using the name of the property as the key) for a value. If it finds one, it will set the property value from localStorage immediately.
 				</p>
-				<p>You can observe this behavior by opening your browser devtool's localStorage viewer:</p>
+				<p>You can observe this behavior by opening your browser devtool&#39;s localStorage viewer:</p>
 				<p>
 					<a href="https://developer.chrome.com/docs/devtools/storage/localstorage/"><img src="/img/persist_devtools.png" alt="Chrome devtools showing the localStorage view with count set to 0" /></a>
 				</p>
 				<p>
-					You'll observe that by simply visiting this page, Alpine already set the value of "count" in localStorage. You'll also notice it prefixes the property name "count" with "<em>x</em>" as a way of namespacing these values so Alpine doesn't conflict with other tools using localStorage.
+					You&#39;ll observe that by simply visiting this page, Alpine already set the value of "count" in localStorage. You&#39;ll also notice it prefixes the property name "count" with "<em>x</em>" as a way of namespacing these values so Alpine doesn&#39;t conflict with other tools using localStorage.
 				</p>
 				<p>Now change the "count" in the following example and observe the changes made by Alpine to localStorage:</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-data"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"{ count: "}</span><span style="color: #6F42C1;">{"$persist"}</span><span style="color: #24292E;">{"("}</span><span style="color: #005CC5;">{"0"}</span><span style="color: #24292E;">{") }"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"    <"}</span><span style="color: #22863A;">{"button"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-on"}</span><span style="color: #24292E;">{":"}</span><span style="color: #6F42C1;">{"click"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"count"}</span><span style="color: #D73A49;">{"++"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">Increment</"}</span><span style="color: #22863A;">{"button"}</span><span style="color: #24292E;">{">"}</span></div><div class="line">{" "}</div><div class="line"><span style="color: #24292E;">{"    <"}</span><span style="color: #22863A;">{"span"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-text"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"count"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"></"}</span><span style="color: #22863A;">{"span"}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"</"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<div x-data=\"{ count: $persist(0) }\">\n    <button x-on:click=\"count++\">Increment</button>\n\n    <span x-text=\"count\"></span>\n</div>"}</div></code></pre>
-				<div class="demo">
-					<div>
-						<button>Increment</button>
-						{" "}
-						<span></span>
-					</div>
-				</div>
+				<Demo1 />
 				<blockquote>
 					<p>
-						<code>$persist</code>{" "}works with primitive values as well as with arrays and objects. However, it is worth noting that localStorage must be cleared when the type of the variable changes.<br />{" "}Given the previous example, if we change count to a value of{" "}<code>$persist(&#123; value: 0 &#125;)</code>, then localStorage must be cleared or the variable 'count' renamed.
+						<code>$persist</code>{" "}works with primitive values as well as with arrays and objects. However, it is worth noting that localStorage must be cleared when the type of the variable changes.<br />{" "}Given the previous example, if we change count to a value of{" "}<code>$persist(&#123; value: 0 &#125;)</code>, then localStorage must be cleared or the variable &#39;count&#39; renamed.
 					</p>
 				</blockquote>
 				<h2 id="custom-key"><a href="#custom-key">Setting a custom key</a></h2>
@@ -82,12 +71,12 @@ export default function DocsPage({ url }: PageProps) @{
 				<p>In these cases, you can set your own custom key for any persisted value using the{" "}<code>.as</code>{" "}modifier like so:</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-data"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"{ count: "}</span><span style="color: #6F42C1;">{"$persist"}</span><span style="color: #24292E;">{"("}</span><span style="color: #005CC5;">{"0"}</span><span style="color: #24292E;">{")."}</span><span style="color: #6F42C1;">{"as"}</span><span style="color: #24292E;">{"("}</span><span style="color: #032F62;">{"'other-count'"}</span><span style="color: #24292E;">{") }"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"    <"}</span><span style="color: #22863A;">{"button"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-on"}</span><span style="color: #24292E;">{":"}</span><span style="color: #6F42C1;">{"click"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"count"}</span><span style="color: #D73A49;">{"++"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">Increment</"}</span><span style="color: #22863A;">{"button"}</span><span style="color: #24292E;">{">"}</span></div><div class="line">{" "}</div><div class="line"><span style="color: #24292E;">{"    <"}</span><span style="color: #22863A;">{"span"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-text"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"count"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"></"}</span><span style="color: #22863A;">{"span"}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"</"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<div x-data=\"{ count: $persist(0).as('other-count') }\">\n    <button x-on:click=\"count++\">Increment</button>\n\n    <span x-text=\"count\"></span>\n</div>"}</div></code></pre>
 				<p>Now Alpine will store and retrieve the above "count" value using the key "other-count".</p>
-				<p>Here's a view of Chrome Devtools to see for yourself:</p>
+				<p>Here&#39;s a view of Chrome Devtools to see for yourself:</p>
 				{" "}
 				<img src="/img/persist_custom_key_devtools.png" alt="Chrome devtools showing the localStorage view with count set to 0" />
 				{" "}
 				<h2 id="custom-storage"><a href="#custom-storage">Using a custom storage</a></h2>
-				<p>By default, data is saved to localStorage, it does not have an expiration time and it's kept even when the page is closed.</p>
+				<p>By default, data is saved to localStorage, it does not have an expiration time and it&#39;s kept even when the page is closed.</p>
 				<p>
 					Consider the scenario where you want to clear the data once the user close the tab. In this case you can persist data to sessionStorage using the{" "}<code>.using</code>{" "}modifier like so:
 				</p>

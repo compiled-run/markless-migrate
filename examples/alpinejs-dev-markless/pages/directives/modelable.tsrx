@@ -6,8 +6,9 @@ import Sponsor from '../../components/sponsor.tsrx';
 import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
 import { watchHeadings } from '../../site.ts';
+import { Demo0 } from '../../demos/directives-modelable.tsrx';
 
-const HEADINGS = [{ id: "supported-values", text: "Supported values", level: 2 }] as const;
+const HEADINGS = [{ key: 0, id: "supported-values", text: "Supported values", level: 2 }] as const;
 
 export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
@@ -17,19 +18,19 @@ export default function DocsPage({ url }: PageProps) @{
 			<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
 				<h1>x-modelable</h1>
 				<p><code>x-modelable</code>{" "}allows you to expose Alpine state as the target of the{" "}<code>x-model</code>{" "}directive.</p>
-				<p>Here's a simple example of using{" "}<code>x-modelable</code>{" "}to expose a variable for binding with{" "}<code>x-model</code>.</p>
+				<p>Here&#39;s a simple example of using{" "}<code>x-modelable</code>{" "}to expose a variable for binding with{" "}<code>x-model</code>.</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-data"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"{ number: "}</span><span style="color: #005CC5;">{"5"}</span><span style="color: #24292E;">{" }"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"    <"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-data"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"{ count: "}</span><span style="color: #005CC5;">{"0"}</span><span style="color: #24292E;">{" }"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-modelable"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"count"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-model"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"number"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"        <"}</span><span style="color: #22863A;">{"button"}</span><span style="color: #24292E;">{" @"}</span><span style="color: #6F42C1;">{"click"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"count"}</span><span style="color: #D73A49;">{"++"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">Increment</"}</span><span style="color: #22863A;">{"button"}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"    </"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{">"}</span></div><div class="line">{" "}</div><div class="line"><span style="color: #24292E;">{"    Number: <"}</span><span style="color: #22863A;">{"span"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-text"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"number"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"></"}</span><span style="color: #22863A;">{"span"}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"</"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<div x-data=\"{ number: 5 }\">\n    <div x-data=\"{ count: 0 }\" x-modelable=\"count\" x-model=\"number\">\n        <button @click=\"count++\">Increment</button>\n    </div>\n\n    Number: <span x-text=\"number\"></span>\n</div>"}</div></code></pre>
-				<div class="demo"><div><div><button>Increment</button></div>Number:{" "}<span></span></div></div>
+				<Demo0 />
 				<p>As you can see the outer scope property "number" is now bound to the inner scope property "count".</p>
 				<p>
-					Typically this feature would be used in conjunction with a backend templating framework like Laravel Blade. It's useful for abstracting away Alpine components into backend templates and exposing state to the outside through{" "}<code>x-model</code>{" "}as if it were a native input.
+					Typically this feature would be used in conjunction with a backend templating framework like Laravel Blade. It&#39;s useful for abstracting away Alpine components into backend templates and exposing state to the outside through{" "}<code>x-model</code>{" "}as if it were a native input.
 				</p>
 				<h2 id="supported-values">Supported values</h2>
 				<p>
 					<code>x-modelable</code>{" "}keeps its inner and outer state independent by cloning values as JSON. It is therefore intended for JSON-compatible state such as strings, numbers, booleans,{" "}<code>null</code>, arrays, and plain objects containing those values.
 				</p>
 				<p>
-					Browser objects and other state that cannot be represented as JSON won't cross this boundary intact. For example, a{" "}<code>File</code>{" "}loses properties such as its name, size, and type. The same limitation applies to values such as{" "}<code>FileList</code>,{" "}<code>Map</code>,{" "}<code>Set</code>,{" "}<code>Date</code>, class instances, and DOM nodes.
+					Browser objects and other state that cannot be represented as JSON won&#39;t cross this boundary intact. For example, a{" "}<code>File</code>{" "}loses properties such as its name, size, and type. The same limitation applies to values such as{" "}<code>FileList</code>,{" "}<code>Map</code>,{" "}<code>Set</code>,{" "}<code>Date</code>, class instances, and DOM nodes.
 				</p>
 				<p>
 					For a custom input that produces one of these values, omit{" "}<code>x-modelable</code>{" "}and{" "}<a href="/magics/dispatch#dispatching-to-x-model">dispatch an{" "}<code>input</code>{" "}event</a>{" "}instead.{" "}<code>x-model</code>{" "}reads the value directly from the event without cloning it:

@@ -12,7 +12,7 @@ export default function Toc({ headings }: { readonly headings: readonly Heading[
 		<ul class="space-y-3 text-gray-800">
 			{/* Alpine leaves its x-for <template> first in this list, and .space-y-3 then gives the first item its top margin too. */}
 			<template></template>
-			@for (const heading of headings; key heading.id) {
+			@for (const heading of headings; key heading.key) {
 				<li class={`text-sm text-gray-600${INDENT[heading.level]}`}>
 					<a href={`#${heading.id}`} class="hover:text-gray-900">{heading.text}</a>
 				</li>

@@ -9,7 +9,7 @@ const BOOLEAN = new Set(['hidden', 'disabled', 'checked', 'multiple', 'selected'
 const BLOCK = new Set(['address', 'article', 'aside', 'blockquote', 'details', 'div', 'dl', 'dd', 'dt', 'fieldset', 'figure', 'footer', 'form', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'hr', 'li', 'main', 'nav', 'ol', 'p', 'pre', 'section', 'table', 'tbody', 'thead', 'tfoot', 'tr', 'td', 'th', 'ul', 'template', 'script', 'style', 'iframe', 'select', 'option', 'textarea']);
 
 export const lit = (text: string) => JSON.stringify(text);
-const entities = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\{/g, '&#123;').replace(/\}/g, '&#125;').replace(/@/g, '&#64;');
+export const entities = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\{/g, '&#123;').replace(/\}/g, '&#125;').replace(/@/g, '&#64;').replace(/'/g, '&#39;').replace(/`/g, '&#96;');
 
 export function attribute(name: string, value: string): string {
 	if (value === '' && BOOLEAN.has(name)) return ` ${name}`;
@@ -40,8 +40,11 @@ function textOut(text: string, previous: Node | undefined, next: Node | undefine
 	return `${lead}${/[ ]/.test(core) ? `{${lit(core)}}` : entities(core)}${trail}`;
 }
 
+// Alpine directives outside a demo's x-data do nothing on the old page; a port carries no Alpine markers.
+const ALPINE = /^(x-|@|:)/;
+
 function attrs(el: Element): string {
-	return el.attrs.map((a) => attribute(a.prefix ? `${a.prefix}:${a.name}` : a.name, a.value)).join('');
+	return el.attrs.filter((a) => !ALPINE.test(a.name)).map((a) => attribute(a.prefix ? `${a.prefix}:${a.name}` : a.name, a.value)).join('');
 }
 
 function children(el: Element | DefaultTreeAdapterMap['documentFragment']): Node[] {

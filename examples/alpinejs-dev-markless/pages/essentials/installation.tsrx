@@ -7,7 +7,7 @@ import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
 import { watchHeadings } from '../../site.ts';
 
-const HEADINGS = [{ id: "from-a-script-tag", text: "From a script tag", level: 2 }, { id: "as-a-module", text: "As a module", level: 2 }] as const;
+const HEADINGS = [{ key: 0, id: "from-a-script-tag", text: "From a script tag", level: 2 }, { key: 1, id: "as-a-module", text: "As a module", level: 2 }] as const;
 
 export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
@@ -21,16 +21,16 @@ export default function DocsPage({ url }: PageProps) @{
 					<li>Including it from a{" "}<code>&lt;script&gt;</code>{" "}tag</li>
 					<li>Importing it as a module</li>
 				</ul>
-				<p>Either is perfectly valid. It all depends on the project's needs and the developer's taste.</p>
+				<p>Either is perfectly valid. It all depends on the project&#39;s needs and the developer&#39;s taste.</p>
 				<h2 id="from-a-script-tag"><a href="#from-a-script-tag">From a script tag</a></h2>
 				<p>This is by far the simplest way to get started with Alpine. Include the following{" "}<code>&lt;script&gt;</code>{" "}tag in the head of your HTML page.</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"html"}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"    <"}</span><span style="color: #22863A;">{"head"}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"        ..."}</span></div><div class="line">{" "}</div><div class="line"><span style="color: #24292E;">{"        <"}</span><span style="color: #22863A;">{"script"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"defer"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"src"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\"https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js\""}</span><span style="color: #24292E;">{"></"}</span><span style="color: #22863A;">{"script"}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"    </"}</span><span style="color: #22863A;">{"head"}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"    ..."}</span></div><div class="line"><span style="color: #24292E;">{"</"}</span><span style="color: #22863A;">{"html"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<html>\n    <head>\n        ...\n\n        <script defer src=\"https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js\"></script>\n    </head>\n    ...\n</html>"}</div></code></pre>
-				<blockquote><p>Don't forget the "defer" attribute in the{" "}<code>&lt;script&gt;</code>{" "}tag.</p></blockquote>
+				<blockquote><p>Don&#39;t forget the "defer" attribute in the{" "}<code>&lt;script&gt;</code>{" "}tag.</p></blockquote>
 				<p>
-					Notice the{" "}<code>&#64;3.x.x</code>{" "}in the provided CDN link. This will pull the latest version of Alpine version 3. For stability in production, it's recommended that you hardcode the latest version in the CDN link.
+					Notice the{" "}<code>&#64;3.x.x</code>{" "}in the provided CDN link. This will pull the latest version of Alpine version 3. For stability in production, it&#39;s recommended that you hardcode the latest version in the CDN link.
 				</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"script"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"defer"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"src"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\"https://cdn.jsdelivr.net/npm/alpinejs@3.17.4/dist/cdn.min.js\""}</span><span style="color: #24292E;">{"></"}</span><span style="color: #22863A;">{"script"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<script defer src=\"https://cdn.jsdelivr.net/npm/alpinejs@3.17.4/dist/cdn.min.js\"></script>"}</div></code></pre>
-				<p>That's it! Alpine is now available for use inside your page.</p>
+				<p>That&#39;s it! Alpine is now available for use inside your page.</p>
 				<p>
 					Note that you will still need to define a component with{" "}<code>x-data</code>{" "}in order for any Alpine.js attributes to work. See{" "}<a href="https://github.com/alpinejs/alpine/discussions/3805">https://github.com/alpinejs/alpine/discussions/3805</a>{" "}for more information.
 				</p>

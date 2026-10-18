@@ -1,11 +1,15 @@
 import type { Children } from '@markless/core';
 import { Html } from '@markless/router';
 import { headFor, normalize } from './site.ts';
+import { serverStylesheets } from './generated/server-heads.ts';
 
 export default function Document({ url, children }: { readonly url?: { readonly pathname: string }; readonly children?: Children }) @{
 	const pathname = normalize(url?.pathname);
 	const head = headFor(pathname);
-	const docs = pathname !== '/';
+	const server = serverStylesheets(pathname);
+	const docs = pathname !== '/' && !server;
+	const home = pathname === '/';
+	const extra = server ?? [];
 
 	<Html lang="en">
 		<head>
@@ -25,8 +29,12 @@ export default function Document({ url, children }: { readonly url?: { readonly 
 			<link rel="stylesheet" href="/port/site.css" />
 			@if (docs) {
 				<link rel="stylesheet" href="/port/docs.css" />;
-			} @else {
+			}
+			@if (home) {
 				<link rel="stylesheet" href="/port/home.css" />;
+			}
+			@for (const href of extra; key href) {
+				<link rel="stylesheet" href={href} />
 			}
 		</head>
 		<body>

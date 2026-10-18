@@ -6,8 +6,9 @@ import Sponsor from '../../components/sponsor.tsrx';
 import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
 import { watchHeadings } from '../../site.ts';
+import { Demo0 } from '../../demos/advanced-reactivity.tsrx';
 
-const HEADINGS = [{ id: "alpine-reactive", text: "Alpine.reactive()", level: 2 }, { id: "alpine-effect", text: "Alpine.effect()", level: 2 }, { id: "how-dependency-tracking-works", text: "How dependency tracking works", level: 3 }] as const;
+const HEADINGS = [{ key: 0, id: "alpine-reactive", text: "Alpine.reactive()", level: 2 }, { key: 1, id: "alpine-effect", text: "Alpine.effect()", level: 2 }, { key: 2, id: "how-dependency-tracking-works", text: "How dependency tracking works", level: 3 }] as const;
 
 export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
@@ -18,17 +19,17 @@ export default function DocsPage({ url }: PageProps) @{
 				<h1>Reactivity</h1>
 				<p>Alpine is "reactive" in the sense that when you change a piece of data, everything that depends on that data "reacts" automatically to that change.</p>
 				<p>
-					Every bit of reactivity that takes place in Alpine, happens because of two very important reactive functions in Alpine's core:{" "}<code>Alpine.reactive()</code>, and{" "}<code>Alpine.effect()</code>.
+					Every bit of reactivity that takes place in Alpine, happens because of two very important reactive functions in Alpine&#39;s core:{" "}<code>Alpine.reactive()</code>, and{" "}<code>Alpine.effect()</code>.
 				</p>
 				<blockquote>
 					<p>
-						Alpine uses VueJS's reactivity engine under the hood to provide these functions.{" "}<a href="https://github.com/vuejs/core/tree/main/packages/reactivity">→ Browse the &#64;vue/reactivity source</a>
+						Alpine uses VueJS&#39;s reactivity engine under the hood to provide these functions.{" "}<a href="https://github.com/vuejs/core/tree/main/packages/reactivity">→ Browse the &#64;vue/reactivity source</a>
 					</p>
 				</blockquote>
 				<p>Understanding these two functions will give you super powers as an Alpine developer, but also just as a web developer in general.</p>
 				<h2 id="alpine-reactive"><a href="#alpine-reactive">Alpine.reactive()</a></h2>
 				<p>
-					Let's first look at{" "}<code>Alpine.reactive()</code>. This function accepts a JavaScript object as its parameter and returns a "reactive" version of that object. For example:
+					Let&#39;s first look at{" "}<code>Alpine.reactive()</code>. This function accepts a JavaScript object as its parameter and returns a "reactive" version of that object. For example:
 				</p>
 				<pre><code data-theme="github-light" data-lang="js" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #D73A49;">{"let"}</span><span style="color: #24292E;">{" data "}</span><span style="color: #D73A49;">{"="}</span><span style="color: #24292E;">{" { count: "}</span><span style="color: #005CC5;">{"1"}</span><span style="color: #24292E;">{" }"}</span></div><div class="line">{" "}</div><div class="line"><span style="color: #D73A49;">{"let"}</span><span style="color: #24292E;">{" reactiveData "}</span><span style="color: #D73A49;">{"="}</span><span style="color: #24292E;">{" Alpine."}</span><span style="color: #6F42C1;">{"reactive"}</span><span style="color: #24292E;">{"(data)"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\nlet data = { count: 1 }\n\nlet reactiveData = Alpine.reactive(data)"}</div></code></pre>
 				<p>Under the hood, when{" "}<code>Alpine.reactive</code>{" "}receives{" "}<code>data</code>, it wraps it inside a custom JavaScript proxy.</p>
@@ -42,7 +43,7 @@ export default function DocsPage({ url }: PageProps) @{
 				<p>
 					The main difference here is that any time you modify or retrieve (get or set) a value from{" "}<code>reactiveData</code>, Alpine is aware of it and can execute any other logic that depends on this data.
 				</p>
-				<p><code>Alpine.reactive</code>{" "}is only the first half of the story.{" "}<code>Alpine.effect</code>{" "}is the other half, let's dig in.</p>
+				<p><code>Alpine.reactive</code>{" "}is only the first half of the story.{" "}<code>Alpine.effect</code>{" "}is the other half, let&#39;s dig in.</p>
 				<h2 id="alpine-effect"><a href="#alpine-effect">Alpine.effect()</a></h2>
 				<p>
 					<code>Alpine.effect</code>{" "}accepts a single callback function. As soon as{" "}<code>Alpine.effect</code>{" "}is called, it runs the provided function and watches for reads from reactive data. Each reactive property read during that execution becomes a dependency. When one of those properties changes later, Alpine runs the callback again. For example:
@@ -60,18 +61,14 @@ export default function DocsPage({ url }: PageProps) @{
 					Reads made after the callback has returned, such as inside a{" "}<code>setTimeout</code>{" "}callback, are not automatically tracked by the original effect.
 				</p>
 				<p>
-					Alpine delegates this behavior to Vue's reactivity package. For a deeper explanation of the proxy, dependency-map, and{" "}<code>track</code>/<code>trigger</code>{" "}model, see{" "}<a href="https://frontendatlas.com/vue/trivia/vue-reactivity-system">Vue's reactivity internals</a>.
+					Alpine delegates this behavior to Vue&#39;s reactivity package. For a deeper explanation of the proxy, dependency-map, and{" "}<code>track</code>/<code>trigger</code>{" "}model, see{" "}<a href="https://frontendatlas.com/vue/trivia/vue-reactivity-system">Vue&#39;s reactivity internals</a>.
 				</p>
 				<p>
-					To connect the dots further, let's look at a simple "counter" component example without using Alpine syntax at all, only using{" "}<code>Alpine.reactive</code>{" "}and{" "}<code>Alpine.effect</code>:
+					To connect the dots further, let&#39;s look at a simple "counter" component example without using Alpine syntax at all, only using{" "}<code>Alpine.reactive</code>{" "}and{" "}<code>Alpine.effect</code>:
 				</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"button"}</span><span style="color: #24292E;">{">Increment</"}</span><span style="color: #22863A;">{"button"}</span><span style="color: #24292E;">{">"}</span></div><div class="line">{" "}</div><div class="line"><span style="color: #24292E;">{"Count: <"}</span><span style="color: #22863A;">{"span"}</span><span style="color: #24292E;">{"></"}</span><span style="color: #22863A;">{"span"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<button>Increment</button>\n\nCount: <span></span>"}</div></code></pre>
 				<pre><code data-theme="github-light" data-lang="js" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #D73A49;">{"let"}</span><span style="color: #24292E;">{" button "}</span><span style="color: #D73A49;">{"="}</span><span style="color: #24292E;">{" document."}</span><span style="color: #6F42C1;">{"querySelector"}</span><span style="color: #24292E;">{"("}</span><span style="color: #032F62;">{"'button'"}</span><span style="color: #24292E;">{")"}</span></div><div class="line"><span style="color: #D73A49;">{"let"}</span><span style="color: #24292E;">{" span "}</span><span style="color: #D73A49;">{"="}</span><span style="color: #24292E;">{" document."}</span><span style="color: #6F42C1;">{"querySelector"}</span><span style="color: #24292E;">{"("}</span><span style="color: #032F62;">{"'span'"}</span><span style="color: #24292E;">{")"}</span></div><div class="line">{" "}</div><div class="line"><span style="color: #D73A49;">{"let"}</span><span style="color: #24292E;">{" data "}</span><span style="color: #D73A49;">{"="}</span><span style="color: #24292E;">{" Alpine."}</span><span style="color: #6F42C1;">{"reactive"}</span><span style="color: #24292E;">{"({ count: "}</span><span style="color: #005CC5;">{"1"}</span><span style="color: #24292E;">{" })"}</span></div><div class="line">{" "}</div><div class="line"><span style="color: #24292E;">{"Alpine."}</span><span style="color: #6F42C1;">{"effect"}</span><span style="color: #24292E;">{"(() "}</span><span style="color: #D73A49;">{"=>"}</span><span style="color: #24292E;">{" {"}</span></div><div class="line"><span style="color: #24292E;">{"    span.textContent "}</span><span style="color: #D73A49;">{"="}</span><span style="color: #24292E;">{" data.count"}</span></div><div class="line"><span style="color: #24292E;">{"})"}</span></div><div class="line">{" "}</div><div class="line"><span style="color: #24292E;">{"button."}</span><span style="color: #6F42C1;">{"addEventListener"}</span><span style="color: #24292E;">{"("}</span><span style="color: #032F62;">{"'click'"}</span><span style="color: #24292E;">{", () "}</span><span style="color: #D73A49;">{"=>"}</span><span style="color: #24292E;">{" {"}</span></div><div class="line"><span style="color: #24292E;">{"    data.count "}</span><span style="color: #D73A49;">{"="}</span><span style="color: #24292E;">{" data.count "}</span><span style="color: #D73A49;">{"+"}</span><span style="color: #24292E;">{" "}</span><span style="color: #005CC5;">{"1"}</span></div><div class="line"><span style="color: #24292E;">{"})"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\nlet button = document.querySelector('button')\nlet span = document.querySelector('span')\n\nlet data = Alpine.reactive({ count: 1 })\n\nAlpine.effect(() => {\n    span.textContent = data.count\n})\n\nbutton.addEventListener('click', () => {\n    data.count = data.count + 1\n})"}</div></code></pre>
-				<div class="demo">
-					<button>Increment</button>
-					{" "}
-					<div>Count:{" "}<span></span></div>
-				</div>
+				<Demo0 />
 				<p>As you can see, you can make any data reactive, and you can also wrap any functionality in{" "}<code>Alpine.effect</code>.</p>
 				<p>This combination unlocks an incredibly powerful programming paradigm for web development. Run wild and free.</p>
 				<Sponsor wrapper="my-12 border-y border-gray-200 py-6 xl:hidden" label="mb-3 block text-xs font-semibold uppercase tracking-wider text-gray-400" />

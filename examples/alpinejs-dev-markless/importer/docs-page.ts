@@ -9,8 +9,8 @@ export interface DemoRef {
 
 // One docs page: the site's header, sidebar and contents column around the rendered markdown, the sponsor box, the
 // previous/next links and the Torchlight credit, as every alpinejs.dev docs page has them.
-export function docsPage(page: DocPage, previous: DocPage | undefined, next: DocPage | undefined, demos: readonly DemoRef[], demoModule: string | undefined): string {
-	const up = '../'.repeat(page.route.split('/').length - 1);
+export function docsPage(page: DocPage, previous: DocPage | undefined, next: DocPage | undefined, demos: readonly DemoRef[], demoModule: string | undefined, index = false): string {
+	const up = '../'.repeat(page.route.split('/').length - 1 + (index ? 1 : 0));
 	const imports = [
 		`import type { PageProps } from '@markless/router';`,
 		`import DocsHeader from '${up}components/docs-header.tsrx';`,
@@ -31,7 +31,7 @@ export function docsPage(page: DocPage, previous: DocPage | undefined, next: Doc
 		},
 	});
 	const link = (target: DocPage | undefined, text: (l: string) => string) => (target ? `\n\t\t\t\t\t\t<a class="font-bold text-cyan-400" href="${target.route}">${escapeText(text(label(target)))}</a>\n\t\t\t\t\t` : '');
-	const headings = page.doc.headings.map((h) => `{ id: ${lit(h.id)}, text: ${lit(h.text)}, level: ${h.level} }`).join(', ');
+	const headings = page.doc.headings.map((h, i) => `{ key: ${i}, id: ${lit(h.id)}, text: ${lit(h.text)}, level: ${h.level} }`).join(', ');
 	return `${GENERATED}${imports.join('\n')}
 
 const HEADINGS = [${headings}] as const;

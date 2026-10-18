@@ -7,7 +7,7 @@ import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
 import { watchHeadings } from '../../site.ts';
 
-const HEADINGS = [{ id: "caveats", text: "Caveats", level: 2 }] as const;
+const HEADINGS = [{ key: 0, id: "caveats", text: "Caveats", level: 2 }] as const;
 
 export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
@@ -17,10 +17,10 @@ export default function DocsPage({ url }: PageProps) @{
 			<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
 				<h1>x-if</h1>
 				<p>
-					<code>x-if</code>{" "}is used for toggling elements on the page, similarly to{" "}<code>x-show</code>, however it completely adds and removes the element it's applied to rather than just changing its CSS display property to "none".
+					<code>x-if</code>{" "}is used for toggling elements on the page, similarly to{" "}<code>x-show</code>, however it completely adds and removes the element it&#39;s applied to rather than just changing its CSS display property to "none".
 				</p>
 				<p>
-					Because of this difference in behavior,{" "}<code>x-if</code>{" "}should not be applied directly to the element, but instead to a{" "}<code>&lt;template&gt;</code>{" "}tag that encloses the element. This way, Alpine can keep a record of the element once it's removed from the page.
+					Because of this difference in behavior,{" "}<code>x-if</code>{" "}should not be applied directly to the element, but instead to a{" "}<code>&lt;template&gt;</code>{" "}tag that encloses the element. This way, Alpine can keep a record of the element once it&#39;s removed from the page.
 				</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"template"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-if"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"open"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"    <"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{">Contents...</"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"</"}</span><span style="color: #22863A;">{"template"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<template x-if=\"open\">\n    <div>Contents...</div>\n</template>"}</div></code></pre>
 				<blockquote>

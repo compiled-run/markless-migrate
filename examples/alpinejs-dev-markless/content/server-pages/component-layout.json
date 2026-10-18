@@ -1,0 +1,148 @@
+{
+	"sections": [
+		{
+			"title": "Lessons",
+			"headingClass": "text-sm font-medium uppercase text-gray-700",
+			"listClass": "-mx-3 mt-3",
+			"items": [
+				{
+					"href": "/component/dropdown",
+					"label": "Dropdown"
+				},
+				{
+					"href": "/component/modal",
+					"label": "Modal"
+				},
+				{
+					"href": "/component/accordion",
+					"label": "Accordion"
+				},
+				{
+					"href": "/component/carousel",
+					"label": "Carousel"
+				},
+				{
+					"href": "/component/tabs",
+					"label": "Tabs"
+				},
+				{
+					"href": "/component/notifications",
+					"label": "Notifications"
+				},
+				{
+					"href": "/component/radio-group",
+					"label": "Radio Group"
+				},
+				{
+					"href": "/component/toggle",
+					"label": "Toggle"
+				},
+				{
+					"href": "/component/tooltip",
+					"label": "Tooltip"
+				}
+			]
+		},
+		{
+			"title": "Components",
+			"headingClass": "mt-10 flex items-center gap-2 text-sm font-medium uppercase text-gray-700",
+			"listClass": "-mx-3 mt-3",
+			"items": [
+				{
+					"href": "/component/headless-dialog",
+					"label": "Dialog (Modal)"
+				},
+				{
+					"href": "/component/headless-popover",
+					"label": "Popover"
+				},
+				{
+					"href": "/component/headless-tabs",
+					"label": "Tabs"
+				},
+				{
+					"href": "/component/headless-switch",
+					"label": "Switch (Toggle)"
+				},
+				{
+					"href": "/component/headless-disclosure",
+					"label": "Disclosure (Accordion)"
+				},
+				{
+					"href": "/component/headless-menu",
+					"label": "Menu (Dropdown)"
+				},
+				{
+					"href": "/component/headless-radio",
+					"label": "Radio"
+				},
+				{
+					"href": "/component/headless-listbox",
+					"label": "Listbox (Select)"
+				},
+				{
+					"href": "/component/headless-combobox",
+					"label": "Combobox (Autocomplete)"
+				}
+			]
+		},
+		{
+			"title": "Integrations",
+			"headingClass": "mt-10 text-sm font-medium uppercase text-gray-700",
+			"listClass": "-mx-3 mt-3",
+			"items": [
+				{
+					"href": "/component/trix",
+					"label": "Trix"
+				},
+				{
+					"href": "/component/quill",
+					"label": "Quill"
+				},
+				{
+					"href": "/component/simple-mde",
+					"label": "SimpleMDE"
+				},
+				{
+					"href": "/component/chart-js",
+					"label": "Chart.js"
+				},
+				{
+					"href": "/component/apexcharts",
+					"label": "ApexCharts"
+				},
+				{
+					"href": "/component/flatpickr",
+					"label": "Flatpickr"
+				},
+				{
+					"href": "/component/date-range-picker",
+					"label": "Date Range Picker"
+				},
+				{
+					"href": "/component/fullcalendar",
+					"label": "FullCalendar"
+				},
+				{
+					"href": "/component/select2",
+					"label": "Select2"
+				},
+				{
+					"href": "/component/choices",
+					"label": "Choices.js"
+				},
+				{
+					"href": "/component/glide",
+					"label": "Glide"
+				},
+				{
+					"href": "/component/splide",
+					"label": "Splide"
+				}
+			]
+		}
+	],
+	"linkClass": "block px-3 py-1.5 rounded-md text-gray-700",
+	"activeLinkClass": "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5",
+	"skeleton": "<div class=\"!font-inter relative\">\n                            \n        <header class=\"relative z-10 mx-auto flex max-w-6xl items-center justify-between px-4 py-5\">\n    <a href=\"/start-here\" class=\"inline-flex items-center space-x-3\">\n        <svg width=\"54\" height=\"27\" viewBox=\"0 0 54 27\" fill=\"none\"><path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M13.5 27h27L54 13.5 40.5 0l-27 27Z\" fill=\"#D8DEE9\"></path><path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M13.5 27h27L27.572 14.072 13.5 0 0 13.5 13.5 27Z\" fill=\"#8AC0CF\"></path></svg>\n        <h1 class=\"text-lg font-bold text-[#2E3440]\">Alpine UI Components</h1>\n    </a>\n\n    <nav class=\"flex items-center gap-5\">\n        <a class=\"hidden font-medium text-gray-500 hover:text-gray-600 md:block\" href=\"/components#components\">Components</a>\n        <a class=\"hidden font-medium text-gray-500 hover:text-gray-600 md:block\" href=\"/components#integrations\">Integrations</a>\n                <span class=\"hidden opacity-25 md:block\">|</span>\n                    <a class=\"font-medium text-gray-500 hover:text-gray-600\" href=\"/login\">Login</a>\n            </nav>\n</header>\n\n        <div class=\"mx-auto mt-20 max-w-6xl\">\n            <div class=\"flex items-start justify-start gap-12\">\n                <port-slot name=\"sidebar\" class=\"hidden w-[240px] shrink-0 px-4 lg:block\"></port-slot>\n                <div class=\"w-0 flex-1 px-4\">\n    \n    <div class=\"mb-32\"><port-slot name=\"column\"></port-slot></div>\n\n    <port-slot name=\"dialog\"></port-slot>\n\n</div>\n\n            </div>\n        </div>\n\n        <footer class=\"flex items-center justify-center gap-6 pb-16 text-center\">\n            <a href=\"/license\" class=\"text-sm text-gray-700\">Read Product License</a>\n            <a href=\"mailto:support@alpinejs.dev\" class=\"text-sm text-gray-700\">Support</a>\n        </footer>\n    </div>"
+}

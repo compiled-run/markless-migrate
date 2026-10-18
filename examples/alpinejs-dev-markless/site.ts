@@ -1,6 +1,8 @@
 import { DOC_HEADS } from './generated/heads.ts';
+import { SERVER_HEADS } from './generated/server-heads.ts';
 
 export interface Heading {
+  readonly key: number;
   readonly id: string;
   readonly text: string;
   readonly level: 2 | 3 | 4;
@@ -14,6 +16,7 @@ export interface Head {
 
 const HEADS: Record<string, Head> = {
   ...DOC_HEADS,
+  ...SERVER_HEADS,
   "/": {
     title: "Alpine.js",
     description: "A rugged, minimal framework for composing behavior directly in your markup.",

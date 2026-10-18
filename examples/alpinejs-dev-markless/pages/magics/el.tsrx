@@ -6,6 +6,7 @@ import Sponsor from '../../components/sponsor.tsrx';
 import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
 import { watchHeadings } from '../../site.ts';
+import { Demo0 } from '../../demos/magics-el.tsrx';
 
 const HEADINGS = [] as const;
 
@@ -18,7 +19,7 @@ export default function DocsPage({ url }: PageProps) @{
 				<h1>$el</h1>
 				<p><code>$el</code>{" "}is a magic property that can be used to retrieve the current DOM node.</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"button"}</span><span style="color: #24292E;">{" @"}</span><span style="color: #6F42C1;">{"click"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"$el.innerHTML "}</span><span style="color: #D73A49;">{"="}</span><span style="color: #24292E;">{" "}</span><span style="color: #032F62;">{"'Hello World!'\""}</span><span style="color: #24292E;">{">Replace me with \"Hello World!\"</"}</span><span style="color: #22863A;">{"button"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<button @click=\"$el.innerHTML = 'Hello World!'\">Replace me with \"Hello World!\"</button>"}</div></code></pre>
-				<div class="demo"><div><button>Replace me with "Hello World!"</button></div></div>
+				<Demo0 />
 				<Sponsor wrapper="my-12 border-y border-gray-200 py-6 xl:hidden" label="mb-3 block text-xs font-semibold uppercase tracking-wider text-gray-400" />
 				<div class="flex justify-between border-t border-gray-200 pt-4 text-gray-700">
 					<div>

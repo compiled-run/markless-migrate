@@ -1,0 +1,17 @@
+{
+	"route": "/license",
+	"head": {
+		"title": "Components — Alpine.js",
+		"description": "Well made, keyboard accessible,<br>UI components written with Alpine.",
+		"ogTitle": "Components — Alpine.js",
+		"ogDescription": "Well made, keyboard accessible,<br>UI components written with Alpine.",
+		"ogImage": "http://alpinejs.dev/social_components.jpg",
+		"stylesheets": [
+			"https://cdn.jsdelivr.net/npm/@docsearch/css@3",
+			"https://alpinejs.dev/build/assets/app.9ea156ae.css",
+			"https://fonts.googleapis.com/css2?family=Karla:wght@400;600;800&display=swap"
+		],
+		"styles": []
+	},
+	"content": "<h1 style=\"border: none; line-height: 1.25\">Alpine Components License</h1>\n<p>You MAY use these components in your personal and professional projects. As an employee or as a freelancer.</p>\n<p>You MAY NOT share your access login.</p>\n<p>You MAY NOT re-distribute these components either directly or indirectly as part of a paid or open-source project.</p>\n<p>An example of proper usage: copy and pasting a modal component into your web application.</p>\n<p>An example of NOT proper usage: Buying one access license and sharing it with your dev team. Each developer must have their own paid access.</p>\n<p>An example of NOT proper usage: building a competing project that offers UI componentry and would be used as an alternative to Alpine Components inside of an application.</p>"
+}

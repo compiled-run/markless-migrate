@@ -6,8 +6,9 @@ import Sponsor from '../../components/sponsor.tsrx';
 import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
 import { watchHeadings } from '../../site.ts';
+import { Demo0, Demo1 } from '../../demos/plugins-resize.tsrx';
 
-const HEADINGS = [{ id: "installation", text: "Installation", level: 2 }, { id: "via-cdn", text: "Via CDN", level: 3 }, { id: "via-npm", text: "Via NPM", level: 3 }, { id: "x-resize", text: "x-resize", level: 2 }, { id: "modifiers", text: "Modifiers", level: 2 }, { id: "viewport", text: ".viewport", level: 3 }, { id: "document", text: ".document", level: 3 }] as const;
+const HEADINGS = [{ key: 0, id: "installation", text: "Installation", level: 2 }, { key: 1, id: "via-cdn", text: "Via CDN", level: 3 }, { key: 2, id: "via-npm", text: "Via NPM", level: 3 }, { key: 3, id: "x-resize", text: "x-resize", level: 2 }, { key: 4, id: "modifiers", text: "Modifiers", level: 2 }, { key: 5, id: "viewport", text: ".viewport", level: 3 }, { key: 6, id: "document", text: ".document", level: 3 }] as const;
 
 export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
@@ -17,13 +18,13 @@ export default function DocsPage({ url }: PageProps) @{
 			<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
 				<h1>Resize Plugin</h1>
 				<p>
-					Alpine's Resize plugin is a convenience wrapper for the{" "}<a href="https://developer.mozilla.org/en-US/docs/Web/API/Resize_Observer_API">Resize Observer</a>{" "}that allows you to easily react when an element changes size.
+					Alpine&#39;s Resize plugin is a convenience wrapper for the{" "}<a href="https://developer.mozilla.org/en-US/docs/Web/API/Resize_Observer_API">Resize Observer</a>{" "}that allows you to easily react when an element changes size.
 				</p>
-				<p>This is useful for: custom size-based animations, intelligent sticky positioning, conditionally adding attributes based on the element's size, etc.</p>
+				<p>This is useful for: custom size-based animations, intelligent sticky positioning, conditionally adding attributes based on the element&#39;s size, etc.</p>
 				<h2 id="installation"><a href="#installation">Installation</a></h2>
 				<p>You can use this plugin by either including it from a{" "}<code>&lt;script&gt;</code>{" "}tag or installing it via NPM:</p>
 				<h3 id="via-cdn">Via CDN</h3>
-				<p>You can include the CDN build of this plugin as a{" "}<code>&lt;script&gt;</code>{" "}tag, just make sure to include it BEFORE Alpine's core JS file.</p>
+				<p>You can include the CDN build of this plugin as a{" "}<code>&lt;script&gt;</code>{" "}tag, just make sure to include it BEFORE Alpine&#39;s core JS file.</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #6A737D;">{"<!-- Alpine Plugins -->"}</span></div><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"script"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"defer"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"src"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\"https://cdn.jsdelivr.net/npm/@alpinejs/resize@3.x.x/dist/cdn.min.js\""}</span><span style="color: #24292E;">{"></"}</span><span style="color: #22863A;">{"script"}</span><span style="color: #24292E;">{">"}</span></div><div class="line">{" "}</div><div class="line"><span style="color: #6A737D;">{"<!-- Alpine Core -->"}</span></div><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"script"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"defer"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"src"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\"https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js\""}</span><span style="color: #24292E;">{"></"}</span><span style="color: #22863A;">{"script"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<!-- Alpine Plugins -->\n<script defer src=\"https://cdn.jsdelivr.net/npm/@alpinejs/resize@3.x.x/dist/cdn.min.js\"></script>\n\n<!-- Alpine Core -->\n<script defer src=\"https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js\"></script>"}</div></code></pre>
 				<h3 id="via-npm">Via NPM</h3>
 				<p>You can install Resize from NPM for use inside your bundle like so:</p>
@@ -34,19 +35,9 @@ export default function DocsPage({ url }: PageProps) @{
 				<p>
 					The primary API for using this plugin is{" "}<code>x-resize</code>. You can add{" "}<code>x-resize</code>{" "}to any element within an Alpine component, and when that element is resized for any reason, the provided expression will execute with two magic properties:{" "}<code>$width</code>{" "}and{" "}<code>$height</code>.
 				</p>
-				<p>For example, here's a simple example of using{" "}<code>x-resize</code>{" "}to display the width and height of an element as it changes size.</p>
+				<p>For example, here&#39;s a simple example of using{" "}<code>x-resize</code>{" "}to display the width and height of an element as it changes size.</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"div"}</span></div><div class="line"><span style="color: #24292E;">{"    "}</span><span style="color: #6F42C1;">{"x-data"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"{ width: "}</span><span style="color: #005CC5;">{"0"}</span><span style="color: #24292E;">{", height: "}</span><span style="color: #005CC5;">{"0"}</span><span style="color: #24292E;">{" }"}</span><span style="color: #032F62;">{"\""}</span></div><div class="line"><span style="color: #24292E;">{"    "}</span><span style="color: #6F42C1;">{"x-resize"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"width "}</span><span style="color: #D73A49;">{"="}</span><span style="color: #24292E;">{" $width; height "}</span><span style="color: #D73A49;">{"="}</span><span style="color: #24292E;">{" $height"}</span><span style="color: #032F62;">{"\""}</span></div><div class="line"><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"    <"}</span><span style="color: #22863A;">{"p"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-text"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\"'Width: '"}</span><span style="color: #24292E;">{" "}</span><span style="color: #D73A49;">{"+"}</span><span style="color: #24292E;">{" width "}</span><span style="color: #D73A49;">{"+"}</span><span style="color: #24292E;">{" "}</span><span style="color: #032F62;">{"'px'\""}</span><span style="color: #24292E;">{"></"}</span><span style="color: #22863A;">{"p"}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"    <"}</span><span style="color: #22863A;">{"p"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-text"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\"'Height: '"}</span><span style="color: #24292E;">{" "}</span><span style="color: #D73A49;">{"+"}</span><span style="color: #24292E;">{" height "}</span><span style="color: #D73A49;">{"+"}</span><span style="color: #24292E;">{" "}</span><span style="color: #032F62;">{"'px'\""}</span><span style="color: #24292E;">{"></"}</span><span style="color: #22863A;">{"p"}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"</"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<div\n    x-data=\"{ width: 0, height: 0 }\"\n    x-resize=\"width = $width; height = $height\"\n>\n    <p x-text=\"'Width: ' + width + 'px'\"></p>\n    <p x-text=\"'Height: ' + height + 'px'\"></p>\n</div>"}</div></code></pre>
-				<div class="demo">
-					<div>
-						<i>Resize your browser window to see the width and height values change.</i>
-						{" "}
-						<br />
-						<br />
-						{" "}
-						<p></p>
-						<p></p>
-					</div>
-				</div>
+				<Demo0 />
 				<h2 id="modifiers"><a href="#modifiers">Modifiers</a></h2>
 				<h3 id="viewport"><a href="#viewport">.viewport</a></h3>
 				<p>
@@ -54,24 +45,14 @@ export default function DocsPage({ url }: PageProps) @{
 				</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-resize"}</span><span style="color: #24292E;">{"."}</span><span style="color: #6F42C1;">{"viewport"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"width "}</span><span style="color: #D73A49;">{"="}</span><span style="color: #24292E;">{" $width; height "}</span><span style="color: #D73A49;">{"="}</span><span style="color: #24292E;">{" $height"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"    ..."}</span></div><div class="line"><span style="color: #24292E;">{"</"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<div x-resize.viewport=\"width = $width; height = $height\">\n    ...\n</div>"}</div></code></pre>
 				<p>
-					<code>$width</code>{" "}and{" "}<code>$height</code>{" "}contain the visual viewport's dimensions. In browsers where{" "}<code>window.visualViewport</code>{" "}is unavailable, Alpine falls back to observing the document.
+					<code>$width</code>{" "}and{" "}<code>$height</code>{" "}contain the visual viewport&#39;s dimensions. In browsers where{" "}<code>window.visualViewport</code>{" "}is unavailable, Alpine falls back to observing the document.
 				</p>
 				<h3 id="document"><a href="#document">.document</a></h3>
 				<p>
-					It's often useful to observe the entire document's size, rather than a specific element. To do this, you can add the{" "}<code>.document</code>{" "}modifier to{" "}<code>x-resize</code>:
+					It&#39;s often useful to observe the entire document&#39;s size, rather than a specific element. To do this, you can add the{" "}<code>.document</code>{" "}modifier to{" "}<code>x-resize</code>:
 				</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-resize"}</span><span style="color: #24292E;">{"."}</span><span style="color: #6F42C1;">{"document"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #D73A49;">{"..."}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<div x-resize.document=\"...\">"}</div></code></pre>
-				<div class="demo">
-					<div>
-						<i>Resize your browser window to see the document width and height values change.</i>
-						{" "}
-						<br />
-						<br />
-						{" "}
-						<p></p>
-						<p></p>
-					</div>
-				</div>
+				<Demo1 />
 				<Sponsor wrapper="my-12 border-y border-gray-200 py-6 xl:hidden" label="mb-3 block text-xs font-semibold uppercase tracking-wider text-gray-400" />
 				<div class="flex justify-between border-t border-gray-200 pt-4 text-gray-700">
 					<div>

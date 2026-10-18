@@ -6,6 +6,7 @@ import Sponsor from '../../components/sponsor.tsrx';
 import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
 import { watchHeadings } from '../../site.ts';
+import { Demo0 } from '../../demos/directives-text.tsrx';
 
 const HEADINGS = [] as const;
 
@@ -17,10 +18,10 @@ export default function DocsPage({ url }: PageProps) @{
 			<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
 				<h1>x-text</h1>
 				<p><code>x-text</code>{" "}sets the text content of an element to the result of a given expression.</p>
-				<p>Here's a basic example of using{" "}<code>x-text</code>{" "}to display a user's username.</p>
+				<p>Here&#39;s a basic example of using{" "}<code>x-text</code>{" "}to display a user&#39;s username.</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-data"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"{ username: "}</span><span style="color: #032F62;">{"'calebporzio'"}</span><span style="color: #24292E;">{" }"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"    Username: <"}</span><span style="color: #22863A;">{"strong"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-text"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"username"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"></"}</span><span style="color: #22863A;">{"strong"}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"</"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<div x-data=\"{ username: 'calebporzio' }\">\n    Username: <strong x-text=\"username\"></strong>\n</div>"}</div></code></pre>
-				<div class="demo"><div>Username:{" "}<strong></strong></div></div>
-				<p>Now the{" "}<code>&lt;strong&gt;</code>{" "}tag's inner text content will be set to "calebporzio".</p>
+				<Demo0 />
+				<p>Now the{" "}<code>&lt;strong&gt;</code>{" "}tag&#39;s inner text content will be set to "calebporzio".</p>
 				<Sponsor wrapper="my-12 border-y border-gray-200 py-6 xl:hidden" label="mb-3 block text-xs font-semibold uppercase tracking-wider text-gray-400" />
 				<div class="flex justify-between border-t border-gray-200 pt-4 text-gray-700">
 					<div>

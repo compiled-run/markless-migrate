@@ -7,7 +7,7 @@ import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
 import { watchHeadings } from '../../site.ts';
 
-const HEADINGS = [{ id: "next-tick", text: "$nextTick", level: 2 }, { id: "standalone-x-init", text: "Standalone x-init", level: 2 }, { id: "auto-evaluate-init-method", text: "Auto-evaluate init() method", level: 2 }] as const;
+const HEADINGS = [{ key: 0, id: "next-tick", text: "$nextTick", level: 2 }, { key: 1, id: "standalone-x-init", text: "Standalone x-init", level: 2 }, { key: 2, id: "auto-evaluate-init-method", text: "Auto-evaluate init() method", level: 2 }] as const;
 
 export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
@@ -18,7 +18,7 @@ export default function DocsPage({ url }: PageProps) @{
 				<h1>x-init</h1>
 				<p>The{" "}<code>x-init</code>{" "}directive allows you to hook into the initialization phase of any element in Alpine.</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-init"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"console."}</span><span style="color: #6F42C1;">{"log"}</span><span style="color: #24292E;">{"("}</span><span style="color: #032F62;">{"'I"}</span><span style="color: #005CC5;">{"\\'"}</span><span style="color: #032F62;">{"m being initialized!'"}</span><span style="color: #24292E;">{")"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"></"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<div x-init=\"console.log('I\\'m being initialized!')\"></div>"}</div></code></pre>
-				<p>In the above example, "I'm being initialized!" will be output in the console before it makes further DOM updates.</p>
+				<p>In the above example, "I&#39;m being initialized!" will be output in the console before it makes further DOM updates.</p>
 				<p>
 					Consider another example where{" "}<code>x-init</code>{" "}is used to fetch some JSON and store it in{" "}<code>x-data</code>{" "}before the component is processed.
 				</p>
@@ -26,7 +26,7 @@ export default function DocsPage({ url }: PageProps) @{
 				<h2 id="next-tick"><a href="#next-tick">$nextTick</a></h2>
 				<p>Sometimes, you want to wait until after Alpine has completely finished rendering to execute some code.</p>
 				<p>This would be something like{" "}<code>useEffect(..., [])</code>{" "}in react, or{" "}<code>mount</code>{" "}in Vue.</p>
-				<p>By using Alpine's internal{" "}<code>$nextTick</code>{" "}magic, you can make this happen.</p>
+				<p>By using Alpine&#39;s internal{" "}<code>$nextTick</code>{" "}magic, you can make this happen.</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-init"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #6F42C1;">{"$nextTick"}</span><span style="color: #24292E;">{"(() "}</span><span style="color: #D73A49;">{"=>"}</span><span style="color: #24292E;">{" { "}</span><span style="color: #D73A49;">{"..."}</span><span style="color: #24292E;">{" })"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"></"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<div x-init=\"$nextTick(() => { ... })\"></div>"}</div></code></pre>
 				<h2 id="standalone-x-init"><a href="#standalone-x-init">Standalone{" "}<code>x-init</code></a></h2>
 				<p>You can add{" "}<code>x-init</code>{" "}to any elements inside or outside an{" "}<code>x-data</code>{" "}HTML block. For example:</p>

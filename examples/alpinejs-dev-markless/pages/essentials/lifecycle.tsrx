@@ -7,7 +7,7 @@ import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
 import { watchHeadings } from '../../site.ts';
 
-const HEADINGS = [{ id: "element-initialization", text: "Element initialization", level: 2 }, { id: "after-a-state-change", text: "After a state change", level: 2 }, { id: "watch", text: "$watch", level: 3 }, { id: "x-effect", text: "x-effect", level: 3 }, { id: "alpine-initialization", text: "Alpine initialization", level: 2 }, { id: "alpine-initializing", text: "alpine:init", level: 3 }, { id: "alpine-initialized", text: "alpine:initialized", level: 3 }] as const;
+const HEADINGS = [{ key: 0, id: "element-initialization", text: "Element initialization", level: 2 }, { key: 1, id: "after-a-state-change", text: "After a state change", level: 2 }, { key: 2, id: "watch", text: "$watch", level: 3 }, { key: 3, id: "x-effect", text: "x-effect", level: 3 }, { key: 4, id: "alpine-initialization", text: "Alpine initialization", level: 2 }, { key: 5, id: "alpine-initializing", text: "alpine:init", level: 3 }, { key: 6, id: "alpine-initialized", text: "alpine:initialized", level: 3 }] as const;
 
 export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
@@ -17,7 +17,7 @@ export default function DocsPage({ url }: PageProps) @{
 			<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
 				<h1>Lifecycle</h1>
 				<p>
-					Alpine has a handful of different techniques for hooking into different parts of its lifecycle. Let's go through the most useful ones to familiarize yourself with:
+					Alpine has a handful of different techniques for hooking into different parts of its lifecycle. Let&#39;s go through the most useful ones to familiarize yourself with:
 				</p>
 				<h2 id="element-initialization"><a href="#element-initialization">Element initialization</a></h2>
 				<p>Another extremely useful lifecycle hook in Alpine is the{" "}<code>x-init</code>{" "}directive.</p>
@@ -42,12 +42,12 @@ export default function DocsPage({ url }: PageProps) @{
 				<p>
 					Instead of specifying which data key you wish to watch,{" "}<code>x-effect</code>{" "}will call the provided code and intelligently look for any Alpine data used within it. Now when one of those pieces of data changes, the{" "}<code>x-effect</code>{" "}expression will be re-run.
 				</p>
-				<p>Here's the same bit of code from the{" "}<code>$watch</code>{" "}example rewritten using{" "}<code>x-effect</code>:</p>
+				<p>Here&#39;s the same bit of code from the{" "}<code>$watch</code>{" "}example rewritten using{" "}<code>x-effect</code>:</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-data"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"{ open: "}</span><span style="color: #005CC5;">{"false"}</span><span style="color: #24292E;">{" }"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-effect"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"console."}</span><span style="color: #6F42C1;">{"log"}</span><span style="color: #24292E;">{"(open)"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<div x-data=\"{ open: false }\" x-effect=\"console.log(open)\">"}</div></code></pre>
 				<p>Now, this expression will be called right away, and re-called every time{" "}<code>open</code>{" "}is updated.</p>
 				<p>The two main behavioral differences with this approach are:</p>
 				<ol>
-					<li>The provided code will be run right away AND when data changes (<code>$watch</code>{" "}is "lazy" -- won't run until the first data change)</li>
+					<li>The provided code will be run right away AND when data changes (<code>$watch</code>{" "}is "lazy" -- won&#39;t run until the first data change)</li>
 					<li>No knowledge of the previous value. (The callback provided to{" "}<code>$watch</code>{" "}receives both the new value AND the old one)</li>
 				</ol>
 				<p><a href="/directives/effect">→ Read more about x-effect</a></p>
@@ -58,7 +58,7 @@ export default function DocsPage({ url }: PageProps) @{
 				<p>You can hook into this point in the lifecycle by listening for an event that Alpine dispatches called:{" "}<code>alpine:init</code></p>
 				<pre><code data-theme="github-light" data-lang="js" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"document."}</span><span style="color: #6F42C1;">{"addEventListener"}</span><span style="color: #24292E;">{"("}</span><span style="color: #032F62;">{"'alpine:init'"}</span><span style="color: #24292E;">{", () "}</span><span style="color: #D73A49;">{"=>"}</span><span style="color: #24292E;">{" {"}</span></div><div class="line"><span style="color: #24292E;">{"    Alpine."}</span><span style="color: #6F42C1;">{"data"}</span><span style="color: #24292E;">{"("}</span><span style="color: #D73A49;">{"..."}</span><span style="color: #24292E;">{")"}</span></div><div class="line"><span style="color: #24292E;">{"})"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\ndocument.addEventListener('alpine:init', () => {\n    Alpine.data(...)\n})"}</div></code></pre>
 				<h3 id="alpine-initialized"><a href="#alpine-initialized"><code>alpine:initialized</code></a></h3>
-				<p>Alpine also offers a hook that you can use to execute code AFTER it's done initializing called{" "}<code>alpine:initialized</code>:</p>
+				<p>Alpine also offers a hook that you can use to execute code AFTER it&#39;s done initializing called{" "}<code>alpine:initialized</code>:</p>
 				<pre><code data-theme="github-light" data-lang="js" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"document."}</span><span style="color: #6F42C1;">{"addEventListener"}</span><span style="color: #24292E;">{"("}</span><span style="color: #032F62;">{"'alpine:initialized'"}</span><span style="color: #24292E;">{", () "}</span><span style="color: #D73A49;">{"=>"}</span><span style="color: #24292E;">{" {"}</span></div><div class="line"><span style="color: #24292E;">{"    "}</span><span style="color: #6A737D;">{"//"}</span></div><div class="line"><span style="color: #24292E;">{"})"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\ndocument.addEventListener('alpine:initialized', () => {\n    //\n})"}</div></code></pre>
 				<Sponsor wrapper="my-12 border-y border-gray-200 py-6 xl:hidden" label="mb-3 block text-xs font-semibold uppercase tracking-wider text-gray-400" />
 				<div class="flex justify-between border-t border-gray-200 pt-4 text-gray-700">

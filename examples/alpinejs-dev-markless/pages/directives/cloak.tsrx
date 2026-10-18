@@ -7,7 +7,7 @@ import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
 import { watchHeadings } from '../../site.ts';
 
-const HEADINGS = [{ id: "alternative-to-global-syntax", text: "Alternative to global syntax", level: 2 }] as const;
+const HEADINGS = [{ key: 0, id: "alternative-to-global-syntax", text: "Alternative to global syntax", level: 2 }] as const;
 
 export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
@@ -17,9 +17,9 @@ export default function DocsPage({ url }: PageProps) @{
 			<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
 				<h1>x-cloak</h1>
 				<p>
-					Sometimes, when you're using AlpineJS for a part of your template, there is a "blip" where you might see your uninitialized template after the page loads, but before Alpine loads.
+					Sometimes, when you&#39;re using AlpineJS for a part of your template, there is a "blip" where you might see your uninitialized template after the page loads, but before Alpine loads.
 				</p>
-				<p><code>x-cloak</code>{" "}addresses this scenario by hiding the element it's attached to until Alpine is fully loaded on the page.</p>
+				<p><code>x-cloak</code>{" "}addresses this scenario by hiding the element it&#39;s attached to until Alpine is fully loaded on the page.</p>
 				<p>For{" "}<code>x-cloak</code>{" "}to work however, you must add the following CSS to the page.</p>
 				<pre><code data-theme="github-light" data-lang="css" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"["}</span><span style="color: #6F42C1;">{"x-cloak"}</span><span style="color: #24292E;">{"] { "}</span><span style="color: #005CC5;">{"display"}</span><span style="color: #24292E;">{": "}</span><span style="color: #005CC5;">{"none"}</span><span style="color: #24292E;">{" "}</span><span style="color: #D73A49;">{"!important"}</span><span style="color: #24292E;">{"; }"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n[x-cloak] { display: none !important; }"}</div></code></pre>
 				<p>
@@ -27,20 +27,20 @@ export default function DocsPage({ url }: PageProps) @{
 				</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"span"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-cloak"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-show"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #005CC5;">{"false"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">This will not 'blip' onto screen at any point</"}</span><span style="color: #22863A;">{"span"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<span x-cloak x-show=\"false\">This will not 'blip' onto screen at any point</span>"}</div></code></pre>
 				<p>
-					<code>x-cloak</code>{" "}doesn't just work on elements hidden by{" "}<code>x-show</code>{" "}or{" "}<code>x-if</code>: it also ensures that elements containing data are hidden until the data is correctly set. The following example will hide the{" "}<code>&lt;span&gt;</code>{" "}tag until Alpine has set its text content to the{" "}<code>message</code>{" "}property.
+					<code>x-cloak</code>{" "}doesn&#39;t just work on elements hidden by{" "}<code>x-show</code>{" "}or{" "}<code>x-if</code>: it also ensures that elements containing data are hidden until the data is correctly set. The following example will hide the{" "}<code>&lt;span&gt;</code>{" "}tag until Alpine has set its text content to the{" "}<code>message</code>{" "}property.
 				</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"span"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-cloak"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-text"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"message"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"></"}</span><span style="color: #22863A;">{"span"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<span x-cloak x-text=\"message\"></span>"}</div></code></pre>
 				<p>
 					When Alpine loads on the page, it removes all{" "}<code>x-cloak</code>{" "}property from the element, which also removes the{" "}<code>display: none;</code>{" "}applied by CSS, therefore showing the element.
 				</p>
 				<h2 id="alternative-to-global-syntax">Alternative to global syntax</h2>
-				<p>If you'd like to achieve this same behavior, but avoid having to include a global style, you can use the following cool, but admittedly odd trick:</p>
+				<p>If you&#39;d like to achieve this same behavior, but avoid having to include a global style, you can use the following cool, but admittedly odd trick:</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"template"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-if"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #005CC5;">{"true"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"    <"}</span><span style="color: #22863A;">{"span"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-text"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"message"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"></"}</span><span style="color: #22863A;">{"span"}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"</"}</span><span style="color: #22863A;">{"template"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<template x-if=\"true\">\n    <span x-text=\"message\"></span>\n</template>"}</div></code></pre>
 				<p>This will achieve the same goal as{" "}<code>x-cloak</code>{" "}by just leveraging the way{" "}<code>x-if</code>{" "}works.</p>
 				<p>
-					Because{" "}<code>&lt;template&gt;</code>{" "}elements are "hidden" in browsers by default, you won't see the{" "}<code>&lt;span&gt;</code>{" "}until Alpine has had a chance to render the{" "}<code>x-if="true"</code>{" "}and show it.
+					Because{" "}<code>&lt;template&gt;</code>{" "}elements are "hidden" in browsers by default, you won&#39;t see the{" "}<code>&lt;span&gt;</code>{" "}until Alpine has had a chance to render the{" "}<code>x-if="true"</code>{" "}and show it.
 				</p>
-				<p>Again, this solution is not for everyone, but it's worth mentioning for special cases.</p>
+				<p>Again, this solution is not for everyone, but it&#39;s worth mentioning for special cases.</p>
 				<Sponsor wrapper="my-12 border-y border-gray-200 py-6 xl:hidden" label="mb-3 block text-xs font-semibold uppercase tracking-wider text-gray-400" />
 				<div class="flex justify-between border-t border-gray-200 pt-4 text-gray-700">
 					<div>

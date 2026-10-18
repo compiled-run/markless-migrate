@@ -6,6 +6,7 @@ import Sponsor from '../../components/sponsor.tsrx';
 import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
 import { watchHeadings } from '../../site.ts';
+import { Demo0 } from '../../demos/directives-ref.tsrx';
 
 const HEADINGS = [] as const;
 
@@ -17,16 +18,10 @@ export default function DocsPage({ url }: PageProps) @{
 			<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
 				<h1>x-ref</h1>
 				<p>
-					<code>x-ref</code>{" "}in combination with{" "}<code>$refs</code>{" "}is a useful utility for easily accessing DOM elements directly. It's most useful as a replacement for APIs like{" "}<code>getElementById</code>{" "}and{" "}<code>querySelector</code>.
+					<code>x-ref</code>{" "}in combination with{" "}<code>$refs</code>{" "}is a useful utility for easily accessing DOM elements directly. It&#39;s most useful as a replacement for APIs like{" "}<code>getElementById</code>{" "}and{" "}<code>querySelector</code>.
 				</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"button"}</span><span style="color: #24292E;">{" @"}</span><span style="color: #6F42C1;">{"click"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"$refs.text."}</span><span style="color: #6F42C1;">{"remove"}</span><span style="color: #24292E;">{"()"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">Remove Text</"}</span><span style="color: #22863A;">{"button"}</span><span style="color: #24292E;">{">"}</span></div><div class="line">{" "}</div><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"span"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-ref"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"text"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">Hello 👋</"}</span><span style="color: #22863A;">{"span"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<button @click=\"$refs.text.remove()\">Remove Text</button>\n\n<span x-ref=\"text\">Hello 👋</span>"}</div></code></pre>
-				<div class="demo">
-					<div>
-						<button>Remove Text</button>
-						{" "}
-						<div class="pt-4">Hello 👋</div>
-					</div>
-				</div>
+				<Demo0 />
 				<blockquote>
 					<p>
 						Despite not being included in the above snippet,{" "}<code>x-ref</code>{" "}cannot be used if no parent element has{" "}<code>x-data</code>{" "}defined.{" "}<a href="/directives/data">→ Read more about{" "}<code>x-data</code></a>

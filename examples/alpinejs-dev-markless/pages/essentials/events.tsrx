@@ -7,7 +7,7 @@ import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
 import { watchHeadings } from '../../site.ts';
 
-const HEADINGS = [{ id: "listening-for-simple-events", text: "Listening for simple events", level: 2 }, { id: "listening-for-specific-keys", text: "Listening for specific keys", level: 2 }, { id: "preventing-default", text: "Preventing default", level: 2 }, { id: "accessing-the-event-object", text: "Accessing the event object", level: 2 }, { id: "dispatching-custom-events", text: "Dispatching custom events", level: 2 }, { id: "listening-for-events-on-window", text: "Listening for events on window", level: 2 }] as const;
+const HEADINGS = [{ key: 0, id: "listening-for-simple-events", text: "Listening for simple events", level: 2 }, { key: 1, id: "listening-for-specific-keys", text: "Listening for specific keys", level: 2 }, { key: 2, id: "preventing-default", text: "Preventing default", level: 2 }, { key: 3, id: "accessing-the-event-object", text: "Accessing the event object", level: 2 }, { key: 4, id: "dispatching-custom-events", text: "Dispatching custom events", level: 2 }, { key: 5, id: "listening-for-events-on-window", text: "Listening for events on window", level: 2 }] as const;
 
 export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
@@ -19,10 +19,10 @@ export default function DocsPage({ url }: PageProps) @{
 				<p>Alpine makes it simple to listen for browser events and react to them.</p>
 				<h2 id="listening-for-simple-events"><a href="#listening-for-simple-events">Listening for simple events</a></h2>
 				<p>By using{" "}<code>x-on</code>, you can listen for browser events that are dispatched on or within an element.</p>
-				<p>Here's a basic example of listening for a click on a button:</p>
+				<p>Here&#39;s a basic example of listening for a click on a button:</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"button"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-on"}</span><span style="color: #24292E;">{":"}</span><span style="color: #6F42C1;">{"click"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{"console."}</span><span style="color: #6F42C1;">{"log"}</span><span style="color: #24292E;">{"("}</span><span style="color: #032F62;">{"'clicked'"}</span><span style="color: #24292E;">{")"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">...</"}</span><span style="color: #22863A;">{"button"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<button x-on:click=\"console.log('clicked')\">...</button>"}</div></code></pre>
 				<p>
-					As an alternative, you can use the event shorthand syntax if you prefer:{" "}<code>&#64;</code>. Here's the same example as before, but using the shorthand syntax (which we'll be using from now on):
+					As an alternative, you can use the event shorthand syntax if you prefer:{" "}<code>&#64;</code>. Here&#39;s the same example as before, but using the shorthand syntax (which we&#39;ll be using from now on):
 				</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"button"}</span><span style="color: #24292E;">{" @"}</span><span style="color: #6F42C1;">{"click"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #D73A49;">{"..."}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">...</"}</span><span style="color: #22863A;">{"button"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<button @click=\"...\">...</button>"}</div></code></pre>
 				<p>
@@ -30,7 +30,7 @@ export default function DocsPage({ url }: PageProps) @{
 				</p>
 				<h2 id="listening-for-specific-keys"><a href="#listening-for-specific-keys">Listening for specific keys</a></h2>
 				<p>
-					Let's say you wanted to listen for the{" "}<code>enter</code>{" "}key to be pressed inside an{" "}<code>&lt;input&gt;</code>{" "}element. Alpine makes this easy by adding the{" "}<code>.enter</code>{" "}like so:
+					Let&#39;s say you wanted to listen for the{" "}<code>enter</code>{" "}key to be pressed inside an{" "}<code>&lt;input&gt;</code>{" "}element. Alpine makes this easy by adding the{" "}<code>.enter</code>{" "}like so:
 				</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"input"}</span><span style="color: #24292E;">{" @"}</span><span style="color: #6F42C1;">{"keyup"}</span><span style="color: #24292E;">{"."}</span><span style="color: #6F42C1;">{"enter"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #D73A49;">{"..."}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<input @keyup.enter=\"...\">"}</div></code></pre>
 				<p>You can even combine key modifiers to listen for key combinations like pressing{" "}<code>enter</code>{" "}while holding{" "}<code>shift</code>:</p>

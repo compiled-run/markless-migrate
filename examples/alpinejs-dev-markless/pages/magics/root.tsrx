@@ -6,6 +6,7 @@ import Sponsor from '../../components/sponsor.tsrx';
 import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
 import { watchHeadings } from '../../site.ts';
+import { Demo0 } from '../../demos/magics-root.tsrx';
 
 const HEADINGS = [] as const;
 
@@ -20,7 +21,7 @@ export default function DocsPage({ url }: PageProps) @{
 					<code>$root</code>{" "}is a magic property that can be used to retrieve the root element of any Alpine component. In other words the closest element up the DOM tree that contains{" "}<code>x-data</code>.
 				</p>
 				<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"x-data"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"data-message"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\"Hello World!\""}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"    <"}</span><span style="color: #22863A;">{"button"}</span><span style="color: #24292E;">{" @"}</span><span style="color: #6F42C1;">{"click"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\""}</span><span style="color: #6F42C1;">{"alert"}</span><span style="color: #24292E;">{"($root.dataset.message)"}</span><span style="color: #032F62;">{"\""}</span><span style="color: #24292E;">{">Say Hi</"}</span><span style="color: #22863A;">{"button"}</span><span style="color: #24292E;">{">"}</span></div><div class="line"><span style="color: #24292E;">{"</"}</span><span style="color: #22863A;">{"div"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<div x-data data-message=\"Hello World!\">\n    <button @click=\"alert($root.dataset.message)\">Say Hi</button>\n</div>"}</div></code></pre>
-				<div data-message="Hello World!" class="demo"><button>Say Hi</button></div>
+				<Demo0 />
 				<Sponsor wrapper="my-12 border-y border-gray-200 py-6 xl:hidden" label="mb-3 block text-xs font-semibold uppercase tracking-wider text-gray-400" />
 				<div class="flex justify-between border-t border-gray-200 pt-4 text-gray-700">
 					<div>
