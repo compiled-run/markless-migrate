@@ -3,13 +3,16 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "import": "node scripts/import-htmx-org.ts",
+    "prebuild": "node scripts/import-htmx-org.ts",
     "dev": "vp dev",
     "build": "vp build",
     "preview": "vp preview",
     "check": "vp check",
     "doctor": "node scripts/markless-doctor.mjs",
     "fmt": "vp fmt",
-    "test": "vp test"
+    "test": "vp test",
+    "verify-routes": "node scripts/verify-routes.ts"
   },
   "dependencies": {
     "@markless/core": "0.5.0",
@@ -20,6 +23,7 @@
   "devDependencies": {
     "@markless/analyzer": "0.5.0",
     "@markless/typescript-plugin": "0.5.0",
+    "parse5": "^7.3.0",
     "typescript": "^5.9.3",
     "vite": "npm:@voidzero-dev/vite-plus-core@0.3.1"
   },
