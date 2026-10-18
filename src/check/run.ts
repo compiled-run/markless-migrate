@@ -19,6 +19,7 @@ import { negotiationFailures } from './i18n.ts';
 import { compareJourneys, DEFAULT_JOURNEY_BUDGET_MS, explore, replayAll, replayDestructive, survey, type ElementCoverage, type Exploration, type ExploreOptions, type RecordedJourney, type Run as RunResults } from './journeys.ts';
 import { storageOwner, unreachableCandidate, type StorageOwner } from './automatic.ts';
 import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
+import { checkMotion, type MotionOptions } from './motion.ts';
 import { assetsToProbe, compareRoute, cssTargets, httpFailures, noiseReport, noisyStyles, withFailures, type Probe } from './compare.ts';
 import { matchElements } from './match.ts';
 import { contractLines } from './network.ts';
@@ -83,6 +84,8 @@ export interface CheckOptions {
 	readonly switched?: readonly string[];
 	/** Time the first use of every control the journeys exercised and every internal link they followed, old and new, at desktop speed and on a throttled phone. */
 	readonly responsiveness?: ResponsivenessOptions;
+	/** Record the transitions and animations every interaction starts, and those hovering and focusing each control start, old and new, with motion allowed and with reduced motion. */
+	readonly motion?: MotionOptions;
 	/** How long one route's check (as one role) may take before it is stopped and reported as an infrastructure failure. */
 	readonly timeoutMs?: number;
 	/** Every route of the old site, each checked for existence on the new app (the coverage dimension). */
@@ -117,6 +120,7 @@ interface Run {
 	readonly journeys?: ExploreOptions;
 	readonly switched?: readonly string[];
 	readonly responsiveness?: ResponsivenessOptions;
+	readonly motion?: MotionOptions;
 }
 
 async function probe(env: SideEnv, url: string): Promise<Probe> {
@@ -179,14 +183,15 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 	const result = withFailures(compared, [...compared.failures, ...negotiationFailures(route, languages, [negotiatedA, negotiatedB], negotiatedNew)], { noise, writes: loadWrites });
 	const owner = storageOwner(olds.flatMap((o) => Object.values(o.pages)), Object.values(next.pages));
 	const explored = await checkJourneys(browser, run, route, viewports[0]!, await checkStates(browser, run, route, viewports, olds, result), owner);
-	const checked = run.responsiveness && explored.journeys?.length ? await checkTimings(browser, run, route, explored) : explored;
+	const moved = run.motion && explored.journeys?.length ? await checkMoves(browser, run, route, viewports[0]!, explored) : explored;
+	const checked = run.responsiveness && moved.journeys?.length ? await checkTimings(browser, run, route, moved) : moved;
 	const located = await locateFailures(checked, { route, old: oldA, next, sides: { old: { origin: oldOrigin, dir: run.sourceDirs?.old }, new: { origin: newOrigin, dir: run.sourceDirs?.new } }, ...(run.source ? { facts: run.source } : {}) });
 	const done = oldA.http.status < 400 && (next.http.status === 404 || next.http.status === 410) ? { ...located, notPorted: true } : located;
 	oldCaptures.set(done, oldA);
 	return done;
 }
 
-/** One viewport's http, rendered, seo, assets, css, a11y, i18n, network and weight checks: what a page gets when its template group's representative carries visual, behaviour and responsiveness. */
+/** One viewport's http, rendered, seo, assets, css, a11y, i18n, network and weight checks: what a page gets when its template group's representative carries visual, behaviour, responsiveness and motion. */
 export async function checkLight(browser: Browser, run: Run, route: string, viewports: readonly Viewport[] = VIEWPORTS): Promise<RouteResult> {
 	const first = [viewports[0]!];
 	const oldA = await captureRoute(browser, run.old.origin, route, first, run.old);
@@ -257,6 +262,11 @@ async function unreachableOnBoth(browser: Browser, env: SideEnv, route: string, 
 		if (candidate) out.set(e.signature, candidate);
 	});
 	return out;
+}
+
+async function checkMoves(browser: Browser, run: Run, route: string, viewport: Viewport, result: RouteResult): Promise<RouteResult> {
+	const moved = await checkMotion(browser, { old: run.old, new: run.new }, route, viewport, result.journeys ?? [], run.motion);
+	return withFailures(result, [...result.failures, ...moved.failures], { motion: moved.motion, ...(moved.filmstrips.length ? { filmstrips: moved.filmstrips } : {}) });
 }
 
 async function checkTimings(browser: Browser, run: Run, route: string, result: RouteResult): Promise<RouteResult> {
@@ -476,7 +486,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const freeze: FreezeOptions | false = options.freeze === false ? false : { ...DEFAULT_FREEZE, ...options.freeze };
 	const bypass = { ...(options.headers ? { headers: options.headers } : {}), ...(options.cookies?.length ? { cookies: options.cookies } : {}), ...(options.userAgent ? { userAgent: options.userAgent } : {}) };
 	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [], ...bypass };
-	const base: Run = { old: defaultEnv(options.oldOrigin, shared), new: defaultEnv(options.newOrigin, shared), frozen: Boolean(freeze), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
+	const base: Run = { old: defaultEnv(options.oldOrigin, shared), new: defaultEnv(options.newOrigin, shared), frozen: Boolean(freeze), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
 	const auth = options.auth;
 	const roles: (string | undefined)[] = auth ? [ANONYMOUS, ...Object.keys(auth.roles)] : [undefined];
 	const logins: LoginResult[] = [];
@@ -557,7 +567,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 }
 
 export function jsonReport(report: Report, diffs: Readonly<Record<string, string[]>> = {}) {
-	return { ...report, routes: report.routes.map(({ visualDiffs: _, shots: __, journeys, ...route }) => ({ ...route, visualDiffs: diffs[route.route] ?? [], journeys: journeys?.length ?? 0 })) };
+	return { ...report, routes: report.routes.map(({ visualDiffs: _, shots: __, filmstrips: ___, journeys, ...route }) => ({ ...route, visualDiffs: diffs[route.route] ?? [], journeys: journeys?.length ?? 0 })) };
 }
 
 export async function writeReport(report: Report, dir: string, status?: Status): Promise<string> {

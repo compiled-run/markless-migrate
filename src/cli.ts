@@ -60,15 +60,15 @@ const USAGE = `markless-migrate ${VERSION}
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
           [--journey-budget <seconds>] [--max-journeys <n>] [--timeout <seconds>]
-          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--interaction-controls <n>]
+          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--interaction-controls <n>] [--no-motion]
           Compare routes old vs new (default: every route of the old site plan listed). Exits 1 when any is red.
           Coverage: every route of the old site must exist on the new app, with the same status class
           and the same redirect target, or carry an accepted difference (accept <id>); each missing
           route is red and listed. --only coverage measures just that, for every route.
           --route checks only the routes named, for iterating: such a run (and --changed) is a partial
           run, "partial run: N of M routes", never overall green; it exits 4 when what it checked is green.
-          Above ${TEMPLATE_THRESHOLD} pages, every page gets every check except visual, behaviour and
-          responsiveness, which run on one representative per template group (grouped by URL pattern
+          Above ${TEMPLATE_THRESHOLD} pages, every page gets every check except visual, behaviour,
+          responsiveness and motion, which run on one representative per template group (grouped by URL pattern
           and page layout); the report lists the groups. --every-dimension runs them on every page.
           Every interactive element of the old page (including those a click reveals, such as a
           dialog's controls) must be used by a journey, or the route stays red: journeys are explored main content first (tables, forms), until each element is used or
@@ -87,6 +87,12 @@ const USAGE = `markless-migrate ${VERSION}
           slow speed and fetch no code; a link must show the next page within max(16 ms, 10%) of the
           old app at the slow speed. --interaction-controls caps the controls timed per route (16).
           --no-responsiveness leaves it out.
+          Motion: the last step of every journey that stays on the page is replayed old then new with
+          motion allowed, recording each transition and animation it starts (element, properties,
+          duration, delay, easing, iterations) and frames at fixed offsets across the longest one; an
+          animation missing on new (it jumps), timed differently (beyond max(20 ms, 10%)) or only on new
+          is red. The same runs again with prefers-reduced-motion: reduce, where both must agree, and
+          hovering and focusing each control is compared the same way. --no-motion leaves it out.
           --source and --new-source map each failing element to its old and new source file and line.
           --concurrency checks that many routes at once (default half the cores, at most 4).
           --timeout stops one route's check after that many seconds (default 600, or five journey
@@ -209,6 +215,7 @@ const TIMING_FLAGS = {
 	'interaction-budget': { type: 'string' },
 	'cpu-throttle': { type: 'string' },
 	'interaction-controls': { type: 'string' },
+	'no-motion': { type: 'boolean' },
 } as const;
 
 function timingOptions(values: { 'no-responsiveness'?: boolean; 'interaction-budget'?: string; 'cpu-throttle'?: string; 'interaction-controls'?: string }): CheckOptions['responsiveness'] {
@@ -404,6 +411,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 					journeys,
 					...deadline,
 					...(timing ? { responsiveness: timing } : {}),
+				...(values['no-motion'] ? {} : { motion: {} }),
 					switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 					partial: { total: inventory ? plannedRoutes(inventory).length : null },
 				});
@@ -565,6 +573,7 @@ async function main(argv: string[]): Promise<number> {
 				journeys,
 				...deadline,
 				...(timing ? { responsiveness: timing } : {}),
+				...(values['no-motion'] ? {} : { motion: {} }),
 				switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 				...(!values['new-source'] && !values.changed ? {} : { sourceDirs: { ...(values.source ? { old: resolve(values.source) } : {}), new: newDir } }),
 				...(partial ? { partial: { total: planned?.length ?? null } } : planned?.length ? { coverage: planned } : {}),

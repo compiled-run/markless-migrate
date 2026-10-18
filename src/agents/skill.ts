@@ -95,6 +95,14 @@ any route is missing.
   first and the second use is start-up work the first interaction pays for. For a link, a full page load
   where the old app navigated in the page, a cold server function, or a missing prefetch are the usual
   causes. Never raise \`--interaction-budget\` to make it pass.
+- \`motion\` is checked: every interaction that stays on the page is replayed with motion allowed, and each
+  transition and animation it starts (element, properties, duration, delay, easing, iterations), each one hovering,
+  focusing or scrolling starts, and each sound it plays is compared with the old page's. Port every animation and
+  transition by rule from the original source, with the same durations and easings: a sidebar category, a
+  dropdown, a drawer or a toast that animates on the old page and jumps on the new one is red, and so is one
+  timed differently or one the old page never ran. Port the old \`@media (prefers-reduced-motion)\` rules and any
+  script that reads that media query too: with reduced motion on, both pages must agree. The same end state is
+  not enough; the filmstrip in \`.migrate/report.html\` shows both pages at the same moments of the animation.
 - \`network\` failures compare the requests each page makes, in the browser and (when the servers run
   the request recorder, see \`markless-migrate recorder\`) while the server renders it: the same
   endpoints, query parameters, body fields and number of calls, and the response fields the old page

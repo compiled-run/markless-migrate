@@ -25,7 +25,7 @@ markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [
     [--auth .migrate/auth.json] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
     [--all] [--allow-unchecked] [--new-source ../markless-app] [--concurrency 4] [--changed]
     [--journey-budget 120] [--max-journeys <n>] [--timeout 600]
-    [--no-responsiveness] [--interaction-budget 200] [--cpu-throttle 4] [--interaction-controls 16]
+    [--no-responsiveness] [--interaction-budget 200] [--cpu-throttle 4] [--interaction-controls 16] [--no-motion]
 markless-migrate switch <route> [--force --by <name> --reason <why>]
 markless-migrate unswitch <route>
 markless-migrate proxy --old http://localhost:3000 --new http://localhost:5173 [--port 4300] [--host 127.0.0.1]
@@ -113,6 +113,7 @@ only within the same kind of character (digits stay digits); everything else mus
 | `data` | non-page endpoints as data, with the same noise rules as pages: feeds item by item (keyed by guid, id or link), JSON field by field, `/.well-known` files, the manifest; robots.txt lines and sitemap entries count as `seo` |
 | `weight` | JavaScript on the wire and run at load (Chromium coverage); red when the new route is heavier |
 | `responsiveness` | the first use of every control the journeys exercised, and every internal link they followed, timed on a fresh page load, old then new, at desktop speed and on a 412x823 touch page with the CPU slowed 4x (`--cpu-throttle`). See below |
+| `motion` | the transitions and animations each interaction starts, old vs new, with motion allowed and the clock running in real time: the last step of every journey that stays on the page, hovering and keyboard-focusing each control a journey used, and scrolling down one screen. Each transition, CSS animation, Web Animation and style a script writes frame by frame is recorded with its element (paired as the other dimensions pair them), properties, duration, delay, easing and iterations, and media an interaction plays. Red when the old page animates and the new one jumps, when duration or delay differ by more than max(20 ms, 10%) or the easing differs, or when only the new page animates; every interaction that moved is replayed with `prefers-reduced-motion: reduce` too, where both must agree. report.html shows a filmstrip of each interaction that differs: five frames, old above new, at the same offsets into the old page's longest animation (held and stepped, so frames do not depend on timing). `--no-motion` leaves it out |
 
 ### Responsiveness: the first interaction and the next page
 

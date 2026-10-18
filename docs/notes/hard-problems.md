@@ -28,3 +28,22 @@ app. It never calls a model; the agent can add hints in a file the tool reads.
 5. Route reading for the common stacks beyond Next.js.
 6. Old-to-new source mapping in failures, using Markless's analyzer on the new side.
 7. Bot-protection detection and bypass headers.
+
+## What check cannot see yet
+
+Every dimension compares end states: the page after it loads, after a step, in a forced state. What happens
+between two end states, or only with time, sound or a GPU, needs its own recording. Motion now has one; the
+rest are listed with the plan for each.
+
+| Kind | Why it is invisible today | Plan | Status |
+| --- | --- | --- | --- |
+| Transitions and animations an interaction starts (a sidebar category collapsing, a dropdown fading in) | the screenshot and DOM after the step are the same whether the change animated or jumped | the `motion` dimension: replay each journey's last step with motion allowed and the clock running in real time, record every `transitionrun`/`animationstart` and every `document.getAnimations()` entry (element, properties, duration, delay, easing, iterations), hold finite ones at their start and take frames at fixed offsets across the longest; compare per element, matched as the other dimensions match them | done |
+| Hover and focus transitions on controls | forced `:hover`/`:focus` states compare the end style only | hover and keyboard-focus each control a journey used on one page, record what starts | done |
+| Reduced motion | contexts load with `prefers-reduced-motion: reduce`; the a11y check only lists animations still running at load | every interaction that moved is replayed again with reduce; both sides must agree | done |
+| Script-driven motion (an element's inline style written frame by frame) | not a Web Animation, so `getAnimations()` misses it | a MutationObserver counts the frames that wrote each property of an element's inline style; a property written on six frames or more is motion, timed by the wall clock with a looser tolerance (max(50 ms, 25%)) | done |
+| Scroll-linked effects (a header that hides on scroll, content that fades in as it enters, parallax, `animation-timeline: scroll()`) | pages are captured scrolled to the top, and scroll-driven animations exist at load so a step never starts them | done in part: "scroll down one screen" is a motion interaction, so transitions and animations a scroll starts are compared. Next: scroll in steps and compare element boxes and the current time of scroll-timeline animations at each offset | partial |
+| Sound and media playback | nothing records audio | done in part: a media element's `play` event and Web Audio sources started during an interaction are compared ("old plays audio sent.mp3; new plays nothing"). Next: compare what plays (the decoded file's hash) and video frames | partial |
+| Canvas and WebGL content | the screenshot sees a canvas's pixels at load only; what it draws after an interaction is not compared, since journeys compare the accessibility tree and not pixels, and WebGL output varies by GPU | read each canvas after load and after each step (`toDataURL`, or a clipped screenshot for WebGL without `preserveDrawingBuffer`) and compare with a pixel tolerance measured from repeated old loads; record the draw calls a chart library makes when it exposes them | planned |
+| Timing-based UI (a toast that leaves after 5 s, an autoplaying carousel, a countdown, a session timeout warning) | the clock is frozen and moves only when a timer fires, and a step waits out timers of at most a second | a timed journey per route with the clock running: sample the accessibility tree and text at 1, 3 and 10 s after load and after each step that started a longer timer, and compare the sequences | planned |
+| Drag, swipe and pinch | journeys click, type, press keys and choose options only | add drag and swipe steps for elements that listen to pointer moves (sliders, sortable lists, carousels) and compare the step result as for clicks | planned |
+| The clipboard | a copy button's result is not on the page | record `navigator.clipboard.writeText` and `copy` events during a step and compare the text written | planned |

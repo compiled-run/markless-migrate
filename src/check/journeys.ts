@@ -766,11 +766,11 @@ export async function replayDestructive(browser: Browser, env: SideEnv, route: s
 	return out;
 }
 
-async function pool<T, R>(items: readonly T[], task: (item: T) => Promise<R>): Promise<R[]> {
+export async function pool<T, R>(items: readonly T[], size: number, task: (item: T) => Promise<R>): Promise<R[]> {
 	const out: R[] = new Array(items.length);
 	let next = 0;
 	await Promise.all(
-		Array.from({ length: Math.min(CONCURRENCY, items.length) }, async () => {
+		Array.from({ length: Math.min(size, items.length) }, async () => {
 			while (next < items.length) {
 				const i = next++;
 				out[i] = await task(items[i]!);
@@ -941,7 +941,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		const room = Math.max(0, cap - journeys.length);
 		const runnable = wave.slice(0, room);
 		for (const item of wave.slice(room)) if (item.element) item.element.reason = `out of the journey budget (${options.maxJourneys} journeys)`;
-		const results = await pool(runnable, async (item) => (outOfBudget() ? undefined : runItem(item)));
+		const results = await pool(runnable, CONCURRENCY, async (item) => (outOfBudget() ? undefined : runItem(item)));
 		const next: Item[] = [];
 		for (const [i, r] of results.entries()) {
 			const item = runnable[i]!;
@@ -977,7 +977,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	}
 
 	const room = Math.max(0, cap - journeys.length);
-	const extra = await pool(later.slice(0, room), async (item) => (outOfBudget() ? undefined : runItem(item)));
+	const extra = await pool(later.slice(0, room), CONCURRENCY, async (item) => (outOfBudget() ? undefined : runItem(item)));
 	let skipped = Math.max(0, later.length - room);
 	for (const [i, r] of extra.entries()) {
 		if (!r) {
@@ -1052,7 +1052,7 @@ function format(result: StepResult, parts: readonly string[]): string {
 export type Run = readonly (readonly StepResult[])[];
 
 export async function replayAll(browser: Browser, env: SideEnv, route: string, viewport: Viewport, journeys: readonly Journey[]): Promise<Run> {
-	return pool(journeys, (journey) => replay(browser, env, route, viewport, journey));
+	return pool(journeys, CONCURRENCY, (journey) => replay(browser, env, route, viewport, journey));
 }
 
 export function compareJourneys(route: string, olds: readonly Run[], journeys: readonly Journey[], next: Run, owner?: StorageOwner): Failure[] {

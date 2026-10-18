@@ -1,5 +1,5 @@
 // Runs inside the page via page.evaluate: must stay self-contained (no imports, no outer references).
-export function collectPage({ origin, full }: { origin: string; full: boolean }) {
+export function collectPage({ origin, full, styles = true }: { origin: string; full: boolean; styles?: boolean }) {
 	const local = (url: string) => (url.startsWith(origin) ? url.slice(origin.length) || '/' : url);
 	const clean = (value: string) => value.replace(/\s+/g, ' ').trim();
 	const NAME_FROM_CONTENT = new Set(['link', 'button', 'heading', 'cell', 'columnheader', 'option', 'tab', 'menuitem', 'listitem']);
@@ -81,12 +81,12 @@ export function collectPage({ origin, full }: { origin: string; full: boolean })
 		if (!el.checkVisibility({ visibilityProperty: true })) continue;
 		const rect = el.getBoundingClientRect();
 		if (rect.width === 0 && rect.height === 0) continue;
-		const computed = getComputedStyle(el);
+		const computed = styles ? getComputedStyle(el) : undefined;
 		const style: Record<string, string> = {};
-		for (const prop of computed) {
+		for (const prop of computed ?? []) {
 			if (prop.startsWith('--') || GEOMETRY.has(prop)) continue;
 			// A url() resolves against the page: the app's own origin is not part of the value.
-			style[prop] = computed.getPropertyValue(prop).split(`${location.origin}/`).join('/');
+			style[prop] = computed!.getPropertyValue(prop).split(`${location.origin}/`).join('/');
 		}
 		const text = clean([...el.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent).join(' ')).slice(0, 80);
 		const tag = el.tagName.toLowerCase();

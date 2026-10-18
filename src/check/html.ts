@@ -2,6 +2,7 @@ import { acceptedLabel } from './automatic.ts';
 import { headlines, type Sample } from './responsiveness.ts';
 import { partialLine } from './summary.ts';
 import type { Box, Failure, LoginResult, Report, ResponsivenessSummary, RouteResult, Shot, SourceLink } from './types.ts';
+import type { Filmstrip, MotionInteraction } from './motion.ts';
 import { remaining, type Status } from '../status.ts';
 
 const list = (items: readonly string[], cls = '') => `<ul>${items.map((x) => `<li${cls ? ` class="${cls}"` : ''}>${esc(x)}</li>`).join('')}</ul>`;
@@ -126,6 +127,21 @@ function shot(s: Shot, id: string): string {
 </div>`;
 }
 
+function motion(r: RouteResult): string {
+	const m = r.motion;
+	if (!m) return '';
+	const differs = (i: MotionInteraction) => !i.ok || i.reduced?.ok === false;
+	const failing = m.interactions.filter(differs).length;
+	const sides = (old: readonly string[], next: readonly string[]) => `<div class="pair"><div><h4>Old</h4>${list(old.length ? old : ['(no motion)'])}</div><div><h4>New</h4>${list(next.length ? next : ['(no motion)'])}</div></div>`;
+	const item = (i: MotionInteraction) => `<li${differs(i) ? ' class="differs"' : ''}><strong>${esc(i.name)}</strong>${sides(i.old, i.new)}${i.reduced ? `<p><small>With prefers-reduced-motion: reduce${i.reduced.ok ? ', the same on both' : ''}:</small></p>${sides(i.reduced.old, i.reduced.new)}` : ''}</li>`;
+	return `<details class="states motion"${failing ? ' open' : ''}><summary>Motion: ${m.checked} interaction${m.checked === 1 ? '' : 's'} recorded, ${m.interactions.length} started a transition or animation${failing ? `, <strong>${failing} move differently</strong>` : ''}${m.skipped.length ? `, ${m.skipped.length} not recorded` : ''}</summary><ul>${[...m.interactions].sort((a, b) => Number(differs(b)) - Number(differs(a))).map(item).join('')}${m.skipped.map((s) => `<li class="skipped">not recorded: ${esc(s)}</li>`).join('')}</ul></details>`;
+}
+
+function filmstrip(f: Filmstrip): string {
+	const row = (side: string, frames: readonly Buffer[]) => `<div class="strip"><h4>${side}</h4><div class="frames">${frames.map((image, k) => `<figure><img src="${png(image)}" loading="lazy" alt="${side} at ${f.offsets[k]} ms"><figcaption>${f.offsets[k]} ms</figcaption></figure>`).join('')}</div></div>`;
+	return `<div class="filmstrip"><h3><span class="badge fail">moves differently</span> ${esc(f.label)} <small>frames at the same offsets into the old page's longest animation</small></h3>${row('Old', f.old)}${row('New', f.new)}</div>`;
+}
+
 function coverage(r: RouteResult): string {
 	const c = r.coverage;
 	if (!c) return '';
@@ -193,10 +209,12 @@ ${noise(r)}
 ${writes(r)}
 ${coverage(r)}
 ${timings(r)}
+${motion(r)}
 ${r.journeys?.length ? `<details class="states"><summary>Interactions explored on the old page and replayed on the new one: ${r.journeys.length}${failedJourneys(r) ? `, ${failedJourneys(r)} differ` : ''}</summary><ul>${r.journeys.map((j) => `<li${r.failures.some((f) => f.check.startsWith(j.name)) ? ' class="differs"' : ''}>${esc(j.name)}</li>`).join('')}</ul></details>` : ''}
 <h3>Failures (${r.failures.filter((f) => !f.accepted).length}${r.failures.some((f) => f.accepted) ? `, and ${r.failures.filter((f) => f.accepted).length} accepted differences` : ''})</h3>
 ${table}
 ${r.shots.map((s, i) => shot(s, `route-${index}-shot-${i}`)).join('\n')}
+${(r.filmstrips ?? []).map(filmstrip).join('\n')}
 </section>`;
 }
 
@@ -240,6 +258,7 @@ figcaption { font-weight: 600; margin-bottom: 4px; }
 .handle { position: absolute; top: 0; bottom: 0; width: 2px; background: #1a73e8; pointer-events: none; }
 .slider label { display: block; margin-top: 8px; }
 .slider input { width: 100%; }
+.filmstrip { margin: 16px 0 28px; padding: 12px; background: white; border: 1px solid var(--line); border-radius: 8px; } .filmstrip .frames { display: flex; gap: 8px; overflow-x: auto; } .filmstrip figure { margin: 0; } .filmstrip img { display: block; border: 1px solid var(--line); max-height: 320px; } .filmstrip figcaption { color: var(--muted); font-size: 12px; text-align: center; }
 .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; } .pair h4 { margin: 8px 0 4px; } .network code { font-size: 12px; word-break: break-all; }
 .where { margin-top: 6px; color: var(--muted); } .where a { color: #1a73e8; }
 .forced { color: var(--fail); font-weight: 600; } tr.forced td { background: rgb(179 38 30 / 0.06); }

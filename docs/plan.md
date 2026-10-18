@@ -555,3 +555,24 @@ decisions, what was accepted automatically, and "What to look at if you care" (`
 - Surface size counts names, not how hard each one is to port; a few names with deep behaviour (an
   editable grid with custom editors) can still be ported when using the library directly would be wiser.
   The 120-name limit and the 1 KB per name allowance are calibrated on one app.
+
+## Motion (2026-10-18)
+
+Built: a `motion` dimension (`src/check/motion.ts`), because end-state checks passed a Docusaurus port whose
+sidebar categories jump open and shut where the original animates their height and rotates the caret.
+Every journey whose last step stays on the page is replayed on both sides with `prefers-reduced-motion:
+no-preference` and the clock ticking; before the last step an in-page recorder listens for `transitionrun`
+and `animationstart`, scans `document.getAnimations()` every frame, holds each finite animation that starts at
+its first frame and watches inline styles a script writes frame by frame. Frames are taken by stepping the
+held animations to 0, 25, 50, 75 and 100% of the old side's longest one, the same clip on both sides; then
+they play out and the recorder reads each animation's element, properties, keyframe values, duration,
+delay, easing and iterations. Elements pair through `matchElements` on both pages' full element lists, so
+a missing animation names the new element that jumps. A difference must hold against two OLD recordings.
+Differences alike but for the element and values (every link's colour when the theme changes) are one
+failure. Interactions that moved are replayed with reduced motion, where both must agree; hover, keyboard
+focus of each control a journey used and one screen of scrolling are recorded on one page per side; media
+`play` events and Web Audio starts count as sound. Proven by `test/e2e/motion.test.ts` on
+`fixtures/motion` (a collapsible that animates its height against one that jumps goes red naming the list
+and 250 ms ease-in-out, with a filmstrip; identical sides are green; a page that keeps animating under
+reduced motion is red) and `test/motion.test.ts`. The CLI and MCP record it by default; `runCheck` takes
+`motion: {}`.

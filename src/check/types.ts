@@ -5,19 +5,20 @@ import type { ElementCoverage, RecordedJourney } from './journeys.ts';
 import type { NetworkCapture } from './network.ts';
 import type { NondeterminismFact } from './source-facts.ts';
 import type { Responsiveness, SpeedName, Worst } from './responsiveness.ts';
+import type { Filmstrip, MotionResult } from './motion.ts';
 
-export const DIMENSIONS = ['http', 'auth', 'rendered', 'visual', 'seo', 'assets', 'css', 'a11y', 'i18n', 'behaviour', 'network', 'data', 'weight', 'responsiveness'] as const;
+export const DIMENSIONS = ['http', 'auth', 'rendered', 'visual', 'seo', 'assets', 'css', 'a11y', 'i18n', 'behaviour', 'network', 'data', 'weight', 'responsiveness', 'motion'] as const;
 export type Dimension = (typeof DIMENSIONS)[number];
 /** Route coverage is measured for the whole site, not per route: a failure of it names the route the new app lacks. */
 export type FailureDimension = Dimension | 'coverage';
 
 /** Checked only on its template group's representative: the rest of the group gets every other dimension. */
-export const REPRESENTATIVE_ONLY: readonly Dimension[] = ['visual', 'behaviour', 'responsiveness'];
+export const REPRESENTATIVE_ONLY: readonly Dimension[] = ['visual', 'behaviour', 'responsiveness', 'motion'];
 
-/** A dimension was left out because a side was blocked or let this role in differently; an unmeasured responsiveness, or one its template's representative checks, is not that. */
+/** A dimension was left out because a side was blocked or let this role in differently; unmeasured responsiveness or motion, or one its template's representative checks, is not that. */
 export function notCompared(route: Pick<RouteResult, 'dimensions' | 'template' | 'route'>): boolean {
 	const byRepresentative = route.template && route.template.representative !== route.route;
-	return Object.entries(route.dimensions).some(([d, state]) => state === 'skipped' && d !== 'responsiveness' && !(byRepresentative && REPRESENTATIVE_ONLY.includes(d as Dimension)));
+	return Object.entries(route.dimensions).some(([d, state]) => state === 'skipped' && d !== 'responsiveness' && d !== 'motion' && !(byRepresentative && REPRESENTATIVE_ONLY.includes(d as Dimension)));
 }
 
 export interface Viewport {
@@ -241,6 +242,10 @@ export interface RouteResult {
 	readonly responsiveness?: Responsiveness;
 	/** The template group the route was put in (by URL pattern and page structure); visual, behaviour and responsiveness were checked on its representative. */
 	readonly template?: { readonly pattern: string; readonly representative: string; readonly members: number };
+	/** The transitions and animations each interaction starts, old and new, with motion allowed and with reduced motion, and those hovering and focusing each control start. */
+	readonly motion?: MotionResult;
+	/** Frames of interactions whose motion differs, old and new at the same offsets. */
+	readonly filmstrips?: readonly Filmstrip[];
 }
 
 /** Whether every route of the old site exists on the new app. */

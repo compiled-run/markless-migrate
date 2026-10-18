@@ -52,7 +52,7 @@ export function createServer(cwd: string): McpServer {
 		'check_route',
 		{
 			title: 'Check one route, old vs new',
-			description: 'Load the route on both origins in Chromium (desktop and mobile), with a fixed clock, seeded randomness, a fixed timezone and locale and ad/analytics hosts blocked, and compare HTTP, accessibility tree and text, screenshots, SEO, assets, computed CSS in every state the old CSS styles (with the old rule that set it), fonts, accessibility (axe, focus order, keyboard, landmarks, motion), internationalisation per locale, every replayed interaction, the network contract (each request the page makes in the browser and, when the server runs the request recorder, while the server renders it: method, URL, body shape, how often, and which response fields the page shows), JavaScript weight, old-framework runtime markers the new page must not carry (hydration flags such as data-has-hydrated, data scripts such as __NEXT_DATA__, the old generator meta), and responsiveness (the first use of each control on a fresh load and the next page of each internal link, old vs new, at desktop speed and with the CPU slowed 4x on a phone-sized page: within max(16 ms, 10%) of old, under 200 ms at 4x, no code fetched on an interaction). Writes (form posts, non-GET requests) are sent only when both origins are on this machine or marked staging; otherwise they are held back and compared as "would POST ...". Writes .migrate/report.html with old/new/diff images. Returns every failure with expected, actual and a likely fix. Differences the evidence proves harmless (the old framework\'s scripts no longer loaded, its own markup such as a route announcer, live content in a third-party embed) are accepted automatically and labelled so; nothing else can be accepted from here.',
+			description: 'Load the route on both origins in Chromium (desktop and mobile), with a fixed clock, seeded randomness, a fixed timezone and locale and ad/analytics hosts blocked, and compare HTTP, accessibility tree and text, screenshots, SEO, assets, computed CSS in every state the old CSS styles (with the old rule that set it), fonts, accessibility (axe, focus order, keyboard, landmarks, motion), internationalisation per locale, every replayed interaction, motion (the transitions and animations each interaction, hover and focus starts: element, properties, duration, delay and easing, with motion allowed and with reduced motion, and a filmstrip of each that differs), the network contract (each request the page makes in the browser and, when the server runs the request recorder, while the server renders it: method, URL, body shape, how often, and which response fields the page shows), JavaScript weight, old-framework runtime markers the new page must not carry (hydration flags such as data-has-hydrated, data scripts such as __NEXT_DATA__, the old generator meta), and responsiveness (the first use of each control on a fresh load and the next page of each internal link, old vs new, at desktop speed and with the CPU slowed 4x on a phone-sized page: within max(16 ms, 10%) of old, under 200 ms at 4x, no code fetched on an interaction). Writes (form posts, non-GET requests) are sent only when both origins are on this machine or marked staging; otherwise they are held back and compared as "would POST ...". Writes .migrate/report.html with old/new/diff images. Returns every failure with expected, actual and a likely fix. Differences the evidence proves harmless (the old framework\'s scripts no longer loaded, its own markup such as a route announcer, live content in a third-party embed) are accepted automatically and labelled so; nothing else can be accepted from here.',
 			inputSchema: {
 				old: z.string().url(),
 				new: z.string().url(),
@@ -66,6 +66,7 @@ export function createServer(cwd: string): McpServer {
 				cookie: z.array(z.string()).optional().describe('name=value cookies set on both apps, for example a bot-protection bypass cookie'),
 				userAgent: z.string().optional(),
 				responsiveness: z.boolean().optional().describe('Time the first use of each control and each internal link (default true); false leaves it out'),
+				motion: z.boolean().optional().describe('Compare the transitions and animations each interaction, hover and focus starts, with motion allowed and with reduced motion (default true); false leaves it out'),
 			},
 		},
 		async (args) => {
@@ -86,6 +87,7 @@ export function createServer(cwd: string): McpServer {
 				accepted: await readAccepted(join(cwd, STATE_DIR, ACCEPTED_FILE)),
 				automaticOff: rulesOff(await readOverrides(join(cwd, STATE_DIR))),
 				...(args.responsiveness === false ? {} : { responsiveness: {} }),
+				...(args.motion === false ? {} : { motion: {} }),
 				switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 				partial: { total: inventory ? plannedRoutes(inventory).length : null },
 			});

@@ -334,9 +334,10 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 	return withFailures({ route, ok: true, dimensions: {} as RouteResult['dimensions'], failures: [], weight: { old: { downloaded: wa.downloaded, source: wa.source, executed: wa.executed }, new: { downloaded: wn.downloaded, source: wn.source, executed: wn.executed } }, visualDiffs, shots, ...(network ? { network } : {}) }, failures);
 }
 
-export function withFailures(result: RouteResult, failures: readonly Failure[], extra: Partial<Pick<RouteResult, 'shots' | 'states' | 'journeys' | 'coverage' | 'noise' | 'writes' | 'responsiveness'>> = {}): RouteResult {
+export function withFailures(result: RouteResult, failures: readonly Failure[], extra: Partial<Pick<RouteResult, 'shots' | 'states' | 'journeys' | 'coverage' | 'noise' | 'writes' | 'responsiveness' | 'motion' | 'filmstrips'>> = {}): RouteResult {
 	const failed = new Set(failures.map((f) => f.dimension));
 	const timed = Boolean(extra.responsiveness ?? result.responsiveness);
-	const dimensions = Object.fromEntries(DIMENSIONS.map((d) => [d, failed.has(d) ? 'fail' : d === 'responsiveness' && !timed ? 'skipped' : 'pass'])) as Record<Dimension, 'pass' | 'fail' | 'skipped'>;
+	const moved = Boolean(extra.motion ?? result.motion);
+	const dimensions = Object.fromEntries(DIMENSIONS.map((d) => [d, failed.has(d) ? 'fail' : (d === 'responsiveness' && !timed) || (d === 'motion' && !moved) ? 'skipped' : 'pass'])) as Record<Dimension, 'pass' | 'fail' | 'skipped'>;
 	return { ...result, ...extra, ok: failures.length === 0, dimensions, failures };
 }

@@ -58,6 +58,10 @@ export function summarize(report: Report): string {
 		if (route.template && route.template.representative !== route.route) lines.push(`      visual, behaviour and responsiveness: checked on ${route.template.representative}, the representative of its template group (${route.template.pattern}, ${route.template.members} pages)`);
 		if (route.coverage) lines.push(`      ${coverageLine(route.coverage)}`);
 		if (route.responsiveness) lines.push(`      ${worstLine(route.responsiveness)}`);
+		if (route.motion) {
+			const differ = route.motion.interactions.filter((i) => !i.ok || i.reduced?.ok === false).length;
+			lines.push(`      motion: ${route.motion.checked} interactions recorded, ${route.motion.interactions.length} moved${differ ? `, ${differ} differently on new` : ', alike on both'}${route.motion.skipped.length ? `; ${route.motion.skipped.length} not recorded` : ''}`);
+		}
 		for (const f of route.failures) lines.push(...failureLines(f));
 	}
 	const samples = report.unchecked?.filter((u) => !u.reason) ?? [];
