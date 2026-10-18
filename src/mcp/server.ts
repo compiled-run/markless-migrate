@@ -31,7 +31,7 @@ export function createServer(cwd: string): McpServer {
 		'plan',
 		{
 			title: 'Inventory the old app',
-			description: 'Discover the old app\'s routes (sitemap, robots.txt, crawl of same-origin links and hreflang alternates) with their SEO tags, assets and locales, and write .migrate/inventory.json. With source, also inventory every library the old app imports in .migrate/libraries.json: the exact surface used and every usage site, each classified as maps to @markless/ui, use as-is, or port with the parity tool.',
+			description: 'Discover the old app\'s routes (sitemap, robots.txt, crawl of same-origin links and hreflang alternates) with their SEO tags, assets and locales, and write .migrate/inventory.json. With source, also inventory every library the old app imports in .migrate/libraries.json: the exact surface used and every usage site, each classified as maps to @markless/ui, use as-is, renders its own UI (port it or a person decides on a DOM island), or port with the parity tool.',
 			inputSchema: { old: z.string().url().describe('Origin of the running old app, e.g. http://localhost:3000'), source: z.string().optional().describe('Path to the old app source, to list file routes'), limit: z.number().int().positive().optional().describe('Maximum routes to visit (default 100)'), header: z.array(z.string()).optional().describe('name:value headers sent only to the old app, for example a bot-protection bypass token'), cookie: z.array(z.string()).optional(), userAgent: z.string().optional() },
 		},
 		async ({ old, source, limit, header, cookie, userAgent }) => {

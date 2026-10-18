@@ -267,3 +267,23 @@ test('bare imports count: a font package adds its stylesheet, an unknown module 
 	assert.match(result.notes.join('\n'), /imported for what it does on load \(src\/index\.tsx:3\)/);
 	assert.ok(!result.written.some((f) => f.endsWith('index.ts')));
 });
+
+test('a framework-agnostic library that renders UI is never as-is: catalogued or found writing DOM, it needs a port or a DOM-island decision', async () => {
+	const builds = Array.from({ length: 12 }, (_, i) => `const c${i} = document.createElement('div'); root.appendChild(c${i});`).join('\n');
+	const dir = await project({
+		'package.json': JSON.stringify({ dependencies: { react: '19.0.0', 'ag-grid-community': '34.2.0', 'ag-grid-react': '34.2.0', 'tiny-grid': '1.0.0', 'tiny-util': '1.0.0' } }),
+		'node_modules/tiny-grid/package.json': JSON.stringify({ name: 'tiny-grid', version: '1.0.0', main: 'index.js' }),
+		'node_modules/tiny-grid/index.js': `export function mount(root) {\n${builds}\n}\n`,
+		'node_modules/tiny-util/package.json': JSON.stringify({ name: 'tiny-util', version: '1.0.0', main: 'index.js' }),
+		'node_modules/tiny-util/index.js': 'export const sum = (a, b) => a + b;\n',
+		'src/App.tsx': "import { AgGridReact } from 'ag-grid-react';\nimport { themeQuartz } from 'ag-grid-community';\nimport { mount } from 'tiny-grid';\nimport { sum } from 'tiny-util';\nexport function App() { mount(document.body); return <AgGridReact theme={themeQuartz} rowData={[sum(1, 2)]} />; }\n",
+	});
+	const file = await scanLibraries(dir);
+	assert.deepEqual(['ag-grid-community', 'ag-grid-react', 'tiny-grid', 'tiny-util'].map((n) => [n, lib(file, n).class]), [['ag-grid-community', 'dom'], ['ag-grid-react', 'dom'], ['tiny-grid', 'dom'], ['tiny-util', 'as-is']]);
+	assert.match(lib(file, 'tiny-grid').reason, /builds DOM/);
+	assert.match(summarizeLibraries(file), /Renders its own UI: port the used surface, or a person decides on a DOM island \(never as-is\): 3/);
+	const app = await newApp();
+	const grid = await writeParity(file, 'ag-grid-community', { newApp: app });
+	assert.match(grid.notes.join('\n'), /renders its own UI into the page\. Before writing code, ask the owner/);
+	assert.ok(grid.written.includes('lib/parity/ag-grid-community/index.ts'), 'the port skeleton is written for the port option');
+});

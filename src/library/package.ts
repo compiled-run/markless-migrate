@@ -6,7 +6,7 @@ import type { LibraryUsage } from './types.ts';
 
 export interface InstalledPackage {
 	readonly dir: string;
-	readonly json: { name?: string; version?: string; main?: string; module?: string; style?: string; types?: string; typings?: string; exports?: unknown; dependencies?: Record<string, string>; peerDependencies?: Record<string, string> };
+	readonly json: { name?: string; version?: string; keywords?: string[]; main?: string; module?: string; style?: string; types?: string; typings?: string; exports?: unknown; dependencies?: Record<string, string>; peerDependencies?: Record<string, string> };
 }
 
 /** The package as Node would resolve it from `root`: the nearest node_modules up the tree. */
@@ -130,10 +130,11 @@ export function cssPackage(pkg: InstalledPackage): boolean {
 
 const CODE = /\.(m?js|cjs|css)$/;
 const BUDGET = 4_000_000;
+const DOM_WRITES = 12;
+const DOM_WRITE = /\bcreateElement(NS)?\(|\.(appendChild|insertBefore|replaceChildren|attachShadow|insertAdjacentHTML)\(|\.innerHTML\s*=/g;
+const WIDGET_WORDS = /^(data-?grid|grid|spreadsheet|charts?|charting|plotting|wysiwyg|rich-?text(-editor)?|code-?editor|date-?picker|carousel|calendar|widgets?)$/i;
 
-/** Class names, `data-*` attributes and custom properties the package writes into the page, found in its shipped code. */
-export async function injectedTokens(pkg: InstalledPackage, prefixes: readonly string[]): Promise<string[]> {
-	if (!prefixes.length) return [];
+async function codeFiles(pkg: InstalledPackage): Promise<string[]> {
 	const files: string[] = [];
 	const walk = async (dir: string, depth: number): Promise<void> => {
 		if (depth > 5) return;
@@ -147,7 +148,28 @@ export async function injectedTokens(pkg: InstalledPackage, prefixes: readonly s
 	await walk(pkg.dir, 0);
 	// One build flavour is enough: prefer ESM over CJS and UMD copies of the same code.
 	const preferred = files.filter((f) => !/\b(cjs|umd|commonjs|lib)\b/.test(relative(pkg.dir, f)));
-	const list = (preferred.length ? preferred : files).sort();
+	return (preferred.length ? preferred : files).sort();
+}
+
+/** Whether a package with no UI framework still builds UI itself: its keywords name a widget, or its code writes DOM in many places. */
+export async function rendersDom(pkg: InstalledPackage): Promise<boolean> {
+	if (Array.isArray(pkg.json.keywords) && pkg.json.keywords.some((k) => typeof k === 'string' && WIDGET_WORDS.test(k))) return true;
+	let writes = 0;
+	let budget = BUDGET;
+	for (const file of await codeFiles(pkg)) {
+		if (budget <= 0 || !/\.(m?js|cjs)$/.test(file)) continue;
+		const text = await readFile(file, 'utf8').catch(() => '');
+		budget -= text.length;
+		writes += text.match(DOM_WRITE)?.length ?? 0;
+		if (writes >= DOM_WRITES) return true;
+	}
+	return false;
+}
+
+/** Class names, `data-*` attributes and custom properties the package writes into the page, found in its shipped code. */
+export async function injectedTokens(pkg: InstalledPackage, prefixes: readonly string[]): Promise<string[]> {
+	if (!prefixes.length) return [];
+	const list = await codeFiles(pkg);
 	const found = new Set<string>();
 	const res = prefixes.map((p) => new RegExp(`(?<![\\w-])${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}${/[-]$/.test(p) ? '[a-z0-9][a-z0-9_-]*' : '(?![\\w-])'}`, 'g'));
 	let budget = BUDGET;

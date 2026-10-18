@@ -133,7 +133,7 @@ function sitesDoc(e: ExportUsage, limit = 6): string {
 	return `${where.join('; ')}${e.sites.length > limit ? `; and ${e.sites.length - limit} more` : ''}`;
 }
 
-const needsPort = (lib: LibraryUsage, e: ExportUsage) => lib.class === 'parity' || lib.class === 'unknown' || (lib.class === 'markless-ui' && (!e.maps || e.maps.available === false) && !(e.maps?.target.startsWith('<')));
+const needsPort = (lib: LibraryUsage, e: ExportUsage) => lib.class === 'parity' || lib.class === 'dom' || lib.class === 'unknown' || (lib.class === 'markless-ui' && (!e.maps || e.maps.available === false) && !(e.maps?.target.startsWith('<')));
 
 function componentSkeleton(lib: LibraryUsage, e: ExportUsage): { name: string; code: string; namespace?: [string, string] } {
 	const elementSites = e.sites.filter((s) => s.kind === 'element').length || 1;
@@ -293,6 +293,7 @@ export async function writeParity(file: LibrariesFile, name: string, options: Pa
 	const dir = join(options.newApp, 'lib', 'parity', slug);
 	const notes: string[] = [];
 	if (lib.class === 'as-is') notes.push(`${lib.name} is framework-agnostic: import it from the Markless app unchanged (install ${lib.name}${lib.version ? `@${lib.version}` : ''}); nothing to port.`);
+	if (lib.class === 'dom') notes.push(`${lib.name} renders its own UI into the page. Before writing code, ask the owner which: port the surface below to Markless (the skeleton here), so ${lib.name} does not ship; or keep it as a DOM island, mounted from attach on an element the page renders, which ships ${lib.name} to the browser and runs its code on first use. Never import it unchanged and call that done.`);
 	if (lib.class === 'framework') notes.push(`${lib.name} is replaced by ${lib.replacement ?? 'Markless'}; nothing to port.`);
 	if (lib.class === 'drop') notes.push(`${lib.name}: ${lib.reason}.`);
 	const port = lib.exports.filter((e) => needsPort(lib, e) && e.name !== SIDE_EFFECT);

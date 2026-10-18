@@ -89,7 +89,11 @@ back, every usage site) and what to do with it:
   toast is \`toaster\`). Render the family and give it the old classes; translate selectors on the library's
   own attributes (\`data-[state=open]\`) to the family's (\`[ui-open]\`). When the installed @markless/ui
   lacks the family, port it like a library below and tell the user which family was missing.
-- **as-is**: framework-agnostic (zod, date-fns, clsx, a table or query core). Import it unchanged.
+- **as-is**: framework-agnostic and renders nothing (zod, date-fns, clsx, a table or query core). Import it unchanged.
+- **dom**: renders its own UI into the page (AG Grid, Handsontable, Chart.js, ECharts, Monaco, Leaflet), alone or
+  under a React or Vue wrapper. Never import it unchanged. Ask the user which: port the used surface like a
+  library below, or keep it as a DOM island (mounted from \`attach\` on an element the page renders), which
+  ships the library to the browser.
 - **port**: bound to the old framework (react-hook-form, recharts, a React hook). Run
   \`markless-migrate parity <library> --route <route>\` (MCP \`parity\`): it writes
   \`lib/parity/<library>/\` with a skeleton of exactly the used surface and \`behaviour.md\`, what every usage

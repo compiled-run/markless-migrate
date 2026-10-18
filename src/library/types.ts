@@ -1,13 +1,15 @@
 /**
  * What a migration does with a library:
  * - `markless-ui`: a @markless/ui family does the same job; render that family.
- * - `as-is`: framework-agnostic code; import it unchanged from the Markless app.
+ * - `as-is`: framework-agnostic code that renders nothing; import it unchanged from the Markless app.
+ * - `dom`: renders its own UI into the page (a grid, chart, editor, map), with or without a framework
+ *   wrapper; port the used surface, or a person decides to keep it as a DOM island. Never as-is.
  * - `parity`: bound to the old framework; port exactly the used surface into `lib/parity/<library>/`.
  * - `framework`: the old framework or its router; Markless itself replaces it.
  * - `drop`: needed only by the old framework (providers, devtools, slots); nothing to port.
  * - `unknown`: not in the catalog and not installed, so its framework could not be read.
  */
-export type LibraryClass = 'markless-ui' | 'as-is' | 'parity' | 'framework' | 'drop' | 'unknown';
+export type LibraryClass = 'markless-ui' | 'as-is' | 'parity' | 'dom' | 'framework' | 'drop' | 'unknown';
 
 export interface Site {
 	readonly file: string;

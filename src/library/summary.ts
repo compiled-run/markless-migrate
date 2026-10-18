@@ -20,6 +20,7 @@ export async function readLibraries(dir: string): Promise<LibrariesFile | undefi
 }
 
 const HEADINGS: Record<LibraryClass, string> = {
+	dom: 'Renders its own UI: port the used surface, or a person decides on a DOM island (never as-is)',
 	parity: 'Port the used surface (markless-migrate parity <library>)',
 	'markless-ui': 'Map to @markless/ui',
 	unknown: 'Not classified (not in the catalog and not installed)',
