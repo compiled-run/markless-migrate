@@ -76,7 +76,7 @@ async function front(): Promise<void> {
 	await mkdir(join(publicDir, 'shots'), { recursive: true });
 	for (const shot of new Set(report.match(/shots\/[A-Za-z0-9._-]+/g) ?? [])) await cp(join(app, '.migrate', shot), join(publicDir, shot)).catch(() => undefined);
 	await cp(join(root, 'index.html'), join(publicDir, 'index.html'));
-	run(process.execPath, [join(root, '../../src/cli.ts'), 'config', '--old', REALWORLD.old, '--new', REALWORLD.new, '--vercel', join(dir, 'vercel.json')], app);
+	run(process.execPath, [join(root, '../../src/cli.ts'), 'config', '--old', REALWORLD.old, '--new', REALWORLD.new, '--vercel', join(dir, 'vercel.json'), '--new-build', '.vercel/output/static'], app);
 	run('vercel', ['build', '--prod', '--yes'], dir);
 }
 

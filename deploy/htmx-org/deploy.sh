@@ -25,7 +25,7 @@ case "$WHAT" in
 		cp "$APP/.migrate/report.html" "$APP/.migrate/report.json" "$FRONT/public/_migrate/"
 		rm -f "$FRONT/public/_migrate/shots/"*.png
 		for shot in $(grep -o 'shots/[a-f0-9]*\.png' "$APP/.migrate/report.html" | sort -u); do cp "$APP/.migrate/$shot" "$FRONT/public/_migrate/$shot"; done
-		(cd "$APP" && node "$DIR/../src/cli.ts" config --old "$OLD" --new "$NEW_URL" --vercel "$FRONT/vercel.json")
+		(cd "$APP" && node "$DIR/../src/cli.ts" config --old "$OLD" --new "$NEW_URL" --vercel "$FRONT/vercel.json" --new-build .vercel/output/static)
 		(cd "$FRONT" && vercel build --prod --yes && vercel deploy --prebuilt --prod --yes --scope "$SCOPE")
 		;;
 	*) echo "usage: $0 new|front [slug old-origin]" >&2; exit 1 ;;
