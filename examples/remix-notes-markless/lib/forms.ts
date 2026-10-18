@@ -7,7 +7,9 @@ export async function submit(form: HTMLFormElement, action = window.location.pat
 		headers: { accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded;charset=UTF-8' },
 		body: new URLSearchParams(new FormData(form) as unknown as Record<string, string>),
 	});
-	return (await response.json()) as Result;
+	// An answer without a body (a 204) changes nothing, as a Remix action that returns nothing.
+	const text = await response.text();
+	return (text ? JSON.parse(text) : {}) as Result;
 }
 
 // Remix follows an action's redirect in place; a click on a link to the page does the same through the router.
