@@ -199,6 +199,12 @@ export async function plan(options: PlanOptions): Promise<Inventory> {
 			};
 			page.on('response', onResponse);
 			const navigation = await page.goto(new URL(route, origin).href, { waitUntil: 'load' });
+			// A route that redirects to another site (/discord -> discord.gg) is the old app's redirect; that site is not the old app.
+			if (new URL(page.url()).origin !== new URL(origin).origin) {
+				page.off('response', onResponse);
+				routes.push({ route, status: http.chain[0]!.status, redirectsTo: page.url(), foundIn: [], seo: {}, assets: [] });
+				continue;
+			}
 			const wall = navigation && detectChallenge({ status: navigation.status(), headers: await navigation.allHeaders(), body: (await navigation.text().catch(() => '')).slice(0, 256 * 1024) });
 			if (wall) throw new Error(`plan was stopped by ${wall.vendor} on ${route} (${navigation!.status()}, ${wall.evidence}): plan a staging URL, or pass the bypass with --header, --cookie or --user-agent`);
 			await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
