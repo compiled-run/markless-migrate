@@ -628,6 +628,8 @@ export interface Session {
 	readonly page: Page;
 	/** `destructive`: the step uses a control that ends the session or deletes, so its dialogs are accepted and, when writes are held back, every request it makes to the app is held back too. */
 	run(step: Step, destructive?: boolean): Promise<StepResult>;
+	/** Console errors the page logged while it loaded, before any step. */
+	readonly loadErrors: readonly string[];
 	close(): Promise<void>;
 }
 
@@ -671,12 +673,14 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 	page.on('pageerror', (error) => errors.push(unOrigin(error.message, hosts)));
 	await loadPage(page, new URL(route, origin).href);
 	await quiet(page, inflight, navigations);
+	const loadErrors = [...errors];
 	// Where a redirect landed is the http and auth checks' business; a step that stays there compares alike.
 	const landing = here(page.url());
 	const redirected = landing !== localUrl(new URL(route, origin).href, origin);
 	return {
 		context,
 		page,
+		loadErrors,
 		async run(step, destructive = false) {
 			const startPath = new URL(page.url()).pathname;
 			const href = step.target.role === 'link' ? await locate(page, step.target).getAttribute('href', { timeout: STEP_TIMEOUT }).catch(() => null) : null;
@@ -1055,7 +1059,22 @@ export async function replayAll(browser: Browser, env: SideEnv, route: string, v
 	return pool(journeys, CONCURRENCY, (journey) => replay(browser, env, route, viewport, journey));
 }
 
-export function compareJourneys(route: string, olds: readonly Run[], journeys: readonly Journey[], next: Run, owner?: StorageOwner): Failure[] {
+/** What each unswitched page a NEW journey reached logs to the console on a plain load from the old app: those errors are that page's own, not the port's. */
+export async function doorPageErrors(browser: Browser, old: SideEnv, viewport: Viewport, next: Run): Promise<Map<string, readonly string[]>> {
+	const urls = [...new Set(next.flat().filter((step) => step.door && step.errors.length).map((step) => step.url))];
+	const out = new Map<string, readonly string[]>();
+	await Promise.all(
+		urls.map(async (url) => {
+			const session = await openSession(browser, old, url, viewport).catch(() => undefined);
+			if (!session) return;
+			out.set(url, session.loadErrors);
+			await session.close();
+		}),
+	);
+	return out;
+}
+
+export function compareJourneys(route: string, olds: readonly Run[], journeys: readonly Journey[], next: Run, owner?: StorageOwner, doorErrors?: ReadonlyMap<string, readonly string[]>): Failure[] {
 	const failures: Failure[] = [];
 	journeys.forEach((journey, j) => {
 		const runs = olds.map((o) => o[j]!);
@@ -1085,7 +1104,8 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 				if (diff.changed.length || diff.missing.length || diff.unexpected.length) parts.push(field);
 				if (field === 'storage') automatic = storageCandidate([...diff.missing, ...diff.changed.map((c) => c.expected)], [...diff.unexpected, ...diff.changed.map((c) => c.actual)], owner);
 			}
-			const errors = diffLines(lineTemplates(a!.errors, ...rest.map((r) => r.errors)), n.errors);
+			const own = n.door ? doorErrors?.get(n.url) : undefined;
+			const errors = diffLines(lineTemplates(a!.errors, ...rest.map((r) => r.errors)), own ? n.errors.filter((e) => !own.includes(e)) : n.errors);
 			if (errors.unexpected.length || errors.changed.length) parts.push('errors');
 			if (!navigated && !stable([a!.focus, ...rest.map((r) => r.focus)])(n.focus)) parts.push('focus');
 			if (parts.length) {

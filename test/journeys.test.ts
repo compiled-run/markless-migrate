@@ -84,3 +84,15 @@ test('a step that only reorders nodes reports what moved, and a new page that le
 test('an element found by its listeners is located by its exact text, innermost first, or by its label when it has no text', () => {
 	assert.equal(labelled("it's"), `//body//*[(normalize-space(.)=concat('it', "'", 's') and not(*[normalize-space(.)=concat('it', "'", 's')])) or (normalize-space(.)='' and (@aria-label=concat('it', "'", 's') or @title=concat('it', "'", 's')))]`);
 });
+
+test("an error the old app's own page logs on a plain load is not the port's when a NEW journey reaches that page on the old app", () => {
+	const nav: Journey[] = [{ name: 'click link "Guide"', steps: [{ action: 'click', target: { role: 'link', name: 'Guide', nth: 0 } }] }];
+	const old = [[result({ url: '/guide/', navigated: true })]];
+	const reached = [[result({ url: '/guide/', navigated: true, door: true, errors: ['Failed to patch FloatingVue'] })]];
+	assert.equal(compareJourneys('/', [old, old], nav, reached).length, 1);
+	assert.deepEqual(compareJourneys('/', [old, old], nav, reached, undefined, new Map([['/guide/', ['Failed to patch FloatingVue']]])), []);
+	const more = [[result({ url: '/guide/', navigated: true, door: true, errors: ['Failed to patch FloatingVue', 'TypeError: x is undefined'] })]];
+	assert.equal(compareJourneys('/', [old, old], nav, more, undefined, new Map([['/guide/', ['Failed to patch FloatingVue']]])).length, 1, 'an error the page does not log on its own still fails');
+	const here = [[result({ url: '/guide/', navigated: true, errors: ['Failed to patch FloatingVue'] })]];
+	assert.equal(compareJourneys('/', [old, old], nav, here, undefined, new Map([['/guide/', ['Failed to patch FloatingVue']]])).length, 1, 'a page the new app serves itself is the port');
+});
