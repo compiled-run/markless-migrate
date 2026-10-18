@@ -1,6 +1,7 @@
 import type { Children } from '@markless/core';
 import { computed } from '@markless/core';
 import { loadNotes } from '../lib/load.ts';
+import { go, submit } from '../lib/forms.ts';
 import { noteLinkClass, noteLinkCurrent } from '../lib/nav.ts';
 
 export default function NotesLayout({ pathname, children }: { readonly pathname: string; readonly children?: Children }) @{
@@ -20,7 +21,16 @@ export default function NotesLayout({ pathname, children }: { readonly pathname:
 			} @pending {
 				<p></p>
 			}
-			<form action="/logout" method="post">
+			<form
+				action="/logout"
+				method="post"
+				onSubmit={(event) => {
+					event.preventDefault();
+					void submit(event.target as HTMLFormElement, '/logout').then((result) => {
+						if (result.redirect) go(result.redirect);
+					});
+				}}
+			>
 				<button type="submit" class="rounded bg-slate-600 px-4 py-2 text-blue-100 hover:bg-blue-500 active:bg-blue-600">Logout</button>
 			</form>
 		</header>
