@@ -23,7 +23,7 @@ This tool never calls a model or holds an API key. The developer's agent does th
 in with their own plan:
 
 - `npx @markless/migrate setup` registers an MCP server and installs the migration skill for each agent
-  it finds (the REA pattern: review the changes, approve, backups kept): Claude Code, Codex, Cursor,
+  it finds (applied without a prompt, since running it is the request; backups kept, `setup --undo` puts them back, `--dry-run` previews): Claude Code, Codex, Cursor,
   Gemini CLI, GitHub Copilot (VS Code agent mode and CLI), Windsurf, Cline/Roo, Zed, Amp, opencode,
   Kiro, Grok Build. Markless's own create CLI already writes skills for several of these (agents.ts);
   share that code.

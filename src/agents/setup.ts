@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { AGENTS, SERVER_NAME, type AgentDefinition, type HostEnv, type ServerCommand } from './registry.ts';
 import { isManagedSkill, managedSkill } from './skill.ts';
 
@@ -136,6 +136,66 @@ export async function applySetup(changes: readonly Change[]): Promise<Applied[]>
 		applied.push({ change, ...(saved ? { backup: saved } : {}) });
 	}
 	return applied;
+}
+
+/** Where the last setup records how to put every file back. */
+export function undoFile(home: string): string {
+	return join(home, '.markless-migrate', 'setup-undo.json');
+}
+
+interface UndoEntry {
+	readonly path: string;
+	/** The copy of the file as it was before setup; absent when setup created the file. */
+	readonly backup?: string;
+	/** Hash of what setup wrote, so a file edited since is left alone. */
+	readonly wrote: string;
+}
+
+export async function writeUndo(home: string, applied: readonly Applied[]): Promise<string | undefined> {
+	const entries: UndoEntry[] = applied.filter((a) => a.change.action !== 'unchanged' && a.change.after !== undefined).map((a) => ({ path: a.change.path, ...(a.backup ? { backup: a.backup } : {}), wrote: shortHash(a.change.after!) }));
+	if (!entries.length) return undefined;
+	const path = undoFile(home);
+	const earlier = JSON.parse((await readIfExists(path)) ?? '{"entries":[]}') as { entries: UndoEntry[] };
+	// The first setup's state before is what undo returns to; only the hash of what was written moves on.
+	const merged = [...earlier.entries.map((e) => ({ ...e, wrote: entries.find((n) => n.path === e.path)?.wrote ?? e.wrote })), ...entries.filter((n) => !earlier.entries.some((e) => e.path === n.path))];
+	await mkdir(dirname(path), { recursive: true });
+	await writeFile(path, `${JSON.stringify({ entries: merged }, null, '\t')}\n`);
+	return path;
+}
+
+export interface Undone {
+	readonly path: string;
+	readonly outcome: 'restored' | 'removed' | 'kept: edited since setup' | 'kept: backup missing';
+}
+
+/** Puts every file setup changed back as it was before setup first changed it: the backup where there was a file, nothing where setup created it. */
+export async function undoSetup(home: string): Promise<Undone[] | undefined> {
+	const text = await readIfExists(undoFile(home));
+	if (text === undefined) return undefined;
+	const { entries } = JSON.parse(text) as { entries: UndoEntry[] };
+	const out: Undone[] = [];
+	for (const e of entries) {
+		const current = await readIfExists(e.path);
+		if (current !== undefined && shortHash(current) !== e.wrote) {
+			out.push({ path: e.path, outcome: 'kept: edited since setup' });
+			continue;
+		}
+		if (!e.backup) {
+			await rm(e.path, { force: true });
+			await rmdir(dirname(e.path)).catch(() => undefined);
+			out.push({ path: e.path, outcome: 'removed' });
+			continue;
+		}
+		const saved = await readIfExists(e.backup);
+		if (saved === undefined) {
+			out.push({ path: e.path, outcome: 'kept: backup missing' });
+			continue;
+		}
+		await writeFile(e.path, saved);
+		out.push({ path: e.path, outcome: 'restored' });
+	}
+	await rm(undoFile(home), { force: true });
+	return out;
 }
 
 export function describeChanges(changes: readonly Change[], home: string): string {

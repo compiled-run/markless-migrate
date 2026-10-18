@@ -7,7 +7,7 @@ import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { AGENTS, detectAgents, findBinary, type HostEnv, type ServerCommand } from './agents/registry.ts';
-import { applySetup, describeChanges, planSetup } from './agents/setup.ts';
+import { applySetup, describeChanges, planSetup, undoSetup, writeUndo } from './agents/setup.ts';
 import { renderStatusPage } from './check/html.ts';
 import { openFile } from './check/open.ts';
 import { readAuthFile } from './check/auth.ts';
@@ -114,8 +114,11 @@ const USAGE = `markless-migrate ${VERSION}
           what the server fetches while rendering and can replay recorded data to it.
   status  Show every planned route as green, red, not ported or not checked yet, which are switched
           (and which were forced without proof), and whether the migration is done.
-  setup   [--agent <id>]... [--yes] [--dry-run]
-          Register the MCP server and install the migration skill for your coding agents.
+  setup   [--agent <id>]... [--dry-run] [--undo]
+          Register the MCP server and install the migration skill for your coding agents. Applies
+          straight away (running it is the request), backs up every file it changes and prints what
+          changed. --dry-run only shows what it would change; --undo puts every file setup changed back
+          as it was before setup first changed it. --yes is accepted and changes nothing.
           Agents: ${AGENTS.map((a) => a.id).join(', ')}.
   mcp     Run the MCP server on stdio (started by your agent).
   switch  <route> [--force --by <name> --reason <why>]
@@ -212,15 +215,6 @@ function serverCommand(): ServerCommand {
 	return { command: process.execPath, args: [cli, 'mcp'] };
 }
 
-async function confirm(question: string): Promise<boolean> {
-	const rl = createInterface({ input: process.stdin, output: process.stderr });
-	try {
-		return /^y(es)?$/i.test((await rl.question(question)).trim());
-	} finally {
-		rl.close();
-	}
-}
-
 /** A forced switch is an expert override: named with --by and --reason, or confirmed at a terminal. */
 async function forceDecision(route: string, reason: string | undefined, by: string | undefined): Promise<{ reason: string; by: string }> {
 	if (process.env[AGENT_ENV]) fail('switch --force is for a person: an agent run by markless-migrate run may not force a route');
@@ -240,8 +234,19 @@ async function forceDecision(route: string, reason: string | undefined, by: stri
 }
 
 async function setup(args: string[]): Promise<number> {
-	const { values } = parseArgs({ args, options: { agent: { type: 'string', multiple: true }, yes: { type: 'boolean' }, 'dry-run': { type: 'boolean' } } });
+	const { values } = parseArgs({ args, options: { agent: { type: 'string', multiple: true }, yes: { type: 'boolean' }, 'dry-run': { type: 'boolean' }, undo: { type: 'boolean' } } });
 	const host: HostEnv = { home: process.env.HOME || homedir(), env: process.env };
+	const tilde = (path: string) => (path.startsWith(host.home) ? `~${path.slice(host.home.length)}` : path);
+	if (values.undo) {
+		const undone = await undoSetup(host.home);
+		if (!undone) {
+			out('Nothing to undo: no setup has changed anything here.\n');
+			return 0;
+		}
+		for (const u of undone) out(`  ${u.outcome.padEnd(9)} ${tilde(u.path)}\n`);
+		out('\nUndone. Restart your agents so they drop the markless-migrate server and skill.\n');
+		return undone.some((u) => u.outcome.startsWith('kept')) ? 1 : 0;
+	}
 	const detected = await detectAgents(host);
 	let ids = values.agent ?? [];
 	if (!ids.length) {
@@ -253,30 +258,23 @@ async function setup(args: string[]): Promise<number> {
 		out(`Found: ${detected.map((d) => `${d.agent.label} (${d.evidence[0]})`).join(', ')}\n\n`);
 	}
 	const changes = await planSetup(host, ids, serverCommand());
-	out(`Planned changes:\n${describeChanges(changes, host.home)}\n`);
 	if (changes.some((c) => c.action === 'blocked')) {
-		out('Setup is blocked by the files marked "blocked" above. Nothing was written.\n');
+		out(`${describeChanges(changes, host.home)}\nSetup is blocked by the files marked "blocked" above. Nothing was written.\n`);
 		return 1;
 	}
 	if (changes.every((c) => c.action === 'unchanged')) {
-		out('Everything is already set up.\n');
+		out(`${describeChanges(changes, host.home)}\nEverything is already set up.\n`);
 		return 0;
 	}
-	if (values['dry-run']) return 0;
-	if (!values.yes) {
-		if (!process.stdin.isTTY || !process.stderr.isTTY) {
-			out('Not applied: re-run with --yes to apply these changes.\n');
-			return 1;
-		}
-		if (!(await confirm('Apply these changes? Existing files are backed up first. [y/N] '))) {
-			out('Cancelled. Nothing was written.\n');
-			return 0;
-		}
+	if (values['dry-run']) {
+		out(`Would change (nothing written):\n${describeChanges(changes, host.home)}`);
+		return 0;
 	}
-	for (const { change, backup } of await applySetup(changes)) {
-		if (change.action !== 'unchanged') out(`  wrote ${change.path}${backup ? ` (backup: ${backup})` : ''}\n`);
-	}
-	out('\nDone. Restart your agents so they load the markless-migrate server and skill.\n');
+	const applied = await applySetup(changes);
+	out(`Changed:\n${describeChanges(changes, host.home)}`);
+	for (const { change, backup } of applied) if (change.action !== 'unchanged') out(`  wrote ${tilde(change.path)}${backup ? ` (the file before: ${tilde(backup)})` : ' (new file)'}\n`);
+	await writeUndo(host.home, applied);
+	out('\nDone. Restart your agents so they load the markless-migrate server and skill.\nTo undo it: markless-migrate setup --undo\n');
 	return 0;
 }
 

@@ -34,7 +34,7 @@ markless-migrate cli [--config .migrate/cli.json] [--case <name>]... [--record] 
 markless-migrate accept <failure-id> --reason "why" [--by <name>]
 markless-migrate recorder
 markless-migrate status
-markless-migrate setup [--agent claude-code]... [--yes] [--dry-run]
+markless-migrate setup [--agent claude-code]... [--dry-run] [--undo]
 markless-migrate mcp
 markless-migrate run --agent codex --old http://localhost:3000 --new http://localhost:5173 [--route /about]... [--all] [--attempts 3] [--model <name>]
     [--source ../old-app] [--new-source .] [--auth .migrate/auth.json] [--header <name:value>]... [--cookie <name=value>]...
@@ -56,7 +56,11 @@ checked, or whose files in the new app (`--new-source`, else the current directo
 commit recorded with their last check (committed, staged, unstaged or new files, by git); a changed file
 that no route is known to be rendered from re-checks every route. `plan` prints the migration order and `status` shows progress in that order. `setup` registers the `markless-migrate mcp` server and installs a migration skill for
 Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot CLI, VS Code (Copilot agent mode) and opencode. It
-shows every file it will change and keeps a backup of each. Paths and their sources: [docs/notes/agents.md](docs/notes/agents.md).
+applies straight away (running it is the request; it never asks), keeps a backup of every file it
+changes, prints what changed, and ends with the one command that undoes it, `setup --undo`, which puts
+every file setup changed back as it was before setup first changed it (a file edited since is left
+alone and named). `--dry-run` only
+shows what it would change. Paths and their sources: [docs/notes/agents.md](docs/notes/agents.md).
 
 `run` drives your agent's own CLI headless (`codex exec`, `claude -p`, `gemini -p`, `cursor-agent -p`,
 `copilot -p`, `opencode run`) on whatever login it already has, one route at a time: it checks the route,

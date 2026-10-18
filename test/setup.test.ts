@@ -44,16 +44,42 @@ test('with no agent found, setup says so and writes nothing', async () => {
 	assert.deepEqual((await readdir(home)).sort(), ['bin']);
 });
 
-test('without --yes on a non-interactive terminal, setup shows the plan and writes nothing', async () => {
+test('setup applies without asking, says exactly what changed and how to undo it; --dry-run writes nothing', async () => {
 	const { home, run } = await sandbox();
 	await mkdir(join(home, '.claude'));
-	const result = run();
-	assert.equal(result.status, 1);
-	assert.match(result.stdout, /create +~\/\.claude\.json +\(mcp server: add mcpServers\.markless-migrate\)/);
-	assert.match(result.stdout, /create +~\/\.claude\/skills\/markless-migrate\/SKILL\.md/);
-	assert.match(result.stdout, /re-run with --yes/);
+	const preview = run('--dry-run');
+	assert.equal(preview.status, 0);
+	assert.match(preview.stdout, /Would change \(nothing written\):/);
+	assert.match(preview.stdout, /create +~\/\.claude\.json +\(mcp server: add mcpServers\.markless-migrate\)/);
 	assert.deepEqual(await readdir(join(home, '.claude')), []);
-	assert.equal(run('--dry-run').status, 0);
+	const result = run();
+	assert.equal(result.status, 0, result.stdout + result.stderr);
+	assert.match(result.stdout, /Changed:\n/);
+	assert.match(result.stdout, /wrote ~\/\.claude\.json \(new file\)/);
+	assert.match(result.stdout, /wrote ~\/\.claude\/skills\/markless-migrate\/SKILL\.md \(new file\)/);
+	assert.match(result.stdout, /To undo it: markless-migrate setup --undo\n$/);
+	assert.doesNotMatch(result.stdout, /\[y\/N\]|re-run with/);
+	assert.ok((await json(join(home, '.claude.json'))).mcpServers['markless-migrate']);
+});
+
+test('setup --undo puts every file back as it was before setup first changed it, and leaves a file edited since alone', async () => {
+	const { home, run } = await sandbox();
+	await mkdir(join(home, '.gemini'));
+	await mkdir(join(home, '.claude'));
+	const settings = join(home, '.gemini', 'settings.json');
+	await writeFile(settings, '{"a":1}');
+	assert.equal(run('--agent', 'gemini-cli').status, 0);
+	assert.equal(run('--agent', 'gemini-cli', '--agent', 'claude-code').status, 0, 'a second setup adds files to the same undo');
+	await writeFile(join(home, '.claude.json'), '{"mine":true}');
+	const undo = run('--undo');
+	assert.equal(undo.status, 1, 'one file was kept, which undo reports');
+	assert.match(undo.stdout, /restored +~\/\.gemini\/settings\.json/);
+	assert.match(undo.stdout, /removed +~\/\.gemini\/skills\/markless-migrate\/SKILL\.md/);
+	assert.match(undo.stdout, /kept: edited since setup ~\/\.claude\.json/);
+	assert.equal(await readFile(settings, 'utf8'), '{"a":1}');
+	assert.equal(await readFile(join(home, '.claude.json'), 'utf8'), '{"mine":true}');
+	await assert.rejects(readFile(join(home, '.claude', 'skills', 'markless-migrate', 'SKILL.md')));
+	assert.match(run('--undo').stdout, /Nothing to undo/);
 });
 
 test('setup registers the MCP server and installs the skill for all six agents, keeping existing settings', async () => {
