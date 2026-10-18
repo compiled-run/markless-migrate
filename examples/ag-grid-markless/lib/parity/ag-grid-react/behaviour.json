@@ -1,0 +1,51 @@
+{
+	"library": "ag-grid-react",
+	"class": "parity",
+	"reason": "depends on react: port the used surface",
+	"exports": [
+		{
+			"name": "AgGridReact",
+			"kind": "component",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/extension/react/components/Panel.tsx",
+						"line": 378,
+						"in": "src/extension/react/components/Panel.tsx#Panel",
+						"kind": "element",
+						"props": {
+							"ref": "{gridRef}",
+							"suppressScrollOnNewData": "true",
+							"rowData": "{events}",
+							"columnDefs": "{columnDefs}",
+							"getRowId": "{(params) => String(params.data.serialNumber)}",
+							"theme": "{themeQuartz .withParams({ cellFontFamily: 'roboto, sans-seri}",
+							"defaultColDef": "{defaultColDef}",
+							"onRowClicked": "{onRowClicked}",
+							"tooltipShowDelay": "100",
+							"tooltipShowMode": "\"whenTruncated\"",
+							"rowSelection": "\"single\"",
+							"suppressCellFocus": "true",
+							"headerHeight": "25",
+							"rowHeight": "29",
+							"animateRows": "false",
+							"enableFilterHandlers": "true"
+						}
+					},
+					"target": {},
+					"mustSee": [
+						"renders with ref={gridRef} suppressScrollOnNewData=true rowData={events} columnDefs={columnDefs} getRowId={(params) => String(params.data.serialNumber)} theme={themeQuartz .withParams({ cellFontFamily: 'roboto, sans-seri} defaultColDef={defaultColDef} onRowClicked={onRowClicked} tooltipShowDelay=100 tooltipShowMode=\"whenTruncated\" rowSelection=\"single\" suppressCellFocus=true headerHeight=25 rowHeight=29 animateRows=false enableFilterHandlers=true"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "CustomFilterDisplayProps",
+			"kind": "type",
+			"port": true,
+			"sites": []
+		}
+	]
+}

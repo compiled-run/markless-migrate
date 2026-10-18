@@ -1,0 +1,37 @@
+{
+	"library": "@microlink/react-json-view",
+	"class": "parity",
+	"reason": "depends on react: port the used surface",
+	"exports": [
+		{
+			"name": "default",
+			"kind": "component",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/extension/react/components/DetailPanel.tsx",
+						"line": 127,
+						"in": "src/extension/react/components/DetailPanel.tsx#DetailPanel",
+						"kind": "element",
+						"props": {
+							"src": "{selectedRow.args}",
+							"theme": "{theme === 'dark' ? 'monokai' : 'rjv-default'}",
+							"displayDataTypes": "false",
+							"displayObjectSize": "false",
+							"enableClipboard": "false",
+							"collapsed": "false",
+							"name": "\"data\"",
+							"style": "{{ fontSize: '13px', fontFamily: 'Space Mono, Monaco, Menlo, }"
+						}
+					},
+					"target": {},
+					"mustSee": [
+						"renders with src={selectedRow.args} theme={theme === 'dark' ? 'monokai' : 'rjv-default'} displayDataTypes=false displayObjectSize=false enableClipboard=false collapsed=false name=\"data\" style={{ fontSize: '13px', fontFamily: 'Space Mono, Monaco, Menlo, }"
+					],
+					"journeys": []
+				}
+			]
+		}
+	]
+}

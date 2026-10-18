@@ -1,0 +1,115 @@
+{
+	"library": "ag-grid-community",
+	"class": "as-is",
+	"reason": "framework-agnostic (no UI framework among its dependencies): import it unchanged",
+	"exports": [
+		{
+			"name": "ICellRendererParams",
+			"kind": "type",
+			"port": false,
+			"sites": []
+		},
+		{
+			"name": "CellStyleModule",
+			"kind": "value",
+			"port": false,
+			"sites": []
+		},
+		{
+			"name": "ClientSideRowModelModule",
+			"kind": "value",
+			"port": false,
+			"sites": []
+		},
+		{
+			"name": "ColDef",
+			"kind": "type",
+			"port": false,
+			"sites": []
+		},
+		{
+			"name": "CustomFilterModule",
+			"kind": "value",
+			"port": false,
+			"sites": []
+		},
+		{
+			"name": "DateFilterModule",
+			"kind": "value",
+			"port": false,
+			"sites": []
+		},
+		{
+			"name": "DoesFilterPassParams",
+			"kind": "type",
+			"port": false,
+			"sites": []
+		},
+		{
+			"name": "ModuleRegistry",
+			"kind": "value",
+			"port": false,
+			"sites": []
+		},
+		{
+			"name": "NumberFilterModule",
+			"kind": "value",
+			"port": false,
+			"sites": []
+		},
+		{
+			"name": "RowApiModule",
+			"kind": "value",
+			"port": false,
+			"sites": []
+		},
+		{
+			"name": "RowClickedEvent",
+			"kind": "type",
+			"port": false,
+			"sites": []
+		},
+		{
+			"name": "RowSelectionModule",
+			"kind": "value",
+			"port": false,
+			"sites": []
+		},
+		{
+			"name": "ScrollApiModule",
+			"kind": "value",
+			"port": false,
+			"sites": []
+		},
+		{
+			"name": "TextFilterModule",
+			"kind": "value",
+			"port": false,
+			"sites": []
+		},
+		{
+			"name": "themeQuartz",
+			"kind": "value",
+			"port": false,
+			"sites": []
+		},
+		{
+			"name": "TooltipModule",
+			"kind": "value",
+			"port": false,
+			"sites": []
+		},
+		{
+			"name": "ValidationModule",
+			"kind": "value",
+			"port": false,
+			"sites": []
+		},
+		{
+			"name": "ValueFormatterParams",
+			"kind": "type",
+			"port": false,
+			"sites": []
+		}
+	]
+}

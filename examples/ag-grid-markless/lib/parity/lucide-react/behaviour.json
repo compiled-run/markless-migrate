@@ -1,0 +1,235 @@
+{
+	"library": "lucide-react",
+	"class": "parity",
+	"reason": "icons as React components; port each used icon as inline SVG markup (or @markless/icons from @markless/ui 0.5)",
+	"exports": [
+		{
+			"name": "ArrowRight",
+			"kind": "value",
+			"port": true,
+			"sites": []
+		},
+		{
+			"name": "Ban",
+			"kind": "component",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/extension/react/components/Panel.tsx",
+						"line": 371,
+						"in": "src/extension/react/components/Panel.tsx#Panel",
+						"kind": "element",
+						"props": {
+							"strokeWidth": "3",
+							"size": "15"
+						}
+					},
+					"target": {},
+					"mustSee": [
+						"renders with strokeWidth=3 size=15"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "Check",
+			"kind": "component",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/extension/react/AgGridFilters/DirectionFilter.tsx",
+						"line": 47,
+						"in": "src/extension/react/AgGridFilters/DirectionFilter.tsx#DirectionFilter",
+						"kind": "element",
+						"props": {
+							"size": "12",
+							"strokeWidth": "3"
+						}
+					},
+					"target": {},
+					"mustSee": [
+						"renders with size=12 strokeWidth=3"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "HelpCircle",
+			"kind": "value",
+			"port": true,
+			"sites": []
+		},
+		{
+			"name": "Lock",
+			"kind": "component",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/extension/react/components/Panel.tsx",
+						"line": 364,
+						"in": "src/extension/react/components/Panel.tsx#Panel",
+						"kind": "element",
+						"props": {
+							"strokeWidth": "3",
+							"size": "15"
+						}
+					},
+					"target": {},
+					"mustSee": [
+						"renders with strokeWidth=3 size=15"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "LockOpen",
+			"kind": "component",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/extension/react/components/Panel.tsx",
+						"line": 366,
+						"in": "src/extension/react/components/Panel.tsx#Panel",
+						"kind": "element",
+						"props": {
+							"strokeWidth": "3",
+							"size": "15"
+						}
+					},
+					"target": {},
+					"mustSee": [
+						"renders with strokeWidth=3 size=15"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "Moon",
+			"kind": "component",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/extension/react/components/Panel.tsx",
+						"line": 335,
+						"in": "src/extension/react/components/Panel.tsx#Panel",
+						"kind": "element",
+						"props": {
+							"strokeWidth": "3",
+							"size": "15"
+						}
+					},
+					"target": {},
+					"mustSee": [
+						"renders with strokeWidth=3 size=15"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "PanelBottom",
+			"kind": "component",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/extension/react/components/Panel.tsx",
+						"line": 347,
+						"in": "src/extension/react/components/Panel.tsx#Panel",
+						"kind": "element",
+						"props": {
+							"strokeWidth": "3",
+							"size": "15"
+						}
+					},
+					"target": {},
+					"mustSee": [
+						"renders with strokeWidth=3 size=15"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "PanelRight",
+			"kind": "component",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/extension/react/components/Panel.tsx",
+						"line": 345,
+						"in": "src/extension/react/components/Panel.tsx#Panel",
+						"kind": "element",
+						"props": {
+							"strokeWidth": "3",
+							"size": "15"
+						}
+					},
+					"target": {},
+					"mustSee": [
+						"renders with strokeWidth=3 size=15"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "Sun",
+			"kind": "component",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/extension/react/components/Panel.tsx",
+						"line": 333,
+						"in": "src/extension/react/components/Panel.tsx#Panel",
+						"kind": "element",
+						"props": {
+							"strokeWidth": "3",
+							"size": "15"
+						}
+					},
+					"target": {},
+					"mustSee": [
+						"renders with strokeWidth=3 size=15"
+					],
+					"journeys": []
+				}
+			]
+		},
+		{
+			"name": "X",
+			"kind": "component",
+			"port": true,
+			"sites": [
+				{
+					"site": {
+						"file": "src/extension/react/components/DetailPanel.tsx",
+						"line": 35,
+						"in": "src/extension/react/components/DetailPanel.tsx#DetailPanel",
+						"kind": "element",
+						"props": {
+							"strokeWidth": "3",
+							"size": "14"
+						}
+					},
+					"target": {},
+					"mustSee": [
+						"renders with strokeWidth=3 size=14"
+					],
+					"journeys": []
+				}
+			]
+		}
+	]
+}
