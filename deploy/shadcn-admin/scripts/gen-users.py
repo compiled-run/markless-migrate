@@ -6,7 +6,7 @@ import os
 import re
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-APP = os.path.join(HERE, '../../../examples/shadcn-admin-markless')
+APP = os.environ.get('APP') or os.path.join(HERE, '../../../examples/shadcn-admin-markless')
 SLOTS = 50
 PAGE_SLOTS = 7
 
@@ -237,15 +237,77 @@ def bulk_handler(loading, success, error):
     return ('() => {\n'
             f'\t\t\t\t\tconst count = countOf(selected);\n'
             "\t\t\t\t\tconst id = `bulk-${Date.now()}`;\n"
-            f'\t\t\t\t\ttoasts = promiseLoading(toasts, id, {loading});\n'
+            f'\t\t\t\t\td.toasts = promiseLoading(d.toasts, id, {loading});\n'
             "\t\t\t\t\tselected = '';\n"
             '\t\t\t\t\tsetTimeout(() => {\n'
-            f'\t\t\t\t\t\ttoasts = promiseSuccess(toasts, id, {success});\n'
+            f'\t\t\t\t\t\td.toasts = promiseSuccess(d.toasts, id, {success});\n'
             '\t\t\t\t\t\tsetTimeout(() => {\n'
-            '\t\t\t\t\t\t\ttoasts = expired(toasts, id);\n'
+            '\t\t\t\t\t\t\td.toasts = expired(d.toasts, id);\n'
             '\t\t\t\t\t\t}, DURATION);\n'
             '\t\t\t\t\t}, 2000);\n'
             '\t\t\t\t}')
+
+
+MULTI_OPEN = ("() => {\n"
+              "\t\t\t\t\tmultiValue = '';\n"
+              "\t\t\t\t\tmultiOpen = true;\n"
+              "\t\t\t\t\topenDialog('users-multi-delete-dialog', { alert: true, focus: document.getElementById('users-multi-delete-input'), onDismiss: () => { multiOpen = false; closeDialog('users-multi-delete-dialog', false); } });\n"
+              "\t\t\t\t}")
+
+MULTI_DIALOG = f"""		<div data-state={{multiState}} data-slot="alert-dialog-overlay" class="fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0" style="pointer-events: auto;" hidden={{multiClosed}}></div>
+		<div role="alertdialog" id="users-multi-delete-dialog" aria-describedby="users-multi-delete-description" aria-labelledby="users-multi-delete-title" data-state={{multiState}} data-slot="alert-dialog-content" class="fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-lg" tabindex="-1" style="pointer-events: auto;" hidden={{multiClosed}}>
+			<div data-slot="alert-dialog-header" class="flex flex-col gap-2 sm:text-start text-start">
+				<h2 id="users-multi-delete-title" data-slot="alert-dialog-title" class="text-lg font-semibold">
+					<span class="text-destructive">
+						{lucide('AlertTriangle', 'me-1 inline-block stroke-destructive', 18)}
+						{{' '}}Delete {{multiCount}} {{multiNoun}}
+					</span>
+				</h2>
+				<div id="users-multi-delete-description" data-slot="alert-dialog-description" class="text-sm text-muted-foreground">
+					<form id="users-multi-delete-form" class="space-y-4" onSubmit={{(event) => {{
+						event.preventDefault();
+						const id = `multi-delete-${{Date.now()}}`;
+						if (multiValue.trim() !== 'DELETE') {{
+							d.toasts = promiseError(d.toasts, id, 'Please type "DELETE" to confirm.');
+							setTimeout(() => {{
+								d.toasts = expired(d.toasts, id);
+							}}, DURATION);
+							return;
+						}}
+						const count = tableModel({INPUT_EXPR}).selectedCount;
+						multiOpen = false;
+						closeDialog('users-multi-delete-dialog', false);
+						d.toasts = promiseLoading(d.toasts, id, 'Deleting users...');
+						setTimeout(() => {{
+							multiValue = '';
+							selected = '';
+							d.toasts = promiseSuccess(d.toasts, id, `Deleted ${{count}} ${{count > 1 ? 'users' : 'user'}}`);
+							setTimeout(() => {{
+								d.toasts = expired(d.toasts, id);
+							}}, DURATION);
+						}}, 2000);
+					}}}}>
+						<p class="mb-2">
+							Are you sure you want to delete the selected users?{{' '}}
+							<span class="block"></span>
+							This action cannot be undone.
+						</p>
+						<label data-slot="label" class="text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 my-4 flex flex-col items-start gap-1.5">
+							<span class="">Confirm by typing "DELETE":</span>
+							<input data-slot="input" id="users-multi-delete-input" class="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none selection:bg-primary selection:text-primary-foreground file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40" placeholder={{'Type "DELETE" to confirm.'}} value={{multiValue}} onInput={{(event) => (multiValue = (event.target as HTMLInputElement).value)}} />
+						</label>
+						<div data-slot="alert" role="alert" class="relative w-full rounded-lg border px-4 py-3 text-sm grid has-[>svg]:grid-cols-[calc(var(--spacing)*4)_1fr] grid-cols-[0_1fr] has-[>svg]:gap-x-3 gap-y-0.5 items-start [&>svg]:size-4 [&>svg]:translate-y-0.5 text-destructive bg-card [&>svg]:text-current *:data-[slot=alert-description]:text-destructive/90">
+							<div data-slot="alert-title" class="col-start-2 line-clamp-1 min-h-4 font-medium tracking-tight">Warning!</div>
+							<div data-slot="alert-description" class="col-start-2 grid justify-items-start gap-1 text-sm text-muted-foreground [&_p]:leading-relaxed">Please be careful, this operation can not be rolled back.</div>
+						</div>
+					</form>
+				</div>
+			</div>
+			<div data-slot="alert-dialog-footer" class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+				<button type="button" class="{BTN} {OUTLINE} h-9 px-4 py-2 has-[>svg]:px-3" onClick={{() => {{ multiOpen = false; closeDialog('users-multi-delete-dialog', false); }}}}>Cancel</button>
+				<button data-slot="button" class="{BTN.replace(' focus-visible:ring-ring/50', '')} bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60 h-9 px-4 py-2 has-[>svg]:px-3" type="submit" form="users-multi-delete-form" disabled={{multiDisabled}}>Delete</button>
+			</div>
+		</div>"""
 
 
 def main():
@@ -253,21 +315,25 @@ def main():
     role_filter = facet_filter('role', 'Role', ROLES)
     plural = "${count > 1 ? 's' : ''}"
     out = f"""// The users page (features/users): the table over @tanstack/table-core (lib/users-table.ts), its toolbar,
-// faceted filters, column menus, pagination and bulk actions, the row actions menu and the delete dialog.
+// faceted filters, column menus, pagination and bulk actions, the row actions menu, and the delete, multi-delete, add/edit and invite dialogs.
 // Written by deploy/shadcn-admin/scripts/gen-users.py from the old app's rendered DOM: the rows and page
 // buttons are fixed slots (Markless 0.4.0 does not update an @for over a computed list), one UserRow per row.
 import {{ computed, state }} from '@markless/core';
 import type {{ PageProps }} from '@markless/router';
 import {{ Shell }} from '../components/layout/shell.tsrx';
+import {{ layoutPrefs }} from '../components/layout/prefs.ts';
 import {{ UserRow }} from '../components/users/user-row.tsrx';
 import {{ chosenIn, filterIn, moveIn }} from '../lib/parity/cmdk/behaviour.ts';
 import {{ DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger, menus, PopoverContent, SelectItem }} from '../lib/parity/radix-ui-react-dropdown-menu/menu.tsrx';
-import {{ DURATION, expired, message, promiseLoading, promiseSuccess, type Toast }} from '../lib/parity/sonner/index.ts';
+import {{ DURATION, expired, message, promiseError, promiseLoading, promiseSuccess }} from '../lib/parity/sonner/index.ts';
 import {{ Toaster }} from '../lib/parity/sonner/toaster.tsrx';
-import {{ closeConfirm, escapeClears, moveToolbarFocus, openConfirm }} from '../lib/users-behaviour.ts';
+import {{ UsersActionDialog, UsersInviteDialog, usersDialogs }} from '../components/users/users-dialogs.tsrx';
+import {{ closeDialog, openDialog }} from '../lib/parity/radix-ui-react-dialog/behaviour.ts';
+import {{ closeConfirm, escapeClears, inviteForm, moveToolbarFocus, openConfirm, userForm }} from '../lib/users-behaviour.ts';
 import {{ announcementFor, countOf, field, deleteSummary, facet, fromSearch, hasValue, hiddenColumns, lastPage, pageAtSlot, pageField, pushSearch, rowSlot, tableModel, toggleAllOnPage, toggleRow, toggleValue, userAt }} from '../lib/parity/tanstack-react-table/users-table.ts';
 
-export default function Users({{ url }}: PageProps) @{{
+export default function Users({{ url, http }}: PageProps) @{{
+	const prefs = layoutPrefs(http.request.headers.get('cookie'));
 	const initial = fromSearch(url.search);
 	let sorting = state('');
 	let username = state(initial.username);
@@ -283,7 +349,9 @@ export default function Users({{ url }}: PageProps) @{{
 	let deleteName = state('');
 	let deleteRole = state('');
 	let announcement = state('');
-	let toasts = state<Toast[]>([]);
+	const d = usersDialogs();
+	let multiOpen = state(false);
+	let multiValue = state('');
 
 	const model = computed(() => tableModel({INPUT_EXPR}));
 	const rows = computed(() => model.rows);
@@ -319,11 +387,16 @@ export default function Users({{ url }}: PageProps) @{{
 	const deleteState = computed(() => (deleteOpen ? 'open' : 'closed'));
 	const deleteDisabled = computed(() => deleteValue.trim() !== deleteName);
 	const deleteRoleUpper = computed(() => deleteRole.toUpperCase());
+	const multiClosed = computed(() => !multiOpen);
+	const multiState = computed(() => (multiOpen ? 'open' : 'closed'));
+	const multiCount = computed(() => String(model.selectedCount));
+	const multiNoun = computed(() => (model.selectedCount > 1 ? 'users' : 'user'));
+	const multiDisabled = computed(() => multiValue.trim() !== 'DELETE');
 {facet_computeds('status', STATUS)}
 {facet_computeds('role', ROLES)}
 {chr(10).join(page_computeds(i) for i in range(PAGE_SLOTS))}
 
-	<Shell active="/users" topNav={{false}}>
+	<Shell active="/users" header="search" fixed={{true}} prefs={{prefs}}>
 		<main data-layout="auto" class="px-4 py-6 @7xl/content:mx-auto @7xl/content:w-full @7xl/content:max-w-7xl flex flex-1 flex-col gap-4 sm:gap-6">
 			<div class="flex flex-wrap items-end justify-between gap-2">
 				<div>
@@ -331,11 +404,11 @@ export default function Users({{ url }}: PageProps) @{{
 					<p class="text-muted-foreground">Manage your users and their roles here.</p>
 				</div>
 				<div class="flex gap-2">
-					<button data-slot="button" class="{BTN} {OUTLINE} h-9 px-4 py-2 has-[>svg]:px-3 space-x-1">
+					<button data-slot="button" class="{BTN} {OUTLINE} h-9 px-4 py-2 has-[>svg]:px-3 space-x-1" onClick={{() => {{ d.invite = inviteForm(); d.inviteSubmitted = false; d.inviteErrors = '{{}}'; d.open = 'invite'; openDialog('users-invite-dialog', {{ onDismiss: () => {{ d.open = ''; closeDialog('users-invite-dialog', false); }} }}); }}}}>
 						<span>Invite User</span>
 						{lucide('MailPlus', '', 18)}
 					</button>
-					<button data-slot="button" class="{BTN} bg-primary text-primary-foreground shadow-xs hover:bg-primary/90 h-9 px-4 py-2 has-[>svg]:px-3 space-x-1">
+					<button data-slot="button" class="{BTN} bg-primary text-primary-foreground shadow-xs hover:bg-primary/90 h-9 px-4 py-2 has-[>svg]:px-3 space-x-1" onClick={{() => {{ d.form = userForm(); d.submitted = false; d.errors = '{{}}'; d.showPassword = false; d.showConfirm = false; d.open = 'add'; openDialog('users-action-dialog', {{ onDismiss: () => {{ d.open = ''; closeDialog('users-action-dialog', false); }} }}); }}}}>
 						<span>Add User</span>
 						{lucide('UserPlus', '', 18)}
 					</button>
@@ -462,7 +535,7 @@ export default function Users({{ url }}: PageProps) @{{
 {bulk_button('Invite selected users', 'Mail', bulk_handler("'Inviting users...'", f"`Invited ${{count}} user{plural}`", "'Error inviting users'"))}
 {bulk_button('Activate selected users', 'UserCheck', bulk_handler("'Activating users...'", f"`Activated ${{count}} user{plural}`", "'Error activating users'"))}
 {bulk_button('Deactivate selected users', 'UserX', bulk_handler("'Deactivating users...'", f"`Deactivated ${{count}} user{plural}`", "'Error deactivating users'"))}
-{bulk_button('Delete selected users', 'Trash2', '() => {}', True)}
+{bulk_button('Delete selected users', 'Trash2', MULTI_OPEN, True)}
 					</div>
 				</div>
 			</div>
@@ -489,9 +562,9 @@ export default function Users({{ url }}: PageProps) @{{
 							deleteOpen = false;
 							closeConfirm();
 							const id = `deleted-${{Date.now()}}`;
-							toasts = message(toasts, id, 'The following user has been deleted:', deleteSummary(userAt({INPUT_EXPR}, rowSlot(m.at))));
+							d.toasts = message(d.toasts, id, 'The following user has been deleted:', deleteSummary(userAt({INPUT_EXPR}, rowSlot(m.at))));
 							setTimeout(() => {{
-								toasts = expired(toasts, id);
+								d.toasts = expired(d.toasts, id);
 							}}, DURATION);
 						}}
 					}}}}>
@@ -520,6 +593,7 @@ export default function Users({{ url }}: PageProps) @{{
 				<button data-slot="button" class="{BTN.replace(' focus-visible:ring-ring/50', '')} bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60 h-9 px-4 py-2 has-[>svg]:px-3" type="submit" form="users-delete-form" disabled={{deleteDisabled}}>Delete</button>
 			</div>
 		</div>
+{MULTI_DIALOG}
 {facet_content('status', 'Status', STATUS)}
 {facet_content('role', 'Role', ROLES)}
 {sort_content('username', False)}
@@ -531,7 +605,16 @@ export default function Users({{ url }}: PageProps) @{{
 		<DropdownMenuCheckboxItem menu="view-options" class="capitalize" checked={{phoneShown}} onSelect={{() => {{ hidden = toggleValue(hidden, 'phoneNumber'); }}}}>phoneNumber</DropdownMenuCheckboxItem>
 	</DropdownMenuContent>
 	<DropdownMenuContent menu="row-actions" modal={{false}} align="end" class="w-40">
-		<DropdownMenuItem menu="row-actions" onSelect={{() => {{}}}}>
+		<DropdownMenuItem menu="row-actions" onSelect={{() => {{
+			const user = userAt({INPUT_EXPR}, rowSlot(m.at));
+			d.form = userForm(user);
+			d.submitted = false;
+			d.errors = '{{}}';
+			d.showPassword = false;
+			d.showConfirm = false;
+			d.open = 'edit';
+			setTimeout(() => openDialog('users-action-dialog', {{ onDismiss: () => {{ d.open = ''; closeDialog('users-action-dialog', false); }} }}));
+		}}}}>
 			Edit
 			<DropdownMenuShortcut>{lucide('UserPen', '', 16)}</DropdownMenuShortcut>
 		</DropdownMenuItem>
@@ -557,7 +640,9 @@ export default function Users({{ url }}: PageProps) @{{
 			<SelectItem menu="page-size" selected={{size50}} onSelect={{() => {{ page = Math.floor(((page - 1) * pageSize) / 50) + 1; pageSize = 50; pushSearch({URL_EXPR}); }}}}>50</SelectItem>
 		</div>
 	</DropdownMenuContent>
-		<Toaster toasts={{toasts}} extra={{true}} />
+		<UsersActionDialog />
+		<UsersInviteDialog />
+		<Toaster toasts={{d.toasts}} extra={{true}} />
 	</Shell>
 }}
 """

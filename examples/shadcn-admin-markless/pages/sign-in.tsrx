@@ -73,7 +73,6 @@ export default function SignIn() @{
 								await sleep(2000);
 								loading = false;
 								toasts = promiseSuccess(toasts, 'sign-in', `Welcome back, ${values.email}!`);
-								sessionStorage.setItem('parity-toast', `Welcome back, ${values.email}!`);
 								document.cookie = `thisisjustarandomstring=${JSON.stringify('mock-access-token')}; path=/; max-age=${60 * 60 * 24 * 7}`;
 								location.replace('/');
 							}}

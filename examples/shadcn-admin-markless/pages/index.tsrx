@@ -2,11 +2,14 @@
 // Markup from the old app's rendered DOM (deploy/shadcn-admin/scripts/gen-dashboard.py); tabs on
 // @markless/ui tabs; the charts drawn by the recharts port (public/parity/recharts.js).
 import { tabs } from '@markless/ui';
+import type { PageProps } from '@markless/router';
 import { Shell } from '../components/layout/shell.tsrx';
+import { layoutPrefs } from '../components/layout/prefs.ts';
 import { AnalyticsChart, OverviewChart } from '../lib/parity/recharts/charts.tsrx';
 
-export default function Dashboard() @{
-	<Shell active="/" topNav={true}>
+export default function Dashboard({ http }: PageProps) @{
+	const prefs = layoutPrefs(http.request.headers.get('cookie'));
+	<Shell active="/" header="topnav" prefs={prefs}>
 		<main data-layout="auto" class="px-4 py-6 @7xl/content:mx-auto @7xl/content:w-full @7xl/content:max-w-7xl">
 			<div class="mb-2 flex items-center justify-between space-y-2">
 				<h1 class="text-2xl font-bold tracking-tight">Dashboard</h1>

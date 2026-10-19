@@ -9,6 +9,7 @@ type Align = 'start' | 'center' | 'end';
 const hidden = new Map<string, HTMLElement[]>();
 const restoreFocus = new Map<string, HTMLElement>();
 const outside = new Map<string, (event: PointerEvent) => void>();
+const escapes = new Map<string, (event: KeyboardEvent) => void>();
 
 const find = <T extends HTMLElement>(list: readonly T[] | T | undefined, name: string): T | undefined => {
 	const all = Array.isArray(list) ? list : list ? [list as T] : [];
@@ -56,15 +57,25 @@ function place(wrapper: HTMLElement, content: HTMLElement, trigger: HTMLElement)
 
 /** Radix's hideOthers: everything outside `keep` (and outside live regions) is hidden from assistive technology until showOthers. */
 export function hideOthers(name: string, keep: HTMLElement): void {
+	// As the aria-hidden package does for Radix: live regions and their ancestors stay exposed, everything else outside `keep` is hidden. The @markless/ui tabs mark their panels aria-live=off, which Radix's tabs do not, so those count as no live region.
+	const targets = new Set<Element>([keep, ...[...document.body.querySelectorAll('[aria-live]:not([aria-live=off])')].filter((el) => !el.closest('[hidden]'))]);
+	const kept = new Set<Element>();
+	for (const target of targets) for (let node: Element | null = target; node && node !== document.body; node = node.parentElement) kept.add(node);
 	const changed: HTMLElement[] = [];
-	for (let node: HTMLElement | null = keep; node && node !== document.body; node = node.parentElement) {
-		for (const sibling of node.parentElement ? [...node.parentElement.children] : []) {
-			if (sibling === node || !(sibling instanceof HTMLElement) || /^(SCRIPT|STYLE|TEMPLATE)$/.test(sibling.tagName) || sibling.getAttribute('aria-hidden') === 'true' || sibling.hasAttribute('aria-live')) continue;
-			sibling.setAttribute('aria-hidden', 'true');
-			sibling.setAttribute('data-aria-hidden', 'true');
-			changed.push(sibling);
+	const walk = (parent: Element) => {
+		for (const child of [...parent.children]) {
+			if (targets.has(child) || !(child instanceof HTMLElement)) continue;
+			if (kept.has(child)) {
+				walk(child);
+				continue;
+			}
+			if (/^(SCRIPT|STYLE|TEMPLATE)$/.test(child.tagName) || child.getAttribute('aria-hidden') === 'true') continue;
+			child.setAttribute('aria-hidden', 'true');
+			child.setAttribute('data-aria-hidden', 'true');
+			changed.push(child);
 		}
-	}
+	};
+	walk(document.body);
 	hidden.set(name, changed);
 }
 
@@ -76,6 +87,8 @@ export function showOthers(name: string): void {
 	hidden.delete(name);
 }
 
+const opened = new Map<string, number>();
+
 /** Show the named menu: place it by its trigger, hide everything else from assistive technology, and focus the menu (a pointer open) or its first item (a keyboard open). */
 export function openMenu(contents: readonly HTMLElement[] | HTMLElement | undefined, triggers: readonly HTMLElement[] | HTMLElement | undefined, name: string, focus: 'content' | 'first', onOutside?: (refocus: boolean) => void, source?: EventTarget | null): void {
 	const content = find(contents, name);
@@ -86,8 +99,9 @@ export function openMenu(contents: readonly HTMLElement[] | HTMLElement | undefi
 	if (!content || !trigger || !wrapper) return;
 	const modal = content.dataset.modal !== 'false';
 	// cmdk inside a Radix Popover mounts afresh on every open: empty query, first item selected.
-	if (content.querySelector('[cmdk-root]')) resetIn(content);
+	opened.set(name, (opened.get(name) ?? 0) + 1);
 	wrapper.hidden = false;
+	if (content.querySelector('[cmdk-root]')) resetIn(content);
 	place(wrapper, content, trigger);
 	if (modal) {
 		hideOthers(name, wrapper);
@@ -97,7 +111,7 @@ export function openMenu(contents: readonly HTMLElement[] | HTMLElement | undefi
 	restoreFocus.set(name, trigger);
 	const role = content.getAttribute('role');
 	// A popover focuses what it holds first (Radix FocusScope), a select its chosen option.
-	const start = role === 'dialog' ? content.querySelector<HTMLElement>('input, button, [tabindex="0"]') : role === 'listbox' ? content.querySelector<HTMLElement>('[aria-selected="true"]') : focus === 'first' ? items(content)[0] : undefined;
+	const start = role === 'dialog' ? content.querySelector<HTMLElement>('input, button, [tabindex="0"]') : role === 'listbox' ? (content.querySelector<HTMLElement>('[aria-selected="true"]') ?? items(content)[0]) : focus === 'first' ? items(content)[0] : undefined;
 	(start ?? content).focus();
 	const listener = (event: PointerEvent) => {
 		if (event.target instanceof Node && (content.contains(event.target) || trigger.contains(event.target))) return;
@@ -105,16 +119,42 @@ export function openMenu(contents: readonly HTMLElement[] | HTMLElement | undefi
 	};
 	outside.set(name, listener);
 	document.addEventListener('pointerdown', listener, true);
+	// DismissableLayer: Escape anywhere closes the menu, wherever focus is.
+	const escape = (event: KeyboardEvent) => {
+		if (event.key !== 'Escape' || content.contains(event.target as Node)) return;
+		event.preventDefault();
+		onOutside?.(true);
+	};
+	escapes.get(name) && document.removeEventListener('keydown', escapes.get(name)!);
+	escapes.set(name, escape);
+	document.addEventListener('keydown', escape);
 }
 
 /** Hide the named menu, show the page again, and send focus back to its trigger. */
 export function closeMenu(contents: readonly HTMLElement[] | HTMLElement | undefined, triggers: readonly HTMLElement[] | HTMLElement | undefined, name: string, refocus: boolean): void {
 	const content = find(contents, name);
-	if (content?.parentElement) content.parentElement.hidden = true;
+	const wrapper = content?.parentElement;
+	if (content && wrapper) {
+		const shown = (opened.get(name) ?? 0) + 1;
+		opened.set(name, shown);
+		// Radix Presence keeps a menu or popover mounted until its exit animation ends; a Select's content goes at once.
+		content.dataset.state = 'closed';
+		if (content.getAttribute('role') !== 'listbox' && getComputedStyle(content).animationName !== 'none') {
+			const ended = (event: AnimationEvent) => {
+				if (event.target !== content) return;
+				content.removeEventListener('animationend', ended);
+				if (opened.get(name) === shown) wrapper.hidden = true;
+			};
+			content.addEventListener('animationend', ended);
+		} else wrapper.hidden = true;
+	}
 	showOthers(name);
-	document.body.style.pointerEvents = '';
+	document.body.style.pointerEvents = document.body.hasAttribute('data-scroll-locked') ? 'none' : '';
 	const listener = outside.get(name);
 	if (listener) document.removeEventListener('pointerdown', listener, true);
+	const escape = escapes.get(name);
+	if (escape) document.removeEventListener('keydown', escape);
+	escapes.delete(name);
 	outside.delete(name);
 	if (refocus) (restoreFocus.get(name) ?? find(triggers, name))?.focus();
 }
@@ -147,3 +187,13 @@ export function toggleMenu(contents: readonly HTMLElement[] | HTMLElement | unde
 	if (closing) return closeMenu(contents, triggers, name, true);
 	openMenu(contents, triggers, name, 'content', onOutside, source);
 }
+
+export function linkOf(target: EventTarget | null): HTMLAnchorElement | null {
+	return target instanceof Element ? target.closest('a[href]') : null;
+}
+
+/** The menu an item belongs to. */
+export function menuOf(el: Element | null): string {
+	return el?.closest('[data-radix-menu-content]')?.getAttribute('data-menu') ?? '';
+}
+

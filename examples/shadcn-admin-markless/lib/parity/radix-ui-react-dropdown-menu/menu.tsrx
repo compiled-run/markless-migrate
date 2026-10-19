@@ -8,7 +8,7 @@
 import { computed, element, shared, state } from '@markless/core';
 import type { Children, PropsOf } from '@markless/core';
 import { cn } from '../../utils.ts';
-import { closeMenu, focusItem, moveFocus, openMenu, selectAndClose, toggleMenu } from './behaviour.ts';
+import { closeMenu, focusItem, linkOf, menuOf, moveFocus, openMenu, selectAndClose, toggleMenu } from './behaviour.ts';
 
 export const CONTENT_CLASS =
 	'z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-32 origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95';
@@ -77,9 +77,13 @@ export function DropdownMenuTrigger({ menu, haspopup, instance, slot, class: kla
 			}
 		}}
 		onKeydown={(event) => {
-			// The guard wraps preventDefault: after an early return, Markless 0.4.0 prevents every key (Tab included).
-			if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown') {
-				event.preventDefault();
+			if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown') event.preventDefault();
+			// Radix: Enter and Space toggle, ArrowDown only opens; an open menu keeps focus where it is.
+			const open = m.open === name && m.at === inst;
+			if (open && (event.key === 'Enter' || event.key === ' ')) {
+				m.open = '';
+				closeMenu(m.contents, m.triggers, name, true);
+			} else if (!open && (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown')) {
 				m.open = name;
 				m.at = inst;
 				openMenu(m.contents, m.triggers, name, 'first', (refocus) => {
@@ -111,7 +115,6 @@ export type DropdownMenuContentProps = PropsOf<'div'> & {
 export function DropdownMenuContent({ menu, role, slot, modal, side, align, sideOffset, class: klass, children, ...rest }: DropdownMenuContentProps) @{
 	const m = menus();
 	let name = state(menu);
-	const contentClosed = computed(() => m.open !== name);
 	const contentState = computed(() => (m.open === name ? 'open' : 'closed'));
 	const contentClass = computed(() => cn(CONTENT_CLASS, klass));
 	const contentSide = computed(() => side ?? 'bottom');
@@ -123,7 +126,7 @@ export function DropdownMenuContent({ menu, role, slot, modal, side, align, side
 	const labelledBy = computed(() => `radix-menu-${name}${m.at}-trigger`);
 	const contentDomId = computed(() => `radix-menu-${name}-content`);
 
-	<div data-radix-popper-content-wrapper="" dir="ltr" hidden={contentClosed} data-menu-wrapper={name} style="position: fixed; left: 0px; top: 0px; min-width: max-content; z-index: 50;">
+	<div data-radix-popper-content-wrapper="" dir="ltr" hidden data-menu-wrapper={name} style="position: fixed; left: 0px; top: 0px; min-width: max-content; z-index: 50;">
 		<div
 			{...rest}
 			el={m.contents}
@@ -199,12 +202,27 @@ export function DropdownMenuItem({ menu, role, variant, class: klass, onSelect, 
 	</div>
 }
 
-export type DropdownMenuLinkItemProps = PropsOf<'a'> & { readonly class?: string; readonly children?: Children };
+export type DropdownMenuLinkItemProps = PropsOf<'a'> & {
+	readonly class?: string;
+	/** The link names the page already shown. */
+	readonly current?: boolean;
+	readonly children?: Children;
+};
 
 /** An item rendered as a link (Radix `asChild` around a router Link): choosing it follows the link. */
-export function DropdownMenuLinkItem({ class: klass, children, ...rest }: DropdownMenuLinkItemProps) @{
+export function DropdownMenuLinkItem({ class: klass, current, children, ...rest }: DropdownMenuLinkItemProps) @{
+	const m = menus();
 	const linkItemClass = computed(() => cn(ITEM_CLASS, klass));
-	<a {...rest} role="menuitem" data-slot="dropdown-menu-item" data-variant="default" tabindex="-1" data-orientation="vertical" data-radix-collection-item="" class={linkItemClass}>{children}</a>
+	let here = state(current === true);
+	// Choosing the item closes the menu; a link to the page already shown loads nothing in the old router, so focus goes back to the trigger.
+	<a {...rest} role="menuitem" data-slot="dropdown-menu-item" data-variant="default" tabindex="-1" data-orientation="vertical" data-radix-collection-item="" class={linkItemClass} onClick={(event) => {
+		if (here) event.preventDefault();
+		const name = menuOf(linkOf(event.target));
+		if (name) {
+			m.open = '';
+			closeMenu(m.contents, m.triggers, name, here);
+		}
+	}}>{children}</a>
 }
 
 export function DropdownMenuLabel({ class: klass, children }: { readonly class?: string; readonly children?: Children }) @{
@@ -314,14 +332,13 @@ export type PopoverContentProps = {
 export function PopoverContent({ menu, align, side, sideOffset, class: klass, children }: PopoverContentProps) @{
 	const m = menus();
 	let name = state(menu);
-	const popoverClosed = computed(() => m.open !== name);
 	const popoverState = computed(() => (m.open === name ? 'open' : 'closed'));
 	const popoverSide = computed(() => side ?? 'bottom');
 	const popoverAlign = computed(() => align ?? 'center');
 	const popoverOffset = computed(() => String(sideOffset ?? 4));
 	const popoverDomId = computed(() => `radix-menu-${name}-content`);
 
-	<div data-radix-popper-content-wrapper="" hidden={popoverClosed} data-menu-wrapper={name} style="position: fixed; left: 0px; top: 0px; min-width: max-content; z-index: 50;">
+	<div data-radix-popper-content-wrapper="" hidden data-menu-wrapper={name} style="position: fixed; left: 0px; top: 0px; min-width: max-content; z-index: 50;">
 		<div
 			el={m.contents}
 			data-menu={name}

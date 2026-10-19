@@ -13,7 +13,7 @@ export interface Toast {
 }
 
 function put(toasts: readonly Toast[], next: Toast): Toast[] {
-	return toasts.some((t) => t.id === next.id) ? toasts.map((t) => (t.id === next.id ? next : t)) : [...toasts, next];
+	return toasts.some((t) => t.id === next.id) ? toasts.map((t) => (t.id === next.id ? next : t)) : [next, ...toasts];
 }
 
 /** toast.promise's first state: the spinner and the loading message, until the promise settles. */

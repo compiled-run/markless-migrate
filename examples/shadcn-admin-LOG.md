@@ -179,3 +179,50 @@ The settings cog ("Open theme settings") sets its state but the theme drawer it 
 Responsiveness on `/sign-in`: first interaction old 49 ms → new 57 ms at 4x CPU (desktop 50 → 61 ms).
 
 Routes switched: none. The three routes had been switched with `--force`; they are back on the old app, so the front door (https://mm-shadcn-admin.vercel.app) serves the old app everywhere and its settings cog opens the old drawer (checked in a browser).
+
+## Every route (2026-10-18)
+
+`plan --old https://mm-shadcn-admin-old.vercel.app --source ../../deploy/shadcn-admin/old` lists 27 routes (the source's 26 and `/dashboard/overview`, which the dashboard's top nav links to; `/errors/:error` is filled from `.migrate/samples.json` with `/errors/unauthorized`). The app has no real sign-in (the old sign-in sets a mock cookie and nothing checks it), so there is no second role. Before this pass `check --only coverage` said **3 of 26**; now it says **27 of 27**, locally and against the deployments.
+
+### What was ported
+
+| Route(s) | How |
+| --- | --- |
+| `/tasks` | Generated like the users page (`deploy/shadcn-admin/scripts/gen-tasks.py`, `tasks.template.tsrx`): the table model is `@tanstack/table-core` used directly (`lib/parity/tanstack-react-table/tasks-table.ts`), with sorting, the status and priority facets, the title filter, pagination, row selection, row actions (edit sheet, labels submenu, delete), the bulk toolbar, the import and create/update dialogs and the multi-delete confirmation, URL search state as TanStack Router writes it |
+| `/apps`, `/chats`, `/help-center` | Markup from the old DOM; apps: search, type filter and sort by URL; chats: list search, opening a conversation, the new-chat dialog (cmdk inside a dialog) |
+| `/settings`, `/settings/account`, `/settings/appearance`, `/settings/notifications`, `/settings/display` | One layout (`components/settings/settings-layout.tsrx`), each form with the old zod schema (`lib/settings/forms.ts`), react-hook-form's validation timing and the submitted-values toast; the account date picker is a port of react-day-picker (`lib/parity/react-day-picker/calendar.ts`), the language picker cmdk in a popover |
+| `/sign-up`, `/sign-in-2`, `/forgot-password`, `/otp` | The auth forms with their schemas; the OTP input is a port of `input-otp` (`lib/parity/input-otp/`) |
+| `/401`, `/403`, `/500`, `/503`, `/errors/:error`, `/404` and any unknown path | The error pages; like the old single-page app, an unknown path (`/404`, `/dashboard/overview`) answers 200 with the not-found page (`pages/[...path].tsrx`) |
+| `/clerk`, `/clerk/sign-in`, `/clerk/sign-up`, `/clerk/user-management` | What the old app shows without a Clerk key: the missing-key page in the shell |
+| Shell, every page | The settings cog's theme drawer (theme, sidebar style, layout, direction, reset, with the old cookies), the sign-out dialog, Cmd/Ctrl+B and Cmd/Ctrl+K, the loading bar on every navigation and search change, collapsibles, menus, dialogs and the command palette with Radix's exit animations (content stays until its animation ends) |
+| `/users` | The add, edit, invite and multi-delete dialogs (were buttons that did nothing) |
+
+Radix Dialog, RadioGroup and Collapsible are ported in `lib/parity/radix-ui-react-dialog/`, `-radio-group/` and the shell; `zod` and `@tanstack/table-core` are used as they are.
+
+### Found while checking
+
+- The command palette items lost the spaces around their chevron (`Secured by ClerkSign In`); the analytics chart hid its first tick and did not pull its last one in; a select's `value` attribute selected nothing (the date picker's year showed 1926), each option now carries `selected`.
+- The old charts draw `Math.random()` at module load after 171 earlier draws (React, the router, Radix ids, the sidebar skeleton); `public/parity/recharts.js` draws as many first, so a seeded check compares the same bars.
+- Radix's `hideOthers` keeps live regions exposed; the `@markless/ui` tabs mark their panels `aria-live="off"`, and the port loads the chart script inside `main`, which kept `main` exposed behind every modal. Neither counts now (an `off` region announces nothing, and a script is not shown).
+- The loading bar's fade timer was one timer of 1,013 ms; the old library uses 1,000 ms after a 13 ms start, and the checker waits out timers up to a second, so the new fade landed inside recorded interactions. Split the same way now.
+- A link item to the page already shown (Account on `/settings/account`) reloaded the page and left `pointer-events: none` on the body; it now just closes the menu and returns focus to its trigger, as Radix does.
+- Tool bug: a page that navigates during the checker's first capture (here a stale server answering a route-module import with 500, so the router reloaded the page) aborts the whole `check` run with `Execution context was destroyed` instead of failing that route.
+
+### Check (against the deployments)
+
+`check --old https://mm-shadcn-admin-old.vercel.app --new https://mm-shadcn-admin-new.vercel.app --source ../../deploy/shadcn-admin/old --new-source .` (all routes, all dimensions; above 20 pages, visual, behaviour, responsiveness and motion run on one page per layout group).
+
+**Routes: 27 of 27. 17 of 27 route checks green**, 7 red, 3 not checked (the connection to a deployment timed out). A second run an hour later could reach the deployments for only 11 routes (connections to both took 11 s or failed); a local run of the same build (old on `serve-old.ts`, new on its Node server) had 16 of 27 green with every route checked.
+
+| Dimension | Result |
+| --- | --- |
+| coverage | green, 27 of 27 |
+| http, rendered, seo, assets, i18n, network, data, auth | green on every route checked |
+| weight | green against the deployments (compressed: `/tasks` 497 → 299 kB downloaded, JavaScript run at load 718 → 17 kB); red locally, where the files are not compressed: the settings, tasks and users pages download 1.9 to 2.8 MB against the old 0.95 to 1.5 MB (gap G28, the render data of every component) |
+| css, a11y | red on `/404`, `/500`, `/help-center`, `/errors/unauthorized`, `/settings/account` (and `/` for the chart's last few pixels): the loading bar is mid-fade on one side and done on the other when the page is captured. The two timelines start at different moments (the old one when React has rendered, the new one at DOMContentLoaded), so which pages show it changes from run to run |
+| visual | red on `/` (161 pixels of the chart's axis text) and `/apps` (one line of text on a phone, 732 pixels) |
+| behaviour | red on `/`, `/apps`, `/errors/unauthorized`, `/settings/account`: the chart bars and one date-picker cell answer clicks but have no label, so check cannot find them on the new page; journeys past the 120 s budget; a palette option and a button the checker could not find in one session (not reproducible by hand) |
+| responsiveness | red on `/`, `/apps`, `/errors/unauthorized`: the first use of a control loads the route's code (a 140 ms task at 4x CPU, the `Filter apps...` box 237 ms against 49 ms); every later use is fast. Overall first interaction 120 → 237 ms at 4x CPU, 64 → 65 ms desktop |
+| motion | red on `/`, `/apps`, `/errors/unauthorized`, `/settings/account`: the focus ring's 150 ms fade when Radix returns focus to a trigger after a pick (Toggle theme, the apps selects), the Search button's hover fade under the open palette, a scroll-area thumb the new settings layout does not resize, and the collapsible's exit with reduced motion |
+
+Not switched: the front door still sends every route to the old app (`deploy.sh front` not run).

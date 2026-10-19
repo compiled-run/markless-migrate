@@ -8,6 +8,9 @@
 	const X_AXIS_HEIGHT = 30;
 	const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 	const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+	// Before the chart modules load, the old page draws 171 numbers on the dashboard (React, the router, Radix ids and the
+	// sidebar's skeleton widths, measured on desktop and phone); drawing as many first keeps a seeded run comparable.
+	for (let i = 0; i < 171; i++) Math.random();
 	const analytics = days.map((name) => ({ name, clicks: Math.floor(Math.random() * 900) + 100, uniques: Math.floor(Math.random() * 700) + 80 }));
 	const overview = months.map((name) => ({ name, total: Math.floor(Math.random() * 5000) + 1000 }));
 
@@ -52,26 +55,27 @@
 	// the one after it (with minTickGap 5) is not drawn.
 	function preserveEnd(texts, centers, start, end) {
 		const shown = new Array(texts.length).fill(false);
+		const coords = [...centers];
 		let limit = end;
 		for (let i = texts.length - 1; i >= 0; i--) {
 			const size = textWidth(texts[i]);
-			let at = centers[i];
-			if (i === texts.length - 1 && at + size / 2 > limit) at = limit - size / 2;
-			if (at - size / 2 >= start && at + size / 2 <= limit) {
+			if (i === texts.length - 1 && coords[i] + size / 2 > limit) coords[i] = limit - size / 2;
+			if (coords[i] - size / 2 >= start && coords[i] + size / 2 <= limit) {
 				shown[i] = true;
-				limit = at - size / 2 - 5;
+				limit = coords[i] - size / 2 - 5;
 			}
 		}
-		return shown;
+		return { shown, coords };
 	}
 
 	function axes(container, plot, centers, ticks, format) {
 		const top = ticks[ticks.length - 1];
 		const texts = [...container.querySelectorAll('.recharts-xAxis-tick-labels text')];
-		const shown = preserveEnd(texts, centers, plot.x, plot.x + plot.w);
+		// Tick labels may reach the chart's own edges, not just the plot area's (the area chart's Mon sits on the plot's left edge).
+		const { shown, coords } = preserveEnd(texts, centers, plot.x - Y_AXIS_WIDTH - MARGIN, plot.x + plot.w + MARGIN);
 		texts.forEach((text, i) => {
-			set(text, { width: plot.w, x: centers[i], y: plot.y + plot.h + 8 });
-			set(text.firstElementChild, { x: centers[i] });
+			set(text, { width: plot.w, x: coords[i], y: plot.y + plot.h + 8 });
+			set(text.firstElementChild, { x: coords[i] });
 			// recharts does not render a tick label it skips; the element stays (resume counts elements), its text goes.
 			const tspan = text.firstElementChild;
 			if (tspan.dataset.label === undefined) tspan.dataset.label = tspan.textContent;
@@ -173,6 +177,8 @@
 	drawAll();
 	measurementSpan('$0');
 	// ResponsiveContainer lays out again at a new width; a tab that shows a chart for the first time lays it out then.
-	new ResizeObserver(drawAll).observe(document.body);
+	const resized = new ResizeObserver(drawAll);
+	resized.observe(document.body);
+	for (const container of document.querySelectorAll('[data-parity-chart]')) resized.observe(container);
 	new MutationObserver(drawAll).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['hidden'] });
 })();

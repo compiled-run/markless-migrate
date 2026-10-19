@@ -38,6 +38,7 @@ export default function Document({ children }: { readonly children?: Children })
 				{children}
 				<script src="/parity/loading-bar.js"></script>
 				<script src="/parity/header.js"></script>
+				<script src="/parity/sonner.js"></script>
 			</div>
 		</body>
 	</Html>

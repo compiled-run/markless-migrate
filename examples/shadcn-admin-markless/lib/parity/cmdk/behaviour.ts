@@ -4,7 +4,6 @@
 import { hideOthers, showOthers } from '../radix-ui-react-dropdown-menu/behaviour.ts';
 
 const KEY = 'command-palette';
-let opener: HTMLElement | null = null;
 
 const dialog = () => document.getElementById(KEY);
 const input = () => document.getElementById(`${KEY}-input`) as HTMLInputElement | null;
@@ -24,10 +23,21 @@ function selectIn(root: Element | null, target: HTMLElement | undefined): void {
 
 const select = (target: HTMLElement | undefined) => selectIn(dialog(), target);
 
+let pointing = false;
+// cmdk selects the item under the pointer as it moves, and the item a press lands on.
+function followPointer(): void {
+	if (pointing) return;
+	pointing = true;
+	document.addEventListener('pointermove', (event) => {
+		const item = event.target instanceof Element ? (event.target.closest('[cmdk-item]') as HTMLElement | null) : null;
+		if (item && item.getAttribute('aria-disabled') !== 'true' && item.getAttribute('aria-selected') !== 'true') selectIn(item.closest('[cmdk-root], [role=dialog]'), item);
+	});
+}
+
 export function openPalette(): void {
+	closing?.();
 	const el = dialog();
 	if (!el) return;
-	opener = document.activeElement as HTMLElement | null;
 	el.hidden = false;
 	if (el.previousElementSibling instanceof HTMLElement) el.previousElementSibling.hidden = false;
 	hideOthers(KEY, el);
@@ -40,15 +50,35 @@ export function openPalette(): void {
 	}
 }
 
+let closing: (() => void) | undefined;
+
 export function closePalette(): void {
-	showOthers(KEY);
-	document.body.style.pointerEvents = '';
-	opener?.focus();
-	opener = null;
+	const el = dialog();
+	const overlay = el?.previousElementSibling instanceof HTMLElement ? el.previousElementSibling : null;
+	const unmount = () => {
+		closing = undefined;
+		el?.removeEventListener('animationend', ended);
+		if (el) el.hidden = true;
+		if (overlay) overlay.hidden = true;
+		showOthers(KEY);
+		document.body.style.pointerEvents = '';
+	};
+	const ended = (event: AnimationEvent) => {
+		if (event.target === el) unmount();
+	};
+	if (!el) return unmount();
+	// Radix Dialog keeps the palette mounted, the page hidden and focus where it is until the exit animation ends; the old palette then leaves focus on the page.
+	el.dataset.state = 'closed';
+	if (overlay) overlay.dataset.state = 'closed';
+	if (getComputedStyle(el).animationName !== 'none') {
+		closing = unmount;
+		el.addEventListener('animationend', ended);
+	} else unmount();
 }
 
 /** cmdk's matching, simplified: every typed character in order in the item's value; groups and separators with nothing left are hidden. */
 export function filterIn(root: Element | null, query: string): void {
+	followPointer();
 	const q = query.trim().toLowerCase();
 	const matches = (value: string) => {
 		let at = 0;
@@ -78,6 +108,7 @@ export const moveSelection = (key: string): void => moveIn(dialog(), key);
 /** The `data-option` of the selected item in a list, or of the item under a press. */
 export function chosenIn(root: Element | null, target?: EventTarget | null): string | undefined {
 	const el = target instanceof Element ? (target.closest('[cmdk-item]') as HTMLElement | null) : visibleIn(root).find((item) => item.getAttribute('aria-selected') === 'true');
+	if (el && target instanceof Element) selectIn(root, el);
 	return el?.dataset.option;
 }
 
