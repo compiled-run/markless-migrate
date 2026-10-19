@@ -32,10 +32,14 @@ setSiteResolver((specifier, parent) => {
 await loadRequirable(['@docusaurus/useBaseUrl'], site.rules);
 addSiteRoot(debugTheme);
 addSiteRoot(jsonViewLite);
-const routeTreeData = (list) => list.map(({ path, exact, routes }) => ({ path, exact, ...(routes ? { routes: routeTreeData(routes) } : {}) }));
-provideGenerated('@generated/routes', [...routeTreeData(site.routeTree), { path: '*' }]);
-provideGenerated('@generated/registry', Object.fromEntries(site.registry.map(([chunk, modulePath]) => [chunk, [null, modulePath, modulePath]])));
+// @generated/routes as the old client imports it: each route's component is a function (marked for the JSON view port).
+const routesConfig = (await import(`data:text/javascript,${encodeURIComponent(site.routesConfig.replace(/^import .*$/gm, '').replace('export default', 'const ComponentCreator = () => ({ $function: true });\nexport default'))}`)).default;
+provideGenerated('@generated/routes', routesConfig);
+provideGenerated('@generated/registry', Object.fromEntries(site.registry.map(([chunk, modulePath]) => [chunk, [null, modulePath, site.moduleIds[chunk] ?? modulePath]])));
 for (const route of site.routes) if (existsSync(join(debugTheme, route.component.replace(/^@theme\//, ''), 'index.js'))) registerTemplates({ [route.component]: pluginThemeTemplate });
+// The site's own swizzled ThemeProvider/TitleFormatter: the formatter it hands to TitleFormatterProvider.
+const titleFormatterFile = resolveSync('@site/src/theme/ThemeProvider/TitleFormatter', join(site.context.siteDir, 'docusaurus.config.ts'));
+if (typeof titleFormatterFile === 'string') site.titleFormatter = (await import(titleFormatterFile)).default({ children: null })?.props?.formatter;
 for (const route of site.routes) if (route.component.startsWith('@site/')) registerTemplates({ [route.component]: sitePageTemplate });
 
 const sitemap = site.plugins.find((p) => p.name === 'docusaurus-plugin-sitemap');

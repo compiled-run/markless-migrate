@@ -11,6 +11,8 @@ export default defineConfig({
 		routeRules: {
 			...Object.fromEntries(routes.map((path) => [encodeURI(path), { isr: true }])),
 			...Object.fromEntries(Object.entries(aliases).map(([path, file]) => [path, { proxy: { to: file } }])),
+			// Nitro answers /api/** itself with a plain-text 404; the old site's not-found page is served there instead.
+			'/api/**': { proxy: { to: '/__not-found/api/**' } },
 		},
 	},
 	plugins: [markless(), router()],

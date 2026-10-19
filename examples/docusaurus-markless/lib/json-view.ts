@@ -2,7 +2,7 @@
 // ArrowUp/ArrowDown move between its buttons, and a node opened for the first time renders its children as the
 // library does, each starting open or closed as the page's shouldExpandNode decided.
 type Style = Record<string, string> & { ariaLables: { collapseJson: string; expandJson: string }; quotesForFieldNames?: boolean; noQuotesForStringValues?: boolean; stringifyStringValues?: boolean };
-type Hint = { data: string; expand: boolean[]; style: Style };
+type Hint = { src: string; expand: string; style: Style };
 type Node = { value: unknown; level: number; field: string | undefined; expanded: boolean; index: number };
 
 const bound = new WeakSet<Element>();
@@ -18,16 +18,23 @@ export function initJsonViews(hint: (el: Element, name: string) => string | unde
 		const raw = hint(tree, 'json-view');
 		if (!raw || bound.has(tree)) continue;
 		bound.add(tree);
-		const { data: json, expand, style } = JSON.parse(raw) as Hint;
-		const data: unknown = JSON.parse(json);
+		const { src, expand, style } = JSON.parse(raw) as Hint;
 		const order = new Map<unknown, number>();
 		const number = (value: unknown) => {
 			if (!isObject(value)) return;
 			order.set(value, order.size);
 			for (const [, child] of entriesOf(value)) number(child);
 		};
-		number(data);
 		const nodes = new WeakMap<Element, Node>();
+		let loading: Promise<void> | undefined;
+		const ready = () =>
+			(loading ??= fetch(src)
+				.then((response) => response.json() as Promise<unknown>)
+				.then((data) => {
+					number(data);
+					const root = tree.firstElementChild;
+					if (root) bind(root, data, 0, undefined);
+				}));
 
 		const label = (field: string | undefined) => (field || field === '' ? `<span class="${style.label}">${escape(quoteString(field, style.quotesForFieldNames))}:</span>` : '');
 		const comma = (last: boolean) => (last ? '' : `<span class="${style.punctuation}">,</span>`);
@@ -49,7 +56,7 @@ export function initJsonViews(hint: (el: Element, name: string) => string | unde
 			const [open, close] = Array.isArray(value) ? ['[', ']'] : ['{', '}'];
 			const entries = entriesOf(value);
 			if (entries.length === 0) return `<div class="${style.basicChildStyle}" role="treeitem">${label(field)}<span class="${style.punctuation}">${open}</span><span class="${style.punctuation}">${close}</span>${comma(last)}</div>`;
-			const expanded = expand[order.get(value)!] ?? false;
+			const expanded = expand[order.get(value)!] === '1';
 			const id = expanded ? `mm-json-${++ids}` : '';
 			const children = expanded ? `<ul id="${id}" role="group" class="${style.childFieldsContainer}">${entries.map(([k, v], i) => render(v, level + 1, k, i === entries.length - 1)).join('')}</ul>` : `<span class="${style.collapsedContent}"></span>`;
 			return `<div class="${style.basicChildStyle}" role="treeitem" aria-expanded="${expanded}"><span class="${expanded ? style.collapseIcon : style.expandIcon}" role="button" aria-label="${expanded ? style.ariaLables.collapseJson : style.ariaLables.expandJson}" aria-expanded="${expanded}"${expanded ? ` aria-controls="${id}"` : ''} tabindex="${level === 0 ? 0 : -1}"></span>${label(field)}<span class="${style.punctuation}">${open}</span>${children}<span class="${style.punctuation}">${close}</span>${comma(last)}</div>`;
@@ -64,8 +71,6 @@ export function initJsonViews(hint: (el: Element, name: string) => string | unde
 			const list = item.querySelector(':scope > ul[role=group]');
 			if (expanded && list) [...list.children].forEach((child, i) => bind(child, entries[i]![1], level + 1, entries[i]![0]));
 		};
-		const root = tree.firstElementChild;
-		if (root) bind(root, data, 0, undefined);
 
 		const setExpanded = (item: Element, node: Node, expanded: boolean) => {
 			if (node.expanded === expanded) return;
@@ -99,7 +104,9 @@ export function initJsonViews(hint: (el: Element, name: string) => string | unde
 			const item = el?.closest('[role=treeitem]');
 			return item && tree.contains(item) && nodes.has(item) && (el!.matches('[role=button]') || el!.parentElement === item) ? item : null;
 		};
-		tree.addEventListener('click', (event) => {
+		// Fetched as the page loads, as the old page loads its data chunk with the route.
+		void ready();
+		tree.addEventListener('click', (event) => void ready().then(() => {
 			const target = event.target as Element;
 			const item = itemOf(target);
 			if (!item || !(target.matches('[role=button]') || target.matches(`.${CSS.escape(style.collapsedContent!.split(' ')[0]!)}`))) return;
@@ -108,14 +115,17 @@ export function initJsonViews(hint: (el: Element, name: string) => string | unde
 			tree.querySelector<HTMLElement>('[role=button][tabindex="0"]')?.setAttribute('tabindex', '-1');
 			button.tabIndex = 0;
 			button.focus();
-		});
+		}));
 		tree.addEventListener('keydown', (event) => {
 			const e = event as KeyboardEvent;
-			const item = itemOf(e.target);
-			if (!item) return;
+			const onButton = e.target instanceof Element && e.target.matches('[role=button]') && tree.contains(e.target);
+			if (!onButton) return;
 			if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
 				e.preventDefault();
-				setExpanded(item, nodes.get(item)!, e.key === 'ArrowRight');
+				void ready().then(() => {
+					const item = itemOf(e.target);
+					if (item) setExpanded(item, nodes.get(item)!, e.key === 'ArrowRight');
+				});
 			} else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
 				e.preventDefault();
 				const buttons = [...tree.querySelectorAll<HTMLElement>('[role=button]')];

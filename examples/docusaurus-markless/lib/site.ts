@@ -5,6 +5,7 @@ import prismThemes from './prism-themes.json';
 import docsVersions from './docs-versions.json';
 import sidebarData from './sidebars.json';
 import { init as initSearchPage } from './search-page.ts';
+import nprogress from 'nprogress';
 import { initShowcase } from './showcase.ts';
 import { initPlaygrounds } from './playground.ts';
 import { initJsonViews } from './json-view.ts';
@@ -296,14 +297,38 @@ function collapseStyle(el: HTMLElement, collapsed: boolean): void {
 	el.style.overflow = collapsed ? 'hidden' : 'visible';
 	el.style.height = collapsed ? '0px' : 'auto';
 }
+// useCollapseAnimation: each toggle cancels the frame the previous one scheduled, and the transition's end applies
+// the state the element has then, whichever toggle started it.
+type Collapsing = { collapsed: boolean; frame?: number; done?: () => void; running?: boolean };
+const collapsibles = new WeakMap<HTMLElement, Collapsing>();
 function animateCollapsible(el: HTMLElement, collapsed: boolean, done?: () => void): void {
+	let state = collapsibles.get(el);
+	if (!state) {
+		const created: Collapsing = { collapsed };
+		state = created;
+		collapsibles.set(el, created);
+		el.addEventListener('transitionend', (event) => {
+			if (event.propertyName !== 'height' || event.target !== el) return;
+			created.running = false;
+			collapseStyle(el, created.collapsed);
+			const end = created.done;
+			created.done = undefined;
+			end?.();
+		});
+	}
+	const current = state;
+	current.collapsed = collapsed;
+	current.done = done;
+	if (current.frame !== undefined) cancelAnimationFrame(current.frame);
 	el.style.willChange = 'height';
 	const transition = () => {
 		const height = el.scrollHeight;
 		el.style.transition = `height ${heightDuration(height)}ms ease-in-out`;
 		el.style.height = `${height}px`;
+		current.running = true;
 	};
-	requestAnimationFrame(() => {
+	current.frame = requestAnimationFrame(() => {
+		current.frame = undefined;
 		if (collapsed) {
 			transition();
 			requestAnimationFrame(() => {
@@ -315,13 +340,21 @@ function animateCollapsible(el: HTMLElement, collapsed: boolean, done?: () => vo
 			requestAnimationFrame(transition);
 		}
 	});
-	const end = (event: TransitionEvent) => {
-		if (event.propertyName !== 'height' || event.target !== el) return;
-		el.removeEventListener('transitionend', end);
-		collapseStyle(el, collapsed);
-		done?.();
-	};
-	el.addEventListener('transitionend', end);
+}
+
+// A sidebar taken out of the page and put back mid-transition (a navigation) never finishes it: it runs again.
+function resumeCollapsibles(root: Element): void {
+	for (const el of root.querySelectorAll<HTMLElement>('ul.menu__list')) {
+		const state = collapsibles.get(el);
+		if (!state?.running) continue;
+		const to = state.collapsed ? '0px' : `${el.scrollHeight}px`;
+		const transition = el.style.transition;
+		el.style.transition = 'none';
+		el.style.height = state.collapsed ? `${el.scrollHeight}px` : '0px';
+		void el.offsetHeight;
+		el.style.transition = transition;
+		requestAnimationFrame(() => (el.style.height = to));
+	}
 }
 
 // <details>: the theme cancels the browser's own toggle and animates; `open` comes off only once it has closed.
@@ -452,6 +485,7 @@ function restoreSidebar(): void {
 	const scrolled = aside.querySelector('nav[aria-label="Docs sidebar"]')?.scrollTop ?? 0;
 	hints.set(kept, hints.get(aside) ?? {});
 	aside.replaceWith(kept);
+	resumeCollapsibles(kept);
 	const nav = kept.querySelector('nav[aria-label="Docs sidebar"]');
 	if (nav) nav.scrollTop = scrolled;
 	if (sidebarMemory.hidden) setSidebarHidden(true, false);
@@ -462,6 +496,7 @@ function restoreSidebar(): void {
 // The sidebar came back detached and re-inserted, which drops the hover state its colour transitions need, so the
 // links whose state changes run the stylesheet's own transition (its properties, duration and easing) by script.
 const TRANSITIONED = ['color', 'background-color'] as const;
+let pointerTarget: EventTarget | null = null;
 function markActiveWhenHovered(nav: Element): void {
 	requestAnimationFrame(() => {
 		const links = [...nav.querySelectorAll<HTMLElement>('a.menu__link, .menu__list-item-collapsible')];
@@ -470,11 +505,15 @@ function markActiveWhenHovered(nav: Element): void {
 		links.forEach((el, i) => {
 			const style = getComputedStyle(el);
 			const after = TRANSITIONED.map((name) => style.getPropertyValue(name));
-			if (after.every((value, j) => value === before[i]![j])) return;
+			// Without the pointer on it, only what its resting style transitions moves.
+			const hovered = pointerTarget instanceof Node && el.contains(pointerTarget);
+			const listed = style.transitionProperty.split(',').map((name) => name.trim());
+			const moves = (name: string) => hovered || listed.includes(name) || listed.includes('all') || (name === 'background-color' && listed.includes('background'));
+			if (after.every((value, j) => value === before[i]![j] || !moves(TRANSITIONED[j]!))) return;
 			const duration = parseFloat(style.transitionDuration) * (style.transitionDuration.endsWith('ms') ? 1 : 1000);
 			const easing = style.transitionTimingFunction.split(/,(?![^(]*\))/)[0]!.trim();
 			if (!duration) return;
-			const frame = (values: string[]) => Object.fromEntries(TRANSITIONED.map((name, j) => [name === 'color' ? 'color' : 'backgroundColor', values[j]]));
+			const frame = (values: string[]) => Object.fromEntries(TRANSITIONED.flatMap((name, j) => (moves(name) ? [[name === 'color' ? 'color' : 'backgroundColor', values[j]]] : [])));
 			el.animate([frame(before[i]!), frame(after)], { duration, easing });
 		});
 	});
@@ -535,24 +574,30 @@ function toggleCategory(item: Element): void {
 }
 const autoCollapse = true;
 
-// The TOC highlight: the link of the heading the reader is at.
+// useTOCHighlight: the link of the heading the reader is at. A TOC lists every heading between its min and max
+// heading levels, so the levels of the headings its links point at are that range.
 function updateTocHighlight(): void {
 	const links = [...document.getElementsByClassName('table-of-contents__link toc-highlight')] as HTMLAnchorElement[];
-	const anchors = [...document.querySelectorAll('h2.anchor, h3.anchor')] as HTMLElement[];
+	if (!links.length) return;
+	const anchorValue = (link: HTMLAnchorElement) => decodeURIComponent(link.href.substring(link.href.indexOf('#') + 1));
+	const levels = links.map((link) => Number(/^H(\d)$/.exec(document.getElementById(anchorValue(link))?.tagName ?? '')?.[1])).filter((n) => n > 0);
+	const min = levels.length ? Math.min(...levels) : 2;
+	const max = levels.length ? Math.max(...levels) : 3;
+	const selectors: string[] = [];
+	for (let i = min; i <= max; i++) selectors.push(`h${i}.anchor`);
+	const anchors = [...document.querySelectorAll(selectors.join())] as HTMLElement[];
 	const visible = (el: HTMLElement): DOMRect => {
 		const rect = el.getBoundingClientRect();
 		return rect.top === rect.bottom && el.parentElement ? visible(el.parentElement) : rect;
 	};
-	const next = anchors.find((anchor) => visible(anchor).top >= 0);
+	const anchorTopOffset = document.querySelector(`nav.${cls('Navbar/Layout', 'navbarHideable')}`) ? 0 : (document.querySelector<HTMLElement>('.navbar')?.clientHeight ?? 0);
+	const next = anchors.find((anchor) => visible(anchor).top >= anchorTopOffset);
 	let active: HTMLElement | null;
 	if (next) {
 		const rect = visible(next);
 		active = rect.top > 0 && rect.bottom < window.innerHeight / 2 ? next : (anchors[anchors.indexOf(next) - 1] ?? null);
 	} else active = anchors[anchors.length - 1] ?? null;
-	for (const link of links) {
-		const id = decodeURIComponent(link.href.substring(link.href.indexOf('#') + 1));
-		link.classList.toggle('table-of-contents__link--active', Boolean(active) && active!.id === id);
-	}
+	for (const link of links) link.classList.toggle('table-of-contents__link--active', Boolean(active) && active!.id === anchorValue(link));
 }
 
 const EXPAND_ICON =
@@ -735,7 +780,8 @@ function buildDrawer(nav: Element): void {
 			const markup = mobileDropdown(el, label, icon);
 			primary.push(markup);
 			dropdownLists.push(markup);
-		} else if (el.matches('div.navbar__item')) primary.push(`<li class="${el.className.replace('navbar__item', 'menu__list-item').trim()}">${el.innerHTML}</li>`);
+		} else if (el.matches('button:not([class])')) primary.push(`<button type="button">${escapeHtml(el.textContent ?? '')} (mobile)</button>`);
+		else if (el.matches('div.navbar__item')) primary.push(`<li class="${el.className.replace('navbar__item', 'menu__list-item').trim()}">${el.innerHTML}</li>`);
 	}
 	const sidebarMenu = document.querySelector('nav[aria-label="Docs sidebar"] > ul.theme-doc-sidebar-menu') ?? parkedNode('sidebar')?.querySelector('nav[aria-label="Docs sidebar"] > ul.theme-doc-sidebar-menu');
 	const blogNav = document.querySelector('nav[aria-label="Blog recent posts navigation"]');
@@ -756,13 +802,14 @@ function buildDrawer(nav: Element): void {
 		const nextItems = next.querySelector(':scope > .navbar-sidebar__items')!;
 		kept.querySelector(':scope > .navbar-sidebar__brand')?.replaceWith(next.querySelector(':scope > .navbar-sidebar__brand')!);
 		nav.append(kept);
-		void kept.getBoundingClientRect();
+		resumeCollapsibles(kept);
 		const [, oldSecondary] = items?.querySelectorAll(':scope > .navbar-sidebar__item') ?? [];
 		const [, nextSecondary] = nextItems.querySelectorAll(':scope > .navbar-sidebar__item');
 		// The same docs sidebar keeps its menu (opened categories, running animations); only the active link moves.
 		const sameSidebar = sidebarMenu && drawerSidebarKey === desktopSidebarKey() && oldSecondary?.querySelector(':scope > ul.theme-doc-sidebar-menu');
 		if (items) {
-			items.className = nextItems.className;
+			const nextClass = nextItems.className;
+			requestAnimationFrame(() => requestAnimationFrame(() => (items.className = nextClass)));
 			if (sameSidebar && oldSecondary && nextSecondary) {
 				oldSecondary.toggleAttribute('inert', nextSecondary.hasAttribute('inert'));
 				nextSecondary.replaceWith(oldSecondary);
@@ -1075,21 +1122,47 @@ function loadCanny(): void {
 	w.Canny!('render', { boardToken: '054e0e53-d951-b14c-7e74-9eb8f9ed2f91', basePath: '/feature-requests', theme: dark ? 'dark' : 'light' });
 }
 
-// The error-boundary demo button (docs/docusaurus-core): its click throws, and the layout's boundary shows this.
+// ErrorBoundaryTestButton throws on click. Inside the layout, the layout's boundary shows ErrorPageContent in place
+// of the page's main content; outside it, the app's boundary shows the core Error page (its own title and route).
 function boom(button: HTMLElement): void {
-	const message = hint(button, 'boom') ?? 'Boom!';
-	const fallback = document.createElement('div');
-	fallback.innerHTML = `<main class="container margin-vert--xl"><div class="row"><div class="col col--6 col--offset-3"><h1 class="hero__title">This page crashed.</h1><div class="margin-vert--lg"><button type="button" class="button button--primary">Try again</button></div><div class="errorBoundaryError_tglT"><p>${escapeHtml(message).replace(/\n/g, '<br>')}</p></div></div></div></main>`;
+	const cause = hint(button, 'boom-cause');
+	const message = [hint(button, 'boom') ?? 'Boom!', ...(cause ? [cause] : [])].join('\n\nCause:\n');
 	const main = document.getElementById('__docusaurus_skipToContent_fallback');
-	if (!main) return;
-	const saved = [...main.childNodes];
-	main.replaceChildren(...fallback.childNodes);
-	main.querySelector('button')?.addEventListener('click', () => main.replaceChildren(...saved));
+	const root = document.getElementById('__docusaurus');
+	if (!main || !root) return;
+	const savedMain = [...main.childNodes];
+	const text = document.createElement('p');
+	text.textContent = message;
+	if (main.contains(button)) {
+		text.className = cls('ErrorBoundary', 'errorBoundaryError');
+		main.innerHTML = '<main class="container margin-vert--xl"><div class="row"><div class="col col--6 col--offset-3"><h1 class="hero__title">This page crashed.</h1><div class="margin-vert--lg"><button type="button" class="button button--primary shadow--lw">Try again</button></div><hr><div class="margin-vert--md"></div></div></div></main>';
+		main.querySelector('.margin-vert--md')!.append(text);
+		main.querySelector('button')!.addEventListener('click', () => main.replaceChildren(...savedMain));
+		return;
+	}
+	const outside = [...root.children].filter((el) => el.contains(button));
+	const title = document.title;
+	const htmlClass = document.documentElement.className;
+	text.setAttribute('style', 'white-space: pre-wrap;');
+	main.innerHTML = '<div style="display: flex; flex-direction: column; justify-content: center; align-items: flex-start; min-height: 100vh; width: 100%; max-width: 80ch; font-size: 20px; margin: 0px auto; padding: 1rem;"><h1 style="font-size: 3rem;">This page crashed</h1><button type="button" style="margin: 1rem 0px; font-size: 2rem; cursor: pointer; border-radius: 20px; padding: 1rem;">Try again</button></div>';
+	main.firstElementChild!.append(text);
+	const parked = outside.map((el) => [el, el.nextSibling] as const);
+	for (const el of outside) el.remove();
+	document.title = 'Page Error';
+	document.documentElement.className = 'plugin-docusaurus-core-error-boundary plugin-id-default';
+	main.querySelector('button')!.addEventListener('click', () => {
+		main.replaceChildren(...savedMain);
+		for (const [el, next] of parked) root.insertBefore(el, next);
+		document.title = title;
+		document.documentElement.className = htmlClass;
+	});
 }
 
 function siteClick(event: Event): void {
 	// React Router keeps the page when a link points at the address already shown (the version dropdown's "Canary").
 	const link = closest(event, 'a[href]') as HTMLAnchorElement | null;
+	const mouse = event as MouseEvent;
+	if (link && !link.target && link.origin === location.origin && link.pathname !== location.pathname && !mouse.button && !mouse.metaKey && !mouse.ctrlKey && !mouse.shiftKey && !mouse.altKey) routeUpdate();
 	if (link && !link.target && link.origin === location.origin && link.pathname === location.pathname && link.search === location.search && !link.hash && link.getAttribute('href') !== '#') event.preventDefault();
 	if (link) savePreferredVersion(link);
 	if (link?.hash && link.pathname === location.pathname) setTimeout(keepLocation);
@@ -1098,6 +1171,8 @@ function siteClick(event: Event): void {
 		const last = latest?.[1].versions.find((v) => v.isLast);
 		if (latest && last) storage()?.setItem(PREFERRED_KEY(latest[0]), last.name);
 	}
+	// The site's custom-dogfood-navbar-item (shown on /tests pages): a bare button in the navbar items.
+	if (closest(event, '.navbar__items > button:not([class]), .navbar-sidebar ul.menu__list > button:not([class])')) return alert("I'm a custom navbar item type example");
 	if (closest(event, `a.${cls('SkipToContent', 'skipToContent')}`)) return skipToContent(event);
 	if (closest(event, `.${cls('AnnouncementBar', 'announcementBarClose')}`)) return dismissAnnouncement();
 	if (closest(event, `.${cls('ColorModeToggle', 'toggle')} button`)) return cycleColorMode();
@@ -1188,8 +1263,15 @@ function siteKeyDown(event: KeyboardEvent): void {
 
 let booted = false;
 
+// AnnouncementBarProvider lives in the theme layout: it records the bar it saw once a page with the layout shows.
+let announcementSeen = false;
 // What Docusaurus redoes on every route: the router's client-side navigation swaps in a fresh page, so this runs again then.
 function pageInit(): void {
+	if (!announcementSeen && document.querySelector('nav.theme-layout-navbar')) {
+		announcementSeen = true;
+		if (storage()?.getItem(ANNOUNCEMENT_ID_KEY) !== ANNOUNCEMENT_ID) storage()?.setItem(DISMISS_KEY, 'false');
+		storage()?.setItem(ANNOUNCEMENT_ID_KEY, ANNOUNCEMENT_ID);
+	}
 	parked.clear();
 	initPlaygrounds();
 	readHints(document.body);
@@ -1219,19 +1301,34 @@ function pageInit(): void {
 	});
 }
 
+// theme-classic's nprogress client module: the bar shows when a navigation takes longer than 200 ms.
+nprogress.configure({ showSpinner: false });
+let progressTimer: ReturnType<typeof setTimeout> | undefined;
+let shownPath = '';
+function routeUpdate(): void {
+	clearTimeout(progressTimer);
+	progressTimer = setTimeout(() => nprogress.start(), 200);
+}
+function routeDidUpdate(): void {
+	clearTimeout(progressTimer);
+	nprogress.done();
+}
 export function siteBoot(): void {
 	if (booted) return;
 	booted = true;
-	const viewed = storage()?.getItem(ANNOUNCEMENT_ID_KEY);
-	const fresh = viewed !== ANNOUNCEMENT_ID;
-	storage()?.setItem(ANNOUNCEMENT_ID_KEY, ANNOUNCEMENT_ID);
-	if (fresh) storage()?.setItem(DISMISS_KEY, 'false');
 	pageInit();
 	document.addEventListener('marklessrouterrendered', pageInit);
+	document.addEventListener('marklessrouterrendered', routeDidUpdate);
+	shownPath = location.pathname;
+	window.addEventListener('popstate', () => {
+		if (location.pathname !== shownPath) routeUpdate();
+	});
+	document.addEventListener('marklessrouterrendered', () => (shownPath = location.pathname));
 	window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
 		if (choice() === null) applyColorMode(null);
 	});
 	document.addEventListener('click', siteClick);
+	document.addEventListener('pointerover', (event) => (pointerTarget = event.target), { passive: true });
 	window.addEventListener('resize', applyWindowSize);
 	window.addEventListener('scroll', checkLazyImages, { passive: true });
 	window.addEventListener('resize', checkLazyImages, { passive: true });
@@ -1242,7 +1339,7 @@ export function siteBoot(): void {
 		if (closest(event, 'article.yt-lite')) warmYoutube();
 	});
 	// Docusaurus loads DocSearch's code when the pointer reaches the search button; here it loads at idle, so no click waits on it.
-	requestIdleCallback(() => void import('./search.ts').then((search) => search.load()));
+	if (document.querySelector('button.DocSearch-Button')) requestIdleCallback(() => void import('./search.ts').then((search) => search.load()));
 	window.addEventListener('hashchange', keepLocation);
 	window.addEventListener('hashchange', () => {
 		if (document.getElementById(decodeURIComponent(window.location.hash.slice(1)))) document.querySelector(`nav.${cls('Navbar/Layout', 'navbarHideable')}`)?.classList.add(cls('Navbar/Layout', 'navbarHidden'));

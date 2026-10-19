@@ -43,7 +43,7 @@ export async function writePage(path, file, body) {
 	});
 	const rel = (target) => relative(dirname(file), join(app, target)).split('\\').join('/');
 	const imports = [`import { siteBoot } from '${rel('lib/site.ts')}';`, ...(footer ? [`import Footer from '${rel('components/generated/footer.tsrx')}';`] : [])];
-	const markup = toTsrx([{ ...root, children }], 1, { extra: (node) => (node === root || node.children === children ? ' onIdle={() => siteBoot()}' : '') });
+	const markup = toTsrx([{ ...root, children }], 1, { extra: (node) => (node === root || node.children === children ? ' onVisible={() => siteBoot()} onIdle={() => siteBoot()}' : '') });
 	await mkdir(dirname(file), { recursive: true });
 	await writeFile(file, `${HEADER} (${path})\n${imports.join('\n')}\n\nexport default function Page() @{\n${markup}}\n`);
 	return footer;
@@ -91,6 +91,7 @@ export async function writeHeads(pages, staticHead, bodyPrefix) {
 		perRoute[path] = { title, ld, class: page.htmlClasses.join(' '), slots: slots.map((_, i) => values[i] ?? null) };
 	}
 	for (const route of Object.values(perRoute)) route.slots = slots.map((_, i) => route.slots[i] ?? null);
+	for (const path of Object.keys(perRoute)) if (fileRoute(path) !== path) perRoute[fileRoute(path)] = perRoute[path];
 	await writeFile(join(app, 'lib/head-slots.json'), `${JSON.stringify(perRoute)}\n`);
 	const slotLines = slots
 		.map((slot, index) => {
@@ -112,9 +113,11 @@ type Slot = Readonly<Record<string, string>> | null;
 const routes = heads as unknown as Record<string, { readonly title: string; readonly ld: string; readonly class: string; readonly slots: readonly Slot[] }>;
 
 export default function Document({ url, children }: { readonly url?: { readonly pathname: string }; readonly children?: Children }) @{
-	const path = (url?.pathname ?? '/').replace(/\\/$/, '') || '/';
-	const head = routes[path] ?? routes['/404']!;
-	const s = head.slots;
+	const path = (url?.pathname ?? '/').replace(/^\\/__not-found(?=\\/)/, '').replace(/\\/$/, '') || '/';
+	const found = routes[path] ?? routes[decodeURIComponent(path)];
+	const head = found ?? routes['/404']!;
+	// The not-found page's head names the address it was asked for, as the theme writes it once the page has started.
+	const s = found ? head.slots : head.slots.map((slot) => slot && Object.fromEntries(Object.entries(slot).map(([name, value]) => [name, value.replace(/\\/404\\.html$/, path)])));
 
 	<Html lang="en" dir="ltr" class={head.class}>
 		<head>
@@ -176,7 +179,6 @@ export async function writeClientData(site, pages) {
 			const route = site.routes.find((r) => r.ancestors.some((a) => a.context?.data?.docsVersion?.includes(`/${plugin.options.id}/version-${version.versionName}`)));
 			if (!route) continue;
 			const data = await readGenerated(site.context, route.ancestors.find((a) => a.context?.data?.docsVersion).context.data.docsVersion);
-			if (data.noIndex) continue;
 			for (const [name, items] of Object.entries(data.docsSidebars)) sidebars[`${data.pluginId}:${name}`] = items;
 		}
 	}
@@ -194,6 +196,7 @@ export async function writeClientData(site, pages) {
 	themeClasses.APITable = cssModuleMap(join(website, 'src/components/APITable/styles.module.css'));
 	themeClasses.ChangelogAuthors = cssModuleMap(join(website, 'src/plugins/changelog/theme/ChangelogItem/Header/Authors/styles.module.css'));
 	themeClasses.ChangelogAuthor = cssModuleMap(join(website, 'src/plugins/changelog/theme/ChangelogItem/Header/Author/styles.module.css'));
+	themeClasses.ErrorBoundary = cssModuleMap(join(website, '../packages/docusaurus-theme-common/src/utils/errorBoundaryUtils.module.css'));
 	themeClasses.ColorGenerator = cssModuleMap(join(website, 'src/components/ColorGenerator/styles.module.css'));
 	await writeFile(join(app, 'lib/theme-classes.json'), `${JSON.stringify(themeClasses, null, '\t')}\n`);
 	// What the navbar's doc links and version dropdowns need to follow a reader's preferred docs version.
@@ -226,6 +229,8 @@ export async function writeClientData(site, pages) {
 
 // The files the old site's plugins write after its pages are built (the sitemap, the blog and changelog feeds,
 // the client-side redirect pages), made by those same plugin hooks from the pages rendered here.
+// Where `docusaurus build` writes a route's page: a path that already ends in .html is that file.
+const htmlFile = (path) => (path === '/' ? 'index.html' : path.endsWith('.html') ? path.slice(1) : `${path.slice(1)}.html`);
 export async function runPostBuild(site, pages) {
 	const { toHtml } = await import('./h.mjs');
 	const { readGenerated } = await import('./site.mjs');
@@ -240,7 +245,7 @@ export async function runPostBuild(site, pages) {
 		if (!page && versionRoute) noIndex = (await readGenerated(site.context, versionRoute.context.data.docsVersion)).noIndex;
 		routesBuildMetadata[route.path] = { noIndex };
 		if (page) {
-			const file = path === '/' ? 'index.html' : `${path.slice(1)}.html`;
+			const file = htmlFile(path);
 			await mkdir(dirname(join(staging, file)), { recursive: true });
 			await writeFile(join(staging, file), `<!DOCTYPE html><html><head>${toHtml(page.head)}</head><body>${toHtml(page.body)}</body></html>`);
 		}
@@ -249,7 +254,6 @@ export async function runPostBuild(site, pages) {
 	const props = { ...site.context, outDir: staging, routes: site.routeTree, routesPaths: getRoutesPaths(site.routeTree, site.context.baseUrl), plugins: site.plugins };
 	const hooks = ['docusaurus-plugin-sitemap', 'docusaurus-plugin-content-blog', 'changelog-plugin', 'docusaurus-plugin-client-redirects'];
 	for (const plugin of site.plugins.filter((p) => hooks.includes(p.name) && p.postBuild)) {
-		if (plugin.name === 'docusaurus-plugin-content-blog' && plugin.options.id !== 'default') continue;
 		await plugin.postBuild({ ...props, routesBuildMetadata, content: plugin.content, head: {} });
 	}
 	// Everything they wrote that is not one of the pages themselves goes to public/.
@@ -262,7 +266,7 @@ export async function runPostBuild(site, pages) {
 		}
 	};
 	await walk(staging);
-	const pageFiles = new Set([...pages.keys()].map((path) => (path === '/' ? 'index.html' : `${path.slice(1)}.html`)));
+	const pageFiles = new Set([...pages.keys()].map(htmlFile));
 	// `x.html.html` redirects only shadow `x.html` itself, which the old site serves as the page: left out.
 	for (const file of written.filter((f) => !pageFiles.has(f) && !f.endsWith('.html.html'))) {
 		await mkdir(dirname(join(app, 'public', file)), { recursive: true });

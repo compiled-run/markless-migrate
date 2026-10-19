@@ -16,6 +16,7 @@
 		"@markless/core": "0.5.0",
 		"@markless/router": "0.5.0",
 		"nitro": "3.0.260429-beta",
+		"nprogress": "^0.2.0",
 		"prismjs": "^1.29.0",
 		"sucrase": "^3.35.1",
 		"vite-plus": "0.3.1"
@@ -24,7 +25,8 @@
 		"@markless/analyzer": "0.5.0",
 		"@markless/typescript-plugin": "0.5.0",
 		"typescript": "^5.9.3",
-		"vite": "npm:@voidzero-dev/vite-plus-core@0.3.1"
+		"vite": "npm:@voidzero-dev/vite-plus-core@0.3.1",
+		"@types/nprogress": "^0.2.3"
 	},
 	"overrides": {
 		"vite": "$vite"

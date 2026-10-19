@@ -426,8 +426,9 @@ export function BackToTopButton() {
 
 // <head> metadata, in the order react-helmet resolves it: later tags of the same name replace earlier ones.
 export function PageMetadata({ title, description, keywords, image, children }) {
-	const { siteConfig: config, titleFormatter } = useContext();
-	const formatted = title ? (titleFormatter ?? defaultTitle)(title, config) : undefined;
+	const { siteConfig: config, titleFormatter, plugin } = useContext();
+	const params = { title, siteTitle: config.title, titleDelimiter: config.titleDelimiter, plugin: plugin ?? { id: 'default', name: 'native' } };
+	const formatted = title ? (titleFormatter ? titleFormatter({ ...params, defaultFormatter: (p) => defaultTitle(p.title, config) }) : defaultTitle(title, config)) : undefined;
 	return (
 		<>
 			{formatted && (

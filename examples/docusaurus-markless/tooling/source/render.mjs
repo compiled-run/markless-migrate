@@ -96,6 +96,7 @@ export async function renderRoute(route, site, extraComponents = {}) {
 		head,
 		mdxComponents: mdxComponents(extraComponents),
 		Mermaid: (props) => mermaid(props),
+		titleFormatter: site.titleFormatter,
 		...prepared.context,
 	};
 	return withContext(context, () => {

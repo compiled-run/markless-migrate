@@ -97,8 +97,10 @@ export async function sitePageTemplate(route, site) {
 }
 
 // A page whose component is a plugin's own theme component (the debug panel's pages).
-export async function pluginThemeTemplate(route) {
+export async function pluginThemeTemplate(route, site) {
 	const Component = (await import(resolveSync(route.component, join(website, 'docusaurus.config.ts')))).default;
 	const props = JSON.parse(JSON.stringify(route.props ?? {}));
-	return { context: { htmlClasses: [] }, element: () => <Component {...props} /> };
+	// The client's config, global data and metadata are the JSON the build generated from them.
+	const json = (value) => JSON.parse(JSON.stringify(value));
+	return { context: { htmlClasses: [], siteConfig: json(site.context.siteConfig), globalData: json(site.globalData), siteMetadata: json(site.siteMetadata) }, element: () => <Component {...props} /> };
 }

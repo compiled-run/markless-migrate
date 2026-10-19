@@ -10,6 +10,8 @@ export const siteRequire = createRequire(join(website, 'node_modules/@docusaurus
 
 export async function loadSite() {
 	process.env.BUILD_FAST = 'true';
+	// What `docusaurus build --locale en` sets before it loads the config (the config reads it).
+	process.env.DOCUSAURUS_CURRENT_LOCALE = 'en';
 	process.env.NODE_ENV = 'production';
 	const { loadContext } = siteRequire('@docusaurus/core/lib/server/site.js');
 	const { loadPlugins } = siteRequire('@docusaurus/core/lib/server/plugins/plugins.js');
@@ -31,9 +33,17 @@ export async function loadSite() {
 	const { createSiteMetadata } = siteRequire('@docusaurus/core/lib/server/siteMetadata.js');
 	const siteMetadata = createSiteMetadata({ plugins, siteVersion: context.siteVersion });
 	const { generateRoutesCode } = siteRequire('@docusaurus/core/lib/server/codegen/codegenRoutes.js');
-	const { registry } = generateRoutesCode(routes);
+	const { docuHash } = siteRequire('@docusaurus/utils');
+	// Route props become generated JSON modules (`modules.__props`) before the registry is made, as the build does.
+	const withProps = (route, plugin = route.plugin) => ({
+		...route,
+		modules: { ...route.modules, ...(route.props && { __props: `@generated/${plugin.name}/${plugin.id}/p/${docuHash(route.path, { hashExtra: route.component })}.json` }) },
+		routes: route.routes?.map((sub) => withProps(sub, plugin)),
+		props: undefined,
+	});
+	const { registry, routesConfig } = generateRoutesCode(routes.map((route) => withProps(route)));
 	const sortedRegistry = Object.entries(registry).sort((a, b) => a[0].localeCompare(b[0]));
-	return { context, plugins, routes: leaves, routeTree: routes, globalData, rules, siteMetadata, registry: sortedRegistry };
+	return { context, plugins, routes: leaves, routeTree: routes, globalData, rules, siteMetadata, registry: sortedRegistry, routesConfig, moduleIds: await builtModuleIds() };
 }
 
 // `~blog/...`, `~docs/...` and `@generated/...` point into the generated files the plugins just wrote.
@@ -78,4 +88,23 @@ export async function compileWithPluginLoaders(rules, filePath, query = '') {
 		});
 	}
 	return { source, plugin: rule.plugin };
+}
+
+// The registry's module ids the old build gave each chunk (webpack's, in its main bundle), by chunk name.
+async function builtModuleIds() {
+	const { readdir } = await import('node:fs/promises');
+	const dir = join(website, 'build/assets/js');
+	const main = (await readdir(dir).catch(() => [])).find((f) => /^main\.[0-9a-f]+\.js$/.test(f));
+	if (!main) return {};
+	const code = await readFile(join(dir, main), 'utf8');
+	// The minifier writes digit-only chunk names as number literals (`0x104c87c:` for "17090684") and others unquoted.
+	const key = (k) => (k.startsWith('"') ? k.slice(1, -1) : /^(0x|\d)/.test(k) ? String(Number(k)) : k);
+	const starts = [...code.matchAll(/[{,]("[0-9a-f]{3,}"|[A-Za-z_$][\w$]*|0x[0-9a-f]+|\d+(?:e\d+)?):\[\(\)=>/g)].map((m) => [m.index, key(m[1])]);
+	const ids = {};
+	let at = 0;
+	for (const m of code.matchAll(/,"(?:[^"\\]|\\.)*",(\d+(?:e\d+)?)\](?=[,}])/g)) {
+		while (at + 1 < starts.length && starts[at + 1][0] < m.index) at++;
+		if (starts[at] && starts[at][0] < m.index) ids[starts[at][1]] = Number(m[1]);
+	}
+	return ids;
 }

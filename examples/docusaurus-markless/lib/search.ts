@@ -10,6 +10,7 @@ type Instance = ReturnType<typeof docsearchType>;
 let instance: Instance | undefined;
 let mounted: Element | null = null;
 let shownTags = '';
+let portal: HTMLElement | undefined;
 let docsearch: typeof docsearchType | undefined;
 
 export async function load(): Promise<void> {
@@ -24,7 +25,7 @@ export function open(): void {
 	if (!docsearch) return;
 	// A client-side navigation replaces the navbar, and with it the container DocSearch rendered into.
 	const tags = ['default', ...Object.keys(docsVersions).map((plugin) => `docs-${plugin}-${docsVersionCandidates(plugin)[0]?.name}`)].map((tag) => `docusaurus_tag:${tag}`);
-	if (instance && mounted?.isConnected && JSON.stringify(tags) === shownTags) return;
+	if (instance && mounted?.isConnected && portal?.isConnected && JSON.stringify(tags) === shownTags) return;
 	instance?.destroy();
 	shownTags = JSON.stringify(tags);
 	mounted = document.querySelector('.navbarSearchContainer_dDCC');
@@ -33,6 +34,7 @@ export function open(): void {
 		appId: 'X1Z85QJPUV',
 		apiKey: 'bf7211c161e8205da2f933a02534105a',
 		indexName: 'docusaurus-2',
+		portalContainer: (portal = holder()),
 		askAi: { assistantId: 'RgIMYFUmTfrN', indexName: 'docusaurus-markdown', suggestedQuestions: true },
 		placeholder: translations.placeholder,
 		translations,
@@ -40,7 +42,7 @@ export function open(): void {
 		// element is a plain vnode object (constructor undefined, as Preact requires of one not built by createElement).
 		resultsFooterComponent: ({ state }: { state: { query: string; context: { nbHits?: number } } }) => ({
 			type: 'a',
-			props: { href: `/search?q=${encodeURIComponent(state.query)}`, onClick: () => instance?.close(), children: `See all ${state.context.nbHits ?? 0} results` },
+			props: { href: `/search?q=${encodeURIComponent(state.query)}`, onClick: () => instance?.close(), children: `See all ${state.context.nbHits ?? '{count}'} results` },
 			key: null,
 			ref: null,
 			constructor: undefined,
@@ -50,8 +52,7 @@ export function open(): void {
 	} as Parameters<typeof docsearchType>[0]);
 }
 
-// Docusaurus portals the modal into a <div> it inserts as the body's first child; DocSearch's own build portals into
-// the body's end. Moving the open modal there keeps the page's reading order the same.
+// Docusaurus portals the modal into a <div> it inserts as the body's first child.
 function holder(): HTMLElement {
 	let div = document.body.firstElementChild as HTMLElement | null;
 	if (!div?.hasAttribute('data-docsearch-holder')) {
@@ -64,13 +65,4 @@ function holder(): HTMLElement {
 
 export function show(): void {
 	instance?.open();
-	const move = () => {
-		const modal = document.querySelector('body > .DocSearch-Container');
-		if (!modal) return false;
-		holder().append(modal);
-		// Moving a node drops its focus; DocSearch had focused the input.
-		(modal.querySelector('.DocSearch-Input') as HTMLInputElement | null)?.focus();
-		return true;
-	};
-	if (!move()) requestAnimationFrame(() => void move());
 }
