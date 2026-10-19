@@ -75,6 +75,7 @@ const USAGE = `markless-migrate ${VERSION}
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
           [--journey-budget <seconds>] [--max-journeys <n>] [--timeout <seconds>]
           [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-cache]
+          [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>]
           Compare routes old vs new (default: every route of the old site plan listed). Exits 1 when any is red.
           Coverage: every route of the old site must exist on the new app, with the same status class
           and the same redirect target, or carry an accepted difference (accept <id>); each missing
@@ -115,6 +116,15 @@ const USAGE = `markless-migrate ${VERSION}
           animation missing on new (it jumps), timed differently (beyond max(20 ms, 10%)) or only on new
           is red. The same runs again with prefers-reduced-motion: reduce, where both must agree, and
           hovering and focusing each control is compared the same way. --no-motion leaves it out.
+          Navigation: one page per page shape (layout and scripts, at most --nav-destinations, 40) is
+          reached by clicking a real link on --nav-entries (2) other pages, other layouts first, and once
+          more after the entry page's control that keeps its state in the browser (a theme switch); then
+          its own controls are used (that switch twice, then one in the content), then back and forward.
+          Each moment is compared with a fresh load of the same URL and kept state: <html>, <body> and
+          head, stylesheets, DOM, key computed styles, a screenshot, the script files that ran, globals
+          and console errors. A link that loads a new document is a fresh load already; a difference the
+          old app shows too, reached the same way, is its own; <html> class and data-* attributes are
+          compared with the old app's too. --no-navigation leaves it out.
           --source and --new-source map each failing element to its old and new source file and line.
           --concurrency checks that many routes at once (default half the cores, at most 4).
           --timeout stops one route's check after that many seconds (default 600, or five journey
@@ -255,7 +265,24 @@ const TIMING_FLAGS = {
 	'network-latency': { type: 'string' },
 	'interaction-controls': { type: 'string' },
 	'no-motion': { type: 'boolean' },
+	'no-navigation': { type: 'boolean' },
+	'nav-entries': { type: 'string' },
+	'nav-destinations': { type: 'string' },
 } as const;
+
+function navigationOptions(values: { 'no-navigation'?: boolean; 'nav-entries'?: string; 'nav-destinations'?: string }, routes: readonly string[] | undefined): CheckOptions['navigation'] {
+	if (values['no-navigation']) return undefined;
+	const count = (flag: 'nav-entries' | 'nav-destinations') => {
+		const raw = values[flag];
+		if (raw === undefined) return undefined;
+		const n = Number(raw);
+		if (!Number.isInteger(n) || n < 1) fail(`--${flag} must be a whole number above 0`);
+		return n;
+	};
+	const entries = count('nav-entries');
+	const destinations = count('nav-destinations');
+	return { ...(entries ? { entries } : {}), ...(destinations ? { destinations } : {}), ...(routes?.length ? { routes } : {}) };
+}
 
 function timingOptions(values: { 'no-responsiveness'?: boolean; 'interaction-budget'?: string; 'cpu-throttle'?: string; 'network-latency'?: string; 'interaction-controls'?: string }): CheckOptions['responsiveness'] {
 	if (values['no-responsiveness']) return undefined;
@@ -417,6 +444,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 		unchecked = all.needsSample;
 	}
 	if (!routes?.length) fail('no routes: pass --route <path> or run plan first');
+	const navigation = navigationOptions(values, routes);
 	const { old, new: next } = values;
 	const server = values.serve ? await startAppServer({ cwd, serve: values.serve, ...(values.build ? { build: values.build } : {}), ...(values['restart-on'] ? { restartOn: values['restart-on'] } : {}), origin: next, log: (line) => out(`server: ${line}\n`) }).catch((error: Error) => fail(error.message)) : undefined;
 	const mcp = serverCommand();
@@ -457,6 +485,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 					...deadline,
 					...(timing ? { responsiveness: timing } : {}),
 				...(values['no-motion'] ? {} : { motion: {} }),
+					...(navigation ? { navigation } : {}),
 					switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 					partial: { total: inventory ? plannedRoutes(inventory).length : null },
 				});
@@ -601,6 +630,7 @@ async function main(argv: string[]): Promise<number> {
 			}
 			if (!coverageOnly && !routes?.length && !targets?.endpoints.length) fail('no routes: pass --route <path> or run plan first');
 			const partial = !coverageOnly && Boolean(values.route?.length || values.changed);
+			const navigation = navigationOptions(values, partial ? planned : undefined);
 			const concurrency = values.concurrency ? Number(values.concurrency) : undefined;
 			if (concurrency !== undefined && (!Number.isInteger(concurrency) || concurrency < 1)) fail('--concurrency must be a whole number of at least 1');
 			const newDir = resolve(values['new-source'] ?? cwd);
@@ -643,6 +673,7 @@ async function main(argv: string[]): Promise<number> {
 				...deadline,
 				...(timing ? { responsiveness: timing } : {}),
 				...(values['no-motion'] ? {} : { motion: {} }),
+				...(navigation ? { navigation } : {}),
 				switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 				...(!values['new-source'] && !values.changed ? {} : { sourceDirs: { ...(values.source ? { old: resolve(values.source) } : {}), new: newDir } }),
 				...(partial ? { partial: { total: planned?.length ?? null } } : planned?.length ? { coverage: planned } : {}),

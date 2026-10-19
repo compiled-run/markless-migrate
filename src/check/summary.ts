@@ -81,6 +81,10 @@ export function summarize(report: Report): string {
 		const pages = report.templates.groups.reduce((n, g) => n + g.members.length, 0);
 		lines.push('', `Every page got the http, rendered, seo, assets, css, a11y, i18n, network and weight checks. Visual, behaviour and responsiveness ran on one representative per template group (grouped by URL pattern and page layout): ${report.templates.groups.length} group${report.templates.groups.length === 1 ? '' : 's'} covering ${pages} pages. Pass --every-dimension to run them on every page.`, ...report.templates.groups.map((g) => `  ${g.pattern}  ${g.members.length} pages, representative ${g.representative}`));
 	}
+	if (report.navigation) {
+		const n = report.navigation;
+		lines.push('', `In-place navigation: ${n.destinations} page${n.destinations === 1 ? '' : 's'} (one per layout and scripts) reached by clicking a link on other pages ${n.pairs} time${n.pairs === 1 ? '' : 's'}, ${n.inPlace} swapped in place and compared with a fresh load; ${n.loads} page loads in ${Math.round(n.ms / 1000)} s. Pass --no-navigation to leave it out.`);
+	}
 	if (report.coverage) lines.push('', ...coverageLines(report.coverage));
 	if (report.staleAccepts?.length) lines.push('', 'Accepted differences that no longer match anything (remove them from .migrate/accepted.json):', ...report.staleAccepts.map((a) => `  ${a.route}${a.role ? ` as ${a.role}` : ''} ${a.dimension}: ${a.check}  (${a.reason})`));
 	lines.push('', `${green} of ${report.routes.length} ${report.roles ? 'route checks (route and role)' : 'routes'} green${red ? `, ${red} red` : ''}${blocked ? `, ${blocked} blocked by bot protection` : ''}${network ? `, ${network} not checked for an infrastructure failure (DNS, connection or timeout)` : ''}${report.acceptedCount ? `, ${report.acceptedCount} accepted difference${report.acceptedCount === 1 ? '' : 's'}${report.automaticCount ? ` (${report.automaticCount} automatically)` : ''}` : ''}${samples.length ? `; ${samples.length} route${samples.length === 1 ? '' : 's'} not checked (needs a sample)` : ''}${writes.length ? `; ${writes.length} not checked (fetching it writes)` : ''}.`);

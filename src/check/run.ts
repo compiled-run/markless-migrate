@@ -21,6 +21,7 @@ import { compareJourneys, DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, re
 import { storageOwner, unreachableCandidate, type StorageOwner } from './automatic.ts';
 import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
 import { checkMotion, motionRules, type MotionOptions } from './motion.ts';
+import { applyNavigation, checkNavigation, type NavigationOptions, type NavigationResult } from './nav-parity.ts';
 import { assetsToProbe, compareRoute, cssTargets, httpFailures, noiseReport, noisyStyles, withFailures, type Probe } from './compare.ts';
 import { matchElements } from './match.ts';
 import { contractLines } from './network.ts';
@@ -87,6 +88,8 @@ export interface CheckOptions {
 	readonly responsiveness?: ResponsivenessOptions;
 	/** Record the transitions and animations every interaction starts, and those hovering and focusing each control start, old and new, with motion allowed and with reduced motion. */
 	readonly motion?: MotionOptions;
+	/** Compare each sampled page reached by an in-place navigation (a link click, back, forward) with a fresh load of it, on the new app. */
+	readonly navigation?: NavigationOptions;
 	/** How long one route's check (as one role) may take before it is stopped and reported as an infrastructure failure. */
 	readonly timeoutMs?: number;
 	/** Every route of the old site, each checked for existence on the new app (the coverage dimension). */
@@ -572,6 +575,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			return group ? { ...result, template: { pattern: group.pattern, representative: group.representative, members: group.members.length } } : result;
 		};
 		const coverages: RouteCoverage[] = [];
+		const navigation: NavigationResult[] = [];
 		for (const role of roles) {
 			let roleRun = base;
 			if (auth && role && role !== ANONYMOUS) {
@@ -596,7 +600,9 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				}
 				return asRole(failures.length ? withFailures(result, [...failures, ...result.failures]) : result, role);
 			});
-			routes.push(...shareLayout(checked));
+			const navigated = options.navigation ? await checkNavigation(browser, roleRun.new, pages, { concurrency: options.concurrency ?? DEFAULT_CONCURRENCY, old: roleRun.old, ...options.navigation }) : undefined;
+			if (navigated) navigation.push(navigated);
+			routes.push(...(navigated ? applyNavigation(shareLayout(checked), navigated) : shareLayout(checked)));
 			for (const route of endpoints) routes.push(asRole(await checkEndpoint(roleRun, route).catch(unreachable(route)), role));
 			for (const route of redirects) routes.push(asRole(await checkRedirect(roleRun, route).catch(unreachable(route)), role));
 		}
@@ -622,6 +628,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			...(options.partial ? { partial: { checked: checkedCount, total: options.partial.total } } : {}),
 			...(grouped.length ? { templates: { groups: grouped.map((g) => ({ pattern: g.pattern, representative: g.representative, members: g.members })) } } : {}),
 			...(oldCache ? { cache: { ...oldCache.counts } } : {}),
+			...(navigation.length ? { navigation: { destinations: navigation.reduce((n, r) => n + r.destinations.length, 0), pairs: navigation.reduce((n, r) => n + r.pairs.length, 0), inPlace: navigation.reduce((n, r) => n + r.pairs.filter((p) => p.inPlace).length, 0), loads: navigation.reduce((n, r) => n + r.loads, 0), ms: navigation.reduce((n, r) => n + r.ms, 0) } } : {}),
 		}, options.accepted ?? [], options.automaticOff ?? []);
 	} finally {
 		if (!options.browser) await browser.close();
