@@ -9,7 +9,7 @@ import type { NondeterminismFact } from './source-facts.ts';
 import type { Responsiveness, SpeedName, Worst } from './responsiveness.ts';
 import type { Filmstrip, MotionResult } from './motion.ts';
 
-export const DIMENSIONS = ['http', 'auth', 'rendered', 'visual', 'seo', 'assets', 'css', 'a11y', 'i18n', 'behaviour', 'network', 'data', 'weight', 'responsiveness', 'motion'] as const;
+export const DIMENSIONS = ['http', 'auth', 'rendered', 'visual', 'seo', 'assets', 'css', 'a11y', 'i18n', 'behaviour', 'network', 'data', 'weight', 'responsiveness', 'motion', 'navigation'] as const;
 export type Dimension = (typeof DIMENSIONS)[number];
 /** Route coverage is measured for the whole site, not per route: a failure of it names the route the new app lacks. */
 export type FailureDimension = Dimension | 'coverage';
@@ -20,7 +20,7 @@ export const REPRESENTATIVE_ONLY: readonly Dimension[] = ['visual', 'behaviour',
 /** A dimension was left out because a side was blocked or let this role in differently; unmeasured responsiveness or motion, or one its template's representative checks, is not that. */
 export function notCompared(route: Pick<RouteResult, 'dimensions' | 'template' | 'route'>): boolean {
 	const byRepresentative = route.template && route.template.representative !== route.route;
-	return Object.entries(route.dimensions).some(([d, state]) => state === 'skipped' && d !== 'responsiveness' && d !== 'motion' && !(byRepresentative && REPRESENTATIVE_ONLY.includes(d as Dimension)));
+	return Object.entries(route.dimensions).some(([d, state]) => state === 'skipped' && d !== 'responsiveness' && d !== 'motion' && d !== 'navigation' && !(byRepresentative && REPRESENTATIVE_ONLY.includes(d as Dimension)));
 }
 
 export interface Viewport {
@@ -252,6 +252,16 @@ export interface RouteResult {
 	readonly motion?: MotionResult;
 	/** Frames of interactions whose motion differs, old and new at the same offsets. */
 	readonly filmstrips?: readonly Filmstrip[];
+	/** How in-place navigation to this page was compared with a fresh load of it: from which pages, or which page of the same shape stood for it. */
+	readonly navigation?: RouteNavigation;
+}
+
+/** The new app's in-place navigation to one route, compared with a fresh load of it (src/check/nav-parity.ts). */
+export interface RouteNavigation {
+	/** The entry pages it was reached from, each `from (variant)`; empty when another route of its shape stood for it. */
+	readonly from: readonly string[];
+	/** The route of the same layout and scripts that was checked for it. */
+	readonly representedBy?: string;
 }
 
 /** Whether every route of the old site exists on the new app. */
@@ -382,6 +392,8 @@ export interface Report {
 	readonly coverage?: RouteCoverage;
 	/** Pages grouped by template: every page got the other dimensions, visual, behaviour and responsiveness ran on each group's representative. */
 	readonly templates?: { readonly groups: readonly { readonly pattern: string; readonly representative: string; readonly members: readonly string[] }[] };
+	/** In-place navigation compared with fresh loads on the new app: pages sampled, page loads it made and how long it took. */
+	readonly navigation?: { readonly destinations: number; readonly pairs: number; readonly inPlace: number; readonly loads: number; readonly ms: number };
 	/** How OLD's captures and journeys were found in the cache between runs: reused, never written, or not reused because a response the old page loaded or the checker changed. */
 	readonly cache?: { readonly hit: number; readonly miss: number; readonly changed: number; readonly 'stale-checker': number };
 }
