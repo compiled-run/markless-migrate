@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { notPorted } from '../check/coverage.ts';
 import { matchRoute } from '../source/pattern.ts';
 import type { RouteState } from '../status.ts';
 
@@ -95,13 +96,15 @@ const readJson = async <T>(path: string): Promise<T | undefined> => JSON.parse(a
 
 /** Why a switch would send routes the new app lacks to it: a route or pattern covering a missing route, or a catch-all front door before coverage was measured. No --force overrides it; a route left out on purpose is an accepted difference. */
 export async function missingUnder(cwd: string, route: string): Promise<string | undefined> {
-	const coverage = await readJson<{ missing?: readonly string[]; total?: number }>(join(stateDir(cwd), 'coverage.json'));
+	const coverage = await readJson<{ missing?: readonly string[]; servedByOld?: readonly string[]; total?: number }>(join(stateDir(cwd), 'coverage.json'));
 	const planned = await readJson<{ allRoutes?: readonly unknown[] }>(join(stateDir(cwd), 'inventory.json'));
 	const catchAll = /[*]/.test(route) && isSwitched([route], '/markless-migrate/any/deep/path');
 	if (!coverage) return catchAll && planned?.allRoutes ? `not switching ${route}: it sends every path to the new app, and nothing has measured yet whether every route of the old site exists there. Run check without --route first.` : undefined;
-	const sent = (coverage.missing ?? []).filter((path) => isSwitched([route], path));
+	const lacking = notPorted(coverage);
+	const sent = lacking.filter((path) => isSwitched([route], path));
 	if (!sent.length) return undefined;
-	return `not switching ${route}: the new app lacks ${sent.length} route${sent.length === 1 ? '' : 's'} of the old site it would send there (${sent.length} of ${coverage.missing!.length} missing, ${coverage.total} routes in all): ${sent.join(', ')}. Port them, or record each one left out on purpose with accept <id> --reason <why>; --force does not override this.`;
+	const old = coverage.servedByOld?.length ? `, ${coverage.servedByOld.length} of them served by the old app` : '';
+	return `not switching ${route}: the new app lacks ${sent.length} route${sent.length === 1 ? '' : 's'} of the old site it would send there (${sent.length} of ${lacking.length} not ported${old}, ${coverage.total} routes in all): ${sent.join(', ')}. Port them, or record each one left out on purpose with accept <id> --reason <why>; --force does not override this.`;
 }
 
 export async function unswitchRoute(cwd: string, route: string): Promise<{ removed: boolean; path: string }> {

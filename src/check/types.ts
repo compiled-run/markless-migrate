@@ -3,6 +3,8 @@ import type { AutomaticRule } from '../overrides.ts';
 import type { RawSource } from './hints-page.ts';
 import type { ElementCoverage, RecordedJourney } from './journeys.ts';
 import type { NetworkCapture } from './network.ts';
+import type { LiveEmbed } from './embeds.ts';
+import type { LoopEffect } from './loops.ts';
 import type { NondeterminismFact } from './source-facts.ts';
 import type { Responsiveness, SpeedName, Worst } from './responsiveness.ts';
 import type { Filmstrip, MotionResult } from './motion.ts';
@@ -144,6 +146,10 @@ export interface PageCapture {
 	readonly residue?: readonly RuntimeMarker[];
 	/** Iframes and images from other origins, with their boxes in page coordinates. */
 	readonly embeds?: readonly { readonly tag: 'iframe' | 'img'; readonly src: string; readonly box: Box }[];
+	/** Iframes and plugins from other origins, and videos: masked in screenshots, compared by what the page controls. */
+	readonly liveEmbeds?: readonly LiveEmbed[];
+	/** Loops (live intervals, self-scheduling timeouts and animation frames) held at their start for the capture, and what each kept changing. */
+	readonly loops?: readonly LoopEffect[];
 }
 
 export interface WriteLine {
@@ -252,10 +258,12 @@ export interface RouteResult {
 export interface RouteCoverage {
 	/** Planned routes the old app answers without an error. */
 	readonly total: number;
-	/** Of those, the ones the new app answers alike (same status class, same redirect target). */
+	/** Of those, the ones the new app answers alike (same status class, same redirect target), HTML pages rendered by its Markless code. */
 	readonly present: number;
 	/** Routes the new app lacks that no accepted difference covers. */
 	readonly missing: readonly string[];
+	/** HTML routes the new app answers with a page its Markless code did not render (the old app's page passed through), that no accepted difference covers: not ported, like a missing route. */
+	readonly servedByOld?: readonly string[];
 	/** Routes the new app lacks on purpose, by an owner-recorded accepted difference. */
 	readonly accepted: readonly string[];
 	/** One failure per route the new app lacks, accepted or not. */
@@ -370,4 +378,6 @@ export interface Report {
 	readonly coverage?: RouteCoverage;
 	/** Pages grouped by template: every page got the other dimensions, visual, behaviour and responsiveness ran on each group's representative. */
 	readonly templates?: { readonly groups: readonly { readonly pattern: string; readonly representative: string; readonly members: readonly string[] }[] };
+	/** How OLD's captures and journeys were found in the cache between runs: reused, never written, or not reused because a response the old page loaded or the checker changed. */
+	readonly cache?: { readonly hit: number; readonly miss: number; readonly changed: number; readonly 'stale-checker': number };
 }

@@ -68,6 +68,19 @@ export function collectPage({ origin, full, styles = true }: { origin: string; f
 	const ids = (scope.__mmIds ??= new WeakMap());
 	const paths = new Map<Element, string>();
 	const chains = new Map<Element, string>();
+	// Styles go out interned (names, values and whole rows by index): a long page's raw computed styles are tens of MB.
+	const props: string[] = [];
+	const values: string[] = [];
+	const rows: number[][] = [];
+	const propAt = new Map<string, number>();
+	const valueAt = new Map<string, number>();
+	const rowAt = new Map<string, number>();
+	const intern = (table: string[], at: Map<string, number>, value: string) => {
+		let i = at.get(value);
+		if (i === undefined) at.set(value, (i = table.push(value) - 1));
+		return i;
+	};
+	const ofTag = new Map<Element, Map<string, number>>();
 	for (const el of full ? [document.documentElement, document.body, ...document.body.querySelectorAll('*')] : []) {
 		if (SKIP.has(el.tagName)) continue;
 		const r = role(el);
@@ -76,18 +89,27 @@ export function collectPage({ origin, full, styles = true }: { origin: string; f
 		const segment = r && r !== 'generic' && r !== 'none' && r !== 'presentation' ? r : '';
 		paths.set(el, segment ? (parentPath ? `${parentPath}>${segment}` : segment) : parentPath);
 		const tagName = el.tagName.toLowerCase();
-		const nth = parent ? [...parent.children].filter((c) => c.tagName === el.tagName).indexOf(el) + 1 : 1;
+		let nth = 1;
+		if (parent) {
+			const counts = ofTag.get(parent) ?? new Map<string, number>();
+			ofTag.set(parent, counts);
+			nth = (counts.get(el.tagName) ?? 0) + 1;
+			counts.set(el.tagName, nth);
+		}
 		chains.set(el, `${parent ? `${chains.get(parent) ?? ''}>` : ''}${tagName}:${nth}`.replace(/^>/, ''));
 		if (!el.checkVisibility({ visibilityProperty: true })) continue;
 		const rect = el.getBoundingClientRect();
 		if (rect.width === 0 && rect.height === 0) continue;
 		const computed = styles ? getComputedStyle(el) : undefined;
-		const style: Record<string, string> = {};
+		const row: number[] = [];
 		for (const prop of computed ?? []) {
 			if (prop.startsWith('--') || GEOMETRY.has(prop)) continue;
 			// A url() resolves against the page: the app's own origin is not part of the value.
-			style[prop] = computed!.getPropertyValue(prop).split(`${location.origin}/`).join('/');
+			row.push(intern(props, propAt, prop), intern(values, valueAt, computed!.getPropertyValue(prop).split(`${location.origin}/`).join('/')));
 		}
+		const key = row.join(',');
+		let style = rowAt.get(key);
+		if (style === undefined) rowAt.set(key, (style = rows.push(row) - 1));
 		const text = clean([...el.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent).join(' ')).slice(0, 80);
 		const tag = el.tagName.toLowerCase();
 		if (!ids.has(el)) ids.set(el, (scope.__mmNext = (scope.__mmNext ?? 0) + 1));
@@ -151,7 +173,25 @@ export function collectPage({ origin, full, styles = true }: { origin: string; f
 	const fonts = [...new Set([...document.fonts].filter((f) => f.status === 'loaded').map((f) => `${f.family}|${f.style}|${f.weight}`))].sort();
 	const text = document.body.innerText.split('\n').map(clean).filter(Boolean);
 	const links = [...document.querySelectorAll('a[href], link[rel~="alternate"][hreflang]')].map((a) => (a as HTMLAnchorElement).href).filter(Boolean);
-	return { elements, seo, images, fonts, text, links };
+	return { elements, styles: { props, values, rows }, seo, images, fonts, text, links };
+}
+
+type Collected = ReturnType<typeof collectPage>;
+
+/** collectPage's elements with their styles as objects; elements with the same computed style share one frozen object. */
+export function expandStyles(collected: Collected) {
+	const { props, values, rows } = collected.styles;
+	const styles = rows.map((row) => {
+		const style: Record<string, string> = {};
+		for (let i = 0; i < row.length; i += 2) style[props[row[i]!]!] = values[row[i + 1]!]!;
+		return Object.freeze(style);
+	});
+	return { ...collected, elements: collected.elements.map((el) => ({ ...el, style: styles[el.style]! })) };
+}
+
+/** Runs collectPage in the page and expands its styles. */
+export async function readPage(page: { evaluate: <R, A>(fn: (arg: A) => R, arg: A) => Promise<R> }, options: { origin: string; full: boolean; styles?: boolean }) {
+	return expandStyles(await page.evaluate(collectPage, options));
 }
 
 export async function decodeImages(urls: string[]) {

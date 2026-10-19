@@ -1,23 +1,25 @@
 import { frameworkMarkup, frameworkRuntime, sealedBy, thirdPartyEmbeds } from './automatic.ts';
 import type { Browser, Page, Response } from 'playwright';
-import { collectPage, decodeImages } from './collect.ts';
+import { decodeImages, readPage } from './collect.ts';
 import { createHash } from 'node:crypto';
 import { captureA11y } from './a11y.ts';
 import { isFingerprinted } from './assets.ts';
 import { BlockedError, detectChallenge } from './blocked.ts';
 import { signInCookies, storageKeys } from './storage.ts';
-import { defaultEnv, openPage, serverRecords, tagHeaders, type SideEnv } from './browser.ts';
+import { defaultEnv, insideEmbed, openPage, serverRecords, tagHeaders, type SideEnv } from './browser.ts';
 import { renderedFonts } from './fonts.ts';
 import { captureSourceHints } from './hints-page.ts';
 import type { AssetRecord, HttpCapture, HttpHop, PageCapture, RouteCapture, ScriptWeight, Viewport } from './types.ts';
 import { request } from './http.ts';
 import { loadPage } from './infrastructure.ts';
+import { holdLoops, loopEffects, type LoopEffect } from './loops.ts';
+import { EMBED_SELECTOR, liveEmbeds } from './embeds.ts';
 import { runtimeMarkers } from './residue.ts';
 
 const ASSET_TYPES = new Set(['image', 'font', 'stylesheet', 'script', 'media']);
 
-// Markless's router names the page file that rendered the route in a script tag.
-function routeFile(html: string): { routeFile?: string } {
+/** The page file Markless's router names, in a script tag, as the one that rendered the route. */
+export function routeFile(html: string): { routeFile?: string } {
 	const json = /<script type="@markless\/core\/route">([^<]*)<\/script>/.exec(html)?.[1];
 	try {
 		const file = json ? (JSON.parse(json) as { file?: unknown }).file : undefined;
@@ -145,18 +147,31 @@ function shownText(): string {
 	return [document.title, document.body?.innerText ?? '', ...attributes].join('\n');
 }
 
+/** The GET responses each capture's page loaded from its own origin, and the scripts, styles and fonts from others (not an embed's), so a cache can tell whether the page changed. */
+export const pageLoads = new WeakMap<PageCapture, readonly string[]>();
+
 export async function capturePage(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<PageCapture> {
 	const origin = env.origin;
-	const { context, page, log } = await openPage(browser, env, viewport);
+	const { context, page, log, own } = await openPage(browser, env, viewport, { loops: true, shareThirdParty: true });
 	try {
 		const pending: Promise<Omit<AssetRecord, 'fingerprinted'> | undefined>[] = [];
 		const stylesheets: { url: string; text: string }[] = [];
 		const fontHashes = new Map<string, string>();
 		const scriptBytes = new Map<string, { bytes: number; source: number }>();
 		const runtimes = new Map<string, string>();
+		const embedded = new Set<string>();
+		const ownScripts = new Set<string>();
+		const loaded = new Set<string>();
 		page.on('response', (response: Response) => {
 			const type = response.request().resourceType();
-			if (!ASSET_TYPES.has(type)) return;
+			const url = URL.parse(response.url());
+			const frameDocument = type === 'document' && response.frame() !== page.mainFrame();
+			const ofEmbed = insideEmbed(response.request(), own) || (frameDocument && url !== null && !own(url));
+			if (ofEmbed) embedded.add(response.url());
+			// The old page's own responses and the code and looks it pulls from other origins; what other origins answer its requests for data is theirs.
+			if (url && !ofEmbed && !frameDocument && response.request().method() === 'GET' && /^https?:$/.test(url.protocol) && (own(url) || ['script', 'stylesheet', 'font'].includes(type))) loaded.add(response.url());
+			if (!ASSET_TYPES.has(type) || ofEmbed) return;
+			if (type === 'script') ownScripts.add(response.url());
 			pending.push(
 				(async () => {
 					const sizes = await response.request().sizes().catch(() => undefined);
@@ -180,9 +195,12 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		if (wall) throw new BlockedError({ status: navigation!.status(), ...wall }, origin);
 		await settle(page);
 		await finishAnimations(page);
-		const collected = await page.evaluate(collectPage, { origin, full: true });
+		await page.evaluate(holdLoops).catch(() => 0);
+		const collected = await readPage(page, { origin, full: true });
+		const loops = await page.evaluate(loopEffects).catch(() => [] as LoopEffect[]);
 		const aria = (await page.locator('body').ariaSnapshot()).split(origin).join('').split('\n');
-		const screenshot = await page.screenshot({ fullPage: true, animations: 'disabled', caret: 'hide' });
+		const live = await page.evaluate(liveEmbeds).catch(() => []);
+		const screenshot = await page.screenshot({ fullPage: true, animations: 'disabled', caret: 'hide', mask: live.map((e) => page.locator(EMBED_SELECTOR).nth(e.index)) });
 		const coverage = await page.coverage.stopJSCoverage();
 		await Promise.all(pending);
 		const shown = await page.evaluate(shownText);
@@ -207,7 +225,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		const decodedAbsolute = await page.evaluate(decodeImages, imageUrls);
 		const decoded = Object.fromEntries(Object.entries(decodedAbsolute).map(([url, size]) => [toLocal(url, origin), size]));
 		const pageUrl = page.url();
-		const ran = coverage.filter((entry) => entry.url && entry.url !== pageUrl);
+		const ran = coverage.filter((entry) => entry.url && entry.url !== pageUrl && !(embedded.has(entry.url) && !ownScripts.has(entry.url)));
 		// Preloaded modules that never run are downloaded all the same, so every script response counts, not only the ones coverage saw.
 		const scripts: ScriptWeight[] = [
 			...ran.map((entry) => ({
@@ -222,7 +240,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		const inlineExecuted = inline.reduce((sum, entry) => sum + executedBytes(entry.source ?? '', entry.functions), 0);
 		await log.settled();
 		const server = await serverRecords(env, log.load);
-		return {
+		const captured: PageCapture = {
 			viewport: viewport.name,
 			finalUrl: toLocal(pageUrl, origin),
 			...routeFile(html),
@@ -244,6 +262,8 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 			...(Object.keys(sealed).length ? { sealed } : {}),
 			...(internals.length ? { internals } : {}),
 			...(embeds.length ? { embeds } : {}),
+			...(live.length ? { liveEmbeds: live } : {}),
+			...(loops.length ? { loops } : {}),
 			...(residue.length ? { residue } : {}),
 			weight: {
 				downloaded: scripts.reduce((sum, s) => sum + s.bytes, 0),
@@ -252,6 +272,8 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 				scripts,
 			},
 		};
+		pageLoads.set(captured, [new URL(route, origin).href, ...loaded]);
+		return captured;
 	} finally {
 		await context.close();
 	}

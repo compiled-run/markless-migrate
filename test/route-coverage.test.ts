@@ -20,6 +20,8 @@ const CLI = join(import.meta.dirname, '../src/cli.ts');
 const SITEMAP_ROUTES = ['/', '/about', '/docs/intro', '/docs/install', '/docs/config', '/docs/api', '/blog', '/blog/one', '/blog/two', '/contact'];
 
 const page = (title: string, links: readonly string[] = []) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title></head><body><main><h1>${title}</h1>${links.map((l) => `<a href="${l}">${l}</a>`).join(' ')}</main></body></html>`;
+// What Markless's router writes into every page it renders: the page file that rendered it.
+const ported = (title: string, file: string) => page(title).replace('</body>', `<script type="@markless/core/route">{"file":"${file}"}</script></body>`);
 
 type Handler = (path: string, search: string) => { status: number; type?: string; body?: string; location?: string } | undefined;
 
@@ -45,7 +47,7 @@ before(async () => {
 		if (path === '/sitemap.xml') return { status: 200, type: 'application/xml', body: sitemap('https://www.example.com', SITEMAP_ROUTES) };
 		return SITEMAP_ROUTES.includes(path) ? { status: 200, body: page(`Old ${path}`) } : undefined;
 	});
-	next = await serve((path) => (['/', '/about', '/blog'].includes(path) ? { status: 200, body: page(`Old ${path}`) } : undefined));
+	next = await serve((path) => (['/', '/about', '/blog'].includes(path) ? { status: 200, body: ported(`Old ${path}`, `pages${path === '/' ? '/index' : path}.tsrx`) } : undefined));
 	crawly = await serve((path, search) => {
 		const base = origin(crawly);
 		if (path === '/robots.txt') return { status: 200, type: 'text/plain', body: `User-agent: *\nAllow: /private/\nDisallow: /api/\nSitemap: ${base}/maps/index.xml\n` };
@@ -223,21 +225,22 @@ test('an app that answers every path with its HTML shell lists no robots.txt or 
 
 test('coverage per role: a signed-in route the new app lacks is missing for that role, and an old rule sending unknown paths to the dashboard is no catch-all', async () => {
 	const signedIn = (cookie: string | undefined) => /session=yes/.test(cookie ?? '');
-	const app = (pages: readonly string[]) => {
+	const app = (pages: readonly string[], markless = false) => {
+		const mark = (html: string, path: string) => (markless ? html.replace('</body>', `<script type="@markless/core/route">{"file":"pages${path}.tsrx"}</script></body>`) : html);
 		const server = createServer((req, res) => {
 			const url = new URL(req.url ?? '/', 'http://x');
 			const known = ['/', '/login', ...pages];
 			if (!signedIn(req.headers.cookie)) {
 				if (url.pathname.startsWith('/dashboard')) return res.writeHead(307, { location: '/login' }).end();
-				return known.includes(url.pathname) ? res.writeHead(200, { 'content-type': 'text/html' }).end(page(url.pathname)) : res.writeHead(404).end(page('Not found'));
+				return known.includes(url.pathname) ? res.writeHead(200, { 'content-type': 'text/html' }).end(mark(page(url.pathname), url.pathname)) : res.writeHead(404).end(page('Not found'));
 			}
 			if (!url.pathname.startsWith('/dashboard')) return res.writeHead(302, { location: '/dashboard' }).end();
-			return known.includes(url.pathname) ? res.writeHead(200, { 'content-type': 'text/html' }).end(page(url.pathname, ['/dashboard/invoices'])) : res.writeHead(404).end(page('Not found'));
+			return known.includes(url.pathname) ? res.writeHead(200, { 'content-type': 'text/html' }).end(mark(page(url.pathname, ['/dashboard/invoices']), url.pathname)) : res.writeHead(404).end(page('Not found'));
 		});
 		return new Promise<Server>((done) => server.listen(0, '127.0.0.1', () => done(server)));
 	};
 	const a = await app(['/dashboard', '/dashboard/invoices']);
-	const b = await app(['/dashboard']);
+	const b = await app(['/dashboard'], true);
 	const dir = await mkdtemp(join(tmpdir(), 'mm-roles-'));
 	const state = (o: string) => ({ cookies: [{ name: 'session', value: 'yes', domain: new URL(o).hostname, path: '/', expires: -1, httpOnly: false, secure: false, sameSite: 'Lax' as const }], origins: [] });
 	await writeFile(join(dir, 'old.json'), JSON.stringify(state(origin(a))));
@@ -262,4 +265,37 @@ test('check --all checks every planned route, not only the ones the browser inve
 	const cwd = await planned();
 	const run = await cli(['check', '--all', '--old', origin(old), '--new', origin(old), '--no-responsiveness', '--journey-budget', '3'], cwd);
 	for (const route of SITEMAP_ROUTES) assert.match(run.stdout, new RegExp(`pass +${route.replace(/\//g, '\\/')} `), run.stdout + run.stderr);
+});
+
+test('a page the new app passes through from the old app, without Markless rendering it, is served by the old app: not ported, not done, and not switchable', async () => {
+	const routes = ['/', '/guide', '/feed.xml', '/gone'];
+	const oldSite = await serve((path) => (path === '/feed.xml' ? { status: 200, type: 'application/rss+xml', body: '<rss version="2.0"></rss>' } : routes.includes(path) ? { status: 200, body: page(`Old ${path}`) } : undefined));
+	// `/` is ported; `/guide` is the old page byte for byte (a copied static file); the feed is a copied file, which is not a page; `/gone` is missing.
+	const passing = await serve((path) => (path === '/' ? { status: 200, body: ported('Old /', 'pages/index.tsrx') } : path === '/guide' ? { status: 200, body: page('Old /guide') } : path === '/feed.xml' ? { status: 200, type: 'application/rss+xml', body: '<rss version="2.0"></rss>' } : undefined));
+	try {
+		const report = await runCheck({ oldOrigin: origin(oldSite), newOrigin: origin(passing), routes: [], coverage: routes, browser });
+		assert.equal(report.ok, false);
+		assert.deepEqual([report.coverage!.total, report.coverage!.present], [4, 2]);
+		assert.deepEqual(report.coverage!.missing, ['/gone']);
+		assert.deepEqual(report.coverage!.servedByOld, ['/guide']);
+		const text = summarize(report);
+		assert.match(text, /Routes on the new app: 2 of 4 routes of the old site present, 1 missing, 1 served by the old app\./);
+		assert.match(text, /Served by the old app, not rendered by the new app's Markless code \(1\):\n {2}\/guide {2}\[[0-9a-f]{10}\]/);
+		const cwd = await mkdtemp(join(tmpdir(), 'mm-passthrough-'));
+		await mkdir(join(cwd, '.migrate'));
+		await writeFile(join(cwd, '.migrate', 'inventory.json'), JSON.stringify({ version: 1, origin: origin(oldSite), routes: [], locales: [], localeRouting: { prefixes: [], negotiation: {} }, allRoutes: routes.map((route) => ({ route, sources: ['sitemap'], status: 200, contentType: 'text/html' })) }));
+		await recordResults(cwd, report);
+		const s = await status(cwd);
+		assert.equal(s.done, false);
+		assert.deepEqual(s.coverage?.servedByOld, ['/guide']);
+		assert.equal(s.routes.find((r) => r.route === '/guide')?.state, 'not ported');
+		for (const route of ['/guide', '/gone', '/*rest']) {
+			const refused = await switchRoute(cwd, route, { force: { reason: 'try it', by: 'Jack' } });
+			assert.match(!refused.ok ? refused.reason : '', /not ported.*--force does not override this/, route);
+		}
+		assert.match((await switchRoute(cwd, '/guide')).ok ? '' : 'refused', /refused/);
+	} finally {
+		oldSite.close();
+		passing.close();
+	}
 });

@@ -1,4 +1,5 @@
 import { acceptedLabel } from './check/automatic.ts';
+import { NOT_RENDERED } from './check/coverage.ts';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { plannedRoutes, type Inventory } from './plan/inventory.ts';
@@ -94,8 +95,10 @@ export async function recordResults(cwd: string, report: Report, extra: { readon
 		const missing = new Map(coverage.failures.filter((f) => !f.accepted).map((f) => [f.route, f]));
 		for (const [key, state] of Object.entries(results)) if (state.coverageOnly && !missing.has(state.route)) delete results[key];
 		for (const [route, failure] of missing) {
-			if (results[route] && !results[route]!.coverageOnly) continue;
-			results[route] = { route, ok: false, checkedAt: report.startedAt, old: report.old, new: report.new, red: ['coverage'], failures: [failure], notPorted: true, coverageOnly: true };
+			const checked = results[route] && !results[route]!.coverageOnly ? results[route]! : undefined;
+			// A page served by the old app may check green (it is the old page), and is still not ported.
+			if (checked && failure.check !== NOT_RENDERED) continue;
+			results[route] = checked ? { ...checked, ok: false, red: [...new Set<Dimension>([...checked.red, 'coverage'])], failures: [...checked.failures, failure], notPorted: true } : { route, ok: false, checkedAt: report.startedAt, old: report.old, new: report.new, red: ['coverage'], failures: [failure], notPorted: true, coverageOnly: true };
 		}
 	}
 	await mkdir(join(cwd, STATE_DIR), { recursive: true });
@@ -112,7 +115,7 @@ export interface Status {
 	/** In migration order when the inventory has the source's plan, alphabetical otherwise. */
 	readonly routes: readonly { route: string; state: RouteStatus; red: readonly Dimension[]; checkedAt?: string; switched?: boolean; forced?: { readonly reason: string; readonly by?: string }; accepted?: readonly string[]; coverage?: { readonly exercised: number; readonly total: number }; timing?: RouteTiming }[];
 	/** Routes of the old site the new app has, from the last coverage measurement (check without --route): `ported` of `total`, and the ones it lacks. */
-	readonly coverage?: { readonly ported: number; readonly total: number; readonly missing: readonly string[]; readonly accepted: readonly string[]; readonly checkedAt: string };
+	readonly coverage?: { readonly ported: number; readonly total: number; readonly missing: readonly string[]; readonly servedByOld: readonly string[]; readonly accepted: readonly string[]; readonly checkedAt: string };
 	/** Each step of the migration order with how far the routes it is part of have come. */
 	readonly order?: readonly { readonly kind: string; readonly name: string; readonly file: string; readonly routes: readonly string[]; readonly green: number; readonly state: 'green' | 'red' | 'started' | 'unchecked' }[];
 }
@@ -155,8 +158,8 @@ export async function status(cwd: string): Promise<Status> {
 		const state = mine.some((r) => r.state === 'red') ? 'red' : mine.length && green === mine.length ? 'green' : green ? 'started' : 'unchecked';
 		return { kind: step.kind, name: step.name, file: step.file, routes: mine.map((r) => r.route), green, state } as const;
 	});
-	const coverage = measured ? { ported: measured.present, total: measured.total, missing: measured.missing, accepted: measured.accepted, checkedAt: measured.checkedAt } : undefined;
-	const done = Boolean(inventory) && routes.length > 0 && routes.every((r) => !page(r.route) || (r.state === 'green' && r.switched && !r.forced)) && (!inventory?.allRoutes || Boolean(coverage && !coverage.missing.length));
+	const coverage = measured ? { ported: measured.present, total: measured.total, missing: measured.missing, servedByOld: measured.servedByOld ?? [], accepted: measured.accepted, checkedAt: measured.checkedAt } : undefined;
+	const done = Boolean(inventory) && routes.length > 0 && routes.every((r) => !page(r.route) || (r.state === 'green' && r.switched && !r.forced)) && (!inventory?.allRoutes || Boolean(coverage && !coverage.missing.length && !coverage.servedByOld.length));
 	return { planned: Boolean(inventory), done, routes, ...(coverage ? { coverage } : {}), ...(order.length ? { order } : {}) };
 }
 
@@ -179,7 +182,7 @@ export function summarizeStatus(s: Status): string {
 		for (const a of r.accepted ?? []) lines.push(`              ${a.startsWith('accepted automatically') ? a : `accepted ${a}`}`);
 	}
 	if (s.coverage) {
-		lines.push(`Routes ported: ${s.coverage.ported} of ${s.coverage.total} routes of the old site${s.coverage.missing.length ? `; ${s.coverage.missing.length} missing on the new app` : ''}${s.coverage.accepted.length ? `; ${s.coverage.accepted.length} left out on purpose (accepted)` : ''} (measured ${s.coverage.checkedAt})`);
+		lines.push(`Routes ported: ${s.coverage.ported} of ${s.coverage.total} routes of the old site${s.coverage.missing.length ? `; ${s.coverage.missing.length} missing on the new app` : ''}${s.coverage.servedByOld.length ? `; ${s.coverage.servedByOld.length} served by the old app` : ''}${s.coverage.accepted.length ? `; ${s.coverage.accepted.length} left out on purpose (accepted)` : ''} (measured ${s.coverage.checkedAt})`);
 	} else if (s.planned) lines.push('Routes ported: not measured yet; run check without --route to measure whether every route of the old site exists on the new app.');
 	if (s.planned) lines.push(s.done ? 'Migration done: every planned route is green and switched.' : `Migration not done: ${remaining(s)}.`);
 	return `${lines.join('\n')}\n`;
@@ -192,8 +195,10 @@ export function remaining(s: Status): string {
 		return n ? [`${n} ${label}`] : [];
 	};
 	const missing = s.coverage?.missing.length ? [`${s.coverage.missing.length} of ${s.coverage.total} routes of the old site missing on the new app`] : [];
+	const served = s.coverage?.servedByOld.length ? [`${s.coverage.servedByOld.length} of ${s.coverage.total} routes of the old site served by the old app`] : [];
 	return [
 		...missing,
+		...served,
 		...by((r) => r.state === 'not ported', 'not ported'),
 		...by((r) => r.state === 'unchecked' || r.state === 'needs a sample' || r.state === 'unreachable', 'not checked'),
 		...by((r) => r.state === 'red' || r.state === 'blocked', 'red'),

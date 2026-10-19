@@ -1,0 +1,176 @@
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { mkdtemp } from 'node:fs/promises';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { after, before, test } from 'node:test';
+import { chromium, type Browser } from 'playwright';
+import { unreachableCandidate } from '../src/check/automatic.ts';
+import { defaultEnv } from '../src/check/browser.ts';
+import { readPage } from '../src/check/collect.ts';
+import { explore, snapshotName } from '../src/check/journeys.ts';
+import { runCheck, type CheckOptions } from '../src/check/run.ts';
+import { VIEWPORTS, type Failure } from '../src/check/types.ts';
+
+let browser: Browser;
+const servers: Server[] = [];
+before(async () => {
+	browser = await chromium.launch();
+});
+after(async () => {
+	await browser?.close();
+	for (const s of servers) s.close();
+});
+
+function serve(handler: (path: string) => { type?: string; body: string } | undefined): Promise<string> {
+	const server = createServer((req, res) => {
+		const out = handler(new URL(req.url ?? '/', 'http://x').pathname);
+		if (!out) return void res.writeHead(404).end('not found');
+		res.writeHead(200, { 'content-type': out.type ?? 'text/html; charset=utf-8', 'cache-control': 'no-store' }).end(out.body);
+	});
+	servers.push(server);
+	return new Promise((done) => server.listen(0, '127.0.0.1', () => done(`http://127.0.0.1:${(server.address() as AddressInfo).port}`)));
+}
+
+const html = (body: string, head = '') => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Page</title>${head}</head><body><main><h1>Page</h1>${body}</main></body></html>`;
+const desktop = [VIEWPORTS[0]!];
+const check = (oldOrigin: string, newOrigin: string, more: Partial<CheckOptions> = {}) => runCheck({ oldOrigin, newOrigin, routes: ['/'], viewports: desktop, browser, journeys: { budgetMs: 20_000 }, ...more });
+const open = (failures: readonly Failure[]) => failures.filter((f) => !f.accepted).map((f) => `${f.dimension}: ${f.check}: ${f.actual}`);
+
+test('a name with a colon, which the aria snapshot quotes as YAML, is read back, so the control is found and used on the old page', async () => {
+	assert.equal(snapshotName(`- 'link "Anchor link for: tips"':`), 'Anchor link for: tips');
+	assert.equal(snapshotName(`- 'link "It''s: here"'`), "It's: here");
+	assert.equal(snapshotName('- link "plain \\"q\\" name":'), 'plain "q" name');
+	assert.equal(snapshotName('- link:'), '');
+	const site = await serve(() => ({ body: html('<h2 id="tips"><a href="#tips" aria-label="Anchor link for: tips">Tips</a></h2><p style="height: 2000px">x</p>') }));
+	const { elements } = await explore(browser, defaultEnv(site), '/', desktop[0]!);
+	const anchor = elements.find((e) => e.element === 'link "Anchor link for: tips"');
+	assert.equal(anchor?.by, 'click link "Anchor link for: tips"', JSON.stringify(elements));
+});
+
+test('a control check cannot drive on the old page is judged the same way on the new page, never red only because the old side was unreachable', () => {
+	const old = 'it could not be used on the old page: link "x" could not be used: missing: it is not on the page';
+	assert.equal(unreachableCandidate('missing', old, undefined, true)?.rule, 'undrivable-on-old');
+	assert.equal(unreachableCandidate('timeout', old, { failed: 'timeout', unreachable: 'missing' })?.rule, 'undrivable-on-old');
+	assert.equal(unreachableCandidate('missing', old, { failed: 'covered', unreachable: 'occluded' }), undefined, 'the new page refusing it for a reason of its own stays red');
+	assert.equal(unreachableCandidate('occluded', old, undefined, true), undefined, 'a control the old page covers and the new page lets through is a real difference');
+});
+
+// The embed changes its colour, fetches with a new query and posts its own log events a different number of times every load, as a live video player does.
+async function embedHost(): Promise<string> {
+	return serve((path) => (path === '/frame' ? { body: `<!doctype html><body style="margin:0;background:hsl(${Math.floor(Math.random() * 360)},80%,50%)"><script>fetch('/ping?r=' + Math.random() + '&t=' + performance.now()); for (let i = 0; i < ${Math.floor(Math.random() * 3)}; i++) fetch('/log', { method: 'POST', body: JSON.stringify({ at: Date.now() }) });</script><img src="/still.svg?v=${Math.random()}">` } : path === '/still.svg' ? { type: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>' } : path === '/ping' ? { type: 'application/json', body: '{}' } : undefined));
+}
+
+test('a live third-party embed compares by what the page controls: its content, frames and subrequests are the third party\'s', async () => {
+	const embed = await embedHost();
+	const frame = (attrs: string, src = `${embed}/frame`) => html(`<p>Watch:</p><iframe src="${src}" ${attrs} title="Player"></iframe><p>After</p>`);
+	const old = await serve(() => ({ body: frame('width="300" height="150" loading="lazy"') }));
+	const same = await serve(() => ({ body: frame('width="300" height="150" loading="lazy"') }));
+	const report = await check(old, same);
+	assert.deepEqual(open(report.routes[0]!.failures), []);
+
+	const resized = await serve(() => ({ body: frame('width="320" height="150" loading="lazy"') }));
+	const eager = await serve(() => ({ body: frame('width="300" height="150"') }));
+	const swapped = await serve(() => ({ body: frame('width="300" height="150" loading="lazy"', `${embed}/other`) }));
+	const dropped = await serve(() => ({ body: html('<p>Watch:</p><p>After</p>') }));
+	for (const [label, next, expected] of [
+		['resized', resized, /^<iframe> http:\/\/127\.0\.0\.1:\d+\/frame 324x154 at \(\d+, \d+\) width="320" height="150" loading="lazy"/],
+		['eager', eager, /^<iframe> http:\/\/127\.0\.0\.1:\d+\/frame 304x154 at \(\d+, \d+\) width="300" height="150" title="Player"$/],
+		['swapped', swapped, /^<iframe> http:\/\/127\.0\.0\.1:\d+\/other 304x154/],
+		['dropped', dropped, /^\(absent\)$/],
+	] as const) {
+		const route = (await check(old, next)).routes[0]!;
+		const failure = route.failures.find((f) => f.check === 'embed #1 <iframe>');
+		assert.ok(failure && !failure.accepted, `${label}: ${open(route.failures).join('\n')}`);
+		assert.match(failure.actual, expected, label);
+		assert.equal(route.ok, false, label);
+	}
+});
+
+const toggling = (start: number, loop = true) =>
+	html(
+		`<div id="demo" class="demo">Toggle Demo</div><p id="clock">0</p>`,
+		`<style>.demo { opacity: 1; transition: opacity 300ms ease-out; } .demo.faded { opacity: 0.3; }</style>${loop ? `<script>setTimeout(() => setInterval(() => { document.getElementById('demo').classList.toggle('faded'); const c = document.getElementById('clock'); c.textContent = String(Number(c.textContent) + 1); }, 250), ${start});</script>` : ''}`,
+	);
+
+test('a looping animation is captured at the same phase on both sides, and a port that drops the loop is red in motion', async () => {
+	const old = await serve(() => ({ body: toggling(0) }));
+	const shifted = await serve(() => ({ body: toggling(130) }));
+	const report = await check(old, shifted);
+	assert.deepEqual(open(report.routes[0]!.failures), []);
+
+	const still = await serve(() => ({ body: toggling(0, false) }));
+	const route = (await check(old, still)).routes[0]!;
+	const lost = open(route.failures);
+	assert.ok(lost.some((f) => /^motion: loop on generic "Toggle Demo".*\(no loop changes it\)$/.test(f)), lost.join('\n'));
+	assert.ok(!lost.some((f) => /^(visual|css|rendered)/.test(f)), lost.join('\n'));
+});
+
+test('styles go out of the page interned, and come back as the same computed styles, each element with its tag position', async () => {
+	const site = await serve(() => ({ body: html('<div><span>a</span><b>b</b><span style="color: rgb(1, 2, 3)">c</span></div>') }));
+	const page = await browser.newPage();
+	try {
+		await page.goto(site);
+		const { elements } = await readPage(page, { origin: site, full: true });
+		const third = elements.find((e) => e.text === 'c')!;
+		assert.equal(third.chain, 'html:1>body:1>main:1>div:1>span:2');
+		assert.equal(third.style.color, 'rgb(1, 2, 3)');
+		const direct = await page.evaluate(() => {
+			const el = [...document.querySelectorAll('span')][1]!;
+			const s = getComputedStyle(el);
+			return Object.fromEntries([...s].filter((p) => !p.startsWith('--') && !['width', 'height', 'inline-size', 'block-size', 'transform-origin', 'perspective-origin'].includes(p)).map((p) => [p, s.getPropertyValue(p)]));
+		});
+		assert.deepEqual({ ...third.style }, direct);
+		assert.ok(Object.isFrozen(third.style));
+	} finally {
+		await page.close();
+	}
+});
+
+test('the old side is reused from the cache while nothing the old page loads has changed, and loaded again when a response changes', async () => {
+	let title = 'Kept';
+	const old = await serve((path) => (path === '/app.css' ? { type: 'text/css', body: 'h1 { color: rgb(0, 0, 0); }' } : { body: html(`<p>${title}</p>`, '<link rel="stylesheet" href="/app.css">') }));
+	const next = await serve((path) => (path === '/app.css' ? { type: 'text/css', body: 'h1 { color: rgb(0, 0, 0); }' } : { body: html('<p>Kept</p>', '<link rel="stylesheet" href="/app.css">') }));
+	const cacheDir = await mkdtemp(join(tmpdir(), 'mm-cache-'));
+	const first = await check(old, next, { cacheDir });
+	assert.equal(first.routes[0]!.ok, true, open(first.routes[0]!.failures).join('\n'));
+	assert.deepEqual(first.cache, { hit: 0, miss: 2, changed: 0, 'stale-checker': 0 });
+	const second = await check(old, next, { cacheDir });
+	assert.equal(second.routes[0]!.ok, true);
+	assert.equal(second.cache?.hit, 2, 'captures and journeys');
+	assert.deepEqual(second.routes[0]!.failures.length, first.routes[0]!.failures.length);
+	title = 'Changed';
+	const third = await check(old, next, { cacheDir });
+	assert.equal(third.cache?.changed, 2, 'the page changed: captured and explored again');
+	assert.equal(third.routes[0]!.ok, false, 'and the change is seen');
+});
+
+test('a third-party widget gets the same answer on every load of a run, so its API rate limit cannot make one side differ, also against an old side from the cache', async () => {
+	let calls = 0;
+	// Like the GitHub star button: the first call answers, later ones are rate limited and the widget falls back.
+	const api = await serve((path) => {
+		if (path === '/widget.js') return { type: 'text/javascript', body: `fetch(new URL('/repo', document.currentScript.src)).then((r) => r.json()).then((d) => { document.getElementById('star').textContent = d.stars ? d.stars + ' stars' : 'Star (rate limited)'; });` };
+		if (path === '/repo') return { type: 'application/json', body: JSON.stringify(++calls <= 1 ? { stars: 47_000 } : { message: 'API rate limit exceeded' }) };
+		return undefined;
+	});
+	const page = html(`<p id="star">Star</p><script src="${api}/widget.js"></script>`);
+	const old = await serve(() => ({ body: page }));
+	const next = await serve(() => ({ body: page }));
+	const cwd = await mkdtemp(join(tmpdir(), 'mm-widget-'));
+	// Each run is its own process, as from the command line: the second shares nothing with the first but the cache.
+	const run = () => new Promise<string>((done) => {
+		const child = spawn(process.execPath, [join(import.meta.dirname, '../src/cli.ts'), 'check', '--old', old, '--new', next, '--route', '/', '--no-responsiveness', '--no-motion', '--journey-budget', '20'], { cwd });
+		let out = '';
+		child.stdout.on('data', (c) => (out += c));
+		child.on('exit', () => done(out));
+	});
+	const first = await run();
+	assert.match(first, /pass +\/ /, first);
+	assert.equal(calls, 1, 'one fetch answered every load');
+	const second = await run();
+	assert.match(second, /Old side from the cache \(\.migrate\/cache\): 2 reused/, second);
+	assert.match(second, /pass +\/ /, 'the new side read what the cached old side read, not the rate-limited answer');
+	assert.equal(calls, 1);
+});

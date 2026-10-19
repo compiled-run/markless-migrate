@@ -7,8 +7,9 @@ import { applyAccepted, type Accept } from './accepted.ts';
 import type { AutomaticRule } from './automatic.ts';
 import { accessFailures, ANONYMOUS, saysDenied, compareLogin, loginRoutes, saveState, signIn, type AuthConfig, type RoleSpec } from './auth.ts';
 import { BlockedError, blockedResult, detectChallenge, probeWall } from './blocked.ts';
-import { DEFINITE, defaultEnv, isLoopback, pushRecording, tagHeaders, type SideEnv, type StorageState, type WallHit } from './browser.ts';
-import { captureHttp, captureRoute, mime } from './capture.ts';
+import { DEFINITE, defaultEnv, isLoopback, pushRecording, shareAnswers, tagHeaders, type SideEnv, type StorageState, type WallHit } from './browser.ts';
+import { captureHttp, captureRoute, mime, pageLoads } from './capture.ts';
+import { OldCache } from './cache.ts';
 import { readRecording, recordable, slug, writeRecording } from './data.ts';
 import { checkEndpoint, checkRedirect, isPage } from './endpoints.ts';
 import { DEFAULT_FREEZE, pinnedBy, pinnedSummary, type FreezeOptions } from './freeze.ts';
@@ -94,6 +95,8 @@ export interface CheckOptions {
 	readonly partial?: { readonly total: number | null };
 	/** Above TEMPLATE_THRESHOLD pages, visual, behaviour and responsiveness run on one representative per template group; false runs them on every page. `patterns` are the source's route patterns. */
 	readonly templates?: false | { readonly patterns?: readonly string[] };
+	/** Where OLD's captures and journeys are kept between runs (`.migrate/cache`), reused only while every response the old page loaded is unchanged. */
+	readonly cacheDir?: string;
 }
 
 export const DEFAULT_CONCURRENCY = Math.max(1, Math.min(4, Math.floor(availableParallelism() / 2)));
@@ -113,6 +116,10 @@ async function pool<T, R>(items: readonly T[], size: number, task: (item: T) => 
 
 interface Run {
 	readonly old: SideEnv;
+	/** OLD's captures and journeys from earlier runs, reused while nothing the old page loads has changed. */
+	readonly oldCache?: OldCache;
+	/** Which route exercises each shared layout control, as the journeys cache keys it. */
+	readonly owners?: readonly (readonly [string, string])[];
 	readonly new: SideEnv;
 	readonly frozen: boolean;
 	readonly source?: SourceFacts;
@@ -162,19 +169,35 @@ function routeLocales(capture: RouteCapture, known: readonly string[]): string[]
 	return [...new Set([...known, ...found, ...(seo['html:lang'] ? [seo['html:lang']] : [])])].sort();
 }
 
+/** Two loads of OLD and one of NEW, and a third of OLD after NEW when the first two differ; OLD's from the cache when nothing it loaded changed since. */
+async function loadBoth(browser: Browser, run: Run, route: string, viewports: readonly Viewport[]): Promise<{ olds: RouteCapture[]; next: RouteCapture; loads: readonly string[] }> {
+	const key = { route, viewports };
+	const cached = await run.oldCache?.read<{ olds: RouteCapture[]; loads: string[] }>('captures', run.old, key);
+	if (cached) {
+		for (const page of cached.olds.flatMap((o) => Object.values(o.pages))) shareAnswers(page.network?.records ?? [], run.old.origin);
+		return { ...cached, next: await captureRoute(browser, run.new.origin, route, viewports, run.new) };
+	}
+	// The OLD loads must not overlap, or time-based noise (clocks, counters) looks stable; the third comes after NEW so it brackets it in time.
+	const oldA = await captureRoute(browser, run.old.origin, route, viewports, run.old);
+	const [oldB, next] = await Promise.all([captureRoute(browser, run.old.origin, route, viewports, run.old), captureRoute(browser, run.new.origin, route, viewports, run.new)]);
+	const olds = [oldA, oldB];
+	if (loadsDiffer(oldA, oldB)) olds.push(await captureRoute(browser, run.old.origin, route, viewports, run.old));
+	const loads = [...new Set(olds.flatMap((o) => Object.values(o.pages).flatMap((p) => pageLoads.get(p) ?? [])))];
+	await run.oldCache?.write('captures', run.old, key, loads, { olds, loads });
+	return { olds, next, loads };
+}
+
 /** OLD's captures of the route, so a record run can save what OLD fetched. */
 const oldCaptures = new WeakMap<RouteResult, RouteCapture>();
 
 export async function checkRoute(browser: Browser, run: Run, route: string, viewports: readonly Viewport[] = VIEWPORTS, locales: readonly string[] = []): Promise<RouteResult> {
 	const oldOrigin = run.old.origin;
 	const newOrigin = run.new.origin;
-	// The OLD loads must not overlap, or time-based noise (clocks, counters) looks stable; the third comes after NEW so it brackets it in time.
-	const oldA = await captureRoute(browser, oldOrigin, route, viewports, run.old);
-	const [oldB, next] = await Promise.all([captureRoute(browser, oldOrigin, route, viewports, run.old), captureRoute(browser, newOrigin, route, viewports, run.new)]);
-	const olds = [oldA, oldB];
-	if (loadsDiffer(oldA, oldB)) olds.push(await captureRoute(browser, oldOrigin, route, viewports, run.old));
+	const { olds, next, loads } = await loadBoth(browser, run, route, viewports);
+	const oldA = olds[0]!;
 	const probes = new Map<string, Probe>();
-	for (const url of assetsToProbe(oldA, next)) probes.set(url, await probe(run.new, url));
+	const toProbe = assetsToProbe(oldA, next);
+	for (const [i, found] of (await pool(toProbe, 8, (url) => probe(run.new, url))).entries()) probes.set(toProbe[i]!, found);
 	const languages = routeLocales(oldA, locales);
 	const [negotiatedA, negotiatedB, negotiatedNew] = await Promise.all([negotiate(run.old, route, languages), negotiate(run.old, route, languages), negotiate(run.new, route, languages)]);
 	const compared = compareRoute(route, olds, next, probes, run.source?.clients);
@@ -182,7 +205,7 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 	const loadWrites = (Object.values(oldA.pages)[0]?.writes ?? []).map((w) => ({ ...w, during: 'page load' }));
 	const result = withFailures(compared, [...compared.failures, ...negotiationFailures(route, languages, [negotiatedA, negotiatedB], negotiatedNew)], { noise, writes: loadWrites });
 	const owner = storageOwner(olds.flatMap((o) => Object.values(o.pages)), Object.values(next.pages));
-	const explored = await checkJourneys(browser, run, route, viewports[0]!, await checkStates(browser, run, route, viewports, olds, result), owner);
+	const explored = await checkJourneys(browser, run, route, viewports[0]!, await checkStates(browser, run, route, viewports, olds, result), owner, loads);
 	const moved = run.motion && explored.journeys?.length ? await checkMoves(browser, run, route, viewports[0]!, explored, oldA.pages[viewports[0]!.name]?.stylesheets ?? []) : explored;
 	const checked = run.responsiveness && moved.journeys?.length ? await checkTimings(browser, run, route, moved) : moved;
 	const located = await locateFailures(checked, { route, old: oldA, next, sides: { old: { origin: oldOrigin, dir: run.sourceDirs?.old }, new: { origin: newOrigin, dir: run.sourceDirs?.new } }, ...(run.source ? { facts: run.source } : {}) });
@@ -194,12 +217,11 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 /** One viewport's http, rendered, seo, assets, css, a11y, i18n, network and weight checks: what a page gets when its template group's representative carries visual, behaviour, responsiveness and motion. */
 export async function checkLight(browser: Browser, run: Run, route: string, viewports: readonly Viewport[] = VIEWPORTS): Promise<RouteResult> {
 	const first = [viewports[0]!];
-	const oldA = await captureRoute(browser, run.old.origin, route, first, run.old);
-	const [oldB, next] = await Promise.all([captureRoute(browser, run.old.origin, route, first, run.old), captureRoute(browser, run.new.origin, route, first, run.new)]);
-	const olds = [oldA, oldB];
-	if (loadsDiffer(oldA, oldB)) olds.push(await captureRoute(browser, run.old.origin, route, first, run.old));
+	const { olds, next } = await loadBoth(browser, run, route, first);
+	const oldA = olds[0]!;
 	const probes = new Map<string, Probe>();
-	for (const url of assetsToProbe(oldA, next)) probes.set(url, await probe(run.new, url));
+	const toProbe = assetsToProbe(oldA, next);
+	for (const [i, found] of (await pool(toProbe, 8, (url) => probe(run.new, url))).entries()) probes.set(toProbe[i]!, found);
 	const compared = compareRoute(route, olds, next, probes, run.source?.clients);
 	const kept = compared.failures.filter((f) => !REPRESENTATIVE_ONLY.includes(f.dimension as Dimension));
 	const checked = withFailures({ ...compared, visualDiffs: [], shots: [] }, kept, { noise: noiseReport(olds, run.frozen, run.source?.nondeterminism) });
@@ -212,19 +234,23 @@ export async function checkLight(browser: Browser, run: Run, route: string, view
 
 // Explores OLD, then replays every journey on OLD again and on NEW; a third OLD replay confirms noise when the first two differ.
 // Journeys that end the session or delete run last, each in a fresh session, so what they end or delete cannot change what the others saw.
-async function checkJourneys(browser: Browser, run: Run, route: string, viewport: Viewport, result: RouteResult, owner?: StorageOwner): Promise<RouteResult> {
-	const explored = await explore(browser, run.old, route, viewport, run.journeys);
+async function checkJourneys(browser: Browser, run: Run, route: string, viewport: Viewport, result: RouteResult, owner?: StorageOwner, loads: readonly string[] = []): Promise<RouteResult> {
+	const key = { route, viewport, budgetMs: run.journeys?.budgetMs, maxJourneys: run.journeys?.maxJourneys, owners: run.owners };
+	const cached = loads.length ? await run.oldCache?.read<OldJourneys>('journeys', run.old, key) : undefined;
+	const explored = cached?.explored ?? (await explore(browser, run.old, route, viewport, run.journeys));
 	const plain = explored.journeys;
 	const recorded = plain.map((j) => j.expected);
 	const door = { old: run.old.origin, serves: (path: string) => isSwitched([route, ...(run.switched ?? [])], path), ...(run.old.storageState ? { storageState: run.old.storageState } : {}), ...(run.old.signIn ? { signIn: run.old.signIn } : {}) };
 	const front: SideEnv = { ...run.new, frontDoor: door };
-	const [again, next] = await Promise.all([replayAll(browser, run.old, route, viewport, plain), replayAll(browser, front, route, viewport, plain)]);
-	const runs = [recorded, again];
-	if (JSON.stringify(recorded) !== JSON.stringify(again)) runs.push(await replayAll(browser, run.old, route, viewport, plain));
+	const [again, next] = await Promise.all([cached ? cached.runs[1]! : replayAll(browser, run.old, route, viewport, plain), replayAll(browser, front, route, viewport, plain)]);
+	const runs = cached?.runs ?? [recorded, again];
+	if (!cached && JSON.stringify(recorded) !== JSON.stringify(again)) runs.push(await replayAll(browser, run.old, route, viewport, plain));
 	const risky = explored.deferred.map((d) => d.journey);
-	const [oldRisky, newRisky] = risky.length ? await Promise.all([replayDestructive(browser, run.old, route, viewport, risky), replayDestructive(browser, front, route, viewport, risky)]) : [[], []];
+	const [oldRisky, newRisky] = risky.length ? await Promise.all([cached ? cached.oldRisky : replayDestructive(browser, run.old, route, viewport, risky), replayDestructive(browser, front, route, viewport, risky)]) : [[], []];
 	// Sent, a delete cannot be done twice; held back, it can, and a second run shows what varies.
-	const oldRiskyAgain = risky.length && !run.old.sendWrites ? await replayDestructive(browser, run.old, route, viewport, risky) : oldRisky;
+	const oldRiskyAgain = cached ? cached.oldRiskyAgain : risky.length && !run.old.sendWrites ? await replayDestructive(browser, run.old, route, viewport, risky) : oldRisky;
+	const mine: OldJourneys = { explored, runs, oldRisky, oldRiskyAgain };
+	if (!cached && loads.length && clientOnly(mine)) await run.oldCache?.write('journeys', run.old, key, loads, mine);
 	const journeys: RecordedJourney[] = [...plain, ...risky.map((j, i) => ({ ...j, expected: oldRisky[i]! }))];
 	const olds = runs.map((r, k) => [...r, ...(k === 0 ? oldRisky : oldRiskyAgain)]);
 	const elements = explored.elements.map((e) => destructiveCoverage(e, explored.deferred, oldRisky));
@@ -234,6 +260,19 @@ async function checkJourneys(browser: Browser, run: Run, route: string, viewport
 	const unexercised = elements.filter((e) => !e.by && !e.shared).map((e) => notExercised(route, e.element, e.reason ?? 'no journey used it', reachable.get(e.signature)));
 	const doorErrors = await doorPageErrors(browser, run.old, viewport, [...next, ...newRisky]);
 	return withFailures(result, [...result.failures, ...compareJourneys(route, olds, journeys, [...next, ...newRisky], owner, doorErrors), ...unexercised], { journeys, coverage, writes: [...(result.writes ?? []), ...writes] });
+}
+
+/** What OLD's journeys recorded: the exploration and every replay of it. */
+interface OldJourneys {
+	readonly explored: Exploration;
+	readonly runs: RunResults[];
+	readonly oldRisky: RunResults;
+	readonly oldRiskyAgain: RunResults;
+}
+
+/** OLD's journeys made no request to an app and wrote nothing: what they did is the page's own code, which the page-load fingerprint covers. */
+function clientOnly(o: OldJourneys): boolean {
+	return [...o.runs, o.oldRisky, o.oldRiskyAgain].every((r) => r.every((steps) => steps.every((step) => !step.requests.length && !step.writes?.length && !step.door)));
 }
 
 /** How a control that ends the session or deletes was exercised: by its journey, with the requests it made held back or sent. */
@@ -258,8 +297,9 @@ async function unreachableOnBoth(browser: Browser, env: SideEnv, route: string, 
 	if (!tried.length) return out;
 	const results = await replayAll(browser, env, route, viewport, tried.map((e) => e.unreachable!.journey));
 	tried.forEach((e, i) => {
-		const failed = results[i]!.find((r) => r.failed);
-		const candidate = unreachableCandidate(e.unreachable!.kind, e.reason ?? '', failed);
+		const steps = results[i]!;
+		const failed = steps.find((r) => r.failed);
+		const candidate = unreachableCandidate(e.unreachable!.kind, e.reason ?? '', failed, !failed && steps.length === e.unreachable!.journey.steps.length);
 		if (candidate) out.set(e.signature, candidate);
 	});
 	return out;
@@ -416,7 +456,8 @@ async function deniedPage(env: SideEnv, http: HttpCapture): Promise<boolean> {
 
 /** Checks one route as one role: a bot wall stops it, a different access decision is reported without comparing two different pages. */
 async function checkAs(browser: Browser, run: Run, route: string, role: string | undefined, logins: readonly string[], options: CheckOptions, light = false): Promise<RouteResult> {
-	const wall = (await probeWall(run.old, route, 'old')) ?? (await probeWall(run.new, route, 'new'));
+	const [oldWall, newWall] = await Promise.all([probeWall(run.old, route, 'old'), probeWall(run.new, route, 'new')]);
+	const wall = oldWall ?? newWall;
 	if (wall) return partialResult(route, [], [], wall);
 	const gate: Failure[] = [];
 	if (role) {
@@ -487,7 +528,8 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const freeze: FreezeOptions | false = options.freeze === false ? false : { ...DEFAULT_FREEZE, ...options.freeze };
 	const bypass = { ...(options.headers ? { headers: options.headers } : {}), ...(options.cookies?.length ? { cookies: options.cookies } : {}), ...(options.userAgent ? { userAgent: options.userAgent } : {}) };
 	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [], ...bypass };
-	const base: Run = { old: defaultEnv(options.oldOrigin, shared), new: defaultEnv(options.newOrigin, shared), frozen: Boolean(freeze), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
+	const oldCache = options.cacheDir ? new OldCache(join(options.cacheDir, 'old'), { block: options.block ?? null }) : undefined;
+	const base: Run = { old: defaultEnv(options.oldOrigin, shared), new: defaultEnv(options.newOrigin, shared), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
 	const auth = options.auth;
 	const roles: (string | undefined)[] = auth ? [ANONYMOUS, ...Object.keys(auth.roles)] : [undefined];
 	const logins: LoginResult[] = [];
@@ -535,7 +577,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			const pages = allPages;
 			const full = pages.filter((route) => !light(route));
 			const owners = full.length > 1 ? await layoutOwners(browser, roleRun, full, options) : new Map<string, string>();
-			roleRun = { ...roleRun, journeys: { ...options.journeys, owner: (signature) => owners.get(signature.split(' > ')[0]!) } };
+			roleRun = { ...roleRun, owners: [...owners].sort(), journeys: { ...options.journeys, owner: (signature) => owners.get(signature.split(' > ')[0]!) } };
 			const checked = await pool(pages, options.concurrency ?? DEFAULT_CONCURRENCY, async (route) => {
 				const { run, failures } = data?.mode === 'replay' ? await replayRoute(roleRun, data.dir, route) : { run: roleRun, failures: [] };
 				const result = withTemplate(await withDeadline(route, run, routeTimeout(options), (scoped) => checkAs(browser, scoped, route, role, loginPaths, options, light(route))).catch(unreachable(route)));
@@ -571,6 +613,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			...(coverage ? { coverage } : {}),
 			...(options.partial ? { partial: { checked: checkedCount, total: options.partial.total } } : {}),
 			...(grouped.length ? { templates: { groups: grouped.map((g) => ({ pattern: g.pattern, representative: g.representative, members: g.members })) } } : {}),
+			...(oldCache ? { cache: { ...oldCache.counts } } : {}),
 		}, options.accepted ?? [], options.automaticOff ?? []);
 	} finally {
 		if (!options.browser) await browser.close();

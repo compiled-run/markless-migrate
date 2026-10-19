@@ -1,6 +1,7 @@
 import type { Browser, Page } from 'playwright';
 import type { SideEnv } from './browser.ts';
-import { collectPage } from './collect.ts';
+import { readPage } from './collect.ts';
+import { holdLoops } from './loops.ts';
 import { HINTS } from './hints.ts';
 import { describeTarget, locate, openSession, pool, type RecordedJourney, type Target } from './journeys.ts';
 import { describe, matchElements } from './match.ts';
@@ -300,7 +301,7 @@ async function still(page: Page, cap = 2_000): Promise<void> {
 	await sleep(120);
 }
 
-const shown = (page: Page) => page.evaluate(collectPage, { origin: new URL(page.url()).origin, full: true, styles: false }).then((c) => c.elements as ElementSnapshot[], () => [] as ElementSnapshot[]);
+const shown = (page: Page) => readPage(page, { origin: new URL(page.url()).origin, full: true, styles: false }).then((c) => c.elements as ElementSnapshot[], () => [] as ElementSnapshot[]);
 
 // Elements are described as the other dimensions describe them, from while they moved (`earlier`) when they are hidden by the end.
 async function records(page: Page, earlier: readonly ElementSnapshot[] = [], selectors: readonly string[] = []): Promise<{ motions: MotionRecord[]; elements: ElementSnapshot[]; hits?: number[] }> {
@@ -335,13 +336,14 @@ export function motionEnv(env: SideEnv, reduced: boolean): SideEnv {
 
 /** Replays a journey and records the motion its last step starts; with `film`, frames at fixed offsets across the longest animation. */
 async function recordJourney(browser: Browser, env: SideEnv, route: string, viewport: Viewport, journey: RecordedJourney, film?: Film | 'self', selectors: readonly string[] = []): Promise<Recorded> {
-	const session = await openSession(browser, env, route, viewport);
+	const session = await openSession(browser, env, route, viewport, { loops: true });
 	try {
 		const steps = journey.steps;
 		for (const step of steps.slice(0, -1)) {
 			const r = await session.run(step);
 			if (r.failed) return { interaction: journey.name, motions: [], failed: r.failed };
 		}
+		await session.page.evaluate(holdLoops).catch(() => 0);
 		await session.page.evaluate(armMotion, film !== undefined);
 		const result = await session.run(steps.at(-1)!);
 		if (result.failed) return { interaction: journey.name, motions: [], failed: result.failed };
@@ -376,10 +378,11 @@ export const SCROLL = 'scroll down one screen';
 
 /** Hovers and keyboard-focuses each target in turn on one page, recording the transitions each starts; with `scroll`, then scrolls down one screen and records what that starts. */
 async function recordHovers(browser: Browser, env: SideEnv, route: string, viewport: Viewport, targets: readonly Target[], scroll: boolean, selectors: readonly string[] = []): Promise<MotionCapture[]> {
-	const session = await openSession(browser, env, route, viewport);
+	const session = await openSession(browser, env, route, viewport, { loops: true });
 	const page = session.page;
 	const out: MotionCapture[] = [];
 	try {
+		await page.evaluate(holdLoops).catch(() => 0);
 		for (const target of targets) {
 			for (const how of ['hover', 'focus'] as const) {
 				const interaction = `${how} ${describeTarget(target)}`;

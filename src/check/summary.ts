@@ -73,6 +73,10 @@ export function summarize(report: Report): string {
 	const blocked = report.routes.filter((r) => r.blocked).length;
 	const network = report.routes.filter((r) => r.infrastructure).length;
 	const red = report.routes.length - green - blocked - network;
+	if (report.cache && Object.values(report.cache).some(Boolean)) {
+		const c = report.cache;
+		lines.push('', `Old side from the cache (.migrate/cache): ${c.hit} reused because nothing the old page loads changed${c.changed ? `, ${c.changed} loaded again because a response changed` : ''}${c['stale-checker'] ? `, ${c['stale-checker']} loaded again for a new checker version` : ''}${c.miss ? `, ${c.miss} not cached yet` : ''}. Pass --no-cache to load every old page again.`);
+	}
 	if (report.templates) {
 		const pages = report.templates.groups.reduce((n, g) => n + g.members.length, 0);
 		lines.push('', `Every page got the http, rendered, seo, assets, css, a11y, i18n, network and weight checks. Visual, behaviour and responsiveness ran on one representative per template group (grouped by URL pattern and page layout): ${report.templates.groups.length} group${report.templates.groups.length === 1 ? '' : 's'} covering ${pages} pages. Pass --every-dimension to run them on every page.`, ...report.templates.groups.map((g) => `  ${g.pattern}  ${g.members.length} pages, representative ${g.representative}`));

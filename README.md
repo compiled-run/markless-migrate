@@ -25,7 +25,7 @@ markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [
     [--auth .migrate/auth.json] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
     [--all] [--allow-unchecked] [--new-source ../markless-app] [--concurrency 4] [--changed]
     [--journey-budget 120] [--max-journeys <n>] [--timeout 600]
-    [--no-responsiveness] [--interaction-budget 200] [--cpu-throttle 4] [--interaction-controls 16] [--no-motion]
+    [--no-responsiveness] [--interaction-budget 200] [--cpu-throttle 4] [--interaction-controls 16] [--no-motion] [--no-cache]
 markless-migrate switch <route> [--force --by <name> --reason <why>]
 markless-migrate unswitch <route>
 markless-migrate proxy --old http://localhost:3000 --new http://localhost:5173 [--port 4300] [--host 127.0.0.1]
@@ -48,6 +48,11 @@ screenshots per route, viewport and failing state, side by side or as a slider o
 differing regions boxed and every failure listed with its fix; `--open` opens it; the screenshots are
 PNG files in `.migrate/shots/`, each stored once and loaded lazily, so publish that folder with the page),
 screenshot diffs in `.migrate/diffs/`, and the interactions it explored in `.migrate/journeys/`.
+Without `--route` it also measures route coverage: every route of the old site must exist on the new
+app (same status class and redirect target), and an HTML page counts as ported only when the new app's
+own Markless code renders it, which Markless's route marker (the page file the router names) shows. A
+page without it is listed as "served by the old app" (a copied file, a proxy or a rewrite passing the old
+HTML through), apart from missing routes; neither counts toward done, and `switch` refuses both.
 `check --all` also takes every route the source scan knows (see below) and the old app's non-page
 endpoints. Routes are checked `--concurrency` at a time (default half the cores, at most 4: the
 Vite fixture's ten routes take 39 s one at a time and 18 s four at a time on an 18-core machine,
@@ -85,7 +90,10 @@ Every page loads frozen: `Date` and `Date.now` start at a fixed instant and move
 fires (to the time it was due), `performance.timeOrigin` is that instant, `Math.random`,
 `crypto.getRandomValues` and `crypto.randomUUID` are seeded, the timezone and locale are fixed
 (UTC and en-US unless `--timezone`/`--locale`), screenshots finish or cancel CSS animations and
-transitions (the reduced-motion check still sees them run), and requests to known ad, analytics,
+transitions (the reduced-motion check still sees them run), loops (a live `setInterval`, or a
+timeout or animation frame that schedules itself again: a fading demo box, a ticking clock, a
+carousel) are held at their start for screenshots and styles on both sides, with what each loop
+changed undone and infinite animations paused at time 0, and requests to known ad, analytics,
 tag-manager, session-replay and client-side experiment hosts are blocked (`src/check/trackers.ts`;
 `--block` adds a host, `--allow` lets one load). `--no-freeze` turns freezing off. The server's own
 clock cannot be frozen from the browser, so the repeated old loads below still catch it, and the report
@@ -94,6 +102,22 @@ sources of variation, each reported as pinned, blocked or left to the noise base
 
 Each route is loaded twice on the old app and once on the new one, at a desktop (1280x800) and a
 mobile (390x844) viewport. When the two old loads differ, a third old load is taken after the new one.
+The old loads and the old page's journeys are kept in `.migrate/cache/` and reused by the next check
+while nothing the old page loaded has changed: each response it loaded (the page, its scripts, styles,
+fonts and images, on any origin) is asked for again, with its ETag or Last-Modified when it had one, and
+must come back 304 or with the same status and content hash; the checker's own code and the options
+that shape a capture must be the same too. Journeys are reused only when they made no request to an app
+and wrote nothing. `--no-cache` loads every old page again.
+
+A live embed (an iframe or plugin from another origin, or a video) is compared by what the page
+controls of it: the element, its address (origin and path), its attributes (size, `loading`, `allow`,
+`sandbox`, `title`, `autoplay`, `controls`...), its size and its place; what plays inside it is masked
+in every screenshot on both sides, and the requests, frames and scripts its own document makes are the
+third party's, left out of `network` and `weight`. A port that drops, swaps, resizes or moves an embed
+is red in `rendered` (`embed #1 <iframe>`). What a page's own code fetches from other origins with a GET (a widget's script and
+the API it reads, such as the GitHub star button and api.github.com) is fetched once per run and every
+load, old and new, gets that answer, so a rate limit that starts part way through a run cannot make one
+side differ; an old side from the cache hands the new side the answers it read.
 A text line that differed between old loads may vary only in the characters that varied there, and
 only within the same kind of character (digits stay digits); everything else must match.
 
@@ -111,9 +135,9 @@ only within the same kind of character (digits stay digits); everything else mus
 | `behaviour` | interactions explored on the old page and replayed on the new one: the URL, what appears and disappears, app requests (method, path, body shape), console errors, live-region announcements, focus and what the page keeps in the browser (localStorage, sessionStorage and IndexedDB keys, cookies with their attributes) after each step and after the page loads; a step that only reorders nodes (a sorted table) reports which nodes moved; and coverage: every interactive element of the old page, including what a click reveals, is used by at least one journey. Interactive means a native control, an ARIA widget (tab, option, menuitem, switch, checkbox, slider, treeitem; a column header that sorts or takes focus; a row or cell of a `grid` that takes focus or is selectable, the first two of each grid exercised and the rest counted as covered by them) or any element that listens for clicks or keys itself (Chromium's `DOMDebugger.getEventListeners`, or the handler props React, Vue, Svelte and Solid keep on the element when they delegate to the root), found again on the new page by its exact text or label. Headers are clicked and pressed Enter on, rows pressed Space, Enter and ArrowDown, cells arrowed through, sliders moved by key, and filter boxes a click reveals are typed into (main content, tables and forms first, until `--journey-budget` runs out), and one that is not keeps the route red until a person accepts it. A control the pointer cannot reach is scrolled to the middle of the viewport, focused, its holder hovered (a menu that opens on hover, a button that takes the pointer only then) and what covers it dismissed (Escape, then the covering layer's Accept, Close or Dismiss button); one still unreachable is reported with why (`occluded: covered by div.banner "We use cookies"`, `hidden: inside ul.sub: display: none`, `offscreen`) and is accepted automatically when the new page refuses it for the same reason. Controls that end the session or delete (Sign out, Log out, Delete, Remove) are used too, after every other journey, each in a session of its own, and count as exercised: see Writes below; a shared header or sidebar control is exercised by the first route of the run that has it, and every route sharing it carries its result. On the new app a journey that reaches a page not switched yet (`.migrate/switched.json`) is sent to that page on the old app's own origin, as the front door would send it, and runs there exactly as on its own host (with the old side's sign-in), not as the new app's 404; what that page keeps in the browser is the old app's, on another origin, so it is not compared there, and a console error it logs that the old app also logs on a plain load of that page is the old page's own, not the port's |
 | `network` | every request the page makes, in the browser and, when the server runs the request recorder, while the server renders it: method, URL (the app's own origin, ids, timestamps and cache-busters normalised, query keys and values kept), body shape, how many times, and which response fields the page shows |
 | `data` | non-page endpoints as data, with the same noise rules as pages: feeds item by item (keyed by guid, id or link), JSON field by field, `/.well-known` files, the manifest; robots.txt lines and sitemap entries count as `seo` |
-| `weight` | JavaScript on the wire and run at load (Chromium coverage); red when the new route is heavier |
+| `weight` | JavaScript on the wire and run at load (Chromium coverage), not counting what a third-party embed's own document loads; red when the new route is heavier |
 | `responsiveness` | the first use of every control the journeys exercised, and every internal link they followed, timed on a fresh page load, old then new, at desktop speed and on a 412x823 touch page with the CPU slowed 4x (`--cpu-throttle`). See below |
-| `motion` | the transitions and animations each interaction starts, old vs new, with motion allowed and the clock running in real time: the last step of every journey that stays on the page, hovering and keyboard-focusing each control a journey used, and scrolling down one screen. Each transition, CSS animation, Web Animation and style a script writes frame by frame is recorded with its element (paired as the other dimensions pair them), properties, duration, delay, easing and iterations, and media an interaction plays. Red when the old page animates and the new one jumps, when duration or delay differ by more than max(20 ms, 10%) or the easing differs, or when only the new page animates; every interaction that moved is replayed with `prefers-reduced-motion: reduce` too, where both must agree. report.html shows a filmstrip of each interaction that differs: five frames, old above new, at the same offsets into the old page's longest animation (held and stepped, so frames do not depend on timing). `--no-motion` leaves it out |
+| `motion` | the transitions and animations each interaction starts, old vs new, with motion allowed and the clock running in real time: the last step of every journey that stays on the page, hovering and keyboard-focusing each control a journey used, and scrolling down one screen. Each transition, CSS animation, Web Animation and style a script writes frame by frame is recorded with its element (paired as the other dimensions pair them), properties, duration, delay, easing and iterations, and media an interaction plays. Red when the old page animates and the new one jumps, when duration or delay differ by more than max(20 ms, 10%) or the easing differs, or when only the new page animates; every interaction that moved is replayed with `prefers-reduced-motion: reduce` too, where both must agree. report.html shows a filmstrip of each interaction that differs: five frames, old above new, at the same offsets into the old page's longest animation (held and stepped, so frames do not depend on timing). Loops are held at their start while interactions are recorded, so what a loop keeps doing is not counted as an interaction's motion, and are compared on their own: each attribute, text or child list a loop kept changing, on the same element, at its period within max(20 ms, 10%) (`loop on generic "Toggle Demo"`), red when the new page lacks the loop or adds one. `--no-motion` leaves the interactions out |
 
 ### Responsiveness: the first interaction and the next page
 
@@ -316,6 +340,7 @@ results.json, apart from differences a person accepted:
 | markup the old framework adds for itself, with the accessibility tree and announcements otherwise the same | a missing accessibility tree line that is exactly the role and text of a framework's own markup the old page has and the new page lacks (Next.js's `next-route-announcer`, Gatsby's, SvelteKit's and Nuxt's announcers), and only while no other line of that route's tree and no announcement after an interaction differs |
 | live content inside a third-party embed that both pages show | screenshot differences that all lie inside iframes or images from another origin that both pages load from the same address at the same place, or a third-party image at the same address that came back a different size |
 | an element neither page lets a visitor use, for the same reason | a "not exercised" control the old page would not let the pointer reach even after the remedies above, which the new page refuses for the same reason (covered, hidden or outside the page); a control missing from the new page, or one the new page lets a visitor use, is still red |
+| a control check could not drive on the old page, tried the same way on the new page | a "not exercised" control the old page lists but check could not find again by its role and name, or that never settled, when the new page either lets the same step through or fails it the same way: there is no old result to compare with, and its role, name and address are compared by `rendered`; one the new page refuses for a reason of its own (covered, hidden) is still red |
 | browser storage only the old framework's own code writes, with no journey difference on the route | storage keys, after the page loads or after a step, that the old page keeps and the new page does not, each written by the old framework: htmx's `htmx-history-cache` and `htmx-current-path-for-history` when the old page loads htmx's runtime and the new page does not, or a cookie whose value is in a server framework's own sealed format (Laravel's encrypted `XSRF-TOKEN` and session cookie) that the new page does not set; held only while no journey on the route differs otherwise |
 
 Anything else stays red until it is fixed or a person accepts it. An expert may turn a rule off in

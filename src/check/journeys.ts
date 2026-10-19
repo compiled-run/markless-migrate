@@ -88,6 +88,13 @@ export function localUrl(url: string, origin: string): string {
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/** The accessible name in an aria snapshot's first line; YAML single-quotes the whole line when the name holds `: ` or starts with `{`. */
+export function snapshotName(line: string): string {
+	const quoted = /^- '(.*)'(:?)$/.exec(line);
+	const entry = quoted ? quoted[1]!.replace(/''/g, "'") : line.replace(/^- /, '');
+	return /^[\w-]+ "((?:[^"\\]|\\.)*)"/.exec(entry)?.[1]?.replace(/\\(.)/g, '$1') ?? '';
+}
+
 export function describeTarget(t: Target): string {
 	return `${t.role}${t.name ? ` "${t.name}"` : ''}${t.nth ? ` #${t.nth + 1}` : ''}`;
 }
@@ -179,7 +186,7 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 		const seen = new Map<string, number>();
 		for (const locator of await page.getByRole(role).all()) {
 			const line = (await locator.ariaSnapshot({ timeout: STEP_TIMEOUT }).catch(() => '')).split('\n')[0] ?? '';
-			const name = /^- [\w-]+ "((?:[^"\\]|\\.)*)"/.exec(line)?.[1]?.replace(/\\(.)/g, '$1') ?? '';
+			const name = snapshotName(line);
 			const nth = seen.get(name) ?? 0;
 			seen.set(name, nth + 1);
 			if (!(await locator.isVisible().catch(() => false)) || (await locator.isDisabled().catch(() => true))) continue;
@@ -633,9 +640,10 @@ export interface Session {
 	close(): Promise<void>;
 }
 
-export async function openSession(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<Session> {
+/** `loops`: track loops so the caller can hold them (motion records what an interaction starts, not what a loop keeps doing). */
+export async function openSession(browser: Browser, env: SideEnv, route: string, viewport: Viewport, options: { readonly loops?: boolean } = {}): Promise<Session> {
 	const origin = env.origin;
-	const { context, page, log } = await openPage(browser, env, viewport, { sameOriginOnly: true });
+	const { context, page, log } = await openPage(browser, env, viewport, { sameOriginOnly: true, ...options });
 	const host = new URL(origin).origin;
 	const oldHost = env.frontDoor ? new URL(env.frontDoor.old).origin : undefined;
 	const hosts = oldHost && oldHost !== host ? [host, oldHost] : [host];

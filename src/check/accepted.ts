@@ -131,7 +131,7 @@ export function applyAccepted(report: Report, accepted: readonly Accept[], off: 
 	const exercised = (a: Accept) => (a.dimension === 'coverage' ? Boolean(report.coverage) : report.routes.some((r) => routeMatches(a.route, r.route) && (!a.role || a.role === (r.role ?? 'anonymous'))));
 	const stale = accepted.filter((a) => !used.has(a) && exercised(a));
 	const all = [...routes.flatMap((r) => r.failures), ...(logins ?? []).flatMap((l) => l.failures), ...(coverage?.failures ?? [])];
-	const checkedOk = routes.every((r) => r.ok) && (logins ?? []).every((l) => l.ok) && !coverage?.missing.length && !coverage?.unreachable.length;
+	const checkedOk = routes.every((r) => r.ok) && (logins ?? []).every((l) => l.ok) && !coverage?.missing.length && !coverage?.servedByOld?.length && !coverage?.unreachable.length;
 	return {
 		...report,
 		routes,

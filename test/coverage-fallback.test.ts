@@ -5,11 +5,11 @@ import { test } from 'node:test';
 import type { SideEnv } from '../src/check/browser.ts';
 import { checkCoverage } from '../src/check/coverage.ts';
 
-// Both apps send every unknown path to /install, as alpinejs.dev sends it to /essentials/installation.
-function app(pages: readonly string[]): Promise<Server> {
+// Both apps send every unknown path to /install, as alpinejs.dev sends it to /essentials/installation; the new app's pages carry Markless's route marker.
+function app(pages: readonly string[], markless = false): Promise<Server> {
 	const server = createServer((req, res) => {
 		const path = new URL(req.url ?? '/', 'http://x').pathname;
-		if (pages.includes(path)) res.writeHead(200, { 'content-type': 'text/html' }).end(`<title>${path}</title>`);
+		if (pages.includes(path)) res.writeHead(200, { 'content-type': 'text/html' }).end(`<title>${path}</title>${markless ? `<script type="@markless/core/route">{"file":"pages${path}.tsrx"}</script>` : ''}`);
 		else res.writeHead(302, { location: '/install' }).end();
 	});
 	return new Promise((done) => server.listen(0, '127.0.0.1', () => done(server)));
@@ -18,7 +18,7 @@ function app(pages: readonly string[]): Promise<Server> {
 const env = (server: Server) => ({ origin: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, freeze: false, block: () => false, sendWrites: false, writeFacts: [] }) as unknown as SideEnv;
 
 test("the page an old site's catch-all redirects to is present when the new app answers it and copies the catch-all", async () => {
-	const [old, next] = await Promise.all([app(['/', '/install', '/docs']), app(['/', '/install'])]);
+	const [old, next] = await Promise.all([app(['/', '/install', '/docs']), app(['/', '/install'], true)]);
 	try {
 		const coverage = await checkCoverage(env(old), env(next), ['/', '/install', '/docs']);
 		assert.deepEqual(coverage.missing, ['/docs']);

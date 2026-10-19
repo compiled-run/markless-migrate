@@ -1,4 +1,6 @@
 import { sameContentType } from './assets.ts';
+import { embedFailures } from './embeds.ts';
+import { loopFailures } from './loops.ts';
 import { embedCandidate, embedImageCandidate, markupCandidate, runtimeCandidate, storageOwner } from './automatic.ts';
 import { compareA11y } from './a11y.ts';
 import { HINTS, seoHint } from './hints.ts';
@@ -11,7 +13,7 @@ import { at as sourceAt } from './source-facts.ts';
 import { diffFields, diffLines, fieldTemplates, lineTemplates, type LineDiff } from './noise.ts';
 import type { AssetRecord, Box, Dimension, ElementSnapshot, Failure, HttpCapture, NoiseReport, PageCapture, RouteCapture, RouteResult, Shot } from './types.ts';
 import { DIMENSIONS } from './types.ts';
-import { compareScreenshots, visualNoise, visuallyDifferent } from './visual.ts';
+import { compareScreenshots, identicalShots, visualNoise, visuallyDifferent } from './visual.ts';
 import { storageFailure } from './storage.ts';
 import { residueFailures } from './residue.ts';
 
@@ -236,8 +238,7 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 		failures.push(...lineFailures(route, 'rendered', 'accessibility tree', viewport, diffLines(lineTemplates(a.aria, ...bs.map((b) => b.aria)), n.aria), HINTS.aria, { old: a.aria, new: n.aria }, (line, actual) => markupCandidate(line, actual, a, n)).slice(0, LIMIT));
 		failures.push(...lineFailures(route, 'rendered', 'visible text', viewport, diffLines(lineTemplates(a.text, ...bs.map((b) => b.text)), n.text), HINTS.text, { old: a.text, new: n.text }).slice(0, LIMIT));
 
-		const noise = visualNoise(a.screenshot, bs.map((b) => b.screenshot), noisyTextBoxes(a.elements, bs.map((b) => b.elements)));
-		const diff = compareScreenshots(a.screenshot, n.screenshot, noise);
+		const diff = identicalShots(a.screenshot, n.screenshot) ?? compareScreenshots(a.screenshot, n.screenshot, visualNoise(a.screenshot, bs.map((b) => b.screenshot), noisyTextBoxes(a.elements, bs.map((b) => b.elements))));
 		shots.push({ label: viewport, viewport, old: a.screenshot, new: n.screenshot, diff: diff.png, regions: visuallyDifferent(diff) ? diff.regions : [], ok: !visuallyDifferent(diff) });
 		if (visuallyDifferent(diff)) {
 			const r = diff.region;
@@ -256,6 +257,8 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 			if (diff.png) visualDiffs.push({ viewport, png: diff.png });
 		}
 
+		failures.push(...embedFailures(route, viewport, a, bs, n));
+		failures.push(...loopFailures(route, viewport, a, bs, n));
 		failures.push(...cssFailures(route, viewport, a, bs, n));
 		if (a.a11y && n.a11y) failures.push(...compareA11y(route, viewport, a.a11y, bs.flatMap((b) => (b.a11y ? [b.a11y] : [])), n.a11y));
 

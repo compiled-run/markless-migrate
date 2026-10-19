@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { tagHeaders, type SideEnv } from './browser.ts';
-import { captureHttp } from './capture.ts';
+import { captureHttp, mime, routeFile } from './capture.ts';
 import { UNKNOWN_PATH } from './endpoints.ts';
 import { HINTS } from './hints.ts';
 import { request } from './http.ts';
@@ -38,10 +38,18 @@ export function missingRoute(route: string, old: HttpCapture, next: string): Fai
 	return { route, dimension: 'coverage', check: 'route on the new app', expected: describeHttp(old), actual: next, hint: HINTS.routeMissing };
 }
 
-async function bodyHash(env: SideEnv, path: string): Promise<string | undefined> {
+export const NOT_RENDERED = 'route rendered by the new app';
+
+/** An HTML route the new app answers with a page its own Markless code did not render: no router route marker names a page file. */
+export function servedByOld(route: string, old: HttpCapture, next: HttpCapture): Failure {
+	return { route, dimension: 'coverage', check: NOT_RENDERED, expected: `${describeHttp(old)}, a page the new app's Markless code renders (the router names its page file)`, actual: `${describeHttp(next)}, served by the old app: the page carries no Markless route marker, so it is the old app's HTML passed through, not a port`, hint: HINTS.routeServedByOld };
+}
+
+async function body(env: SideEnv, path: string): Promise<{ hash: string; html: string } | undefined> {
 	try {
 		const response = await request(new URL(path, env.origin), { headers: tagHeaders(env) });
-		return createHash('sha256').update(await response.text()).digest('hex');
+		const html = await response.text();
+		return { hash: createHash('sha256').update(html).digest('hex'), html };
 	} catch {
 		return undefined;
 	}
@@ -58,7 +66,8 @@ async function pool<T>(items: readonly T[], task: (item: T) => Promise<void>): P
  * Whether every route of the old site exists on the new app: each is fetched from both (redirects followed by hand), and a route
  * the old app answers without an error must get the same status class and redirect target from the new one. When the new app
  * answers a path no app has with a page, a route whose page is byte for byte that page counts as missing, unless the old app
- * answers a path no app has with that same route (its catch-all redirects there), which the new app then rightly copies.
+ * answers a path no app has with that same route (its catch-all redirects there), which the new app then rightly copies. An HTML
+ * page counts as ported only when the new app's Markless code renders it; one without Markless's route marker is served by the old app.
  */
 export async function checkCoverage(old: SideEnv, next: SideEnv, routes: readonly string[], role?: string): Promise<RouteCoverage> {
 	const failures: Failure[] = [];
@@ -67,7 +76,7 @@ export async function checkCoverage(old: SideEnv, next: SideEnv, routes: readonl
 	let total = 0;
 	let present = 0;
 	const fallback = await captureHttp(next.origin, UNKNOWN_PATH, tagHeaders(next)).catch(() => undefined);
-	const catchAll = fallback && fallback.status < 300 ? await bodyHash(next, fallback.chain.at(-1)!.url) : undefined;
+	const catchAll = fallback && fallback.status < 300 ? (await body(next, fallback.chain.at(-1)!.url))?.hash : undefined;
 	const oldFallback = catchAll ? await captureHttp(old.origin, UNKNOWN_PATH, tagHeaders(old)).catch(() => undefined) : undefined;
 	const oldCatchAll = oldFallback && oldFallback.status < 300 ? new URL(oldFallback.chain.at(-1)!.url, old.origin).pathname : undefined;
 	await pool([...new Set(routes)], async (route) => {
@@ -93,12 +102,24 @@ export async function checkCoverage(old: SideEnv, next: SideEnv, routes: readonl
 			return;
 		}
 		const oldsOwnFallback = oldCatchAll !== undefined && new URL(a.chain.at(-1)!.url, old.origin).pathname === oldCatchAll;
-		if (catchAll && !oldsOwnFallback && b.status < 300 && a.status < 300 && (await bodyHash(next, b.chain.at(-1)!.url)) === catchAll) failures.push(tag(missingRoute(route, a, `${describeHttp(b)}, the same page the new app answers for a path no app has (${UNKNOWN_PATH})`)));
+		const html = mime(b.contentType) === 'text/html' && mime(a.contentType) === 'text/html';
+		const page = b.status < 300 && a.status < 300 && (html || (catchAll && !oldsOwnFallback)) ? await body(next, b.chain.at(-1)!.url) : undefined;
+		if (catchAll && !oldsOwnFallback && page?.hash === catchAll) failures.push(tag(missingRoute(route, a, `${describeHttp(b)}, the same page the new app answers for a path no app has (${UNKNOWN_PATH})`)));
+		else if (page && html && !routeFile(page.html).routeFile) failures.push(tag(servedByOld(route, a, b)));
 		else present++;
 	});
 	failures.sort((x, y) => x.route.localeCompare(y.route));
-	return { total, present, missing: failures.map((f) => f.route), accepted: [], failures, notOnOld: notOnOld.sort(), unreachable: unreachable.sort(), ...(role ? { roles: [{ role, total, present, missing: failures.length }] } : {}) };
+	return { total, present, ...split(failures), accepted: [], failures, notOnOld: notOnOld.sort(), unreachable: unreachable.sort(), ...(role ? { roles: [{ role, total, present, missing: failures.length }] } : {}) };
 }
+
+/** Open failures' routes: missing, and served by the old app (a route missing for any role is missing). */
+function split(open: readonly Failure[]): { missing: string[]; servedByOld: string[] } {
+	const missing = new Set(open.filter((f) => f.check !== NOT_RENDERED).map((f) => f.route));
+	return { missing: [...missing].sort(), servedByOld: [...new Set(open.filter((f) => f.check === NOT_RENDERED && !missing.has(f.route)).map((f) => f.route))].sort() };
+}
+
+/** Routes of the old site the new app does not port yet: missing, or served by the old app. */
+export const notPorted = (c: { readonly missing?: readonly string[]; readonly servedByOld?: readonly string[] }): string[] => [...(c.missing ?? []), ...(c.servedByOld ?? [])];
 
 /** One role's coverage, or every role's together: a route is present when the new app answers it alike for every role. */
 export function mergeCoverage(parts: readonly RouteCoverage[]): RouteCoverage {
@@ -109,7 +130,7 @@ export function mergeCoverage(parts: readonly RouteCoverage[]): RouteCoverage {
 	return {
 		total,
 		present: Math.max(0, total - routes.size),
-		missing: [...routes].sort(),
+		...split(failures),
 		accepted: [],
 		failures,
 		notOnOld: [...new Set(parts.flatMap((p) => p.notOnOld))].sort(),
@@ -124,14 +145,18 @@ export function settleCoverage(coverage: RouteCoverage, failures: readonly Failu
 	const missing = new Set(open.map((f) => f.route));
 	const accepted = failures.filter((f) => f.accepted && !missing.has(f.route)).map((f) => f.route);
 	const roles = coverage.roles?.map((r) => ({ ...r, missing: open.filter((f) => f.role === r.role).length, present: r.total - open.filter((f) => f.role === r.role).length }));
-	return { ...coverage, failures, missing: [...missing], accepted: [...new Set(accepted)], present: Math.max(0, coverage.total - new Set(failures.map((f) => f.route)).size), ...(roles ? { roles } : {}) };
+	return { ...coverage, failures, ...split(open), accepted: [...new Set(accepted)], present: Math.max(0, coverage.total - new Set(failures.map((f) => f.route)).size), ...(roles ? { roles } : {}) };
 }
 
 export function coverageLines(c: RouteCoverage): string[] {
-	const lines = [`Routes on the new app: ${c.present} of ${c.total} routes of the old site present${c.missing.length ? `, ${c.missing.length} missing` : ''}${c.accepted.length ? `, ${c.accepted.length} left out on purpose (accepted)` : ''}.`];
+	const old = c.servedByOld ?? [];
+	const lines = [`Routes on the new app: ${c.present} of ${c.total} routes of the old site present${c.missing.length ? `, ${c.missing.length} missing` : ''}${old.length ? `, ${old.length} served by the old app` : ''}${c.accepted.length ? `, ${c.accepted.length} left out on purpose (accepted)` : ''}.`];
 	if (c.roles && c.roles.length > 1) lines.push(`  by role: ${c.roles.map((r) => `${r.role} ${r.total - r.missing} of ${r.total}`).join(', ')}`);
 	const open = c.failures.filter((f) => !f.accepted);
-	if (open.length) lines.push(`Missing on the new app (${open.length}):`, ...open.map((f) => `  ${f.route}${f.role ? ` (${f.role})` : ''}  old ${f.expected}, new ${f.actual}${f.id ? `  [${f.id}]` : ''}`));
+	const missing = open.filter((f) => f.check !== NOT_RENDERED);
+	const passed = open.filter((f) => f.check === NOT_RENDERED);
+	if (missing.length) lines.push(`Missing on the new app (${missing.length}):`, ...missing.map((f) => `  ${f.route}${f.role ? ` (${f.role})` : ''}  old ${f.expected}, new ${f.actual}${f.id ? `  [${f.id}]` : ''}`));
+	if (passed.length) lines.push(`Served by the old app, not rendered by the new app's Markless code (${passed.length}):`, ...passed.map((f) => `  ${f.route}${f.role ? ` (${f.role})` : ''}${f.id ? `  [${f.id}]` : ''}`));
 	const accepted = c.failures.filter((f) => f.accepted);
 	if (accepted.length) lines.push('Left out on purpose:', ...accepted.map((f) => `  ${f.route}  (${f.accepted!.reason}, ${f.accepted!.by})`));
 	if (c.unreachable.length) lines.push(`Not measured, an app did not answer after three tries, so coverage is not green (${c.unreachable.length}): ${c.unreachable.join(', ')}`);

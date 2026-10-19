@@ -12,6 +12,7 @@ export const AUTOMATIC_RULES = {
 	'framework-markup': 'markup the old framework adds for itself, with the accessibility tree and announcements otherwise the same',
 	'live-embed': 'live content inside a third-party embed that both pages show',
 	'unreachable-on-both': 'an element neither page lets a visitor use, for the same reason (covered, hidden or outside the page)',
+	'undrivable-on-old': 'a control check could not drive on the old page (not found again by its role and name, or it never settled), tried the same way on the new page',
 	'framework-storage': "browser storage only the old framework's own code writes, with no journey difference on the route",
 } as const;
 export type AutomaticRule = keyof typeof AUTOMATIC_RULES;

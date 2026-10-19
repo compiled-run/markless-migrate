@@ -1,14 +1,16 @@
 import type { Browser, BrowserContext, CDPSession, Page } from 'playwright';
 import { defaultEnv, openPage, type SideEnv } from './browser.ts';
 import { settle } from './capture.ts';
-import { collectPage } from './collect.ts';
+import { readPage } from './collect.ts';
 import { HINTS } from './hints.ts';
 import { carry, failureElements, failureRules } from './locate.ts';
 import { describe, matchElements } from './match.ts';
 import { describeRule, type CssRule, type CssState } from './stylesheet.ts';
 import type { Box, ElementSnapshot, Failure, Shot, Viewport } from './types.ts';
-import { compareScreenshots, visualNoise, visuallyDifferent } from './visual.ts';
+import { compareScreenshots, identicalShots, visualNoise, visuallyDifferent } from './visual.ts';
 import { loadPage } from './infrastructure.ts';
+import { holdLoops } from './loops.ts';
+import { embedMasks } from './embeds.ts';
 
 const MAX_STATES = 40;
 const TARGETS_PER_STATE = 2;
@@ -51,18 +53,19 @@ export interface StateOutput {
 
 async function open(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<Side> {
 	const origin = env.origin;
-	const { context, page } = await openPage(browser, env, viewport);
+	const { context, page } = await openPage(browser, env, viewport, { loops: true, shareThirdParty: true });
 	const inflight = trackRequests(page);
 	await loadPage(page, new URL(route, origin).href);
 	await settle(page);
+	await page.evaluate(holdLoops).catch(() => 0);
 	const session = await context.newCDPSession(page);
 	await session.send('DOM.enable');
 	await session.send('CSS.enable');
-	const base = (await page.evaluate(collectPage, { origin, full: true })).elements;
+	const base = (await readPage(page, { origin, full: true })).elements;
 	return { context, page, session, inflight, base };
 }
 
-const collect = async (side: Side, origin: string) => (await side.page.evaluate(collectPage, { origin, full: true })).elements;
+const collect = async (side: Side, origin: string) => (await readPage(side.page, { origin, full: true })).elements;
 /** Counts the page's requests in flight, so a state is sampled after the work it started has landed. */
 export function trackRequests(page: Page): () => number {
 	const pending = new Set<unknown>();
@@ -219,12 +222,13 @@ function union(boxes: readonly Box[]): Box | undefined {
 }
 
 async function screenshot(page: Page, clip: Box | undefined): Promise<Buffer> {
-	if (!clip) return page.screenshot({ fullPage: true, animations: 'disabled', caret: 'hide' });
+	const mask = await embedMasks(page);
+	if (!clip) return page.screenshot({ fullPage: true, animations: 'disabled', caret: 'hide', mask });
 	const size = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight }));
 	const x = Math.max(0, clip.x - CLIP_PADDING);
 	const y = Math.max(0, clip.y - CLIP_PADDING);
 	const box = { x, y, width: Math.max(1, Math.min(size.width, clip.x + clip.width + CLIP_PADDING) - x), height: Math.max(1, Math.min(size.height, clip.y + clip.height + CLIP_PADDING) - y) };
-	return page.screenshot({ fullPage: true, clip: box, animations: 'disabled', caret: 'hide' });
+	return page.screenshot({ fullPage: true, clip: box, animations: 'disabled', caret: 'hide', mask });
 }
 
 export async function compareStates(input: StateInput): Promise<StateOutput> {
@@ -357,7 +361,7 @@ export async function compareStates(input: StateInput): Promise<StateOutput> {
 				const [shot1, shot2, shotN] = await Promise.all([screenshot(o1.page, clip), screenshot(o2.page, clip), screenshot(n.page, clip)]);
 				const shift = (b: Box): Box => (clip ? { ...b, x: b.x - Math.max(0, clip.x - CLIP_PADDING), y: b.y - Math.max(0, clip.y - CLIP_PADDING) } : b);
 				const noisyBoxes = s1.flatMap((el, i) => (textNoise.has(i) || s2[p12.get(i) ?? -1]?.text !== el.text ? [shift(blockAround(s1, el))] : []));
-				const diff = compareScreenshots(shot1, shotN, visualNoise(shot1, [shot2], noisyBoxes));
+				const diff = identicalShots(shot1, shotN) ?? compareScreenshots(shot1, shotN, visualNoise(shot1, [shot2], noisyBoxes));
 				const different = visuallyDifferent(diff);
 				if (different) {
 					out.failures.push({

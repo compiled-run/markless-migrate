@@ -63,11 +63,16 @@ const USAGE = `markless-migrate ${VERSION}
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
           [--journey-budget <seconds>] [--max-journeys <n>] [--timeout <seconds>]
-          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--interaction-controls <n>] [--no-motion]
+          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--interaction-controls <n>] [--no-motion] [--no-cache]
           Compare routes old vs new (default: every route of the old site plan listed). Exits 1 when any is red.
           Coverage: every route of the old site must exist on the new app, with the same status class
           and the same redirect target, or carry an accepted difference (accept <id>); each missing
-          route is red and listed. --only coverage measures just that, for every route.
+          route is red and listed. An HTML page counts only when the new app's Markless code renders it
+          (Markless's route marker names its page file); one without it is "served by the old app",
+          listed apart, and, like a missing route, not ported: status is not done and switch refuses it.
+          --only coverage measures just that, for every route.
+          The old side's loads and journeys are reused from .migrate/cache while every response the old
+          page loaded is unchanged (ETag, Last-Modified or content hash); --no-cache loads them again.
           --route checks only the routes named, for iterating: such a run (and --changed) is a partial
           run, "partial run: N of M routes", never overall green; it exits 4 when what it checked is green.
           Above ${TEMPLATE_THRESHOLD} pages, every page gets every check except visual, behaviour,
@@ -502,6 +507,7 @@ async function main(argv: string[]): Promise<number> {
 					timeout: { type: 'string' },
 					only: { type: 'string' },
 					'every-dimension': { type: 'boolean' },
+					'no-cache': { type: 'boolean' },
 					...TIMING_FLAGS,
 				},
 			});
@@ -582,6 +588,7 @@ async function main(argv: string[]): Promise<number> {
 				...(!values['new-source'] && !values.changed ? {} : { sourceDirs: { ...(values.source ? { old: resolve(values.source) } : {}), new: newDir } }),
 				...(partial ? { partial: { total: planned?.length ?? null } } : planned?.length ? { coverage: planned } : {}),
 				templates: values['every-dimension'] ? false : { patterns: inventory?.source?.routes.map((r) => r.path) ?? [] },
+				...(values['no-cache'] ? {} : { cacheDir: join(cwd, STATE_DIR, 'cache') }),
 			});
 			await recordResults(cwd, report, commit ? { commit } : {});
 			const path = await writeReport(report, join(cwd, STATE_DIR), await status(cwd));
@@ -594,7 +601,7 @@ async function main(argv: string[]): Promise<number> {
 				return 1;
 			}
 			if (report.ok) return 0;
-			const red = report.routes.some((r) => !r.ok && !r.infrastructure) || (report.logins ?? []).some((l) => !l.ok) || Boolean(report.coverage?.missing.length);
+			const red = report.routes.some((r) => !r.ok && !r.infrastructure) || (report.logins ?? []).some((l) => !l.ok) || Boolean(report.coverage?.missing.length) || Boolean(report.coverage?.servedByOld?.length);
 			if (report.partial && !red && report.routes.every((r) => r.ok)) {
 				err(`markless-migrate: every route this run checked is green, but it was a partial run (${report.partial.total === null ? `${report.partial.checked} routes, no plan` : `${report.partial.checked} of ${report.partial.total} routes`}): not an overall green. Run check without --route to check every route.\n`);
 				return 4;

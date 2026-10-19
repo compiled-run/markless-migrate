@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { request as playwrightRequest, type APIRequestContext, type Browser, type BrowserContext, type BrowserContextOptions, type Page, type Request, type Route } from 'playwright';
+import { request as playwrightRequest, type APIRequestContext, type Browser, type BrowserContext, type BrowserContextOptions, type Frame, type Page, type Request, type Route } from 'playwright';
 import { DEFAULT_FREEZE, freezePage, type FreezeOptions } from './freeze.ts';
 import { bodyShape, MAX_BODY, sameApp, type NetworkRecord } from './network.ts';
 import { at, writeHandler, type WriteFact } from './source-facts.ts';
 import { detectChallenge } from './blocked.ts';
 import { blocker } from './trackers.ts';
+import { trackLoops } from './loops.ts';
 import type { Viewport } from './types.ts';
 import { request } from './http.ts';
 import type { Scope } from './infrastructure.ts';
@@ -168,7 +169,7 @@ export function pageAsset(method: string, resourceType: string): boolean {
 const assets = new Map<string, Promise<{ status: number; headers: Record<string, string>; body: Buffer } | undefined>>();
 let fetcher: Promise<APIRequestContext> | undefined;
 
-async function fulfillAsset(route: Route): Promise<void> {
+async function fulfillAsset(route: Route, live = false): Promise<void> {
 	const url = route.request().url();
 	let hit = assets.get(url);
 	if (!hit) {
@@ -183,7 +184,41 @@ async function fulfillAsset(route: Route): Promise<void> {
 		assets.set(url, hit);
 	}
 	const got = await hit;
-	await (got ? route.fulfill(got) : route.abort()).catch(() => {});
+	if (!got && live) assets.delete(url);
+	// One fetch answers pages on both apps: a CORS answer naming the first page's origin is given to each page for its own.
+	const origin = route.request().headers().origin;
+	const allowed = got?.headers['access-control-allow-origin'];
+	const answer = got && allowed && allowed !== '*' && origin ? { ...got, headers: { ...got.headers, 'access-control-allow-origin': origin } } : got;
+	await (answer ? route.fulfill(answer) : live ? route.continue() : route.abort()).catch(() => {});
+}
+
+/** Answers recorded by an earlier load (an old capture from the cache) for the page's own data requests to other origins, given to every later load of this run, so a new capture reads what that old capture read. */
+export function shareAnswers(records: readonly NetworkRecord[], origin: string): void {
+	for (const r of records) {
+		if (r.side !== 'browser' || r.method !== 'GET' || r.body === undefined || r.intercepted || r.replayed || !r.status || sameApp(new URL(r.url), origin) || assets.has(r.url)) continue;
+		assets.set(r.url, Promise.resolve({ status: r.status, headers: { 'content-type': r.contentType, 'access-control-allow-origin': '*' }, body: Buffer.from(r.body) }));
+	}
+}
+
+/** A request a page's own code makes to another origin that every load of the run can share: a GET for a script, style, font, image or data (a widget's script and the API it reads), outside any embed. */
+export function sharedThirdParty(method: string, resourceType: string): boolean {
+	return method === 'GET' && ['script', 'stylesheet', 'font', 'image', 'fetch', 'xhr'].includes(resourceType);
+}
+
+/** Made by the content of a third-party embed (an iframe on another origin, or a frame inside one): the embed's own business. The embed's own document load is the page's. */
+export function insideEmbed(request: Pick<Request, 'frame' | 'isNavigationRequest'>, own: (url: URL) => boolean): boolean {
+	let frame: Frame | null;
+	try {
+		frame = request.frame();
+	} catch {
+		return false;
+	}
+	if (request.isNavigationRequest()) frame = frame.parentFrame();
+	for (; frame?.parentFrame(); frame = frame.parentFrame()) {
+		const url = URL.parse(frame.url());
+		if (url && /^https?:$/.test(url.protocol) && !own(url)) return true;
+	}
+	return false;
 }
 
 function topLevelLoad(request: Request): boolean {
@@ -212,12 +247,18 @@ export function withOldSession(state: StorageState | undefined, old: StorageStat
 export interface OpenOptions {
 	/** Abort requests to other origins (journeys keep third-party widgets out), except page assets and recorded and blocked ones. */
 	readonly sameOriginOnly?: boolean;
+	/** Track loops (live intervals, self-scheduling timeouts and animation frames) so a capture can hold them at their start. */
+	readonly loops?: boolean;
+	/** Answer the page's own GETs to other origins from one fetch per run, so every load of the run, old and new, gets the same third-party answer (a widget's API reply, rate limited or not). */
+	readonly shareThirdParty?: boolean;
 }
 
 export interface OpenPage {
 	readonly context: BrowserContext;
 	readonly page: Page;
 	readonly log: PageLog;
+	/** The app's own origins: its own, and the old app's when the front door sends a page there. */
+	readonly own: (url: URL) => boolean;
 }
 
 /** A fresh context with the clock and randomness frozen, trackers blocked, writes held back unless allowed, and recorded data served. */
@@ -228,6 +269,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 	if (env.cookies?.length) await context.addCookies(env.cookies.map((c) => ({ ...c, url: env.origin })));
 	const extra = env.headers ?? {};
 	if (env.freeze) await context.addInitScript(freezePage, { time: env.freeze.time, seed: env.freeze.seed, ...(env.freeze.clock ? { clock: env.freeze.clock } : {}) });
+	if (options.loops) await context.addInitScript(trackLoops);
 	const load = randomUUID();
 	const tag = recorderTag(env, load);
 	const pending = new Set<Promise<void>>();
@@ -261,6 +303,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 	}
 	const recorded = env.replay?.responses.filter((r) => r.side === 'browser') ?? [];
 	const door = env.frontDoor;
+	const ownOrigin = (url: URL) => sameApp(url, env.origin) || (door !== undefined && sameApp(url, door.old));
 	await context.route('**/*', async (route: Route) => {
 		const request = route.request();
 		const url = new URL(request.url());
@@ -274,6 +317,11 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 		const body = request.postData() ?? undefined;
 		const type = mime(request.headers()['content-type']);
 		const reason = writeReason(request.method(), url, home, env.writeFacts, request.headers()) ?? (log.holdAll && same && !env.sendWrites && (request.isNavigationRequest() || ['fetch', 'xhr'].includes(request.resourceType())) ? 'a request of a control that ends the session or deletes' : undefined);
+		// An embed's own writes (its analytics, its player state) are held back too, and are the embed's, not the page's.
+		if (reason && insideEmbed(request, ownOrigin)) {
+			handled.add(request);
+			return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } });
+		}
 		if (reason) {
 			const line = requestLine(request.method(), url, home, body, type);
 			log.writes.push({ line: env.sendWrites ? line : `would ${line}`, reason, sent: env.sendWrites, request });
@@ -294,7 +342,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 				log.records.push({ ...hit, url: url.href, replayed: true, recordedUrl: hit.url });
 				return route.fulfill({ status: hit.status, headers: { 'content-type': hit.contentType, 'access-control-allow-origin': '*' }, body: hit.body ?? '' });
 			}
-			if (!options.sameOriginOnly) return route.continue();
+			if (!options.sameOriginOnly) return options.shareThirdParty && sharedThirdParty(request.method(), request.resourceType()) && !insideEmbed(request, ownOrigin) ? fulfillAsset(route, true) : route.continue();
 			return pageAsset(request.method(), request.resourceType()) ? fulfillAsset(route) : route.abort();
 		}
 		// The page load's id goes only on the page and its API calls: framework prefetches render other routes, whose fetches are not this page's.
@@ -304,7 +352,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 		return env.headers ? route.continue({ headers: { ...request.headers(), ...extra } }) : route.continue();
 	});
 	const finish = (request: Request) => {
-		if (handled.has(request) || !contractRequest(request, env.origin)) return;
+		if (handled.has(request) || !contractRequest(request, env.origin) || insideEmbed(request, ownOrigin)) return;
 		const url = new URL(request.url());
 		if (env.block(url.hostname)) return;
 		const reading = (async () => {
@@ -322,7 +370,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 	context.on('requestfinished', finish);
 	context.on('requestfailed', finish);
 	const page = await context.newPage();
-	return { context, page, log };
+	return { context, page, log, own: ownOrigin };
 }
 
 function tokenHeaders(): Record<string, string> {
@@ -330,8 +378,24 @@ function tokenHeaders(): Record<string, string> {
 	return token ? { 'x-markless-migrate-token': token } : {};
 }
 
+// Asked once per origin: a server without the recorder is not sent one request per page load (a mirror forwards each to production).
+const recorders = new Map<string, Promise<boolean | undefined>>();
+function runsRecorder(env: SideEnv): Promise<boolean | undefined> {
+	const key = `${new URL(env.origin).origin}|${process.env.MARKLESS_MIGRATE_TOKEN ? 'token' : ''}`;
+	let known = recorders.get(key);
+	if (!known) {
+		known = request(new URL('/__markless-migrate/', env.origin), { headers: { ...appHeaders(env), ...tokenHeaders() } })
+			.then(async (hello) => hello.ok && mime(hello.headers.get('content-type') ?? '').includes('json') && ((await hello.json()) as { recorder?: number }).recorder === 1)
+			.catch(() => undefined);
+		recorders.set(key, known);
+		known.then((answer) => answer === undefined && recorders.delete(key));
+	}
+	return known;
+}
+
 /** What the server fetched while rendering this load, when it runs with the request recorder; undefined when it does not. */
 export async function serverRecords(env: SideEnv, load: string): Promise<NetworkRecord[] | undefined> {
+	if ((await runsRecorder(env)) === false) return undefined;
 	try {
 		const response = await request(new URL(`/__markless-migrate/requests?load=${encodeURIComponent(load)}`, env.origin), { headers: { ...appHeaders(env), ...tokenHeaders() } });
 		if (!response.ok || !mime(response.headers.get('content-type') ?? '').includes('json')) {
