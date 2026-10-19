@@ -33,6 +33,11 @@ const PAGES = {
 	once: `<button id="o">Settings</button><dialog id="d"><p>Settings</p><button id="c">Close</button></dialog><script>let closed = false; o.onclick = () => { if (!closed) d.showModal(); }; c.onclick = () => { closed = true; d.close(); };</script>`,
 } as const;
 
+// A toggle named after the mode it is in, as Docusaurus labels its own: system, light, dark, system again; or (two-way) light and dark only.
+const named = (next: string) => `<button id="t"></button><script>const read = () => localStorage.getItem('theme') ?? 'system'; const apply = (m) => { document.documentElement.dataset.theme = m === 'dark' ? 'dark' : 'light'; t.textContent = 'Theme (currently ' + m + ')'; }; apply(read()); t.onclick = () => { const m = read(); const next = ${next}; if (next === 'system') localStorage.removeItem('theme'); else localStorage.setItem('theme', next); apply(next); };</script>`;
+const THREE_WAY = named(`m === 'system' ? 'light' : m === 'light' ? 'dark' : 'system'`);
+const TWO_WAY = named(`m === 'light' ? 'dark' : 'light'`);
+
 // A theme toggle on two pages linked from a nav; the second page reads the stored mode back on load, or (`lost`) does not.
 const SITE = (restoreOnOther: boolean) => ({
 	'/': `${PAGES.old}<nav><a href="/other">Other</a></nav>`,
@@ -129,6 +134,19 @@ test('a stored mode is still in force after following an in-site link and reload
 	assert.equal(rest.length, 0, rest.map((r) => r.check).join(', '));
 	assert.equal(f!.check, 'click button "Theme", then follow link "Other" (step 2 of 3: follow link "Other" after use 1)');
 	assert.match(f!.actual, /new changed: .*html class -dark/);
+});
+
+test('a toggle that renames itself with each use is followed under its new name, and a port that skips a state fails at that use', async () => {
+	const green = await check({ '/': THREE_WAY }, { '/': THREE_WAY });
+	assert.deepEqual(behaviour(green).map((f) => `${f.check}: ${f.actual}`), []);
+	const toggle = green.routes[0]!.journeys!.find((j) => j.name === 'click button "Theme (currently system)"')!;
+	const name = (m: string) => ({ role: 'button', name: `Theme (currently ${m})`, nth: 0 });
+	assert.deepEqual(toggle.cycle, [{ use: name('light') }, { use: name('dark') }, 'reload', 'again']);
+	const failures = behaviour(await check({ '/': THREE_WAY }, { '/': TWO_WAY }));
+	const f = failures.find((x) => x.check.startsWith('click button "Theme (currently system)" (step'));
+	assert.equal(f?.check, 'click button "Theme (currently system)" (step 3 of 5: use 3)', failures.map((x) => x.check).join('\n'));
+	assert.match(f!.expected, /html data-theme-choice|html data-theme: dark → light|localStorage theme: "dark" → \(none\)/);
+	assert.match(f!.actual, /localStorage theme: "dark" → "light"/);
 });
 
 const step = (over: Partial<StepResult>): StepResult => ({ url: '/', added: [], removed: [], requests: [], errors: [], announcements: [], focus: 'body', navigated: false, ...over });

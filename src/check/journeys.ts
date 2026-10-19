@@ -67,11 +67,12 @@ export interface Journey {
 }
 
 /**
- * One act after a journey's steps: use its last control `again`; `reopen` with the step before it (what a close button closed);
+ * One act after a journey's steps: use its last control `again`, or `use` it under the name it shows now (a toggle labelled with its
+ * state, "currently light mode"); `reopen` with the step before it (what a close button closed);
  * press `escape`; `reload`; go `back`; click `outside` what the control opened, at a point of the old page that holds no control;
  * or `navigate` by following an in-site link.
  */
-export type CycleAct = 'again' | 'reopen' | 'escape' | 'reload' | 'back' | { readonly outside: { readonly x: number; readonly y: number } } | { readonly navigate: Target };
+export type CycleAct = 'again' | 'reopen' | 'escape' | 'reload' | 'back' | { readonly use: Target } | { readonly outside: { readonly x: number; readonly y: number } } | { readonly navigate: Target };
 
 /** How many times a control that stays on the page is used in a row: a two-state toggle comes back, a three-way one goes round. */
 export const CYCLE_USES = 3;
@@ -714,8 +715,16 @@ async function reach(page: Page, target: Locator, act: (t: Locator, timeout: num
 	throw new UnreachableError(found.kind, `${found.detail}${tried.length ? `, still after ${[...new Set(tried)].join(', ')}` : ''}`);
 }
 
+const USED = 'data-markless-migrate-used';
+
 async function perform(page: Page, step: Step): Promise<void> {
 	const target = locate(page, step.target);
+	await target
+		.evaluate((el, used) => {
+			for (const other of document.querySelectorAll(`[${used}]`)) other.removeAttribute(used);
+			el.setAttribute(used, '');
+		}, USED, { timeout: QUICK })
+		.catch(() => {});
 	switch (step.action) {
 		case 'click':
 			return reach(page, target, (t, timeout) => t.click({ timeout }), true);
@@ -852,6 +861,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		cycle(steps, act) {
 			const use = (step: Step) => observe(() => perform(page, step), describeTarget(step.target), step, false, false);
 			if (act === 'again') return use(steps.at(-1)!);
+			if (typeof act === 'object' && 'use' in act) return use({ ...steps.at(-1)!, target: act.use } as Step);
 			if (act === 'reopen') return use(steps.at(-2) ?? steps.at(-1)!);
 			if (act === 'escape') return observe(() => page.keyboard.press('Escape'), 'Escape', undefined, false, false);
 			if (act === 'reload') return observe(async () => void (await page.reload({ waitUntil: 'load', timeout: 30_000 })), 'reloading the page', undefined, false, true);
@@ -1026,16 +1036,30 @@ function overlays(): { keys: string[]; outside: { x: number; y: number } | null 
 	return { keys, outside };
 }
 
+/** The control the last step used, under the role and name it shows now; undefined when it is gone or is found by its structure. */
+async function retarget(page: Page, t: Target): Promise<Target | undefined> {
+	if (t.structure || t.role === CLICKABLE || t.role === 'summary') return undefined;
+	const marked = page.locator(`[${USED}]`).first();
+	if (!(await marked.count().catch(() => 0))) return undefined;
+	const name = snapshotName((await marked.ariaSnapshot({ timeout: QUICK }).catch(() => '')).split('\n')[0] ?? '');
+	const alike = await page.getByRole(t.role as Parameters<Page['getByRole']>[0], { name, exact: true }).all();
+	for (const [nth, el] of alike.entries()) if (await el.evaluate((e, used) => e.hasAttribute(used), USED).catch(() => false)) return { role: t.role, name, nth };
+	return undefined;
+}
+
 /** Uses the control of a journey's last step again until it has been used CYCLE_USES times, closing with Escape a dialog it opened in between; reloads when the journey stored something and uses it once more. Acts the old page would not take are left out, so both sides replay only what the old one did. */
 async function runCycle(session: Session, steps: readonly Step[], expected: StepResult[], preset?: readonly CycleAct[]): Promise<CycleAct[]> {
 	const step = steps.at(-1)!;
 	const cycle: CycleAct[] = [];
-	const take = async (act: CycleAct): Promise<boolean> => {
-		if ((act === 'again' || act === 'reopen') && (await usable(session.page, act === 'again' ? step.target : (steps.at(-2) ?? step).target)) !== 'ok') return false;
+	let current = (await retarget(session.page, step.target)) ?? step.target;
+	const take = async (wanted: CycleAct): Promise<boolean> => {
+		const act: CycleAct = wanted === 'again' && !sameTarget(current, step.target) ? { use: current } : wanted;
+		if ((wanted === 'again' || act === 'reopen') && (await usable(session.page, act === 'reopen' ? (steps.at(-2) ?? step).target : current)) !== 'ok') return false;
 		const result = await session.cycle(steps, act);
 		if (result.failed) return false;
 		cycle.push(act);
 		expected.push(result);
+		if (wanted === 'again') current = (await retarget(session.page, current)) ?? current;
 		return true;
 	};
 	if (preset) {
@@ -1044,7 +1068,7 @@ async function runCycle(session: Session, steps: readonly Step[], expected: Step
 	}
 	let uses = 1;
 	while (uses < CYCLE_USES && cycle.length < CYCLE_ACTS) {
-		const now = await usable(session.page, step.target);
+		const now = await usable(session.page, current);
 		if (now === 'ok') {
 			if (!(await take('again')) || expected.at(-1)!.navigated) return cycle;
 			uses++;
@@ -1366,14 +1390,14 @@ export async function doorPageErrors(browser: Browser, old: SideEnv, viewport: V
 /** What a cycle act is called in a check name: `click button "Theme" (use 2 of 3)`. */
 function cycleLabel(steps: number, acts: readonly CycleAct[], i: number): string {
 	const step = `step ${steps + i + 1} of ${steps + acts.length}`;
-	const uses = 1 + acts.slice(0, i + 1).filter((a) => a === 'again').length;
+	const uses = 1 + acts.slice(0, i + 1).filter((a) => a === 'again' || (typeof a === 'object' && 'use' in a)).length;
 	const act = acts[i]!;
 	const after = acts.slice(0, i).some((a) => a === 'reload') ? ', after the reload' : acts.slice(0, i).some((a) => typeof a === 'object' && 'navigate' in a) ? ', on the page it led to' : '';
-	if (act === 'again') return `${step}: use ${uses}${after}`;
+	if (act === 'again' || (typeof act === 'object' && 'use' in act)) return `${step}: use ${uses}${after}`;
 	if (act === 'reopen') return `${step}: open it again`;
 	if (act === 'reload') return `${step}: reload after use ${uses}${after}`;
-	if (act === 'escape' || act === 'back' || 'outside' in act) return `${step}: closed by ${closedBy(act)} after use ${uses}`;
-	return `${step}: follow ${describeTarget(act.navigate)} after use ${uses}`;
+	if (typeof act === 'object' && 'navigate' in act) return `${step}: follow ${describeTarget(act.navigate)} after use ${uses}`;
+	return `${step}: closed by ${closedBy(act)} after use ${uses}`;
 }
 
 /** What a state line is about: `html data-theme`, `html class dark`, `localStorage theme`. */
