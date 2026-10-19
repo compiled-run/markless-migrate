@@ -1,12 +1,15 @@
-import { copyFile, mkdir, readdir, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { attr, type Element } from './dom.ts';
 import type { Binding } from './tsrx.ts';
-import type { PartResolver } from './usage.ts';
+import type { PartResolver, PartUsage } from './usage.ts';
 
 /** The Markless ports of library behaviour, each written once and used on every site whose markup shows that library. */
 export const PARTS_DIR = fileURLToPath(new URL('../../parts/', import.meta.url));
+
+/** The framework-agnostic packages the ports run on, at the versions the ported libraries were certified with. */
+export const PART_DEPENDENCIES: Readonly<Record<string, string>> = { '@floating-ui/dom': '1.7.6' };
 
 export type PartEvent = 'click' | 'keydown' | 'pointerover' | 'pointerout' | 'pointerdown' | 'focusin' | 'focusout' | 'contextmenu' | 'input';
 
@@ -28,8 +31,26 @@ export interface Port {
 const slot = (el: Element) => attr(el, 'data-slot') ?? '';
 const radix = (el: Element) => el.attrs.some((a) => a.name.startsWith('data-radix-') || ((a.name === 'id' || a.name === 'aria-controls') && a.value.startsWith('radix-')));
 
+const ids = (el: Element) => el.attrs.filter((a) => a.name === 'id' || a.name.startsWith('aria-')).map((a) => a.value).join(' ');
+// The markup each library writes on every part it renders, so a part of one is never taken for another's.
+const SIGNATURES: Readonly<Record<string, (el: Element) => boolean>> = {
+	'radix-ui': radix,
+	'@base-ui/react': (el) => el.attrs.some((a) => a.name.startsWith('data-base-ui')) || /\bbase-ui-/.test(ids(el)),
+	'react-aria-components': (el) => el.attrs.some((a) => a.name === 'data-rac' || a.name.startsWith('data-react-aria')) || /react-aria/.test(ids(el)),
+};
+
+/** The source's candidates an element can be: those of the library whose markup it carries, or, carrying none, of the libraries that write no signature. */
+function narrow(el: Element, candidates: readonly PartUsage[]): PartUsage[] {
+	const signed = Object.entries(SIGNATURES).filter(([, test]) => test(el)).map(([lib]) => lib);
+	return candidates.filter((c) => (signed.length ? signed.includes(c.library) : !(c.library in SIGNATURES)));
+}
+
 export const PORTS: readonly Port[] = [
 	{ module: 'radix/tabs', library: 'radix-ui', exports: ['Tabs.Root', 'Tabs.List', 'Tabs.Trigger', 'Tabs.Content'], events: ['click', 'keydown'], locate: (el) => radix(el) },
+	{ module: 'radix/dialog', library: 'radix-ui', exports: ['Dialog.Root', 'Dialog.Trigger', 'Dialog.Content', 'Dialog.Overlay', 'Dialog.Close', 'AlertDialog.Root', 'AlertDialog.Trigger', 'AlertDialog.Content', 'AlertDialog.Cancel', 'AlertDialog.Action'], events: ['click'], locate: (el) => radix(el) },
+	{ module: 'radix/popover', library: 'radix-ui', exports: ['Popover.Root', 'Popover.Trigger', 'Popover.Content', 'Popover.Portal', 'Popover.Anchor', 'Popover.Close'], events: ['click'], locate: (el) => radix(el) },
+	{ module: 'radix/dropdown-menu', library: 'radix-ui', exports: ['DropdownMenu.Root', 'DropdownMenu.Trigger', 'DropdownMenu.Content', 'DropdownMenu.Item'], events: ['pointerdown', 'click', 'pointerover', 'keydown'], locate: (el) => radix(el) },
+	{ module: 'radix/disclosure', library: 'radix-ui', exports: ['Collapsible.Root', 'Collapsible.CollapsibleTrigger', 'Collapsible.CollapsibleContent', 'Collapsible.Trigger', 'Collapsible.Content', 'Accordion.Root', 'Accordion.Item', 'Accordion.Header', 'Accordion.Trigger', 'Accordion.Content'], events: ['click', 'keydown'], locate: (el) => radix(el) },
 ];
 
 export interface PartUse {
@@ -56,7 +77,7 @@ export function useResolver(next: PartResolver): void {
 export function bindParts(el: Element, uses: PartUse[] | Set<string>): Binding | undefined {
 	const s = slot(el);
 	if (!s || !resolver) return undefined;
-	const candidates = resolver.candidates(s);
+	const candidates = narrow(el, resolver.candidates(s));
 	let placed = false;
 	for (const port of PORTS) {
 		if (!candidates.some((c) => c.library === port.library && port.exports.includes(c.export)) || !port.locate(el)) continue;
@@ -97,7 +118,16 @@ export async function writeParts(app: string, modules: ReadonlySet<string>): Pro
 	};
 	for (const entry of await readdir(PARTS_DIR)) if (entry.endsWith('.ts')) await copy(entry);
 	for (const module of modules) await copy(`${module}.ts`);
+	if (modules.has('radix/dialog')) await copy('radix/dialog-engine.ts');
 	const site = await exists(join(app, 'lib', 'site', 'parts.ts'));
+	const manifest = JSON.parse(await readFile(join(app, 'package.json'), 'utf8')) as { dependencies?: Record<string, string> };
+	let added = false;
+	for (const [name, version] of Object.entries(PART_DEPENDENCIES)) {
+		if (manifest.dependencies?.[name]) continue;
+		(manifest.dependencies ??= {})[name] = version;
+		added = true;
+	}
+	if (added) await writeFile(join(app, 'package.json'), `${JSON.stringify(manifest, null, '\t')}\n`);
 	const used = [...modules].sort();
 	const registry = `// Generated by markless-migrate convert: the library ports this site's markup uses; change the converter, not this file.
 import type { Part } from './index.ts';

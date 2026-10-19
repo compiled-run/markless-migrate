@@ -116,7 +116,35 @@ function templateMarkup(reveal: Reveal, added: Reveal['added'][number], dropped:
 	const kept = childrenOf(fragment as unknown as Element).filter((n): n is Element => isElement(n) && !n.attrs.some((a) => FOCUS_GUARD.test(a.name)));
 	if (!kept.length) return '';
 	const inner = kept.map((el) => emitElement(el, { dropped })).join('');
-	return `<template data-mm-reveal=${JSON.stringify(reveal.key)} data-mm-into=${JSON.stringify(added.into === 'body' ? 'body' : 'self')} data-mm-before="${added.before}" data-mm-action="${reveal.action}" data-mm-viewport="${reveal.viewport}">${inner}</template>`;
+	const placed = placement(kept);
+	return `<template${placed} data-mm-reveal=${JSON.stringify(reveal.key)} data-mm-into=${JSON.stringify(added.into === 'body' ? 'body' : 'self')} data-mm-before="${added.before}" data-mm-action="${reveal.action}" data-mm-viewport="${reveal.viewport}">${inner}</template>`;
+}
+
+let placementResolver: PartResolver | undefined;
+
+// The offsets a positioned part gets from the source (Radix's sideOffset and alignOffset), written on its template; the
+// side and alignment are the content's own data-side and data-align.
+function placement(kept: readonly Element[]): string {
+	if (!placementResolver) return '';
+	for (const root of kept) {
+		for (const el of [root, ...walkAll(root)]) {
+			const slot = attr(el, 'data-slot');
+			if (!slot || attr(el, 'data-side') === undefined) continue;
+			for (const c of placementResolver.candidates(slot)) {
+				const side = placementResolver.prop(c.library, c.export, 'sideOffset');
+				const align = placementResolver.prop(c.library, c.export, 'alignOffset');
+				if (side === undefined && align === undefined) continue;
+				return `${side !== undefined ? ` data-mm-side-offset="${side}"` : ''}${align !== undefined ? ` data-mm-align-offset="${align}"` : ''}`;
+			}
+		}
+	}
+	return '';
+}
+
+function walkAll(root: Element): Element[] {
+	const out: Element[] = [];
+	for (const child of childrenOf(root)) if (isElement(child)) out.push(child, ...walkAll(child));
+	return out;
 }
 
 function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (what: string) => void): Map<Element, string> {
@@ -231,8 +259,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	} finally {
 		await browser.close();
 	}
-	const resolver: PartResolver = options.resolver ?? (await sourceSlotResolver(join(state, 'libraries.json')));
+	const resolver: PartResolver = options.resolver ?? (await sourceSlotResolver(join(state, 'libraries.json'), options.source));
 	useResolver(resolver);
+	placementResolver = resolver;
 	log(`parts resolved by: ${resolver.name}`);
 	const dropped: Dropped = new Map();
 	const styles = new Map<string, string>();

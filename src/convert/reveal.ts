@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import type { Browser, Page } from 'playwright';
 import { defaultEnv, openPage } from '../check/browser.ts';
-import { finishAnimations, settle } from '../check/capture.ts';
+import { finishAnimations } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS, type Viewport } from '../check/types.ts';
 
@@ -169,8 +169,7 @@ async function undo(page: Page, previous: number[] | undefined, baseline: string
 async function fresh(browser: Browser, origin: string, route: string, viewport: Viewport) {
 	const { context, page } = await openPage(browser, defaultEnv(origin), viewport);
 	await loadPage(page, new URL(route, origin).href);
-	await settle(page);
-	await finishAnimations(page);
+	await quiet(page, 300);
 	return { context, page, baseline: await bodyHash(page) };
 }
 
@@ -187,10 +186,16 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 	const reveals: Reveal[] = [];
 	const skipped: string[] = [];
 	const done = new Set<string>();
+	let hidden = true;
 	for (const viewport of viewports) {
+		// A control another viewport could not show is the only reason to load the page again at this one.
+		if (!hidden) break;
+		hidden = false;
 		let open = await fresh(browser, origin, route, viewport);
 		try {
-			for (const candidate of await candidates(open.page)) {
+			const found = await candidates(open.page);
+			hidden = found.some((c) => !c.visible && !done.has(c.key));
+			for (const candidate of found) {
 				if (!candidate.visible || done.has(candidate.key)) continue;
 				const known = memo.get(`${viewport.name} ${candidate.key}`);
 				if (known && known.count >= REUSE_AFTER) {
