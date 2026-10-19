@@ -1,3 +1,4 @@
+import { frameworkBuilds } from '../client/builds.ts';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -102,12 +103,17 @@ export async function scanUsage(options: UsageOptions): Promise<UsageInventory> 
 	const limits: string[] = [];
 	const scriptsByKey = new Map<string, { ref: ScriptRef; routes: Set<string> }>();
 	let pages = 0;
+	const builtBy = new Map<string, string>();
 	await pool(options.routes, options.concurrency ?? 6, async (route) => {
 		const html = options.built ? await builtPage(options.built, route) : options.origin ? await servedPage(options.origin, route, options.headers ?? {}) : undefined;
 		if (html === undefined) return;
 		pages++;
+		const builds = frameworkBuilds(html);
 		for (const ref of pageBehaviours(parseHtml(html), route, into)) {
 			const key = ref.src ? new URL(ref.src, options.origin ?? 'http://built.invalid').href : `inline:${sha8(ref.text ?? '')}`;
+			const path = ref.src ? new URL(key).pathname : undefined;
+			const build = path ? builds.find((b) => b.path.test(path)) : undefined;
+			if (build) builtBy.set(key, build.framework);
 			const known = scriptsByKey.get(key);
 			// An inline script shared by every page is named after its shortest route (/ rather than a debug page).
 			if (known) {
@@ -135,6 +141,11 @@ export async function scanUsage(options: UsageOptions): Promise<UsageInventory> 
 			continue;
 		}
 		const { runtimes, libraries, parsed: classified } = classifyScript(text);
+		const framework = builtBy.get(key);
+		if (framework && !runtimes.length) {
+			scripts.push({ script: name, routes: [...routes].sort(), bytes: Buffer.byteLength(text), runtime: `${framework} build`, effects: 0, parsed: classified });
+			continue;
+		}
 		const pkg = ref.src && !local ? /\/npm\/((?:@[\w.-]+\/)?[\w.-]+?)(?:@[^/]*)?(?:\/|$)/.exec(new URL(key).pathname)?.[1] : undefined;
 		const library = libraries[0] ?? pkg;
 		// A JavaScript-only library is kept as it is during the migration: one behaviour, with the page's calls into it as what the site uses of it.

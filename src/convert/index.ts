@@ -10,7 +10,8 @@ import { cleanDocument, frameworkBuilds, type Dropped } from './clean.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, type Document, type Element } from './dom.ts';
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
 import { bindParts, bodyHandlers, onRoute, UNPORTED, useResolver, writeParts, type PartUse } from './parts.ts';
-import { sourceSlotResolver, type PartResolver } from './usage.ts';
+import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
+import { stat } from 'node:fs/promises';
 import { documentModule, extrasModule, HEAD_HELPER, splitBody } from './document.ts';
 import { emitElement, lit, mergeBindings, type Binding } from './tsrx.ts';
 
@@ -259,7 +260,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	} finally {
 		await browser.close();
 	}
-	const resolver: PartResolver = options.resolver ?? (await sourceSlotResolver(join(state, 'libraries.json'), options.source));
+	const usagePath = join(state, 'usage.json');
+	const resolver: PartResolver = options.resolver ?? ((await stat(usagePath).then(() => true, () => false)) ? await usageResolver(usagePath, options.source) : await sourceSlotResolver(join(state, 'libraries.json'), options.source));
 	useResolver(resolver);
 	placementResolver = resolver;
 	log(`parts resolved by: ${resolver.name}`);

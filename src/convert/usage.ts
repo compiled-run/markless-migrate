@@ -1,4 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import type { UsageInventory } from '../usage/types.ts';
 import { join } from 'node:path';
 import { parseModule, walk, type Module, type N } from '../source/js.ts';
 
@@ -13,7 +15,7 @@ export interface PartUsage {
 
 /**
  * Which library part renders an element of the old page, as the old source says. The converter asks only this; the
- * semantic usage inventory replaces the interim resolver below behind the same interface.
+ * semantic usage inventory answers it (`usageResolver`); libraries.json is the fallback.
  */
 export interface PartResolver {
 	readonly name: string;
@@ -47,7 +49,64 @@ function literal(value: string | undefined): string | undefined {
 }
 
 /**
- * Interim resolver until the semantic usage inventory lands: reads `plan --source`'s libraries.json, where every element
+ * The resolver from the semantic usage inventory (`.migrate/usage.json`): each library component behaviour names the
+ * export, the literal `data-slot` values written on it and its source sites. A prop the inventory records as dynamic
+ * (passed through from the wrapping component) takes the parameter default written at the site.
+ */
+export async function usageResolver(usagePath: string, source?: string): Promise<PartResolver> {
+	const usage = JSON.parse(await readFile(usagePath, 'utf8')) as UsageInventory;
+	const bySlot = new Map<string, PartUsage[]>();
+	const counts = new Map<string, number>();
+	const sitesOf = new Map<string, { file: string; line: number }[]>();
+	const literalProps = new Map<string, string>();
+	for (const b of usage.behaviours) {
+		if (b.kind === 'request' || b.library === 'script' || b.library === 'embed') continue;
+		const props = (b.details.props ?? {}) as Record<string, unknown>;
+		const fileSites = b.sites.filter((s): s is { file: string; line: number } => 'file' in s);
+		const key = `${b.library} ${b.feature}`;
+		sitesOf.set(key, [...(sitesOf.get(key) ?? []), ...fileSites]);
+		for (const [name, value] of Object.entries(props)) if (Array.isArray(value) && value.length === 1 && typeof value[0] === 'string') literalProps.set(`${key} ${name}`, value[0]);
+		const slots = Array.isArray(props['data-slot']) ? (props['data-slot'] as unknown[]).filter((v): v is string => typeof v === 'string') : [];
+		for (const slot of slots) {
+			const list = bySlot.get(slot) ?? bySlot.set(slot, []).get(slot)!;
+			if (list.some((u) => u.library === b.library && u.export === b.feature)) continue;
+			const at = fileSites[0];
+			list.push({ library: b.library, export: b.feature, file: at?.file ?? '', line: at?.line ?? 0 });
+			counts.set(b.library, (counts.get(b.library) ?? 0) + 1);
+		}
+	}
+	const modules = new Map<string, Module | undefined>();
+	const defaults = new Map<string, string | undefined>();
+	return {
+		name: `the semantic usage inventory (${usagePath.split('/').slice(-2).join('/')})`,
+		candidates: (slot) => bySlot.get(slot) ?? [],
+		libraries: () => counts,
+		prop(library, exportName, prop) {
+			const key = `${library} ${exportName} ${prop}`;
+			if (literalProps.has(key)) return literalProps.get(key);
+			if (defaults.has(key) || !source) return defaults.get(key);
+			const votes = new Map<string, number>();
+			for (const site of sitesOf.get(`${library} ${exportName}`) ?? []) {
+				if (!modules.has(site.file)) {
+					let text: string | undefined;
+					try {
+						text = readFileSync(join(source, site.file), 'utf8');
+					} catch {}
+					modules.set(site.file, text === undefined ? undefined : parseModule(site.file, text));
+				}
+				const mod = modules.get(site.file);
+				const value = mod ? paramDefault(mod, site.line, prop) : undefined;
+				if (value !== undefined) votes.set(value, (votes.get(value) ?? 0) + 1);
+			}
+			const best = [...votes].sort((a, b) => b[1] - a[1])[0]?.[0];
+			defaults.set(key, best);
+			return best;
+		},
+	};
+}
+
+/**
+ * Fallback resolver when no usage inventory was written: reads `plan --source`'s libraries.json, where every element
  * a library export renders in the old source is a site with the props written on it, and records which export each
  * literal `data-slot` is written on (`<TabsPrimitive.Trigger data-slot="tabs-trigger">` is radix-ui's `Tabs.Trigger`).
  */
@@ -95,7 +154,7 @@ export async function sourceSlotResolver(librariesPath: string, source?: string)
 		}
 	}
 	return {
-		name: 'libraries.json data-slot sites (interim, until the semantic usage inventory lands)',
+		name: 'libraries.json data-slot sites (no usage inventory written)',
 		candidates: (slot) => bySlot.get(slot) ?? [],
 		libraries: () => counts,
 		prop: (library, exportName, prop) => props.get(`${library} ${exportName} ${prop}`),

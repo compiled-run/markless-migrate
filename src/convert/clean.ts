@@ -1,17 +1,9 @@
 import { RUNTIME_MARKERS } from '../check/residue.ts';
+export { frameworkBuilds } from '../client/builds.ts';
 import { attr, childrenOf, isElement, remove, removeAttr, walk, type Document, type Element, type Node, type ParentNode } from './dom.ts';
 
 /** Why the converter left a piece of the old page out, per rule, with how often it applied. */
 export type Dropped = Map<string, number>;
-
-/** Where a framework's own build output is served from, by the transport global its pages carry. */
-const BUILD_PATHS: readonly (readonly [framework: string, pageMarker: RegExp, path: RegExp])[] = [
-	['Next.js', /self\.__next_f|__NEXT_DATA__/, /^\/_next\//],
-	['Nuxt', /window\.__NUXT__|__NUXT_DATA__/, /^\/_nuxt\//],
-	['Gatsby', /___gatsby/, /^\/(?:app|framework|webpack-runtime|commons)-[\w]+\.js$/],
-	['SvelteKit', /__sveltekit_/, /^\/_app\/immutable\//],
-	['Astro', /astro-island/, /^\/_astro\//],
-];
 
 // React's streaming runtime: the inline functions that swap a streamed Suspense boundary into place.
 const FIZZ = /(?:^|[;\s(])\$R[BCSVTX]\s*=|\$RC\(|\$RS\(|\$RT=performance\.now/;
@@ -25,11 +17,6 @@ export interface CleanContext {
 	/** Every script URL of the old site already classified as framework code by its own text. */
 	readonly frameworkScripts: ReadonlySet<string>;
 	readonly origin: string;
-}
-
-/** The framework builds a served page belongs to, from the transport globals of its inline scripts. */
-export function frameworkBuilds(serverHtml: string): { framework: string; path: RegExp }[] {
-	return BUILD_PATHS.filter(([, marker]) => marker.test(serverHtml)).map(([framework, , path]) => ({ framework, path }));
 }
 
 function localPath(url: string, origin: string): string | undefined {
