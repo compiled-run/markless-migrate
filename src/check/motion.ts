@@ -4,6 +4,7 @@ import { readPage } from './collect.ts';
 import { loopKeys, settleAndHoldLoops } from './loops.ts';
 import { HINTS } from './hints.ts';
 import { describeTarget, locate, openSession, pool, type RecordedJourney, type Target } from './journeys.ts';
+import { checkCanvases, type CanvasComparison } from './motion-canvas.ts';
 import { describe, matchElements } from './match.ts';
 import { describeRule, type CssRule } from './stylesheet.ts';
 import type { Box, ElementSnapshot, Failure, Viewport } from './types.ts';
@@ -13,6 +14,8 @@ export interface MotionOptions {
 	readonly maxInteractions?: number;
 	/** At most this many controls hovered and focused per route; default 24. */
 	readonly maxHovers?: number;
+	/** At most this many opened dialogs, menus and popups dismissed with Escape per route, so their exit is recorded; default 16. */
+	readonly maxDismissals?: number;
 	/** The old stylesheets' rules that declare a transition or an animation, to list those no recorded interaction ran. */
 	readonly rules?: readonly { readonly selector: string; readonly label: string }[];
 }
@@ -46,6 +49,26 @@ export interface MotionCapture {
 	readonly elements?: readonly ElementSnapshot[];
 	/** Indices of the rules whose selector matches an element that moved. */
 	readonly hits?: readonly number[];
+	/** Every animated element at fixed moments of the interaction, every animation held there: the same moments on both sides. */
+	readonly pinned?: readonly PinnedFrame[];
+}
+
+/** What one element shows at one pinned moment. */
+export interface PinnedElement {
+	readonly element: ElementSnapshot;
+	readonly shown: boolean;
+	readonly opacity: number;
+	readonly box: Box;
+}
+
+/** `t` ms into the interaction; `note` names the animation whose last frame or end it is. */
+export interface PinnedMoment {
+	readonly t: number;
+	readonly note?: string;
+}
+
+export interface PinnedFrame extends PinnedMoment {
+	readonly elements: readonly PinnedElement[];
 }
 
 /** Frames of one interaction on both sides, at the same offsets into the old side's longest animation. */
@@ -66,17 +89,20 @@ export interface MotionInteraction {
 }
 
 export interface MotionResult {
-	/** Interactions recorded on both sides: journeys' last steps, hovers, focuses and the scroll. */
+	/** Interactions recorded on both sides: journeys' last steps, Escape after each opened dialog, menu or popup, hovers, focuses and the scroll. */
 	readonly checked: number;
 	readonly interactions: readonly MotionInteraction[];
 	/** Interactions not recorded, with why (a navigation, a step that failed, the cap). */
 	readonly skipped: readonly string[];
 	/** Old rules declaring a transition or animation that no recorded interaction ran on the old page; the css dimension compares their values. */
 	readonly unexercised?: readonly string[];
+	/** Each canvas of the old page's first screen, its frames from load compared with the new page's. */
+	readonly canvases?: readonly CanvasComparison[];
 }
 
 const DEFAULT_MAX_INTERACTIONS = 40;
 const DEFAULT_MAX_HOVERS = 24;
+const DEFAULT_MAX_DISMISSALS = 16;
 const CONCURRENCY = 4;
 const FRAMES = 5;
 const LIMIT = 20;
@@ -104,7 +130,14 @@ interface PageRecord {
 	readonly pseudo?: string;
 }
 
-type MotionWindow = Window & { __mmMotionRecorder?: { records(): PageRecord[]; hits(selectors: string[]): number[]; span(): number; clip(): Box | null; seek(t: number): void; release(): void; busy(): boolean; stop(): void } };
+interface PageSample {
+	readonly id: number;
+	readonly shown: boolean;
+	readonly opacity: number;
+	readonly box: Box;
+}
+
+type MotionWindow = Window & { __mmMotionRecorder?: { records(): PageRecord[]; hits(selectors: string[]): number[]; span(): number; ends(): { end: number; what: string; id?: number }[]; sample(): PageSample[]; clip(): Box | null; seek(t: number): void; release(): void; busy(): boolean; stop(): void } };
 
 // Runs in the page: records every transition and animation that starts from now on, and holds finite ones at their start when `pause` is set so frames can be taken at fixed offsets.
 function armMotion(pause: boolean): void {
@@ -135,6 +168,8 @@ function armMotion(pause: boolean): void {
 	// A transition reversed part way runs shorter than its rule (CSS's reversing shortening), by however far it had got: its rule's timing is what the stylesheet says.
 	const rules = new Map<Animation, { duration: number; delay: number }>();
 	const paused: Animation[] = [];
+	const heldAt = new Map<Animation, number>();
+	let clock = 0;
 	let pausing = pause;
 	let frame = 0;
 	const end = (a: Animation) => {
@@ -163,6 +198,7 @@ function armMotion(pause: boolean): void {
 		if (pausing && end(a) !== undefined && a.playState === 'running') {
 			a.pause();
 			paused.push(a);
+			heldAt.set(a, clock);
 		}
 	};
 	const scan = () => {
@@ -256,8 +292,34 @@ function armMotion(pause: boolean): void {
 			if (right - x < 8 || bottom - y < 8) return null;
 			return { x: Math.round(x), y: Math.round(y), width: Math.round(Math.max(48, right - x)), height: Math.round(Math.max(32, bottom - y)) };
 		},
+		ends() {
+			return paused.flatMap((a) => {
+				const e = end(a);
+				if (e === undefined || !(e > 0)) return [];
+				const what = typeof CSSTransition !== 'undefined' && a instanceof CSSTransition ? `the ${a.transitionProperty} transition` : typeof CSSAnimation !== 'undefined' && a instanceof CSSAnimation ? `animation ${a.animationName}` : `animation ${a.id || '(script)'}`;
+				const el = (a.effect as KeyframeEffect | null)?.target;
+				return [{ end: Math.round(e + (heldAt.get(a) ?? 0)), what, ...(el && ids()?.has(el) ? { id: ids()!.get(el)! } : {}) }];
+			});
+		},
+		sample() {
+			const targets = new Set(found.flatMap((a) => {
+				const effect = a.effect as KeyframeEffect | null;
+				return effect?.target && !effect.pseudoElement ? [effect.target] : [];
+			}));
+			return [...targets].flatMap((el) => {
+				const id = ids()?.get(el);
+				if (id === undefined) return [];
+				const r = el.getBoundingClientRect();
+				return [{ id, shown: el.isConnected && el.checkVisibility({ visibilityProperty: true }), opacity: Number(getComputedStyle(el).opacity), box: { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) } }];
+			});
+		},
+		// Forward only: an animation seeked to its end finishes, and the page's own end handlers run as they would.
 		seek(t: number) {
-			for (const a of paused) a.currentTime = Math.min(t, end(a) ?? t);
+			clock = t;
+			for (const a of paused) {
+				const local = Math.max(0, t - (heldAt.get(a) ?? 0));
+				a.currentTime = Math.min(local, end(a) ?? local);
+			}
 		},
 		release() {
 			pausing = false;
@@ -293,6 +355,19 @@ const span = (page: Page) => page.evaluate(() => (window as unknown as MotionWin
 const clipOf = (page: Page) => page.evaluate(() => (window as unknown as MotionWindow).__mmMotionRecorder?.clip() ?? null).catch(() => null);
 const seek = (page: Page, t: number) => page.evaluate((at) => (window as unknown as MotionWindow).__mmMotionRecorder?.seek(at), t).catch(() => {});
 const release = (page: Page) => page.evaluate(() => (window as unknown as MotionWindow).__mmMotionRecorder?.release()).catch(() => {});
+const ends = (page: Page) => page.evaluate(() => (window as unknown as MotionWindow).__mmMotionRecorder?.ends() ?? []).catch(() => []);
+const sample = (page: Page) => page.evaluate(() => (window as unknown as MotionWindow).__mmMotionRecorder?.sample() ?? []).catch(() => [] as PageSample[]);
+
+/** The moments every animated element is compared at: a quarter, half and three quarters into the longest animation, and each animation's last frame and the frame after its end, where the page's own end handlers have run. */
+export function pinnedMoments(span: number, ended: readonly { end: number; note: string }[]): PinnedMoment[] {
+	if (!(span > 0)) return [];
+	const at = new Map<number, string | undefined>([0, 0.25, 0.5, 0.75].map((f) => [Math.round(span * f), undefined]));
+	for (const e of ended) {
+		at.set(Math.max(0, e.end - 1), at.get(Math.max(0, e.end - 1)) ?? `the last frame of ${e.note}`);
+		at.set(e.end, `just after ${e.note} ends`);
+	}
+	return [...at].sort((a, b) => a[0] - b[0]).map(([t, note]) => ({ t, ...(note ? { note } : {}) }));
+}
 
 // Waits for every finite animation to end (at most `cap`), then for one more beat in case one chains another.
 async function still(page: Page, cap = 2_000): Promise<void> {
@@ -321,9 +396,19 @@ async function records(page: Page, earlier: readonly ElementSnapshot[] = [], sel
 
 type Learned = SideEnv & { readonly loops: readonly string[] };
 
+/** A journey to record; `dismiss`: after all its steps, Escape is pressed where focus is, and that is the interaction recorded. */
+type MotionJourney = RecordedJourney & { readonly dismiss?: boolean };
+
+async function dismiss(page: Page): Promise<{ failed?: string; navigated: boolean }> {
+	const path = new URL(page.url()).pathname;
+	await page.keyboard.press('Escape');
+	return { navigated: new URL(page.url()).pathname !== path };
+}
+
 interface Film {
 	readonly span?: number;
 	readonly clip?: Box;
+	readonly moments?: readonly PinnedMoment[];
 }
 
 interface Recorded extends MotionCapture {
@@ -336,52 +421,67 @@ export function motionEnv(env: SideEnv, reduced: boolean): SideEnv {
 	return { ...env, reducedMotion: reduced ? 'reduce' : 'no-preference', ...(env.freeze ? { freeze: { ...env.freeze, clock: 'ticking' as const } } : {}) };
 }
 
-/** One load of the page, settled, for the loops it confirms: every recording then holds them from their first schedule, so each starts at the same phase on its side, without waiting for them to show themselves again. */
-async function learnLoops(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<readonly string[]> {
+/** One load of the page, settled, for the loops it confirms (every recording then holds them from their first schedule, so each starts at the same phase on its side, without waiting for them to show themselves again) and whether a canvas sits on its first screen. */
+async function learnLoops(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<{ loops: readonly string[]; canvas: boolean }> {
 	const session = await openSession(browser, env, route, viewport, { loops: true });
 	try {
+		const canvas = await session.page.evaluate(() => [...document.querySelectorAll('canvas')].some((c) => {
+			const r = c.getBoundingClientRect();
+			return r.width >= 16 && r.height >= 16 && r.bottom <= innerHeight && r.right <= innerWidth;
+		})).catch(() => false);
 		await settleAndHoldLoops(session.page);
-		return await loopKeys(session.page);
+		return { loops: await loopKeys(session.page), canvas };
 	} catch {
-		return [];
+		return { loops: [], canvas: false };
 	} finally {
 		await session.close();
 	}
 }
 
 /** Replays a journey and records the motion its last step starts; with `film`, frames at fixed offsets across the longest animation. */
-async function recordJourney(browser: Browser, env: Learned, route: string, viewport: Viewport, journey: RecordedJourney, film?: Film | 'self', selectors: readonly string[] = []): Promise<Recorded> {
+async function recordJourney(browser: Browser, env: Learned, route: string, viewport: Viewport, journey: MotionJourney, film?: Film | 'self', selectors: readonly string[] = []): Promise<Recorded> {
 	const session = await openSession(browser, env, route, viewport, { loops: { known: env.loops } });
 	try {
 		const steps = journey.steps;
-		for (const step of steps.slice(0, -1)) {
+		for (const step of journey.dismiss ? steps : steps.slice(0, -1)) {
 			const r = await session.run(step);
 			if (r.failed) return { interaction: journey.name, motions: [], failed: r.failed };
 		}
 		await settleAndHoldLoops(session.page);
+		// What the step hides when its exit ends (a dialog leaving) can be gone before the page is read after it.
+		const before = await shown(session.page);
 		await session.page.evaluate(armMotion, film !== undefined);
-		const result = await session.run(steps.at(-1)!);
+		const result = journey.dismiss ? await dismiss(session.page) : await session.run(steps.at(-1)!);
 		if (result.failed) return { interaction: journey.name, motions: [], failed: result.failed };
 		if (result.navigated) return { interaction: journey.name, motions: [], navigated: true };
 		const earlier = await shown(session.page);
 		let shots: Buffer[] | undefined;
 		let made: Film | undefined;
+		const held: { moment: PinnedMoment; items: PageSample[] }[] = [];
 		if (film !== undefined) {
 			const total = (film !== 'self' && film.span) || (await span(session.page));
 			const clip = (film !== 'self' && film.clip) || ((await clipOf(session.page)) ?? undefined);
-			if (total > 0 && clip) {
-				made = { span: total, clip };
-				shots = [];
-				for (let k = 0; k < FRAMES; k++) {
-					await seek(session.page, (total * k) / (FRAMES - 1));
+			if (total > 0) {
+				const known = new Map([...before, ...earlier].map((el) => [el.id, el]));
+				const moments = (film !== 'self' && film.moments) || pinnedMoments(total, (await ends(session.page)).map((e) => ({ end: e.end, note: `${e.what}${e.id !== undefined && known.has(e.id) ? ` of ${describe(known.get(e.id)!)}` : ''}` })));
+				const shotAt = clip ? Array.from({ length: FRAMES }, (_, k) => (total * k) / (FRAMES - 1)) : [];
+				made = { span: total, ...(clip ? { clip } : {}), moments };
+				if (clip) shots = [];
+				for (const t of [...new Set([...shotAt, ...moments.map((m) => m.t)])].sort((a, b) => a - b)) {
+					await seek(session.page, t);
 					await frames(session.page);
-					shots.push(await session.page.screenshot({ clip, caret: 'hide' }).catch(() => Buffer.alloc(0)));
+					if (clip && shotAt.includes(t)) shots!.push(await session.page.screenshot({ clip, caret: 'hide' }).catch(() => Buffer.alloc(0)));
+					const moment = moments.find((m) => m.t === t);
+					if (moment) held.push({ moment, items: await sample(session.page) });
 				}
 			}
 			await release(session.page);
 		}
 		await still(session.page);
-		return { interaction: journey.name, ...(await records(session.page, earlier, selectors)), ...(made ? { film: made } : {}), ...(shots?.every((s) => s.length) ? { frames: shots } : {}) };
+		const recorded = await records(session.page, [...before, ...earlier], selectors);
+		const byId = new Map(recorded.elements.map((el) => [el.id, el]));
+		const pinned = held.map(({ moment, items }): PinnedFrame => ({ ...moment, elements: items.flatMap((i) => (byId.has(i.id) ? [{ element: byId.get(i.id)!, shown: i.shown, opacity: i.opacity, box: i.box }] : [])) }));
+		return { interaction: journey.name, ...recorded, ...(pinned.length ? { pinned } : {}), ...(made ? { film: made } : {}), ...(shots?.length && shots.every((s) => s.length) ? { frames: shots } : {}) };
 	} catch (error) {
 		return { interaction: journey.name, motions: [], failed: (error as Error).message.split('\n')[0] };
 	} finally {
@@ -493,6 +593,20 @@ interface Difference {
 	readonly failure: Failure;
 }
 
+const visible = (p: PinnedElement) => p.shown && p.opacity > 0.02;
+const looks = (p: PinnedElement, where: boolean) => (!p.shown ? 'not shown' : `${p.opacity <= 0.02 ? 'shown but transparent' : `shown at opacity ${Math.round(p.opacity * 100) / 100}`}${where ? `, ${p.box.width}x${p.box.height} at (${p.box.x}, ${p.box.y})` : ''}`);
+
+/** How one element differs at one held moment: shown or not, its opacity within 0.1, and how far it has moved and grown since the first moment within 2 px (where it sits on the page is the css and visual checks' business). */
+function pinnedDifference(o: PinnedElement, n: PinnedElement, o0?: PinnedElement, n0?: PinnedElement): { old: string; new: string } | undefined {
+	if (visible(o) !== visible(n)) return { old: looks(o, false), new: looks(n, false) };
+	if (!visible(o)) return undefined;
+	const moved = (p: PinnedElement, p0?: PinnedElement) => ({ x: p.box.x - (p0?.box.x ?? p.box.x), y: p.box.y - (p0?.box.y ?? p.box.y) });
+	const [mo, mn] = [moved(o, o0), moved(n, n0)];
+	const where = Math.abs(mo.x - mn.x) > 2 || Math.abs(mo.y - mn.y) > 2 || Math.abs(o.box.width - n.box.width) > 2 || Math.abs(o.box.height - n.box.height) > 2;
+	if (!where && Math.abs(o.opacity - n.opacity) <= 0.1) return undefined;
+	return { old: looks(o, where), new: looks(n, where) };
+}
+
 const valueless = (text: string) => text.replace(/ \S+→\S+/g, '').replace(/\d+(\.\d+)?/g, '#');
 
 function differences(route: string, label: string, viewport: string, old: MotionCapture, next: MotionCapture, hint: string): Difference[] {
@@ -511,8 +625,8 @@ function differences(route: string, label: string, viewport: string, old: Motion
 	const used = new Set<string>();
 	const unitKey = (r: MotionRecord, p: string) => `${next.motions.indexOf(r)}|${p}`;
 	const out: Difference[] = [];
-	const push = (el: ElementSnapshot, what: string, expected: string, actual: string, counterpart?: ElementSnapshot) => {
-		const failure: Failure = { route, dimension: 'motion', check: `${label}: ${what} of ${describe(el)}`, viewport, expected, actual, hint };
+	const push = (el: ElementSnapshot, what: string, expected: string, actual: string, counterpart?: ElementSnapshot, why = hint) => {
+		const failure: Failure = { route, dimension: 'motion', check: `${label}: ${what} of ${describe(el)}`, viewport, expected, actual, hint: why };
 		const shape = counterpart ? actual.split(describe(counterpart)).join('it') : actual;
 		out.push({ key: `${failure.check}|${expected.replace(/\d+(\.\d+)?/g, '#')}`, group: `${what}|${el.role}|${valueless(expected)}|${valueless(shape)}`, what, failure });
 	};
@@ -563,6 +677,22 @@ function differences(route: string, label: string, viewport: string, old: Motion
 		if (sound(ms)) push(back.get(el) ?? el, 'extra sound', `old does not play ${props}`, `new ${joined(ms)}`);
 		else push(back.get(el) ?? el, 'extra motion', `old does not animate ${props}`, `new animates ${joined(ms)}`);
 	}
+	const framed = new Set<ElementSnapshot>();
+	const firstOf = (c: MotionCapture, el: ElementSnapshot) => c.pinned?.[0]?.elements.find((p) => p.element === el);
+	for (const frame of old.pinned ?? []) {
+		const other = next.pinned?.find((f) => f.t === frame.t);
+		for (const o of other ? frame.elements : []) {
+			if (framed.has(o.element)) continue;
+			const j = pairs.get(oldAll.indexOf(o.element));
+			const counterpart = j !== undefined ? newAll[j] : undefined;
+			const n = counterpart ? other!.elements.find((p) => p.element === counterpart) : undefined;
+			if (!n) continue;
+			const d = pinnedDifference(o, n, firstOf(old, o.element), firstOf(next, n.element));
+			if (!d) continue;
+			framed.add(o.element);
+			push(o.element, 'frame', `old at ${frame.t} ms${frame.note ? `, ${frame.note}` : ''}: ${d.old}`, `new: ${d.new}`, counterpart, HINTS.motionFrame);
+		}
+	}
 	return out;
 }
 
@@ -583,6 +713,24 @@ export function motionRules(rules: readonly CssRule[]): { selector: string; labe
 		.filter((r) => !r.conditions.some((c) => /prefers-reduced-motion:\s*reduce/.test(c.text)))
 		.filter((r) => r.declarations.some((d) => /^(transition|animation)(-name|-duration)?$/.test(d.property) && !inert(d.value) && !(d.property === 'transition' && /^(all\s+)?0m?s/.test(d.value.trim()))))
 		.map((r) => ({ selector: r.selector, label: describeRule(r) }));
+}
+
+const LAYER = /^- (dialog|alertdialog|menu|listbox)\b/;
+const activation = (s: RecordedJourney['steps'][number]) => (s.action === 'click' || (s.action === 'press' && (s.key === 'Enter' || s.key === 'Space')) ? 'use' : `${s.action}${s.action === 'press' ? ` ${s.key}` : ''}`);
+
+/** Journeys whose last step opened a dialog, menu or popup, once per alike opener (the same controls by role and name, clicked or pressed), each to be followed by Escape: what closes them animates only then, and the explorer's own closing journeys may fall past the interaction cap. */
+export function motionDismissals(journeys: readonly RecordedJourney[]): MotionJourney[] {
+	const out: MotionJourney[] = [];
+	const alike = new Set<string>();
+	for (const j of journeys) {
+		const last = j.expected.at(-1);
+		if (j.destructive || !last || j.expected.length < j.steps.length || last.failed || last.navigated || last.writes?.some((w) => !w.sent) || !last.added.some((line) => LAYER.test(line))) continue;
+		const key = j.steps.map((s) => `${activation(s)}|${s.target.role}|${s.target.name.replace(/\d+/g, '#')}`).join(' > ');
+		if (alike.has(key)) continue;
+		alike.add(key);
+		out.push({ ...j, name: `${j.name}, then press Escape`, dismiss: true });
+	}
+	return out;
 }
 
 /** Journeys whose last step stays on the page: their motion is recorded. */
@@ -614,7 +762,11 @@ export async function checkMotion(browser: Browser, envs: { readonly old: SideEn
 	const { take, skipped } = motionJourneys(journeys);
 	const cap = options.maxInteractions ?? DEFAULT_MAX_INTERACTIONS;
 	for (const j of take.slice(cap)) skipped.push(`${j.name}: past the ${cap} interactions recorded per route`);
-	const [oldLoops, newLoops] = await Promise.all([learnLoops(browser, motionEnv(envs.old, false), route, viewport), learnLoops(browser, motionEnv(envs.new, false), route, viewport)]);
+	const dismissCap = options.maxDismissals ?? DEFAULT_MAX_DISMISSALS;
+	const dismissals = motionDismissals(journeys).filter((d) => !take.slice(0, cap).some((t) => t.name.startsWith(d.name)));
+	for (const j of dismissals.slice(dismissCap)) skipped.push(`${j.name}: past the ${dismissCap} dismissals recorded per route`);
+	const [oldLearned, newLearned] = await Promise.all([learnLoops(browser, motionEnv(envs.old, false), route, viewport), learnLoops(browser, motionEnv(envs.new, false), route, viewport)]);
+	const [oldLoops, newLoops] = [oldLearned.loops, newLearned.loops];
 	const [oldEnv, newEnv] = [{ ...motionEnv(envs.old, false), loops: oldLoops }, { ...motionEnv(envs.new, false), loops: newLoops }];
 	const [oldReduced, newReduced] = [{ ...motionEnv(envs.old, true), loops: oldLoops }, { ...motionEnv(envs.new, true), loops: newLoops }];
 	const failures: Failure[] = [];
@@ -622,7 +774,7 @@ export async function checkMotion(browser: Browser, envs: { readonly old: SideEn
 	const name = viewport.name;
 	const selectors = (options.rules ?? []).map((r) => r.selector);
 	const hit = new Set<number>();
-	const interactions = await pool(take.slice(0, cap), CONCURRENCY, async (journey): Promise<MotionInteraction & { failures: Failure[] }> => {
+	const interactions = await pool([...take.slice(0, cap), ...dismissals.slice(0, dismissCap)], CONCURRENCY, async (journey): Promise<MotionInteraction & { failures: Failure[] }> => {
 		const old = await recordJourney(browser, oldEnv, route, viewport, journey, 'self', selectors);
 		const next = await recordJourney(browser, newEnv, route, viewport, journey, old.film ?? 'self');
 		for (const i of old.hits ?? []) hit.add(i);
@@ -632,7 +784,7 @@ export async function checkMotion(browser: Browser, envs: { readonly old: SideEn
 		if (found.length) {
 			again = await recordJourney(browser, oldEnv, route, viewport, journey, old.film ?? next.film ?? 'self');
 			found = compareMotion(route, journey.name, name, [old, again], next);
-			if (found.length && !compareMotion(route, journey.name, name, [old, again], await recordJourney(browser, newEnv, route, viewport, journey)).length) found = [];
+			if (found.length && !compareMotion(route, journey.name, name, [old, again], await recordJourney(browser, newEnv, route, viewport, journey, old.film ?? 'self')).length) found = [];
 		}
 		const oldFrames = old.frames ?? again?.frames;
 		if (found.length && oldFrames && next.frames) {
@@ -689,5 +841,7 @@ export async function checkMotion(browser: Browser, envs: { readonly old: SideEn
 	if (failures.length > LIMIT) shown.push({ route, dimension: 'motion', check: 'motion', viewport: name, expected: '', actual: `${failures.length - LIMIT} more motion differences`, hint: HINTS.motion });
 	for (const o of oldHovers) for (const i of o.hits ?? []) hit.add(i);
 	const unexercised = [...new Set((options.rules ?? []).filter((_, i) => !hit.has(i)).map((r) => r.label))];
-	return { failures: shown, motion: { checked: interactions.length + oldHovers.filter((o) => !o.failed).length, interactions: all, skipped, ...(unexercised.length ? { unexercised } : {}) }, filmstrips };
+	const drawn = oldLearned.canvas ? await checkCanvases(browser, { old: motionEnv(envs.old, false), new: motionEnv(envs.new, false) }, route, viewport) : undefined;
+	if (drawn) shown.push(...drawn.failures);
+	return { failures: shown, motion: { checked: interactions.length + oldHovers.filter((o) => !o.failed).length, interactions: all, skipped, ...(unexercised.length ? { unexercised } : {}), ...(drawn?.canvases.length ? { canvases: drawn.canvases } : {}) }, filmstrips };
 }
