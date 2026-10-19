@@ -9,36 +9,58 @@ export interface LiveEmbed {
 	readonly src: string;
 	readonly attributes: Readonly<Record<string, string>>;
 	readonly box: Box;
-	/** Its index among `EMBED_SELECTOR` matches, to mask it. */
-	readonly index: number;
 }
 
-export const EMBED_SELECTOR = 'iframe, video, embed, object';
+const MARK = 'data-markless-migrate-embed';
 const PAD = 8;
 
-/** Runs in the page: the live embeds, with their boxes in page coordinates. Must stay self-contained. */
-export function liveEmbeds(): LiveEmbed[] {
+/** Runs in the page: the live embeds, in the document and in open shadow roots (a widget may draw its iframe in one), with their boxes in page coordinates; `mark` tags each for a screenshot mask. Must stay self-contained. */
+export function liveEmbeds(mark = false): LiveEmbed[] {
 	const kept = ['width', 'height', 'loading', 'allow', 'allowfullscreen', 'sandbox', 'referrerpolicy', 'title', 'autoplay', 'controls', 'muted', 'loop', 'playsinline', 'poster', 'preload', 'type'];
+	const found: Element[] = [];
+	const walk = (root: Document | ShadowRoot) => {
+		for (const el of root.querySelectorAll('*')) {
+			if (el.matches('iframe, video, embed, object')) found.push(el);
+			if (el.shadowRoot) walk(el.shadowRoot);
+		}
+	};
+	walk(document);
 	const out: LiveEmbed[] = [];
-	[...document.querySelectorAll('iframe, video, embed, object')].forEach((el, index) => {
+	for (const el of found) {
 		const tag = el.tagName.toLowerCase();
 		const raw = tag === 'video' ? (el as HTMLVideoElement).currentSrc || el.getAttribute('src') || el.querySelector('source[src]')?.getAttribute('src') || '' : (el.getAttribute(tag === 'object' ? 'data' : 'src') ?? '');
 		const url = URL.parse(raw, location.href);
 		const foreign = url !== null && /^https?:$/.test(url.protocol) && url.origin !== location.origin;
-		if (tag !== 'video' && !foreign) return;
+		if (tag !== 'video' && !foreign) continue;
 		const r = el.getBoundingClientRect();
-		if (r.width < 1 || r.height < 1) return;
+		if (r.width < 1 || r.height < 1) continue;
 		const attributes = Object.fromEntries(kept.flatMap((name) => (el.hasAttribute(name) ? [[name, el.getAttribute(name) ?? '']] : [])));
 		const src = url ? (url.origin === location.origin ? url.pathname : `${url.origin}${url.pathname}`) : raw;
-		out.push({ tag, src, attributes, box: { x: Math.round(r.x + scrollX), y: Math.round(r.y + scrollY), width: Math.round(r.width), height: Math.round(r.height) }, index });
-	});
+		if (mark) el.setAttribute('data-markless-migrate-embed', '');
+		out.push({ tag, src, attributes, box: { x: Math.round(r.x + scrollX), y: Math.round(r.y + scrollY), width: Math.round(r.width), height: Math.round(r.height) } });
+	}
 	return out;
 }
 
-/** Locators for the page's live embeds, to mask in a screenshot. */
-export async function embedMasks(page: Page): Promise<Locator[]> {
-	const found = await page.evaluate(liveEmbeds).catch(() => [] as LiveEmbed[]);
-	return found.map((e) => page.locator(EMBED_SELECTOR).nth(e.index));
+/** Runs in the page: takes the screenshot marks off again. */
+function unmark(): void {
+	const walk = (root: Document | ShadowRoot) => {
+		for (const el of root.querySelectorAll('*')) {
+			el.removeAttribute('data-markless-migrate-embed');
+			if (el.shadowRoot) walk(el.shadowRoot);
+		}
+	};
+	walk(document);
+}
+
+/** A screenshot with every live embed masked (Playwright's locators reach into open shadow roots); returns the embeds too. */
+export async function maskedShot(page: Page, shoot: (mask: Locator[]) => Promise<Buffer>): Promise<{ shot: Buffer; embeds: LiveEmbed[] }> {
+	const embeds = await page.evaluate(liveEmbeds, true).catch(() => [] as LiveEmbed[]);
+	try {
+		return { shot: await shoot(embeds.length ? [page.locator(`[${MARK}]`)] : []), embeds };
+	} finally {
+		if (embeds.length) await page.evaluate(unmark).catch(() => {});
+	}
 }
 
 const describeEmbed = (e: LiveEmbed) => `<${e.tag}> ${e.src} ${e.box.width}x${e.box.height} at (${e.box.x}, ${e.box.y})${Object.keys(e.attributes).length ? ` ${Object.entries(e.attributes).map(([k, v]) => (v ? `${k}="${v}"` : k)).join(' ')}` : ''}`;

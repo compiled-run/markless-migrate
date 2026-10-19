@@ -13,7 +13,7 @@ import type { AssetRecord, HttpCapture, HttpHop, PageCapture, RouteCapture, Scri
 import { request } from './http.ts';
 import { loadPage } from './infrastructure.ts';
 import { holdLoops, loopEffects, settleMotion, type LoopEffect } from './loops.ts';
-import { EMBED_SELECTOR, liveEmbeds } from './embeds.ts';
+import { maskedShot } from './embeds.ts';
 import { runtimeMarkers } from './residue.ts';
 
 const ASSET_TYPES = new Set(['image', 'font', 'stylesheet', 'script', 'media']);
@@ -205,8 +205,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		const collected = await readPage(page, { origin, full: true });
 		const loops = await page.evaluate(loopEffects).catch(() => [] as LoopEffect[]);
 		const aria = (await page.locator('body').ariaSnapshot()).split(origin).join('').split('\n');
-		const live = await page.evaluate(liveEmbeds).catch(() => []);
-		const screenshot = await page.screenshot({ fullPage: true, animations: 'disabled', caret: 'hide', mask: live.map((e) => page.locator(EMBED_SELECTOR).nth(e.index)) });
+		const { shot: screenshot, embeds: live } = await maskedShot(page, (mask) => page.screenshot({ fullPage: true, animations: 'disabled', caret: 'hide', mask }));
 		const coverage = await page.coverage.stopJSCoverage();
 		await Promise.all(pending);
 		const shown = await page.evaluate(shownText);

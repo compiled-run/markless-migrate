@@ -258,3 +258,12 @@ test('a third-party file that fails for the old page too (a rate limit answering
 	const route = (await check(old, next)).routes[0]!;
 	assert.deepEqual(open(route.failures).filter((f) => f.startsWith('assets')), []);
 });
+
+test('an embed a widget draws inside an open shadow root is the same embed, masked and compared like one in the page', async () => {
+	const embed = await embedHost();
+	const attrs = `src="${embed}/frame" width="300" height="150" title="Player"`;
+	const old = await serve(() => ({ body: html(`<p>Watch:</p><span id="host" style="display: inline-block"><iframe ${attrs}></iframe></span><p>After</p>`) }));
+	const shadowed = await serve(() => ({ body: html(`<p>Watch:</p><span id="host" style="display: inline-block"></span><p>After</p><script>document.getElementById('host').attachShadow({ mode: 'open' }).innerHTML = '<iframe ${attrs}></iframe>';</script>`) }));
+	const route = (await check(old, shadowed)).routes[0]!;
+	assert.deepEqual(open(route.failures).filter((f) => /^(visual|rendered: embed|network|weight)/.test(f)), []);
+});

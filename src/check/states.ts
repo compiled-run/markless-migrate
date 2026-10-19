@@ -10,7 +10,7 @@ import type { Box, ElementSnapshot, Failure, Shot, Viewport } from './types.ts';
 import { compareScreenshots, identicalShots, visualNoise, visuallyDifferent } from './visual.ts';
 import { loadPage } from './infrastructure.ts';
 import { holdLoops, settleMotion } from './loops.ts';
-import { embedMasks } from './embeds.ts';
+import { maskedShot } from './embeds.ts';
 
 const MAX_STATES = 40;
 const TARGETS_PER_STATE = 2;
@@ -223,13 +223,12 @@ function union(boxes: readonly Box[]): Box | undefined {
 }
 
 async function screenshot(page: Page, clip: Box | undefined): Promise<Buffer> {
-	const mask = await embedMasks(page);
-	if (!clip) return page.screenshot({ fullPage: true, animations: 'disabled', caret: 'hide', mask });
+	if (!clip) return (await maskedShot(page, (mask) => page.screenshot({ fullPage: true, animations: 'disabled', caret: 'hide', mask }))).shot;
 	const size = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight }));
 	const x = Math.max(0, clip.x - CLIP_PADDING);
 	const y = Math.max(0, clip.y - CLIP_PADDING);
 	const box = { x, y, width: Math.max(1, Math.min(size.width, clip.x + clip.width + CLIP_PADDING) - x), height: Math.max(1, Math.min(size.height, clip.y + clip.height + CLIP_PADDING) - y) };
-	return page.screenshot({ fullPage: true, clip: box, animations: 'disabled', caret: 'hide', mask });
+	return (await maskedShot(page, (mask) => page.screenshot({ fullPage: true, clip: box, animations: 'disabled', caret: 'hide', mask }))).shot;
 }
 
 export async function compareStates(input: StateInput): Promise<StateOutput> {
