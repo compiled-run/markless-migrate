@@ -156,7 +156,7 @@ ${layout.sections
 		(section) => `\t\t<h3 class=${lit(section.headingClass)}>${section.title}</h3>
 		<ul class=${lit(section.listClass)}>
 ${section.items.map((item) => `\t\t\t<li>
-				<a href=${lit(item.href)} class={pathname === ${lit(item.href)} ? ${lit(layout.activeLinkClass)} : ${lit(layout.linkClass)}}>${item.label}</a>
+				<a href=${lit(item.href)} class={pathname === ${lit(new URL(item.href, 'https://alpinejs.dev').pathname)} ? ${lit(layout.activeLinkClass)} : ${lit(layout.linkClass)}}>${item.label}</a>
 			</li>`).join('\n')}
 		</ul>`,
 	)

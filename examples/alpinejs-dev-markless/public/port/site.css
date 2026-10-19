@@ -3,3 +3,6 @@ h1, h2, h3, h4, .font-title { font-family: 'Karla', system-ui, -apple-system, /*
     code { font-family: MonoLisa, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace }
     html { scroll-behavior: smooth;  }
     ::selection { background-color: #c9f3fd; }
+
+/* The router wraps every page in one container; it takes no box, so the page lays out straight under <body> as on alpinejs.dev. */
+[data-async-container] { display: contents; }

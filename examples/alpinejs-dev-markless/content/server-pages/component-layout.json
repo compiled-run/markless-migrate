@@ -6,39 +6,39 @@
 			"listClass": "-mx-3 mt-3",
 			"items": [
 				{
-					"href": "/component/dropdown",
+					"href": "https://alpinejs.dev/component/dropdown",
 					"label": "Dropdown"
 				},
 				{
-					"href": "/component/modal",
+					"href": "https://alpinejs.dev/component/modal",
 					"label": "Modal"
 				},
 				{
-					"href": "/component/accordion",
+					"href": "https://alpinejs.dev/component/accordion",
 					"label": "Accordion"
 				},
 				{
-					"href": "/component/carousel",
+					"href": "https://alpinejs.dev/component/carousel",
 					"label": "Carousel"
 				},
 				{
-					"href": "/component/tabs",
+					"href": "https://alpinejs.dev/component/tabs",
 					"label": "Tabs"
 				},
 				{
-					"href": "/component/notifications",
+					"href": "https://alpinejs.dev/component/notifications",
 					"label": "Notifications"
 				},
 				{
-					"href": "/component/radio-group",
+					"href": "https://alpinejs.dev/component/radio-group",
 					"label": "Radio Group"
 				},
 				{
-					"href": "/component/toggle",
+					"href": "https://alpinejs.dev/component/toggle",
 					"label": "Toggle"
 				},
 				{
-					"href": "/component/tooltip",
+					"href": "https://alpinejs.dev/component/tooltip",
 					"label": "Tooltip"
 				}
 			]
@@ -49,39 +49,39 @@
 			"listClass": "-mx-3 mt-3",
 			"items": [
 				{
-					"href": "/component/headless-dialog",
+					"href": "https://alpinejs.dev/component/headless-dialog",
 					"label": "Dialog (Modal)"
 				},
 				{
-					"href": "/component/headless-popover",
+					"href": "https://alpinejs.dev/component/headless-popover",
 					"label": "Popover"
 				},
 				{
-					"href": "/component/headless-tabs",
+					"href": "https://alpinejs.dev/component/headless-tabs",
 					"label": "Tabs"
 				},
 				{
-					"href": "/component/headless-switch",
+					"href": "https://alpinejs.dev/component/headless-switch",
 					"label": "Switch (Toggle)"
 				},
 				{
-					"href": "/component/headless-disclosure",
+					"href": "https://alpinejs.dev/component/headless-disclosure",
 					"label": "Disclosure (Accordion)"
 				},
 				{
-					"href": "/component/headless-menu",
+					"href": "https://alpinejs.dev/component/headless-menu",
 					"label": "Menu (Dropdown)"
 				},
 				{
-					"href": "/component/headless-radio",
+					"href": "https://alpinejs.dev/component/headless-radio",
 					"label": "Radio"
 				},
 				{
-					"href": "/component/headless-listbox",
+					"href": "https://alpinejs.dev/component/headless-listbox",
 					"label": "Listbox (Select)"
 				},
 				{
-					"href": "/component/headless-combobox",
+					"href": "https://alpinejs.dev/component/headless-combobox",
 					"label": "Combobox (Autocomplete)"
 				}
 			]
@@ -92,51 +92,51 @@
 			"listClass": "-mx-3 mt-3",
 			"items": [
 				{
-					"href": "/component/trix",
+					"href": "https://alpinejs.dev/component/trix",
 					"label": "Trix"
 				},
 				{
-					"href": "/component/quill",
+					"href": "https://alpinejs.dev/component/quill",
 					"label": "Quill"
 				},
 				{
-					"href": "/component/simple-mde",
+					"href": "https://alpinejs.dev/component/simple-mde",
 					"label": "SimpleMDE"
 				},
 				{
-					"href": "/component/chart-js",
+					"href": "https://alpinejs.dev/component/chart-js",
 					"label": "Chart.js"
 				},
 				{
-					"href": "/component/apexcharts",
+					"href": "https://alpinejs.dev/component/apexcharts",
 					"label": "ApexCharts"
 				},
 				{
-					"href": "/component/flatpickr",
+					"href": "https://alpinejs.dev/component/flatpickr",
 					"label": "Flatpickr"
 				},
 				{
-					"href": "/component/date-range-picker",
+					"href": "https://alpinejs.dev/component/date-range-picker",
 					"label": "Date Range Picker"
 				},
 				{
-					"href": "/component/fullcalendar",
+					"href": "https://alpinejs.dev/component/fullcalendar",
 					"label": "FullCalendar"
 				},
 				{
-					"href": "/component/select2",
+					"href": "https://alpinejs.dev/component/select2",
 					"label": "Select2"
 				},
 				{
-					"href": "/component/choices",
+					"href": "https://alpinejs.dev/component/choices",
 					"label": "Choices.js"
 				},
 				{
-					"href": "/component/glide",
+					"href": "https://alpinejs.dev/component/glide",
 					"label": "Glide"
 				},
 				{
-					"href": "/component/splide",
+					"href": "https://alpinejs.dev/component/splide",
 					"label": "Splide"
 				}
 			]

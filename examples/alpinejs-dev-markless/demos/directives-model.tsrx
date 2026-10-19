@@ -281,7 +281,7 @@ export function Demo13() @{
 				<button onClick={(event) => {
 					(username = 'phantomatrix');
 				}}>
-					Change username to: &#39;phantomatrix&#39;
+					{" "}Change username to: &#39;phantomatrix&#39;{" "}
 				</button>
 				{" "}
 				<span>{value1}</span>

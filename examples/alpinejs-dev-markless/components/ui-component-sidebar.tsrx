@@ -4,100 +4,100 @@ export default function UiComponentSidebar({ pathname, class: className }: { rea
 		<h3 class="text-sm font-medium uppercase text-gray-700">Lessons</h3>
 		<ul class="-mx-3 mt-3">
 			<li>
-				<a href="/component/dropdown" class={pathname === "/component/dropdown" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Dropdown</a>
+				<a href="https://alpinejs.dev/component/dropdown" class={pathname === "/component/dropdown" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Dropdown</a>
 			</li>
 			<li>
-				<a href="/component/modal" class={pathname === "/component/modal" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Modal</a>
+				<a href="https://alpinejs.dev/component/modal" class={pathname === "/component/modal" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Modal</a>
 			</li>
 			<li>
-				<a href="/component/accordion" class={pathname === "/component/accordion" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Accordion</a>
+				<a href="https://alpinejs.dev/component/accordion" class={pathname === "/component/accordion" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Accordion</a>
 			</li>
 			<li>
-				<a href="/component/carousel" class={pathname === "/component/carousel" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Carousel</a>
+				<a href="https://alpinejs.dev/component/carousel" class={pathname === "/component/carousel" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Carousel</a>
 			</li>
 			<li>
-				<a href="/component/tabs" class={pathname === "/component/tabs" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Tabs</a>
+				<a href="https://alpinejs.dev/component/tabs" class={pathname === "/component/tabs" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Tabs</a>
 			</li>
 			<li>
-				<a href="/component/notifications" class={pathname === "/component/notifications" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Notifications</a>
+				<a href="https://alpinejs.dev/component/notifications" class={pathname === "/component/notifications" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Notifications</a>
 			</li>
 			<li>
-				<a href="/component/radio-group" class={pathname === "/component/radio-group" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Radio Group</a>
+				<a href="https://alpinejs.dev/component/radio-group" class={pathname === "/component/radio-group" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Radio Group</a>
 			</li>
 			<li>
-				<a href="/component/toggle" class={pathname === "/component/toggle" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Toggle</a>
+				<a href="https://alpinejs.dev/component/toggle" class={pathname === "/component/toggle" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Toggle</a>
 			</li>
 			<li>
-				<a href="/component/tooltip" class={pathname === "/component/tooltip" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Tooltip</a>
+				<a href="https://alpinejs.dev/component/tooltip" class={pathname === "/component/tooltip" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Tooltip</a>
 			</li>
 		</ul>
 		<h3 class="mt-10 flex items-center gap-2 text-sm font-medium uppercase text-gray-700">Components</h3>
 		<ul class="-mx-3 mt-3">
 			<li>
-				<a href="/component/headless-dialog" class={pathname === "/component/headless-dialog" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Dialog (Modal)</a>
+				<a href="https://alpinejs.dev/component/headless-dialog" class={pathname === "/component/headless-dialog" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Dialog (Modal)</a>
 			</li>
 			<li>
-				<a href="/component/headless-popover" class={pathname === "/component/headless-popover" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Popover</a>
+				<a href="https://alpinejs.dev/component/headless-popover" class={pathname === "/component/headless-popover" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Popover</a>
 			</li>
 			<li>
-				<a href="/component/headless-tabs" class={pathname === "/component/headless-tabs" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Tabs</a>
+				<a href="https://alpinejs.dev/component/headless-tabs" class={pathname === "/component/headless-tabs" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Tabs</a>
 			</li>
 			<li>
-				<a href="/component/headless-switch" class={pathname === "/component/headless-switch" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Switch (Toggle)</a>
+				<a href="https://alpinejs.dev/component/headless-switch" class={pathname === "/component/headless-switch" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Switch (Toggle)</a>
 			</li>
 			<li>
-				<a href="/component/headless-disclosure" class={pathname === "/component/headless-disclosure" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Disclosure (Accordion)</a>
+				<a href="https://alpinejs.dev/component/headless-disclosure" class={pathname === "/component/headless-disclosure" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Disclosure (Accordion)</a>
 			</li>
 			<li>
-				<a href="/component/headless-menu" class={pathname === "/component/headless-menu" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Menu (Dropdown)</a>
+				<a href="https://alpinejs.dev/component/headless-menu" class={pathname === "/component/headless-menu" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Menu (Dropdown)</a>
 			</li>
 			<li>
-				<a href="/component/headless-radio" class={pathname === "/component/headless-radio" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Radio</a>
+				<a href="https://alpinejs.dev/component/headless-radio" class={pathname === "/component/headless-radio" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Radio</a>
 			</li>
 			<li>
-				<a href="/component/headless-listbox" class={pathname === "/component/headless-listbox" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Listbox (Select)</a>
+				<a href="https://alpinejs.dev/component/headless-listbox" class={pathname === "/component/headless-listbox" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Listbox (Select)</a>
 			</li>
 			<li>
-				<a href="/component/headless-combobox" class={pathname === "/component/headless-combobox" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Combobox (Autocomplete)</a>
+				<a href="https://alpinejs.dev/component/headless-combobox" class={pathname === "/component/headless-combobox" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Combobox (Autocomplete)</a>
 			</li>
 		</ul>
 		<h3 class="mt-10 text-sm font-medium uppercase text-gray-700">Integrations</h3>
 		<ul class="-mx-3 mt-3">
 			<li>
-				<a href="/component/trix" class={pathname === "/component/trix" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Trix</a>
+				<a href="https://alpinejs.dev/component/trix" class={pathname === "/component/trix" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Trix</a>
 			</li>
 			<li>
-				<a href="/component/quill" class={pathname === "/component/quill" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Quill</a>
+				<a href="https://alpinejs.dev/component/quill" class={pathname === "/component/quill" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Quill</a>
 			</li>
 			<li>
-				<a href="/component/simple-mde" class={pathname === "/component/simple-mde" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>SimpleMDE</a>
+				<a href="https://alpinejs.dev/component/simple-mde" class={pathname === "/component/simple-mde" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>SimpleMDE</a>
 			</li>
 			<li>
-				<a href="/component/chart-js" class={pathname === "/component/chart-js" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Chart.js</a>
+				<a href="https://alpinejs.dev/component/chart-js" class={pathname === "/component/chart-js" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Chart.js</a>
 			</li>
 			<li>
-				<a href="/component/apexcharts" class={pathname === "/component/apexcharts" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>ApexCharts</a>
+				<a href="https://alpinejs.dev/component/apexcharts" class={pathname === "/component/apexcharts" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>ApexCharts</a>
 			</li>
 			<li>
-				<a href="/component/flatpickr" class={pathname === "/component/flatpickr" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Flatpickr</a>
+				<a href="https://alpinejs.dev/component/flatpickr" class={pathname === "/component/flatpickr" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Flatpickr</a>
 			</li>
 			<li>
-				<a href="/component/date-range-picker" class={pathname === "/component/date-range-picker" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Date Range Picker</a>
+				<a href="https://alpinejs.dev/component/date-range-picker" class={pathname === "/component/date-range-picker" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Date Range Picker</a>
 			</li>
 			<li>
-				<a href="/component/fullcalendar" class={pathname === "/component/fullcalendar" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>FullCalendar</a>
+				<a href="https://alpinejs.dev/component/fullcalendar" class={pathname === "/component/fullcalendar" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>FullCalendar</a>
 			</li>
 			<li>
-				<a href="/component/select2" class={pathname === "/component/select2" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Select2</a>
+				<a href="https://alpinejs.dev/component/select2" class={pathname === "/component/select2" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Select2</a>
 			</li>
 			<li>
-				<a href="/component/choices" class={pathname === "/component/choices" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Choices.js</a>
+				<a href="https://alpinejs.dev/component/choices" class={pathname === "/component/choices" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Choices.js</a>
 			</li>
 			<li>
-				<a href="/component/glide" class={pathname === "/component/glide" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Glide</a>
+				<a href="https://alpinejs.dev/component/glide" class={pathname === "/component/glide" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Glide</a>
 			</li>
 			<li>
-				<a href="/component/splide" class={pathname === "/component/splide" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Splide</a>
+				<a href="https://alpinejs.dev/component/splide" class={pathname === "/component/splide" ? "block px-3 py-1.5 rounded-md text-components-cyan-600 bg-[#259DBE] bg-opacity-5" : "block px-3 py-1.5 rounded-md text-gray-700"}>Splide</a>
 			</li>
 		</ul>
 	</nav>

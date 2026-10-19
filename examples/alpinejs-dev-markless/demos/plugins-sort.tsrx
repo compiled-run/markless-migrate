@@ -85,19 +85,19 @@ export function Demo2() @{
 			<ul el={el6}>
 				<li el={el0}>
 					<span class="cursor-pointer" el={el1}>
-						-
+						{" "}-{" "}
 					</span>
 					foo
 				</li>
 				<li el={el2}>
 					<span class="cursor-pointer" el={el3}>
-						-
+						{" "}-{" "}
 					</span>
 					bar
 				</li>
 				<li el={el4}>
 					<span class="cursor-pointer" el={el5}>
-						-
+						{" "}-{" "}
 					</span>
 					baz
 				</li>

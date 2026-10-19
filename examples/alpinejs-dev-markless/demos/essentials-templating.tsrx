@@ -158,7 +158,7 @@ export function Demo9() @{
 			<button style={value0} onClick={(event) => {
 				red = ! red;
 			}}>
-				Toggle Red
+				{" "}Toggle Red{" "}
 			</button>
 		</div>
 }

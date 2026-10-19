@@ -37,7 +37,7 @@ export default function ComponentPage({ url }: PageProps) @{
 						<div class="flex justify-between items-center"><h2 class="text-components-cyan-600 text-sm font-semibold uppercase tracking-wider">Component</h2></div>
 						<div class="mt-2 flex items-center justify-between"><h1 class="text-4xl font-extrabold text-[#2E3440]">Tabs</h1></div>
 						<div class="flex flex-wrap justify-start gap-2 mt-4">
-							<a href="/installation" target="_blank" class="inline-flex items-center rounded-md bg-gray-100 px-2.5 py-1.5 text-xs font-medium">
+							<a href="https://alpinejs.dev/installation" target="_blank" class="inline-flex items-center rounded-md bg-gray-100 px-2.5 py-1.5 text-xs font-medium">
 								{" "}
 								<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
 									<path fill-rule="evenodd" clip-rule="evenodd" d="M6.53 4.53a.75.75 0 0 0-1.06-1.06l-4 4a.75.75 0 0 0 0 1.06l4 4a.75.75 0 0 0 1.06-1.06L3.06 8l3.47-3.47Zm4-1.06a.75.75 0 1 0-1.06 1.06L12.94 8l-3.47 3.47a.75.75 0 1 0 1.06 1.06l4-4a.75.75 0 0 0 0-1.06l-4-4Z" fill="#797F8A"></path>
@@ -49,7 +49,7 @@ export default function ComponentPage({ url }: PageProps) @{
 								{" "}
 							</a>
 							{" "}
-							<a href="/plugins/focus" target="_blank" class="inline-flex items-center rounded-md bg-gray-100 px-2.5 py-1.5 text-xs font-medium">
+							<a href="https://alpinejs.dev/plugins/focus" target="_blank" class="inline-flex items-center rounded-md bg-gray-100 px-2.5 py-1.5 text-xs font-medium">
 								{" "}
 								<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
 									<path fill-rule="evenodd" clip-rule="evenodd" d="M6.53 4.53a.75.75 0 0 0-1.06-1.06l-4 4a.75.75 0 0 0 0 1.06l4 4a.75.75 0 0 0 1.06-1.06L3.06 8l3.47-3.47Zm4-1.06a.75.75 0 1 0-1.06 1.06L12.94 8l-3.47 3.47a.75.75 0 1 0 1.06 1.06l4-4a.75.75 0 0 0 0-1.06l-4-4Z" fill="#797F8A"></path>

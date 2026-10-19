@@ -74,15 +74,15 @@ function directive(el: Element, name: string, value: string, route: string): [st
 
 const svgFiles = new Map<string, string>();
 
-// Cleans a subtree in place: drops scripts, styles, comments and Livewire, rewrites Alpine directives (above), makes
-// alpinejs.dev links same-origin, decodes Cloudflare's email links and moves very large SVGs to files.
+// Cleans a subtree in place: drops scripts, styles, comments and Livewire, rewrites Alpine directives (above), keeps
+// links as the old page writes them (absolute alpinejs.dev ones included), decodes Cloudflare's email links and moves
+// very large SVGs to files.
 function clean(el: Element, route: string): void {
 	el.attrs = el.attrs.flatMap((a) => {
 		const name = a.prefix ? `${a.prefix}:${a.name}` : a.name;
 		const rewritten = directive(el, name, a.value, route);
 		if (rewritten === null) return [];
 		if (rewritten) return [{ name: rewritten[0], value: rewritten[1] }];
-		if ((name === 'href' || name === 'src' || name === 'action') && ABSOLUTE.test(a.value)) return [{ ...a, value: a.value.replace(ABSOLUTE, '') || '/' }];
 		if (name === 'href' && a.value.startsWith('/cdn-cgi/l/email-protection#')) return [{ ...a, value: `mailto:${decodeEmail(a.value.split('#')[1]!)}` }];
 		return [a];
 	});
@@ -162,12 +162,12 @@ const sidebar = find(first.document, (el) => el.tagName === 'nav' && hasClass(el
 const sections = findAll(sidebar, (el) => el.tagName === 'h3').map((h3) => {
 	const list = (h3.parentNode as Element).childNodes.filter(isElement);
 	const ul = list[list.indexOf(h3) + 1]!;
-	return { title: text(h3), headingClass: attr(h3, 'class')!, listClass: attr(ul, 'class')!, items: findAll(ul, (el) => el.tagName === 'a').map((a) => ({ href: attr(a, 'href')!.replace(ABSOLUTE, ''), label: text(a) })) };
+	return { title: text(h3), headingClass: attr(h3, 'class')!, listClass: attr(ul, 'class')!, items: findAll(ul, (el) => el.tagName === 'a').map((a) => ({ href: attr(a, 'href')!, label: text(a) })) };
 });
 const linkClasses = findAll(sidebar, (el) => el.tagName === 'a').map((a) => attr(a, 'class')!);
 const activeLink = linkClasses.find((c) => c.includes('text-components-cyan-600'))!;
 const link = linkClasses.find((c) => c !== activeLink)!;
-const slugs = sections.flatMap((s) => s.items.map((i) => i.href)).filter((href) => href.startsWith('/component/'));
+const slugs = sections.flatMap((s) => s.items.map((i) => i.href.replace(ABSOLUTE, ''))).filter((href) => href.startsWith('/component/'));
 const pages: unknown[] = [];
 let skeleton: string | undefined;
 for (const route of slugs) {

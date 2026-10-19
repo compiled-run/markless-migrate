@@ -13,7 +13,7 @@ export default function Guest() @{
 					</a>
 				</div>
 				<div class="mt-6 w-full overflow-hidden border border-gray-300 bg-white px-6 py-4 sm:max-w-md">
-					<form method="POST" action="/login" onSubmit={(event) => event.preventDefault()}>
+					<form method="POST" action="https://alpinejs.dev/login" onSubmit={(event) => event.preventDefault()}>
 						<div class="flex justify-center pt-8">
 							<a href="/login/github" class="inline-flex items-center text-center text-sm">
 								{" "}
@@ -53,7 +53,7 @@ export default function Guest() @{
 							</label>
 						</div>
 						<div class="mt-4 flex items-center justify-end">
-							<a class="text-sm text-gray-600 underline hover:text-gray-900" href="/forgot-password">{" "}Forgot your password?{" "}</a>
+							<a class="text-sm text-gray-600 underline hover:text-gray-900" href="https://alpinejs.dev/forgot-password">{" "}Forgot your password?{" "}</a>
 							{" "}
 							<button type="submit" class="inline-flex items-center px-6 py-2 bg-components-cyan-600 border border-transparent rounded-full font-title text-sm text-white font-bold hover:bg-components-cyan-700 focus:outline-none focus:border-components-cyan-700 focus:ring focus:ring-gray-300 disabled:opacity-25 transition ml-4">{" "}Log in{" "}</button>
 						</div>

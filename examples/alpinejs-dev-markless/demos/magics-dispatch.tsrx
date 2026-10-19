@@ -24,7 +24,7 @@ export function Demo0() @{
 				<button el={el1} onClick={(event) => {
 					dispatch(el1, 'notify');
 				}}>
-					Notify
+					{" "}Notify{" "}
 				</button>
 			</div>
 		</div>

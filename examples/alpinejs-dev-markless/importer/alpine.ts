@@ -28,6 +28,7 @@ const ALPINE_ATTR = /^(x-|@|:)/;
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
 const EVENT_PROPS: Record<string, string> = { click: 'onClick', dblclick: 'onDblClick', input: 'onInput', change: 'onChange', keydown: 'onKeyDown', keyup: 'onKeyUp', focus: 'onFocus', blur: 'onBlur', mousemove: 'onMouseMove', mouseout: 'onMouseOut', mouseover: 'onMouseOver', mouseenter: 'onMouseEnter', mouseleave: 'onMouseLeave', mousedown: 'onMouseDown', mouseup: 'onMouseUp', submit: 'onSubmit', scroll: 'onScroll', touchstart: 'onTouchStart', touchmove: 'onTouchMove', contextmenu: 'onContextMenu' };
 const KEY_NAMES: Record<string, string> = { escape: 'Escape', esc: 'Escape', enter: 'Enter', space: ' ', tab: 'Tab', up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
+const INLINE = new Set(['span', 'strong', 'a', 'button', 'input', 'label', 'code', 'em', 'b', 'i', 'select', 'textarea', 'img', 'br', 'kbd', 'small']);
 const PROP_MODIFIERS = new Set(['window', 'document', 'outside', 'away', 'once', 'capture', 'passive', 'debounce', 'throttle', 'dot', 'camel']);
 
 function parseDirective(name: string, expression: string): Directive | undefined {
@@ -772,12 +773,14 @@ function emitChildren(kids: Node[], depth: number, walk: Walk, parent: Element, 
 				// Whitespace between two elements renders as a space between inline ones; keep it when either neighbour is inline content.
 				const prev = kids[i - 1];
 				const next = kids[i + 1];
-				const inlineish = (n: Node | undefined) => !!n && (n.nodeName === '#text' || (isElement(n) && ['span', 'strong', 'a', 'button', 'input', 'label', 'code', 'em', 'b', 'i', 'select', 'textarea', 'img', 'br', 'kbd', 'small'].includes(n.tagName)));
+				const inlineish = (n: Node | undefined) => !!n && (n.nodeName === '#text' || (isElement(n) && INLINE.has(n.tagName)));
 				if (prev && next && inlineish(prev) && inlineish(next)) out += `${pad}{" "}\n`;
 				return;
 			}
-			const lead = /^\s/.test(value) && i > 0 ? '{" "}' : '';
-			const trail = /\s$/.test(value) && i < kids.length - 1 ? '{" "}' : '';
+			// Inside an inline element (a span holding " - ") the edge spaces render too.
+			const inlineParent = INLINE.has(parent.tagName);
+			const lead = /^[ \t\n\r\f]/.test(value) && (i > 0 || inlineParent) ? '{" "}' : '';
+			const trail = /[ \t\n\r\f]$/.test(value) && (i < kids.length - 1 || inlineParent) ? '{" "}' : '';
 			const core = collapsed.replace(/^[ \t\n\r\f]+|[ \t\n\r\f]+$/g, '');
 			out += `${pad}${lead}${/\u00a0/.test(core) ? `{${lit(core)}}` : entities(core)}${trail}\n`;
 			return;
