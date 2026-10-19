@@ -51,7 +51,7 @@ export interface StepResult {
 	readonly dialogs?: readonly string[];
 	/** The step ended on a page the front door serves from the old app, on the old app's own origin: what that page keeps in the browser is the old app's, on another origin, so it is not compared. */
 	readonly door?: boolean;
-	/** What the step changed on <html> and <body> (attributes, class names), in the page colours and colour scheme, and in stored values: `html data-theme: light → dark`, `localStorage theme: "light" → "dark"`. */
+	/** What the step changed on <html> and <body> (attributes, class names: shown, not compared), in the page colours, colour scheme, scroll lock and pointer-events, and in stored values: `page background: rgb(255, 255, 255) → rgb(24, 25, 32)`, `localStorage theme: "light" → "dark"`. */
 	readonly state?: readonly string[];
 	/** The step reloaded the page: what it shows and keeps after the reload is compared with what it showed before. */
 	readonly reloaded?: boolean;
@@ -427,6 +427,8 @@ async function pageState(): Promise<string[]> {
 	out.push(`page background\t${opaque(bodyBg) ? bodyBg : getComputedStyle(root).backgroundColor}`);
 	out.push(`page text colour\t${getComputedStyle(body ?? root).color}`);
 	out.push(`page color-scheme\t${getComputedStyle(root).colorScheme}`);
+	out.push(`page overflow\t${getComputedStyle(root).overflow} / ${body ? getComputedStyle(body).overflow : ''}`);
+	out.push(`page pointer-events\t${getComputedStyle(body ?? root).pointerEvents}`);
 	for (const [label, store] of [['localStorage', () => localStorage], ['sessionStorage', () => sessionStorage]] as const) {
 		try {
 			const s = store();
@@ -1403,6 +1405,9 @@ function cycleLabel(steps: number, acts: readonly CycleAct[], i: number): string
 /** What a state line is about: `html data-theme`, `html class dark`, `localStorage theme`. */
 const subject = (line: string) => line.replace(/ class [+-]/, ' class ').split(': ')[0]!;
 
+/** State lines compared between the sides: what the page shows and keeps. How it gets there (attributes and class names on <html> and <body>, a framework's own markers among them) is shown, not compared. */
+const effects = (lines: readonly string[] | undefined, owner?: StorageOwner) => (lines ?? []).filter((l) => !/^(html|body) /.test(l) && !(/^(localStorage|sessionStorage|cookie) /.test(l) && owner?.(subject(l))));
+
 /** Each step's changes on one side, one line per step up to `upto`, so a cycle failure shows where the two sides parted. */
 function trail(results: readonly (StepResult | undefined)[], first: number, upto: number): string {
 	return results
@@ -1450,7 +1455,7 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			const fields = navigated ? (following ? (['requests', 'state', 'storage', 'dialogs'] as const) : (['requests', 'storage', 'dialogs'] as const)) : reloaded ? (['added', 'removed', 'state', 'storage'] as const) : (['added', 'removed', 'moved', 'requests', 'announcements', 'state', 'storage', 'dialogs'] as const);
 			for (const field of fields.filter((f) => !(f === 'storage' && n.door))) {
 				// Requests in flight together finish in any order (a client retrying hosts it shuffled), so they count as a set.
-				const lines = (r: StepResult) => (field === 'requests' ? [...r[field]].sort() : (r[field] ?? []));
+				const lines = (r: StepResult) => (field === 'requests' ? [...r[field]].sort() : field === 'state' ? effects(r.state, owner) : (r[field] ?? []));
 				const diff = diffLines(lineTemplates(lines(a!), ...rest.map(lines)), lines(n));
 				if (diff.changed.length || diff.missing.length || diff.unexpected.length) parts.push(field);
 				if (field === 'storage') automatic = storageCandidate([...diff.missing, ...diff.changed.map((c) => c.expected)], [...diff.unexpected, ...diff.changed.map((c) => c.actual)], owner);

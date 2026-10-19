@@ -31,6 +31,10 @@ const PAGES = {
 	// A dialog with a Close button, and one that will not open again once closed by it.
 	closer: `<button id="o">Settings</button><dialog id="d"><p>Settings</p><button id="c">Close</button></dialog><script>o.onclick = () => d.showModal(); c.onclick = () => d.close();</script>`,
 	once: `<button id="o">Settings</button><dialog id="d"><p>Settings</p><button id="c">Close</button></dialog><script>let closed = false; o.onclick = () => { if (!closed) d.showModal(); }; c.onclick = () => { closed = true; d.close(); };</script>`,
+	// A menu that locks the page while open: with a library's own marker on <body>, or (`plainlock`) without it, and one (`stuck`) that leaves the page unclickable once closed.
+	marked: `<button id="m" aria-expanded="false">Menu</button><div id="l" role="menu" hidden><div role="menuitem">One</div></div><script>m.onclick = () => { const open = l.hidden; l.hidden = !open; m.setAttribute('aria-expanded', String(open)); if (open) { document.body.setAttribute('data-scroll-locked', '1'); document.body.style.overflow = 'hidden'; } else { document.body.removeAttribute('data-scroll-locked'); document.body.style.overflow = ''; } };</script>`,
+	plainlock: `<button id="m" aria-expanded="false">Menu</button><div id="l" role="menu" hidden><div role="menuitem">One</div></div><script>m.onclick = () => { const open = l.hidden; l.hidden = !open; m.setAttribute('aria-expanded', String(open)); document.body.style.overflow = open ? 'hidden' : ''; };</script>`,
+	stuck: `<button id="m" aria-expanded="false">Menu</button><div id="l" role="menu" hidden><div role="menuitem">One</div></div><script>m.onclick = () => { const open = l.hidden; l.hidden = !open; m.setAttribute('aria-expanded', String(open)); if (open) document.body.style.overflow = 'hidden'; else document.body.style.pointerEvents = 'none'; };</script>`,
 } as const;
 
 // A toggle named after the mode it is in, as Docusaurus labels its own: system, light, dark, system again; or (two-way) light and dark only.
@@ -147,6 +151,15 @@ test('a toggle that renames itself with each use is followed under its new name,
 	assert.equal(f?.check, 'click button "Theme (currently system)" (step 3 of 5: use 3)', failures.map((x) => x.check).join('\n'));
 	assert.match(f!.expected, /html data-theme-choice|html data-theme: dark → light|localStorage theme: "dark" → \(none\)/);
 	assert.match(f!.actual, /localStorage theme: "dark" → "light"/);
+});
+
+test("a library's own marker on <body> is shown but not compared, and a page left unclickable after closing is red", async () => {
+	const marked = await check('marked', 'plainlock');
+	assert.deepEqual(behaviour(marked).map((f) => `${f.check}: ${f.actual}`), []);
+	assert.ok(marked.routes[0]!.journeys!.find((j) => j.name === 'click button "Menu"')!.expected[0]!.state!.includes('body data-scroll-locked: (none) → 1'));
+	const [f] = behaviour(await check('marked', 'stuck'));
+	assert.equal(f?.check, 'click button "Menu" (step 2 of 3: use 2)');
+	assert.match(f!.actual, /page pointer-events: auto → none/);
 });
 
 const step = (over: Partial<StepResult>): StepResult => ({ url: '/', added: [], removed: [], requests: [], errors: [], announcements: [], focus: 'body', navigated: false, ...over });
