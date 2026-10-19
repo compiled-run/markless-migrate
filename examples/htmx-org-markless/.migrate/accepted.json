@@ -14,20 +14,20 @@
 		{
 			"route": "**",
 			"dimension": "behaviour",
-			"check": "click link *",
+			"check": "click link **",
 			"match": {
-				"expected": "/^requests: GET \\/[\\w-]*\\/(, GET \\/[\\w-]*\\/)*$/"
+				"expected": "/^requests: GET \\/[\\w-]*\\/(, GET \\/[\\w-]*\\/)*(; kept in the browser: \\+ sessionStorage htmx-history-cache)?$/"
 			},
-			"reason": "hx-boost and preload=\"mouseover\": htmx turns a nav-link click into an XHR GET of the next page and a body swap (and fetches it again on hover). The port navigates normally to the same URL and page. Markless's client-side navigation is off because document.tsrx reads the URL to write each page's head (the router then loads whole pages), and most nav targets (reference, talk, essays) stay htmx pages during the migration. Owner decision: keep plain navigation, or move per-page heads into the pages and use Link.",
+			"reason": "hx-boost and preload=\"mouseover\": htmx turns a nav-link click into an XHR GET of the next page and a body swap (fetched again on hover), and keeps its history cache in sessionStorage. The port navigates normally to the same URL and page, and loads htmx only on pages whose content uses it. Kept as recorded on 2026-10-17 now that every page is ported: the alternative is loading htmx and hyperscript on every page for boosted links (about 70 kB more run at load per page).",
 			"by": "Claude Code (converting agent), for owner review",
-			"date": "2026-10-17"
+			"date": "2026-10-18"
 		},
 		{
 			"route": "**",
 			"dimension": "a11y",
-			"check": "press Enter on link *",
+			"check": "press Enter on link **",
 			"match": {
-				"expected": "/^requests: GET \\/[\\w-]*\\/(, GET \\/[\\w-]*\\/)*$/"
+				"expected": "/^requests: GET \\/[\\w-]*\\/(, GET \\/[\\w-]*\\/)*(; kept in the browser: \\+ sessionStorage htmx-history-cache)?$/"
 			},
 			"reason": "Same as the click: hx-boost fetches the next page by XHR; the port navigates normally to the same URL and page.",
 			"by": "Claude Code (converting agent), for owner review",
@@ -68,7 +68,7 @@
 			"dimension": "a11y",
 			"check": "focus order (Tab)*",
 			"match": {
-				"expected": "/\u2192 8\\. Iframe/"
+				"expected": "/→ 8\\. Iframe/"
 			},
 			"reason": "The GitHub star button is a live third-party widget (buttons.github.io). On this page sinon's fake XMLHttpRequest pushes buttons.js into its iframe fallback, and the star count inside that iframe loads (or not) live from api.github.com; the port renders the same iframe, inside the span buttons.js would leave, because Markless resume finds elements by DOM position and an element swapped for another breaks it.",
 			"by": "Claude Code (converting agent), for owner review",
@@ -133,7 +133,7 @@
 			"dimension": "a11y",
 			"check": "focus order (Tab)*",
 			"match": {
-				"actual": "/link \"htmx\\.org\" \u2192 \\d+\\. link \"Markless\" \u2192 \\d+\\. link \"Zero-Clause BSD license\"/"
+				"actual": "/link \"htmx\\.org\" → \\d+\\. link \"Markless\" → \\d+\\. link \"Zero-Clause BSD license\"/"
 			},
 			"reason": "Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. Its three links are the last tab stops.",
 			"by": "Claude Code (converting agent), for owner review",

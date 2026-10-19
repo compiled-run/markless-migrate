@@ -162,3 +162,106 @@ What keeps every route red, none of it in the port's own pages:
 The demo itself (view, edit with autofocus, submit, cancel, the request log and its Show/Hide) matches step for step.
 
 Routes switched: none (none is green). Front door: every path goes to htmx.org.
+
+## Every route (2026-10-18)
+
+The port served 4 of htmx.org's 188 sitemap pages. It now serves all of them, and every other file and redirect
+htmx.org answers, built from htmx.org's own source (bigskysoftware/htmx `www/`, pinned at fa978b2) instead of the live
+HTML.
+
+### How the pages are made
+
+`npm run import` (also `prebuild`) runs `scripts/import-htmx-org.ts`:
+
+1. Clones the source at the pinned commit and downloads the Zola version htmx.org's `netlify.toml` pins (0.19.1).
+2. Builds the site twice with Zola: once as htmx.org builds it (the reference, plus every non-page file), and once with
+   content-only templates (`scripts/import/zola-overlay.ts`) that print each page's front matter and its rendered
+   markdown. Zola renders the markdown, so heading ids, anchor links, smart punctuation and the syntect code
+   highlighting (inline-styled spans) are htmx.org's own output.
+3. Writes each page with the importer for its Zola template (`scripts/import/templates.ts`: page, section, demo, essay,
+   essay_index, essay_all, talk, 404, index), which writes what that Tera template puts in `<main>`. The shared header
+   and footer are the existing components. `scripts/import/html-to-tsrx.ts` turns the HTML into TSRX markup; inline
+   `<style>` blocks become stylesheets in the head (TSRX scopes `<style>`), `<script>` text is kept as is.
+4. Compares every generated `<main>` with Zola's own build of the same page (tags, attributes and text): all 188 match.
+   The one difference the importer reports: the talk page's announcement list orders two posts of the same day
+   arbitrarily in Zola (it differs between Zola runs); the importer uses the order htmx.org shows.
+5. Writes the heads (`site-heads.ts`: title, description, canonical, extra feeds, stylesheets, scripts), and copies
+   everything else Zola writes into `.import/public` (gitignored, 101 MB): static files, `atom.xml`, `essays/atom.xml`,
+   `sitemap.xml`, `robots.txt`, alias pages, `404.html`, `/test/`, `/src/`, `/node_modules/`.
+
+187 pages are generated; `/` and `/examples/click-to-edit/` keep their hand ports (their behaviour is Markless state),
+with heads from the importer. The 30 pages whose content uses htmx itself (the demo pages under `/examples/`,
+`/attributes/hx-indicator/` and `/essays/view-transitions/`) load htmx's own scripts directly, as htmx.org does:
+`/js/htmx.js`, plus `class-tools.js`, `preload.js` or `_hyperscript.js` only where the content uses them, and sinon
+plus `/js/demo.js` on demo pages. The other 157 generated pages load none of them.
+
+### What Netlify did that the port now does
+
+`netlify-routes.ts` (generated) lists what Netlify answers beyond the files, served by Vercel routes on the CDN and by
+`plugins/trailing-slash.ts` locally: `_redirects` (14 paths, with and without the slash), Pretty URLs (`/x` serves
+`x.html`, `/x/index.html` serves `/x/`, and links inside the static `/test/` pages rewritten as Netlify rewrites them),
+a 301 to the lower-case path for a path with capitals (`/CVE-2026-3682-1/` -> `/cve-2026-3682-1/`), and case-insensitive
+file lookups the pages rely on (`/img/Github_Logo.png` is `GitHub_Logo.png` on disk). The `demo.htmx.org` host rule has
+no counterpart on this host.
+
+Markless limits met: `pages/api/` is reserved for API routes, so `/api/` lives at `pages/_api/` and is served at
+`/api/`; content CSS that targets `body > footer` needed `body > [data-async-container] > div > footer`, because the
+page sits in the router's container.
+
+### Coverage
+
+`scripts/verify-routes.ts https://htmx.org https://mm-htmx-org-new.vercel.app` (old side fetched once, slowly):
+
+| What | Match |
+| --- | --- |
+| Pages: 188 sitemap routes and their `/index.html` forms: status 200 (or the same redirect), same `<title>`, same first `<h1>` | 377 of 377 |
+| Every other file (feeds, sitemap, robots, aliases, static files, `/test/` pages) and every Netlify route: same status, redirect target and bytes, plus two paths no site has (404) | 360 of 360 |
+
+`markless-migrate plan` (old: the read-only mirror) lists 240 routes (sitemap, crawl, feeds, robots, redirects and
+the source); `check --only coverage` against the deployment: **228 of 228 routes of the old site present** (the other
+12 are Zola template files the source scan lists, which htmx.org answers 404).
+
+plan stopped at first on `/discord` (a redirect to discord.gg, which answers with a Cloudflare challenge): it treated
+the other site as a wall on the old app. Fixed here: a route that redirects to another site is recorded as the old
+app's redirect (`test/plan-offsite-redirect.test.ts`).
+
+### Check (every route, against the deployment)
+
+`check` with no `--route` (old: the read-only mirror; new: https://mm-htmx-org-new.vercel.app), which checks all 228
+routes and runs visual, behaviour and responsiveness on one representative per template group (`/attributes/:page/`
+35 pages, `/posts/:page/` 35, `/examples/:page/` 26, `/essays/:page/` 43, ...):
+
+| Run | Result |
+| --- | --- |
+| Full run | **181 of 228 green**, 31 red, 15 not checked (connection timeouts to Vercel, and 600 s route timeouts on `/docs`, `/essays`, `/api/`, `/examples/animations`), 1 blocked (`/discord`: its target, discord.gg, answers with a Cloudflare challenge) |
+| The 46 not green again (`--timeout 1500`) | 13 green; the rest below |
+| After the accepted boosted-link entries were fixed (next paragraph) | `/essays/all`, `/extensions/sse/` green; 28 red, 2 not checked (the mirror timed out on `/` and `/migration-guide-htmx-1/`) |
+
+Coverage: 228 of 228 routes present. Responsiveness: first interaction old 566 ms → new 530 ms, navigation old 911 →
+877 ms (4x CPU). JavaScript run at load on a content page: about 97 kB → 29 kB (pages that use htmx load it, as before).
+
+The boosted-link acceptance from 2026-10-17 had stopped matching: the check now names shared-layout links
+`click link "docs", in the layout shared with /` (a `/`, which `*` does not cross) and adds htmx's history cache to the
+expected result. The entries now use `**` and allow that cache; the decision itself is unchanged (plain navigation,
+no htmx on pages that do not use it), and htmx's sessionStorage keys are then accepted automatically as htmx's own.
+
+Still red, none of it in the generated markup (each was compared against htmx.org's build: same tags, attributes and
+text on every page):
+
+1. **Controls the check could not use on the old page** (most routes): unnamed in-page links (`link`, `link #2`...)
+   reported "missing: it is not on the page" on htmx.org itself. In the partial reruns the header's links and search
+   box also read "not exercised, shared with /" because `/`, the route that exercises the shared header, timed out on
+   the mirror in that run; in the full run `/` exercised them.
+2. **Live third-party embeds**: YouTube iframes (`/examples/move-before/*`, `/essays/a-real-world-*`,
+   `/essays/how-did-rest-...`, `/migration-guide-htmx-1/`) make different requests and paint different frames each
+   load; the GitHub star widget sometimes falls back to its iframe (rate limits during long checks); videos on
+   `/essays/you-cant/` and `/attributes/hx-partial/` show different frames.
+3. **Motion that never stops**: `/examples/animations/` toggles `.faded` every second (htmx's class-tools, served as
+   htmx.org serves it, same CSS transition); the two pages are captured at different phases (opacity 1 against 0.3 or
+   0.37). The home page's hero fade now starts as class-tools starts it (100 ms after `DOMContentLoaded`, not after
+   the script is parsed).
+4. `/webring/` and `/attributes/hx-partial/` visual differences in some viewport widths, not investigated further.
+
+Not done: a full `check` run after the acceptance fix (one full run takes about 2 to 3 hours here; the machine slept
+through parts of these runs). Tool fixes made on the way: plan no longer stops at an off-site redirect, and check no
+longer ends the whole run when a retried page load is aborted by its own `about:blank` (`test/infrastructure.test.ts`).
