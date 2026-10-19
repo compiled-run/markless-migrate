@@ -9,9 +9,11 @@ type Slot = Readonly<Record<string, string>> | null;
 const routes = heads as unknown as Record<string, { readonly title: string; readonly ld: string; readonly class: string; readonly slots: readonly Slot[] }>;
 
 export default function Document({ url, children }: { readonly url?: { readonly pathname: string }; readonly children?: Children }) @{
-	const path = (url?.pathname ?? '/').replace(/\/$/, '') || '/';
-	const head = routes[path] ?? routes['/404']!;
-	const s = head.slots;
+	const path = (url?.pathname ?? '/').replace(/^\/__not-found(?=\/)/, '').replace(/\/$/, '') || '/';
+	const found = routes[path] ?? routes[decodeURIComponent(path)];
+	const head = found ?? routes['/404']!;
+	// The not-found page's head names the address it was asked for, as the theme writes it once the page has started.
+	const s = found ? head.slots : head.slots.map((slot) => slot && Object.fromEntries(Object.entries(slot).map(([name, value]) => [name, value.replace(/\/404\.html$/, path)])));
 
 	<Html lang="en" dir="ltr" class={head.class}>
 		<head>

@@ -1,4 +1,4 @@
-# Migration log: docusaurus.io (home and two docs pages) to Markless
+# Migration log: docusaurus.io to Markless
 
 The docusaurus.io website (`facebook/docusaurus`, `website/`), its home page, `/docs` (Introduction) and
 `/docs/installation`, ported to Markless 0.4.0 (the published packages) by Claude Code and checked against the
@@ -208,3 +208,91 @@ sets the flag after load. Nothing in the port read them: no rule in the copied s
 (`public/assets/css/styles.73b9aeb138.css`) or in `public/mm-site.css`, and no script in `lib/` or `public/vendor/`
 selects on the flag or on `data-rh`. Upstream, no theme stylesheet reads the flag either; Docusaurus's own blog uses
 it to tell a visual-regression tool the page has finished starting up. The checker now fails a port that serves one of these markers.
+
+## Every route (2026-10-18)
+
+The port now serves every route the old site serves, not three: all 288 sitemap routes, plus the routes the sitemap
+leaves out (the dogfooding test docs, blog and pages under `/tests`, the debug panel under `/__docusaurus/debug`), the
+not-found page, the feeds, `sitemap.xml`, `robots.txt`, the client redirects and the static files. The old site is built
+with one locale (English) and only the current docs version, so there are no other locales or versions to port.
+
+| | Old site | New app |
+| --- | --- | --- |
+| Sitemap routes | 288 | 288, each with the old `<title>` and first `<h1>` |
+| Page routes in all (Docusaurus's own route list) | 484 | 484 |
+| Routes `plan` lists (sitemap, crawl, feeds, hreflang, source, endpoints) | 575 | coverage: 491 of 491 the old site answers present |
+
+### How the pages are made
+
+Nothing is written by hand. `tooling/import.mjs` loads the old site as `docusaurus build --locale en` does
+(`loadContext` and `loadPlugins` from `@docusaurus/core`, with the build's `BUILD_FAST`, `NODE_ENV` and
+`DOCUSAURUS_CURRENT_LOCALE`), so it gets the same route list, sidebars, blog posts, front matter and plugin data the
+build gets. Each route is then rendered by the template for its theme component:
+
+| Template (theme component) | Routes | Made from |
+| --- | --- | --- |
+| `@theme/DocItem`, `DocCategoryGeneratedIndexPage`, `DocTagsListPage`, `DocTagDocListPage` (`tooling/templates/docs.jsx`) | docs, generated category pages (`/docs/category/*` built from the sidebars' `link: {type: 'generated-index'}`), doc tags | the docs plugin's MDX (compiled by the plugin's own loaders) and sidebars |
+| `@theme/BlogPostPage`, `BlogListPage`, `BlogTagsListPage`, `BlogTagsPostsPage`, `BlogArchivePage`, `Blog/Pages/BlogAuthors*` and the changelog's (`tooling/templates/blog.jsx`) | posts, pagination, tags, authors, archive, changelog | blog posts and their front matter |
+| `@theme/MDXPage`, `@theme/SearchPage`, `@theme/NotFound`, the site's own `src/pages/*.tsx` (`tooling/templates/pages.jsx`) | MDX pages, `/search`, the 404 page, home, showcase, versions, community pages | the pages plugin's files; the site's own React pages run unmodified against the ported theme |
+| the debug plugin's own theme components | `/__docusaurus/debug*` | the plugin's compiled theme, run unmodified against the ported theme, with the config, global data and metadata as the client gets them |
+
+The theme (theme-classic, theme-common, search, live code blocks, mermaid, ideal image) is ported in `tooling/theme/`
+and renders static markup. The site's own components run from its sources unless a port exists in `tooling/ports/`
+(where they need browser behaviour). Plugins' `postBuild` hooks write the sitemap, feeds and client redirects from the
+rendered pages, as the build does. Assets get the old build's names (xxhash64 of the content).
+
+What the old pages do in the browser is in `lib/`: `site.ts` (colour mode, tabs, sidebar and drawer, collapsibles,
+TOC highlight, progress bar, zoom, ideal images, version preferences), `search.ts` and `search-page.ts` (DocSearch and
+`/search`), `playground.ts` (the live code editor and preview, with no React: its runtime loads only on pages that have
+a playground), `showcase.ts`, `color-generator.ts`, `image-zoom.ts` and `json-view.ts`.
+
+### Bugs fixed
+
+- `<details>` ("Alternative installation commands" on `/docs/installation`): the theme cancels the browser's toggle and
+  animates; `open` comes off only after the close animation. The content now shows.
+- Console errors from journeys into unported pages, and links into unported pages: every page exists now; the crawl
+  of every same-site link on the new app finds no address that fails there but not on the old site.
+- The search footer: "See all N results" with DocSearch's hit count (and Docusaurus's own `{count}` placeholder when
+  there is no count).
+
+### Interactive elements, compared side by side
+
+`tooling/interactions.mjs` runs each interactive element on both sites (local old build vs the new app) and compares
+the transitions and animations each step starts (property, duration, easing) and the DOM the step leaves.
+
+| Element | Result |
+| --- | --- |
+| Sidebar categories (expand, collapse, caret, auto-collapse of siblings, nested categories, toggling during an animation) | fixed: height animated with the theme's duration rule and `ease-in-out`, caret rotation, link fades |
+| Sidebar across navigations | fixed: the sidebar keeps its open categories and scroll as Docusaurus's does; the active link's colour fade runs by script with the stylesheet's own timing (the browser drops hover on the re-inserted sidebar) |
+| Collapse / expand the whole sidebar | fixed: width transition first, then the sidebar hides |
+| Navbar mobile drawer (open, secondary menu, back, close, backdrop, categories, versions dropdown) | fixed: slide transitions run, the drawer is kept across navigations so a link click slides it out |
+| `<details>` | fixed |
+| Tabs (click, keyboard, groupId sync, localStorage, queryString) | same |
+| Code blocks (copy, word wrap) | same |
+| Colour mode toggle (three states, storage, code colours, themed images) | same |
+| Navbar dropdowns (hover, click, Enter, Space; version and locale) | same; version links keep `?query#hash` and save the preferred version as the theme does |
+| Search modal (open, type, results, footer, Escape) | same; result counts come from live Algolia |
+| `/search` page | same |
+| TOC highlight | fixed: ported from `useTOCHighlight` |
+| Mobile TOC ("On this page") | same |
+| Back to top, hideable navbar, announcement bar | same |
+| Pagination, blog sidebar | same |
+| Live code editor | ported: editing, highlighting, preview, reset, errors, dark mode |
+| Showcase filters, colour generator, image zoom, ideal images, changelog authors, debug JSON trees | ported and compared, same |
+| Progress bar on slow navigations | fixed: theme-classic's nprogress module (`nprogress` itself) |
+| Mermaid diagrams, showcase checkboxes | still different: element ids come from React's `useId`, which depends on React's whole component tree |
+| DocSearch input | still different: DocSearch's vanilla build sets `autofocus` on the input, the React build does not |
+
+### Markless findings (0.5.0)
+
+- Namespaced attributes (`xlink:href`, `xml:space`, `xmlns:xlink`) are dropped from markup. The importer writes a
+  script as the element's first child that sets them while the page is parsed.
+- A `<style>` element inside page markup is taken as the component's scoped CSS. An SVG's own `<style>` is written as a
+  script that puts it in place.
+- A page file whose name has an apostrophe cannot be bundled, and a request path is matched without decoding. Such
+  pages (`beginner's guide`, folders with spaces, `æøå`) are written under `_` names and served at their own address
+  by a route rule (`lib/route-aliases.json`).
+- Nitro answers `/api/**` itself with a plain-text 404; a route rule sends those paths to the not-found page.
+- The build needs about 32 GB of heap for 484 pages (`NODE_OPTIONS=--max-old-space-size=32768`).
+- `onIdle` alone boots the page late on a busy machine (the scheduler's background priority has no deadline); the root
+  boots on `onVisible` as well.

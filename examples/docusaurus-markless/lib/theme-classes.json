@@ -142,14 +142,14 @@
 	"ChangelogAuthor": {
 		"image": "image_oRbT"
 	},
+	"ErrorBoundary": {
+		"errorBoundaryError": "errorBoundaryError_rP1m",
+		"errorBoundaryFallback": "errorBoundaryFallback_heah"
+	},
 	"ColorGenerator": {
 		"color": "color_mVUL",
 		"input": "input_HUC3",
 		"colorInput": "colorInput_C1YB",
 		"colorTable": "colorTable_Js7s"
-	},
-	"ErrorBoundary": {
-		"errorBoundaryError": "errorBoundaryError_rP1m",
-		"errorBoundaryFallback": "errorBoundaryFallback_heah"
 	}
 }
