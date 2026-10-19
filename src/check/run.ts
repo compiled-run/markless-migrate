@@ -500,12 +500,19 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			return failed;
 		};
 		const endpoints = new Set(options.endpoints ?? []);
-		const notPages = await pool(options.routes, 8, async (route) => {
+		const redirects = new Set(options.redirects ?? []);
+		const kinds = await pool(options.routes, 8, async (route) => {
 			const http = await captureHttp(options.oldOrigin, route, tagHeaders(base.old)).catch((error: unknown) => (classify(error) ? ('unreachable' as const) : undefined));
-			return http !== 'unreachable' && !isPage(http?.contentType ?? '');
+			if (http === 'unreachable') return 'page';
+			// A route the old app redirects is compared by its status and redirect chain; its target is a page of its own.
+			if (http && http.chain[0]!.status >= 300 && http.chain[0]!.status < 400) return 'redirect';
+			return isPage(http?.contentType ?? '') ? 'page' : 'endpoint';
 		});
-		options.routes.forEach((route, i) => notPages[i] && endpoints.add(route));
-		const allPages = options.routes.filter((route) => !endpoints.has(route));
+		options.routes.forEach((route, i) => {
+			if (kinds[i] === 'endpoint') endpoints.add(route);
+			if (kinds[i] === 'redirect') redirects.add(route);
+		});
+		const allPages = options.routes.filter((route) => !endpoints.has(route) && !redirects.has(route));
 		const groups: TemplateGroup[] = options.templates !== false && allPages.length > TEMPLATE_THRESHOLD ? await groupTemplates(base.old, allPages, options.templates?.patterns) : [];
 		const groupOf = new Map(groups.filter((g) => g.members.length > 1).flatMap((g) => g.members.map((m) => [m, g] as const)));
 		const light = (route: string) => groupOf.has(route) && groupOf.get(route)!.representative !== route;
@@ -538,7 +545,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			});
 			routes.push(...shareLayout(checked));
 			for (const route of endpoints) routes.push(asRole(await checkEndpoint(roleRun, route).catch(unreachable(route)), role));
-			for (const route of options.redirects ?? []) routes.push(asRole(await checkRedirect(roleRun, route).catch(unreachable(route)), role));
+			for (const route of redirects) routes.push(asRole(await checkRedirect(roleRun, route).catch(unreachable(route)), role));
 		}
 		const sources = options.source?.nondeterminism.map((f) => ({ ...f, pinned: pinnedBy(`${f.kind} ${f.what ?? ''}`, f.side, freeze) }));
 		const coverage = options.coverage ? await checkCoverage(base.old, base.new, options.coverage) : undefined;
