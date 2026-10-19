@@ -255,3 +255,14 @@ test('the run ends with one report: green routes, library decisions, automatic a
 	assert.doesNotMatch(text, /\?|needs a human|ask/i);
 	assert.doesNotMatch(summarizeRun([{ route: '/', outcome: 'green', attempts: 0, summary: '' }], { log: 'l' }), /What to look at/);
 });
+
+test('the prompt carries what the route uses in the browser and forbids another framework\'s runtime; the report carries the usage coverage', () => {
+	const prompt = buildPrompt({ old: 'http://old.test', new: 'http://new.test', cli: 'markless-migrate' }, '/', 'FAIL', 1, 'What route / uses in the browser (from .migrate/usage.json).\n- [not implemented] hyperscript:on click:312b1413: click on svg.hamburger: toggle .show on #nav');
+	assert.match(prompt, /Never load or copy another framework's or library's runtime \(React, Vue, htmx, Alpine, _hyperscript, jQuery\.\.\.\)/);
+	assert.match(prompt, /`markless-migrate guard page --old http:\/\/old\.test --new http:\/\/new\.test --route \/` and\n {2}`markless-migrate guard build`/);
+	assert.match(prompt, /- \[not implemented\] hyperscript:on click:312b1413/);
+	assert.match(prompt, /## Implement what the old site uses, in Markless/);
+	const report = summarizeRun([{ route: '/', outcome: 'green', attempts: 1, summary: '' }], { log: 'run.log', usage: 'Browser behaviour the old site uses: 2 behaviours on 1 pages.\n  used 2 / implemented in Markless 1 (50%) / checked 1 (50%)\n', guards: ['Build guard: 3 script and HTML files in .output, none carries another framework\'s or library\'s runtime.'] });
+	assert.match(report, /used 2 \/ implemented in Markless 1 \(50%\) \/ checked 1 \(50%\)/);
+	assert.match(report, /Build guard: 3 script and HTML files/);
+});

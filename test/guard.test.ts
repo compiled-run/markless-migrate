@@ -1,0 +1,96 @@
+import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { after, before, test } from 'node:test';
+import { chromium, type Browser } from 'playwright';
+import { foreignRuntimeGuard, scanBuild } from '../src/client/guard.ts';
+import { capturePage, comparePages } from '../src/client/page.ts';
+
+const CSS = 'body { color: rgb(1, 2, 3); }';
+// The old page's own script sizes the frame to its label, as GitHub's buttons.js does.
+const OLD = `<!doctype html><html><head><link rel="stylesheet" href="/site.css"><style>.hero { margin: 0 }</style></head><body>
+<span id="star"></span><div class="hero">hero</div>
+<script>var f = document.createElement('iframe'); f.setAttribute('style', 'width: ' + (50 + 51) + 'px; height: 20px; border: none;'); document.getElementById('star').append(f);</script>
+</body></html>`;
+const HTMX = 'var htmx = { onLoad: null, process: null, on: null, off: null, trigger: null, ajax: null, find: null, findAll: null, closest: null, values: null, remove: null, defineExtension: null };';
+
+let browser: Browser;
+let server: Server;
+let origin: string;
+const pages: Record<string, string> = {};
+
+before(async () => {
+	browser = await chromium.launch();
+	server = createServer((req, res) => {
+		const url = new URL(req.url ?? '/', 'http://x');
+		const [side, ...rest] = url.pathname.slice(1).split('/');
+		const path = `/${rest.join('/')}`;
+		if (path === '/site.css') return res.writeHead(200, { 'content-type': 'text/css' }).end(side === 'changed' ? `${CSS}\n` : CSS);
+		if (path === '/htmx.js') return res.writeHead(200, { 'content-type': 'text/javascript' }).end(HTMX);
+		res.writeHead(200, { 'content-type': 'text/html' }).end(pages[side!] ?? 'missing');
+	});
+	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+	origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	const rebase = (html: string, side: string) => html.replaceAll('href="/', `href="/${side}/`).replaceAll('src="/', `src="/${side}/`);
+	pages.old = rebase(OLD, 'old');
+	pages.same = rebase(OLD, 'same');
+	// A hand port that retypes the frame at the width its author saw once, moves the <style> into a rewritten stylesheet and loads htmx.
+	pages.port = rebase(OLD.replace("(50 + 51)", '51').replace('<style>.hero { margin: 0 }</style>', '').replace('</body>', '<script src="/htmx.js"></script></body>'), 'port');
+	pages.changed = rebase(OLD, 'changed');
+});
+
+after(async () => {
+	await browser.close();
+	server.close();
+});
+
+const capture = (side: string) => capturePage(browser, `${origin}/${side}/`, '', { settleMs: 100 }).then((c) => ({ ...c, route: '/', assets: new Map([...c.assets].map(([u, a]) => [u.replace(/^\/\w+\//, '/'), a])) }));
+
+test('a port that keeps the old page byte for byte has no page-guard difference', async () => {
+	const old = await capture('old');
+	const { findings } = comparePages(old, await capture('old'), await capture('same'));
+	assert.deepEqual(findings, []);
+});
+
+test('a frame retyped at another width, a dropped <style>, a changed stylesheet and a loaded htmx are each red', async () => {
+	const old = await capture('old');
+	const again = await capture('old');
+	const port = comparePages(old, again, await capture('port')).findings;
+	const kinds = port.map((f) => `${f.kind}: ${f.subject}`);
+	assert.ok(kinds.includes('inline style differs: span#star >> iframe') || kinds.includes('inline style differs: iframe'), kinds.join('\n'));
+	const size = port.find((f) => f.kind === 'size differs')!;
+	assert.match(size.expected!, /^101x20 px/);
+	assert.match(size.actual!, /^51x20 px/);
+	assert.ok(kinds.includes('inline <style> changed: inline <style> #1'));
+	assert.deepEqual(port.find((f) => f.kind === 'foreign runtime')?.actual, 'htmx');
+	const changed = comparePages(old, again, await capture('changed')).findings;
+	assert.deepEqual(changed.map((f) => `${f.kind}: ${f.subject}`), ['asset changed: stylesheet /site.css']);
+});
+
+test('what differs between two loads of the old page is that page\'s own variation, never the port\'s', async () => {
+	const old = await capture('old');
+	const wobble = { ...old, boxes: old.boxes.map((b) => ({ ...b, width: b.width + 30 })) };
+	const port = await capture('port');
+	const { findings, varied } = comparePages(old, wobble, port);
+	assert.equal(findings.filter((f) => f.kind === 'size differs').length, 0);
+	assert.ok(varied.some((v) => v.startsWith('box ')));
+});
+
+test('the build guard finds another framework\'s runtime in a bundle or a public file, and the Vite plugin fails the build', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'mm-build-'));
+	await mkdir(join(dir, 'public', 'build'), { recursive: true });
+	await mkdir(join(dir, 'public', 'js'), { recursive: true });
+	await writeFile(join(dir, 'public', 'build', 'page.js'), 'export const text = "htmx:configRequest and React\'s Symbol.for(\\"react.element\\")";');
+	await writeFile(join(dir, 'public', 'js', 'htmx.js'), HTMX);
+	await writeFile(join(dir, 'public', 'build', 'chunk.js'), 'const el = Symbol.for("react.transitional.element");');
+	await writeFile(join(dir, 'public', 'index.html'), `<script>${HTMX}</script>`);
+	const { hits, files } = await scanBuild(dir);
+	assert.equal(files, 4);
+	assert.deepEqual(hits.map((h) => `${h.file} ${h.runtimes.join('+')} ${h.where}`).sort(), ['public/build/chunk.js React bundle', 'public/index.html:1 htmx inline script', 'public/js/htmx.js htmx public file']);
+	const plugin = foreignRuntimeGuard();
+	assert.throws(() => plugin.generateBundle.call({ error: (m: string) => { throw new Error(m); } }, {}, { 'a.js': { type: 'chunk', fileName: 'a.js', code: HTMX } }), /a\.js: htmx/);
+	assert.doesNotThrow(() => plugin.generateBundle.call({ error: (m: string) => { throw new Error(m); } }, {}, { 'b.js': { type: 'chunk', fileName: 'b.js', code: 'export const x = "htmx";' } }));
+});

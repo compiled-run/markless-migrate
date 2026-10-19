@@ -37,6 +37,8 @@ import { ACCEPTED_FILE, acceptFailure, readAccepted, writeAccepted } from './che
 import { decisionLine, LIBRARIES_FILE, planLibraries, readLibraries, summarizeParity, writeParity } from './library/index.ts';
 import type { RouteState } from './status.ts';
 import { CLI_CONFIG, CLI_REPORT, readCliConfig, runCliCheck, summarizeCli } from './check/cli/conform.ts';
+import { implementations, planUsage, readUsage, readUsageMap, routeBrief, scanUsage, summarizeUsage, usagePages, writeUsage } from './usage/index.ts';
+import { guardPages, scanBuild, summarizeBuild } from './client/index.ts';
 
 const USAGE = `markless-migrate ${VERSION}
 
@@ -57,6 +59,15 @@ const USAGE = `markless-migrate ${VERSION}
           the parts the app uses or to use the library directly, loaded when needed, and says why; a
           framework wrapper (ag-grid-react) is always ported. .migrate/overrides.json may change it.
           A webpack app's pages are what HtmlWebpackPlugin and CopyPlugin emit, linked to their entries.
+          Usage: every page's markup (served, or --built <dir> for the old build output), the syntax
+          tree of every script it runs, the theme config and the library scan are read into
+          .migrate/usage.json: each behaviour the old site uses (an htmx attribute and its trigger,
+          swap and target; an Alpine directive; a _hyperscript feature; a theme feature such as the
+          colour-mode toggle; a library component and its props; what each plain script listens for,
+          stores, fetches and writes), with where it lives and the routes that use it, plus the
+          checks each must pass in .migrate/obligations.json. Another framework's runtime is never
+          kept: what the pages use of it is implemented in Markless. Only static assets (CSS, fonts,
+          images, SVG, media) are copied byte for byte.
   check   --old <origin> --new <origin> [--route <path>]... [--json] [--open]
           [--source <path>] [--data record|replay] [--staging] [--block <host>]... [--allow <host>]...
           [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
@@ -182,6 +193,22 @@ const USAGE = `markless-migrate ${VERSION}
           old app serves that file itself; an SPA's index.html answer to every path does not count.
           --index writes the front door's status page: every planned route, what serves it, and what
           is not ported yet.
+  usage   [--old <origin>] [--built <dir>] [--source <path>] [--new-source <path>] [--json]
+          Coverage of the usage inventory: behaviours used, implemented in Markless (declared in
+          .migrate/usage-map.json as { "<behaviour id>": { "by": "<file or @markless/ui family>" } }
+          and found in the new app) and checked (every obligation is one this checker performs).
+          With --old or --built it scans again first; otherwise it reads .migrate/usage.json.
+  guard   build [--dir <path>]
+          Fails when the new app's build output (default .output, else .vercel/output) carries another
+          framework's or library's runtime (React, Vue, Svelte, htmx, Alpine, _hyperscript, jQuery...),
+          read from each script's syntax tree; foreignRuntimeGuard() from src/client/guard.ts does the
+          same inside vite build.
+  guard   page --old <origin> --new <origin> [--route <path>]...
+          On each route (default: the pages plan listed): every static asset the old page loads must
+          load on the new page with the same bytes, every <style> the old page is served with must be
+          kept, inline style attributes must be the same, every frame and sized element must keep its
+          box within 1 px, and the new page may run no other framework's runtime. What differs between
+          two loads of the old page is left out. Writes .migrate/guard.json; exits 1 on a difference.
   run     --agent <id> --old <origin> --new <origin> [--route <path>]... [--all] [--attempts <n>] [--model <name>]
           [--source <path>] [--new-source <path>] [--auth <file>] [--header <name:value>]... [--cookie <name=value>]...
           [--serve <command>] [--build <command>] [--restart-on <path>]
@@ -394,6 +421,10 @@ async function run(args: string[], cwd: string): Promise<number> {
 	const server = values.serve ? await startAppServer({ cwd, serve: values.serve, ...(values.build ? { build: values.build } : {}), ...(values['restart-on'] ? { restartOn: values['restart-on'] } : {}), origin: next, log: (line) => out(`server: ${line}\n`) }).catch((error: Error) => fail(error.message)) : undefined;
 	const mcp = serverCommand();
 	const automatic = new Map<string, string>();
+	const stateDir = join(cwd, STATE_DIR);
+	const usage = await readUsage(stateDir);
+	const implementedNow = async () => (usage ? implementations(usage.behaviours, await readUsageMap(stateDir), newSource ?? cwd) : []);
+	let buildGuard: string | undefined;
 	try {
 		const outcomes = await runRoutes({
 			cwd,
@@ -408,6 +439,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 			context: { ...(source ? { source } : {}), ...(newSource ? { newSource } : {}), ...(values.auth ? { auth: resolve(values.auth) } : {}), flags: [...(values.header ?? []).flatMap((h) => ['--header', h]), ...(values.cookie ?? []).flatMap((c) => ['--cookie', c]), ...(values['journey-budget'] ? ['--journey-budget', values['journey-budget']] : []), ...(values['max-journeys'] ? ['--max-journeys', values['max-journeys']] : []), ...timingFlags(values)] },
 			...(server ? { server, serving: { ...(values.build ? { build: values.build } : {}), ...(values['restart-on'] ? { restartOn: values['restart-on'] } : {}) } } : {}),
 			progress: out,
+			...(usage ? { notes: async (route: string) => routeBrief(usage, await implementedNow(), route) } : {}),
 			check: async (route) => {
 				const report = await runCheck({
 					oldOrigin: old,
@@ -433,12 +465,31 @@ async function run(args: string[], cwd: string): Promise<number> {
 				const open = [...report.routes.flatMap((r) => r.failures), ...(report.logins ?? []).flatMap((l) => l.failures)].filter((f) => !f.accepted).map((f) => `${f.dimension}: ${f.check}${f.viewport ? ` (${f.viewport})` : ''}${f.id ? ` [${f.id}]` : ''}`);
 				for (const f of report.routes.flatMap((r) => r.failures)) if (f.accepted?.automatic) automatic.set(`${f.route} ${f.dimension}: ${f.check}`, `${f.route} ${f.dimension}: ${f.check}, ${acceptedLabel(f.accepted)} (${f.accepted.reason})`);
 				const network = report.routes.flatMap((r) => (r.infrastructure ? [r.infrastructure.message] : []));
-				return { ok: report.checkedOk ?? report.ok, summary: summarize(report), open: [...new Set(open)], ...(network.length && !open.length ? { infrastructure: network.join('; ') } : {}) };
+				let summary = summarize(report);
+				let guarded = true;
+				const page = !redirects.has(route) && !/\.[a-z0-9]{2,5}$/i.test(route.split('?')[0]!) && route !== UNKNOWN_PATH;
+				if (page && !network.length) {
+					const guard = await guardPages({ old, new: next, routes: [route], ...(bypass.headers ? { headers: bypass.headers } : {}) });
+					summary += guard.text;
+					guarded &&= guard.ok;
+					open.push(...guard.findings.filter((f) => f.red).map((f) => `guard: ${f.kind} ${f.subject}`));
+				}
+				const dir = await firstDir(cwd, ['.output', '.vercel/output']);
+				if (dir) {
+					const built = await scanBuild(resolve(cwd, dir));
+					buildGuard = summarizeBuild(dir, built).trimEnd();
+					if (built.hits.length) {
+						summary += `${buildGuard}\n`;
+						guarded = false;
+						open.push(...built.hits.slice(0, 5).map((h) => `guard: foreign runtime in ${h.file}`));
+					}
+				}
+				return { ok: (report.checkedOk ?? report.ok) && guarded, summary, open: [...new Set(open)], ...(network.length && !open.length ? { infrastructure: network.join('; ') } : {}) };
 			},
 		});
 		const red = outcomes.filter((o) => o.outcome === 'left red');
 		const libraries = (await readLibraries(join(cwd, STATE_DIR)))?.libraries.flatMap((l) => (l.decision ? [`${l.name}: ${decisionLine(l)}`] : [])) ?? [];
-		out(`\n${summarizeRun(outcomes, { libraries, automatic: [...automatic.values()], needsSample: unchecked?.map((u) => u.route), log: join(cwd, STATE_DIR, 'run.log') })}`);
+		out(`\n${summarizeRun(outcomes, { libraries, automatic: [...automatic.values()], needsSample: unchecked?.map((u) => u.route), ...(usage ? { usage: summarizeUsage(usage, await implementedNow()) } : {}), ...(buildGuard ? { guards: [buildGuard] } : {}), log: join(cwd, STATE_DIR, 'run.log') })}`);
 		if (named.length && !red.length) out(`${partialLine({ checked: routes.length, total: inventory ? plannedRoutes(inventory).length : null })}\n`);
 		return red.length || unchecked?.length ? 1 : outcomes.some((o) => o.outcome === 'not checked') ? 3 : named.length ? 4 : 0;
 	} finally {
@@ -457,7 +508,7 @@ async function main(argv: string[]): Promise<number> {
 			out(USAGE);
 			return 0;
 		case 'plan': {
-			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, limit: { type: 'string' }, 'crawl-limit': { type: 'string' }, header: { type: 'string', multiple: true }, cookie: { type: 'string', multiple: true }, 'user-agent': { type: 'string' }, auth: { type: 'string' } } });
+			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, built: { type: 'string' }, limit: { type: 'string' }, 'crawl-limit': { type: 'string' }, header: { type: 'string', multiple: true }, cookie: { type: 'string', multiple: true }, 'user-agent': { type: 'string' }, auth: { type: 'string' } } });
 			if (!values.old) fail('plan needs --old <origin>');
 			const crawlBound = values['crawl-limit'] === undefined ? undefined : Number(values['crawl-limit']);
 			if (crawlBound !== undefined && (!Number.isInteger(crawlBound) || crawlBound < 1)) fail('--crawl-limit must be a whole number of at least 1');
@@ -471,10 +522,13 @@ async function main(argv: string[]): Promise<number> {
 			const inventory = await plan({ origin: values.old, source: values.source ? resolve(values.source) : undefined, limit: values.limit ? Number(values.limit) : undefined, ...(crawlBound ? { crawlBound } : {}), ...bypass, ...(values['user-agent'] ? { userAgent: values['user-agent'] } : {}), ...(planAuth ? { auth: planAuth } : {}), samples: await readSamples(join(cwd, STATE_DIR)) });
 			const path = await writeInventory(inventory, join(cwd, STATE_DIR));
 			out(`${summarizeInventory(inventory)}Wrote ${path}\n`);
+			let libraries: Awaited<ReturnType<typeof planLibraries>> | undefined;
 			if (inventory.source) {
-				const libraries = await planLibraries(inventory.source, join(cwd, STATE_DIR), cwd);
+				libraries = await planLibraries(inventory.source, join(cwd, STATE_DIR), cwd);
 				out(`${libraries.text}Wrote ${libraries.path}\n`);
 			}
+			const usage = await planUsage({ inventory, stateDir: join(cwd, STATE_DIR), newSource: cwd, ...(values.built ? { built: resolve(values.built) } : {}), ...(libraries ? { libraries: libraries.file } : {}), ...(bypass.headers ? { headers: bypass.headers } : {}) });
+			out(`${usage.text}Wrote ${usage.paths.usage} and ${usage.paths.obligations}\n`);
 			const authPath = join(cwd, STATE_DIR, 'auth.json');
 			if (inventory.auth) out((await writeStarterAuth(authPath, inventory.auth)) ? `Wrote ${authPath}: set the credentials it names in the environment, check its login steps, then pass --auth ${authPath} to check.\n` : `Kept ${authPath} (already there); roles found: ${Object.keys(inventory.auth.roles).join(', ')}.\n`);
 			return 0;
@@ -635,6 +689,46 @@ async function main(argv: string[]): Promise<number> {
 			await writeFile(join(cwd, STATE_DIR, CLI_REPORT), `${JSON.stringify(report, null, '\t')}\n`);
 			out(values.json ? `${JSON.stringify(report, null, '\t')}\n` : `${summarizeCli(report)}Wrote ${join(cwd, STATE_DIR, CLI_REPORT)}\n`);
 			return report.ok ? 0 : 1;
+		}
+		case 'usage': {
+			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, built: { type: 'string' }, source: { type: 'string' }, 'new-source': { type: 'string' }, json: { type: 'boolean' }, route: { type: 'string', multiple: true } } });
+			const stateDir = join(cwd, STATE_DIR);
+			let inventory = await readUsage(stateDir);
+			if (values.old || values.built) {
+				const planned = await readInventory(cwd);
+				const routes = values.route?.length ? values.route : planned ? usagePages(planned) : undefined;
+				if (!routes?.length) fail('usage needs the pages to read: run plan first, or pass --route');
+				const source = values.source ? resolve(values.source) : planned?.source?.path;
+				inventory = await scanUsage({ routes, ...(values.old ? { origin: values.old } : planned ? { origin: planned.origin } : {}), ...(values.built ? { built: resolve(values.built) } : {}), ...(source ? { source } : {}), ...((await readLibraries(stateDir)) ? { libraries: (await readLibraries(stateDir))! } : {}) });
+				await writeUsage(inventory, stateDir);
+			}
+			if (!inventory) fail(`no ${join(STATE_DIR, 'usage.json')}: run plan, or usage --old <origin>`);
+			const implemented = await implementations(inventory.behaviours, await readUsageMap(stateDir), resolve(values['new-source'] ?? cwd));
+			out(values.json ? `${JSON.stringify({ behaviours: inventory.behaviours.length, implemented, obligations: inventory.obligations.length }, null, '\t')}\n` : summarizeUsage(inventory, implemented, 20));
+			return 0;
+		}
+		case 'guard': {
+			const [what, ...args] = rest;
+			if (what === 'build') {
+				const { values } = parseArgs({ args, options: { dir: { type: 'string' } } });
+				const dir = values.dir ? resolve(values.dir) : await firstDir(cwd, ['.output', '.vercel/output']);
+				if (!dir) fail('guard build needs the build output: pass --dir <path> (default .output or .vercel/output)');
+				const result = await scanBuild(resolve(cwd, dir));
+				out(summarizeBuild(dir, result));
+				return result.hits.length ? 1 : 0;
+			}
+			if (what === 'page') {
+				const { values } = parseArgs({ args, options: { old: { type: 'string' }, new: { type: 'string' }, route: { type: 'string', multiple: true }, header: { type: 'string', multiple: true }, cookie: { type: 'string', multiple: true } } });
+				if (!values.old || !values.new) fail('guard page needs --old <origin> and --new <origin>');
+				const planned = await readInventory(cwd);
+				const routes = values.route?.length ? values.route : planned ? usagePages(planned) : undefined;
+				if (!routes?.length) fail('no routes: pass --route <path> or run plan first');
+				const bypass = bypassOptions(values.header, values.cookie);
+				const result = await guardPages({ old: values.old, new: values.new, routes, stateDir: join(cwd, STATE_DIR), ...(bypass.headers ? { headers: bypass.headers } : {}) });
+				out(`${result.text}Wrote ${join(STATE_DIR, 'guard.json')}\n`);
+				return result.ok ? 0 : 1;
+			}
+			fail('guard takes build or page');
 		}
 		case 'recorder':
 			out(`Start each Node server (old and new) with the request recorder loaded:\n\n  export NODE_OPTIONS="${recorderEnv().NODE_OPTIONS}"\n\nIt records what the server fetches while rendering each page check loads (fetch: method, URL, body and response; node:http and node:https: method, URL and status), and serves recordings on --data replay. It answers loopback callers only; set MARKLESS_MIGRATE_TOKEN in both the server and check environments to reach a remote server.\nModule: ${RECORDER.pathname}\n`);

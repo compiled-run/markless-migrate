@@ -37,6 +37,8 @@ export interface RunOptions {
 	/** How the agent gets the new app served: build command and the file that triggers a restart. */
 	readonly serving?: { readonly build?: string; readonly restartOn?: string };
 	check(route: string): Promise<RouteCheck>;
+	/** What the route uses in the browser and the checks that hold it, from plan's usage inventory, for the prompt. */
+	notes?(route: string): Promise<string | undefined>;
 	progress?(line: string): void;
 }
 
@@ -67,7 +69,7 @@ function serveLine(o: Pick<RunOptions, 'new' | 'server' | 'serving'>): string {
 	return `- markless-migrate runs the new app's server at ${o.new}: do not start, stop or restart a server yourself. After you finish it runs ${build}, restarts the server and checks again.${restart}`;
 }
 
-export function buildPrompt(o: Pick<RunOptions, 'old' | 'new' | 'cli' | 'context' | 'server' | 'serving'>, route: string, summary: string, attempt: number): string {
+export function buildPrompt(o: Pick<RunOptions, 'old' | 'new' | 'cli' | 'context' | 'server' | 'serving'>, route: string, summary: string, attempt: number, notes?: string): string {
 	const c = o.context ?? {};
 	const toolArgs = [`old: ${o.old}`, `new: ${o.new}`, `route: ${route}`, ...(c.source ? [`source: ${c.source}`] : []), ...(c.newSource ? [`new_source: ${c.newSource}`] : []), ...(c.auth ? [`auth: ${c.auth}`] : [])];
 	const command = [o.cli, 'check', '--old', o.old, '--new', o.new, '--route', route, ...(c.source ? ['--source', c.source] : []), ...(c.newSource ? ['--new-source', c.newSource] : []), ...(c.auth ? ['--auth', c.auth] : []), ...(c.flags ?? [])].map(quote).join(' ');
@@ -84,7 +86,11 @@ ${serveLine(o)}
 - When this page is one of many built from a content source (a docs page, a blog post, a CMS entry),
   build it through that template's importer, from the original content, so every route of the
   template exists and not this page alone.
-- Stop when the check is green, or when you cannot make progress. Never ask a question or wait for an
+- Never load or copy another framework's or library's runtime (React, Vue, htmx, Alpine, _hyperscript, jQuery...)
+  into the new app: implement in Markless what the route uses of it. Copy the old static assets (CSS, fonts,
+  images, SVG, media) byte for byte. \`${o.cli} guard page --old ${o.old} --new ${o.new} --route ${route}\` and
+  \`${o.cli} guard build\` check both, and run's check includes them.
+${notes ? `\n${notes}\n\n` : ''}- Stop when the check is green, or when you cannot make progress. Never ask a question or wait for an
   answer: nobody is there to reply, and markless-migrate goes on with the next route. End with what is
   still different and what you think it needs, in plain words; it goes into the final report.
 
@@ -146,7 +152,7 @@ export async function runRoutes(o: RunOptions): Promise<RouteOutcome[]> {
 		while (!check.ok && attempt < o.attempts) {
 			attempt++;
 			say(`attempt ${attempt}/${o.attempts}  ${route}: running ${o.driver.binary}`);
-			const run = await invoke(o, buildPrompt(o, route, check.summary, attempt));
+			const run = await invoke(o, buildPrompt(o, route, check.summary, attempt, await o.notes?.(route)));
 			const exit = run.error ? `failed to start: ${run.error}` : run.signal ? `killed by ${run.signal}` : `exit ${run.code}`;
 			await write(`-- ${route} attempt ${attempt}: ${o.driver.binary} ${exit} after ${(run.ms / 1000).toFixed(1)}s\n${run.output.replace(/^/gm, '   | ')}\n`);
 			if (run.error) throw new Error(`could not start ${o.driver.binary}: ${run.error}`);
@@ -174,6 +180,10 @@ export interface RunExtras {
 	readonly automatic?: readonly string[];
 	/** Routes not checked because a dynamic segment has no sample value. */
 	readonly needsSample?: readonly string[];
+	/** The usage inventory's coverage: used, implemented and checked, already formatted. */
+	readonly usage?: string;
+	/** The build guard's result, one line each. */
+	readonly guards?: readonly string[];
 	readonly log: string;
 }
 
@@ -185,6 +195,8 @@ export function summarizeRun(outcomes: readonly RouteOutcome[], extras: RunExtra
 	const lines = [`${green.length} of ${outcomes.length} routes green.`];
 	if (extras.libraries?.length) lines.push('', 'Libraries, decided by plan:', ...extras.libraries.map((l) => `  ${l}`), '  An expert may change one in .migrate/overrides.json; nothing needs changing.');
 	if (extras.automatic?.length) lines.push('', 'Accepted automatically, with the evidence:', ...extras.automatic.map((l) => `  ${l}`));
+	if (extras.usage) lines.push('', ...extras.usage.trimEnd().split('\n'));
+	if (extras.guards?.length) lines.push('', ...extras.guards);
 	const look = [
 		...red.map((o) => `  ${o.route} is still red after ${o.attempts} attempt(s) and stays on the old app${o.open?.length ? `: ${o.open.slice(0, 5).join('; ')}${o.open.length > 5 ? `; ${o.open.length - 5} more` : ''}` : ''}.`),
 		...network.map((o) => `  ${o.route} could not be checked, twice, for an infrastructure failure (not the app's); it stays on the old app until a check gets through.`),
