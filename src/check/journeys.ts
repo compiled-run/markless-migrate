@@ -914,14 +914,14 @@ export async function replayDestructive(browser: Browser, env: SideEnv, route: s
 	return out;
 }
 
-export async function pool<T, R>(items: readonly T[], size: number, task: (item: T) => Promise<R>): Promise<R[]> {
+export async function pool<T, R>(items: readonly T[], size: number, task: (item: T, index: number) => Promise<R>): Promise<R[]> {
 	const out: R[] = new Array(items.length);
 	let next = 0;
 	await Promise.all(
 		Array.from({ length: Math.min(size, items.length) }, async () => {
 			while (next < items.length) {
 				const i = next++;
-				out[i] = await task(items[i]!);
+				out[i] = await task(items[i]!, i);
 			}
 		}),
 	);
@@ -1297,8 +1297,10 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 
 	// Repeated use and closing sequences, then keyboard paths; a cycled journey takes the place of its plain one.
 	const ordered = [...sequences.sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0)), ...later];
-	const room = Math.max(0, cap - journeys.length);
-	const extra = await pool(ordered.slice(0, room), CONCURRENCY, async (item) => (outOfBudget() ? undefined : runItem(item)));
+	// --max-journeys counts journeys: a cycle that replaces its plain journey takes no slot.
+	let room = Math.max(0, cap - journeys.length);
+	const fits = ordered.map((item) => item.discover || room-- > 0);
+	const extra = await pool(ordered, CONCURRENCY, async (item, i) => (fits[i] && !outOfBudget() ? runItem(item) : undefined));
 	let skipped = 0;
 	for (const [i, item] of ordered.entries()) {
 		const r = extra[i];
@@ -1369,6 +1371,14 @@ function format(result: StepResult, parts: readonly string[]): string {
 /** The first step of each journey whose result on NEW differs from every OLD run, where the OLD runs agree. */
 /** Step results of every journey in one run, in journey order. */
 export type Run = readonly (readonly StepResult[])[];
+
+/** Journeys whose cycle changed how the page looks (its background, text colour or colour scheme): a theme or mode, which an OS in dark mode can start from another state. */
+export function themed(journeys: readonly RecordedJourney[]): RecordedJourney[] {
+	return journeys.filter((j) => j.cycle?.length && !j.destructive && j.expected.some((r) => r.state?.some((l) => /^page (background|text colour|color-scheme):/.test(l))));
+}
+
+/** The same journeys as seen with the OS in dark mode, named so. */
+export const inDarkMode = (journeys: readonly Journey[]): Journey[] => journeys.map((j) => ({ ...j, name: `${j.name}, with the OS in dark mode` }));
 
 export async function replayAll(browser: Browser, env: SideEnv, route: string, viewport: Viewport, journeys: readonly Journey[]): Promise<Run> {
 	return pool(journeys, CONCURRENCY, (journey) => replay(browser, env, route, viewport, journey));

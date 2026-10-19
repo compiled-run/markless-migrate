@@ -9,7 +9,7 @@ import { VIEWPORTS, type Report } from '../src/check/types.ts';
 
 // The toggle's name never changes, so only <html>'s class, the page colour and the stored value show which mode it is in.
 const restore = `<script>document.documentElement.className = localStorage.getItem('theme') === 'dark' ? 'dark' : 'light';</script>`;
-const style = '<style>html.dark body { background: rgb(20, 20, 20); color: white } html.light body { background: white }</style>';
+const style = '<style>html.dark body, html[data-theme="dark"] body { background: rgb(20, 20, 20); color: white } html.light body, html[data-theme="light"] body { background: white }</style>';
 const PAGES = {
 	// Reads the mode from the page on every click.
 	old: `${restore}<button id="t">Theme</button><script>t.onclick = () => { const next = document.documentElement.className === 'dark' ? 'light' : 'dark'; document.documentElement.className = next; localStorage.setItem('theme', next); };</script>`,
@@ -38,9 +38,11 @@ const PAGES = {
 } as const;
 
 // A toggle named after the mode it is in, as Docusaurus labels its own: system, light, dark, system again; or (two-way) light and dark only.
-const named = (next: string) => `<button id="t"></button><script>const read = () => localStorage.getItem('theme') ?? 'system'; const apply = (m) => { document.documentElement.dataset.theme = m === 'dark' ? 'dark' : 'light'; t.textContent = 'Theme (currently ' + m + ')'; }; apply(read()); t.onclick = () => { const m = read(); const next = ${next}; if (next === 'system') localStorage.removeItem('theme'); else localStorage.setItem('theme', next); apply(next); };</script>`;
+const named = (next: string, system = `matchMedia('(prefers-color-scheme: dark)').matches`) => `<button id="t"></button><script>const read = () => localStorage.getItem('theme') ?? 'system'; const apply = (m) => { document.documentElement.dataset.theme = m === 'dark' || (m === 'system' && ${system}) ? 'dark' : 'light'; t.textContent = 'Theme (currently ' + m + ')'; }; apply(read()); t.onclick = () => { const m = read(); const next = ${next}; if (next === 'system') localStorage.removeItem('theme'); else localStorage.setItem('theme', next); apply(next); };</script>`;
 const THREE_WAY = named(`m === 'system' ? 'light' : m === 'light' ? 'dark' : 'system'`);
 const TWO_WAY = named(`m === 'light' ? 'dark' : 'light'`);
+// The same three states, but "system" is always light: alike with the OS in light mode, not in dark mode.
+const SYSTEM_LIGHT = named(`m === 'system' ? 'light' : m === 'light' ? 'dark' : 'system'`, 'false');
 
 // A theme toggle on two pages linked from a nav; the second page reads the stored mode back on load, or (`lost`) does not.
 const SITE = (restoreOnOther: boolean) => ({
@@ -76,7 +78,7 @@ async function check(old: keyof typeof PAGES | Record<string, string>, next: key
 	servers.push(a.server, b.server);
 	return runCheck({ oldOrigin: a.origin, newOrigin: b.origin, routes, viewports: [VIEWPORTS[0]!], browser, concurrency: 1, ...(switched ? { switched } : {}) });
 }
-const behaviour = (report: Report) => report.routes[0]!.failures.filter((f) => !f.accepted && f.dimension === 'behaviour');
+const behaviour = (report: Report, dark = false) => report.routes[0]!.failures.filter((f) => !f.accepted && f.dimension === 'behaviour' && dark === f.check.includes(', with the OS in dark mode'));
 
 test('a toggle is used three times, reloaded and used again, and a port that keeps up stays green', async () => {
 	const report = await check('old', 'same');
@@ -160,6 +162,17 @@ test("a library's own marker on <body> is shown but not compared, and a page lef
 	const [f] = behaviour(await check('marked', 'stuck'));
 	assert.equal(f?.check, 'click button "Menu" (step 2 of 3: use 2)');
 	assert.match(f!.actual, /page pointer-events: auto → none/);
+});
+
+test('a theme toggle is cycled again with the OS in dark mode, and a port whose system mode ignores the OS fails only there', async () => {
+	const green = await check({ '/': THREE_WAY }, { '/': THREE_WAY });
+	assert.deepEqual([...behaviour(green), ...behaviour(green, true)].map((f) => f.check), []);
+	const report = await check({ '/': THREE_WAY }, { '/': SYSTEM_LIGHT });
+	assert.deepEqual(behaviour(report).map((f) => f.check), [], 'alike with the OS in light mode');
+	const failures = behaviour(report, true);
+	const f = failures.find((x) => x.check === 'click button "Theme (currently system)", with the OS in dark mode');
+	assert.ok(f, failures.map((x) => x.check).join('\n'));
+	assert.match(f!.expected, /page background: rgb\(20, 20, 20\) → rgb\(255, 255, 255\)/);
 });
 
 const step = (over: Partial<StepResult>): StepResult => ({ url: '/', added: [], removed: [], requests: [], errors: [], announcements: [], focus: 'body', navigated: false, ...over });
