@@ -504,8 +504,9 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 		const kinds = await pool(options.routes, 8, async (route) => {
 			const http = await captureHttp(options.oldOrigin, route, tagHeaders(base.old)).catch((error: unknown) => (classify(error) ? ('unreachable' as const) : undefined));
 			if (http === 'unreachable') return 'page';
-			// A route the old app redirects is compared by its status and redirect chain; its target is a page of its own.
-			if (http && http.chain[0]!.status >= 300 && http.chain[0]!.status < 400) return 'redirect';
+			// A route the old app redirects off its own origin is compared by its status and redirect chain: the page it lands on
+			// is another site's. (A same-origin redirect, a login guard or a locale, still checks the page it shows.)
+			if (http && http.chain.length > 1 && new URL(http.chain.at(-1)!.url, options.oldOrigin).origin !== new URL(options.oldOrigin).origin) return 'redirect';
 			return isPage(http?.contentType ?? '') ? 'page' : 'endpoint';
 		});
 		options.routes.forEach((route, i) => {
