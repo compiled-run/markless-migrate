@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
+import { serve as serveCanvas, type Variant as CanvasVariant } from '../../fixtures/motion-canvas/server.ts';
+import { serve as serveModal, type Variant as ModalVariant } from '../../fixtures/motion-exit/server.ts';
 import { serve, type Variant } from '../../fixtures/motion/server.ts';
 import { renderHtml } from '../../src/check/html.ts';
 import { runCheck } from '../../src/check/run.ts';
@@ -69,5 +71,44 @@ describe('motion: the transitions and animations each interaction starts, old vs
 		assert.equal(failure.expected, 'old does not animate height');
 		assert.match(failure.actual, /^new animates height .* over 250 ms ease-in-out$/);
 		assert.ok(!motion(report).some((f) => f.check.startsWith(`${TOGGLE}: `)), 'with motion allowed the two agree');
+	});
+
+	test("a backdrop shown again at full opacity between the end of its own fade and the end of the panel's is red, though both pages start the same animations", async () => {
+		const modal = async (variant: ModalVariant) => {
+			const { origin, server } = await serveModal(variant);
+			servers.push(server);
+			return origin;
+		};
+		const run = async (oldVariant: ModalVariant, newVariant: ModalVariant) => runCheck({ oldOrigin: await modal(oldVariant), newOrigin: await modal(newVariant), routes: ['/'], browser, viewports: DESKTOP, motion: {} });
+		const close = 'click button "Add user", then click button "Cancel"';
+		const red = await run('presence', 'shared');
+		const failure = motion(red).find((f) => f.check.startsWith(`${close}: frame of `));
+		assert.ok(failure, motion(red).map((f) => `${f.check}: ${f.expected} / ${f.actual}`).join('\n'));
+		assert.equal(failure.check, `${close}: frame of generic (body/div)`);
+		assert.equal(failure.expected, 'old at 150 ms, just after animation exit of generic (body/div) ends: not shown');
+		assert.equal(failure.actual, 'new: shown at opacity 1');
+		assert.ok(!motion(red).some((f) => f.check.startsWith(`${close}: frame of dialog`)), 'the panel leaves alike on both sides');
+		assert.equal(red.routes[0]!.dimensions.motion, 'fail');
+		const green = await run('presence', 'presence');
+		assert.deepEqual(motion(green).map((f) => `${f.check}: ${f.expected} / ${f.actual}`), [], 'each element hidden at its own exit is green, with motion allowed and reduced');
+	});
+
+	test('a canvas animated from load is compared frame by frame: the same drawing started later is green with its start gap reported, the same drawing 30 px lower is red', async () => {
+		const drawn = async (variant: CanvasVariant) => {
+			const { origin, server } = await serveCanvas(variant);
+			servers.push(server);
+			return origin;
+		};
+		const run = async (newVariant: CanvasVariant) => runCheck({ oldOrigin: await drawn('base'), newOrigin: await drawn(newVariant), routes: ['/'], browser, viewports: DESKTOP, motion: {} });
+		const [late, low] = await Promise.all([run('late'), run('low')]);
+		const lateCanvas = late.routes[0]!.motion?.canvases?.[0];
+		assert.ok(lateCanvas, JSON.stringify(late.routes[0]!.motion));
+		assert.equal(lateCanvas.verdict, 'same', JSON.stringify(lateCanvas));
+		assert.ok(lateCanvas.gap.ms >= 250 && lateCanvas.gap.ms <= 550, `the drawing starts about 400 ms later: ${JSON.stringify(lateCanvas)}`);
+		assert.ok(!motion(late).some((f) => f.check.startsWith('canvas frames from load')), motion(late).map((f) => f.check).join('\n'));
+		const failure = motion(low).find((f) => f.check.startsWith('canvas frames from load: '));
+		assert.ok(failure, JSON.stringify(low.routes[0]!.motion?.canvases));
+		assert.match(failure.actual, /^new: [\d.]+% of the canvas differs from the best-matching old frame/);
+		assert.equal(low.routes[0]!.motion?.canvases?.[0]?.verdict, 'differs');
 	});
 });
