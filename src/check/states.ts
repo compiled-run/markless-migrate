@@ -9,7 +9,7 @@ import { describeRule, type CssRule, type CssState } from './stylesheet.ts';
 import type { Box, ElementSnapshot, Failure, Shot, Viewport } from './types.ts';
 import { compareScreenshots, identicalShots, visualNoise, visuallyDifferent } from './visual.ts';
 import { loadPage } from './infrastructure.ts';
-import { holdLoops } from './loops.ts';
+import { holdLoops, settleMotion } from './loops.ts';
 import { embedMasks } from './embeds.ts';
 
 const MAX_STATES = 40;
@@ -57,6 +57,7 @@ async function open(browser: Browser, env: SideEnv, route: string, viewport: Vie
 	const inflight = trackRequests(page);
 	await loadPage(page, new URL(route, origin).href);
 	await settle(page);
+	await settleMotion(page);
 	await page.evaluate(holdLoops).catch(() => 0);
 	const session = await context.newCDPSession(page);
 	await session.send('DOM.enable');

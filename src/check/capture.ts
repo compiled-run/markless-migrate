@@ -12,7 +12,7 @@ import { captureSourceHints } from './hints-page.ts';
 import type { AssetRecord, HttpCapture, HttpHop, PageCapture, RouteCapture, ScriptWeight, Viewport } from './types.ts';
 import { request } from './http.ts';
 import { loadPage } from './infrastructure.ts';
-import { holdLoops, loopEffects, type LoopEffect } from './loops.ts';
+import { holdLoops, loopEffects, settleMotion, type LoopEffect } from './loops.ts';
 import { EMBED_SELECTOR, liveEmbeds } from './embeds.ts';
 import { runtimeMarkers } from './residue.ts';
 
@@ -129,16 +129,22 @@ export async function settle(page: Page): Promise<void> {
 }
 
 // A finite animation (an entrance effect) is still running or already done depending on how long the page took to
-// settle, so computed styles are read at its end. What was moving is kept first for the reduced-motion check.
-export async function finishAnimations(page: Page): Promise<void> {
-	await page.evaluate(() => {
+// settle, so computed styles are read at its end. What was moving (`seen`: also while the load settled) is kept first for the reduced-motion check.
+export async function finishAnimations(page: Page, seen: readonly string[] = []): Promise<void> {
+	await page.evaluate((seen) => {
 		const running = document.getAnimations().filter((a) => a.playState === 'running');
-		(window as unknown as { __mmMotion?: string[] }).__mmMotion = running.map((a) => (a as CSSAnimation).animationName ?? (a as CSSTransition).transitionProperty ?? 'script animation').sort();
+		const now = running.map((a) => (a as CSSAnimation).animationName ?? (a as CSSTransition).transitionProperty ?? 'script animation');
+		const extra = [...seen];
+		for (const name of now) {
+			const at = extra.indexOf(name);
+			if (at >= 0) extra.splice(at, 1);
+		}
+		(window as unknown as { __mmMotion?: string[] }).__mmMotion = [...now, ...extra].sort();
 		for (const animation of running) {
 			const end = animation.effect?.getComputedTiming().endTime;
 			if (typeof end === 'number' && Number.isFinite(end)) animation.finish();
 		}
-	});
+	}, seen);
 }
 
 // Text and attribute values of the page, to tell which response fields it shows.
@@ -194,7 +200,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		const wall = navigation && detectChallenge({ status: navigation.status(), headers: await navigation.allHeaders(), body: html });
 		if (wall) throw new BlockedError({ status: navigation!.status(), ...wall }, origin);
 		await settle(page);
-		await finishAnimations(page);
+		await finishAnimations(page, await settleMotion(page));
 		await page.evaluate(holdLoops).catch(() => 0);
 		const collected = await readPage(page, { origin, full: true });
 		const loops = await page.evaluate(loopEffects).catch(() => [] as LoopEffect[]);

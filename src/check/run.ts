@@ -420,6 +420,12 @@ export function loadTimeout(route: string, error: unknown, [oldOrigin, newOrigin
 	return partialResult(route, [], [], undefined, { ...(side ? { side } : {}), cause: kind.cause, ...(kind.code && kind.code !== 'timeout' ? { code: kind.code } : {}), ...(origin ? { origin } : {}), message: `${side ? `${side.toUpperCase()}: ` : ''}${message}` });
 }
 
+/** A route whose check stopped part way (the page navigated away while it was captured, a script broke the page): red with why, and every other route is still checked. */
+export function stopped(route: string, error: unknown, [oldOrigin, newOrigin]: readonly [string, string]): RouteResult {
+	const message = (error instanceof Error ? error.message : String(error)).split('\n')[0]!.split(oldOrigin).join('OLD').split(newOrigin).join('NEW');
+	return partialResult(route, [{ route, dimension: 'http', check: 'the check of this route', expected: 'the check runs to the end', actual: `it stopped: ${message}`, hint: HINTS.checkStopped }], []);
+}
+
 /** Default per route check: ten minutes, or five journey budgets when the budget is raised. */
 export function routeTimeout(options: Pick<CheckOptions, 'timeoutMs' | 'journeys'>): number {
 	return options.timeoutMs ?? Math.max(600_000, 5 * (options.journeys?.budgetMs ?? DEFAULT_JOURNEY_BUDGET_MS));
@@ -536,11 +542,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const loginPaths = auth ? loginRoutes(auth) : [];
 	try {
 		const routes: RouteResult[] = [];
-		const unreachable = (route: string) => (error: unknown) => {
-			const failed = loadTimeout(route, error, [options.oldOrigin, options.newOrigin]);
-			if (!failed) throw error;
-			return failed;
-		};
+		const unreachable = (route: string) => (error: unknown) => loadTimeout(route, error, [options.oldOrigin, options.newOrigin]) ?? stopped(route, error, [options.oldOrigin, options.newOrigin]);
 		const endpoints = new Set(options.endpoints ?? []);
 		const redirects = new Set(options.redirects ?? []);
 		const kinds = await pool(options.routes, 8, async (route) => {

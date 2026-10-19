@@ -83,6 +83,15 @@ test('journeys that lead to another page or could not be used are not recorded',
 	assert.deepEqual(skipped, ['b: it leads to another page', 'c: it could not be used on the old page']);
 });
 
+test('an interaction whose write was held back is not compared for motion: each app animates its own answer to the empty reply the checker gives instead of the server', () => {
+	const step = (over: Partial<StepResult> = {}): StepResult => ({ url: '/', added: [], removed: [], requests: [], errors: [], announcements: [], focus: 'body', navigated: false, ...over });
+	const journey = (name: string, expected: StepResult[]): RecordedJourney => ({ name, steps: [{ action: 'click', target: { role: 'button', name, nth: 0 } }], expected });
+	const held = { line: 'would POST /api/articles/a/favorite {}', reason: 'POST request', sent: false };
+	const { take, skipped } = motionJourneys([journey('Favorite Article (0)', [step({ writes: [held] })]), journey('Sent', [step({ writes: [{ ...held, line: 'POST /api/x {}', sent: true }] })])]);
+	assert.deepEqual(take.map((j) => j.name), ['Sent'], 'a write that was sent (staging, this machine) is compared as usual');
+	assert.match(skipped[0]!, /^Favorite Article \(0\): its write was held back \(would POST \/api\/articles\/a\/favorite \{\}\), so what follows is each app's answer to the checker's empty reply/);
+});
+
 test('the old rules that make something move are those with a transition or animation, outside reduced motion', () => {
 	const rule = (selector: string, property: string, value: string, conditions: { kind: 'media'; text: string }[] = []) => ({ selector, file: 'a.css', line: 1, column: 1, order: 0, specificity: [0, 1, 0] as const, conditions, declarations: [{ property, value, important: false }] });
 	const found = motionRules([rule('.items', 'transition', 'height 250ms ease-in-out'), rule('.items', 'transition', 'none', [{ kind: 'media', text: '(prefers-reduced-motion: reduce)' }]), rule('.x', 'transition-duration', '0s'), rule('.spin', 'animation', 'spin 1s linear infinite'), rule('.y', 'color', 'red')]);

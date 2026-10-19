@@ -55,7 +55,7 @@ test('a new grid whose headers no longer sort is red on the header journeys', as
 	assert.ok(failures.some((f) => f.dimension === 'a11y' && f.check === 'press Enter on columnheader "Name"'), failures.map((f) => `${f.dimension} ${f.check}`).join('\n'));
 });
 
-test('a control whose listener a framework delegates to the root is found by the props the framework keeps on it; a header\'s own label is the header, and one with no text is reported', async () => {
+test('a control whose listener a framework delegates to the root is found by the props the framework keeps on it; a header\'s own label is the header, and one with no text is found by its structure and position', async () => {
 	const html = `<!doctype html><html lang="en"><head><title>Delegated</title></head><body><main><span id="go">Load more</span><p id="out"></p>
 <div role="grid" aria-label="Files"><div role="row"><div role="columnheader" aria-sort="none"><span id="label">Name</span><span id="grip" style="display:inline-block;width:4px;height:10px"></span></div></div></div></main>
 <script>
@@ -71,7 +71,7 @@ document.addEventListener('click', (e) => { const props = e.target['__reactProps
 		assert.deepEqual(elements.map((e) => [e.element, e.by ?? e.reason]), [
 			['columnheader "Name"', 'click columnheader "Name"'],
 			['clickable "Load more"', 'click clickable "Load more"'],
-			['clickable', 'it answers clicks or keys but has no text or label (it sits in columnheader "Name"), so check cannot find it again on the new page; it stays listed as not exercised, for the final report'],
+			['clickable <span> #2 in main>grid>row>columnheader (no name: matched by structure and position)', 'click clickable <span> #2 in main>grid>row>columnheader (no name: matched by structure and position)'],
 		]);
 		assert.deepEqual(journeys.find((j) => j.name === 'click clickable "Load more"')!.expected[0]!.added, ['- paragraph: more loaded']);
 	} finally {

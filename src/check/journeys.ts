@@ -8,11 +8,14 @@ import { diffLines, lineTemplates, template } from './noise.ts';
 import type { Dimension, Failure, Viewport, WriteLine } from './types.ts';
 import { storageCandidate, type StorageOwner } from './automatic.ts';
 import { loadPage } from './infrastructure.ts';
+import { describeStructure, STRUCTURE_ENGINE, type Structure } from './structure.ts';
 
 export interface Target {
 	readonly role: string;
 	readonly name: string;
 	readonly nth: number;
+	/** An element with no text or label (a chart bar, a grid's icon button): found again by its structure and position, not its name. */
+	readonly structure?: Structure;
 }
 
 export type Key = 'Enter' | 'Space' | 'Escape' | 'ArrowDown' | 'ArrowUp' | 'ArrowLeft' | 'ArrowRight' | 'Home' | 'End';
@@ -96,6 +99,7 @@ export function snapshotName(line: string): string {
 }
 
 export function describeTarget(t: Target): string {
+	if (t.structure) return `${t.role} ${describeStructure(t.structure)} (no name: matched by structure and position)`;
 	return `${t.role}${t.name ? ` "${t.name}"` : ''}${t.nth ? ` #${t.nth + 1}` : ''}`;
 }
 
@@ -121,6 +125,7 @@ export function labelled(name: string): string {
 }
 
 export function locate(page: Page, t: Target): Locator {
+	if (t.structure) return page.locator(`${STRUCTURE_ENGINE}=${JSON.stringify(t.structure)}`);
 	if (t.role === CLICKABLE) return page.locator(`xpath=${labelled(t.name)}`).nth(t.nth);
 	if (t.role === 'summary') return page.locator('summary').filter({ hasText: new RegExp(`^\\s*${escapeRegex(t.name)}\\s*$`) }).nth(t.nth);
 	return page.getByRole(t.role as Parameters<Page['getByRole']>[0], { name: t.name, exact: true }).nth(t.nth);
@@ -229,10 +234,9 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 	}
 	let unnamed = 0;
 	for (const c of await page.evaluate(clickables).catch(() => [])) {
-		const target = { role: CLICKABLE, name: c.name, nth: c.name ? c.nth : unnamed++ };
+		const target = { role: CLICKABLE, name: c.name, nth: c.name ? c.nth : unnamed++, ...(c.name ? {} : { structure: c.structure }) };
 		const base = { target, region: c.region, importance: importance(c), ...(c.focusable ? { focusable: true } : {}) };
-		if (!c.name) add({ ...base, skip: `it answers clicks or keys but has no text or label${c.near ? ` (it sits in ${c.near})` : ''}, so check cannot find it again on the new page; it stays listed as not exercised, for the final report` });
-		else add(DESTRUCTIVE.test(c.name) ? { ...base, destructive: true } : base);
+		add(c.name && DESTRUCTIVE.test(c.name) ? { ...base, destructive: true } : base);
 	}
 	return out;
 }
@@ -269,6 +273,16 @@ function clickables() {
 		const v = name.includes("'") ? `concat('${name.split("'").join(`', "'", '`)}')` : `'${name}'`;
 		return `//body//*[(normalize-space(.)=${v} and not(*[normalize-space(.)=${v}])) or (normalize-space(.)='' and (@aria-label=${v} or @title=${v}))]`;
 	};
+	// The same scope as the structure selector engine (structure.ts) computes, written out here because this runs in the page.
+	const LANDMARK: Record<string, string> = { main: 'main', nav: 'navigation', header: 'banner', footer: 'contentinfo', aside: 'complementary', form: 'form', table: 'table', dialog: 'dialog', figure: 'figure', svg: 'svg', ul: 'list', ol: 'list' };
+	const scopeOf = (el: Element) => {
+		const parts: string[] = [];
+		for (let at = el.parentElement; at; at = at.parentElement) {
+			const role = at.getAttribute('role') ?? LANDMARK[at.localName];
+			if (role && role !== 'presentation' && role !== 'none' && role !== 'generic') parts.unshift(role);
+		}
+		return parts.join('>');
+	};
 	const control = 'a[href], button, input, select, textarea, summary, label, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="switch"], [role="tab"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"], [role="textbox"], [role="searchbox"], [role="spinbutton"], [role="combobox"], [role="slider"], [role="treeitem"], [contenteditable=""], [contenteditable="true"]';
 	const label = (el: Element) => ((el.textContent ?? '').replace(/\s+/g, ' ').trim() || el.getAttribute('aria-label') || el.getAttribute('title') || '').slice(0, 80);
 	const cell = '[role="columnheader"], [role="row"], [role="gridcell"]';
@@ -291,11 +305,12 @@ function clickables() {
 		}
 		const main = el.closest('main, [role="main"]');
 		const landmark = main ? null : el.closest('header, nav, aside, footer, [role="banner"], [role="navigation"], [role="complementary"], [role="contentinfo"]');
-		const owner = name ? null : el.parentElement?.closest('[role]:not([role="presentation"]):not([role="none"]), button, a[href]');
+		const scope = scopeOf(el);
+		const structure = { tag: el.localName, scope, index: [...document.querySelectorAll(el.localName)].filter((other) => scopeOf(other) === scope && other.checkVisibility({ visibilityProperty: true })).indexOf(el) };
 		return {
 			name,
 			nth,
-			near: owner ? `${owner.getAttribute('role') ?? owner.tagName.toLowerCase()} "${(owner.getAttribute('aria-label') || label(owner)).slice(0, 40)}"` : '',
+			structure,
 			region: main ? 'main' : landmark ? (landmark.getAttribute('role') ?? landmark.tagName.toLowerCase()) : '',
 			table: Boolean(el.closest('table, [role="table"], [role="grid"], [role="treegrid"]')),
 			form: Boolean(el.closest('form')),

@@ -581,6 +581,8 @@ export function motionJourneys(journeys: readonly RecordedJourney[]): { take: Re
 		const last = j.expected.at(-1);
 		if (!last || j.expected.length < j.steps.length || last.failed) skipped.push(`${j.name}: it could not be used on the old page`);
 		else if (last.navigated) skipped.push(`${j.name}: it leads to another page`);
+		// What a page animates after a write depends on the server's answer, and a held-back write gets the checker's empty 204 instead.
+		else if (last.writes?.some((w) => !w.sent)) skipped.push(`${j.name}: its write was held back (${last.writes.filter((w) => !w.sent).map((w) => w.line).join(', ')}), so what follows is each app's answer to the checker's empty reply, not to the server's; its hover and focus are still compared, and its motion is when writes are sent (--staging or this machine)`);
 		else take.push(j);
 	}
 	return { take, skipped };

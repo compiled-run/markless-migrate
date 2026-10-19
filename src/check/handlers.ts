@@ -32,14 +32,17 @@ export async function markHandlers(page: Page): Promise<void> {
 	}
 }
 
+// HTML elements first, then the shapes inside SVG (a chart's bars and slices), within the same budget.
 function listElements(max: number): Element[] {
 	const out: Element[] = [];
+	const shapes: Element[] = [];
 	for (const el of document.body?.querySelectorAll('*') ?? []) {
 		if (out.length >= max) break;
-		if (/^(SCRIPT|STYLE|TEMPLATE|NOSCRIPT|BR|HR)$/.test(el.tagName) || (el instanceof SVGElement && !(el instanceof SVGSVGElement))) continue;
-		if (el.getClientRects().length) out.push(el);
+		if (/^(SCRIPT|STYLE|TEMPLATE|NOSCRIPT|BR|HR)$/.test(el.tagName) || !el.getClientRects().length) continue;
+		if (el instanceof SVGElement && !(el instanceof SVGSVGElement)) shapes.push(el);
+		else out.push(el);
 	}
-	return out;
+	return [...out, ...shapes.slice(0, Math.max(0, max - out.length))];
 }
 
 function frameworkHandlers(): void {

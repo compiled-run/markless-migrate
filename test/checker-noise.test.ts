@@ -24,9 +24,11 @@ after(async () => {
 	for (const s of servers) s.close();
 });
 
-function serve(handler: (path: string) => { type?: string; body: string } | undefined): Promise<string> {
+// `hang`: the request is never answered.
+function serve(handler: (path: string) => { type?: string; body: string } | 'hang' | undefined): Promise<string> {
 	const server = createServer((req, res) => {
 		const out = handler(new URL(req.url ?? '/', 'http://x').pathname);
+		if (out === 'hang') return;
 		if (!out) return void res.writeHead(404).end('not found');
 		res.writeHead(200, { 'content-type': out.type ?? 'text/html; charset=utf-8', 'cache-control': 'no-store' }).end(out.body);
 	});
@@ -173,4 +175,48 @@ test('a third-party widget gets the same answer on every load of a run, so its A
 	assert.match(second, /Old side from the cache \(\.migrate\/cache\): 2 reused/, second);
 	assert.match(second, /pass +\/ /, 'the new side read what the cached old side read, not the rate-limited answer');
 	assert.equal(calls, 1);
+});
+
+// A top loading bar that fades out after the page's own short timers: at once on one app, after two 900 ms timers on the other.
+const loadingBar = (wait: number) =>
+	html(
+		'<div id="bar" role="progressbar" aria-label="Loading" class="bar"></div><p>Body</p>',
+		`<style>.bar { height: 4px; background: rgb(0, 0, 200); opacity: 1; transition: opacity 300ms linear; } .bar.done { opacity: 0; }</style><script>setTimeout(() => setTimeout(() => document.getElementById('bar').classList.add('done'), ${wait}), ${wait});</script>`,
+	);
+
+test('a fade the page load starts after its own short timers is waited out before capturing, on both sides', async () => {
+	const old = await serve(() => ({ body: loadingBar(0) }));
+	const late = await serve(() => ({ body: loadingBar(900) }));
+	const route = (await check(old, late)).routes[0]!;
+	assert.deepEqual(open(route.failures), []);
+});
+
+test('a page that keeps navigating while it is captured fails only its own route; the run goes on', async () => {
+	// It reloads itself every 250 ms, and its lazy image never arrives, so a capture waiting on the image is cut off by a navigation.
+	const site = await serve((path) => (path === '/jumpy' ? { body: `${html('<p style="height: 2000px">Jumpy</p><img src="/never.png" loading="lazy" width="10" height="10" alt="">')}<script>setTimeout(() => location.replace('/jumpy?n=' + Math.random()), 250)</script>` } : path === '/fine' ? { body: html('<p>Fine</p>') } : path === '/never.png' ? 'hang' : undefined));
+	const report = await runCheck({ oldOrigin: site, newOrigin: site, routes: ['/jumpy', '/fine'], viewports: desktop, browser, journeys: { budgetMs: 5_000 } });
+	const [jumpy, fine] = report.routes;
+	assert.equal(fine!.ok, true, open(fine!.failures).join('\n'));
+	assert.equal(jumpy!.ok, false);
+	assert.match(jumpy!.failures[0]!.actual, /^it stopped: /);
+	assert.equal(jumpy!.failures[0]!.check, 'the check of this route');
+});
+
+// A chart whose bars answer clicks but have no text or label, as chart libraries draw them.
+const chart = (values: readonly string[]) =>
+	html(`<figure><svg width="300" height="100">${values.map((_, i) => `<rect x="${i * 60}" y="10" width="40" height="80" fill="rgb(0, 0, 200)"></rect>`).join('')}</svg></figure><p id="picked">none</p><script>document.querySelectorAll('rect').forEach((r, i) => r.addEventListener('click', () => (document.getElementById('picked').textContent = ${JSON.stringify(values)}[i])));</script>`);
+
+test('controls with no text or label are found again by structure and position, said in their names, and compared', async () => {
+	const old = await serve(() => ({ body: chart(['North', 'South', 'East']) }));
+	const same = await serve(() => ({ body: chart(['North', 'South', 'East']) }));
+	const report = await check(old, same);
+	const route = report.routes[0]!;
+	assert.deepEqual(open(route.failures), []);
+	const bars = route.coverage!.elements.filter((e) => e.element.startsWith('clickable <rect>'));
+	assert.deepEqual(bars.map((e) => e.element), [1, 2, 3].map((n) => `clickable <rect> #${n} in main>figure>svg (no name: matched by structure and position)`));
+	assert.ok(bars.every((e) => e.by), JSON.stringify(bars));
+
+	const swapped = await serve(() => ({ body: chart(['North', 'East', 'South']) }));
+	const red = (await check(old, swapped)).routes[0]!;
+	assert.ok(open(red.failures).some((f) => /^behaviour: click clickable <rect> #2 in main>figure>svg \(no name: matched by structure and position\): /.test(f)), open(red.failures).join('\n'));
 });

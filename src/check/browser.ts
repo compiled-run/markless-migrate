@@ -6,6 +6,7 @@ import { at, writeHandler, type WriteFact } from './source-facts.ts';
 import { detectChallenge } from './blocked.ts';
 import { blocker } from './trackers.ts';
 import { trackLoops } from './loops.ts';
+import { registerStructure } from './structure.ts';
 import type { Viewport } from './types.ts';
 import { request } from './http.ts';
 import type { Scope } from './infrastructure.ts';
@@ -263,6 +264,7 @@ export interface OpenPage {
 
 /** A fresh context with the clock and randomness frozen, trackers blocked, writes held back unless allowed, and recorded data served. */
 export async function openPage(browser: Browser, env: SideEnv, viewport: Viewport, options: OpenOptions = {}): Promise<OpenPage> {
+	await registerStructure();
 	const storageState = env.frontDoor ? withOldSession(env.storageState, env.frontDoor.storageState) : env.storageState;
 	const context = await browser.newContext({ ...contextOptions(viewport, env.freeze), ...(env.reducedMotion ? { reducedMotion: env.reducedMotion } : {}), ...(storageState ? { storageState } : {}), ...(env.userAgent ? { userAgent: env.userAgent } : {}) });
 	env.scope?.track(context);
