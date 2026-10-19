@@ -1165,7 +1165,6 @@ function siteClick(event: Event): void {
 	if (link && !link.target && link.origin === location.origin && link.pathname !== location.pathname && !mouse.button && !mouse.metaKey && !mouse.ctrlKey && !mouse.shiftKey && !mouse.altKey) routeUpdate();
 	if (link && !link.target && link.origin === location.origin && link.pathname === location.pathname && link.search === location.search && !link.hash && link.getAttribute('href') !== '#') event.preventDefault();
 	if (link) savePreferredVersion(link);
-	if (link?.hash && link.pathname === location.pathname) setTimeout(keepLocation);
 	if (link?.closest('.theme-doc-version-banner')) {
 		const latest = Object.entries(plugins).find(([id]) => activeDocsVersion(id));
 		const last = latest?.[1].versions.find((v) => v.isLast);
@@ -1341,6 +1340,14 @@ export function siteBoot(): void {
 	// Docusaurus loads DocSearch's code when the pointer reaches the search button; here it loads at idle, so no click waits on it.
 	if (document.querySelector('button.DocSearch-Button')) requestIdleCallback(() => void import('./search.ts').then((search) => search.load()));
 	window.addEventListener('hashchange', keepLocation);
+	// The router moves to a hash with history.pushState, which fires no event; the theme rereads the location on every change.
+	for (const method of ['pushState', 'replaceState'] as const) {
+		const original = history[method].bind(history);
+		history[method] = (...args: Parameters<History['pushState']>) => {
+			original(...args);
+			keepLocation();
+		};
+	}
 	window.addEventListener('hashchange', () => {
 		if (document.getElementById(decodeURIComponent(window.location.hash.slice(1)))) document.querySelector(`nav.${cls('Navbar/Layout', 'navbarHideable')}`)?.classList.add(cls('Navbar/Layout', 'navbarHidden'));
 	});
