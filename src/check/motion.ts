@@ -195,7 +195,8 @@ function armMotion(pause: boolean): void {
 				if (duration !== undefined && delay !== undefined) rules.set(a, { duration, delay });
 			}
 		}
-		if (pausing && end(a) !== undefined && a.playState === 'running') {
+		// A scroll-driven animation moves with the scroll position, not the clock: it is neither paused nor seeked.
+		if (pausing && end(a) !== undefined && a.playState === 'running' && a.timeline === document.timeline) {
 			a.pause();
 			paused.push(a);
 			heldAt.set(a, clock);

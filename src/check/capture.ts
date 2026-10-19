@@ -142,7 +142,7 @@ export async function finishAnimations(page: Page, seen: readonly string[] = [])
 		(window as unknown as { __mmMotion?: string[] }).__mmMotion = [...now, ...extra].sort();
 		for (const animation of running) {
 			const end = animation.effect?.getComputedTiming().endTime;
-			if (typeof end === 'number' && Number.isFinite(end)) animation.finish();
+			if (typeof end === 'number' && Number.isFinite(end) && animation.timeline === document.timeline) animation.finish();
 		}
 	}, seen);
 }

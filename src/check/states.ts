@@ -97,6 +97,7 @@ export async function settleState(page: Page, inflight: () => number): Promise<v
 				animation.finish();
 				continue;
 			}
+			if (animation.timeline !== document.timeline) continue;
 			animation.pause();
 			animation.currentTime = 0;
 		}
