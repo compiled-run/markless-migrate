@@ -2,6 +2,7 @@
 // The docs' VitePress config and its markdown pipeline (Shiki with twoslash, containers, code groups, group icons,
 // graphviz) render each page's Markdown, with the components the Markdown uses; scripts/import/layouts.ts writes the
 // theme's layout around it. Writes pages/**.tsrx, lib/docs-heads.json, assets/docs/ and the docs' public files.
+import { execFileSync } from 'node:child_process';
 import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -369,11 +370,26 @@ for (const name of readdirSync(publicDocs, { recursive: true }) as string[]) {
 	if (!existsSync(target) || !readFileSync(target).equals(readFileSync(source))) cpSync(source, target);
 }
 
-// The blog feed, written by the docs' own buildEnd hook.
+// The blog feed, written by the docs' own buildEnd hook. Its lastBuildDate reads the clock, so the clock reads the docs'
+// commit time and a rerun writes the same file.
 const feedDir = join(work, 'feed');
 mkdirSync(feedDir);
 (globalThis as Record<string, unknown>).VITEPRESS_CONFIG = siteConfig;
-await siteConfig.buildEnd?.({ ...siteConfig, outDir: feedDir });
+const committed = Date.parse(execFileSync('git', ['log', '-1', '--format=%cI'], { cwd: docs, encoding: 'utf8' }).trim());
+const RealDate = Date;
+globalThis.Date = class extends RealDate {
+	constructor(...args: ConstructorParameters<DateConstructor> | []) {
+		super(...((args.length ? args : [committed]) as [number]));
+	}
+	static override now() {
+		return committed;
+	}
+} as DateConstructor;
+try {
+	await siteConfig.buildEnd?.({ ...siteConfig, outDir: feedDir });
+} finally {
+	globalThis.Date = RealDate;
+}
 cpSync(join(feedDir, 'blog.rss'), join(APP, 'public/blog.rss'));
 
 // Netlify's _redirects, served as the old deployment serves them (a permanent redirect answers 308).
