@@ -8,8 +8,6 @@ export default defineConfig({
   nitro: {
     routeRules: {
       ...Object.fromEntries(PAGE_ROUTES.map((path) => [path, { isr: true }])),
-      // alpinejs.dev serves its sitemap as text/xml.
-      "/sitemap.xml": { headers: { "content-type": "text/xml; charset=utf-8" } },
     },
   },
   plugins: [markless(), router()],
