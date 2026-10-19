@@ -152,6 +152,8 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           components, props, hooks, options and fields the old app uses (narrowed to --route), plus
           behaviour.md and behaviour.json: what each usage site must do, and the recorded journeys that
           exercise it. Needs plan --source (it writes .migrate/libraries.json). Existing port files are kept.
+          For a library markless-migrate ships a certified port of (Radix Dialog, AlertDialog), copies that
+          port into lib/ports/<library>/ instead, with <module>.behaviour.md naming each used part's component.
   cli     [--config <file>] [--case <name>]... [--record] [--json]
           Compare the old and new command-line tool (default config .migrate/cli.json): each case runs
           the old tool twice and the new one once, each in fresh temporary directories with a clean

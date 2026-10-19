@@ -7,11 +7,12 @@ import { isConfigFile, isScript, isTestFile, openProject, resolveImport, type Pr
 import { functionOf, isFunction, keyName, localInit, memberName, parseJsonc, staticValue, known, unwrap, walk, type Module, type N } from '../source/js.ts';
 import type { Component, SourceRoute } from '../source/types.ts';
 import { catalogEntry, engineTraits, wrappedEngine, type CatalogEntry } from './catalog.ts';
+import { PORTS, portDir } from './ports/index.ts';
 import { componentRoutes, fileRoutes } from './routes.ts';
 import { decideLibraries } from './decide.ts';
 import type { Overrides } from '../overrides.ts';
 import { cssPackage, drawsPixels, entryBytes, exportedNames, injectedTokens, installedPackage, packageFramework, rendersDom, type InstalledPackage } from './package.ts';
-import type { EngineFacts, ExportUsage, LibrariesFile, LibraryClass, LibraryUsage, PropUsage, Site, UsageSite } from './types.ts';
+import type { EngineFacts, ExportUsage, FamilyMapping, LibrariesFile, LibraryClass, LibraryPort, LibraryUsage, PortPart, PropUsage, Site, UsageSite } from './types.ts';
 
 const BUILTIN = new Set(builtinModules);
 const SKIP_SPEC = /^(node:|virtual:|~icons\/|\/|#|bun:|data:)|\?(url|raw|inline|worker)$/;
@@ -758,6 +759,9 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 		const ke = [...kitExports.values()].find((k) => k.name === name);
 		if (!ke) return undefined;
 		const wraps = [...ke.wraps];
+		const port = wraps.map((w) => catalogEntry(w.split(' ')[0]!)?.port).find((p) => p);
+		const own = port && (portPart(port, name) ?? wraps.map((w) => portPart(port, w.split(' ')[1]!)).find((p) => p));
+		if (port && own) return { target: own.component, available: true, from: `${portDir(port)}/${port.module}` };
 		const mapped = wraps.map((w) => {
 			const [lib, member] = w.split(' ');
 			const p = catalogEntry(lib!)?.parts;
@@ -797,7 +801,8 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 			const out: ExportUsage = { ...exp, sites, members: Object.fromEntries(Object.entries(exp.members).map(([k, v]) => [k, [...v].sort()])), reads: [...exp.reads].sort() };
 			if (exp.variants) out.variants = Object.fromEntries(Object.entries(exp.variants).map(([k, v]) => [k, { ...v, classes: Object.fromEntries(v.used.map((u) => [u, v.classes[u] ?? ''])) }]));
 			const part = entry?.parts && partFor(entry.parts, exp.name);
-			if (part !== undefined) out.maps = part ? { target: part, available: ui ? ui.parts.has(part) : null } : { target: '', available: true, note: 'nothing to port: the Markless family needs no counterpart' };
+			if (entry?.port && part) out.maps = { target: part, available: true, from: `${portDir(entry.port)}/${entry.port.module}` };
+			else if (part !== undefined) out.maps = part ? { target: part, available: ui ? ui.parts.has(part) : null } : { target: '', available: true, note: 'nothing to port: the Markless family needs no counterpart' };
 			if (d.name === kit?.name) {
 				const ke = [...kitExports.values()].find((k) => k.name === exp.name);
 				if (ke) {
@@ -806,6 +811,7 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 					if (maps) out.maps = maps;
 				}
 			}
+			if (out.maps?.from) out.maps = withUncovered(out.maps, out);
 			exports.push(out);
 		}
 		if (d.name === kit?.name) {
@@ -827,7 +833,7 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 		const reason = d.name === kit?.name ? `the app's own copy of ${kit.name}: each used component maps to the @markless/ui family its primitive maps to, or to the styled element it renders` : entry?.reason ?? (framework === 'unknown' ? 'not in the catalog and not installed, so what it binds to could not be read' : widget ? 'no UI framework among its dependencies, but its code builds DOM (or its keywords name a widget): it draws its own UI into the page, so plan decides whether to port the parts the app uses or to use it directly from Markless code; never import it unchanged at load' : framework === 'none' ? 'framework-agnostic (no UI framework among its dependencies, and its code builds no DOM): import it unchanged' : `depends on ${framework}: port the used surface`);
 		const engine = cls === 'dom' ? await engineFacts(dir, framework === 'none' ? d.name : (wrappedEngine(d.name) ?? d.name), framework === 'none' ? pkg : undefined) : undefined;
 		const prefixes = [...new Set([...(entry?.tokens ?? []), ...(d.name.startsWith('@') ? [] : [`${d.name.replace(/^react-/, '')}-`])])];
-		const paints = cls === 'markless-ui' || cls === 'parity' || cls === 'dom' || cls === 'unknown';
+		const paints = cls === 'ported' || cls === 'markless-ui' || cls === 'parity' || cls === 'dom' || cls === 'unknown';
 		const injected = pkg && paints ? await injectedTokens(pkg, prefixes) : [];
 		// Shared tokens (data-state) belong to a library only where it renders: its own sites and the sites of kit components wrapping it.
 		const libFiles = new Set(exports.flatMap((e) => e.sites.map((s) => s.file)));
@@ -851,6 +857,7 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 			reason,
 			...(entry?.core ? { core: entry.core } : {}),
 			...(entry?.replacement ? { replacement: entry.replacement } : {}),
+			...(entry?.port ? { port: { dir: entry.port.dir, version: entry.port.version, certifiedBy: entry.port.certifiedBy } } : {}),
 			exports,
 			css: { imports: d.cssImports, injected, styled, ...(classes ? { classes } : {}) },
 			surface: { used: exports.filter((e) => e.sites.length).length, total: names?.size ?? kitTotal ?? null, members: members.size },
@@ -859,7 +866,7 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 			...(engine ? { engine } : {}),
 		});
 	}
-	const order: Record<LibraryClass, number> = { dom: 0, parity: 1, 'markless-ui': 2, unknown: 3, 'as-is': 4, framework: 5, drop: 6 };
+	const order: Record<LibraryClass, number> = { dom: 0, parity: 1, ported: 2, 'markless-ui': 3, unknown: 4, 'as-is': 5, framework: 6, drop: 7 };
 	libraries.sort((a, b) => order[a.class] - order[b.class] || b.sites - a.sites || a.name.localeCompare(b.name));
 	if (!options.newApp || !ui) limits.push('@markless/ui is not installed in the new app, so `available` on each mapping is null (install it and run plan again)');
 	return decideLibraries({ version: 1, generatedAt: new Date().toISOString(), source: dir, framework: options.framework ?? null, ...(ui ? { markless_ui: ui.version } : {}), libraries, limits: limits.sort() }, options.overrides);
@@ -941,6 +948,22 @@ export function markupTags(markup: string): MarkupTag[] {
 }
 
 /** The catalog part for an export, also under the prefixed alias Radix exports (`DropdownMenuTrigger` is `Trigger`). */
+function portPart(port: LibraryPort, name: string): PortPart | undefined {
+	const component = partFor(Object.fromEntries(Object.entries(port.parts).map(([k, p]) => [k, p.component])), name);
+	return component ? Object.values(port.parts).find((p) => p.component === component) : undefined;
+}
+
+/** A port mapping that names each prop the app passes which the port does not cover, with the first site passing it. */
+function withUncovered(maps: FamilyMapping, exp: ExportUsage): FamilyMapping {
+	const part = Object.values(PORTS).flatMap((p) => (maps.from === `${portDir(p)}/${p.module}` ? Object.values(p.parts) : [])).find((p) => p.component === maps.target);
+	if (!part) return maps;
+	const uncovered = Object.keys(exp.props).filter((k) => k in part.unsupported).map((k) => {
+		const site = exp.sites.find((s) => s.props && k in s.props);
+		return `${k}${site ? ` (${site.file}:${site.line})` : ''}`;
+	});
+	return uncovered.length ? { ...maps, available: false, note: `the port does not cover ${uncovered.join(', ')}: a blocked question, not a hand-written workaround` } : maps;
+}
+
 function partFor(parts: Readonly<Record<string, string>>, name: string): string | undefined {
 	if (parts[name] !== undefined) return parts[name];
 	const last = name.split('.').at(-1)!;

@@ -2,6 +2,7 @@ import type { EngineChoice } from '../overrides.ts';
 
 /**
  * What a migration does with a library:
+ * - `ported`: markless-migrate ships a Markless port of it, certified against the library itself; copy it, never rewrite it.
  * - `markless-ui`: a @markless/ui family does the same job; render that family.
  * - `as-is`: framework-agnostic code that renders nothing; import it unchanged from the Markless app.
  * - `dom`: draws its own UI into the page (a grid, chart, editor, map), with or without a framework
@@ -11,7 +12,33 @@ import type { EngineChoice } from '../overrides.ts';
  * - `drop`: needed only by the old framework (providers, devtools, slots); nothing to port.
  * - `unknown`: not in the catalog and not installed, so its framework could not be read.
  */
-export type LibraryClass = 'markless-ui' | 'as-is' | 'parity' | 'dom' | 'framework' | 'drop' | 'unknown';
+export type LibraryClass = 'ported' | 'markless-ui' | 'as-is' | 'parity' | 'dom' | 'framework' | 'drop' | 'unknown';
+
+/** One export of a library and the port component that replaces it. */
+export interface PortPart {
+	readonly component: string;
+	/** The library's own props the component covers; element props (class, id, data-*, aria-*, events) always pass through. */
+	readonly props: readonly string[];
+	/** The library's props the port does not cover, each with what the port does instead. */
+	readonly unsupported: Readonly<Record<string, string>>;
+	readonly note?: string;
+}
+
+/** A Markless port of a library, shipped in src/library/ports/<dir>/ and certified against the library by a test. */
+export interface LibraryPort {
+	readonly library: string;
+	/** The library version the certifying test compares against. */
+	readonly version: string;
+	readonly certifiedBy: string;
+	readonly dir: string;
+	/** The file in `dir` that exports this library's components. */
+	readonly module: string;
+	readonly files: readonly string[];
+	/** By the library's export name (`Content`); a namespace or alias name (`DialogContent`) resolves by its suffix. */
+	readonly parts: Readonly<Record<string, PortPart>>;
+	/** How to write what the old app does around the library, and what the port knowingly does differently. */
+	readonly notes: readonly string[];
+}
 
 export interface Site {
 	readonly file: string;
@@ -39,8 +66,10 @@ export interface UsageSite extends Site {
 }
 
 export interface FamilyMapping {
-	/** `family.part` in @markless/ui, or the family alone. */
+	/** `family.part` in @markless/ui, or the family alone; for a `ported` library, the port's component. */
 	readonly target: string;
+	/** For a `ported` library: the file in the new app that exports `target`. */
+	readonly from?: string;
 	/** Whether the @markless/ui installed in the new app ships it; null when @markless/ui is not installed there. */
 	readonly available: boolean | null;
 	readonly note?: string;
@@ -98,6 +127,8 @@ export interface LibraryUsage {
 	readonly core?: string;
 	/** What replaces it: `@markless/router`, a @markless/ui family, a platform feature. */
 	readonly replacement?: string;
+	/** For a `ported` library: where the port lives and what certifies it. */
+	readonly port?: { readonly dir: string; readonly version: string; readonly certifiedBy: string };
 	readonly exports: ExportUsage[];
 	readonly css: LibraryCss;
 	/** Exports the app uses against every export the package's types declare (null when the package is not installed). */

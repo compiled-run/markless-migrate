@@ -72,6 +72,8 @@ const keyName = (k: string) => (k === ' ' ? 'Space' : k);
 
 /** The family a headless library maps to: the catalog's replacement, else its name (`@radix-ui/react-dropdown-menu` -> menu). */
 export function familyFor(lib: Pick<LibraryUsage, 'name' | 'replacement'>): string | undefined {
+	const ported = catalogEntry(lib.name)?.family?.name;
+	if (ported) return ported;
 	const replacement = (lib.replacement ?? catalogEntry(lib.name)?.replacement)?.match(/^@markless\/ui ([a-z-]+)/)?.[1];
 	if (replacement) return replacement.replace(/-/g, '');
 	const base = lib.name.split('/').pop()!.replace(/^react-/, '').replace(/[^a-z]/gi, '').toLowerCase();
@@ -80,10 +82,12 @@ export function familyFor(lib: Pick<LibraryUsage, 'name' | 'replacement'>): stri
 
 function partFor(e: ExportUsage, family: string, lib: string): string | undefined {
 	const local = (t: string) => (t === '' ? '' : t.startsWith(`${family}.`) ? t.slice(family.length + 1) : t);
-	const mapped = e.maps?.target ?? catalogEntry(lib)?.parts?.[e.name];
+	// A certified port's components are not family parts; the family the port can be swapped for maps them.
+	const parts = catalogEntry(lib)?.family?.parts ?? catalogEntry(lib)?.parts;
+	const mapped = (e.maps?.from ? undefined : e.maps?.target) ?? parts?.[e.name];
 	if (mapped !== undefined) return local(mapped);
 	const bare = e.name.replace(/^(Dialog|AlertDialog|DropdownMenu|ContextMenu|Menu|Tabs|Popover|Tooltip|Select|RadioGroup|Checkbox|Switch|Collapsible|Accordion|Disclosure|Listbox|Combobox)/, '') || 'Root';
-	const viaCatalog = catalogEntry(lib)?.parts?.[bare];
+	const viaCatalog = parts?.[bare];
 	if (viaCatalog !== undefined) return local(viaCatalog);
 	return PART_BY_SUFFIX[bare.toLowerCase()];
 }

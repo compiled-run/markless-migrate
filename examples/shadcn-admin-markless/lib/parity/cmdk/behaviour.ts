@@ -1,15 +1,18 @@
 // Parity port of cmdk inside a Radix Dialog, as command-menu.tsx uses it: the DOM half. The palette's markup is
-// rendered once by the shell; these functions show it modally, filter and select its items, and say what the
-// chosen item does. The open/closed state stays in the shell, which writes it in its own handlers.
-import { hideOthers, showOthers } from '../radix-ui-react-dropdown-menu/behaviour.ts';
-
+// rendered once by the shell inside the shared Radix Dialog port; these functions filter and select its items, and
+// say what the chosen item does.
 const KEY = 'command-palette';
 
-const dialog = () => document.getElementById(KEY);
+const dialog = () => document.getElementById(`${KEY}-input`)?.closest('[role=dialog]') ?? null;
 const input = () => document.getElementById(`${KEY}-input`) as HTMLInputElement | null;
 const itemsIn = (root: Element | null) => [...(root?.querySelectorAll<HTMLElement>('[cmdk-item]') ?? [])];
 const items = () => itemsIn(dialog());
-const visibleIn = (root: Element | null) => itemsIn(root).filter((el) => !el.hidden && !el.closest('[hidden]'));
+// Shown within the list, whether or not the dialog around it is shown yet: the palette is reset as it opens.
+const shownIn = (el: Element, root: Element | null) => {
+	for (let node: Element | null = el; node && node !== root; node = node.parentElement) if ((node as HTMLElement).hidden) return false;
+	return true;
+};
+const visibleIn = (root: Element | null) => itemsIn(root).filter((el) => shownIn(el, root));
 const visible = () => visibleIn(dialog());
 
 function selectIn(root: Element | null, target: HTMLElement | undefined): void {
@@ -34,46 +37,11 @@ function followPointer(): void {
 	});
 }
 
-export function openPalette(): void {
-	closing?.();
-	const el = dialog();
-	if (!el) return;
-	el.hidden = false;
-	if (el.previousElementSibling instanceof HTMLElement) el.previousElementSibling.hidden = false;
-	hideOthers(KEY, el);
-	document.body.style.pointerEvents = 'none';
-	filterCommands('');
+/** The palette opening afresh: the query cleared and its first item selected. The dialog around it is the shared Radix Dialog port. */
+export function resetPalette(): void {
 	const field = input();
-	if (field) {
-		field.value = '';
-		field.focus();
-	}
-}
-
-let closing: (() => void) | undefined;
-
-export function closePalette(): void {
-	const el = dialog();
-	const overlay = el?.previousElementSibling instanceof HTMLElement ? el.previousElementSibling : null;
-	const unmount = () => {
-		closing = undefined;
-		el?.removeEventListener('animationend', ended);
-		if (el) el.hidden = true;
-		if (overlay) overlay.hidden = true;
-		showOthers(KEY);
-		document.body.style.pointerEvents = '';
-	};
-	const ended = (event: AnimationEvent) => {
-		if (event.target === el) unmount();
-	};
-	if (!el) return unmount();
-	// Radix Dialog keeps the palette mounted, the page hidden and focus where it is until the exit animation ends; the old palette then leaves focus on the page.
-	el.dataset.state = 'closed';
-	if (overlay) overlay.dataset.state = 'closed';
-	if (getComputedStyle(el).animationName !== 'none') {
-		closing = unmount;
-		el.addEventListener('animationend', ended);
-	} else unmount();
+	if (field) field.value = '';
+	filterCommands('');
 }
 
 /** cmdk's matching, simplified: every typed character in order in the item's value; groups and separators with nothing left are hidden. */

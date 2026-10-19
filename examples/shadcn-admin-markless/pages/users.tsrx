@@ -12,8 +12,8 @@ import { DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, Dropdo
 import { DURATION, expired, message, promiseError, promiseLoading, promiseSuccess } from '../lib/parity/sonner/index.ts';
 import { Toaster } from '../lib/parity/sonner/toaster.tsrx';
 import { UsersActionDialog, UsersInviteDialog, usersDialogs } from '../components/users/users-dialogs.tsrx';
-import { closeDialog, openDialog } from '../lib/parity/radix-ui-react-dialog/behaviour.ts';
-import { closeConfirm, escapeClears, inviteForm, moveToolbarFocus, openConfirm, userForm } from '../lib/users-behaviour.ts';
+import { AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogOverlay, AlertDialogPortal, AlertDialogRoot, AlertDialogTitle } from '../lib/ports/radix-ui-react-dialog/alert-dialog.tsrx';
+import { escapeClears, inviteForm, moveToolbarFocus, userForm } from '../lib/users-behaviour.ts';
 import { announcementFor, countOf, field, deleteSummary, facet, fromSearch, hasValue, hiddenColumns, lastPage, pageAtSlot, pageField, pushSearch, rowSlot, tableModel, toggleAllOnPage, toggleRow, toggleValue, userAt } from '../lib/parity/tanstack-react-table/users-table.ts';
 
 export default function Users({ url, http }: PageProps) @{
@@ -67,11 +67,8 @@ export default function Users({ url, http }: PageProps) @{
 	const selectedCountLabel = computed(() => `${countOf(selected)} selected`);
 	const selectedNoun = computed(() => (countOf(selected) > 1 ? 'users' : 'user'));
 	const toolbarLabel = computed(() => `Bulk actions for ${countOf(selected)} selected user${countOf(selected) > 1 ? 's' : ''}`);
-	const deleteClosed = computed(() => !deleteOpen);
-	const deleteState = computed(() => (deleteOpen ? 'open' : 'closed'));
 	const deleteDisabled = computed(() => deleteValue.trim() !== deleteName);
 	const deleteRoleUpper = computed(() => deleteRole.toUpperCase());
-	const multiState = computed(() => (multiOpen ? 'open' : 'closed'));
 	const multiCount = computed(() => String(model.selectedCount));
 	const multiNoun = computed(() => (model.selectedCount > 1 ? 'users' : 'user'));
 	const multiDisabled = computed(() => multiValue.trim() !== 'DELETE');
@@ -174,11 +171,11 @@ export default function Users({ url, http }: PageProps) @{
 					<p class="text-muted-foreground">Manage your users and their roles here.</p>
 				</div>
 				<div class="flex gap-2">
-					<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-9 px-4 py-2 has-[>svg]:px-3 space-x-1" onClick={() => { d.invite = inviteForm(); d.inviteSubmitted = false; d.inviteErrors = '{}'; d.open = 'invite'; openDialog('users-invite-dialog', { onDismiss: () => { d.open = ''; closeDialog('users-invite-dialog', false); } }); }}>
+					<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-9 px-4 py-2 has-[>svg]:px-3 space-x-1" onClick={() => { d.invite = inviteForm(); d.inviteSubmitted = false; d.inviteErrors = '{}'; d.open = 'invite'; }}>
 						<span>Invite User</span>
 						<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-mail-plus" aria-hidden="true"><path d="M22 13V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h8" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /><path d="M19 16v6" /><path d="M16 19h6" /></svg>
 					</button>
-					<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-primary text-primary-foreground shadow-xs hover:bg-primary/90 h-9 px-4 py-2 has-[>svg]:px-3 space-x-1" onClick={() => { d.form = userForm(); d.submitted = false; d.errors = '{}'; d.showPassword = false; d.showConfirm = false; d.open = 'add'; openDialog('users-action-dialog', { onDismiss: () => { d.open = ''; closeDialog('users-action-dialog', false); } }); }}>
+					<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-primary text-primary-foreground shadow-xs hover:bg-primary/90 h-9 px-4 py-2 has-[>svg]:px-3 space-x-1" onClick={() => { d.form = userForm(); d.submitted = false; d.errors = '{}'; d.showPassword = false; d.showConfirm = false; d.open = 'add'; }}>
 						<span>Add User</span>
 						<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user-plus" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><line x1="19" x2="19" y1="8" y2="14" /><line x1="22" x2="16" y1="11" y2="11" /></svg>
 					</button>
@@ -485,7 +482,6 @@ export default function Users({ url, http }: PageProps) @{
 				<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60 size-8" aria-label="Delete selected users" title="Delete selected users" data-state="closed" onClick={() => {
 					multiValue = '';
 					multiOpen = true;
-					openDialog('users-multi-delete-dialog', { alert: true, focus: document.getElementById('users-multi-delete-input'), onDismiss: () => { multiOpen = false; closeDialog('users-multi-delete-dialog', false); } });
 				}}>
 					<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2 lucide-trash-2" aria-hidden="true"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
 					<span class="sr-only">Delete selected users</span>
@@ -494,113 +490,113 @@ export default function Users({ url, http }: PageProps) @{
 				</div>
 			</div>
 		</main>
-		<div data-state={deleteState} data-slot="alert-dialog-overlay" class="fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0" style="pointer-events: auto;" hidden={deleteClosed}></div>
-		<div role="alertdialog" id="users-delete-dialog" aria-describedby="users-delete-description" aria-labelledby="users-delete-title" data-state={deleteState} data-slot="alert-dialog-content" class="fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-lg" tabindex="-1" style="pointer-events: auto;" hidden={deleteClosed} onKeydown={(event) => {
-			if (event.key === 'Escape') {
-				event.preventDefault();
-				deleteOpen = false;
-				closeConfirm();
-			}
-		}}>
-			<div data-slot="alert-dialog-header" class="flex flex-col gap-2 sm:text-start text-start">
-				<h2 id="users-delete-title" data-slot="alert-dialog-title" class="text-lg font-semibold">
-					<span class="text-destructive">
-						<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-triangle-alert me-1 inline-block stroke-destructive" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
-						{' '}Delete User
-					</span>
-				</h2>
-				<div id="users-delete-description" data-slot="alert-dialog-description" class="text-sm text-muted-foreground">
-					<form id="users-delete-form" class="space-y-4" onSubmit={(event) => {
-						event.preventDefault();
-						if (deleteValue.trim() === deleteName) {
-							deleteOpen = false;
-							closeConfirm();
-							const id = `deleted-${Date.now()}`;
-							d.toasts = message(d.toasts, id, 'The following user has been deleted:', deleteSummary(userAt({ sorting, username, status, role, page, pageSize, selected, hidden }, rowSlot(m.at))));
-							setTimeout(() => {
-								d.toasts = expired(d.toasts, id);
-							}, DURATION);
-						}
-					}}>
-						<p class="mb-2">
-							<span>Are you sure you want to delete </span>
-							<span class="font-bold">{deleteName}</span>
-							<span>?</span>
-							<span class="block"></span>
-							<span>This action will permanently remove the user with the role of </span>
-							<span class="font-bold">{deleteRoleUpper}</span>
-							<span> from the system. This cannot be undone.</span>
-						</p>
-						<label data-slot="label" class="flex items-center gap-2 text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 my-2">
-							Username:
-							<input data-slot="input" id="users-delete-input" class="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none selection:bg-primary selection:text-primary-foreground file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40" placeholder="Enter username to confirm deletion." value={deleteValue} onInput={(event) => { deleteValue = (event.target as HTMLInputElement).value; }} />
-						</label>
-						<div data-slot="alert" role="alert" class="relative w-full rounded-lg border px-4 py-3 text-sm grid has-[>svg]:grid-cols-[calc(var(--spacing)*4)_1fr] grid-cols-[0_1fr] has-[>svg]:gap-x-3 gap-y-0.5 items-start [&>svg]:size-4 [&>svg]:translate-y-0.5 text-destructive bg-card [&>svg]:text-current *:data-[slot=alert-description]:text-destructive/90">
-							<div data-slot="alert-title" class="col-start-2 line-clamp-1 min-h-4 font-medium tracking-tight">Warning!</div>
-							<div data-slot="alert-description" class="col-start-2 grid justify-items-start gap-1 text-sm text-muted-foreground [&_p]:leading-relaxed">Please be careful, this operation can not be rolled back.</div>
-						</div>
-					</form>
-				</div>
-			</div>
-			<div data-slot="alert-dialog-footer" class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-				<button type="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-9 px-4 py-2 has-[>svg]:px-3" onClick={() => { deleteOpen = false; closeConfirm(); }}>Cancel</button>
-				<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60 h-9 px-4 py-2 has-[>svg]:px-3" type="submit" form="users-delete-form" disabled={deleteDisabled}>Delete</button>
-			</div>
-		</div>
-		<div data-state={multiState} data-slot="alert-dialog-overlay" class="fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0" style="pointer-events: auto;" hidden></div>
-		<div role="alertdialog" id="users-multi-delete-dialog" aria-describedby="users-multi-delete-description" aria-labelledby="users-multi-delete-title" data-state={multiState} data-slot="alert-dialog-content" class="fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-lg" tabindex="-1" style="pointer-events: auto;" hidden>
-			<div data-slot="alert-dialog-header" class="flex flex-col gap-2 sm:text-start text-start">
-				<h2 id="users-multi-delete-title" data-slot="alert-dialog-title" class="text-lg font-semibold">
-					<span class="text-destructive">
-						<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-triangle-alert me-1 inline-block stroke-destructive" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
-						{' '}Delete {multiCount} {multiNoun}
-					</span>
-				</h2>
-				<div id="users-multi-delete-description" data-slot="alert-dialog-description" class="text-sm text-muted-foreground">
-					<form id="users-multi-delete-form" class="space-y-4" onSubmit={(event) => {
-						event.preventDefault();
-						const id = `multi-delete-${Date.now()}`;
-						if (multiValue.trim() !== 'DELETE') {
-							d.toasts = promiseError(d.toasts, id, 'Please type "DELETE" to confirm.');
-							setTimeout(() => {
-								d.toasts = expired(d.toasts, id);
-							}, DURATION);
-							return;
-						}
-						const count = tableModel({ sorting, username, status, role, page, pageSize, selected, hidden }).selectedCount;
-						multiOpen = false;
-						closeDialog('users-multi-delete-dialog', false);
-						d.toasts = promiseLoading(d.toasts, id, 'Deleting users...');
-						setTimeout(() => {
-							multiValue = '';
-							selected = '';
-							d.toasts = promiseSuccess(d.toasts, id, `Deleted ${count} ${count > 1 ? 'users' : 'user'}`);
-							setTimeout(() => {
-								d.toasts = expired(d.toasts, id);
-							}, DURATION);
-						}, 2000);
-					}}>
-						<p class="mb-2">
-							Are you sure you want to delete the selected users?{' '}
-							<span class="block"></span>
-							This action cannot be undone.
-						</p>
-						<label data-slot="label" class="text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 my-4 flex flex-col items-start gap-1.5">
-							<span class="">Confirm by typing "DELETE":</span>
-							<input data-slot="input" id="users-multi-delete-input" class="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none selection:bg-primary selection:text-primary-foreground file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40" placeholder={'Type "DELETE" to confirm.'} value={multiValue} onInput={(event) => (multiValue = (event.target as HTMLInputElement).value)} />
-						</label>
-						<div data-slot="alert" role="alert" class="relative w-full rounded-lg border px-4 py-3 text-sm grid has-[>svg]:grid-cols-[calc(var(--spacing)*4)_1fr] grid-cols-[0_1fr] has-[>svg]:gap-x-3 gap-y-0.5 items-start [&>svg]:size-4 [&>svg]:translate-y-0.5 text-destructive bg-card [&>svg]:text-current *:data-[slot=alert-description]:text-destructive/90">
-							<div data-slot="alert-title" class="col-start-2 line-clamp-1 min-h-4 font-medium tracking-tight">Warning!</div>
-							<div data-slot="alert-description" class="col-start-2 grid justify-items-start gap-1 text-sm text-muted-foreground [&_p]:leading-relaxed">Please be careful, this operation can not be rolled back.</div>
-						</div>
-					</form>
-				</div>
-			</div>
-			<div data-slot="alert-dialog-footer" class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-				<button type="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-9 px-4 py-2 has-[>svg]:px-3" onClick={() => { multiOpen = false; closeDialog('users-multi-delete-dialog', false); }}>Cancel</button>
-				<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60 h-9 px-4 py-2 has-[>svg]:px-3" type="submit" form="users-multi-delete-form" disabled={multiDisabled}>Delete</button>
-			</div>
-		</div>
+		<AlertDialogRoot open={deleteOpen} onOpenChange={(next: boolean) => { deleteOpen = next; }}>
+			<AlertDialogPortal>
+				<AlertDialogOverlay data-slot="alert-dialog-overlay" class="fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0"></AlertDialogOverlay>
+				<AlertDialogContent data-slot="alert-dialog-content" class="fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-lg">
+					<div data-slot="alert-dialog-header" class="flex flex-col gap-2 sm:text-start text-start">
+						<AlertDialogTitle data-slot="alert-dialog-title" class="text-lg font-semibold">
+							<span class="text-destructive">
+								<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-triangle-alert me-1 inline-block stroke-destructive" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
+								{' '}Delete User
+							</span>
+						</AlertDialogTitle>
+						<AlertDialogDescription asChild data-slot="alert-dialog-description" class="text-sm text-muted-foreground">
+							<form id="users-delete-form" class="space-y-4" onSubmit={(event) => {
+								event.preventDefault();
+								if (deleteValue.trim() === deleteName) {
+									deleteOpen = false;
+									const id = `deleted-${Date.now()}`;
+									d.toasts = message(d.toasts, id, 'The following user has been deleted:', deleteSummary(userAt({ sorting, username, status, role, page, pageSize, selected, hidden }, rowSlot(m.at))));
+									setTimeout(() => {
+										d.toasts = expired(d.toasts, id);
+									}, DURATION);
+								}
+							}}>
+								<p class="mb-2">
+									<span>Are you sure you want to delete </span>
+									<span class="font-bold">{deleteName}</span>
+									<span>?</span>
+									<span class="block"></span>
+									<span>This action will permanently remove the user with the role of </span>
+									<span class="font-bold">{deleteRoleUpper}</span>
+									<span> from the system. This cannot be undone.</span>
+								</p>
+								<label data-slot="label" class="flex items-center gap-2 text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 my-2">
+									Username:
+									<input data-slot="input" id="users-delete-input" autofocus class="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none selection:bg-primary selection:text-primary-foreground file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40" placeholder="Enter username to confirm deletion." value={deleteValue} onInput={(event) => { deleteValue = (event.target as HTMLInputElement).value; }} />
+								</label>
+								<div data-slot="alert" role="alert" class="relative w-full rounded-lg border px-4 py-3 text-sm grid has-[>svg]:grid-cols-[calc(var(--spacing)*4)_1fr] grid-cols-[0_1fr] has-[>svg]:gap-x-3 gap-y-0.5 items-start [&>svg]:size-4 [&>svg]:translate-y-0.5 text-destructive bg-card [&>svg]:text-current *:data-[slot=alert-description]:text-destructive/90">
+									<div data-slot="alert-title" class="col-start-2 line-clamp-1 min-h-4 font-medium tracking-tight">Warning!</div>
+									<div data-slot="alert-description" class="col-start-2 grid justify-items-start gap-1 text-sm text-muted-foreground [&_p]:leading-relaxed">Please be careful, this operation can not be rolled back.</div>
+								</div>
+							</form>
+						</AlertDialogDescription>
+					</div>
+					<div data-slot="alert-dialog-footer" class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+						<AlertDialogCancel class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-9 px-4 py-2 has-[>svg]:px-3">Cancel</AlertDialogCancel>
+						<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60 h-9 px-4 py-2 has-[>svg]:px-3" type="submit" form="users-delete-form" disabled={deleteDisabled}>Delete</button>
+					</div>
+				</AlertDialogContent>
+			</AlertDialogPortal>
+		</AlertDialogRoot>
+		<AlertDialogRoot open={multiOpen} onOpenChange={(next: boolean) => { multiOpen = next; }}>
+			<AlertDialogPortal>
+				<AlertDialogOverlay data-slot="alert-dialog-overlay" class="fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0"></AlertDialogOverlay>
+				<AlertDialogContent data-slot="alert-dialog-content" class="fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-lg">
+					<div data-slot="alert-dialog-header" class="flex flex-col gap-2 sm:text-start text-start">
+						<AlertDialogTitle data-slot="alert-dialog-title" class="text-lg font-semibold">
+							<span class="text-destructive">
+								<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-triangle-alert me-1 inline-block stroke-destructive" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
+								{' '}Delete {multiCount} {multiNoun}
+							</span>
+						</AlertDialogTitle>
+						<AlertDialogDescription asChild data-slot="alert-dialog-description" class="text-sm text-muted-foreground">
+							<form id="users-multi-delete-form" class="space-y-4" onSubmit={(event) => {
+								event.preventDefault();
+								const id = `multi-delete-${Date.now()}`;
+								if (multiValue.trim() !== 'DELETE') {
+									d.toasts = promiseError(d.toasts, id, 'Please type "DELETE" to confirm.');
+									setTimeout(() => {
+										d.toasts = expired(d.toasts, id);
+									}, DURATION);
+									return;
+								}
+								const count = tableModel({ sorting, username, status, role, page, pageSize, selected, hidden }).selectedCount;
+								multiOpen = false;
+								d.toasts = promiseLoading(d.toasts, id, 'Deleting users...');
+								setTimeout(() => {
+									multiValue = '';
+									selected = '';
+									d.toasts = promiseSuccess(d.toasts, id, `Deleted ${count} ${count > 1 ? 'users' : 'user'}`);
+									setTimeout(() => {
+										d.toasts = expired(d.toasts, id);
+									}, DURATION);
+								}, 2000);
+							}}>
+								<p class="mb-2">
+									Are you sure you want to delete the selected users?{' '}
+									<span class="block"></span>
+									This action cannot be undone.
+								</p>
+								<label data-slot="label" class="text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 my-4 flex flex-col items-start gap-1.5">
+									<span class="">Confirm by typing "DELETE":</span>
+									<input data-slot="input" id="users-multi-delete-input" autofocus class="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none selection:bg-primary selection:text-primary-foreground file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40" placeholder={'Type "DELETE" to confirm.'} value={multiValue} onInput={(event) => (multiValue = (event.target as HTMLInputElement).value)} />
+								</label>
+								<div data-slot="alert" role="alert" class="relative w-full rounded-lg border px-4 py-3 text-sm grid has-[>svg]:grid-cols-[calc(var(--spacing)*4)_1fr] grid-cols-[0_1fr] has-[>svg]:gap-x-3 gap-y-0.5 items-start [&>svg]:size-4 [&>svg]:translate-y-0.5 text-destructive bg-card [&>svg]:text-current *:data-[slot=alert-description]:text-destructive/90">
+									<div data-slot="alert-title" class="col-start-2 line-clamp-1 min-h-4 font-medium tracking-tight">Warning!</div>
+									<div data-slot="alert-description" class="col-start-2 grid justify-items-start gap-1 text-sm text-muted-foreground [&_p]:leading-relaxed">Please be careful, this operation can not be rolled back.</div>
+								</div>
+							</form>
+						</AlertDialogDescription>
+					</div>
+					<div data-slot="alert-dialog-footer" class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+						<AlertDialogCancel class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-9 px-4 py-2 has-[>svg]:px-3">Cancel</AlertDialogCancel>
+						<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60 h-9 px-4 py-2 has-[>svg]:px-3" type="submit" form="users-multi-delete-form" disabled={multiDisabled}>Delete</button>
+					</div>
+				</AlertDialogContent>
+			</AlertDialogPortal>
+		</AlertDialogRoot>
 	<PopoverContent menu="filter-status" align="start" class="z-50 origin-(--radix-popover-content-transform-origin) rounded-md border bg-popover text-popover-foreground shadow-md outline-hidden data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 w-50 p-0">
 		<div tabindex="-1" data-slot="command" class="flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground" cmdk-root="" id="filter-status-command" onKeydown={(event) => {
 			if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End' || event.key === 'Enter') event.preventDefault();
@@ -785,7 +781,6 @@ export default function Users({ url, http }: PageProps) @{
 			d.showPassword = false;
 			d.showConfirm = false;
 			d.open = 'edit';
-			setTimeout(() => openDialog('users-action-dialog', { onDismiss: () => { d.open = ''; closeDialog('users-action-dialog', false); } }));
 		}}>
 			Edit
 			<DropdownMenuShortcut><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user-pen" aria-hidden="true"><path d="M11.5 15H7a4 4 0 0 0-4 4v2" /><path d="M21.378 16.626a1 1 0 0 0-3.004-3.004l-4.01 4.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z" /><circle cx="10" cy="7" r="4" /></svg></DropdownMenuShortcut>
@@ -797,7 +792,6 @@ export default function Users({ url, http }: PageProps) @{
 			deleteRole = user ? user.role : '';
 			deleteValue = '';
 			deleteOpen = true;
-			openConfirm();
 		}}>
 			Delete
 			<DropdownMenuShortcut><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2 lucide-trash-2" aria-hidden="true"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg></DropdownMenuShortcut>

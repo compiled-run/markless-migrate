@@ -1,4 +1,5 @@
-import type { LibraryClass, LibraryUsage } from './types.ts';
+import { PORTS } from './ports/index.ts';
+import type { LibraryClass, LibraryPort, LibraryUsage } from './types.ts';
 
 /** What the catalog knows about a library. Unknown libraries are classified from their own package.json. */
 export interface CatalogEntry {
@@ -14,6 +15,10 @@ export interface CatalogEntry {
 	readonly tokens?: readonly string[];
 	/** Importing it adds a stylesheet and no code. */
 	readonly css?: boolean;
+	/** For a `ported` library: the certified port markless-migrate ships. */
+	readonly port?: LibraryPort;
+	/** For a `ported` library: the @markless/ui family a site may later swap the port for, and its part per export. */
+	readonly family?: { readonly name: string; readonly parts: Readonly<Record<string, string>> };
 }
 
 const radix = (name: string, parts: Record<string, string>, family: string): CatalogEntry => ({
@@ -26,14 +31,30 @@ const radix = (name: string, parts: Record<string, string>, family: string): Cat
 	tokens: ['--radix-', 'data-state', 'data-side', 'data-align', 'data-orientation', 'data-disabled', 'data-highlighted', 'data-placeholder'],
 });
 
+// A port renders the library's own markup and attributes, so what the app styles carries over unchanged.
 const dialogParts = { Root: 'modal.root', Trigger: 'modal.trigger', Portal: '', Overlay: 'modal.backdrop', Content: 'modal.content', Title: 'modal.title', Description: 'modal.description', Close: 'modal.close' };
+
+const ported = (name: string, family: Record<string, string>): CatalogEntry => {
+	const port = PORTS[`@radix-ui/react-${name}`]!;
+	return {
+		match: new RegExp(`^@radix-ui/react-${name}$`),
+		framework: 'react',
+		class: 'ported',
+		reason: `markless-migrate ships a Markless port of ${port.library}, certified against ${port.version}: copy it with markless-migrate parity and import its components, never rewrite it`,
+		replacement: `the shipped port (lib/ports/${port.dir}/${port.module})`,
+		parts: Object.fromEntries(Object.entries(port.parts).map(([part, p]) => [part, p.component])),
+		tokens: ['--radix-', 'data-state', 'data-radix-'],
+		port,
+		family: { name: 'modal', parts: family },
+	};
+};
 
 export const CATALOG: readonly CatalogEntry[] = [
 	{ match: /^(react|react-dom|vue|svelte|preact|solid-js)(\/.*)?$/, framework: 'none', class: 'framework', reason: 'the old framework itself; Markless replaces it', replacement: '@markless/core' },
 	{ match: /^(@tanstack\/(react|vue|solid|svelte)-router|react-router(-dom)?|vue-router|@remix-run\/react|next(\/.*)?|nuxt|@sveltejs\/kit)$/, framework: 'react', class: 'framework', reason: 'routing and links; the Markless router owns file routes, links and page data', replacement: '@markless/router' },
 	{ match: /^@tanstack\/(react|vue)-router-devtools$|^@tanstack\/(react|vue)-query-devtools$/, framework: 'react', class: 'drop', reason: 'development-only devtools, never rendered in a production build' },
-	radix('dialog', dialogParts, 'modal'),
-	radix('alert-dialog', { ...dialogParts, Root: 'modal.root', Action: 'modal.close', Cancel: 'modal.close' }, 'modal (with alert)'),
+	ported('dialog', dialogParts),
+	ported('alert-dialog', { ...dialogParts, Action: 'modal.close', Cancel: 'modal.close' }),
 	radix('dropdown-menu', { Root: 'menu.root', Trigger: 'menu.trigger', Portal: '', Content: 'menu.content', Item: 'menu.item', CheckboxItem: 'menu.item', RadioItem: 'menu.item', RadioGroup: 'menu.root', ItemIndicator: '', Label: '', Separator: 'base.separator', Group: '', Sub: 'menu.item', SubTrigger: 'menu.item', SubContent: 'menu.itemcontent' }, 'menu'),
 	radix('popover', { Root: 'popover.root', Trigger: 'popover.trigger', Anchor: 'popover.trigger', Portal: '', Content: 'popover.content', Close: 'popover.close' }, 'popover'),
 	radix('select', { Root: 'select.root', Trigger: 'select.trigger', Value: 'select.trigger', Icon: '', Portal: '', Content: 'select.content', Viewport: '', Item: 'select.item', ItemText: 'select.itemlabel', ItemIndicator: 'select.itemindicator', Group: '', Label: 'select.label', Separator: 'base.separator', ScrollUpButton: '', ScrollDownButton: '' }, 'select'),

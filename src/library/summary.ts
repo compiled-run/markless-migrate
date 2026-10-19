@@ -24,6 +24,7 @@ export async function readLibraries(dir: string): Promise<LibrariesFile | undefi
 const HEADINGS: Record<LibraryClass, string> = {
 	dom: 'Draws its own UI: decided below, port the parts the app uses or use the library directly (never at load)',
 	parity: 'Port the used surface (markless-migrate parity <library>)',
+	ported: 'Use the certified Markless port markless-migrate ships (markless-migrate parity <library> copies it)',
 	'markless-ui': 'Map to @markless/ui',
 	unknown: 'Not classified (not in the catalog and not installed)',
 	'as-is': 'Use as-is (framework-agnostic)',
@@ -36,7 +37,7 @@ const surface = (l: LibraryUsage) => `${l.surface.used}${l.surface.total !== nul
 function exportLine(e: ExportUsage): string {
 	const props = Object.keys(e.props).filter((p) => p !== 'children');
 	const bits = [
-		e.maps ? `-> ${e.maps.target || 'nothing'}${e.maps.available === false ? ' (not in the installed @markless/ui)' : ''}` : '',
+		e.maps ? `-> ${e.maps.target || 'nothing'}${e.maps.from ? ` from ${e.maps.from}` : ''}${e.maps.available === false ? (e.maps.from ? ` (${e.maps.note})` : ' (not in the installed @markless/ui)') : ''}` : '',
 		props.length ? `props ${props.slice(0, 8).join(', ')}${props.length > 8 ? ', ...' : ''}` : '',
 		e.variants ? Object.entries(e.variants).map(([k, v]) => `${k} ${v.used.join('|') || 'default'} of ${v.available.length}`).join('; ') : '',
 		Object.keys(e.options).length ? `options ${Object.keys(e.options).filter((k) => !k.includes('.')).join(', ')}` : '',

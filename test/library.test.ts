@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -65,7 +66,7 @@ test('React: shadcn/ui and Radix map to @markless/ui families, with only the var
 	assert.deepEqual(button.variants?.variant?.available, ['default', 'outline', 'ghost']);
 	assert.equal(button.variants?.variant?.classes.outline, 'border bg-background');
 	assert.deepEqual(button.variants?.size?.used, ['icon']);
-	assert.deepEqual(button.sites.map((s) => [s.text, s.routes]), [['Download', ['/']], ['Next', ['/users']], ['Sign in', ['/sign-in']]]);
+	assert.deepEqual(button.sites.map((s) => [s.text, s.routes]), [['Download', ['/']], ['Delete', ['/account']], ['Cancel', ['/account']], ['Next', ['/users']], ['Sign in', ['/sign-in']]]);
 	const trigger = exp(file, 'shadcn/ui', 'TabsTrigger');
 	assert.deepEqual(trigger.maps, { target: 'tabs.trigger', available: true });
 	assert.deepEqual(trigger.props.value?.values, ['overview', 'analytics', 'reports']);
@@ -76,6 +77,41 @@ test('React: shadcn/ui and Radix map to @markless/ui families, with only the var
 	assert.deepEqual(radix.exports.map((e) => [e.name, e.maps?.target]).sort(), [['Content', 'tabs.content'], ['List', 'tabs.list'], ['Root', 'tabs.root'], ['Trigger', 'tabs.trigger']]);
 	assert.deepEqual(radix.css.styled.find((s) => s.token === 'data-state')?.sites, [{ file: 'src/components/ui/tabs.tsx', line: 13 }]);
 	assert.equal(lib(file, '@radix-ui/react-slot').class, 'drop');
+});
+
+test('React: Radix Dialog maps to the certified Markless port markless-migrate ships, and a prop the port does not cover is named', async () => {
+	const file = await scanLibraries(react, { newApp: await newApp() });
+	const radix = lib(file, '@radix-ui/react-dialog');
+	assert.equal(radix.class, 'ported');
+	assert.deepEqual(radix.port, { dir: 'radix-ui-react-dialog', version: '1.1.15', certifiedBy: 'test/e2e/radix-dialog-port.test.ts' });
+	assert.deepEqual(radix.exports.map((e) => [e.name, e.maps?.target]).sort(), [['Close', 'DialogClose'], ['Content', 'DialogContent'], ['Root', 'DialogRoot'], ['Title', 'DialogTitle'], ['Trigger', 'DialogTrigger']]);
+	assert.deepEqual(exp(file, '@radix-ui/react-dialog', 'Trigger').maps, { target: 'DialogTrigger', available: true, from: 'lib/ports/radix-ui-react-dialog/dialog.tsrx' });
+	const content = exp(file, 'shadcn/ui', 'DialogContent');
+	assert.deepEqual(content.maps, { target: 'DialogContent', available: false, from: 'lib/ports/radix-ui-react-dialog/dialog.tsrx', note: 'the port does not cover onOpenAutoFocus (src/features/delete-user.tsx:12): a blocked question, not a hand-written workaround' });
+	assert.deepEqual(exp(file, 'shadcn/ui', 'Dialog').maps, { target: 'DialogRoot', available: true, from: 'lib/ports/radix-ui-react-dialog/dialog.tsrx' });
+	assert.match(summarizeLibraries(file), /Use the certified Markless port markless-migrate ships \(markless-migrate parity <library> copies it\): 1\n {4}@radix-ui\/react-dialog/);
+});
+
+test('parity copies a certified port into lib/ports/ instead of writing a skeleton, and maps every used part to its component', async () => {
+	const app = await newApp();
+	const file = await scanLibraries(react, { newApp: app });
+	const result = await writeParity(file, '@radix-ui/react-dialog', { newApp: app });
+	assert.deepEqual(result.written.sort(), ['lib/ports/radix-ui-react-dialog/alert-dialog.tsrx', 'lib/ports/radix-ui-react-dialog/dialog.behaviour.md', 'lib/ports/radix-ui-react-dialog/dialog.tsrx', 'lib/ports/radix-ui-react-dialog/engine.ts']);
+	assert.equal(result.exports, 0);
+	const copied = await readFile(join(app, 'lib/ports/radix-ui-react-dialog/engine.ts'), 'utf8');
+	assert.match(copied, /^\/\/ markless-migrate certified port radix-ui-react-dialog\/engine\.ts, copied by markless-migrate parity; do not edit\. sha256:[0-9a-f]{64}\n/);
+	assert.equal(copied.slice(copied.indexOf('\n') + 1), await readFile(new URL('../src/library/ports/radix-ui-react-dialog/engine.ts', import.meta.url), 'utf8'));
+	const spec = await readFile(join(app, 'lib/ports/radix-ui-react-dialog/dialog.behaviour.md'), 'utf8');
+	assert.match(spec, /Certified against @radix-ui\/react-dialog 1\.1\.15 by test\/e2e\/radix-dialog-port\.test\.ts/);
+	assert.match(spec, /\| Content \| DialogContent \|/);
+	assert.match(spec, /onOpenAutoFocus at src\/features\/delete-user\.tsx:12/);
+	const upgraded = join(app, 'lib/ports/radix-ui-react-dialog/engine.ts');
+	await writeFile(upgraded, '// markless-migrate certified port radix-ui-react-dialog/engine.ts, copied by markless-migrate parity; do not edit. sha256:' + createHash('sha256').update('old\n').digest('hex') + '\nold\n');
+	await writeFile(join(app, 'lib/ports/radix-ui-react-dialog/dialog.tsrx'), '// edited by hand\n');
+	const again = await writeParity(file, '@radix-ui/react-dialog', { newApp: app });
+	assert.ok(again.written.includes('lib/ports/radix-ui-react-dialog/engine.ts'), 'a copy nobody edited is replaced by the shipped port');
+	assert.equal(await readFile(upgraded, 'utf8'), copied);
+	assert.ok(again.notes.some((n) => /lib\/ports\/radix-ui-react-dialog\/dialog\.tsrx differs from the certified port/.test(n)), again.notes.join('\n'));
 });
 
 test('React: react-hook-form, TanStack Table and recharts list the options passed, fields read and members used', async () => {
