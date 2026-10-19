@@ -139,3 +139,18 @@ test('implemented means declared in usage-map.json and found in the new app; che
 	assert.match(brief, /check: .*use it twice and three times/);
 	assert.match(brief, /record where in \.migrate\/usage-map\.json/);
 });
+
+test('a JavaScript-only library is a kept library with its own checks, never a foreign runtime; a framework stays forbidden', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'mm-kept-'));
+	await mkdir(join(dir, 'js'), { recursive: true });
+	await writeFile(join(dir, 'js', 'chart.umd.js'), '/*! Chart.js v4.4.1 | MIT */ !function(t,e){t.Chart=e()}(this,function(){return {}});');
+	await writeFile(join(dir, 'index.html'), '<!doctype html><html><body><canvas id="c"></canvas><script src="/js/chart.umd.js"></script><script>new Chart(document.getElementById("c"), { type: "bar" });</script></body></html>');
+	assert.deepEqual(classifyScript('/*! Chart.js v4.4.1 | MIT */ !function(t,e){t.Chart=e()}(this,function(){return {}});'), { runtimes: [], libraries: ['chart.js'], parsed: true });
+	const usage = await scanUsage({ built: dir, routes: ['/'] });
+	assert.deepEqual(usage.scripts.find((s) => s.script === '/js/chart.umd.js')?.runtime, 'kept library chart.js');
+	const kept = usage.behaviours.find((b) => b.kind === 'library')!;
+	assert.equal(kept.library, 'chart.js');
+	assert.deepEqual(usage.obligations.filter((o) => o.behaviour === kept.id).map((o) => o.mechanism), ['client-guard', 'journey']);
+	assert.ok(usage.behaviours.some((b) => b.library === 'chart.js' && b.feature === 'new Chart'), 'the page\'s own call into it is listed');
+	assert.match(summarizeUsage(usage, []), /Kept libraries \(JavaScript only, kept as they are; .*\): chart\.js/);
+});

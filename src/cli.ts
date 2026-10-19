@@ -39,7 +39,9 @@ import { decisionLine, LIBRARIES_FILE, planLibraries, readLibraries, summarizePa
 import type { RouteState } from './status.ts';
 import { CLI_CONFIG, CLI_REPORT, readCliConfig, runCliCheck, summarizeCli } from './check/cli/conform.ts';
 import { implementations, planUsage, readUsage, readUsageMap, routeBrief, scanUsage, summarizeUsage, usagePages, writeUsage } from './usage/index.ts';
-import { guardPages, scanBuild, summarizeBuild } from './client/index.ts';
+import { guardPages, readAllowances, scanBuild, summarizeBuild } from './client/index.ts';
+import { acceptUpgrade, findUi, summarizeUpgrade, upgrade, writeUpgrade } from './upgrade/index.ts';
+import { scanLibraries } from './library/index.ts';
 
 const USAGE = `markless-migrate ${VERSION}
 
@@ -211,16 +213,34 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           and found in the new app) and checked (every obligation is one this checker performs).
           With --old or --built it scans again first; otherwise it reads .migrate/usage.json.
   guard   build [--dir <path>]
-          Fails when the new app's build output (default .output, else .vercel/output) carries another
-          framework's or library's runtime (React, Vue, Svelte, htmx, Alpine, _hyperscript, jQuery...),
-          read from each script's syntax tree; foreignRuntimeGuard() from src/client/guard.ts does the
-          same inside vite build.
+          Fails when a page of the new app's build output (default .output, else .vercel/output) loads
+          or runs another framework's runtime (React, Vue, Svelte, htmx, Alpine, _hyperscript, jQuery...),
+          read from each script's syntax tree. Evidence that a page loads a file: the app's bundles or
+          built pages name its URL, or a file they load does. A file nothing names is a download and is
+          allowed (listed). JavaScript-only libraries (Chart.js, Leaflet, Monaco...) are kept and listed.
+          foreignRuntimeGuard() from src/client/guard.ts fails vite build the same way.
   guard   page --old <origin> --new <origin> [--route <path>]...
           On each route (default: the pages plan listed): every static asset the old page loads must
           load on the new page with the same bytes, every <style> the old page is served with must be
           kept, inline style attributes must be the same, every frame and sized element must keep its
           box within 1 px, and the new page may run no other framework's runtime. What differs between
-          two loads of the old page is left out. Writes .migrate/guard.json; exits 1 on a difference.
+          two loads of the old page is left out. An intended addition is listed, not red, when
+          .migrate/guard-allow.json covers it: { "allow": [{ "subject": "div.port-attribution*",
+          "reason": "licence badge for this demo copy" }] } (optional "kind" and "route"; a reason is
+          required; a foreign runtime is never allowed). Writes .migrate/guard.json; exits 1 on a difference.
+  upgrade --new <origin> [--route <path>]... [--limit <n>] [--new-source <path>] [--build <dir>] [--ui <dir>]
+          After the routes are green. Measures, per route at 4x CPU on a phone-sized page, what each
+          JavaScript-only library the port kept costs (bytes downloaded, JS run at load, main-thread
+          time, and the first use of its own controls) and what each port of a headless library
+          (lib/parity/<library>: Radix, Headless UI, Base UI, React Aria, Ark, Melt, Bits...) costs, and
+          ranks the Markless ports worth making: measured cost, the features the site uses, expected
+          saving, risk and size. A headless port is suggested as a swap to its @markless/ui family only
+          when every part, prop, state, key, ARIA attribute and behaviour the old site used is covered
+          (read from the family's API manifest and source, --ui or the app's @markless/ui); otherwise it
+          is listed as "not yet: missing ...". Nothing is applied. Writes .migrate/upgrade.json.
+  upgrade accept <id> [--baseline <origin>]
+          Writes the agent task for one suggestion to .migrate/upgrades/<id>.md: what to build, and the
+          check it must pass against the pre-upgrade version (--baseline serves it).
   run     --agent <id> --old <origin> --new <origin> [--route <path>]... [--all] [--attempts <n>] [--model <name>]
           [--source <path>] [--new-source <path>] [--auth <file>] [--header <name:value>]... [--cookie <name=value>]...
           [--serve <command>] [--build <command>] [--restart-on <path>]
@@ -500,7 +520,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 				let guarded = true;
 				const page = !redirects.has(route) && !/\.[a-z0-9]{2,5}$/i.test(route.split('?')[0]!) && route !== UNKNOWN_PATH;
 				if (page && !network.length) {
-					const guard = await guardPages({ old, new: next, routes: [route], ...(bypass.headers ? { headers: bypass.headers } : {}) });
+					const guard = await guardPages({ old, new: next, routes: [route], allow: await readAllowances(stateDir), ...(bypass.headers ? { headers: bypass.headers } : {}) });
 					summary += guard.text;
 					guarded &&= guard.ok;
 					open.push(...guard.findings.filter((f) => f.red).map((f) => `guard: ${f.kind} ${f.subject}`));
@@ -761,11 +781,37 @@ async function main(argv: string[]): Promise<number> {
 				const routes = values.route?.length ? values.route : planned ? usagePages(planned) : undefined;
 				if (!routes?.length) fail('no routes: pass --route <path> or run plan first');
 				const bypass = bypassOptions(values.header, values.cookie);
-				const result = await guardPages({ old: values.old, new: values.new, routes, stateDir: join(cwd, STATE_DIR), ...(bypass.headers ? { headers: bypass.headers } : {}) });
+				const result = await guardPages({ old: values.old, new: values.new, routes, stateDir: join(cwd, STATE_DIR), allow: await readAllowances(join(cwd, STATE_DIR)).catch((error: Error) => fail(error.message)), ...(bypass.headers ? { headers: bypass.headers } : {}) });
 				out(`${result.text}Wrote ${join(STATE_DIR, 'guard.json')}\n`);
 				return result.ok ? 0 : 1;
 			}
 			fail('guard takes build or page');
+		}
+		case 'upgrade': {
+			if (rest[0] === 'accept') {
+				const { values, positionals } = parseArgs({ args: rest.slice(1), allowPositionals: true, options: { baseline: { type: 'string' } } });
+				if (positionals.length !== 1) fail('upgrade accept needs one suggestion id, as upgrade printed it');
+				const file = await acceptUpgrade(join(cwd, STATE_DIR), positionals[0]!, values.baseline).catch((error: Error) => fail(error.message));
+				out(`Wrote ${file}: the task for your agent (markless-migrate run, or by hand). Nothing else changed.\n`);
+				return 0;
+			}
+			const { values } = parseArgs({ args: rest, options: { new: { type: 'string' }, route: { type: 'string', multiple: true }, limit: { type: 'string' }, 'new-source': { type: 'string' }, build: { type: 'string' }, ui: { type: 'string' } } });
+			if (!values.new) fail('upgrade needs --new <origin>, the migrated site');
+			const newSource = resolve(values['new-source'] ?? cwd);
+			const inventory = await readInventory(cwd);
+			const limit = values.limit ? Number(values.limit) : 6;
+			const routes = values.route?.length ? values.route : inventory ? usagePages(inventory).slice(0, limit) : undefined;
+			if (!routes?.length) fail('no routes: pass --route <path> or run plan first');
+			const buildDir = resolve(newSource, values.build ?? '.output');
+			out(`reading what the new app imports (${newSource})\n`);
+			const newLibraries = await scanLibraries(newSource, {});
+			const uiDir = await findUi(newSource, values.ui ? resolve(values.ui) : undefined);
+			const usage = await readUsage(join(cwd, STATE_DIR));
+			const oldLibraries = await readLibraries(join(cwd, STATE_DIR));
+			const report = await upgrade({ origin: values.new, routes, newSource, buildDir, newLibraries, ...(oldLibraries ? { oldLibraries } : {}), ...(usage ? { usage } : {}), ...(uiDir ? { uiDir } : {}), progress: (line) => out(`${line}\n`) });
+			const path = await writeUpgrade(report, join(cwd, STATE_DIR));
+			out(`\n${summarizeUpgrade(report)}Wrote ${path}\n`);
+			return 0;
 		}
 		case 'recorder':
 			out(`Start each Node server (old and new) with the request recorder loaded:\n\n  export NODE_OPTIONS="${recorderEnv().NODE_OPTIONS}"\n\nIt records what the server fetches while rendering each page check loads (fetch: method, URL, body and response; node:http and node:https: method, URL and status), and serves recordings on --data replay. It answers loopback callers only; set MARKLESS_MIGRATE_TOKEN in both the server and check environments to reach a remote server.\nModule: ${RECORDER.pathname}\n`);

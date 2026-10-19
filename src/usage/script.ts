@@ -39,7 +39,7 @@ function targetOf(n: N | undefined): string {
 	return n.type;
 }
 
-const GLOBAL_LIBRARIES: Readonly<Record<string, string>> = { htmx: 'htmx', Alpine: 'alpine', _hyperscript: 'hyperscript', sinon: 'sinon', jQuery: 'jQuery', $: 'jQuery', docsearch: 'docsearch', Prism: 'prismjs', hljs: 'highlight.js', gtag: 'gtag', dataLayer: 'gtag', plausible: 'plausible', Swal: 'sweetalert2', Sortable: 'sortablejs', bootstrap: 'bootstrap', UIkit: 'uikit' };
+const GLOBAL_LIBRARIES: Readonly<Record<string, string>> = { htmx: 'htmx', Alpine: 'alpine', _hyperscript: 'hyperscript', sinon: 'sinon', jQuery: 'jQuery', $: 'jQuery', docsearch: 'docsearch', Prism: 'prismjs', hljs: 'highlight.js', gtag: 'gtag', dataLayer: 'gtag', plausible: 'plausible', Swal: 'sweetalert2', Sortable: 'sortablejs', bootstrap: 'bootstrap', UIkit: 'uikit', Chart: 'chart.js', echarts: 'echarts', Highcharts: 'highcharts', ApexCharts: 'apexcharts', Plotly: 'plotly.js', Swiper: 'swiper', flatpickr: 'flatpickr', TomSelect: 'tom-select', Choices: 'choices.js', Quill: 'quill', monaco: 'monaco-editor', CodeMirror: 'codemirror', THREE: 'three', mapboxgl: 'mapbox-gl', maplibregl: 'maplibre-gl', Handsontable: 'handsontable', agGrid: 'ag-grid-community', Tabulator: 'tabulator-tables', d3: 'd3', Mark: 'mark.js', MiniSearch: 'minisearch', lottie: 'lottie-web', gsap: 'gsap' };
 
 export interface ScriptAnalysis {
 	readonly effects: Located[];

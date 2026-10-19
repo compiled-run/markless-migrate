@@ -7,7 +7,8 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { foreignRuntimeGuard, scanBuild } from '../src/client/guard.ts';
-import { capturePage, comparePages } from '../src/client/page.ts';
+import { applyAllowances, readAllowances } from '../src/client/allow.ts';
+import { capturePage, comparePages, summarizePageFindings, type PageFinding } from '../src/client/page.ts';
 
 const CSS = 'body { color: rgb(1, 2, 3); }';
 // The old page's own script sizes the frame to its label, as GitHub's buttons.js does.
@@ -60,7 +61,7 @@ test('a frame retyped at another width, a dropped <style>, a changed stylesheet 
 	const again = await capture('old');
 	const port = comparePages(old, again, await capture('port')).findings;
 	const kinds = port.map((f) => `${f.kind}: ${f.subject}`);
-	assert.ok(kinds.includes('inline style differs: span#star >> iframe') || kinds.includes('inline style differs: iframe'), kinds.join('\n'));
+	assert.ok(kinds.includes('inline style differs: span#star iframe'), kinds.join('\n'));
 	const size = port.find((f) => f.kind === 'size differs')!;
 	assert.match(size.expected!, /^101x20 px/);
 	assert.match(size.actual!, /^51x20 px/);
@@ -79,18 +80,40 @@ test('what differs between two loads of the old page is that page\'s own variati
 	assert.ok(varied.some((v) => v.startsWith('box ')));
 });
 
-test('the build guard finds another framework\'s runtime in a bundle or a public file, and the Vite plugin fails the build', async () => {
+test('the build guard fails on a foreign runtime a page loads or runs, allows one nothing loads (a download), and lists kept libraries', async () => {
 	const dir = await mkdtemp(join(tmpdir(), 'mm-build-'));
-	await mkdir(join(dir, 'public', 'build'), { recursive: true });
-	await mkdir(join(dir, 'public', 'js'), { recursive: true });
+	for (const d of ['public/build', 'public/js', 'public/test', 'server/_ssr']) await mkdir(join(dir, d), { recursive: true });
 	await writeFile(join(dir, 'public', 'build', 'page.js'), 'export const text = "htmx:configRequest and React\'s Symbol.for(\\"react.element\\")";');
-	await writeFile(join(dir, 'public', 'js', 'htmx.js'), HTMX);
 	await writeFile(join(dir, 'public', 'build', 'chunk.js'), 'const el = Symbol.for("react.transitional.element");');
-	await writeFile(join(dir, 'public', 'index.html'), `<script>${HTMX}</script>`);
-	const { hits, files } = await scanBuild(dir);
-	assert.equal(files, 4);
-	assert.deepEqual(hits.map((h) => `${h.file} ${h.runtimes.join('+')} ${h.where}`).sort(), ['public/build/chunk.js React bundle', 'public/index.html:1 htmx inline script', 'public/js/htmx.js htmx public file']);
+	await writeFile(join(dir, 'public', 'js', 'htmx.js'), HTMX);
+	await writeFile(join(dir, 'public', 'js', 'download-only.js'), HTMX);
+	await writeFile(join(dir, 'public', 'js', 'chart.umd.js'), '/*! Chart.js v4.4.1 */ !function(t,e){t.Chart=e()}(this,function(){return {}});');
+	await writeFile(join(dir, 'public', 'test', 'suite.js'), HTMX);
+	await writeFile(join(dir, 'public', 'test', 'index.html'), '<script src="suite.js"></script>');
+	// The server renders the page heads; its static asset table lists every public file by path, as a key.
+	await writeFile(join(dir, 'server', '_ssr', 'heads.mjs'), 'export const HEADS = { "/": { scripts: ["/js/htmx.js", "/js/chart.umd.js"] } }; export const ASSETS = { "/js/download-only.js": { path: "../public/js/download-only.js" } };');
+	const scan = await scanBuild(dir);
+	assert.deepEqual(scan.hits.map((h) => `${h.file} ${h.runtimes.join('+')} ${h.where}`).sort(), ['public/build/chunk.js React bundle', 'public/js/htmx.js htmx public file']);
+	assert.deepEqual(scan.downloads.map((d) => `${d.file} ${d.loadedBy}`).sort(), ['public/js/download-only.js none', 'public/test/suite.js copied page']);
+	assert.deepEqual(scan.libraries.map((l) => `${l.file} ${l.libraries.join('+')} ${l.loadedBy}`), ['public/js/chart.umd.js chart.js page']);
 	const plugin = foreignRuntimeGuard();
 	assert.throws(() => plugin.generateBundle.call({ error: (m: string) => { throw new Error(m); } }, {}, { 'a.js': { type: 'chunk', fileName: 'a.js', code: HTMX } }), /a\.js: htmx/);
 	assert.doesNotThrow(() => plugin.generateBundle.call({ error: (m: string) => { throw new Error(m); } }, {}, { 'b.js': { type: 'chunk', fileName: 'b.js', code: 'export const x = "htmx";' } }));
+});
+
+test('an allowance with a stated reason lists an intended addition instead of failing it; a foreign runtime is never allowed', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'mm-allow-'));
+	await writeFile(join(dir, 'guard-allow.json'), JSON.stringify({ allow: [{ subject: 'div.port-attribution*', reason: 'licence badge for this demo copy' }, { subject: '*', kind: 'foreign runtime', reason: 'trying to allow htmx anyway' }] }));
+	const allow = await readAllowances(dir);
+	const findings: PageFinding[] = [
+		{ route: '/', kind: 'inline style differs', subject: 'div.port-attribution', red: true },
+		{ route: '/docs/', kind: 'inline style differs', subject: 'div.port-attribution a', red: true },
+		{ route: '/', kind: 'inline style differs', subject: 'span#star >> iframe', red: true },
+		{ route: '/', kind: 'foreign runtime', subject: '/js/htmx.js', red: true },
+	];
+	const applied = applyAllowances(findings, allow);
+	assert.deepEqual(applied.map((f) => [f.subject, f.red, f.allowed ?? null]), [['div.port-attribution', false, 'licence badge for this demo copy'], ['div.port-attribution a', false, 'licence badge for this demo copy'], ['span#star >> iframe', true, null], ['/js/htmx.js', true, null]]);
+	assert.match(summarizePageFindings(applied, []), /allowed {2}2 differences: licence badge for this demo copy/);
+	await writeFile(join(dir, 'guard-allow.json'), JSON.stringify({ allow: [{ subject: 'div.port-attribution*', reason: '' }] }));
+	await assert.rejects(readAllowances(dir), /needs "reason"/);
 });

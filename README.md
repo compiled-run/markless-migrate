@@ -110,8 +110,10 @@ load, loads with stored state preset) are counted as unchecked, never as passed.
 implemented / checked: a behaviour is implemented when `.migrate/usage-map.json` names the file (or the
 `@markless/ui` family) that implements it and the new app has it.
 
-No other framework's or library's runtime is kept: React, Vue, Svelte, htmx, Alpine, _hyperscript, jQuery or a
-framework's component bundle never ships in the port; what the pages use of it is implemented in Markless. Only
+No other framework's runtime is kept: React, Vue, Svelte, htmx, Alpine, _hyperscript, jQuery or a framework's
+component bundle never ships in the port; what the pages use of it is implemented in Markless. JavaScript-only
+libraries (Chart.js, Leaflet, Monaco, Sortable, Rive...) are kept as they are during the migration and listed as
+kept libraries; `upgrade` measures them afterwards (below). Only
 static assets (CSS and the pages' own `<style>` blocks, fonts, images, SVG, media) are copied byte for byte. Two
 guards hold this, and `run` applies both to every route it checks:
 
@@ -121,7 +123,37 @@ guards hold this, and `run` applies both to every route it checks:
 - `guard page` loads each route on the old app twice and on the new one once, and fails when a static asset the
   old page loads is missing or has other bytes, a `<style>` the old page is served with is gone, an inline style
   differs, a frame or a sized element has another box (beyond 1 px), or the new page runs another framework's
-  runtime. What differs between the two old loads is left out and listed.
+  runtime. What differs between the two old loads is left out and listed. An intended addition (the licence badge
+  on a demo copy) goes in `.migrate/guard-allow.json` with its reason (`{ "allow": [{ "subject":
+  "div.port-attribution*", "reason": "licence badge for this demo copy" }] }`) and is then listed, not red; a
+  foreign runtime is never allowed.
+
+`guard build` tells a runtime a page loads from a file that is only served: a file counts as loaded when the
+app's bundles or built pages name its URL (or a file they load does). htmx.org serves htmx.js, its source and
+its test suite as downloads; those pass, listed as allowed, while a page that loads htmx fails.
+
+## After the migration: upgrade
+
+Once the routes are green, `markless-migrate upgrade --new <origin>` measures what the port kept and what it
+ported, and suggests what to change; nothing is applied.
+
+- **Kept libraries.** For each JavaScript-only library the new app imports, per route at 4x CPU on a
+  phone-sized page: bytes downloaded, JS run at load (V8 coverage), main-thread time at load (a CPU profile),
+  and the first use of its own controls (elements whose listeners run its code), or, when the page loads it
+  only on demand, the first use of the control that loads it. Its code is found in Markless chunks by the
+  build's `byte-attribution.json`, in other scripts by the string literals and property names they share with
+  the library's installed code, and in other files (a `.wasm`) by content hash. Each entry gives the measured
+  cost, what the app uses of it, the expected saving against a port of the used names (about 1 KB each), the
+  risk (a library that draws into a canvas or WebGL is high: check sees only its pixels) and the size.
+- **Headless swaps.** For each headless library the old site used (Radix, Reka/Radix Vue, Headless UI, Base UI,
+  React Aria, Ark, Melt, Bits...) that the migration ported (`lib/parity/<library>`), the parts, props, states
+  (the exact `data-*` values and `--radix-*` properties the old CSS reads), keys, ARIA and behaviours the site
+  uses are compared with the matching `@markless/ui` family, read from its API manifest and its own source
+  (`--ui <dir>`, or the app's installed package). A swap is suggested only when every row is covered; otherwise
+  it is "not yet: missing ...", which is also the list of what the family lacks.
+
+`upgrade accept <id>` writes `.migrate/upgrades/<id>.md`, the agent's task. An accepted entry goes through the
+same pipeline: `check --old <pre-upgrade build> --new <upgraded build> --all` must be green on every route.
 
 ## What check compares
 

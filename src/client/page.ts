@@ -39,8 +39,10 @@ export interface PageFinding {
 	readonly subject: string;
 	readonly expected?: string;
 	readonly actual?: string;
-	/** Red findings fail the route; an added asset is listed only. */
+	/** Red findings fail the route; an added asset, or a finding an allowance covers, is listed only. */
 	readonly red: boolean;
+	/** The reason of the allowance in .migrate/guard-allow.json that covers it. */
+	readonly allowed?: string;
 }
 
 const sha = (data: Buffer | string) => createHash('sha256').update(data).digest('hex');
@@ -57,7 +59,14 @@ function readPage() {
 	const boxes: { key: string; width: number; height: number; what: string }[] = [];
 	const blocks: string[] = [];
 	const counts = new Map<string, number>();
-	const name = (el: Element) => `${el.localName}${el.id ? `#${el.id}` : ''}${[...el.classList].slice(0, 2).map((c) => `.${c}`).join('')}`;
+	const own = (el: Element) => `${el.localName}${el.id ? `#${el.id}` : ''}${[...el.classList].slice(0, 2).map((c) => `.${c}`).join('')}`;
+	// An element with neither id nor class is named inside its nearest ancestor that has one: `div.port-attribution a`.
+	const name = (el: Element) => {
+		if (el.id || el.classList.length) return own(el);
+		let up = el.parentElement;
+		while (up && !up.id && !up.classList.length) up = up.parentElement;
+		return up && up.localName !== 'body' && up.localName !== 'html' ? `${own(up)} ${own(el)}` : own(el);
+	};
 	const ordinal = (base: string) => {
 		const n = (counts.get(base) ?? 0) + 1;
 		counts.set(base, n);
@@ -213,7 +222,10 @@ export function comparePages(old: PageCapture, again: PageCapture | undefined, n
 export function summarizePageFindings(findings: readonly PageFinding[], varied: readonly string[]): string {
 	const red = findings.filter((f) => f.red);
 	const lines = [`Page guard (static assets byte for byte, inline styles, boxes, no foreign runtime): ${red.length ? `${red.length} difference${red.length === 1 ? '' : 's'}` : 'no differences'}`];
-	for (const f of findings) lines.push(`  ${f.red ? 'FAIL' : 'note'}  ${f.route}  [${f.kind}] ${f.subject}${f.expected ? `\n        expected: ${f.expected}` : ''}${f.actual ? `\n        actual:   ${f.actual}` : ''}`);
+	for (const f of findings.filter((x) => !x.allowed)) lines.push(`  ${f.red ? 'FAIL' : 'note'}  ${f.route}  [${f.kind}] ${f.subject}${f.expected ? `\n        expected: ${f.expected}` : ''}${f.actual ? `\n        actual:   ${f.actual}` : ''}`);
+	const allowed = new Map<string, number>();
+	for (const f of findings) if (f.allowed) allowed.set(f.allowed, (allowed.get(f.allowed) ?? 0) + 1);
+	for (const [reason, n] of allowed) lines.push(`  allowed  ${n} difference${n === 1 ? '' : 's'}: ${reason}`);
 	if (varied.length) lines.push(`  Varied between two loads of the old page, left out: ${varied.slice(0, 5).join('; ')}${varied.length > 5 ? `; ${varied.length - 5} more` : ''}`);
 	return `${lines.join('\n')}\n`;
 }

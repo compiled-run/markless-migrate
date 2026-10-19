@@ -33,10 +33,12 @@ export function summarizeUsage(inventory: UsageInventory, implemented: readonly 
 		`Browser behaviour the old site uses: ${c.used} behaviours on ${inventory.pages} pages, read from each page's markup, the syntax tree of every script it runs${inventory.source ? ', its theme config and its library usage' : ''}.`,
 		`  used ${c.used} / implemented in Markless ${c.implemented} (${pct(c.implemented, c.used)}) / checked ${c.checked} (${pct(c.checked, c.used)}); ${c.obligations.total} check obligations, ${c.obligations.checkable} of them performed by this checker`,
 	];
-	const runtimes = inventory.scripts.filter((s) => s.runtime && !/^(library|third-party)/.test(s.runtime));
+	const runtimes = inventory.scripts.filter((s) => s.runtime && !/^(kept library|library|third-party)/.test(s.runtime));
 	if (runtimes.length) lines.push(`  Runtimes the old pages load, none of which the port may ship (what the pages use of them is listed below): ${[...new Set(runtimes.map((s) => s.runtime))].join(', ')}`);
-	const libs = inventory.scripts.filter((s) => s.runtime && /^(library|third-party)/.test(s.runtime));
-	if (libs.length) lines.push(`  Other sites' scripts: ${[...new Set(libs.map((s) => s.runtime!.replace(/^library /, '')))].join(', ')}`);
+	const kept = inventory.scripts.filter((s) => s.runtime?.startsWith('kept library '));
+	if (kept.length) lines.push(`  Kept libraries (JavaScript only, kept as they are; the upgrade step measures them after the migration): ${[...new Set(kept.map((s) => s.runtime!.slice('kept library '.length)))].join(', ')}`);
+	const others = inventory.scripts.filter((s) => s.runtime?.startsWith('third-party '));
+	if (others.length) lines.push(`  Other sites' scripts (embeds): ${[...new Set(others.map((s) => s.runtime!.slice('third-party '.length)))].join(', ')}`);
 	for (const l of c.byLibrary.slice(0, 16)) lines.push(`  ${l.library.padEnd(28)} used ${String(l.used).padStart(3)}  implemented ${String(l.implemented).padStart(3)}  checked ${String(l.checked).padStart(3)}`);
 	if (c.byLibrary.length > 16) lines.push(`  ... ${c.byLibrary.length - 16} more libraries in usage.json`);
 	const missing = new Map(implemented.filter((i) => i.status === 'unimplemented').map((i) => [i.behaviour, i]));

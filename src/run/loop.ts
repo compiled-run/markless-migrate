@@ -86,9 +86,9 @@ ${serveLine(o)}
 - When this page is one of many built from a content source (a docs page, a blog post, a CMS entry),
   build it through that template's importer, from the original content, so every route of the
   template exists and not this page alone.
-- Never load or copy another framework's or library's runtime (React, Vue, htmx, Alpine, _hyperscript, jQuery...)
-  into the new app: implement in Markless what the route uses of it. Copy the old static assets (CSS, fonts,
-  images, SVG, media) byte for byte. \`${o.cli} guard page --old ${o.old} --new ${o.new} --route ${route}\` and
+- Never load or copy another framework's runtime (React, Vue, htmx, Alpine, _hyperscript, jQuery...) into the
+  new app: implement in Markless what the route uses of it. Keep JavaScript-only libraries (Chart.js, Leaflet,
+  Monaco...) as they are. Copy the old static assets (CSS, fonts, images, SVG, media) byte for byte. \`${o.cli} guard page --old ${o.old} --new ${o.new} --route ${route}\` and
   \`${o.cli} guard build\` check both, and run's check includes them.
 ${notes ? `\n${notes}\n\n` : ''}- Stop when the check is green, or when you cannot make progress. Never ask a question or wait for an
   answer: nobody is there to reply, and markless-migrate goes on with the next route. End with what is

@@ -88,6 +88,10 @@ function libraryBehaviours(lib: LibraryUsage, into: Behaviours, limits: string[]
 	}
 }
 
+function keptLibrary(library: string, script: string, route: string, into: Behaviours): void {
+	into.add({ library, feature: 'kept library', kind: 'library', summary: `${library} (${script}) is kept as it is during the migration: the same library loads and the page makes the same calls into it; the upgrade step measures it once the routes are green`, details: { script }, key: { library } }, route, { file: script, line: 1 });
+}
+
 /**
  * The semantic usage inventory: every behaviour the old site's pages use, read from the markup each page is served
  * (or built) with, the syntax tree of every script it loads, its theme config, and the source scan of its libraries;
@@ -119,7 +123,7 @@ export async function scanUsage(options: UsageOptions): Promise<UsageInventory> 
 	const ordered = [...scriptsByKey].sort(([, a], [, b]) => Number(!a.ref.src) - Number(!b.ref.src));
 	for (const [key, { ref, routes }] of ordered) {
 		let text = ref.text;
-		const local = ref.src && options.origin && new URL(key).origin === new URL(options.origin).origin;
+		const local = Boolean(ref.src) && new URL(key).origin === new URL(options.origin ?? 'http://built.invalid').origin;
 		const name = ref.src ? (local ? new URL(key).pathname : key) : `${key} (on ${ref.route}, line ${ref.line})`;
 		if (ref.src) {
 			text = options.built && (local || !options.origin) && ref.src.startsWith('/') ? await readFile(join(options.built, new URL(key).pathname), 'utf8').catch(() => undefined) : undefined;
@@ -130,11 +134,18 @@ export async function scanUsage(options: UsageOptions): Promise<UsageInventory> 
 			scripts.push({ script: name, routes: [...routes].sort(), bytes: 0, effects: 0, parsed: false });
 			continue;
 		}
-		const { runtimes, parsed: classified } = classifyScript(text);
-		// Another origin's script is a library or an embed's own code: what the site uses of it is the page's calls into it and the embed it draws, not its internals.
+		const { runtimes, libraries, parsed: classified } = classifyScript(text);
+		const pkg = ref.src && !local ? /\/npm\/((?:@[\w.-]+\/)?[\w.-]+?)(?:@[^/]*)?(?:\/|$)/.exec(new URL(key).pathname)?.[1] : undefined;
+		const library = libraries[0] ?? pkg;
+		// A JavaScript-only library is kept as it is during the migration: one behaviour, with the page's calls into it as what the site uses of it.
+		if (!runtimes.length && library) {
+			scripts.push({ script: name, routes: [...routes].sort(), bytes: Buffer.byteLength(text), runtime: `kept library ${library}`, effects: 0, parsed: classified });
+			for (const r of routes) keptLibrary(library, name, r, into);
+			continue;
+		}
+		// Another origin's script that is no library is an embed's own code: what the site uses of it is the embed it draws, not its internals.
 		if (ref.src && options.origin && !local && !runtimes.length) {
-			const pkg = /\/npm\/((?:@[\w.-]+\/)?[\w.-]+?)(?:@[^/]*)?(?:\/|$)/.exec(new URL(key).pathname)?.[1];
-			scripts.push({ script: name, routes: [...routes].sort(), bytes: Buffer.byteLength(text), runtime: pkg ? `library ${pkg}` : `third-party ${new URL(key).hostname}`, effects: 0, parsed: classified });
+			scripts.push({ script: name, routes: [...routes].sort(), bytes: Buffer.byteLength(text), runtime: `third-party ${new URL(key).hostname}`, effects: 0, parsed: classified });
 			continue;
 		}
 		if (runtimes.length || text.length > max) {

@@ -56,7 +56,8 @@ export type BehaviourKind =
 	| 'navigation'
 	| 'observer'
 	| 'dom-write'
-	| 'component';
+	| 'component'
+	| 'library';
 
 /** A check a behaviour must pass. `mechanism` names what in check performs it; `available` says whether this checker has it yet. */
 export interface Obligation {
