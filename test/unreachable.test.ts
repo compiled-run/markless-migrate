@@ -70,3 +70,23 @@ test('when the new page lets a visitor use it, the old page\'s unreachable contr
 	assert.equal(claim.accepted, undefined);
 	assert.equal(route.ok, false);
 });
+
+// VitePress's code group: each tab is a radio hidden behind its label, picked by clicking the label.
+const tabs = `<!doctype html><html lang="en"><title>Install</title>
+<style>.tabs input { position: fixed; opacity: 0; pointer-events: none; } .tabs label { display: inline-block; padding: 8px; } .block { display: none; } .block.active { display: block; }</style>
+<main><h1>Install</h1><div class="tabs">
+<input type="radio" name="pm" id="npm" checked><label for="npm">npm</label>
+<input type="radio" name="pm" id="pnpm"><label for="pnpm">pnpm</label>
+</div><pre class="block active" id="b-npm">npm i markless</pre><pre class="block" id="b-pnpm">pnpm add markless</pre></main>
+<script>document.querySelector('.tabs').addEventListener('change', (e) => { for (const b of document.querySelectorAll('.block')) b.classList.toggle('active', b.id === 'b-' + e.target.id); });</script>`;
+
+test('a radio drawn by its label is used through the label', async () => {
+	const [a, b] = await Promise.all(
+		[0, 1].map(() => new Promise<Server>((done) => { const s = createServer((_, res) => res.writeHead(200, { 'content-type': 'text/html' }).end(tabs)); s.listen(0, '127.0.0.1', () => done(s)); })),
+	);
+	servers.push(a!, b!);
+	const route = (await runCheck({ oldOrigin: origin(a!), newOrigin: origin(b!), routes: ['/'], viewports: [VIEWPORTS[0]!], browser })).routes[0]!;
+	const by = (name: string) => route.coverage!.elements.find((e) => e.element === name)?.by;
+	assert.equal(by('radio "pnpm"'), 'click radio "pnpm"');
+	assert.equal(route.failures.find((f) => f.check === `${NOT_EXERCISED}radio "pnpm"`), undefined);
+});
