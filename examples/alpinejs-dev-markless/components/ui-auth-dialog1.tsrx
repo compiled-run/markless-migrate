@@ -56,17 +56,17 @@ export default function UiAuthDialog1() @{
 						<div class="relative bg-white p-2 tracking-wider text-gray-400">OR</div>
 					</div>
 					<div class="mt-4">
-						<label class="block font-medium text-sm text-gray-700" for="email">Email</label>
+						<label class="block font-medium text-sm text-gray-700" for="email">{" "}Email{" "}</label>
 						{" "}
 						<input class="border-gray-300 focus:border-cyan-400 focus:ring focus:ring-cyan-400 focus:ring-opacity-50 mt-1 block w-full rounded-lg" id="email" type="text" name="email" autocomplete="email" />
 					</div>
 					<div class="mt-4">
-						<label class="block font-medium text-sm text-gray-700" for="password">Password</label>
+						<label class="block font-medium text-sm text-gray-700" for="password">{" "}Password{" "}</label>
 						{" "}
 						<input class="border-gray-300 focus:border-cyan-400 focus:ring focus:ring-cyan-400 focus:ring-opacity-50 mt-1 block w-full rounded-lg" id="password" type="password" name="password" autocomplete="new-password" />
 					</div>
 					<div class="mt-4" el={el4}>
-						<label class="block font-medium text-sm text-gray-700" for="password_confirmation">Confirm Password</label>
+						<label class="block font-medium text-sm text-gray-700" for="password_confirmation">{" "}Confirm Password{" "}</label>
 						{" "}
 						<input class="border-gray-300 focus:border-cyan-400 focus:ring focus:ring-cyan-400 focus:ring-opacity-50 mt-1 block w-full rounded-lg" id="password_confirmation" type="password" name="password_confirmation" autocomplete="new-password" />
 					</div>

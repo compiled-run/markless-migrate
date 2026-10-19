@@ -5,8 +5,7 @@ import DocsSidebar from '../../components/docs-sidebar.tsrx';
 import Sponsor from '../../components/sponsor.tsrx';
 import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
-import { watchHeadings } from '../../site.ts';
-import { Demo0, Demo1, Demo2, Demo3, Demo4, Demo5, Demo6, Demo7, Demo8, Demo9, Demo10, Demo11, Demo12, Demo13 } from '../../demos/directives-model.tsrx';
+import { Demo0, Demo1, Demo2, Demo3, Demo4, Demo5, Demo6, Demo7, Demo8, Demo9, Demo10, Demo11, Demo12, Demo13, Demo14 } from '../../demos/directives-model.tsrx';
 
 const HEADINGS = [{ key: 0, id: "text-inputs", text: "Text inputs", level: 2 }, { key: 1, id: "textarea-inputs", text: "Textarea inputs", level: 2 }, { key: 2, id: "checkbox-inputs", text: "Checkbox inputs", level: 2 }, { key: 3, id: "single-checkbox-with-boolean", text: "Single checkbox with boolean", level: 3 }, { key: 4, id: "multiple-checkboxes-bound-to-array", text: "Multiple checkboxes bound to array", level: 3 }, { key: 5, id: "radio-inputs", text: "Radio inputs", level: 2 }, { key: 6, id: "select-inputs", text: "Select inputs", level: 2 }, { key: 7, id: "single-select", text: "Single select", level: 3 }, { key: 8, id: "single-select-with-placeholder", text: "Single select with placeholder", level: 3 }, { key: 9, id: "multiple-select", text: "Multiple select", level: 3 }, { key: 10, id: "dynamically-populated-select-options", text: "Dynamically populated Select Options", level: 3 }, { key: 11, id: "range-inputs", text: "Range inputs", level: 2 }, { key: 12, id: "modifiers", text: "Modifiers", level: 2 }, { key: 13, id: "lazy", text: ".lazy", level: 3 }, { key: 14, id: "change", text: ".change", level: 3 }, { key: 15, id: "blur", text: ".blur", level: 3 }, { key: 16, id: "enter", text: ".enter", level: 3 }, { key: 17, id: "combining-event-modifiers", text: "Combining Event Modifiers", level: 3 }, { key: 18, id: "number", text: ".number", level: 3 }, { key: 19, id: "boolean", text: ".boolean", level: 3 }, { key: 20, id: "debounce", text: ".debounce", level: 3 }, { key: 21, id: "throttle", text: ".throttle", level: 3 }, { key: 22, id: "fill", text: ".fill", level: 3 }, { key: 23, id: "programmatic access", text: "Programmatic access", level: 2 }] as const;
 
@@ -14,7 +13,7 @@ export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
 		<DocsHeader pathname={url.pathname} />
 		<DocsSidebar pathname={url.pathname} />
-		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64" onIdle={(event) => watchHeadings(event.target as HTMLElement)}>
+		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64">
 			<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
 				<h1>x-model</h1>
 				<p><code>x-model</code>{" "}allows you to bind the value of an input element to Alpine data.</p>
@@ -136,7 +135,7 @@ export default function DocsPage({ url }: PageProps) @{
 				<p>
 					But if a bound property is empty, then you can use an input&#39;s value attribute to populate the property by adding the{" "}<code>.fill</code>{" "}modifier.
 				</p>
-				<div><input type="text" value="This is the default message." /></div>
+				<Demo14 />
 				<h2 id="programmatic access"><a href="#programmatic access">Programmatic access</a></h2>
 				<p>
 					Alpine exposes under-the-hood utilities for getting and setting properties bound with{" "}<code>x-model</code>. This is useful for complex Alpine utilities that may want to override the default x-model behavior, or instances where you want to allow{" "}<code>x-model</code>{" "}on a non-input element.

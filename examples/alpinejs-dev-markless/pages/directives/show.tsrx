@@ -5,7 +5,6 @@ import DocsSidebar from '../../components/docs-sidebar.tsrx';
 import Sponsor from '../../components/sponsor.tsrx';
 import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
-import { watchHeadings } from '../../site.ts';
 
 const HEADINGS = [{ key: 0, id: "with-transitions", text: "With transitions", level: 2 }, { key: 1, id: "using-the-important-modifier", text: "Using the important modifier", level: 2 }] as const;
 
@@ -13,7 +12,7 @@ export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
 		<DocsHeader pathname={url.pathname} />
 		<DocsSidebar pathname={url.pathname} />
-		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64" onIdle={(event) => watchHeadings(event.target as HTMLElement)}>
+		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64">
 			<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
 				<h1>x-show</h1>
 				<p><code>x-show</code>{" "}is one of the most useful and powerful directives in Alpine. It provides an expressive way to show and hide DOM elements.</p>

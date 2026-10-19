@@ -5,7 +5,6 @@ import DocsSidebar from '../components/docs-sidebar.tsrx';
 import Sponsor from '../components/sponsor.tsrx';
 import Toc from '../components/toc.tsrx';
 import Attribution from '../components/attribution.tsrx';
-import { watchHeadings } from '../site.ts';
 
 const HEADINGS = [{ key: 0, id: "breaking-changes", text: "Breaking Changes", level: 2 }, { key: 1, id: "el-no-longer-root", text: "$el is now always the current element", level: 3 }, { key: 2, id: "auto-init", text: "Automatically evaluate init() functions defined on data object", level: 3 }, { key: 3, id: "need-to-call-alpine-start", text: "Need to call Alpine.start() after import", level: 3 }, { key: 4, id: "removed-show-dot-transition", text: "x-show.transition is now x-transition", level: 3 }, { key: 5, id: "x-if-no-transitions", text: "x-if no longer supports x-transition", level: 3 }, { key: 6, id: "x-data-scope", text: "x-data cascading scope", level: 3 }, { key: 7, id: "x-init-no-callback", text: "x-init no longer accepts a callback return", level: 3 }, { key: 8, id: "no-false-return-from-event-handlers", text: "Returning false from event handlers no longer implicitly \"preventDefault\"s", level: 3 }, { key: 9, id: "x-spread-now-x-bind", text: "x-spread is now x-bind", level: 3 }, { key: 10, id: "use-global-events-now", text: "Use global lifecycle events instead of Alpine.deferLoadingAlpine()", level: 3 }, { key: 11, id: "x-ref-no-more-dynamic", text: "x-ref no longer supports binding", level: 3 }, { key: 12, id: "no-ie-11", text: "IE11 no longer supported", level: 3 }, { key: 13, id: "deprecated-apis", text: "Deprecated APIs", level: 2 }, { key: 14, id: "away-replace-with-outside", text: "Event listener modifier .away should be replaced with .outside", level: 3 }, { key: 15, id: "alpine-data-instead-of-global-functions", text: "Prefer Alpine.data() to global Alpine function data providers", level: 3 }] as const;
 
@@ -13,14 +12,14 @@ export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
 		<DocsHeader pathname={url.pathname} />
 		<DocsSidebar pathname={url.pathname} />
-		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64" onIdle={(event) => watchHeadings(event.target as HTMLElement)}>
+		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64">
 			<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
 				<h1>Upgrade from V2</h1>
 				<p>
 					Below is an exhaustive guide on the breaking changes in Alpine V3, but if you&#39;d prefer something more lively, you can review all the changes as well as new features in V3 by watching the Alpine Day 2021 "Future of Alpine" keynote:
 				</p>
 				<div class="relative w-full" style="padding-bottom: 56.25%; padding-top: 30px; height: 0; overflow: hidden;">
-					<iframe class="absolute top-0 left-0 right-0 bottom-0 w-full h-full" src="https://www.youtube.com/embed/WixS4JXMwIQ?modestbranding=1&amp;autoplay=1" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+					<iframe class="absolute top-0 left-0 right-0 bottom-0 w-full h-full" src={"https://www.youtube.com/embed/WixS4JXMwIQ?modestbranding=1&autoplay=1"} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
 				</div>
 				<p>
 					Upgrading from Alpine V2 to V3 should be fairly painless. In many cases, NOTHING has to be done to your codebase to use V3. Below is an exhaustive list of breaking changes and deprecations in descending order of how likely users are to be affected by them:

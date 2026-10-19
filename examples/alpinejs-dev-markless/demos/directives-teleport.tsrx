@@ -16,9 +16,7 @@ export function Demo0() @{
 				</button>
 				<template></template>
 			</div>
-			<div class="py-4">
-				Some other content placed AFTER the modal markup.
-			</div>
+			<div class="py-4">Some other content placed AFTER the modal markup.</div>
 			<div style="display: none;" el={el0}>
 				Modal contents...
 			</div>
@@ -44,9 +42,7 @@ export function Demo1() @{
 				show(el0, open);
 			}}>
 				Modal contents...{" "}
-				<div>
-					(click to close)
-				</div>
+				<div>(click to close)</div>
 			</div>
 		</div>
 }
@@ -69,9 +65,7 @@ export function Demo2() @{
 			</div>
 			<template></template>
 			<div style="display: none;" el={el0}>
-				<div class="py-4">
-					Modal contents...
-				</div>
+				<div class="py-4">Modal contents...</div>
 				<div>
 					<button onClick={(event) => {
 						open_2 = ! open_2;

@@ -18,12 +18,12 @@ export default function Guest() @{
 					</div>
 					<form method="POST" action="/forgot-password" onSubmit={(event) => event.preventDefault()}>
 						<div class="block">
-							<label class="block font-medium text-sm text-gray-700" for="email">Email</label>
+							<label class="block font-medium text-sm text-gray-700" for="email">{" "}Email{" "}</label>
 							{" "}
 							<input class="border-gray-300 focus:border-cyan-400 focus:ring focus:ring-cyan-400 focus:ring-opacity-50 mt-1 block w-full rounded-lg" id="email" type="email" name="email" required="required" autofocus="autofocus" />
 						</div>
 						<div class="mt-4 flex items-center justify-end">
-							<button type="submit" class="inline-flex items-center px-6 py-2 bg-components-cyan-600 border border-transparent rounded-full font-title text-sm text-white font-bold hover:bg-components-cyan-700 focus:outline-none focus:border-components-cyan-700 focus:ring focus:ring-gray-300 disabled:opacity-25 transition">Email Password Reset Link</button>
+							<button type="submit" class="inline-flex items-center px-6 py-2 bg-components-cyan-600 border border-transparent rounded-full font-title text-sm text-white font-bold hover:bg-components-cyan-700 focus:outline-none focus:border-components-cyan-700 focus:ring focus:ring-gray-300 disabled:opacity-25 transition">{" "}Email Password Reset Link{" "}</button>
 						</div>
 					</form>
 				</div>

@@ -2,7 +2,7 @@
 import { computed, element, state } from '@markless/core';
 import { cls } from '../components/alpine/bind.ts';
 import { show } from '../components/alpine/show.ts';
-import { listen, passes } from '../components/alpine/on.ts';
+import { listen, passes, setup } from '../components/alpine/on.ts';
 import { focusMagic, trap } from '../components/alpine/focus.ts';
 
 export function Demo0() @{
@@ -11,13 +11,25 @@ export function Demo0() @{
 	const el1 = element<HTMLElement>();
 	const el2 = element<HTMLElement>();
 
-		<div onIdle={() => {
-			listen(el1, "keyup", ["escape","window"], (event) => {
-				open = false;
-				show(el1, open);
-				trap(el1, open, []);
-			});
-		}} class="demo" el={el2}>
+		<div onPointerOver={() => setup(el2, () => {
+				listen(el1, "keyup", ["escape","window"], (event) => {
+					open = false;
+					show(el1, open);
+					trap(el1, open, []);
+				});
+			})} onFocusIn={() => setup(el2, () => {
+				listen(el1, "keyup", ["escape","window"], (event) => {
+					open = false;
+					show(el1, open);
+					trap(el1, open, []);
+				});
+			})} onTouchStart={() => setup(el2, () => {
+				listen(el1, "keyup", ["escape","window"], (event) => {
+					open = false;
+					show(el1, open);
+					trap(el1, open, []);
+				});
+			})} class="demo" el={el2}>
 			<div class={value0}>
 				<button onClick={(event) => {
 					open = true;
@@ -33,12 +45,8 @@ export function Demo0() @{
 						Focus is now "trapped" inside this dialog, meaning you can only click/focus elements within this yellow dialog. If you press tab repeatedly, the focus will stay within this dialog.
 					</div>
 				</strong>
-				<div>
-					<input type="text" placeholder="Some input..." />
-				</div>
-				<div>
-					<input type="text" placeholder="Some other input..." />
-				</div>
+				<div><input type="text" placeholder="Some input..." /></div>
+				<div><input type="text" placeholder="Some other input..." /></div>
 				<div>
 					<button onClick={(event) => {
 						open = false;
@@ -61,18 +69,40 @@ export function Demo1() @{
 	const el3 = element<HTMLElement>();
 	const el4 = element<HTMLElement>();
 
-		<div onIdle={() => {
-			listen(el1, "keyup", ["escape","window"], (event) => {
-				open = false;
-				show(el1, open);
-				trap(el1, open, []);
-			});
-			listen(el3, "keyup", ["escape","window"], (event) => {
-				open_2 = false;
-				show(el3, open_2);
-				trap(el3, open_2, []);
-			});
-		}} class="demo" el={el4}>
+		<div onPointerOver={() => setup(el4, () => {
+				listen(el1, "keyup", ["escape","window"], (event) => {
+					open = false;
+					show(el1, open);
+					trap(el1, open, []);
+				});
+				listen(el3, "keyup", ["escape","window"], (event) => {
+					open_2 = false;
+					show(el3, open_2);
+					trap(el3, open_2, []);
+				});
+			})} onFocusIn={() => setup(el4, () => {
+				listen(el1, "keyup", ["escape","window"], (event) => {
+					open = false;
+					show(el1, open);
+					trap(el1, open, []);
+				});
+				listen(el3, "keyup", ["escape","window"], (event) => {
+					open_2 = false;
+					show(el3, open_2);
+					trap(el3, open_2, []);
+				});
+			})} onTouchStart={() => setup(el4, () => {
+				listen(el1, "keyup", ["escape","window"], (event) => {
+					open = false;
+					show(el1, open);
+					trap(el1, open, []);
+				});
+				listen(el3, "keyup", ["escape","window"], (event) => {
+					open_2 = false;
+					show(el3, open_2);
+					trap(el3, open_2, []);
+				});
+			})} class="demo" el={el4}>
 			<div class={value0}>
 				<button onClick={(event) => {
 					open = true;
@@ -83,12 +113,8 @@ export function Demo1() @{
 				</button>
 			</div>
 			<div class="mt-4 space-y-4 p-4 border bg-yellow-100" style="display: none;" el={el1}>
-				<div>
-					<input type="text" placeholder="Some input..." />
-				</div>
-				<div>
-					<input type="text" placeholder="Some other input..." />
-				</div>
+				<div><input type="text" placeholder="Some input..." /></div>
+				<div><input type="text" placeholder="Some other input..." /></div>
 				<div>
 					<div class={value2}>
 						<button onClick={(event) => {
@@ -105,12 +131,8 @@ export function Demo1() @{
 								Focus is now "trapped" inside this nested dialog. You cannot focus anything inside the outer dialog while this is open. If you close this dialog, focus will be returned to the last known active element.
 							</div>
 						</strong>
-						<div>
-							<input type="text" placeholder="Some input..." />
-						</div>
-						<div>
-							<input type="text" placeholder="Some other input..." />
-						</div>
+						<div><input type="text" placeholder="Some input..." /></div>
+						<div><input type="text" placeholder="Some other input..." /></div>
 						<div>
 							<button onClick={(event) => {
 								open_2 = false;
@@ -149,12 +171,8 @@ export function Demo2() @{
 					Open Dialog
 				</button>
 				<div class="border mt-4 p-4" style="display: none;" el={el0}>
-					<div class="mb-4 text-bold">
-						Dialog Contents
-					</div>
-					<p class="mb-4 text-gray-600 text-sm">
-						Notice how you can no longer scroll on this page while this dialog is open.
-					</p>
+					<div class="mb-4 text-bold">Dialog Contents</div>
+					<p class="mb-4 text-gray-600 text-sm">Notice how you can no longer scroll on this page while this dialog is open.</p>
 					<button class="mt-4" onClick={(event) => {
 						open = false;
 						show(el0, open);
@@ -174,15 +192,31 @@ export function Demo3() @{
 	const el2 = element<HTMLElement>();
 	const el3 = element<HTMLElement>();
 
-		<div onIdle={() => {
-			listen(el0, "click", ["outside"], (event) => {
-				open = false;
-				trap(el0, open, ["noreturn"]);
-				show(el2, open);
-			});
-		}} class="demo" el={el3}>
+		<div onPointerOver={() => setup(el3, () => {
+				listen(el0, "click", ["outside"], (event) => {
+					open = false;
+					trap(el0, open, ["noreturn"]);
+					show(el2, open);
+				});
+			})} onFocusIn={() => setup(el3, () => {
+				listen(el0, "click", ["outside"], (event) => {
+					open = false;
+					trap(el0, open, ["noreturn"]);
+					show(el2, open);
+				});
+			})} onTouchStart={() => setup(el3, () => {
+				listen(el0, "click", ["outside"], (event) => {
+					open = false;
+					trap(el0, open, ["noreturn"]);
+					show(el2, open);
+				});
+			})} class="demo" el={el3}>
 			<div el={el0} onKeyUp={(event) => {
-				if (!passes(event, el0, ["escape","prevent","stop"])) return;
+				if (event.key === "Escape") {
+event.preventDefault();
+event.stopPropagation();
+}
+if (!passes(event, el0, ["escape"])) return;
 open = false;
 				trap(el0, open, ["noreturn"]);
 				show(el2, open);
@@ -192,16 +226,15 @@ open = false;
 					trap(el0, open, ["noreturn"]);
 					show(el2, open);
 				}} onKeyUp={(event) => {
-					if (!passes(event, el1, ["escape","prevent"])) return;
+					if (event.key === "Escape") {
+event.preventDefault();
+}
+if (!passes(event, el1, ["escape"])) return;
 el1.blur();
 				}} />
 				<div style="display: none;" el={el2}>
-					<div class="mb-4 text-bold">
-						Search results
-					</div>
-					<p class="mb-4 text-gray-600 text-sm">
-						Notice when closing this dropdown, focus is not returned to the input.
-					</p>
+					<div class="mb-4 text-bold">Search results</div>
+					<p class="mb-4 text-gray-600 text-sm">Notice when closing this dropdown, focus is not returned to the input.</p>
 					<button class="mt-4" onClick={(event) => {
 						open = false;
 						trap(el0, open, ["noreturn"]);
@@ -228,17 +261,11 @@ focusMagic(el0).next();
 focusMagic(el0).previous();
 })(event);
 }}>
-				<button class="focus:outline-none focus:ring-2 focus:ring-cyan-400">
-					First
-				</button>
+				<button class="focus:outline-none focus:ring-2 focus:ring-cyan-400">First</button>
 				{" "}
-				<button class="focus:outline-none focus:ring-2 focus:ring-cyan-400">
-					Second
-				</button>
+				<button class="focus:outline-none focus:ring-2 focus:ring-cyan-400">Second</button>
 				{" "}
-				<button class="focus:outline-none focus:ring-2 focus:ring-cyan-400">
-					Third
-				</button>
+				<button class="focus:outline-none focus:ring-2 focus:ring-cyan-400">Third</button>
 			</div>
 			{" "}(Click a button, then use the arrow keys to move left and right)
 		</div>
@@ -258,17 +285,11 @@ focusMagic(el0).wrap().next();
 focusMagic(el0).wrap().previous();
 })(event);
 }}>
-				<button class="focus:outline-none focus:ring-2 focus:ring-cyan-400">
-					First
-				</button>
+				<button class="focus:outline-none focus:ring-2 focus:ring-cyan-400">First</button>
 				{" "}
-				<button class="focus:outline-none focus:ring-2 focus:ring-cyan-400">
-					Second
-				</button>
+				<button class="focus:outline-none focus:ring-2 focus:ring-cyan-400">Second</button>
 				{" "}
-				<button class="focus:outline-none focus:ring-2 focus:ring-cyan-400">
-					Third
-				</button>
+				<button class="focus:outline-none focus:ring-2 focus:ring-cyan-400">Third</button>
 			</div>
 			{" "}(Click a button, then use the arrow keys to move left and right)
 		</div>
@@ -302,17 +323,11 @@ focusMagic(el1).wrap().next();
 focusMagic(el1).wrap().previous();
 })(event);
 }}>
-				<button class="focus:outline-none focus:ring-2 focus:ring-cyan-400">
-					First
-				</button>
+				<button class="focus:outline-none focus:ring-2 focus:ring-cyan-400">First</button>
 				{" "}
-				<button class="focus:outline-none focus:ring-2 focus:ring-cyan-400">
-					Second
-				</button>
+				<button class="focus:outline-none focus:ring-2 focus:ring-cyan-400">Second</button>
 				{" "}
-				<button class="focus:outline-none focus:ring-2 focus:ring-cyan-400">
-					Third
-				</button>
+				<button class="focus:outline-none focus:ring-2 focus:ring-cyan-400">Third</button>
 			</div>
 		</div>
 }

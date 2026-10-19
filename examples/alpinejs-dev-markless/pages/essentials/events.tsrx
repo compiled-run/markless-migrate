@@ -5,7 +5,6 @@ import DocsSidebar from '../../components/docs-sidebar.tsrx';
 import Sponsor from '../../components/sponsor.tsrx';
 import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
-import { watchHeadings } from '../../site.ts';
 
 const HEADINGS = [{ key: 0, id: "listening-for-simple-events", text: "Listening for simple events", level: 2 }, { key: 1, id: "listening-for-specific-keys", text: "Listening for specific keys", level: 2 }, { key: 2, id: "preventing-default", text: "Preventing default", level: 2 }, { key: 3, id: "accessing-the-event-object", text: "Accessing the event object", level: 2 }, { key: 4, id: "dispatching-custom-events", text: "Dispatching custom events", level: 2 }, { key: 5, id: "listening-for-events-on-window", text: "Listening for events on window", level: 2 }] as const;
 
@@ -13,7 +12,7 @@ export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
 		<DocsHeader pathname={url.pathname} />
 		<DocsSidebar pathname={url.pathname} />
-		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64" onIdle={(event) => watchHeadings(event.target as HTMLElement)}>
+		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64">
 			<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
 				<h1>Events</h1>
 				<p>Alpine makes it simple to listen for browser events and react to them.</p>

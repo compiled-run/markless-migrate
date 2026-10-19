@@ -82,3 +82,12 @@ export function listen(el: HTMLElement | undefined, event: string, modifiers: re
 export function dispatch(el: HTMLElement | undefined, name: string, detail?: unknown): boolean {
 	return !!el?.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true, cancelable: true }));
 }
+
+const started = new WeakSet<Element>();
+
+/** Runs a demo's setup once, on the first event that can precede using it. */
+export function setup(el: Element | undefined, start: () => void): void {
+	if (!el || started.has(el)) return;
+	started.add(el);
+	start();
+}

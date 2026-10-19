@@ -18,7 +18,6 @@ export function docsPage(page: DocPage, previous: DocPage | undefined, next: Doc
 		`import Sponsor from '${up}components/sponsor.tsrx';`,
 		`import Toc from '${up}components/toc.tsrx';`,
 		`import Attribution from '${up}components/attribution.tsrx';`,
-		`import { watchHeadings } from '${up}site.ts';`,
 	];
 	const used = demos.filter((d) => !d.inline).map((d) => d.name);
 	if (used.length && demoModule) imports.push(`import { ${used.join(', ')} } from '${up}${demoModule}';`);
@@ -40,7 +39,7 @@ export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
 		<DocsHeader pathname={url.pathname} />
 		<DocsSidebar pathname={url.pathname} />
-		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64" onIdle={(event) => watchHeadings(event.target as HTMLElement)}>
+		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64">
 			<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
 ${body}				<Sponsor wrapper="my-12 border-y border-gray-200 py-6 xl:hidden" label="mb-3 block text-xs font-semibold uppercase tracking-wider text-gray-400" />
 				<div class="flex justify-between border-t border-gray-200 pt-4 text-gray-700">

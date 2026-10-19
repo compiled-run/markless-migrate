@@ -5,7 +5,7 @@ type AnyNode = acorn.Node & Record<string, unknown>;
 export interface Binding {
 	/** What the generated component reads for this name: a state or computed variable, or a loop row's field. */
 	readonly code: string;
-	readonly kind: 'state' | 'computed' | 'loop';
+	readonly kind: 'state' | 'computed' | 'loop' | 'persist';
 }
 
 export interface Scope {
@@ -121,6 +121,11 @@ export function compile(source: string, mode: 'expression' | 'statements', conte
 		}
 	};
 
+	const persistTarget = (target: AnyNode, locals: ReadonlySet<string>) => {
+		if (target.type !== 'Identifier' || locals.has(target.name as string)) return undefined;
+		const binding = lookup(context.scope, target.name as string);
+		return binding?.kind === 'persist' ? binding.code : undefined;
+	};
 	const visit = (node: AnyNode | null | undefined, locals: ReadonlySet<string>, parent?: AnyNode): void => {
 		if (!node || typeof node.type !== 'string') return;
 		switch (node.type) {
@@ -146,7 +151,8 @@ export function compile(source: string, mode: 'expression' | 'statements', conte
 				const binding = lookup(context.scope, name);
 				if (binding) {
 					reads.add(binding.code);
-					return replace(node, binding.code);
+					// $persist data lives in Markless storage as the JSON text Alpine keeps in localStorage.
+					return replace(node, binding.kind === 'persist' ? `JSON.parse(${binding.code})` : binding.code);
 				}
 				if (BROWSER_GLOBALS.has(name) || context.globals.has(name)) return;
 				throw new Error(`unknown name ${name} in ${JSON.stringify(source)}`);
@@ -260,12 +266,27 @@ export function compile(source: string, mode: 'expression' | 'statements', conte
 					edits.push({ start: (node.right as AnyNode).end, end: node.end, text: ')' });
 					return;
 				}
+				const persisted = persistTarget(left, locals);
+				if (persisted) {
+					writes.add(persisted);
+					visit(node.right as AnyNode, locals, node);
+					const op = (node.operator as string).slice(0, -1);
+					edits.push({ start: node.start, end: (node.right as AnyNode).start, text: `${persisted} = JSON.stringify(${op ? `JSON.parse(${persisted}) ${op} (` : ''}` });
+					edits.push({ start: (node.right as AnyNode).end, end: node.end, text: op ? '))' : ')' });
+					return;
+				}
 				write(node.left as AnyNode, locals);
 				visit(node.left as AnyNode, locals, node);
 				visit(node.right as AnyNode, locals, node);
 				return;
 			}
-			case 'UpdateExpression':
+			case 'UpdateExpression': {
+				const persisted = persistTarget(node.argument as AnyNode, locals);
+				if (persisted) {
+					writes.add(persisted);
+					return replace(node, `(${persisted} = JSON.stringify(JSON.parse(${persisted}) ${node.operator === '++' ? '+' : '-'} 1))`);
+				}
+			}
 				write(node.argument as AnyNode, locals);
 				visit(node.argument as AnyNode, locals, node);
 				return;

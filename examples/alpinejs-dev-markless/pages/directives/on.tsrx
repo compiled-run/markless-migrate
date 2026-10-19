@@ -5,7 +5,6 @@ import DocsSidebar from '../../components/docs-sidebar.tsrx';
 import Sponsor from '../../components/sponsor.tsrx';
 import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
-import { watchHeadings } from '../../site.ts';
 import { Demo0 } from '../../demos/directives-on.tsrx';
 
 const HEADINGS = [{ key: 0, id: "shorthand-syntax", text: "Shorthand syntax", level: 2 }, { key: 1, id: "the-event-object", text: "The event object", level: 2 }, { key: 2, id: "keyboard-events", text: "Keyboard events", level: 2 }, { key: 3, id: "mouse-events", text: "Mouse events", level: 2 }, { key: 4, id: "custom-events", text: "Custom events", level: 2 }, { key: 5, id: "modifiers", text: "Modifiers", level: 2 }, { key: 6, id: "prevent", text: ".prevent", level: 3 }, { key: 7, id: "stop", text: ".stop", level: 3 }, { key: 8, id: "outside", text: ".outside", level: 3 }, { key: 9, id: "window", text: ".window", level: 3 }, { key: 10, id: "document", text: ".document", level: 3 }, { key: 11, id: "once", text: ".once", level: 3 }, { key: 12, id: "debounce", text: ".debounce", level: 3 }, { key: 13, id: "throttle", text: ".throttle", level: 3 }, { key: 14, id: "self", text: ".self", level: 3 }, { key: 15, id: "camel", text: ".camel", level: 3 }, { key: 16, id: "dot", text: ".dot", level: 3 }, { key: 17, id: "passive", text: ".passive", level: 3 }, { key: 18, id: "passive-false", text: ".passive.false", level: 3 }, { key: 19, id: ".capture", text: ".capture", level: 3 }] as const;
@@ -14,7 +13,7 @@ export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
 		<DocsHeader pathname={url.pathname} />
 		<DocsSidebar pathname={url.pathname} />
-		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64" onIdle={(event) => watchHeadings(event.target as HTMLElement)}>
+		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64">
 			<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
 				<h1>x-on</h1>
 				<p><code>x-on</code>{" "}allows you to easily run code on dispatched DOM events.</p>

@@ -5,8 +5,7 @@ import DocsSidebar from '../../components/docs-sidebar.tsrx';
 import Sponsor from '../../components/sponsor.tsrx';
 import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
-import { watchHeadings } from '../../site.ts';
-import { Demo0, Demo1, Demo2, Demo3, Demo4, Demo5 } from '../../demos/plugins-mask.tsrx';
+import { Demo0, Demo1, Demo2, Demo3, Demo4, Demo5, Demo6 } from '../../demos/plugins-mask.tsrx';
 
 const HEADINGS = [{ key: 0, id: "installation", text: "Installation", level: 2 }, { key: 1, id: "via-cdn", text: "Via CDN", level: 3 }, { key: 2, id: "via-npm", text: "Via NPM", level: 3 }, { key: 3, id: "x-mask", text: "x-mask", level: 2 }, { key: 4, id: "mask-functions", text: "Dynamic Masks", level: 2 }, { key: 5, id: "money-inputs", text: "Money Inputs", level: 2 }] as const;
 
@@ -14,38 +13,13 @@ export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
 		<DocsHeader pathname={url.pathname} />
 		<DocsSidebar pathname={url.pathname} />
-		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64" onIdle={(event) => watchHeadings(event.target as HTMLElement)}>
+		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64">
 			<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
 				<h1>Mask Plugin</h1>
 				<p>Alpine&#39;s Mask plugin allows you to automatically format a text input field as a user types.</p>
 				<p>This is useful for many different types of inputs: phone numbers, credit cards, dollar amounts, account numbers, dates, etc.</p>
 				<h2 id="installation"><a href="#installation">Installation</a></h2>
-				<div>
-					<div class=" relative">
-						<div class="absolute inset-0 flex justify-start items-end bg-gradient-to-t from-white to-[#ffffff66]"></div>
-						<div class="markdown">
-							<p>You can use this plugin by either including it from a{" "}<code>&lt;script&gt;</code>{" "}tag or installing it via NPM:</p>
-							<h3 id="via-cdn">Via CDN</h3>
-							<p>
-								You can include the CDN build of this plugin as a{" "}<code>&lt;script&gt;</code>{" "}tag, just make sure to include it BEFORE Alpine&#39;s core JS file.
-							</p>
-							<pre><code data-theme="github-light" data-lang="alpine" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #6A737D;">{"<!-- Alpine Plugins -->"}</span></div><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"script"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"defer"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"src"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\"https://cdn.jsdelivr.net/npm/@alpinejs/mask@3.x.x/dist/cdn.min.js\""}</span><span style="color: #24292E;">{"></"}</span><span style="color: #22863A;">{"script"}</span><span style="color: #24292E;">{">"}</span></div><div class="line">{" "}</div><div class="line"><span style="color: #6A737D;">{"<!-- Alpine Core -->"}</span></div><div class="line"><span style="color: #24292E;">{"<"}</span><span style="color: #22863A;">{"script"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"defer"}</span><span style="color: #24292E;">{" "}</span><span style="color: #6F42C1;">{"src"}</span><span style="color: #24292E;">{"="}</span><span style="color: #032F62;">{"\"https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js\""}</span><span style="color: #24292E;">{"></"}</span><span style="color: #22863A;">{"script"}</span><span style="color: #24292E;">{">"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\n<!-- Alpine Plugins -->\n<script defer src=\"https://cdn.jsdelivr.net/npm/@alpinejs/mask@3.x.x/dist/cdn.min.js\"></script>\n\n<!-- Alpine Core -->\n<script defer src=\"https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js\"></script>"}</div></code></pre>
-							<h3 id="via-npm">Via NPM</h3>
-							<p>You can install Mask from NPM for use inside your bundle like so:</p>
-							<pre><code data-theme="github-light" data-lang="shell" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #6F42C1;">{"npm"}</span><span style="color: #24292E;">{" "}</span><span style="color: #032F62;">{"install"}</span><span style="color: #24292E;">{" "}</span><span style="color: #032F62;">{"@alpinejs/mask"}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\nnpm install @alpinejs/mask"}</div></code></pre>
-							<p>Then initialize it from your bundle:</p>
-							<pre><code data-theme="github-light" data-lang="js" class="torchlight" style="background-color: #fff; --theme-selection-background: #e2e5e9;"><div class="line"><span style="color: #D73A49;">{"import"}</span><span style="color: #24292E;">{" Alpine "}</span><span style="color: #D73A49;">{"from"}</span><span style="color: #24292E;">{" "}</span><span style="color: #032F62;">{"'alpinejs'"}</span></div><div class="line"><span style="color: #D73A49;">{"import"}</span><span style="color: #24292E;">{" mask "}</span><span style="color: #D73A49;">{"from"}</span><span style="color: #24292E;">{" "}</span><span style="color: #032F62;">{"'@alpinejs/mask'"}</span></div><div class="line">{" "}</div><div class="line"><span style="color: #24292E;">{"Alpine."}</span><span style="color: #6F42C1;">{"plugin"}</span><span style="color: #24292E;">{"(mask)"}</span></div><div class="line">{" "}</div><div class="line"><span style="color: #D73A49;">{"..."}</span></div><div aria-hidden="true" hidden tabindex="-1" style="display: none;" class="torchlight-copy-target">{"\nimport Alpine from 'alpinejs'\nimport mask from '@alpinejs/mask'\n\nAlpine.plugin(mask)\n\n..."}</div></code></pre>
-						</div>
-					</div>
-					{" "}
-					<button class="text-cyan-600 font-medium underline">
-						{" "}
-						<span>Show</span>
-						{" "}
-						<span>↓</span>
-						{" "}
-					</button>
-				</div>
+				<Demo6 />
 				<h2 id="x-mask"><a href="#x-mask">x-mask</a></h2>
 				<p>The primary API for using this plugin is the{" "}<code>x-mask</code>{" "}directive.</p>
 				<p>Let&#39;s start by looking at the following simple example of a date field:</p>

@@ -2,6 +2,8 @@ import type { Children } from '@markless/core';
 import { Html } from '@markless/router';
 import { headFor, normalize } from './site.ts';
 import { serverStylesheets } from './generated/server-heads.ts';
+import { PERSISTED } from './generated/persist.ts';
+import { CONTENTS_HIGHLIGHTER, persistDefaults } from './page-scripts.ts';
 
 export default function Document({ url, children }: { readonly url?: { readonly pathname: string }; readonly children?: Children }) @{
 	const pathname = normalize(url?.pathname);
@@ -10,6 +12,8 @@ export default function Document({ url, children }: { readonly url?: { readonly 
 	const docs = pathname !== '/' && !server;
 	const home = pathname === '/';
 	const extra = server ?? [];
+	const persisted = PERSISTED[pathname];
+	const persistScript = persisted ? persistDefaults(persisted) : '';
 
 	<Html lang="en">
 		<head>
@@ -39,8 +43,14 @@ export default function Document({ url, children }: { readonly url?: { readonly 
 		</head>
 		<body>
 			{children}
+			@if (docs) {
+				<script>{CONTENTS_HIGHLIGHTER}</script>;
+			}
+			@if (persisted) {
+				<script>{persistScript}</script>;
+			}
 			<script src="https://cdn.jsdelivr.net/npm/@docsearch/js@3"></script>
-			<script>{"if (document.querySelector('#docsearch')) { const holder = document.createElement('div'); holder.hidden = true; document.body.append(holder); docsearch({ container: holder, appId: 'SM9GAGAUKZ', apiKey: '1fad8740c0cf75209d11ae25f1f6f55c', indexName: 'alpinejs' }); }"}</script>
+			<script>{"if (document.querySelector('#docsearch')) { const holder = document.createElement('div'); holder.hidden = true; document.body.append(holder); docsearch({ container: holder, appId: 'SM9GAGAUKZ', apiKey: '1fad8740c0cf75209d11ae25f1f6f55c', indexName: 'alpinejs' }); } document.addEventListener('click', (event) => { if (event.target instanceof Element) if (event.target.closest('#docsearch .DocSearch-Button')) window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, ctrlKey: true, bubbles: true })); });"}</script>
 		</body>
 	</Html>
 }

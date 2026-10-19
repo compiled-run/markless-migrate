@@ -14,10 +14,12 @@ const docs = loadDocs(out('content/docs'));
 
 const slug = (route: string) => route.slice(1).replace(/\//g, '-');
 
+const persistedByRoute: Record<string, Record<string, string>> = {};
 for (const [index, page] of docs.entries()) {
 	const module = page.doc.demos.length ? `demos/${slug(page.route)}.tsrx` : undefined;
 	const translated = translateDemos(page.doc.demos, { route: page.route, up: '../' });
 	if (module && translated.module) write(out(module), translated.module);
+	if (Object.keys(translated.persisted).length) persistedByRoute[page.route] = translated.persisted;
 	write(out(`pages${page.route}.tsrx`), docsPage(page, docs[index - 1], docs[index + 1], translated.refs, translated.module ? module : undefined));
 }
 
@@ -58,6 +60,9 @@ ${heads.join('\n')}
 
 export const DOC_ROUTES: readonly string[] = ${JSON.stringify([...docs, ...sections].map((p) => p.route))};
 `);
+// Alpine's $persist writes each value's JSON to localStorage when the page starts, before anyone uses it.
+write(out('generated/persist.ts'), `${GENERATED}export const PERSISTED: Readonly<Record<string, Readonly<Record<string, string>>>> = ${JSON.stringify(persistedByRoute)};\n`);
+
 const server = generateServerPages();
 
 // What the old server answers besides its pages: the component pages its sidebar links but only sells (302 to

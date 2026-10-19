@@ -2,6 +2,7 @@
 import { element, state } from '@markless/core';
 import { show } from '../components/alpine/show.ts';
 import { anchor } from '../components/alpine/anchor.ts';
+import { setup } from '../components/alpine/on.ts';
 import { setStyles } from '../components/alpine/bind.ts';
 
 export function Demo0() @{
@@ -10,9 +11,13 @@ export function Demo0() @{
 	const el1 = element<HTMLElement>();
 	const el2 = element<HTMLElement>();
 
-		<div onIdle={() => {
-			anchor(el0, el1, []);
-		}} class="demo overflow-hidden" el={el2}>
+		<div onPointerOver={() => setup(el2, () => {
+				anchor(el0, el1, []);
+			})} onFocusIn={() => setup(el2, () => {
+				anchor(el0, el1, []);
+			})} onTouchStart={() => setup(el2, () => {
+				anchor(el0, el1, []);
+			})} class="demo overflow-hidden" el={el2}>
 			<div class="flex justify-center">
 				<button el={el1} onClick={(event) => {
 					open = ! open;
@@ -33,9 +38,13 @@ export function Demo1() @{
 	const el1 = element<HTMLElement>();
 	const el2 = element<HTMLElement>();
 
-		<div onIdle={() => {
-			anchor(el0, el1, ["bottom-start"]);
-		}} class="demo overflow-hidden" el={el2}>
+		<div onPointerOver={() => setup(el2, () => {
+				anchor(el0, el1, ["bottom-start"]);
+			})} onFocusIn={() => setup(el2, () => {
+				anchor(el0, el1, ["bottom-start"]);
+			})} onTouchStart={() => setup(el2, () => {
+				anchor(el0, el1, ["bottom-start"]);
+			})} class="demo overflow-hidden" el={el2}>
 			<div class="flex justify-center">
 				<button el={el1} onClick={(event) => {
 					open = ! open;
@@ -56,9 +65,13 @@ export function Demo2() @{
 	const el1 = element<HTMLElement>();
 	const el2 = element<HTMLElement>();
 
-		<div onIdle={() => {
-			anchor(el0, el1, ["fixed"]);
-		}} class="demo overflow-hidden" el={el2}>
+		<div onPointerOver={() => setup(el2, () => {
+				anchor(el0, el1, ["fixed"]);
+			})} onFocusIn={() => setup(el2, () => {
+				anchor(el0, el1, ["fixed"]);
+			})} onTouchStart={() => setup(el2, () => {
+				anchor(el0, el1, ["fixed"]);
+			})} class="demo overflow-hidden" el={el2}>
 			<div class="flex justify-center">
 				<button el={el1} onClick={(event) => {
 					open = ! open;
@@ -79,9 +92,13 @@ export function Demo3() @{
 	const el1 = element<HTMLElement>();
 	const el2 = element<HTMLElement>();
 
-		<div onIdle={() => {
-			anchor(el0, el1, ["offset","10"]);
-		}} class="demo overflow-hidden" el={el2}>
+		<div onPointerOver={() => setup(el2, () => {
+				anchor(el0, el1, ["offset","10"]);
+			})} onFocusIn={() => setup(el2, () => {
+				anchor(el0, el1, ["offset","10"]);
+			})} onTouchStart={() => setup(el2, () => {
+				anchor(el0, el1, ["offset","10"]);
+			})} class="demo overflow-hidden" el={el2}>
 			<div class="flex justify-center">
 				<button el={el1} onClick={(event) => {
 					open = ! open;
@@ -102,9 +119,13 @@ export function Demo4() @{
 	const el1 = element<HTMLElement>();
 	const el2 = element<HTMLElement>();
 
-		<div onIdle={() => {
-			anchor(el0, el1, ["noflip"]);
-		}} class="demo overflow-hidden" el={el2}>
+		<div onPointerOver={() => setup(el2, () => {
+				anchor(el0, el1, ["noflip"]);
+			})} onFocusIn={() => setup(el2, () => {
+				anchor(el0, el1, ["noflip"]);
+			})} onTouchStart={() => setup(el2, () => {
+				anchor(el0, el1, ["noflip"]);
+			})} class="demo overflow-hidden" el={el2}>
 			<div class="flex justify-center">
 				<button el={el1} onClick={(event) => {
 					open = ! open;
@@ -127,14 +148,28 @@ export function Demo5() @{
 	const el1 = element<HTMLElement>();
 	const el2 = element<HTMLElement>();
 
-		<div onIdle={() => {
-			setStyles(el0, { position: 'absolute', top: anchorY+'px', left: anchorX+'px' });
-			anchor(el0, el1, ["no-style"], (x, y) => {
-				anchorX = x;
-anchorY = y;
+		<div onPointerOver={() => setup(el2, () => {
 				setStyles(el0, { position: 'absolute', top: anchorY+'px', left: anchorX+'px' });
-			});
-		}} class="demo overflow-hidden" el={el2}>
+				anchor(el0, el1, ["no-style"], (x, y) => {
+					anchorX = x;
+anchorY = y;
+					setStyles(el0, { position: 'absolute', top: anchorY+'px', left: anchorX+'px' });
+				});
+			})} onFocusIn={() => setup(el2, () => {
+				setStyles(el0, { position: 'absolute', top: anchorY+'px', left: anchorX+'px' });
+				anchor(el0, el1, ["no-style"], (x, y) => {
+					anchorX = x;
+anchorY = y;
+					setStyles(el0, { position: 'absolute', top: anchorY+'px', left: anchorX+'px' });
+				});
+			})} onTouchStart={() => setup(el2, () => {
+				setStyles(el0, { position: 'absolute', top: anchorY+'px', left: anchorX+'px' });
+				anchor(el0, el1, ["no-style"], (x, y) => {
+					anchorX = x;
+anchorY = y;
+					setStyles(el0, { position: 'absolute', top: anchorY+'px', left: anchorX+'px' });
+				});
+			})} class="demo overflow-hidden" el={el2}>
 			<div class="flex justify-center">
 				<button el={el1} onClick={(event) => {
 					open = ! open;
@@ -154,9 +189,13 @@ export function Demo6() @{
 	const el0 = element<HTMLElement>();
 	const el1 = element<HTMLElement>();
 
-		<div onIdle={() => {
-			anchor(el0, document.querySelector('.trigger'), []);
-		}} class="demo overflow-hidden" el={el1}>
+		<div onPointerOver={() => setup(el1, () => {
+				anchor(el0, document.querySelector('.trigger'), []);
+			})} onFocusIn={() => setup(el1, () => {
+				anchor(el0, document.querySelector('.trigger'), []);
+			})} onTouchStart={() => setup(el1, () => {
+				anchor(el0, document.querySelector('.trigger'), []);
+			})} class="demo overflow-hidden" el={el1}>
 			<div class="flex justify-center">
 				<button class="trigger" onClick={(event) => {
 					open = ! open;

@@ -5,7 +5,6 @@ import DocsSidebar from '../../components/docs-sidebar.tsrx';
 import Sponsor from '../../components/sponsor.tsrx';
 import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
-import { watchHeadings } from '../../site.ts';
 import { Demo0, Demo1 } from '../../demos/plugins-resize.tsrx';
 
 const HEADINGS = [{ key: 0, id: "installation", text: "Installation", level: 2 }, { key: 1, id: "via-cdn", text: "Via CDN", level: 3 }, { key: 2, id: "via-npm", text: "Via NPM", level: 3 }, { key: 3, id: "x-resize", text: "x-resize", level: 2 }, { key: 4, id: "modifiers", text: "Modifiers", level: 2 }, { key: 5, id: "viewport", text: ".viewport", level: 3 }, { key: 6, id: "document", text: ".document", level: 3 }] as const;
@@ -14,7 +13,7 @@ export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
 		<DocsHeader pathname={url.pathname} />
 		<DocsSidebar pathname={url.pathname} />
-		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64" onIdle={(event) => watchHeadings(event.target as HTMLElement)}>
+		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64">
 			<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
 				<h1>Resize Plugin</h1>
 				<p>

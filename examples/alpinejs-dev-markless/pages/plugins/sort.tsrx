@@ -5,7 +5,6 @@ import DocsSidebar from '../../components/docs-sidebar.tsrx';
 import Sponsor from '../../components/sponsor.tsrx';
 import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
-import { watchHeadings } from '../../site.ts';
 import { Demo0, Demo1, Demo2, Demo3, Demo4, Demo5, Demo6, Demo7 } from '../../demos/plugins-sort.tsrx';
 
 const HEADINGS = [{ key: 0, id: "installation", text: "Installation", level: 2 }, { key: 1, id: "via-cdn", text: "Via CDN", level: 3 }, { key: 2, id: "via-npm", text: "Via NPM", level: 3 }, { key: 3, id: "basic-usage", text: "Basic usage", level: 2 }, { key: 4, id: "sort-handlers", text: "Sort handlers", level: 2 }, { key: 5, id: "sorting-groups", text: "Sorting groups", level: 2 }, { key: 6, id: "drag-handles", text: "Drag handles", level: 2 }, { key: 7, id: "ignoring-elements", text: "Ignoring elements", level: 2 }, { key: 8, id: "ghost-elements", text: "Ghost elements", level: 2 }, { key: 9, id: "ghost-styling", text: "Styling the ghost element", level: 3 }, { key: 10, id: "sorting-class", text: "Sorting class on body", level: 2 }, { key: 11, id: "css-hover-bug", text: "CSS hover bug", level: 2 }, { key: 12, id: "custom-configuration", text: "Custom configuration", level: 2 }] as const;
@@ -14,7 +13,7 @@ export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
 		<DocsHeader pathname={url.pathname} />
 		<DocsSidebar pathname={url.pathname} />
-		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64" onIdle={(event) => watchHeadings(event.target as HTMLElement)}>
+		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64">
 			<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
 				<h1>Sort Plugin</h1>
 				<p>Alpine&#39;s Sort plugin allows you to easily re-order elements by dragging them with your mouse.</p>

@@ -5,7 +5,6 @@ import DocsSidebar from '../../components/docs-sidebar.tsrx';
 import Sponsor from '../../components/sponsor.tsrx';
 import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
-import { watchHeadings } from '../../site.ts';
 
 const HEADINGS = [{ key: 0, id: "registering-from-a-bundle", text: "Registering from a bundle", level: 2 }, { key: 1, id: "initial-parameters", text: "Initial parameters", level: 2 }, { key: 2, id: "init-functions", text: "Init functions", level: 2 }, { key: 3, id: "destroy-functions", text: "Destroy functions", level: 2 }, { key: 4, id: "using-magic-properties", text: "Using magic properties", level: 2 }, { key: 5, id: "encapsulating-directives-with-x-bind", text: "Encapsulating directives with x-bind", level: 2 }] as const;
 
@@ -13,7 +12,7 @@ export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
 		<DocsHeader pathname={url.pathname} />
 		<DocsSidebar pathname={url.pathname} />
-		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64" onIdle={(event) => watchHeadings(event.target as HTMLElement)}>
+		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64">
 			<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
 				<h1>Alpine.data</h1>
 				<p><code>Alpine.data(...)</code>{" "}provides a way to re-use{" "}<code>x-data</code>{" "}contexts within your application.</p>

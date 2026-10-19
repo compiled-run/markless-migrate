@@ -9,17 +9,14 @@ export function Demo0() @{
 	const el0 = element<HTMLElement>();
 	const value1 = computed(() => text('Width: ' + width + 'px'));
 	const value2 = computed(() => text('Height: ' + height + 'px'));
-	const el3 = element<HTMLElement>();
 
 		<div onIdle={() => {
 			resize(el0, [], (width, height) => {
 				width = width; height = height;
 			});
-		}} class="demo" el={el3}>
+		}} class="demo">
 			<div el={el0}>
-				<i>
-					Resize your browser window to see the width and height values change.
-				</i>
+				<i>Resize your browser window to see the width and height values change.</i>
 				{" "}
 				<br />
 				<br />
@@ -35,17 +32,14 @@ export function Demo1() @{
 	const el0 = element<HTMLElement>();
 	const value1 = computed(() => text('Width: ' + width + 'px'));
 	const value2 = computed(() => text('Height: ' + height + 'px'));
-	const el3 = element<HTMLElement>();
 
 		<div onIdle={() => {
 			resize(el0, ["document"], (width, height) => {
 				width = width; height = height;
 			});
-		}} class="demo" el={el3}>
+		}} class="demo">
 			<div el={el0}>
-				<i>
-					Resize your browser window to see the document width and height values change.
-				</i>
+				<i>Resize your browser window to see the document width and height values change.</i>
 				{" "}
 				<br />
 				<br />

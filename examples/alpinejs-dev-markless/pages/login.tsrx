@@ -34,12 +34,12 @@ export default function Guest() @{
 							<div class="relative bg-white p-2 tracking-wider text-gray-400">OR</div>
 						</div>
 						<div>
-							<label class="block font-medium text-sm text-gray-700" for="email">Email</label>
+							<label class="block font-medium text-sm text-gray-700" for="email">{" "}Email{" "}</label>
 							{" "}
 							<input class="border-gray-300 focus:border-cyan-400 focus:ring focus:ring-cyan-400 focus:ring-opacity-50 mt-1 block w-full rounded-lg" id="email" type="email" name="email" required="required" autofocus="autofocus" />
 						</div>
 						<div class="mt-4">
-							<label class="block font-medium text-sm text-gray-700" for="password">Password</label>
+							<label class="block font-medium text-sm text-gray-700" for="password">{" "}Password{" "}</label>
 							{" "}
 							<input class="border-gray-300 focus:border-cyan-400 focus:ring focus:ring-cyan-400 focus:ring-opacity-50 mt-1 block w-full rounded-lg" id="password" type="password" name="password" required="required" autocomplete="current-password" />
 						</div>
@@ -53,9 +53,9 @@ export default function Guest() @{
 							</label>
 						</div>
 						<div class="mt-4 flex items-center justify-end">
-							<a class="text-sm text-gray-600 underline hover:text-gray-900" href="/forgot-password">Forgot your password?</a>
+							<a class="text-sm text-gray-600 underline hover:text-gray-900" href="/forgot-password">{" "}Forgot your password?{" "}</a>
 							{" "}
-							<button type="submit" class="inline-flex items-center px-6 py-2 bg-components-cyan-600 border border-transparent rounded-full font-title text-sm text-white font-bold hover:bg-components-cyan-700 focus:outline-none focus:border-components-cyan-700 focus:ring focus:ring-gray-300 disabled:opacity-25 transition ml-4">Log in</button>
+							<button type="submit" class="inline-flex items-center px-6 py-2 bg-components-cyan-600 border border-transparent rounded-full font-title text-sm text-white font-bold hover:bg-components-cyan-700 focus:outline-none focus:border-components-cyan-700 focus:ring focus:ring-gray-300 disabled:opacity-25 transition ml-4">{" "}Log in{" "}</button>
 						</div>
 					</form>
 				</div>

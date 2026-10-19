@@ -4,13 +4,12 @@ import { rows, text } from '../components/alpine/bind.ts';
 
 export function Demo0() @{
 	let colors = state(['Red', 'Orange', 'Yellow']);
-	const rows1 = computed(() => rows(colors));
 
 		<div class="demo">
 			<ul>
 				<template></template>
-				@for (const row0 of rows1; key row0.index) {
-					<li>{row0.item}</li>
+				@for (const row0 of colors; key row0) {
+					<li>{row0}</li>
 				}
 			</ul>
 		</div>

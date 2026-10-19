@@ -1,4 +1,5 @@
 import MarkdownIt from 'markdown-it';
+import { parseFragment, serialize, serializeOuter } from 'parse5';
 import { highlight } from './highlight.ts';
 
 export interface FrontMatter {
@@ -55,5 +56,18 @@ export function renderDoc(source: string): RenderedDoc {
 		headings.push({ id: finalId, text, level: Number(level) as 2 | 3 | 4 });
 		return id ? whole : `<h${level} id="${finalId}">${inner}</h${level}>`;
 	});
-	return { front, html, demos, headings };
+	return { front, html: liveBlocks(html, demos), demos, headings };
+}
+
+// Raw HTML in the markdown with its own x-data (the plugin pages' collapsible installation notes) runs on the old page
+// like any example, so it is a live example too, markdown rendered inside it.
+function liveBlocks(html: string, demos: string[]): string {
+	if (!/\sx-data[=\s>]/.test(html.replace(/<pre>[\s\S]*?<\/pre>/g, ''))) return html;
+	const fragment = parseFragment(html);
+	for (const [i, node] of fragment.childNodes.entries()) {
+		if (!('tagName' in node) || !node.attrs.some((a) => a.name === 'x-data')) continue;
+		demos.push(serializeOuter(node));
+		fragment.childNodes[i] = parseFragment(`<div ${DEMO_MARK}="${demos.length - 1}"></div>`).childNodes[0]!;
+	}
+	return serialize(fragment);
 }

@@ -140,7 +140,7 @@ export default function ComponentPage({ url }: PageProps) @{
 													</ul>
 													<div class="rounded-md">
 														<button class="bg-components-cyan-600 hover:bg-components-cyan-700 mx-auto mt-10 flex items-center justify-center rounded-full border border-transparent px-10 py-2.5 font-medium text-white transition-colors sm:w-auto" onClick={(event) => { event.preventDefault(); openAuth(); }}>
-															Get Access
+															{" "}Get Access{" "}
 														</button>
 													</div>
 												</div>

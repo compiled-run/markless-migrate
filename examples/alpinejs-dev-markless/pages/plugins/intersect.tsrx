@@ -5,7 +5,6 @@ import DocsSidebar from '../../components/docs-sidebar.tsrx';
 import Sponsor from '../../components/sponsor.tsrx';
 import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
-import { watchHeadings } from '../../site.ts';
 import { Demo0 } from '../../demos/plugins-intersect.tsrx';
 
 const HEADINGS = [{ key: 0, id: "installation", text: "Installation", level: 2 }, { key: 1, id: "via-cdn", text: "Via CDN", level: 3 }, { key: 2, id: "via-npm", text: "Via NPM", level: 3 }, { key: 3, id: "x-intersect", text: "x-intersect", level: 2 }, { key: 4, id: "x-intersect-enter", text: "x-intersect:enter", level: 3 }, { key: 5, id: "x-intersect-leave", text: "x-intersect:leave", level: 3 }, { key: 6, id: "modifiers", text: "Modifiers", level: 2 }, { key: 7, id: "once", text: ".once", level: 3 }, { key: 8, id: "dwell", text: ".dwell", level: 3 }, { key: 9, id: "half", text: ".half", level: 3 }, { key: 10, id: "full", text: ".full", level: 3 }, { key: 11, id: "threshold", text: ".threshold", level: 3 }, { key: 12, id: "margin", text: ".margin", level: 3 }, { key: 13, id: "parent", text: ".parent", level: 3 }] as const;
@@ -14,7 +13,7 @@ export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
 		<DocsHeader pathname={url.pathname} />
 		<DocsSidebar pathname={url.pathname} />
-		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64" onIdle={(event) => watchHeadings(event.target as HTMLElement)}>
+		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64">
 			<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
 				<h1>Intersect Plugin</h1>
 				<p>

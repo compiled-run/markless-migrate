@@ -5,7 +5,6 @@ import DocsSidebar from '../../components/docs-sidebar.tsrx';
 import Sponsor from '../../components/sponsor.tsrx';
 import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
-import { watchHeadings } from '../../site.ts';
 
 const HEADINGS = [{ key: 0, id: "installation", text: "Installation", level: 2 }, { key: 1, id: "via-cdn", text: "Via CDN", level: 3 }, { key: 2, id: "via-npm", text: "Via NPM", level: 3 }, { key: 3, id: "basic-example", text: "Basic Example", level: 2 }, { key: 4, id: "whats-supported", text: "What's Supported", level: 2 }, { key: 5, id: "object-and-array-literals", text: "Object and Array Literals", level: 3 }, { key: 6, id: "basic-operations", text: "Basic Operations", level: 3 }, { key: 7, id: "assignments-and-updates", text: "Assignments and Updates", level: 3 }, { key: 8, id: "method-calls", text: "Method Calls", level: 3 }, { key: 9, id: "whats-not-supported", text: "What's Not Supported", level: 2 }, { key: 10, id: "complex-expressions", text: "Complex Expressions", level: 3 }, { key: 11, id: "global-variables-and-functions", text: "Global Variables and Functions", level: 3 }, { key: 12, id: "html-injection", text: "HTML Injection", level: 3 }, { key: 13, id: "when-to-extract-logic", text: "When to Extract Logic", level: 2 }, { key: 14, id: "csp-headers", text: "CSP Headers", level: 2 }] as const;
 
@@ -13,7 +12,7 @@ export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
 		<DocsHeader pathname={url.pathname} />
 		<DocsSidebar pathname={url.pathname} />
-		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64" onIdle={(event) => watchHeadings(event.target as HTMLElement)}>
+		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64">
 			<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
 				<h1>CSP (Content-Security Policy) Build</h1>
 				<p>

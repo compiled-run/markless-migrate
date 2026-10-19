@@ -12,7 +12,7 @@ const normalize = () => {
 			else if (child.nodeType === 1) {
 				for (const a of [...child.attributes]) {
 					// Field state is compared from the live values below; the attributes only say how each side set it.
-					if (/^(x-|@|:|wire:|data-teleport)/.test(a.name) || ['value', 'selected', 'checked'].includes(a.name)) child.removeAttribute(a.name);
+					if (/^(x-|@|:|wire:|data-teleport|data-markless-|data-has-alpine)/.test(a.name) || ['value', 'selected', 'checked'].includes(a.name)) child.removeAttribute(a.name);
 				}
 				if (child.getAttribute('style') !== null) {
 					const s = child.getAttribute('style').split(';').map((d) => d.trim()).filter(Boolean).sort().join('; ');

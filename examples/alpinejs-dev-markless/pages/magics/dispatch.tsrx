@@ -5,7 +5,6 @@ import DocsSidebar from '../../components/docs-sidebar.tsrx';
 import Sponsor from '../../components/sponsor.tsrx';
 import Toc from '../../components/toc.tsrx';
 import Attribution from '../../components/attribution.tsrx';
-import { watchHeadings } from '../../site.ts';
 import { Demo0, Demo1 } from '../../demos/magics-dispatch.tsrx';
 
 const HEADINGS = [{ key: 0, id: "dispatching-to-components", text: "Dispatching to other components", level: 2 }, { key: 1, id: "dispatching-to-x-model", text: "Dispatching to x-model", level: 2 }, { key: 2, id: "cancelable-events", text: "Cancelable events", level: 2 }, { key: 3, id: "overwriting-options", text: "Overwriting options", level: 2 }] as const;
@@ -14,7 +13,7 @@ export default function DocsPage({ url }: PageProps) @{
 	<div style="display: contents">
 		<DocsHeader pathname={url.pathname} />
 		<DocsSidebar pathname={url.pathname} />
-		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64" onIdle={(event) => watchHeadings(event.target as HTMLElement)}>
+		<main class="pt-32 pl-0 pr-0 md:pl-48 lg:pl-64 xl:pr-64">
 			<div class="m-auto max-w-3xl px-6 pb-24 text-gray-800 antialiased markdown" listen-for-intersection-of-titles="">
 				<h1>$dispatch</h1>
 				<p><code>$dispatch</code>{" "}is a helpful shortcut for dispatching browser events.</p>

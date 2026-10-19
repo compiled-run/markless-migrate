@@ -77,25 +77,29 @@ function helperStages(modifiers: readonly string[], stage: string): { enter?: St
 
 function stateOf(el: HTMLElement, options: ShowOptions): State {
 	let state = states.get(el);
+	// x-bind can hand x-transition new classes at any time (the homepage's direction): the latest call's classes apply.
+	if (state && options.transition?.classes) setClassStages(state, options.transition.classes);
 	if (state) return state;
-	const shown = el.style.display !== 'none' && !el.hidden;
+	const floor = options.collapse ? Number(modifierValue(options.collapse, 'min', 0)) : undefined;
+	const shown = el.style.display !== 'none' && !el.hidden && !(floor !== undefined && el.style.height === `${floor}px` && el.style.overflow === 'hidden');
 	state = { shown, setter: setStyles, initialised: false };
 	const transition = options.transition;
 	if (transition?.helper) {
 		for (const [stage, modifiers] of Object.entries(transition.helper)) Object.assign(state, helperStages(modifiers, stage));
 	}
-	if (transition?.classes) {
-		state.setter = setClasses;
-		const c = transition.classes;
-		state.enter = { during: c.enter ?? '', start: c['enter-start'] ?? '', end: c['enter-end'] ?? '' };
-		state.leave = { during: c.leave ?? '', start: c['leave-start'] ?? '', end: c['leave-end'] ?? '' };
-	}
+	if (transition?.classes) setClassStages(state, transition.classes);
 	if (options.collapse) {
 		const m = options.collapse;
 		state.collapse = { floor: Number(modifierValue(m, 'min', 0)), fullyHide: !m.includes('min'), duration: Number(modifierValue(m, 'duration', 250)) / 1000 };
 	}
 	states.set(el, state);
 	return state;
+}
+
+function setClassStages(state: State, c: Readonly<Record<string, string>>): void {
+	state.setter = setClasses;
+	state.enter = { during: c.enter ?? '', start: c['enter-start'] ?? '', end: c['enter-end'] ?? '' };
+	state.leave = { during: c.leave ?? '', start: c['leave-start'] ?? '', end: c['leave-end'] ?? '' };
 }
 
 function once(fn: () => void): () => void {

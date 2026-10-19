@@ -1,14 +1,16 @@
 import type { PageProps } from '@markless/router';
-import { computed, state } from '@markless/core';
+import { element, state } from '@markless/core';
 import SearchButton from '../components/search-button.tsrx';
+import { showStep } from '../components/home-steps.ts';
 
 const STEP_ORDER = ['directives', 'magics', 'methods'];
 
 export default function Home(_props: PageProps) @{
 	let step = state('directives');
-	let direction = state('');
-	// Alpine's x-transition slides the new panel in from the side its tab sits on; home.css plays that enter once.
-	const entering = computed(() => (direction ? `enter-from-${direction}` : ''));
+	let direction = state('right');
+	const directives = element<HTMLDivElement>();
+	const magics = element<HTMLDivElement>();
+	const methods = element<HTMLDivElement>();
 
 	<div style="display: contents">
 		<nav class="absolute flex w-full items-center justify-end gap-4 px-6 py-4 font-medium text-gray-800">
@@ -64,8 +66,10 @@ export default function Home(_props: PageProps) @{
 						<button
 						class={step === 'directives' ? 'rounded-xl px-3 py-1 ring-gray-800 focus:outline-none focus:ring-1 bg-gray-800 text-white' : 'rounded-xl px-3 py-1 ring-gray-800 focus:outline-none focus:ring-1'}
 						onClick={() => {
+							if (step === 'directives') return;
 							direction = STEP_ORDER.indexOf('directives') > STEP_ORDER.indexOf(step) ? 'right' : 'left';
 							step = 'directives';
+							showStep([directives, magics, methods], 0, direction);
 						}}
 					>
 						{' '}
@@ -77,8 +81,10 @@ export default function Home(_props: PageProps) @{
 					<button
 						class={step === 'magics' ? 'rounded-xl px-3 py-1 ring-gray-800 focus:outline-none focus:ring-1 bg-gray-800 text-white' : 'rounded-xl px-3 py-1 ring-gray-800 focus:outline-none focus:ring-1'}
 						onClick={() => {
+							if (step === 'magics') return;
 							direction = STEP_ORDER.indexOf('magics') > STEP_ORDER.indexOf(step) ? 'right' : 'left';
 							step = 'magics';
+							showStep([directives, magics, methods], 1, direction);
 						}}
 					>
 						{' '}
@@ -90,8 +96,10 @@ export default function Home(_props: PageProps) @{
 					<button
 						class={step === 'methods' ? 'rounded-xl px-3 py-1 ring-gray-800 focus:outline-none focus:ring-1 bg-gray-800 text-white' : 'rounded-xl px-3 py-1 ring-gray-800 focus:outline-none focus:ring-1'}
 						onClick={() => {
+							if (step === 'methods') return;
 							direction = STEP_ORDER.indexOf('methods') > STEP_ORDER.indexOf(step) ? 'right' : 'left';
 							step = 'methods';
+							showStep([directives, magics, methods], 2, direction);
 						}}
 					>
 						{' '}
@@ -110,7 +118,7 @@ export default function Home(_props: PageProps) @{
 					</div>
 				</div>
 				<div class="m-auto pt-12 pb-16 md:w-[750px] md:px-0 md:pb-0 lg:w-[1000px]">
-					<div style={step === 'directives' ? '' : 'display: none;'} class={step === 'directives' ? entering : ''} onAnimationEnd={() => (direction = '')}>
+					<div el={directives}>
 						<div class="flex flex-col md:flex-row">
 							<div class="md:w-[30%] pt-8 pb-4 md:pb-8">
 								{" "}
@@ -369,7 +377,7 @@ export default function Home(_props: PageProps) @{
 							</div>
 						</div>
 					</div>
-					<div style={step === 'magics' ? '' : 'display: none;'} class={step === 'magics' ? entering : ''} onAnimationEnd={() => (direction = '')}>
+					<div el={magics} style="display: none;">
 						<div class="flex flex-col md:flex-row">
 							<div class="md:w-[30%] pt-8 pb-4 md:pb-8">
 								{" "}
@@ -472,7 +480,7 @@ export default function Home(_props: PageProps) @{
 							</div>
 						</div>
 					</div>
-					<div style={step === 'methods' ? '' : 'display: none;'} class={step === 'methods' ? entering : ''} onAnimationEnd={() => (direction = '')}>
+					<div el={methods} style="display: none;">
 						<div class="flex flex-col md:flex-row">
 							<div class="md:w-[30%] pt-8 pb-4 md:pb-8">
 								{" "}
