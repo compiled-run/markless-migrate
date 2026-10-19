@@ -9,7 +9,8 @@ import { parseFragment } from 'parse5';
 import { cleanDocument, frameworkBuilds, type Dropped } from './clean.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, type Document, type Element } from './dom.ts';
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
-import { bindParts, bodyHandlers, writeParts, type PartUse } from './parts.ts';
+import { bindParts, bodyHandlers, onRoute, UNPORTED, useResolver, writeParts, type PartUse } from './parts.ts';
+import { sourceSlotResolver, type PartResolver } from './usage.ts';
 import { documentModule, extrasModule, HEAD_HELPER, splitBody } from './document.ts';
 import { emitElement, lit, mergeBindings, type Binding } from './tsrx.ts';
 
@@ -26,6 +27,8 @@ export interface ConvertOptions {
 	readonly log?: (line: string) => void;
 	/** Only these routes (for iterating on one page); the generated route table still lists every route. */
 	readonly only?: readonly string[];
+	/** Which library part renders each element, from the old source; by default plan's libraries.json. */
+	readonly resolver?: PartResolver;
 	/** Use every control that holds content back on the old pages, to carry that content (default on). */
 	readonly reveal?: boolean;
 }
@@ -52,6 +55,8 @@ export interface ConvertReport {
 	readonly assets: { readonly copied: number; readonly missing: readonly string[] };
 	readonly styles: number;
 	readonly unconverted: readonly { readonly route: string; readonly reason: string }[];
+	/** Library parts the source renders that no port implements yet, with how many routes show them (only where a route renders the part itself, not in a shared region). */
+	readonly unported: readonly { readonly part: string; readonly routes: number }[];
 }
 
 /** The page file a route is served from: `/` is `pages/index.tsrx`, a path with routes under it is its folder's index. */
@@ -226,6 +231,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	} finally {
 		await browser.close();
 	}
+	const resolver: PartResolver = options.resolver ?? (await sourceSlotResolver(join(state, 'libraries.json')));
+	useResolver(resolver);
+	log(`parts resolved by: ${resolver.name}`);
 	const dropped: Dropped = new Map();
 	const styles = new Map<string, string>();
 	const unconverted: { route: string; reason: string }[] = [];
@@ -267,6 +275,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const url = new URL(route, options.old);
 		const file = pageFile(url.pathname, folders);
 		const parts: PartUse[] = [];
+		onRoute(route);
 		const markup = emitElement(p.root, { bind: (el): Binding | undefined => factored.binding(route, el) ?? withAppend(el, bindParts(el, usedPorts)), dropped: noteDropped });
 		const list = byFile.get(file) ?? [];
 		list.push({ route, search: url.search, markup, parts });
@@ -328,6 +337,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		assets: { copied: assets.copied.length, missing: assets.missing },
 		styles: styles.size,
 		unconverted,
+		unported: [...UNPORTED].map(([part, routes]) => ({ part, routes: routes.size })).sort((a, b) => b.routes - a.routes),
 	};
 	await writeFile(join(state, 'convert', 'report.json'), JSON.stringify(report, null, '\t'));
 	return report;

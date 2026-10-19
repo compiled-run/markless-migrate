@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { attr, type Element } from './dom.ts';
 import type { Binding } from './tsrx.ts';
+import type { PartResolver } from './usage.ts';
 
 /** The Markless ports of library behaviour, each written once and used on every site whose markup shows that library. */
 export const PARTS_DIR = fileURLToPath(new URL('../../parts/', import.meta.url));
@@ -12,18 +13,23 @@ export type PartEvent = 'click' | 'keydown' | 'pointerover' | 'pointerout' | 'po
 export interface Port {
 	/** The port's module under `parts/`, without `.ts`. */
 	readonly module: string;
-	/** The library and part, as the report names it. */
+	/** The package the port replaces, as the old source imports it. */
 	readonly library: string;
+	/** The exports it implements, as the source names them off the package. */
+	readonly exports: readonly string[];
 	readonly events: readonly PartEvent[];
-	/** Whether an element of the old page is this library's part, by the markup contract the library writes. */
-	detect(el: Element): boolean;
+	/**
+	 * Among the parts the source renders with an element's `data-slot`, whether this element is this library's: the markup
+	 * contract tells Radix's tab from Base UI's when a site renders both. The source decides the part; this only places it.
+	 */
+	locate(el: Element): boolean;
 }
 
 const slot = (el: Element) => attr(el, 'data-slot') ?? '';
 const radix = (el: Element) => el.attrs.some((a) => a.name.startsWith('data-radix-') || ((a.name === 'id' || a.name === 'aria-controls') && a.value.startsWith('radix-')));
 
 export const PORTS: readonly Port[] = [
-	{ module: 'radix/tabs', library: '@radix-ui/react-tabs', events: ['click', 'keydown'], detect: (el) => attr(el, 'role') === 'tab' && radix(el) },
+	{ module: 'radix/tabs', library: 'radix-ui', exports: ['Tabs.Root', 'Tabs.List', 'Tabs.Trigger', 'Tabs.Content'], events: ['click', 'keydown'], locate: (el) => radix(el) },
 ];
 
 export interface PartUse {
@@ -31,13 +37,34 @@ export interface PartUse {
 	import(dir: string): string;
 }
 
+let resolver: PartResolver | undefined;
+let route = '';
+/** The parts the source renders on a page that no port implements, by `library export`, with the routes that show them. */
+export const UNPORTED = new Map<string, Set<string>>();
+
+/** Names the page being emitted, so an unported part is reported with it. */
+export function onRoute(next: string): void {
+	route = next;
+}
+
+/** Sets where the converter learns which library part renders each element: the old source's analysis. */
+export function useResolver(next: PartResolver): void {
+	resolver = next;
+}
+
 /** Records the ports an element of the old page needs. Behaviour is bound once on the body, so no element gets attributes. */
 export function bindParts(el: Element, uses: PartUse[] | Set<string>): Binding | undefined {
+	const s = slot(el);
+	if (!s || !resolver) return undefined;
+	const candidates = resolver.candidates(s);
+	let placed = false;
 	for (const port of PORTS) {
-		if (!port.detect(el)) continue;
+		if (!candidates.some((c) => c.library === port.library && port.exports.includes(c.export)) || !port.locate(el)) continue;
+		placed = true;
 		if (uses instanceof Set) uses.add(port.module);
 		else if (!uses.some((u) => u.part === port.module)) uses.push({ part: port.module, import: () => '' });
 	}
+	if (!placed && route) for (const c of candidates) (UNPORTED.get(`${c.library} ${c.export}`) ?? UNPORTED.set(`${c.library} ${c.export}`, new Set()).get(`${c.library} ${c.export}`)!).add(route);
 	return undefined;
 }
 
