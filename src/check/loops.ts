@@ -7,7 +7,7 @@ import type { Failure, PageCapture } from './types.ts';
 // different phase depending on when a capture happens; visual and state capture see each at its start, on both sides.
 
 /** Init script, run in every document before its own scripts: must stay self-contained. */
-export function trackLoops(): void {
+export function trackLoops(known: readonly string[] = []): void {
 	const g = globalThis as typeof globalThis & { __markless_migrate_hold_loops__?: () => number };
 	const realSetTimeout = g.setTimeout;
 	const realClearTimeout = g.clearTimeout;
@@ -27,12 +27,15 @@ export function trackLoops(): void {
 	// One-shot timeouts still to fire, and when: a fade a loading bar starts after its own delay, a demo's fake server answering after 2 s.
 	const oneShots = new Map<unknown, { key: string; due: number }>();
 	const clock = performance.now.bind(performance);
-	const rearmed = new Set<string>();
-	// A callback is a loop once it has scheduled itself again twice in a row with the same delay; a helper's wrapper that chains timers once is not.
+	// Loops an earlier load of the same page confirmed are loops from their first schedule.
+	const rearmed = new Set<string>(known);
+	// Settling waits on a callback until it has scheduled itself again twice with the same delay (a helper's wrapper chains timers once); holding stops it from the first time, once settling has waited out what was due.
+	const candidates = new Set<string>(known);
 	const rearms = new Map<string, number>();
 	const again = (key: string) => {
 		const n = (rearms.get(key) ?? 0) + 1;
 		rearms.set(key, n);
+		candidates.add(key);
 		if (n >= 2) rearmed.add(key);
 	};
 	const timing = new Map<string, { kind: string; every: number }>();
@@ -46,7 +49,11 @@ export function trackLoops(): void {
 			return `callback ${ids++}`;
 		}
 	};
-	const run = (key: string, fn: (...a: unknown[]) => unknown, self: unknown, args: unknown[]) => {
+	// Which callbacks scheduled each pending timer, so a loop's own follow-up (a fake server answering its poll) is held with it.
+	const lineage = new Map<unknown, readonly string[]>();
+	let ancestry: readonly string[] = [];
+	const heldIds = new Set<unknown>();
+	const run = (key: string, fn: (...a: unknown[]) => unknown, self: unknown, args: unknown[], from: readonly string[] = []) => {
 		if (held.has(key)) return undefined;
 		if (!observer && typeof MutationObserver === 'function' && document) {
 			observer = new MutationObserver(() => {});
@@ -54,11 +61,14 @@ export function trackLoops(): void {
 		}
 		observer?.takeRecords();
 		const outer = running;
+		const outerAncestry = ancestry;
 		running = key;
+		ancestry = [...from, key].slice(-8);
 		try {
 			return fn.apply(self, args);
 		} finally {
 			running = outer;
+			ancestry = outerAncestry;
 			const records = observer?.takeRecords() ?? [];
 			if (records.length && !overflow.has(key)) {
 				const list = changes.get(key) ?? [];
@@ -73,22 +83,25 @@ export function trackLoops(): void {
 	g.setTimeout = function (handler: TimerHandler, ms?: number, ...rest: unknown[]) {
 		if (typeof handler !== 'function') return realSetTimeout(handler, ms, ...rest);
 		const key = `${keyOf(handler)}\u0000${Math.max(0, Number(ms) || 0)}`;
-		if (running === key) {
-			again(key);
-			timing.set(key, { kind: 'timeout', every: Math.max(0, Number(ms) || 0) });
-		}
+		if (running === key) again(key);
+		if (candidates.has(key)) timing.set(key, { kind: 'timeout', every: Math.max(0, Number(ms) || 0) });
+		const from = ancestry;
 		const id: ReturnType<typeof setTimeout> = realSetTimeout(function (this: unknown) {
 			pending.delete(id);
 			oneShots.delete(id);
-			return run(key, handler as (...a: unknown[]) => unknown, this, rest);
+			lineage.delete(id);
+			if (heldIds.delete(id)) return undefined;
+			return run(key, handler as (...a: unknown[]) => unknown, this, rest, from);
 		}, ms);
 		pending.set(id, key);
+		lineage.set(id, from);
 		oneShots.set(id, { key, due: clock() + Math.max(0, Number(ms) || 0) });
 		return id;
 	} as typeof setTimeout;
 	g.clearTimeout = function (id?: Parameters<typeof clearTimeout>[0]) {
 		pending.delete(id);
 		oneShots.delete(id);
+		lineage.delete(id);
 		return realClearTimeout(id);
 	} as typeof clearTimeout;
 	g.setInterval = function (handler: TimerHandler, ms?: number, ...rest: unknown[]) {
@@ -108,19 +121,22 @@ export function trackLoops(): void {
 	if (realRaf && realCancelRaf) {
 		g.requestAnimationFrame = function (callback: FrameRequestCallback) {
 			const key = `${keyOf(callback)}\u0000frame`;
-			if (running === key) {
-				again(key);
-				timing.set(key, { kind: 'animation frame', every: 0 });
-			}
+			if (running === key) again(key);
+			if (candidates.has(key)) timing.set(key, { kind: 'animation frame', every: 0 });
+			const from = ancestry;
 			const id = realRaf((time: number) => {
 				pending.delete(id);
-				run(key, callback as (...a: unknown[]) => unknown, g, [time]);
+				lineage.delete(id);
+				if (heldIds.delete(id)) return;
+				run(key, callback as (...a: unknown[]) => unknown, g, [time], from);
 			});
 			pending.set(id, key);
+			lineage.set(id, from);
 			return id;
 		};
 		g.cancelAnimationFrame = function (id: number) {
 			pending.delete(id);
+			lineage.delete(id);
 			return realCancelRaf(id);
 		};
 	}
@@ -140,6 +156,7 @@ export function trackLoops(): void {
 	addEventListener('transitionrun', (e) => ran.add((e as TransitionEvent).propertyName), true);
 	addEventListener('animationstart', (e) => ran.add((e as AnimationEvent).animationName), true);
 	Object.defineProperty(g, '__markless_migrate_ran__', { value: () => [...ran] });
+	Object.defineProperty(g, '__markless_migrate_loop_keys__', { value: () => [...rearmed] });
 	// What is still to settle: one-shot timeouts due within `within` ms (a loop's own are not) and finite animations running.
 	Object.defineProperty(g, '__markless_migrate_settling__', {
 		value: (within: number) => [...oneShots.values()].filter((t) => !rearmed.has(t.key) && t.due <= clock() + within).length + document.getAnimations().filter((a) => a.playState === 'running' && Number.isFinite(a.effect?.getComputedTiming().endTime ?? Number.POSITIVE_INFINITY)).length,
@@ -147,8 +164,14 @@ export function trackLoops(): void {
 	// Stops every loop live now (code that starts later, the checker's own included, runs as usual) and undoes what its runs changed in the document, newest first; infinite animations pause at their start.
 	Object.defineProperty(g, '__markless_migrate_hold_loops__', {
 		value: () => {
-			const live = new Set([...intervals.values(), ...[...pending.values()].filter((key) => rearmed.has(key))]);
+			const live = new Set([...intervals.values(), ...[...pending.values()].filter((key) => candidates.has(key))]);
 			for (const key of live) held.add(key);
+			for (const [id, from] of lineage) {
+				if (from.some((key) => live.has(key))) {
+					heldIds.add(id);
+					oneShots.delete(id);
+				}
+			}
 			const undo = [...live].flatMap((key) => changes.get(key) ?? []).sort((a, b) => b.at - a.at);
 			// What each held loop kept changing, for the motion check to compare: the element and what of it.
 			const effects = [...live].flatMap((key) => {
@@ -196,6 +219,19 @@ export async function settleMotion(page: Page): Promise<string[]> {
 	}
 	for (const name of await page.evaluate(() => (globalThis as { __markless_migrate_ran__?: () => string[] }).__markless_migrate_ran__?.() ?? []).catch(() => [] as string[])) seen.add(name);
 	return [...seen].sort();
+}
+
+/** Waits out what the page started (settleMotion), then holds every loop live at that point, so both sides are held at the same phase before an interaction is recorded. */
+export async function settleAndHoldLoops(page: Page): Promise<void> {
+	await settleMotion(page);
+	await page.evaluate(holdLoops).catch(() => 0);
+	// Events of the transitions holding finished are dispatched on the next frames, before anything is recorded.
+	await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))).catch(() => {});
+}
+
+/** The timeouts and animation-frame callbacks this load confirmed as loops, for later loads of the same page to hold from their first schedule. */
+export function loopKeys(page: Page): Promise<string[]> {
+	return page.evaluate(() => (globalThis as { __markless_migrate_loop_keys__?: () => string[] }).__markless_migrate_loop_keys__?.() ?? []).catch(() => []);
 }
 
 /** Holds every live loop at the phase before its first run, in the page; the number of loops held. */

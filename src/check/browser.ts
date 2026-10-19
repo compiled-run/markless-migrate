@@ -6,6 +6,7 @@ import { at, writeHandler, type WriteFact } from './source-facts.ts';
 import { detectChallenge } from './blocked.ts';
 import { blocker } from './trackers.ts';
 import { trackLoops } from './loops.ts';
+import type { TimedNetwork } from './timing-network.ts';
 import { registerStructure } from './structure.ts';
 import type { Viewport } from './types.ts';
 import { request } from './http.ts';
@@ -172,6 +173,35 @@ let fetcher: Promise<APIRequestContext> | undefined;
 
 type SharedAnswer = { status: number; headers: Record<string, string>; body: Buffer };
 
+/** Forgets the shared answers at the start of a run: a long-lived process (the MCP server) does not give one run's third-party answers to the next. */
+export function resetSharedAnswers(): void {
+	assets.clear();
+}
+
+export interface StoredAnswer extends SharedAnswer {
+	readonly url: string;
+}
+
+const MAX_STORED_BYTES = 512 * 1024;
+
+/** The run's answers for these other-origin URLs, to keep with a cached old capture (a large file, a player's code, is left out). */
+export async function storedAnswers(urls: readonly string[]): Promise<StoredAnswer[]> {
+	const got = await Promise.all(urls.map(async (url) => ({ url, answer: await assets.get(url) })));
+	return got.flatMap(({ url, answer }) => (answer && answer.body.length <= MAX_STORED_BYTES ? [{ url, ...answer }] : []));
+}
+
+/** Gives a cached old capture's third-party answers to the rest of the run; false, adopting none, when this run already got one of them differently. */
+export async function adoptAnswers(answers: readonly StoredAnswer[]): Promise<boolean> {
+	for (const a of answers) {
+		const now = assets.get(a.url);
+		if (!now) continue;
+		const got = await now;
+		if (!got || got.status !== a.status || !got.body.equals(Buffer.from(a.body))) return false;
+	}
+	for (const { url, ...answer } of answers) if (!assets.has(url)) assets.set(url, Promise.resolve({ ...answer, body: Buffer.from(answer.body) }));
+	return true;
+}
+
 /** The run's one answer for a GET to another origin, fetched the first time anything asks for it (a page, or the cache checking whether the old page changed). */
 export function sharedAnswer(url: string, headers: Record<string, string> = {}): Promise<SharedAnswer | undefined> {
 	let hit = assets.get(url);
@@ -208,7 +238,7 @@ export function shareAnswers(records: readonly NetworkRecord[], origin: string):
 	}
 }
 
-/** A request a page's own code makes to another origin that every load of the run can share: a GET for a script, style, font, image or data (a widget's script and the API it reads), outside any embed. */
+/** A GET to another origin that every load of the run can share: a script, style, font, image or data, the page's own (a widget's script and the API it reads) or an embed's (the star count a widget's iframe reads), so both sides show the same third-party answer. */
 export function sharedThirdParty(method: string, resourceType: string): boolean {
 	return method === 'GET' && ['script', 'stylesheet', 'font', 'image', 'fetch', 'xhr'].includes(resourceType);
 }
@@ -255,11 +285,15 @@ export function withOldSession(state: StorageState | undefined, old: StorageStat
 export interface OpenOptions {
 	/** Abort requests to other origins (journeys keep third-party widgets out), except page assets and recorded and blocked ones. */
 	readonly sameOriginOnly?: boolean;
-	/** Track loops (live intervals, self-scheduling timeouts and animation frames) so a capture can hold them at their start. */
-	readonly loops?: boolean;
+	/** Track loops (live intervals, self-scheduling timeouts and animation frames) so a capture can hold them at their start; `known` are loops an earlier load of the page confirmed. */
+	readonly loops?: boolean | { readonly known: readonly string[] };
 	/** Answer the page's own GETs to other origins from one fetch per run, so every load of the run, old and new, gets the same third-party answer (a widget's API reply, rate limited or not). */
 	readonly shareThirdParty?: boolean;
+	/** While timing: every answer reaches the page after the network's fixed latency, its GETs from one stored copy; `miss` is told when a copy had to be fetched during this load. */
+	readonly timed?: { readonly network: TimedNetwork; readonly miss: () => void };
 }
+
+const STORED_TYPES = new Set(['document', 'script', 'stylesheet', 'font', 'image', 'fetch', 'xhr', 'manifest', 'other']);
 
 export interface OpenPage {
 	readonly context: BrowserContext;
@@ -278,7 +312,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 	if (env.cookies?.length) await context.addCookies(env.cookies.map((c) => ({ ...c, url: env.origin })));
 	const extra = env.headers ?? {};
 	if (env.freeze) await context.addInitScript(freezePage, { time: env.freeze.time, seed: env.freeze.seed, ...(env.freeze.clock ? { clock: env.freeze.clock } : {}) });
-	if (options.loops) await context.addInitScript(trackLoops);
+	if (options.loops) await context.addInitScript(trackLoops, options.loops === true ? [] : [...options.loops.known]);
 	const load = randomUUID();
 	const tag = recorderTag(env, load);
 	const pending = new Set<Promise<void>>();
@@ -344,18 +378,30 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 		}
 		const door302 = door && topLevelLoad(request) ? frontDoorTarget(url, env.origin, door) : undefined;
 		if (door302) return route.fulfill({ status: 302, headers: { location: door302 } });
+		const timed = options.timed;
 		if (!same) {
 			const hit = findRecorded(recorded, 'browser', request.method(), url, body);
 			if (hit) {
 				handled.add(request);
+				await timed?.network.delay();
 				log.records.push({ ...hit, url: url.href, replayed: true, recordedUrl: hit.url });
 				return route.fulfill({ status: hit.status, headers: { 'content-type': hit.contentType, 'access-control-allow-origin': '*' }, body: hit.body ?? '' });
 			}
-			if (!options.sameOriginOnly) return options.shareThirdParty && sharedThirdParty(request.method(), request.resourceType()) && !insideEmbed(request, ownOrigin) ? fulfillAsset(route, true) : route.continue();
-			return pageAsset(request.method(), request.resourceType()) ? fulfillAsset(route) : route.abort();
+			if (!options.sameOriginOnly) return options.shareThirdParty && sharedThirdParty(request.method(), request.resourceType()) ? fulfillAsset(route, true) : route.continue();
+			if (!pageAsset(request.method(), request.resourceType())) return route.abort();
+			await timed?.network.delay();
+			return fulfillAsset(route);
 		}
 		// The page load's id goes only on the page and its API calls: framework prefetches render other routes, whose fetches are not this page's.
 		const own = request.isNavigationRequest() || (['fetch', 'xhr'].includes(request.resourceType()) && !frameworkTransport(request, url));
+		if (timed) {
+			const headers = { ...request.headers(), ...extra, ...(own ? { [RECORDER_HEADER]: tag } : {}) };
+			const data = ['fetch', 'xhr'].includes(request.resourceType());
+			if (!['GET', 'HEAD'].includes(request.method())) timed.network.wrote = true;
+			else if (request.method() === 'GET' && STORED_TYPES.has(request.resourceType()) && !(data && timed.network.wrote)) return timed.network.answer(route, headers, timed.miss);
+			await timed.network.delay();
+			return route.continue({ headers });
+		}
 		if (own) return route.continue({ headers: { ...request.headers(), ...extra, [RECORDER_HEADER]: tag } });
 		if (env.replay) return route.continue({ headers: { ...request.headers(), ...extra, [RECORDER_HEADER]: recorderTag(env, randomUUID()) } });
 		return env.headers ? route.continue({ headers: { ...request.headers(), ...extra } }) : route.continue();

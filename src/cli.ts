@@ -63,7 +63,7 @@ const USAGE = `markless-migrate ${VERSION}
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
           [--journey-budget <seconds>] [--max-journeys <n>] [--timeout <seconds>]
-          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--interaction-controls <n>] [--no-motion] [--no-cache]
+          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-cache]
           Compare routes old vs new (default: every route of the old site plan listed). Exits 1 when any is red.
           Coverage: every route of the old site must exist on the new app, with the same status class
           and the same redirect target, or carry an accepted difference (accept <id>); each missing
@@ -94,6 +94,9 @@ const USAGE = `markless-migrate ${VERSION}
           of the old app at both speeds, answer within --interaction-budget (default 200 ms) at the
           slow speed and fetch no code; a link must show the next page within max(16 ms, 10%) of the
           old app at the slow speed. --interaction-controls caps the controls timed per route (16).
+          The network is the same on both sides while timing: each response is fetched from the app
+          once, and every timed page gets it --network-latency (default 40 ms) after asking, so the
+          times compare the apps, not the hosts; each page's server time is reported apart.
           --no-responsiveness leaves it out.
           Motion: the last step of every journey that stays on the page is replayed old then new with
           motion allowed, recording each transition and animation it starts (element, properties,
@@ -222,13 +225,14 @@ const TIMING_FLAGS = {
 	'no-responsiveness': { type: 'boolean' },
 	'interaction-budget': { type: 'string' },
 	'cpu-throttle': { type: 'string' },
+	'network-latency': { type: 'string' },
 	'interaction-controls': { type: 'string' },
 	'no-motion': { type: 'boolean' },
 } as const;
 
-function timingOptions(values: { 'no-responsiveness'?: boolean; 'interaction-budget'?: string; 'cpu-throttle'?: string; 'interaction-controls'?: string }): CheckOptions['responsiveness'] {
+function timingOptions(values: { 'no-responsiveness'?: boolean; 'interaction-budget'?: string; 'cpu-throttle'?: string; 'network-latency'?: string; 'interaction-controls'?: string }): CheckOptions['responsiveness'] {
 	if (values['no-responsiveness']) return undefined;
-	const number = (flag: 'interaction-budget' | 'cpu-throttle' | 'interaction-controls', test: (n: number) => boolean, what: string) => {
+	const number = (flag: 'interaction-budget' | 'cpu-throttle' | 'network-latency' | 'interaction-controls', test: (n: number) => boolean, what: string) => {
 		const raw = values[flag];
 		if (raw === undefined) return undefined;
 		const n = Number(raw);
@@ -238,7 +242,8 @@ function timingOptions(values: { 'no-responsiveness'?: boolean; 'interaction-bud
 	const budgetMs = number('interaction-budget', (n) => n > 0, 'a number of milliseconds above 0');
 	const cpu = number('cpu-throttle', (n) => n >= 1, 'a slowdown rate of at least 1');
 	const maxControls = number('interaction-controls', (n) => Number.isInteger(n) && n >= 1, 'a whole number of at least 1');
-	return { ...(budgetMs !== undefined ? { budgetMs } : {}), ...(cpu !== undefined ? { cpu } : {}), ...(maxControls !== undefined ? { maxControls } : {}) };
+	const latencyMs = number('network-latency', (n) => n >= 0, 'a number of milliseconds, 0 or more');
+	return { ...(budgetMs !== undefined ? { budgetMs } : {}), ...(cpu !== undefined ? { cpu } : {}), ...(latencyMs !== undefined ? { latencyMs } : {}), ...(maxControls !== undefined ? { maxControls } : {}) };
 }
 
 function timingFlags(values: Partial<Record<keyof typeof TIMING_FLAGS, string | boolean>>): string[] {

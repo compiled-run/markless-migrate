@@ -453,10 +453,13 @@ are not slowed or exposed to timing noise from four suites sharing the CPU.
 - Server time cold against warm: the first hit in the run against an immediate refetch. A function that
   is already warm from the crawl or the journeys shows warm both times; forcing an idle function cold
   would need waiting out the host's idle timeout, which check does not do.
-- Throttling slows the CPU, not the network; a code fetch on a phone's network costs more than it does
-  here. Requests pass through Playwright's interception, which adds a little to every fetch on both sides.
-- An old app served from a local caching mirror (htmx.org, alpinejs.dev) has no network latency for its
-  documents, so navigation compares a loopback server against a deployed one.
+- Throttling slows the CPU, not bandwidth: every response gets the same fixed latency (`--network-latency`,
+  40 ms) on both sides, but a large code fetch costs no more than a small one. Requests pass through
+  Playwright's interception, which adds a little to every fetch on both sides.
+- Responses are stored and handed to the page whole, so a streamed page gets no head start from streaming,
+  and server time is reported, not judged: a slow server alone does not make a link red. (Until 2026-10-19
+  the real network was timed, so an old app on a local mirror, htmx.org or alpinejs.dev, was compared
+  against a deployed new one.)
 
 ## Library surface, webpack pages, ARIA coverage and CLI conformance (2026-10-17)
 

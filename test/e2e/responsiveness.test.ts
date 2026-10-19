@@ -50,7 +50,7 @@ describe('responsiveness: the first use of each control and each link, old vs ne
 		assert.ok(nav.new.every((s) => s.result === 'reloaded' && (s.server?.ttfb ?? 0) >= 290), JSON.stringify(nav.new));
 		assert.ok(nav.spread, 'the variance between the two runs is reported');
 		assert.match(nav.cause ?? '', /a full page load where the old app navigates in the page/);
-		assert.match(nav.cause ?? '', /server time \d+ ms to first byte/);
+		assert.match(nav.cause ?? '', /server time \d+ ms to answer.*outside this timing/);
 		assert.ok(next.speeds.find((s) => s.speed === 'desktop')!.ok, 'navigation is held to the old app at the throttled speed only');
 		const text = summarize(report);
 		assert.match(text, /First interaction: old \d+ ms → new \d+ ms \(4x CPU\)/);
@@ -60,6 +60,18 @@ describe('responsiveness: the first use of each control and each link, old vs ne
 		const html = renderHtml(report);
 		assert.match(html, /<p class="headline"><strong>First interaction: old \d+ ms → new \d+ ms \(4x CPU\)/);
 		assert.match(html, /<table class="timings">/);
+	});
+
+	test('the same app answering in 1 ms on one side and 300 ms on the other navigates alike: both get the same network, and server time is reported beside the timing', async () => {
+		const report = await check(await app('slow'), await app('slow', 300), { old: dir('slow'), new: dir('slow') });
+		const timing = report.routes[0]!.responsiveness!;
+		assert.equal(timing.latencyMs, 40);
+		const nav = timing.controls.find((c) => c.control === 'link "Next page"')!;
+		for (const s of nav.speeds) assert.ok(s.ok, `${s.speed}: ${s.problems.join('; ')}`);
+		const throttled = nav.speeds.find((s) => s.speed === 'throttled')!;
+		assert.ok(throttled.new.every((s) => (s.server?.ttfb ?? 0) >= 290 && !s.cold), JSON.stringify(throttled.new));
+		assert.ok(throttled.old.every((s) => (s.server?.ttfb ?? 999) < 290), JSON.stringify(throttled.old));
+		assert.match(summarize(report), /Network while timing: every response reaches either page 40 ms after it is asked for/);
 	});
 
 	test('the same handlers on both sides pass, and the slowest control is measured twice so the report states the variance', async () => {

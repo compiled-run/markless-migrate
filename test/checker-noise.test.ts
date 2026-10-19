@@ -267,3 +267,98 @@ test('an embed a widget draws inside an open shadow root is the same embed, mask
 	const route = (await check(old, shadowed)).routes[0]!;
 	assert.deepEqual(open(route.failures).filter((f) => /^(visual|rendered: embed|network|weight)/.test(f)), []);
 });
+
+// A poll (htmx's `every 1s`): each run schedules the next with the same delay and sets the colour from a separate short timer (a fake server answering); a click starts a fade of its own.
+const polling = (offset: number, fade = 1500) =>
+	html(
+		'<div id="demo">Color Swap Demo</div><button id="go">Go</button><p id="out">Ready</p>',
+		`<style>#demo { color: rgb(255, 0, 0); transition: color 1s ease-in; } #out { opacity: 1; transition: opacity ${fade}ms linear; } #out.dim { opacity: 0.4; }</style><script>addEventListener('DOMContentLoaded', () => { const demo = document.getElementById('demo'); const colors = ['rgb(0, 128, 0)', 'rgb(255, 165, 0)']; let n = 0; const poll = () => setTimeout(function () { setTimeout(() => (demo.style.color = colors[n++ % 2]), 80); poll(); }, 1000); setTimeout(poll, ${offset}); document.getElementById('go').onclick = () => document.getElementById('out').classList.add('dim'); });</script>`,
+	);
+
+test('a poll is held at the same phase on both sides before an interaction is recorded, whatever its phase at load', async () => {
+	const { openPage } = await import('../src/check/browser.ts');
+	const { settleAndHoldLoops } = await import('../src/check/loops.ts');
+	const { motionEnv } = await import('../src/check/motion.ts');
+	const colours: string[] = [];
+	for (const offset of [0, 900]) {
+		const site = await serve(() => ({ body: polling(offset) }));
+		const { context, page } = await openPage(browser, motionEnv(defaultEnv(site), false), desktop[0]!, { loops: true });
+		try {
+			await page.goto(site);
+			await settleAndHoldLoops(page);
+			const before = await page.evaluate(() => getComputedStyle(document.getElementById('demo')!).color);
+			const moved = await page.evaluate(
+				() =>
+					new Promise<number>((done) => {
+						let n = 0;
+						addEventListener('transitionrun', () => n++, true);
+						new MutationObserver((r) => (n += r.length)).observe(document.getElementById('demo')!, { attributes: true });
+						setTimeout(() => done(n), 2500);
+					}),
+			);
+			assert.equal(moved, 0, `offset ${offset}: the poll ran after it was held`);
+			colours.push(before);
+		} finally {
+			await context.close();
+		}
+	}
+	assert.equal(colours[0], colours[1], 'both loads are held after the same number of polls');
+});
+
+test('a poll at another phase on the new page moves nothing during an interaction, and the interaction\'s own different fade stays red', async () => {
+	const old = await serve(() => ({ body: polling(0) }));
+	const late = await serve(() => ({ body: polling(900) }));
+	const same = await check(old, late, { motion: { maxHovers: 0, maxInteractions: 3 }, journeys: { budgetMs: 8_000 } });
+	assert.deepEqual(open(same.routes[0]!.failures).filter((f) => f.startsWith('motion')), []);
+	const quicker = await serve(() => ({ body: polling(900, 500) }));
+	const red = open((await check(old, quicker, { motion: { maxHovers: 0, maxInteractions: 3 }, journeys: { budgetMs: 8_000 } })).routes[0]!.failures);
+	assert.ok(red.some((f) => /^motion: click button "Go".*opacity/.test(f)), red.join('\n'));
+});
+
+test('a frame is one stop in the focus order: Tab goes on past it however many stops its own document has', async () => {
+	let n = 0;
+	const embed = await serve((path) => (path === '/w' ? { body: `<!doctype html><body>${n++ % 2 ? '<a href="#s">Star</a>' : '<a href="#s">Star</a> <a href="#c">12,345</a>'}` } : undefined));
+	const page = (after: boolean) => html(`<p><a href="#a">Before</a></p><iframe src="${embed}/w" title="Widget" width="200" height="40"></iframe>${after ? '<p><a href="#b">After</a></p>' : ''}`);
+	const old = await serve(() => ({ body: page(true) }));
+	const same = await serve(() => ({ body: page(true) }));
+	assert.deepEqual(open((await check(old, same)).routes[0]!.failures).filter((f) => f.startsWith('a11y')), []);
+	const dropped = await serve(() => ({ body: page(false) }));
+	const red = open((await check(old, dropped)).routes[0]!.failures);
+	assert.ok(red.some((f) => /^a11y: focus order/.test(f)), red.join('\n'));
+});
+
+test('an embed\'s data from a third party is one answer per run, and the new page gets the answer a cached old capture read, not a later one', async () => {
+	let calls = 0;
+	const api = createServer((_req, res) => res.writeHead(200, { 'content-type': 'text/plain', 'access-control-allow-origin': '*', 'cache-control': 'no-store' }).end(++calls <= 1 ? '1' : '1234567'));
+	servers.push(api);
+	const apiOrigin = await new Promise<string>((done) => api.listen(0, '127.0.0.1', () => done(`http://127.0.0.1:${(api.address() as AddressInfo).port}`)));
+	const embed = await serve((path) => (path === '/w' ? { body: `<!doctype html><body><span id="c"></span><script>fetch('${apiOrigin}/repos/x').then((r) => r.text()).then((t) => { document.getElementById('c').textContent = t; parent.postMessage(t.length, '*'); });</script>` } : undefined));
+	const page = html(`<p>Stars</p><iframe id="f" src="${embed}/w" title="Count" style="width: 50px; height: 20px"></iframe>`, `<script>addEventListener('message', (e) => (document.getElementById('f').style.width = 20 + 10 * e.data + 'px'));</script>`);
+	const old = await serve(() => ({ body: page }));
+	const next = await serve(() => ({ body: page }));
+	const cacheDir = await mkdtemp(join(tmpdir(), 'mm-cache-'));
+	assert.deepEqual(open((await check(old, next, { cacheDir })).routes[0]!.failures), []);
+	assert.equal(calls, 1, 'every load of the run, old and new, got the one answer');
+	const again = await check(old, next, { cacheDir });
+	assert.equal(again.cache?.changed, 0, JSON.stringify(again.cache));
+	assert.deepEqual(open(again.routes[0]!.failures), []);
+	assert.equal(calls, 1, 'the new page read what the cached old page read');
+});
+
+test('a video is not painted while a masked screenshot is taken, so a frame drawn off its box cannot differ outside the mask, and its own style comes back after', async () => {
+	const { maskedShot } = await import('../src/check/embeds.ts');
+	const site = await serve(() => ({ body: html('<video controls style="visibility: visible; width: 200px; height: 100px"></video><iframe src="about:blank" title="x"></iframe>') }));
+	const page = await browser.newPage();
+	try {
+		await page.goto(site);
+		const during: string[] = [];
+		const { embeds } = await maskedShot(page, async () => {
+			during.push(await page.evaluate(() => getComputedStyle(document.querySelector('video')!).visibility));
+			return Buffer.alloc(0);
+		});
+		assert.deepEqual([during, embeds.map((e) => e.tag)], [['hidden'], ['video']]);
+		assert.deepEqual(await page.evaluate(() => [document.querySelector('video')!.getAttribute('style'), document.querySelectorAll('[data-markless-migrate-embed]').length]), ['visibility: visible; width: 200px; height: 100px;', 0]);
+	} finally {
+		await page.close();
+	}
+});

@@ -7,8 +7,8 @@ import { applyAccepted, type Accept } from './accepted.ts';
 import type { AutomaticRule } from './automatic.ts';
 import { accessFailures, ANONYMOUS, saysDenied, compareLogin, loginRoutes, saveState, signIn, type AuthConfig, type RoleSpec } from './auth.ts';
 import { BlockedError, blockedResult, detectChallenge, probeWall } from './blocked.ts';
-import { DEFINITE, defaultEnv, isLoopback, pushRecording, shareAnswers, tagHeaders, type SideEnv, type StorageState, type WallHit } from './browser.ts';
-import { captureHttp, captureRoute, mime, pageLoads } from './capture.ts';
+import { adoptAnswers, DEFINITE, defaultEnv, isLoopback, pushRecording, resetSharedAnswers, shareAnswers, storedAnswers, tagHeaders, type StoredAnswer, type SideEnv, type StorageState, type WallHit } from './browser.ts';
+import { captureHttp, captureRoute, mime, pageLoads, thirdPartyLoads } from './capture.ts';
 import { OldCache } from './cache.ts';
 import { readRecording, recordable, slug, writeRecording } from './data.ts';
 import { checkEndpoint, checkRedirect, isPage } from './endpoints.ts';
@@ -174,18 +174,21 @@ function routeLocales(capture: RouteCapture, known: readonly string[]): string[]
 /** Two loads of OLD and one of NEW, and a third of OLD after NEW when the first two differ; OLD's from the cache when nothing it loaded changed since. */
 async function loadBoth(browser: Browser, run: Run, route: string, viewports: readonly Viewport[]): Promise<{ olds: RouteCapture[]; next: RouteCapture; loads: readonly string[] }> {
 	const key = { route, viewports };
-	const cached = await run.oldCache?.read<{ olds: RouteCapture[]; loads: string[] }>('captures', run.old, key);
-	if (cached) {
+	const cached = await run.oldCache?.read<{ olds: RouteCapture[]; loads: string[]; answers?: StoredAnswer[] }>('captures', run.old, key);
+	// The new page gets the third-party answers the cached old page read; one this run already got differently means the old page is loaded again.
+	if (cached && (await adoptAnswers(cached.answers ?? []))) {
 		for (const page of cached.olds.flatMap((o) => Object.values(o.pages))) shareAnswers(page.network?.records ?? [], run.old.origin);
-		return { ...cached, next: await captureRoute(browser, run.new.origin, route, viewports, run.new) };
+		return { olds: cached.olds, loads: cached.loads, next: await captureRoute(browser, run.new.origin, route, viewports, run.new) };
 	}
+	if (cached) run.oldCache?.demote();
 	// The OLD loads must not overlap, or time-based noise (clocks, counters) looks stable; the third comes after NEW so it brackets it in time.
 	const oldA = await captureRoute(browser, run.old.origin, route, viewports, run.old);
 	const [oldB, next] = await Promise.all([captureRoute(browser, run.old.origin, route, viewports, run.old), captureRoute(browser, run.new.origin, route, viewports, run.new)]);
 	const olds = [oldA, oldB];
 	if (loadsDiffer(oldA, oldB)) olds.push(await captureRoute(browser, run.old.origin, route, viewports, run.old));
 	const loads = [...new Set(olds.flatMap((o) => Object.values(o.pages).flatMap((p) => pageLoads.get(p) ?? [])))];
-	await run.oldCache?.write('captures', run.old, key, loads, { olds, loads });
+	const answers = await storedAnswers([...new Set(olds.flatMap((o) => Object.values(o.pages).flatMap((p) => thirdPartyLoads.get(p) ?? [])))]);
+	await run.oldCache?.write('captures', run.old, key, loads, { olds, loads, answers });
 	return { olds, next, loads };
 }
 
@@ -532,6 +535,7 @@ async function layoutOwners(browser: Browser, run: Run, routes: readonly string[
 
 export async function runCheck(options: CheckOptions): Promise<Report> {
 	const startedAt = new Date().toISOString();
+	resetSharedAnswers();
 	const browser = options.browser ?? (await chromium.launch());
 	const freeze: FreezeOptions | false = options.freeze === false ? false : { ...DEFAULT_FREEZE, ...options.freeze };
 	const bypass = { ...(options.headers ? { headers: options.headers } : {}), ...(options.cookies?.length ? { cookies: options.cookies } : {}), ...(options.userAgent ? { userAgent: options.userAgent } : {}) };

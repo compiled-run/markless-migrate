@@ -1,7 +1,7 @@
 import type { Browser, Page } from 'playwright';
 import type { SideEnv } from './browser.ts';
 import { readPage } from './collect.ts';
-import { holdLoops } from './loops.ts';
+import { loopKeys, settleAndHoldLoops } from './loops.ts';
 import { HINTS } from './hints.ts';
 import { describeTarget, locate, openSession, pool, type RecordedJourney, type Target } from './journeys.ts';
 import { describe, matchElements } from './match.ts';
@@ -319,6 +319,8 @@ async function records(page: Page, earlier: readonly ElementSnapshot[] = [], sel
 	return { motions, elements: [...byId.values(), ...hidden], ...(hits.length ? { hits } : {}) };
 }
 
+type Learned = SideEnv & { readonly loops: readonly string[] };
+
 interface Film {
 	readonly span?: number;
 	readonly clip?: Box;
@@ -334,16 +336,29 @@ export function motionEnv(env: SideEnv, reduced: boolean): SideEnv {
 	return { ...env, reducedMotion: reduced ? 'reduce' : 'no-preference', ...(env.freeze ? { freeze: { ...env.freeze, clock: 'ticking' as const } } : {}) };
 }
 
-/** Replays a journey and records the motion its last step starts; with `film`, frames at fixed offsets across the longest animation. */
-async function recordJourney(browser: Browser, env: SideEnv, route: string, viewport: Viewport, journey: RecordedJourney, film?: Film | 'self', selectors: readonly string[] = []): Promise<Recorded> {
+/** One load of the page, settled, for the loops it confirms: every recording then holds them from their first schedule, so each starts at the same phase on its side, without waiting for them to show themselves again. */
+async function learnLoops(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<readonly string[]> {
 	const session = await openSession(browser, env, route, viewport, { loops: true });
+	try {
+		await settleAndHoldLoops(session.page);
+		return await loopKeys(session.page);
+	} catch {
+		return [];
+	} finally {
+		await session.close();
+	}
+}
+
+/** Replays a journey and records the motion its last step starts; with `film`, frames at fixed offsets across the longest animation. */
+async function recordJourney(browser: Browser, env: Learned, route: string, viewport: Viewport, journey: RecordedJourney, film?: Film | 'self', selectors: readonly string[] = []): Promise<Recorded> {
+	const session = await openSession(browser, env, route, viewport, { loops: { known: env.loops } });
 	try {
 		const steps = journey.steps;
 		for (const step of steps.slice(0, -1)) {
 			const r = await session.run(step);
 			if (r.failed) return { interaction: journey.name, motions: [], failed: r.failed };
 		}
-		await session.page.evaluate(holdLoops).catch(() => 0);
+		await settleAndHoldLoops(session.page);
 		await session.page.evaluate(armMotion, film !== undefined);
 		const result = await session.run(steps.at(-1)!);
 		if (result.failed) return { interaction: journey.name, motions: [], failed: result.failed };
@@ -377,12 +392,12 @@ async function recordJourney(browser: Browser, env: SideEnv, route: string, view
 export const SCROLL = 'scroll down one screen';
 
 /** Hovers and keyboard-focuses each target in turn on one page, recording the transitions each starts; with `scroll`, then scrolls down one screen and records what that starts. */
-async function recordHovers(browser: Browser, env: SideEnv, route: string, viewport: Viewport, targets: readonly Target[], scroll: boolean, selectors: readonly string[] = []): Promise<MotionCapture[]> {
-	const session = await openSession(browser, env, route, viewport, { loops: true });
+async function recordHovers(browser: Browser, env: Learned, route: string, viewport: Viewport, targets: readonly Target[], scroll: boolean, selectors: readonly string[] = []): Promise<MotionCapture[]> {
+	const session = await openSession(browser, env, route, viewport, { loops: { known: env.loops } });
 	const page = session.page;
 	const out: MotionCapture[] = [];
 	try {
-		await page.evaluate(holdLoops).catch(() => 0);
+		await settleAndHoldLoops(page);
 		for (const target of targets) {
 			for (const how of ['hover', 'focus'] as const) {
 				const interaction = `${how} ${describeTarget(target)}`;
@@ -599,8 +614,9 @@ export async function checkMotion(browser: Browser, envs: { readonly old: SideEn
 	const { take, skipped } = motionJourneys(journeys);
 	const cap = options.maxInteractions ?? DEFAULT_MAX_INTERACTIONS;
 	for (const j of take.slice(cap)) skipped.push(`${j.name}: past the ${cap} interactions recorded per route`);
-	const [oldEnv, newEnv] = [motionEnv(envs.old, false), motionEnv(envs.new, false)];
-	const [oldReduced, newReduced] = [motionEnv(envs.old, true), motionEnv(envs.new, true)];
+	const [oldLoops, newLoops] = await Promise.all([learnLoops(browser, motionEnv(envs.old, false), route, viewport), learnLoops(browser, motionEnv(envs.new, false), route, viewport)]);
+	const [oldEnv, newEnv] = [{ ...motionEnv(envs.old, false), loops: oldLoops }, { ...motionEnv(envs.new, false), loops: newLoops }];
+	const [oldReduced, newReduced] = [{ ...motionEnv(envs.old, true), loops: oldLoops }, { ...motionEnv(envs.new, true), loops: newLoops }];
 	const failures: Failure[] = [];
 	const filmstrips: Filmstrip[] = [];
 	const name = viewport.name;

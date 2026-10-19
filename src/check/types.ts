@@ -288,6 +288,10 @@ export interface Slowest {
 export interface ResponsivenessSummary {
 	readonly cpu: number;
 	readonly budgetMs: number;
+	/** The fixed latency every response had on both sides while timing. */
+	readonly latencyMs?: number;
+	/** The slowest document each app took to answer, as the checker fetched it (network included): reported beside the timings, which leave it out. */
+	readonly server?: { readonly old?: number; readonly new?: number };
 	readonly interaction?: Partial<Record<SpeedName, Slowest>>;
 	readonly navigation?: Partial<Record<SpeedName, Slowest>>;
 	readonly routes: readonly { readonly route: string; readonly role?: string; readonly ok: boolean; readonly interaction?: Partial<Record<SpeedName, Worst>>; readonly navigation?: Partial<Record<SpeedName, Worst>> }[];

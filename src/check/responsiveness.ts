@@ -5,6 +5,7 @@ import { request as fetchApp } from './http.ts';
 import { describeStep, describeTarget, locate, quiet, type RecordedJourney, type Step } from './journeys.ts';
 import type { Failure, ResponsivenessSummary, RouteResult, Slowest, Viewport } from './types.ts';
 import { loadPage } from './infrastructure.ts';
+import { DEFAULT_LATENCY_MS, TimedNetwork } from './timing-network.ts';
 
 export type SpeedName = 'desktop' | 'throttled';
 
@@ -32,6 +33,8 @@ export interface ResponsivenessOptions {
 	readonly maxControls?: number;
 	/** At most this many internal links measured per route, within maxControls; default 6. */
 	readonly maxLinks?: number;
+	/** Every response reaches the page this long after it was asked for, on both sides, from a copy fetched once; default 40 ms. */
+	readonly latencyMs?: number;
 }
 
 export const DEFAULT_BUDGET_MS = 200;
@@ -55,7 +58,7 @@ export interface LongTask {
 }
 
 export interface Server {
-	/** Request sent to first byte of the document, on this first hit. */
+	/** The app's time to answer the document, the whole response as the checker fetched it the first time, network included: reported, not part of the timing. */
 	readonly ttfb: number;
 	/** The same document fetched again by the checker straight after, so a function that just started is warm. */
 	readonly warmTtfb?: number;
@@ -81,6 +84,8 @@ export interface Sample {
 	readonly server?: Server;
 	/** A write was held back, so its timing is not the app's. */
 	readonly heldBack?: boolean;
+	/** A response the interaction needed was fetched from the app during it, so the run waited on the network: it is measured again. */
+	readonly cold?: boolean;
 	readonly failed?: string;
 }
 
@@ -116,6 +121,8 @@ export interface Worst {
 export interface Responsiveness {
 	readonly budgetMs: number;
 	readonly cpu: number;
+	/** The fixed latency every response had on both sides. */
+	readonly latencyMs?: number;
 	readonly controls: readonly ControlTiming[];
 	readonly notMeasured: readonly { readonly control: string; readonly reason: string }[];
 	/** The slowest new first interaction per speed, and the slowest new navigation. */
@@ -298,10 +305,12 @@ function measurable(step: Step): boolean {
 }
 
 /** One fresh page load, one first interaction, and the same interaction again when it stayed on the page. */
-export async function measureOnce(browser: Browser, env: SideEnv, route: string, speed: Speed, step: Step, settleMs = 5_000): Promise<Sample> {
+export async function measureOnce(browser: Browser, env: SideEnv, route: string, speed: Speed, step: Step, settleMs = 5_000, network?: TimedNetwork): Promise<Sample> {
 	// The clock runs in real time while timing, so a debounce waits from the last keystroke as it does for a person.
 	const timed: SideEnv = env.freeze ? { ...env, freeze: { ...env.freeze, clock: 'ticking' } } : env;
-	const { context, page, log } = await openPage(browser, timed, speed.viewport, { sameOriginOnly: true });
+	let watched: Request[] | undefined;
+	let cold = false;
+	const { context, page, log } = await openPage(browser, timed, speed.viewport, { sameOriginOnly: true, ...(network ? { timed: { network, miss: () => void (watched && (cold = true)) } } : {}) });
 	try {
 		let downAt: number | undefined;
 		await context.exposeBinding('__mmDown', (_source, at: number) => {
@@ -312,7 +321,6 @@ export async function measureOnce(browser: Browser, env: SideEnv, route: string,
 		page.on('dialog', (dialog) => dialog.dismiss().catch(() => {}));
 		context.on('page', (popup) => (popup !== page ? popup.close().catch(() => {}) : undefined));
 		const pending = new Set<Request>();
-		let watched: Request[] | undefined;
 		let documents = 0;
 		let documentResponse: Response | undefined;
 		page.on('request', (r) => {
@@ -365,7 +373,7 @@ export async function measureOnce(browser: Browser, env: SideEnv, route: string,
 			if (loaded?.ttfb !== undefined) {
 				const url = documentResponse?.url();
 				const warmTtfb = url && new URL(url).origin === new URL(env.origin).origin ? await warmServer(env, url) : undefined;
-				server = { ttfb: Math.round(loaded.ttfb), ...(warmTtfb !== undefined ? { warmTtfb } : {}), htmlBytes: loaded.bytes, ...servedBy(documentResponse) };
+				server = { ttfb: (url ? network?.serverMs(url) : undefined) ?? Math.round(loaded.ttfb), ...(warmTtfb !== undefined ? { warmTtfb } : {}), htmlBytes: loaded.bytes, ...servedBy(documentResponse) };
 			}
 		} else {
 			while (Date.now() < deadline) {
@@ -433,6 +441,7 @@ export async function measureOnce(browser: Browser, env: SideEnv, route: string,
 			...(state?.prefetch ? { prefetch: state.prefetch } : {}),
 			...(server ? { server } : {}),
 			...(heldBack ? { heldBack } : {}),
+			...(cold ? { cold } : {}),
 		};
 	} finally {
 		await context.close().catch(() => {});
@@ -446,15 +455,15 @@ function servedBy(response: Response | undefined): { served?: string } {
 	return parts.length ? { served: parts.join(', ') } : {};
 }
 
-// The first fetch opens the connection; the second, on it, is comparable to the browser's request-to-first-byte.
+// The first fetch opens the connection; the second, on it, is comparable to the first fetch the timing made, the whole answer.
 async function warmServer(env: SideEnv, url: string): Promise<number | undefined> {
 	let ttfb: number | undefined;
 	for (let i = 0; i < 2; i++) {
 		const started = performance.now();
 		try {
 			const response = await fetchApp(new URL(url, env.origin), { headers: appHeaders(env) });
+			await response.arrayBuffer();
 			ttfb = performance.now() - started;
-			await response.body?.cancel();
 		} catch {
 			return undefined;
 		}
@@ -532,7 +541,7 @@ export function likelyCause(samples: readonly Sample[], kind: ControlTiming['kin
 		if (s.server) {
 			const oldServer = o?.server;
 			const cold = s.server.warmTtfb !== undefined && s.server.ttfb > s.server.warmTtfb + 100 ? `, ${s.server.warmTtfb} ms when fetched again straight after (a cold server function)` : '';
-			causes.push(`server time ${s.server.ttfb} ms to first byte${cold}${oldServer ? `, old ${oldServer.ttfb} ms` : ''}${s.server.served ? ` (${s.server.served})` : ''}`);
+			causes.push(`server time ${s.server.ttfb} ms to answer${cold}${oldServer ? `, old ${oldServer.ttfb} ms` : ''}${s.server.served ? ` (${s.server.served})` : ''}, outside this timing`);
 			if (s.server.htmlBytes) causes.push(`${kB(s.server.htmlBytes)} of HTML`);
 		}
 		if (o?.prefetch && !s.prefetch) causes.push(`the old page had ${o.prefetch} prefetch hint${o.prefetch === 1 ? '' : 's'} when the pointer went down, the new one none`);
@@ -558,7 +567,8 @@ export async function checkResponsiveness(browser: Browser, envs: { readonly old
 	const all = speeds(cpu);
 	const controls: ControlTiming[] = new Array(picked.steps.length);
 	const notMeasured = [...picked.notMeasured];
-	const pair = pairFor(browser, envs, route);
+	const latencyMs = options.latencyMs ?? DEFAULT_LATENCY_MS;
+	const pair = pairFor(browser, envs, route, { old: new TimedNetwork(latencyMs), new: new TimedNetwork(latencyMs) });
 	let next = 0;
 	await Promise.all(
 		Array.from({ length: Math.min(CONCURRENCY, picked.steps.length) }, async () => {
@@ -568,7 +578,8 @@ export async function checkResponsiveness(browser: Browser, envs: { readonly old
 				const kind = navigates ? 'navigation' : 'in-page';
 				const timings: SpeedTiming[] = [];
 				for (const speed of all) {
-					const first = await pair(speed, step);
+					let first = await pair(speed, step);
+					if (first.o.cold || first.n.cold) first = await pair(speed, step);
 					const olds = [first.o];
 					const news = [first.n];
 					if (verdictFor(kind, speed, olds, news, budgetMs).rerun) {
@@ -584,12 +595,12 @@ export async function checkResponsiveness(browser: Browser, envs: { readonly old
 	);
 	const measured = controls.filter(Boolean);
 	await addVariance(measured, picked.steps, all, pair, budgetMs);
-	const responsiveness: Responsiveness = { budgetMs, cpu, controls: measured, notMeasured, worst: worstOf(measured) };
+	const responsiveness: Responsiveness = { budgetMs, cpu, latencyMs, controls: measured, notMeasured, worst: worstOf(measured) };
 	return { responsiveness, failures: failuresOf(route, measured, all) };
 }
 
-function pairFor(browser: Browser, envs: { readonly old: SideEnv; readonly new: SideEnv }, route: string) {
-	return async (speed: Speed, step: Step) => ({ o: await measureOnce(browser, envs.old, route, speed, step), n: await measureOnce(browser, envs.new, route, speed, step) });
+function pairFor(browser: Browser, envs: { readonly old: SideEnv; readonly new: SideEnv }, route: string, networks: { readonly old: TimedNetwork; readonly new: TimedNetwork }) {
+	return async (speed: Speed, step: Step) => ({ o: await measureOnce(browser, envs.old, route, speed, step, undefined, networks.old), n: await measureOnce(browser, envs.new, route, speed, step, undefined, networks.new) });
 }
 
 // The slowest control at each speed is measured twice even when it passed, so the report states how much runs vary.
@@ -716,9 +727,14 @@ export function summarizeResponsiveness(routes: readonly RouteResult[], options:
 	};
 	const interaction = slowest('in-page');
 	const navigation = slowest('navigation');
+	const serverOf = (side: 'old' | 'new') => Math.max(-1, ...routes.flatMap((r) => (r.responsiveness?.controls ?? []).flatMap((c) => c.speeds.flatMap((t) => t[side].flatMap((s) => (s.server ? [s.server.ttfb] : []))))));
+	const server = { old: serverOf('old'), new: serverOf('new') };
+	const latencyMs = routes.find((r) => r.responsiveness?.latencyMs !== undefined)?.responsiveness?.latencyMs;
 	return {
 		cpu: options.cpu ?? DEFAULT_CPU,
 		budgetMs: options.budgetMs ?? DEFAULT_BUDGET_MS,
+		...(latencyMs !== undefined ? { latencyMs } : {}),
+		...(server.old >= 0 || server.new >= 0 ? { server: { ...(server.old >= 0 ? { old: server.old } : {}), ...(server.new >= 0 ? { new: server.new } : {}) } } : {}),
 		...(interaction ? { interaction } : {}),
 		...(navigation ? { navigation } : {}),
 		routes: routes.flatMap((r) => (r.responsiveness ? [{ route: r.route, ...(r.role ? { role: r.role } : {}), ok: r.dimensions.responsiveness !== 'fail', ...(r.responsiveness.worst.interaction ? { interaction: r.responsiveness.worst.interaction } : {}), ...(r.responsiveness.worst.navigation ? { navigation: r.responsiveness.worst.navigation } : {}) }] : [])),
@@ -733,6 +749,10 @@ export function headlines(summary: ResponsivenessSummary): string[] {
 	for (const [label, part] of [['First interaction', summary.interaction], ['Navigation', summary.navigation]] as const) {
 		if (!part) continue;
 		lines.push(`${label}: ${pair(part.throttled)} (${summary.cpu}x CPU)${part.desktop ? `; desktop ${pair(part.desktop)}` : ''}`);
+	}
+	if (lines.length && summary.latencyMs !== undefined) {
+		const server = summary.server ? `; server time, apart: slowest page old ${msText(summary.server.old)} → new ${msText(summary.server.new)} (the checker's own fetch, network included)` : '';
+		lines.push(`Network while timing: every response reaches either page ${summary.latencyMs} ms after it is asked for, from one copy fetched from the app beforehand${server}`);
 	}
 	return lines;
 }
