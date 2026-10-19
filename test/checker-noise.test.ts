@@ -362,3 +362,20 @@ test('a video is not painted while a masked screenshot is taken, so a frame draw
 		await page.close();
 	}
 });
+
+test('motion that differs once on the new page and not when it is recorded again is not red; a difference both recordings show is', async () => {
+	const { checkMotion } = await import('../src/check/motion.ts');
+	const page = (fade: boolean) => html('<button id="go">Go</button><p id="out">Ready</p>', `<style>#out { opacity: 1; ${fade ? 'transition: opacity 400ms linear;' : ''} } #out.dim { opacity: 0.4; }</style><script>addEventListener('DOMContentLoaded', () => (document.getElementById('go').onclick = () => document.getElementById('out').classList.add('dim')));</script>`);
+	const old = await serve(() => ({ body: page(false) }));
+	// Loads of the new page in checkMotion: one to learn its loops, then the recording, then the recording again.
+	let loads = 0;
+	const once = await serve(() => ({ body: page(++loads === 2) }));
+	const always = await serve(() => ({ body: page(true) }));
+	const journey = { name: 'click button "Go"', steps: [{ action: 'click' as const, target: { role: 'button', name: 'Go', nth: 0 } }], expected: [{ url: '/', navigated: false, added: [], removed: [], requests: [], errors: [], announcements: [], focus: 'button "Go"', storage: [] }] };
+	const run = (next: string) => checkMotion(browser, { old: defaultEnv(old), new: defaultEnv(next) }, '/', desktop[0]!, [journey] as never, { maxHovers: 0 });
+	const flaky = await run(once);
+	assert.ok(loads >= 3, `the new page was recorded again (${loads} loads)`);
+	assert.deepEqual(flaky.failures.map((f) => f.check), []);
+	const red = await run(always);
+	assert.ok(red.failures.some((f) => /click button "Go"/.test(f.check) && /opacity/.test(f.actual)), JSON.stringify(red.failures));
+});

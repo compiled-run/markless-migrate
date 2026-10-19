@@ -628,9 +628,11 @@ export async function checkMotion(browser: Browser, envs: { readonly old: SideEn
 		for (const i of old.hits ?? []) hit.add(i);
 		let found = compareMotion(route, journey.name, name, [old], next);
 		let again: Recorded | undefined;
+		// A difference is measured again on both sides, and stands only if the second recording of the new page shows one too.
 		if (found.length) {
 			again = await recordJourney(browser, oldEnv, route, viewport, journey, old.film ?? next.film ?? 'self');
 			found = compareMotion(route, journey.name, name, [old, again], next);
+			if (found.length && !compareMotion(route, journey.name, name, [old, again], await recordJourney(browser, newEnv, route, viewport, journey)).length) found = [];
 		}
 		const oldFrames = old.frames ?? again?.frames;
 		if (found.length && oldFrames && next.frames) {
@@ -642,7 +644,11 @@ export async function checkMotion(browser: Browser, envs: { readonly old: SideEn
 			const label = `${journey.name}, with prefers-reduced-motion: reduce`;
 			const [ro, rn] = await Promise.all([recordJourney(browser, oldReduced, route, viewport, journey), recordJourney(browser, newReduced, route, viewport, journey)]);
 			let r = compareMotion(route, label, name, [ro], rn, HINTS.motionReduced);
-			if (r.length) r = compareMotion(route, label, name, [ro, await recordJourney(browser, oldReduced, route, viewport, journey)], rn, HINTS.motionReduced);
+			if (r.length) {
+				const olds = [ro, await recordJourney(browser, oldReduced, route, viewport, journey)];
+				r = compareMotion(route, label, name, olds, rn, HINTS.motionReduced);
+				if (r.length && !compareMotion(route, label, name, olds, await recordJourney(browser, newReduced, route, viewport, journey), HINTS.motionReduced).length) r = [];
+			}
 			found.push(...r);
 			reduced = { old: motionLines(ro.motions), new: motionLines(rn.motions), ok: !r.length };
 		}
@@ -667,11 +673,13 @@ export async function checkMotion(browser: Browser, envs: { readonly old: SideEn
 	const first = oldHovers.map((o, i) => compareMotion(route, o.interaction, name, [o], newHovers[i]!, hint(o)));
 	const differ = new Set(oldHovers.filter((_, i) => first[i]!.length).map((o) => o.interaction));
 	const redo = hovered.filter((t) => differ.has(`hover ${describeTarget(t)}`) || differ.has(`focus ${describeTarget(t)}`));
-	const again = differ.size ? await recordHovers(browser, oldEnv, route, viewport, redo, differ.has(SCROLL)) : [];
+	const [again, newAgain] = differ.size ? await Promise.all([recordHovers(browser, oldEnv, route, viewport, redo, differ.has(SCROLL)), recordHovers(browser, newEnv, route, viewport, redo, differ.has(SCROLL))]) : [[], []];
 	oldHovers.forEach((o, i) => {
 		const n = newHovers[i]!;
 		const second = again.find((a) => a.interaction === o.interaction);
-		const found = first[i]!.length && second ? compareMotion(route, o.interaction, name, [o, second], n, hint(o)) : first[i]!;
+		const newSecond = newAgain.find((a) => a.interaction === o.interaction);
+		let found = first[i]!.length && second ? compareMotion(route, o.interaction, name, [o, second], n, hint(o)) : first[i]!;
+		if (found.length && second && newSecond && !compareMotion(route, o.interaction, name, [o, second], newSecond, hint(o)).length) found = [];
 		failures.push(...found);
 		if (o.failed || n.failed) skipped.push(`${o.interaction}: ${o.failed ?? n.failed}`);
 		else if (o.motions.length || n.motions.length) hovers.push({ name: o.interaction, old: motionLines(o.motions), new: motionLines(n.motions), ok: !found.length });
