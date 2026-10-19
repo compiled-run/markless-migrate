@@ -246,3 +246,7 @@ G28 there (render data). Fixed since and relied on here: keyed rows updating in 
 | responsiveness | red at 4x CPU on a phone: the first click on a row or cell answers in 104-112 ms against the old 80 ms (a 50 ms long task in the row click handler); desktop is faster than the old (56 against 128 ms) |
 
 JavaScript on the wire 688.5 kB to 86.0 kB, run at load 1,013.6 kB to 208.6 kB.
+
+### Check again with the motion dimension (markless-migrate `3701487`)
+
+The same run after rebasing on the motion dimension: **3 of 4 checks green**, `/` red for behaviour (the 12 unlabelled grid controls) and responsiveness (the first row click at 4x CPU on a phone). Motion is green: 49 interactions recorded, 40 move, alike on both sides. First interaction old 130 → new 120 ms at 4x CPU, 80 → 80 ms desktop.

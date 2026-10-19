@@ -158,3 +158,7 @@ Routes switched: `/`, `/join`, `/login` and `/healthcheck` (green signed in and 
 | http, rendered, seo, visual, css, fonts, behaviour, assets, network, weight | green |
 | a11y | red on the notes pages: "Logout" and "Delete" pressed with Enter. The checker holds the post back; Remix then navigates to `/logout` (or reloads the note) and fetches it again, the port stays on the page with the one post |
 | responsiveness | red: going from one note to another at 4x CPU on a phone takes 127-160 ms against Remix's 45-49 ms (Remix fetches the loader's JSON, the router fetches and swaps the page's HTML) |
+
+### Check again with the motion dimension (markless-migrate `3701487`)
+
+The same run after rebasing on the motion dimension: **24 of 28 route checks green**, 4 red, the same four as above. Motion is green on every route: no transition, animation or scripted motion differs. Responsiveness at 4x CPU: first interaction old 168 → new 40 ms, navigation 188 → 139 ms.

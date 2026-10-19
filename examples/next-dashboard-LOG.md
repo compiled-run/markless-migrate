@@ -236,3 +236,12 @@ Two tool fixes came out of this: a signed-in visitor sent to `/dashboard` from a
 | responsiveness | red on some signed-in first uses: "Acme" at desktop speed, the customers search box at 4x CPU, the create page's links (the router fetches the next page's HTML; Next has the payload prefetched) |
 
 JavaScript on the wire 140-160 kB to 51-141 kB, run at load 175-280 kB to 2.5-10 kB.
+
+### Check again with the motion dimension (markless-migrate `3701487`)
+
+The same `check --all --concurrency 2 --auth .migrate/auth-deployed.json` after rebasing on the motion dimension: **50 of 60 route checks green**, 7 red, 3 not checked (the connection to the old deployment timed out). Routes 23 of 23 for both roles. Responsiveness at 4x CPU: first interaction old 798 → new 543 ms, navigation 258 → 177 ms.
+
+| Dimension | Result |
+| --- | --- |
+| motion | red on the login form (`/dashboard` and `/dashboard/invoices/create` signed out answer it): clicking "Log in" fades the button to its hover colour over 150 ms on the old page and jumps there on the new one. Hovering alone fades the same way on both (same classes, same computed transition, the same transitionrun/transitioncancel sequence); only the click differs, and the cause was not found. Signed in, "Create Invoice" after a held-back save fades on the new page only, because Next replaces the form with its error page and the port keeps it |
+| everything else | as above |

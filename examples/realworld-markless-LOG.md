@@ -302,3 +302,13 @@ Routes switched: `/profile/:username`, `/profile/:username/favorites`, `/login`,
 | http, rendered, seo, visual, css, fonts, a11y, assets, network, weight | green on every page checked |
 | behaviour | red on the article template, signed out: the "Follow linus" and "Favorite Article" buttons and the author links could not be clicked on the old page within check's 1.5 s (Playwright's click timed out), so nothing was replayed on the new page and they stay "not exercised"; the cause on the old page was not found in this pass |
 | responsiveness | red on `/tag/css` signed in: the "Your Feed" link shows the next page in 85 ms against Angular's 49 ms at 4x CPU on a phone (the router fetches the page; Angular redraws the list in place) |
+
+### Check again with the motion dimension (markless-migrate `3701487`)
+
+One fix landed first: on `/?feed=following` the port marks the feed the URL names (the CDN serves the same `/` for every query), and a signed-out visit asks for the global feed before going to `/login`, as Angular's article list does (redeployed). Then the same `check --all --auth .migrate/auth.json`: **186 of 198 route checks green**, 8 red, 4 not checked (connections to a deployment timed out). Routes 52 of 52 for both roles. Responsiveness at 4x CPU: first interaction old 78 → new 57 ms, navigation 425 → 440 ms.
+
+| Dimension | Result |
+| --- | --- |
+| motion | red signed in on the home, article, editor, profile and tag templates: the favourite and follow buttons (their writes are held back by the checker): after a click one side fades the button's background or border over 150 ms and the other changes it at once; which side fades varies by button and was not traced in this pass. The pagination buttons on `/` fade the "Home" link on the old page only |
+| behaviour, responsiveness | as above (unreachable author and favourite controls signed out; "Your Feed" at 4x CPU) |
+| everything else | green |
