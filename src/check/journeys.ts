@@ -51,6 +51,10 @@ export interface StepResult {
 	readonly dialogs?: readonly string[];
 	/** The step ended on a page the front door serves from the old app, on the old app's own origin: what that page keeps in the browser is the old app's, on another origin, so it is not compared. */
 	readonly door?: boolean;
+	/** What the step changed on <html> and <body> (attributes, class names), in the page colours and colour scheme, and in stored values: `html data-theme: light → dark`, `localStorage theme: "light" → "dark"`. */
+	readonly state?: readonly string[];
+	/** The step reloaded the page: what it shows and keeps after the reload is compared with what it showed before. */
+	readonly reloaded?: boolean;
 }
 
 export interface Journey {
@@ -58,7 +62,20 @@ export interface Journey {
 	readonly steps: readonly Step[];
 	/** Its last step uses a control that ends the session or deletes (Sign out, Delete): run after every other journey, each in a fresh session. */
 	readonly destructive?: boolean;
+	/** What is done after the steps, each compared like a step (see CycleAct). */
+	readonly cycle?: readonly CycleAct[];
 }
+
+/**
+ * One act after a journey's steps: use its last control `again`; `reopen` with the step before it (what a close button closed);
+ * press `escape`; `reload`; go `back`; click `outside` what the control opened, at a point of the old page that holds no control;
+ * or `navigate` by following an in-site link.
+ */
+export type CycleAct = 'again' | 'reopen' | 'escape' | 'reload' | 'back' | { readonly outside: { readonly x: number; readonly y: number } } | { readonly navigate: Target };
+
+/** How many times a control that stays on the page is used in a row: a two-state toggle comes back, a three-way one goes round. */
+export const CYCLE_USES = 3;
+const CYCLE_ACTS = 5;
 
 export interface RecordedJourney extends Journey {
 	readonly expected: readonly StepResult[];
@@ -387,6 +404,60 @@ function storageChange(before: readonly string[], after: readonly string[]): str
 	return [...added.map((k) => `+ ${k}`), ...removed.map((k) => `- ${k}`)];
 }
 
+// Runs in the page: what a theme, a mode or a preference is kept as, `subject\tvalue`; a colour is read once a transition on <html> or <body> has ended (at most 1 s).
+async function pageState(): Promise<string[]> {
+	const root = document.documentElement;
+	const body = document.body as HTMLElement | null;
+	const own = [root, body].filter((el): el is HTMLElement => Boolean(el));
+	const running = own.flatMap((el) => el.getAnimations()).filter((a) => a.effect?.getComputedTiming().iterations !== Infinity);
+	if (running.length) await Promise.race([Promise.all(running.map((a) => a.finished.catch(() => {}))), new Promise((done) => setTimeout(done, 1_000))]);
+	const out: string[] = [];
+	const clip = (v: string) => (v.length > 120 ? `${v.slice(0, 120)}…` : v);
+	for (const el of own) {
+		const tag = el.localName;
+		for (const a of el.attributes) {
+			if (a.name.startsWith('data-markless-migrate')) continue;
+			if (a.name === 'class') for (const c of el.classList) out.push(`${tag} class +${c}\t`);
+			else out.push(`${tag} ${a.name}\t${clip(a.value)}`);
+		}
+	}
+	const opaque = (c: string) => c !== 'transparent' && !/^rgba\(.*,\s*0\)$/.test(c);
+	const bodyBg = body ? getComputedStyle(body).backgroundColor : '';
+	out.push(`page background\t${opaque(bodyBg) ? bodyBg : getComputedStyle(root).backgroundColor}`);
+	out.push(`page text colour\t${getComputedStyle(body ?? root).color}`);
+	out.push(`page color-scheme\t${getComputedStyle(root).colorScheme}`);
+	for (const [label, store] of [['localStorage', () => localStorage], ['sessionStorage', () => sessionStorage]] as const) {
+		try {
+			const s = store();
+			for (let i = 0; i < s.length; i++) out.push(`${label} ${s.key(i)}\t${clip(JSON.stringify(s.getItem(s.key(i)!)))}`);
+		} catch {}
+	}
+	return out;
+}
+
+async function readState(page: Page, signedIn: ReadonlySet<string>): Promise<string[]> {
+	const inPage = await page.evaluate(pageState).catch(() => [] as string[]);
+	const cookies = (await page.context().cookies(page.url()).catch(() => [])).filter((c) => !signedIn.has(c.name)).map((c) => `cookie ${c.name}\t${c.value.length > 120 ? `${c.value.slice(0, 120)}…` : c.value}`);
+	return [...inPage, ...cookies];
+}
+
+/** What changed between two readings of the page state, one line per subject: `html data-theme: light → dark`, `html class +dark`. */
+export function stateChange(before: readonly string[], after: readonly string[]): string[] {
+	const split = (lines: readonly string[]) => new Map(lines.map((l) => [l.slice(0, l.indexOf('\t')), l.slice(l.indexOf('\t') + 1)]));
+	const a = split(before);
+	const b = split(after);
+	const out: string[] = [];
+	for (const key of new Set([...a.keys(), ...b.keys()])) {
+		const was = a.get(key);
+		const now = b.get(key);
+		if (was === now) continue;
+		const cls = / class \+/.exec(key);
+		if (cls) out.push(now === undefined ? key.replace(' class +', ' class -') : key);
+		else out.push(`${key}: ${was ?? '(none)'} → ${now ?? '(none)'}`);
+	}
+	return out.sort();
+}
+
 const MOVED_WINDOW = 800;
 const MOVED_MAX = 40;
 
@@ -666,6 +737,8 @@ export interface Session {
 	readonly page: Page;
 	/** `destructive`: the step uses a control that ends the session or deletes, so its dialogs are accepted and, when writes are held back, every request it makes to the app is held back too. */
 	run(step: Step, destructive?: boolean): Promise<StepResult>;
+	/** One act of a journey's cycle after its `steps`. */
+	cycle(steps: readonly Step[], act: CycleAct): Promise<StepResult>;
 	/** Console errors the page logged while it loaded, before any step. */
 	readonly loadErrors: readonly string[];
 	close(): Promise<void>;
@@ -716,60 +789,75 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 	// Where a redirect landed is the http and auth checks' business; a step that stays there compares alike.
 	const landing = here(page.url());
 	const redirected = landing !== localUrl(new URL(route, origin).href, origin);
+	const observe = async (act: () => Promise<void>, what: string, step: Step | undefined, destructive: boolean, reload: boolean): Promise<StepResult> => {
+		const startPath = new URL(page.url()).pathname;
+		const href = step?.target.role === 'link' ? await locate(page, step.target).getAttribute('href', { timeout: STEP_TIMEOUT }).catch(() => null) : null;
+		documentLoaded = false;
+		const before = await snapshot(page, hosts);
+		const liveBefore = await page.evaluate(liveRegions).catch(() => [] as string[]);
+		const stateBefore = await readState(page, signedIn);
+		requests = [];
+		errors = [];
+		const writesBefore = log.writes.length;
+		const keptBefore = await storageKeys(page, signedIn);
+		let failed: string | undefined;
+		let unreachable: Unreachability | undefined;
+		dialogs = [];
+		accepting = destructive;
+		log.holdAll = destructive && !env.sendWrites;
+		try {
+			await act();
+		} catch (error) {
+			failed = `${what} could not be used: ${(error as Error).message.split('\n')[0]}`;
+			if (error instanceof UnreachableError) unreachable = error.kind;
+		}
+		await quiet(page, inflight, navigations);
+		log.holdAll = false;
+		accepting = false;
+		const after = await snapshot(page, hosts);
+		const liveAfter = await page.evaluate(liveRegions).catch(() => [] as string[]);
+		const { added, removed } = multisetDiff(before, after);
+		const moved = documentLoaded && !reload ? [] : movedLines(before, after);
+		const writes = log.writes.slice(writesBefore);
+		const writeOf = new Map(writes.map((w) => [w.request, w.line]));
+		const state = stateChange(stateBefore, await readState(page, signedIn));
+		return {
+			url: redirected && here(page.url()) === landing ? 'the page the route redirected to' : here(page.url()),
+			navigated: reload ? new URL(page.url()).pathname !== startPath : documentLoaded || new URL(page.url()).pathname !== startPath || (href !== null && new URL(href, page.url()).href === page.url()),
+			...(reload ? { reloaded: true } : {}),
+			added,
+			removed,
+			...(moved.length ? { moved } : {}),
+			requests: requests.flatMap((r) => {
+				const line = writeOf.get(r) ?? appRequest(r, hosts);
+				return line ? [line] : [];
+			}),
+			...(writes.length ? { writes: writes.map((w) => ({ line: w.line, reason: w.reason, sent: w.sent })) } : {}),
+			errors: [...errors],
+			announcements: liveAfter.filter((line) => !liveBefore.includes(line)),
+			focus: await focusLabel(page),
+			storage: storageChange(keptBefore, await storageKeys(page, signedIn)),
+			...(failed ? { failed } : {}),
+			...(unreachable ? { unreachable } : {}),
+			...(dialogs.length ? { dialogs: [...dialogs] } : {}),
+			...(onOld(page.url()) ? { door: true } : {}),
+			...(state.length ? { state } : {}),
+		};
+	};
 	return {
 		context,
 		page,
 		loadErrors,
-		async run(step, destructive = false) {
-			const startPath = new URL(page.url()).pathname;
-			const href = step.target.role === 'link' ? await locate(page, step.target).getAttribute('href', { timeout: STEP_TIMEOUT }).catch(() => null) : null;
-			documentLoaded = false;
-			const before = await snapshot(page, hosts);
-			const liveBefore = await page.evaluate(liveRegions).catch(() => [] as string[]);
-			requests = [];
-			errors = [];
-			const writesBefore = log.writes.length;
-			const keptBefore = await storageKeys(page, signedIn);
-			let failed: string | undefined;
-			let unreachable: Unreachability | undefined;
-			dialogs = [];
-			accepting = destructive;
-			log.holdAll = destructive && !env.sendWrites;
-			try {
-				await perform(page, step);
-			} catch (error) {
-				failed = `${describeTarget(step.target)} could not be used: ${(error as Error).message.split('\n')[0]}`;
-				if (error instanceof UnreachableError) unreachable = error.kind;
-			}
-			await quiet(page, inflight, navigations);
-			log.holdAll = false;
-			accepting = false;
-			const after = await snapshot(page, hosts);
-			const liveAfter = await page.evaluate(liveRegions).catch(() => [] as string[]);
-			const { added, removed } = multisetDiff(before, after);
-			const moved = documentLoaded ? [] : movedLines(before, after);
-			const writes = log.writes.slice(writesBefore);
-			const writeOf = new Map(writes.map((w) => [w.request, w.line]));
-			return {
-				url: redirected && here(page.url()) === landing ? 'the page the route redirected to' : here(page.url()),
-				navigated: documentLoaded || new URL(page.url()).pathname !== startPath || (href !== null && new URL(href, page.url()).href === page.url()),
-				added,
-				removed,
-				...(moved.length ? { moved } : {}),
-				requests: requests.flatMap((r) => {
-					const line = writeOf.get(r) ?? appRequest(r, hosts);
-					return line ? [line] : [];
-				}),
-				...(writes.length ? { writes: writes.map((w) => ({ line: w.line, reason: w.reason, sent: w.sent })) } : {}),
-				errors: [...errors],
-				announcements: liveAfter.filter((line) => !liveBefore.includes(line)),
-				focus: await focusLabel(page),
-				storage: storageChange(keptBefore, await storageKeys(page, signedIn)),
-				...(failed ? { failed } : {}),
-				...(unreachable ? { unreachable } : {}),
-				...(dialogs.length ? { dialogs: [...dialogs] } : {}),
-				...(onOld(page.url()) ? { door: true } : {}),
-			};
+		run: (step, destructive = false) => observe(() => perform(page, step), describeTarget(step.target), step, destructive, false),
+		cycle(steps, act) {
+			const use = (step: Step) => observe(() => perform(page, step), describeTarget(step.target), step, false, false);
+			if (act === 'again') return use(steps.at(-1)!);
+			if (act === 'reopen') return use(steps.at(-2) ?? steps.at(-1)!);
+			if (act === 'escape') return observe(() => page.keyboard.press('Escape'), 'Escape', undefined, false, false);
+			if (act === 'reload') return observe(async () => void (await page.reload({ waitUntil: 'load', timeout: 30_000 })), 'reloading the page', undefined, false, true);
+			if (act === 'back') return observe(async () => void (await page.goBack({ waitUntil: 'load', timeout: 10_000 })), 'going back', undefined, false, false);
+			if ('outside' in act) return observe(() => page.mouse.click(act.outside.x, act.outside.y), `a click at (${act.outside.x}, ${act.outside.y})`, undefined, false, false);
+			return use({ action: 'click', target: act.navigate });
 		},
 		close: () => context.close(),
 	};
@@ -781,6 +869,11 @@ export async function replay(browser: Browser, env: SideEnv, route: string, view
 		const results: StepResult[] = [];
 		for (const [i, step] of journey.steps.entries()) {
 			const result = await session.run(step, Boolean(journey.destructive) && i === journey.steps.length - 1);
+			results.push(result);
+			if (result.failed) return results;
+		}
+		for (const act of journey.cycle ?? []) {
+			const result = await session.cycle(journey.steps, act);
 			results.push(result);
 			if (result.failed) break;
 		}
@@ -830,6 +923,8 @@ export interface ExploreOptions {
 	readonly maxJourneys?: number;
 	/** The route of this run that exercises a shared layout control, when it is another route. */
 	readonly owner?: (signature: string) => string | undefined;
+	/** Paths the new app serves in this run (the rest the front door sends to the old app): a stored mode is followed to one of them. */
+	readonly serves?: (path: string) => boolean;
 }
 
 /** One interactive element of the OLD page and how check used it. */
@@ -858,6 +953,8 @@ export interface Exploration {
 	readonly elements: readonly ElementCoverage[];
 	/** Keyboard and dismiss journeys left out when the budget ran out. */
 	readonly skipped: number;
+	/** Repeated-use and closing sequences left out when the budget ran out. */
+	readonly sequencesSkipped?: number;
 	/** Journeys that end the session or delete, not run here: run.ts runs them after every other journey on both sides. */
 	readonly deferred: readonly { readonly journey: Journey; readonly signature: string }[];
 }
@@ -868,7 +965,19 @@ interface Item {
 	readonly depth: number;
 	/** Expand after it: collect what the last step revealed. */
 	readonly expand: boolean;
+	/** Run the journey, then find its cycle (runCycle); the cycled journey replaces the plain one. */
+	readonly discover?: boolean;
+	/** Which sequences run first when the budget is short: a control that changed the page's mode or what it stores (URGENT: right after its first use), then one that opened something. */
+	readonly rank?: number;
+	/** The element a sequence uses again: when an URGENT one is out of the budget, the element counts as not exercised. */
+	readonly of?: Tracked;
 }
+
+const URGENT = 3;
+
+/** Roles whose use leaves a state behind that the next use reads (on, off, selected, sorted, open). */
+const STATEFUL_ROLES = new Set(['checkbox', 'switch', 'radio', 'tab', 'option', 'menuitemcheckbox', 'menuitemradio', 'summary', 'columnheader', 'treeitem']);
+const STATEFUL_ARIA = ['aria-pressed', 'aria-checked', 'aria-expanded', 'aria-selected', 'aria-sort'];
 
 interface Tracked {
 	readonly candidate: Candidate;
@@ -883,6 +992,77 @@ interface Tracked {
 	readonly journeys: string[];
 }
 
+const cyclable = (step: Step) => step.action === 'click' && step.target.role !== 'link';
+
+/** Whether a control can be used again now: `ok`, covered by an open dialog (Escape may close it), or gone. */
+async function usable(page: Page, target: Target): Promise<'ok' | 'modal' | 'no'> {
+	const found = locate(page, target);
+	if (!(await found.count().catch(() => 0))) return 'no';
+	const kind = (await found.evaluate(diagnose, undefined, { timeout: QUICK }).catch(() => ({ kind: 'timeout' }) as Diagnosis)).kind;
+	if (kind === 'ok' || kind === 'offscreen') return 'ok';
+	const modal = await page.evaluate(() => [...document.querySelectorAll('dialog[open], [role="dialog"], [role="alertdialog"]')].some((d) => d.checkVisibility())).catch(() => false);
+	return kind === 'occluded' && modal ? 'modal' : 'no';
+}
+
+// Runs in the page: the dialogs, menus, listboxes and popovers shown now, and a point outside all of them that holds no control.
+function overlays(): { keys: string[]; outside: { x: number; y: number } | null } {
+	const shown = [...document.querySelectorAll('dialog[open], [role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [popover]')].filter((el) => el.checkVisibility() && (!el.hasAttribute('popover') || el.matches(':popover-open')));
+	const keys = shown.map((el) => `${el.localName}|${el.getAttribute('role') ?? ''}|${el.id}|${el.getAttribute('aria-label') ?? ''}`);
+	const boxes = shown.map((el) => el.getBoundingClientRect());
+	const control = 'a[href], button, input, select, textarea, summary, label, [role="button"], [role="link"], [role="tab"], [role="checkbox"], [role="switch"], [role="menuitem"], [role="option"], [tabindex], [contenteditable=""], [contenteditable="true"]';
+	let outside: { x: number; y: number } | null = null;
+	for (const fy of [0.5, 0.9, 0.1, 0.7, 0.3]) {
+		for (const fx of [0.05, 0.95, 0.5, 0.25, 0.75]) {
+			const x = Math.round(innerWidth * fx);
+			const y = Math.round(innerHeight * fy);
+			if (boxes.some((b) => x >= b.left - 4 && x <= b.right + 4 && y >= b.top - 4 && y <= b.bottom + 4)) continue;
+			const hit = document.elementFromPoint(x, y);
+			if (!hit || (hit.closest(control) && !shown.includes(hit))) continue;
+			outside = { x, y };
+			break;
+		}
+		if (outside) break;
+	}
+	return { keys, outside };
+}
+
+/** Uses the control of a journey's last step again until it has been used CYCLE_USES times, closing with Escape a dialog it opened in between; reloads when the journey stored something and uses it once more. Acts the old page would not take are left out, so both sides replay only what the old one did. */
+async function runCycle(session: Session, steps: readonly Step[], expected: StepResult[], preset?: readonly CycleAct[]): Promise<CycleAct[]> {
+	const step = steps.at(-1)!;
+	const cycle: CycleAct[] = [];
+	const take = async (act: CycleAct): Promise<boolean> => {
+		if ((act === 'again' || act === 'reopen') && (await usable(session.page, act === 'again' ? step.target : (steps.at(-2) ?? step).target)) !== 'ok') return false;
+		const result = await session.cycle(steps, act);
+		if (result.failed) return false;
+		cycle.push(act);
+		expected.push(result);
+		return true;
+	};
+	if (preset) {
+		for (const act of preset) if (!(await take(act)) && act !== 'again') break;
+		return cycle;
+	}
+	let uses = 1;
+	while (uses < CYCLE_USES && cycle.length < CYCLE_ACTS) {
+		const now = await usable(session.page, step.target);
+		if (now === 'ok') {
+			if (!(await take('again')) || expected.at(-1)!.navigated) return cycle;
+			uses++;
+		} else if (now === 'modal' && cycle.at(-1) !== 'escape') {
+			if (!(await take('escape'))) break;
+		} else {
+			if (uses === 1 && steps.length > 1 && cyclable(steps.at(-2)!)) await take('reopen');
+			break;
+		}
+	}
+	if (expected.some(stores) && (await take('reload'))) await take('again');
+	return cycle;
+}
+
+const stores = (r: StepResult) => Boolean(r.storage?.length || r.state?.some((line) => /^(localStorage|sessionStorage|cookie) /.test(line)));
+
+const closedBy = (act: CycleAct) => (act === 'escape' ? 'Escape' : act === 'back' ? 'going back' : 'a click outside it');
+
 /** Explores the OLD page until every interactive element is used by a journey or the budget runs out: the page's own controls first, then what each reveals, then keyboard paths. */
 export async function explore(browser: Browser, env: SideEnv, route: string, viewport: Viewport, options: ExploreOptions = {}): Promise<Exploration> {
 	const origin = env.origin;
@@ -896,6 +1076,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	const later: Item[] = [];
 	let formSteps: Step[] = [];
 	const deferred: { journey: Journey; signature: string }[] = [];
+	const sequences: Item[] = [];
 
 	const sampled = new Map<string, number>();
 	const track = (found: readonly Candidate[], prefix: readonly Step[], parent: Tracked | undefined): Tracked[] => {
@@ -949,8 +1130,20 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 
 	const start = await openSession(browser, env, route, viewport);
 	let wave: Item[];
+	let navLink: Target | undefined;
 	try {
 		const found = await candidates(start.page, host);
+		const here = new URL(route, origin);
+		// Another page the new app serves, else this page again by a link to it (an in-place navigation), else any page of the app.
+		const rank = (c: Candidate) => {
+			if (c.target.role !== 'link' || !c.href || c.covered || c.destructive || /^javascript:/i.test(c.href)) return 0;
+			const to = new URL(c.href, here);
+			if (to.origin !== host) return 0;
+			if (to.pathname === here.pathname) return to.hash ? 0 : 2;
+			return options.serves?.(to.pathname) ? 3 : 1;
+		};
+		const links = found.map((c) => ({ c, rank: rank(c) * 2 + (isLayout(c) ? 1 : 0) })).filter((l) => l.rank > 1);
+		navLink = links.sort((a, b) => b.rank - a.rank)[0]?.c.target;
 		const first = itemsFor(track(found, [], undefined), 1);
 		formSteps = await forms(start.page, host, found);
 		wave = [...first.primary, ...formSteps.map((step): Item => ({ journey: { name: describeStep(step), steps: [step] }, depth: 1, expand: false }))];
@@ -963,36 +1156,92 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		const session = await openSession(browser, env, route, viewport);
 		try {
 			const expected: StepResult[] = [];
-			for (const step of item.journey.steps) {
+			const page = session.page;
+			const primary = Boolean(item.element);
+			let opened: string[] = [];
+			let outside: { x: number; y: number } | null = null;
+			let historyGrew = false;
+			for (const [i, step] of item.journey.steps.entries()) {
+				const watch = primary && i === item.journey.steps.length - 1;
+				const before = watch ? await page.evaluate(overlays).catch(() => undefined) : undefined;
+				const historyBefore = watch ? await page.evaluate(() => history.length).catch(() => 0) : 0;
 				const result = await session.run(step);
 				expected.push(result);
 				if (result.failed) break;
+				if (!before) continue;
+				const now = await page.evaluate(overlays).catch(() => undefined);
+				opened = now ? now.keys.filter((k) => !before.keys.includes(k)) : [];
+				outside = now?.outside ?? null;
+				historyGrew = (await page.evaluate(() => history.length).catch(() => 0)) > historyBefore;
 			}
 			const last = expected.at(-1)!;
 			const done = expected.length === item.journey.steps.length && !last.failed;
-			const stayed = done && new URL(session.page.url()).pathname === new URL(route, origin).pathname;
-			const revealed = item.expand && stayed ? await candidates(session.page, host) : [];
-			const step = item.journey.steps.at(-1)!;
-			const expanded = stayed && step.action === 'click' && (await locate(session.page, step.target).getAttribute('aria-expanded', { timeout: 500 }).catch(() => null)) === 'true';
-			return { item, expected, done, failed: last.failed, unreachable: last.unreachable, revealed, expanded };
+			const stayed = done && new URL(page.url()).pathname === new URL(route, origin).pathname && !last.navigated;
+			const revealed = item.expand && stayed ? await candidates(page, host) : [];
+			const steps = item.journey.steps;
+			const step = steps.at(-1)!;
+			const expanded = stayed && step.action === 'click' && (await locate(page, step.target).getAttribute('aria-expanded', { timeout: 500 }).catch(() => null)) === 'true';
+			const sequences: Item[] = [];
+			let journey: Journey = item.journey;
+			if ((item.discover || item.journey.cycle) && stayed) {
+				const { cycle: _, ...plain } = item.journey;
+				const cycle = await runCycle(session, steps, expected, item.journey.cycle);
+				journey = cycle.length ? { ...plain, cycle } : plain;
+			} else if (primary && stayed && cyclable(step)) {
+				const now = await usable(page, step.target);
+				const marked = await locate(page, step.target).evaluate((el, names) => names.some((n) => el.hasAttribute(n)), STATEFUL_ARIA, { timeout: QUICK }).catch(() => false);
+				const changed = Boolean(last.state?.length);
+				const stored = stores(last);
+				const reopens = now === 'no' && steps.length > 1 && cyclable(steps.at(-2)!);
+				if (changed || opened.length || marked || STATEFUL_ROLES.has(step.target.role) || reopens) sequences.push({ journey: item.journey, depth: item.depth, expand: false, discover: true, rank: changed ? URGENT : opened.length ? 2 : reopens ? 0 : 1, of: item.element });
+				const closes: CycleAct[] = opened.length ? [...(now === 'modal' ? [] : ['escape' as const]), ...(outside ? [{ outside }] : []), ...(historyGrew ? ['back' as const] : [])] : [];
+				for (const close of closes) sequences.push({ journey: { name: `${item.journey.name}, closed by ${closedBy(close)}`, steps, cycle: [close, 'again'] }, depth: item.depth, expand: false, rank: 2, of: item.element });
+				if (stored && navLink) sequences.push({ journey: { name: `${item.journey.name}, then follow ${describeTarget(navLink)}`, steps, cycle: [{ navigate: navLink }, 'again', 'reload'] }, depth: item.depth, expand: false, rank: URGENT, of: item.element });
+			}
+			return { item: { ...item, journey }, expected, done, failed: last.failed, unreachable: last.unreachable, revealed, expanded, sequences, empty: !item.discover && Boolean(item.journey.cycle) && !journey.cycle?.length };
 		} finally {
 			await session.close();
 		}
+	};
+
+	type Ran = Awaited<ReturnType<typeof runItem>>;
+	let sequencesSkipped = 0;
+	const applySequence = (item: Item, r: Ran | undefined): void => {
+		if (!r) {
+			if (item.discover || item.journey.cycle) sequencesSkipped++;
+			if ((item.rank ?? 0) >= URGENT && item.of?.by) {
+				item.of.by = undefined;
+				item.of.reason = `it was used once, but using it again, after a reload or after following a link is ${budgetReason(budget, options.maxJourneys)}`;
+			}
+			return;
+		}
+		if (r.empty) return;
+		if (!item.discover) return void journeys.push({ ...r.item.journey, expected: r.expected });
+		const at = journeys.findIndex((j) => j.name === item.journey.name && !j.cycle);
+		if (at >= 0 && r.item.journey.cycle?.length) journeys[at] = { ...r.item.journey, expected: r.expected };
 	};
 
 	for (let depth = 1; wave.length; depth++) {
 		const room = Math.max(0, cap - journeys.length);
 		const runnable = wave.slice(0, room);
 		for (const item of wave.slice(room)) if (item.element) item.element.reason = `out of the journey budget (${options.maxJourneys} journeys)`;
-		const results = await pool(runnable, CONCURRENCY, async (item) => (outOfBudget() ? undefined : runItem(item)));
+		// A control that changed the page's mode or what it stores is used again straight after, before deeper controls can spend the budget.
+		const results = await pool(runnable, CONCURRENCY, async (item) => {
+			if (outOfBudget()) return undefined;
+			const r = await runItem(item);
+			const urgent: { item: Item; r: Ran | undefined }[] = [];
+			for (const s of r.sequences) if ((s.rank ?? 0) >= URGENT) urgent.push({ item: s, r: outOfBudget() ? undefined : await runItem(s) });
+			return { ...r, urgent };
+		});
 		const next: Item[] = [];
 		for (const [i, r] of results.entries()) {
-			const item = runnable[i]!;
+			const item = r?.item ?? runnable[i]!;
 			if (!r) {
 				if (item.element) item.element.reason = budgetReason(budget, options.maxJourneys);
 				continue;
 			}
 			journeys.push({ ...item.journey, expected: r.expected });
+			sequences.push(...r.sequences.filter((s) => (s.rank ?? 0) < URGENT));
 			if (item.element) {
 				if (r.done) item.element.by = item.journey.name;
 				else {
@@ -1000,6 +1249,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 					if (r.unreachable) item.element.unreachable = { journey: item.journey, kind: r.unreachable };
 				}
 			}
+			for (const u of r.urgent) applySequence(u.item, u.r);
 			if (r.expanded) {
 				for (const key of ['Escape', 'ArrowDown'] as const) {
 					const steps = [...item.journey.steps, { action: 'press' as const, key, target: item.journey.steps.at(-1)!.target }];
@@ -1019,16 +1269,15 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		wave = next;
 	}
 
+	// Repeated use and closing sequences, then keyboard paths; a cycled journey takes the place of its plain one.
+	const ordered = [...sequences.sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0)), ...later];
 	const room = Math.max(0, cap - journeys.length);
-	const extra = await pool(later.slice(0, room), CONCURRENCY, async (item) => (outOfBudget() ? undefined : runItem(item)));
-	let skipped = Math.max(0, later.length - room);
-	for (const [i, r] of extra.entries()) {
-		if (!r) {
-			skipped++;
-			continue;
-		}
-		const item = later[i]!;
-		journeys.push({ ...item.journey, expected: r.expected });
+	const extra = await pool(ordered.slice(0, room), CONCURRENCY, async (item) => (outOfBudget() ? undefined : runItem(item)));
+	let skipped = 0;
+	for (const [i, item] of ordered.entries()) {
+		const r = extra[i];
+		if (!r && !item.discover && !item.journey.cycle) skipped++;
+		applySequence(item, r);
 	}
 	for (const t of tracked) {
 		const at = t.prefix.length;
@@ -1050,7 +1299,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		const role = group.split('|')[0]!;
 		elements.push({ element: `${n - SAMPLES} more ${role}${n - SAMPLES === 1 ? '' : 's'} of the same ${role === 'treeitem' ? 'tree' : 'grid'}`, signature: `sampled|${group}`, layout: false, by: `alike: the first ${SAMPLES} are exercised` });
 	}
-	return { journeys, elements, skipped, deferred };
+	return { journeys, elements, skipped, sequencesSkipped, deferred };
 }
 
 function budgetReason(budgetMs: number, maxJourneys: number | undefined): string {
@@ -1085,6 +1334,7 @@ function format(result: StepResult, parts: readonly string[]): string {
 	if (parts.includes('errors')) out.push(`console errors: ${result.errors.join(' | ') || '(none)'}`);
 	if (parts.includes('announcements')) out.push(`announced: ${result.announcements.join(' | ') || '(nothing)'}`);
 	if (parts.includes('focus')) out.push(`focus on ${result.focus}`);
+	if (parts.includes('state')) out.push(`changed: ${result.state?.join(' | ') || '(nothing)'}`);
 	if (parts.includes('storage')) out.push(`kept in the browser: ${result.storage?.join(', ') || '(no change)'}`);
 	if (parts.includes('dialogs')) out.push(`dialogs: ${result.dialogs?.join(' | ') || '(none)'}`);
 	return out.join('; ');
@@ -1113,29 +1363,67 @@ export async function doorPageErrors(browser: Browser, old: SideEnv, viewport: V
 	return out;
 }
 
+/** What a cycle act is called in a check name: `click button "Theme" (use 2 of 3)`. */
+function cycleLabel(steps: number, acts: readonly CycleAct[], i: number): string {
+	const step = `step ${steps + i + 1} of ${steps + acts.length}`;
+	const uses = 1 + acts.slice(0, i + 1).filter((a) => a === 'again').length;
+	const act = acts[i]!;
+	const after = acts.slice(0, i).some((a) => a === 'reload') ? ', after the reload' : acts.slice(0, i).some((a) => typeof a === 'object' && 'navigate' in a) ? ', on the page it led to' : '';
+	if (act === 'again') return `${step}: use ${uses}${after}`;
+	if (act === 'reopen') return `${step}: open it again`;
+	if (act === 'reload') return `${step}: reload after use ${uses}${after}`;
+	if (act === 'escape' || act === 'back' || 'outside' in act) return `${step}: closed by ${closedBy(act)} after use ${uses}`;
+	return `${step}: follow ${describeTarget(act.navigate)} after use ${uses}`;
+}
+
+/** What a state line is about: `html data-theme`, `html class dark`, `localStorage theme`. */
+const subject = (line: string) => line.replace(/ class [+-]/, ' class ').split(': ')[0]!;
+
+/** Each step's changes on one side, one line per step up to `upto`, so a cycle failure shows where the two sides parted. */
+function trail(results: readonly (StepResult | undefined)[], first: number, upto: number): string {
+	return results
+		.slice(first, upto + 1)
+		.map((r, i) => `${first + i + 1}. ${r?.failed ? 'could not be used' : r?.state?.join(', ') || r?.added.slice(0, 2).join(', ') || '(no change)'}`)
+		.join('; ');
+}
+
 export function compareJourneys(route: string, olds: readonly Run[], journeys: readonly Journey[], next: Run, owner?: StorageOwner, doorErrors?: ReadonlyMap<string, readonly string[]>): Failure[] {
 	const failures: Failure[] = [];
 	journeys.forEach((journey, j) => {
 		const runs = olds.map((o) => o[j]!);
 		const actual = next[j]!;
-		for (let k = 0; k < journey.steps.length; k++) {
-			const step = journey.steps[k]!;
-			const oldSteps = runs.map((r) => r[k]);
+		const acts = journey.cycle ?? [];
+		const last = journey.steps.length - 1;
+		for (let k = 0; k < journey.steps.length + acts.length; k++) {
+			const step = journey.steps[Math.min(k, last)]!;
+			const act = k > last ? acts[k - last - 1] : undefined;
+			// After an in-site navigation only what the journey's own control changed is compared; how the new page loads is the navigation check's.
+			const navigatedAway = acts.slice(0, Math.max(0, k - last)).some((x) => typeof x === 'object' && 'navigate' in x);
+			const touched = new Set(runs[0]!.slice(0, k).flatMap((r) => (r.state ?? []).map(subject)));
+			const following = typeof act === 'object' && 'navigate' in act;
+			const restricted = following || (navigatedAway && act === 'reload');
+			const mine = (r: StepResult | undefined): StepResult | undefined => (r && restricted ? { ...r, added: [], removed: [], moved: [], state: (r.state ?? []).filter((l) => touched.has(subject(l))) } : r);
+			const oldSteps = runs.map((r) => mine(r[k]));
 			if (oldSteps.some((s) => !s || s.failed)) break;
 			const [a, ...rest] = oldSteps as StepResult[];
-			const n = actual[k];
+			const n = mine(actual[k]);
+			// A page the front door serves from the old app keeps its state on the old app's origin.
+			if ((following || navigatedAway) && n?.door) break;
 			const dimension: Dimension = step.action === 'press' ? 'a11y' : 'behaviour';
-			const check = `${journey.steps.length > 1 ? `${journey.name} (step ${k + 1})` : journey.name}`;
-			const hint = step.action === 'press' ? HINTS.keyboard : HINTS.behaviour;
+			const named = journey.steps.length > 1 && k <= last ? `${journey.name} (step ${k + 1})` : journey.name;
+			const check = act ? `${journey.name} (${cycleLabel(journey.steps.length, acts, k - last - 1)})` : named;
+			const hint = act ? HINTS.cycle : step.action === 'press' ? HINTS.keyboard : HINTS.behaviour;
+			const where = (side: string, f: string) => (act ? `${side} ${f}; step by step: ${trail(side === 'old' ? runs[0]! : actual, last, k)}` : f);
 			if (!n || n.failed) {
-				failures.push({ route, dimension, check, expected: format(a!, ['url', 'added']), actual: n?.failed ?? 'the journey stopped before this step', hint });
+				failures.push({ route, dimension, check, expected: where('old', format(a!, ['url', 'added', 'state'])), actual: where('new', n?.failed ?? 'the journey stopped before this step'), hint });
 				break;
 			}
 			const parts: string[] = [];
 			if (!stable([a!.url, ...rest.map((r) => r.url)])(n.url)) parts.push('url');
 			const navigated = n.navigated || oldSteps.some((x) => x!.navigated);
+			const reloaded = n.reloaded || oldSteps.some((x) => x!.reloaded);
 			let automatic: Failure['automatic'];
-			const fields = navigated ? (['requests', 'storage', 'dialogs'] as const) : (['added', 'removed', 'moved', 'requests', 'announcements', 'storage', 'dialogs'] as const);
+			const fields = navigated ? (following ? (['requests', 'state', 'storage', 'dialogs'] as const) : (['requests', 'storage', 'dialogs'] as const)) : reloaded ? (['added', 'removed', 'state', 'storage'] as const) : (['added', 'removed', 'moved', 'requests', 'announcements', 'state', 'storage', 'dialogs'] as const);
 			for (const field of fields.filter((f) => !(f === 'storage' && n.door))) {
 				// Requests in flight together finish in any order (a client retrying hosts it shuffled), so they count as a set.
 				const lines = (r: StepResult) => (field === 'requests' ? [...r[field]].sort() : (r[field] ?? []));
@@ -1146,9 +1434,9 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			const own = n.door ? doorErrors?.get(n.url) : undefined;
 			const errors = diffLines(lineTemplates(a!.errors, ...rest.map((r) => r.errors)), own ? n.errors.filter((e) => !own.includes(e)) : n.errors);
 			if (errors.unexpected.length || errors.changed.length) parts.push('errors');
-			if (!navigated && !stable([a!.focus, ...rest.map((r) => r.focus)])(n.focus)) parts.push('focus');
+			if (!navigated && !reloaded && !stable([a!.focus, ...rest.map((r) => r.focus)])(n.focus)) parts.push('focus');
 			if (parts.length) {
-				failures.push({ route, dimension, check, expected: format(a!, parts), actual: format(n, parts), hint, ...(automatic && parts.length === 1 && parts[0] === 'storage' ? { automatic } : {}) });
+				failures.push({ route, dimension, check, expected: where('old', format(a!, parts)), actual: where('new', format(n, parts)), hint, ...(automatic && parts.length === 1 && parts[0] === 'storage' ? { automatic } : {}) });
 				break;
 			}
 		}

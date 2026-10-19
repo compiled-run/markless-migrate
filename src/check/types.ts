@@ -313,6 +313,8 @@ export interface Coverage {
 	readonly elements: readonly ElementCoverage[];
 	/** Keyboard and dismiss journeys left out when the budget ran out. */
 	readonly skipped: number;
+	/** Repeated-use, closing and follow-a-link sequences left out when the budget ran out. */
+	readonly sequencesSkipped?: number;
 }
 
 export interface Blocked {
