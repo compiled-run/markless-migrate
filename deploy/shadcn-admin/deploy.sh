@@ -10,6 +10,8 @@ APP="$ROOT/examples/shadcn-admin-markless"
 SCOPE=jack-shelton
 OLD_URL=https://mm-shadcn-admin-old.vercel.app
 NEW_URL=https://mm-shadcn-admin-new.vercel.app
+# The caching plan (.migrate/caching.json, from plan) goes into the app before every build.
+cache_apply() { [ ! -f .migrate/caching.json ] || node "$ROOT/src/cli.ts" cache apply; }
 link() { [ -f "$1/.vercel/project.json" ] || (cd "$1" && vercel link --yes --project "$2" --scope "$SCOPE" >/dev/null && rm -f .env.local); }
 
 # vite-plus 0.1.20 sometimes deadlocks building this app (the bundler process sits at 0% CPU inside a native
@@ -47,6 +49,7 @@ case "${1:-}" in
 	new)
 		link "$APP" mm-shadcn-admin-new
 		rm -rf "$APP/.vercel/output"
+		(cd "$APP" && cache_apply)
 		build_new
 		(cd "$APP" && vercel deploy --prebuilt --prod --yes --scope "$SCOPE")
 		;;

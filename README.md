@@ -18,7 +18,7 @@ Status: early. `plan`, `check`, `cli`, `status`, `switch`, `proxy`, `config`, `s
 ## Commands
 
 ```bash
-markless-migrate plan --old http://localhost:3000 [--source ../old-app] [--built ../old-app/dist] [--auth .migrate/auth.json] [--limit 100] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
+markless-migrate plan --old http://localhost:3000 [--source ../old-app] [--built ../old-app/dist] [--auth .migrate/auth.json] [--limit 100] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>] [--no-caching]
 markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [--route /about]... [--open]
     [--source ../old-app] [--data record|replay] [--staging] [--block <host>]... [--allow <host>]...
     [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
@@ -30,6 +30,7 @@ markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [
 markless-migrate usage [--old <origin>] [--built <dir>] [--source <path>] [--new-source <path>] [--json]
 markless-migrate guard build [--dir .output]
 markless-migrate guard page --old http://localhost:3000 --new http://localhost:5173 [--route /about]...
+markless-migrate cache plan|apply|check [--old <origin>] [--app <dir>] [--new <origin>] [--route <path>]...
 markless-migrate switch <route> [--force --by <name> --reason <why>]
 markless-migrate unswitch <route>
 markless-migrate proxy --old http://localhost:3000 --new http://localhost:5173 [--port 4300] [--host 127.0.0.1]
@@ -424,6 +425,44 @@ together with its wrappers, from their combined use) follows the first rule that
 
 A library used directly is created from an `onVisible` handler (or `onIdle`) on the element it draws
 into, imported there with `import()`, so it never loads with the page.
+
+## Caching on the CDN
+
+Every migrated site is cached from evidence, not guesses. `plan` ends by asking the old app for every
+route twice and once more with a cookie, and writes `.migrate/caching.json`: each route's class, the
+reason with its evidence, and the evidence itself (status, Cache-Control, ETag, Last-Modified, Vary,
+the cookies set, Age, and `x-vercel-cache`, `cf-cache-status`, Netlify's `Cache-Status` or `x-cache`).
+With `--source`, the old route's file and what it imports are read too: auth guards, server reads of
+cookies, headers and the session, query keys read, server-side personalisation and flags, data fetched
+while rendering. `cache plan` runs the same step on its own.
+
+| Class | When | Generated rule (Vercel through Nitro) |
+| --- | --- | --- |
+| prerender | the same body and ETag on every request, nothing reads the request | `isr: { expiration: false }`: rendered once per deploy, then the CDN |
+| CDN with revalidation | its data changes (the body or ETag moved between requests, the old headers ask for `s-maxage` or `stale-while-revalidate`, the server fetches data or reads the clock) | `isr: { expiration: <old TTL, else 60 s> }`; a page that reads the query gets `s-maxage` and `stale-while-revalidate` instead (Vercel's ISR hands the page no query) |
+| never cached | it sets a cookie, is `private`/`no-store`, varies on `Cookie` or `Authorization`, changes when a cookie is sent, sits behind an auth guard, is reached only signed in, or its server code reads cookies, headers or the session | `isr: false` and `Cache-Control: private, no-cache` (`private, no-store` when sign-in, a session or a set cookie is involved) |
+
+`cache apply` (run by `run` before every build and by the deploy scripts) writes the plan into the
+Markless app as `migrate-cache.ts` and adds `migrateCache()` to its `vite.config.ts` plugins: a Nitro
+module that sets the rules once Nitro's options are resolved, replacing any caching the app set for
+the same path and leaving proxied paths alone. Only routes a page of the app renders get a rule. The
+app's own pages are read again first: a page that reads cookies or `http.request` headers, or renders
+`storage()`, is never cached, whatever the old page was. Because Vercel's ISR cache ignores `Vary`, a
+request carrying Markless's fragment header (read from the app's own `@markless/router`) is routed to the
+page's ISR function with a query key of its own, so a fragment and a document of one URL never share an
+entry. Content-hashed files in `public/` are marked immutable (a directory holding only hashed files as
+one rule); Markless's `/build/` and Nitro's `/assets/` already are.
+
+`cache check --new <deployment>` reads the deployment route by route: three GETs (a miss, then hits),
+a fragment request and the document straight after it, and a new visitor's page view in Chromium. It
+writes `.migrate/caching-report.json` with each route's answers and exits 1 when a page the plan never
+caches, or a response setting a cookie, is answered from or offered to a shared cache; when a fragment
+and a document share an entry or a page answering the fragment header differently lacks it in `Vary`;
+when HTML is kept by browsers (immutable, `max-age` of a day or more) or a changing page is kept until
+the next deploy; when a static page is not kept, or a page the old site's CDN kept is not (including one
+the port made personal); and when a content-hashed file the page loads is not kept by browsers. It
+reports the CDN hit rate on the second pass, function invocations per page view and TTFB. Platform
+facts behind the rules: [docs/notes/caching.md](docs/notes/caching.md).
 
 ## Switching routes over
 

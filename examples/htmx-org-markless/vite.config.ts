@@ -5,6 +5,7 @@ import { defineConfig } from "vite-plus";
 import { INTERNAL_PATHS } from "./internal-paths.ts";
 import { NETLIFY_ROUTES } from "./netlify-routes.ts";
 import { HEADS } from "./site-heads.ts";
+import { migrateCache } from './migrate-cache.ts';
 
 // Every page is the same for every visitor: the CDN keeps each one after its first render until the next deploy.
 const pages = Object.keys(HEADS).filter((path) => path !== "/404/" && !Object.values(INTERNAL_PATHS).includes(path));
@@ -26,5 +27,5 @@ export default defineConfig({
       },
     },
   },
-  plugins: [markless(), router()],
+  plugins: [migrateCache(), markless(), router()],
 });

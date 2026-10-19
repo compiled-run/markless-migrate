@@ -25,6 +25,7 @@ import { writeStarterAuth } from './plan/auth.ts';
 import { plan, plannedRoutes, summarizeInventory, writeInventory } from './plan/inventory.ts';
 import { copiedLogin, DRIVERS, driver } from './run/drivers.ts';
 import { startAppServer } from './run/server.ts';
+import { applyIfPlanned, CACHE_USAGE, cacheCommand, planAndWrite } from './cache/cli.ts';
 import { runRoutes, summarizeRun } from './run/loop.ts';
 import { acceptedLabel } from './check/automatic.ts';
 import { readCoverage, readInventory, readResults, recordResults, STATE_DIR, status, summarizeStatus } from './status.ts';
@@ -42,8 +43,9 @@ import { guardPages, scanBuild, summarizeBuild } from './client/index.ts';
 
 const USAGE = `markless-migrate ${VERSION}
 
-  plan    --old <origin> [--source <path>] [--auth <file>] [--limit <n>] [--crawl-limit <n>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
-          Inventory the old app's routes, SEO, assets and locales into .migrate/inventory.json.
+  plan    --old <origin> [--source <path>] [--auth <file>] [--limit <n>] [--crawl-limit <n>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>] [--no-caching]
+          Inventory the old app's routes, SEO, assets and locales into .migrate/inventory.json,
+          then each route's caching into .migrate/caching.json (see cache plan; --no-caching skips it).
           Every route of the old site is listed with where it was found: the sitemaps (indexes
           followed), robots.txt, feeds, a same-origin link crawl of every page (pagination and
           redirects followed, at most --crawl-limit pages, default 10000), the source's routes with
@@ -68,7 +70,7 @@ const USAGE = `markless-migrate ${VERSION}
           checks each must pass in .migrate/obligations.json. Another framework's runtime is never
           kept: what the pages use of it is implemented in Markless. Only static assets (CSS, fonts,
           images, SVG, media) are copied byte for byte.
-  check   --old <origin> --new <origin> [--route <path>]... [--json] [--open]
+${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--json] [--open]
           [--source <path>] [--data record|replay] [--staging] [--block <host>]... [--allow <host>]...
           [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
@@ -446,7 +448,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 	if (!routes?.length) fail('no routes: pass --route <path> or run plan first');
 	const navigation = navigationOptions(values, routes);
 	const { old, new: next } = values;
-	const server = values.serve ? await startAppServer({ cwd, serve: values.serve, ...(values.build ? { build: values.build } : {}), ...(values['restart-on'] ? { restartOn: values['restart-on'] } : {}), origin: next, log: (line) => out(`server: ${line}\n`) }).catch((error: Error) => fail(error.message)) : undefined;
+	const server = values.serve ? await startAppServer({ cwd, serve: values.serve, ...(values.build ? { build: values.build } : {}), beforeBuild: async () => void (await applyIfPlanned(cwd, resolve(cwd, values['new-source'] ?? '.'))), ...(values['restart-on'] ? { restartOn: values['restart-on'] } : {}), origin: next, log: (line) => out(`server: ${line}\n`) }).catch((error: Error) => fail(error.message)) : undefined;
 	const mcp = serverCommand();
 	const automatic = new Map<string, string>();
 	const stateDir = join(cwd, STATE_DIR);
@@ -537,7 +539,7 @@ async function main(argv: string[]): Promise<number> {
 			out(USAGE);
 			return 0;
 		case 'plan': {
-			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, built: { type: 'string' }, limit: { type: 'string' }, 'crawl-limit': { type: 'string' }, header: { type: 'string', multiple: true }, cookie: { type: 'string', multiple: true }, 'user-agent': { type: 'string' }, auth: { type: 'string' } } });
+			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, built: { type: 'string' }, limit: { type: 'string' }, 'crawl-limit': { type: 'string' }, header: { type: 'string', multiple: true }, cookie: { type: 'string', multiple: true }, 'user-agent': { type: 'string' }, auth: { type: 'string' }, 'no-caching': { type: 'boolean' } } });
 			if (!values.old) fail('plan needs --old <origin>');
 			const crawlBound = values['crawl-limit'] === undefined ? undefined : Number(values['crawl-limit']);
 			if (crawlBound !== undefined && (!Number.isInteger(crawlBound) || crawlBound < 1)) fail('--crawl-limit must be a whole number of at least 1');
@@ -551,6 +553,10 @@ async function main(argv: string[]): Promise<number> {
 			const inventory = await plan({ origin: values.old, source: values.source ? resolve(values.source) : undefined, limit: values.limit ? Number(values.limit) : undefined, ...(crawlBound ? { crawlBound } : {}), ...bypass, ...(values['user-agent'] ? { userAgent: values['user-agent'] } : {}), ...(planAuth ? { auth: planAuth } : {}), samples: await readSamples(join(cwd, STATE_DIR)) });
 			const path = await writeInventory(inventory, join(cwd, STATE_DIR));
 			out(`${summarizeInventory(inventory)}Wrote ${path}\n`);
+			if (!values['no-caching']) {
+				const caching = await planAndWrite(cwd, inventory, { headers: bypass.headers ?? {} });
+				out(`${caching.text}Wrote ${caching.path}\n`);
+			}
 			let libraries: Awaited<ReturnType<typeof planLibraries>> | undefined;
 			if (inventory.source) {
 				libraries = await planLibraries(inventory.source, join(cwd, STATE_DIR), cwd);
@@ -825,6 +831,8 @@ async function main(argv: string[]): Promise<number> {
 			out(`${proxy.origin}\nSwitched to NEW (${values.new}): ${switched.join(', ') || 'none yet'}; everything else from OLD (${values.old}).\n`);
 			return -1;
 		}
+		case 'cache':
+			return cacheCommand(rest, cwd, out);
 		case 'config': {
 			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, new: { type: 'string' }, vercel: { type: 'string' }, nitro: { type: 'string' }, 'new-build': { type: 'string' }, index: { type: 'string' } } });
 			if (!values.old || !values.new) fail('config needs --old <deployment> and --new <deployment>');

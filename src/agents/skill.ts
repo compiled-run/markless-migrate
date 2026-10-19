@@ -86,6 +86,11 @@ and dark", "dialog: close by Escape, the backdrop and the close button, during a
 ## Rules
 
 - Never edit the old app to make a check pass; the old app is the reference.
+- Caching is the tool's: \`cache apply\` writes each route's caching from \`.migrate/caching.json\` into the app
+  before every build. Do not write \`isr\`, \`swr\`, \`prerender\` or \`cache-control\` rules yourself. A page
+  whose server code reads cookies, request headers or \`storage()\` is never cached on the CDN, so read
+  what the old app read in the browser (a theme or sidebar cookie) in the browser too; \`cache check\`
+  is red when the port makes a page the old CDN kept personal.
 - Do not weaken or skip a failing dimension. If you think a failure is wrong, keep going and put it in
   the final report's "What to look at if you care" with the failure id and your evidence.
 - check accepts some differences automatically when its evidence proves they are no user-visible
