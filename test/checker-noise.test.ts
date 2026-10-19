@@ -398,3 +398,18 @@ test('what a poll\'s own follow-up timer changed is undone with the poll when it
 	}
 	assert.deepEqual(colours, ['', ''], 'the colour each poll\'s answer set is undone');
 });
+
+test('a style pointing at a gradient, filter or marker by a generated id compares by where that element is, so React useId ids do not differ, but pointing at another element does', async () => {
+	const svg = (id: string, use = id) => `<svg width="40" height="40"><defs><linearGradient id="${id}"><stop offset="0" stop-color="red"></stop></linearGradient><linearGradient id="${id}-other"><stop offset="0" stop-color="blue"></stop></linearGradient></defs><rect width="40" height="40" fill="url(#${use})"></rect></svg>`;
+	const read = async (body: string) => {
+		const site = await serve(() => ({ body: html(body) }));
+		const page = await browser.newPage();
+		await page.goto(site);
+		const read = await readPage(page, { origin: site, full: true });
+		await page.close();
+		return read.elements.find((e) => e.tag === 'rect')!.style.fill;
+	};
+	const react = await read(svg('_R_17htldeh_'));
+	assert.equal(react, await read(svg('mm-mastodon-1')));
+	assert.notEqual(react, await read(svg('mm-mastodon-1', 'mm-mastodon-1-other')));
+});

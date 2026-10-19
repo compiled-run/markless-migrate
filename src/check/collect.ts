@@ -7,6 +7,17 @@ export function collectPage({ origin, full, styles = true }: { origin: string; f
 	const GEOMETRY = new Set(['width', 'height', 'inline-size', 'block-size', 'transform-origin', 'perspective-origin']);
 
 	const scoped = (el: Element) => !el.parentElement?.closest('article, aside, main, nav, section');
+	// An id a framework generates (React's useId, a diagram's counter) names a gradient, filter or marker differently on
+	// each side; a style that points at one is compared by where that element is in the page, not by the id.
+	const place = (el: Element) => {
+		const steps: string[] = [];
+		for (let at: Element | null = el; at && at !== document.documentElement; at = at.parentElement) {
+			const same = at.parentElement ? [...at.parentElement.children].filter((c) => c.tagName === at!.tagName) : [at];
+			steps.unshift(`${at.tagName.toLowerCase()}:${same.indexOf(at) + 1}`);
+		}
+		return steps.join('>');
+	};
+	const idRefs = (value: string) => (value.includes('url("#') ? value.replace(/url\("#([^"]*)"\)/g, (whole, id: string) => { const target = document.getElementById(id); return target ? `url("#{${place(target)}}")` : whole; }) : value);
 
 	function role(el: Element): string {
 		const explicit = el.getAttribute('role');
@@ -105,7 +116,7 @@ export function collectPage({ origin, full, styles = true }: { origin: string; f
 		for (const prop of computed ?? []) {
 			if (prop.startsWith('--') || GEOMETRY.has(prop)) continue;
 			// A url() resolves against the page: the app's own origin is not part of the value.
-			row.push(intern(props, propAt, prop), intern(values, valueAt, computed!.getPropertyValue(prop).split(`${location.origin}/`).join('/')));
+			row.push(intern(props, propAt, prop), intern(values, valueAt, idRefs(computed!.getPropertyValue(prop).split(`${location.origin}/`).join('/'))));
 		}
 		const key = row.join(',');
 		let style = rowAt.get(key);
