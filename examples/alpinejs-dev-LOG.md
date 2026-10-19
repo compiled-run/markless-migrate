@@ -283,7 +283,7 @@ What keeps routes red, and why:
 
 1. `check` crashed on the whole run when a route redirected to GitHub. GitHub's Content-Security-Policy blocks the inline script that injects axe. Axe now runs by evaluation (`test/a11y-csp.test.ts`).
 2. Coverage counted the old site's own catch-all target (`/essentials/installation`, where every unknown path is sent) as missing on the new app, because the new app answers unknown paths with the same page (`test/coverage-fallback.test.ts`).
-3. A route the old app redirects was checked as a page and could become a template group's representative. It was then "not compared", which left its layout's controls unexercised on 10 routes. Redirects are now compared by status and redirect chain (`test/redirect-routes.test.ts`).
+3. A route the old app redirects to another origin (through the mirror, alpinejs.dev's own absolute redirects) was checked as a page and could become a template group's representative. It was then "not compared", which left its layout's controls unexercised on 10 routes. Such a redirect is now compared by its status and redirect chain. A same-origin redirect, such as a login guard or a locale, still checks the page it shows (`test/redirect-routes.test.ts`; the auth and accept-language e2e mutations caught a first version that reclassified every redirect).
 
 ### Markless limitations met (0.5.0)
 
