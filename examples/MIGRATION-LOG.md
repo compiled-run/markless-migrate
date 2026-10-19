@@ -103,3 +103,50 @@ No route has been converted yet.
     ("already configured") and nothing in the app, so an agent run with another `CODEX_HOME` does not see it.
 12. **The minimal starter's one-button page preloads 50 chunks (99.7 kB uncompressed)** while about 1.1 kB
     runs at load.
+
+## Every route ported (2026-10-18)
+
+The route coverage check (`check --only coverage`) showed the new deployment served only `/` of the old site's 11
+routes. The app is now a full port on the published Markless 0.5.0 packages, done by Claude Code (not `run --agent
+codex`, whose login is still the blocker in problem 1).
+
+What moved where:
+
+- Pages: `/`, `/about/`, `/fr/`, `/ar/`, `/login/`, `/members/`, `/admin/` and the 404 page are `.tsrx` pages; the
+  shared header, "More" menu, footer and the 403 "Guides only" page are components; `lib/site.ts` holds each page's
+  head tags; the old stylesheet is `styles/style.css`, unchanged.
+- Server: `middleware/site.ts` does what the old `serve.ts` did, in the same order: the optional `BOT_WALL` challenge,
+  the members and admin guards (302 to `/login/`, 403 page for a member on `/admin/`), the form 303s, the
+  Accept-Language redirect at `/`, the `serve.json` redirects and the trailing-slash 301s. It reads `public/serve.json`,
+  so those rules have one source. It fetches the CMS news and tagline on the server before the page renders.
+  `api/login.post.ts` signs in with the same cookie session; the user list stays on the server (`lib/session.ts`).
+- Browser: the counter and the "More" menu (Escape returns focus) are Markless state and handlers; the time stamp, the
+  random tip, the opening hours the browser fetches from the CMS and the `?subscribed` notice run at idle (`onIdle`).
+- Files: `robots.txt`, `sitemap.xml`, `feed.xml`, `manifest.json`, the images and the font are copies in `public/`.
+- Links download nothing before a click (`router({ prefetch: false })`), as on the old site.
+
+Left out: plain GETs to `/api/*` answer the router's plain-text 404 instead of the old 404 page, and the raw build
+file URLs (`/about/index.html`, `/403.html`, `/404.html`) are not ported; no route in the inventory uses them.
+
+Markless 0.5.0 limitations hit:
+
+1. A page needs one root element, so each page is wrapped in a `div`, and the router adds its own container around it.
+2. `attach` does not run at load on a server-rendered page; `onIdle` is used, so the stamp, tip and hours appear at idle.
+3. A `@for` inside an `@if` in the head rendered nothing; the alternate-language links are one `@for` over a list.
+4. The router preloads its runtime chunks on every page, even one without handlers (see the weight result below).
+
+### Check against the deployments
+
+`plan --old https://migrate-demo-old.vercel.app --source ../vite-site-old`, then the full check
+(`check --old https://migrate-demo-old.vercel.app --new https://migrate-demo-new.vercel.app --source ../vite-site-old
+--new-source . --auth .migrate/auth.json`), all routes, all dimensions, three roles (anonymous, signed in, admin).
+
+Routes on the new app: **11 of 11**. Route checks green: 12 of 33 (the four files for every role); 21 red.
+
+| Dimension | Result |
+| --- | --- |
+| http, auth, rendered, visual, seo, assets, css, a11y, i18n, behaviour, network, data, coverage | green on every route and role |
+| responsiveness, motion | green where measured (the first route of each role and its controls; the other routes share them) |
+| weight | red on all 7 pages for every role: the old pages download about 1.1 kB of JavaScript and run 0.8-1.0 kB; the new ones download 44-53 kB and run 20-45 kB. Almost all of it is Markless's own runtime chunks, which the router preloads on every page, handlers or not; moving the one script without a handler out of Markless changed nothing. Not fixable in the app |
+
+Deployed: `deploy/deploy.sh new` (the Vercel project keeps `CMS_URL`). No route is switched; the front door is unchanged.
