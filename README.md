@@ -18,7 +18,7 @@ Status: early. `plan`, `check`, `cli`, `status`, `switch`, `proxy`, `config`, `s
 ## Commands
 
 ```bash
-markless-migrate plan --old http://localhost:3000 [--source ../old-app] [--auth .migrate/auth.json] [--limit 100] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
+markless-migrate plan --old http://localhost:3000 [--source ../old-app] [--built ../old-app/dist] [--auth .migrate/auth.json] [--limit 100] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
 markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [--route /about]... [--open]
     [--source ../old-app] [--data record|replay] [--staging] [--block <host>]... [--allow <host>]...
     [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
@@ -26,6 +26,9 @@ markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [
     [--all] [--allow-unchecked] [--new-source ../markless-app] [--concurrency 4] [--changed]
     [--journey-budget 120] [--max-journeys <n>] [--timeout 600]
     [--no-responsiveness] [--interaction-budget 200] [--cpu-throttle 4] [--interaction-controls 16] [--no-motion] [--no-cache]
+markless-migrate usage [--old <origin>] [--built <dir>] [--source <path>] [--new-source <path>] [--json]
+markless-migrate guard build [--dir .output]
+markless-migrate guard page --old http://localhost:3000 --new http://localhost:5173 [--route /about]...
 markless-migrate switch <route> [--force --by <name> --reason <why>]
 markless-migrate unswitch <route>
 markless-migrate proxy --old http://localhost:3000 --new http://localhost:5173 [--port 4300] [--host 127.0.0.1]
@@ -83,6 +86,40 @@ next prompt); with `--restart-on <file>` it also restarts whenever the agent's o
 `run` passes the MCP server to `codex` and `claude` on the command line, so `setup` is optional for them,
 and it refuses a `CODEX_HOME` holding a copy of `~/.codex/auth.json`: refresh tokens are single-use, and a
 copy that refreshes spends the real login (see [docs/notes/agents.md](docs/notes/agents.md)).
+
+## What the old site uses, and what the port may ship
+
+`plan` also writes `.migrate/usage.json`, the semantic usage inventory: every behaviour the old pages use in the
+browser, read from each page's markup (served, or the old build output with `--built`), the syntax tree of every
+script the pages run (oxc), the theme config and the library scan, each with the routes that use it and where it
+lives (a source file and line, or a page and element). For example, from htmx.org's own pages: `hx-post` on an
+input with `keyup changed delay:500ms` swapping `outerHTML` into `#search-results`; `on click toggle .show on
+#nav` (a _hyperscript feature); `classes="add appear:100ms"` (class-tools); the GitHub star button that
+`buttons.js` frames; and every fake endpoint `/js/demo.js` serves (`onGet("/contact/1/edit")`). From a Docusaurus
+site: the colour-mode toggle with `respectPrefersColorScheme: true` from `docusaurus.config.ts`, the DocSearch
+dialog, the docs sidebar, tabs and the inline script that sets `data-theme` before the page paints.
+
+`.migrate/obligations.json` lists the checks each behaviour must pass, with steps a checker can run ("theme toggle:
+click it 3 times (system → light → dark → system) with the OS in light mode, then in dark mode", "search: close by
+Escape, by clicking the backdrop and by its close button, during and after the open animation", "GitHub button:
+the frame's box and inline style equal the old page's"). Each obligation names the mechanism that performs it;
+those this checker does not have yet (sequences, pinned animation frames, in-place navigation against a fresh
+load, loads with stored state preset) are counted as unchecked, never as passed. `usage` prints used /
+implemented / checked: a behaviour is implemented when `.migrate/usage-map.json` names the file (or the
+`@markless/ui` family) that implements it and the new app has it.
+
+No other framework's or library's runtime is kept: React, Vue, Svelte, htmx, Alpine, _hyperscript, jQuery or a
+framework's component bundle never ships in the port; what the pages use of it is implemented in Markless. Only
+static assets (CSS and the pages' own `<style>` blocks, fonts, images, SVG, media) are copied byte for byte. Two
+guards hold this, and `run` applies both to every route it checks:
+
+- `guard build` reads every script and inline script of the new app's build output and fails when one defines
+  another framework's runtime (recognised by what its code defines, so a page whose text talks about htmx is not
+  one). `foreignRuntimeGuard()` in `src/client/guard.ts` does the same inside `vite build`.
+- `guard page` loads each route on the old app twice and on the new one once, and fails when a static asset the
+  old page loads is missing or has other bytes, a `<style>` the old page is served with is gone, an inline style
+  differs, a frame or a sized element has another box (beyond 1 px), or the new page runs another framework's
+  runtime. What differs between the two old loads is left out and listed.
 
 ## What check compares
 

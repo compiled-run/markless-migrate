@@ -36,6 +36,29 @@ any route is missing.
   routes"): it is never overall green and never proves the migration. Finish with a run of \`check\`
   without \`--route\`.
 
+## Implement what the old site uses, in Markless
+
+\`plan\` reads every page's markup, the syntax tree of every script the pages run, the theme config and the
+library scan into \`.migrate/usage.json\`: each behaviour the old site uses, with where it lives and the routes
+that use it. An htmx attribute with its trigger, swap and target; an Alpine directive; a _hyperscript feature; a
+class-tools timeline; a documentation theme's colour-mode toggle, search dialog, sidebar or tabs; a library
+component with the props each site passes; what each plain script listens for, stores, fetches and writes.
+\`.migrate/obligations.json\` lists the checks each one must pass ("theme toggle: click it 3 times under OS light
+and dark", "dialog: close by Escape, the backdrop and the close button, during and after the open animation").
+
+- Implement every behaviour of a route in Markless: a shared part where one exists (a @markless/ui family),
+  otherwise the new app's own Markless code. When one is done, record where in \`.migrate/usage-map.json\`:
+  \`{ "<behaviour id>": { "by": "components/theme-toggle.tsrx" } }\` (or \`"by": "@markless/ui modal"\`).
+  \`markless-migrate usage\` prints used / implemented / checked.
+- Never ship another framework's or library's runtime: no React, Vue, Svelte, htmx.js, alpine.js,
+  _hyperscript, jQuery or a framework's component bundle, in the build or loaded by a page.
+  \`markless-migrate guard build\` fails a build that carries one.
+- Copy the old site's static assets byte for byte, at the same URLs: CSS (and the old page's own \`<style>\`
+  blocks), fonts, images, SVG, media. Never retype a size, a colour or an inline style the old page gets from a
+  file or from a script's measurement: \`markless-migrate guard page\` compares the bytes of every static asset,
+  every inline style and the box of every frame and sized element (a third-party button framed at 51 px where the
+  old page's own script sized it 101 px is red).
+
 ## The loop
 
 1. Run the old app and note its origin (for example \`http://localhost:3000\`).
