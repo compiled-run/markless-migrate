@@ -149,6 +149,28 @@
 			"reason": "Placeholder photos inside the paid carousel demos, which the port leaves out under their product licence (see the network entry for /component/*).",
 			"by": "Claude Code (converting agent), for owner review",
 			"date": "2026-10-18"
+		},
+		{
+			"route": "/login/github",
+			"dimension": "http",
+			"check": "redirect chain hop 2",
+			"match": {
+				"actual": "/^302 https:\\/\\/github\\.com\\/login\\/oauth\\/authorize\\?client_id=bccaeb7715c75b7341c5&redirect_uri=https%3A%2F%2Falpinejs\\.dev%2Flogin%2Fgithub%2Fcallback&scope=user%3Aemail&response_type=code&state=[0-9a-zA-Z]+$/"
+			},
+			"reason": "The same GitHub sign-in redirect as the old server, to the same OAuth app and callback; only its state parameter differs, which both servers make up afresh for every request.",
+			"by": "Claude Code (converting agent), for owner review",
+			"date": "2026-10-18"
+		},
+		{
+			"route": "/login/github",
+			"dimension": "http",
+			"check": "status",
+			"match": {
+				"actual": "/^200 https:\\/\\/github\\.com\\/login\\?client_id=bccaeb7715c75b7341c5&return_to=%2Flogin%2Foauth%2Fauthorize%3Fclient_id%3Dbccaeb7715c75b7341c5%26redirect_uri%3Dhttps%253A%252F%252Falpinejs\\.dev%252Flogin%252Fgithub%252Fcallback%26response_type%3Dcode%26scope%3Duser%253Aemail%26state%3D[0-9a-zA-Z]+$/"
+			},
+			"reason": "The same GitHub sign-in redirect as the old server, to the same OAuth app and callback; only its state parameter differs, which both servers make up afresh for every request.",
+			"by": "Claude Code (converting agent), for owner review",
+			"date": "2026-10-18"
 		}
 	]
 }

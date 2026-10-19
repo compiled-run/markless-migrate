@@ -181,3 +181,118 @@ What keeps the routes red:
 4. The tab buttons on `/` lose focus to the body after a click (old: focus stays on the button).
 
 Routes switched: none. Front door: every path goes to alpinejs.dev.
+
+## Every route (2026-10-18)
+
+Until now the port served 3 of the old site's routes. It now serves all of them, built by rule from where each page's content
+comes from, with no page written by hand.
+
+### Routes: old against new
+
+`plan` against the read-only mirror of https://alpinejs.dev found 94 routes. The sitemap lists 75; the link crawl adds the
+other pages. On top of those, the site answers the six docs section URLs (`/directives` and so on), which no link points to.
+
+| Kind | Old | New |
+| --- | --- | --- |
+| Docs pages (`/start-here` … `/advanced/async`, including the 4 plugin pages missing from the sitemap) | 50 | 50 |
+| Docs section pages (`/directives`, `/essentials`, …: an empty docs column) | 6 | 6 |
+| Component pages (`/component/<slug>`) | 21 | 21 |
+| `/components`, `/license`, `/login`, `/forgot-password`, `/` | 5 | 5 |
+| Redirects: `/installation`, `/plugin/focus`, `/plugin/collapse`, `/magics/next-tick`, `/directives/bind.md`, and every unknown path (302 to `http://alpinejs.dev/essentials/installation`) | yes | yes |
+| `/component/headless-*` (9 paid pages, 302 to `http://alpinejs.dev/components`); unknown `/component/*` and `/cdn-cgi/*` (404) | yes | yes |
+| `/login/github` (302 to GitHub sign-in for the site's OAuth app) | yes | yes |
+| `/sitemap.xml` (the old file, served as `text/xml`), `/robots.txt`, the images the pages use (`/img/...`) | yes | yes |
+
+`deploy/alpinejs-dev/verify-routes.mjs` asks both sites for every route `plan` found, plus the section pages, a trailing-slash
+form and two unknown paths. It compares the status class, the redirect target, `<title>`, and every `<h1>`. Against the
+deployment: **103 of 103 match, 0 misses** (`.port/verify-routes-deployed.txt`). `check`'s coverage dimension agrees: 91 of
+92 routes present. The other one, `/login/github`, is accepted because its GitHub `state` parameter is random on both sides.
+
+### How the pages are made
+
+`npm run build` (and `npm run dev`) first runs `node importer/run.ts`. That script writes `pages/`, `demos/` and `generated/`.
+The output is committed because the router's file scan skips gitignored files.
+
+- **Docs** (`importer/docs.ts`, `markdown.ts`, `docs-page.ts`):
+  - **Source**: the Alpine repository's own docs. `content/docs/` is `packages/docs/src/en` at tag v3.17.4, the version the live site shows; see `content/source.json`.
+  - **Order**: front matter gives the sidebar, the section prefixes (`x-`, `$`, `Alpine.`), the previous/next links, and each page's `<title>`, description and social image.
+  - **Markdown**: markdown-it, with the site's rules applied on top:
+    - `<a name>` before a heading becomes the heading's id and a link.
+    - Every other h2–h4 gets the id the contents script would give it.
+    - Alpine attributes outside an example are dropped.
+  - **Code highlighting**: Shiki with github-light writes Torchlight's markup: one `div.line` per line, one span per colour run, `&nbsp;` on blank lines, and the hidden copy target.
+    - Two small TextMate grammars (`importer/grammars.ts`) reproduce Torchlight's "alpine" language: attribute values as JavaScript, attribute names split at `:` and `.`, and built-ins shown as support names.
+    - Measured against the 376 code blocks on the old pages: 375 have identical colour runs. The one that differs is `x-intersect:leave.margin.10%.25px…`, where the `%` is coloured differently.
+- **Live examples** (`importer/alpine.ts`, `importer/expression.ts`):
+  - **What counts**: every `START_VERBATIM` block, and every raw HTML block with its own `x-data`, such as the plugin pages' collapsible installation notes. That is 90 blocks: 88 become components, and 2 have no Alpine in them and stay static markup.
+  - **Data**: each example becomes a Markless component by rule. `x-data` properties become `state()`, getters become `computed()`, and nested scopes get unique names.
+  - **Expressions**: rewritten with acorn. Data names become those variables, `this.x` inside getters too. `$refs`, `$el` and `$root` become element handles. `$dispatch`, `$data`, `$focus` and `$refs.x._x_model` get their own rewrites.
+  - **Rendering**: `x-text`, `:class`, `:style`, `:attr`, `x-for` and `x-if` are Markless bindings and constructs. `<template>` elements stay in the page, as Alpine leaves them.
+  - **Teleports**: `x-teleport` is resolved at build time.
+  - **Morph**: `Alpine.morph` to a template that only adds elements becomes those elements behind a flag.
+  - **Behaviours**: `components/alpine/*.ts` is a port of Alpine's own DOM code (MIT), driven after every write the expression reads:
+    - `x-show`, `x-transition` (helper and class forms) and Collapse, with the same rAF/timeout stages and inline styles, so the motion is Alpine's.
+    - The x-on modifiers and key filters.
+    - x-model reads and writes.
+    - Focus (`x-trap`, `$focus`), on the same focus-trap and tabbable libraries.
+    - Anchor (Floating UI), Sort (SortableJS), Mask, Intersect, Resize and Persist.
+  - **Setup timing**: listeners and plugins start on the first pointer, focus or touch inside the example, not at idle, so nothing runs at load. Only `x-resize` and `$persist` start at idle, because they report at load. `.prevent` and `.stop` are plain statements, so Markless applies them before the handler's code arrives.
+  - **Check**: `deploy/alpinejs-dev/compare-demos.mjs` drives every control of every example on both sites. Once the dev server was warm it found 0 DOM differences on all 26 pages with examples. Against the local production build, after the fixes below, the only difference left was the Intersect example caught partway through its 1 s fade.
+- **Component pages, `/components`, `/license`, `/login`, `/forgot-password`** (`importer/capture-server-pages.ts`, `importer/server-pages.ts`):
+  - **Source**: these Laravel/Livewire views are closed source, so their only content source is the server's HTML. The capture keeps only what the port publishes, in `content/server-pages/`, and drops Livewire, CSRF tokens and Alpine attributes.
+  - **Templates**: one rule per template.
+  - **Sign-in dialog**: a port of Alpine's transitions, focus trap and register toggle.
+  - **Left out on purpose**: the paid Alpine UI demos and their scripts. Their markup says "Copying this code is against the product license". Each demo area keeps its frame and links to the demo on alpinejs.dev.
+  - **Forms**: they cannot post, because there is no backend.
+- **Home**: still the hand port. It is a single page with its own template, and its panels now run Alpine's own class transitions (`components/home-steps.ts`).
+- **Server rules** (`middleware/request.ts`, generated from the route list): the old server's redirects, 404s, the GitHub redirect and the sitemap.
+
+### Check
+
+Against the deployment: `check --old <mirror> --new https://mm-alpinejs-dev-new.vercel.app`, every route, with the coverage and
+motion dimensions (`.port/check-all-routes-deployed.txt`).
+
+- **Routes**: 91 of 92 present on the new app; 1 accepted (`/login/github`, whose GitHub `state` parameter is random on both sides). 45 of 92 routes green.
+- **Responsiveness (slowest)**: first interaction old 210 ms → new 91 ms at 4x CPU. Navigation old 264 ms → new 167 ms.
+- **Not checked**: 5 routes could not be measured, because Vercel stopped answering this machine (`UND_ERR_CONNECT_TIMEOUT`) partway through the run.
+
+Against the local production build of the same commit (`--concurrency 2`, `.port/check-all-routes-local.txt`), every route
+was measured:
+
+- **Routes**: 91 of 92 present, 1 accepted. **47 of 92 routes green**; 21 of the 45 red routes are component pages.
+- **Responsiveness (slowest)**: first interaction old 239 ms → new 152 ms at 4x CPU. Navigation old 1155 ms → new 709 ms.
+- **`/login/github`**: its two http differences are the same random GitHub `state` parameter. They were accepted after this run started.
+
+What keeps routes red, and why:
+
+1. **The component pages (21)**: the visible text, accessibility tree, tab order and styles of the demo area differ, because the paid demos are left out (see above). The network and image differences from the same cause are accepted. These are not accepted, because they also cover the rest of each page and need a person's eye.
+2. **Contents highlighter on some docs pages**: after the check scrolls, the old page highlights one heading and the new page the next one, or none. The code is Alpine's `visibleNavHighlighter` with its 50 ms throttle, ported line for line, and both pages lay out identically (measured). So which scroll event wins depends on timing. I have not found the cause.
+3. **First-use cost**:
+   - On the Focus, `x-on` and `$data` pages, the first click costs 87 to 150 ms at 4x CPU, against Alpine's 40 to 61 ms: Markless loads the handler's code on first use.
+   - The same delay leaves a hover or focus colour fading on the Search, Purchase Access and Get Access buttons under reduced motion.
+   - It also lets the focus trap's 15 ms activation land while the check is typing (Focus page).
+4. **Sign-in form**: Livewire disables the submit button while it posts, so its opacity fades to 0.25. The port has no backend, so there is no request and no fade.
+5. **`/plugins/persist` and `/plugins/resize`**: JavaScript run at load (454 and 264 kB, against about 86 kB). Both examples must report at load, so they start at idle, and idle runs the page's whole chunk. Markless `storage()` would avoid that, but in the 0.5.0 production build it throws "Unsupported markless/state protocol version 2" when it resumes.
+6. **Sidebar links the check cannot click**: on 10 docs routes, the sidebar's "Dropdown" and "Modal" links count as not exercised. On the old page they sit under a gradient overlay, so the check cannot click them there either.
+7. **Small differences**:
+   - Glyph pixels on `/` (0.25 %) and in code text on `/upgrade-guide` and `/plugins/focus` (0.02 to 0.06 %).
+   - YouTube player requests on `/upgrade-guide`.
+   - Routes not compared because Vercel or the mirror timed out under this machine's load (other migrations were running checks at the same time).
+
+### Tool fixes (markless-migrate, with tests)
+
+1. `check` crashed on the whole run when a route redirected to GitHub. GitHub's Content-Security-Policy blocks the inline script that injects axe. Axe now runs by evaluation (`test/a11y-csp.test.ts`).
+2. Coverage counted the old site's own catch-all target (`/essentials/installation`, where every unknown path is sent) as missing on the new app, because the new app answers unknown paths with the same page (`test/coverage-fallback.test.ts`).
+3. A route the old app redirects was checked as a page and could become a template group's representative. It was then "not compared", which left its layout's controls unexercised on 10 routes. Redirects are now compared by status and redirect chain (`test/redirect-routes.test.ts`).
+
+### Markless limitations met (0.5.0)
+
+1. Imported functions used inside `attach` are still not carried into the browser module. Handlers (`onIdle` and others) carry them.
+2. A text binding must be a plain read or a `computed()`; a function call in markup is refused.
+3. `@if` arms cannot hold text bindings, and text with `'` inside an `@if` arm fails to parse (`Expected '</'`).
+4. Element handles are read-only: `$el.textContent = …` needs a helper.
+5. `.prevent` and `.stop` only work as `event.preventDefault()` statements the compiler can lift out, with no TypeScript casts in the guard.
+6. A `computed()` over another computed through `as unknown` came back undefined after resume. A keyed `@for` over an object-mapped list appended its rows instead of reconciling them; iterating the list itself works.
+7. `storage()` fails to resume in the production build (above).
+8. The router wraps every page in a block `div[data-async-container]`. `display: contents` on it (`public/port/site.css`) lets the page lay out under `<body>` as before.
+9. Static HTML still ships as render data. Docs pages download 400 kB to 1.1 MB uncompressed; the Torchlight markup is most of it.
