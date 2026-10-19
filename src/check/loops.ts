@@ -70,13 +70,16 @@ export function trackLoops(known: readonly string[] = []): void {
 			running = outer;
 			ancestry = outerAncestry;
 			const records = observer?.takeRecords() ?? [];
-			if (records.length && !overflow.has(key)) {
-				const list = changes.get(key) ?? [];
-				for (const record of records) list.push({ at: seq++, record });
+			// What a callback changed is also its schedulers' doing: a poll's fake server answering it swaps the content.
+			const made = records.map((record) => ({ at: seq++, record }));
+			for (const owner of made.length ? new Set([key, ...from]) : []) {
+				if (overflow.has(owner)) continue;
+				const list = changes.get(owner) ?? [];
+				list.push(...made);
 				if (list.length > MAX_RECORDS) {
-					overflow.add(key);
-					changes.delete(key);
-				} else changes.set(key, list);
+					overflow.add(owner);
+					changes.delete(owner);
+				} else changes.set(owner, list);
 			}
 		}
 	};
@@ -142,6 +145,8 @@ export function trackLoops(known: readonly string[] = []): void {
 	}
 	const revert = ({ record: r }: Change) => {
 		if (r.type === 'attributes' && r.target instanceof Element && r.attributeName) {
+			// Chromium writes a style set through `el.style` to the attribute lazily: reading it first makes removing it stick.
+			r.target.getAttributeNS(r.attributeNamespace, r.attributeName);
 			if (r.oldValue === null) r.target.removeAttributeNS(r.attributeNamespace, r.attributeName);
 			else r.target.setAttributeNS(r.attributeNamespace, r.attributeName, r.oldValue);
 		} else if (r.type === 'characterData') (r.target as CharacterData).data = r.oldValue ?? '';
@@ -172,7 +177,7 @@ export function trackLoops(known: readonly string[] = []): void {
 					oneShots.delete(id);
 				}
 			}
-			const undo = [...live].flatMap((key) => changes.get(key) ?? []).sort((a, b) => b.at - a.at);
+			const undo = [...new Set([...live].flatMap((key) => changes.get(key) ?? []))].sort((a, b) => b.at - a.at);
 			// What each held loop kept changing, for the motion check to compare: the element and what of it.
 			const effects = [...live].flatMap((key) => {
 				const what = new Map<Node, Set<string>>();

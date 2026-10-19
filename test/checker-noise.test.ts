@@ -379,3 +379,22 @@ test('motion that differs once on the new page and not when it is recorded again
 	const red = await run(always);
 	assert.ok(red.failures.some((f) => /click button "Go"/.test(f.check) && /opacity/.test(f.actual)), JSON.stringify(red.failures));
 });
+
+test('what a poll\'s own follow-up timer changed is undone with the poll when it is held, so a page captured at another phase of it looks the same', async () => {
+	const { openPage } = await import('../src/check/browser.ts');
+	const { holdLoops } = await import('../src/check/loops.ts');
+	const colours: string[] = [];
+	for (const wait of [1300, 2300]) {
+		const site = await serve(() => ({ body: polling(0) }));
+		const { context, page } = await openPage(browser, defaultEnv(site), desktop[0]!, { loops: true });
+		try {
+			await page.goto(site);
+			await page.waitForTimeout(wait);
+			await page.evaluate(holdLoops);
+			colours.push(await page.evaluate(() => document.getElementById('demo')!.style.color));
+		} finally {
+			await context.close();
+		}
+	}
+	assert.deepEqual(colours, ['', ''], 'the colour each poll\'s answer set is undone');
+});

@@ -570,7 +570,11 @@ its first frame and watches inline styles a script writes frame by frame. Frames
 held animations to 0, 25, 50, 75 and 100% of the old side's longest one, the same clip on both sides; then
 they play out and the recorder reads each animation's element, properties, keyframe values, duration,
 delay, easing and iterations. Elements pair through `matchElements` on both pages' full element lists, so
-a missing animation names the new element that jumps. A difference must hold against two OLD recordings.
+a missing animation names the new element that jumps. A difference must hold against two OLD recordings,
+and (since 2026-10-19) against a second NEW recording too, so one side's timing under load is not red on
+one side only. Before the last step every loop is held at the same phase on both sides (`settleAndHoldLoops`:
+what the load started settles, then each loop, known from one load of the page beforehand, stops with the
+timers it scheduled).
 Differences alike but for the element and values (every link's colour when the theme changes) are one
 failure. Interactions that moved are replayed with reduced motion, where both must agree; hover, keyboard
 focus of each control a journey used and one screen of scrolling are recorded on one page per side; media
