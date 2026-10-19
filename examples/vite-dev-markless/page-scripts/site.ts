@@ -56,6 +56,25 @@ export function scrollToHash(hash: string): void {
 	});
 }
 
+// VitePress's router follows a link to `page.html` as the clean `page` it redirects to, in place. The Markless router knows
+// pages by their clean path, so while it reads a link (prefetch on intent, follow on click) the link points there; the
+// written href comes back once the event is handled.
+for (const type of ['pointerdown', 'touchstart', 'focusin', 'click'])
+	window.addEventListener(
+		type,
+		(event) => {
+			const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+			const href = link?.getAttribute('href');
+			if (!link || !href || link.hasAttribute('target')) return;
+			const url = new URL(href, link.baseURI);
+			if (url.origin !== location.origin || !url.pathname.endsWith('.html')) return;
+			url.pathname = url.pathname.slice(0, -'.html'.length).replace(/\/index$/, '/');
+			link.setAttribute('href', url.pathname + url.search + url.hash);
+			setTimeout(() => link.setAttribute('href', href));
+		},
+		{ capture: true, passive: true },
+	);
+
 // VitePress's router: a link to the page already shown changes the hash in history and scrolls to it.
 window.addEventListener(
 	'click',

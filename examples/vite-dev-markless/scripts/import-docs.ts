@@ -3,6 +3,7 @@
 // graphviz) render each page's Markdown, with the components the Markdown uses; scripts/import/layouts.ts writes the
 // theme's layout around it. Writes pages/**.tsrx, lib/docs-heads.json, assets/docs/ and the docs' public files.
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -360,6 +361,19 @@ for (const relativePath of [...siteConfig.pages, '404.md']) {
 	heads[notFound ? '/404' : route] = headOf(route, pageData, relativePath);
 	written.push(relative(APP, file));
 }
+
+// VitePress's hashmap.json, which its router fetches when a route does not resolve (page-scripts/docs.ts on the not-found
+// page): each page's source file, '/' as '_', to a hash of the page it builds.
+const hashmap = Object.fromEntries(
+	siteConfig.pages.map((relativePath: string) => [
+		relativePath.replace(/\//g, '_'),
+		createHash('sha256')
+			.update(readFileSync(join(APP, 'pages', `${relativePath.replace(/\.md$/, '')}.tsrx`)))
+			.digest('base64url')
+			.slice(0, 8),
+	]),
+);
+writeFileSync(join(APP, 'public/hashmap.json'), JSON.stringify(hashmap));
 
 // The docs' public files keep their URLs (Netlify's _headers and _redirects are routing, read into vite.config.ts).
 for (const name of readdirSync(publicDocs, { recursive: true }) as string[]) {

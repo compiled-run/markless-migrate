@@ -360,9 +360,16 @@ interface Sponsor {
 	readonly img: string;
 	readonly url: string;
 }
-// useSponsor(): sponsors.json, fetched once and shared by every grid on the site.
-let sponsors: Promise<Record<'main' | 'partnership' | 'platinum' | 'gold', Sponsor[]>> | undefined;
-const loadSponsors = () => (sponsors ??= fetch('https://sponsors.vite.dev/sponsors.json').then((response) => response.json()));
+// useSponsor(): sponsors.json, shared by every grid on the site once it has arrived; each grid that mounts before then
+// fetches it itself, as each useSponsor() does (the acknowledgements page's aside and body grids fetch it twice).
+type Sponsors = Record<'main' | 'partnership' | 'platinum' | 'gold', Sponsor[]>;
+let sponsors: Sponsors | undefined;
+const loadSponsors = (): Promise<Sponsors> =>
+	sponsors
+		? Promise.resolve(sponsors)
+		: fetch('https://sponsors.vite.dev/sponsors.json')
+				.then((response) => response.json())
+				.then((data: Sponsors) => (sponsors = data));
 const GRID: Record<string, [number, number][]> = {
 	xmini: [[0, 2]],
 	mini: [],
@@ -522,14 +529,33 @@ function carbon(): void {
 
 installTwoslash();
 
+// useLangs' resolveLocaleLink: a translation links to the same page on its own site, with the query and hash the
+// address carries now.
+function syncLocaleLinks(): void {
+	const roots: ParentNode[] = [document, ...[...document.querySelectorAll<HTMLTemplateElement>('template')].map((template) => template.content)];
+	for (const root of roots)
+		for (const link of root.querySelectorAll<HTMLAnchorElement>('a[href*=".vite.dev/"]')) {
+			const url = new URL(link.href);
+			if (!/^[a-z]{2}\.vite\.dev$/.test(url.hostname) || url.pathname !== location.pathname) continue;
+			url.search = location.search;
+			url.hash = location.hash;
+			if (link.href !== url.href) link.href = url.href;
+		}
+}
+window.addEventListener('hashchange', () => isDocs() && syncLocaleLinks());
+
 onPage((navigated) => {
 	if (!isDocs()) return;
+	// VitePress's router, finding no page for the address, refetches hashmap.json in case a new deploy added it; the
+	// not-found page is the answer either way.
+	if (document.querySelector('.NotFound')) void fetch('/hashmap.json').catch(() => {});
 	// The not-found page's translations link to the address that was asked for.
 	if (document.querySelector('.NotFound'))
 		for (const link of document.querySelectorAll<HTMLAnchorElement>('a[href$=".vite.dev/404"]')) link.href = link.href.replace(/\/404$/, location.pathname);
 	for (const template of document.querySelectorAll<HTMLTemplateElement>('.NotFound ~ template, template[data-mobile-menu]'))
 		if (document.querySelector('.NotFound'))
 			for (const link of template.content.querySelectorAll<HTMLAnchorElement>('a[href$=".vite.dev/404"]')) link.href = link.href.replace(/\/404$/, location.pathname);
+	syncLocaleLinks();
 	syncSwitches();
 	// VPSidebarGroup.vue lets the sidebar animate 300 ms after it mounts.
 	const groups = document.querySelectorAll('.VPSidebar .group.no-transition');
