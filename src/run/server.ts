@@ -8,6 +8,8 @@ export interface AppServerOptions {
 	readonly serve: string;
 	/** Shell command that builds the new app, run before every (re)start. */
 	readonly build?: string;
+	/** Runs before every build: writes generated files the build reads (the caching rules). */
+	readonly beforeBuild?: () => Promise<void>;
 	readonly origin: string;
 	/** A file or directory the build writes; when its mtime changes the server restarts, so an agent's own build is served. */
 	readonly restartOn?: string;
@@ -85,6 +87,7 @@ export async function startAppServer(o: AppServerOptions): Promise<AppServer> {
 	let busy: Promise<unknown> = Promise.resolve();
 	const refresh = async (): Promise<{ ok: boolean; output: string }> => {
 		if (o.build) {
+			await o.beforeBuild?.();
 			const built = await shell(o.build, o.cwd, env);
 			if (built.code !== 0) return { ok: false, output: `build \`${o.build}\` failed (exit ${built.code}):\n${built.output}` };
 		}

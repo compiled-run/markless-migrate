@@ -12,6 +12,8 @@ DOCS="${DOCS:-$HOME/dev/scratch/vite/docs}"
 SCOPE=jack-shelton
 OLD_URL=https://vite-dev-old.vercel.app
 NEW_URL=https://vite-dev-markless.vercel.app
+# The caching plan (.migrate/caching.json, from plan) goes into the app before every build.
+cache_apply() { [ ! -f .migrate/caching.json ] || node "$ROOT/src/cli.ts" cache apply; }
 link() { [ -f "$1/.vercel/project.json" ] || (cd "$1" && vercel link --yes --project "$2" --scope "$SCOPE" >/dev/null && rm -f .env.local); }
 case "${1:-}" in
 	old)
@@ -22,7 +24,7 @@ case "${1:-}" in
 		;;
 	new)
 		link "$APP" vite-dev-markless
-		(cd "$APP" && OLD_ORIGIN="$OLD_URL" NITRO_PRESET=vercel npm run build && vercel deploy --prebuilt --prod --yes --scope "$SCOPE")
+		(cd "$APP" && cache_apply && OLD_ORIGIN="$OLD_URL" NITRO_PRESET=vercel npm run build && vercel deploy --prebuilt --prod --yes --scope "$SCOPE")
 		;;
 	front)
 		FRONT="$DIR/front"
