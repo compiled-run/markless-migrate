@@ -410,7 +410,7 @@ async function pageState(): Promise<string[]> {
 	const root = document.documentElement;
 	const body = document.body as HTMLElement | null;
 	const own = [root, body].filter((el): el is HTMLElement => Boolean(el));
-	const running = own.flatMap((el) => el.getAnimations()).filter((a) => a.effect?.getComputedTiming().iterations !== Infinity);
+	const running = own.flatMap((el) => el.getAnimations()).filter((a) => a instanceof CSSTransition && /^(background|color|color-scheme|all)/.test(a.transitionProperty));
 	if (running.length) await Promise.race([Promise.all(running.map((a) => a.finished.catch(() => {}))), new Promise((done) => setTimeout(done, 1_000))]);
 	const out: string[] = [];
 	const clip = (v: string) => (v.length > 120 ? `${v.slice(0, 120)}…` : v);
@@ -1203,7 +1203,9 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			const last = expected.at(-1)!;
 			const done = expected.length === item.journey.steps.length && !last.failed;
 			const stayed = done && new URL(page.url()).pathname === new URL(route, origin).pathname && !last.navigated;
-			const revealed = item.expand && stayed ? await candidates(page, host) : [];
+			// The control just used, renamed by its use ("currently light mode"), is the same control, not one it revealed.
+			const renamed = item.expand && stayed ? await retarget(page, item.journey.steps.at(-1)!.target) : undefined;
+			const revealed = item.expand && stayed ? (await candidates(page, host)).filter((c) => !renamed || !sameTarget(c.target, renamed)) : [];
 			const steps = item.journey.steps;
 			const step = steps.at(-1)!;
 			const expanded = stayed && step.action === 'click' && (await locate(page, step.target).getAttribute('aria-expanded', { timeout: 500 }).catch(() => null)) === 'true';
@@ -1438,10 +1440,12 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			const act = k > last ? acts[k - last - 1] : undefined;
 			// After an in-site navigation only what the journey's own control changed is compared; how the new page loads is the navigation check's.
 			const navigatedAway = acts.slice(0, Math.max(0, k - last)).some((x) => typeof x === 'object' && 'navigate' in x);
-			const touched = new Set(runs[0]!.slice(0, k).flatMap((r) => (r.state ?? []).map(subject)));
+			// After a reload or a followed link, what is kept is compared only for what the journey's own steps changed: a router's own scroll-restoration entry is not the control's.
+			const touched = new Set(runs[0]!.slice(0, k).flatMap((r) => [...(r.state ?? []).map(subject), ...(r.storage ?? []).map((l) => l.replace(/^[+-] /, '').split(' ').slice(0, 2).join(' '))]));
+			const kept = (lines: readonly string[] | undefined) => (lines ?? []).filter((l) => touched.has(l.replace(/^[+-] /, '').split(' ').slice(0, 2).join(' ')));
 			const following = typeof act === 'object' && 'navigate' in act;
 			const restricted = following || (navigatedAway && act === 'reload');
-			const mine = (r: StepResult | undefined): StepResult | undefined => (r && restricted ? { ...r, added: [], removed: [], moved: [], state: (r.state ?? []).filter((l) => touched.has(subject(l))) } : r);
+			const mine = (r: StepResult | undefined): StepResult | undefined => (!r ? r : restricted ? { ...r, added: [], removed: [], moved: [], state: (r.state ?? []).filter((l) => touched.has(subject(l))), storage: kept(r.storage) } : act === 'reload' ? { ...r, state: (r.state ?? []).filter((l) => touched.has(subject(l))), storage: kept(r.storage) } : r);
 			const oldSteps = runs.map((r) => mine(r[k]));
 			if (oldSteps.some((s) => !s || s.failed)) break;
 			const [a, ...rest] = oldSteps as StepResult[];
