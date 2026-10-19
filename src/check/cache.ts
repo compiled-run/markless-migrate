@@ -51,7 +51,7 @@ const own = (env: SideEnv, url: string) => new URL(url).origin === new URL(env.o
 async function fetchOne(env: SideEnv, url: string, previous?: Fingerprint): Promise<Fingerprint | 'unchanged' | undefined> {
 	// Another origin's file is asked for once per run, by whichever comes first, the pages or this check: a third party's rate limit is not spent twice.
 	if (!own(env, url)) {
-		const got = await sharedAnswer(url);
+		const got = await sharedAnswer(url, { origin: new URL(env.origin).origin });
 		return got && { url, status: got.status, hash: createHash('sha256').update(got.body).digest('hex') };
 	}
 	try {
@@ -123,6 +123,12 @@ export class OldCache {
 		}
 		this.counts.hit++;
 		return entry.value;
+	}
+
+	/** A hit that could not be used after all (the run had already read another answer from a third party the entry relies on). */
+	demote(): void {
+		this.counts.hit--;
+		this.counts.changed++;
 	}
 
 	async write(kind: string, env: SideEnv, key: unknown, urls: readonly string[], value: unknown): Promise<void> {

@@ -21,11 +21,15 @@ interface AxNode {
 
 const label = (node: AxNode | undefined) => (node ? `${node.role?.value ?? 'unknown'}${node.name?.value ? ` "${node.name.value.replace(/\s+/g, ' ').trim()}"` : ''}` : 'nothing');
 
-// The focused element's role and name from Chromium's accessibility tree; undefined once focus is on the body or wraps around.
+const INSIDE_FRAME = '\u0000inside a frame';
+const MAX_FRAME_TABS = 20;
+
+// The focused element's role and name from Chromium's accessibility tree; undefined once focus is on the body or wraps around, INSIDE_FRAME while it moves among a frame's own stops.
 async function focused(session: CDPSession): Promise<string | undefined> {
 	const { result } = await session.send('Runtime.evaluate', {
-		expression: `(() => { const el = document.activeElement; if (!el || el === document.body || el.__mmTabbed) return null; el.__mmTabbed = true; return el; })()`,
+		expression: `(() => { const el = document.activeElement; if (!el || el === document.body) return null; let deep = el; while (deep.shadowRoot && deep.shadowRoot.activeElement) deep = deep.shadowRoot.activeElement; if (el.__mmTabbed) return /^(IFRAME|FRAME)$/.test(deep.tagName) ? 'frame' : null; el.__mmTabbed = true; return el; })()`,
 	});
+	if (result.value === 'frame') return INSIDE_FRAME;
 	if (!result.objectId) return undefined;
 	const { nodes } = (await session.send('Accessibility.getPartialAXTree', { objectId: result.objectId, fetchRelatives: false })) as { nodes: AxNode[] };
 	return label(nodes.find((n) => !n.ignored) ?? nodes[0]);
@@ -61,9 +65,15 @@ export async function captureA11y(page: Page): Promise<A11yCapture> {
 			window.getSelection()?.removeAllRanges();
 		});
 		const focusOrder: string[] = [];
-		for (let i = 0; i < MAX_TABS; i++) {
+		// A frame is one stop: how many stops its own document has (a widget's iframe, a player) is its business, and Tab is pressed on until focus leaves it.
+		for (let presses = 0, inFrame = 0; focusOrder.length < MAX_TABS && presses < MAX_TABS + MAX_FRAME_TABS; presses++) {
 			await page.keyboard.press('Tab');
 			const now = await focused(session);
+			if (now === INSIDE_FRAME) {
+				if (++inFrame > MAX_FRAME_TABS) break;
+				continue;
+			}
+			inFrame = 0;
 			if (now === undefined) break;
 			focusOrder.push(now);
 		}

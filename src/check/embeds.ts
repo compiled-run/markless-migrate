@@ -36,7 +36,11 @@ export function liveEmbeds(mark = false): LiveEmbed[] {
 		if (r.width < 1 || r.height < 1) continue;
 		const attributes = Object.fromEntries(kept.flatMap((name) => (el.hasAttribute(name) ? [[name, el.getAttribute(name) ?? '']] : [])));
 		const src = url ? (url.origin === location.origin ? url.pathname : `${url.origin}${url.pathname}`) : raw;
-		if (mark) el.setAttribute('data-markless-migrate-embed', '');
+		if (mark) {
+			el.setAttribute('data-markless-migrate-embed', tag === 'video' ? `${(el as HTMLElement).style.getPropertyValue('visibility')}\u0000${(el as HTMLElement).style.getPropertyPriority('visibility')}` : '');
+			// A full-page capture can paint a video's frame a few pixels off its box, outside the mask: the frame is the decoder's, so it is not painted.
+			if (tag === 'video') (el as HTMLElement).style.setProperty('visibility', 'hidden', 'important');
+		}
 		out.push({ tag, src, attributes, box: { x: Math.round(r.x + scrollX), y: Math.round(r.y + scrollY), width: Math.round(r.width), height: Math.round(r.height) } });
 	}
 	return out;
@@ -45,8 +49,15 @@ export function liveEmbeds(mark = false): LiveEmbed[] {
 /** Runs in the page: takes the screenshot marks off again. */
 function unmark(): void {
 	const walk = (root: Document | ShadowRoot) => {
-		for (const el of root.querySelectorAll('*')) {
+		for (const el of root.querySelectorAll('[data-markless-migrate-embed]')) {
+			const [visibility = '', priority = ''] = (el.getAttribute('data-markless-migrate-embed') ?? '').split('\u0000');
+			if (el.tagName === 'VIDEO') {
+				if (visibility) (el as HTMLElement).style.setProperty('visibility', visibility, priority);
+				else (el as HTMLElement).style.removeProperty('visibility');
+			}
 			el.removeAttribute('data-markless-migrate-embed');
+		}
+		for (const el of root.querySelectorAll('*')) {
 			if (el.shadowRoot) walk(el.shadowRoot);
 		}
 	};

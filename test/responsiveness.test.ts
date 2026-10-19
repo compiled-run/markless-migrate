@@ -83,7 +83,7 @@ test('the likely cause names code fetched, a runtime starting, the longest task 
 	assert.equal(likelyCause([sample({ ms: 60, warmMs: 55 })], 'in-page'), 'no single cause seen: the handler itself is slower');
 	const old = sample({ ms: 200, result: 'navigated', prefetch: 3 });
 	const next = sample({ ms: 660, result: 'reloaded', server: { ttfb: 610, warmTtfb: 80, htmlBytes: 40_960, served: 'x-vercel-cache: MISS' } });
-	assert.equal(likelyCause([next], 'navigation', [old]), 'a full page load where the old app navigates in the page (client-side), with a blank page between; server time 610 ms to first byte, 80 ms when fetched again straight after (a cold server function) (x-vercel-cache: MISS); 40.0 kB of HTML; the old page had 3 prefetch hints when the pointer went down, the new one none');
+	assert.equal(likelyCause([next], 'navigation', [old]), 'a full page load where the old app navigates in the page (client-side), with a blank page between; server time 610 ms to answer, 80 ms when fetched again straight after (a cold server function) (x-vercel-cache: MISS), outside this timing; 40.0 kB of HTML; the old page had 3 prefetch hints when the pointer went down, the new one none');
 });
 
 test('a slow control keeps its failure id from run to run although its timings differ', () => {

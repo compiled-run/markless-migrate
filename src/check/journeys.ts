@@ -1,5 +1,5 @@
 import type { Browser, BrowserContext, Locator, Page, Request } from 'playwright';
-import { frameworkTransport, openPage, requestLine, type SideEnv } from './browser.ts';
+import { frameworkTransport, openPage, requestLine, type OpenOptions, type SideEnv } from './browser.ts';
 import { markHandlers } from './handlers.ts';
 import { originInQuery } from './capture.ts';
 import { HINTS } from './hints.ts';
@@ -656,7 +656,7 @@ export interface Session {
 }
 
 /** `loops`: track loops so the caller can hold them (motion records what an interaction starts, not what a loop keeps doing). */
-export async function openSession(browser: Browser, env: SideEnv, route: string, viewport: Viewport, options: { readonly loops?: boolean } = {}): Promise<Session> {
+export async function openSession(browser: Browser, env: SideEnv, route: string, viewport: Viewport, options: Pick<OpenOptions, 'loops'> = {}): Promise<Session> {
 	const origin = env.origin;
 	const { context, page, log } = await openPage(browser, env, viewport, { sameOriginOnly: true, ...options });
 	const host = new URL(origin).origin;

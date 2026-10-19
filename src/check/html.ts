@@ -48,7 +48,7 @@ function sample(s: Sample): string {
 		s.warmMs !== undefined ? `second time ${s.warmMs} ms` : '',
 		code.length ? `<strong>fetched code: ${code.map((f) => esc(`${f.url} (${(f.bytes / 1024).toFixed(1)} kB)`)).join(', ')}</strong>` : '',
 		other ? `${other} other fetch${other === 1 ? '' : 'es'}` : '',
-		s.server ? esc(`server ${s.server.ttfb} ms to first byte${s.server.warmTtfb !== undefined ? `, ${s.server.warmTtfb} ms again` : ''}, ${(s.server.htmlBytes / 1024).toFixed(1)} kB HTML${s.server.served ? ` (${s.server.served})` : ''}`) : '',
+		s.server ? esc(`server ${s.server.ttfb} ms to answer${s.server.warmTtfb !== undefined ? `, ${s.server.warmTtfb} ms again` : ''}, ${(s.server.htmlBytes / 1024).toFixed(1)} kB HTML${s.server.served ? ` (${s.server.served})` : ''}`) : '',
 		s.heldBack ? 'a write was held back' : '',
 		s.failed ? esc(s.failed) : '',
 	].filter(Boolean);

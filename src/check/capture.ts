@@ -156,6 +156,9 @@ function shownText(): string {
 /** The GET responses each capture's page loaded from its own origin, and the scripts, styles and fonts from others (not an embed's), so a cache can tell whether the page changed. */
 export const pageLoads = new WeakMap<PageCapture, readonly string[]>();
 
+/** The GETs each capture's page or its embeds made to other origins for data, and an embed's code: kept with a cached old capture and given to the new page with it. */
+export const thirdPartyLoads = new WeakMap<PageCapture, readonly string[]>();
+
 export async function capturePage(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<PageCapture> {
 	const origin = env.origin;
 	const { context, page, log, own } = await openPage(browser, env, viewport, { loops: true, shareThirdParty: true });
@@ -168,6 +171,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		const embedded = new Set<string>();
 		const ownScripts = new Set<string>();
 		const loaded = new Set<string>();
+		const fromOthers = new Set<string>();
 		page.on('response', (response: Response) => {
 			const type = response.request().resourceType();
 			const url = URL.parse(response.url());
@@ -176,6 +180,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 			if (ofEmbed) embedded.add(response.url());
 			// The old page's own responses and the code and looks it pulls from other origins; what other origins answer its requests for data is theirs.
 			if (url && !ofEmbed && !frameDocument && response.request().method() === 'GET' && /^https?:$/.test(url.protocol) && (own(url) || ['script', 'stylesheet', 'font'].includes(type))) loaded.add(response.url());
+			else if (url && !frameDocument && response.request().method() === 'GET' && /^https?:$/.test(url.protocol) && !own(url) && ['script', 'fetch', 'xhr'].includes(type)) fromOthers.add(response.url());
 			if (!ASSET_TYPES.has(type) || ofEmbed) return;
 			if (type === 'script') ownScripts.add(response.url());
 			pending.push(
@@ -278,6 +283,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 			},
 		};
 		pageLoads.set(captured, [new URL(route, origin).href, ...loaded]);
+		thirdPartyLoads.set(captured, [...fromOthers]);
 		return captured;
 	} finally {
 		await context.close();

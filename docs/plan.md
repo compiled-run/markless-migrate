@@ -453,10 +453,13 @@ are not slowed or exposed to timing noise from four suites sharing the CPU.
 - Server time cold against warm: the first hit in the run against an immediate refetch. A function that
   is already warm from the crawl or the journeys shows warm both times; forcing an idle function cold
   would need waiting out the host's idle timeout, which check does not do.
-- Throttling slows the CPU, not the network; a code fetch on a phone's network costs more than it does
-  here. Requests pass through Playwright's interception, which adds a little to every fetch on both sides.
-- An old app served from a local caching mirror (htmx.org, alpinejs.dev) has no network latency for its
-  documents, so navigation compares a loopback server against a deployed one.
+- Throttling slows the CPU, not bandwidth: every response gets the same fixed latency (`--network-latency`,
+  40 ms) on both sides, but a large code fetch costs no more than a small one. Requests pass through
+  Playwright's interception, which adds a little to every fetch on both sides.
+- Responses are stored and handed to the page whole, so a streamed page gets no head start from streaming,
+  and server time is reported, not judged: a slow server alone does not make a link red. (Until 2026-10-19
+  the real network was timed, so an old app on a local mirror, htmx.org or alpinejs.dev, was compared
+  against a deployed new one.)
 
 ## Library surface, webpack pages, ARIA coverage and CLI conformance (2026-10-17)
 
@@ -567,7 +570,11 @@ its first frame and watches inline styles a script writes frame by frame. Frames
 held animations to 0, 25, 50, 75 and 100% of the old side's longest one, the same clip on both sides; then
 they play out and the recorder reads each animation's element, properties, keyframe values, duration,
 delay, easing and iterations. Elements pair through `matchElements` on both pages' full element lists, so
-a missing animation names the new element that jumps. A difference must hold against two OLD recordings.
+a missing animation names the new element that jumps. A difference must hold against two OLD recordings,
+and (since 2026-10-19) against a second NEW recording too, so one side's timing under load is not red on
+one side only. Before the last step every loop is held at the same phase on both sides (`settleAndHoldLoops`:
+what the load started settles, then each loop, known from one load of the page beforehand, stops with the
+timers it scheduled).
 Differences alike but for the element and values (every link's colour when the theme changes) are one
 failure. Interactions that moved are replayed with reduced motion, where both must agree; hover, keyboard
 focus of each control a journey used and one screen of scrolling are recorded on one page per side; media
