@@ -209,12 +209,14 @@ function applyDocsVersions(): void {
 	keepLocation();
 }
 // Version and language links keep the page's ?query#hash.
+const baseHref = (link: Element) => (link.getAttribute('href') ?? '').replace(/[?#].*$/, '');
 function keepLocation(): void {
-	for (const link of document.querySelectorAll<HTMLAnchorElement>('.navbar__inner .dropdown__link, .navbar-sidebar .menu__link')) {
-		if (!hint(link, 'version-item') && !hint(link, 'keep-location')) continue;
-		const base = (link.getAttribute('href') ?? '').replace(/[?#].*$/, '');
-		link.setAttribute('href', `${base}${location.search}${location.hash}`);
-	}
+	const desktop = [...document.querySelectorAll<HTMLAnchorElement>('.navbar__inner .dropdown__link')].filter((link) => hint(link, 'version-item') !== undefined || hint(link, 'keep-location') !== undefined);
+	// The drawer's dropdown items are copies of the navbar's, made when the drawer is built.
+	const key = (link: Element) => `${baseHref(link)} ${link.getAttribute('lang') ?? ''} ${link.textContent}`;
+	const kept = new Set(desktop.map(key));
+	const drawer = [...document.querySelectorAll<HTMLAnchorElement>('.navbar-sidebar .menu__list-item-collapsible + ul .menu__link')].filter((link) => kept.has(key(link)));
+	for (const link of [...desktop, ...drawer]) link.setAttribute('href', `${baseHref(link)}${location.search}${location.hash}`);
 }
 function savePreferredVersion(link: HTMLAnchorElement): void {
 	const desktop = link.closest('.navbar-sidebar') ? [...document.querySelectorAll<HTMLAnchorElement>('.navbar__inner .dropdown__link')].find((a) => a.pathname === link.pathname && hint(a, 'version-item')) : link;
