@@ -135,6 +135,7 @@ function attributes(type, props) {
 	const out = [];
 	for (const [name, value] of Object.entries(props)) {
 		if (DROP.has(name) || /^on[A-Z]/.test(name) || value === undefined || value === null) continue;
+		if (reactServerMarkup && name.startsWith('data-mm-')) continue;
 		if (typeof value === 'function' || typeof value === 'symbol') continue;
 		let attr = ATTRIBUTE_ALIASES[name] ?? name;
 		if (name === 'defaultValue') attr = 'value';
@@ -169,16 +170,46 @@ function attributes(type, props) {
 }
 
 // Renders a JSX value to nodes: strings, and { tag, attrs, children }.
+// Markup as React's server render writes it (the `<!-- -->` between two text children in a row, styles as React
+// serialises them), which the old site's feeds carry: they are made from the built pages' HTML.
+let reactServerMarkup = false;
+export const isReactServerMarkup = () => reactServerMarkup;
+export function withReactServerMarkup(run) {
+	const previous = reactServerMarkup;
+	reactServerMarkup = true;
+	try {
+		return run();
+	} finally {
+		reactServerMarkup = previous;
+	}
+}
+export const TEXT_SEPARATOR = { tag: '#text-separator', attrs: [], children: [] };
+// Markup only React's server render writes (a Suspense boundary's comments), kept in React server markup only.
+const SERVER_HTML = Symbol.for('mm.server-html');
+export const serverHtml = (html) => (reactServerMarkup ? { [SERVER_HTML]: html } : null);
+
 export function render(value) {
 	const out = [];
+	let lastText = false;
 	const push = (node) => {
 		if (typeof node === 'string' && typeof out[out.length - 1] === 'string') out[out.length - 1] += node;
 		else out.push(node);
 	};
+	const pushText = (text) => {
+		if (text === '') return;
+		if (reactServerMarkup && lastText) out.push(TEXT_SEPARATOR);
+		push(text);
+		lastText = true;
+	};
+	const pushNode = (node) => {
+		push(node);
+		lastText = false;
+	};
 	const walk = (item) => {
 		if (item === null || item === undefined || item === false || item === true) return;
 		if (Array.isArray(item)) return item.forEach(walk);
-		if (typeof item === 'string' || typeof item === 'number' || typeof item === 'bigint') return push(String(item));
+		if (typeof item === 'string' || typeof item === 'number' || typeof item === 'bigint') return pushText(String(item));
+		if (item[SERVER_HTML] !== undefined) return pushNode({ tag: '#server-html', attrs: [], children: [], html: item[SERVER_HTML] });
 		if (item[RAW] !== undefined) {
 			const nodes = render(rawParser(item[RAW]));
 			const mark = (node) => {
@@ -187,9 +218,11 @@ export function render(value) {
 				node.children.forEach(mark);
 			};
 			nodes.forEach(mark);
-			return nodes.forEach(push);
+			nodes.forEach(push);
+			lastText = false;
+			return;
 		}
-		if (item.tag !== undefined && item.attrs) return push(item);
+		if (item.tag !== undefined && item.attrs) return pushNode(item);
 		if (!isElement(item)) {
 			if (typeof item[Symbol.iterator] === 'function') return [...item].forEach(walk);
 			throw new Error(`cannot render ${JSON.stringify(item)?.slice(0, 200)}`);
@@ -205,7 +238,9 @@ export function render(value) {
 		const attrs = attributes(type, props);
 		const node = { tag: type, attrs, children: type === 'textarea' && props.value !== undefined ? [String(props.value)] : children };
 		if (type === 'img' && props.src != null && typeof props.src !== 'string') node.noPreload = true;
-		push(node);
+		// React hoists a <link> out of the body and writes a separator in its place when it follows text.
+		if (reactServerMarkup && lastText && type === 'link') out.push(TEXT_SEPARATOR);
+		pushNode(node);
 	};
 	walk(value);
 	return out;
@@ -222,6 +257,8 @@ export function toHtml(nodes) {
 	return nodes
 		.map((node) => {
 			if (typeof node === 'string') return escapeText(node);
+			if (node === TEXT_SEPARATOR) return '<!-- -->';
+			if (node.tag === '#server-html') return node.html;
 			const attrs = node.attrs.map(([name, value]) => ` ${name}="${escapeAttr(value)}"`).join('');
 			if (VOID.has(node.tag)) return `<${node.tag}${attrs}>`;
 			const inner = RAW_TEXT.has(node.tag) ? node.children.join('') : toHtml(node.children);

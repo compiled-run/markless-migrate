@@ -2,7 +2,7 @@
 // images, written from @docusaurus/theme-classic and theme-common so they produce the same markup.
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { Fragment, isElement, useContext } from '../source/h.mjs';
+import { Fragment, isElement, useContext, isReactServerMarkup, serverHtml } from '../source/h.mjs';
 import { cssModuleMap } from '../source/stylesheet.mjs';
 import { website } from '../source/site.mjs';
 import clsx from '../source/clsx.mjs';
@@ -139,6 +139,8 @@ export function Link({ isNavLink, to, href, activeClassName, activeStyle, isActi
 	if (regular) {
 		return <a href={link} {...(target && !internal ? { target: '_blank', rel: 'noopener noreferrer' } : {})} {...props} />;
 	}
+	// React Router's history decodes the pathname of a location it creates (createLocation in history 4).
+	link = decodePathname(link);
 	if (isNavLink) {
 		const path = useContext().path;
 		const active = isActive ? isActive(null, { pathname: path }) : exact ? samePath(link, path) : path.startsWith(link.replace(/\/$/, '')) && (path.length === link.replace(/\/$/, '').length || path[link.replace(/\/$/, '').length] === '/');
@@ -146,6 +148,16 @@ export function Link({ isNavLink, to, href, activeClassName, activeStyle, isActi
 		return <a {...(active ? { 'aria-current': 'page' } : {})} {...props} className={className} style={active && activeStyle ? { ...props.style, ...activeStyle } : props.style} href={link} />;
 	}
 	return <a {...props} href={link} />;
+}
+
+function decodePathname(link) {
+	const at = link.search(/[?#]/);
+	const pathname = at < 0 ? link : link.slice(0, at);
+	try {
+		return decodeURI(pathname) + (at < 0 ? '' : link.slice(at));
+	} catch {
+		return link;
+	}
 }
 
 export function samePath(a, b) {
@@ -193,7 +205,9 @@ export function Head({ children }) {
 	return null;
 }
 
+// On the server React bails out to the Suspense boundary around it and writes that boundary client-rendered.
 export function BrowserOnly({ children, fallback }) {
+	if (isReactServerMarkup()) return [serverHtml('<!--$!--><template data-dgst=""></template>'), fallback ?? null, serverHtml('<!--/$-->')];
 	return typeof children === 'function' ? children() : (fallback ?? null);
 }
 

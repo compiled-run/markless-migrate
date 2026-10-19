@@ -63,6 +63,7 @@ const routes = allRoutes.filter((route) => !only.length || only.includes(routePa
 const allPaths = allRoutes.map((route) => routePath(route.path));
 await mkdir(outDir, { recursive: true });
 if (!only.length) await clearPages();
+const FEED_SOURCES = new Set(['@theme/BlogPostPage', '@theme/ChangelogPage']);
 const failures = [];
 const skipped = [];
 const pages = new Map();
@@ -85,6 +86,8 @@ for (const route of routes) {
 	try {
 		const page = await renderWithDiagrams(route);
 		const key = route === notFound ? '/404' : path;
+		// The blog plugins' feeds are made from these pages' HTML as React's server render writes it.
+		if (FEED_SOURCES.has(route.component)) page.feedBody = (await renderRoute(route, site, siteMdxComponents, { reactServerMarkup: true })).body;
 		pages.set(key, page);
 		await writeFile(join(outDir, `${encodeURIComponent(path)}.html`), toHtml(page.body));
 		await writeFile(join(outDir, `${encodeURIComponent(path)}.head.json`), JSON.stringify({ title: page.title, htmlClasses: page.htmlClasses, head: toHtml(page.head) }));

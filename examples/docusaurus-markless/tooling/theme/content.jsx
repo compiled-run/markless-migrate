@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { clsx, useContext, styles, ThemeClassNames, translate, Translate, Link, Heading, useAnchorTargetClassName, themeConfig, IconCopy, IconSuccess, Head, BrowserOnly, ThemedImage, isInternalUrl } from './core.jsx';
 import { TOCItems } from './docs.jsx';
 import Playground from './Playground.jsx';
-import { isElement, toArray, Fragment } from '../source/h.mjs';
+import { isElement, toArray, Fragment, isReactServerMarkup, render, withContext, toHtml } from '../source/h.mjs';
 import { website } from '../source/site.mjs';
 
 const require = createRequire(join(website, 'package.json'));
@@ -37,6 +37,7 @@ function cssColor(value) {
 	return `rgb(${r}, ${g}, ${b})`;
 }
 export function domStyle(style) {
+	if (isReactServerMarkup()) return style;
 	const parts = Object.entries(style ?? {})
 		.filter(([, v]) => v !== undefined && v !== null && v !== '')
 		.map(([name, value]) => `${kebab(name)}: ${name.startsWith('--') ? value : /color/i.test(name) ? cssColor(String(value)) : value};`);
@@ -169,8 +170,8 @@ function prismVariables(theme) {
 	return out;
 }
 
-function CodeBlockContainer({ as: As, className, ...props }) {
-	return <As {...props} style={domStyle(prismVariables(themeConfig().prism.theme))} className={clsx(className, styles('CodeBlock/Container').codeBlockContainer, ThemeClassNames.common.codeBlock)} />;
+function CodeBlockContainer({ as: As, ...props }) {
+	return <As {...props} style={domStyle(prismVariables(themeConfig().prism.theme))} className={clsx(props.className, styles('CodeBlock/Container').codeBlockContainer, ThemeClassNames.common.codeBlock)} />;
 }
 
 function CopyButton() {
@@ -198,7 +199,7 @@ function CodeBlockString({ children, className, metastring, title, showLineNumbe
 		<CodeBlockContainer as="div" className={metadata.className}>
 			{metadata.title && <div className={layout.codeBlockTitle}>{metadata.title}</div>}
 			<div className={layout.codeBlockContent}>
-				<pre tabIndex={0} className={clsx(`prism-code language-${metadata.language}`, content.codeBlock, 'thin-scrollbar')} style={domStyle(dict.root)}>
+				<pre tabIndex={0} style={domStyle(dict.root)} className={clsx(`prism-code language-${metadata.language}`, content.codeBlock, 'thin-scrollbar')}>
 					<code className={clsx(content.codeBlockLines, numbered && content.codeBlockLinesWithNumbering)} style={numbered ? domStyle({ counterReset: `line-count ${metadata.lineNumbersStart - 1}` }) : undefined}>
 						{lines.map((rawLine, i) => {
 							const tokens = rawLine.length === 1 && rawLine[0].content === '\n' ? [{ ...rawLine[0], content: '' }] : rawLine;
@@ -223,9 +224,13 @@ function CodeBlockString({ children, className, metastring, title, showLineNumbe
 						})}
 					</code>
 				</pre>
-				<div className={styles('CodeBlock/Buttons').buttonGroup}>
-					<CopyButton />
-				</div>
+				<BrowserOnly>
+					{() => (
+						<div className={styles('CodeBlock/Buttons').buttonGroup}>
+							<CopyButton />
+						</div>
+					)}
+				</BrowserOnly>
 			</div>
 		</CodeBlockContainer>
 	);
@@ -311,13 +316,16 @@ export function Admonition(props) {
 // Tabs, in the state they have for a visitor with nothing saved: the default (or first) tab selected.
 export function Tabs(props) {
 	const s = styles('Tabs');
-	const item = styles('TabItem');
-	const children = toArray(props.children).filter(Boolean);
-	const tabValues = props.values ?? children.map(({ props: { value, label, attributes, default: isDefault } }) => ({ value, label, attributes, default: isDefault }));
-	const defaultChild = children.find((child) => child.props.default);
-	const selected = props.defaultValue !== undefined ? props.defaultValue : (defaultChild?.props.value ?? children[0]?.props.value);
+	// sanitizeTabsChildren
+	const children = toArray(props.children).filter((child) => child !== '\n');
+	const tabValues = props.values ?? children.filter(Boolean).map(({ props: { value, label, attributes, default: isDefault } }) => ({ value, label, attributes, default: isDefault }));
+	// getInitialStateValue
+	const selected = props.defaultValue ? props.defaultValue : (tabValues.find((tab) => tab.default) ?? tabValues[0])?.value;
+	const panelsOf = (value) => withContext({ tabs: { selectedValue: value, lazy: props.lazy } }, () => render(children));
+	// A lazy group renders only the selected panel; lib/site.ts swaps in the markup of the one chosen.
+	const panels = props.lazy ? Object.fromEntries(tabValues.map((tab) => [tab.value, toHtml(panelsOf(tab.value))])) : undefined;
 	return (
-		<div className={clsx(ThemeClassNames.tabs.container, s.tabList)} data-mm-tabs={JSON.stringify({ groupId: props.groupId, queryString: props.queryString, values: tabValues.map((t) => t.value) })}>
+		<div className={clsx(ThemeClassNames.tabs.container, s.tabList)} data-mm-tabs={JSON.stringify({ groupId: props.groupId, queryString: props.queryString, values: tabValues.map((t) => t.value), panels })}>
 			<ul role="tablist" aria-orientation="horizontal" className={clsx('tabs', props.className)}>
 				{tabValues.map(({ value, label, attributes }) => (
 					<li role="tab" tabIndex={selected === value ? 0 : -1} aria-selected={selected === value} {...attributes} className={clsx('tabs__item', s.tabItem, attributes?.className, { 'tabs__item--active': selected === value })}>
@@ -325,23 +333,21 @@ export function Tabs(props) {
 					</li>
 				))}
 			</ul>
-			<div className="margin-top--md">
-				{children.map((child) => {
-					const isSelected = child.props.value === selected;
-					if (!isSelected && props.lazy) return null;
-					return (
-						<div role="tabpanel" className={clsx(item.tabItem, child.props.className)} hidden={!isSelected}>
-							{child.props.children}
-						</div>
-					);
-				})}
-			</div>
+			<div className="margin-top--md">{panelsOf(selected)}</div>
 		</div>
 	);
 }
-// TabItem renders through its <Tabs>; on its own it is only its content.
-export function TabItem({ children }) {
-	return <>{children}</>;
+// TabItem reads the selected value of the <Tabs> around it (useTabs), so a component wrapping it works too.
+export function TabItem({ children, className, value }) {
+	const tabs = useContext().tabs;
+	if (!tabs) return <>{children}</>;
+	const isSelected = value === tabs.selectedValue;
+	if (!isSelected && tabs.lazy) return null;
+	return (
+		<div role="tabpanel" className={clsx(styles('TabItem').tabItem, className)} hidden={!isSelected}>
+			{children}
+		</div>
+	);
 }
 
 // Details once started: the theme's collapsible, closed, with its content in the page.
@@ -349,6 +355,18 @@ export function Details({ summary, children, ...props }) {
 	const common = styles('docusaurus-theme-common/src/components/Details/styles.module.css');
 	const own = styles('Details');
 	const summaryElement = isElement(summary) ? summary : <summary>{summary ?? 'Details'}</summary>;
+	if (isReactServerMarkup()) {
+		const attrs = { className: undefined, ...props, open: props.open, 'data-collapsed': !props.open };
+		attrs.className = clsx(common.details, clsx('alert alert--info', own.details, props.className));
+		return (
+			<details {...attrs}>
+				{summaryElement}
+				<div>
+					<div className={common.collapsibleContent}>{children}</div>
+				</div>
+			</details>
+		);
+	}
 	return (
 		<details {...props} open={props.open} data-collapsed={!props.open} className={clsx(common.details, common.isBrowser, clsx('alert alert--info', own.details, props.className))}>
 			{summaryElement}
@@ -390,6 +408,11 @@ export function MDXImg(props) {
 	return <img decoding="async" loading="lazy" {...props} className={clsx(props.className, styles('MDXComponents/Img').img)} />;
 }
 const heading = (as) => (props) => <Heading as={as} {...props} />;
+
+// @theme/MDXContent: the MDX components apply only inside it (a React page rendering an MDX partial gets plain markup).
+export function MDXContent({ children }) {
+	return withContext({ mdxComponents: useContext().mdxContentComponents }, () => render(children));
+}
 
 export function mdxComponents(extra = {}) {
 	return {

@@ -2,7 +2,7 @@
 // page (breadcrumbs, content, footer, pagination, table of contents), generated category index pages and doc cards.
 import { clsx, useContext, styles, ThemeClassNames, translate, Translate, Link, withBaseUrl, isInternalUrl, samePath, themeConfig, siteConfig, Head, Heading, IconArrow, IconHome, IconEdit, IconExternalLink } from './core.jsx';
 import { BackToTopButton, Logo, PageMetadata, SearchMetadata } from './chrome.jsx';
-import { Admonition } from './content.jsx';
+import { Admonition, MDXContent } from './content.jsx';
 
 export const isActiveSidebarItem = (item, activePath) => {
 	if (item.type === 'link') return item.href !== undefined && samePath(item.href, activePath);
@@ -82,7 +82,8 @@ function DocSidebarItemCategory({ item, activePath, level, index, ...props }) {
 	const isActive = isActiveSidebarItem(item, activePath);
 	const isCurrentPage = samePath(href, activePath);
 	const collapsed = !collapsible ? false : isActive ? false : item.collapsed;
-	const hrefWithFallback = href && !item.linkUnlisted ? href : !collapsible ? undefined : findFirstSidebarItemLink(item);
+	// useCategoryHrefWithSSRFallback once in the browser: the first item's link is only the server render's fallback.
+	const hrefWithFallback = href && !item.linkUnlisted ? href : undefined;
 	return (
 		<li className={clsx(ThemeClassNames.docs.docSidebarItemCategory, ThemeClassNames.docs.docSidebarItemCategoryLevel(level), 'menu__list-item', { 'menu__list-item--collapsed': collapsed }, className)}>
 			<div className={clsx('menu__list-item-collapsible', { 'menu__list-item-collapsible--active': isCurrentPage })}>
@@ -463,7 +464,9 @@ export function DocItem({ content: Content }) {
 										<Heading as="h1">{syntheticTitle}</Heading>
 									</header>
 								)}
-								<Content />
+								<MDXContent>
+						<Content />
+					</MDXContent>
 							</div>
 							{(tagsRow || editRow) && (
 								<footer className={clsx(ThemeClassNames.docs.docFooter, 'docusaurus-mt-lg')}>

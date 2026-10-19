@@ -24,6 +24,7 @@ import {
 	IconSystemColorMode,
 	IconExternalLink,
 } from './core.jsx';
+import { isReactServerMarkup } from '../source/h.mjs';
 
 // The docs plugin's global data, read the way useActiveDocContext reads it.
 function docsPlugins() {
@@ -117,7 +118,7 @@ export function ColorModeToggle({ className, buttonClassName }) {
 	const label = translate({ message: 'system mode', id: 'theme.colorToggle.ariaLabel.mode.system' });
 	return (
 		<div className={clsx(s.toggle, className)}>
-			<button className={clsx('clean-btn', s.toggleButton, buttonClassName)} type="button" title={label} aria-label={translate({ message: 'Switch between dark and light mode (currently {mode})', id: 'theme.colorToggle.ariaLabel' }, { mode: label })}>
+			<button className={clsx('clean-btn', s.toggleButton, isReactServerMarkup() && s.toggleButtonDisabled, buttonClassName)} type="button" disabled={isReactServerMarkup()} title={label} aria-label={translate({ message: 'Switch between dark and light mode (currently {mode})', id: 'theme.colorToggle.ariaLabel' }, { mode: label })}>
 				<IconLightMode aria-hidden={true} className={clsx(s.toggleIcon, s.lightToggleIcon)} />
 				<IconDarkMode aria-hidden={true} className={clsx(s.toggleIcon, s.darkToggleIcon)} />
 				<IconSystemColorMode aria-hidden={true} className={clsx(s.toggleIcon, s.systemToggleIcon)} />

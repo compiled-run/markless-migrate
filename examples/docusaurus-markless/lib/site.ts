@@ -4,7 +4,6 @@ import classes from './theme-classes.json';
 import prismThemes from './prism-themes.json';
 import docsVersions from './docs-versions.json';
 import sidebarData from './sidebars.json';
-import { init as initSearchPage } from './search-page.ts';
 import nprogress from 'nprogress';
 import { initShowcase } from './showcase.ts';
 import { initPlaygrounds } from './playground.ts';
@@ -228,7 +227,7 @@ function savePreferredVersion(link: HTMLAnchorElement): void {
 
 // Tabs: a choice is saved per groupId and every tab group with that id follows it; a queryString tab group also
 // writes it to the URL.
-type TabsHint = { groupId?: string; queryString?: string | boolean; values: string[] };
+type TabsHint = { groupId?: string; queryString?: string | boolean; values: string[]; panels?: Record<string, string> };
 function tabsHint(container: Element): TabsHint | undefined {
 	const raw = hint(container, 'tabs');
 	return raw ? (JSON.parse(raw) as TabsHint) : undefined;
@@ -243,8 +242,10 @@ function selectInContainer(container: Element, value: string): void {
 		tab.setAttribute('aria-selected', on ? 'true' : 'false');
 		tab.classList.toggle('tabs__item--active', on);
 		const panel = panels[index] as HTMLElement | undefined;
-		if (panel) panel.hidden = !on;
+		if (panel && !info?.panels) panel.hidden = !on;
 	});
+	const lazyPanel = info?.panels?.[value];
+	if (lazyPanel !== undefined) container.querySelector(':scope > .margin-top--md')!.innerHTML = lazyPanel;
 }
 function tabValue(tab: Element): string {
 	const container = tab.closest('.theme-tabs-container')!;
@@ -399,17 +400,6 @@ function isVisible(item: SidebarItem, path: string): boolean {
 	if (item.type === 'link') return !item.unlisted || isActive(item, path);
 	return true;
 }
-function firstLink(item: SidebarItem): string | undefined {
-	if (item.type === 'link' && !item.unlisted) return item.href;
-	if (item.type === 'category') {
-		if (item.href && !item.linkUnlisted) return item.href;
-		for (const sub of item.items ?? []) {
-			const link = firstLink(sub);
-			if (link) return link;
-		}
-	}
-	return undefined;
-}
 const escapeHtml = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const externalIcon = `<svg width="13.5" height="13.5" aria-label="(opens in new tab)" class="${data.classes.iconExternalLink}"><use href="#theme-svg-external-link"></use></svg>`;
 function itemsMarkup(items: SidebarItem[], level: number, tabIndex: number, path: string): string {
@@ -426,7 +416,7 @@ function itemsMarkup(items: SidebarItem[], level: number, tabIndex: number, path
 				const active = isActive(item, path);
 				const current = samePath(item.href, path);
 				const collapsed = !item.collapsible ? false : active ? false : Boolean(item.collapsed);
-				const href = item.href && !item.linkUnlisted ? item.href : item.collapsible ? firstLink(item) : undefined;
+				const href = item.href && !item.linkUnlisted ? item.href : undefined;
 				const linkClass = [data.classes.categoryLink, 'menu__link', item.collapsible ? 'menu__link--sublist' : '', !item.href && item.collapsible ? 'menu__link--sublist-caret' : '', active ? 'menu__link--active' : ''].filter(Boolean).join(' ');
 				const label = escapeHtml(item.label);
 				const caret = item.href && item.collapsible ? `<button aria-label="${collapsed ? 'Expand' : 'Collapse'} sidebar category '${label}'" aria-expanded="${!collapsed}" type="button" class="clean-btn menu__caret"></button>` : '';
@@ -443,7 +433,7 @@ function linkMarkup(item: SidebarItem, level: number, tabIndex: number, path: st
 	const active = isActive(item, path);
 	const linkClass = ['menu__link', external ? data.classes.menuExternalLink : '', active ? 'menu__link--active' : ''].filter(Boolean).join(' ');
 	const target = external ? ' target="_blank" rel="noopener noreferrer"' : '';
-	return `<li class="${['theme-doc-sidebar-item-link', `theme-doc-sidebar-item-link-level-${level}`, 'menu__list-item', item.className ?? ''].filter(Boolean).join(' ')}"><a class="${linkClass}"${active ? ' aria-current="page"' : ''} tabindex="${tabIndex}"${external ? ` href="${escapeHtml(item.href ?? '')}"${target}` : ` href="${escapeHtml(linkHref(item.href))}"`}><span class="${data.classes.linkLabel}">${escapeHtml(item.label)}</span>${external ? externalIcon : ''}</a></li>`;
+	return `<li class="${['theme-doc-sidebar-item-link', `theme-doc-sidebar-item-link-level-${level}`, 'menu__list-item', item.className ?? ''].filter(Boolean).join(' ')}"><a class="${linkClass}"${active ? ' aria-current="page"' : ''} tabindex="${tabIndex}"${external ? ` href="${escapeHtml((item.href ?? '').replace('pathname://', ''))}"${target}` : ` href="${escapeHtml(linkHref(item.href))}"`}><span class="${data.classes.linkLabel}">${escapeHtml(item.label)}</span>${external ? externalIcon : ''}</a></li>`;
 }
 function sidebarOf(element: Element): SidebarItem[] | undefined {
 	const aside = document.querySelector('aside.theme-doc-sidebar-container');
@@ -652,9 +642,9 @@ function dismissAnnouncement(): void {
 }
 
 let searching: Promise<void> | undefined;
+const loadSearch = () => (searching ??= import('./search.ts').then((search) => search.load()));
 function openSearch(): void {
-	searching ??= import('./search.ts').then((search) => search.load());
-	void searching.then(() => import('./search.ts')).then((search) => {
+	void loadSearch().then(() => import('./search.ts')).then((search) => {
 		search.open();
 		search.show();
 	});
@@ -1232,6 +1222,8 @@ function siteClick(event: Event): void {
 	if (youtube) return playYoutube(youtube);
 	const authors = closest(event, `button.${cls('ChangelogAuthors', 'toggleButton')}`);
 	if (authors) return toggleChangelogAuthors(authors);
+	const alerting = closest(event, 'button');
+	if (alerting && hint(alerting, 'alert') !== undefined) return alert(hint(alerting, 'alert'));
 	const boomButton = closest(event, 'button.button--danger');
 	if (boomButton && hint(boomButton, 'boom')) return boom(boomButton);
 	const dropdownToggle = closest(event, '.dropdown > a.navbar__link[role=button][href="#"]');
@@ -1292,7 +1284,8 @@ function pageInit(): void {
 	watchAvatars(document);
 	loadCanaryVersion();
 	loadCanny();
-	initSearchPage();
+	// Its Algolia client loads with the search page only, as the theme's SearchPage chunk does.
+	if (document.documentElement.classList.contains('search-page-wrapper')) void import('./search-page.ts').then((page) => page.init());
 	initShowcase();
 	initJsonViews(hint);
 	initImageZoom();
@@ -1339,8 +1332,8 @@ export function siteBoot(): void {
 	document.addEventListener('mouseover', (event) => {
 		if (closest(event, 'article.yt-lite')) warmYoutube();
 	});
-	// Docusaurus loads DocSearch's code when the pointer reaches the search button; here it loads at idle, so no click waits on it.
-	if (document.querySelector('button.DocSearch-Button')) requestIdleCallback(() => void import('./search.ts').then((search) => search.load()));
+	// Docusaurus loads DocSearch's code when the search button is hovered, focused or touched.
+	for (const type of ['mouseover', 'focusin', 'touchstart'] as const) document.addEventListener(type, (event) => closest(event, 'button.DocSearch-Button') && loadSearch(), { passive: true });
 	window.addEventListener('hashchange', keepLocation);
 	// The router moves to a hash with history.pushState, which fires no event; the theme rereads the location on every change.
 	for (const method of ['pushState', 'replaceState'] as const) {

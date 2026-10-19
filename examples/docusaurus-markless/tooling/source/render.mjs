@@ -1,11 +1,12 @@
 // Renders one route of the old site through the template its theme component names: the page body (what
 // Docusaurus mounts in #__docusaurus), its <head> elements and its <html> classes.
-import { h, render, withContext, setRawParser } from './h.mjs';
+import { h, render, withContext, setRawParser, withReactServerMarkup, isReactServerMarkup } from './h.mjs';
 import { parseHtml } from './html.mjs';
 import { join } from 'node:path';
 import { readGenerated, website } from './site.mjs';
 import { cssModuleMap } from './stylesheet.mjs';
 import { mdxComponents } from '../theme/content.jsx';
+import { lazyLoaded } from './react.mjs';
 import { AppMetadata } from '../theme/chrome.jsx';
 
 setRawParser(parseHtml);
@@ -66,6 +67,7 @@ function hoistPreloads(root) {
 export const mermaidRendered = new Map();
 export const mermaidPending = new Set();
 function mermaid({ value }) {
+	if (isReactServerMarkup()) return null;
 	const svg = mermaidRendered.get(value);
 	if (svg === undefined) {
 		mermaidPending.add(value);
@@ -79,10 +81,11 @@ let errorStyleMap;
 const errorStyles = () => (errorStyleMap ??= cssModuleMap(join(website, '../packages/docusaurus-theme-common/src/utils/errorBoundaryUtils.module.css')));
 const mermaidStyles = () => (mermaidStyleMap ??= cssModuleMap(join(website, '../packages/docusaurus-theme-mermaid/src/theme/Mermaid/styles.module.css')));
 
-export async function renderRoute(route, site, extraComponents = {}) {
+export async function renderRoute(route, site, extraComponents = {}, options = {}) {
 	const template = registry[route.component];
 	if (!template) throw new Error(`no template for ${route.component} (${route.path})`);
 	const prepared = await template(route, site);
+	await lazyLoaded();
 	const plugin = prepared.context?.plugin ?? (await routePlugin(route, site));
 	const head = [];
 	const context = {
@@ -94,13 +97,14 @@ export async function renderRoute(route, site, extraComponents = {}) {
 		path: routePath(route.path),
 		plugin,
 		head,
-		mdxComponents: mdxComponents(extraComponents),
+		mdxContentComponents: mdxComponents(extraComponents),
 		Mermaid: (props) => mermaid(props),
 		titleFormatter: site.titleFormatter,
 		...prepared.context,
 	};
 	return withContext(context, () => {
-		const body = render(h('div', { id: '__docusaurus' }, h(AppMetadata), prepared.element()));
+		const draw = () => render(h('div', { id: '__docusaurus' }, h(AppMetadata), prepared.element()));
+		const body = options.reactServerMarkup ? withReactServerMarkup(draw) : draw();
 		hoistPreloads(body[0]);
 		const heads = [];
 		for (const children of head) {

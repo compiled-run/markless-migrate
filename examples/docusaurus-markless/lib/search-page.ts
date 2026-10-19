@@ -1,10 +1,15 @@
 // The /search page of theme-search-algolia: the query lives in ?q=, results come from the site's Algolia index
 // (15 a page, the next page when the list's end scrolls into view), rendered with the theme's markup.
+import { liteClient } from 'algoliasearch/lite';
+import algoliaSearchHelper from 'algoliasearch-helper';
 import classes from './theme-classes.json';
+import docsVersions from './docs-versions.json';
+import { docsVersionCandidates } from './site.ts';
 
 const ALGOLIA = { appId: 'X1Z85QJPUV', apiKey: 'bf7211c161e8205da2f933a02534105a', indexName: 'docusaurus-2' };
 const s = (classes as Record<string, Record<string, string>>).SearchPage!;
 type Hit = { url: string; _highlightResult: { hierarchy: Record<string, { value: string }> }; _snippetResult?: { content?: { value: string } } };
+type Result = { hits: Hit[]; nbHits: number; nbPages: number; page: number; query: string };
 type State = { query: string; items: { title: string; url: string; summary: string; breadcrumbs: string[] }[]; totalResults: number | null; totalPages: number; lastPage: number; loading: boolean };
 
 let state: State | undefined;
@@ -12,20 +17,22 @@ let observer: IntersectionObserver | undefined;
 
 const sanitize = (value: string) => value.replace(/algolia-docsearch-suggestion--highlight/g, 'search-result-match');
 const title = (query: string) => (query ? `Search results for "${query}"` : 'Search the documentation');
-function versions(): string[] {
-	return [...new Set([...document.querySelectorAll('meta[name="docsearch:docusaurus_tag"]')].map((m) => m.getAttribute('content') ?? ''))];
-}
 
-async function search(query: string, page: number): Promise<{ hits: Hit[]; nbHits: number; nbPages: number; page: number; query: string }> {
-	const tags = ['docusaurus_tag:default', 'docusaurus_tag:docs-default-current', 'docusaurus_tag:docs-community-current', ...versions().filter((t) => t && t !== 'default').map((t) => `docusaurus_tag:${t}`)];
-	const params = new URLSearchParams({ query, hitsPerPage: '15', page: String(page), advancedSyntax: 'true', facets: JSON.stringify(['docusaurus_tag', 'language']), facetFilters: JSON.stringify([[...new Set(tags)], ['language:en']]) });
-	const res = await fetch(`https://${ALGOLIA.appId}-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=${encodeURIComponent('Algolia for JavaScript (5); Lite (5); Browser')}&x-algolia-api-key=${ALGOLIA.apiKey}&x-algolia-application-id=${ALGOLIA.appId}`, {
-		method: 'POST',
-		headers: { 'content-type': 'text/plain' },
-		body: JSON.stringify({ requests: [{ indexName: ALGOLIA.indexName, params: params.toString() }] }),
+// The theme's own client: algoliasearch's lite client through algoliasearch-helper, with the same disjunctive facets.
+let client: ReturnType<typeof liteClient> | undefined;
+function search(query: string, page: number): Promise<Result> {
+	client ??= liteClient(ALGOLIA.appId, ALGOLIA.apiKey);
+	const helper = algoliaSearchHelper(client, ALGOLIA.indexName, { hitsPerPage: 15, advancedSyntax: true, disjunctiveFacets: ['language', 'docusaurus_tag'] } as algoliaSearchHelper.PlainSearchParameters);
+	return new Promise((resolve) => {
+		helper.on('result', ({ results }) => resolve(results as unknown as Result));
+		helper.addDisjunctiveFacetRefinement('docusaurus_tag', 'default');
+		helper.addDisjunctiveFacetRefinement('language', document.documentElement.lang || 'en');
+		for (const plugin of Object.keys(docsVersions)) {
+			const version = docsVersionCandidates(plugin)[0]?.name;
+			if (version) helper.addDisjunctiveFacetRefinement('docusaurus_tag', `docs-${plugin}-${version}`);
+		}
+		helper.setQuery(query).setPage(page).search();
 	});
-	const body = (await res.json()) as { results: { hits: Hit[]; nbHits: number; nbPages: number; page: number; query: string }[] };
-	return body.results[0]!;
 }
 
 function render(container: HTMLElement): void {

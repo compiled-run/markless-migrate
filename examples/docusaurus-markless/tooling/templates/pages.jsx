@@ -5,6 +5,7 @@ import { clsx, styles, ThemeClassNames, translate, Translate, Heading } from '..
 import { Layout, PageMetadata } from '../theme/chrome.jsx';
 import { TOC, EditMetaRow, ContentVisibility } from '../theme/docs.jsx';
 import { SearchPage } from '../theme/search.jsx';
+import { MDXContent } from '../theme/content.jsx';
 import { readGenerated, website } from '../source/site.mjs';
 import { importMdx, resolveSync, compileSiteMdxImports } from '../source/mdx.mjs';
 import { existsSync } from 'node:fs';
@@ -22,7 +23,9 @@ function MDXPage({ content: Content }) {
 					<div className={clsx('col', !hideToc && 'col--8')}>
 						<ContentVisibility metadata={metadata} />
 						<article>
-							<Content />
+							<MDXContent>
+						<Content />
+					</MDXContent>
 						</article>
 						{!!(editUrl || lastUpdatedAt || lastUpdatedBy) && <EditMetaRow className={clsx('margin-top--sm', ThemeClassNames.pages.pageFooterEditMetaRow)} editUrl={editUrl} lastUpdatedAt={lastUpdatedAt} lastUpdatedBy={lastUpdatedBy} />}
 					</div>

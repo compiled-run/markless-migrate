@@ -2,7 +2,7 @@
 // ArrowUp/ArrowDown move between its buttons, and a node opened for the first time renders its children as the
 // library does, each starting open or closed as the page's shouldExpandNode decided.
 type Style = Record<string, string> & { ariaLables: { collapseJson: string; expandJson: string }; quotesForFieldNames?: boolean; noQuotesForStringValues?: boolean; stringifyStringValues?: boolean };
-type Hint = { src: string; expand: string; style: Style };
+type Hint = { data: unknown; expand: string; style: Style };
 type Node = { value: unknown; level: number; field: string | undefined; expanded: boolean; index: number };
 
 const bound = new WeakSet<Element>();
@@ -18,7 +18,7 @@ export function initJsonViews(hint: (el: Element, name: string) => string | unde
 		const raw = hint(tree, 'json-view');
 		if (!raw || bound.has(tree)) continue;
 		bound.add(tree);
-		const { src, expand, style } = JSON.parse(raw) as Hint;
+		const { data, expand, style } = JSON.parse(raw) as Hint;
 		const order = new Map<unknown, number>();
 		const number = (value: unknown) => {
 			if (!isObject(value)) return;
@@ -28,13 +28,11 @@ export function initJsonViews(hint: (el: Element, name: string) => string | unde
 		const nodes = new WeakMap<Element, Node>();
 		let loading: Promise<void> | undefined;
 		const ready = () =>
-			(loading ??= fetch(src)
-				.then((response) => response.json() as Promise<unknown>)
-				.then((data) => {
-					number(data);
-					const root = tree.firstElementChild;
-					if (root) bind(root, data, 0, undefined);
-				}));
+			(loading ??= Promise.resolve().then(() => {
+				number(data);
+				const root = tree.firstElementChild;
+				if (root) bind(root, data, 0, undefined);
+			}));
 
 		const label = (field: string | undefined) => (field || field === '' ? `<span class="${style.label}">${escape(quoteString(field, style.quotesForFieldNames))}:</span>` : '');
 		const comma = (last: boolean) => (last ? '' : `<span class="${style.punctuation}">,</span>`);
@@ -104,7 +102,6 @@ export function initJsonViews(hint: (el: Element, name: string) => string | unde
 			const item = el?.closest('[role=treeitem]');
 			return item && tree.contains(item) && nodes.has(item) && (el!.matches('[role=button]') || el!.parentElement === item) ? item : null;
 		};
-		// Fetched as the page loads, as the old page loads its data chunk with the route.
 		void ready();
 		tree.addEventListener('click', (event) => void ready().then(() => {
 			const target = event.target as Element;

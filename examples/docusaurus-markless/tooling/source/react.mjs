@@ -26,7 +26,14 @@ export function createContext(value) {
 export const useContext = (context) => context?.value;
 export const memo = (component) => component;
 export const forwardRef = (render) => (props) => render(props, null);
-export const lazy = () => () => null;
+// React.lazy: the module starts loading when lazy() is called and the route renders once every one has loaded.
+const lazyLoads = new Set();
+export function lazy(load) {
+	let loaded;
+	lazyLoads.add(Promise.resolve().then(load).then((mod) => (loaded = mod)));
+	return (props) => (loaded ? h(loaded.default, props) : null);
+}
+export const lazyLoaded = () => Promise.all(lazyLoads);
 export const Suspense = ({ children }) => children;
 export const StrictMode = ({ children }) => children;
 export const cloneElement = (element, props, ...children) => ({ ...element, props: { ...element.props, ...props, ...(children.length ? { children } : {}) } });

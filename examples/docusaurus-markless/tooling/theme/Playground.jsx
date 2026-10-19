@@ -2,7 +2,8 @@
 // it (sucrase), and a preview the browser draws (lib/playground.ts).
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { clsx, styles, Translate, themeConfig } from './core.jsx';
+import { clsx, styles, Translate, themeConfig, BrowserOnly } from './core.jsx';
+import { isReactServerMarkup } from '../source/h.mjs';
 import { domStyle, themeToDict, tokenStyle, tokenize } from './content.jsx';
 import { website } from '../source/site.mjs';
 
@@ -45,10 +46,12 @@ function LiveEditor({ code, language }) {
 	const theme = themeConfig().prism.theme;
 	const dict = themeToDict(theme, language);
 	const lines = tokenize(code, language);
-	const style = domStyle({ margin: '0px', outline: 'none', padding: '10px', fontFamily: 'inherit', ...theme.plain, ...dict.root, tabSize: '2', whiteSpace: 'pre-wrap' });
+	const server = isReactServerMarkup();
+	const style = server ? { margin: 0, outline: 'none', padding: 10, fontFamily: 'inherit', ...theme.plain, ...dict.root } : domStyle({ margin: '0px', outline: 'none', padding: '10px', fontFamily: 'inherit', ...theme.plain, ...dict.root, tabSize: '2', whiteSpace: 'pre-wrap' });
+	const editorAttrs = server ? { style, spellcheck: 'false' } : { spellcheck: 'false', style, contenteditable: 'plaintext-only' };
 	return (
 		<div className={sheet('Editor').playgroundEditor}>
-			<pre className={`prism-code language-${language}`} spellcheck="false" style={style} contenteditable="plaintext-only">
+			<pre className={`prism-code language-${language}`} {...editorAttrs}>
 				{lines.map((line) => (
 					<span className="token-line" style={domStyle(dict.plain)}>
 						{line.filter((token) => !token.empty).map((token) => (
@@ -82,7 +85,7 @@ function PlaygroundPreview() {
 				<Translate id="theme.Playground.result">Result</Translate>
 			</PlaygroundHeader>
 			<div className={sheet('Preview').playgroundPreview}>
-				<div>Loading...</div>
+				<BrowserOnly fallback={<div>Loading...</div>}>{() => <div>Loading...</div>}</BrowserOnly>
 			</div>
 		</>
 	);

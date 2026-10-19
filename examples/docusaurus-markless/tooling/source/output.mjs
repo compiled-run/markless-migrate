@@ -247,7 +247,7 @@ export async function runPostBuild(site, pages) {
 		if (page) {
 			const file = htmlFile(path);
 			await mkdir(dirname(join(staging, file)), { recursive: true });
-			await writeFile(join(staging, file), `<!DOCTYPE html><html><head>${toHtml(page.head)}</head><body>${toHtml(page.body)}</body></html>`);
+			await writeFile(join(staging, file), `<!DOCTYPE html><html><head>${toHtml(page.head)}</head><body>${toHtml(page.feedBody ?? page.body)}</body></html>`);
 		}
 	}
 	const { getRoutesPaths } = siteRequire('@docusaurus/core/lib/server/routes.js');
