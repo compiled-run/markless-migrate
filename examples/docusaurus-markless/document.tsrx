@@ -7,6 +7,8 @@ import heads from './lib/head-slots.json';
 
 type Slot = Readonly<Record<string, string>> | null;
 const routes = heads as unknown as Record<string, { readonly title: string; readonly ld: string; readonly class: string; readonly slots: readonly Slot[] }>;
+// The old site's static HTML files, each with its own <head> (one of the blocks below) and none of the theme's.
+const plainRoutes: Readonly<Record<string, number>> = {"/pure-html.html":0,"/pure-html":0,"/dogfooding/javadoc/index.html":1,"/dogfooding/javadoc":1};
 
 export default function Document({ url, children }: { readonly url?: { readonly pathname: string }; readonly children?: Children }) @{
 	const path = (url?.pathname ?? '/').replace(/^\/__not-found(?=\/)/, '').replace(/\/$/, '') || '/';
@@ -15,75 +17,90 @@ export default function Document({ url, children }: { readonly url?: { readonly 
 	// The not-found page's head names the address it was asked for, as the theme writes it once the page has started.
 	const s = found ? head.slots : head.slots.map((slot) => slot && Object.fromEntries(Object.entries(slot).map(([name, value]) => [name, value.replace(/\/404\.html$/, path)])));
 
-	<Html lang="en" dir="ltr" class={head.class}>
+	const plain = plainRoutes[path] ?? plainRoutes[decodeURIComponent(path)];
+
+	<Html lang={plain === undefined ? 'en' : undefined} dir={plain === undefined ? 'ltr' : undefined} class={plain === undefined ? head.class : undefined}>
 		<head>
-			<meta charset="UTF-8" />
-			<title>{head.title}</title>
-			<meta property={s[0]?.["property"]} content={s[0]?.["content"]} />
-			<meta name={s[1]?.["name"]} content={s[1]?.["content"]} />
-			<link rel={s[2]?.["rel"]} href={s[2]?.["href"]} />
-			<meta name={s[3]?.["name"]} content={s[3]?.["content"]} />
-			<meta property={s[4]?.["property"]} content={s[4]?.["content"]} />
-			<meta name={s[5]?.["name"]} content={s[5]?.["content"]} />
-			<meta property={s[6]?.["property"]} content={s[6]?.["content"]} />
-			<link rel={s[7]?.["rel"]} href={s[7]?.["href"]} />
-			<link rel={s[8]?.["rel"]} href={s[8]?.["href"]} hrefLang={s[8]?.["hrefLang"]} />
-			<link rel={s[9]?.["rel"]} href={s[9]?.["href"]} hrefLang={s[9]?.["hrefLang"]} />
-			<link rel={s[10]?.["rel"]} href={s[10]?.["href"]} hrefLang={s[10]?.["hrefLang"]} />
-			<link rel={s[11]?.["rel"]} href={s[11]?.["href"]} hrefLang={s[11]?.["hrefLang"]} />
-			<link rel={s[12]?.["rel"]} href={s[12]?.["href"]} hrefLang={s[12]?.["hrefLang"]} />
-			<link rel={s[13]?.["rel"]} href={s[13]?.["href"]} hrefLang={s[13]?.["hrefLang"]} />
-			<meta property={s[14]?.["property"]} content={s[14]?.["content"]} />
-			<meta property={s[15]?.["property"]} content={s[15]?.["content"]} />
-			<meta property={s[16]?.["property"]} content={s[16]?.["content"]} />
-			<meta property={s[17]?.["property"]} content={s[17]?.["content"]} />
-			<meta property={s[18]?.["property"]} content={s[18]?.["content"]} />
-			<meta name={s[19]?.["name"]} content={s[19]?.["content"]} />
-			<meta name={s[20]?.["name"]} content={s[20]?.["content"]} />
-			<meta name={s[21]?.["name"]} content={s[21]?.["content"]} />
-			<meta name={s[22]?.["name"]} content={s[22]?.["content"]} />
-			<meta name={s[23]?.["name"]} content={s[23]?.["content"]} />
-			<meta name={s[24]?.["name"]} content={s[24]?.["content"]} />
-			<meta property={s[25]?.["property"]} content={s[25]?.["content"]} />
-			<script type={s[26]?.["type"]}>{head.ld}</script>
-			<meta property={s[27]?.["property"]} content={s[27]?.["content"]} />
-			<meta property={s[28]?.["property"]} content={s[28]?.["content"]} />
-			<meta property={s[29]?.["property"]} content={s[29]?.["content"]} />
-			<meta property={s[30]?.["property"]} content={s[30]?.["content"]} />
-			<meta property={s[31]?.["property"]} content={s[31]?.["content"]} />
-			<meta name={s[32]?.["name"]} value={s[32]?.["value"]} />
-			<meta name={s[33]?.["name"]} content={s[33]?.["content"]} />
-			<meta name={s[34]?.["name"]} content={s[34]?.["content"]} />
-			<meta name={s[35]?.["name"]} content={s[35]?.["content"]} />
-			<meta charSet={s[36]?.["charSet"]} />
-			<link rel="alternate" type="application/rss+xml" href="/blog/rss.xml" title="Docusaurus RSS Feed" />
-			<link rel="alternate" type="application/atom+xml" href="/blog/atom.xml" title="Docusaurus Atom Feed" />
-			<link rel="alternate" type="application/json" href="/blog/feed.json" title="Docusaurus JSON Feed" />
-			<link rel="preconnect" href="https://www.google-analytics.com" />
-			<link rel="preconnect" href="https://www.googletagmanager.com" />
-			<link rel="search" type="application/opensearchdescription+xml" title="Docusaurus" href="/opensearch.xml" />
-			<link rel="alternate" type="application/rss+xml" href="/changelog/rss.xml" title="Docusaurus changelog RSS Feed" />
-			<link rel="alternate" type="application/atom+xml" href="/changelog/atom.xml" title="Docusaurus changelog Atom Feed" />
-			<link rel="alternate" type="application/json" href="/changelog/feed.json" title="Docusaurus changelog JSON Feed" />
-			<link rel="icon" href="/img/docusaurus.png" />
-			<link rel="manifest" href="/manifest.json" />
-			<meta name="theme-color" content="rgb(37, 194, 160)" />
-			<meta name="apple-mobile-web-app-capable" content="yes" />
-			<meta name="apple-mobile-web-app-status-bar-style" content="#000" />
-			<link rel="apple-touch-icon" href="/img/docusaurus.png" />
-			<link rel="mask-icon" href="/img/docusaurus.png" color="rgb(62, 204, 94)" />
-			<meta name="msapplication-TileImage" content="/img/docusaurus.png" />
-			<meta name="msapplication-TileColor" content="#000" />
-			<link rel="alternate" type="application/rss+xml" href="/tests/blog/rss.xml" title="Docusaurus Tests Blog RSS Feed" />
-			<link rel="alternate" type="application/atom+xml" href="/tests/blog/atom.xml" title="Docusaurus Tests Blog Atom Feed" />
-			<link rel="alternate" type="application/json" href="/tests/blog/feed.json" title="Docusaurus Tests Blog JSON Feed" />
-			<link rel="stylesheet" href="/katex/katex.min.css" type="text/css" />
-			<link rel="stylesheet" href="/assets/css/styles.73b9aeb138.css" />
-			<link rel="stylesheet" href="/mm-site.css" />
+			@if (plain === undefined) {
+				<meta charset="UTF-8" />
+				<title>{head.title}</title>
+				<meta property={s[0]?.["property"]} content={s[0]?.["content"]} />
+				<meta name={s[1]?.["name"]} content={s[1]?.["content"]} />
+				<link rel={s[2]?.["rel"]} href={s[2]?.["href"]} />
+				<meta name={s[3]?.["name"]} content={s[3]?.["content"]} />
+				<meta property={s[4]?.["property"]} content={s[4]?.["content"]} />
+				<meta name={s[5]?.["name"]} content={s[5]?.["content"]} />
+				<meta property={s[6]?.["property"]} content={s[6]?.["content"]} />
+				<link rel={s[7]?.["rel"]} href={s[7]?.["href"]} />
+				<link rel={s[8]?.["rel"]} href={s[8]?.["href"]} hrefLang={s[8]?.["hrefLang"]} />
+				<link rel={s[9]?.["rel"]} href={s[9]?.["href"]} hrefLang={s[9]?.["hrefLang"]} />
+				<link rel={s[10]?.["rel"]} href={s[10]?.["href"]} hrefLang={s[10]?.["hrefLang"]} />
+				<link rel={s[11]?.["rel"]} href={s[11]?.["href"]} hrefLang={s[11]?.["hrefLang"]} />
+				<link rel={s[12]?.["rel"]} href={s[12]?.["href"]} hrefLang={s[12]?.["hrefLang"]} />
+				<link rel={s[13]?.["rel"]} href={s[13]?.["href"]} hrefLang={s[13]?.["hrefLang"]} />
+				<meta property={s[14]?.["property"]} content={s[14]?.["content"]} />
+				<meta property={s[15]?.["property"]} content={s[15]?.["content"]} />
+				<meta property={s[16]?.["property"]} content={s[16]?.["content"]} />
+				<meta property={s[17]?.["property"]} content={s[17]?.["content"]} />
+				<meta property={s[18]?.["property"]} content={s[18]?.["content"]} />
+				<meta name={s[19]?.["name"]} content={s[19]?.["content"]} />
+				<meta name={s[20]?.["name"]} content={s[20]?.["content"]} />
+				<meta name={s[21]?.["name"]} content={s[21]?.["content"]} />
+				<meta name={s[22]?.["name"]} content={s[22]?.["content"]} />
+				<meta name={s[23]?.["name"]} content={s[23]?.["content"]} />
+				<meta name={s[24]?.["name"]} content={s[24]?.["content"]} />
+				<meta property={s[25]?.["property"]} content={s[25]?.["content"]} />
+				<script type={s[26]?.["type"]}>{head.ld}</script>
+				<meta property={s[27]?.["property"]} content={s[27]?.["content"]} />
+				<meta property={s[28]?.["property"]} content={s[28]?.["content"]} />
+				<meta property={s[29]?.["property"]} content={s[29]?.["content"]} />
+				<meta property={s[30]?.["property"]} content={s[30]?.["content"]} />
+				<meta property={s[31]?.["property"]} content={s[31]?.["content"]} />
+				<meta name={s[32]?.["name"]} value={s[32]?.["value"]} />
+				<meta name={s[33]?.["name"]} content={s[33]?.["content"]} />
+				<meta name={s[34]?.["name"]} content={s[34]?.["content"]} />
+				<meta name={s[35]?.["name"]} content={s[35]?.["content"]} />
+				<meta charSet={s[36]?.["charSet"]} />
+				<link rel="alternate" type="application/rss+xml" href="/blog/rss.xml" title="Docusaurus RSS Feed" />
+				<link rel="alternate" type="application/atom+xml" href="/blog/atom.xml" title="Docusaurus Atom Feed" />
+				<link rel="alternate" type="application/json" href="/blog/feed.json" title="Docusaurus JSON Feed" />
+				<link rel="preconnect" href="https://www.google-analytics.com" />
+				<link rel="preconnect" href="https://www.googletagmanager.com" />
+				<link rel="search" type="application/opensearchdescription+xml" title="Docusaurus" href="/opensearch.xml" />
+				<link rel="alternate" type="application/rss+xml" href="/changelog/rss.xml" title="Docusaurus changelog RSS Feed" />
+				<link rel="alternate" type="application/atom+xml" href="/changelog/atom.xml" title="Docusaurus changelog Atom Feed" />
+				<link rel="alternate" type="application/json" href="/changelog/feed.json" title="Docusaurus changelog JSON Feed" />
+				<link rel="icon" href="/img/docusaurus.png" />
+				<link rel="manifest" href="/manifest.json" />
+				<meta name="theme-color" content="rgb(37, 194, 160)" />
+				<meta name="apple-mobile-web-app-capable" content="yes" />
+				<meta name="apple-mobile-web-app-status-bar-style" content="#000" />
+				<link rel="apple-touch-icon" href="/img/docusaurus.png" />
+				<link rel="mask-icon" href="/img/docusaurus.png" color="rgb(62, 204, 94)" />
+				<meta name="msapplication-TileImage" content="/img/docusaurus.png" />
+				<meta name="msapplication-TileColor" content="#000" />
+				<link rel="alternate" type="application/rss+xml" href="/tests/blog/rss.xml" title="Docusaurus Tests Blog RSS Feed" />
+				<link rel="alternate" type="application/atom+xml" href="/tests/blog/atom.xml" title="Docusaurus Tests Blog Atom Feed" />
+				<link rel="alternate" type="application/json" href="/tests/blog/feed.json" title="Docusaurus Tests Blog JSON Feed" />
+				<link rel="stylesheet" href="/katex/katex.min.css" type="text/css" />
+				<link rel="stylesheet" href="/assets/css/styles.73b9aeb138.css" />
+				<link rel="stylesheet" href="/mm-site.css" />
+			}
+			@if (plain === 0) {
+				<title>Purely HTML page | Docusaurus</title>
+				<meta charset="utf-8" />
+				<meta name="robots" content="noindex, nofollow" />
+				<link rel="stylesheet" href="/mm-site.css" />
+			}
+			@if (plain === 1) {
+				<link rel="stylesheet" href="/mm-site.css" />
+			}
 		</head>
 		<body>
-			<svg style="display: none;"><defs>{"\n"}<symbol id="theme-svg-external-link" viewBox="0 0 24 24"><path fill="currentColor" d="M21 13v10h-21v-19h12v2h-10v15h17v-8h2zm3-12h-10.988l4.035 4-6.977 7.07 2.828 2.828 6.977-7.07 4.125 4.172v-11z"></path></symbol>{"\n"}</defs></svg>
-			<script>{"\n(function() {\n  function getSystemColorMode() {\n    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';\n  }\n  function getQueryStringTheme() {\n    try {\n      return new URLSearchParams(window.location.search).get('docusaurus-theme')\n    } catch (e) {}\n  }\n  function getStoredTheme() {\n    try {\n      return window['localStorage'].getItem('theme-189');\n    } catch (err) {}\n  }\n  var initialTheme = getQueryStringTheme() || getStoredTheme();\n  document.documentElement.setAttribute('data-theme', initialTheme || getSystemColorMode());\n  document.documentElement.setAttribute('data-theme-choice', initialTheme || 'system');\n})();\n\n(function() {\n  try {\n    const entries = new URLSearchParams(window.location.search).entries();\n    for (var [searchKey, value] of entries) {\n      if (searchKey.startsWith('docusaurus-data-')) {\n        var key = searchKey.replace('docusaurus-data-',\"data-\")\n        document.documentElement.setAttribute(key, value);\n      }\n    }\n  } catch(e) {}\n})();\n\n(function() {\n  function isDismissed() {\n    try {\n      return localStorage.getItem('docusaurus.announcement.dismiss-189') === 'true';\n    } catch (err) {}\n    return false;\n  }\n  document.documentElement.setAttribute('data-announcement-bar-initially-dismissed', isDismissed());\n})();\n            "}</script>
+			@if (plain === undefined) {
+				<svg style="display: none;"><defs>{"\n"}<symbol id="theme-svg-external-link" viewBox="0 0 24 24"><path fill="currentColor" d="M21 13v10h-21v-19h12v2h-10v15h17v-8h2zm3-12h-10.988l4.035 4-6.977 7.07 2.828 2.828 6.977-7.07 4.125 4.172v-11z"></path></symbol>{"\n"}</defs></svg>
+				<script>{"\n(function() {\n  function getSystemColorMode() {\n    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';\n  }\n  function getQueryStringTheme() {\n    try {\n      return new URLSearchParams(window.location.search).get('docusaurus-theme')\n    } catch (e) {}\n  }\n  function getStoredTheme() {\n    try {\n      return window['localStorage'].getItem('theme-189');\n    } catch (err) {}\n  }\n  var initialTheme = getQueryStringTheme() || getStoredTheme();\n  document.documentElement.setAttribute('data-theme', initialTheme || getSystemColorMode());\n  document.documentElement.setAttribute('data-theme-choice', initialTheme || 'system');\n})();\n\n(function() {\n  try {\n    const entries = new URLSearchParams(window.location.search).entries();\n    for (var [searchKey, value] of entries) {\n      if (searchKey.startsWith('docusaurus-data-')) {\n        var key = searchKey.replace('docusaurus-data-',\"data-\")\n        document.documentElement.setAttribute(key, value);\n      }\n    }\n  } catch(e) {}\n})();\n\n(function() {\n  function isDismissed() {\n    try {\n      return localStorage.getItem('docusaurus.announcement.dismiss-189') === 'true';\n    } catch (err) {}\n    return false;\n  }\n  document.documentElement.setAttribute('data-announcement-bar-initially-dismissed', isDismissed());\n})();\n            "}</script>
+			}
 			{children}
 		</body>
 	</Html>

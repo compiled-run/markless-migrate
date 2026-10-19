@@ -14,7 +14,7 @@ import { setSiteResolver, addSiteRoot } from './source/jsx-loader.mjs';
 import { templates as docsTemplates } from './templates/docs.jsx';
 import { templates as blogTemplates } from './templates/blog.jsx';
 import { templates as pagesTemplates, sitePageTemplate, pluginThemeTemplate } from './templates/pages.jsx';
-import { app, fileRoute, pageFile, writePage, writeFooter, writeHeads, pluginHtmlTags, copyFiles, clearPages, writeClientData, runPostBuild } from './source/output.mjs';
+import { app, fileRoute, pageFile, writePage, writeFooter, writeHeads, pluginHtmlTags, copyFiles, clearPages, writeClientData, runPostBuild, staticHtmlPages, writeStaticPage } from './source/output.mjs';
 
 const args = process.argv.slice(2);
 const only = args.filter((a, i) => args[i - 1] === '--only');
@@ -60,7 +60,8 @@ const siteMdxComponents = {
 const notFound = { path: '/404.html', component: '@theme/NotFound', ancestors: [] };
 const allRoutes = [...(await pageRoutes()), notFound];
 const routes = allRoutes.filter((route) => !only.length || only.includes(routePath(route.path)));
-const allPaths = allRoutes.map((route) => routePath(route.path));
+const staticPages = await staticHtmlPages(site);
+const allPaths = [...allRoutes.map((route) => routePath(route.path)), ...staticPages.map((page) => page.path)];
 await mkdir(outDir, { recursive: true });
 if (!only.length) await clearPages();
 const FEED_SOURCES = new Set(['@theme/BlogPostPage', '@theme/ChangelogPage']);
@@ -96,17 +97,18 @@ for (const route of routes) {
 		failures.push(`${path} (${route.component}): ${error.stack.split('\n').slice(0, 2).join(' ')}`);
 	}
 }
+if (!only.length) for (const page of staticPages) await writeStaticPage(page.path, pageFile(page.path, allPaths), page.body);
 if (footer) await writeFooter(footer);
 for (const failure of failures) process.stdout.write(`  ${failure}\n`);
 if (!only.length) {
 	const tags = pluginHtmlTags(site);
-	await writeHeads(pages, tags.head, tags.body);
+	await writeHeads(pages, tags.head, tags.body, staticPages);
 	await writeClientData(site, pages);
 	await runPostBuild(site, pages);
-	await writeFile(join(app, 'lib/routes.json'), `${JSON.stringify([...pages.keys()].filter((p) => p !== '/404').sort(), null, '\t')}\n`);
+	await writeFile(join(app, 'lib/routes.json'), `${JSON.stringify([...pages.keys(), ...staticPages.map((page) => page.path)].filter((p) => p !== '/404').sort(), null, '\t')}\n`);
 	const aliases = Object.fromEntries([...pages.keys()].filter((p) => fileRoute(p) !== p).map((p) => [encodeURI(p), encodeURI(fileRoute(p))]));
 	await writeFile(join(app, 'lib/route-aliases.json'), `${JSON.stringify(aliases, null, '\t')}\n`);
-	await copyFiles(site);
+	await copyFiles(site, staticPages.map((page) => page.file));
 }
 process.stdout.write(`${pages.size} of ${routes.length} routes written${skipped.length ? `, ${skipped.length} left out (noindex): ${skipped.join(', ')}` : ''}\n`);
 for (const [specifier, files] of missingPorts) process.stdout.write(`missing port: ${specifier} (${[...files].slice(0, 3).join(', ')})\n`);

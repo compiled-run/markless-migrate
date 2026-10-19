@@ -1,9 +1,9 @@
 // Writes what the importer rendered into the Markless app: one page per route under pages/, the footer every
 // page shares as a component, each route's <head> as data for document.tsrx, and the files the pages load.
-import { cp, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { toTsrx } from './h.mjs';
-import { parseHtml } from './html.mjs';
+import { parseDocument, parseHtml } from './html.mjs';
 import { emitted } from './assets.mjs';
 import { idealFiles } from './ideal-image.mjs';
 import { website, siteRequire } from './site.mjs';
@@ -49,6 +49,44 @@ export async function writePage(path, file, body) {
 	return footer;
 }
 
+// The HTML files in the old site's static directories, which it serves as pages of their own (no Docusaurus around
+// them): `/x.html` and `/x`, or `/dir/index.html` and `/dir`. Each becomes a Markless page with the file's body, and
+// document.tsrx writes the file's own <head> for it instead of the theme's.
+export async function staticHtmlPages(site) {
+	const pages = [];
+	for (const dir of site.context.siteConfig.staticDirectories) {
+		const root = join(website, dir.startsWith('/') ? relative(website, dir) : dir);
+		const walk = async (at) => {
+			for (const entry of await readdir(at, { withFileTypes: true }).catch(() => [])) {
+				const full = join(at, entry.name);
+				if (entry.isDirectory()) await walk(full);
+				else if (entry.name.endsWith('.html')) {
+					const file = `/${relative(root, full).split('\\').join('/')}`;
+					const document = parseDocument(await readFile(full, 'utf8'));
+					const part = (tag) => document.children.find((n) => typeof n !== 'string' && n.tag === tag)?.children ?? [];
+					// mm-site.css: the router's wrapper around the page takes no box, as on every other page.
+					const head = [...part('head').filter((n) => typeof n !== 'string'), { tag: 'link', attrs: [['rel', 'stylesheet'], ['href', '/mm-site.css']], children: [] }];
+					const body = part('body');
+					const bare = file.endsWith('/index.html') ? file.slice(0, -'/index.html'.length) : file.slice(0, -'.html'.length);
+					for (const path of [file, bare]) pages.push({ path, file, head, body });
+				}
+			}
+		};
+		await walk(root);
+	}
+	return pages;
+}
+
+export async function writeStaticPage(path, file, body) {
+	// Markless 0.5.0 cannot render a page that is only text, so text alone gets a box-less span around it.
+	if (body.every((n) => typeof n === 'string')) body = [{ tag: 'span', attrs: [['style', 'display: contents']], children: body }];
+	await mkdir(dirname(file), { recursive: true });
+	await writeFile(file, `${HEADER} (${path})
+export default function Page() @{
+${toTsrx(body, 1)}}
+`);
+}
+
 export async function clearPages() {
 	await rm(join(app, 'pages'), { recursive: true, force: true });
 	await rm(join(app, 'components/generated'), { recursive: true, force: true });
@@ -60,7 +98,7 @@ const IDENTITY = ['name', 'property', 'rel', 'hreflang', 'type', 'title', 'chars
 const slotKey = ({ tag, attrs }) => `${tag}|${IDENTITY.map((n) => `${n}=${attrs[n] ?? ''}`).join('|')}`;
 const nodeToEntry = (node) => ({ tag: node.tag, attrs: Object.fromEntries(node.attrs), text: node.children.join('') });
 
-export async function writeHeads(pages, staticHead, bodyPrefix) {
+export async function writeHeads(pages, staticHead, bodyPrefix, staticPages = []) {
 	const slots = [];
 	const seen = new Map();
 	const perRoute = {};
@@ -100,6 +138,15 @@ export async function writeHeads(pages, staticHead, bodyPrefix) {
 		})
 		.join('\n');
 	const staticLines = toTsrx(staticHead, 3);
+	const plainHeads = [];
+	const plainRoutes = {};
+	for (const page of staticPages) {
+		const key = JSON.stringify(page.head);
+		let index = plainHeads.findIndex((nodes) => JSON.stringify(nodes) === key);
+		if (index < 0) index = plainHeads.push(page.head) - 1;
+		plainRoutes[page.path] = index;
+	}
+	const indent = (text) => text.replace(/^(?=.)/gm, '\t');
 	await writeFile(
 		join(app, 'document.tsrx'),
 		`${HEADER}
@@ -111,6 +158,8 @@ import heads from './lib/head-slots.json';
 
 type Slot = Readonly<Record<string, string>> | null;
 const routes = heads as unknown as Record<string, { readonly title: string; readonly ld: string; readonly class: string; readonly slots: readonly Slot[] }>;
+// The old site's static HTML files, each with its own <head> (one of the blocks below) and none of the theme's.
+const plainRoutes: Readonly<Record<string, number>> = ${JSON.stringify(plainRoutes)};
 
 export default function Document({ url, children }: { readonly url?: { readonly pathname: string }; readonly children?: Children }) @{
 	const path = (url?.pathname ?? '/').replace(/^\\/__not-found(?=\\/)/, '').replace(/\\/$/, '') || '/';
@@ -119,16 +168,22 @@ export default function Document({ url, children }: { readonly url?: { readonly 
 	// The not-found page's head names the address it was asked for, as the theme writes it once the page has started.
 	const s = found ? head.slots : head.slots.map((slot) => slot && Object.fromEntries(Object.entries(slot).map(([name, value]) => [name, value.replace(/\\/404\\.html$/, path)])));
 
-	<Html lang="en" dir="ltr" class={head.class}>
+	const plain = plainRoutes[path] ?? plainRoutes[decodeURIComponent(path)];
+
+	<Html lang={plain === undefined ? 'en' : undefined} dir={plain === undefined ? 'ltr' : undefined} class={plain === undefined ? head.class : undefined}>
 		<head>
-			<meta charset="UTF-8" />
+			@if (plain === undefined) {
+${indent(`			<meta charset="UTF-8" />
 			<title>{head.title}</title>
 ${slotLines}
 ${staticLines}			<link rel="stylesheet" href="/assets/css/${stylesheetName}" />
 			<link rel="stylesheet" href="/mm-site.css" />
-		</head>
+`)}			}
+${plainHeads.map((nodes, i) => `			@if (plain === ${i}) {\n${toTsrx(nodes, 4)}			}\n`).join('')}		</head>
 		<body>
-${toTsrx(bodyPrefix, 3)}			{children}
+			@if (plain === undefined) {
+${toTsrx(bodyPrefix, 4)}			}
+			{children}
 		</body>
 	</Html>
 }
@@ -149,12 +204,14 @@ export function pluginHtmlTags(site) {
 }
 
 // Files: the site's static directories as the old build copies them, and the assets the pages reference.
-export async function copyFiles(site) {
+export async function copyFiles(site, pageFiles = []) {
 	const publicDir = join(app, 'public');
 	for (const dir of site.context.siteConfig.staticDirectories) {
 		const from = join(website, dir.startsWith('/') ? relative(website, dir) : dir);
 		await cp(from, publicDir, { recursive: true, force: true }).catch(() => undefined);
 	}
+	// The static HTML files are Markless pages now (staticHtmlPages).
+	for (const file of pageFiles) await rm(join(publicDir, file), { force: true });
 	for (const [url, path] of emitted) {
 		await mkdir(dirname(join(publicDir, url)), { recursive: true });
 		await cp(path, join(publicDir, decodeURIComponent(url)));
