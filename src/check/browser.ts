@@ -170,21 +170,28 @@ export function pageAsset(method: string, resourceType: string): boolean {
 const assets = new Map<string, Promise<{ status: number; headers: Record<string, string>; body: Buffer } | undefined>>();
 let fetcher: Promise<APIRequestContext> | undefined;
 
-async function fulfillAsset(route: Route, live = false): Promise<void> {
-	const url = route.request().url();
+type SharedAnswer = { status: number; headers: Record<string, string>; body: Buffer };
+
+/** The run's one answer for a GET to another origin, fetched the first time anything asks for it (a page, or the cache checking whether the old page changed). */
+export function sharedAnswer(url: string, headers: Record<string, string> = {}): Promise<SharedAnswer | undefined> {
 	let hit = assets.get(url);
 	if (!hit) {
 		fetcher ??= playwrightRequest.newContext();
 		hit = fetcher
-			.then((api) => api.get(url, { headers: route.request().headers(), timeout: 15_000, failOnStatusCode: false }))
+			.then((api) => api.get(url, { headers, timeout: 15_000, failOnStatusCode: false }))
 			.then(async (response) => {
-				const headers = Object.fromEntries(Object.entries(response.headers()).filter(([name]) => !['content-encoding', 'content-length', 'transfer-encoding'].includes(name)));
-				return { status: response.status(), headers, body: await response.body() };
+				const kept = Object.fromEntries(Object.entries(response.headers()).filter(([name]) => !['content-encoding', 'content-length', 'transfer-encoding'].includes(name)));
+				return { status: response.status(), headers: kept, body: await response.body() };
 			})
 			.catch(() => undefined);
 		assets.set(url, hit);
 	}
-	const got = await hit;
+	return hit;
+}
+
+async function fulfillAsset(route: Route, live = false): Promise<void> {
+	const url = route.request().url();
+	const got = await sharedAnswer(url, route.request().headers());
 	if (!got && live) assets.delete(url);
 	// One fetch answers pages on both apps: a CORS answer naming the first page's origin is given to each page for its own.
 	const origin = route.request().headers().origin;

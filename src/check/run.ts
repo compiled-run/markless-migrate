@@ -139,7 +139,9 @@ async function probe(env: SideEnv, url: string): Promise<Probe> {
 		if (wall && DEFINITE.test(wall.evidence)) env.walls?.push({ status: response.status, ...wall });
 		await response.body?.cancel();
 		return { status: response.status, contentType: mime(response.headers.get('content-type')) };
-	} catch {
+	} catch (error) {
+		// The new app not answering is the network's failure, not a file it lacks: the route is not checked rather than red.
+		if (classify(error)) throw error;
 		return { status: 0, contentType: '' };
 	}
 }

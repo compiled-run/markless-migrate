@@ -220,3 +220,41 @@ test('controls with no text or label are found again by structure and position, 
 	const red = (await check(old, swapped)).routes[0]!;
 	assert.ok(open(red.failures).some((f) => /^behaviour: click clickable <rect> #2 in main>figure>svg \(no name: matched by structure and position\): /.test(f)), open(red.failures).join('\n'));
 });
+
+test('a file the new app does not answer at all (the connection times out) leaves the route not checked, not red for a missing file', async () => {
+	const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64').toString('latin1');
+	const old = await serve((path) => (path === '/a.png' ? { type: 'image/png', body: png } : path === '/' ? { body: html('<img src="/a.png" width="1" height="1" alt="dot">') } : undefined));
+	const next = await serve((path) => (path === '/a.png' ? 'hang' : path === '/' ? { body: html('<img src="/a.png" width="1" height="1" alt="dot" loading="lazy" style="display: none">') } : undefined));
+	const cwd = await mkdtemp(join(tmpdir(), 'mm-probe-'));
+	const out = await new Promise<string>((done) => {
+		const child = spawn(process.execPath, [join(import.meta.dirname, '../src/cli.ts'), 'check', '--old', old, '--new', next, '--route', '/', '--no-responsiveness', '--no-motion', '--journey-budget', '5'], { cwd, env: { ...process.env, MARKLESS_MIGRATE_REQUEST_TIMEOUT_MS: '1500' } });
+		let text = '';
+		child.stdout.on('data', (c) => (text += c));
+		child.on('exit', () => done(text));
+	});
+	assert.match(out, /not checked/i, out);
+	assert.doesNotMatch(out, /assets.*\/a\.png/, out);
+});
+
+// Content a helper's timer wrapper swaps in at the end of a short chain (as a fake server answering a lazy load does): at once on one app, after two 900 ms steps on the other.
+const lazy = (wait: number) =>
+	html(
+		'<p id="graph">Loading...</p>',
+		`<script>const later = (fn, ms) => setTimeout(function () { fn(); }, ms); later(() => later(() => later(() => (document.getElementById('graph').textContent = 'Tokyo Climate'), ${wait}), ${wait}), 0);</script>`,
+	);
+
+test('a chain of timers through one wrapper is waited out, not held as a loop: only code that keeps scheduling itself with the same delay is a loop', async () => {
+	const old = await serve(() => ({ body: lazy(0) }));
+	const slow = await serve(() => ({ body: lazy(900) }));
+	const route = (await check(old, slow)).routes[0]!;
+	assert.deepEqual(open(route.failures), []);
+});
+
+test('a third-party file that fails for the old page too (a rate limit answering both) is not the port\'s missing file', async () => {
+	const api = await serve(() => undefined);
+	const page = html(`<p>Stars</p><script src="${api}/repos/x?callback=_"></script>`);
+	const old = await serve(() => ({ body: page }));
+	const next = await serve(() => ({ body: page }));
+	const route = (await check(old, next)).routes[0]!;
+	assert.deepEqual(open(route.failures).filter((f) => f.startsWith('assets')), []);
+});

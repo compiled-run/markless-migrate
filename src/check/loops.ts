@@ -24,13 +24,21 @@ export function trackLoops(): void {
 	const overflow = new Set<string>();
 	const intervals = new Map<unknown, string>();
 	const pending = new Map<unknown, string>();
-	// One-shot timeouts of up to a second still to fire: a fade that starts after a page's own short delay (a loading bar's).
-	const short = new Map<unknown, string>();
+	// One-shot timeouts still to fire, and when: a fade a loading bar starts after its own delay, a demo's fake server answering after 2 s.
+	const oneShots = new Map<unknown, { key: string; due: number }>();
+	const clock = performance.now.bind(performance);
 	const rearmed = new Set<string>();
+	// A callback is a loop once it has scheduled itself again twice in a row with the same delay; a helper's wrapper that chains timers once is not.
+	const rearms = new Map<string, number>();
+	const again = (key: string) => {
+		const n = (rearms.get(key) ?? 0) + 1;
+		rearms.set(key, n);
+		if (n >= 2) rearmed.add(key);
+	};
 	const timing = new Map<string, { kind: string; every: number }>();
 	let running: string | undefined;
 	let ids = 0;
-	// A callback that schedules code identical to its own (often a fresh closure each time) re-arms itself.
+	// A callback that schedules code identical to its own (often a fresh closure each time), with the same delay, re-arms itself.
 	const keyOf = (fn: unknown) => {
 		try {
 			return Function.prototype.toString.call(fn);
@@ -64,23 +72,23 @@ export function trackLoops(): void {
 	};
 	g.setTimeout = function (handler: TimerHandler, ms?: number, ...rest: unknown[]) {
 		if (typeof handler !== 'function') return realSetTimeout(handler, ms, ...rest);
-		const key = keyOf(handler);
+		const key = `${keyOf(handler)}\u0000${Math.max(0, Number(ms) || 0)}`;
 		if (running === key) {
-			rearmed.add(key);
+			again(key);
 			timing.set(key, { kind: 'timeout', every: Math.max(0, Number(ms) || 0) });
 		}
 		const id: ReturnType<typeof setTimeout> = realSetTimeout(function (this: unknown) {
 			pending.delete(id);
-			short.delete(id);
+			oneShots.delete(id);
 			return run(key, handler as (...a: unknown[]) => unknown, this, rest);
 		}, ms);
 		pending.set(id, key);
-		if ((Number(ms) || 0) <= 1000) short.set(id, key);
+		oneShots.set(id, { key, due: clock() + Math.max(0, Number(ms) || 0) });
 		return id;
 	} as typeof setTimeout;
 	g.clearTimeout = function (id?: Parameters<typeof clearTimeout>[0]) {
 		pending.delete(id);
-		short.delete(id);
+		oneShots.delete(id);
 		return realClearTimeout(id);
 	} as typeof clearTimeout;
 	g.setInterval = function (handler: TimerHandler, ms?: number, ...rest: unknown[]) {
@@ -99,9 +107,9 @@ export function trackLoops(): void {
 	} as typeof clearInterval;
 	if (realRaf && realCancelRaf) {
 		g.requestAnimationFrame = function (callback: FrameRequestCallback) {
-			const key = keyOf(callback);
+			const key = `${keyOf(callback)}\u0000frame`;
 			if (running === key) {
-				rearmed.add(key);
+				again(key);
 				timing.set(key, { kind: 'animation frame', every: 0 });
 			}
 			const id = realRaf((time: number) => {
@@ -132,9 +140,9 @@ export function trackLoops(): void {
 	addEventListener('transitionrun', (e) => ran.add((e as TransitionEvent).propertyName), true);
 	addEventListener('animationstart', (e) => ran.add((e as AnimationEvent).animationName), true);
 	Object.defineProperty(g, '__markless_migrate_ran__', { value: () => [...ran] });
-	// What is still to settle: short one-shot timeouts (a loop's own are not) and finite animations running.
+	// What is still to settle: one-shot timeouts due within `within` ms (a loop's own are not) and finite animations running.
 	Object.defineProperty(g, '__markless_migrate_settling__', {
-		value: () => [...short.values()].filter((key) => !rearmed.has(key)).length + document.getAnimations().filter((a) => a.playState === 'running' && Number.isFinite(a.effect?.getComputedTiming().endTime ?? Number.POSITIVE_INFINITY)).length,
+		value: (within: number) => [...oneShots.values()].filter((t) => !rearmed.has(t.key) && t.due <= clock() + within).length + document.getAnimations().filter((a) => a.playState === 'running' && Number.isFinite(a.effect?.getComputedTiming().endTime ?? Number.POSITIVE_INFINITY)).length,
 	});
 	// Stops every loop live now (code that starts later, the checker's own included, runs as usual) and undoes what its runs changed in the document, newest first; infinite animations pause at their start.
 	Object.defineProperty(g, '__markless_migrate_hold_loops__', {
@@ -175,13 +183,13 @@ export function trackLoops(): void {
 
 const SETTLE_LIMIT_MS = 3_000;
 
-/** Waits (at most 3 s) until what the page load started has settled: a fade a short timeout starts, a transition running; loops do not hold it up. Returns every animation that ran since the document started or was seen running meanwhile, so the reduced-motion check does not depend on when the capture happened. */
+/** Waits (at most 3 s) until what the page load started has settled: a timeout due within that time (a loading bar's fade, a demo's fake server answering), a transition running; loops do not hold it up. Returns every animation that ran since the document started or was seen running meanwhile, so the reduced-motion check does not depend on when the capture happened. */
 export async function settleMotion(page: Page): Promise<string[]> {
 	const deadline = Date.now() + SETTLE_LIMIT_MS;
 	const seen = new Set<string>();
 	let quiet = 0;
 	while (Date.now() < deadline && quiet < 2) {
-		const now = await page.evaluate(() => ({ left: (globalThis as { __markless_migrate_settling__?: () => number }).__markless_migrate_settling__?.() ?? 0, running: document.getAnimations().filter((a) => a.playState === 'running').map((a) => (a as CSSAnimation).animationName ?? (a as CSSTransition).transitionProperty ?? 'script animation') })).catch(() => ({ left: 0, running: [] as string[] }));
+		const now = await page.evaluate((within) => ({ left: (globalThis as { __markless_migrate_settling__?: (within: number) => number }).__markless_migrate_settling__?.(within) ?? 0, running: document.getAnimations().filter((a) => a.playState === 'running').map((a) => (a as CSSAnimation).animationName ?? (a as CSSTransition).transitionProperty ?? 'script animation') }), Math.max(0, deadline - Date.now())).catch(() => ({ left: 0, running: [] as string[] }));
 		for (const name of now.running) seen.add(name);
 		quiet = now.left ? 0 : quiet + 1;
 		await new Promise((done) => setTimeout(done, 50));

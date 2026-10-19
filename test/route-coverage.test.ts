@@ -268,18 +268,20 @@ test('check --all checks every planned route, not only the ones the browser inve
 });
 
 test('a page the new app passes through from the old app, without Markless rendering it, is served by the old app: not ported, not done, and not switchable', async () => {
-	const routes = ['/', '/guide', '/feed.xml', '/gone'];
-	const oldSite = await serve((path) => (path === '/feed.xml' ? { status: 200, type: 'application/rss+xml', body: '<rss version="2.0"></rss>' } : routes.includes(path) ? { status: 200, body: page(`Old ${path}`) } : undefined));
-	// `/` is ported; `/guide` is the old page byte for byte (a copied static file); the feed is a copied file, which is not a page; `/gone` is missing.
-	const passing = await serve((path) => (path === '/' ? { status: 200, body: ported('Old /', 'pages/index.tsrx') } : path === '/guide' ? { status: 200, body: page('Old /guide') } : path === '/feed.xml' ? { status: 200, type: 'application/rss+xml', body: '<rss version="2.0"></rss>' } : undefined));
+	const routes = ['/', '/guide', '/feed.xml', '/gone', '/chat'];
+	const elsewhere = await serve(() => ({ status: 200, body: page('Chat invite') }));
+	const chat = { status: 302, location: `${origin(elsewhere)}/invite` };
+	const oldSite = await serve((path) => (path === '/chat' ? chat : path === '/feed.xml' ? { status: 200, type: 'application/rss+xml', body: '<rss version="2.0"></rss>' } : routes.includes(path) ? { status: 200, body: page(`Old ${path}`) } : undefined));
+	// `/` is ported; `/guide` is the old page byte for byte (a copied static file); the feed is a copied file, which is not a page; `/gone` is missing; `/chat` sends the visitor to another site, as both apps do.
+	const passing = await serve((path) => (path === '/chat' ? chat : path === '/' ? { status: 200, body: ported('Old /', 'pages/index.tsrx') } : path === '/guide' ? { status: 200, body: page('Old /guide') } : path === '/feed.xml' ? { status: 200, type: 'application/rss+xml', body: '<rss version="2.0"></rss>' } : undefined));
 	try {
 		const report = await runCheck({ oldOrigin: origin(oldSite), newOrigin: origin(passing), routes: [], coverage: routes, browser });
 		assert.equal(report.ok, false);
-		assert.deepEqual([report.coverage!.total, report.coverage!.present], [4, 2]);
+		assert.deepEqual([report.coverage!.total, report.coverage!.present], [5, 3], 'the redirect to another site is present: the page it lands on is that site\'s');
 		assert.deepEqual(report.coverage!.missing, ['/gone']);
 		assert.deepEqual(report.coverage!.servedByOld, ['/guide']);
 		const text = summarize(report);
-		assert.match(text, /Routes on the new app: 2 of 4 routes of the old site present, 1 missing, 1 served by the old app\./);
+		assert.match(text, /Routes on the new app: 3 of 5 routes of the old site present, 1 missing, 1 served by the old app\./);
 		assert.match(text, /Served by the old app, not rendered by the new app's Markless code \(1\):\n {2}\/guide {2}\[[0-9a-f]{10}\]/);
 		const cwd = await mkdtemp(join(tmpdir(), 'mm-passthrough-'));
 		await mkdir(join(cwd, '.migrate'));
@@ -297,5 +299,6 @@ test('a page the new app passes through from the old app, without Markless rende
 	} finally {
 		oldSite.close();
 		passing.close();
+		elsewhere.close();
 	}
 });

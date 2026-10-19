@@ -90,8 +90,8 @@ Every page loads frozen: `Date` and `Date.now` start at a fixed instant and move
 fires (to the time it was due), `performance.timeOrigin` is that instant, `Math.random`,
 `crypto.getRandomValues` and `crypto.randomUUID` are seeded, the timezone and locale are fixed
 (UTC and en-US unless `--timezone`/`--locale`), a capture first waits (at most 3 s) for what the page
-load started to settle (a timeout of up to a second still to fire, such as a loading bar's fade, and
-transitions running), then finishes or cancels CSS animations and transitions (the reduced-motion check
+load started to settle (a timeout due within that time, such as a loading bar's fade or a demo's fake
+server answering after 2 s, and transitions running; a loop does not hold it up), then finishes or cancels CSS animations and transitions (the reduced-motion check
 still sees every one that ran since the page started), loops (a live `setInterval`, or a
 timeout or animation frame that schedules itself again: a fading demo box, a ticking clock, a
 carousel) are held at their start for screenshots and styles on both sides, with what each loop

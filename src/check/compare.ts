@@ -293,8 +293,10 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 			failures.push({ route, dimension: 'assets', check: `${asset.type} ${asset.url}`, expected: asset.contentType, actual: found.contentType, hint: HINTS.assetType });
 		}
 	}
+	// The same file failing for the old page too (a third party's rate limit answering both) is not the port's.
+	const failedOnOld = new Set(olds.flatMap((o) => uniqueAssets(o).filter((a) => a.status >= 400).map((a) => a.url)));
 	for (const asset of newAssets.values()) {
-		if (asset.status >= 400 && !reported.has(asset.url)) {
+		if (asset.status >= 400 && !reported.has(asset.url) && !failedOnOld.has(asset.url)) {
 			failures.push({ route, dimension: 'assets', check: `${asset.type} ${asset.url}`, expected: 'a successful response', actual: `${asset.status}`, hint: HINTS.assetBroken });
 		}
 	}

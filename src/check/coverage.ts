@@ -102,7 +102,9 @@ export async function checkCoverage(old: SideEnv, next: SideEnv, routes: readonl
 			return;
 		}
 		const oldsOwnFallback = oldCatchAll !== undefined && new URL(a.chain.at(-1)!.url, old.origin).pathname === oldCatchAll;
-		const html = mime(b.contentType) === 'text/html' && mime(a.contentType) === 'text/html';
+		// A redirect that ends on another site (a chat invite, a sponsor) lands on that site's page, not either app's.
+		const home = (h: HttpCapture, env: SideEnv) => new URL(h.chain.at(-1)!.url, env.origin).origin === new URL(env.origin).origin;
+		const html = mime(b.contentType) === 'text/html' && mime(a.contentType) === 'text/html' && home(a, old) && home(b, next);
 		const page = b.status < 300 && a.status < 300 && (html || (catchAll && !oldsOwnFallback)) ? await body(next, b.chain.at(-1)!.url) : undefined;
 		if (catchAll && !oldsOwnFallback && page?.hash === catchAll) failures.push(tag(missingRoute(route, a, `${describeHttp(b)}, the same page the new app answers for a path no app has (${UNKNOWN_PATH})`)));
 		else if (page && html && !routeFile(page.html).routeFile) failures.push(tag(servedByOld(route, a, b)));

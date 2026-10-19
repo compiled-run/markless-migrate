@@ -4,7 +4,7 @@ import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { deserialize, serialize } from 'node:v8';
 import { gunzipSync, gzipSync } from 'node:zlib';
-import { appHeaders, type SideEnv } from './browser.ts';
+import { appHeaders, sharedAnswer, type SideEnv } from './browser.ts';
 import { request } from './http.ts';
 
 /** One response the old page loaded, as it was when the cache entry was written. */
@@ -49,6 +49,11 @@ async function pool<T, R>(items: readonly T[], task: (item: T) => Promise<R>): P
 const own = (env: SideEnv, url: string) => new URL(url).origin === new URL(env.origin).origin;
 
 async function fetchOne(env: SideEnv, url: string, previous?: Fingerprint): Promise<Fingerprint | 'unchanged' | undefined> {
+	// Another origin's file is asked for once per run, by whichever comes first, the pages or this check: a third party's rate limit is not spent twice.
+	if (!own(env, url)) {
+		const got = await sharedAnswer(url);
+		return got && { url, status: got.status, hash: createHash('sha256').update(got.body).digest('hex') };
+	}
 	try {
 		const conditional = { ...(previous?.etag ? { 'if-none-match': previous.etag } : {}), ...(previous?.lastModified ? { 'if-modified-since': previous.lastModified } : {}) };
 		const response = await request(url, { redirect: 'manual', headers: { ...(own(env, url) ? appHeaders(env) : {}), ...conditional }, signal: AbortSignal.timeout(VALIDATE_TIMEOUT_MS) });
