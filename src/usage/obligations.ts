@@ -91,6 +91,10 @@ export function obligationsFor(b: Behaviour): Obligation[] {
 		case 'navigation':
 			add(`${b.feature} on ${target}: the same requests ahead of the click (prefetch), and the next page shows as soon`, 'journey', [{ do: 'hover', target }, { do: 'compare', what: ['requests'] }]);
 			break;
+		case 'library':
+			add(`${b.library}: kept as it is: the same library file loads on the new page`, 'client-guard', [{ do: 'load' }, { do: 'compare', what: ['scripts loaded'] }]);
+			add(`${b.library}: what the page does with it (each call the page makes into it, each control it draws), compared as journeys`, 'journey', [{ do: 'load' }, { do: 'compare', what: ['DOM', 'requests'] }]);
+			break;
 		case 'embed-frame':
 			add(`${b.feature}: the frame's box (width and height) and inline style equal the old page's, and so do the element and address that frame it`, 'client-guard', [{ do: 'load' }, { do: 'wait', ms: 1500 }, { do: 'compare', what: ['frame box', 'inline style', 'src origin and path'] }]);
 			break;

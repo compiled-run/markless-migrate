@@ -134,7 +134,7 @@ const DOM_WRITES = 12;
 const DOM_WRITE = /\bcreateElement(NS)?\(|\.(appendChild|insertBefore|replaceChildren|attachShadow|insertAdjacentHTML)\(|\.innerHTML\s*=/g;
 const WIDGET_WORDS = /^(data-?grid|grid|spreadsheet|charts?|charting|plotting|wysiwyg|rich-?text(-editor)?|code-?editor|date-?picker|carousel|calendar|widgets?)$/i;
 
-async function codeFiles(pkg: InstalledPackage): Promise<string[]> {
+export async function codeFiles(pkg: InstalledPackage): Promise<string[]> {
 	const files: string[] = [];
 	const walk = async (dir: string, depth: number): Promise<void> => {
 		if (depth > 5) return;
@@ -182,7 +182,7 @@ export async function injectedTokens(pkg: InstalledPackage, prefixes: readonly s
 	return [...found].sort().slice(0, 400);
 }
 
-function codeEntry(json: InstalledPackage['json']): string | undefined {
+export function codeEntry(json: InstalledPackage['json']): string | undefined {
 	const pick = (value: unknown): string | undefined => {
 		if (typeof value === 'string') return /\.(m?js|cjs)$/.test(value) ? value : undefined;
 		if (value && typeof value === 'object') {

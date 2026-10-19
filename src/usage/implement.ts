@@ -78,7 +78,12 @@ export async function implementations(behaviours: readonly Behaviour[], map: Usa
 	const out: Implementation[] = [];
 	for (const b of behaviours) {
 		const part = SHARED_PARTS[b.kind];
-		const suggestion = part ? `@markless/ui ${part.family}` : `the new app's own Markless code (${b.kind})`;
+		const suggestion = b.kind === 'library' ? `keep ${b.library} as it is (load the same library)` : part ? `@markless/ui ${part.family}` : `the new app's own Markless code (${b.kind})`;
+		// A kept library is implemented by keeping it: the new app imports the same package.
+		if (b.kind === 'library' && imports.has(b.library)) {
+			out.push({ behaviour: b.id, status: 'implemented', by: `${b.library}, kept`, how: 'part' });
+			continue;
+		}
 		const declared = entries.find(([pattern]) => matches(pattern, b.id));
 		if (!declared || !newSource) {
 			out.push({ behaviour: b.id, status: 'unimplemented', suggestion });

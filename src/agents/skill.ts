@@ -50,14 +50,20 @@ and dark", "dialog: close by Escape, the backdrop and the close button, during a
   otherwise the new app's own Markless code. When one is done, record where in \`.migrate/usage-map.json\`:
   \`{ "<behaviour id>": { "by": "components/theme-toggle.tsrx" } }\` (or \`"by": "@markless/ui modal"\`).
   \`markless-migrate usage\` prints used / implemented / checked.
-- Never ship another framework's or library's runtime: no React, Vue, Svelte, htmx.js, alpine.js,
-  _hyperscript, jQuery or a framework's component bundle, in the build or loaded by a page.
-  \`markless-migrate guard build\` fails a build that carries one.
+- Never ship another framework's runtime: no React, Vue, Svelte, htmx.js, alpine.js, _hyperscript, jQuery or a
+  framework's component bundle loaded or run by a page. \`markless-migrate guard build\` fails a build where a
+  page loads one; a file nothing loads (htmx.org serving htmx.js as a download) is allowed.
+- Keep JavaScript-only libraries (Chart.js, Leaflet, Monaco, Sortable, Rive...) as they are during the
+  migration: load the same library and make the same calls. Once the routes are green,
+  \`markless-migrate upgrade\` measures each one and suggests the Markless ports worth making, and the
+  @markless/ui families that cover every feature a ported headless library (Radix, Headless UI...) was used for.
+  It applies nothing; an accepted entry must pass every check against the pre-upgrade version.
 - Copy the old site's static assets byte for byte, at the same URLs: CSS (and the old page's own \`<style>\`
   blocks), fonts, images, SVG, media. Never retype a size, a colour or an inline style the old page gets from a
   file or from a script's measurement: \`markless-migrate guard page\` compares the bytes of every static asset,
   every inline style and the box of every frame and sized element (a third-party button framed at 51 px where the
-  old page's own script sized it 101 px is red).
+  old page's own script sized it 101 px is red). An intended addition (a licence badge) goes in
+  \`.migrate/guard-allow.json\` with its reason, never silently.
 
 ## The loop
 
