@@ -69,9 +69,11 @@ function scan(text: string, file: string, patterns: readonly Pattern[]): Signal[
 	return out;
 }
 
+// URLSearchParams' own members: `searchParams.set(...)` writes a key, it does not read one named "set".
+const URL_SEARCH_PARAMS_METHODS = new Set(['get', 'has', 'getAll', 'toString', 'entries', 'keys', 'values', 'forEach', 'set', 'append', 'delete', 'sort', 'size']);
 function queryKeys(text: string): string[] {
 	const keys = new Set<string>();
-	for (const re of QUERY_READS) for (const m of text.matchAll(re)) if (!['get', 'has', 'getAll', 'toString', 'entries', 'keys', 'forEach'].includes(m[1]!)) keys.add(m[1]!);
+	for (const re of QUERY_READS) for (const m of text.matchAll(re)) if (!URL_SEARCH_PARAMS_METHODS.has(m[1]!)) keys.add(m[1]!);
 	return [...keys].sort();
 }
 

@@ -214,3 +214,9 @@ test('plan reads each route from the old server and classifies it; check reads t
 	assert.equal(report.numbers.secondPassHitRate, 1);
 	assert.equal(report.numbers.invocationsPerView, 0);
 });
+
+test('a URLSearchParams write (searchParams.set, .delete, .append) is no query key, so a page that only rewrites its own URL is still built ahead', () => {
+	const s = fileSignals("const url = new URL(location.href);\nurl.searchParams.set(key, value);\nurl.searchParams.delete('q');\nurl.searchParams.append('a', 'b');", 'lib/site.ts');
+	assert.deepEqual(s.queryKeys, []);
+	assert.deepEqual(fileSignals("const page = url.searchParams.page;", 'pages/x.ts').queryKeys, ['page']);
+});
