@@ -8,7 +8,7 @@ import heads from './lib/head-slots.json';
 type Slot = Readonly<Record<string, string>> | null;
 const routes = heads as unknown as Record<string, { readonly title: string; readonly ld: string; readonly class: string; readonly slots: readonly Slot[] }>;
 // The old site's static HTML files, each with its own <head> (one of the blocks below) and none of the theme's.
-const plainRoutes: Readonly<Record<string, number>> = {"/pure-html.html":0,"/pure-html":0,"/dogfooding/javadoc/index.html":1,"/dogfooding/javadoc":1};
+const plainRoutes: Readonly<Record<string, number>> = {"/pure-html":0,"/dogfooding/javadoc":1};
 
 export default function Document({ url, children }: { readonly url?: { readonly pathname: string }; readonly children?: Children }) @{
 	const path = (url?.pathname ?? '/').replace(/^\/__not-found(?=\/)/, '').replace(/\/$/, '') || '/';

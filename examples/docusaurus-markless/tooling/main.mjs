@@ -106,7 +106,7 @@ if (!only.length) {
 	await writeClientData(site, pages);
 	await runPostBuild(site, pages);
 	await writeFile(join(app, 'lib/routes.json'), `${JSON.stringify([...pages.keys(), ...staticPages.map((page) => page.path)].filter((p) => p !== '/404').sort(), null, '\t')}\n`);
-	const aliases = Object.fromEntries([...pages.keys()].filter((p) => fileRoute(p) !== p).map((p) => [encodeURI(p), encodeURI(fileRoute(p))]));
+	const aliases = Object.fromEntries([...[...pages.keys()].filter((p) => fileRoute(p) !== p).map((p) => [encodeURI(p), encodeURI(fileRoute(p))]), ...staticPages.map((page) => [encodeURI(page.file), encodeURI(page.path)])]);
 	await writeFile(join(app, 'lib/route-aliases.json'), `${JSON.stringify(aliases, null, '\t')}\n`);
 	await copyFiles(site, staticPages.map((page) => page.file));
 }

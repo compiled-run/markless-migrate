@@ -50,8 +50,9 @@ export async function writePage(path, file, body) {
 }
 
 // The HTML files in the old site's static directories, which it serves as pages of their own (no Docusaurus around
-// them): `/x.html` and `/x`, or `/dir/index.html` and `/dir`. Each becomes a Markless page with the file's body, and
-// document.tsrx writes the file's own <head> for it instead of the theme's.
+// them) at `/x` and `/x.html`, or `/dir` and `/dir/index.html`. Each becomes a Markless page at the first address with
+// the file's body, and document.tsrx writes the file's own <head> for it instead of the theme's; the file's own
+// address is served from that page by a route rule (lib/route-aliases.json).
 export async function staticHtmlPages(site) {
 	const pages = [];
 	for (const dir of site.context.siteConfig.staticDirectories) {
@@ -68,7 +69,7 @@ export async function staticHtmlPages(site) {
 					const head = [...part('head').filter((n) => typeof n !== 'string'), { tag: 'link', attrs: [['rel', 'stylesheet'], ['href', '/mm-site.css']], children: [] }];
 					const body = part('body');
 					const bare = file.endsWith('/index.html') ? file.slice(0, -'/index.html'.length) : file.slice(0, -'.html'.length);
-					for (const path of [file, bare]) pages.push({ path, file, head, body });
+					pages.push({ path: bare, file, head, body });
 				}
 			}
 		};
