@@ -232,3 +232,51 @@ What keeps it red:
 5. The install tabs' radios could not be clicked on the old page within the step's 3 s, so their coverage needs a person's accept.
 
 Routes switched: none (as before). The front door (https://markless-migrate-demo.vercel.app) serves the old site everywhere.
+
+## Every route, and the network contract of the old page (2026-10-18)
+
+The route coverage check (`check --only coverage`) found 35 of the old site's 115 routes missing on the new app:
+the Markdown copies of the docs pages (`/guide/why.md` and so on). What changed:
+
+- **Markdown copies and llms files.** `scripts/llms.mjs <vite-docs-dir>` loads the docs' own VitePress config and runs
+  the site's own `vitepress-plugin-llms`, with its settings, over the same Markdown the pages come from, and writes
+  the 42 `.md` copies plus `llms.txt` and `llms-full.txt` into `public/`. All 44 files are byte for byte the old
+  build's. The root ones were proxied to the old app before; they are now the new app's own files
+  (`old-routes.json` no longer lists them). Routes on the new app: 115 of 115.
+- **Iconify and sponsors in the browser, as the old page does.** The server now sends the 18 icons the old page
+  fills at runtime as the same empty 16x16 placeholders, and `page-scripts/icons.ts` fetches the same two
+  `api.iconify.design` URLs and fills them as `@iconify/vue` does. The sponsor grid is no longer rendered on the
+  server: `page-scripts/sponsor-tiers.ts` fetches `sponsors.vite.dev/sponsors.json` after load and inserts the grid
+  where the old page does (a sponsor without a name gets no alt text, as Vue leaves a null attribute out).
+- **Weight.** Moving the sponsor grid out of Markless also stopped the router from preloading the page's render data
+  (it was there for the async list). JavaScript downloaded on Vercel: 146.8 kB old → 110.7 kB new (was 149.1 kB,
+  against an allowance of 147.8 kB); run at load 210.1 kB → 71.7 kB. The allowance was not touched.
+- **Console errors after a link into the docs.** The old docs pages log FloatingVue's patch error on every full
+  load (vite.dev does too). The check now compares such an error against what that unswitched page logs on a plain
+  load from the old app, so the old page's own error is not counted against the port (tool change, with a test).
+- **Copy button.** Without clipboard access VitePress copies through a hidden textarea and gives focus back, which
+  fades the copied icon in and the language label out; the port does the same now (the new motion check caught it).
+- **Rive.** No change to the animation code was needed: with the render data gone the page starts the canvases at
+  the same moment as the old one on Vercel (first frame about 450-550 ms after navigation on both), and `/`'s
+  motion check is green. A forced-width screenshot still caught a different canvas frame in one of two runs.
+- **Front door.** The stale `/islands/:path*` rewrite is gone from `deploy/vite-dev/front/vercel.json` (not
+  redeployed; no route is switched, and `deploy.sh front` regenerates the new app's rewrites when one is).
+
+### Check against the deployments
+
+`plan --old https://vite-dev-old.vercel.app --source ~/dev/scratch/vite/docs`, then the full check of every route
+and dimension against https://vite-dev-markless.vercel.app. The first run left 22 routes unchecked for network
+timeouts (the machine was running several other checks); those and the 11 red ones were checked again.
+
+Routes on the new app: **115 of 115**. Route checks green: **101 of 115**, 10 red, 4 not checked (connection
+timeouts to Vercel in both runs).
+
+| Dimension | Result |
+| --- | --- |
+| coverage, http, auth, rendered, seo, css, i18n, data, weight | green on every route checked |
+| motion | green on every route where it ran, `/` included |
+| visual | red on `/` in one of two runs (a forced 640 px width caught a different Rive canvas frame) and on `/acknowledgements` |
+| responsiveness | red on `/`: opening search fetches its 145 kB index as code (VitePress loads its index on open too), the language button answers in 51 ms against 32 ms, and links into the docs are full page loads where VitePress navigates in place (319-386 ms against 264-284 ms at 4x CPU) |
+| behaviour, a11y, network, assets, responsiveness on docs pages | red on 9 docs pages, a different set in each run. Those pages are the old app's own, forwarded by the new app; the differences are click timeouts under load and Iconify picking a fallback host at random |
+
+Routes switched: none. The front door still serves the old site everywhere.
