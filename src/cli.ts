@@ -77,7 +77,7 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
-          [--journey-budget <seconds>] [--max-journeys <n>] [--timeout <seconds>]
+          [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--timeout <seconds>]
           [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-cache]
           [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>]
           Compare routes old vs new (default: every route of the old site plan listed). Exits 1 when any is red.
@@ -96,7 +96,8 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           and page layout); the report lists the groups. --every-dimension runs them on every page.
           Every interactive element of the old page (including those a click reveals, such as a
           dialog's controls) must be used by a journey, or the route stays red: journeys are explored main content first (tables, forms), until each element is used or
-          --journey-budget (default 120 s per route) runs out; --max-journeys caps their number. A
+          --journey-budget (default 120 s per route) runs out; --max-journeys caps their number and
+          --journey-depth (default 4) how many steps deep a journey goes (nested menus, sidebars). A
           control in a shared header, nav, sidebar or footer is exercised by the first route of the
           run that has it, and the others carry its result.
           --all adds every route the source scan knows (dynamic segments filled from crawled paths or
@@ -267,12 +268,14 @@ function fail(message: string): never {
 	process.exit(2);
 }
 
-function journeyOptions(budget: string | undefined, max: string | undefined): NonNullable<CheckOptions['journeys']> {
+function journeyOptions(budget: string | undefined, max: string | undefined, depth?: string): NonNullable<CheckOptions['journeys']> {
 	const seconds = budget === undefined ? undefined : Number(budget);
 	if (seconds !== undefined && !(seconds > 0)) fail('--journey-budget must be a number of seconds above 0');
 	const cap = max === undefined ? undefined : Number(max);
 	if (cap !== undefined && (!Number.isInteger(cap) || cap < 1)) fail('--max-journeys must be a whole number of at least 1');
-	return { ...(seconds !== undefined ? { budgetMs: seconds * 1000 } : {}), ...(cap !== undefined ? { maxJourneys: cap } : {}) };
+	const steps = depth === undefined ? undefined : Number(depth);
+	if (steps !== undefined && (!Number.isInteger(steps) || steps < 1)) fail('--journey-depth must be a whole number of at least 1');
+	return { ...(seconds !== undefined ? { budgetMs: seconds * 1000 } : {}), ...(cap !== undefined ? { maxJourneys: cap } : {}), ...(steps !== undefined ? { maxDepth: steps } : {}) };
 }
 
 function timeoutOption(value: string | undefined): { timeoutMs?: number } {
@@ -428,12 +431,13 @@ async function run(args: string[], cwd: string): Promise<number> {
 			'restart-on': { type: 'string' },
 			'journey-budget': { type: 'string' },
 			'max-journeys': { type: 'string' },
+			'journey-depth': { type: 'string' },
 			timeout: { type: 'string' },
 			...TIMING_FLAGS,
 		},
 	});
 	const deadline = timeoutOption(values.timeout);
-	const journeys = journeyOptions(values['journey-budget'], values['max-journeys']);
+	const journeys = journeyOptions(values['journey-budget'], values['max-journeys'], values['journey-depth']);
 	const timing = timingOptions(values);
 	if (!values.agent) fail(`run needs --agent <id> (${DRIVERS.map((d) => d.id).join(', ')})`);
 	if (!values.old || !values.new) fail('run needs --old <origin> and --new <origin>');
@@ -488,7 +492,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 			model: values.model,
 			cli: [mcp.command, ...mcp.args.slice(0, -1)].join(' '),
 			mcp,
-			context: { ...(source ? { source } : {}), ...(newSource ? { newSource } : {}), ...(values.auth ? { auth: resolve(values.auth) } : {}), flags: [...(values.header ?? []).flatMap((h) => ['--header', h]), ...(values.cookie ?? []).flatMap((c) => ['--cookie', c]), ...(values['journey-budget'] ? ['--journey-budget', values['journey-budget']] : []), ...(values['max-journeys'] ? ['--max-journeys', values['max-journeys']] : []), ...timingFlags(values)] },
+			context: { ...(source ? { source } : {}), ...(newSource ? { newSource } : {}), ...(values.auth ? { auth: resolve(values.auth) } : {}), flags: [...(values.header ?? []).flatMap((h) => ['--header', h]), ...(values.cookie ?? []).flatMap((c) => ['--cookie', c]), ...(values['journey-budget'] ? ['--journey-budget', values['journey-budget']] : []), ...(values['max-journeys'] ? ['--max-journeys', values['max-journeys']] : []), ...(values['journey-depth'] ? ['--journey-depth', values['journey-depth']] : []), ...timingFlags(values)] },
 			...(server ? { server, serving: { ...(values.build ? { build: values.build } : {}), ...(values['restart-on'] ? { restartOn: values['restart-on'] } : {}) } } : {}),
 			progress: out,
 			...(usage ? { notes: async (route: string) => routeBrief(usage, await implementedNow(), route) } : {}),
@@ -620,6 +624,7 @@ async function main(argv: string[]): Promise<number> {
 					'new-source': { type: 'string' },
 					'journey-budget': { type: 'string' },
 					'max-journeys': { type: 'string' },
+					'journey-depth': { type: 'string' },
 					timeout: { type: 'string' },
 					only: { type: 'string' },
 					'every-dimension': { type: 'boolean' },
@@ -631,7 +636,7 @@ async function main(argv: string[]): Promise<number> {
 			if (!values.old || !values.new) fail('check needs --old <origin> and --new <origin>');
 			if (values.only !== undefined && values.only !== 'coverage') fail('--only takes coverage: whether every route of the old site exists on the new app');
 			const coverageOnly = values.only === 'coverage';
-			const journeys = journeyOptions(values['journey-budget'], values['max-journeys']);
+			const journeys = journeyOptions(values['journey-budget'], values['max-journeys'], values['journey-depth']);
 			const timing = timingOptions(values);
 			let bypass: ReturnType<typeof bypassOptions> = {};
 			try {
