@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { attr, type Element } from './dom.ts';
@@ -26,9 +26,12 @@ export interface Port {
 	 * contract tells Radix's tab from Base UI's when a site renders both. The source decides the part; this only places it.
 	 */
 	locate(el: Element): boolean;
+	/** Other modules under `parts/` it imports. */
+	readonly needs?: readonly string[];
 }
 
 const slot = (el: Element) => attr(el, 'data-slot') ?? '';
+const base = (el: Element) => el.attrs.some((a) => a.name.startsWith('data-base-ui')) || /^base-ui-/.test(attr(el, 'id') ?? '');
 const radix = (el: Element) => el.attrs.some((a) => a.name.startsWith('data-radix-') || ((a.name === 'id' || a.name === 'aria-controls') && a.value.startsWith('radix-')));
 
 const ids = (el: Element) => el.attrs.filter((a) => a.name === 'id' || a.name.startsWith('aria-')).map((a) => a.value).join(' ');
@@ -47,10 +50,14 @@ function narrow(el: Element, candidates: readonly PartUsage[]): PartUsage[] {
 
 export const PORTS: readonly Port[] = [
 	{ module: 'radix/tabs', library: 'radix-ui', exports: ['Tabs.Root', 'Tabs.List', 'Tabs.Trigger', 'Tabs.Content'], events: ['click', 'keydown'], locate: (el) => radix(el) },
-	{ module: 'radix/dialog', library: 'radix-ui', exports: ['Dialog.Root', 'Dialog.Trigger', 'Dialog.Content', 'Dialog.Overlay', 'Dialog.Close', 'AlertDialog.Root', 'AlertDialog.Trigger', 'AlertDialog.Content', 'AlertDialog.Cancel', 'AlertDialog.Action'], events: ['click'], locate: (el) => radix(el) },
-	{ module: 'radix/popover', library: 'radix-ui', exports: ['Popover.Root', 'Popover.Trigger', 'Popover.Content', 'Popover.Portal', 'Popover.Anchor', 'Popover.Close'], events: ['click'], locate: (el) => radix(el) },
-	{ module: 'radix/dropdown-menu', library: 'radix-ui', exports: ['DropdownMenu.Root', 'DropdownMenu.Trigger', 'DropdownMenu.Content', 'DropdownMenu.Item'], events: ['pointerdown', 'click', 'pointerover', 'keydown'], locate: (el) => radix(el) },
-	{ module: 'radix/disclosure', library: 'radix-ui', exports: ['Collapsible.Root', 'Collapsible.CollapsibleTrigger', 'Collapsible.CollapsibleContent', 'Collapsible.Trigger', 'Collapsible.Content', 'Accordion.Root', 'Accordion.Item', 'Accordion.Header', 'Accordion.Trigger', 'Accordion.Content'], events: ['click', 'keydown'], locate: (el) => radix(el) },
+	{ module: 'radix/dialog', library: 'radix-ui', needs: ['radix/dialog-engine'], exports: ['Dialog.Root', 'Dialog.Trigger', 'Dialog.Content', 'Dialog.Overlay', 'Dialog.Close', 'AlertDialog.Root', 'AlertDialog.Trigger', 'AlertDialog.Content', 'AlertDialog.Cancel', 'AlertDialog.Action'], events: ['click'], locate: (el) => radix(el) },
+	{ module: 'radix/popover', library: 'radix-ui', needs: ['layer', 'popper', 'presence'], exports: ['Popover.Root', 'Popover.Trigger', 'Popover.Content', 'Popover.Portal', 'Popover.Anchor', 'Popover.Close'], events: ['click'], locate: (el) => radix(el) },
+	{ module: 'radix/dropdown-menu', library: 'radix-ui', needs: ['layer', 'popper', 'presence'], exports: ['DropdownMenu.Root', 'DropdownMenu.Trigger', 'DropdownMenu.Content', 'DropdownMenu.Item'], events: ['pointerdown', 'click', 'pointerover', 'keydown'], locate: (el) => radix(el) },
+	{ module: 'base-ui/popover', library: '@base-ui/react', exports: ['Popover.Root', 'Popover.Trigger', 'Popover.Popup', 'Popover.Positioner', 'Popover.Portal', 'Popover.Close'], events: ['click'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
+	{ module: 'base-ui/menu', library: '@base-ui/react', exports: ['Menu.Root', 'Menu.Trigger', 'Menu.Popup', 'Menu.Item'], events: ['pointerdown', 'click', 'pointerover', 'keydown'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
+	{ module: 'base-ui/tooltip', library: '@base-ui/react', exports: ['Tooltip.Root', 'Tooltip.Trigger', 'Tooltip.Popup'], events: ['pointerover', 'pointerout', 'focusin', 'focusout'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
+	{ module: 'base-ui/select', library: '@base-ui/react', exports: ['Select.Root', 'Select.Trigger', 'Select.Value', 'Select.Popup', 'Select.Item'], events: ['pointerdown', 'click', 'pointerover', 'keydown'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
+	{ module: 'radix/disclosure', library: 'radix-ui', needs: ['presence'], exports: ['Collapsible.Root', 'Collapsible.CollapsibleTrigger', 'Collapsible.CollapsibleContent', 'Collapsible.Trigger', 'Collapsible.Content', 'Accordion.Root', 'Accordion.Item', 'Accordion.Header', 'Accordion.Trigger', 'Accordion.Content'], events: ['click', 'keydown'], locate: (el) => radix(el) },
 ];
 
 export interface PartUse {
@@ -116,9 +123,17 @@ export async function writeParts(app: string, modules: ReadonlySet<string>): Pro
 		await copyFile(join(PARTS_DIR, rel), join(out, rel));
 		files.push(rel);
 	};
-	for (const entry of await readdir(PARTS_DIR)) if (entry.endsWith('.ts')) await copy(entry);
-	for (const module of modules) await copy(`${module}.ts`);
-	if (modules.has('radix/dialog')) await copy('radix/dialog-engine.ts');
+	await copy('index.ts');
+	await copy('reveal.ts');
+	if (await exists(join(app, 'lib', 'site', 'parts.ts'))) await copy('next-themes.ts');
+	const all = new Set<string>();
+	const add = (m: string) => {
+		if (all.has(m)) return;
+		all.add(m);
+		for (const n of PORTS.find((p) => p.module === m)?.needs ?? []) add(n);
+	};
+	for (const m of modules) add(m);
+	for (const module of all) await copy(`${module}.ts`);
 	const site = await exists(join(app, 'lib', 'site', 'parts.ts'));
 	const manifest = JSON.parse(await readFile(join(app, 'package.json'), 'utf8')) as { dependencies?: Record<string, string> };
 	let added = false;
