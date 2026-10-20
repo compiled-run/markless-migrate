@@ -1,5 +1,7 @@
 import type { Part } from '../parts/index.ts';
 import { resolvedTheme, setTheme, type ThemeOptions } from '../parts/next-themes.ts';
+import { configure } from '../parts/cmdk.ts';
+import { closeContaining, toggle } from '../parts/radix/dialog.ts';
 
 // The site's own client components (components/*.tsx in the old app), on Markless: ModeSwitcher and the D shortcut of
 // ThemeProvider, CopyButton and CodeBlockCommand's copy. Library behaviour comes from the ports in ../parts.
@@ -152,4 +154,33 @@ const docsToc: Part = {
 	},
 };
 
-export const SITE_PARTS: readonly Part[] = [modeSwitcher, copyPage, copyButton, docsSidebar, docsToc];
+// components/command-menu.tsx: Command's filter (the value and keywords containing the search), each item's keywords
+// as CommandMenuItem passes them, and runCommand closing the dialog before the item's action; ⌘K and / toggle it.
+const groupOf = (item: HTMLElement) => item.closest('[cmdk-group]')?.querySelector('[cmdk-group-heading]')?.textContent ?? '';
+configure({
+	filter: (value, search, keywords) => (`${value} ${keywords.join(' ')}`.toLowerCase().includes(search.toLowerCase()) ? 1 : 0),
+	keywords: (item) => {
+		const value = item.getAttribute('data-value') ?? '';
+		const text = (item.textContent ?? '').trim();
+		const group = groupOf(item);
+		if (group === 'Pages') return ['nav', 'navigation', text.toLowerCase()];
+		if (group === 'Styles') return ['style', 'preset', text];
+		if (group === 'Blocks') return ['block', value, text];
+		if (value.startsWith('bg-') || /^\w+-\d+$/.test(value)) return ['color', value];
+		// a docs page: a component page is drawn with the dashed circle and takes "component"
+		return item.querySelector('.rounded-full.border-dashed') ? ['component'] : [];
+	},
+	beforeChoose: (item) => closeContaining(item),
+});
+const commandMenu: Part = {
+	keydown(target, event) {
+		if (!((event.key === 'k' && (event.metaKey || event.ctrlKey)) || event.key === '/') || isEditable(target)) return false;
+		const trigger = document.querySelector<HTMLElement>('[data-slot="dialog-trigger"][aria-controls]');
+		if (!trigger) return false;
+		event.preventDefault();
+		toggle(trigger);
+		return true;
+	},
+};
+
+export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, docsSidebar, docsToc];

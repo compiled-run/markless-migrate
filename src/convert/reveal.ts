@@ -24,6 +24,9 @@ export interface Reveal {
 	/** The control's id, its aria-controls, or `p:` and its path. */
 	readonly key: string;
 	readonly path: readonly number[];
+	/** The control's tag, data-slot and text, and which element with them it is in document order: found again by these, not the path, in a document from another load. */
+	readonly sig?: string;
+	readonly nth?: number;
 	readonly action: RevealAction;
 	readonly viewport: string;
 	readonly added: readonly Revealed[];
@@ -49,6 +52,8 @@ interface Candidate {
 	/** Listed by the site: only a control that takes itself away is recorded. */
 	readonly extra?: boolean;
 	readonly path: number[];
+	readonly sig: string;
+	readonly nth: number;
 	readonly key: string;
 	readonly action: RevealAction;
 	readonly visible: boolean;
@@ -63,7 +68,17 @@ async function candidates(page: Page, extra: readonly (readonly [string, RevealA
 			return out;
 		};
 		const seen = new Set<Element>();
-		const out: { path: number[]; key: string; action: 'click' | 'hover' | 'contextmenu'; visible: boolean; selector: string }[] = [];
+		const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+		const counts = new Map<string, number>();
+		const order = new Map<Element, number>();
+		for (const el of document.body.querySelectorAll('*')) {
+			if (el.closest('template')) continue;
+			const sig = sigOf(el);
+			const n = counts.get(sig) ?? 0;
+			counts.set(sig, n + 1);
+			order.set(el, n);
+		}
+		const out: { path: number[]; key: string; action: 'click' | 'hover' | 'contextmenu'; visible: boolean; selector: string; sig: string; nth: number }[] = [];
 		for (const [selector, action] of controls) {
 			for (const el of document.body.querySelectorAll(selector)) {
 				if (seen.has(el) || el.closest('template')) continue;
@@ -72,7 +87,7 @@ async function candidates(page: Page, extra: readonly (readonly [string, RevealA
 				const style = getComputedStyle(el);
 				const visible = rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.pointerEvents !== 'none';
 				const path = pathOf(el);
-				out.push({ path, key: el.id || el.getAttribute('aria-controls') || `p:${path.join('.')}`, action: action as 'click' | 'hover' | 'contextmenu', visible, selector });
+				out.push({ path, key: el.id || el.getAttribute('aria-controls') || `p:${path.join('.')}`, action: action as 'click' | 'hover' | 'contextmenu', visible, selector, sig: sigOf(el), nth: order.get(el) ?? 0 });
 			}
 		}
 		return out;
@@ -238,7 +253,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 				const known = memo.get(`${viewport.name} ${candidate.key}`);
 				if (known && known.count >= REUSE_AFTER) {
 					done.add(candidate.key);
-					reveals.push({ ...known.reveal, path: candidate.path });
+					reveals.push({ ...known.reveal, path: candidate.path, sig: candidate.sig, nth: candidate.nth });
 					continue;
 				}
 				const previous = await selectedSibling(open.page, candidate.path);
@@ -248,7 +263,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 				else {
 					done.add(candidate.key);
 					if (added.length) {
-						const shown: Reveal = { key: candidate.key, path: candidate.path, action: candidate.action, viewport: viewport.name, added };
+						const shown: Reveal = { key: candidate.key, path: candidate.path, sig: candidate.sig, nth: candidate.nth, action: candidate.action, viewport: viewport.name, added };
 						reveals.push(shown);
 						const html = added.map((a) => a.html).join('');
 						const entry = memo.get(`${viewport.name} ${candidate.key}`);

@@ -5,6 +5,7 @@ import { chromium } from 'playwright';
 import { copyAssets, copyStaticDir, resourcePaths } from './assets.ts';
 import { captureAll, type CapturedPage } from './capture.ts';
 import { captureAllReveals, type Reveal } from './reveal.ts';
+import { captureChoices, type Choice } from './choices.ts';
 import { parseFragment } from 'parse5';
 import { cleanDocument, frameworkBuilds, type Dropped } from './clean.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, type Document, type Element } from './dom.ts';
@@ -148,12 +149,14 @@ function templateMarkup(reveal: Reveal, added: Reveal['added'][number], dropped:
 	const fragment = parseFragment(added.html);
 	const kept = childrenOf(fragment as unknown as Element).filter((n): n is Element => isElement(n) && !n.attrs.some((a) => FOCUS_GUARD.test(a.name)));
 	if (!kept.length) return '';
-	const inner = kept.map((el) => emitElement(el, { dropped })).join('');
+	const inner = kept.map((el) => emitElement(el, { dropped, bind: (e) => bindParts(e, templatePorts) })).join('');
 	const placed = placement(kept);
 	return `<template${placed} data-mm-reveal=${JSON.stringify(reveal.key)} data-mm-into=${JSON.stringify(typeof added.into === 'string' ? added.into : 'self')} data-mm-before="${added.before}" data-mm-action="${reveal.action}" data-mm-viewport="${reveal.viewport}">${inner}</template>`;
 }
 
 let placementResolver: PartResolver | undefined;
+// Ports the parts inside revealed content need (a command palette exists only in its template).
+const templatePorts = new Set<string>();
 
 // The offsets a positioned part gets from the source (Radix's sideOffset and alignOffset), written on its template; the
 // side and alignment are the content's own data-side and data-align.
@@ -180,12 +183,34 @@ function walkAll(root: Element): Element[] {
 	return out;
 }
 
+// The same signature as the capture computes in the page: tag, data-slot and text.
+function sigOf(el: Element): string {
+	return `${el.tagName}|${attr(el, 'data-slot') ?? ''}|${textOf(el).trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+}
+
+function textOf(node: Element): string {
+	return childrenOf(node)
+		.map((n) => (n.nodeName === '#text' ? (n as unknown as { value: string }).value : isElement(n) && n.tagName !== 'template' ? textOf(n) : ''))
+		.join('');
+}
+
 function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (what: string) => void): Map<Element, string> {
 	const appends = new Map<Element, string>();
 	const root = body(doc);
 	const add = (el: Element, markup: string) => markup && appends.set(el, (appends.get(el) ?? '') + markup);
+	const bySig = new Map<string, Element[]>();
+	const index = (el: Element) => {
+		for (const child of childrenOf(el)) {
+			if (!isElement(child) || child.tagName === 'template') continue;
+			const sig = sigOf(child);
+			(bySig.get(sig) ?? bySig.set(sig, []).get(sig)!).push(child);
+			index(child);
+		}
+	};
+	index(root);
 	for (const reveal of reveals) {
-		const trigger = elementAt(root, reveal.path);
+		const atPath = elementAt(root, reveal.path);
+		const trigger = reveal.sig !== undefined && (!atPath || sigOf(atPath) !== reveal.sig) ? (bySig.get(reveal.sig)?.[reveal.nth ?? 0] ?? atPath) : atPath;
 		for (const added of reveal.added) {
 			const target = typeof added.into === 'string' ? trigger : elementAt(root, added.into);
 			if (target) add(target, templateMarkup(reveal, added, dropped));
@@ -289,11 +314,21 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const browser = await chromium.launch();
 	let captures: CapturedPage[];
 	const revealed = new Map<string, readonly Reveal[]>();
+	const choices: Record<string, Record<string, Choice>> = {};
 	try {
 		captures = await captureAll(browser, options.old, routes, join(state, 'convert', 'captures'), { concurrency: options.concurrency ?? 4, log });
 		// Controls the site's own components reveal content with, beside those ARIA marks (lib/site/controls.json).
 		const extra = await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => (JSON.parse(t) as { selector: string; action: Reveal['action'] }[]).map((c) => [c.selector, c.action] as const), () => []);
 		if (options.reveal !== false) for (const r of await captureAllReveals(browser, options.old, routes, join(state, 'convert', 'reveals'), { concurrency: options.concurrency ?? 4, log, extra })) revealed.set(r.route, r.reveals);
+		// Options revealed without a link (a command palette's items): what choosing each did, once per control.
+		const seenKeys = new Set<string>();
+		for (const [route, reveals] of revealed)
+			for (const reveal of reveals) {
+				if (seenKeys.has(reveal.key) || !reveal.added.some((a) => a.into === 'body' && /cmdk-item|role="option"|role="menuitem"/.test(a.html))) continue;
+				seenKeys.add(reveal.key);
+				const found = await captureChoices(browser, options.old, route, reveal, join(state, 'convert', 'choices'), log);
+				if (Object.values(found).some((c) => c.href || c.copied !== undefined)) choices[reveal.key] = found;
+			}
 	} finally {
 		await browser.close();
 	}
@@ -301,6 +336,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const resolver: PartResolver = options.resolver ?? ((await stat(usagePath).then(() => true, () => false)) ? await usageResolver(usagePath, options.source) : await sourceSlotResolver(join(state, 'libraries.json'), options.source));
 	useResolver(resolver);
 	placementResolver = resolver;
+	templatePorts.clear();
 	log(`parts resolved by: ${resolver.name}`);
 	const dropped: Dropped = new Map();
 	const styles = new Map<string, string>();
@@ -317,7 +353,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const bodyParts = splitBody(new Map([...prepared].map(([route, p]) => [route, { route, before: p.before, after: p.after, htmlAttrs: p.htmlAttrs, bodyAttrs: p.bodyAttrs, head: p.head }])));
 	const pathOf = (route: string) => new URL(route, options.old).pathname;
 	const sharedParts: PartUse[] = [];
-	const usedPorts = new Set<string>();
+	const usedPorts = templatePorts;
 	const appendOf = (el: Element) => {
 		for (const p of prepared.values()) {
 			const markup = p.appends.get(el);
@@ -394,7 +430,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const documentParts: PartUse[] = [];
 	await writeFile(join(app, 'document.tsrx'), documentModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped, partsDir('document.tsrx'), documentParts));
 	await writeFile(join(app, 'head.ts'), HEAD_HELPER);
-	await writeParts(app, usedPorts);
+	await writeParts(app, usedPorts, choices);
 	await mkdir(join(app, 'components', 'converted'), { recursive: true });
 	await writeFile(join(app, 'components', 'converted', 'body-extras.tsrx'), extrasModule(bodyParts, (route) => pathOf(route), noteDropped));
 	await writeFile(join(app, 'heads.ts'), headModule(prepared));

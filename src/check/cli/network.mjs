@@ -11,7 +11,7 @@ const MAX_BODY = 1024 * 1024;
 
 // A package manager the tool starts (npm install after shadcn add) inherits the shim through NODE_OPTIONS; its own
 // registry traffic, cache-dependent and parallel, is the package manager's, not the tool's, and is left alone.
-const PACKAGE_MANAGER = /(?:^|[\\/])(?:npm-cli|npx-cli|pnpm|pnpx|yarn|bun)(?:\.c?js)?$|[\\/]node_modules[\\/](?:npm|pnpm|yarn|corepack)[\\/]/.test(process.argv[1] ?? '');
+const PACKAGE_MANAGER = /(?:^|[\\/])(?:npm|npx|npm-cli|npx-cli|pnpm|pnpx|yarn|bun)(?:\.c?js)?$|[\\/]node_modules[\\/](?:npm|pnpm|yarn|corepack)[\\/]/.test(process.argv[1] ?? '');
 
 const fixtures = FIXTURES && existsSync(FIXTURES) ? JSON.parse(readFileSync(FIXTURES, 'utf8')) : {};
 const note = (entry) => {
