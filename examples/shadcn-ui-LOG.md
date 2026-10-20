@@ -39,13 +39,16 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   with check's frozen environment), the old framework's runtime left out (Next's chunks, `self.__next_f`, React's
   streaming `$RC`, `data-precedence`, `next-route-announcer`, streamed `<template>`s), shared regions as
   components (a link's attributes beside its href are left out when matching, so a nav is one component across
-  pages), content controls reveal captured as inert templates, and assets copied byte for byte.
+  pages), what controls show on use captured from the old page and rendered by Markless (tab panels and accordion
+  items on state() with bound attributes, portaled layers hidden in the Document's extras), and assets copied byte
+  for byte. Markless owns every node: parts switch attributes, measure, place and move focus, and a guard test
+  fails on a part that inserts or removes nodes.
 - The library part an element gets comes from the usage inventory (`PartResolver`, usage.json): the export the
   source renders with that `data-slot`. The markup only tells Radix's, Base UI's and cmdk's candidates apart.
   Prop defaults the source passes through (`sideOffset = 4`) are read from the component's parameters.
 - `parts/`: Markless ports of library behaviour, each written once, delegated from the page root: Radix Dialog
   (driving the shared dialog engine from `library-port-radix-dialog`, vendored unchanged), Popover, DropdownMenu,
-  Tabs, Collapsible/Accordion, Popper on @floating-ui/dom as Radix configures it, Presence, aria-hidden's
+  Tabs and Collapsible/Accordion (convert's state plans, with roving focus and content measurement), Popper on @floating-ui/dom as Radix configures it, Presence, aria-hidden's
   hideOthers; Base UI Popover, Menu, Tooltip and Select (its anchor positioning, transition status, and
   `alignItemWithTrigger`); cmdk 1.1; next-themes.
 - Revealed content a control replaces itself with (View Code) and what a control copies (Copy Page) are captured
