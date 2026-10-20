@@ -10,6 +10,7 @@ import { classify } from '../src/cache/classify.ts';
 import type { ResponseFacts, RouteEvidence } from '../src/cache/evidence.ts';
 import { cdnFacts, isContentHashed, parseCacheControl } from '../src/cache/headers.ts';
 import { filePattern } from '../src/cache/pages.ts';
+import { cachingRegressions, formatRegression } from '../src/cache/regressions.ts';
 import { planCaching, type CachingPlan } from '../src/cache/plan.ts';
 import { cacheRules, FRAGMENT_QUERY, isrFunction } from '../src/cache/rules.ts';
 import { fileSignals, NO_SIGNALS } from '../src/cache/signals.ts';
@@ -55,6 +56,14 @@ test('a cookie, an auth guard, a request read or private Cache-Control on the ol
 test('a client component reading cookies runs in the browser and leaves the page cacheable', () => {
 	const s = fileSignals("'use client';\nconst x = document.cookie; cookies();", 'app/widget.tsx');
 	assert.deepEqual(s.requestReads, []);
+});
+
+test('getCookie and setCookie helpers over document.cookie are browser code; the same names beside a server cookie API are not', () => {
+	const helper = fileSignals('function setCookie(n, v) { document.cookie = `${n}=${v}`; }\nfunction getCookie(n) { return document.cookie.split(n)[1]; }\nsetCookie("theme", "dark"); getCookie("theme");', 'components/layout/shell-behaviour.ts');
+	assert.deepEqual([...helper.requestReads, ...helper.setsCookies], []);
+	const server = fileSignals('const t = getCookie(event, "theme"); setCookie(event, "seen", "1"); res.cookie("a", "b"); parseCookies(event); const c = document.cookie;', 'server/routes/page.ts');
+	assert.deepEqual(server.requestReads.map((r) => r.what), ['reads a request cookie or header']);
+	assert.deepEqual(server.setsCookies.map((r) => r.what), ['sets a cookie']);
 });
 
 test('a page whose data changes is served by the CDN and revalidated, copying the old TTL when the old headers give one', () => {
@@ -138,6 +147,21 @@ test('a port that renders storage() or reads the request is never cached, whatev
 	const [r] = await refineWithNewSource(plan, dir, { '/': 'pages/index.tsrx' });
 	assert.equal(r!.class, 'no-cache');
 	assert.match(r!.reasons[0]!, /new source reads the request: storage\(\): a cookie-backed value \(pages\/theme\.ts:2\)/);
+});
+
+test('a route the old app let a CDN keep is a regression when only the port reads the request on the server, and stops being one once the read moves to the browser', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'mm-cache-regress-'));
+	await mkdir(join(dir, 'pages/settings'), { recursive: true });
+	await writeFile(join(dir, 'pages/index.tsrx'), "export default function Page({ http }) { const theme = http.request.headers.get('cookie'); return <p>{theme}</p>; }\n");
+	await writeFile(join(dir, 'pages/settings/index.tsrx'), 'export default function Page() { return <p>settings</p>; }\n');
+	const routes = ['/', '/settings'].map((route) => evidence({}, {}, route));
+	const plan: CachingPlan = { version: 1, origin: 'http://old', generatedAt: '', routes: routes.map((e) => classify({ evidence: e })), hashedAssets: [], evidence: routes };
+	const found = await cachingRegressions(plan, dir, ['/', '/settings']);
+	assert.deepEqual(found.map((r) => [r.route, r.old, r.new]), [['/', 'prerender', 'no-cache']]);
+	assert.match(found[0]!.actual, /^never cached: the port's server code reads the request: .*http\.request headers \(pages\/index\.tsrx:1\)$/);
+	assert.match(formatRegression(found[0]!, ['/users']), /^FAIL  \/  \[caching\][^]*fix: +The old app reads nothing from the request on the server\. Read these values in the browser[^]*1 more route \(\/users\): one shared change covers them all\. The route stays red until it is fixed\.\n$/);
+	await writeFile(join(dir, 'pages/index.tsrx'), "export default function Page() { return <p>{document.cookie}</p>; }\n");
+	assert.deepEqual(await cachingRegressions(plan, dir, ['/']), []);
 });
 
 const observation = (passes: Partial<ResponseFacts>[], extra: Partial<RouteObservation> = {}): RouteObservation => ({ route: '/docs/', class: 'prerender', passes: passes.map(facts), ...extra });

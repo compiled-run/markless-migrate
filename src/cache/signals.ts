@@ -77,10 +77,21 @@ function queryKeys(text: string): string[] {
 	return [...keys].sort();
 }
 
+// A getCookie/setCookie helper over document.cookie runs in the browser; the same names on the server read and write the request.
+const BROWSER_COOKIE_HELPER = /\bdocument\.cookie\b/;
+const HELPER_NAMES = /^(reads a request cookie or header|sets a cookie)$/;
+
 /** Signals in one file of server code. A client component's reads run in the browser and do not bear on caching. */
 export function fileSignals(text: string, file: string): Omit<RouteSignals, 'guard' | 'perVisitor' | 'changing'> & { changing: Signal[] } {
 	if (CLIENT_ONLY.test(text)) return { requestReads: [], queryKeys: [], setsCookies: [], changing: [] };
-	return { requestReads: scan(text, file, REQUEST_READS), queryKeys: queryKeys(text), setsCookies: scan(text, file, SETS_COOKIES), changing: [] };
+	const browser = BROWSER_COOKIE_HELPER.test(text) ? (signals: Signal[]) => signals.filter((s) => !HELPER_NAMES.test(s.what) || !onlyHelperCalls(text, s.what)) : (signals: Signal[]) => signals;
+	return { requestReads: browser(scan(text, file, REQUEST_READS)), queryKeys: queryKeys(text), setsCookies: browser(scan(text, file, SETS_COOKIES)), changing: [] };
+}
+
+/** Every match of the helper's pattern is a call of getCookie/setCookie (nothing a server framework names the same way also appears). */
+function onlyHelperCalls(text: string, what: string): boolean {
+	if (what === 'sets a cookie') return !/\bcookies\(\)\.set\(|\bres\.cookie\(|\bresponse\.set_cookie\(|\bsetcookie\(/.test(text);
+	return !/\bparseCookies\(|\bgetHeader\(|\bgetRequestHeader\(/.test(text);
 }
 
 const IMPORT = /\bimport\s+(?:[^'"]*?\sfrom\s+)?['"](\.{1,2}\/[^'"]+)['"]|\bimport\(\s*['"](\.{1,2}\/[^'"]+)['"]\s*\)/g;

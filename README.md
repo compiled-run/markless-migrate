@@ -43,7 +43,7 @@ markless-migrate setup [--agent claude-code]... [--dry-run] [--undo]
 markless-migrate mcp
 markless-migrate run --agent codex --old http://localhost:3000 --new http://localhost:5173 [--route /about]... [--all] [--attempts 3] [--model <name>]
     [--source ../old-app] [--new-source .] [--auth .migrate/auth.json] [--header <name:value>]... [--cookie <name=value>]...
-    [--serve "node .output/server/index.mjs"] [--build "npm run build"] [--restart-on .output/nitro.json]
+    [--serve "node .output/server/index.mjs"] [--build "npm run build"] [--restart-on .output/nitro.json] [--agent-timeout 30]
 ```
 
 `plan` writes `.migrate/inventory.json`, including the locale prefixes in use and where `/` sends each
@@ -80,7 +80,9 @@ an answer: the skill and the prompt tell the agent never to ask, and the run end
 routes, how each library that draws its own UI was handled, what was accepted automatically, and "What to
 look at if you care": each route still red with its open failure ids, and routes that need a sample). Every attempt, with the agent's output, is
 appended to `.migrate/run.log`. Each route is checked with the same `--source`, `--new-source`, `--auth`,
-`--header` and `--cookie` as `check` (and `--all` takes the same routes and endpoints), and the prompt
+`--header` and `--cookie` as `check` (and `--all` takes the same routes and endpoints), and is also red when
+the port's own server code makes a page uncacheable that the old site let a CDN keep (a theme or sidebar cookie
+read from the request where the old app read it in the browser: `.migrate/caching.json`), and the prompt
 names the old source, the roles and the exact check command. A sandboxed agent cannot keep a server
 running, so `--serve <command>` makes `run` own the new app's server: it runs `--build`, restarts the
 server after every attempt and waits until `--new` answers before checking (a failed build becomes the
