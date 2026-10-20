@@ -5,10304 +5,5623 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 	"/": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/__docusaurus/debug": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/__docusaurus/debug": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/__docusaurus/debug/content": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/__docusaurus/debug/content": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/__docusaurus/debug/globalData": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/__docusaurus/debug/globalData": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/__docusaurus/debug/metadata": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/__docusaurus/debug/metadata": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/__docusaurus/debug/registry": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/__docusaurus/debug/registry": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/__docusaurus/debug/routes": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/__docusaurus/debug/routes": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/2017/12/14/introducing-docusaurus": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/2017/12/14/introducing-docusaurus": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/2018/04/30/How-I-Converted-Profilo-To-Docusaurus": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/2018/04/30/How-I-Converted-Profilo-To-Docusaurus": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/2018/09/11/Towards-Docusaurus-2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/2018/09/11/Towards-Docusaurus-2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/2018/12/14/Happy-First-Birthday-Slash": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/2018/12/14/Happy-First-Birthday-Slash": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/2019/12/30/docusaurus-2019-recap": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/2019/12/30/docusaurus-2019-recap": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/2020/01/07/tribute-to-endi": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/2020/01/07/tribute-to-endi": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/2021/01/19/docusaurus-2020-recap": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/2021/01/19/docusaurus-2020-recap": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/2021/03/09/releasing-docusaurus-i18n": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/2021/03/09/releasing-docusaurus-i18n": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/2021/05/12/announcing-docusaurus-two-beta": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/2021/05/12/announcing-docusaurus-two-beta": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/2021/11/21/algolia-docsearch-migration": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/2021/11/21/algolia-docsearch-migration": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/2022/01/24/docusaurus-2021-recap": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/2022/01/24/docusaurus-2021-recap": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/2022/08/01/announcing-docusaurus-2.0": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/2022/08/01/announcing-docusaurus-2.0": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/2022/09/01/docusaurus-2.1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/2022/09/01/docusaurus-2.1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/archive": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/archive": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/authors": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/authors": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/authors/j-marcey": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/authors/j-marcey": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/authors/josh-cena": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/authors/josh-cena": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/authors/lex-111": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/authors/lex-111": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/authors/slorber": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/authors/slorber": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/authors/slorber/page/2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/authors/slorber/page/2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/authors/slorber/page/3": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/authors/slorber/page/3": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/authors/slorber/page/4": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/authors/slorber/page/4": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/authors/slorber/page/5": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/authors/slorber/page/5": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/authors/yangshun": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/authors/yangshun": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/authors/zpao": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/authors/zpao": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/page/2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/page/2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/page/3": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/page/3": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/page/4": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/page/4": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/page/5": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/page/5": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/page/6": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/page/6": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/preparing-your-site-for-docusaurus-v3": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/preparing-your-site-for-docusaurus-v3": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/releases/2.2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/releases/2.2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/releases/2.3": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/releases/2.3": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/releases/2.4": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/releases/2.4": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/releases/3.0": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/releases/3.0": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/releases/3.1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/releases/3.1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/releases/3.10": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/releases/3.10": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/releases/3.2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/releases/3.2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/releases/3.3": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/releases/3.3": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/releases/3.4": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/releases/3.4": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/releases/3.5": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/releases/3.5": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/releases/3.6": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/releases/3.6": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/releases/3.7": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/releases/3.7": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/releases/3.8": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/releases/3.8": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/releases/3.9": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/releases/3.9": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/tags": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/tags": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/tags/adoption": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/tags/adoption": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/tags/beta": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/tags/beta": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/tags/birth": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/tags/birth": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/tags/blog": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/tags/blog": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/tags/documentation": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/tags/documentation": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/tags/docusaurus": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/tags/docusaurus": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/tags/endi": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/tags/endi": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/tags/i-18-n": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/tags/i-18-n": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/tags/maintenance": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/tags/maintenance": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/tags/new": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/tags/new": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/tags/profilo": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/tags/profilo": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/tags/recap": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/tags/recap": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/tags/release": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/tags/release": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/tags/release/page/2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/tags/release/page/2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/tags/release/page/3": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/tags/release/page/3": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/tags/release/page/4": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/tags/release/page/4": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/tags/search": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/tags/search": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/tags/tribute": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/tags/tribute": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/blog/upgrading-frontend-dependencies-with-confidence-using-visual-regression-testing": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/upgrading-frontend-dependencies-with-confidence-using-visual-regression-testing": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.19": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.19": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.20": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.20": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.21": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.21": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.22": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.22": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.23": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.23": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.24": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.24": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.25": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.25": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.26": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.26": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.27": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.27": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.28": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.28": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.29": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.29": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.30": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.30": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.31": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.31": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.32": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.32": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.33": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.33": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.34": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.34": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.35": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.35": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.36": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.36": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.37": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.37": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.38": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.38": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.39": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.39": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.40": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.40": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.41": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.41": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.43": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.43": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.44": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.44": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.48": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.48": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.49": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.49": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.50": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.50": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.51": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.51": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.53": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.53": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.54": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.54": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.55": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.55": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.56": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.56": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.57": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.57": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.58": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.58": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.59": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.59": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.60": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.60": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.61": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.61": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.62": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.62": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.63": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.63": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.64": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.64": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.65": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.65": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.66": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.66": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.67": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.67": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.68": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.68": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.69": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.69": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.70": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.70": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.71": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.71": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.72": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.72": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.73": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.73": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.74": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.74": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-alpha.75": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-alpha.75": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-beta.0": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.0": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-beta.1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-beta.10": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.10": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-beta.11": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.11": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-beta.12": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.12": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-beta.13": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.13": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-beta.14": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.14": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-beta.15": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.15": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-beta.16": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.16": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-beta.17": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.17": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-beta.18": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.18": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-beta.19": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.19": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-beta.2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-beta.20": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.20": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-beta.21": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.21": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-beta.22": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.22": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-beta.3": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.3": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-beta.4": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.4": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-beta.5": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.5": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-beta.6": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.6": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-beta.7": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.7": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-beta.8": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.8": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-beta.9": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-beta.9": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.0-rc.1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.0-rc.1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.0.1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.0.1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.1.0": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.1.0": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.2.0": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.2.0": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.3.0": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.3.0": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.3.1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.3.1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.4.0": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.4.0": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.4.1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.4.1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.4.2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.4.2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/2.4.3": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/2.4.3": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.0.0": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.0.0": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.0.1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.0.1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.1.0": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.1.0": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.1.1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.1.1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.10.0": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.10.0": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.10.1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.10.1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.10.2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.10.2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.2.0": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.2.0": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.2.1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.2.1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.3.0": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.3.0": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.3.1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.3.1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.3.2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.3.2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.4.0": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.4.0": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.5.0": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.5.0": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.5.1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.5.1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.5.2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.5.2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.6.0": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.6.0": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.6.1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.6.1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.6.2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.6.2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.6.3": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.6.3": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.7.0": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.7.0": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.8.0": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.8.0": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.8.1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.8.1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.9.0": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.9.0": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.9.1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.9.1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/3.9.2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/3.9.2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/authors": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/authors": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/page/2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/page/2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/page/3": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/page/3": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/page/4": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/page/4": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/page/5": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/page/5": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/changelog/page/6": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changelog/page/6": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/community/canary": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/community/canary": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/community/contributing": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/community/contributing": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/community/release-process": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/community/release-process": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/community/resources": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/community/resources": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/community/support": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/community/support": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/community/team": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/community/team": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/advanced": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/advanced": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/advanced/architecture": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/advanced/architecture": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/advanced/client": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/advanced/client": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/advanced/plugins": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/advanced/plugins": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/advanced/routing": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/advanced/routing": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/advanced/ssg": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/advanced/ssg": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/docusaurus-config": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/docusaurus-config": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/misc/@docusaurus/eslint-plugin": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/misc/@docusaurus/eslint-plugin": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/misc/@docusaurus/eslint-plugin/no-html-links": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/misc/@docusaurus/eslint-plugin/no-html-links": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/misc/@docusaurus/eslint-plugin/no-untranslated-text": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/misc/@docusaurus/eslint-plugin/no-untranslated-text": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/misc/@docusaurus/eslint-plugin/prefer-docusaurus-heading": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/misc/@docusaurus/eslint-plugin/prefer-docusaurus-heading": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/misc/@docusaurus/eslint-plugin/string-literal-i18n-messages": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/misc/@docusaurus/eslint-plugin/string-literal-i18n-messages": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/misc/@docusaurus/logger": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/misc/@docusaurus/logger": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/misc/create-docusaurus": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/misc/create-docusaurus": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/plugin-methods": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/plugin-methods": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/plugin-methods/extend-infrastructure": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/plugin-methods/extend-infrastructure": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/plugin-methods/i18n-lifecycles": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/plugin-methods/i18n-lifecycles": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/plugin-methods/lifecycle-apis": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/plugin-methods/lifecycle-apis": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/plugin-methods/static-methods": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/plugin-methods/static-methods": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/plugins": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/plugins": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/plugins/@docusaurus/plugin-client-redirects": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-client-redirects": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/plugins/@docusaurus/plugin-content-blog": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-content-blog": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/plugins/@docusaurus/plugin-content-docs": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-content-docs": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/plugins/@docusaurus/plugin-content-pages": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-content-pages": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/plugins/@docusaurus/plugin-css-cascade-layers": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-css-cascade-layers": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/plugins/@docusaurus/plugin-debug": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-debug": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/plugins/@docusaurus/plugin-google-gtag": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-google-gtag": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/plugins/@docusaurus/plugin-google-tag-manager": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-google-tag-manager": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/plugins/@docusaurus/plugin-ideal-image": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-ideal-image": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/plugins/@docusaurus/plugin-pwa": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-pwa": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/plugins/@docusaurus/plugin-rsdoctor": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-rsdoctor": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/plugins/@docusaurus/plugin-sitemap": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-sitemap": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/plugins/@docusaurus/plugin-svgr": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-svgr": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/plugins/@docusaurus/plugin-vercel-analytics": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/plugins/@docusaurus/plugin-vercel-analytics": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/themes": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/themes": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/themes/@docusaurus/theme-classic": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/themes/@docusaurus/theme-classic": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/themes/@docusaurus/theme-live-codeblock": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/themes/@docusaurus/theme-live-codeblock": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/themes/@docusaurus/theme-mermaid": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/themes/@docusaurus/theme-mermaid": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/themes/@docusaurus/theme-search-algolia": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/themes/@docusaurus/theme-search-algolia": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/api/themes/configuration": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/api/themes/configuration": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/blog": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/blog": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/browser-support": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/browser-support": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/category/getting-started": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/category/getting-started": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/category/guides": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/category/guides": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/category/miscellaneous": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/category/miscellaneous": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/cli": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/cli": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/configuration": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/configuration": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/create-doc": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/create-doc": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/creating-pages": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/creating-pages": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/deployment": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/deployment": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/deployment/github-pages": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/deployment/github-pages": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/deployment/netlify": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/deployment/netlify": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/deployment/vercel": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/deployment/vercel": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/docs-introduction": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/docs-introduction": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/docs-multi-instance": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/docs-multi-instance": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/docusaurus-core": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/docusaurus-core": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/guides/whats-next": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/guides/whats-next": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/i18n/crowdin": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/i18n/crowdin": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/i18n/git": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/i18n/git": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/i18n/introduction": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/i18n/introduction": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/i18n/tutorial": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/i18n/tutorial": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/installation": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/installation": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/markdown-features": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/markdown-features": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/markdown-features/admonitions": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/markdown-features/admonitions": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/markdown-features/assets": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/markdown-features/assets": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/markdown-features/code-blocks": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/markdown-features/code-blocks": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/markdown-features/diagrams": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/markdown-features/diagrams": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/markdown-features/head-metadata": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/markdown-features/head-metadata": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/markdown-features/links": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/markdown-features/links": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/markdown-features/math-equations": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/markdown-features/math-equations": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/markdown-features/plugins": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/markdown-features/plugins": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/markdown-features/react": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/markdown-features/react": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/markdown-features/tabs": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/markdown-features/tabs": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/markdown-features/toc": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/markdown-features/toc": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/migration": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/migration": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/migration/v3": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/migration/v3": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/playground": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/playground": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/search": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/search": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/seo": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/seo": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/sidebar": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/sidebar": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/sidebar/autogenerated": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/sidebar/autogenerated": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/sidebar/items": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/sidebar/items": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/sidebar/multiple-sidebars": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/sidebar/multiple-sidebars": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/static-assets": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/static-assets": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/styling-layout": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/styling-layout": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/swizzling": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/swizzling": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/typescript-support": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/typescript-support": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/using-plugins": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/using-plugins": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/docs/versioning": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/docs/versioning": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/dogfooding/javadoc": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/dogfooding/javadoc": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/examples/markdownPageExample": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/examples/markdownPageExample": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/examples/noIndex": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/examples/noIndex": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/feature-requests": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/feature-requests": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/pure-html": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/pure-html": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/search": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/search": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/showcase": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/showcase": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/2020/08/03/demo/second-blog-intro": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/2020/08/03/demo/second-blog-intro": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/2021/08/21/blog-post-toc-tests": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/2021/08/21/blog-post-toc-tests": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/2021/08/22/no-author": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/2021/08/22/no-author": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/2021/08/23/multiple-authors": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/2021/08/23/multiple-authors": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/2021/09/13/dup-title": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/2021/09/13/dup-title": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/2021/10/07/blog-post-mdx-feed-tests": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/2021/10/07/blog-post-mdx-feed-tests": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/2021/10/08/blog-post-mdx-require-feed-tests": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/2021/10/08/blog-post-mdx-require-feed-tests": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/2021/11/13/dup-title": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/2021/11/13/dup-title": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/2022/01/20/image-only-authors": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/2022/01/20/image-only-authors": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/2022/01/21/dup-footnote": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/2022/01/21/dup-footnote": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/2022/01/22/dup-footnote": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/2022/01/22/dup-footnote": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/2022/04/20/dup-footnote": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/2022/04/20/dup-footnote": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/2023/07/19/a": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/2023/07/19/a": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/2023/07/19/b": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/2023/07/19/b": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/2023/08/05": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/2023/08/05": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/2024/07/03/dual-author": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/2024/07/03/dual-author": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/2024/07/03/multiple-authors": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/2024/07/03/multiple-authors": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/2024/07/03/single-author": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/2024/07/03/single-author": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/authors": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/authors": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/authors/custom/ozaki/permalink": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/authors/custom/ozaki/permalink": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/authors/slorber": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/authors/slorber": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/authors/slorber/page/2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/authors/slorber/page/2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/page/2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/page/2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/page/3": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/page/3": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/page/4": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/page/4": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/page/5": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/page/5": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/page/6": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/page/6": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/page/7": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/page/7": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/tags": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/tags": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/tags/blog": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/tags/blog": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/tags/blog/page/2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/tags/blog/page/2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/tags/docusaurus": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/tags/docusaurus": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/tags/docusaurus/page/2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/tags/docusaurus/page/2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/tags/long": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/tags/long": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/tags/long-long": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/tags/long-long": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/tags/long-long-long": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/tags/long-long-long": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/tags/long-long-long-long": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/tags/long-long-long-long": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/tags/long-long-long-long-long": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/tags/long-long-long-long-long": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/tags/paginated-tag": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/tags/paginated-tag": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/tags/paginated-tag/page/2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/tags/paginated-tag/page/2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/tags/paginated-tag/page/3": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/tags/paginated-tag/page/3": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/tags/paginated-tag/page/4": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/tags/paginated-tag/page/4": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/tags/unlisted": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/tags/unlisted": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/tags/visibility": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/tags/visibility": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/unlisted-post": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/unlisted-post": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/blog/x/y/z.html": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/blog/x/y/z.html": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/category-links-generated-index-slug": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/category-links-generated-index-slug": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/category/alpha": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/category/alpha": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/category/another-category-with-index": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/category/another-category-with-index": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/category/beta": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/category/beta": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/category/category-index-name-conflict": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/category/category-index-name-conflict": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/category/category-index-name-conflict-2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/category/category-index-name-conflict-2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/category/categorylabeltest": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/category/categorylabeltest": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/category/categorylabeltest-1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/category/categorylabeltest-1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/category/conflicts": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/category/conflicts": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/category/file-name-conflict": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/category/file-name-conflict": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/category/sidebar-display": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/category/sidebar-display": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/category/sidebar-item-description-tests": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/category/sidebar-item-description-tests": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/category/tests": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/category/tests": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/doc-with-another-sidebar": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/doc-with-another-sidebar": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/doc-with-complex-description": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/doc-with-complex-description": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/doc-with-last-update": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/doc-with-last-update": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/doc-without-sidebar": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/doc-without-sidebar": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/dummy.html": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/dummy.html": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/more-test": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/more-test": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/standalone": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/standalone": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tags": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tags": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tags/a": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tags/a": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tags/b": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tags/b": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tags/d": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tags/d": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tags/listed": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tags/listed": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tags/permalink-for-tag-c": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tags/permalink-for-tag-c": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tags/permalink-for-tag-e": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tags/permalink-for-tag-e": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tags/some-tag": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tags/some-tag": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tags/unlisted": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tags/unlisted": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tags/visibility": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tags/visibility": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/admonitions": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/admonitions": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/Case-Sentitive-Doc": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/Case-Sentitive-Doc": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/category-links": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/category-links": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/category-links/custom-index-convention/intro": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/custom-index-convention/intro": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/category-links/custom-index-convention/sample-doc": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/custom-index-convention/sample-doc": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/category-links/no-index-doc": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/no-index-doc": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/category-links/no-index-doc/sample-doc": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/no-index-doc/sample-doc": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/category-links/no-subdoc": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/no-subdoc": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/category-links/regular-category/sample-doc": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/regular-category/sample-doc": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/category-links/with-category-name-doc": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/with-category-name-doc": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/category-links/with-category-name-doc/sample-doc": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/with-category-name-doc/sample-doc": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/category-links/with-index-doc": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/with-index-doc": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/category-links/with-index-doc/sample-doc": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/with-index-doc/sample-doc": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/category-links/with-readme-doc": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/with-readme-doc": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/category-links/with-readme-doc/sample-doc": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/category-links/with-readme-doc/sample-doc": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/Conflicts/category-index-name-2/alpha/test": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/Conflicts/category-index-name-2/alpha/test": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/Conflicts/category-index-name-2/alpha/test/doc": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/Conflicts/category-index-name-2/alpha/test/doc": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/Conflicts/category-index-name-2/beta/test": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/Conflicts/category-index-name-2/beta/test": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/Conflicts/category-index-name-2/beta/test/doc": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/Conflicts/category-index-name-2/beta/test/doc": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/Conflicts/category-index-name/alpha/test": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/Conflicts/category-index-name/alpha/test": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/Conflicts/category-index-name/beta/test": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/Conflicts/category-index-name/beta/test": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/Conflicts/file-name/file-name-1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/Conflicts/file-name/file-name-1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/Conflicts/file-name/file-name-2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/Conflicts/file-name/file-name-2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/Conflicts/sidebar-label/doc1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/Conflicts/sidebar-label/doc1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/Conflicts/sidebar-label/doc2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/Conflicts/sidebar-label/doc2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/footnotes": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/footnotes": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/images": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/images": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/import-bad-package": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/import-bad-package": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/links/broken-anchors-tests": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/links/broken-anchors-tests": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/links/resolution": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/links/resolution": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/links/target-doc-slug": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/links/target-doc-slug": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/links/test-markdown-links": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/links/test-markdown-links": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/sidebar-display/Category1LongLongLongLongLongLongLongLongLongLong/doc1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/sidebar-display/Category1LongLongLongLongLongLongLongLongLongLong/doc1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/sidebar-display/Category1LongLongLongLongLongLongLongLongLongLong/doc3longlonglonglonglonglonglonglonglonglonglonglong": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/sidebar-display/Category1LongLongLongLongLongLongLongLongLongLong/doc3longlonglonglonglonglonglonglonglonglonglonglong": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/sidebar-frontmatter": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/sidebar-frontmatter": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/sidebar-frontmatter/dir-with-unique-index": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/sidebar-frontmatter/dir-with-unique-index": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/sidebar-frontmatter/doc-with-sidebar-className": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/sidebar-frontmatter/doc-with-sidebar-className": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/sidebar-frontmatter/doc-with-sidebar-custom-props": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/sidebar-frontmatter/doc-with-sidebar-custom-props": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/sidebar-frontmatter/doc-with-sidebar-label": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/sidebar-frontmatter/doc-with-sidebar-label": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/sidebar-frontmatter/doc-without": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/sidebar-frontmatter/doc-without": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/toc-partials": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/toc-partials": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/visibility": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/visibility": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/visibility/force-unlisted": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/force-unlisted": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/visibility/only-unlisteds/unlisted-subcategory/unlisted3": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/only-unlisteds/unlisted-subcategory/unlisted3": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/visibility/only-unlisteds/unlisted1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/only-unlisteds/unlisted1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/visibility/only-unlisteds/unlisted2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/only-unlisteds/unlisted2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/visibility/some-drafts/draft-subcategory/listed1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/some-drafts/draft-subcategory/listed1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/visibility/some-unlisteds/subcategory-with-listed-index": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/some-unlisteds/subcategory-with-listed-index": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/visibility/some-unlisteds/unlisted-subcategory/listed1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/some-unlisteds/unlisted-subcategory/listed1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/visibility/some-unlisteds/unlisted-subcategory/unlisted3": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/some-unlisteds/unlisted-subcategory/unlisted3": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/visibility/some-unlisteds/unlisted1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/some-unlisteds/unlisted1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/visibility/some-unlisteds/unlisted2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/some-unlisteds/unlisted2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/visibility/unlisted-except-index": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/unlisted-except-index": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/tests/visibility/unlisted-except-index/unlisted2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/tests/visibility/unlisted-except-index/unlisted2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/toc/toc-_-_": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/toc/toc-_-_": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/toc/toc-_-5": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/toc/toc-_-5": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/toc/toc-2-2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/toc/toc-2-2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/toc/toc-2-3": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/toc/toc-2-3": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/toc/toc-2-4": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/toc/toc-2-4": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/toc/toc-2-5": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/toc/toc-2-5": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/toc/toc-3-_": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/toc/toc-3-_": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/toc/toc-3-5": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/toc/toc-3-5": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/toc/toc-4-5": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/toc/toc-4-5": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/toc/toc-5-5": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/toc/toc-5-5": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/toc/toc-test-bad": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/toc/toc-test-bad": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/docs/toc/toc-test-good": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/docs/toc/toc-test-good": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/analytics": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/analytics": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/code-block-tests": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/code-block-tests": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/crashTest": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/crashTest": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/diagrams": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/diagrams": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/embeds": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/embeds": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/error-boundary-tests": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/error-boundary-tests": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/head-metadata": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/head-metadata": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/history-tests": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/history-tests": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/hydration-tests": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/hydration-tests": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/ideal-image": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/ideal-image": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/import-attributes": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/import-attributes": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/link-tests": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/link-tests": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/linking": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/linking": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/linking/nested/page-b": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/linking/nested/page-b": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/linking/page-a": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/linking/page-a": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/live-playground-tests": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/live-playground-tests": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/markdown-tests-md": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/markdown-tests-md": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/markdown-tests-mdx": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/markdown-tests-mdx": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/my-custom/unlisted/slug": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/my-custom/unlisted/slug": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/new-url-assets": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/new-url-assets": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/page-toc-tests": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/page-toc-tests": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/style-isolation": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/style-isolation": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/suspense-tests": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/suspense-tests": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/svg": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/svg": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/tabs-tests": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/tabs-tests": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/tests/pages/z-index-tests": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/tests/pages/z-index-tests": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	},
 	"/versions": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/versions": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
 		}
 	}
 };
 
 /** Vercel routes placed before Nitro's own, by the path they serve. */
-export const vercelRoutes: [string, Record<string, unknown>][] = [
-	[
-		"/",
-		{
-			"src": "(?<__isr_route>/)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/index-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/__docusaurus/debug",
-		{
-			"src": "(?<__isr_route>/__docusaurus/debug)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/__docusaurus/debug-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/__docusaurus/debug/content",
-		{
-			"src": "(?<__isr_route>/__docusaurus/debug/content)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/__docusaurus/debug/content-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/__docusaurus/debug/globalData",
-		{
-			"src": "(?<__isr_route>/__docusaurus/debug/globalData)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/__docusaurus/debug/globalData-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/__docusaurus/debug/metadata",
-		{
-			"src": "(?<__isr_route>/__docusaurus/debug/metadata)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/__docusaurus/debug/metadata-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/__docusaurus/debug/registry",
-		{
-			"src": "(?<__isr_route>/__docusaurus/debug/registry)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/__docusaurus/debug/registry-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/__docusaurus/debug/routes",
-		{
-			"src": "(?<__isr_route>/__docusaurus/debug/routes)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/__docusaurus/debug/routes-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog",
-		{
-			"src": "(?<__isr_route>/blog)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/2017/12/14/introducing-docusaurus",
-		{
-			"src": "(?<__isr_route>/blog/2017/12/14/introducing-docusaurus)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/2017/12/14/introducing-docusaurus-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/2018/04/30/How-I-Converted-Profilo-To-Docusaurus",
-		{
-			"src": "(?<__isr_route>/blog/2018/04/30/How-I-Converted-Profilo-To-Docusaurus)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/2018/04/30/How-I-Converted-Profilo-To-Docusaurus-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/2018/09/11/Towards-Docusaurus-2",
-		{
-			"src": "(?<__isr_route>/blog/2018/09/11/Towards-Docusaurus-2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/2018/09/11/Towards-Docusaurus-2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/2018/12/14/Happy-First-Birthday-Slash",
-		{
-			"src": "(?<__isr_route>/blog/2018/12/14/Happy-First-Birthday-Slash)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/2018/12/14/Happy-First-Birthday-Slash-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/2019/12/30/docusaurus-2019-recap",
-		{
-			"src": "(?<__isr_route>/blog/2019/12/30/docusaurus-2019-recap)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/2019/12/30/docusaurus-2019-recap-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/2020/01/07/tribute-to-endi",
-		{
-			"src": "(?<__isr_route>/blog/2020/01/07/tribute-to-endi)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/2020/01/07/tribute-to-endi-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/2021/01/19/docusaurus-2020-recap",
-		{
-			"src": "(?<__isr_route>/blog/2021/01/19/docusaurus-2020-recap)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/2021/01/19/docusaurus-2020-recap-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/2021/03/09/releasing-docusaurus-i18n",
-		{
-			"src": "(?<__isr_route>/blog/2021/03/09/releasing-docusaurus-i18n)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/2021/03/09/releasing-docusaurus-i18n-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/2021/05/12/announcing-docusaurus-two-beta",
-		{
-			"src": "(?<__isr_route>/blog/2021/05/12/announcing-docusaurus-two-beta)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/2021/05/12/announcing-docusaurus-two-beta-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/2021/11/21/algolia-docsearch-migration",
-		{
-			"src": "(?<__isr_route>/blog/2021/11/21/algolia-docsearch-migration)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/2021/11/21/algolia-docsearch-migration-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/2022/01/24/docusaurus-2021-recap",
-		{
-			"src": "(?<__isr_route>/blog/2022/01/24/docusaurus-2021-recap)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/2022/01/24/docusaurus-2021-recap-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/2022/08/01/announcing-docusaurus-2.0",
-		{
-			"src": "(?<__isr_route>/blog/2022/08/01/announcing-docusaurus-2\\.0)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/2022/08/01/announcing-docusaurus-2.0-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/2022/09/01/docusaurus-2.1",
-		{
-			"src": "(?<__isr_route>/blog/2022/09/01/docusaurus-2\\.1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/2022/09/01/docusaurus-2.1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/archive",
-		{
-			"src": "(?<__isr_route>/blog/archive)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/archive-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/authors",
-		{
-			"src": "(?<__isr_route>/blog/authors)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/authors-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/authors/j-marcey",
-		{
-			"src": "(?<__isr_route>/blog/authors/j-marcey)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/authors/j-marcey-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/authors/josh-cena",
-		{
-			"src": "(?<__isr_route>/blog/authors/josh-cena)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/authors/josh-cena-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/authors/lex-111",
-		{
-			"src": "(?<__isr_route>/blog/authors/lex-111)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/authors/lex-111-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/authors/slorber",
-		{
-			"src": "(?<__isr_route>/blog/authors/slorber)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/authors/slorber-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/authors/slorber/page/2",
-		{
-			"src": "(?<__isr_route>/blog/authors/slorber/page/2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/authors/slorber/page/2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/authors/slorber/page/3",
-		{
-			"src": "(?<__isr_route>/blog/authors/slorber/page/3)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/authors/slorber/page/3-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/authors/slorber/page/4",
-		{
-			"src": "(?<__isr_route>/blog/authors/slorber/page/4)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/authors/slorber/page/4-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/authors/slorber/page/5",
-		{
-			"src": "(?<__isr_route>/blog/authors/slorber/page/5)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/authors/slorber/page/5-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/authors/yangshun",
-		{
-			"src": "(?<__isr_route>/blog/authors/yangshun)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/authors/yangshun-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/authors/zpao",
-		{
-			"src": "(?<__isr_route>/blog/authors/zpao)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/authors/zpao-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/page/2",
-		{
-			"src": "(?<__isr_route>/blog/page/2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/page/2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/page/3",
-		{
-			"src": "(?<__isr_route>/blog/page/3)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/page/3-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/page/4",
-		{
-			"src": "(?<__isr_route>/blog/page/4)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/page/4-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/page/5",
-		{
-			"src": "(?<__isr_route>/blog/page/5)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/page/5-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/page/6",
-		{
-			"src": "(?<__isr_route>/blog/page/6)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/page/6-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/preparing-your-site-for-docusaurus-v3",
-		{
-			"src": "(?<__isr_route>/blog/preparing-your-site-for-docusaurus-v3)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/preparing-your-site-for-docusaurus-v3-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/releases/2.2",
-		{
-			"src": "(?<__isr_route>/blog/releases/2\\.2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/releases/2.2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/releases/2.3",
-		{
-			"src": "(?<__isr_route>/blog/releases/2\\.3)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/releases/2.3-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/releases/2.4",
-		{
-			"src": "(?<__isr_route>/blog/releases/2\\.4)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/releases/2.4-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/releases/3.0",
-		{
-			"src": "(?<__isr_route>/blog/releases/3\\.0)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/releases/3.0-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/releases/3.1",
-		{
-			"src": "(?<__isr_route>/blog/releases/3\\.1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/releases/3.1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/releases/3.10",
-		{
-			"src": "(?<__isr_route>/blog/releases/3\\.10)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/releases/3.10-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/releases/3.2",
-		{
-			"src": "(?<__isr_route>/blog/releases/3\\.2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/releases/3.2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/releases/3.3",
-		{
-			"src": "(?<__isr_route>/blog/releases/3\\.3)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/releases/3.3-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/releases/3.4",
-		{
-			"src": "(?<__isr_route>/blog/releases/3\\.4)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/releases/3.4-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/releases/3.5",
-		{
-			"src": "(?<__isr_route>/blog/releases/3\\.5)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/releases/3.5-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/releases/3.6",
-		{
-			"src": "(?<__isr_route>/blog/releases/3\\.6)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/releases/3.6-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/releases/3.7",
-		{
-			"src": "(?<__isr_route>/blog/releases/3\\.7)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/releases/3.7-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/releases/3.8",
-		{
-			"src": "(?<__isr_route>/blog/releases/3\\.8)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/releases/3.8-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/releases/3.9",
-		{
-			"src": "(?<__isr_route>/blog/releases/3\\.9)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/releases/3.9-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/tags",
-		{
-			"src": "(?<__isr_route>/blog/tags)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/tags-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/tags/adoption",
-		{
-			"src": "(?<__isr_route>/blog/tags/adoption)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/tags/adoption-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/tags/beta",
-		{
-			"src": "(?<__isr_route>/blog/tags/beta)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/tags/beta-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/tags/birth",
-		{
-			"src": "(?<__isr_route>/blog/tags/birth)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/tags/birth-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/tags/blog",
-		{
-			"src": "(?<__isr_route>/blog/tags/blog)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/tags/blog-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/tags/documentation",
-		{
-			"src": "(?<__isr_route>/blog/tags/documentation)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/tags/documentation-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/tags/docusaurus",
-		{
-			"src": "(?<__isr_route>/blog/tags/docusaurus)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/tags/docusaurus-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/tags/endi",
-		{
-			"src": "(?<__isr_route>/blog/tags/endi)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/tags/endi-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/tags/i-18-n",
-		{
-			"src": "(?<__isr_route>/blog/tags/i-18-n)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/tags/i-18-n-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/tags/maintenance",
-		{
-			"src": "(?<__isr_route>/blog/tags/maintenance)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/tags/maintenance-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/tags/new",
-		{
-			"src": "(?<__isr_route>/blog/tags/new)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/tags/new-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/tags/profilo",
-		{
-			"src": "(?<__isr_route>/blog/tags/profilo)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/tags/profilo-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/tags/recap",
-		{
-			"src": "(?<__isr_route>/blog/tags/recap)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/tags/recap-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/tags/release",
-		{
-			"src": "(?<__isr_route>/blog/tags/release)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/tags/release-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/tags/release/page/2",
-		{
-			"src": "(?<__isr_route>/blog/tags/release/page/2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/tags/release/page/2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/tags/release/page/3",
-		{
-			"src": "(?<__isr_route>/blog/tags/release/page/3)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/tags/release/page/3-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/tags/release/page/4",
-		{
-			"src": "(?<__isr_route>/blog/tags/release/page/4)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/tags/release/page/4-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/tags/search",
-		{
-			"src": "(?<__isr_route>/blog/tags/search)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/tags/search-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/tags/tribute",
-		{
-			"src": "(?<__isr_route>/blog/tags/tribute)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/tags/tribute-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/upgrading-frontend-dependencies-with-confidence-using-visual-regression-testing",
-		{
-			"src": "(?<__isr_route>/blog/upgrading-frontend-dependencies-with-confidence-using-visual-regression-testing)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/upgrading-frontend-dependencies-with-confidence-using-visual-regression-testing-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog",
-		{
-			"src": "(?<__isr_route>/changelog)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.19",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.19)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.19-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.20",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.20)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.20-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.21",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.21)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.21-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.22",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.22)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.22-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.23",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.23)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.23-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.24",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.24)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.24-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.25",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.25)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.25-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.26",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.26)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.26-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.27",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.27)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.27-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.28",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.28)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.28-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.29",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.29)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.29-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.30",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.30)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.30-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.31",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.31)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.31-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.32",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.32)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.32-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.33",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.33)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.33-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.34",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.34)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.34-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.35",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.35)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.35-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.36",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.36)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.36-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.37",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.37)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.37-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.38",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.38)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.38-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.39",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.39)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.39-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.40",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.40)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.40-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.41",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.41)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.41-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.43",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.43)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.43-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.44",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.44)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.44-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.48",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.48)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.48-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.49",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.49)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.49-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.50",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.50)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.50-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.51",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.51)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.51-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.53",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.53)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.53-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.54",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.54)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.54-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.55",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.55)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.55-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.56",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.56)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.56-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.57",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.57)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.57-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.58",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.58)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.58-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.59",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.59)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.59-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.60",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.60)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.60-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.61",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.61)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.61-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.62",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.62)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.62-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.63",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.63)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.63-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.64",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.64)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.64-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.65",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.65)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.65-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.66",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.66)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.66-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.67",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.67)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.67-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.68",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.68)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.68-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.69",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.69)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.69-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.70",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.70)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.70-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.71",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.71)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.71-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.72",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.72)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.72-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.73",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.73)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.73-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.74",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.74)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.74-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-alpha.75",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-alpha\\.75)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-alpha.75-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-beta.0",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-beta\\.0)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-beta.0-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-beta.1",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-beta\\.1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-beta.1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-beta.10",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-beta\\.10)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-beta.10-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-beta.11",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-beta\\.11)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-beta.11-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-beta.12",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-beta\\.12)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-beta.12-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-beta.13",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-beta\\.13)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-beta.13-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-beta.14",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-beta\\.14)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-beta.14-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-beta.15",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-beta\\.15)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-beta.15-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-beta.16",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-beta\\.16)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-beta.16-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-beta.17",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-beta\\.17)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-beta.17-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-beta.18",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-beta\\.18)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-beta.18-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-beta.19",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-beta\\.19)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-beta.19-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-beta.2",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-beta\\.2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-beta.2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-beta.20",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-beta\\.20)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-beta.20-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-beta.21",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-beta\\.21)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-beta.21-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-beta.22",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-beta\\.22)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-beta.22-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-beta.3",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-beta\\.3)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-beta.3-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-beta.4",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-beta\\.4)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-beta.4-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-beta.5",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-beta\\.5)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-beta.5-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-beta.6",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-beta\\.6)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-beta.6-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-beta.7",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-beta\\.7)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-beta.7-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-beta.8",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-beta\\.8)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-beta.8-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-beta.9",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-beta\\.9)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-beta.9-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.0-rc.1",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.0-rc\\.1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.0-rc.1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.0.1",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.0\\.1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.0.1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.1.0",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.1\\.0)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.1.0-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.2.0",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.2\\.0)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.2.0-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.3.0",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.3\\.0)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.3.0-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.3.1",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.3\\.1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.3.1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.4.0",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.4\\.0)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.4.0-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.4.1",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.4\\.1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.4.1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.4.2",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.4\\.2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.4.2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/2.4.3",
-		{
-			"src": "(?<__isr_route>/changelog/2\\.4\\.3)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/2.4.3-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.0.0",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.0\\.0)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.0.0-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.0.1",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.0\\.1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.0.1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.1.0",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.1\\.0)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.1.0-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.1.1",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.1\\.1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.1.1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.10.0",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.10\\.0)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.10.0-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.10.1",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.10\\.1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.10.1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.10.2",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.10\\.2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.10.2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.2.0",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.2\\.0)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.2.0-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.2.1",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.2\\.1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.2.1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.3.0",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.3\\.0)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.3.0-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.3.1",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.3\\.1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.3.1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.3.2",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.3\\.2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.3.2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.4.0",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.4\\.0)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.4.0-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.5.0",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.5\\.0)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.5.0-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.5.1",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.5\\.1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.5.1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.5.2",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.5\\.2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.5.2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.6.0",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.6\\.0)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.6.0-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.6.1",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.6\\.1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.6.1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.6.2",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.6\\.2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.6.2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.6.3",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.6\\.3)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.6.3-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.7.0",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.7\\.0)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.7.0-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.8.0",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.8\\.0)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.8.0-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.8.1",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.8\\.1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.8.1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.9.0",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.9\\.0)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.9.0-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.9.1",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.9\\.1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.9.1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/3.9.2",
-		{
-			"src": "(?<__isr_route>/changelog/3\\.9\\.2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/3.9.2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/authors",
-		{
-			"src": "(?<__isr_route>/changelog/authors)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/authors-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/page/2",
-		{
-			"src": "(?<__isr_route>/changelog/page/2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/page/2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/page/3",
-		{
-			"src": "(?<__isr_route>/changelog/page/3)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/page/3-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/page/4",
-		{
-			"src": "(?<__isr_route>/changelog/page/4)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/page/4-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/page/5",
-		{
-			"src": "(?<__isr_route>/changelog/page/5)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/page/5-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changelog/page/6",
-		{
-			"src": "(?<__isr_route>/changelog/page/6)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changelog/page/6-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/community/canary",
-		{
-			"src": "(?<__isr_route>/community/canary)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/community/canary-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/community/contributing",
-		{
-			"src": "(?<__isr_route>/community/contributing)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/community/contributing-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/community/release-process",
-		{
-			"src": "(?<__isr_route>/community/release-process)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/community/release-process-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/community/resources",
-		{
-			"src": "(?<__isr_route>/community/resources)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/community/resources-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/community/support",
-		{
-			"src": "(?<__isr_route>/community/support)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/community/support-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/community/team",
-		{
-			"src": "(?<__isr_route>/community/team)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/community/team-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs",
-		{
-			"src": "(?<__isr_route>/docs)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/advanced",
-		{
-			"src": "(?<__isr_route>/docs/advanced)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/advanced-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/advanced/architecture",
-		{
-			"src": "(?<__isr_route>/docs/advanced/architecture)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/advanced/architecture-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/advanced/client",
-		{
-			"src": "(?<__isr_route>/docs/advanced/client)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/advanced/client-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/advanced/plugins",
-		{
-			"src": "(?<__isr_route>/docs/advanced/plugins)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/advanced/plugins-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/advanced/routing",
-		{
-			"src": "(?<__isr_route>/docs/advanced/routing)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/advanced/routing-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/advanced/ssg",
-		{
-			"src": "(?<__isr_route>/docs/advanced/ssg)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/advanced/ssg-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/docusaurus-config",
-		{
-			"src": "(?<__isr_route>/docs/api/docusaurus-config)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/docusaurus-config-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/misc/@docusaurus/eslint-plugin",
-		{
-			"src": "(?<__isr_route>/docs/api/misc/@docusaurus/eslint-plugin)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/misc/-docusaurus/eslint-plugin-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/misc/@docusaurus/eslint-plugin/no-html-links",
-		{
-			"src": "(?<__isr_route>/docs/api/misc/@docusaurus/eslint-plugin/no-html-links)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/misc/-docusaurus/eslint-plugin/no-html-links-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/misc/@docusaurus/eslint-plugin/no-untranslated-text",
-		{
-			"src": "(?<__isr_route>/docs/api/misc/@docusaurus/eslint-plugin/no-untranslated-text)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/misc/-docusaurus/eslint-plugin/no-untranslated-text-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/misc/@docusaurus/eslint-plugin/prefer-docusaurus-heading",
-		{
-			"src": "(?<__isr_route>/docs/api/misc/@docusaurus/eslint-plugin/prefer-docusaurus-heading)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/misc/-docusaurus/eslint-plugin/prefer-docusaurus-heading-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/misc/@docusaurus/eslint-plugin/string-literal-i18n-messages",
-		{
-			"src": "(?<__isr_route>/docs/api/misc/@docusaurus/eslint-plugin/string-literal-i18n-messages)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/misc/-docusaurus/eslint-plugin/string-literal-i18n-messages-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/misc/@docusaurus/logger",
-		{
-			"src": "(?<__isr_route>/docs/api/misc/@docusaurus/logger)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/misc/-docusaurus/logger-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/misc/create-docusaurus",
-		{
-			"src": "(?<__isr_route>/docs/api/misc/create-docusaurus)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/misc/create-docusaurus-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/plugin-methods",
-		{
-			"src": "(?<__isr_route>/docs/api/plugin-methods)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/plugin-methods-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/plugin-methods/extend-infrastructure",
-		{
-			"src": "(?<__isr_route>/docs/api/plugin-methods/extend-infrastructure)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/plugin-methods/extend-infrastructure-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/plugin-methods/i18n-lifecycles",
-		{
-			"src": "(?<__isr_route>/docs/api/plugin-methods/i18n-lifecycles)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/plugin-methods/i18n-lifecycles-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/plugin-methods/lifecycle-apis",
-		{
-			"src": "(?<__isr_route>/docs/api/plugin-methods/lifecycle-apis)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/plugin-methods/lifecycle-apis-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/plugin-methods/static-methods",
-		{
-			"src": "(?<__isr_route>/docs/api/plugin-methods/static-methods)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/plugin-methods/static-methods-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/plugins",
-		{
-			"src": "(?<__isr_route>/docs/api/plugins)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/plugins-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/plugins/@docusaurus/plugin-client-redirects",
-		{
-			"src": "(?<__isr_route>/docs/api/plugins/@docusaurus/plugin-client-redirects)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/plugins/-docusaurus/plugin-client-redirects-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/plugins/@docusaurus/plugin-content-blog",
-		{
-			"src": "(?<__isr_route>/docs/api/plugins/@docusaurus/plugin-content-blog)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/plugins/-docusaurus/plugin-content-blog-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/plugins/@docusaurus/plugin-content-docs",
-		{
-			"src": "(?<__isr_route>/docs/api/plugins/@docusaurus/plugin-content-docs)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/plugins/-docusaurus/plugin-content-docs-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/plugins/@docusaurus/plugin-content-pages",
-		{
-			"src": "(?<__isr_route>/docs/api/plugins/@docusaurus/plugin-content-pages)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/plugins/-docusaurus/plugin-content-pages-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/plugins/@docusaurus/plugin-css-cascade-layers",
-		{
-			"src": "(?<__isr_route>/docs/api/plugins/@docusaurus/plugin-css-cascade-layers)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/plugins/-docusaurus/plugin-css-cascade-layers-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/plugins/@docusaurus/plugin-debug",
-		{
-			"src": "(?<__isr_route>/docs/api/plugins/@docusaurus/plugin-debug)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/plugins/-docusaurus/plugin-debug-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/plugins/@docusaurus/plugin-google-gtag",
-		{
-			"src": "(?<__isr_route>/docs/api/plugins/@docusaurus/plugin-google-gtag)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/plugins/-docusaurus/plugin-google-gtag-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/plugins/@docusaurus/plugin-google-tag-manager",
-		{
-			"src": "(?<__isr_route>/docs/api/plugins/@docusaurus/plugin-google-tag-manager)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/plugins/-docusaurus/plugin-google-tag-manager-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/plugins/@docusaurus/plugin-ideal-image",
-		{
-			"src": "(?<__isr_route>/docs/api/plugins/@docusaurus/plugin-ideal-image)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/plugins/-docusaurus/plugin-ideal-image-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/plugins/@docusaurus/plugin-pwa",
-		{
-			"src": "(?<__isr_route>/docs/api/plugins/@docusaurus/plugin-pwa)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/plugins/-docusaurus/plugin-pwa-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/plugins/@docusaurus/plugin-rsdoctor",
-		{
-			"src": "(?<__isr_route>/docs/api/plugins/@docusaurus/plugin-rsdoctor)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/plugins/-docusaurus/plugin-rsdoctor-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/plugins/@docusaurus/plugin-sitemap",
-		{
-			"src": "(?<__isr_route>/docs/api/plugins/@docusaurus/plugin-sitemap)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/plugins/-docusaurus/plugin-sitemap-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/plugins/@docusaurus/plugin-svgr",
-		{
-			"src": "(?<__isr_route>/docs/api/plugins/@docusaurus/plugin-svgr)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/plugins/-docusaurus/plugin-svgr-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/plugins/@docusaurus/plugin-vercel-analytics",
-		{
-			"src": "(?<__isr_route>/docs/api/plugins/@docusaurus/plugin-vercel-analytics)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/plugins/-docusaurus/plugin-vercel-analytics-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/themes",
-		{
-			"src": "(?<__isr_route>/docs/api/themes)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/themes-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/themes/@docusaurus/theme-classic",
-		{
-			"src": "(?<__isr_route>/docs/api/themes/@docusaurus/theme-classic)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/themes/-docusaurus/theme-classic-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/themes/@docusaurus/theme-live-codeblock",
-		{
-			"src": "(?<__isr_route>/docs/api/themes/@docusaurus/theme-live-codeblock)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/themes/-docusaurus/theme-live-codeblock-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/themes/@docusaurus/theme-mermaid",
-		{
-			"src": "(?<__isr_route>/docs/api/themes/@docusaurus/theme-mermaid)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/themes/-docusaurus/theme-mermaid-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/themes/@docusaurus/theme-search-algolia",
-		{
-			"src": "(?<__isr_route>/docs/api/themes/@docusaurus/theme-search-algolia)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/themes/-docusaurus/theme-search-algolia-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/api/themes/configuration",
-		{
-			"src": "(?<__isr_route>/docs/api/themes/configuration)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/api/themes/configuration-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/blog",
-		{
-			"src": "(?<__isr_route>/docs/blog)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/blog-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/browser-support",
-		{
-			"src": "(?<__isr_route>/docs/browser-support)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/browser-support-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/category/getting-started",
-		{
-			"src": "(?<__isr_route>/docs/category/getting-started)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/category/getting-started-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/category/guides",
-		{
-			"src": "(?<__isr_route>/docs/category/guides)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/category/guides-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/category/miscellaneous",
-		{
-			"src": "(?<__isr_route>/docs/category/miscellaneous)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/category/miscellaneous-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/cli",
-		{
-			"src": "(?<__isr_route>/docs/cli)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/cli-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/configuration",
-		{
-			"src": "(?<__isr_route>/docs/configuration)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/configuration-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/create-doc",
-		{
-			"src": "(?<__isr_route>/docs/create-doc)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/create-doc-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/creating-pages",
-		{
-			"src": "(?<__isr_route>/docs/creating-pages)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/creating-pages-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/deployment",
-		{
-			"src": "(?<__isr_route>/docs/deployment)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/deployment-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/deployment/github-pages",
-		{
-			"src": "(?<__isr_route>/docs/deployment/github-pages)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/deployment/github-pages-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/deployment/netlify",
-		{
-			"src": "(?<__isr_route>/docs/deployment/netlify)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/deployment/netlify-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/deployment/vercel",
-		{
-			"src": "(?<__isr_route>/docs/deployment/vercel)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/deployment/vercel-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/docs-introduction",
-		{
-			"src": "(?<__isr_route>/docs/docs-introduction)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/docs-introduction-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/docs-multi-instance",
-		{
-			"src": "(?<__isr_route>/docs/docs-multi-instance)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/docs-multi-instance-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/docusaurus-core",
-		{
-			"src": "(?<__isr_route>/docs/docusaurus-core)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/docusaurus-core-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/guides/whats-next",
-		{
-			"src": "(?<__isr_route>/docs/guides/whats-next)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/guides/whats-next-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/i18n/crowdin",
-		{
-			"src": "(?<__isr_route>/docs/i18n/crowdin)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/i18n/crowdin-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/i18n/git",
-		{
-			"src": "(?<__isr_route>/docs/i18n/git)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/i18n/git-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/i18n/introduction",
-		{
-			"src": "(?<__isr_route>/docs/i18n/introduction)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/i18n/introduction-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/i18n/tutorial",
-		{
-			"src": "(?<__isr_route>/docs/i18n/tutorial)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/i18n/tutorial-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/installation",
-		{
-			"src": "(?<__isr_route>/docs/installation)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/installation-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/markdown-features",
-		{
-			"src": "(?<__isr_route>/docs/markdown-features)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/markdown-features-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/markdown-features/admonitions",
-		{
-			"src": "(?<__isr_route>/docs/markdown-features/admonitions)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/markdown-features/admonitions-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/markdown-features/assets",
-		{
-			"src": "(?<__isr_route>/docs/markdown-features/assets)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/markdown-features/assets-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/markdown-features/code-blocks",
-		{
-			"src": "(?<__isr_route>/docs/markdown-features/code-blocks)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/markdown-features/code-blocks-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/markdown-features/diagrams",
-		{
-			"src": "(?<__isr_route>/docs/markdown-features/diagrams)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/markdown-features/diagrams-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/markdown-features/head-metadata",
-		{
-			"src": "(?<__isr_route>/docs/markdown-features/head-metadata)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/markdown-features/head-metadata-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/markdown-features/links",
-		{
-			"src": "(?<__isr_route>/docs/markdown-features/links)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/markdown-features/links-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/markdown-features/math-equations",
-		{
-			"src": "(?<__isr_route>/docs/markdown-features/math-equations)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/markdown-features/math-equations-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/markdown-features/plugins",
-		{
-			"src": "(?<__isr_route>/docs/markdown-features/plugins)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/markdown-features/plugins-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/markdown-features/react",
-		{
-			"src": "(?<__isr_route>/docs/markdown-features/react)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/markdown-features/react-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/markdown-features/tabs",
-		{
-			"src": "(?<__isr_route>/docs/markdown-features/tabs)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/markdown-features/tabs-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/markdown-features/toc",
-		{
-			"src": "(?<__isr_route>/docs/markdown-features/toc)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/markdown-features/toc-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/migration",
-		{
-			"src": "(?<__isr_route>/docs/migration)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/migration-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/migration/v3",
-		{
-			"src": "(?<__isr_route>/docs/migration/v3)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/migration/v3-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/playground",
-		{
-			"src": "(?<__isr_route>/docs/playground)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/playground-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/search",
-		{
-			"src": "(?<__isr_route>/docs/search)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/search-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/seo",
-		{
-			"src": "(?<__isr_route>/docs/seo)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/seo-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/sidebar",
-		{
-			"src": "(?<__isr_route>/docs/sidebar)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/sidebar-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/sidebar/autogenerated",
-		{
-			"src": "(?<__isr_route>/docs/sidebar/autogenerated)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/sidebar/autogenerated-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/sidebar/items",
-		{
-			"src": "(?<__isr_route>/docs/sidebar/items)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/sidebar/items-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/sidebar/multiple-sidebars",
-		{
-			"src": "(?<__isr_route>/docs/sidebar/multiple-sidebars)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/sidebar/multiple-sidebars-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/static-assets",
-		{
-			"src": "(?<__isr_route>/docs/static-assets)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/static-assets-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/styling-layout",
-		{
-			"src": "(?<__isr_route>/docs/styling-layout)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/styling-layout-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/swizzling",
-		{
-			"src": "(?<__isr_route>/docs/swizzling)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/swizzling-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/typescript-support",
-		{
-			"src": "(?<__isr_route>/docs/typescript-support)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/typescript-support-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/using-plugins",
-		{
-			"src": "(?<__isr_route>/docs/using-plugins)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/using-plugins-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/docs/versioning",
-		{
-			"src": "(?<__isr_route>/docs/versioning)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/docs/versioning-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/dogfooding/javadoc",
-		{
-			"src": "(?<__isr_route>/dogfooding/javadoc)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/dogfooding/javadoc-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/examples/markdownPageExample",
-		{
-			"src": "(?<__isr_route>/examples/markdownPageExample)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/examples/markdownPageExample-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/examples/noIndex",
-		{
-			"src": "(?<__isr_route>/examples/noIndex)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/examples/noIndex-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/feature-requests",
-		{
-			"src": "(?<__isr_route>/feature-requests)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/feature-requests-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/pure-html",
-		{
-			"src": "(?<__isr_route>/pure-html)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/pure-html-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/search",
-		{
-			"src": "(?<__isr_route>/search)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/search-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/showcase",
-		{
-			"src": "(?<__isr_route>/showcase)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/showcase-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests",
-		{
-			"src": "(?<__isr_route>/tests)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog",
-		{
-			"src": "(?<__isr_route>/tests/blog)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/2020/08/03/demo/second-blog-intro",
-		{
-			"src": "(?<__isr_route>/tests/blog/2020/08/03/demo/second-blog-intro)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/2020/08/03/demo/second-blog-intro-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/2021/08/21/blog-post-toc-tests",
-		{
-			"src": "(?<__isr_route>/tests/blog/2021/08/21/blog-post-toc-tests)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/2021/08/21/blog-post-toc-tests-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/2021/08/22/no-author",
-		{
-			"src": "(?<__isr_route>/tests/blog/2021/08/22/no-author)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/2021/08/22/no-author-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/2021/08/23/multiple-authors",
-		{
-			"src": "(?<__isr_route>/tests/blog/2021/08/23/multiple-authors)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/2021/08/23/multiple-authors-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/2021/09/13/dup-title",
-		{
-			"src": "(?<__isr_route>/tests/blog/2021/09/13/dup-title)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/2021/09/13/dup-title-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/2021/10/07/blog-post-mdx-feed-tests",
-		{
-			"src": "(?<__isr_route>/tests/blog/2021/10/07/blog-post-mdx-feed-tests)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/2021/10/07/blog-post-mdx-feed-tests-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/2021/10/08/blog-post-mdx-require-feed-tests",
-		{
-			"src": "(?<__isr_route>/tests/blog/2021/10/08/blog-post-mdx-require-feed-tests)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/2021/10/08/blog-post-mdx-require-feed-tests-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/2021/11/13/dup-title",
-		{
-			"src": "(?<__isr_route>/tests/blog/2021/11/13/dup-title)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/2021/11/13/dup-title-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/2022/01/20/image-only-authors",
-		{
-			"src": "(?<__isr_route>/tests/blog/2022/01/20/image-only-authors)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/2022/01/20/image-only-authors-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/2022/01/21/dup-footnote",
-		{
-			"src": "(?<__isr_route>/tests/blog/2022/01/21/dup-footnote)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/2022/01/21/dup-footnote-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/2022/01/22/dup-footnote",
-		{
-			"src": "(?<__isr_route>/tests/blog/2022/01/22/dup-footnote)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/2022/01/22/dup-footnote-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/2022/04/20/dup-footnote",
-		{
-			"src": "(?<__isr_route>/tests/blog/2022/04/20/dup-footnote)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/2022/04/20/dup-footnote-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/2023/07/19/a",
-		{
-			"src": "(?<__isr_route>/tests/blog/2023/07/19/a)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/2023/07/19/a-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/2023/07/19/b",
-		{
-			"src": "(?<__isr_route>/tests/blog/2023/07/19/b)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/2023/07/19/b-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/2023/08/05",
-		{
-			"src": "(?<__isr_route>/tests/blog/2023/08/05)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/2023/08/05-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/2024/07/03/dual-author",
-		{
-			"src": "(?<__isr_route>/tests/blog/2024/07/03/dual-author)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/2024/07/03/dual-author-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/2024/07/03/multiple-authors",
-		{
-			"src": "(?<__isr_route>/tests/blog/2024/07/03/multiple-authors)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/2024/07/03/multiple-authors-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/2024/07/03/single-author",
-		{
-			"src": "(?<__isr_route>/tests/blog/2024/07/03/single-author)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/2024/07/03/single-author-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/authors",
-		{
-			"src": "(?<__isr_route>/tests/blog/authors)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/authors-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/authors/custom/ozaki/permalink",
-		{
-			"src": "(?<__isr_route>/tests/blog/authors/custom/ozaki/permalink)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/authors/custom/ozaki/permalink-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/authors/slorber",
-		{
-			"src": "(?<__isr_route>/tests/blog/authors/slorber)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/authors/slorber-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/authors/slorber/page/2",
-		{
-			"src": "(?<__isr_route>/tests/blog/authors/slorber/page/2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/authors/slorber/page/2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/page/2",
-		{
-			"src": "(?<__isr_route>/tests/blog/page/2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/page/2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/page/3",
-		{
-			"src": "(?<__isr_route>/tests/blog/page/3)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/page/3-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/page/4",
-		{
-			"src": "(?<__isr_route>/tests/blog/page/4)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/page/4-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/page/5",
-		{
-			"src": "(?<__isr_route>/tests/blog/page/5)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/page/5-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/page/6",
-		{
-			"src": "(?<__isr_route>/tests/blog/page/6)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/page/6-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/page/7",
-		{
-			"src": "(?<__isr_route>/tests/blog/page/7)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/page/7-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/tags",
-		{
-			"src": "(?<__isr_route>/tests/blog/tags)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/tags-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/tags/blog",
-		{
-			"src": "(?<__isr_route>/tests/blog/tags/blog)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/tags/blog-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/tags/blog/page/2",
-		{
-			"src": "(?<__isr_route>/tests/blog/tags/blog/page/2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/tags/blog/page/2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/tags/docusaurus",
-		{
-			"src": "(?<__isr_route>/tests/blog/tags/docusaurus)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/tags/docusaurus-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/tags/docusaurus/page/2",
-		{
-			"src": "(?<__isr_route>/tests/blog/tags/docusaurus/page/2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/tags/docusaurus/page/2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/tags/long",
-		{
-			"src": "(?<__isr_route>/tests/blog/tags/long)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/tags/long-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/tags/long-long",
-		{
-			"src": "(?<__isr_route>/tests/blog/tags/long-long)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/tags/long-long-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/tags/long-long-long",
-		{
-			"src": "(?<__isr_route>/tests/blog/tags/long-long-long)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/tags/long-long-long-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/tags/long-long-long-long",
-		{
-			"src": "(?<__isr_route>/tests/blog/tags/long-long-long-long)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/tags/long-long-long-long-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/tags/long-long-long-long-long",
-		{
-			"src": "(?<__isr_route>/tests/blog/tags/long-long-long-long-long)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/tags/long-long-long-long-long-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/tags/paginated-tag",
-		{
-			"src": "(?<__isr_route>/tests/blog/tags/paginated-tag)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/tags/paginated-tag-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/tags/paginated-tag/page/2",
-		{
-			"src": "(?<__isr_route>/tests/blog/tags/paginated-tag/page/2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/tags/paginated-tag/page/2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/tags/paginated-tag/page/3",
-		{
-			"src": "(?<__isr_route>/tests/blog/tags/paginated-tag/page/3)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/tags/paginated-tag/page/3-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/tags/paginated-tag/page/4",
-		{
-			"src": "(?<__isr_route>/tests/blog/tags/paginated-tag/page/4)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/tags/paginated-tag/page/4-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/tags/unlisted",
-		{
-			"src": "(?<__isr_route>/tests/blog/tags/unlisted)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/tags/unlisted-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/tags/visibility",
-		{
-			"src": "(?<__isr_route>/tests/blog/tags/visibility)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/tags/visibility-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/unlisted-post",
-		{
-			"src": "(?<__isr_route>/tests/blog/unlisted-post)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/unlisted-post-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/blog/x/y/z.html",
-		{
-			"src": "(?<__isr_route>/tests/blog/x/y/z\\.html)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/blog/x/y/z.html-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs",
-		{
-			"src": "(?<__isr_route>/tests/docs)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/category-links-generated-index-slug",
-		{
-			"src": "(?<__isr_route>/tests/docs/category-links-generated-index-slug)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/category-links-generated-index-slug-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/category/alpha",
-		{
-			"src": "(?<__isr_route>/tests/docs/category/alpha)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/category/alpha-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/category/another-category-with-index",
-		{
-			"src": "(?<__isr_route>/tests/docs/category/another-category-with-index)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/category/another-category-with-index-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/category/beta",
-		{
-			"src": "(?<__isr_route>/tests/docs/category/beta)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/category/beta-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/category/category-index-name-conflict",
-		{
-			"src": "(?<__isr_route>/tests/docs/category/category-index-name-conflict)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/category/category-index-name-conflict-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/category/category-index-name-conflict-2",
-		{
-			"src": "(?<__isr_route>/tests/docs/category/category-index-name-conflict-2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/category/category-index-name-conflict-2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/category/categorylabeltest",
-		{
-			"src": "(?<__isr_route>/tests/docs/category/categorylabeltest)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/category/categorylabeltest-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/category/categorylabeltest-1",
-		{
-			"src": "(?<__isr_route>/tests/docs/category/categorylabeltest-1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/category/categorylabeltest-1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/category/conflicts",
-		{
-			"src": "(?<__isr_route>/tests/docs/category/conflicts)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/category/conflicts-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/category/file-name-conflict",
-		{
-			"src": "(?<__isr_route>/tests/docs/category/file-name-conflict)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/category/file-name-conflict-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/category/sidebar-display",
-		{
-			"src": "(?<__isr_route>/tests/docs/category/sidebar-display)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/category/sidebar-display-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/category/sidebar-item-description-tests",
-		{
-			"src": "(?<__isr_route>/tests/docs/category/sidebar-item-description-tests)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/category/sidebar-item-description-tests-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/category/tests",
-		{
-			"src": "(?<__isr_route>/tests/docs/category/tests)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/category/tests-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/doc-with-another-sidebar",
-		{
-			"src": "(?<__isr_route>/tests/docs/doc-with-another-sidebar)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/doc-with-another-sidebar-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/doc-with-complex-description",
-		{
-			"src": "(?<__isr_route>/tests/docs/doc-with-complex-description)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/doc-with-complex-description-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/doc-with-last-update",
-		{
-			"src": "(?<__isr_route>/tests/docs/doc-with-last-update)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/doc-with-last-update-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/doc-without-sidebar",
-		{
-			"src": "(?<__isr_route>/tests/docs/doc-without-sidebar)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/doc-without-sidebar-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/dummy.html",
-		{
-			"src": "(?<__isr_route>/tests/docs/dummy\\.html)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/dummy.html-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/more-test",
-		{
-			"src": "(?<__isr_route>/tests/docs/more-test)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/more-test-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/standalone",
-		{
-			"src": "(?<__isr_route>/tests/docs/standalone)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/standalone-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tags",
-		{
-			"src": "(?<__isr_route>/tests/docs/tags)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tags-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tags/a",
-		{
-			"src": "(?<__isr_route>/tests/docs/tags/a)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tags/a-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tags/b",
-		{
-			"src": "(?<__isr_route>/tests/docs/tags/b)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tags/b-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tags/d",
-		{
-			"src": "(?<__isr_route>/tests/docs/tags/d)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tags/d-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tags/listed",
-		{
-			"src": "(?<__isr_route>/tests/docs/tags/listed)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tags/listed-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tags/permalink-for-tag-c",
-		{
-			"src": "(?<__isr_route>/tests/docs/tags/permalink-for-tag-c)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tags/permalink-for-tag-c-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tags/permalink-for-tag-e",
-		{
-			"src": "(?<__isr_route>/tests/docs/tags/permalink-for-tag-e)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tags/permalink-for-tag-e-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tags/some-tag",
-		{
-			"src": "(?<__isr_route>/tests/docs/tags/some-tag)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tags/some-tag-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tags/unlisted",
-		{
-			"src": "(?<__isr_route>/tests/docs/tags/unlisted)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tags/unlisted-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tags/visibility",
-		{
-			"src": "(?<__isr_route>/tests/docs/tags/visibility)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tags/visibility-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/admonitions",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/admonitions)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/admonitions-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/Case-Sentitive-Doc",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/Case-Sentitive-Doc)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/Case-Sentitive-Doc-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/category-links",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/category-links)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/category-links-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/category-links/custom-index-convention/intro",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/category-links/custom-index-convention/intro)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/category-links/custom-index-convention/intro-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/category-links/custom-index-convention/sample-doc",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/category-links/custom-index-convention/sample-doc)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/category-links/custom-index-convention/sample-doc-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/category-links/no-index-doc",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/category-links/no-index-doc)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/category-links/no-index-doc-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/category-links/no-index-doc/sample-doc",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/category-links/no-index-doc/sample-doc)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/category-links/no-index-doc/sample-doc-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/category-links/no-subdoc",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/category-links/no-subdoc)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/category-links/no-subdoc-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/category-links/regular-category/sample-doc",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/category-links/regular-category/sample-doc)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/category-links/regular-category/sample-doc-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/category-links/with-category-name-doc",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/category-links/with-category-name-doc)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/category-links/with-category-name-doc-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/category-links/with-category-name-doc/sample-doc",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/category-links/with-category-name-doc/sample-doc)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/category-links/with-category-name-doc/sample-doc-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/category-links/with-index-doc",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/category-links/with-index-doc)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/category-links/with-index-doc-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/category-links/with-index-doc/sample-doc",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/category-links/with-index-doc/sample-doc)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/category-links/with-index-doc/sample-doc-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/category-links/with-readme-doc",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/category-links/with-readme-doc)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/category-links/with-readme-doc-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/category-links/with-readme-doc/sample-doc",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/category-links/with-readme-doc/sample-doc)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/category-links/with-readme-doc/sample-doc-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/Conflicts/category-index-name-2/alpha/test",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/Conflicts/category-index-name-2/alpha/test)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/Conflicts/category-index-name-2/alpha/test-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/Conflicts/category-index-name-2/alpha/test/doc",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/Conflicts/category-index-name-2/alpha/test/doc)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/Conflicts/category-index-name-2/alpha/test/doc-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/Conflicts/category-index-name-2/beta/test",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/Conflicts/category-index-name-2/beta/test)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/Conflicts/category-index-name-2/beta/test-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/Conflicts/category-index-name-2/beta/test/doc",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/Conflicts/category-index-name-2/beta/test/doc)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/Conflicts/category-index-name-2/beta/test/doc-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/Conflicts/category-index-name/alpha/test",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/Conflicts/category-index-name/alpha/test)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/Conflicts/category-index-name/alpha/test-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/Conflicts/category-index-name/beta/test",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/Conflicts/category-index-name/beta/test)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/Conflicts/category-index-name/beta/test-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/Conflicts/file-name/file-name-1",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/Conflicts/file-name/file-name-1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/Conflicts/file-name/file-name-1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/Conflicts/file-name/file-name-2",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/Conflicts/file-name/file-name-2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/Conflicts/file-name/file-name-2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/Conflicts/sidebar-label/doc1",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/Conflicts/sidebar-label/doc1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/Conflicts/sidebar-label/doc1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/Conflicts/sidebar-label/doc2",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/Conflicts/sidebar-label/doc2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/Conflicts/sidebar-label/doc2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/footnotes",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/footnotes)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/footnotes-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/images",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/images)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/images-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/import-bad-package",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/import-bad-package)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/import-bad-package-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/links/broken-anchors-tests",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/links/broken-anchors-tests)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/links/broken-anchors-tests-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/links/resolution",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/links/resolution)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/links/resolution-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/links/target-doc-slug",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/links/target-doc-slug)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/links/target-doc-slug-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/links/test-markdown-links",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/links/test-markdown-links)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/links/test-markdown-links-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/sidebar-display/Category1LongLongLongLongLongLongLongLongLongLong/doc1",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/sidebar-display/Category1LongLongLongLongLongLongLongLongLongLong/doc1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/sidebar-display/Category1LongLongLongLongLongLongLongLongLongLong/doc1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/sidebar-display/Category1LongLongLongLongLongLongLongLongLongLong/doc3longlonglonglonglonglonglonglonglonglonglonglong",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/sidebar-display/Category1LongLongLongLongLongLongLongLongLongLong/doc3longlonglonglonglonglonglonglonglonglonglonglong)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/sidebar-display/Category1LongLongLongLongLongLongLongLongLongLong/doc3longlonglonglonglonglonglonglonglonglonglonglong-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/sidebar-frontmatter",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/sidebar-frontmatter)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/sidebar-frontmatter-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/sidebar-frontmatter/dir-with-unique-index",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/sidebar-frontmatter/dir-with-unique-index)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/sidebar-frontmatter/dir-with-unique-index-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/sidebar-frontmatter/doc-with-sidebar-className",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/sidebar-frontmatter/doc-with-sidebar-className)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/sidebar-frontmatter/doc-with-sidebar-className-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/sidebar-frontmatter/doc-with-sidebar-custom-props",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/sidebar-frontmatter/doc-with-sidebar-custom-props)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/sidebar-frontmatter/doc-with-sidebar-custom-props-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/sidebar-frontmatter/doc-with-sidebar-label",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/sidebar-frontmatter/doc-with-sidebar-label)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/sidebar-frontmatter/doc-with-sidebar-label-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/sidebar-frontmatter/doc-without",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/sidebar-frontmatter/doc-without)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/sidebar-frontmatter/doc-without-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/toc-partials",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/toc-partials)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/toc-partials-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/visibility",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/visibility)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/visibility-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/visibility/force-unlisted",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/visibility/force-unlisted)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/visibility/force-unlisted-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/visibility/only-unlisteds/unlisted-subcategory/unlisted3",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/visibility/only-unlisteds/unlisted-subcategory/unlisted3)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/visibility/only-unlisteds/unlisted-subcategory/unlisted3-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/visibility/only-unlisteds/unlisted1",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/visibility/only-unlisteds/unlisted1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/visibility/only-unlisteds/unlisted1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/visibility/only-unlisteds/unlisted2",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/visibility/only-unlisteds/unlisted2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/visibility/only-unlisteds/unlisted2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/visibility/some-drafts/draft-subcategory/listed1",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/visibility/some-drafts/draft-subcategory/listed1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/visibility/some-drafts/draft-subcategory/listed1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/visibility/some-unlisteds/subcategory-with-listed-index",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/visibility/some-unlisteds/subcategory-with-listed-index)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/visibility/some-unlisteds/subcategory-with-listed-index-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/visibility/some-unlisteds/unlisted-subcategory/listed1",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/visibility/some-unlisteds/unlisted-subcategory/listed1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/visibility/some-unlisteds/unlisted-subcategory/listed1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/visibility/some-unlisteds/unlisted-subcategory/unlisted3",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/visibility/some-unlisteds/unlisted-subcategory/unlisted3)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/visibility/some-unlisteds/unlisted-subcategory/unlisted3-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/visibility/some-unlisteds/unlisted1",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/visibility/some-unlisteds/unlisted1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/visibility/some-unlisteds/unlisted1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/visibility/some-unlisteds/unlisted2",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/visibility/some-unlisteds/unlisted2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/visibility/some-unlisteds/unlisted2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/visibility/unlisted-except-index",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/visibility/unlisted-except-index)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/visibility/unlisted-except-index-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/tests/visibility/unlisted-except-index/unlisted2",
-		{
-			"src": "(?<__isr_route>/tests/docs/tests/visibility/unlisted-except-index/unlisted2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/tests/visibility/unlisted-except-index/unlisted2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/toc/toc-_-_",
-		{
-			"src": "(?<__isr_route>/tests/docs/toc/toc-_-_)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/toc/toc-_-_-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/toc/toc-_-5",
-		{
-			"src": "(?<__isr_route>/tests/docs/toc/toc-_-5)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/toc/toc-_-5-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/toc/toc-2-2",
-		{
-			"src": "(?<__isr_route>/tests/docs/toc/toc-2-2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/toc/toc-2-2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/toc/toc-2-3",
-		{
-			"src": "(?<__isr_route>/tests/docs/toc/toc-2-3)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/toc/toc-2-3-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/toc/toc-2-4",
-		{
-			"src": "(?<__isr_route>/tests/docs/toc/toc-2-4)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/toc/toc-2-4-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/toc/toc-2-5",
-		{
-			"src": "(?<__isr_route>/tests/docs/toc/toc-2-5)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/toc/toc-2-5-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/toc/toc-3-_",
-		{
-			"src": "(?<__isr_route>/tests/docs/toc/toc-3-_)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/toc/toc-3-_-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/toc/toc-3-5",
-		{
-			"src": "(?<__isr_route>/tests/docs/toc/toc-3-5)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/toc/toc-3-5-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/toc/toc-4-5",
-		{
-			"src": "(?<__isr_route>/tests/docs/toc/toc-4-5)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/toc/toc-4-5-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/toc/toc-5-5",
-		{
-			"src": "(?<__isr_route>/tests/docs/toc/toc-5-5)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/toc/toc-5-5-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/toc/toc-test-bad",
-		{
-			"src": "(?<__isr_route>/tests/docs/toc/toc-test-bad)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/toc/toc-test-bad-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/docs/toc/toc-test-good",
-		{
-			"src": "(?<__isr_route>/tests/docs/toc/toc-test-good)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/docs/toc/toc-test-good-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages",
-		{
-			"src": "(?<__isr_route>/tests/pages)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/analytics",
-		{
-			"src": "(?<__isr_route>/tests/pages/analytics)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/analytics-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/code-block-tests",
-		{
-			"src": "(?<__isr_route>/tests/pages/code-block-tests)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/code-block-tests-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/crashTest",
-		{
-			"src": "(?<__isr_route>/tests/pages/crashTest)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/crashTest-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/diagrams",
-		{
-			"src": "(?<__isr_route>/tests/pages/diagrams)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/diagrams-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/embeds",
-		{
-			"src": "(?<__isr_route>/tests/pages/embeds)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/embeds-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/error-boundary-tests",
-		{
-			"src": "(?<__isr_route>/tests/pages/error-boundary-tests)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/error-boundary-tests-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/head-metadata",
-		{
-			"src": "(?<__isr_route>/tests/pages/head-metadata)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/head-metadata-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/history-tests",
-		{
-			"src": "(?<__isr_route>/tests/pages/history-tests)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/history-tests-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/hydration-tests",
-		{
-			"src": "(?<__isr_route>/tests/pages/hydration-tests)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/hydration-tests-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/ideal-image",
-		{
-			"src": "(?<__isr_route>/tests/pages/ideal-image)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/ideal-image-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/import-attributes",
-		{
-			"src": "(?<__isr_route>/tests/pages/import-attributes)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/import-attributes-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/link-tests",
-		{
-			"src": "(?<__isr_route>/tests/pages/link-tests)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/link-tests-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/linking",
-		{
-			"src": "(?<__isr_route>/tests/pages/linking)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/linking-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/linking/nested/page-b",
-		{
-			"src": "(?<__isr_route>/tests/pages/linking/nested/page-b)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/linking/nested/page-b-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/linking/page-a",
-		{
-			"src": "(?<__isr_route>/tests/pages/linking/page-a)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/linking/page-a-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/live-playground-tests",
-		{
-			"src": "(?<__isr_route>/tests/pages/live-playground-tests)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/live-playground-tests-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/markdown-tests-md",
-		{
-			"src": "(?<__isr_route>/tests/pages/markdown-tests-md)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/markdown-tests-md-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/markdown-tests-mdx",
-		{
-			"src": "(?<__isr_route>/tests/pages/markdown-tests-mdx)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/markdown-tests-mdx-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/my-custom/unlisted/slug",
-		{
-			"src": "(?<__isr_route>/tests/pages/my-custom/unlisted/slug)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/my-custom/unlisted/slug-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/new-url-assets",
-		{
-			"src": "(?<__isr_route>/tests/pages/new-url-assets)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/new-url-assets-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/page-toc-tests",
-		{
-			"src": "(?<__isr_route>/tests/pages/page-toc-tests)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/page-toc-tests-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/style-isolation",
-		{
-			"src": "(?<__isr_route>/tests/pages/style-isolation)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/style-isolation-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/suspense-tests",
-		{
-			"src": "(?<__isr_route>/tests/pages/suspense-tests)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/suspense-tests-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/svg",
-		{
-			"src": "(?<__isr_route>/tests/pages/svg)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/svg-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/tabs-tests",
-		{
-			"src": "(?<__isr_route>/tests/pages/tabs-tests)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/tabs-tests-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/tests/pages/z-index-tests",
-		{
-			"src": "(?<__isr_route>/tests/pages/z-index-tests)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/tests/pages/z-index-tests-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/versions",
-		{
-			"src": "(?<__isr_route>/versions)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/versions-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	]
-];
+export const vercelRoutes: [string, Record<string, unknown>][] = [];
 
 const CACHING_KEYS = ['isr', 'prerender', 'cache', 'swr', 'static'];
 

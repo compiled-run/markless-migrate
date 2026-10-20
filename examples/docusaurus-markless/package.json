@@ -13,8 +13,8 @@
 	},
 	"dependencies": {
 		"@algolia/autocomplete-core": "1.19.2",
-		"@markless/core": "0.5.0",
-		"@markless/router": "0.5.0",
+		"@markless/core": "0.7.0",
+		"@markless/router": "0.7.0",
 		"ai": "5.0.93",
 		"algoliasearch": "5.57.0",
 		"algoliasearch-docsearch": "npm:algoliasearch@5.43.0",
@@ -27,8 +27,8 @@
 		"vite-plus": "0.3.1"
 	},
 	"devDependencies": {
-		"@markless/analyzer": "0.5.0",
-		"@markless/typescript-plugin": "0.5.0",
+		"@markless/analyzer": "0.7.0",
+		"@markless/typescript-plugin": "0.7.0",
 		"@types/nprogress": "^0.2.3",
 		"typescript": "^5.9.3",
 		"vite": "npm:@voidzero-dev/vite-plus-core@0.3.1"
