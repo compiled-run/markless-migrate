@@ -177,8 +177,13 @@ and dark", "dialog: close by Escape, the backdrop and the close button, during a
 uses of each (components and their props and variants, hooks with the options passed and the fields read
 back, every usage site) and what to do with it:
 
-- **@markless/ui**: a family does the same job (a Radix or shadcn/ui dialog is \`modal\`, tabs are \`tabs\`, a
-  toast is \`toaster\`). Render the family and give it the old classes; translate selectors on the library's
+- **certified port**: markless-migrate ships a Markless port of the library, certified once against the real
+  library (Radix Dialog and AlertDialog, so shadcn/ui's dialog, sheet and alert dialog). Run \`markless-migrate parity
+  <library>\` (MCP \`parity\`): it copies the port into \`lib/ports/<library>/\`, and the \`.behaviour.md\` beside it names the
+  component that replaces each part the app uses. Render those components with the old classes, unchanged: the port
+  writes the library's own markup and \`data-state\`, so the old selectors still apply. Never rewrite, edit or work
+  around the port, and never hand-roll that library's behaviour; a prop it does not cover is a question for a person.
+- **@markless/ui**: a family does the same job (tabs are \`tabs\`, a toast is \`toaster\`). Render the family and give it the old classes; translate selectors on the library's
   own attributes (\`data-[state=open]\`) to the family's (\`[ui-open]\`). When the installed @markless/ui
   lacks the family, port it like a library below and name the missing family in the final report.
 - **as-is**: framework-agnostic and renders nothing (zod, date-fns, clsx, a table or query core). Import it unchanged.

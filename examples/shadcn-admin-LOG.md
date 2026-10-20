@@ -231,3 +231,19 @@ Not switched: the front door still sends every route to the old app (`deploy.sh 
 
 - **Dialog backdrop flash on close** (`lib/parity/radix-ui-react-dialog/behaviour.ts` `closeDialog`, and `lib/parity/cmdk/behaviour.ts` `closePalette`): the overlay is hidden on the content's `animationend` (200 ms, the sheet's 300 ms), but its own fade is 150 ms with no fill mode, so it shows again at full opacity for 50 ms (150 ms on the settings drawer) before going. Radix runs one Presence per element: the overlay leaves at the end of its own exit. Check: `frame of generic (body/div)`, `old at 150 ms, just after animation exit of generic (body/div) ends: not shown` / `new: shown at opacity 1`, on every dialog, sheet and the command palette.
 - **Dropdown menus open from the wrong origin** (`lib/parity/radix-ui-react-dropdown-menu/`): the content never gets `--radix-dropdown-menu-content-transform-origin` (old `100% 0px` for an end-aligned menu below its trigger, so `transform-origin: 128px 0px`; new computes `50% 50%`), and its `data-side`/`data-align` say `right`/`start` where Radix's Popper says `bottom`/`end`. The `zoom-in-95` therefore scales from the centre and the `slide-in-from-*` class for the wrong side applies: the menu sits 1 to 5 px off part way through its open and close (`frame of menu "Toggle theme" (menu/div)`: `old at 75 ms: shown at opacity 0.8, 127x105 at (1028, 59)` / `new: ... at (1028, 60)`). A DropdownMenu port must set the side and alignment Popper computes, and the transform origin from them (`--radix-popper-transform-origin` on the wrapper, re-exported as the content's own variable).
+
+## Dialogs on the shared Radix Dialog port
+
+Every Radix Dialog and AlertDialog site (the shell's command palette, theme sheet and sign-out dialog; the users
+page's add/edit, invite, delete and multi-delete dialogs; the tasks page's import dialog, task sheet, delete and
+multi-delete dialogs; the chats page's new-message dialog) now renders the certified port that markless-migrate
+ships, copied by `markless-migrate parity @radix-ui/react-dialog` into `lib/ports/radix-ui-react-dialog/`.
+`lib/parity/radix-ui-react-dialog/` is gone, and with it the backdrop flash listed above (the palette's too: its
+dialog is the port now). Checked locally against the old build on `/users`, `/tasks` and
+`/chats` (all dimensions), compared with the same check of the previous port: 63 failures fewer (215 to 152),
+6 new. The 6 new failures: table paging journeys that ran out of the 120 s journey budget at a different point;
+`JavaScript run at load` on `/tasks`, because a dialog the page opens through its own state is wired at idle and
+that loads the page's handler chunk; one first-interaction time on `/chats` (53 ms against 40 ms, desktop); and one
+accessibility snapshot taken during the new-message dialog's exit on `/chats` that does not reproduce by hand.
+The routes stay red for causes the previous port already had: the toaster region moving, the journey budget,
+first-interaction times and the weight of the render data.

@@ -1,10 +1,12 @@
+import { createHash } from 'node:crypto';
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import type { RecordedJourney, StepResult } from '../check/journeys.ts';
 import { matchRoute } from '../source/pattern.ts';
 import { PART_BEHAVIOUR, PART_ROLE } from './catalog.ts';
 import { decisionLine } from './decide.ts';
-import type { ExportUsage, LibrariesFile, LibraryUsage, PropUsage, UsageSite } from './types.ts';
+import { PORTS, PORTS_DIR, portDir } from './ports/index.ts';
+import type { ExportUsage, LibrariesFile, LibraryPort, LibraryUsage, PropUsage, UsageSite } from './types.ts';
 
 export interface ParityOptions {
 	/** The Markless app; the port goes in `lib/parity/<library>/` under it. */
@@ -174,7 +176,7 @@ function sitesDoc(e: ExportUsage, limit = 6): string {
 }
 
 const usedDirectly = (lib: LibraryUsage) => lib.class === 'dom' && lib.decision?.choice === 'direct' && lib.name === lib.decision.engine;
-const needsPort = (lib: LibraryUsage, e: ExportUsage) => lib.class === 'parity' || (lib.class === 'dom' && !usedDirectly(lib)) || lib.class === 'unknown' || (lib.class === 'markless-ui' && (!e.maps || e.maps.available === false) && !(e.maps?.target.startsWith('<')));
+const needsPort = (lib: LibraryUsage, e: ExportUsage) => !e.maps?.from && (lib.class === 'parity' || (lib.class === 'dom' && !usedDirectly(lib)) || lib.class === 'unknown' || (lib.class === 'markless-ui' && (!e.maps || e.maps.available === false) && !(e.maps?.target.startsWith('<'))));
 
 function componentSkeleton(lib: LibraryUsage, e: ExportUsage): { name: string; code: string; namespace?: [string, string] } {
 	const elementSites = e.sites.filter((s) => s.kind === 'element').length || 1;
@@ -341,6 +343,8 @@ export async function writeParity(file: LibrariesFile, name: string, options: Pa
 	if (!found) throw new Error(`no library named ${name} in libraries.json; libraries: ${file.libraries.map((l) => l.name).join(', ')}`);
 	const lib = options.routes?.length ? narrowLibrary(found, options.routes) : found;
 	if (!lib.exports.length) throw new Error(`${found.name} is not used on ${options.routes!.join(', ')}`);
+	const shipped = lib.class === 'ported' ? PORTS[lib.name] : undefined;
+	if (shipped) return writePort(file, lib, shipped, options);
 	const slug = paritySlug(lib.name);
 	const dir = join(options.newApp, 'lib', 'parity', slug);
 	const notes: string[] = [];
@@ -426,6 +430,61 @@ export async function writeParity(file: LibrariesFile, name: string, options: Pa
 	await put(join(dir, 'behaviour.json'), `${JSON.stringify(json, null, '\t')}\n`, false);
 	await put(join(dir, 'behaviour.md'), behaviourMarkdown(lib, port, specs, options, journeys.length > 0, notes), false);
 	return { library: lib.name, dir, written, kept, exports: port.length, sites: lib.exports.reduce((n, e) => n + e.sites.length, 0), uncovered, notes };
+}
+
+const PORT_MARKER = /^\/\/ markless-migrate certified port [^\n]* sha256:([0-9a-f]{64})\n/;
+const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
+
+/** A shipped port file as parity writes it: one first line naming it and the hash of the rest. */
+function stamped(port: LibraryPort, name: string, source: string): string {
+	return `// markless-migrate certified port ${port.dir}/${name}, copied by markless-migrate parity; do not edit. sha256:${sha256(source)}\n${source}`;
+}
+
+function isPristine(text: string): boolean {
+	const marker = PORT_MARKER.exec(text);
+	return !!marker && sha256(text.slice(marker[0].length)) === marker[1];
+}
+
+/** Copies a certified port into the new app and writes which component replaces each part the app uses. */
+async function writePort(file: LibrariesFile, lib: LibraryUsage, port: LibraryPort, options: ParityOptions): Promise<ParityResult> {
+	const dir = join(options.newApp, portDir(port));
+	await mkdir(dir, { recursive: true });
+	const written: string[] = [];
+	const kept: string[] = [];
+	const notes: string[] = [];
+	for (const name of port.files) {
+		const target = join(dir, name);
+		const path = relative(options.newApp, target);
+		const source = await readFile(join(PORTS_DIR, port.dir, name), 'utf8');
+		const current = await readFile(target, 'utf8').catch(() => undefined);
+		// A copy still as parity wrote it is replaced by the port this markless-migrate ships; an edited one is kept.
+		if (current !== undefined && current !== stamped(port, name, source) && !isPristine(current)) {
+			kept.push(path);
+			notes.push(`${path} differs from the certified port this markless-migrate ships: the port is shared by every site, so restore it (delete it and run parity again) and raise what it lacks as a question instead of editing it.`);
+			continue;
+		}
+		await writeFile(target, stamped(port, name, source));
+		written.push(path);
+	}
+	const from = `${portDir(port)}/${port.module}`;
+	const users = [lib, ...file.libraries.filter((l) => l.local)].flatMap((l) => l.exports.filter((e) => e.maps?.from === from).map((e) => ({ owner: l, e })));
+	const lines = [`# ${lib.name}: the certified Markless port`, '', `Copied by markless-migrate parity from the port markless-migrate ships. Certified against ${port.library} ${port.version} by ${port.certifiedBy}: generated action sequences on the real library and on this port show the same markup, attributes, focus and animation frames. Do not edit these files; every site shares them.`, '', `Import from \`${from}\`. Each part renders the library's own markup (\`data-state\`, \`role\`, ids and aria references), so the old classes and selectors work unchanged. Element props (class, id, data-*, aria-*, event handlers) pass through to the element a part renders.`, '', '| Library export | Component | Props it covers | Not covered |', '| --- | --- | --- | --- |'];
+	for (const [name, part] of Object.entries(port.parts)) lines.push(`| ${name} | ${part.component} | ${part.props.join(', ')}${part.note ? ` (${part.note})` : ''} | ${Object.entries(part.unsupported).map(([k, why]) => `${k}: ${why}`).join('; ') || 'nothing'} |`);
+	lines.push('', ...port.notes.map((n) => `- ${n}`), '', '## What the app uses', '');
+	for (const { owner, e } of users) {
+		lines.push(`- ${owner.name === lib.name ? '' : `${owner.name} `}${e.name} -> ${e.maps!.target}${e.maps!.available === false ? ` (${e.maps!.note})` : ''}`);
+		const part = Object.values(port.parts).find((p) => p.component === e.maps!.target);
+		for (const s of e.sites) {
+			const uncovered = Object.keys(s.props ?? {}).filter((k) => part && k in part.unsupported);
+			if (uncovered.length) lines.push(`  - ${uncovered.join(', ')} at ${s.file}:${s.line}: not covered by the port; ask, do not work around it`);
+		}
+	}
+	// Ports of several libraries can share a directory; each library's account is its own file.
+	const spec = join(dir, `${port.module.replace(/\.[^.]+$/, '')}.behaviour.md`);
+	await writeFile(spec, `${lines.join('\n')}\n`);
+	written.push(relative(options.newApp, spec));
+	if (users.some(({ e }) => e.maps!.available === false)) notes.push(`${lib.name}: the app passes props the port does not cover; behaviour.md lists each one and where.`);
+	return { library: lib.name, dir, written, kept, exports: 0, sites: lib.exports.reduce((n, e) => n + e.sites.length, 0), uncovered: 0, notes };
 }
 
 function behaviourMarkdown(lib: LibraryUsage, port: readonly ExportUsage[], specs: Map<ExportUsage, SiteSpec[]>, options: ParityOptions, recorded: boolean, notes: readonly string[]): string {

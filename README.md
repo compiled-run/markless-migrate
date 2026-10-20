@@ -499,6 +499,28 @@ navigation would run a function); and when a content-hashed file the page loads 
 reports the CDN hit rate on the second pass, function invocations per page view and TTFB. Platform
 facts behind the rules: [docs/notes/caching.md](docs/notes/caching.md).
 
+## Certified library ports
+
+Some libraries are ported once in markless-migrate rather than once per site: `src/library/ports/<library>/`
+holds a Markless port (no React and no copy of the library) that renders the library's own markup and
+attributes, so the old classes and selectors work unchanged. Today that is `@radix-ui/react-dialog` and
+`@radix-ui/react-alert-dialog` 1.1.15, which shadcn/ui's dialog, sheet, alert dialog and command dialog wrap.
+`plan --source` classes such a library `ported` and maps each export the app uses, directly or through a
+local kit, to the port's component; a prop the port does not cover is named with the site that passes it.
+`parity <library>` copies the port into the new app's `lib/ports/<library>/` with a `<module>.behaviour.md`
+listing every export, the props each component covers and what the app uses. A copied file carries the
+hash of what was copied, so the next `parity` upgrades an untouched copy and keeps an edited one.
+`src/library/ports/index.ts` (`PORTS`) is the machine-readable list of parts and props each port covers.
+
+`test/e2e/radix-dialog-port.test.ts` certifies the port against the real library: the same page is built
+with both (`fixtures/radix-dialog-react`, `fixtures/radix-dialog-markless`) and driven through generated
+action sequences (clicks on the trigger and the close controls, clicks inside and outside, Escape, Tab,
+Shift+Tab, reopening from script during the exit animation), with the animation clock stopped between
+actions and moved one animation end at a time. After each action, halfway through the wait after it, at
+the end of the wait and in the two frames after each element's own animation ends, both pages must show
+the same elements, attributes, opacity and transforms, exposure to assistive technology, body attributes,
+focus guards, scroll lock and focus. `DIALOG_SEQUENCES` sets how many sequences run (100 by default).
+
 ## Switching routes over
 
 `switch <route>` adds the route (a path, or a pattern like `/blog/:slug`) to `.migrate/switched.json`.

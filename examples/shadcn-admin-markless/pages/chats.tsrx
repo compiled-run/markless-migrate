@@ -2,7 +2,7 @@ import { computed, element, state } from '@markless/core';
 import type { PageProps } from '@markless/router';
 import { Shell } from '../components/layout/shell.tsrx';
 import { layoutPrefs } from '../components/layout/prefs.ts';
-import { closeDialog, openDialog } from '../lib/parity/radix-ui-react-dialog/behaviour.ts';
+import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from '../lib/ports/radix-ui-react-dialog/dialog.tsrx';
 import { DURATION, expired, message, type Toast } from '../lib/parity/sonner/index.ts';
 import { Toaster } from '../lib/parity/sonner/toaster.tsrx';
 import { hideScrollbar, markActive, markChat, markChosen, placeThumb, showScrollbar } from '../lib/chats-dom.ts';
@@ -19,7 +19,6 @@ export default function Chats({ http }: PageProps) @{
 	let active = state(firstOf(commandOrder('', '')));
 	let chosen = state('');
 	let toasts = state<Toast[]>([]);
-	const dialog = element<HTMLDivElement>();
 	const commandList = element<HTMLDivElement>();
 	const chatListEl = element<HTMLDivElement>();
 	const scrollRoot = element<HTMLDivElement>();
@@ -58,7 +57,6 @@ export default function Chats({ http }: PageProps) @{
 								markActive(commandList, active);
 								markChosen(commandList, chosen);
 								setTimeout(() => markActive(commandList, active));
-								openDialog(dialog, { onDismiss: () => { newChatOpen = false; chosen = ''; closeDialog(dialog, false); } });
 							}}>
 								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-square-pen stroke-muted-foreground" aria-hidden="true"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" /></svg>
 							</button>
@@ -186,105 +184,102 @@ export default function Chats({ http }: PageProps) @{
 								markActive(commandList, active);
 								markChosen(commandList, chosen);
 								setTimeout(() => markActive(commandList, active));
-								openDialog(dialog, { onDismiss: () => { newChatOpen = false; chosen = ''; closeDialog(dialog, false); } });
 							}}>Send message</button>
 						</div>
 					</div>
 			</section>
 		</main>
-		<div data-state="closed" data-slot="dialog-overlay" class="fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0" style="pointer-events: auto;" hidden></div>
-		<div el={dialog} role="dialog" id="new-chat" aria-describedby="new-chat-description" aria-labelledby="new-chat-title" data-state="closed" data-slot="dialog-content" class="fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-150" tabindex="-1" style="pointer-events: auto;" hidden>
-			<div data-slot="dialog-header" class="flex flex-col gap-2 text-center sm:text-start">
-				<h2 id="new-chat-title" data-slot="dialog-title" class="text-lg leading-none font-semibold">New message</h2>
-			</div>
-			<div class="flex flex-col gap-4">
-				<div class="flex flex-wrap items-baseline-last gap-2">
-					<span class="min-h-6 text-sm text-muted-foreground">To:</span>
-					@for (const person of picked; key person.id) {
-						<span data-slot="badge" class="inline-flex items-center justify-center rounded-md border px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 [&>svg]:size-3 gap-1 [&>svg]:pointer-events-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive transition-[color,box-shadow] overflow-hidden border-transparent bg-primary text-primary-foreground [a&]:hover:bg-primary/90">{person.fullName}<button class="ms-1 rounded-full ring-offset-background outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2" onKeydown={(event) => {
-							if (event.key === 'Enter') {
-								chosen = toggleChosen(chosen, person.id);
-								markChosen(commandList, chosen);
-								dialog?.focus();
-							}
-						}} onClick={() => {
-							chosen = toggleChosen(chosen, person.id);
-							markChosen(commandList, chosen);
-							dialog?.focus();
-						}}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x h-3 w-3 text-muted-foreground hover:text-foreground" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg></button></span>
-					}
-				</div>
-				<div tabindex="-1" data-slot="command" class="flex h-full w-full flex-col overflow-hidden bg-popover text-popover-foreground rounded-lg border" cmdk-root="" onKeydown={(event) => {
-					if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End' || event.key === 'Enter') event.preventDefault();
-					if (event.key === 'Enter') {
-						if (active && order.split(',').includes(active)) {
-							chosen = toggleChosen(chosen, active);
-							markChosen(commandList, chosen);
-						}
-					} else if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
-						active = moveActive(order, active, event.key);
-						markActive(commandList, active);
-					}
-				}}>
-					<label cmdk-label="" for="new-chat-input" id="new-chat-label" style="position: absolute; width: 1px; height: 1px; padding: 0px; margin: -1px; overflow: hidden; clip: rect(0px, 0px, 0px, 0px); white-space: nowrap; border-width: 0px;"></label>
-					<div data-slot="command-input-wrapper" class="flex h-9 items-center gap-2 border-b px-3">
-						<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search size-4 shrink-0 opacity-50" aria-hidden="true"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg>
-						<input data-slot="command-input" class="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-hidden placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 text-foreground" placeholder="Search people..." cmdk-input="" autocomplete="off" autocorrect="off" spellcheck="false" aria-autocomplete="list" role="combobox" aria-expanded="true" aria-controls="new-chat-list" aria-labelledby="new-chat-label" aria-activedescendant={activeId} id="new-chat-input" type="text" value={query} onInput={(event) => {
-							query = (event.target as HTMLInputElement).value;
-							order = commandOrder(order, query);
-							active = firstOf(order);
-							markActive(commandList, active);
-							setTimeout(() => {
-								markActive(commandList, active);
-								markChosen(commandList, chosen);
-							});
-						}} />
+		<DialogRoot open={newChatOpen} onOpenChange={(next: boolean) => { newChatOpen = next; if (!next) chosen = ''; }}>
+			<DialogPortal>
+				<DialogOverlay data-slot="dialog-overlay" class="fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0"></DialogOverlay>
+				<DialogContent data-slot="dialog-content" class="fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-150">
+					<div data-slot="dialog-header" class="flex flex-col gap-2 text-center sm:text-start">
+						<DialogTitle data-slot="dialog-title" class="text-lg leading-none font-semibold">New message</DialogTitle>
 					</div>
-					<div data-slot="command-list" class="max-h-75 scroll-py-1 overflow-x-hidden overflow-y-auto" cmdk-list="" role="listbox" tabindex="-1" aria-label="Suggestions" id="new-chat-list" el={commandList}>
-						<div cmdk-list-sizer="">
-							<div data-slot="command-empty" class="py-6 text-center text-sm" cmdk-empty="" role="presentation" hidden={!noPeople}>No people found.</div>
-							<div data-slot="command-group" class="overflow-hidden p-1 text-foreground **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground" cmdk-group="" role="presentation" data-value="undefined" hidden={noPeople}>
-								<div cmdk-group-items="" role="group">
-									@for (const person of people; key person.id) {
-										<div data-slot="command-item" class="relative cursor-default rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground flex items-center justify-between gap-2 hover:bg-accent hover:text-accent-foreground" id={person.domId} cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value={person.value} onPointermove={() => {
-											active = person.id;
-											markActive(commandList, active);
-										}} onClick={() => {
-											chosen = toggleChosen(chosen, person.id);
-											markChosen(commandList, chosen);
-										}}>
-											<div class="flex items-center gap-2">
-												<img alt={person.fullName} class="h-8 w-8 rounded-full" src={person.profile} />
-												<div class="flex flex-col">
-													<span class="text-sm font-medium">{person.fullName}</span>
-													<span class="text-xs text-accent-foreground/70">{person.username}</span>
-												</div>
-											</div>
-											<svg style="display: none" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check h-4 w-4" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>
-										</div>
+					<div class="flex flex-col gap-4">
+						<div class="flex flex-wrap items-baseline-last gap-2">
+							<span class="min-h-6 text-sm text-muted-foreground">To:</span>
+							@for (const person of picked; key person.id) {
+								<span data-slot="badge" class="inline-flex items-center justify-center rounded-md border px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 [&>svg]:size-3 gap-1 [&>svg]:pointer-events-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive transition-[color,box-shadow] overflow-hidden border-transparent bg-primary text-primary-foreground [a&]:hover:bg-primary/90">{person.fullName}<button class="ms-1 rounded-full ring-offset-background outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2" onKeydown={(event) => {
+									if (event.key === 'Enter') {
+										chosen = toggleChosen(chosen, person.id);
+										markChosen(commandList, chosen);
 									}
+								}} onClick={() => {
+									chosen = toggleChosen(chosen, person.id);
+									markChosen(commandList, chosen);
+								}}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x h-3 w-3 text-muted-foreground hover:text-foreground" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg></button></span>
+							}
+						</div>
+						<div tabindex="-1" data-slot="command" class="flex h-full w-full flex-col overflow-hidden bg-popover text-popover-foreground rounded-lg border" cmdk-root="" onKeydown={(event) => {
+							if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End' || event.key === 'Enter') event.preventDefault();
+							if (event.key === 'Enter') {
+								if (active && order.split(',').includes(active)) {
+									chosen = toggleChosen(chosen, active);
+									markChosen(commandList, chosen);
+								}
+							} else if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
+								active = moveActive(order, active, event.key);
+								markActive(commandList, active);
+							}
+						}}>
+							<label cmdk-label="" for="new-chat-input" id="new-chat-label" style="position: absolute; width: 1px; height: 1px; padding: 0px; margin: -1px; overflow: hidden; clip: rect(0px, 0px, 0px, 0px); white-space: nowrap; border-width: 0px;"></label>
+							<div data-slot="command-input-wrapper" class="flex h-9 items-center gap-2 border-b px-3">
+								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search size-4 shrink-0 opacity-50" aria-hidden="true"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg>
+								<input data-slot="command-input" class="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-hidden placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 text-foreground" placeholder="Search people..." cmdk-input="" autocomplete="off" autocorrect="off" spellcheck="false" aria-autocomplete="list" role="combobox" aria-expanded="true" aria-controls="new-chat-list" aria-labelledby="new-chat-label" aria-activedescendant={activeId} id="new-chat-input" type="text" value={query} onInput={(event) => {
+									query = (event.target as HTMLInputElement).value;
+									order = commandOrder(order, query);
+									active = firstOf(order);
+									markActive(commandList, active);
+									setTimeout(() => {
+										markActive(commandList, active);
+										markChosen(commandList, chosen);
+									});
+								}} />
+							</div>
+							<div data-slot="command-list" class="max-h-75 scroll-py-1 overflow-x-hidden overflow-y-auto" cmdk-list="" role="listbox" tabindex="-1" aria-label="Suggestions" id="new-chat-list" el={commandList}>
+								<div cmdk-list-sizer="">
+									<div data-slot="command-empty" class="py-6 text-center text-sm" cmdk-empty="" role="presentation" hidden={!noPeople}>No people found.</div>
+									<div data-slot="command-group" class="overflow-hidden p-1 text-foreground **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground" cmdk-group="" role="presentation" data-value="undefined" hidden={noPeople}>
+										<div cmdk-group-items="" role="group">
+											@for (const person of people; key person.id) {
+												<div data-slot="command-item" class="relative cursor-default rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground flex items-center justify-between gap-2 hover:bg-accent hover:text-accent-foreground" id={person.domId} cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value={person.value} onPointermove={() => {
+													active = person.id;
+													markActive(commandList, active);
+												}} onClick={() => {
+													chosen = toggleChosen(chosen, person.id);
+													markChosen(commandList, chosen);
+												}}>
+													<div class="flex items-center gap-2">
+														<img alt={person.fullName} class="h-8 w-8 rounded-full" src={person.profile} />
+														<div class="flex flex-col">
+															<span class="text-sm font-medium">{person.fullName}</span>
+															<span class="text-xs text-accent-foreground/70">{person.username}</span>
+														</div>
+													</div>
+													<svg style="display: none" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check h-4 w-4" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>
+												</div>
+											}
+										</div>
+									</div>
 								</div>
 							</div>
 						</div>
+						<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-primary text-primary-foreground shadow-xs hover:bg-primary/90 h-9 px-4 py-2 has-[>svg]:px-3" disabled={noChosen} onClick={() => {
+							const id = `chat-${Date.now()}`;
+							toasts = message(toasts, id, 'You submitted the following values:', submitted(chosen));
+							setTimeout(() => {
+								toasts = expired(toasts, id);
+							}, DURATION);
+						}}>Chat</button>
 					</div>
-				</div>
-				<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-primary text-primary-foreground shadow-xs hover:bg-primary/90 h-9 px-4 py-2 has-[>svg]:px-3" disabled={noChosen} onClick={() => {
-					const id = `chat-${Date.now()}`;
-					toasts = message(toasts, id, 'You submitted the following values:', submitted(chosen));
-					setTimeout(() => {
-						toasts = expired(toasts, id);
-					}, DURATION);
-				}}>Chat</button>
-			</div>
-			<button type="button" data-slot="dialog-close" class="absolute inset-e-4 top-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4" onClick={() => {
-				newChatOpen = false;
-				chosen = '';
-				closeDialog(dialog, false);
-			}}>
-				<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-				<span class="sr-only">Close</span>
-			</button>
-		</div>
+					<DialogClose data-slot="dialog-close" class="absolute inset-e-4 top-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4">
+						<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+						<span class="sr-only">Close</span>
+					</DialogClose>
+				</DialogContent>
+			</DialogPortal>
+		</DialogRoot>
 		<Toaster toasts={toasts} extra={true} />
 	</Shell>
 }

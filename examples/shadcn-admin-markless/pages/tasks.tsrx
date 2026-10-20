@@ -6,7 +6,8 @@ import type { PageProps } from '@markless/router';
 import { Shell } from '../components/layout/shell.tsrx';
 import { layoutPrefs } from '../components/layout/prefs.ts';
 import { chosenIn, filterIn, moveIn } from '../lib/parity/cmdk/behaviour.ts';
-import { closeDialog, openDialog } from '../lib/parity/radix-ui-react-dialog/behaviour.ts';
+import { AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogOverlay, AlertDialogPortal, AlertDialogRoot, AlertDialogTitle } from '../lib/ports/radix-ui-react-dialog/alert-dialog.tsrx';
+import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from '../lib/ports/radix-ui-react-dialog/dialog.tsrx';
 import { closeMenu, openMenu, toggleMenu } from '../lib/parity/radix-ui-react-dropdown-menu/behaviour.ts';
 import { DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger, menus, PopoverContent, SelectItem } from '../lib/parity/radix-ui-react-dropdown-menu/menu.tsrx';
 import { revalidate } from '../lib/parity/react-hook-form/index.ts';
@@ -155,7 +156,6 @@ export default function Tasks({ http, url }: PageProps) @{
 						importError = '';
 						importSubmitted = false;
 						clearFiles('tasks-import-file');
-						openDialog('tasks-import-dialog', { onDismiss: () => { importOpen = false; closeDialog('tasks-import-dialog', false); blurActive(); } });
 					}}>
 						<span>Import</span>
 						<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-download" aria-hidden="true"><path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /></svg>
@@ -166,7 +166,6 @@ export default function Tasks({ http, url }: PageProps) @{
 						errors = {};
 						submitted = false;
 						sheetOpen = true;
-						openDialog('tasks-sheet', { onDismiss: () => { if (m.open === '') { sheetOpen = false; closeDialog('tasks-sheet', false); blurActive(); } } });
 					}}>
 						<span>Create</span>
 						<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus" aria-hidden="true"><path d="M5 12h14" /><path d="M12 5v14" /></svg>
@@ -462,7 +461,6 @@ export default function Tasks({ http, url }: PageProps) @{
 						</button>
 						<button data-slot="tooltip-trigger" class={btn('destructive', 'icon', 'size-8')} aria-label="Delete selected tasks" title="Delete selected tasks" data-state="closed" onClick={() => {
 							multiOpen = true;
-							openDialog('tasks-multi-delete-dialog', { alert: true, focus: document.getElementById('tasks-multi-delete-input'), onDismiss: () => { multiOpen = false; closeDialog('tasks-multi-delete-dialog', false); blurActive(); } });
 						}}>
 							<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2 lucide-trash-2" aria-hidden="true"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
 							<span class="sr-only">Delete selected tasks</span>
@@ -472,232 +470,242 @@ export default function Tasks({ http, url }: PageProps) @{
 			</div>
 		</main>
 
-		<div data-state="closed" data-slot="alert-dialog-overlay" class={OVERLAY} style="pointer-events: auto;" hidden></div>
-		<div role="alertdialog" id="tasks-delete-dialog" aria-describedby="tasks-delete-description" aria-labelledby="tasks-delete-title" data-state="closed" data-slot="alert-dialog-content" class={`${ALERT_CONTENT} max-w-md`} tabindex="-1" style="pointer-events: auto;" hidden>
-			<div data-slot="alert-dialog-header" class="flex flex-col gap-2 sm:text-start text-start">
-				<h2 id="tasks-delete-title" data-slot="alert-dialog-title" class="text-lg font-semibold">{deleteTitle}</h2>
-				<div id="tasks-delete-description" data-slot="alert-dialog-description" class="text-sm text-muted-foreground">
-					You are about to delete a task with the ID <strong>{currentId}</strong>. <span class="block"></span>This action cannot be undone.
-				</div>
-			</div>
-			<div data-slot="alert-dialog-footer" class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-				<button type="button" id="tasks-delete-cancel" class={btn('outline', 'default')} onClick={() => { deleteOpen = false; closeDialog('tasks-delete-dialog', false); blurActive(); }}>Cancel</button>
-				<button data-slot="button" class={btn('destructive', 'default')} type="button" onClick={() => {
-					deleteOpen = false;
-					closeDialog('tasks-delete-dialog', false); blurActive();
-					blurActive();
-					const id = `deleted-${Date.now()}`;
-					toasts = message(toasts, id, 'The following task has been deleted:', json(taskAt(current)));
-					setTimeout(() => { toasts = expired(toasts, id); }, DURATION);
-				}}>Delete</button>
-			</div>
-		</div>
+		<AlertDialogRoot open={deleteOpen} onOpenChange={(next: boolean) => { deleteOpen = next; }}>
+			<AlertDialogPortal>
+				<AlertDialogOverlay data-slot="alert-dialog-overlay" class={OVERLAY}></AlertDialogOverlay>
+				<AlertDialogContent data-slot="alert-dialog-content" class={`${ALERT_CONTENT} max-w-md`}>
+					<div data-slot="alert-dialog-header" class="flex flex-col gap-2 sm:text-start text-start">
+						<AlertDialogTitle data-slot="alert-dialog-title" class="text-lg font-semibold">{deleteTitle}</AlertDialogTitle>
+						<AlertDialogDescription asChild data-slot="alert-dialog-description" class="text-sm text-muted-foreground">
+							You are about to delete a task with the ID <strong>{currentId}</strong>. <span class="block"></span>This action cannot be undone.
+						</AlertDialogDescription>
+					</div>
+					<div data-slot="alert-dialog-footer" class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+						<AlertDialogCancel class={btn('outline', 'default')}>Cancel</AlertDialogCancel>
+						<button data-slot="button" class={btn('destructive', 'default')} type="button" onClick={() => {
+							deleteOpen = false;
+							const id = `deleted-${Date.now()}`;
+							toasts = message(toasts, id, 'The following task has been deleted:', json(taskAt(current)));
+							setTimeout(() => { toasts = expired(toasts, id); }, DURATION);
+						}}>Delete</button>
+					</div>
+				</AlertDialogContent>
+			</AlertDialogPortal>
+		</AlertDialogRoot>
 
-		<div data-state="closed" data-slot="alert-dialog-overlay" class={OVERLAY} style="pointer-events: auto;" hidden></div>
-		<div role="alertdialog" id="tasks-multi-delete-dialog" aria-describedby="tasks-multi-delete-description" aria-labelledby="tasks-multi-delete-title" data-state="closed" data-slot="alert-dialog-content" class={`${ALERT_CONTENT} max-w-[calc(100%-2rem)]`} tabindex="-1" style="pointer-events: auto;" hidden>
-			<div data-slot="alert-dialog-header" class="flex flex-col gap-2 sm:text-start text-start">
-				<h2 id="tasks-multi-delete-title" data-slot="alert-dialog-title" class="text-lg font-semibold">
-					<span class="text-destructive">
-						<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-triangle-alert me-1 inline-block stroke-destructive" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
-						<span>{' Delete '}</span><span>{countText}</span><span>{' '}</span><span>{multiNoun}</span>
-					</span>
-				</h2>
-				<div id="tasks-multi-delete-description" data-slot="alert-dialog-description" class="text-sm text-muted-foreground">
-					<form id="tasks-multi-delete-form" class="space-y-4" onSubmit={(event) => {
+		<AlertDialogRoot open={multiOpen} onOpenChange={(next: boolean) => { multiOpen = next; }}>
+			<AlertDialogPortal>
+				<AlertDialogOverlay data-slot="alert-dialog-overlay" class={OVERLAY}></AlertDialogOverlay>
+				<AlertDialogContent data-slot="alert-dialog-content" class={`${ALERT_CONTENT} max-w-[calc(100%-2rem)]`}>
+					<div data-slot="alert-dialog-header" class="flex flex-col gap-2 sm:text-start text-start">
+						<AlertDialogTitle data-slot="alert-dialog-title" class="text-lg font-semibold">
+							<span class="text-destructive">
+								<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-triangle-alert me-1 inline-block stroke-destructive" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
+								<span>{' Delete '}</span><span>{countText}</span><span>{' '}</span><span>{multiNoun}</span>
+							</span>
+						</AlertDialogTitle>
+						<AlertDialogDescription asChild data-slot="alert-dialog-description" class="text-sm text-muted-foreground">
+							<form id="tasks-multi-delete-form" class="space-y-4" onSubmit={(event) => {
+								event.preventDefault();
+								if (confirmValue.trim() === CONFIRM_WORD) {
+									const n = count;
+									const id = `multi-${Date.now()}`;
+									multiOpen = false;
+									selected = '';
+									toasts = promiseLoading(toasts, id, 'Deleting tasks...');
+									setTimeout(() => {
+										confirmValue = '';
+										toasts = promiseSuccess(toasts, id, `Deleted ${n} ${n > 1 ? 'tasks' : 'task'}`);
+										setTimeout(() => { toasts = expired(toasts, id); }, DURATION);
+									}, 2000);
+								}
+							}}>
+								<p class="mb-2">Are you sure you want to delete the selected tasks? <span class="block"></span>This action cannot be undone.</p>
+								<label data-slot="label" class={LABEL}>
+									<span class="">{'Confirm by typing "DELETE":'}</span>
+									<input data-slot="input" id="tasks-multi-delete-input" autofocus class={INPUT} placeholder={'Type "DELETE" to confirm.'} value={confirmValue} onInput={(event) => { confirmValue = (event.target as HTMLInputElement).value; }} />
+								</label>
+								<div data-slot="alert" role="alert" class={ALERT_DESTRUCTIVE}>
+									<div data-slot="alert-title" class="col-start-2 line-clamp-1 min-h-4 font-medium tracking-tight">Warning!</div>
+									<div data-slot="alert-description" class="col-start-2 grid justify-items-start gap-1 text-sm text-muted-foreground [&_p]:leading-relaxed">Please be careful, this operation can not be rolled back.</div>
+								</div>
+							</form>
+						</AlertDialogDescription>
+					</div>
+					<div data-slot="alert-dialog-footer" class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+						<AlertDialogCancel class={btn('outline', 'default')}>Cancel</AlertDialogCancel>
+						<button data-slot="button" class={btn('destructive', 'default')} type="submit" form="tasks-multi-delete-form" disabled={multiDisabled}>Delete</button>
+					</div>
+				</AlertDialogContent>
+			</AlertDialogPortal>
+		</AlertDialogRoot>
+
+		<DialogRoot open={importOpen} onOpenChange={(next: boolean) => { importOpen = next; }}>
+			<DialogPortal>
+				<DialogOverlay data-slot="dialog-overlay" class={OVERLAY}></DialogOverlay>
+				<DialogContent data-slot="dialog-content" class={DIALOG_CONTENT}>
+					<div data-slot="dialog-header" class="flex flex-col gap-2 sm:text-start text-start">
+						<DialogTitle data-slot="dialog-title" class="text-lg leading-none font-semibold">Import Tasks</DialogTitle>
+						<DialogDescription data-slot="dialog-description" class="text-sm text-muted-foreground">Import tasks quickly from a CSV file.</DialogDescription>
+					</div>
+					<form id="task-import-form" onSubmit={(event) => {
 						event.preventDefault();
-						if (confirmValue.trim() === CONFIRM_WORD) {
-							const n = count;
-							const id = `multi-${Date.now()}`;
-							multiOpen = false;
-							closeDialog('tasks-multi-delete-dialog', false); blurActive();
-							blurActive();
-							selected = '';
-							toasts = promiseLoading(toasts, id, 'Deleting tasks...');
-							setTimeout(() => {
-								confirmValue = '';
-								toasts = promiseSuccess(toasts, id, `Deleted ${n} ${n > 1 ? 'tasks' : 'task'}`);
-								setTimeout(() => { toasts = expired(toasts, id); }, DURATION);
-							}, 2000);
+						importSubmitted = true;
+						const files = filesIn('tasks-import-file');
+						const result = importForm.resolver({ file: files });
+						importError = result.file ?? '';
+						if (result.file) {
+							document.getElementById('tasks-import-file')?.focus();
+						} else {
+							const id = `import-${Date.now()}`;
+							toasts = message(toasts, id, 'You have imported the following file:', fileDetails(files));
+							setTimeout(() => { toasts = expired(toasts, id); }, DURATION);
+							importOpen = false;
 						}
 					}}>
-						<p class="mb-2">Are you sure you want to delete the selected tasks? <span class="block"></span>This action cannot be undone.</p>
-						<label data-slot="label" class={LABEL}>
-							<span class="">{'Confirm by typing "DELETE":'}</span>
-							<input data-slot="input" id="tasks-multi-delete-input" class={INPUT} placeholder={'Type "DELETE" to confirm.'} value={confirmValue} onInput={(event) => { confirmValue = (event.target as HTMLInputElement).value; }} />
-						</label>
-						<div data-slot="alert" role="alert" class={ALERT_DESTRUCTIVE}>
-							<div data-slot="alert-title" class="col-start-2 line-clamp-1 min-h-4 font-medium tracking-tight">Warning!</div>
-							<div data-slot="alert-description" class="col-start-2 grid justify-items-start gap-1 text-sm text-muted-foreground [&_p]:leading-relaxed">Please be careful, this operation can not be rolled back.</div>
+						<div data-slot="form-item" class="grid gap-2 my-2">
+							<label data-slot="form-label" class={FORM_LABEL} data-error={importInvalid} for="tasks-import-file">File</label>
+							<input data-slot="form-control" class={FILE_INPUT} accept="text/csv" id="tasks-import-file" aria-describedby={importDescribedBy} aria-invalid={importInvalid} type="file" name="file" onChange={() => {
+								if (importSubmitted) importError = importForm.resolver({ file: filesIn('tasks-import-file') }).file ?? '';
+							}} />
+							@if (importError) {
+								<p data-slot="form-message" id="tasks-import-file-form-item-message" class="text-sm text-destructive">{importError}</p>
+							}
 						</div>
 					</form>
-				</div>
-			</div>
-			<div data-slot="alert-dialog-footer" class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-				<button type="button" id="tasks-multi-delete-cancel" class={btn('outline', 'default')} onClick={() => { multiOpen = false; closeDialog('tasks-multi-delete-dialog', false); blurActive(); }}>Cancel</button>
-				<button data-slot="button" class={btn('destructive', 'default')} type="submit" form="tasks-multi-delete-form" disabled={multiDisabled}>Delete</button>
-			</div>
-		</div>
+					<div data-slot="dialog-footer" class="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+						<DialogClose data-slot="dialog-close" class={btn('outline', 'default')}>Close</DialogClose>
+						<button data-slot="button" class={btn('default', 'default')} type="submit" form="task-import-form">Import</button>
+					</div>
+					<DialogClose data-slot="dialog-close" class={DIALOG_CLOSE_X}>
+						<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+						<span class="sr-only">Close</span>
+					</DialogClose>
+				</DialogContent>
+			</DialogPortal>
+		</DialogRoot>
 
-		<div data-state="closed" data-slot="dialog-overlay" class={OVERLAY} hidden></div>
-		<div role="dialog" id="tasks-import-dialog" aria-describedby="tasks-import-description" aria-labelledby="tasks-import-title" data-state="closed" data-slot="dialog-content" class={DIALOG_CONTENT} tabindex="-1" style="pointer-events: auto;" hidden>
-			<div data-slot="dialog-header" class="flex flex-col gap-2 sm:text-start text-start">
-				<h2 id="tasks-import-title" data-slot="dialog-title" class="text-lg leading-none font-semibold">Import Tasks</h2>
-				<p id="tasks-import-description" data-slot="dialog-description" class="text-sm text-muted-foreground">Import tasks quickly from a CSV file.</p>
-			</div>
-			<form id="task-import-form" onSubmit={(event) => {
-				event.preventDefault();
-				importSubmitted = true;
-				const files = filesIn('tasks-import-file');
-				const result = importForm.resolver({ file: files });
-				importError = result.file ?? '';
-				if (result.file) {
-					document.getElementById('tasks-import-file')?.focus();
-				} else {
-					const id = `import-${Date.now()}`;
-					toasts = message(toasts, id, 'You have imported the following file:', fileDetails(files));
-					setTimeout(() => { toasts = expired(toasts, id); }, DURATION);
-					importOpen = false;
-					closeDialog('tasks-import-dialog', false); blurActive();
-				}
-			}}>
-				<div data-slot="form-item" class="grid gap-2 my-2">
-					<label data-slot="form-label" class={FORM_LABEL} data-error={importInvalid} for="tasks-import-file">File</label>
-					<input data-slot="form-control" class={FILE_INPUT} accept="text/csv" id="tasks-import-file" aria-describedby={importDescribedBy} aria-invalid={importInvalid} type="file" name="file" onChange={() => {
-						if (importSubmitted) importError = importForm.resolver({ file: filesIn('tasks-import-file') }).file ?? '';
-					}} />
-					@if (importError) {
-						<p data-slot="form-message" id="tasks-import-file-form-item-message" class="text-sm text-destructive">{importError}</p>
-					}
-				</div>
-			</form>
-			<div data-slot="dialog-footer" class="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
-				<button data-slot="dialog-close" class={btn('outline', 'default')} type="button" onClick={() => { importOpen = false; closeDialog('tasks-import-dialog', false); blurActive(); }}>Close</button>
-				<button data-slot="button" class={btn('default', 'default')} type="submit" form="task-import-form">Import</button>
-			</div>
-			<button type="button" data-slot="dialog-close" class={DIALOG_CLOSE_X} onClick={() => { importOpen = false; closeDialog('tasks-import-dialog', false); blurActive(); }}>
-				<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-				<span class="sr-only">Close</span>
-			</button>
-		</div>
-
-		<div data-state="closed" data-slot="sheet-overlay" class={OVERLAY} hidden></div>
-		<div role="dialog" id="tasks-sheet" aria-describedby="tasks-sheet-description" aria-labelledby="tasks-sheet-title" data-state="closed" data-slot="sheet-content" class={SHEET_CONTENT} tabindex="-1" style="pointer-events: auto;" hidden>
-			<div data-slot="sheet-header" class="flex flex-col gap-1.5 p-4 text-start">
-				<h2 id="tasks-sheet-title" data-slot="sheet-title" class="font-semibold text-foreground"><span>{sheetTitle}</span><span>{' Task'}</span></h2>
-				<p id="tasks-sheet-description" data-slot="sheet-description" class="text-sm text-muted-foreground"><span>{sheetDescription}</span><span>{"Click save when you're done."}</span></p>
-			</div>
-			<form id="tasks-form" class="flex-1 space-y-6 overflow-y-auto px-4" novalidate onSubmit={(event) => {
-				event.preventDefault();
-				submitted = true;
-				const result = form.resolver(values);
-				errors = result;
-				if (Object.keys(result).length > 0) {
-					focusFirstError(result);
-				} else {
-					const data = values;
-					sheetOpen = false;
-					closeDialog('tasks-sheet', false); blurActive();
-					const id = `submitted-${Date.now()}`;
-					toasts = message(toasts, id, 'You submitted the following values:', json(data));
-					setTimeout(() => { toasts = expired(toasts, id); }, DURATION);
-				}
-			}}>
-				<div data-slot="form-item" class="grid gap-2">
-					<label data-slot="form-label" class={FORM_LABEL} data-error={titleInvalid} for="tasks-form-title">Title</label>
-					<input data-slot="form-control" class={INPUT} placeholder="Enter a title" id="tasks-form-title" aria-describedby={titleDescribedBy} aria-invalid={titleInvalid} value={values.title} name="title" onInput={(event) => {
-						values.title = (event.target as HTMLInputElement).value;
-						errors = revalidate(form, submitted, values, errors);
-					}} />
-					@if (titleError) {
-						<p data-slot="form-message" id="tasks-form-title-message" class="text-sm text-destructive">{titleError}</p>
-					}
-				</div>
-				<div data-slot="form-item" class="grid gap-2">
-					<label data-slot="form-label" class={FORM_LABEL} data-error={statusInvalid} for="tasks-form-status" id="tasks-form-status-label">Status</label>
-					<DropdownMenuTrigger menu="tasks-form-status" haspopup="listbox" role="combobox" aria-autocomplete="none" dir="ltr" data-placeholder={statusPlaceholder} slot="form-control" data-size="default" class={selectTriggerClass} aria-labelledby="tasks-form-status-label" aria-describedby={statusDescribedBy} aria-invalid={statusInvalid}>
-						<span data-slot="select-value" style="pointer-events: none;">{statusValueText}</span>
-						<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-4 opacity-50" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
-					</DropdownMenuTrigger>
-					<select aria-hidden="true" tabindex="-1" style="position: absolute; border: 0px; width: 1px; height: 1px; padding: 0px; margin: -1px; overflow: hidden; clip: rect(0px, 0px, 0px, 0px); white-space: nowrap; overflow-wrap: normal;" value={values.status}>
-						<option value=""></option>
-						<option value="in progress">In Progress</option>
-						<option value="backlog">Backlog</option>
-						<option value="todo">Todo</option>
-						<option value="canceled">Canceled</option>
-						<option value="done">Done</option>
-					</select>
-					@if (statusError) {
-						<p data-slot="form-message" id="tasks-form-status-message" class="text-sm text-destructive">{statusError}</p>
-					}
-				</div>
-				<div data-slot="form-item" class="grid gap-2 relative">
-					<label data-slot="form-label" class={FORM_LABEL} data-error={labelInvalid} for="tasks-form-label">Label</label>
-					<div el={labelGroup} role="radiogroup" aria-required="false" dir="ltr" data-slot="form-control" class="gap-3 flex flex-col space-y-1" id="tasks-form-label" aria-describedby={labelDescribedBy} aria-invalid={labelInvalid} tabindex="0" style="outline: none;" onKeydown={(event) => {
-						if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-							event.preventDefault();
-							const next = radioKey(labelGroup, event.key);
-							if (next) {
-								values.label = next;
-								errors = revalidate(form, submitted, values, errors);
-							}
+		<DialogRoot open={sheetOpen} onOpenChange={(next: boolean) => { sheetOpen = next; }}>
+			<DialogPortal>
+				<DialogOverlay data-slot="sheet-overlay" class={OVERLAY}></DialogOverlay>
+				<DialogContent data-slot="sheet-content" class={SHEET_CONTENT}>
+					<div data-slot="sheet-header" class="flex flex-col gap-1.5 p-4 text-start">
+						<DialogTitle data-slot="sheet-title" class="font-semibold text-foreground"><span>{sheetTitle}</span><span>{' Task'}</span></DialogTitle>
+						<DialogDescription data-slot="sheet-description" class="text-sm text-muted-foreground"><span>{sheetDescription}</span><span>{"Click save when you're done."}</span></DialogDescription>
+					</div>
+					<form id="tasks-form" class="flex-1 space-y-6 overflow-y-auto px-4" novalidate onSubmit={(event) => {
+						event.preventDefault();
+						submitted = true;
+						const result = form.resolver(values);
+						errors = result;
+						if (Object.keys(result).length > 0) {
+							focusFirstError(result);
+						} else {
+							const data = values;
+							sheetOpen = false;
+							const id = `submitted-${Date.now()}`;
+							toasts = message(toasts, id, 'You submitted the following values:', json(data));
+							setTimeout(() => { toasts = expired(toasts, id); }, DURATION);
 						}
 					}}>
-						@for (const o of labelOptionList; key o.value) {
-							<div data-slot="form-item" class="gap-2 flex items-center">
-								<button type="button" role="radio" aria-checked={o.checked ? 'true' : 'false'} data-state={o.checked ? 'checked' : 'unchecked'} value={o.value} data-slot="form-control" class={RADIO} id={o.first ? 'tasks-form-label-first' : `tasks-form-label-${o.value}`} aria-describedby={labelDescribedBy} aria-invalid={labelInvalid} tabindex={o.tab} data-radix-collection-item="" onClick={(event) => {
-									values.label = radioValue(event.target);
-									errors = revalidate(form, submitted, values, errors);
-								}}>
-									<span data-state="checked" data-slot="radio-group-indicator" class="relative flex items-center justify-center" hidden={!o.checked}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 fill-primary" aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg></span>
-								</button>
-								<input aria-hidden="true" tabindex="-1" type="radio" value={o.value} checked={o.checked} style="transform: translateX(-100%); position: absolute; pointer-events: none; opacity: 0; margin: 0px; width: 16px; height: 16px;" />
-								<label data-slot="form-label" class={RADIO_LABEL} data-error={labelInvalid} for={o.first ? 'tasks-form-label-first' : `tasks-form-label-${o.value}`}>{o.label}</label>
-							</div>
-						}
-					</div>
-					@if (labelError) {
-						<p data-slot="form-message" id="tasks-form-label-message" class="text-sm text-destructive">{labelError}</p>
-					}
-				</div>
-				<div data-slot="form-item" class="grid gap-2 relative">
-					<label data-slot="form-label" class={FORM_LABEL} data-error={priorityInvalid} for="tasks-form-priority">Priority</label>
-					<div el={priorityGroup} role="radiogroup" aria-required="false" dir="ltr" data-slot="form-control" class="gap-3 flex flex-col space-y-1" id="tasks-form-priority" aria-describedby={priorityDescribedBy} aria-invalid={priorityInvalid} tabindex="0" style="outline: none;" onKeydown={(event) => {
-						if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-							event.preventDefault();
-							const next = radioKey(priorityGroup, event.key);
-							if (next) {
-								values.priority = next;
+						<div data-slot="form-item" class="grid gap-2">
+							<label data-slot="form-label" class={FORM_LABEL} data-error={titleInvalid} for="tasks-form-title">Title</label>
+							<input data-slot="form-control" class={INPUT} placeholder="Enter a title" id="tasks-form-title" aria-describedby={titleDescribedBy} aria-invalid={titleInvalid} value={values.title} name="title" onInput={(event) => {
+								values.title = (event.target as HTMLInputElement).value;
 								errors = revalidate(form, submitted, values, errors);
+							}} />
+							@if (titleError) {
+								<p data-slot="form-message" id="tasks-form-title-message" class="text-sm text-destructive">{titleError}</p>
 							}
-						}
-					}}>
-						@for (const o of priorityOptionList; key o.value) {
-							<div data-slot="form-item" class="gap-2 flex items-center">
-								<button type="button" role="radio" aria-checked={o.checked ? 'true' : 'false'} data-state={o.checked ? 'checked' : 'unchecked'} value={o.value} data-slot="form-control" class={RADIO} id={o.first ? 'tasks-form-priority-first' : `tasks-form-priority-${o.value}`} aria-describedby={priorityDescribedBy} aria-invalid={priorityInvalid} tabindex={o.tab} data-radix-collection-item="" onClick={(event) => {
-									values.priority = radioValue(event.target);
-									errors = revalidate(form, submitted, values, errors);
-								}}>
-									<span data-state="checked" data-slot="radio-group-indicator" class="relative flex items-center justify-center" hidden={!o.checked}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 fill-primary" aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg></span>
-								</button>
-								<input aria-hidden="true" tabindex="-1" type="radio" value={o.value} checked={o.checked} style="transform: translateX(-100%); position: absolute; pointer-events: none; opacity: 0; margin: 0px; width: 16px; height: 16px;" />
-								<label data-slot="form-label" class={RADIO_LABEL} data-error={priorityInvalid} for={o.first ? 'tasks-form-priority-first' : `tasks-form-priority-${o.value}`}>{o.label}</label>
+						</div>
+						<div data-slot="form-item" class="grid gap-2">
+							<label data-slot="form-label" class={FORM_LABEL} data-error={statusInvalid} for="tasks-form-status" id="tasks-form-status-label">Status</label>
+							<DropdownMenuTrigger menu="tasks-form-status" haspopup="listbox" role="combobox" aria-autocomplete="none" dir="ltr" data-placeholder={statusPlaceholder} slot="form-control" data-size="default" class={selectTriggerClass} aria-labelledby="tasks-form-status-label" aria-describedby={statusDescribedBy} aria-invalid={statusInvalid}>
+								<span data-slot="select-value" style="pointer-events: none;">{statusValueText}</span>
+								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-4 opacity-50" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+							</DropdownMenuTrigger>
+							<select aria-hidden="true" tabindex="-1" style="position: absolute; border: 0px; width: 1px; height: 1px; padding: 0px; margin: -1px; overflow: hidden; clip: rect(0px, 0px, 0px, 0px); white-space: nowrap; overflow-wrap: normal;" value={values.status}>
+								<option value=""></option>
+								<option value="in progress">In Progress</option>
+								<option value="backlog">Backlog</option>
+								<option value="todo">Todo</option>
+								<option value="canceled">Canceled</option>
+								<option value="done">Done</option>
+							</select>
+							@if (statusError) {
+								<p data-slot="form-message" id="tasks-form-status-message" class="text-sm text-destructive">{statusError}</p>
+							}
+						</div>
+						<div data-slot="form-item" class="grid gap-2 relative">
+							<label data-slot="form-label" class={FORM_LABEL} data-error={labelInvalid} for="tasks-form-label">Label</label>
+							<div el={labelGroup} role="radiogroup" aria-required="false" dir="ltr" data-slot="form-control" class="gap-3 flex flex-col space-y-1" id="tasks-form-label" aria-describedby={labelDescribedBy} aria-invalid={labelInvalid} tabindex="0" style="outline: none;" onKeydown={(event) => {
+								if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+									event.preventDefault();
+									const next = radioKey(labelGroup, event.key);
+									if (next) {
+										values.label = next;
+										errors = revalidate(form, submitted, values, errors);
+									}
+								}
+							}}>
+								@for (const o of labelOptionList; key o.value) {
+									<div data-slot="form-item" class="gap-2 flex items-center">
+										<button type="button" role="radio" aria-checked={o.checked ? 'true' : 'false'} data-state={o.checked ? 'checked' : 'unchecked'} value={o.value} data-slot="form-control" class={RADIO} id={o.first ? 'tasks-form-label-first' : `tasks-form-label-${o.value}`} aria-describedby={labelDescribedBy} aria-invalid={labelInvalid} tabindex={o.tab} data-radix-collection-item="" onClick={(event) => {
+											values.label = radioValue(event.target);
+											errors = revalidate(form, submitted, values, errors);
+										}}>
+											<span data-state="checked" data-slot="radio-group-indicator" class="relative flex items-center justify-center" hidden={!o.checked}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 fill-primary" aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg></span>
+										</button>
+										<input aria-hidden="true" tabindex="-1" type="radio" value={o.value} checked={o.checked} style="transform: translateX(-100%); position: absolute; pointer-events: none; opacity: 0; margin: 0px; width: 16px; height: 16px;" />
+										<label data-slot="form-label" class={RADIO_LABEL} data-error={labelInvalid} for={o.first ? 'tasks-form-label-first' : `tasks-form-label-${o.value}`}>{o.label}</label>
+									</div>
+								}
 							</div>
-						}
+							@if (labelError) {
+								<p data-slot="form-message" id="tasks-form-label-message" class="text-sm text-destructive">{labelError}</p>
+							}
+						</div>
+						<div data-slot="form-item" class="grid gap-2 relative">
+							<label data-slot="form-label" class={FORM_LABEL} data-error={priorityInvalid} for="tasks-form-priority">Priority</label>
+							<div el={priorityGroup} role="radiogroup" aria-required="false" dir="ltr" data-slot="form-control" class="gap-3 flex flex-col space-y-1" id="tasks-form-priority" aria-describedby={priorityDescribedBy} aria-invalid={priorityInvalid} tabindex="0" style="outline: none;" onKeydown={(event) => {
+								if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+									event.preventDefault();
+									const next = radioKey(priorityGroup, event.key);
+									if (next) {
+										values.priority = next;
+										errors = revalidate(form, submitted, values, errors);
+									}
+								}
+							}}>
+								@for (const o of priorityOptionList; key o.value) {
+									<div data-slot="form-item" class="gap-2 flex items-center">
+										<button type="button" role="radio" aria-checked={o.checked ? 'true' : 'false'} data-state={o.checked ? 'checked' : 'unchecked'} value={o.value} data-slot="form-control" class={RADIO} id={o.first ? 'tasks-form-priority-first' : `tasks-form-priority-${o.value}`} aria-describedby={priorityDescribedBy} aria-invalid={priorityInvalid} tabindex={o.tab} data-radix-collection-item="" onClick={(event) => {
+											values.priority = radioValue(event.target);
+											errors = revalidate(form, submitted, values, errors);
+										}}>
+											<span data-state="checked" data-slot="radio-group-indicator" class="relative flex items-center justify-center" hidden={!o.checked}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 fill-primary" aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg></span>
+										</button>
+										<input aria-hidden="true" tabindex="-1" type="radio" value={o.value} checked={o.checked} style="transform: translateX(-100%); position: absolute; pointer-events: none; opacity: 0; margin: 0px; width: 16px; height: 16px;" />
+										<label data-slot="form-label" class={RADIO_LABEL} data-error={priorityInvalid} for={o.first ? 'tasks-form-priority-first' : `tasks-form-priority-${o.value}`}>{o.label}</label>
+									</div>
+								}
+							</div>
+							@if (priorityError) {
+								<p data-slot="form-message" id="tasks-form-priority-message" class="text-sm text-destructive">{priorityError}</p>
+							}
+						</div>
+					</form>
+					<div data-slot="sheet-footer" class="mt-auto flex flex-col p-4 gap-2">
+						<DialogClose data-slot="sheet-close" class={btn('outline', 'default')}>Close</DialogClose>
+						<button data-slot="button" class={btn('default', 'default')} form="tasks-form" type="submit">Save changes</button>
 					</div>
-					@if (priorityError) {
-						<p data-slot="form-message" id="tasks-form-priority-message" class="text-sm text-destructive">{priorityError}</p>
-					}
-				</div>
-			</form>
-			<div data-slot="sheet-footer" class="mt-auto flex flex-col p-4 gap-2">
-				<button data-slot="sheet-close" class={btn('outline', 'default')} type="button" onClick={() => { sheetOpen = false; closeDialog('tasks-sheet', false); blurActive(); }}>Close</button>
-				<button data-slot="button" class={btn('default', 'default')} form="tasks-form" type="submit">Save changes</button>
-			</div>
-			<button type="button" class={SHEET_CLOSE_X} onClick={() => { sheetOpen = false; closeDialog('tasks-sheet', false); blurActive(); }}>
-				<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x size-4" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-				<span class="sr-only">Close</span>
-			</button>
-		</div>
+					<DialogClose class={SHEET_CLOSE_X}>
+						<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x size-4" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+						<span class="sr-only">Close</span>
+					</DialogClose>
+				</DialogContent>
+			</DialogPortal>
+		</DialogRoot>
 
 		<PopoverContent menu="filter-status" align="start" class="w-50 p-0">
 			<div tabindex="-1" data-slot="command" class="flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground" cmdk-root="" id="filter-status-command" onKeydown={(event) => {
@@ -873,7 +881,6 @@ export default function Tasks({ http, url }: PageProps) @{
 				errors = {};
 				submitted = false;
 				sheetOpen = true;
-				setTimeout(() => openDialog('tasks-sheet', { onDismiss: () => { if (m.open === '') { sheetOpen = false; closeDialog('tasks-sheet', false); blurActive(); } } }));
 			}}>Edit</DropdownMenuItem>
 			<DropdownMenuItem menu="row-actions" aria-disabled="true" data-disabled="">Make a copy</DropdownMenuItem>
 			<DropdownMenuItem menu="row-actions" aria-disabled="true" data-disabled="">Favorite</DropdownMenuItem>
@@ -916,7 +923,6 @@ export default function Tasks({ http, url }: PageProps) @{
 			<DropdownMenuItem menu="row-actions" onSelect={() => {
 				current = m.at;
 				deleteOpen = true;
-				setTimeout(() => openDialog('tasks-delete-dialog', { alert: true, focus: document.getElementById('tasks-delete-cancel'), onDismiss: () => { deleteOpen = false; closeDialog('tasks-delete-dialog', false); blurActive(); } }));
 			}}>
 				Delete
 				<DropdownMenuShortcut><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2 lucide-trash-2" aria-hidden="true"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg></DropdownMenuShortcut>

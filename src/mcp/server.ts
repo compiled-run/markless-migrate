@@ -108,7 +108,7 @@ export function createServer(cwd: string): McpServer {
 		'parity',
 		{
 			title: 'Scaffold a parity port of one library',
-			description: 'For a library plan says needs a port (or a @markless/ui mapping the installed version lacks), write lib/parity/<library>/ in the new app: a skeleton exposing exactly the used surface (same names, props, options and fields read), and behaviour.md/behaviour.json listing what every usage site must do and the recorded journeys that exercise it. Port only that surface, prefer @markless/ui families, never embed React, Vue or Svelte. Existing port files are kept.',
+			description: 'For a library markless-migrate ships a certified port of (plan classes it ported), copy that port into lib/ports/<library>/ with a <module>.behaviour.md naming the component that replaces each part the app uses; use it unchanged. For a library plan says needs a port (or a @markless/ui mapping the installed version lacks), write lib/parity/<library>/ in the new app: a skeleton exposing exactly the used surface (same names, props, options and fields read), and behaviour.md/behaviour.json listing what every usage site must do and the recorded journeys that exercise it. Port only that surface, prefer @markless/ui families, never embed React, Vue or Svelte. Existing port files are kept.',
 			inputSchema: { library: z.string().describe('The library name as plan lists it, e.g. recharts or @tanstack/react-table'), route: z.array(z.string()).optional().describe('Narrow the port to what these routes render'), new_source: z.string().optional().describe('The Markless app (default: the working directory)') },
 		},
 		async ({ library, route, new_source }) => {
