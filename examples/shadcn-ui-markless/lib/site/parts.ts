@@ -100,4 +100,20 @@ const copyButton: Part = {
 	},
 };
 
-export const SITE_PARTS: readonly Part[] = [modeSwitcher, copyButton];
+// components/docs-sidebar.tsx: the sidebar's scroll position is kept per path in sessionStorage, saved once it is shown
+// (after lib/docs-sidebar-scroll.ts's inline script has restored it) and on every scroll.
+const SIDEBAR_SCROLL_KEY = 'docs-sidebar-scroll';
+function saveScroll(container: Element): void {
+	try {
+		sessionStorage.setItem(SIDEBAR_SCROLL_KEY, JSON.stringify({ pathname: location.pathname, scrollTop: container.scrollTop }));
+	} catch {}
+}
+const docsSidebar: Part = {
+	mount(el) {
+		if (!el.hasAttribute('data-docs-sidebar-content')) return;
+		saveScroll(el);
+		el.addEventListener('scroll', () => saveScroll(el), { passive: true });
+	},
+};
+
+export const SITE_PARTS: readonly Part[] = [modeSwitcher, copyButton, docsSidebar];

@@ -80,6 +80,19 @@ export function useResolver(next: PartResolver): void {
 	resolver = next;
 }
 
+let mounts: readonly string[] = [];
+
+/** The attributes whose elements the site's own parts mount when visible (`lib/site/mounts.json`). */
+export function useMounts(next: readonly string[]): void {
+	mounts = next;
+}
+
+/** The visibility hook for an element one of the site's parts mounts. */
+export function bindMount(el: Element): Binding | undefined {
+	const hit = mounts.find((name) => el.attrs.some((a) => a.name === name));
+	return hit ? { extra: [`onVisible={() => mount(${JSON.stringify(hit)})}`] } : undefined;
+}
+
 /** Records the ports an element of the old page needs. Behaviour is bound once on the body, so no element gets attributes. */
 export function bindParts(el: Element, uses: PartUse[] | Set<string>): Binding | undefined {
 	const s = slot(el);
@@ -96,12 +109,12 @@ export function bindParts(el: Element, uses: PartUse[] | Set<string>): Binding |
 	return undefined;
 }
 
-/** The body's event attributes, one per event a used port listens to. */
+/** The page root's event attributes, one per event a used port listens to, and the document listeners installed when idle. */
 export function bodyHandlers(modules: ReadonlySet<string>, hasSite: boolean): string[] {
 	const events = new Set<PartEvent>(hasSite ? ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout', 'contextmenu', 'input'] : []);
 	for (const port of PORTS) if (modules.has(port.module)) for (const e of port.events) events.add(e);
 	const prop = (e: PartEvent) => `on${{ click: 'Click', keydown: 'KeyDown', pointerover: 'PointerOver', pointerout: 'PointerOut', pointerdown: 'PointerDown', focusin: 'FocusIn', focusout: 'FocusOut', contextmenu: 'ContextMenu', input: 'Input' }[e]}`;
-	return [...events].map((e) => `${prop(e)}={(event) => behave(event)}`);
+	return [...[...events].map((e) => `${prop(e)}={(event) => behave(event)}`), 'onIdle={() => listen()}'];
 }
 
 async function exists(path: string): Promise<boolean> {

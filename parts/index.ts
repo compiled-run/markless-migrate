@@ -10,17 +10,44 @@ export interface Part {
 	readonly focusout?: (target: Element, event: FocusEvent) => boolean;
 	readonly contextmenu?: (target: Element, event: MouseEvent) => boolean;
 	readonly input?: (target: Element, event: Event) => boolean;
+	/** Starts what a part does to an element for as long as the page shows it (a scroll position kept, a size watched). */
+	readonly mount?: (el: Element) => void;
 }
 
 type Kind = keyof Part;
 
-/** One handler per event type on the body: each part claims the events its own markup receives. */
+const handled = new WeakSet<Event>();
+const EVENTS: readonly Kind[] = ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout', 'contextmenu', 'input'];
+let listening = false;
+
+/** One handler per event type: each part claims the events its own markup receives. Each event is handled once. */
 export function behave(event: Event): void {
 	const target = event.target;
-	if (!(target instanceof Element)) return;
+	if (!(target instanceof Element) || handled.has(event)) return;
+	handled.add(event);
 	const kind = event.type as Kind;
 	for (const part of PARTS) {
 		const handler = part[kind] as ((target: Element, event: Event) => boolean) | undefined;
 		if (handler?.(target, event)) return;
+	}
+}
+
+/**
+ * Listens on the document too, once the page is idle: content a part mounts at the end of the body (a dialog, a menu)
+ * is outside the page's root, and a shortcut pressed with nothing focused reaches only the document.
+ */
+export function listen(): void {
+	if (listening) return;
+	listening = true;
+	for (const type of EVENTS) document.addEventListener(type, behave);
+}
+
+/** Runs every part's mount for the elements carrying `attribute`, once each; the converter calls it when they become visible. */
+const mounted = new WeakSet<Element>();
+export function mount(attribute: string): void {
+	for (const el of document.querySelectorAll(`[${attribute}]`)) {
+		if (mounted.has(el)) continue;
+		mounted.add(el);
+		for (const part of PARTS) part.mount?.(el);
 	}
 }
