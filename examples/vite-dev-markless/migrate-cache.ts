@@ -5,460 +5,346 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 	"/": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/acknowledgements": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/blog": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/blog/announcing-vite2": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/blog/announcing-vite3": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/blog/announcing-vite4": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/blog/announcing-vite4-3": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/blog/announcing-vite5": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/blog/announcing-vite5-1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/blog/announcing-vite6": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/blog/announcing-vite7": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/blog/announcing-vite8": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/blog/announcing-vite8-1": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/blog/announcing-vite8-beta": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/blog/cloudflare-supports-vite": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/changes/": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/changes/hotupdate-hook": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/changes/per-environment-apis": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/changes/shared-plugins-during-build": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/changes/ssr-using-modulerunner": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/changes/this-environment-in-hooks": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/config/": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/config/build-options": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/config/dep-optimization-options": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/config/preview-options": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/config/server-options": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/config/shared-options": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/config/ssr-options": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/config/worker-options": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/api-environment": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/api-environment-frameworks": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/api-environment-instances": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/api-environment-plugins": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/api-environment-runtimes": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/api-hmr": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/api-javascript": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/api-plugin": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/assets": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/backend-integration": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/build": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/cli": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/dep-pre-bundling": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/env-and-mode": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/features": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/migration": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/performance": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/philosophy": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/ssr": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/static-deploy": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/troubleshooting": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/using-plugins": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/guide/why": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/live": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/plugins/": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/releases": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
 	"/team": {
 		"isr": {
 			"expiration": false,
-			"allowQuery": [
-				"__markless_fragment"
-			]
+			"allowQuery": []
 		}
 	},
-	"/page-scripts/search-DMNfpivE.js": {
+	"/page-scripts/search-DQgjFSyV.js": {
 		"headers": {
 			"cache-control": "public, max-age=31536000, immutable"
 		}
@@ -467,815 +353,11 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 		"headers": {
 			"cache-control": "public, max-age=31536000, immutable"
 		}
-	},
-	"/page-scripts/site-_Z06058j.js": {
-		"headers": {
-			"cache-control": "public, max-age=31536000, immutable"
-		}
 	}
 };
 
 /** Vercel routes placed before Nitro's own, by the path they serve. */
-export const vercelRoutes: [string, Record<string, unknown>][] = [
-	[
-		"/",
-		{
-			"src": "(?<__isr_route>/)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/index-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/acknowledgements",
-		{
-			"src": "(?<__isr_route>/acknowledgements)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/acknowledgements-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog",
-		{
-			"src": "(?<__isr_route>/blog)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/announcing-vite2",
-		{
-			"src": "(?<__isr_route>/blog/announcing-vite2)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/announcing-vite2-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/announcing-vite3",
-		{
-			"src": "(?<__isr_route>/blog/announcing-vite3)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/announcing-vite3-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/announcing-vite4",
-		{
-			"src": "(?<__isr_route>/blog/announcing-vite4)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/announcing-vite4-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/announcing-vite4-3",
-		{
-			"src": "(?<__isr_route>/blog/announcing-vite4-3)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/announcing-vite4-3-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/announcing-vite5",
-		{
-			"src": "(?<__isr_route>/blog/announcing-vite5)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/announcing-vite5-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/announcing-vite5-1",
-		{
-			"src": "(?<__isr_route>/blog/announcing-vite5-1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/announcing-vite5-1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/announcing-vite6",
-		{
-			"src": "(?<__isr_route>/blog/announcing-vite6)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/announcing-vite6-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/announcing-vite7",
-		{
-			"src": "(?<__isr_route>/blog/announcing-vite7)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/announcing-vite7-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/announcing-vite8",
-		{
-			"src": "(?<__isr_route>/blog/announcing-vite8)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/announcing-vite8-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/announcing-vite8-1",
-		{
-			"src": "(?<__isr_route>/blog/announcing-vite8-1)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/announcing-vite8-1-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/announcing-vite8-beta",
-		{
-			"src": "(?<__isr_route>/blog/announcing-vite8-beta)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/announcing-vite8-beta-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/blog/cloudflare-supports-vite",
-		{
-			"src": "(?<__isr_route>/blog/cloudflare-supports-vite)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/blog/cloudflare-supports-vite-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changes/",
-		{
-			"src": "(?<__isr_route>/changes/)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changes/-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changes/hotupdate-hook",
-		{
-			"src": "(?<__isr_route>/changes/hotupdate-hook)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changes/hotupdate-hook-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changes/per-environment-apis",
-		{
-			"src": "(?<__isr_route>/changes/per-environment-apis)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changes/per-environment-apis-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changes/shared-plugins-during-build",
-		{
-			"src": "(?<__isr_route>/changes/shared-plugins-during-build)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changes/shared-plugins-during-build-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changes/ssr-using-modulerunner",
-		{
-			"src": "(?<__isr_route>/changes/ssr-using-modulerunner)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changes/ssr-using-modulerunner-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/changes/this-environment-in-hooks",
-		{
-			"src": "(?<__isr_route>/changes/this-environment-in-hooks)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/changes/this-environment-in-hooks-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/config/",
-		{
-			"src": "(?<__isr_route>/config/)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/config/-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/config/build-options",
-		{
-			"src": "(?<__isr_route>/config/build-options)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/config/build-options-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/config/dep-optimization-options",
-		{
-			"src": "(?<__isr_route>/config/dep-optimization-options)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/config/dep-optimization-options-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/config/preview-options",
-		{
-			"src": "(?<__isr_route>/config/preview-options)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/config/preview-options-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/config/server-options",
-		{
-			"src": "(?<__isr_route>/config/server-options)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/config/server-options-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/config/shared-options",
-		{
-			"src": "(?<__isr_route>/config/shared-options)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/config/shared-options-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/config/ssr-options",
-		{
-			"src": "(?<__isr_route>/config/ssr-options)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/config/ssr-options-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/config/worker-options",
-		{
-			"src": "(?<__isr_route>/config/worker-options)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/config/worker-options-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/",
-		{
-			"src": "(?<__isr_route>/guide/)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/api-environment",
-		{
-			"src": "(?<__isr_route>/guide/api-environment)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/api-environment-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/api-environment-frameworks",
-		{
-			"src": "(?<__isr_route>/guide/api-environment-frameworks)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/api-environment-frameworks-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/api-environment-instances",
-		{
-			"src": "(?<__isr_route>/guide/api-environment-instances)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/api-environment-instances-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/api-environment-plugins",
-		{
-			"src": "(?<__isr_route>/guide/api-environment-plugins)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/api-environment-plugins-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/api-environment-runtimes",
-		{
-			"src": "(?<__isr_route>/guide/api-environment-runtimes)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/api-environment-runtimes-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/api-hmr",
-		{
-			"src": "(?<__isr_route>/guide/api-hmr)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/api-hmr-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/api-javascript",
-		{
-			"src": "(?<__isr_route>/guide/api-javascript)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/api-javascript-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/api-plugin",
-		{
-			"src": "(?<__isr_route>/guide/api-plugin)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/api-plugin-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/assets",
-		{
-			"src": "(?<__isr_route>/guide/assets)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/assets-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/backend-integration",
-		{
-			"src": "(?<__isr_route>/guide/backend-integration)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/backend-integration-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/build",
-		{
-			"src": "(?<__isr_route>/guide/build)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/build-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/cli",
-		{
-			"src": "(?<__isr_route>/guide/cli)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/cli-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/dep-pre-bundling",
-		{
-			"src": "(?<__isr_route>/guide/dep-pre-bundling)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/dep-pre-bundling-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/env-and-mode",
-		{
-			"src": "(?<__isr_route>/guide/env-and-mode)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/env-and-mode-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/features",
-		{
-			"src": "(?<__isr_route>/guide/features)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/features-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/migration",
-		{
-			"src": "(?<__isr_route>/guide/migration)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/migration-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/performance",
-		{
-			"src": "(?<__isr_route>/guide/performance)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/performance-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/philosophy",
-		{
-			"src": "(?<__isr_route>/guide/philosophy)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/philosophy-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/ssr",
-		{
-			"src": "(?<__isr_route>/guide/ssr)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/ssr-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/static-deploy",
-		{
-			"src": "(?<__isr_route>/guide/static-deploy)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/static-deploy-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/troubleshooting",
-		{
-			"src": "(?<__isr_route>/guide/troubleshooting)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/troubleshooting-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/using-plugins",
-		{
-			"src": "(?<__isr_route>/guide/using-plugins)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/using-plugins-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/guide/why",
-		{
-			"src": "(?<__isr_route>/guide/why)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/guide/why-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/live",
-		{
-			"src": "(?<__isr_route>/live)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/live-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/plugins/",
-		{
-			"src": "(?<__isr_route>/plugins/)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/plugins/-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/releases",
-		{
-			"src": "(?<__isr_route>/releases)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/releases-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	],
-	[
-		"/team",
-		{
-			"src": "(?<__isr_route>/team)",
-			"has": [
-				{
-					"type": "header",
-					"key": "x-markless-fragment",
-					"value": "1"
-				}
-			],
-			"dest": "/team-isr?__isr_route=$__isr_route&__markless_fragment=1"
-		}
-	]
-];
+export const vercelRoutes: [string, Record<string, unknown>][] = [];
 
 const CACHING_KEYS = ['isr', 'prerender', 'cache', 'swr', 'static'];
 
