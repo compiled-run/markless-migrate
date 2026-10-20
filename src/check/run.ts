@@ -17,7 +17,7 @@ import { HINTS } from './hints.ts';
 import { locateFailures, NOT_EXERCISED } from './locate.ts';
 import { mapRules } from './sourcemap.ts';
 import { negotiationFailures } from './i18n.ts';
-import { compareJourneys, DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, replayAll, replayDestructive, survey, type ElementCoverage, type Exploration, type ExploreOptions, type RecordedJourney, type Run as RunResults } from './journeys.ts';
+import { compareJourneys, DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, inDarkMode, themed, replayAll, replayDestructive, survey, type ElementCoverage, type Exploration, type ExploreOptions, type RecordedJourney, type Run as RunResults } from './journeys.ts';
 import { storageOwner, unreachableCandidate, type StorageOwner } from './automatic.ts';
 import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
 import { checkMotion, motionRules, type MotionOptions } from './motion.ts';
@@ -243,9 +243,9 @@ export async function checkLight(browser: Browser, run: Run, route: string, view
 // Explores OLD, then replays every journey on OLD again and on NEW; a third OLD replay confirms noise when the first two differ.
 // Journeys that end the session or delete run last, each in a fresh session, so what they end or delete cannot change what the others saw.
 async function checkJourneys(browser: Browser, run: Run, route: string, viewport: Viewport, result: RouteResult, owner?: StorageOwner, loads: readonly string[] = []): Promise<RouteResult> {
-	const key = { route, viewport, budgetMs: run.journeys?.budgetMs, maxJourneys: run.journeys?.maxJourneys, owners: run.owners };
+	const key = { route, viewport, budgetMs: run.journeys?.budgetMs, maxJourneys: run.journeys?.maxJourneys, owners: run.owners, switched: run.switched };
 	const cached = loads.length ? await run.oldCache?.read<OldJourneys>('journeys', run.old, key) : undefined;
-	const explored = cached?.explored ?? (await explore(browser, run.old, route, viewport, run.journeys));
+	const explored = cached?.explored ?? (await explore(browser, run.old, route, viewport, { ...run.journeys, serves: (path) => isSwitched([route, ...(run.switched ?? [])], path) }));
 	const plain = explored.journeys;
 	const recorded = plain.map((j) => j.expected);
 	const door = { old: run.old.origin, serves: (path: string) => isSwitched([route, ...(run.switched ?? [])], path), ...(run.old.storageState ? { storageState: run.old.storageState } : {}), ...(run.old.signIn ? { signIn: run.old.signIn } : {}) };
@@ -264,10 +264,15 @@ async function checkJourneys(browser: Browser, run: Run, route: string, viewport
 	const elements = explored.elements.map((e) => destructiveCoverage(e, explored.deferred, oldRisky));
 	const reachable = await unreachableOnBoth(browser, front, route, viewport, elements);
 	const writes = journeys.flatMap((j) => j.expected.flatMap((step) => (step.writes ?? []).map((w) => ({ ...w, during: j.name }))));
-	const coverage: Coverage = { total: elements.length, exercised: elements.filter((e) => e.by).length, elements, skipped: explored.skipped };
+	const coverage: Coverage = { total: elements.length, exercised: elements.filter((e) => e.by).length, elements, skipped: explored.skipped, ...(explored.sequencesSkipped ? { sequencesSkipped: explored.sequencesSkipped } : {}) };
 	const unexercised = elements.filter((e) => !e.by && !e.shared).map((e) => notExercised(route, e.element, e.reason ?? 'no journey used it', reachable.get(e.signature)));
 	const doorErrors = await doorPageErrors(browser, run.old, viewport, [...next, ...newRisky]);
-	return withFailures(result, [...result.failures, ...compareJourneys(route, olds, journeys, [...next, ...newRisky], owner, doorErrors), ...unexercised], { journeys, coverage, writes: [...(result.writes ?? []), ...writes] });
+	// A theme toggle starts from the OS colour scheme: its cycles run again with the OS in dark mode, twice on old (what varies there may vary) and once on new.
+	const dark = themed(plain);
+	const darkOld: SideEnv = { ...run.old, colorScheme: 'dark' };
+	const [darkOlds, darkNext] = dark.length ? await Promise.all([Promise.all([replayAll(browser, darkOld, route, viewport, dark), replayAll(browser, darkOld, route, viewport, dark)]), replayAll(browser, { ...front, colorScheme: 'dark' }, route, viewport, dark)]) : [[], []];
+	const darkFailures = dark.length ? compareJourneys(route, darkOlds, inDarkMode(dark), darkNext, owner, doorErrors) : [];
+	return withFailures(result, [...result.failures, ...compareJourneys(route, olds, journeys, [...next, ...newRisky], owner, doorErrors), ...darkFailures, ...unexercised], { journeys, coverage, writes: [...(result.writes ?? []), ...writes] });
 }
 
 /** What OLD's journeys recorded: the exploration and every replay of it. */

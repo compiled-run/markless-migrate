@@ -151,7 +151,7 @@ function coverage(r: RouteResult): string {
 		const how = e.by ? `exercised by ${e.by}` : e.shared && !failure ? `in a layout shared with ${e.shared}, exercised there` : `not exercised: ${failure?.actual ?? e.reason ?? ''}${failure?.accepted ? ` (${failure.accepted.automatic ? acceptedLabel(failure.accepted) : 'accepted'}: ${failure.accepted.reason})` : ''}`;
 		return `<li${!e.by && (!e.shared || failure) && !failure?.accepted ? ' class="differs"' : ''}><strong>${esc(e.element)}</strong> ${esc(how)}${failure ? where(failure) : ''}</li>`;
 	};
-	return `<details class="states coverage"${missing ? ' open' : ''}><summary>Interactive elements exercised: ${c.exercised} of ${c.total}${missing ? `, <strong>${missing} not exercised</strong>` : ''}${c.skipped ? `, ${c.skipped} keyboard journeys left out for the budget` : ''}</summary><ul>${[...c.elements].sort((a, b) => Number(Boolean(a.by || a.shared)) - Number(Boolean(b.by || b.shared))).map(item).join('')}</ul></details>`;
+	return `<details class="states coverage"${missing ? ' open' : ''}><summary>Interactive elements exercised: ${c.exercised} of ${c.total}${missing ? `, <strong>${missing} not exercised</strong>` : ''}${c.skipped ? `, ${c.skipped} keyboard journeys left out for the budget` : ''}${c.sequencesSkipped ? `, ${c.sequencesSkipped} repeated-use sequences left out for the budget` : ''}</summary><ul>${[...c.elements].sort((a, b) => Number(Boolean(a.by || a.shared)) - Number(Boolean(b.by || b.shared))).map(item).join('')}</ul></details>`;
 }
 
 function failedJourneys(r: RouteResult): number {

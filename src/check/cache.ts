@@ -98,7 +98,7 @@ export class OldCache {
 	}
 
 	private file(kind: string, env: SideEnv, key: unknown): string {
-		const side = { origin: env.origin, freeze: env.freeze, sendWrites: env.sendWrites, headers: env.headers, cookies: env.cookies, userAgent: env.userAgent, storageState: env.storageState, reducedMotion: env.reducedMotion };
+		const side = { origin: env.origin, freeze: env.freeze, sendWrites: env.sendWrites, headers: env.headers, cookies: env.cookies, userAgent: env.userAgent, storageState: env.storageState, reducedMotion: env.reducedMotion, colorScheme: env.colorScheme };
 		const digest = createHash('sha256').update(JSON.stringify([kind, this.salt, side, key])).digest('hex').slice(0, 32);
 		return join(this.dir, `${kind}-${digest}.bin`);
 	}

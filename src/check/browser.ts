@@ -37,6 +37,8 @@ export interface SideEnv {
 	readonly signIn?: () => Promise<StorageState>;
 	/** What the visitor's prefers-reduced-motion says; `reduce` unless motion is being recorded. */
 	readonly reducedMotion?: 'reduce' | 'no-preference';
+	/** The OS colour scheme the page sees (light unless set). */
+	readonly colorScheme?: 'light' | 'dark';
 }
 
 // On an asset or a fetch only a challenge header proves a wall; a CDN's server header on an ordinary 403 does not.
@@ -307,7 +309,7 @@ export interface OpenPage {
 export async function openPage(browser: Browser, env: SideEnv, viewport: Viewport, options: OpenOptions = {}): Promise<OpenPage> {
 	await registerStructure();
 	const storageState = env.frontDoor ? withOldSession(env.storageState, env.frontDoor.storageState) : env.storageState;
-	const context = await browser.newContext({ ...contextOptions(viewport, env.freeze), ...(env.reducedMotion ? { reducedMotion: env.reducedMotion } : {}), ...(storageState ? { storageState } : {}), ...(env.userAgent ? { userAgent: env.userAgent } : {}) });
+	const context = await browser.newContext({ ...contextOptions(viewport, env.freeze), ...(env.reducedMotion ? { reducedMotion: env.reducedMotion } : {}), ...(env.colorScheme ? { colorScheme: env.colorScheme } : {}), ...(storageState ? { storageState } : {}), ...(env.userAgent ? { userAgent: env.userAgent } : {}) });
 	env.scope?.track(context);
 	if (env.cookies?.length) await context.addCookies(env.cookies.map((c) => ({ ...c, url: env.origin })));
 	const extra = env.headers ?? {};

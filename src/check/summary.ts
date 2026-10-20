@@ -27,7 +27,7 @@ function loginLines(login: LoginResult): string[] {
 
 export function coverageLine(c: Coverage): string {
 	const shared = c.elements.filter((e) => e.shared).length;
-	return `interactions exercised: ${c.exercised} of ${c.total}${shared ? ` (${shared} in a layout shared with another route)` : ''}${c.skipped ? `; ${c.skipped} keyboard journeys left out for the budget` : ''}`;
+	return `interactions exercised: ${c.exercised} of ${c.total}${shared ? ` (${shared} in a layout shared with another route)` : ''}${c.skipped ? `; ${c.skipped} keyboard journeys left out for the budget` : ''}${c.sequencesSkipped ? `; ${c.sequencesSkipped} repeated-use sequences left out for the budget` : ''}`;
 }
 
 export function summarize(report: Report): string {
