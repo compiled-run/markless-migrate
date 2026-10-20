@@ -1428,6 +1428,25 @@ function trail(results: readonly (StepResult | undefined)[], first: number, upto
 		.join('; ');
 }
 
+// A clock's reading (63:02:59:59, 12:30:05): a page's own clock ticks with its timers, whenever a step happens to take a second.
+const CLOCK = /\b\d{1,3}(?::\d{2}){1,3}\b/g;
+const CLOCK_TEXT = /^(\s*- [^"]*")\d{1,3}(?::\d{2}){1,3}(")/;
+
+/** What a step added and removed, compared without a clock's reading: a clock that only ticked (the same line gone and back) is no change. */
+export function untick(r: Pick<StepResult, 'added' | 'removed'>): { added: string[]; removed: string[] } {
+	const read = (line: string) => (CLOCK_TEXT.test(line) ? line.replace(CLOCK, '<clock>') : undefined);
+	const removed = [...r.removed];
+	const added: string[] = [];
+	for (const line of r.added) {
+		const clock = read(line);
+		const i = clock === undefined ? -1 : removed.findIndex((other) => other !== line && read(other) === clock);
+		if (i >= 0) removed.splice(i, 1);
+		else added.push(line);
+	}
+	const reading = (line: string) => read(line) ?? line;
+	return { added: added.map(reading), removed: removed.map(reading) };
+}
+
 export function compareJourneys(route: string, olds: readonly Run[], journeys: readonly Journey[], next: Run, owner?: StorageOwner, doorErrors?: ReadonlyMap<string, readonly string[]>): Failure[] {
 	const failures: Failure[] = [];
 	journeys.forEach((journey, j) => {
@@ -1469,7 +1488,7 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			const fields = navigated ? (following ? (['requests', 'state', 'storage', 'dialogs'] as const) : (['requests', 'storage', 'dialogs'] as const)) : reloaded ? (['added', 'removed', 'state', 'storage'] as const) : (['added', 'removed', 'moved', 'requests', 'announcements', 'state', 'storage', 'dialogs'] as const);
 			for (const field of fields.filter((f) => !(f === 'storage' && n.door))) {
 				// Requests in flight together finish in any order (a client retrying hosts it shuffled), so they count as a set.
-				const lines = (r: StepResult) => (field === 'requests' ? [...r[field]].sort() : field === 'state' ? effects(r.state, owner) : (r[field] ?? []));
+				const lines = (r: StepResult) => (field === 'requests' ? [...r[field]].sort() : field === 'state' ? effects(r.state, owner) : field === 'added' || field === 'removed' ? untick(r)[field] : (r[field] ?? []));
 				const diff = diffLines(lineTemplates(lines(a!), ...rest.map(lines)), lines(n));
 				if (diff.changed.length || diff.missing.length || diff.unexpected.length) parts.push(field);
 				if (field === 'storage') automatic = storageCandidate([...diff.missing, ...diff.changed.map((c) => c.expected)], [...diff.unexpected, ...diff.changed.map((c) => c.actual)], owner);

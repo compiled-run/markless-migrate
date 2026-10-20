@@ -96,3 +96,17 @@ test("an error the old app's own page logs on a plain load is not the port's whe
 	const here = [[result({ url: '/guide/', navigated: true, errors: ['Failed to patch FloatingVue'] })]];
 	assert.equal(compareJourneys('/', [old, old], nav, here, undefined, new Map([['/guide/', ['Failed to patch FloatingVue']]])).length, 1, 'a page the new app serves itself is the port');
 });
+
+test('a clock that ticked during a step is not a difference, and a clock that goes away or a changed count still is', () => {
+	const close = { role: 'button', name: 'Close banner', nth: 0 };
+	const banner: Journey[] = [{ name: 'click button "Close banner"', steps: [{ action: 'click', target: close }] }];
+	const gone = '- link "ViteConf 2026"';
+	// The old page's 1 s timer ticked while the step ran; the new page's did not.
+	const old = [[result({ added: ['- heading "63:02:59:59" [level=2]'], removed: [gone, '- heading "63:03:00:00" [level=2]'] })]];
+	assert.deepEqual(compareJourneys('/live', [old, old], banner, [[result({ removed: [gone] })]]), []);
+	const hidden = [[result({ removed: ['- heading "63:02:59:56" [level=2]'] })]];
+	assert.deepEqual(compareJourneys('/live', [hidden, hidden], banner, [[result({ removed: ['- heading "63:03:00:00" [level=2]'] })]]), [], 'the same clock hidden at another reading');
+	assert.equal(compareJourneys('/live', [hidden, hidden], banner, [[result({})]]).length, 1, 'a clock the new page does not hide');
+	assert.equal(compareJourneys('/live', [old, old], banner, [[result({ removed: [gone, '- heading "63:03:00:00" [level=2]'] })]]).length, 1, 'a clock the new page removes');
+	assert.equal(compareJourneys('/', [[[counted(1)]], [[counted(1)]]], journeys.slice(0, 1), [[counted(2)]]).length, 1, 'a count is not a clock');
+});
