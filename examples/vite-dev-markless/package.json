@@ -4,12 +4,13 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vp dev",
-		"build": "rm -rf public/page-scripts public/assets && vp build -c page-scripts.config.ts && vp build",
+		"build": "rm -rf public/page-scripts public/assets && vp build -c page-scripts.config.ts && NODE_OPTIONS=--max-old-space-size=12288 vp build",
 		"preview": "vp preview",
 		"check": "vp check",
 		"doctor": "node scripts/markless-doctor.mjs",
 		"fmt": "vp fmt",
-		"test": "vp test"
+		"test": "vp test",
+		"import-docs": "DEPLOY_PRIME_URL=https://vite.dev COMMIT_REF=b6c20f6a node scripts/import-docs.ts"
 	},
 	"dependencies": {
 		"@markless/core": "0.5.0",
@@ -24,6 +25,7 @@
 	"devDependencies": {
 		"@markless/analyzer": "0.5.0",
 		"@markless/typescript-plugin": "0.5.0",
+		"parse5": "^7.3.0",
 		"typescript": "^5.9.3",
 		"vite": "npm:@voidzero-dev/vite-plus-core@0.3.1"
 	},

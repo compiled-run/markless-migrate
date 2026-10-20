@@ -8,8 +8,12 @@ export default defineConfig({
 		emptyOutDir: false,
 		target: 'es2022',
 		rollupOptions: {
-			input: { page: 'page-scripts/page.ts' },
-			output: { entryFileNames: 'page-scripts/[name].js', chunkFileNames: 'page-scripts/[name]-[hash].js', assetFileNames: 'assets/[name].[hash][extname]' },
+			input: { page: 'page-scripts/page.ts', home: 'page-scripts/home.ts' },
+			output: {
+				entryFileNames: 'page-scripts/[name].js',
+				chunkFileNames: 'page-scripts/[name]-[hash].js',
+				assetFileNames: 'assets/[name].[hash][extname]',
+			},
 		},
 	},
 });

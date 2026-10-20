@@ -1,0 +1,57 @@
+[
+	{
+		"from": "/guide/api-vite-runtime",
+		"to": "/guide/api-environment",
+		"status": 308
+	},
+	{
+		"from": "/guide/api-vite-runtime.html",
+		"to": "/guide/api-environment",
+		"status": 308
+	},
+	{
+		"from": "/guide/api-vite-environment",
+		"to": "/guide/api-environment",
+		"status": 308
+	},
+	{
+		"from": "/guide/api-vite-environment.html",
+		"to": "/guide/api-environment",
+		"status": 308
+	},
+	{
+		"from": "/guide/comparisons",
+		"to": "/guide/why#how-vite-relates-to-other-unbundled-build-tools",
+		"status": 308
+	},
+	{
+		"from": "/guide/comparisons.html",
+		"to": "/guide/why#how-vite-relates-to-other-unbundled-build-tools",
+		"status": 308
+	},
+	{
+		"from": "/guide/rolldown",
+		"to": "https://v7.vite.dev/guide/rolldown",
+		"status": 308
+	},
+	{
+		"from": "/guide/rolldown.html",
+		"to": "https://v7.vite.dev/guide/rolldown",
+		"status": 308
+	},
+	{
+		"from": "/*.txt",
+		"to": "/:splat.md",
+		"status": 308
+	},
+	{
+		"from": "/llms.md",
+		"to": "/llms.txt",
+		"status": 308
+	},
+	{
+		"from": "/rolldown",
+		"to": "/guide/rolldown",
+		"status": 308
+	}
+]
