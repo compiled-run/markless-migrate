@@ -1,6 +1,5 @@
 import { Html } from '@markless/router';
 import type { Children } from '@markless/core';
-import stylesheet from './styles/vite.css?url';
 import bannerBackground from './assets/vite/footer-background.jpg';
 import docsHeads from './lib/docs-heads.json' with { type: 'json' };
 
@@ -29,7 +28,7 @@ export default function Document({ url, children }: { readonly url?: { readonly 
 				<title>Vite | Next Generation Frontend Tooling</title>;
 				<meta name="description" content="Next Generation Frontend Tooling" />;
 			}
-			<link rel="preload stylesheet" href={stylesheet} as="style" />
+			<link rel="preload stylesheet" href="/assets/style.B3BAO59d.css" as="style" />
 			@if (!docs) {
 				<link rel="preconnect" href="https://fonts.googleapis.com" />;
 				<link rel="preload" href={bannerBackground} as="image" />;

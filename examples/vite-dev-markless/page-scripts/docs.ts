@@ -39,6 +39,9 @@ function transition(el: Element, name: string, phase: 'enter' | 'leave', done?: 
 
 // --- appearance: VitePress's isDark, through VueUse's useDark (stored 'auto' when it matches the system) ---------------
 const isDark = () => html.classList.contains('dark');
+// The served switches say aria-checked="false"; VitePress fills in their title on mount but only writes aria-checked
+// once isDark changes, so until then a page loaded dark keeps "false". The mobile menu's switch mounts in the browser.
+let darkChanged = false;
 function syncSwitches(): void {
 	// Header.vue marks itself dark with the page, in the same update that switches the page.
 	const header = document.querySelector('.docs-layout [data-v-5773249e].relative.w-full.z-50');
@@ -46,7 +49,7 @@ function syncSwitches(): void {
 	else header?.removeAttribute('data-theme');
 	for (const button of document.querySelectorAll('.VPSwitchAppearance')) {
 		button.setAttribute('title', isDark() ? 'Switch to light theme' : 'Switch to dark theme');
-		button.setAttribute('aria-checked', String(isDark()));
+		if (darkChanged || button.closest('#mobile-menu')) button.setAttribute('aria-checked', String(isDark()));
 	}
 }
 function applyDark(dark: boolean): void {
@@ -59,6 +62,7 @@ function applyDark(dark: boolean): void {
 	);
 	document.head.appendChild(style);
 	html.classList.toggle('dark', dark);
+	darkChanged = true;
 	syncSwitches();
 	void window.getComputedStyle(style).opacity;
 	document.head.removeChild(style);
@@ -370,34 +374,35 @@ const loadSponsors = (): Promise<Sponsors> =>
 		: fetch('https://sponsors.vite.dev/sponsors.json')
 				.then((response) => response.json())
 				.then((data: Sponsors) => (sponsors = data));
+// [screen width (rem), columns], as VitePress's GridSettings.
 const GRID: Record<string, [number, number][]> = {
 	xmini: [[0, 2]],
 	mini: [],
 	small: [
-		[920, 6],
-		[768, 5],
-		[640, 4],
-		[480, 3],
+		[57.5, 6],
+		[48, 5],
+		[40, 4],
+		[30, 3],
 		[0, 2],
 	],
 	medium: [
-		[960, 5],
-		[832, 4],
-		[640, 3],
-		[480, 2],
+		[60, 5],
+		[52, 4],
+		[40, 3],
+		[30, 2],
 	],
 	big: [
-		[832, 3],
-		[640, 2],
+		[52, 3],
+		[40, 2],
 	],
 };
-// useSponsorsGrid: columns for the window width, and empty slots to fill the last row.
+// useSponsorsGrid: columns for the width the media query sees, and empty slots to fill the last row.
 function adjustSlots(grid: HTMLElement, size: string): void {
 	const total = grid.children.length;
 	const filled = grid.querySelectorAll('.vp-sponsor-grid-item:not(.empty)').length;
 	let columns = 1;
 	(GRID[size] ?? []).some(([breakpoint, value]) => {
-		if (window.innerWidth >= breakpoint) {
+		if (window.matchMedia(`(min-width: ${breakpoint}rem)`).matches) {
 			columns = filled < value ? filled : value;
 			return true;
 		}
