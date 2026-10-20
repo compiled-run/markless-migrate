@@ -77,6 +77,8 @@ test('client-side navigation fetches are framework transport: Next RSC, Remix _d
 	const request = (headers: Record<string, string>, method = 'GET') => ({ headers: () => headers, method: () => method });
 	assert.equal(frameworkTransport(request({ 'x-markless-fragment': '1' }), new URL(`${NEW}/docs/installation`)), true);
 	assert.equal(frameworkTransport(request({ 'x-markless-fragment': '1', purpose: 'prefetch' }), new URL(`${NEW}/docs`)), true);
+	assert.equal(frameworkTransport(request({}), new URL(`${NEW}/_markless/fragment/guide/why`)), true, 'Markless 0.7 fetches fragments by path');
+	assert.equal(frameworkTransport(request({}), new URL(`${NEW}/_markless/fragment/`)), true);
 	assert.equal(frameworkTransport(request({ rsc: '1' }), new URL(`${OLD}/dashboard`)), true);
 	assert.equal(frameworkTransport(request({}), new URL(`${OLD}/notes?_data=routes%2Fnotes`)), true);
 	assert.equal(frameworkTransport(request({ accept: 'application/json' }), new URL(`${NEW}/api/hours`)), false);
