@@ -121,6 +121,10 @@ export interface RoutingInput {
 	readonly redirects: readonly Redirect[];
 	/** Paths whose body the old build serves (endpoint outputs to keep), with their content type. */
 	readonly builtPaths: readonly string[];
+	/** The pages this app renders, so a preview can send every other path to the old deployment. */
+	readonly pages: readonly string[];
+	/** The old deployment every other page is answered from, in a preview of some converted pages. */
+	readonly fallthrough?: string;
 	readonly log?: (line: string) => void;
 }
 
@@ -188,6 +192,11 @@ const REDIRECTS: readonly { from: string; to: string; permanent: boolean }[] = $
 const REWRITES: readonly { from: string; to: string }[] = ${JSON.stringify(rewrites.map((r) => ({ from: r.from, to: r.to })))};
 const HANDLERS: readonly { pattern: string; module: Record<string, unknown> }[] = [${handlers.map((h, i) => `{ pattern: ${JSON.stringify(h.pattern)}, module: handler${i} }`).join(', ')}];
 const BUILT: Readonly<Record<string, { file: string; type: string }>> = ${JSON.stringify(built)};
+const PAGES = new Set<string>(${JSON.stringify(input.pages)});
+// A preview with only some pages converted (MIGRATE_FALLTHROUGH set to the old deployment) answers every other page
+// from there, marked as the old app's.
+const FALLTHROUGH: string | undefined = process.env.MIGRATE_FALLTHROUGH${input.fallthrough ? ` ?? ${JSON.stringify(input.fallthrough)}` : ''};
+const OWN = /^\\/(build|_markless|_converted|assets|_next\\/static)\\//;
 
 const matchers = new Map<string, ReturnType<typeof match>>();
 const matcher = (pattern: string) => matchers.get(pattern) ?? matchers.set(pattern, match(pattern, { decode: decodeURIComponent })).get(pattern)!;
@@ -232,6 +241,14 @@ export default defineHandler(async (event) => {
 		if (/^https?:/.test(to)) return fetch(to, { method: request.method, headers: request.headers, body: ['GET', 'HEAD'].includes(request.method) ? undefined : await request.arrayBuffer() });
 		const rewritten = await answer(request, new URL(to, url).pathname, new URL(to, url).search);
 		if (rewritten) return rewritten;
+	}
+	if (FALLTHROUGH && !PAGES.has(url.pathname.replace(/\\/$/, '') || '/') && !OWN.test(url.pathname)) {
+		const upstream = await fetch(new URL(url.pathname + url.search, FALLTHROUGH), { method: request.method, headers: { accept: request.headers.get('accept') ?? '*/*', 'accept-language': request.headers.get('accept-language') ?? '' }, redirect: 'manual' });
+		const headers = new Headers(upstream.headers);
+		headers.delete('content-encoding');
+		headers.delete('content-length');
+		headers.set('x-markless-migrate-side', 'old');
+		return new Response(upstream.body, { status: upstream.status, headers });
 	}
 });
 `;

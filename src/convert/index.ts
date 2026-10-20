@@ -56,6 +56,8 @@ export interface ConvertOptions {
 	readonly log?: (line: string) => void;
 	/** Only these routes (for iterating on one page); the generated route table still lists every route. */
 	readonly only?: readonly string[];
+	/** For a preview of some pages: the old deployment that answers every page not converted. */
+	readonly fallthrough?: string;
 	/** Which library part renders each element, from the old source; by default plan's libraries.json. */
 	readonly resolver?: PartResolver;
 	/** Use every control that holds content back on the old pages, to carry that content (default on). */
@@ -426,7 +428,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (route.status !== 200 || route.route.includes('?') || (route.contentType ?? 'text/html').includes('html')) continue;
 			if (!(await stat(join(publicDir, route.route)).then((x) => x.isFile(), () => false))) builtPaths.add(route.route);
 		}
-		const routing = await writeRouting({ app, source: options.source, old: options.old, endpoints: handlerRoutes, redirects: scanned.redirects ?? [], builtPaths: [...builtPaths], log });
+		const routing = await writeRouting({ app, source: options.source, old: options.old, ...(options.fallthrough ? { fallthrough: options.fallthrough } : {}), pages: [...new Set(out.map((r) => new URL(r.route, options.old).pathname))], endpoints: handlerRoutes, redirects: scanned.redirects ?? [], builtPaths: [...builtPaths], log });
 		endpoints.push(...routing.ports);
 		const manifestPath = join(app, 'package.json');
 		const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as { dependencies?: Record<string, string> };
