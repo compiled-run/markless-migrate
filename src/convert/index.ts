@@ -144,12 +144,13 @@ function elementAt(root: Element, path: readonly number[]): Element | undefined 
 }
 
 function templateMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (what: string) => void): string {
+	if (added.into === 'clipboard') return `<template data-mm-reveal=${JSON.stringify(reveal.key)} data-mm-into="clipboard">{${JSON.stringify(added.html)}}</template>`;
 	const fragment = parseFragment(added.html);
 	const kept = childrenOf(fragment as unknown as Element).filter((n): n is Element => isElement(n) && !n.attrs.some((a) => FOCUS_GUARD.test(a.name)));
 	if (!kept.length) return '';
 	const inner = kept.map((el) => emitElement(el, { dropped })).join('');
 	const placed = placement(kept);
-	return `<template${placed} data-mm-reveal=${JSON.stringify(reveal.key)} data-mm-into=${JSON.stringify(added.into === 'body' ? 'body' : 'self')} data-mm-before="${added.before}" data-mm-action="${reveal.action}" data-mm-viewport="${reveal.viewport}">${inner}</template>`;
+	return `<template${placed} data-mm-reveal=${JSON.stringify(reveal.key)} data-mm-into=${JSON.stringify(typeof added.into === 'string' ? added.into : 'self')} data-mm-before="${added.before}" data-mm-action="${reveal.action}" data-mm-viewport="${reveal.viewport}">${inner}</template>`;
 }
 
 let placementResolver: PartResolver | undefined;
@@ -186,7 +187,7 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 	for (const reveal of reveals) {
 		const trigger = elementAt(root, reveal.path);
 		for (const added of reveal.added) {
-			const target = added.into === 'body' ? trigger : elementAt(root, added.into);
+			const target = typeof added.into === 'string' ? trigger : elementAt(root, added.into);
 			if (target) add(target, templateMarkup(reveal, added, dropped));
 		}
 	}
@@ -290,7 +291,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const revealed = new Map<string, readonly Reveal[]>();
 	try {
 		captures = await captureAll(browser, options.old, routes, join(state, 'convert', 'captures'), { concurrency: options.concurrency ?? 4, log });
-		if (options.reveal !== false) for (const r of await captureAllReveals(browser, options.old, routes, join(state, 'convert', 'reveals'), { concurrency: options.concurrency ?? 4, log })) revealed.set(r.route, r.reveals);
+		// Controls the site's own components reveal content with, beside those ARIA marks (lib/site/controls.json).
+		const extra = await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => (JSON.parse(t) as { selector: string; action: Reveal['action'] }[]).map((c) => [c.selector, c.action] as const), () => []);
+		if (options.reveal !== false) for (const r of await captureAllReveals(browser, options.old, routes, join(state, 'convert', 'reveals'), { concurrency: options.concurrency ?? 4, log, extra })) revealed.set(r.route, r.reveals);
 	} finally {
 		await browser.close();
 	}

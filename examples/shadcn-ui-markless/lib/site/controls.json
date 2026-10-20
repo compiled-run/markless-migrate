@@ -1,0 +1,4 @@
+[
+	{ "selector": "[data-slot=\"code\"] button", "action": "click" },
+	{ "selector": "[class~=\"group/buttons\"] > [data-slot=\"button\"]:first-of-type", "action": "copy" }
+]

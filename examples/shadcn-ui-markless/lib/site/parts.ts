@@ -116,4 +116,40 @@ const docsSidebar: Part = {
 	},
 };
 
-export const SITE_PARTS: readonly Part[] = [modeSwitcher, copyButton, docsSidebar];
+// components/docs-copy-page.tsx: Copy Page writes the page's raw MDX (captured from the old page as what the button
+// copies) and shows IconCheck for useCopyToClipboard's 2 s.
+const copyPage: Part = {
+	click(target) {
+		const button = target.closest<HTMLElement>('button');
+		const text = button?.querySelector<HTMLTemplateElement>(':scope > template[data-mm-into="clipboard"]')?.content.textContent;
+		if (!button || text == null) return false;
+		void copy(text).then((ok) => ok && showCopied(button));
+		return true;
+	},
+};
+
+// components/docs-toc.tsx's useActiveItem: the heading crossing the top fifth of the viewport marks its link active.
+const tocs = new WeakSet<Element>();
+const docsToc: Part = {
+	mount(el) {
+		const list = el.parentElement;
+		if (!list || tocs.has(list) || !(el instanceof HTMLAnchorElement) || !el.getAttribute('href')?.startsWith('#')) return;
+		tocs.add(list);
+		const links = [...list.querySelectorAll<HTMLAnchorElement>(':scope > a[data-depth][href^="#"]')];
+		const observer = new IntersectionObserver(
+			(entries) => {
+				for (const entry of entries) {
+					if (!entry.isIntersecting) continue;
+					for (const link of links) link.setAttribute('data-active', String(link.getAttribute('href') === `#${entry.target.id}`));
+				}
+			},
+			{ rootMargin: '0% 0% -80% 0%' },
+		);
+		for (const link of links) {
+			const heading = document.getElementById(decodeURIComponent(link.getAttribute('href')!.slice(1)));
+			if (heading) observer.observe(heading);
+		}
+	},
+};
+
+export const SITE_PARTS: readonly Part[] = [modeSwitcher, copyPage, copyButton, docsSidebar, docsToc];

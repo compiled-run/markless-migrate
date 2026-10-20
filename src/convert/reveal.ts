@@ -8,12 +8,14 @@ import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS, type Viewport } from '../check/types.ts';
 
 /** How a control shows what it holds back. */
-export type RevealAction = 'click' | 'hover' | 'contextmenu';
+/** `copy`: a click whose effect kept is what it writes to the clipboard. */
+export type RevealAction = 'click' | 'hover' | 'contextmenu' | 'copy';
 
 /** Where a revealed subtree went: under `body`, or under the element at `path` (child element indexes from the body). */
 export interface Revealed {
-	readonly into: 'body' | readonly number[];
-	/** The element children of the parent before which it went, by index among the parent's children before the reveal; -1 is the end. */
+	/** `body`, the path of the element it went under, or `replace`: the control took itself away and this is what its container then held. */
+	readonly into: 'body' | 'replace' | 'clipboard' | readonly number[];
+	/** The element children of the parent before which it went, by index among the parent's children before the reveal; -1 is the end. For `replace`, how many levels above the control the replaced container is. */
 	readonly before: number;
 	readonly html: string;
 }
@@ -41,24 +43,27 @@ const CONTROLS: readonly (readonly [selector: string, action: RevealAction])[] =
 	['[data-slot="context-menu-trigger"]', 'contextmenu'],
 ];
 
-const key = (route: string) => createHash('sha256').update(`reveal:${route}`).digest('hex').slice(0, 16);
+const key = (route: string, extra: readonly (readonly [string, string])[] = []) => createHash('sha256').update(`reveal:${route}${extra.length ? `|${JSON.stringify(extra)}` : ''}`).digest('hex').slice(0, 16);
 
 interface Candidate {
+	/** Listed by the site: only a control that takes itself away is recorded. */
+	readonly extra?: boolean;
 	readonly path: number[];
 	readonly key: string;
 	readonly action: RevealAction;
 	readonly visible: boolean;
 }
 
-async function candidates(page: Page): Promise<Candidate[]> {
-	return page.evaluate((controls) => {
+async function candidates(page: Page, extra: readonly (readonly [string, RevealAction])[]): Promise<Candidate[]> {
+	const listed = new Set(extra.map(([selector]) => selector));
+	const found = await page.evaluate((controls) => {
 		const pathOf = (el: Element): number[] => {
 			const out: number[] = [];
 			for (let node: Element | null = el; node && node !== document.body; node = node.parentElement) out.unshift([...node.parentElement!.children].indexOf(node));
 			return out;
 		};
 		const seen = new Set<Element>();
-		const out: { path: number[]; key: string; action: 'click' | 'hover' | 'contextmenu'; visible: boolean }[] = [];
+		const out: { path: number[]; key: string; action: 'click' | 'hover' | 'contextmenu'; visible: boolean; selector: string }[] = [];
 		for (const [selector, action] of controls) {
 			for (const el of document.body.querySelectorAll(selector)) {
 				if (seen.has(el) || el.closest('template')) continue;
@@ -67,11 +72,12 @@ async function candidates(page: Page): Promise<Candidate[]> {
 				const style = getComputedStyle(el);
 				const visible = rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.pointerEvents !== 'none';
 				const path = pathOf(el);
-				out.push({ path, key: el.id || el.getAttribute('aria-controls') || `p:${path.join('.')}`, action: action as 'click' | 'hover' | 'contextmenu', visible });
+				out.push({ path, key: el.id || el.getAttribute('aria-controls') || `p:${path.join('.')}`, action: action as 'click' | 'hover' | 'contextmenu', visible, selector });
 			}
 		}
 		return out;
-	}, CONTROLS as unknown as [string, string][]) as Promise<Candidate[]>;
+	}, [...CONTROLS, ...extra] as unknown as [string, string][]);
+	return found.map(({ selector, ...c }) => ({ ...c, ...(listed.has(selector) ? { extra: true } : {}) }));
 }
 
 async function bodyHash(page: Page): Promise<string> {
@@ -100,6 +106,26 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 	}, candidate.path);
 	const el = target.asElement();
 	if (!el) return 'not found';
+	if (candidate.action === 'copy') {
+		await page.evaluate(() => {
+			const w = window as unknown as { __mmClipboard?: string[] };
+			w.__mmClipboard = [];
+			const write = (text: string) => {
+				w.__mmClipboard!.push(text);
+				return Promise.resolve();
+			};
+			Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: write, write: () => Promise.resolve(), readText: () => Promise.resolve('') } });
+		});
+		await el.click({ timeout: 2000 }).catch(() => {});
+		await quiet(page, 300);
+		const written = await page.evaluate(() => (window as unknown as { __mmClipboard?: string[] }).__mmClipboard ?? []);
+		return written.length ? [{ into: 'clipboard', before: -1, html: written[written.length - 1]! }] : [];
+	}
+	await el.evaluate((e) => {
+		const chain: Element[] = [];
+		for (let n = e.parentElement; n && n !== document.body; n = n.parentElement) chain.push(n);
+		(window as unknown as { __mmChain?: Element[] }).__mmChain = chain;
+	});
 	try {
 		if (candidate.action === 'click') await el.click({ timeout: 2000 });
 		else if (candidate.action === 'hover') {
@@ -109,7 +135,19 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 	} catch (error) {
 		return `could not ${candidate.action}: ${(error as Error).message.split('\n')[0]}`;
 	}
-	await quiet(page, candidate.action === 'hover' ? 900 : 300);
+	await quiet(page, candidate.action === 'hover' ? 900 : candidate.extra ? 1500 : 300);
+	const replaced = await el.evaluate((e) => !e.isConnected).catch(() => true);
+	if (replaced) {
+		// A control that takes itself away (a "View Code" button swapping in the full source): what its container holds now.
+		const kept = await page.evaluate(() => {
+			const w = window as unknown as { __mmObserver?: MutationObserver; __mmChain?: Element[] };
+			w.__mmObserver?.disconnect();
+			const chain = w.__mmChain ?? [];
+			const depth = chain.findIndex((n) => n.isConnected);
+			return depth < 0 ? undefined : { depth: depth + 1, html: chain[depth]!.innerHTML };
+		});
+		return kept ? [{ into: 'replace', before: kept.depth, html: kept.html }] : [];
+	}
 	return page.evaluate(() => {
 		const w = window as unknown as { __mmAdded?: { parent: Element; node: Element; next: Element | null }[]; __mmObserver?: MutationObserver };
 		w.__mmObserver?.disconnect();
@@ -179,8 +217,8 @@ export type RevealMemo = Map<string, { readonly html: string; readonly reveal: R
 const REUSE_AFTER = 3;
 
 /** Uses every control on a route that holds content back, on each viewport where it can be used, and records what each showed. */
-export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, memo: RevealMemo = new Map(), viewports: readonly Viewport[] = VIEWPORTS): Promise<RevealCapture> {
-	const file = join(dir, `${key(route)}.json`);
+export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, memo: RevealMemo = new Map(), viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = []): Promise<RevealCapture> {
+	const file = join(dir, `${key(route, extra)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as RevealCapture, () => undefined);
 	if (cached && cached.route === route) return cached;
 	const reveals: Reveal[] = [];
@@ -193,7 +231,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 		hidden = false;
 		let open = await fresh(browser, origin, route, viewport);
 		try {
-			const found = await candidates(open.page);
+			const found = await candidates(open.page, extra);
 			hidden = found.some((c) => !c.visible && !done.has(c.key));
 			for (const candidate of found) {
 				if (!candidate.visible || done.has(candidate.key)) continue;
@@ -204,7 +242,8 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 					continue;
 				}
 				const previous = await selectedSibling(open.page, candidate.path);
-				const added = await reveal(open.page, candidate);
+				const raw = await reveal(open.page, candidate);
+				const added = candidate.extra && typeof raw !== 'string' ? raw.filter((a) => a.into === 'replace' || a.into === 'clipboard') : raw;
 				if (typeof added === 'string') skipped.push(`${candidate.key} (${viewport.name}): ${added}`);
 				else {
 					done.add(candidate.key);
@@ -235,7 +274,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 }
 
 /** Captures every route's reveals, `concurrency` at a time. */
-export async function captureAllReveals(browser: Browser, origin: string, routes: readonly string[], dir: string, options: { concurrency?: number; log?: (line: string) => void } = {}): Promise<RevealCapture[]> {
+export async function captureAllReveals(browser: Browser, origin: string, routes: readonly string[], dir: string, options: { concurrency?: number; log?: (line: string) => void; extra?: readonly (readonly [string, RevealAction])[] } = {}): Promise<RevealCapture[]> {
 	const memo: RevealMemo = new Map();
 	const out: RevealCapture[] = new Array(routes.length);
 	let next = 0;
@@ -243,7 +282,7 @@ export async function captureAllReveals(browser: Browser, origin: string, routes
 	const worker = async () => {
 		while (next < routes.length) {
 			const index = next++;
-			out[index] = await captureReveals(browser, origin, routes[index]!, dir, memo).catch((error: Error) => ({ route: routes[index]!, reveals: [], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
+			out[index] = await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, options.extra ?? []).catch((error: Error) => ({ route: routes[index]!, reveals: [], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
 			done++;
 			options.log?.(`revealed ${done}/${routes.length} ${routes[index]} (${out[index]!.reveals.length} controls)`);
 		}

@@ -31,3 +31,15 @@ export function mountIn(container: Element): void {
 	if ([...container.childNodes].some((n) => !(n instanceof HTMLTemplateElement) && !(n instanceof Text && !n.data.trim()))) return;
 	for (const template of container.querySelectorAll<HTMLTemplateElement>(':scope > template[data-mm-reveal]')) mount(template);
 }
+
+/** A control that took itself away on the old page: its container gets what the old page then showed. */
+export function replaceFrom(target: Element): boolean {
+	const template = [...target.querySelectorAll<HTMLTemplateElement>('template[data-mm-into="replace"]')].find((t) => t.parentElement && t.parentElement.closest('button, a, [role="button"]') === t.parentElement.closest('button, a, [role="button"]'));
+	const control = template?.parentElement?.closest('button, a, [role="button"]') ?? null;
+	if (!template || !control || !control.contains(target) && control !== target) return false;
+	let container: Element | null = control;
+	for (let depth = Number(template.dataset.mmBefore ?? '1'); depth > 0 && container; depth--) container = container.parentElement;
+	if (!container) return false;
+	container.replaceChildren(template.content.cloneNode(true));
+	return true;
+}
