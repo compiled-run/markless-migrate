@@ -10,6 +10,7 @@ import { initPlaygrounds } from './playground.ts';
 import { initJsonViews } from './json-view.ts';
 import { init as initImageZoom } from './image-zoom.ts';
 import { initColorGenerator, onColorModeChange } from './color-generator.ts';
+import { keepHolder as keepSearchHolder, open as openSearch, onKeyDown as searchKeyDown } from './docsearch.ts';
 
 type Choice = 'light' | 'dark' | null;
 type Dict = Record<string, Record<string, string> | undefined>;
@@ -641,15 +642,6 @@ function dismissAnnouncement(): void {
 	document.querySelector('nav[aria-label="Docs sidebar"]')?.classList.remove(cls('DocSidebar/Desktop/Content', 'menuWithAnnouncementBar'));
 }
 
-let searching: Promise<void> | undefined;
-const loadSearch = () => (searching ??= import('./search.ts').then((search) => search.load()));
-function openSearch(): void {
-	void loadSearch().then(() => import('./search.ts')).then((search) => {
-		search.open();
-		search.show();
-	});
-}
-
 function setDropdown(dropdown: Element, show: boolean): void {
 	dropdown.classList.toggle('dropdown--show', show);
 	dropdown.querySelector(':scope > .navbar__link')?.setAttribute('aria-expanded', show ? 'true' : 'false');
@@ -918,7 +910,7 @@ function toggleTocCollapsible(button: HTMLElement): void {
 // Ideal images (plugin-ideal-image): the placeholder loads its image once it is in the viewport, through a
 // Waypoint that starts an XHR on enter and cancels it on leave (a jump over the image counts as both).
 type Position = 'below' | 'inside' | 'above' | 'invisible';
-type Lazy = { previous: Position | null; inViewport: boolean; request?: XMLHttpRequest; loaded: boolean };
+type Lazy = { previous: Position | null; inViewport: boolean; request?: XMLHttpRequest; loaded: boolean; url?: string; userTriggered?: boolean };
 type IdealHint = { alt?: string; width: number; height: number; srcSet: { src: string; width: number; height: number }[]; style?: string; imgStyle?: string };
 const lazy = new Map<Element, Lazy>();
 function position(el: Element): Position {
@@ -933,15 +925,34 @@ function pickSource(el: Element, set: IdealHint['srcSet']): IdealHint['srcSet'][
 	const sorted = [...set].sort((a, b) => a.width - b.width);
 	return sorted.find((s) => s.width >= width) ?? sorted[sorted.length - 1]!;
 }
-function lazyLoad(el: Element, info: IdealHint, state: Lazy): void {
+const IDEAL_ICON_STYLE = 'width: 164px; height: 64px; color: rgb(255, 255, 255); position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;';
+const IDEAL_WARNING = 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z';
+// The state message under the placeholder's icon (only the error state shows one: the theme passes no threshold).
+function idealMessage(el: Element, message: string | undefined): void {
+	el.querySelector(':scope > div')?.remove();
+	if (message) el.insertAdjacentHTML('beforeend', `<div style="${IDEAL_ICON_STYLE}"><svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24"><path d="M0 0h24v24H0z" fill="none"></path><path fill="#fff" d="${IDEAL_WARNING}"></path></svg><br>${message}</div>`);
+}
+// The URL is the one picked when the placeholder entered the viewport; a click before that loads "undefined", as the
+// original's does (its 404 then shows as the error message).
+function lazyLoad(el: Element, info: IdealHint, state: Lazy, userTriggered: boolean): void {
 	if (state.loaded || state.request) return;
-	const source = pickSource(el, info.srcSet);
+	state.userTriggered = userTriggered;
+	idealMessage(el, undefined);
+	const url = String(state.url);
 	const request = new XMLHttpRequest();
 	state.request = request;
-	request.open('GET', source.src);
+	request.open('GET', url);
 	request.responseType = 'blob';
-	request.onload = () => {
+	const fail = (status?: number) => {
 		state.request = undefined;
+		state.userTriggered = false;
+		if (el.isConnected) idealMessage(el, status === 404 ? '404. Image not found' : 'Error. Click to reload');
+	};
+	request.onerror = () => fail();
+	request.onload = () => {
+		if (request.status < 200 || request.status >= 300) return fail(request.status);
+		state.request = undefined;
+		state.userTriggered = false;
 		state.loaded = true;
 		if (!el.isConnected) return;
 		(el as HTMLElement).setAttribute('style', info.style ?? '');
@@ -950,11 +961,26 @@ function lazyLoad(el: Element, info: IdealHint, state: Lazy): void {
 		if (info.alt !== undefined) img.alt = info.alt;
 		img.width = info.width;
 		img.height = info.height;
-		img.src = source.src;
+		img.src = url;
 		img.setAttribute('style', info.imgStyle ?? '');
 		el.append(img);
 	};
 	request.send();
+}
+function lazyState(box: Element): Lazy {
+	let state = lazy.get(box);
+	if (!state) lazy.set(box, (state = { previous: null, inViewport: false, loaded: false }));
+	return state;
+}
+// A click on the placeholder loads it (again, after an error); one while it loads or once loaded does nothing.
+function idealClick(event: Event): boolean {
+	const node = event.target instanceof Element ? event.target : null;
+	let box: Element | null = node;
+	while (box && !hint(box, 'ideal')) box = box.parentElement;
+	if (!box) return false;
+	const state = lazyState(box);
+	if (!state.loaded && !state.request) lazyLoad(box, JSON.parse(hint(box, 'ideal')!) as IdealHint, state, true);
+	return true;
 }
 function checkLazyImages(): void {
 	for (const el of document.querySelectorAll('div > svg:only-child')) {
@@ -962,8 +988,7 @@ function checkLazyImages(): void {
 		const raw = hint(box, 'ideal');
 		if (!raw) continue;
 		const info = JSON.parse(raw) as IdealHint;
-		let state = lazy.get(box);
-		if (!state) lazy.set(box, (state = { previous: null, inViewport: false, loaded: false }));
+		const state = lazyState(box);
 		const now = position(box);
 		const before = state.previous;
 		state.previous = now;
@@ -971,10 +996,11 @@ function checkLazyImages(): void {
 		const enter = () => {
 			if (state!.inViewport) return;
 			state!.inViewport = true;
-			queueMicrotask(() => lazyLoad(box, info, state!));
+			state!.url = pickSource(box, info.srcSet).src;
+			queueMicrotask(() => lazyLoad(box, info, state!, false));
 		};
 		const leave = () => {
-			if (!state!.request) return;
+			if (!state!.request || state!.userTriggered) return;
 			state!.inViewport = false;
 			state!.request.abort();
 			state!.request = undefined;
@@ -1010,6 +1036,17 @@ function warmYoutube(): void {
 		link.rel = 'preconnect';
 		link.href = href;
 		document.head.append(link);
+	}
+}
+// Its maxresdefault poster moves to img.youtube.com once the component mounts, in the style and the preload link.
+function startYoutube(): void {
+	for (const article of document.querySelectorAll<HTMLElement>('article.yt-lite')) {
+		const raw = hint(article, 'youtube');
+		const poster = raw && (JSON.parse(raw) as { poster?: string }).poster;
+		const shown = /url\("?([^")]*)"?\)/.exec(article.style.backgroundImage)?.[1];
+		if (!poster || !shown || shown === poster) continue;
+		for (const link of document.querySelectorAll<HTMLLinkElement>('link[rel="preload"][as="image"]')) if (link.getAttribute('href') === shown) link.setAttribute('href', poster);
+		article.setAttribute('style', `background-image: url("${poster}"); --aspect-ratio: ${article.style.getPropertyValue('--aspect-ratio')};`);
 	}
 }
 function playYoutube(article: HTMLElement): void {
@@ -1220,6 +1257,7 @@ function siteClick(event: Event): void {
 	if (apiTableRow(event)) return;
 	const youtube = closest(event, 'article.yt-lite');
 	if (youtube) return playYoutube(youtube);
+	if (idealClick(event)) return;
 	const authors = closest(event, `button.${cls('ChangelogAuthors', 'toggleButton')}`);
 	if (authors) return toggleChangelogAuthors(authors);
 	const alerting = closest(event, 'button');
@@ -1266,6 +1304,7 @@ function pageInit(): void {
 		storage()?.setItem(ANNOUNCEMENT_ID_KEY, ANNOUNCEMENT_ID);
 	}
 	parked.clear();
+	keepSearchHolder();
 	initPlaygrounds();
 	readHints(document.body);
 	restoreTabs();
@@ -1289,6 +1328,7 @@ function pageInit(): void {
 	initShowcase();
 	initJsonViews(hint);
 	initImageZoom();
+	startYoutube();
 	initColorGenerator((mode) => {
 		storage()?.setItem(THEME_KEY, mode);
 		applyColorMode(mode);
@@ -1332,8 +1372,6 @@ export function siteBoot(): void {
 	document.addEventListener('mouseover', (event) => {
 		if (closest(event, 'article.yt-lite')) warmYoutube();
 	});
-	// Docusaurus loads DocSearch's code when the search button is hovered, focused or touched.
-	for (const type of ['mouseover', 'focusin', 'touchstart'] as const) document.addEventListener(type, (event) => closest(event, 'button.DocSearch-Button') && loadSearch(), { passive: true });
 	window.addEventListener('hashchange', keepLocation);
 	// The router moves to a hash with history.pushState, which fires no event; the theme rereads the location on every change.
 	for (const method of ['pushState', 'replaceState'] as const) {
@@ -1348,11 +1386,6 @@ export function siteBoot(): void {
 	});
 	document.addEventListener('mousedown', (event) => closeDropdownsOutside(event.target));
 	document.addEventListener('focusin', (event) => closeDropdownsOutside(event.target));
-	document.addEventListener('keydown', (event) => {
-		siteKeyDown(event);
-		if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-			event.preventDefault();
-			openSearch();
-		}
-	});
+	document.addEventListener('keydown', siteKeyDown);
+	window.addEventListener('keydown', searchKeyDown);
 }
