@@ -310,8 +310,10 @@ None of them made a route green, and focus-trap and mark.js are kept libraries.
 What keeps the 18 red:
 
 1. **Links to another page's section lose the hash** (`/guide/` "Hot Module Replacement (HMR)" lands on `/guide/features`, not
-   `#hot-module-replacement`; also on `/config/build-options`, `/blog/announcing-vite3`). The router's own `pushState` writes the URL
-   without the hash, with the page scripts blocked. A minimal 0.7.0 app keeps the hash, so the trigger is not isolated yet.
+   `#hot-module-replacement`; also on `/config/build-options`, `/blog/announcing-vite3`). This is a Markless 0.7.0 router bug: an in-place
+   navigation goes to the URL of whichever link to that page was prefetched (here the sidebar's `/guide/features`), not the link that
+   was clicked. Minimal repro in `~/dev/scratch/markless-repros/static-page-preloads` (`nav-repro.mjs`): from a page linking `/b` and
+   `/b#second`, following `/b` ends at `/b#second`.
 2. **`MARKLESS_EVENT_DISPATCH_UNMATCHED` on `focusout`** of the search box's input (built by a page script) when a link is followed
    with search open: 17 routes through the shared layout.
 3. **Theme switch, then reload** (14 routes): on the old page the switch reads "Switch to light theme" after the reload; on the new
