@@ -15,7 +15,7 @@ export interface EndpointPort {
 
 // A route handler whose closure needs another framework's build-time content compiler is served from the old build: it
 // is the old build's output for that path, not the framework's code.
-const BUILD_ONLY = /^(fumadocs-mdx|next\/og|@vercel\/og)$/;
+const BUILD_ONLY = /^(fumadocs-mdx|@vercel\/og|next\/(?!server$).+)$/;
 const PACKAGE = (spec: string) => spec.split('/').slice(0, spec.startsWith('@') ? 2 : 1).join('/');
 
 interface Closure {
@@ -52,7 +52,7 @@ async function closureOf(root: string, entry: string): Promise<Closure> {
 		for (const spec of specs) {
 			const local = resolveLocal(root, file, spec);
 			if (local) queue.push(local);
-			else if (!spec.startsWith('.') && !spec.startsWith('@/')) packages.add(spec.startsWith('node:') ? spec : PACKAGE(spec));
+			else if (!spec.startsWith('.') && !spec.startsWith('@/')) packages.add(spec.startsWith('node:') || spec.startsWith('next/') ? spec : PACKAGE(spec));
 		}
 	}
 	return { files, packages };
@@ -153,7 +153,7 @@ export async function writeRouting(input: RoutingInput): Promise<{ ports: Endpoi
 			await writeFile(target, file.endsWith('.json') ? await readFile(file, 'utf8') : serverSource(source, file, out, await readFile(file, 'utf8')));
 		}
 		for (const p of closure.packages) {
-			if (p.startsWith('node:') || ['next', 'fs', 'path', 'crypto', 'url', 'os'].includes(p)) continue;
+			if (p.startsWith('node:') || p.startsWith('next/') || ['next', 'fs', 'path', 'crypto', 'url', 'os'].includes(p)) continue;
 			const version = versions[p];
 			if (version && !version.startsWith('workspace:')) packages[p] = version;
 		}
