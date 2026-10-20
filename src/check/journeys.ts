@@ -93,7 +93,7 @@ export const CLICKABLE = 'clickable';
 const DESTRUCTIVE = /\b(log ?out|sign ?out|delete|remove|destroy|unsubscribe|deactivate|close (my|your) account)\b/i;
 /** How long exploring one route may take by default; what is left is listed as not exercised. */
 export const DEFAULT_JOURNEY_BUDGET_MS = 120_000;
-const MAX_DEPTH = 4;
+const DEFAULT_MAX_DEPTH = 4;
 const CONCURRENCY = 8;
 const STEP_TIMEOUT = 3_000;
 
@@ -933,6 +933,8 @@ export interface ExploreOptions {
 	readonly budgetMs?: number;
 	/** At most this many journeys, most important elements first. */
 	readonly maxJourneys?: number;
+	/** How many steps deep exploring goes (a control revealed by the 4th click is used by a 5th step); default 4. */
+	readonly maxDepth?: number;
 	/** The route of this run that exercises a shared layout control, when it is another route. */
 	readonly owner?: (signature: string) => string | undefined;
 	/** Paths the new app serves in this run (the rest the front door sends to the old app): a stored mode is followed to one of them. */
@@ -1096,6 +1098,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	const started = Date.now();
 	const budget = options.budgetMs ?? DEFAULT_JOURNEY_BUDGET_MS;
 	const cap = options.maxJourneys ?? Number.POSITIVE_INFINITY;
+	const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
 	const tracked: Tracked[] = [];
 	const known = new Set<string>();
 	const journeys: RecordedJourney[] = [];
@@ -1286,8 +1289,8 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			}
 			if (!r.revealed.length) continue;
 			const fresh = track(r.revealed, item.journey.steps, item.element);
-			if (depth >= MAX_DEPTH) {
-				for (const t of fresh) if (!t.shared && !t.by && !t.reason) t.reason = `it appears only after ${MAX_DEPTH} steps, deeper than check explores`;
+			if (depth >= maxDepth) {
+				for (const t of fresh) if (!t.shared && !t.by && !t.reason) t.reason = `it appears only after ${maxDepth} steps, deeper than check explores: raise --journey-depth`;
 				continue;
 			}
 			const items = itemsFor(fresh, depth + 1);
