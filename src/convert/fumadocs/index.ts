@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { copyFile, readFile, stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
@@ -26,7 +26,8 @@ export interface FumadocsCollection {
  * structuredData, extracted references; a toc of JSX is left out), so the handlers' own code reads the same collection
  * without the content's React components.
  */
-export async function fumadocsCollection(source: string): Promise<FumadocsCollection | undefined> {
+export async function fumadocsCollection(oldApp: string): Promise<FumadocsCollection | undefined> {
+	const source = resolve(oldApp);
 	const file = '.source/server.ts';
 	const text = await readFile(join(source, file), 'utf8').catch(() => undefined);
 	if (!text || !/from ['"]fumadocs-mdx\/runtime\/server['"]/.test(text)) return undefined;

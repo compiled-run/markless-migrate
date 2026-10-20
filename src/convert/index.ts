@@ -126,8 +126,8 @@ function selfReferences(attrs: Record<string, string>, origin: string): Record<s
 const hash = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 12);
 
 interface Prepared {
-	readonly capture: CapturedPage;
-	readonly doc: Document;
+	/** The same-origin resources the page loads, for the byte-for-byte copy. */
+	readonly resources: readonly string[];
 	readonly htmlAttrs: Record<string, string>;
 	readonly bodyAttrs: Record<string, string>;
 	readonly head: HeadTag[];
@@ -334,7 +334,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const kids = elementChildren(body(doc));
 	const root = kids.reduce((a, b) => (outer(b).length > outer(a).length ? b : a));
 	const at = kids.indexOf(root);
-	return { capture, doc, htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, clipboard };
+	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, clipboard };
 }
 
 function headModule(byRoute: Map<string, Prepared>): string {
@@ -412,7 +412,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const styles = new Map<string, string>();
 	const unconverted: { route: string; reason: string }[] = [];
 	const prepared = new Map<string, Prepared>();
-	for (const capture of captures) {
+	// Each capture (the served HTML and the settled documents, a few MB) is let go once its page is parsed.
+	for (let i = 0; i < captures.length; i++) {
+		const capture = captures[i]!;
+		captures[i] = undefined as unknown as CapturedPage;
 		if (capture.status !== 200) {
 			unconverted.push({ route: capture.route, reason: `the old site answered ${capture.status} while capturing` });
 			continue;
@@ -522,7 +525,11 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	await writeFile(join(app, 'head.ts'), HEAD_HELPER);
 	await writeParts(app, usedPorts, choices);
 	await mkdir(join(app, 'components', 'converted'), { recursive: true });
-	await writeFile(join(app, 'components', 'converted', 'body-extras.tsrx'), extrasModule(bodyParts, (route) => pathOf(route), noteDropped, new Map([...prepared].map(([route, p]) => [route, p.layers]))));
+	const extras = extrasModule(bodyParts, (route) => pathOf(route), noteDropped, new Map([...prepared].map(([route, p]) => [route, p.layers])));
+	await mkdir(join(app, 'components', 'converted', 'layers'), { recursive: true });
+	for (const layer of extras.layers) await writeFile(join(app, 'components', 'converted', layer.file), layer.source);
+	await writeFile(join(app, 'components', 'converted', 'body-extras.tsrx'), extras.source);
+	log(`layers: ${extras.layers.length} distinct, each compiled once`);
 	const clipboard = Object.fromEntries([...prepared].filter(([, p]) => Object.keys(p.clipboard).length).map(([route, p]) => [pathOf(route), p.clipboard]));
 	await mkdir(join(app, 'lib', 'parts'), { recursive: true });
 	await writeFile(join(app, 'lib', 'parts', 'clipboard.ts'), `${GENERATED}\n// What each copy control wrote on the old page, by page path and the control's tag, slot, text and occurrence.\nexport const CLIPBOARD: Readonly<Record<string, Readonly<Record<string, string>>>> = ${JSON.stringify(clipboard)};\n`);
@@ -535,7 +542,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	if (options.source) await copyStaticDir(join(options.source, 'public'), publicDir);
 	const paths = new Set<string>();
-	for (const p of prepared.values()) for (const path of resourcePaths(p.doc, options.old)) if (!path.startsWith('/_converted/')) paths.add(path);
+	for (const p of prepared.values()) for (const path of p.resources) if (!path.startsWith('/_converted/')) paths.add(path);
 	const assets = await copyAssets(options.old, paths, publicDir, log);
 	const endpoints: EndpointPort[] = [];
 	if (options.source) {
