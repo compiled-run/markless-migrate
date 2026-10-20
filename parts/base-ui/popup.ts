@@ -17,6 +17,8 @@ export interface Popup {
 }
 
 const open: Popup[] = [];
+// Portals a popup keeps after it first closes (Base UI's Select keeps its popup mounted, hidden), by trigger id.
+const kept = new Map<string, HTMLElement>();
 export const popupOf = (el: Element) => open.find((p) => p.portal.contains(el));
 export const top = () => open[open.length - 1];
 export const isOpen = (key: string) => open.some((p) => p.key === key);
@@ -33,15 +35,20 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	if (!key || isOpen(key)) return undefined;
 	const template = templatesFor(key).find((t) => t.dataset.mmInto === 'body');
 	if (!template) return undefined;
-	const portal = [...template.content.cloneNode(true).childNodes].find((n): n is HTMLElement => n instanceof HTMLElement && n.hasAttribute('data-base-ui-portal'));
+	const portal = kept.get(key) ?? [...template.content.cloneNode(true).childNodes].find((n): n is HTMLElement => n instanceof HTMLElement && n.hasAttribute('data-base-ui-portal'));
 	if (!portal) return undefined;
+	kept.delete(key);
 	const popup = portal.querySelector<HTMLElement>(options.popupSelector);
 	if (!popup) return undefined;
-	const positioner = popup.parentElement !== portal ? (popup.parentElement as HTMLElement) : null;
+	// Portal > Positioner > Popup (> List): the positioner is the portal's child holding the popup.
+	let positioner: HTMLElement | null = popup;
+	while (positioner && positioner.parentElement !== portal) positioner = positioner.parentElement;
+	if (positioner === popup) positioner = null;
 	const backdrop = portal.querySelector<HTMLElement>(':scope > [role="presentation"][data-base-ui-inert]');
-	document.body.appendChild(portal);
+	if (!portal.isConnected) document.body.appendChild(portal);
+	for (const el of portal.querySelectorAll<HTMLElement>('[hidden]')) if (el.contains(popup)) el.hidden = false;
 	const p: Popup = { key, trigger, portal, positioner, popup, backdrop, cleanup: [] };
-	if (positioner) {
+	if (positioner && positioner.getAttribute('data-side') !== 'none') {
 		for (const prop of ['left', 'top', 'transform', 'height', 'max-height', 'margin-top', 'margin-bottom']) positioner.style.removeProperty(prop);
 		const opts: BaseOptions = { side: popup.getAttribute('data-side') ?? 'bottom', align: popup.getAttribute('data-align') ?? 'center', sideOffset: Number(template.dataset.mmSideOffset ?? options.sideOffset ?? 0), alignOffset: Number(template.dataset.mmAlignOffset ?? 0), positionMethod: options.positionMethod ?? 'absolute' };
 		p.stop = place(trigger, positioner, popup, opts);
@@ -69,7 +76,7 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	return p;
 }
 
-export function closePopup(p: Popup, returnFocus = true): void {
+export function closePopup(p: Popup, returnFocus = true, keep = false): void {
 	const at = open.indexOf(p);
 	if (at < 0) return;
 	open.splice(at, 1);
@@ -78,6 +85,11 @@ export function closePopup(p: Popup, returnFocus = true): void {
 	if (returnFocus) p.trigger.focus({ preventScroll: true });
 	exit(p.popup, [p.positioner], () => {
 		p.stop?.();
-		p.portal.remove();
+		if (!keep) {
+			p.portal.remove();
+			return;
+		}
+		(p.positioner ?? p.popup).hidden = true;
+		kept.set(p.key, p.portal);
 	});
 }
