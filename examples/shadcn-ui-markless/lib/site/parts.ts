@@ -1,6 +1,7 @@
 import type { Part } from '../parts/index.ts';
 import { resolvedTheme, setTheme, type ThemeOptions } from '../parts/next-themes.ts';
 import { configure } from '../parts/cmdk.ts';
+import { clipboardFor } from '../parts/reveal.ts';
 import { closeContaining, toggle } from '../parts/radix/dialog.ts';
 
 // The site's own client components (components/*.tsx in the old app), on Markless: ModeSwitcher and the D shortcut of
@@ -19,9 +20,25 @@ function toggleTheme(): void {
 
 const isEditable = (t: EventTarget | null) => (t instanceof HTMLElement && t.isContentEditable) || t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement;
 
-// @tabler/icons-react IconCheck and IconCopy, as the old page renders them.
-const ICON_CHECK = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tabler-icon tabler-icon-check "><path d="M5 12l5 5l10 -10"></path></svg>';
-const copied = new WeakMap<Element, { icon: string; timer: number }>();
+// @tabler/icons-react's IconCopy turned into IconCheck by its attributes (the svg is Markless's: no node is swapped).
+const CHECK = { class: 'tabler-icon tabler-icon-check ', d: 'M5 12l5 5l10 -10' };
+const copied = new WeakMap<Element, { timer: number; saved: { cls: string | null; d: (string | null)[] } }>();
+
+function setIcon(svg: SVGElement, saved: { cls: string | null; d: (string | null)[] }, check: boolean): void {
+	const paths = [...svg.querySelectorAll('path')];
+	if (check) {
+		svg.setAttribute('class', CHECK.class);
+		paths.forEach((p, i) => (i === 0 ? p.setAttribute('d', CHECK.d) : p.setAttribute('display', 'none')));
+	} else {
+		if (saved.cls === null) svg.removeAttribute('class');
+		else svg.setAttribute('class', saved.cls);
+		paths.forEach((p, i) => {
+			const d = saved.d[i];
+			if (d) p.setAttribute('d', d);
+			p.removeAttribute('display');
+		});
+	}
+}
 
 function legacyCopy(value: string): boolean {
 	const area = document.createElement('textarea');
@@ -30,7 +47,8 @@ function legacyCopy(value: string): boolean {
 	area.style.position = 'fixed';
 	area.style.opacity = '0';
 	area.style.pointerEvents = 'none';
-	document.body.appendChild(area);
+	// Outside <body>, the page Markless renders: the textarea is gone again within this call.
+	document.documentElement.appendChild(area);
 	area.focus();
 	area.select();
 	area.setSelectionRange(0, value.length);
@@ -38,7 +56,7 @@ function legacyCopy(value: string): boolean {
 	try {
 		ok = document.execCommand('copy');
 	} catch {}
-	document.body.removeChild(area);
+	document.documentElement.removeChild(area);
 	return ok;
 }
 
@@ -64,18 +82,19 @@ function valueFor(button: Element): string {
 
 function showCopied(button: HTMLElement): void {
 	const svg = button.querySelector('svg');
+	if (!svg) return;
 	const was = copied.get(button);
 	if (was) clearTimeout(was.timer);
-	const icon = was?.icon ?? svg?.outerHTML ?? '';
-	if (svg) svg.outerHTML = ICON_CHECK;
+	const saved = was?.saved ?? { cls: svg.getAttribute('class'), d: [...svg.querySelectorAll('path')].map((p) => p.getAttribute('d')) };
+	setIcon(svg, saved, true);
 	const marks = button.hasAttribute('data-copied');
 	if (marks) button.setAttribute('data-copied', 'true');
 	const timer = window.setTimeout(() => {
-		button.querySelector('svg')!.outerHTML = icon;
+		setIcon(svg, saved, false);
 		if (marks) button.setAttribute('data-copied', 'false');
 		copied.delete(button);
 	}, 2000);
-	copied.set(button, { icon, timer });
+	copied.set(button, { timer, saved });
 }
 
 const modeSwitcher: Part = {
@@ -123,8 +142,8 @@ const docsSidebar: Part = {
 const copyPage: Part = {
 	click(target) {
 		const button = target.closest<HTMLElement>('button');
-		const text = button?.querySelector<HTMLTemplateElement>(':scope > template[data-mm-into="clipboard"]')?.content.textContent;
-		if (!button || text == null) return false;
+		const text = button ? clipboardFor(button) : undefined;
+		if (!button || text === undefined) return false;
 		void copy(text).then((ok) => ok && showCopied(button));
 		return true;
 	},

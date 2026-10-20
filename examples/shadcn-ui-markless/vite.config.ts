@@ -3,7 +3,6 @@ import { fileURLToPath } from 'node:url';
 import { markless } from '@markless/core/vite';
 import { router } from '@markless/router/vite';
 import { defineConfig } from 'vite-plus';
-import { migrateCache } from './migrate-cache.ts';
 
 export default defineConfig({
 	nitro: {
@@ -11,5 +10,5 @@ export default defineConfig({
 		handlers: [{ middleware: true, handler: fileURLToPath(new URL('./server/routing.ts', import.meta.url)) }],
 		serverAssets: [{ baseName: 'built', dir: fileURLToPath(new URL('./server/built', import.meta.url)) }],
 	},
-	plugins: [migrateCache(), markless(), router()],
+	plugins: [markless(), router()],
 });

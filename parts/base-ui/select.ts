@@ -91,9 +91,9 @@ function choose(p: Popup, option: HTMLElement): void {
 		if (on) o.setAttribute('data-selected', '');
 		else o.removeAttribute('data-selected');
 	}
-	const label = option.querySelector('[data-slot="select-item-text"]')?.textContent ?? option.textContent ?? '';
-	const value = p.trigger.querySelector('[data-slot="select-value"]');
-	if (value) value.textContent = label;
+	const label = ([...option.children].find((c) => c.tagName === 'DIV') ?? option).textContent ?? '';
+	// The trigger's value is Markless state (convert's SelectPlan); its handler for this event sets it.
+	p.trigger.dispatchEvent(new CustomEvent('mmchoose', { detail: label }));
 	selectedValue.set(p.trigger, label);
 	closePopup(p, true, true);
 }

@@ -1,7 +1,7 @@
 import { CHOICES } from './choices.ts';
 import { navigate } from '@markless/router';
 
-// cmdk 1.1: typing in [cmdk-input] scores every [cmdk-item] by its value and keywords; an item scoring 0 leaves the list,
+// cmdk 1.1: typing in [cmdk-input] scores every [cmdk-item] by its value and keywords; an item scoring 0 leaves the list (hidden here),
 // a group with none left is hidden, and [cmdk-empty] shows when nothing is left; the first item left is selected
 // (aria-selected, data-selected). Arrows, Home, End move the selection; moving the pointer over an item selects it;
 // Enter or a click chooses it. What choosing does is the old page's (captured: where it went or what it copied).
@@ -19,11 +19,9 @@ export function configure(options: { readonly filter?: Filter; readonly keywords
 	if (options.beforeChoose) onChoose = options.beforeChoose;
 }
 
-// The items each list held when it was shown, so filtering can put them back in their own places.
-const lists = new WeakMap<Element, { readonly item: HTMLElement; readonly parent: Element; readonly next: Node | null }[]>();
 
 const rootOf = (el: Element) => el.closest<HTMLElement>('[cmdk-root]');
-const items = (root: Element) => [...root.querySelectorAll<HTMLElement>('[cmdk-item]')].filter((i) => i.getAttribute('aria-disabled') !== 'true');
+const items = (root: Element) => [...root.querySelectorAll<HTMLElement>('[cmdk-item]')].filter((i) => !i.hidden && i.getAttribute('aria-disabled') !== 'true');
 
 function select(root: Element, item: HTMLElement | undefined): void {
 	for (const i of root.querySelectorAll('[cmdk-item][aria-selected="true"]')) {
@@ -38,19 +36,16 @@ function select(root: Element, item: HTMLElement | undefined): void {
 }
 
 function search(root: HTMLElement, text: string): void {
+	// cmdk unmounts an item that scores 0; here it is hidden, which takes it out of the list and the accessibility tree alike.
 	const list = root.querySelector('[cmdk-list]') ?? root;
-	if (!lists.has(list)) lists.set(list, [...list.querySelectorAll<HTMLElement>('[cmdk-item]')].map((item) => ({ item, parent: item.parentElement!, next: item.nextSibling })));
-	const all = lists.get(list)!;
 	let count = 0;
-	for (const { item, parent, next } of all) {
+	for (const item of list.querySelectorAll<HTMLElement>('[cmdk-item]')) {
 		const keep = !text || filter(item.getAttribute('data-value') ?? '', text, keywordsOf(item)) > 0;
-		if (keep) {
-			count++;
-			if (!item.isConnected) parent.insertBefore(item, next && next.parentNode === parent ? next : null);
-		} else item.remove();
+		item.hidden = !keep;
+		if (keep) count++;
 	}
 	for (const group of list.querySelectorAll<HTMLElement>('[cmdk-group]')) {
-		const any = group.querySelector('[cmdk-item]');
+		const any = group.querySelector('[cmdk-item]:not([hidden])');
 		if (any) group.removeAttribute('hidden');
 		else group.setAttribute('hidden', '');
 	}

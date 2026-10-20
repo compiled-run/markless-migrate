@@ -1,45 +1,42 @@
-// What the old page's library mounted on use was captured from it into inert templates; these put it in place and take it out.
+import { CLIPBOARD } from './clipboard.ts';
 
-export function templatesFor(key: string): HTMLTemplateElement[] {
-	return [...document.querySelectorAll<HTMLTemplateElement>(`template[data-mm-reveal="${CSS.escape(key)}"]`)];
+// What the old page showed on use is rendered by Markless, hidden: a portal at the end of the body marked with its
+// control's key (data-mm-layer), and the content a control replaces its container's with (data-mm-after). Parts only
+// switch attributes on those nodes; they never insert or remove one.
+
+/** The nodes a control portals, for this viewport when the page has a variant of its own for it. */
+export function layersFor(key: string): HTMLElement[] {
+	const all = [...document.querySelectorAll<HTMLElement>(`[data-mm-layer="${CSS.escape(key)}"]`)];
+	const mobile = matchMedia('(max-width: 767px)').matches;
+	const own = all.filter((n) => (n.dataset.mmViewport === 'mobile') === mobile);
+	return own.length ? own : all.filter((n) => !n.dataset.mmViewport);
 }
 
-/** Clones a revealed subtree into its place: the body for content a library portals there, else the template's own parent. */
-export function mount(template: HTMLTemplateElement): Element[] {
-	const into = template.dataset.mmInto === 'body' ? document.body : template.parentElement;
-	if (!into) return [];
-	const nodes = [...template.content.cloneNode(true).childNodes].filter((n): n is Element => n instanceof Element);
-	const before = Number(template.dataset.mmBefore ?? '-1');
-	const siblings = [...into.children].filter((c) => c.tagName !== 'TEMPLATE');
-	const anchor = before >= 0 ? siblings[before] ?? null : null;
-	for (const node of nodes) into.insertBefore(node, anchor);
-	return nodes;
-}
-
-/** Mounts every template of a control; returns what it mounted. */
-export function reveal(key: string): Element[] {
-	return templatesFor(key).flatMap((t) => mount(t));
-}
-
-/** Removes a container's mounted content, keeping its templates. */
-export function unmountIn(container: Element): void {
-	for (const child of [...container.childNodes]) if (!(child instanceof HTMLTemplateElement)) child.remove();
-}
-
-/** Mounts the templates inside a container once (content a library renders only while the container is shown). */
-export function mountIn(container: Element): void {
-	if ([...container.childNodes].some((n) => !(n instanceof HTMLTemplateElement) && !(n instanceof Text && !n.data.trim()))) return;
-	for (const template of container.querySelectorAll<HTMLTemplateElement>(':scope > template[data-mm-reveal]')) mount(template);
-}
-
-/** A control that took itself away on the old page: its container gets what the old page then showed. */
-export function replaceFrom(target: Element): boolean {
-	const template = [...target.querySelectorAll<HTMLTemplateElement>('template[data-mm-into="replace"]')].find((t) => t.parentElement && t.parentElement.closest('button, a, [role="button"]') === t.parentElement.closest('button, a, [role="button"]'));
-	const control = template?.parentElement?.closest('button, a, [role="button"]') ?? null;
-	if (!template || !control || !control.contains(target) && control !== target) return false;
-	let container: Element | null = control;
-	for (let depth = Number(template.dataset.mmBefore ?? '1'); depth > 0 && container; depth--) container = container.parentElement;
+/** A control that took itself away on the old page (View Code): its container's content switches to what it then showed. */
+export function swap(control: Element): boolean {
+	const key = control.getAttribute('data-mm-replace');
+	if (!key) return false;
+	const container = control.closest(`:has(> [data-mm-after="${CSS.escape(key)}"])`);
 	if (!container) return false;
-	container.replaceChildren(template.content.cloneNode(true));
+	for (const el of container.querySelectorAll<HTMLElement>(`:scope > [data-mm-before="${CSS.escape(key)}"]`)) el.hidden = true;
+	for (const el of container.querySelectorAll<HTMLElement>(`:scope > [data-mm-after="${CSS.escape(key)}"]`)) el.hidden = false;
 	return true;
+}
+
+// The capture's signature of a control: its tag, data-slot and text, and which element with them it is in document order.
+function signature(el: Element): string {
+	return `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+}
+
+/** What a copy control wrote on the old page. */
+export function clipboardFor(control: Element): string | undefined {
+	const page = CLIPBOARD[location.pathname.replace(/\/$/, '') || '/'];
+	if (!page) return undefined;
+	const sig = signature(control);
+	let nth = 0;
+	for (const el of document.body.querySelectorAll('*')) {
+		if (el === control) break;
+		if (signature(el) === sig) nth++;
+	}
+	return page[`${sig}#${nth}`];
 }

@@ -1,5 +1,5 @@
 import { PARTS } from './registry.ts';
-import { replaceFrom } from './reveal.ts';
+import { swap } from './reveal.ts';
 
 export interface Part {
 	readonly click?: (target: Element, event: MouseEvent) => boolean;
@@ -27,9 +27,11 @@ export function behave(event: Event): void {
 	if (!(target instanceof Element) || handled.has(event)) return;
 	handled.add(event);
 	const kind = event.type as Kind;
+	// The document listeners also cover what the first interaction opens at the end of the body.
+	listen();
 	if (kind === 'click') {
-		const control = target.closest('button, a, [role="button"]');
-		if (control?.querySelector(':scope > template[data-mm-into="replace"]') && replaceFrom(control)) return;
+		const control = target.closest('[data-mm-replace]');
+		if (control && swap(control)) return;
 	}
 	for (const part of PARTS) {
 		const handler = part[kind] as ((target: Element, event: Event) => boolean) | undefined;

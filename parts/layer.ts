@@ -1,16 +1,17 @@
 import { optionsOf, place } from './popper.ts';
-import { leave } from './presence.ts';
-import { templatesFor } from './reveal.ts';
+import { leave, stay } from './presence.ts';
+import { layersFor } from './reveal.ts';
 import { hideOthers } from './aria-hidden.ts';
 
-// What Radix's Portal, DismissableLayer, FocusGuards and FocusScope do around a popover, menu, select or tooltip: the
-// content mounted at the end of the body, a focus guard at each end of the body while any layer is open, Escape and a
-// press outside closing the top layer, focus moved in on open and back to the trigger on close.
+// What Radix's Portal, DismissableLayer and FocusScope do around a popover, menu, select or tooltip, on the content
+// Markless renders at the end of the body: shown on open, Escape and a press outside closing the top layer, focus
+// moved in on open and back to the trigger on close, Tab kept inside a modal layer. Radix's focus guard spans are not
+// added (the page Markless renders gets no nodes from a part); a modal layer traps Tab itself instead.
 
 export interface Layer {
 	readonly key: string;
 	readonly trigger: HTMLElement;
-	readonly nodes: Element[];
+	readonly nodes: HTMLElement[];
 	readonly content: HTMLElement;
 	readonly wrapper: HTMLElement | null;
 	readonly modal: boolean;
@@ -19,57 +20,32 @@ export interface Layer {
 }
 
 const open: Layer[] = [];
-let guards: HTMLSpanElement[] = [];
 let bodyPointerEvents = '';
-
-const GUARD = 'outline: none; opacity: 0; position: fixed; pointer-events: none;';
-
-function addGuards(): void {
-	if (guards.length) return;
-	const make = () => {
-		const span = document.createElement('span');
-		span.setAttribute('data-radix-focus-guard', '');
-		span.tabIndex = 0;
-		span.style.cssText = GUARD;
-		return span;
-	};
-	guards = [make(), make()];
-	document.body.insertAdjacentElement('afterbegin', guards[0]!);
-	document.body.insertAdjacentElement('beforeend', guards[1]!);
-}
-
-function removeGuards(): void {
-	if (open.length) return;
-	for (const g of guards) g.remove();
-	guards = [];
-}
 
 export const isOpen = (key: string) => open.some((l) => l.key === key);
 export const top = () => open[open.length - 1];
 export const layerOf = (el: Element) => open.find((l) => l.nodes.some((n) => n.contains(el)));
 
 const TABBABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const tabbables = (container: HTMLElement) => [...container.querySelectorAll<HTMLElement>(TABBABLE)].filter((el) => el.getClientRects().length > 0);
 
 export function focusFirst(container: HTMLElement): void {
-	const first = [...container.querySelectorAll<HTMLElement>(TABBABLE)].find((el) => el.getClientRects().length > 0);
-	(first ?? container).focus({ preventScroll: true });
+	(tabbables(container)[0] ?? container).focus({ preventScroll: true });
 }
 
-/** Mounts a control's templates, places the content off the trigger, and wires dismissal. Returns the layer, or undefined with nothing to show. */
-export function openLayer(trigger: HTMLElement, key: string, options: { readonly modal?: boolean; readonly contentSelector?: string; readonly onDismiss: (layer: Layer, reason: 'escape' | 'outside' | 'focus') => void }): Layer | undefined {
+/** Shows a control's content, places it off the trigger, and wires dismissal. Undefined when the page has none for it. */
+export function openLayer(trigger: HTMLElement, key: string, options: { readonly modal?: boolean; readonly onDismiss: (layer: Layer, reason: 'escape' | 'outside' | 'focus') => void }): Layer | undefined {
 	if (isOpen(key)) return open.find((l) => l.key === key);
-	const templates = templatesFor(key).filter((t) => t.dataset.mmInto === 'body');
-	if (!templates.length) return undefined;
-	const nodes: Element[] = [];
-	for (const t of templates) for (const n of t.content.cloneNode(true).childNodes) if (n instanceof Element) nodes.push(n);
-	const wrapper = nodes.find((n) => n.hasAttribute('data-radix-popper-content-wrapper')) as HTMLElement | undefined;
-	const content = (nodes.map((n) => (n.id === key ? n : n.querySelector(`[id="${CSS.escape(key)}"]`))).find(Boolean) ?? wrapper?.firstElementChild ?? nodes[0]) as HTMLElement;
-	addGuards();
-	for (const n of nodes) document.body.insertBefore(n, guards[1] ?? null);
-	const layer: Layer = { key, trigger, nodes, content, wrapper: wrapper ?? null, modal: options.modal === true, cleanup: [] };
+	const nodes = layersFor(key);
+	if (!nodes.length) return undefined;
+	const wrapper = nodes.find((n) => n.hasAttribute('data-radix-popper-content-wrapper')) ?? null;
+	const content = (nodes.map((n) => (n.id === key ? n : n.querySelector<HTMLElement>(`[id="${CSS.escape(key)}"]`))).find(Boolean) ?? (wrapper?.firstElementChild as HTMLElement | null) ?? nodes[0]!) as HTMLElement;
+	stay(content);
+	for (const n of nodes) n.hidden = false;
+	const layer: Layer = { key, trigger, nodes, content, wrapper, modal: options.modal === true, cleanup: [] };
 	if (wrapper) {
 		wrapper.style.transform = 'translate(0px, -200%)';
-		layer.stop = place(trigger, wrapper, optionsOf(templates[0]!, content));
+		layer.stop = place(trigger, wrapper, optionsOf(wrapper, content));
 	}
 	content.setAttribute('data-state', 'open');
 	if (layer.modal) {
@@ -77,14 +53,27 @@ export function openLayer(trigger: HTMLElement, key: string, options: { readonly
 			bodyPointerEvents = document.body.style.pointerEvents;
 			document.body.style.pointerEvents = 'none';
 		}
-		for (const n of nodes) (n as HTMLElement).style.pointerEvents = 'auto';
+		for (const n of nodes) n.style.pointerEvents = 'auto';
 		layer.cleanup.push(hideOthers(nodes));
 	}
 	open.push(layer);
 	const onKey = (event: KeyboardEvent) => {
-		if (event.key !== 'Escape' || top() !== layer) return;
-		event.preventDefault();
-		options.onDismiss(layer, 'escape');
+		if (top() !== layer) return;
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			options.onDismiss(layer, 'escape');
+		} else if (event.key === 'Tab' && layer.modal) {
+			const list = tabbables(content);
+			if (!list.length) return event.preventDefault();
+			const at = list.indexOf(document.activeElement as HTMLElement);
+			if (event.shiftKey && at <= 0) {
+				event.preventDefault();
+				list[list.length - 1]!.focus();
+			} else if (!event.shiftKey && at === list.length - 1) {
+				event.preventDefault();
+				list[0]!.focus();
+			}
+		}
 	};
 	const onDown = (event: PointerEvent) => {
 		const target = event.target as Node | null;
@@ -101,7 +90,7 @@ export function openLayer(trigger: HTMLElement, key: string, options: { readonly
 	return layer;
 }
 
-/** Closes a layer: its exit animation runs, then it leaves the page; focus goes back to the trigger unless `keepFocus`. */
+/** Closes a layer: its exit animation runs, then it is hidden; focus goes back to the trigger unless `keepFocus`. */
 export function closeLayer(layer: Layer, keepFocus = false): void {
 	const at = open.indexOf(layer);
 	if (at < 0) return;
@@ -114,8 +103,7 @@ export function closeLayer(layer: Layer, keepFocus = false): void {
 		() => layer.content.setAttribute('data-state', 'closed'),
 		() => {
 			layer.stop?.();
-			for (const n of layer.nodes) n.remove();
-			removeGuards();
+			for (const n of layer.nodes) n.hidden = true;
 		},
 	);
 }

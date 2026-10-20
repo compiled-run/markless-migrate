@@ -73,12 +73,12 @@ export function place(anchor: Element, wrapper: HTMLElement, options: PlaceOptio
 	return stop;
 }
 
-/** The placement a template asks for: the captured content's own side and alignment, and the source's offsets. */
-export function optionsOf(template: HTMLTemplateElement, content: Element | null): PlaceOptions {
+/** The placement a layer asks for: the captured content's own side and alignment, and the source's offsets. */
+export function optionsOf(layer: HTMLElement, content: Element | null): PlaceOptions {
 	return {
 		side: content?.getAttribute('data-side') ?? 'bottom',
 		align: content?.getAttribute('data-align') ?? 'center',
-		sideOffset: Number(template.dataset.mmSideOffset ?? '0'),
-		alignOffset: Number(template.dataset.mmAlignOffset ?? '0'),
+		sideOffset: Number(layer.dataset.mmSideOffset ?? '0'),
+		alignOffset: Number(layer.dataset.mmAlignOffset ?? '0'),
 	};
 }

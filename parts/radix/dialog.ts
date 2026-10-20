@@ -1,5 +1,5 @@
 import { installDialog } from './dialog-engine.ts';
-import { templatesFor } from '../reveal.ts';
+import { layersFor } from '../reveal.ts';
 
 // Radix Dialog and AlertDialog, delegated: the trigger's aria-controls names the content captured from the old page. The
 // content (and overlay) are mounted from their templates, then dialog-engine.ts (the shared port's engine, which does
@@ -17,6 +17,7 @@ interface Open {
 }
 
 const opened = new Map<string, Open>();
+const installed = new Set<string>();
 
 function setTrigger(trigger: HTMLElement, open: boolean): void {
 	trigger.setAttribute('aria-expanded', String(open));
@@ -28,34 +29,27 @@ function close(key: string): void {
 	if (!d) return;
 	opened.delete(key);
 	setTrigger(d.trigger, false);
+	// dialog-engine.ts hides each part once its exit animation ends.
 	for (const el of [d.overlay, d.content]) el?.setAttribute('data-state', 'closed');
-	const gone = () => {
-		if (d.content.hidden && (!d.overlay || d.overlay.hidden)) for (const n of d.nodes) n.remove();
-		else requestAnimationFrame(gone);
-	};
-	requestAnimationFrame(gone);
 }
 
 function open(trigger: HTMLElement): boolean {
 	const key = trigger.getAttribute('aria-controls')!;
 	if (opened.has(key)) return true;
-	const templates = templatesFor(key).filter((t) => t.dataset.mmInto === 'body');
-	if (!templates.length) return false;
-	const nodes: HTMLElement[] = [];
-	for (const t of templates) for (const n of t.content.cloneNode(true).childNodes) if (n instanceof HTMLElement && !n.hasAttribute('data-radix-focus-guard')) nodes.push(n);
+	const nodes = layersFor(key);
+	if (!nodes.length) return false;
 	const content = nodes.find((n) => n.id === key) ?? nodes.find((n) => n.querySelector(`[id="${CSS.escape(key)}"]`))?.querySelector<HTMLElement>(`[id="${CSS.escape(key)}"]`) ?? nodes.find((n) => /dialog|sheet|drawer/.test(n.getAttribute('role') ?? '') || /content/.test(n.dataset.slot ?? ''));
 	if (!content) return false;
 	const overlay = nodes.find((n) => /overlay/.test(n.dataset.slot ?? ''));
-	for (const el of [overlay, content]) {
-		if (!el) continue;
-		el.setAttribute('data-state', 'closed');
-		el.hidden = true;
-	}
-	for (const n of nodes) document.body.appendChild(n);
+	// The layer nodes other than the overlay and content (a wrapper) are shown; the engine shows and hides those two.
+	for (const n of nodes) if (n !== overlay && n !== content && !n.contains(content)) n.hidden = false;
 	const alert = content.getAttribute('role') === 'alertdialog';
 	const cancel = alert ? (content.querySelector<HTMLElement>('[data-slot$="dialog-cancel"]') ?? undefined) : undefined;
-	installDialog([trigger], overlay, content, cancel, alert);
-	content.addEventListener('radixdismiss', () => close(key));
+	if (!installed.has(key)) {
+		installed.add(key);
+		installDialog([trigger], overlay, content, cancel, alert);
+		content.addEventListener('radixdismiss', () => close(key));
+	}
 	opened.set(key, { trigger, nodes, content, overlay });
 	setTrigger(trigger, true);
 	for (const el of [overlay, content]) el?.setAttribute('data-state', 'open');

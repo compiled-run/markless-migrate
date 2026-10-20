@@ -50,7 +50,7 @@ test('a port is bound where the source renders its export with that data-slot, a
 	const el = (attrs: string) => find(parseDocument(`<body><button ${attrs}>x</button></body>`), (e) => e.tagName === 'button')!;
 	const used = new Set<string>();
 	bindParts(el('data-slot="tabs-trigger" role="tab" data-radix-collection-item=""'), used);
-	assert.deepEqual([...used], ['radix/tabs']);
+	assert.deepEqual([...used], ['radix/roving']);
 	const none = new Set<string>();
 	bindParts(el('data-slot="tabs-trigger" role="tab" id="base-ui-1" data-base-ui-x=""'), none);
 	assert.deepEqual([...none], [], 'a Base UI tab is not given the Radix port');
