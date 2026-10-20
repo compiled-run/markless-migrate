@@ -58,3 +58,10 @@ test('a port is bound where the source renders its export with that data-slot, a
 	bindParts(el('data-slot="tabs-trigger" role="tab"'), plain);
 	assert.deepEqual([...plain], [], 'markup alone never picks a port: without the library\'s signature no Radix candidate stands');
 });
+
+test('the step snapshot hides every framework announcer frameworkMarkup() knows', async () => {
+	const { FRAMEWORK_MARKUP_SELECTOR, frameworkMarkup } = await import('../src/check/automatic.ts');
+	const known = [...frameworkMarkup.toString().matchAll(/selector: '([^']+)'/g)].map((m) => m[1]!);
+	assert.ok(known.length >= 4);
+	for (const selector of known) assert.ok(FRAMEWORK_MARKUP_SELECTOR.split(', ').includes(selector), selector);
+});

@@ -1,3 +1,4 @@
+import { FRAMEWORK_MARKUP_SELECTOR } from './automatic.ts';
 import type { Browser, BrowserContext, Locator, Page, Request } from 'playwright';
 import { frameworkTransport, openPage, requestLine, type OpenOptions, type SideEnv } from './browser.ts';
 import { markHandlers } from './handlers.ts';
@@ -531,7 +532,15 @@ async function focusLabel(page: Page): Promise<string> {
 async function snapshot(page: Page, origins: readonly string[]): Promise<string[]> {
 	// Indentation is structure, which the rendered check compares; a step's effect is which nodes appear and disappear.
 	// The app's own host name inside a URL's query (`utm_source=old.example`) is where the page runs, not what it shows.
+	// A framework's own route announcer is not the app's (the a11y comparison accepts it the same way): it is hidden from
+	// the tree for the snapshot only, so the navigation it announces does not count it as content appearing or leaving.
+	const hidden = await page.evaluate((selector) => {
+		const hosts = [...document.querySelectorAll(selector)].filter((el) => !el.hasAttribute('aria-hidden'));
+		for (const el of hosts) el.setAttribute('aria-hidden', 'true');
+		return hosts.length;
+	}, FRAMEWORK_MARKUP_SELECTOR).catch(() => 0);
 	let text = await page.locator('body').ariaSnapshot({ timeout: 5_000 }).catch(() => '');
+	if (hidden) await page.evaluate((selector) => { for (const el of document.querySelectorAll(selector)) el.removeAttribute('aria-hidden'); }, FRAMEWORK_MARKUP_SELECTOR).catch(() => {});
 	for (const origin of origins) text = text.split(origin).join('').split(`=${new URL(origin).hostname}&`).join('={host}&');
 	return text.split('\n').map((line) => line.trim());
 }

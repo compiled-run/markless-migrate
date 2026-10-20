@@ -3,6 +3,8 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { parseModule, walk, type N } from '../source/js.ts';
 import type { Redirect } from '../source/types.ts';
+import { fumadocsCollection } from './fumadocs/index.ts';
+import { match } from 'path-to-regexp';
 
 /** A non-page route of the old app (a Next.js route handler) and how the new app answers it. */
 export interface EndpointPort {
@@ -35,7 +37,7 @@ function resolveLocal(root: string, from: string, spec: string): string | undefi
 	return undefined;
 }
 
-async function closureOf(root: string, entry: string): Promise<Closure> {
+async function closureOf(root: string, entry: string, generated: ReadonlySet<string> = new Set()): Promise<Closure> {
 	const files = new Set<string>();
 	const packages = new Set<string>();
 	const queue = [join(root, entry)];
@@ -43,7 +45,8 @@ async function closureOf(root: string, entry: string): Promise<Closure> {
 		const file = queue.pop()!;
 		if (files.has(file)) continue;
 		files.add(file);
-		if (file.endsWith('.json')) continue;
+		// A file the converter writes itself (the content collection as data): its own imports are not the handler's.
+		if (file.endsWith('.json') || generated.has(file)) continue;
 		const mod = parseModule(file, await readFile(file, 'utf8'));
 		const specs = new Set([...[...mod.imports.values()].map((i) => i.source), ...[...mod.reexports.values()].map((r) => r.source), ...mod.starExports]);
 		walk(mod.program, (n: N) => {
@@ -144,8 +147,11 @@ export async function writeRouting(input: RoutingInput): Promise<{ ports: Endpoi
 	const packages: Record<string, string> = { 'path-to-regexp': '6.3.0' };
 	const ports: EndpointPort[] = [];
 	const handlers: { pattern: string; module: string }[] = [];
+	const collection = await fumadocsCollection(source);
+	const generated = new Set(collection ? [join(source, collection.file)] : []);
+	if (collection) input.log?.(`content collection ${collection.file}: ${collection.entries} entries read as data by fumadocs-mdx's own loader`);
 	for (const endpoint of input.endpoints) {
-		const closure = await closureOf(source, endpoint.file);
+		const closure = await closureOf(source, endpoint.file, generated);
 		const blocked = [...closure.packages].filter((p) => BUILD_ONLY.test(p));
 		// Files read from the old app's working directory at run time are the old build's.
 		for (const file of closure.files) if (!file.endsWith('.json') && /process\.cwd\(\)/.test(await readFile(file, 'utf8'))) blocked.push(`its own files from process.cwd() (${relative(source, file)})`);
@@ -156,6 +162,12 @@ export async function writeRouting(input: RoutingInput): Promise<{ ports: Endpoi
 		for (const file of closure.files) {
 			const target = join(out, relative(source, file)).replace(/\.tsx$/, '.ts');
 			await mkdir(dirname(target), { recursive: true });
+			if (collection && generated.has(file)) {
+				await writeFile(target, collection.source);
+				await writeFile(join(dirname(target), 'collection.json'), collection.data);
+				await collection.copyRuntime(dirname(target));
+				continue;
+			}
 			await writeFile(target, file.endsWith('.json') ? await readFile(file, 'utf8') : serverSource(source, file, out, await readFile(file, 'utf8')));
 		}
 		for (const p of closure.packages) {
@@ -171,7 +183,10 @@ export async function writeRouting(input: RoutingInput): Promise<{ ports: Endpoi
 	await rm(assets, { recursive: true, force: true });
 	await mkdir(assets, { recursive: true });
 	let n = 0;
+	const ported = handlers.map((h) => match(h.pattern, { decode: decodeURIComponent }));
 	for (const path of input.builtPaths) {
+		// A path a ported handler answers is the handler's.
+		if (ported.some((m) => m(path))) continue;
 		const response = await fetch(new URL(path, input.old)).catch(() => undefined);
 		if (!response?.ok) continue;
 		const name = `${n++}`;
