@@ -41,6 +41,9 @@ before(async () => {
 	// A hand port that retypes the frame at the width its author saw once, moves the <style> into a rewritten stylesheet and loads htmx.
 	pages.port = rebase(OLD.replace("(50 + 51)", '51').replace('<style>.hero { margin: 0 }</style>', '').replace('</body>', '<script src="/htmx.js"></script></body>'), 'port');
 	pages.changed = rebase(OLD, 'changed');
+	// A port that keeps a closed dialog in the page, hidden, with the inline style the library gives it once mounted.
+	pages.closed = rebase(OLD.replace('</body>', '<div hidden><div role="dialog" style="pointer-events: auto;"></div></div></body>'), 'closed');
+	pages.shownDialog = rebase(OLD.replace('</body>', '<div><div role="dialog" style="pointer-events: auto;"></div></div></body>'), 'shownDialog');
 });
 
 after(async () => {
@@ -54,6 +57,13 @@ test('a port that keeps the old page byte for byte has no page-guard difference'
 	const old = await capture('old');
 	const { findings } = comparePages(old, await capture('old'), await capture('same'));
 	assert.deepEqual(findings, []);
+});
+
+test('an inline style on a part the port keeps hidden is not compared; shown, it is', async () => {
+	const old = await capture('old');
+	const again = await capture('old');
+	assert.deepEqual(comparePages(old, again, await capture('closed')).findings, []);
+	assert.deepEqual(comparePages(old, again, await capture('shownDialog')).findings.map((f) => `${f.kind}: ${f.actual}`), ['inline style differs: style="pointer-events: auto;"']);
 });
 
 test('a frame retyped at another width, a dropped <style>, a changed stylesheet and a loaded htmx are each red', async () => {
