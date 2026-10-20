@@ -15,6 +15,8 @@ export type CachingProblem =
 	| 'stale-forever'
 	/** A page the same for every visitor that the CDN does not keep. */
 	| 'uncached-static'
+	/** A cached page whose fragment URL, which the router fetches on every prefetch and navigation, the CDN does not keep. */
+	| 'uncached-fragment'
 	/** Cached on the old site, not on the new one. */
 	| 'worse-than-old'
 	/** A content-hashed file that browsers are not told to keep. */
@@ -33,6 +35,8 @@ export interface RouteObservation {
 	readonly passes: readonly ResponseFacts[];
 	/** The answer to a fragment request, and the document fetched straight after it. */
 	readonly fragment?: { readonly response: ResponseFacts; readonly documentAfter: ResponseFacts };
+	/** The answers to the page's fragment URL over the passes. */
+	readonly fragmentPasses?: readonly ResponseFacts[];
 	/** Function invocations a new visitor's page view caused after the passes: every same-origin response the browser loaded. */
 	readonly invocations?: number;
 }
@@ -112,6 +116,10 @@ export function judgeRoute(planned: RouteCaching, observed: RouteObservation, fr
 			else add('uncached-static', `the same for every visitor (${planned.reasons[0]}), but the new app answered ${what} on every later request`);
 		}
 	}
+	const fragmentLater = observed.fragmentPasses?.slice(1) ?? [];
+	if (planned.class !== 'no-cache' && html && fragmentLater.length && fragmentLater.every((p) => p.status === 200) && !fragmentLater.some(servedByCdn)) {
+		add('uncached-fragment', `the page is cached, but its fragment URL answered ${fragmentLater.map((p) => p.cdn?.raw ?? 'no CDN header').join(', ')} on every later request: each prefetch and in-place navigation runs a function`);
+	}
 	if (fragmentHeader && observed.fragment && html) {
 		const doc = passes.at(-1)!;
 		const { response, documentAfter } = observed.fragment;
@@ -162,6 +170,7 @@ async function facts(url: string, headers: Record<string, string> = {}): Promise
 
 export interface VerifyOptions {
 	readonly fragmentHeader?: string;
+	readonly fragmentPath?: string;
 	/** Requests per route after the first (default 2): the first may be a miss, the later ones show the CDN keeping it. */
 	readonly passes?: number;
 	readonly gapMs?: number;
@@ -195,13 +204,21 @@ export async function verifyCaching(origin: string, planned: readonly RouteCachi
 			const documentAfter = (await facts(url)).facts;
 			fragment = { response, documentAfter };
 		}
+		const fragmentPasses: ResponseFacts[] = [];
+		if (options.fragmentPath && p.html) {
+			const fragmentUrl = new URL(`${options.fragmentPath}${new URL(url).pathname}`, origin).href;
+			for (let i = 0; i <= (options.passes ?? 2); i++) {
+				if (i) await new Promise((r) => setTimeout(r, options.gapMs ?? 800));
+				fragmentPasses.push((await facts(fragmentUrl)).facts);
+			}
+		}
 		const last = passes.at(-1)!;
 		const invocations = browser && /html/.test(last.contentType) ? await pageInvocations(browser, url) : invoked(last) ? 1 : 0;
 		if (options.assets !== false && !assetsChecked && /html/.test(last.contentType)) {
 			assetsChecked = true;
 			findings.push(...(await assetFindings(origin, p.route, html, oldLong)));
 		}
-		return { route: p.route, class: p.class, passes, ...(fragment ? { fragment } : {}), invocations };
+		return { route: p.route, class: p.class, passes, ...(fragment ? { fragment } : {}), ...(fragmentPasses.length ? { fragmentPasses } : {}), invocations };
 	};
 	const todo = planned.filter((r) => r.status === 200);
 	const observed: RouteObservation[] = new Array(todo.length);
@@ -246,6 +263,7 @@ const LABEL: Record<CachingProblem, string> = {
 	'missing-vary': 'fragment and document share a cache entry',
 	'stale-forever': 'HTML kept long after it changes',
 	'uncached-static': 'a static page the CDN does not keep',
+	'uncached-fragment': 'a cached page whose fragment the CDN does not keep',
 	'worse-than-old': 'cached on the old site, not on the new',
 	'short-lived-asset': 'a content-hashed file not kept by browsers',
 };

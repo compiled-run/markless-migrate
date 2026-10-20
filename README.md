@@ -482,7 +482,9 @@ app's own pages are read again first: a page that reads cookies or `http.request
 `storage()`, is never cached, whatever the old page was. Because Vercel's ISR cache ignores `Vary`, a
 request carrying Markless's fragment header (read from the app's own `@markless/router`) is routed to the
 page's ISR function with a query key of its own, so a fragment and a document of one URL never share an
-entry. Content-hashed files in `public/` are marked immutable (a directory holding only hashed files as
+entry. A router that fetches fragments from their own path instead (Markless 0.7: `/_markless/fragment/<page>`,
+the prefix read from the app's `@markless/router`) gets each cached page's fragment URL cached the same way
+as the page. Content-hashed files in `public/` are marked immutable (a directory holding only hashed files as
 one rule); Markless's `/build/` and Nitro's `/assets/` already are.
 
 `cache check --new <deployment>` reads the deployment route by route: three GETs (a miss, then hits),
@@ -492,7 +494,8 @@ caches, or a response setting a cookie, is answered from or offered to a shared 
 and a document share an entry or a page answering the fragment header differently lacks it in `Vary`;
 when HTML is kept by browsers (immutable, `max-age` of a day or more) or a changing page is kept until
 the next deploy; when a static page is not kept, or a page the old site's CDN kept is not (including one
-the port made personal); and when a content-hashed file the page loads is not kept by browsers. It
+the port made personal); when a cached page's fragment URL is not kept (every prefetch and in-place
+navigation would run a function); and when a content-hashed file the page loads is not kept by browsers. It
 reports the CDN hit rate on the second pass, function invocations per page view and TTFB. Platform
 facts behind the rules: [docs/notes/caching.md](docs/notes/caching.md).
 
