@@ -222,6 +222,10 @@ export function flattenKeyed(value: unknown, prefix = '', out: { fields: Record<
 	return out;
 }
 
+// When the file was generated (RSS lastBuildDate, Atom's feed-level updated): any rebuild moves it, so both sides need a date there, not the same one.
+const BUILD_DATES = new Set(['lastBuildDate', 'updated']);
+const isDate = (value: unknown) => typeof value === 'string' && value.trim() !== '' && !Number.isNaN(Date.parse(value));
+
 interface Feed {
 	readonly fields: Record<string, string>;
 	readonly items: Map<string, { readonly label: string; readonly fields: Record<string, string> }>;
@@ -348,7 +352,8 @@ export function compareEndpoint(route: string, olds: readonly EndpointCapture[],
 		case 'feed': {
 			const [fa, fn] = [readFeed(a.body), readFeed(next.body)];
 			const fo = others.map((o) => readFeed(o.body));
-			failures.push(...grouped(route, dimension, 'feed field', diffFields(fieldTemplates(fa.fields, ...fo.map((f) => f.fields)), fn.fields), HINTS.feed));
+			const feedDiffs = diffFields(fieldTemplates(fa.fields, ...fo.map((f) => f.fields)), fn.fields).filter((d) => !(BUILD_DATES.has(d.key) && isDate(d.expected) && isDate(d.actual)));
+			failures.push(...grouped(route, dimension, 'feed field', feedDiffs, HINTS.feed));
 			for (const [key, item] of fa.items) {
 				if (fo.some((f) => !f.items.has(key))) continue;
 				const now = fn.items.get(key);
