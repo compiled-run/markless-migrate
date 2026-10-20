@@ -32,22 +32,18 @@ interface Indexed {
 
 const digest = (text: string) => createHash('sha1').update(text).digest('base64url');
 
-function isCurrentLink(el: Element, path: string): boolean {
-	if (el.tagName !== 'a') return false;
-	const href = attr(el, 'href');
-	return href !== undefined && href.split('#')[0] === path;
-}
-
 function index(route: string, path: string, root: Element, extra?: (el: Element) => string | undefined): Indexed {
 	const hash = new Map<Element, string>();
 	const size = new Map<Element, number>();
 	const visit = (el: Element): [string, number] => {
 		let bytes = el.tagName.length * 2 + 5;
 		const parts: string[] = [el.tagName];
-		const current = isCurrentLink(el, path);
+		// A link's other attributes may mark the current page (data-active, aria-current, a class): they are left out of
+		// the hash, and the component writes each as an expression of the path.
+		const link = el.tagName === 'a' && attr(el, 'href') !== undefined;
 		for (const a of el.attrs) {
 			bytes += a.name.length + a.value.length + 4;
-			if (current && a.name !== 'href') parts.push(`${a.name}=@current`);
+			if (link && a.name !== 'href') parts.push(`${a.name}=@link`);
 			else parts.push(`${a.name}=${GENERATED_ID.test(a.value) ? '@id' : a.value}`);
 		}
 		for (const child of childrenOf(el)) {

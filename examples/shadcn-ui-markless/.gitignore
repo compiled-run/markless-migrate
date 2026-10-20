@@ -1,0 +1,20 @@
+node_modules/
+dist/
+.vite/
+.markless/
+.output/
+*.log
+.DS_Store
+.vercel
+.env*
+# Written by markless-migrate convert (scripts/convert.sh) from the old site; regenerate, never edit.
+pages/
+components/converted/
+public/
+server/
+lib/parts/
+document.tsrx
+head.ts
+heads.ts
+.migrate/
+.vercel/

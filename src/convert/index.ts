@@ -449,3 +449,14 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	await writeFile(join(state, 'convert', 'report.json'), JSON.stringify(report, null, '\t'));
 	return report;
 }
+
+/** The report's few lines a person reads: pages written, what was left out, endpoints, and the parts still to port. */
+export function summarizeConvert(report: ConvertReport): string {
+	const lines = [`Converted ${report.routes.length} routes into ${new Set(report.routes.map((r) => r.page)).size} pages, ${report.shared.length} shared components; ${report.assets.copied} assets copied byte for byte${report.assets.missing.length ? ` (${report.assets.missing.length} not answered by the old site)` : ''}.`];
+	const dropped = Object.entries(report.dropped).sort((a, b) => b[1] - a[1]);
+	if (dropped.length) lines.push('Left out of the pages (the old framework\'s own):', ...dropped.slice(0, 8).map(([what, n]) => `  ${n} x ${what}`));
+	for (const e of report.endpoints) lines.push(`  endpoint ${e.route}: ${e.how === 'handler' ? 'ported' : e.how === 'build' ? 'NOT PORTED, served from the old build' : 'missing'} (${e.reason})`);
+	if (report.unported.length) lines.push(`Library parts no port implements yet (${report.unported.length}):`, ...report.unported.slice(0, 12).map((u) => `  ${u.part}: ${u.routes} routes`));
+	for (const u of report.unconverted) lines.push(`  not converted ${u.route}: ${u.reason}`);
+	return `${lines.join('\n')}\n`;
+}

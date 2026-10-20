@@ -358,6 +358,32 @@ the route is reported as not checked for an infrastructure failure, naming DNS (
 connection (`ECONNREFUSED`) or the timeout, rather than as red. The checker's own requests are retried
 the same way. `check` exits 3 when nothing is red but such a route was not checked.
 
+## Converting pages
+
+`convert` writes the Markless app from the old site instead of leaving every page to the agent. Each HTML
+route is loaded the way `check` loads it, and the document a visitor's browser ends up with becomes the page's
+`.tsrx`: the old framework's runtime is left out (its scripts, its server state and streaming scripts, its
+marker attributes and elements), plain scripts and every other tag stay as they were, and inline `<style>`
+blocks become stylesheet files. Regions several pages render alike (a header, a docs sidebar) are written once
+as components that take the page's path; the current page's link and per-page values are expressions.
+Every control ARIA marks as holding content back (`aria-expanded="false"`, an unselected tab, a tooltip
+trigger) is used on the old page, and what it shows is kept in an inert `<template>` next to it.
+
+Which library part each element is comes from the old source, not the markup: the usage inventory names
+the export that renders each `data-slot`, and the markup only tells which of the source's candidates an
+element is when a site renders several (Radix's, Base UI's and React Aria's tabs). Each part is then driven by
+a Markless port of that library (`parts/`: Radix Dialog on the shared dialog engine, Popover, DropdownMenu,
+Tabs, Collapsible and Accordion on Floating UI as Radix uses it; Base UI Popover, Menu, Tooltip and Select),
+written once and used on every site, delegated from each page's root element. The site's own client
+components go in `lib/site/parts.ts` (and `lib/site/mounts.json` for elements a part starts on when shown).
+With `--source`, the old config's redirects and rewrites and each route handler answer through a generated
+Nitro middleware: a handler runs as the old app's own server code (its local imports copied, JSX data
+dropped, `next/server` on the Fetch API); one that needs the old framework is served from the old build and
+reported as not ported. `.migrate/convert/report.json` lists what was left out, the endpoints and how each is
+answered, and the library parts no port implements yet. `--only <file>` converts the routes listed;
+`--fallthrough <old deployment>` makes a preview answer every other page from there, marked
+`x-markless-migrate-side: old`.
+
 ## Command-line tools
 
 When the product includes a command-line tool (a scaffolder, a code generator, shadcn's `shadcn add`),
