@@ -1,6 +1,7 @@
 import { optionsOf, place } from './popper.ts';
 import { leave } from './presence.ts';
 import { templatesFor } from './reveal.ts';
+import { hideOthers } from './aria-hidden.ts';
 
 // What Radix's Portal, DismissableLayer, FocusGuards and FocusScope do around a popover, menu, select or tooltip: the
 // content mounted at the end of the body, a focus guard at each end of the body while any layer is open, Escape and a
@@ -77,6 +78,7 @@ export function openLayer(trigger: HTMLElement, key: string, options: { readonly
 			document.body.style.pointerEvents = 'none';
 		}
 		for (const n of nodes) (n as HTMLElement).style.pointerEvents = 'auto';
+		layer.cleanup.push(hideOthers(nodes));
 	}
 	open.push(layer);
 	const onKey = (event: KeyboardEvent) => {
