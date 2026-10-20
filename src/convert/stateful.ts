@@ -5,10 +5,15 @@ import { lit, type Binding } from './tsrx.ts';
  * Radix Tabs on Markless state: each tab list becomes one state() in the component that renders it, holding the active
  * tab's value (the suffix of Radix's `…-content-<value>` ids). Triggers bind aria-selected and data-state and activate
  * on mousedown, focus, Enter and Space as Radix does; the arrows only move focus (roving.ts). Each panel binds
- * data-state and hidden over its content (what the old page showed in it, captured for the panels shown on use),
- * rendered always: an @if arm cannot hold captured markup, whose literal text containers count as bindings. Nothing is
- * written to the DOM by hand.
+ * data-state and hidden, and its content (what the old page showed in it, captured for the panels shown on use) is an
+ * @if arm, so an inactive panel holds nothing, as Radix unmounts it. Nothing is written to the DOM by hand.
  */
+// A branch cannot hold another branch: content that holds one (a tab list inside an accordion item) stays rendered,
+// hidden by its bound attribute; the innermost content leaves the DOM while closed.
+function armed(test: string, inner: string): string {
+	return /@(if|switch|for) \(/.test(inner) ? inner : `@if (${test}) { <>${inner}</> }`;
+}
+
 export class TabsPlan {
 	private readonly bindings = new Map<Element, Binding>();
 	private n = 0;
@@ -60,6 +65,7 @@ export class TabsPlan {
 					omit: ['data-state', 'hidden'],
 					extra: [`data-state={${name} === ${v} ? "active" : "inactive"}`, `hidden={${name} !== ${v}}`],
 					...(revealed !== undefined ? { children: revealed } : {}),
+					wrap: (inner) => armed(`${name} === ${v}`, inner),
 				});
 			}
 		}
@@ -71,7 +77,8 @@ export class TabsPlan {
  * Radix Accordion (type single, collapsible unless an open trigger is aria-disabled) and Collapsible on Markless state:
  * the open item's key in one state() per accordion (a boolean per collapsible), and the item closing in another while
  * its exit animation runs. Trigger, item and header bind aria-expanded and data-state; the content binds data-state and
- * hidden (shown while open or closing), and disclosure-motion.ts measures it as it is shown and ends the exit.
+ * hidden, its content is an @if arm rendered while open or closing, and disclosure-motion.ts measures it as it is
+ * shown and ends the exit.
  */
 export class DisclosurePlan {
 	private readonly bindings = new Map<Element, Binding>();
@@ -138,6 +145,7 @@ export class DisclosurePlan {
 					omit: ['data-state', 'hidden'],
 					extra: [`data-state={${isOpen} ? "open" : "closed"}`, `hidden={!${shown}}`],
 					...(revealed !== undefined ? { children: revealed } : {}),
+					wrap: (inner) => armed(shown, inner),
 				});
 			});
 		}

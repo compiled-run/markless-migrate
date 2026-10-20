@@ -12,8 +12,8 @@
 		"test": "vp test"
 	},
 	"dependencies": {
-		"@markless/core": "^0.6.0",
-		"@markless/router": "^0.6.0",
+		"@markless/core": "file:./.markless-local/markless-core-0.7.0.tgz",
+		"@markless/router": "file:./.markless-local/markless-router-0.7.0.tgz",
 		"nitro": "3.0.260429-beta",
 		"vite-plus": "0.3.1",
 		"@floating-ui/dom": "1.7.6",
@@ -25,13 +25,22 @@
 		"@vercel/blob": "^2.8.0"
 	},
 	"devDependencies": {
-		"@markless/analyzer": "^0.6.0",
-		"@markless/typescript-plugin": "^0.6.0",
+		"@markless/analyzer": "file:./.markless-local/markless-analyzer-0.7.0.tgz",
+		"@markless/typescript-plugin": "file:./.markless-local/markless-typescript-plugin-0.7.0.tgz",
 		"typescript": "^5.9.3",
 		"vite": "npm:@voidzero-dev/vite-plus-core@0.3.1"
 	},
 	"overrides": {
-		"vite": "$vite"
+		"vite": "$vite",
+		"@markless/analyzer": "file:./.markless-local/markless-analyzer-0.7.0.tgz",
+		"@markless/bundler": "file:./.markless-local/markless-bundler-0.7.0.tgz",
+		"@markless/compiler": "file:./.markless-local/markless-compiler-0.7.0.tgz",
+		"@markless/core": "file:./.markless-local/markless-core-0.7.0.tgz",
+		"@markless/router": "file:./.markless-local/markless-router-0.7.0.tgz",
+		"@markless/runtime": "file:./.markless-local/markless-runtime-0.7.0.tgz",
+		"@markless/serializer": "file:./.markless-local/markless-serializer-0.7.0.tgz",
+		"@markless/typescript-plugin": "file:./.markless-local/markless-typescript-plugin-0.7.0.tgz",
+		"@markless/web": "file:./.markless-local/markless-web-0.7.0.tgz"
 	},
 	"pnpm": {
 		"peerDependencyRules": {
