@@ -72,10 +72,52 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
    building all routes at once.
 2. Event handlers in `document.tsrx` are dropped without a diagnostic (`<body onClick>`, or on any element of the
    Document); the same handler on a page's element works.
-3. After a part replaces part of a page (View Code), a later interaction logs `Resume locator h1889 expected <div>
-   at DOM order index 1890`. Not reproduced in a minimal app yet; it reproduces on the converted
-   `/docs/components/radix/accordion`.
+3. Resume locator errors (`Resume locator h1889 expected <div> at DOM order index 1890`). Two causes: the first
+   ports inserted nodes inside the page (fixed in the pipeline: parts now only switch attributes on nodes Markless
+   renders, and a guard test fails on any part that inserts or removes nodes), and bug 5.
+4. `attach={(el) => watch(el)}` with `watch` imported from a .ts module stops the build with
+   MARKLESS_SYMBOL_MODULE_UNRESOLVED_GRAPH_REFERENCE (the diagnostic calls it a compiler gap); a handler calling the
+   same import compiles.
+5. A `<template>` with element children breaks every later handler of the page without an error: `let count =
+   state(0); <main><template><div><span>a</span></div></template><button onClick={() => count++}>{count}</button></main>`
+   stays at 0 after clicks, and counts without the template. Template content seems to be counted in Markless's
+   element census, which the browser keeps out of the document. The converter now writes no `<template>`.
+6. Captured content cannot sit in an `@if` arm (MARKLESS_BRANCH_ARM_UPDATE_UNSUPPORTED), because literal text
+   containers (`{"  "}`) count as bindings. Inactive tab panels and closed accordion items are therefore rendered,
+   hidden by their bound `hidden`, where Radix unmounts them; switch back to `@if` once that is fixed.
 
-## Status
+## Status (2026-10-20)
 
-See the PR description for the latest counts; this section is updated with each run.
+Preview: https://mm-shadcn-ui-new.vercel.app renders `/`, `/docs/cli`, `/docs/components/radix/accordion` and
+`/blocks` with Markless; every other page is answered from https://mm-shadcn-ui-old.vercel.app, marked
+`x-markless-migrate-side: old` (a preview-only convert option). Building all 498 pages at once needs about 45 GB
+(bug 1): the four take 5.9 GB.
+
+`check` of the four (old and new served locally): 0 green, 4 red.
+- `/docs/cli`: behaviour only. Choosing a search palette option: the old page's Next route announcer (an alert)
+  disappears and its notification regions move after the navigation; the port has no announcer (framework markup).
+  Options whose page is not in the preview land on the old app. Install tabs beyond the journey budget.
+- `/docs/components/radix/accordion`: the same, plus accordion content motion and one visual difference.
+- `/`: the same palette results, Base UI radio and the cards' controls not ported.
+- `/blocks`: every block preview is an iframe of `/view/...`, which the preview answers from the old app.
+
+Endpoints: the 24 redirects and the rewrites answer as the old config does (spot-checked `/charts`, `/cli`,
+`/docs/components/button`, `/docs/components/accordion.md`); the 6,607 registry files under `/r/` are copied byte for
+byte; `/init`, `/init/md` and `/r/registries.json` run as the old handlers' own server code. Not ported (served from
+the old build's output): `/docs/*.md` (`/llm/*`), `/rss.xml`, `/sitemap.xml`, `/robots.txt`, `/llms.txt`,
+`/typeset.css`. Missing: `/api/search` (fumadocs' search over compiled MDX), `/og` (next/og), `/init/v0` (imports
+React components to read their source).
+
+CLI (`markless-migrate cli --config migrate-cli.json`, the pinned `shadcn` build against each registry): 10 of 10
+cases the same: view, view several, search, add --dry-run, add three components, add a block, add a chart, info,
+init with a preset, init then add.
+
+## Open work
+
+- The search palette's search results (`/api/search`), the remaining endpoints above, and `/og`.
+- Base UI Radio, Switch, Checkbox, Dialog, AlertDialog, Toast; Radix ScrollArea, ToggleGroup, Select, Slider,
+  RadioGroup; vaul; react-resizable-panels; recharts (the charts are SVG from the old page, not interactive).
+- Recapture every route's reveals with signatures (only the preview routes have them) and convert all 498 pages
+  once bug 1 is fixed; then `check` every route.
+- check: a framework's own route announcer and the regions it moves, in what a step changes (journeys), are the old
+  framework's (like the announcer already is in the accessibility tree).
