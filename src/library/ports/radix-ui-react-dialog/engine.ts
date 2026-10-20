@@ -61,9 +61,6 @@ function watchPresence(el: HTMLElement, onMount: () => void, onUnmount: () => vo
 		if (next === 'unmounted') {
 			el.hidden = true;
 			onUnmount();
-			// Radix unmounts the part: its pointer-events style goes with it, so a closed part carries none.
-			el.style.removeProperty('pointer-events');
-			if (!el.style.length) el.removeAttribute('style');
 		} else if (was === 'unmounted') {
 			forgetMarks(el);
 			portal(el);
@@ -481,7 +478,6 @@ function canScroll(el: Element, vertical: boolean, delta: number): boolean {
 }
 
 function mountOverlay(dialog: Dialog): void {
-	dialog.overlay?.style.setProperty('pointer-events', 'auto');
 	if (scrollLocks === 0 && !scrollStyle) {
 		scrollStyle = document.createElement('style');
 		scrollStyle.type = 'text/css';

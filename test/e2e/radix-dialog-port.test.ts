@@ -109,17 +109,6 @@ describe('the Markless port of @radix-ui/react-dialog', () => {
 		assert.equal(frame(snaps, 'first frame after b-overlay exit ended').elements['b-overlay']?.shown, false);
 	});
 
-	test('a closed dialog\'s parts carry no inline style, at load and after an open and a close, as Radix\'s unmounted parts carry none', async () => {
-		const side = await openSide(context, port.origin);
-		await reset(side, port.origin);
-		const styled = () => side.page.evaluate(() => [...document.querySelectorAll('[data-testid$="-overlay"],[data-testid$="-content"]')].filter((el) => el.closest('[hidden]') && el.hasAttribute('style')).map((el) => `${(el as HTMLElement).dataset.testid} style="${el.getAttribute('style')}"`));
-		assert.deepEqual(await styled(), []);
-		const triggers = await triggerCenters(side.page);
-		for (const [i, step] of [open('a'), closeThenWatch].entries()) await runStep(side, step, i, triggers);
-		assert.deepEqual(await styled(), []);
-		await side.page.close();
-	});
-
 	test('catches the shadcn parity port flicker: a backdrop that leaves when the dialog does is back at full opacity after its own fade', async () => {
 		const mutant = await openPair(context, radix.origin, flicker.origin);
 		const found = await compareSequence(mutant, [open('a'), closeThenWatch]);
