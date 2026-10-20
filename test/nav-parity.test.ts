@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { withFailures } from '../src/check/compare.ts';
-import { applyNavigation, compareSnaps, errorFailures, planNavigation, readServed, scriptFailures, type NavigationResult } from '../src/check/nav-parity.ts';
+import { applyNavigation, compareSnaps, errorFailures, markedAttributes, planNavigation, readServed, scriptFailures, type NavigationResult } from '../src/check/nav-parity.ts';
 import { DIMENSIONS, notCompared, type RouteResult } from '../src/check/types.ts';
 
 const ORIGIN = 'http://127.0.0.1:4000';
@@ -77,4 +77,9 @@ test('applyNavigation: destinations and the routes they stand for pass or fail; 
 	assert.equal(c!.dimensions.navigation, 'pass');
 	assert.equal(d!.dimensions.navigation, 'skipped');
 	assert.equal(notCompared(d!), false);
+});
+
+test("<html> attributes are compared without an old framework's runtime markers, which a port leaves out (docusaurus.io's data-has-hydrated and react-helmet's data-rh)", () => {
+	const old = { html: ['lang=en', 'class=plugin-pages', 'data-theme=light', 'data-has-hydrated=true', 'data-rh=lang,dir,class,data-has-hydrated'] };
+	assert.deepEqual(markedAttributes(old), ['class=plugin-pages', 'data-theme=light']);
 });

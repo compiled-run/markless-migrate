@@ -4,6 +4,7 @@ import { openPage, tagHeaders, type SideEnv, type StorageState } from './browser
 import { bodyText, request } from './http.ts';
 import { pool, quiet } from './journeys.ts';
 import { withFailures } from './compare.ts';
+import { RUNTIME_MARKERS } from './residue.ts';
 import { maskedShot } from './embeds.ts';
 import type { Failure, RouteNavigation, RouteResult, Shot, Viewport } from './types.ts';
 import { compareScreenshots, visualNoise, visuallyDifferent, type VisualNoise } from './visual.ts';
@@ -742,7 +743,9 @@ function side(browser: Browser, env: SideEnv, viewport: Viewport, opened: () => 
 /** What a failure says once the way it was reached is set aside: the same difference on the old app reached the same way is the old app's own. */
 const sameKey = (f: Failure) => `${f.route} ${f.check.replace(' (through a link the checker added: no page links here)', '').replace(/clicking [^:]*?(?= again:|:)/, 'clicking')}`;
 
-const markedAttributes = (snap: Snap) => snap.html.filter((a) => /^(class|data-[^=]*)=/.test(a));
+// An old framework's own runtime markers (data-has-hydrated, data-rh) are never a difference: a port leaves them out (residue.ts).
+const RUNTIME_ATTRIBUTES: ReadonlySet<string> = new Set(RUNTIME_MARKERS.attributes.map(([name]) => name));
+export const markedAttributes = (snap: Pick<Snap, 'html'>) => snap.html.filter((a) => /^(class|data-[^=]*)=/.test(a) && !RUNTIME_ATTRIBUTES.has(a.slice(0, a.indexOf('='))));
 
 /** Compares a fresh load of each sampled page with the same page reached by an in-place navigation from other pages, plain and after using a control that keeps state in the browser, then going on to use the page's own controls, back and forward. With the old app, a difference the old app shows reached the same way is its own and not reported, and <html> class and data-* attributes are compared with the old app's, fresh and reached. */
 export async function checkNavigation(browser: Browser, env: SideEnv, routes: readonly string[], options: NavigationOptions = {}): Promise<NavigationResult> {
