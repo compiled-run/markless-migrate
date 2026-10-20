@@ -24,7 +24,7 @@ markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [
     [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
     [--auth .migrate/auth.json] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
     [--all] [--allow-unchecked] [--new-source ../markless-app] [--concurrency 4] [--changed]
-    [--journey-budget 120] [--max-journeys <n>] [--timeout 600]
+    [--journey-budget 120] [--max-journeys <n>] [--journey-depth 4] [--timeout 600]
     [--no-responsiveness] [--interaction-budget 200] [--cpu-throttle 4] [--interaction-controls 16] [--no-motion] [--no-cache]
     [--no-navigation] [--nav-entries 2] [--nav-destinations 40]
 markless-migrate usage [--old <origin>] [--built <dir>] [--source <path>] [--new-source <path>] [--json]
@@ -251,7 +251,8 @@ answers with 404 is reported, not timed.
 A first interaction is red when it is slower than the old app's slower run by more than max(16 ms, 10%,
 how much the old runs differed) at either
 speed, over `--interaction-budget` (200 ms) at 4x, or fetches code (an interaction never fetches code in
-Markless). A link is red when the next page shows later than on the old app by the same margin at 4x;
+Markless), unless the old app fetches code on the same interaction in every run and the new one fetches
+no more (VitePress loads its search box and index when search opens). A link is red when the next page shows later than on the old app by the same margin at 4x;
 its desktop figure is reported. A control that exceeds once is measured again, old and new,
 and is red only when both runs exceed (the slower is then kept); the slowest control at each speed is
 always measured twice so the report states how much runs vary. Up to `--interaction-controls` (16)

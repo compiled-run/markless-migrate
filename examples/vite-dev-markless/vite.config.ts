@@ -1,22 +1,15 @@
 import { markless } from '@markless/core/vite';
 import { router } from '@markless/router/vite';
 import { defineConfig } from 'vite-plus';
-import oldRoutes from './old-routes.json' with { type: 'json' };
 import { migrateCache } from './migrate-cache.ts';
-
-// Every route but `/` stays on the old app during the migration (scripts/old-routes.mjs lists them).
-const old = (process.env.OLD_ORIGIN ?? 'http://localhost:4710').replace(/\/$/, '');
 
 export default defineConfig({
 	plugins: [migrateCache(), markless(), router()],
-	// public/ holds byte-for-byte copies of the old site's files.
-	fmt: { ignorePatterns: ['public/**'] },
+	// Built files keep the old build's /assets/name.hash.ext URLs (the hash is the same), which other sites and caches link to.
+	build: { rollupOptions: { output: { assetFileNames: 'assets/[name].[hash][extname]' } } },
+	// public/ holds byte-for-byte copies of the docs' public files and the files the importer writes.
+	fmt: { useTabs: true, singleQuote: true, printWidth: 180, ignorePatterns: ['public/**', 'pages/**', 'lib/**'] },
 	nitro: {
 		compressPublicAssets: true,
-		routeRules: {
-			// The homepage is the same for every visitor; the CDN keeps it an hour.
-			'/': { isr: 3600 },
-			...Object.fromEntries(oldRoutes.paths.map((path) => [path, { proxy: `${old}${path}` }])),
-		},
 	},
 });

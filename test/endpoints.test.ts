@@ -66,3 +66,14 @@ test('an endpoint that sends this visitor to a page compares where it sends them
 	assert.deepEqual(compareEndpoint('/query', [page('/dashboard', '<!DOCTYPE html><p>old</p>')], page('/dashboard', '<!doctype html><p>new</p>')), []);
 	assert.equal(compareEndpoint('/query', [page('/dashboard', '<p>old</p>')], page('/elsewhere', '<p>new</p>'))[0]?.check, 'status');
 });
+
+test('a feed\'s build date is when it was generated: a static feed built on another day compares as a date, and a missing or broken one is red', () => {
+	const olds = [capture('/blog.rss', rss(['a'], 'Fri, 16 Oct 2026 23:29:42 GMT'), 'application/rss+xml'), capture('/blog.rss', rss(['a'], 'Fri, 16 Oct 2026 23:29:42 GMT'), 'application/rss+xml')];
+	assert.deepEqual(compareEndpoint('/blog.rss', olds, capture('/blog.rss', rss(['a'], 'Mon, 19 Oct 2026 05:58:29 GMT'), 'application/rss+xml')), []);
+	assert.deepEqual(compareEndpoint('/blog.rss', olds, capture('/blog.rss', rss(['a'], 'yesterday-ish'), 'application/rss+xml')).map((f) => f.check), ['feed field lastBuildDate']);
+	const atom = (updated: string) => `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>News</title><updated>${updated}</updated><entry><title>a</title><id>urn:a</id><updated>2026-10-01T00:00:00Z</updated></entry></feed>`;
+	const atomOlds = [capture('/atom.xml', atom('2026-10-16T23:29:42Z'), 'application/atom+xml'), capture('/atom.xml', atom('2026-10-16T23:29:42Z'), 'application/atom+xml')];
+	assert.deepEqual(compareEndpoint('/atom.xml', atomOlds, capture('/atom.xml', atom('2026-10-19T05:58:29Z'), 'application/atom+xml')), []);
+	const entry = atom('2026-10-16T23:29:42Z').replace('2026-10-01T00:00:00Z', '2026-10-02T00:00:00Z');
+	assert.equal(compareEndpoint('/atom.xml', atomOlds, capture('/atom.xml', entry, 'application/atom+xml')).length, 1, 'an entry\'s own date is content, still compared');
+});

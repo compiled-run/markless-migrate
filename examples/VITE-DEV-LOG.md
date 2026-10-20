@@ -280,3 +280,47 @@ timeouts to Vercel in both runs).
 | behaviour, a11y, network, assets, responsiveness on docs pages | red on 9 docs pages, a different set in each run. Those pages are the old app's own, forwarded by the new app; the differences are click timeouts under load and Iconify picking a fallback host at random |
 
 Routes switched: none. The front door still serves the old site everywhere.
+
+## Every docs page on Markless (2026-10-20)
+
+The docs pages are no longer forwarded to the old app. `scripts/import-docs.ts <vite-docs-dir>` writes each one from the vite repo's
+own Markdown through the docs' own VitePress pipeline. A rerun from a clean checkout reproduces every file it writes, including the
+blog feed, which now uses the docs' commit time as its clock. Caching comes from `cache plan` and `cache apply`.
+
+### What fixed what
+
+| Fix | Came from |
+| --- | --- |
+| Assets keep VitePress's `name.hash.ext` URLs; `.html` links open their clean page in place; `.html` addresses move to the clean URL before the docs' redirect rules; sponsor grids mounted together each fetch `sponsors.json`; translation links carry the query and hash; the not-found page fetches `hashmap.json` | `run --agent claude` from the check's reports (commit "fixes written by markless-migrate run") |
+| The feed is reproducible; every layout keeps VitePress's `<div id="app">` (Markless 0.7.0 marks `<body>` as the router's container) | the import step |
+| Weight red on 28 docs pages (113 kB against 105 kB) | Markless 0.7.0: 0.5.0 preloaded the 30 kB resume runtime on static pages, plus a 3.6 kB resolver per visible link (repro below; fixed upstream) |
+| `/` never finished checking | checker: holding a loop swallowed the checker's own frame waits (#12) |
+| VitePress page chunks with `-` in the hash; label-drawn radios | checker (#2) |
+| 0.7 fragment fetches counted as new requests; fragment URLs not cached | checker and cache (#13) |
+
+The search experiments the agent tried were reverted: loading the index at idle, a JSON index, and replacing focus-trap and mark.js.
+None of them made a route green, and focus-trap and mark.js are kept libraries.
+
+### Check against the deployments
+
+`check --all --concurrency 2`, old https://vite-dev-old.vercel.app, new https://vite-dev-markless.vercel.app (Markless 0.7.0):
+**166 of 184 routes green**, 18 red. Weight is green everywhere: the docs pages download about 71 kB of JavaScript, against
+102-117 kB on the old app. `cache check` finds no problems: 57 pages prerendered, 100% CDN hits on the second pass.
+
+What keeps the 18 red:
+
+1. **Links to another page's section lose the hash** (`/guide/` "Hot Module Replacement (HMR)" lands on `/guide/features`, not
+   `#hot-module-replacement`; also on `/config/build-options`, `/blog/announcing-vite3`). This is a Markless 0.7.0 router bug: an in-place
+   navigation goes to the URL of whichever link to that page was prefetched (here the sidebar's `/guide/features`), not the link that
+   was clicked. Minimal repro in `~/dev/scratch/markless-repros/static-page-preloads` (`nav-repro.mjs`): from a page linking `/b` and
+   `/b#second`, following `/b` ends at `/b#second`.
+2. **`MARKLESS_EVENT_DISPATCH_UNMATCHED` on `focusout`** of the search box's input (built by a page script) when a link is followed
+   with search open: 17 routes through the shared layout.
+3. **Theme switch, then reload** (14 routes): on the old page the switch reads "Switch to light theme" after the reload; on the new
+   page it does not change. Another worker owns the theme toggle.
+4. **`/live` countdown**: the old page's 1 s timers tick during the "Close banner" step and the new page's do not. That is a live
+   clock compared step by step: a checker nondeterminism, not a port difference.
+5. **Search on `/`**: opening search fetches its index (VitePress does too); the checker requires that no code be fetched.
+6. `/blog.rss` `lastBuildDate`: the deployed old feed carries the old build's time, the port the docs' commit time.
+7. `/changes/hotupdate-hook` copy-button motion, `/blog/announcing-vite6` one computed style, and the not-found page's
+   `hashmap.json` content (VitePress's hashes of its own chunks).

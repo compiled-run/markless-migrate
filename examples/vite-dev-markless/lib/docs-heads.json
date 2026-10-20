@@ -1,0 +1,3802 @@
+{
+	"/acknowledgements": {
+		"title": "Acknowledgements | Vite",
+		"description": "Vite is built upon the shoulders of giants. Thank you to all the projects and contributors that make Vite possible.",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Acknowledgements"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/acknowledgements"
+			}
+		],
+		"markdown": "/acknowledgements.md"
+	},
+	"/blog": {
+		"title": "Latest From the Vite Blog | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Latest From the Vite Blog"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/blog"
+			}
+		]
+	},
+	"/blog/announcing-vite2": {
+		"title": "Announcing Vite 2.0 | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Announcing Vite 2.0"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev/blog/announcing-vite2"
+			},
+			{
+				"property": "og:description",
+				"content": "Vite 2 Release Announcement"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/blog/announcing-vite2"
+			}
+		]
+	},
+	"/blog/announcing-vite3": {
+		"title": "Vite 3.0 is out! | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Vite 3.0 is out!"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image-announcing-vite3.webp"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev/blog/announcing-vite3"
+			},
+			{
+				"property": "og:description",
+				"content": "Vite 3 Release Announcement"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/blog/announcing-vite3"
+			}
+		]
+	},
+	"/blog/announcing-vite4-3": {
+		"title": "Vite 4.3 is out! | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Vite 4.3 is out!"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image-announcing-vite4-3.webp"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev/blog/announcing-vite4-3"
+			},
+			{
+				"property": "og:description",
+				"content": "Vite 4.3 Release Announcement"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/blog/announcing-vite4-3"
+			}
+		]
+	},
+	"/blog/announcing-vite4": {
+		"title": "Vite 4.0 is out! | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Vite 4.0 is out!"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image-announcing-vite4.webp"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev/blog/announcing-vite4"
+			},
+			{
+				"property": "og:description",
+				"content": "Vite 4 Release Announcement"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/blog/announcing-vite4"
+			}
+		]
+	},
+	"/blog/announcing-vite5-1": {
+		"title": "Vite 5.1 is out! | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Vite 5.1 is out!"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image-announcing-vite5-1.webp"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev/blog/announcing-vite5-1"
+			},
+			{
+				"property": "og:description",
+				"content": "Vite 5.1 Release Announcement"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/blog/announcing-vite5-1"
+			}
+		]
+	},
+	"/blog/announcing-vite5": {
+		"title": "Vite 5.0 is out! | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Vite 5.0 is out!"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image-announcing-vite5.webp"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev/blog/announcing-vite5"
+			},
+			{
+				"property": "og:description",
+				"content": "Vite 5 Release Announcement"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/blog/announcing-vite5"
+			}
+		]
+	},
+	"/blog/announcing-vite6": {
+		"title": "Vite 6.0 is out! | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Vite 6.0 is out!"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image-announcing-vite6.webp"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev/blog/announcing-vite6"
+			},
+			{
+				"property": "og:description",
+				"content": "Vite 6 Release Announcement"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/blog/announcing-vite6"
+			}
+		]
+	},
+	"/blog/announcing-vite7": {
+		"title": "Vite 7.0 is out! | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Vite 7.0 is out!"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image-announcing-vite7.webp"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev/blog/announcing-vite7"
+			},
+			{
+				"property": "og:description",
+				"content": "Vite 7 Release Announcement"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/blog/announcing-vite7"
+			}
+		]
+	},
+	"/blog/announcing-vite8-1": {
+		"title": "Vite 8.1 is out! | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Vite 8.1 is out!"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image-announcing-vite8-1.webp"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev/blog/announcing-vite8-1"
+			},
+			{
+				"property": "og:description",
+				"content": "Vite 8.1 Release Announcement"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/blog/announcing-vite8-1"
+			}
+		]
+	},
+	"/blog/announcing-vite8-beta": {
+		"title": "Vite 8 Beta: The Rolldown-powered Vite | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Vite 8 Beta: The Rolldown-powered Vite"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image-announcing-vite8-beta.webp"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev/blog/announcing-vite8-beta"
+			},
+			{
+				"property": "og:description",
+				"content": "Vite 8 Beta Release Announcement"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/blog/announcing-vite8-beta"
+			}
+		]
+	},
+	"/blog/announcing-vite8": {
+		"title": "Vite 8.0 is out! | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Vite 8.0 is out!"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image-announcing-vite8.webp"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev/blog/announcing-vite8"
+			},
+			{
+				"property": "og:description",
+				"content": "Vite 8 Release Announcement"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/blog/announcing-vite8"
+			}
+		]
+	},
+	"/blog/cloudflare-supports-vite": {
+		"title": "Cloudflare supports Vite's mission | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Cloudflare supports Vite's mission"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image-cloudflare-supports-vite.webp"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev/blog/cloudflare-supports-vite"
+			},
+			{
+				"property": "og:description",
+				"content": "The VoidZero team is joining Cloudflare. Vite remains MIT, vendor-neutral and stewarded by the same wider team."
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/blog/cloudflare-supports-vite"
+			}
+		]
+	},
+	"/changes/hotupdate-hook": {
+		"title": "HMR hotUpdate Plugin Hook | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "HMR hotUpdate Plugin Hook"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/changes/hotupdate-hook"
+			}
+		],
+		"markdown": "/changes/hotupdate-hook.md"
+	},
+	"/changes/": {
+		"title": "Breaking Changes | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Breaking Changes"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/changes/"
+			}
+		],
+		"markdown": "/changes.md"
+	},
+	"/changes/per-environment-apis": {
+		"title": "Move to Per-environment APIs | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Move to Per-environment APIs"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/changes/per-environment-apis"
+			}
+		],
+		"markdown": "/changes/per-environment-apis.md"
+	},
+	"/changes/shared-plugins-during-build": {
+		"title": "Shared Plugins during Build | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Shared Plugins during Build"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/changes/shared-plugins-during-build"
+			}
+		],
+		"markdown": "/changes/shared-plugins-during-build.md"
+	},
+	"/changes/ssr-using-modulerunner": {
+		"title": "SSR Using ModuleRunner API | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "SSR Using ModuleRunner API"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/changes/ssr-using-modulerunner"
+			}
+		],
+		"markdown": "/changes/ssr-using-modulerunner.md"
+	},
+	"/changes/this-environment-in-hooks": {
+		"title": "this.environment in Hooks | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "this.environment in Hooks"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/changes/this-environment-in-hooks"
+			}
+		],
+		"markdown": "/changes/this-environment-in-hooks.md"
+	},
+	"/config/build-options": {
+		"title": "Build Options | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Build Options"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/config/build-options"
+			}
+		],
+		"markdown": "/config/build-options.md"
+	},
+	"/config/dep-optimization-options": {
+		"title": "Dep Optimization Options | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Dep Optimization Options"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/config/dep-optimization-options"
+			}
+		],
+		"markdown": "/config/dep-optimization-options.md"
+	},
+	"/config/": {
+		"title": "Configuring Vite | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Configuring Vite"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/config/"
+			}
+		],
+		"markdown": "/config.md"
+	},
+	"/config/preview-options": {
+		"title": "Preview Options | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Preview Options"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/config/preview-options"
+			}
+		],
+		"markdown": "/config/preview-options.md"
+	},
+	"/config/server-options": {
+		"title": "Server Options | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Server Options"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/config/server-options"
+			}
+		],
+		"markdown": "/config/server-options.md"
+	},
+	"/config/shared-options": {
+		"title": "Shared Options | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Shared Options"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/config/shared-options"
+			}
+		],
+		"markdown": "/config/shared-options.md"
+	},
+	"/config/ssr-options": {
+		"title": "SSR Options | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "SSR Options"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/config/ssr-options"
+			}
+		],
+		"markdown": "/config/ssr-options.md"
+	},
+	"/config/worker-options": {
+		"title": "Worker Options | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Worker Options"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/config/worker-options"
+			}
+		],
+		"markdown": "/config/worker-options.md"
+	},
+	"/guide/api-environment-frameworks": {
+		"title": "Environment API for Frameworks | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Environment API for Frameworks"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/api-environment-frameworks"
+			}
+		],
+		"markdown": "/guide/api-environment-frameworks.md"
+	},
+	"/guide/api-environment-instances": {
+		"title": "Using Environment Instances | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Using Environment Instances"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/api-environment-instances"
+			}
+		],
+		"markdown": "/guide/api-environment-instances.md"
+	},
+	"/guide/api-environment-plugins": {
+		"title": "Environment API for Plugins | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Environment API for Plugins"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/api-environment-plugins"
+			}
+		],
+		"markdown": "/guide/api-environment-plugins.md"
+	},
+	"/guide/api-environment-runtimes": {
+		"title": "Environment API for Runtimes | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Environment API for Runtimes"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/api-environment-runtimes"
+			}
+		],
+		"markdown": "/guide/api-environment-runtimes.md"
+	},
+	"/guide/api-environment": {
+		"title": "Environment API | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Environment API"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/api-environment"
+			}
+		],
+		"markdown": "/guide/api-environment.md"
+	},
+	"/guide/api-hmr": {
+		"title": "HMR API | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "HMR API"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/api-hmr"
+			}
+		],
+		"markdown": "/guide/api-hmr.md"
+	},
+	"/guide/api-javascript": {
+		"title": "JavaScript API | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "JavaScript API"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/api-javascript"
+			}
+		],
+		"markdown": "/guide/api-javascript.md"
+	},
+	"/guide/api-plugin": {
+		"title": "Plugin API | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Plugin API"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/api-plugin"
+			}
+		],
+		"markdown": "/guide/api-plugin.md"
+	},
+	"/guide/assets": {
+		"title": "Static Asset Handling | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Static Asset Handling"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/assets"
+			}
+		],
+		"markdown": "/guide/assets.md"
+	},
+	"/guide/backend-integration": {
+		"title": "Backend Integration | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Backend Integration"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/backend-integration"
+			}
+		],
+		"markdown": "/guide/backend-integration.md"
+	},
+	"/guide/build": {
+		"title": "Building for Production | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Building for Production"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/build"
+			}
+		],
+		"markdown": "/guide/build.md"
+	},
+	"/guide/cli": {
+		"title": "Command Line Interface | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Command Line Interface"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/cli"
+			}
+		],
+		"markdown": "/guide/cli.md"
+	},
+	"/guide/dep-pre-bundling": {
+		"title": "Dependency Pre-Bundling | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Dependency Pre-Bundling"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/dep-pre-bundling"
+			}
+		],
+		"markdown": "/guide/dep-pre-bundling.md"
+	},
+	"/guide/env-and-mode": {
+		"title": "Env Variables and Modes | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Env Variables and Modes"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/env-and-mode"
+			}
+		],
+		"markdown": "/guide/env-and-mode.md"
+	},
+	"/guide/features": {
+		"title": "Features | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Features"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/features"
+			}
+		],
+		"markdown": "/guide/features.md"
+	},
+	"/guide/": {
+		"title": "Getting Started | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Getting Started"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/"
+			}
+		],
+		"markdown": "/guide.md"
+	},
+	"/guide/migration": {
+		"title": "Migration from v7 | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Migration from v7"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/migration"
+			}
+		],
+		"markdown": "/guide/migration.md"
+	},
+	"/guide/performance": {
+		"title": "Performance | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Performance"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/performance"
+			}
+		],
+		"markdown": "/guide/performance.md"
+	},
+	"/guide/philosophy": {
+		"title": "Project Philosophy | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Project Philosophy"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/philosophy"
+			}
+		],
+		"markdown": "/guide/philosophy.md"
+	},
+	"/guide/ssr": {
+		"title": "Server-Side Rendering (SSR) | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Server-Side Rendering (SSR)"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/ssr"
+			}
+		],
+		"markdown": "/guide/ssr.md"
+	},
+	"/guide/static-deploy": {
+		"title": "Deploying a Static Site | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Deploying a Static Site"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/static-deploy"
+			}
+		],
+		"markdown": "/guide/static-deploy.md"
+	},
+	"/guide/troubleshooting": {
+		"title": "Troubleshooting | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Troubleshooting"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/troubleshooting"
+			}
+		],
+		"markdown": "/guide/troubleshooting.md"
+	},
+	"/guide/using-plugins": {
+		"title": "Using Plugins | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Using Plugins"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/using-plugins"
+			}
+		],
+		"markdown": "/guide/using-plugins.md"
+	},
+	"/guide/why": {
+		"title": "Why Vite | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Why Vite"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/guide/why"
+			}
+		],
+		"markdown": "/guide/why.md"
+	},
+	"/live": {
+		"title": "5th anniversary of the Vite Team Creation | Vite",
+		"description": "Vite: The Documentary re-premiere. Join the ecosystem this March 19th at 3 PM UTC to remember the story we wrote together. And participate in the live stage to discuss our past, present, and future. We'll be waiting for you!",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "5th anniversary of the Vite Team Creation"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image-5-anniversary-live.webp"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev/live"
+			},
+			{
+				"property": "og:description",
+				"content": "Vite: The Documentary re-premiere. Join the ecosystem this March 19th at 3 PM UTC to remember the story we wrote together. And participate in the live stage to discuss our past, present, and future. We'll be waiting for you!"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/live"
+			}
+		],
+		"markdown": "/live.md"
+	},
+	"/plugins/": {
+		"title": "Plugins | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Plugins"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/plugins/"
+			}
+		],
+		"markdown": "/plugins.md"
+	},
+	"/releases": {
+		"title": "Releases | Vite",
+		"description": "Next Generation Frontend Tooling",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Releases"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/releases"
+			}
+		],
+		"markdown": "/releases.md"
+	},
+	"/team": {
+		"title": "Meet the Team | Vite",
+		"description": "The development of Vite is guided by an international team.",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Meet the Team"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			},
+			{
+				"rel": "canonical",
+				"href": "https://vite.dev/team"
+			}
+		]
+	},
+	"/404": {
+		"title": "404 | Vite",
+		"description": "Not Found",
+		"meta": [
+			{
+				"property": "og:type",
+				"content": "website"
+			},
+			{
+				"property": "og:title",
+				"content": "Vite"
+			},
+			{
+				"property": "og:image",
+				"content": "https://vite.dev/og-image.jpg"
+			},
+			{
+				"property": "og:url",
+				"content": "https://vite.dev"
+			},
+			{
+				"property": "og:description",
+				"content": "Next Generation Frontend Tooling"
+			},
+			{
+				"property": "og:site_name",
+				"content": "vitejs"
+			},
+			{
+				"name": "twitter:card",
+				"content": "summary_large_image"
+			},
+			{
+				"name": "twitter:site",
+				"content": "@vite_js"
+			},
+			{
+				"name": "theme-color",
+				"content": "#646cff"
+			}
+		],
+		"links": [
+			{
+				"rel": "icon",
+				"type": "image/svg+xml",
+				"href": "/logo-without-border.svg"
+			},
+			{
+				"rel": "alternate",
+				"type": "application/rss+xml",
+				"href": "/blog.rss"
+			},
+			{
+				"rel": "preconnect",
+				"href": "https://fonts.googleapis.com"
+			},
+			{
+				"rel": "me",
+				"href": "https://m.webtoo.ls/@vite"
+			}
+		]
+	}
+}

@@ -1,71 +1,9 @@
-import { riveAnimation, riveSource, type RiveName } from '../components/rive.ts';
-import { loadIcons } from './icons.ts';
-import { logoGrid } from './logo-grid.ts';
-import { loadSponsorTiers } from './sponsor-tiers.ts';
+// Every page's module script: VitePress's client behaviour for the whole site, the docs layout's, and the homepage's
+// Rive animations from their own module, loaded only where a page has them.
+import { onPage } from './site.ts';
+import './docs.ts';
+import './live.ts';
 
-const preload = document.createElement('link');
-preload.rel = 'preload';
-preload.href = riveSource('masthead');
-preload.as = 'fetch';
-preload.crossOrigin = 'anonymous';
-document.head.appendChild(preload);
-
-for (const canvas of document.querySelectorAll<HTMLCanvasElement>('canvas[data-rive]')) {
-	const [desktopSrc, desktopWidth, desktopHeight, mobileSrc, mobileWidth, mobileHeight] = canvas.dataset.rive!.split(' ');
-	riveAnimation({
-		desktopSrc: desktopSrc as RiveName,
-		mobileSrc: mobileSrc as RiveName,
-		desktopWidth: Number(desktopWidth),
-		desktopHeight: Number(desktopHeight),
-		mobileWidth: Number(mobileWidth),
-		mobileHeight: Number(mobileHeight),
-	})(canvas);
-}
-
-loadIcons();
-const sponsors = document.querySelector('.wrapper--ticks.py-14[data-v-755ff878]');
-if (sponsors) void loadSponsorTiers(sponsors).catch(() => {});
-
-const logos = document.querySelector<HTMLElement>('.overflow-hidden.py-6[data-v-0fe532eb]');
-if (logos) logoGrid(logos);
-
-const isEditing = (target: EventTarget | null) =>
-	target instanceof HTMLElement && (target.isContentEditable || target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA');
-
-const openSearch = () => void import('./search.ts').then((search) => search.openSearch());
-// The search box loads at idle; its index (145 kB) loads when search opens, as VitePress loads its own.
-requestIdleCallback(() => void import('./search.ts'));
-const SEARCH_BUTTON = '.VPNavBarSearchButton, button[aria-label="Search"]';
-// VitePress's useDark stores the appearance it starts with.
-if (localStorage.getItem('vitepress-theme-appearance') === null) localStorage.setItem('vitepress-theme-appearance', 'auto');
-
-window.addEventListener('keydown', (event) => {
-	if ((event.key === 'k' && (event.ctrlKey || event.metaKey)) || (event.key === '/' && !isEditing(event.target))) {
-		event.preventDefault();
-		openSearch();
-	}
+onPage(() => {
+	if (document.querySelector('.marketing-layout canvas[data-rive]')) void import(/* @vite-ignore */ '/page-scripts/home.js');
 });
-
-document.addEventListener('click', (event) => {
-	if ((event.target as Element | null)?.closest(SEARCH_BUTTON)) openSearch();
-});
-
-// VitePress's router: a link to the page already shown scrolls to its hash (or the top) instead of reloading.
-window.addEventListener(
-	'click',
-	(event) => {
-		if (event.defaultPrevented || !(event.target instanceof Element) || event.target.closest('button') || event.button !== 0 || event.ctrlKey || event.shiftKey || event.altKey || event.metaKey) return;
-		const link = event.target.closest('a');
-		if (!link || link.hasAttribute('download') || link.hasAttribute('target')) return;
-		const href = link.getAttribute('href');
-		if (href == null) return;
-		const next = new URL(href, link.baseURI);
-		if (next.origin !== location.origin || next.pathname !== location.pathname || next.search !== location.search) return;
-		event.preventDefault();
-		if (next.hash !== location.hash) history.pushState({}, '', next.href);
-		const target = next.hash ? document.getElementById(decodeURIComponent(next.hash.slice(1))) : null;
-		if (target) target.scrollIntoView();
-		else window.scrollTo(0, 0);
-	},
-	{ capture: true },
-);

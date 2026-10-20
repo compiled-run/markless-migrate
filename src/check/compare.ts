@@ -3,6 +3,7 @@ import { embedFailures } from './embeds.ts';
 import { loopFailures } from './loops.ts';
 import { embedCandidate, embedImageCandidate, markupCandidate, runtimeCandidate, storageOwner } from './automatic.ts';
 import { compareA11y } from './a11y.ts';
+import { isClock, maskClocks } from './clock.ts';
 import { HINTS, seoHint } from './hints.ts';
 import { failureElements, failureOccurrence } from './locate.ts';
 import { compareI18n } from './i18n.ts';
@@ -81,6 +82,11 @@ function noisyTextBoxes(a: readonly ElementSnapshot[], others: readonly (readonl
 		}
 	}
 	return boxes;
+}
+
+// Where both pages show a clock at another reading: its glyphs differ, the clock does not.
+function clockBoxes(a: readonly ElementSnapshot[], n: readonly ElementSnapshot[]): Box[] {
+	return [...matchElements(a, n)].flatMap(([i, j]) => (isClock(a[i]!.text) && isClock(n[j]!.text) && a[i]!.text !== n[j]!.text ? [a[i]!.box, n[j]!.box] : []));
 }
 
 // Per element of the first OLD load: the properties that differed in any other OLD load. Elements some load lacked are absent.
@@ -235,10 +241,12 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 		const bs = others.map((o) => o.pages[viewport]!);
 		const n = next.pages[viewport];
 		if (!n) continue;
-		failures.push(...lineFailures(route, 'rendered', 'accessibility tree', viewport, diffLines(lineTemplates(a.aria, ...bs.map((b) => b.aria)), n.aria), HINTS.aria, { old: a.aria, new: n.aria }, (line, actual) => markupCandidate(line, actual, a, n)).slice(0, LIMIT));
-		failures.push(...lineFailures(route, 'rendered', 'visible text', viewport, diffLines(lineTemplates(a.text, ...bs.map((b) => b.text)), n.text), HINTS.text, { old: a.text, new: n.text }).slice(0, LIMIT));
+		// A clock is compared by being there, not by its reading.
+		const [aria, text] = [maskClocks(a.aria), maskClocks(a.text)];
+		failures.push(...lineFailures(route, 'rendered', 'accessibility tree', viewport, diffLines(lineTemplates(aria, ...bs.map((b) => maskClocks(b.aria))), maskClocks(n.aria)), HINTS.aria, { old: aria, new: maskClocks(n.aria) }, (line, actual) => markupCandidate(line, actual, a, n)).slice(0, LIMIT));
+		failures.push(...lineFailures(route, 'rendered', 'visible text', viewport, diffLines(lineTemplates(text, ...bs.map((b) => maskClocks(b.text))), maskClocks(n.text)), HINTS.text, { old: text, new: maskClocks(n.text) }).slice(0, LIMIT));
 
-		const diff = identicalShots(a.screenshot, n.screenshot) ?? compareScreenshots(a.screenshot, n.screenshot, visualNoise(a.screenshot, bs.map((b) => b.screenshot), noisyTextBoxes(a.elements, bs.map((b) => b.elements))));
+		const diff = identicalShots(a.screenshot, n.screenshot) ?? compareScreenshots(a.screenshot, n.screenshot, visualNoise(a.screenshot, bs.map((b) => b.screenshot), [...noisyTextBoxes(a.elements, bs.map((b) => b.elements)), ...clockBoxes(a.elements, n.elements)]));
 		shots.push({ label: viewport, viewport, old: a.screenshot, new: n.screenshot, diff: diff.png, regions: visuallyDifferent(diff) ? diff.regions : [], ok: !visuallyDifferent(diff) });
 		if (visuallyDifferent(diff)) {
 			const r = diff.region;
