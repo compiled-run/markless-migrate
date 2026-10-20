@@ -413,3 +413,24 @@ test('a style pointing at a gradient, filter or marker by a generated id compare
 	assert.equal(react, await read(svg('mm-mastodon-1')));
 	assert.notEqual(react, await read(svg('mm-mastodon-1', 'mm-mastodon-1-other')));
 });
+
+test('a held loop scheduling a bound method stays held, and a frame callback scheduled after the hold still runs (Rive draws with requestAnimationFrame(this.draw.bind(this)); the checker waits on requestAnimationFrame(resolve), and both read as native code)', async () => {
+	const { openPage } = await import('../src/check/browser.ts');
+	const { holdLoops } = await import('../src/check/loops.ts');
+	const site = await serve(() => ({ body: html('<p id="n">0</p><script>class R { n = 0; draw() { document.getElementById("n").textContent = String(++this.n); requestAnimationFrame(this.draw.bind(this)); } } new R().draw();</script>') }));
+	const { context, page } = await openPage(browser, defaultEnv(site), desktop[0]!, { loops: true });
+	try {
+		await page.goto(site);
+		await page.waitForTimeout(300);
+		assert.equal(await page.evaluate(holdLoops), 1);
+		const frames = await Promise.race([page.evaluate(() => new Promise<string>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done('ran'))))), new Promise<string>((done) => setTimeout(() => done('never ran'), 3000))]);
+		assert.equal(frames, 'ran');
+		const native = await Promise.race([page.evaluate(() => new Promise((done) => requestAnimationFrame(done)).then(() => 'ran')), new Promise<string>((done) => setTimeout(() => done('never ran'), 3000))]);
+		assert.equal(native, 'ran');
+		const shown = await page.evaluate(() => document.getElementById('n')!.textContent);
+		await page.waitForTimeout(300);
+		assert.equal(await page.evaluate(() => document.getElementById('n')!.textContent), shown, 'the loop drew nothing after it was held');
+	} finally {
+		await context.close();
+	}
+});

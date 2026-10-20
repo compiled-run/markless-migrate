@@ -53,8 +53,12 @@ export function trackLoops(known: readonly string[] = []): void {
 	const lineage = new Map<unknown, readonly string[]>();
 	let ancestry: readonly string[] = [];
 	const heldIds = new Set<unknown>();
-	const run = (key: string, fn: (...a: unknown[]) => unknown, self: unknown, args: unknown[], from: readonly string[] = []) => {
-		if (held.has(key)) return undefined;
+	// A key is held only for what was scheduled before the hold: a callback scheduled later with the same source (the
+	// checker's own requestAnimationFrame(resolve) and a loop's requestAnimationFrame(this.draw.bind(this)) both read as native code) still runs.
+	let epoch = 0;
+	const heldAt = new Map<string, number>();
+	const run = (key: string, fn: (...a: unknown[]) => unknown, self: unknown, args: unknown[], from: readonly string[], scheduled: number) => {
+		if (held.has(key) && scheduled < heldAt.get(key)!) return undefined;
 		if (!observer && typeof MutationObserver === 'function' && document) {
 			observer = new MutationObserver(() => {});
 			observer.observe(document, { subtree: true, childList: true, attributes: true, attributeOldValue: true, characterData: true, characterDataOldValue: true });
@@ -89,12 +93,13 @@ export function trackLoops(known: readonly string[] = []): void {
 		if (running === key) again(key);
 		if (candidates.has(key)) timing.set(key, { kind: 'timeout', every: Math.max(0, Number(ms) || 0) });
 		const from = ancestry;
+		const scheduled = epoch;
 		const id: ReturnType<typeof setTimeout> = realSetTimeout(function (this: unknown) {
 			pending.delete(id);
 			oneShots.delete(id);
 			lineage.delete(id);
 			if (heldIds.delete(id)) return undefined;
-			return run(key, handler as (...a: unknown[]) => unknown, this, rest, from);
+			return run(key, handler as (...a: unknown[]) => unknown, this, rest, from, scheduled);
 		}, ms);
 		pending.set(id, key);
 		lineage.set(id, from);
@@ -111,8 +116,9 @@ export function trackLoops(known: readonly string[] = []): void {
 		if (typeof handler !== 'function') return realSetInterval(handler, ms, ...rest);
 		const key = `\u0000interval ${ids++}`;
 		timing.set(key, { kind: 'interval', every: Math.max(0, Number(ms) || 0) });
+		const scheduled = epoch;
 		const id = realSetInterval(function (this: unknown) {
-			return run(key, handler as (...a: unknown[]) => unknown, this, rest);
+			return run(key, handler as (...a: unknown[]) => unknown, this, rest, [], scheduled);
 		}, ms);
 		intervals.set(id, key);
 		return id;
@@ -127,11 +133,12 @@ export function trackLoops(known: readonly string[] = []): void {
 			if (running === key) again(key);
 			if (candidates.has(key)) timing.set(key, { kind: 'animation frame', every: 0 });
 			const from = ancestry;
+			const scheduled = epoch;
 			const id = realRaf((time: number) => {
 				pending.delete(id);
 				lineage.delete(id);
 				if (heldIds.delete(id)) return;
-				run(key, callback as (...a: unknown[]) => unknown, g, [time], from);
+				run(key, callback as (...a: unknown[]) => unknown, g, [time], from, scheduled);
 			});
 			pending.set(id, key);
 			lineage.set(id, from);
@@ -170,7 +177,11 @@ export function trackLoops(known: readonly string[] = []): void {
 	Object.defineProperty(g, '__markless_migrate_hold_loops__', {
 		value: () => {
 			const live = new Set([...intervals.values(), ...[...pending.values()].filter((key) => candidates.has(key))]);
-			for (const key of live) held.add(key);
+			epoch += 1;
+			for (const key of live) {
+				held.add(key);
+				heldAt.set(key, epoch);
+			}
 			for (const [id, from] of lineage) {
 				if (from.some((key) => live.has(key))) {
 					heldIds.add(id);
