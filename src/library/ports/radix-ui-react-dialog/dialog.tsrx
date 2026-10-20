@@ -78,7 +78,7 @@ export function DialogPortal({ children }: { readonly children?: Children }) @{
 
 export function DialogOverlay({ children, ...rest }: PropsOf<'div'>) @{
 	const d = dialogState();
-	<div data-state={d.open ? 'open' : 'closed'} {...rest} el={d.overlayEl} style="pointer-events: auto;" hidden>{children}</div>
+	<div data-state={d.open ? 'open' : 'closed'} {...rest} el={d.overlayEl} hidden>{children}</div>
 }
 
 export function DialogContent({ children, ...rest }: PropsOf<'div'>) @{
@@ -91,7 +91,6 @@ export function DialogContent({ children, ...rest }: PropsOf<'div'>) @{
 		{...rest}
 		el={d.contentEl}
 		tabindex={-1}
-		style="pointer-events: auto;"
 		hidden
 		onIdle={() => {
 			installDialog(d.triggerEl, d.overlayEl, d.contentEl, undefined, false);

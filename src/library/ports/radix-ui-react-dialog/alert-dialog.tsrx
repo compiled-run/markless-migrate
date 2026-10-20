@@ -83,7 +83,7 @@ export function AlertDialogPortal({ children }: { readonly children?: Children }
 
 export function AlertDialogOverlay({ children, ...rest }: PropsOf<'div'>) @{
 	const d = alertDialogState();
-	<div data-state={d.open ? 'open' : 'closed'} {...rest} el={d.overlayEl} style="pointer-events: auto;" hidden>{children}</div>
+	<div data-state={d.open ? 'open' : 'closed'} {...rest} el={d.overlayEl} hidden>{children}</div>
 }
 
 export function AlertDialogContent({ children, ...rest }: PropsOf<'div'>) @{
@@ -96,7 +96,6 @@ export function AlertDialogContent({ children, ...rest }: PropsOf<'div'>) @{
 		{...rest}
 		el={d.contentEl}
 		tabindex={-1}
-		style="pointer-events: auto;"
 		hidden
 		onIdle={() => {
 			installDialog(d.triggerEl, d.overlayEl, d.contentEl, d.cancelEl, true);
