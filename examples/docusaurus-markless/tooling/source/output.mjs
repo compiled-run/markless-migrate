@@ -33,7 +33,10 @@ export async function writeFooter(footer) {
 	await writeFile(file, `${HEADER}\nexport default function Footer() @{\n${toTsrx([footer], 1)}}\n`);
 }
 
-export async function writePage(path, file, body) {
+// Each page boots the theme's script (lib/site.ts), or the debug panel's own (lib/debug-panel.ts).
+const BOOTS = { site: ['siteBoot', 'lib/site.ts'], debug: ['debugBoot', 'lib/debug-panel.ts'] };
+
+export async function writePage(path, file, body, boot = 'site') {
 	const root = body[0];
 	let footer;
 	const children = root.children.map((child) => {
@@ -42,8 +45,9 @@ export async function writePage(path, file, body) {
 		return { expression: '<Footer />' };
 	});
 	const rel = (target) => relative(dirname(file), join(app, target)).split('\\').join('/');
-	const imports = [`import { siteBoot } from '${rel('lib/site.ts')}';`, ...(footer ? [`import Footer from '${rel('components/generated/footer.tsrx')}';`] : [])];
-	const markup = toTsrx([{ ...root, children }], 1, { extra: (node) => (node === root || node.children === children ? ' onVisible={() => siteBoot()} onIdle={() => siteBoot()}' : '') });
+	const [bootName, bootFile] = BOOTS[boot];
+	const imports = [`import { ${bootName} } from '${rel(bootFile)}';`, ...(footer ? [`import Footer from '${rel('components/generated/footer.tsrx')}';`] : [])];
+	const markup = toTsrx([{ ...root, children }], 1, { extra: (node) => (node === root || node.children === children ? ` onVisible={() => ${bootName}()} onIdle={() => ${bootName}()}` : '') });
 	await mkdir(dirname(file), { recursive: true });
 	await writeFile(file, `${HEADER} (${path})\n${imports.join('\n')}\n\nexport default function Page() @{\n${markup}}\n`);
 	return footer;
@@ -171,7 +175,7 @@ export default function Document({ url, children }: { readonly url?: { readonly 
 
 	const plain = plainRoutes[path] ?? plainRoutes[decodeURIComponent(path)];
 
-	<Html lang={plain === undefined ? 'en' : undefined} dir={plain === undefined ? 'ltr' : undefined} class={plain === undefined ? head.class : undefined}>
+	<Html lang={plain === undefined ? 'en' : undefined} dir={plain === undefined ? 'ltr' : undefined} class={plain === undefined && head.class ? head.class : undefined}>
 		<head>
 			@if (plain === undefined) {
 ${indent(`			<meta charset="UTF-8" />

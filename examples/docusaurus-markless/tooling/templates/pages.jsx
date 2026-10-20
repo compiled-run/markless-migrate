@@ -105,5 +105,7 @@ export async function pluginThemeTemplate(route, site) {
 	const props = JSON.parse(JSON.stringify(route.props ?? {}));
 	// The client's config, global data and metadata are the JSON the build generated from them.
 	const json = (value) => JSON.parse(JSON.stringify(value));
-	return { context: { htmlClasses: [], siteConfig: json(site.context.siteConfig), globalData: json(site.globalData), siteMetadata: json(site.siteMetadata) }, element: () => <Component {...props} /> };
+	// The plugin's <html> classes come from the theme's Layout provider, which the debug panel's own layout never renders;
+	// the panel runs its own small script (lib/debug-panel.ts), not the theme's.
+	return { context: { htmlClasses: [], pluginHtmlClasses: false, boot: 'debug', siteConfig: json(site.context.siteConfig), globalData: json(site.globalData), siteMetadata: json(site.siteMetadata) }, element: () => <Component {...props} /> };
 }

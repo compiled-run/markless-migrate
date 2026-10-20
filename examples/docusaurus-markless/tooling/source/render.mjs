@@ -114,7 +114,8 @@ export async function renderRoute(route, site, extraComponents = {}, options = {
 			for (const list of heads) for (let i = list.length - 1; i >= 0; i--) if (keys.has(headKey(list[i]))) list.splice(i, 1);
 			heads.push(nodes);
 		}
-		const htmlClasses = [plugin && pluginClass(plugin.name), plugin && `plugin-id-${plugin.id}`, ...(context.htmlClasses ?? [])].filter(Boolean);
-		return { body, head: heads.flat(), htmlClasses, title: heads.flat().find((n) => n.tag === 'title')?.children.join('') };
+		const withPlugin = plugin && context.pluginHtmlClasses !== false;
+		const htmlClasses = [withPlugin && pluginClass(plugin.name), withPlugin && `plugin-id-${plugin.id}`, ...(context.htmlClasses ?? [])].filter(Boolean);
+		return { body, head: heads.flat(), htmlClasses, boot: context.boot, title: heads.flat().find((n) => n.tag === 'title')?.children.join('') };
 	});
 }

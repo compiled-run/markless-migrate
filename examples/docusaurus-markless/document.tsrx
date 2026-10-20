@@ -19,7 +19,7 @@ export default function Document({ url, children }: { readonly url?: { readonly 
 
 	const plain = plainRoutes[path] ?? plainRoutes[decodeURIComponent(path)];
 
-	<Html lang={plain === undefined ? 'en' : undefined} dir={plain === undefined ? 'ltr' : undefined} class={plain === undefined ? head.class : undefined}>
+	<Html lang={plain === undefined ? 'en' : undefined} dir={plain === undefined ? 'ltr' : undefined} class={plain === undefined && head.class ? head.class : undefined}>
 		<head>
 			@if (plain === undefined) {
 				<meta charset="UTF-8" />

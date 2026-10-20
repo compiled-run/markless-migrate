@@ -4,10 +4,11 @@ import classes from './theme-classes.json';
 import prismThemes from './prism-themes.json';
 import docsVersions from './docs-versions.json';
 import sidebarData from './sidebars.json';
-import nprogress from 'nprogress';
 import { initShowcase } from './showcase.ts';
 import { initPlaygrounds } from './playground.ts';
 import { initJsonViews } from './json-view.ts';
+import { hint, readHints } from './page-hints.ts';
+import { startProgress } from './progress.ts';
 import { init as initImageZoom } from './image-zoom.ts';
 import { initColorGenerator, onColorModeChange } from './color-generator.ts';
 import { keepHolder as keepSearchHolder, open as openSearch, onKeyDown as searchKeyDown } from './docsearch.ts';
@@ -46,20 +47,6 @@ const samePath = (a: string | undefined, b: string) => {
 };
 const currentPath = () => window.location.pathname.replace(/\/$/, '') || '/';
 
-// What the importer left on elements for this script (data-mm-*): read once, then taken off the page.
-const hints = new WeakMap<Element, Record<string, string>>();
-function readHints(root: ParentNode): void {
-	for (const el of root.querySelectorAll('*')) {
-		let found: Record<string, string> | undefined;
-		for (const attr of [...el.attributes]) {
-			if (!attr.name.startsWith('data-mm-')) continue;
-			(found ??= {})[attr.name.slice('data-mm-'.length)] = attr.value;
-			el.removeAttribute(attr.name);
-		}
-		if (found) hints.set(el, { ...hints.get(el), ...found });
-	}
-}
-const hint = (el: Element | null | undefined, name: string): string | undefined => (el ? hints.get(el)?.[name] : undefined);
 
 // Colour mode: the three-way toggle, the code blocks' Prism colours and the themed images.
 function choice(): Choice {
@@ -1190,8 +1177,6 @@ function boom(button: HTMLElement): void {
 function siteClick(event: Event): void {
 	// React Router keeps the page when a link points at the address already shown (the version dropdown's "Canary").
 	const link = closest(event, 'a[href]') as HTMLAnchorElement | null;
-	const mouse = event as MouseEvent;
-	if (link && !link.target && link.origin === location.origin && link.pathname !== location.pathname && !mouse.button && !mouse.metaKey && !mouse.ctrlKey && !mouse.shiftKey && !mouse.altKey) routeUpdate();
 	if (link && !link.target && link.origin === location.origin && link.pathname === location.pathname && link.search === location.search && !link.hash && link.getAttribute('href') !== '#') event.preventDefault();
 	if (link) savePreferredVersion(link);
 	if (link?.closest('.theme-doc-version-banner')) {
@@ -1313,6 +1298,11 @@ function pageInit(): void {
 	applyColorMode(choice());
 	// The navbar's body-scroll lock (useLockBodyScroll) writes the unlocked value as soon as it mounts.
 	if (document.querySelector('nav.navbar') && !document.querySelector('nav.navbar-sidebar--show')) document.body.style.overflow = 'visible';
+	// A page without the navbar (the debug panel) renders <body> without it, as a fresh load does.
+	else if (!document.querySelector('nav.navbar')) {
+		document.body.style.removeProperty('overflow');
+		if (!document.body.getAttribute('style')) document.body.removeAttribute('style');
+	}
 	restoreSidebar();
 	applyDocsVersions();
 	applyWindowSize();
@@ -1335,29 +1325,12 @@ function pageInit(): void {
 	});
 }
 
-// theme-classic's nprogress client module: the bar shows when a navigation takes longer than 200 ms.
-nprogress.configure({ showSpinner: false });
-let progressTimer: ReturnType<typeof setTimeout> | undefined;
-let shownPath = '';
-function routeUpdate(): void {
-	clearTimeout(progressTimer);
-	progressTimer = setTimeout(() => nprogress.start(), 200);
-}
-function routeDidUpdate(): void {
-	clearTimeout(progressTimer);
-	nprogress.done();
-}
 export function siteBoot(): void {
 	if (booted) return;
 	booted = true;
 	pageInit();
 	document.addEventListener('marklessrouterrendered', pageInit);
-	document.addEventListener('marklessrouterrendered', routeDidUpdate);
-	shownPath = location.pathname;
-	window.addEventListener('popstate', () => {
-		if (location.pathname !== shownPath) routeUpdate();
-	});
-	document.addEventListener('marklessrouterrendered', () => (shownPath = location.pathname));
+	startProgress();
 	window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
 		if (choice() === null) applyColorMode(null);
 	});
@@ -1366,6 +1339,10 @@ export function siteBoot(): void {
 	window.addEventListener('resize', applyWindowSize);
 	window.addEventListener('scroll', checkLazyImages, { passive: true });
 	window.addEventListener('resize', checkLazyImages, { passive: true });
+	// The old router renders the next page only after its chunks load, so the scroll event of a jump made just before
+	// (focusing a footer link) still reaches the outgoing page's Waypoints; this one can swap first, so check as the
+	// navigation starts.
+	(window as Window & { navigation?: EventTarget }).navigation?.addEventListener('navigate', checkLazyImages);
 	window.addEventListener('resize', updateWordWrap, { passive: true });
 	window.addEventListener('scroll', onScroll, { passive: true });
 	document.addEventListener('scroll', updateTocHighlight);
@@ -1373,10 +1350,23 @@ export function siteBoot(): void {
 		if (closest(event, 'article.yt-lite')) warmYoutube();
 	});
 	window.addEventListener('hashchange', keepLocation);
+	// The router records the fetched page's URL, which has no #hash; a link to /docs/cli#docusaurus-serve-sitedir keeps
+	// its hash in the address bar, as Docusaurus's history.push does.
+	let followed: URL | undefined;
+	document.addEventListener('click', (event) => {
+		const link = closest(event, 'a[href]') as HTMLAnchorElement | null;
+		followed = link && link.origin === location.origin ? new URL(link.href) : undefined;
+	}, true);
 	// The router moves to a hash with history.pushState, which fires no event; the theme rereads the location on every change.
 	for (const method of ['pushState', 'replaceState'] as const) {
 		const original = history[method].bind(history);
 		history[method] = (...args: Parameters<History['pushState']>) => {
+			const [state, , url] = args;
+			if (url != null && followed?.hash && (state as { __marklessFragment?: unknown } | null)?.__marklessFragment) {
+				const next = new URL(url, location.href);
+				if (!next.hash && next.pathname === followed.pathname && next.search === followed.search) args[2] = `${next.pathname}${next.search}${followed.hash}`;
+			}
+			if ((state as { __marklessFragment?: unknown } | null)?.__marklessFragment) followed = undefined;
 			original(...args);
 			keepLocation();
 		};

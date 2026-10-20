@@ -92,7 +92,7 @@ for (const route of routes) {
 		pages.set(key, page);
 		await writeFile(join(outDir, `${encodeURIComponent(path)}.html`), toHtml(page.body));
 		await writeFile(join(outDir, `${encodeURIComponent(path)}.head.json`), JSON.stringify({ title: page.title, htmlClasses: page.htmlClasses, head: toHtml(page.head) }));
-		footer = (await writePage(path, route === notFound ? join(app, 'pages/404.tsrx') : pageFile(path, allPaths), page.body)) ?? footer;
+		footer = (await writePage(path, route === notFound ? join(app, 'pages/404.tsrx') : pageFile(path, allPaths), page.body, page.boot)) ?? footer;
 	} catch (error) {
 		failures.push(`${path} (${route.component}): ${error.stack.split('\n').slice(0, 2).join(' ')}`);
 	}
