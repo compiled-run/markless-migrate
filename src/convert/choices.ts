@@ -26,9 +26,9 @@ async function openOn(page: Page, origin: string, route: string, path: readonly 
 		Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (t: string) => (w.__mmCopied!.push(t), Promise.resolve()), write: () => Promise.resolve(), readText: () => Promise.resolve('') } });
 	});
 	const trigger = await page.evaluateHandle((p) => {
-		let el: Element = document.body;
-		for (const i of p) el = el.children[i]!;
-		return el;
+		let el: Element | undefined = document.body;
+		for (const i of p) el = el?.children[i];
+		return el ?? null;
 	}, path);
 	const el = trigger.asElement();
 	if (!el) return false;
@@ -50,6 +50,7 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 	const { context, page } = await openPage(browser, defaultEnv(origin), viewport);
 	const out: Record<string, Choice> = {};
 	try {
+		// One control's options are recorded or not; a control the page no longer has where it was is skipped.
 		if (!(await openOn(page, origin, route, reveal.path))) return out;
 		const keys = await page.evaluate((selector) => [...document.querySelectorAll(selector)].map((o) => o.getAttribute('data-value') ?? (o.textContent ?? '').trim()), OPTION);
 		for (const key of keys.slice(0, MAX_OPTIONS)) {
@@ -65,6 +66,8 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 			if (after !== before || copied !== undefined || !(await target.isVisible().catch(() => false))) await openOn(page, origin, route, reveal.path);
 		}
 		log(`choices of ${reveal.key} on ${route}: ${Object.keys(out).length} options`);
+	} catch (error) {
+		log(`choices of ${reveal.key} on ${route}: not recorded (${(error as Error).message.split('\n')[0]})`);
 	} finally {
 		await context.close().catch(() => {});
 	}
