@@ -8,7 +8,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/acknowledgements": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/acknowledgements": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -20,7 +32,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/blog": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/blog/announcing-vite2": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/announcing-vite2": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -32,7 +56,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/blog/announcing-vite3": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/blog/announcing-vite4": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/announcing-vite4": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -44,7 +80,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/blog/announcing-vite4-3": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/blog/announcing-vite5": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/announcing-vite5": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -56,7 +104,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/blog/announcing-vite5-1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/blog/announcing-vite6": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/announcing-vite6": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -68,7 +128,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/blog/announcing-vite7": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/blog/announcing-vite8": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/announcing-vite8": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -80,7 +152,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/blog/announcing-vite8-1": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/blog/announcing-vite8-beta": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/blog/announcing-vite8-beta": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -92,7 +176,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/blog/cloudflare-supports-vite": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/changes/": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changes/": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -104,7 +200,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/changes/hotupdate-hook": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/changes/per-environment-apis": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changes/per-environment-apis": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -116,7 +224,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/changes/shared-plugins-during-build": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/changes/ssr-using-modulerunner": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/changes/ssr-using-modulerunner": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -128,7 +248,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/changes/this-environment-in-hooks": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/config/": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/config/": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -140,7 +272,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/config/build-options": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/config/dep-optimization-options": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/config/dep-optimization-options": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -152,7 +296,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/config/preview-options": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/config/server-options": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/config/server-options": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -164,7 +320,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/config/shared-options": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/config/ssr-options": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/config/ssr-options": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -176,7 +344,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/config/worker-options": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/guide/": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/guide/": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -188,7 +368,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/guide/api-environment": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/guide/api-environment-frameworks": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/guide/api-environment-frameworks": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -200,7 +392,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/guide/api-environment-instances": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/guide/api-environment-plugins": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/guide/api-environment-plugins": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -212,7 +416,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/guide/api-environment-runtimes": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/guide/api-hmr": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/guide/api-hmr": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -224,7 +440,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/guide/api-javascript": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/guide/api-plugin": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/guide/api-plugin": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -236,7 +464,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/guide/assets": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/guide/backend-integration": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/guide/backend-integration": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -248,7 +488,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/guide/build": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/guide/cli": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/guide/cli": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -260,7 +512,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/guide/dep-pre-bundling": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/guide/env-and-mode": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/guide/env-and-mode": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -272,7 +536,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/guide/features": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/guide/migration": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/guide/migration": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -284,7 +560,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/guide/performance": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/guide/philosophy": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/guide/philosophy": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -296,7 +584,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/guide/ssr": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/guide/static-deploy": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/guide/static-deploy": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -308,7 +608,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/guide/troubleshooting": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/guide/using-plugins": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/guide/using-plugins": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -320,7 +632,19 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/guide/why": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/live": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/live": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
@@ -332,13 +656,31 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/plugins/": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/releases": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []
 		}
 	},
+	"/_markless/fragment/releases": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
 	"/team": {
+		"isr": {
+			"expiration": false,
+			"allowQuery": []
+		}
+	},
+	"/_markless/fragment/team": {
 		"isr": {
 			"expiration": false,
 			"allowQuery": []

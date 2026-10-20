@@ -178,6 +178,8 @@ export function docsLayout(page: Page, kind: 'doc' | 'page' | 'not-found', vitec
 	} else if (kind === 'page') content = `<div class="VPPage" data-v-2eb020da=""><div style="position:relative;">${page.content}</div></div>`;
 	else content = NOT_FOUND;
 	return [
+		// VitePress mounts the app in <div id="app">; Markless 0.7.0 marks <body> itself as the router's container.
+		'<div id="app">',
 		'<div class="docs-layout" data-variant="vite" data-v-56d116fe="">',
 		'<div class="Layout" data-v-56d116fe="" data-v-2ea92cbb="">',
 		docsTopBanner(THEME),
@@ -194,16 +196,19 @@ export function docsLayout(page: Page, kind: 'doc' | 'page' | 'not-found', vitec
 		'</div>',
 		'</div>',
 		'</div>',
+		'</div>',
 	].join('');
 }
 
 // VPLayout.vue's marketing layout (`layout: home`): banner, header, then the page's own content.
 export function marketingLayout(page: Page, THEME: string): string {
 	return [
+		'<div id="app">',
 		`<div class="marketing-layout" data-theme="${attr(String(page.frontmatter.theme ?? ''))}" data-variant="vite" data-v-56d116fe="">`,
 		marketingTopBanner(THEME),
 		docsHeader(page.route, page.nav, THEME, true),
 		`<div style="position:relative;" data-v-56d116fe="">${page.content}</div>`,
+		'</div>',
 		'</div>',
 	].join('');
 }
