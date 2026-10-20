@@ -69,6 +69,18 @@ test('a control is judged on time and on code fetched; a text box the old app re
 	assert.equal(speedTiming(throttled!, 'in-page', [sample({ ms: 30, heldBack: true })], [sample({ ms: 40, heldBack: true, fetches: [{ url: '/c.js', kind: 'code', bytes: 2048 }] })], 200).ok, false, 'code it fetched is still code fetched');
 });
 
+test('code an interaction fetches is allowed when the old page fetches as much on it in every run (VitePress loads its search box and index when search opens), never more', () => {
+	const [, throttled] = speeds(4);
+	const vitepress = sample({ ms: 28, fetches: [{ url: '/assets/chunks/VPLocalSearchBox.js', kind: 'code', bytes: 62_900 }, { url: '/assets/chunks/@localSearchIndexroot.js', kind: 'code', bytes: 576_988 }] });
+	const port = sample({ ms: 32, fetches: [{ url: '/page-scripts/search.js', kind: 'code', bytes: 57_807 }, { url: '/page-scripts/search-index.js', kind: 'code', bytes: 576_988 }] });
+	assert.deepEqual(speedTiming(throttled!, 'in-page', [vitepress, vitepress], [port, port], 200).problems, []);
+	const more = sample({ ms: 32, fetches: [...port.fetches, { url: '/page-scripts/extra.js', kind: 'code', bytes: 80_000 }] });
+	assert.match(speedTiming(throttled!, 'in-page', [vitepress, vitepress], [more, more], 200).problems.join(), /fetched code on the first interaction/, 'more code than the old page fetched');
+	assert.match(speedTiming(throttled!, 'in-page', [vitepress, sample({ ms: 20 })], [port, port], 200).problems.join(), /fetched code/, 'an old run that fetched nothing: the old page does not always need it');
+	const slow = sample({ ms: 90, fetches: port.fetches });
+	assert.match(speedTiming(throttled!, 'in-page', [vitepress, vitepress], [slow, slow], 200).problems.join(), /slower than the old/, 'the time is still judged');
+});
+
 test('a fetch is code when it is a script or JavaScript or WebAssembly by type or name', () => {
 	assert.equal(fetchKind('script', 'https://a.test/x', ''), 'code');
 	assert.equal(fetchKind('other', 'https://a.test/chunk.mjs?v=1', ''), 'code');

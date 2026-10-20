@@ -625,6 +625,16 @@ async function addVariance(controls: ControlTiming[], steps: readonly { step: St
 	}
 }
 
+const codeBytes = (s: Sample) => s.fetches.filter((f) => f.kind === 'code').reduce((sum, f) => sum + f.bytes, 0);
+
+/** The old page fetches code on this interaction too (VitePress loads its search box and index when search opens), in every run, and the new page fetches no more of it. */
+function oldFetchesAlike(olds: readonly Sample[], news: readonly Sample[]): boolean {
+	const inPage = (s: Sample) => s.result !== 'reloaded';
+	if (!olds.length || !olds.every((s) => inPage(s) && codeBytes(s) > 0)) return false;
+	const allowed = Math.min(...olds.map(codeBytes));
+	return news.every((s) => !inPage(s) || codeBytes(s) <= allowed + Math.max(1024, allowed * SLACK_RATIO));
+}
+
 /** The verdict for one control at one speed from both sides' runs. */
 export function speedTiming(speed: Speed, kind: ControlTiming['kind'], olds: readonly Sample[], news: readonly Sample[], budgetMs: number): SpeedTiming {
 	return timing(speed, kind, olds, news, verdictFor(kind, speed, olds, news, budgetMs), budgetMs);
@@ -649,7 +659,7 @@ function timing(speed: Speed, kind: ControlTiming['kind'], olds: readonly Sample
 	if (verdict.overBudget) problems.push(`over the ${budgetMs} ms budget`);
 	// A new document loads its own scripts; that is a page load, not an interaction fetching code.
 	const code = news.flatMap((s) => (kind === 'in-page' && s.result !== 'reloaded' ? s.fetches.filter((f) => f.kind === 'code') : []));
-	if (code.length) problems.push(`fetched code on the first interaction: ${[...new Set(code.map((f) => `${f.url} (${kB(f.bytes)})`))].join(', ')}`);
+	if (code.length && !oldFetchesAlike(olds, news)) problems.push(`fetched code on the first interaction: ${[...new Set(code.map((f) => `${f.url} (${kB(f.bytes)})`))].join(', ')}`);
 	const spread = olds.length > 1 && news.length > 1 ? { old: range(olds), new: range(news) } : undefined;
 	return {
 		speed: speed.name,
