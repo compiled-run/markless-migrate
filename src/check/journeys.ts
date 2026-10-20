@@ -1,5 +1,6 @@
 import type { Browser, BrowserContext, Locator, Page, Request } from 'playwright';
 import { frameworkTransport, openPage, requestLine, type OpenOptions, type SideEnv } from './browser.ts';
+import { clockLine } from './clock.ts';
 import { markHandlers } from './handlers.ts';
 import { originInQuery } from './capture.ts';
 import { HINTS } from './hints.ts';
@@ -1431,13 +1432,10 @@ function trail(results: readonly (StepResult | undefined)[], first: number, upto
 		.join('; ');
 }
 
-// A clock's reading (63:02:59:59, 12:30:05): a page's own clock ticks with its timers, whenever a step happens to take a second.
-const CLOCK = /\b\d{1,3}(?::\d{2}){1,3}\b/g;
-const CLOCK_TEXT = /^(\s*- [^"]*")\d{1,3}(?::\d{2}){1,3}(")/;
 
 /** What a step added and removed, compared without a clock's reading: a clock that only ticked (the same line gone and back) is no change. */
 export function untick(r: Pick<StepResult, 'added' | 'removed'>): { added: string[]; removed: string[] } {
-	const read = (line: string) => (CLOCK_TEXT.test(line) ? line.replace(CLOCK, '<clock>') : undefined);
+	const read = clockLine;
 	const removed = [...r.removed];
 	const added: string[] = [];
 	for (const line of r.added) {
