@@ -153,6 +153,7 @@ test('a JavaScript-only library is a kept library with its own checks, never a f
 	assert.deepEqual(usage.obligations.filter((o) => o.behaviour === kept.id).map((o) => o.mechanism), ['client-guard', 'journey']);
 	assert.ok(usage.behaviours.some((b) => b.library === 'chart.js' && b.feature === 'new Chart'), 'the page\'s own call into it is listed');
 	assert.match(summarizeUsage(usage, []), /Kept libraries \(JavaScript only, kept as they are; .*\): chart\.js/);
+});
 
 test("a minified chunk binding $ is not jQuery, and a page framework's own build chunks are its code, not plain scripts", async () => {
 	assert.deepEqual(analyseScript('function f($){ return $("x") }').effects, [], 'a parameter named $ is the script\'s own');
