@@ -13,9 +13,9 @@ export interface EndpointPort {
 	readonly reason: string;
 }
 
-// A route handler whose closure needs another framework's build-time content compiler is served from the old build: it
-// is the old build's output for that path, not the framework's code.
-const BUILD_ONLY = /^(fumadocs-mdx|@vercel\/og|next\/(?!server$).+)$/;
+// A route handler whose closure needs another framework (React, Next's own modules, fumadocs-mdx's compiled content) is
+// served from the old build: the new app carries that build's output for the path, never the framework's code.
+const BUILD_ONLY = /^(fumadocs-mdx|@vercel\/og|react|react-dom|next\/(?!server$).+)$/;
 const PACKAGE = (spec: string) => spec.split('/').slice(0, spec.startsWith('@') ? 2 : 1).join('/');
 
 interface Closure {
@@ -157,7 +157,7 @@ export async function writeRouting(input: RoutingInput): Promise<{ ports: Endpoi
 			const version = versions[p];
 			if (version && !version.startsWith('workspace:')) packages[p] = version;
 		}
-		handlers.push({ pattern: nextPattern(endpoint.file), module: `./handlers/${relative(source, endpoint.file).replace(/\.tsx$/, '.ts')}` });
+		handlers.push({ pattern: nextPattern(endpoint.file), module: `./handlers/${endpoint.file.replace(/\.tsx$/, '.ts')}` });
 		ports.push({ route: endpoint.route, file: endpoint.file, how: 'handler', reason: `${closure.files.size} files of the old app's server code` });
 	}
 	const built: Record<string, { file: string; type: string }> = {};
