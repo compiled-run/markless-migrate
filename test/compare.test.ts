@@ -24,6 +24,9 @@ test('only a hashed name the built output refers to is fingerprinted; public fil
 	assert.ok(isFingerprinted('/assets/chunk-Bo_Cokpq.js', built));
 	assert.ok(!isFingerprinted('/assets/other-Zx81kQp2.js', built), 'hashed, but nothing built refers to it');
 	assert.ok(!isFingerprinted('/logo-2024.png', ['<img src="/logo-2024.png">']), 'referenced, but its name has no hash');
+	// VitePress page chunks: a base64url hash with '-' before the .lean suffix.
+	for (const url of ['/assets/guide_api-hmr.md.DXh-nOGT.lean.js', '/assets/guide_cli.md.kDl9cv-8.lean.js', '/assets/guide_cli.md.kDl9cv-8.js']) assert.ok(isFingerprinted(url, [`<link rel="modulepreload" href="${url}">`]), url);
+	assert.ok(!hasContentHash('/assets/release-notes.lean.js'), 'a word before the suffix is no hash');
 	assert.ok(isFingerprinted('/_next/image?url=%2Fhero.png&w=640', []), "the framework's own output directory");
 	assert.ok(!isFingerprinted('https://cdn.example/app-1a2b3c4d.js', ['app-1a2b3c4d.js']));
 	// Webpack writes chunk ids and hashes apart: {17698:"64a0fc96bb"} becomes /assets/js/17698.64a0fc96bb.js.

@@ -577,7 +577,7 @@ function markDismiss(point: { x: number; y: number }): boolean {
 const QUICK = 1_500;
 
 /** Uses the target as a visitor would; when the pointer cannot reach it, scrolls it to the middle, focuses it, hovers what holds it and dismisses what covers it, and names why when nothing does. */
-async function reach(page: Page, target: Locator, act: (t: Locator, timeout: number) => Promise<unknown>): Promise<void> {
+async function reach(page: Page, target: Locator, act: (t: Locator, timeout: number) => Promise<unknown>, throughLabel = false): Promise<void> {
 	let first: unknown;
 	try {
 		await act(target, QUICK);
@@ -599,6 +599,22 @@ async function reach(page: Page, target: Locator, act: (t: Locator, timeout: num
 	const look = async (): Promise<Diagnosis> => (await target.count().catch(() => 0)) ? await target.evaluate(diagnose, undefined, { timeout: QUICK }).catch(() => ({ kind: 'timeout', detail: 'it did not settle' }) as Diagnosis) : { kind: 'missing', detail: 'it is not on the page' };
 	let found = await look();
 	if (found.kind === 'missing' || found.kind === 'disabled') throw new UnreachableError(found.kind, found.detail);
+	if (throughLabel && (found.kind === 'hidden' || found.kind === 'occluded')) {
+		// A radio or checkbox drawn by its label (code-group tabs, custom toggles) is used through the label, as a person does.
+		const mark = `${Date.now()}-${Math.random()}`;
+		const labelled = await target.evaluate((el, value) => {
+			const label = el instanceof HTMLInputElement ? el.labels?.[0] : undefined;
+			label?.setAttribute('data-markless-migrate-label', value);
+			return Boolean(label);
+		}, mark).catch(() => false);
+		if (labelled) {
+			tried.push('using its label');
+			try {
+				await act(page.locator(`[data-markless-migrate-label="${mark}"]`), QUICK);
+				return;
+			} catch {}
+		}
+	}
 	if (found.kind === 'hidden') {
 		const holders = await target.evaluate(markAncestors).catch(() => 0);
 		for (let i = 0; i < holders; i++) {
@@ -631,7 +647,7 @@ async function perform(page: Page, step: Step): Promise<void> {
 	const target = locate(page, step.target);
 	switch (step.action) {
 		case 'click':
-			return reach(page, target, (t, timeout) => t.click({ timeout }));
+			return reach(page, target, (t, timeout) => t.click({ timeout }), true);
 		case 'press':
 			await reach(page, target, (t, timeout) => t.focus({ timeout }));
 			return page.keyboard.press(step.key);

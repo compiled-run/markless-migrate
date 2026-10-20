@@ -15,8 +15,8 @@ export function fileName(url: string): string {
 // A content hash is a token of eight or more characters that reads as random: dates, versions and words do not count.
 export function hasContentHash(url: string): boolean {
 	const base = fileName(url).replace(/\.[a-z0-9]+$/i, '');
-	// Vite and Rollup hash in base64url, so an eight-character hash may itself contain '-' or '_'.
-	const tail = /[-.]([A-Za-z0-9_-]{8})$/.exec(base)?.[1];
+	// Vite and Rollup hash in base64url, so an eight-character hash may itself contain '-' or '_'; VitePress writes page chunks as name.md.<hash>.lean.js.
+	const tail = /[-.]([A-Za-z0-9_-]{8})(?:\.[a-z]+)?$/.exec(base)?.[1];
 	if (tail && /[-_]/.test(tail) && isHashToken(tail.replace(/-/g, '_'))) return true;
 	// Angular's esbuild builder hashes in upper-case base32: chunk-BBLBSSIH.js, styles-V7LOWGDA.css.
 	if (/-[A-Z2-7]{8}$/.test(base)) return true;
