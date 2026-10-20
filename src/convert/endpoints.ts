@@ -143,6 +143,8 @@ export async function writeRouting(input: RoutingInput): Promise<{ ports: Endpoi
 	for (const endpoint of input.endpoints) {
 		const closure = await closureOf(source, endpoint.file);
 		const blocked = [...closure.packages].filter((p) => BUILD_ONLY.test(p));
+		// Files read from the old app's working directory at run time are the old build's.
+		for (const file of closure.files) if (!file.endsWith('.json') && /process\.cwd\(\)/.test(await readFile(file, 'utf8'))) blocked.push(`its own files from process.cwd() (${relative(source, file)})`);
 		if (blocked.length) {
 			ports.push({ route: endpoint.route, file: endpoint.file, how: 'build', reason: `its code needs ${blocked.join(', ')} at build time; the old build's output for each path is served` });
 			continue;
