@@ -27,6 +27,8 @@ export interface CacheRules {
 export interface RulesOptions {
 	/** The request header a Markless fragment fetch carries, read from the app's @markless/router. Absent: no fragment navigation. */
 	readonly fragmentHeader?: string;
+	/** The path prefix a Markless fragment fetch goes to (`/_markless/fragment`): each page's fragment is its own URL, cached as the page is. */
+	readonly fragmentPath?: string;
 	/** Same-origin content-hashed files outside the build directories Markless and Nitro already mark immutable. */
 	readonly hashedAssets?: readonly string[];
 	/** Write static pages to files at build time as well as keeping an ISR function for their fragment requests. */
@@ -67,6 +69,7 @@ export function cacheRules(routes: readonly RouteCaching[], options: RulesOption
 		const split = Boolean(fragment && r.html);
 		const expiration = r.class === 'isr' ? (r.revalidate ?? 60) : false;
 		routeRules[path] = { ...(r.class === 'prerender' && options.prerender && r.html ? { prerender: true } : {}), isr: { expiration, allowQuery: split ? [FRAGMENT_QUERY] : [] } };
+		if (options.fragmentPath && r.html) routeRules[`${options.fragmentPath}${path}`] = { isr: { expiration, allowQuery: [] } };
 		if (split) vercelRoutes.push({ path, route: { src: `(?<__isr_route>${escapeRegex(path)})`, has: [{ type: 'header', key: fragment!, value: '1' }], dest: `${isrFunction(path)}?__isr_route=$__isr_route&${FRAGMENT_QUERY}=1` } });
 	}
 	for (const asset of options.hashedAssets ?? []) routeRules[asset] = { headers: { 'cache-control': IMMUTABLE } };

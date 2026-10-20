@@ -10,16 +10,22 @@ import { NO_SIGNALS, pageFileSignals, type RouteSignals } from './signals.ts';
 export const CACHE_MODULE = 'migrate-cache.ts';
 const IMPORT_LINE = `import { migrateCache } from './${CACHE_MODULE}';`;
 
-/** The fragment request header the app's own @markless/router sends, read from its build; undefined when it has none. */
-export async function fragmentHeader(app: string): Promise<string | undefined> {
+async function routerConstant(app: string, name: string): Promise<string | undefined> {
 	const dist = join(app, 'node_modules/@markless/router/dist');
-	for (const name of await readdir(dist).catch(() => [] as string[])) {
-		if (!name.endsWith('.js')) continue;
-		const m = (await readFile(join(dist, name), 'utf8')).match(/\bFRAGMENT_REQUEST_HEADER\s*=\s*["']([^"']+)["']/);
+	const pattern = new RegExp(`\\b${name}\\s*=\\s*["']([^"']+)["']`);
+	for (const file of await readdir(dist).catch(() => [] as string[])) {
+		if (!file.endsWith('.js')) continue;
+		const m = (await readFile(join(dist, file), 'utf8')).match(pattern);
 		if (m) return m[1];
 	}
 	return undefined;
 }
+
+/** The fragment request header the app's own @markless/router sends (up to 0.5), read from its build; undefined when it has none. */
+export const fragmentHeader = (app: string): Promise<string | undefined> => routerConstant(app, 'FRAGMENT_REQUEST_HEADER');
+
+/** The path prefix the app's own @markless/router fetches fragments from (0.7 on: `/_markless/fragment/<page path>`), read from its build. */
+export const fragmentPath = (app: string): Promise<string | undefined> => routerConstant(app, 'FRAGMENT_PATH_PREFIX');
 
 async function walk(dir: string, rel = ''): Promise<string[]> {
 	const out: string[] = [];
@@ -127,20 +133,22 @@ export interface ApplyResult {
 	readonly routes: readonly RouteCaching[];
 	readonly rules: CacheRules;
 	readonly fragmentHeader?: string;
+	readonly fragmentPath?: string;
 }
 
 /** Writes the caching rules into the Markless app and wires them into its vite.config.ts. */
 export async function applyCaching(plan: CachingPlan, app: string, pageFiles: Readonly<Record<string, string>> = {}, options: { readonly prerender?: boolean } = {}): Promise<ApplyResult> {
 	const routes = await refineWithNewSource(plan, app, pageFiles);
 	const header = await fragmentHeader(app);
+	const prefix = await fragmentPath(app);
 	// Only the routes a page of the app renders: a path the app leaves to its static files or the old app keeps its own answer.
 	const rendered = routes.filter((r) => pageFiles[r.route]);
-	const rules = cacheRules(rendered, { ...(header ? { fragmentHeader: header } : {}), hashedAssets: await publicHashedAssets(app, plan), ...(options.prerender ? { prerender: true } : {}) });
+	const rules = cacheRules(rendered, { ...(header ? { fragmentHeader: header } : {}), ...(prefix ? { fragmentPath: prefix } : {}), hashedAssets: await publicHashedAssets(app, plan), ...(options.prerender ? { prerender: true } : {}) });
 	const module = join(app, CACHE_MODULE);
 	await writeFile(module, cacheModule(rules, rendered));
 	const configPath = join(app, 'vite.config.ts');
 	const config = await readFile(configPath, 'utf8').catch(() => undefined);
 	const wired = config === undefined ? false : wireViteConfig(config);
 	if (wired !== false && wired !== config) await writeFile(configPath, wired);
-	return { module, wired: wired !== false, routes: rendered, rules, ...(header ? { fragmentHeader: header } : {}) };
+	return { module, wired: wired !== false, routes: rendered, rules, ...(header ? { fragmentHeader: header } : {}), ...(prefix ? { fragmentPath: prefix } : {}) };
 }

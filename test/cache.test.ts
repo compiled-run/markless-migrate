@@ -220,3 +220,15 @@ test('a URLSearchParams write (searchParams.set, .delete, .append) is no query k
 	assert.deepEqual(s.queryKeys, []);
 	assert.deepEqual(fileSignals("const page = url.searchParams.page;", 'pages/x.ts').queryKeys, ['page']);
 });
+
+test('a router that fetches fragments by path (Markless 0.7: /_markless/fragment/<page>) gets each page\'s fragment URL cached as the page is, and check is red when the CDN does not keep it', () => {
+	const routes = [classify({ evidence: evidence({}, {}, '/') }), classify({ evidence: evidence({ bodyHash: 'a' }, { bodyHash: 'b' }, '/news/') }), classify({ evidence: evidence({ setCookies: ['sid'] }, {}, '/account') })];
+	const rules = cacheRules(routes, { fragmentPath: '/_markless/fragment' });
+	assert.deepEqual(rules.routeRules['/_markless/fragment/'], { isr: { expiration: false, allowQuery: [] } });
+	assert.deepEqual(rules.routeRules['/_markless/fragment/news/'], { isr: { expiration: 60, allowQuery: [] } });
+	assert.equal(rules.routeRules['/_markless/fragment/account'], undefined, 'a personal page\'s fragment is never shared');
+	assert.equal(rules.vercelRoutes.length, 0, 'a fragment URL is its own cache key: no header split');
+	const plain = classify({ evidence: evidence() });
+	assert.deepEqual(judgeRoute(plain, observation([vercel('MISS'), vercel('HIT')], { fragmentPasses: [vercel('MISS'), vercel('MISS'), vercel('MISS')].map(facts) })).map((f) => f.problem), ['uncached-fragment']);
+	assert.deepEqual(judgeRoute(plain, observation([vercel('MISS'), vercel('HIT')], { fragmentPasses: [vercel('MISS'), vercel('HIT'), vercel('HIT')].map(facts) })), []);
+});
