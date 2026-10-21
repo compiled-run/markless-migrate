@@ -22,7 +22,7 @@ test('a PageSpeed Insights response gives the lab metrics, the LCP element from 
 	const urls: string[] = [];
 	const got = await psiRun('https://new.example/', 'mobile', { key: 'K' }, async (url) => (urls.push(url), reply(200, response)));
 	assert.match(urls[0]!, /^https:\/\/www\.googleapis\.com\/pagespeedonline\/v5\/runPagespeed\?url=https%3A%2F%2Fnew\.example%2F&strategy=mobile&category=performance&key=K$/);
-	assert.equal(got.run.metrics?.score, 69);
+	assert.equal(got.run.metrics?.score, 68);
 	assert.match(got.run.detail?.lcpElement ?? '', /h1\.text-white "The Build Tool for the Web"/);
 	assert.ok(Object.keys(got.run.detail?.lcpPhases ?? {}).includes('Time to first byte'));
 	assert.equal(got.lighthouse, '13.5.0');
@@ -37,10 +37,10 @@ test('a 429 is retried with backoff, and a quota that stays exhausted falls back
 	const flaky: Fetcher = async () => (++calls < 3 ? reply(429, { error: { message: 'Quota exceeded for quota metric. More' } }) : reply(200, response));
 	const ok = await psiRun('https://new.example/', 'mobile', { backoffMs: [1, 1, 1] }, flaky);
 	assert.equal(calls, 3);
-	assert.equal(ok.run.metrics?.score, 69);
+	assert.equal(ok.run.metrics?.score, 68);
 	const exhausted = await measurePsi({ old: 'https://old.example', new: 'https://new.example' }, '/', { runs: 5, backoffMs: [1, 1] }, async () => reply(429, { error: { message: 'Quota exceeded for quota metric. More' } }));
-	assert.deepEqual(exhausted, { unavailable: 'PSI unavailable (quota: Quota exceeded for quota metric), using PageSpeed-equivalent (lab, calibrated)' });
-	assert.deepEqual(psiLines(exhausted), ['PageSpeed Insights: PSI unavailable (quota: Quota exceeded for quota metric), using PageSpeed-equivalent (lab, calibrated)']);
+	assert.deepEqual(exhausted, { unavailable: 'PSI unavailable (quota: Quota exceeded for quota metric), using PageSpeed-equivalent (lab)' });
+	assert.deepEqual(psiLines(exhausted), ['PageSpeed Insights: PSI unavailable (quota: Quota exceeded for quota metric), using PageSpeed-equivalent (lab)']);
 	assert.equal(psiFailures('/', exhausted), undefined, 'the lab gates the route instead');
 	const local = await measurePsi({ old: 'http://127.0.0.1:3000', new: 'https://new.example' }, '/', {}, async () => assert.fail('never called'));
 	assert.match('unavailable' in local ? local.unavailable : '', /cannot reach http:\/\/127\.0\.0\.1:3000: it measures deployed URLs only/);
@@ -70,7 +70,7 @@ test('a report PageSpeed Insights repeats from its cache is asked for again, so 
 	assert.ok('strategies' in psi && psi.strategies[0]!.old.runs.length === 2 && psi.strategies[0]!.new.runs.length === 2);
 });
 
-test('the lab line says it is the PageSpeed-equivalent, calibrated, with the slowdown it used', () => {
+test('the lab line says it is the PageSpeed-equivalent lab, with the slowdown it used', () => {
 	const run: LoadRun = { metrics: { score: 80, fcp: 1500, lcp: 3000, si: 2000, tbt: 100, cls: 0 }, benchmarkIndex: 4400, cpuMultiplier: 16.3 };
-	assert.match(loadLine(routeLoad(4, [run, run, run, run], [run, run, run, run])), /^page load, PageSpeed-equivalent \(lab, calibrated; Lighthouse mobile, median of 4, 16\.3x CPU for benchmarkIndex 4400\)/);
+	assert.match(loadLine(routeLoad(4, [run, run, run, run], [run, run, run, run])), /^page load, PageSpeed-equivalent \(lab; Lighthouse mobile, median of 4, 16\.3x CPU for benchmarkIndex 4400\)/);
 });

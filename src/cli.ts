@@ -139,13 +139,13 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           - PageSpeed Insights (mobile and desktop, --psi-runs a side, default 5, old and new in turn),
             with the key in PSI_API_KEY or --psi-key; with a key its verdicts gate the route and real
             users' field data (Chrome UX Report) is shown. Without a key it runs on the shared keyless
-            quota, best effort, and says "PSI unavailable (quota), using PageSpeed-equivalent (lab,
-            calibrated)" when Google refuses. A free key takes a minute: https://developers.google.com/speed/docs/insights/v5/get-started#APIKey
+            quota, best effort, and says "PSI unavailable (quota), using PageSpeed-equivalent (lab)"
+            when Google refuses. A free key takes a minute: https://developers.google.com/speed/docs/insights/v5/get-started#APIKey
             (markless-migrate setup --psi-key <key> stores it). --no-psi leaves it out.
-          - PageSpeed-equivalent (lab, calibrated): Lighthouse mobile here (simulated slow 4G), with the
-            CPU slowdown derived from each run's benchmarkIndex so this machine stands for PageSpeed's
-            reference device (--load-cpu <n> fixes it), --load-runs a side (default 5; as many again when
-            a metric is worse but within noise). It gates the route when PageSpeed Insights cannot.
+          - PageSpeed-equivalent (lab): Lighthouse mobile here with PageSpeed's settings (simulated slow 4G,
+            4x CPU; --load-cpu calibrated derives the slowdown from this machine's benchmarkIndex instead),
+            --load-runs a side (default 5; as many again when a metric is worse but within noise). It gates
+            the route when PageSpeed Insights cannot, and can differ from it by 10 points or more.
           FCP, LCP, Speed Index, TBT, CLS and the score are compared by their medians: a metric is red when
           the new median is worse by more than max(100 ms, 5%) (TBT 50 ms, CLS 0.02, 3 score points) and the
           runs differ beyond noise (one-sided Mann-Whitney, p < 0.05). The failure names the LCP element, its
@@ -354,8 +354,8 @@ function loadOptions(values: { 'no-load'?: boolean; 'load-runs'?: string; 'load-
 	const runs = count('load-runs');
 	const psiRuns = count('psi-runs');
 	const cpuFlag = values['load-cpu'];
-	const cpu = cpuFlag === undefined || cpuFlag === 'calibrated' ? undefined : Number(cpuFlag);
-	if (cpu !== undefined && !(cpu >= 1)) fail('--load-cpu takes calibrated (the default) or a CPU slowdown of at least 1');
+	const cpu = cpuFlag === undefined ? undefined : cpuFlag === 'calibrated' ? ('calibrated' as const) : Number(cpuFlag);
+	if (typeof cpu === 'number' && !(cpu >= 1)) fail('--load-cpu takes calibrated or a CPU slowdown of at least 1 (default 4)');
 	const psi = values['no-psi'] ? false : { ...(values['psi-key'] ? { key: values['psi-key'] } : {}), ...(psiRuns ? { runs: psiRuns } : {}) };
 	return { ...(runs ? { runs } : {}), ...(cpu ? { cpu } : {}), psi };
 }

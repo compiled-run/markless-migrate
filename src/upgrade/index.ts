@@ -258,7 +258,7 @@ export function summarizeUpgrade(report: UpgradeReport): string {
 		const m = s.measured;
 		lines.push('', `${s.rank ? `#${s.rank} ` : ''}[${s.verdict}] ${s.id}: ${s.subject}`);
 		if (s.font) {
-			lines.push(`  found: ${s.uses[0]}`, `  measured: ${s.font.measure} (PageSpeed-equivalent, lab, calibrated)`, `  PageSpeed Insights: cannot reach the page with the preload before it is deployed; once it is, check --only load measures the saving on PageSpeed Insights`, `  add: ${s.font.tag}`, `  risk: ${s.risk} (${s.riskReason}); size: ${s.size}`);
+			lines.push(`  found: ${s.uses[0]}`, `  measured: ${s.font.measure} (PageSpeed-equivalent, lab)`, `  PageSpeed Insights: cannot reach the page with the preload before it is deployed; once it is, check --only load measures the saving on PageSpeed Insights`, `  add: ${s.font.tag}`, `  risk: ${s.risk} (${s.riskReason}); size: ${s.size}`);
 			return;
 		}
 		const use = m.latency ? `${m.onDemand ? 'not loaded with the page; the first use of the control that loads it' : 'first interaction with its own control'} takes ${ms(m.latency.ms)}, running ${kb(m.latency.executed)} of its code and fetching ${kb(m.latency.bytes)} (${m.latency.route}, ${m.latency.control.slice(-60)})` : 'no control that uses it found on these routes';
@@ -327,7 +327,7 @@ function fontTask(s: Suggestion, old: string): string {
 		'',
 		'Keep `crossorigin`: fonts are always fetched in CORS mode, and a preload without it is fetched twice. Do not change the font file, its @font-face or its font-display.',
 		'',
-		`Measured now, PageSpeed-equivalent (lab, calibrated): ${f.measure}. PageSpeed Insights cannot reach the page with the preload until it is deployed: then \`check --old <this app before the change> --new <this app, upgraded> --route ${f.route} --only load\` measures it there.`,
+		`Measured now, PageSpeed-equivalent (lab): ${f.measure}. PageSpeed Insights cannot reach the page with the preload until it is deployed: then \`check --old <this app before the change> --new <this app, upgraded> --route ${f.route} --only load\` measures it there.`,
 		'',
 		'Done means, with nothing weakened:',
 		`- \`markless-migrate check --old ${old} --new <this app, upgraded> --all\` is green on every route that was green: the preload changes nothing a visitor can see or do.`,

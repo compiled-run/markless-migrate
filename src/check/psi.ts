@@ -140,7 +140,7 @@ export async function measurePsi(origins: { readonly old: string; readonly new: 
 			strategies.push({ strategy, old, new: next, verdicts, ok: verdicts.every((v) => v.ok) && newGood.length > 0 });
 		}
 	} catch (error) {
-		if (error instanceof PsiUnavailable) return { unavailable: `PSI unavailable (${error.message}), using PageSpeed-equivalent (lab, calibrated)` };
+		if (error instanceof PsiUnavailable) return { unavailable: `PSI unavailable (${error.message}), using PageSpeed-equivalent (lab)` };
 		throw error;
 	}
 	return { strategies, keyed: Boolean(options.key) };
@@ -161,4 +161,4 @@ export function psiKey(cwd = process.cwd(), env: NodeJS.ProcessEnv = process.env
 }
 
 /** Said once, at plan and in a report without a key: what a key adds and how to get one. */
-export const PSI_NOTICE = `Optional: create a free PageSpeed Insights key in about a minute (${PSI_KEY_URL}), then run \`markless-migrate setup --psi-key <key>\`. With it, page load is verified on Google's own PageSpeed Insights (FCP, LCP, Speed Index, TBT, CLS) with real users' field data; without it, a calibrated lab run stands in.`;
+export const PSI_NOTICE = `Optional: create a free PageSpeed Insights key in about a minute (${PSI_KEY_URL}), then run \`markless-migrate setup --psi-key <key>\`. With it, page load is verified on Google's own PageSpeed Insights (FCP, LCP, Speed Index, TBT, CLS) with real users' field data; without it, a lab run with PageSpeed's settings stands in, which can differ from PageSpeed by 10 points or more.`;

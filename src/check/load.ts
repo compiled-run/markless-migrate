@@ -27,7 +27,7 @@ export const METRIC_LABEL: Readonly<Record<LoadMetric, string>> = {
 export interface LoadOptions {
 	/** Lighthouse runs per side and route, old and new taken in turn; default 5, and as many again when a metric is worse but not yet beyond noise. */
 	readonly runs?: number;
-	/** The CPU slowdown Lighthouse simulates with: `calibrated` (the default) derives it from each run's own benchmarkIndex, so this machine stands for the device PageSpeed Insights emulates; a number fixes it (Lighthouse's own default is 4). */
+	/** The CPU slowdown Lighthouse simulates with: 4 by default, as Lighthouse and PageSpeed Insights do; `calibrated` derives it from each run's own benchmarkIndex by Lighthouse's calculator. Against real PageSpeed Insights on ten sites, 4 came closer (TBT within 10% on 18 of 20 pages against 12) and neither matched its score within 5 points on more than 12 of 20, so real PSI is the gate whenever it answers. */
 	readonly cpu?: 'calibrated' | number;
 	/** Hosts blocked on both sides, as in the rest of the check. */
 	readonly block?: BlockList;
@@ -330,7 +330,7 @@ function side(runs: readonly LoadRun[]): LoadSide {
 /** Measures each route's load on both apps with Lighthouse's mobile settings, one run at a time, old and new in turn so drift in the machine's load falls on both. */
 export async function measureLoad(origins: { readonly old: string; readonly new: string }, routes: readonly string[], options: LoadOptions = {}, run: Lighthouse = runLighthouse): Promise<Map<string, RouteLoad>> {
 	const runs = Math.max(1, options.runs ?? DEFAULT_LOAD_RUNS);
-	const cpu = options.cpu ?? 'calibrated';
+	const cpu = options.cpu ?? throttling.mobileSlow4G.cpuSlowdownMultiplier;
 	const blocked = blockedPatterns(options.block);
 	const out = new Map<string, RouteLoad>();
 	if (!routes.length) return out;
@@ -451,10 +451,10 @@ export function loadFailures(route: string, load: RouteLoad): Failure[] {
 
 /** One line per route: each metric old -> new, the medians of the runs. */
 export function loadLine(load: RouteLoad): string {
-	if (load.skipped) return `page load, PageSpeed-equivalent (lab, calibrated): not compared, ${load.skipped}`;
+	if (load.skipped) return `page load, PageSpeed-equivalent (lab): not compared, ${load.skipped}`;
 	const parts = load.verdicts.map((v) => `${v.metric === 'score' ? 'score' : v.metric.toUpperCase()} ${formatMetric(v.metric, v.old)} -> ${formatMetric(v.metric, v.new)}${v.ok ? '' : ' (worse)'}`);
 	const cpu = load.cpuMultiplier ? `, ${load.cpuMultiplier}x CPU${load.benchmarkIndex ? ` for benchmarkIndex ${load.benchmarkIndex}` : ''}` : '';
-	return `page load, PageSpeed-equivalent (lab, calibrated; Lighthouse mobile, median of ${load.runs}${load.browser ? `, ${load.browser}` : ''}${cpu}): ${parts.join(', ')}`;
+	return `page load, PageSpeed-equivalent (lab; Lighthouse mobile, median of ${load.runs}${load.browser ? `, ${load.browser}` : ''}${cpu}): ${parts.join(', ')}`;
 }
 
 const PSI_LABEL = (strategy: string) => `PageSpeed Insights, ${strategy}`;
