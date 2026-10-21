@@ -1,4 +1,4 @@
-import { optionsOf, place } from './popper.ts';
+import { optionsOf, place, type Anchor } from './popper.ts';
 import { leave, stay } from './presence.ts';
 import { layersFor } from './reveal.ts';
 import { hideOthers } from './aria-hidden.ts';
@@ -34,7 +34,7 @@ export function focusFirst(container: HTMLElement): void {
 }
 
 /** Shows a control's content, places it off the trigger, and wires dismissal. Undefined when the page has none for it. */
-export function openLayer(trigger: HTMLElement, key: string, options: { readonly modal?: boolean; readonly onDismiss: (layer: Layer, reason: 'escape' | 'outside' | 'focus') => void }): Layer | undefined {
+export function openLayer(trigger: HTMLElement, key: string, options: { readonly modal?: boolean; readonly anchor?: Anchor; readonly onDismiss: (layer: Layer, reason: 'escape' | 'outside' | 'focus') => void }): Layer | undefined {
 	if (isOpen(key)) return open.find((l) => l.key === key);
 	const nodes = layersFor(key);
 	if (!nodes.length) return undefined;
@@ -45,7 +45,7 @@ export function openLayer(trigger: HTMLElement, key: string, options: { readonly
 	const layer: Layer = { key, trigger, nodes, content, wrapper, modal: options.modal === true, cleanup: [] };
 	if (wrapper) {
 		wrapper.style.transform = 'translate(0px, -200%)';
-		layer.stop = place(trigger, wrapper, optionsOf(wrapper, content));
+		layer.stop = place(options.anchor ?? trigger, wrapper, optionsOf(wrapper, content));
 	}
 	content.setAttribute('data-state', 'open');
 	if (layer.modal) {

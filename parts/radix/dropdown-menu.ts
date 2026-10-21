@@ -9,6 +9,8 @@ const ITEM = '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio
 const keyOf = (trigger: HTMLElement) => trigger.getAttribute('aria-controls') || trigger.id;
 
 function setTrigger(trigger: HTMLElement, open: boolean, layer?: Layer): void {
+	// A context menu's trigger area (opened by the context-menu port) is not a menu button.
+	if (!trigger.hasAttribute('aria-haspopup')) return;
 	trigger.setAttribute('aria-expanded', String(open));
 	trigger.setAttribute('data-state', open ? 'open' : 'closed');
 	if (open && layer?.content.id) trigger.setAttribute('aria-controls', layer.content.id);

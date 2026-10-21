@@ -32,7 +32,10 @@ function arrowHeight(content: Element | null): number {
 const placed = new WeakMap<HTMLElement, () => void>();
 
 /** Places a wrapper off its anchor and keeps it placed while it is open; `stop` ends the tracking. */
-export function place(anchor: Element, wrapper: HTMLElement, options: PlaceOptions): () => void {
+/** An element, or a point a context menu opens at (Radix's virtual anchor). */
+export type Anchor = Element | { getBoundingClientRect(): DOMRect };
+
+export function place(anchor: Anchor, wrapper: HTMLElement, options: PlaceOptions): () => void {
 	const content = wrapper.firstElementChild as HTMLElement | null;
 	const placement = (options.align === 'center' ? options.side : `${options.side}-${options.align}`) as Placement;
 	const padding = options.collisionPadding ?? 0;
