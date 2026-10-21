@@ -52,6 +52,8 @@ export default function Header() @{
 				mobileOpen = true; lockBodyScroll(); activateFocusTrap();
 			} else if (name === 'menu' || name === 'close') {
 				mobileOpen = false; navResources = false; navVersion = false; languageMenu = false; unlockBodyScroll(); deactivateFocusTrap();
+} else if (mobileOpen && (event.target as Element).closest('#mobile-menu a')) {
+				mobileOpen = false; navResources = false; navVersion = false; languageMenu = false; unlockBodyScroll(); deactivateFocusTrap();
 			}
 		}}
 		onKeyDown={(event: KeyboardEvent) => {
@@ -366,14 +368,16 @@ export default function Header() @{
 				</button>
 				<button aria-expanded={mobileOpen ? 'true' : 'false'} aria-controls="mobile-menu" aria-label="Toggle navigation menu" class="lg:hidden p-2 -mr-2 text-primary dark:text-white hover:opacity-70 transition-opacity cursor-pointer" type="button" data-v-5773249e="" data-toggle="menu">
 					@if (!mobileOpen) {
-						<svg class="size-6 block dark:hidden" viewBox="0 0 18 8" xmlns="http://www.w3.org/2000/svg" data-v-5773249e="">
-							<path d="M0 0.75H18" stroke="#08060D" stroke-width="1.5" data-v-5773249e=""></path>
-							<path d="M0 6.75H18" stroke="#08060D" stroke-width="1.5" data-v-5773249e=""></path>
-						</svg>;
-						<svg class="size-6 hidden dark:block" viewBox="0 0 18 8" xmlns="http://www.w3.org/2000/svg" data-v-5773249e="">
-							<path d="M0 0.75H18" stroke="#FFFFFF" stroke-width="1.5" data-v-5773249e=""></path>
-							<path d="M0 6.75H18" stroke="#FFFFFF" stroke-width="1.5" data-v-5773249e=""></path>
-						</svg>;
+						<>
+							<svg class="size-6 block dark:hidden" viewBox="0 0 18 8" xmlns="http://www.w3.org/2000/svg" data-v-5773249e="">
+								<path d="M0 0.75H18" stroke="#08060D" stroke-width="1.5" data-v-5773249e=""></path>
+								<path d="M0 6.75H18" stroke="#08060D" stroke-width="1.5" data-v-5773249e=""></path>
+							</svg>
+							<svg class="size-6 hidden dark:block" viewBox="0 0 18 8" xmlns="http://www.w3.org/2000/svg" data-v-5773249e="">
+								<path d="M0 0.75H18" stroke="#FFFFFF" stroke-width="1.5" data-v-5773249e=""></path>
+								<path d="M0 6.75H18" stroke="#FFFFFF" stroke-width="1.5" data-v-5773249e=""></path>
+							</svg>
+						</>;
 					}
 				</button>
 			</div>
@@ -384,8 +388,10 @@ export default function Header() @{
 					<div data-v-5773249e="" class="w-full pl-5 pr-5 py-5 lg:py-7 flex items-center justify-between">
 						<a data-v-5773249e="" href="/">
 							@if (mobileOpen) {
-								<img data-v-5773249e="" class="h-4 block dark:hidden" src="/vite-dark.svg" alt="Vite" />;
-								<img data-v-5773249e="" class="h-4 hidden dark:block" src="/vite-light.svg" alt="Vite" />;
+								<>
+									<img data-v-5773249e="" class="h-4 block dark:hidden" src="/vite-dark.svg" alt="Vite" />
+									<img data-v-5773249e="" class="h-4 hidden dark:block" src="/vite-light.svg" alt="Vite" />
+								</>;
 							}
 						</a>
 						<div data-v-5773249e="" class="flex items-center gap-2">

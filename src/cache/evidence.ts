@@ -23,6 +23,8 @@ export interface ResponseFacts {
 	readonly location?: string;
 	/** Markless's page-file marker, when the page carries one. */
 	readonly routeFile?: string;
+	/** The body ends as a Markless fragment response does; set when the router's fragment markers are known. */
+	readonly fragmentBody?: boolean;
 }
 
 /** Two GETs of one route, the second after the first was answered: the second shows whether a shared cache kept it. */

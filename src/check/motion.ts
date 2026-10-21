@@ -1,3 +1,4 @@
+import type { Png } from './artifacts.ts';
 import type { Browser, Page } from 'playwright';
 import type { SideEnv } from './browser.ts';
 import { readPage } from './collect.ts';
@@ -75,8 +76,8 @@ export interface PinnedFrame extends PinnedMoment {
 export interface Filmstrip {
 	readonly label: string;
 	readonly offsets: readonly number[];
-	readonly old: readonly Buffer[];
-	readonly new: readonly Buffer[];
+	readonly old: readonly Png[];
+	readonly new: readonly Png[];
 }
 
 export interface MotionInteraction {

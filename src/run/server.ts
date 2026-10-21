@@ -21,6 +21,8 @@ export interface AppServerOptions {
 export interface AppServer {
 	/** Builds (when a build command is set), restarts and waits until the origin answers; returns the build's output when it failed. */
 	refresh(): Promise<{ ok: boolean; output: string }>;
+	/** The first build and start: when it failed, nothing is served until a refresh succeeds. */
+	readonly first: { readonly ok: boolean; readonly output: string };
 	stop(): Promise<void>;
 }
 
@@ -108,12 +110,13 @@ export async function startAppServer(o: AppServerOptions): Promise<AppServer> {
 			}, 500)
 		: undefined;
 	const first = await refresh();
-	if (!first.ok) {
+	if (!first.ok && !(o.build && first.output.startsWith('build '))) {
 		if (timer) clearInterval(timer);
 		await kill();
 		throw new Error(first.output);
 	}
 	return {
+		first,
 		refresh: async () => {
 			await busy;
 			return refresh();

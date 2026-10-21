@@ -1,3 +1,4 @@
+import type { Png } from './artifacts.ts';
 import type { RuntimeMarker } from './residue.ts';
 import type { AutomaticRule } from '../overrides.ts';
 import type { RawSource } from './hints-page.ts';
@@ -204,9 +205,9 @@ export interface Failure {
 export interface Shot {
 	readonly label: string;
 	readonly viewport: string;
-	readonly old: Buffer;
-	readonly new: Buffer;
-	readonly diff?: Buffer;
+	readonly old: Png;
+	readonly new: Png;
+	readonly diff?: Png;
 	readonly regions: readonly Box[];
 	readonly ok: boolean;
 }
@@ -224,12 +225,14 @@ export interface RouteResult {
 	readonly infrastructure?: Infrastructure;
 	readonly failures: readonly Failure[];
 	readonly weight: { readonly old: Omit<Weight, 'scripts'>; readonly new: Omit<Weight, 'scripts'> };
-	readonly visualDiffs: readonly { viewport: string; png: Buffer }[];
+	readonly visualDiffs: readonly { viewport: string; png: Png }[];
 	readonly shots: readonly Shot[];
 	/** CSS states and conditions found in the OLD stylesheets: the ones forced and compared, and the ones that could not be. */
 	readonly states?: { readonly checked: readonly string[]; readonly skipped: readonly string[] };
 	/** Interactions explored on the OLD page and replayed on NEW, with what OLD did at each step. */
 	readonly journeys?: readonly RecordedJourney[];
+	/** Set instead of `journeys` once they were written to disk at the end of the route's check: the file, and each journey's name. */
+	readonly storedJourneys?: { readonly path: string; readonly names: readonly string[] };
 	/** Every interactive element of the OLD page and the journey that exercised it; one that none did keeps the route red. */
 	readonly coverage?: Coverage;
 	/** What still varied between OLD loads after freezing, and what was blocked. */

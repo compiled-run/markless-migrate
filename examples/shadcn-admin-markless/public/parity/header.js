@@ -23,7 +23,7 @@
 			event.preventDefault();
 			trigger.click();
 		} else if (event.key === 'k') {
-			const palette = document.getElementById('command-palette');
+			const palette = document.getElementById('command-palette-input')?.closest('[role=dialog]');
 			if (!palette) return;
 			event.preventDefault();
 			if (!palette.hidden) palette.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));

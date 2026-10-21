@@ -50,12 +50,24 @@
 			later(17, complete);
 		} else if (!pending) begin();
 	});
-	// The router fetches the next page before it navigates, so a followed link starts the bar on its click.
+	// The router fetches the next page before it navigates, so a followed link starts the bar on its click. A link to the
+	// page already shown (a menu's Billing on /settings) loads that page's match again at once: the bar runs and completes.
 	document.addEventListener('click', (event) => {
 		const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
-		if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || (link.target && link.target !== '_self')) return;
+		if (!link || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || (link.target && link.target !== '_self')) return;
 		const to = new URL(link.href, location.href);
-		if (to.origin === location.origin && to.pathname + to.search !== location.pathname + location.search) begin();
+		if (to.origin !== location.origin) return;
+		if (to.pathname + to.search !== location.pathname + location.search) {
+			if (!event.defaultPrevented) begin();
+		} else if (!link.getAttribute('href').startsWith('#')) {
+			begin();
+			later(17, complete);
+		}
+	});
+	// A navigate() to the URL already shown (lib/parity/tanstack-react-table/tasks-table.ts) loads the match again.
+	document.addEventListener('searchreload', () => {
+		begin();
+		later(17, complete);
 	});
 	document.addEventListener('marklessrouterrendered', complete);
 })();

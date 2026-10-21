@@ -1,8 +1,6 @@
 import { computed, state } from '@markless/core';
-import type { PageProps } from '@markless/router';
 import { revalidate, submitForm } from '../../lib/settings/validate.ts';
 import { SettingsLayout } from '../../components/settings/settings-layout.tsrx';
-import { layoutPrefs } from '../../components/layout/prefs.ts';
 import { toggled } from '../../lib/settings/data.ts';
 import { DURATION, expired, message, type Toast } from '../../lib/parity/sonner/index.ts';
 import { Toaster } from '../../lib/parity/sonner/toaster.tsrx';
@@ -10,8 +8,7 @@ import { Toaster } from '../../lib/parity/sonner/toaster.tsrx';
 const LABEL = 'flex items-center gap-2 text-sm leading-none select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 data-[error=true]:text-destructive font-normal';
 const CHECKBOX = 'peer size-4 shrink-0 rounded-lg border border-input shadow-xs transition-shadow outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground dark:bg-input/30 dark:aria-invalid:ring-destructive/40 dark:data-[state=checked]:bg-primary';
 
-export default function SettingsDisplay({ http }: PageProps) @{
-	const prefs = layoutPrefs(http.request.headers.get('cookie'));
+export default function SettingsDisplay() @{
 	let items = state<string[]>(['recents', 'home']);
 	let errors = state<Record<string, string>>({});
 	let submittedOnce = state(false);
@@ -43,7 +40,7 @@ export default function SettingsDisplay({ http }: PageProps) @{
 	const itemsError = computed(() => errors.items ?? '');
 	const invalid = computed(() => (errors.items ? 'true' : 'false'));
 
-	<SettingsLayout active="/settings/display" prefs={prefs} title="Display" desc="Turn items on or off to control what's displayed in the app.">
+	<SettingsLayout active="/settings/display" title="Display" desc="Turn items on or off to control what's displayed in the app.">
 		<form
 			class="space-y-8"
 			novalidate

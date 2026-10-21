@@ -1,12 +1,11 @@
 // The old /clerk routes without a publishable key (routes/clerk/route.tsx MissingClerkPubKey), which is what the deployed old app shows.
 import { Shell } from '../layout/shell.tsrx';
-import type { LayoutPrefs } from '../layout/prefs.ts';
 
 const CODE = 'bg-foreground/10 rounded-sm py-0.5 px-1 text-xs text-foreground font-bold';
 const ALERT = 'relative w-full rounded-lg border px-4 py-3 text-sm grid has-[>svg]:grid-cols-[calc(var(--spacing)*4)_1fr] grid-cols-[0_1fr] has-[>svg]:gap-x-3 gap-y-0.5 items-start [&>svg]:size-4 [&>svg]:translate-y-0.5 [&>svg]:text-current bg-card text-card-foreground';
 
-export function ClerkMissingKey({ active, prefs }: { readonly active: string; readonly prefs: LayoutPrefs }) @{
-	<Shell active={active} header="clerk" prefs={prefs}>
+export function ClerkMissingKey({ active }: { readonly active: string }) @{
+	<Shell active={active} header="clerk">
 		<main data-layout="auto" class="px-4 py-6 @7xl/content:mx-auto @7xl/content:w-full @7xl/content:max-w-7xl flex flex-col items-center justify-start">
 			<div class="max-w-2xl">
 				<div data-slot="alert" role="alert" class={ALERT}>

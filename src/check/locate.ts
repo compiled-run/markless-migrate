@@ -13,6 +13,15 @@ export const failureOccurrence = new WeakMap<Failure, { readonly old?: number; r
 /** The OLD stylesheet rule behind a computed-style failure. */
 export const failureRules = new WeakMap<Failure, CssRule>();
 
+/** Lets go of what was registered for failures whose route is checked: the failures stay in the report, the page elements behind them need not. */
+export function forgetLocated(failures: readonly Failure[]): void {
+	for (const f of failures) {
+		failureElements.delete(f);
+		failureOccurrence.delete(f);
+		failureRules.delete(f);
+	}
+}
+
 export function carry(from: Failure, to: Failure): Failure {
 	const elements = failureElements.get(from);
 	if (elements) failureElements.set(to, elements);

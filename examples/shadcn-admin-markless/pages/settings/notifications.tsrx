@@ -1,14 +1,11 @@
 import { computed, state } from '@markless/core';
-import type { PageProps } from '@markless/router';
 import { revalidate, submitForm } from '../../lib/settings/validate.ts';
 import { SettingsLayout } from '../../components/settings/settings-layout.tsrx';
-import { layoutPrefs } from '../../components/layout/prefs.ts';
 import { nextRadio } from '../../lib/settings/radio.ts';
 import { DURATION, expired, message, type Toast } from '../../lib/parity/sonner/index.ts';
 import { Toaster } from '../../lib/parity/sonner/toaster.tsrx';
 
-export default function SettingsNotifications({ http }: PageProps) @{
-	const prefs = layoutPrefs(http.request.headers.get('cookie'));
+export default function SettingsNotifications() @{
 	let type = state('');
 	let communication = state(false);
 	let marketing = state(false);
@@ -45,7 +42,7 @@ export default function SettingsNotifications({ http }: PageProps) @{
 	const mobileState = computed(() => (mobile === true ? 'checked' : 'unchecked'));
 	const mobileOn = computed(() => mobile === true);
 
-	<SettingsLayout active="/settings/notifications" prefs={prefs} title="Notifications" desc="Configure how you receive notifications.">
+	<SettingsLayout active="/settings/notifications" title="Notifications" desc="Configure how you receive notifications.">
 		<form
 			class="space-y-8"
 			novalidate

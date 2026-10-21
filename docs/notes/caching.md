@@ -1,14 +1,15 @@
-# Caching on Vercel through Nitro (measured 2026-10-19)
+# Caching on Vercel through Nitro (measured 2026-10-19, revised 2026-10-21)
 
 What `src/cache/` relies on, each measured on a real Vercel production deploy of a minimal Nitro app
-(`nitro@3.0.260429-beta`, the version the examples pin), https://mm-nitro-cache-repro.vercel.app. The
-app is `nitro.config.ts` plus one `defineHandler` per route; its source is in the last section.
+(`nitro@3.0.260429-beta`, then `3.0.260903-beta`), https://mm-nitro-cache-repro.vercel.app. The app is
+`nitro.config.ts` plus one `defineHandler` per route; its source is in the last section.
 
 | Behaviour | Measured | What the rules do about it |
 | --- | --- | --- |
-| Vercel's ISR cache and `Vary` | `/isr-vary` (`isr: 60`, the handler sends `Vary: x-fragment`): a request with `x-fragment: 1` after a plain one gets the plain body, `x-vercel-cache: HIT` | a fragment request is routed to the page's ISR function with `__markless_fragment=1`, a key in `allowQuery`, so it gets an entry of its own (`/isr-split`: FRAGMENT and DOCUMENT each MISS once, then HIT) |
-| CDN caching by `Cache-Control` and `Vary` | `/cdn-vary` (`s-maxage=60, stale-while-revalidate=300`): fragment and document are kept apart, the query is part of the key, the page sees the query | used for pages that read the query |
-| ISR and the query | `/isr-query` (`isr: { expiration: 60, allowQuery: ['q'] }`): `?q=a` and `?q=b` are cached apart, but the handler sees `q=null` for both | a page that reads the query is never put on ISR |
+| Vercel's ISR cache and `Vary` | `/isr-vary` (`isr: 60`, the handler sends `Vary: x-fragment`): a request with `x-fragment: 1` after a plain one gets the plain body, `x-vercel-cache: HIT` | ISR is used only where a fragment has a URL of its own: Markless 0.7 on fetches `/_markless/fragment/<page>`, cached with the page's rule |
+| Splitting ISR by a header | a Vercel route with `has: x-fragment` rewriting to an `allowQuery` key (`/isr-split`) is not reliable: the Nitro investigation on `3.0.260903-beta` saw fragment and document share one entry (https://github.com/nitrojs/nitro/issues/4876), while a probe of the repro on 2026-10-21 saw them apart. On mm-htmx-org-new and mm-docusaurus-new (router 0.5, header fragments, plain ISR) a header request got the cached document and, on a fresh entry, a plain request got the fragment, in both orders | removed. A page whose router marks fragments only by `x-markless-fragment` is cached by the CDN by `Cache-Control`, which honours the router's `Vary` |
+| CDN caching by `Cache-Control` and `Vary` | `/cdn-vary` (`s-maxage=60, stale-while-revalidate=300`): fragment and document are kept apart in both orders, the query is part of the key, the page sees the query | header-fragment pages (`s-maxage=31536000` for pages static until the next deploy), and pages that read the query on a Nitro older than `3.0.260903-beta` |
+| ISR and the query | `/isr-query` (`isr: { expiration: 60, allowQuery: ['q'] }`): `?q=a` and `?q=b` are cached apart, but on `3.0.260429-beta` the handler sees `q=null` for both. On `3.0.260903-beta` `passQuery: true` hands the handler the allowed keys | a page that reads only known keys gets `isr: { allowQuery: <keys>, passQuery: true }` (its fragment URL too) when the app's Nitro is `3.0.260903-beta` or later; otherwise the CDN by `Cache-Control` |
 | A `headers` routeRule on a server-rendered route | `/headers-only`: answered 200 by the function, the rule's `cache-control` replaces the handler's | `no-cache` pages get `Cache-Control` from a routeRule |
 | `prerender: true` | a plain Nitro handler is written to a static file (MISS, then HIT); in a Markless app every route prerenders as 404 (`Prerendered 0 routes`) | static pages use `isr: { expiration: false }`: rendered once per deploy, then the CDN |
 | `publicAssets` `maxAge` | a directory with `maxAge: 0` and no `fallthrough` is served `public,max-age=31536000,immutable`, its 404s too | hashed files get their own `immutable` rule; nothing relies on `maxAge` |
@@ -18,23 +19,29 @@ function region answered (an invocation, or an ISR entry kept in that region), `
 edge alone. An invocation is a response that is not `HIT`, `STALE` or `PRERENDER` whose id names a
 function region.
 
-## Upstream candidates (Nitro, not filed)
+`cache check` tells a fragment from a document by the comments the app's router ends a fragment with
+(`FRAGMENT_REGION_END`, `FRAGMENT_APPEND_END`, read from its build), on every request. It asks for the
+fragment then the document twice, and the reverse: on fresh entries where the CDN keys on the whole URL
+(a made-up query value), and after waiting out the revalidation of up to three ISR pages (`--expiry-wait`,
+default 130 s). Pages on ISR that never expire before the next deploy cannot be expired by the check;
+the report says so. A page that reads the query is asked for two made-up values on the document and the
+fragment URL: red when it does not show a value the old site's page shows, or shows the other value.
 
-1. ISR routes never see their allowed query keys. `src/presets/vercel/runtime/isr.mjs`
-   `isrRouteRewrite` returns `[route, ""]` whenever `x-now-route-matches` is present, so the request
-   reaches the handler without its query, while Vercel keys the cache on the `allowQuery` values. A
-   page that reads `?page=2` renders page 1 into the `?page=2` entry. Repro: `/isr-query?q=a`.
+## Upstream candidates (Nitro)
+
+1. Fixed in `3.0.260903-beta` with `passQuery`: ISR routes did not see their allowed query keys
+   (`isrRouteRewrite` returned `[route, ""]` whenever `x-now-route-matches` was present). Repro:
+   `/isr-query?q=a`.
 2. The Vercel preset ignores `publicAssets[].maxAge`. `generateBuildConfig` adds
    `cache-control: public,max-age=31536000,immutable` for every public asset directory without
    `fallthrough`, where the AWS Amplify preset checks `maxAge > 0`. Its `src` is `baseURL + "(.*)"`
    with `continue: true`, so it also matches `/plainfoo`, and a 404 under the directory is marked
    immutable too: `/plainfoo` answers `404` with `max-age=31536000, immutable`, and so does any missing
    file under Markless's `/assets/`. Repro: `/plain/file.txt`, `/plainfoo`.
-3. No way to keep ISR entries apart by a request header. Vercel's ISR cache ignores `Vary` (platform
-   behaviour), and Nitro's `isr` rule offers no option for it, so a handler that varies on a header
-   serves one variant to everyone. A Nitro option (or a documented warning) would let frameworks with
-   fragment or partial requests (Markless's `x-markless-fragment`, htmx's `HX-Request`) use ISR safely.
-   Repro: `/isr-vary` with and without `x-fragment: 1`.
+3. Filed as https://github.com/nitrojs/nitro/issues/4876: no way to keep ISR entries apart by a request
+   header. Vercel's ISR cache ignores `Vary`, and the `has`-route workaround no longer holds, so a
+   handler that varies on a header serves one variant to everyone. Repro: `/isr-vary` and `/isr-split`
+   with and without `x-fragment: 1`.
 4. Not confirmed upstream yet: `prerender: true` through `nitro/vite` answers 404 for every route of a
    Markless router app. Whether Nitro's prerenderer misses the Vite SSR service or Markless's router
    registers its routes too late is open; a repro without Markless is still to be written.

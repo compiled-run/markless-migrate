@@ -24,7 +24,7 @@ markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [
     [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
     [--auth .migrate/auth.json] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
     [--all] [--allow-unchecked] [--new-source ../markless-app] [--concurrency 4] [--changed]
-    [--journey-budget 120] [--max-journeys <n>] [--timeout 600]
+    [--journey-budget 120] [--max-journeys <n>] [--journey-depth 4] [--timeout 600]
     [--no-responsiveness] [--interaction-budget 200] [--cpu-throttle 4] [--interaction-controls 16] [--no-motion] [--no-cache]
     [--no-navigation] [--nav-entries 2] [--nav-destinations 40]
 markless-migrate usage [--old <origin>] [--built <dir>] [--source <path>] [--new-source <path>] [--json]
@@ -43,7 +43,7 @@ markless-migrate setup [--agent claude-code]... [--dry-run] [--undo]
 markless-migrate mcp
 markless-migrate run --agent codex --old http://localhost:3000 --new http://localhost:5173 [--route /about]... [--all] [--attempts 3] [--model <name>]
     [--source ../old-app] [--new-source .] [--auth .migrate/auth.json] [--header <name:value>]... [--cookie <name=value>]...
-    [--serve "node .output/server/index.mjs"] [--build "npm run build"] [--restart-on .output/nitro.json]
+    [--serve "node .output/server/index.mjs"] [--build "npm run build"] [--restart-on .output/nitro.json] [--agent-timeout 30]
 ```
 
 `plan` writes `.migrate/inventory.json`, including the locale prefixes in use and where `/` sends each
@@ -53,6 +53,8 @@ screenshots per route, viewport and failing state, side by side or as a slider o
 differing regions boxed and every failure listed with its fix; `--open` opens it; the screenshots are
 PNG files in `.migrate/shots/`, each stored once and loaded lazily, so publish that folder with the page),
 screenshot diffs in `.migrate/diffs/`, and the interactions it explored in `.migrate/journeys/`.
+Each route's screenshots, motion frames and journeys are written there as soon as that route is checked, and
+only their paths stay in memory, so a run of hundreds of routes holds about as much memory as a run of ten.
 Without `--route` it also measures route coverage: every route of the old site must exist on the new
 app (same status class and redirect target), and an HTML page counts as ported only when the new app's
 own Markless code renders it, which Markless's route marker (the page file the router names) shows. A
@@ -80,7 +82,9 @@ an answer: the skill and the prompt tell the agent never to ask, and the run end
 routes, how each library that draws its own UI was handled, what was accepted automatically, and "What to
 look at if you care": each route still red with its open failure ids, and routes that need a sample). Every attempt, with the agent's output, is
 appended to `.migrate/run.log`. Each route is checked with the same `--source`, `--new-source`, `--auth`,
-`--header` and `--cookie` as `check` (and `--all` takes the same routes and endpoints), and the prompt
+`--header` and `--cookie` as `check` (and `--all` takes the same routes and endpoints), and is also red when
+the port's own server code makes a page uncacheable that the old site let a CDN keep (a theme or sidebar cookie
+read from the request where the old app read it in the browser: `.migrate/caching.json`), and the prompt
 names the old source, the roles and the exact check command. A sandboxed agent cannot keep a server
 running, so `--serve <command>` makes `run` own the new app's server: it runs `--build`, restarts the
 server after every attempt and waits until `--new` answers before checking (a failed build becomes the
@@ -249,7 +253,8 @@ answers with 404 is reported, not timed.
 A first interaction is red when it is slower than the old app's slower run by more than max(16 ms, 10%,
 how much the old runs differed) at either
 speed, over `--interaction-budget` (200 ms) at 4x, or fetches code (an interaction never fetches code in
-Markless). A link is red when the next page shows later than on the old app by the same margin at 4x;
+Markless), unless the old app fetches code on the same interaction in every run and the new one fetches
+no more (VitePress loads its search box and index when search opens). A link is red when the next page shows later than on the old app by the same margin at 4x;
 its desktop figure is reported. A control that exceeds once is measured again, old and new,
 and is red only when both runs exceed (the slower is then kept); the slowest control at each speed is
 always measured twice so the report states how much runs vary. Up to `--interaction-controls` (16)
@@ -524,6 +529,28 @@ the port made personal); when a cached page's fragment URL is not kept (every pr
 navigation would run a function); and when a content-hashed file the page loads is not kept by browsers. It
 reports the CDN hit rate on the second pass, function invocations per page view and TTFB. Platform
 facts behind the rules: [docs/notes/caching.md](docs/notes/caching.md).
+
+## Certified library ports
+
+Some libraries are ported once in markless-migrate rather than once per site: `src/library/ports/<library>/`
+holds a Markless port (no React and no copy of the library) that renders the library's own markup and
+attributes, so the old classes and selectors work unchanged. Today that is `@radix-ui/react-dialog` and
+`@radix-ui/react-alert-dialog` 1.1.15, which shadcn/ui's dialog, sheet, alert dialog and command dialog wrap.
+`plan --source` classes such a library `ported` and maps each export the app uses, directly or through a
+local kit, to the port's component; a prop the port does not cover is named with the site that passes it.
+`parity <library>` copies the port into the new app's `lib/ports/<library>/` with a `<module>.behaviour.md`
+listing every export, the props each component covers and what the app uses. A copied file carries the
+hash of what was copied, so the next `parity` upgrades an untouched copy and keeps an edited one.
+`src/library/ports/index.ts` (`PORTS`) is the machine-readable list of parts and props each port covers.
+
+`test/e2e/radix-dialog-port.test.ts` certifies the port against the real library: the same page is built
+with both (`fixtures/radix-dialog-react`, `fixtures/radix-dialog-markless`) and driven through generated
+action sequences (clicks on the trigger and the close controls, clicks inside and outside, Escape, Tab,
+Shift+Tab, reopening from script during the exit animation), with the animation clock stopped between
+actions and moved one animation end at a time. After each action, halfway through the wait after it, at
+the end of the wait and in the two frames after each element's own animation ends, both pages must show
+the same elements, attributes, opacity and transforms, exposure to assistive technology, body attributes,
+focus guards, scroll lock and focus. `DIALOG_SEQUENCES` sets how many sequences run (100 by default).
 
 ## Switching routes over
 

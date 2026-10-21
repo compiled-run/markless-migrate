@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { bypassOptions } from '../check/blocked.ts';
 import type { Inventory } from '../plan/inventory.ts';
-import { applyCaching, fragmentHeader, fragmentPath, type ApplyResult } from './apply.ts';
+import { applyCaching, fragmentEndMarkers, fragmentHeader, fragmentPath, type ApplyResult } from './apply.ts';
 import { pageFilesByConvention, pageFilesFromOrigin } from './pages.ts';
 import { planCaching, readCachingPlan, summarizeCachingPlan, writeCachingPlan, type CachingPlan } from './plan.ts';
 import { summarizeCachingReport, verifyCaching } from './verify.ts';
@@ -16,14 +16,16 @@ export const CACHE_USAGE = `  cache plan [--old <origin>] [--route <path>]... [-
           cf-cache-status) and its source (auth guards, request reads, server data), with the reason, into
           .migrate/caching.json. plan runs it after the inventory.
   cache apply [--app <dir>] [--new <origin>] [--prerender]
-          Write the plan into the Markless app as migrate-cache.ts (Nitro routeRules and Vercel routes) and
+          Write the plan into the Markless app as migrate-cache.ts (Nitro routeRules) and
           add migrateCache() to its vite.config.ts. A page the app reads cookies or the session in is never
           cached. run applies it before every build.
-  cache check --new <origin> [--app <dir>] [--passes <n>] [--json]
+  cache check --new <origin> [--app <dir>] [--passes <n>] [--expiry-wait <s>] [--json]
           Read the deployment's caching (x-vercel-cache MISS then HIT, Age, Cache-Control, Vary) route by route
-          into .migrate/caching-report.json. Exits 1 when a personal page or a cookie is cached, a fragment and a
-          document share an entry, HTML is kept long after it changes, a static page or one the old site cached
-          is not kept, or a content-hashed file is not kept by browsers.
+          into .migrate/caching-report.json. Each page's fragment and document are asked for in both orders on
+          fresh or expired entries (waiting out revalidations up to --expiry-wait, default 130 s). Exits 1 when a
+          personal page or a cookie is cached, a document request gets a fragment or a fragment request a
+          document, a page that reads the query does not render it, HTML is kept long after it changes, a static
+          page or one the old site cached is not kept, or a content-hashed file is not kept by browsers.
 `;
 
 async function readInventory(cwd: string): Promise<Inventory | undefined> {
@@ -68,21 +70,24 @@ export async function cacheCommand(args: readonly string[], cwd: string, out: (t
 		await writeCachingPlan({ ...plan, applied: result.routes }, join(cwd, STATE_DIR));
 		const before = new Map(plan.routes.map((r) => [r.route, r.class]));
 		const changed = result.routes.filter((r) => r.class !== before.get(r.route));
-		out(`Wrote ${result.module}: ${result.routes.length} of ${plan.routes.length} planned routes are rendered by the app's pages; ${Object.keys(result.rules.routeRules).length} routeRules, ${result.rules.vercelRoutes.length} Vercel routes${result.fragmentHeader ? ` keeping ${result.fragmentHeader} requests in their own CDN entries` : ''}${result.fragmentPath ? `, each page's ${result.fragmentPath}/ fragment cached as the page is` : ''}\n`);
+		const fragments = result.fragmentPath ? `, each page's ${result.fragmentPath}/ fragment cached as the page is` : result.fragmentHeader ? `, pages kept by the CDN by Cache-Control since ${result.fragmentHeader} requests share their URL (Vercel's ISR keeps one entry per URL)` : '';
+		const query = result.routes.some((r) => r.status === 200 && r.class !== 'no-cache' && r.allowQuery?.length) ? (result.passQuery ? `, pages that read the query on ISR with passQuery (nitro ${result.nitro})` : `, pages that read the query kept by the CDN by Cache-Control (nitro ${result.nitro ?? 'not installed'} drops the query on ISR)`) : '';
+		out(`Wrote ${result.module}: ${result.routes.length} of ${plan.routes.length} planned routes are rendered by the app's pages; ${Object.keys(result.rules.routeRules).length} routeRules${fragments}${query}\n`);
 		for (const r of changed) out(`  ${r.route}: ${r.class} because ${r.reasons[0]}\n`);
 		out(result.wired ? `vite.config.ts uses migrateCache()\n` : `vite.config.ts has no plugins array: add migrateCache() from ./migrate-cache.ts to it\n`);
 		return result.wired ? 0 : 1;
 	}
 	if (sub === 'check') {
-		const { values } = parseArgs({ args: rest, options: { new: { type: 'string' }, app: { type: 'string' }, passes: { type: 'string' }, json: { type: 'boolean' }, route: { type: 'string', multiple: true } } });
+		const { values } = parseArgs({ args: rest, options: { new: { type: 'string' }, app: { type: 'string' }, passes: { type: 'string' }, json: { type: 'boolean' }, route: { type: 'string', multiple: true }, 'expiry-wait': { type: 'string' } } });
 		if (!values.new) throw new Error('cache check needs --new <origin>');
 		const plan = await readCachingPlan(join(cwd, STATE_DIR));
 		if (!plan) throw new Error('cache check needs .migrate/caching.json: run cache plan first');
 		const header = await fragmentHeader(resolve(cwd, values.app ?? '.'));
 		const prefix = await fragmentPath(resolve(cwd, values.app ?? '.'));
+		const markers = await fragmentEndMarkers(resolve(cwd, values.app ?? '.'));
 		const judged = plan.applied ?? plan.routes;
 		const routes = values.route?.length ? judged.filter((r) => values.route!.includes(r.route)) : judged;
-		const report = await verifyCaching(values.new, routes, { ...(header ? { fragmentHeader: header } : {}), ...(prefix ? { fragmentPath: prefix } : {}), ...(values.passes ? { passes: Number(values.passes) } : {}) }, plan.hashedAssets);
+		const report = await verifyCaching(values.new, routes, { ...(header ? { fragmentHeader: header } : {}), ...(prefix ? { fragmentPath: prefix } : {}), fragmentMarkers: markers, oldOrigin: plan.origin, ...(values.passes ? { passes: Number(values.passes) } : {}), ...(values['expiry-wait'] ? { expiryWaitS: Number(values['expiry-wait']) } : {}) }, plan.hashedAssets);
 		await writeFile(join(cwd, STATE_DIR, 'caching-report.json'), `${JSON.stringify(report, null, '\t')}\n`);
 		out(values.json ? `${JSON.stringify(report, null, '\t')}\n` : summarizeCachingReport(report));
 		return report.findings.length ? 1 : 0;

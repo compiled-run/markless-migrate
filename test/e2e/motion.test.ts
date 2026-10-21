@@ -4,6 +4,7 @@ import { chromium, type Browser } from 'playwright';
 import { serve as serveCanvas, type Variant as CanvasVariant } from '../../fixtures/motion-canvas/server.ts';
 import { serve as serveModal, type Variant as ModalVariant } from '../../fixtures/motion-exit/server.ts';
 import { serve, type Variant } from '../../fixtures/motion/server.ts';
+import { pngBytes } from '../../src/check/artifacts.ts';
 import { renderHtml } from '../../src/check/html.ts';
 import { runCheck } from '../../src/check/run.ts';
 import type { Report } from '../../src/check/types.ts';
@@ -46,8 +47,8 @@ describe('motion: the transitions and animations each interaction starts, old vs
 		assert.deepEqual(strip.offsets, [0, 63, 125, 188, 250]);
 		assert.equal(strip.old.length, 5);
 		assert.equal(strip.new.length, 5);
-		assert.ok(!strip.old[0]!.equals(strip.new[0]!), 'the old list is still open at the start, the new one has already jumped shut');
-		assert.ok(strip.old[4]!.equals(strip.new[4]!), 'both end collapsed');
+		assert.ok(!pngBytes(strip.old[0]!).equals(pngBytes(strip.new[0]!)), 'the old list is still open at the start, the new one has already jumped shut');
+		assert.ok(pngBytes(strip.old[4]!).equals(pngBytes(strip.new[4]!)), 'both end collapsed');
 		assert.match(renderHtml(report), /class="filmstrip"/);
 	});
 

@@ -1,10 +1,9 @@
 import { computed, state } from '@markless/core';
-import type { PageProps } from '@markless/router';
 import { languageLabel } from '../../lib/settings/data.ts';
-import { revalidate, submitForm } from '../../lib/settings/validate.ts';
+import { prepare, revalidate, submitForm } from '../../lib/settings/validate.ts';
 import { SettingsLayout } from '../../components/settings/settings-layout.tsrx';
-import { layoutPrefs } from '../../components/layout/prefs.ts';
-import { dateOf, monthGrid, monthShort, monthYear, navRange, nextFocus, shortDate, years } from '../../lib/parity/react-day-picker/calendar.ts';
+import { dateOf, monthShort, monthYear, navRange, nextFocus, shortDate } from '../../lib/parity/react-day-picker/calendar.ts';
+import { paintGrid, paintYears } from '../../lib/parity/react-day-picker/paint.ts';
 import { menus, PopoverContent } from '../../lib/parity/radix-ui-react-dropdown-menu/menu.tsrx';
 import { closeMenu, openMenu, toggleMenu } from '../../lib/parity/radix-ui-react-dropdown-menu/behaviour.ts';
 import { chosenIn, filterIn, moveIn } from '../../lib/parity/cmdk/behaviour.ts';
@@ -15,8 +14,7 @@ import { Toaster } from '../../lib/parity/sonner/toaster.tsrx';
 
 const LANG_TRIGGER = "inline-flex items-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-9 px-4 py-2 has-[>svg]:px-3 w-50 justify-between";
 
-export default function SettingsAccount({ http }: PageProps) @{
-	const prefs = layoutPrefs(http.request.headers.get('cookie'));
+export default function SettingsAccount() @{
 	const m = menus();
 	let name = state('');
 	let dob = state('');
@@ -55,8 +53,6 @@ export default function SettingsAccount({ http }: PageProps) @{
 	const lang6Check = computed(() => (language === 'ja' ? 'size-4 opacity-100' : 'size-4 opacity-0'));
 	const lang7Check = computed(() => (language === 'ko' ? 'size-4 opacity-100' : 'size-4 opacity-0'));
 	const lang8Check = computed(() => (language === 'zh' ? 'size-4 opacity-100' : 'size-4 opacity-0'));
-	const weeks = computed(() => monthGrid({ year: viewYear, month: viewMonth, selected: dob, focused, lastFocused, nowMs: nowMs }));
-	const yearList = computed(() => years(new Date(nowMs)).map((y) => String(y)));
 	const captionMonth = computed(() => monthShort(viewMonth));
 	const captionYear = computed(() => String(viewYear));
 	const caption = computed(() => monthYear(viewYear, viewMonth));
@@ -82,10 +78,11 @@ export default function SettingsAccount({ http }: PageProps) @{
 	const nextDisabled = computed(() => (atEnd ? 'true' : undefined));
 	const nextTab = computed(() => (atEnd ? '-1' : undefined));
 
-	<SettingsLayout active="/settings/account" prefs={prefs} title="Account" desc="Update your account settings. Set your preferred language and timezone.">
+	<SettingsLayout active="/settings/account" title="Account" desc="Update your account settings. Set your preferred language and timezone.">
 		<form
 			class="space-y-8"
 			novalidate
+			onFocusin={() => prepare('account', { name, dob: dob ? dateOf(dob) : undefined, language: language || undefined })}
 			onSubmit={async (event) => {
 				event.preventDefault();
 				submittedOnce = true;
@@ -138,6 +135,8 @@ export default function SettingsAccount({ http }: PageProps) @{
 							viewMonth = dob ? Number(dob.slice(5, 7)) - 1 : new Date(nowMs).getMonth();
 							focused = '';
 							lastFocused = '';
+							paintGrid(document.querySelector('#radix-menu-account-dob-content .rdp-weeks'), { year: viewYear, month: viewMonth, selected: dob, focused, lastFocused, nowMs });
+							paintYears(document.querySelector('#radix-menu-account-dob-content .rdp-years_dropdown'), nowMs, viewYear);
 						}
 						toggleMenu(m.contents, m.triggers, 'account-dob', m.open === '', event.target, (refocus) => {
 							m.open = '';
@@ -204,12 +203,16 @@ export default function SettingsAccount({ http }: PageProps) @{
 							if (!atStart) {
 								viewYear = viewMonth === 0 ? viewYear - 1 : viewYear;
 								viewMonth = viewMonth === 0 ? 11 : viewMonth - 1;
+								paintGrid(document.querySelector('#radix-menu-account-dob-content .rdp-weeks'), { year: viewYear, month: viewMonth, selected: dob, focused, lastFocused, nowMs });
+								paintYears(document.querySelector('#radix-menu-account-dob-content .rdp-years_dropdown'), nowMs, viewYear);
 							}
 						}}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-left size-4 rdp-chevron" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg></button>
 						<button type="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 has-[>svg]:px-3 size-(--cell-size) p-0 select-none aria-disabled:opacity-50 rdp-button_next" aria-label="Go to the Next Month" aria-disabled={nextDisabled} tabindex={nextTab} onClick={() => {
 							if (!atEnd) {
 								viewYear = viewMonth === 11 ? viewYear + 1 : viewYear;
 								viewMonth = viewMonth === 11 ? 0 : viewMonth + 1;
+								paintGrid(document.querySelector('#radix-menu-account-dob-content .rdp-weeks'), { year: viewYear, month: viewMonth, selected: dob, focused, lastFocused, nowMs });
+								paintYears(document.querySelector('#radix-menu-account-dob-content .rdp-years_dropdown'), nowMs, viewYear);
 							}
 						}}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right size-4 rdp-chevron" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg></button>
 					</nav>
@@ -220,6 +223,7 @@ export default function SettingsAccount({ http }: PageProps) @{
 									<select class="absolute inset-0 bg-popover opacity-0 rdp-dropdown rdp-months_dropdown" aria-label="Choose the Month" value={monthValue} onChange={(event) => {
 										viewMonth = Number((event.target as HTMLSelectElement).value);
 										focused = '';
+										paintGrid(document.querySelector('#radix-menu-account-dob-content .rdp-weeks'), { year: viewYear, month: viewMonth, selected: dob, focused, lastFocused, nowMs });
 									}}><option value="0" selected={month0Selected}>Jan</option><option value="1" selected={month1Selected}>Feb</option><option value="2" selected={month2Selected}>Mar</option><option value="3" selected={month3Selected}>Apr</option><option value="4" selected={month4Selected}>May</option><option value="5" selected={month5Selected}>Jun</option><option value="6" selected={month6Selected}>Jul</option><option value="7" selected={month7Selected}>Aug</option><option value="8" selected={month8Selected}>Sep</option><option value="9" selected={month9Selected}>Oct</option><option value="10" selected={month10Selected}>Nov</option><option value="11" selected={month11Selected}>Dec</option></select>
 									<span class="font-medium select-none flex h-8 items-center gap-1 rounded-md ps-2 pe-1 text-sm [&>svg]:size-3.5 [&>svg]:text-muted-foreground rdp-caption_label" aria-hidden="true">{captionMonth}<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-4 rdp-chevron" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></span>
 								</span>
@@ -227,11 +231,9 @@ export default function SettingsAccount({ http }: PageProps) @{
 									<select class="absolute inset-0 bg-popover opacity-0 rdp-dropdown rdp-years_dropdown" aria-label="Choose the Year" value={yearValue} onChange={(event) => {
 										viewYear = Number((event.target as HTMLSelectElement).value);
 										focused = '';
-									}}>
-										@for (const y of yearList; key y) {
-											<option value={y} selected={y === yearValue}>{y}</option>
-										}
-									</select>
+										paintGrid(document.querySelector('#radix-menu-account-dob-content .rdp-weeks'), { year: viewYear, month: viewMonth, selected: dob, focused, lastFocused, nowMs });
+										paintYears(document.querySelector('#radix-menu-account-dob-content .rdp-years_dropdown'), nowMs, viewYear);
+									}}></select>
 									<span class="font-medium select-none flex h-8 items-center gap-1 rounded-md ps-2 pe-1 text-sm [&>svg]:size-3.5 [&>svg]:text-muted-foreground rdp-caption_label" aria-hidden="true">{captionYear}<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-4 rdp-chevron" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></span>
 								</span>
 								<span role="status" aria-live="polite" style="border: 0px; clip: rect(0px, 0px, 0px, 0px); height: 1px; margin: -1px; overflow: hidden; padding: 0px; position: absolute; width: 1px; white-space: nowrap; overflow-wrap: normal;">{caption}</span>
@@ -241,53 +243,49 @@ export default function SettingsAccount({ http }: PageProps) @{
 							<thead aria-hidden="true">
 								<tr class="flex rdp-weekdays"><th aria-label="Sunday" class="flex-1 rounded-md text-[0.8rem] font-normal text-muted-foreground select-none rdp-weekday" scope="col">Su</th><th aria-label="Monday" class="flex-1 rounded-md text-[0.8rem] font-normal text-muted-foreground select-none rdp-weekday" scope="col">Mo</th><th aria-label="Tuesday" class="flex-1 rounded-md text-[0.8rem] font-normal text-muted-foreground select-none rdp-weekday" scope="col">Tu</th><th aria-label="Wednesday" class="flex-1 rounded-md text-[0.8rem] font-normal text-muted-foreground select-none rdp-weekday" scope="col">We</th><th aria-label="Thursday" class="flex-1 rounded-md text-[0.8rem] font-normal text-muted-foreground select-none rdp-weekday" scope="col">Th</th><th aria-label="Friday" class="flex-1 rounded-md text-[0.8rem] font-normal text-muted-foreground select-none rdp-weekday" scope="col">Fr</th><th aria-label="Saturday" class="flex-1 rounded-md text-[0.8rem] font-normal text-muted-foreground select-none rdp-weekday" scope="col">Sa</th></tr>
 							</thead>
-							<tbody class="rdp-weeks">
-								@for (const week of weeks; key week.key) {
-									<tr class="mt-2 flex w-full rdp-week">
-										@for (const d of week.days; key d.iso) {
-											<td class={d.tdClass} role="gridcell" aria-selected={d.selected ? 'true' : undefined} data-day={d.iso} data-month={d.month} data-selected={d.selected ? 'true' : undefined} data-disabled={d.disabled ? 'true' : undefined} data-outside={d.outside ? 'true' : undefined} data-focused={d.focused ? 'true' : undefined} data-today={d.today ? 'true' : undefined}>
-												<button
-													data-slot="button"
-													class="items-center justify-center whitespace-nowrap rounded-md text-sm transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 flex aspect-square size-auto w-full min-w-(--cell-size) flex-col gap-1 leading-none font-normal group-data-[focused=true]/day:relative group-data-[focused=true]/day:z-10 group-data-[focused=true]/day:border-ring group-data-[focused=true]/day:ring-[3px] group-data-[focused=true]/day:ring-ring/50 data-[range-end=true]:rounded-md data-[range-end=true]:rounded-r-md data-[range-end=true]:bg-primary data-[range-end=true]:text-primary-foreground data-[range-middle=true]:rounded-none data-[range-middle=true]:bg-accent data-[range-middle=true]:text-accent-foreground data-[range-start=true]:rounded-md data-[range-start=true]:rounded-l-md data-[range-start=true]:bg-primary data-[range-start=true]:text-primary-foreground data-[selected-single=true]:bg-primary data-[selected-single=true]:text-primary-foreground dark:hover:text-accent-foreground [&>span]:text-xs [&>span]:opacity-70 rdp-day rdp-day_button"
-													data-day={d.localeDate}
-													data-selected-single={d.selected ? 'true' : 'false'}
-													type="button"
-													disabled={d.disabled}
-													tabindex={d.tabindex}
-													aria-label={d.label}
-													onClick={(event) => {
-														event.preventDefault();
-														focused = d.iso;
-														if (!d.disabled) {
-															dob = dob === d.iso ? '' : d.iso;
-															if (submittedOnce) revalidate('account', { name, dob: dob ? dateOf(dob) : undefined, language: language || undefined }, errors, 'dob').then((next) => {
-																errors = next;
-															});
-														}
-													}}
-													onFocus={() => (focused = d.iso)}
-													onBlur={() => {
-														if (!crossing) lastFocused = focused;
-														crossing = false;
-														focused = '';
-													}}
-													onKeydown={(event) => {
-														if (event.key === 'ArrowLeft' || event.key === 'ArrowRight' || event.key === 'ArrowUp' || event.key === 'ArrowDown' || event.key === 'PageUp' || event.key === 'PageDown' || event.key === 'Home' || event.key === 'End') event.preventDefault();
-														const to = nextFocus(d.iso, event.key, event.shiftKey, nowMs);
-														if (to && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.key)) {
-															crossing = Number(to.slice(0, 4)) !== viewYear || Number(to.slice(5, 7)) - 1 !== viewMonth;
-															viewYear = Number(to.slice(0, 4));
-															viewMonth = Number(to.slice(5, 7)) - 1;
-															focused = to;
-															focusSoon(`[data-slot=calendar] td[data-day="${to}"] button`);
-														}
-													}}
-												>{d.day}</button>
-											</td>
-										}
-									</tr>
-								}
-							</tbody>
+							<tbody
+								class="rdp-weeks"
+								onClick={(event) => {
+									event.preventDefault();
+									const button = (event.target as Element).closest('button');
+									const iso = button?.closest('td')?.dataset.day;
+									if (!button || !iso) return;
+									focused = iso;
+									if (!button.disabled) {
+										dob = dob === iso ? '' : iso;
+										if (submittedOnce) revalidate('account', { name, dob: dob ? dateOf(dob) : undefined, language: language || undefined }, errors, 'dob').then((next) => {
+											errors = next;
+										});
+									}
+									paintGrid(document.querySelector('#radix-menu-account-dob-content .rdp-weeks'), { year: viewYear, month: viewMonth, selected: dob, focused, lastFocused, nowMs });
+								}}
+								onFocusin={(event) => {
+									const iso = (event.target as Element).closest('td')?.dataset.day;
+									if (!iso) return;
+									focused = iso;
+									paintGrid(document.querySelector('#radix-menu-account-dob-content .rdp-weeks'), { year: viewYear, month: viewMonth, selected: dob, focused, lastFocused, nowMs });
+								}}
+								onFocusout={() => {
+									if (!crossing) lastFocused = focused;
+									crossing = false;
+									focused = '';
+									paintGrid(document.querySelector('#radix-menu-account-dob-content .rdp-weeks'), { year: viewYear, month: viewMonth, selected: dob, focused, lastFocused, nowMs });
+								}}
+								onKeydown={(event) => {
+									if (event.key === 'ArrowLeft' || event.key === 'ArrowRight' || event.key === 'ArrowUp' || event.key === 'ArrowDown' || event.key === 'PageUp' || event.key === 'PageDown' || event.key === 'Home' || event.key === 'End') event.preventDefault();
+									const iso = (event.target as Element).closest('td')?.dataset.day;
+									const to = iso ? nextFocus(iso, event.key, event.shiftKey, nowMs) : undefined;
+									if (to && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.key)) {
+										crossing = Number(to.slice(0, 4)) !== viewYear || Number(to.slice(5, 7)) - 1 !== viewMonth;
+										viewYear = Number(to.slice(0, 4));
+										viewMonth = Number(to.slice(5, 7)) - 1;
+										focused = to;
+										paintGrid(document.querySelector('#radix-menu-account-dob-content .rdp-weeks'), { year: viewYear, month: viewMonth, selected: dob, focused, lastFocused, nowMs });
+										paintYears(document.querySelector('#radix-menu-account-dob-content .rdp-years_dropdown'), nowMs, viewYear);
+										focusSoon(`[data-slot=calendar] td[data-day="${to}"] button`);
+									}
+								}}
+							></tbody>
 						</table>
 					</div>
 				</div>

@@ -14,10 +14,12 @@ import {
 	DropdownMenuShortcut,
 	DropdownMenuTrigger,
 } from '../../lib/parity/radix-ui-react-dropdown-menu/menu.tsrx';
-import { applyDir, applyTheme, blurActive, exitDone, focusDialogOf, rememberCollapsible, rememberSidebar, rememberVariant, resetDir, resetTheme, signOut } from './shell-behaviour.ts';
-import type { LayoutPrefs } from './prefs.ts';
-import { chosenCommand, closePalette, filterCommands, moveSelection, openPalette } from '../../lib/parity/cmdk/behaviour.ts';
-import { closeDialog, openDialog } from '../../lib/parity/radix-ui-react-dialog/behaviour.ts';
+import { applyDir, applyTheme, exitDone, focusDialogOf, rememberCollapsible, rememberSidebar, rememberVariant, resetDir, resetTheme, signOut } from './shell-behaviour.ts';
+import { shellPrefs, SkipToMain } from './shell-prefs.tsrx';
+import { chosenCommand, filterCommands, moveSelection, resetPalette } from '../../lib/parity/cmdk/behaviour.ts';
+import { hideScrollbar, placeScrollThumb, showScrollbar } from '../../lib/parity/radix-ui-react-scroll-area/hover-scrollbar.ts';
+import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, DialogTrigger } from '../../lib/ports/radix-ui-react-dialog/dialog.tsrx';
+import { AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogOverlay, AlertDialogPortal, AlertDialogRoot, AlertDialogTitle } from '../../lib/ports/radix-ui-react-dialog/alert-dialog.tsrx';
 import { focusGroup, radioFocused, radioKeys } from '../../lib/parity/radix-ui-react-radio-group/behaviour.ts';
 import type { Toast } from '../../lib/parity/sonner/index.ts';
 import { Toaster } from '../../lib/parity/sonner/toaster.tsrx';
@@ -31,24 +33,22 @@ export type ShellProps = {
 	readonly fixed?: boolean;
 	/** The old <Header className='border-b'>. */
 	readonly border?: boolean;
-	/** The cookies the old providers read on load, read from the request. */
-	readonly prefs: LayoutPrefs;
 	readonly children?: Children;
 };
 
-export function Shell({ active, header, fixed, border, prefs, children }: ShellProps) @{
-	let sidebarOpen = state(prefs.open);
-	let variant = state(prefs.variant);
-	let collapsible = state(prefs.collapsible);
-	let dir = state(prefs.dir);
+export function Shell({ active, header, fixed, border, children }: ShellProps) @{
+	// The server renders the providers' defaults for every visitor; SkipToMain reads the saved cookies in the browser.
+	const prefs = shellPrefs();
 	let clerkOpen = state(active === '/clerk/sign-in' || active === '/clerk/sign-up' || active === '/clerk/user-management');
 	let authOpen = state(active === '/sign-in' || active === '/sign-in-2' || active === '/sign-up' || active === '/forgot-password' || active === '/otp');
 	let errorsOpen = state(active === '/errors/unauthorized' || active === '/errors/forbidden' || active === '/errors/not-found' || active === '/errors/internal-server-error' || active === '/errors/maintenance-error');
 	let settingsOpen = state(active === '/settings' || active === '/settings/account' || active === '/settings/appearance' || active === '/settings/notifications' || active === '/settings/display');
 	let team = state(0);
-	let theme = state(prefs.theme);
 	let searchOpen = state(false);
 	let drawerOpen = state(false);
+	// Radix mounts the command palette and the theme drawer on their first opening; what they carry from then on stays.
+	let searchSeen = state(false);
+	let drawerSeen = state(false);
 	let signOutOpen = state(false);
 	let toasts = state<Toast[]>([]);
 	const isTopNav = header === 'topnav';
@@ -57,9 +57,9 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 	const isSearch = header === 'search' && fixed !== true;
 	const isClerk = header === 'clerk';
 
-	const sidebarState = computed(() => (sidebarOpen ? 'expanded' : 'collapsed'));
-	const sidebarCollapsible = computed(() => (sidebarOpen ? '' : collapsible));
-	const inset = computed(() => variant === 'floating' || variant === 'inset');
+	const sidebarState = computed(() => (prefs.open ? 'expanded' : 'collapsed'));
+	const sidebarCollapsible = computed(() => (prefs.open ? '' : prefs.collapsible));
+	const inset = computed(() => prefs.variant === 'floating' || prefs.variant === 'inset');
 	const gapClass = computed(() => `relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear group-data-[collapsible=offcanvas]:w-0 group-data-[side=right]:rotate-180 ${inset ? 'group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]' : 'group-data-[collapsible=icon]:w-(--sidebar-width-icon)'}`);
 	const containerClass = computed(() => `fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[inset-inline,width] duration-200 ease-linear md:flex inset-s-0 group-data-[collapsible=offcanvas]:-inset-s-[calc(var(--sidebar-width))] ${inset ? 'p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]' : 'group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-e group-data-[side=right]:border-s'}`);
 	const clerkState = computed(() => (clerkOpen ? 'open' : 'closed'));
@@ -71,6 +71,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 	const settingsState = computed(() => (settingsOpen ? 'open' : 'closed'));
 	const settingsExpanded = computed(() => (settingsOpen ? 'true' : 'false'));
 	// Radix Collapsible holds back the open animation of content open on mount until it is first toggled, and hides closed content once its exit animation ends.
+	// Content closed on mount is not measured, so it carries no size until it is first opened.
 	let clerkToggled = state(false);
 	let clerkClosed = state(!(active === '/clerk/sign-in' || active === '/clerk/sign-up' || active === '/clerk/user-management'));
 	let authToggled = state(false);
@@ -79,77 +80,73 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 	let errorsClosed = state(!(active === '/errors/unauthorized' || active === '/errors/forbidden' || active === '/errors/not-found' || active === '/errors/internal-server-error' || active === '/errors/maintenance-error'));
 	let settingsToggled = state(false);
 	let settingsClosed = state(!(active === '/settings' || active === '/settings/account' || active === '/settings/appearance' || active === '/settings/notifications' || active === '/settings/display'));
-	const clerkStyle = computed(() => `${clerkOpen && !clerkToggled ? 'transition-duration: 0s; animation-name: none; ' : ''}--radix-collapsible-content-height: 96px; --radix-collapsible-content-width: 224px;`);
-	const authStyle = computed(() => `${authOpen && !authToggled ? 'transition-duration: 0s; animation-name: none; ' : ''}--radix-collapsible-content-height: 160px; --radix-collapsible-content-width: 224px;`);
-	const errorsStyle = computed(() => `${errorsOpen && !errorsToggled ? 'transition-duration: 0s; animation-name: none; ' : ''}--radix-collapsible-content-height: 160px; --radix-collapsible-content-width: 224px;`);
-	const settingsStyle = computed(() => `${settingsOpen && !settingsToggled ? 'transition-duration: 0s; animation-name: none; ' : ''}--radix-collapsible-content-height: 160px; --radix-collapsible-content-width: 224px;`);
+	const clerkStyle = computed(() => (clerkOpen || clerkToggled ? `${clerkOpen && !clerkToggled ? 'transition-duration: 0s; animation-name: none; ' : ''}--radix-collapsible-content-height: 96px; --radix-collapsible-content-width: 224px;` : undefined));
+	const authStyle = computed(() => (authOpen || authToggled ? `${authOpen && !authToggled ? 'transition-duration: 0s; animation-name: none; ' : ''}--radix-collapsible-content-height: 160px; --radix-collapsible-content-width: 224px;` : undefined));
+	const errorsStyle = computed(() => (errorsOpen || errorsToggled ? `${errorsOpen && !errorsToggled ? 'transition-duration: 0s; animation-name: none; ' : ''}--radix-collapsible-content-height: 160px; --radix-collapsible-content-width: 224px;` : undefined));
+	const settingsStyle = computed(() => (settingsOpen || settingsToggled ? `${settingsOpen && !settingsToggled ? 'transition-duration: 0s; animation-name: none; ' : ''}--radix-collapsible-content-height: 160px; --radix-collapsible-content-width: 224px;` : undefined));
 
 	// A state value cannot index an array in a recipe (MARKLESS_SYMBOL_MODULE_UNRESOLVED_GRAPH_REFERENCE), so the three teams are spelled out.
 	const teamName = computed(() => (team === 1 ? 'Acme Inc' : team === 2 ? 'Acme Corp.' : 'Shadcn Admin'));
 	const teamPlan = computed(() => (team === 1 ? 'Enterprise' : team === 2 ? 'Startup' : 'Vite + ShadcnUI'));
-	const lightCheck = computed(() => (theme === 'light' ? 'lucide lucide-check ms-auto' : 'lucide lucide-check ms-auto hidden'));
-	const darkCheck = computed(() => (theme === 'dark' ? 'lucide lucide-check ms-auto' : 'lucide lucide-check ms-auto hidden'));
-	const systemCheck = computed(() => (theme === 'system' ? 'lucide lucide-check ms-auto' : 'lucide lucide-check ms-auto hidden'));
-	const searchState = computed(() => (searchOpen ? 'open' : 'closed'));
-	const drawerExpanded = computed(() => (drawerOpen ? 'true' : 'false'));
-	const drawerState = computed(() => (drawerOpen ? 'open' : 'closed'));
-	const signOutState = computed(() => (signOutOpen ? 'open' : 'closed'));
+	const lightCheck = computed(() => (prefs.theme === 'light' ? 'lucide lucide-check ms-auto' : 'lucide lucide-check ms-auto hidden'));
+	const darkCheck = computed(() => (prefs.theme === 'dark' ? 'lucide lucide-check ms-auto' : 'lucide lucide-check ms-auto hidden'));
+	const systemCheck = computed(() => (prefs.theme === 'system' ? 'lucide lucide-check ms-auto' : 'lucide lucide-check ms-auto hidden'));
 
-	const layoutValue = computed(() => (sidebarOpen ? 'default' : collapsible));
-	const themeSystem = computed(() => (theme === 'system' ? 'true' : 'false'));
-	const themeSystemState = computed(() => (theme === 'system' ? 'checked' : 'unchecked'));
-	const themeLight = computed(() => (theme === 'light' ? 'true' : 'false'));
-	const themeLightState = computed(() => (theme === 'light' ? 'checked' : 'unchecked'));
-	const themeDark = computed(() => (theme === 'dark' ? 'true' : 'false'));
-	const themeDarkState = computed(() => (theme === 'dark' ? 'checked' : 'unchecked'));
-	const variantInset = computed(() => (variant === 'inset' ? 'true' : 'false'));
-	const variantInsetState = computed(() => (variant === 'inset' ? 'checked' : 'unchecked'));
-	const variantFloating = computed(() => (variant === 'floating' ? 'true' : 'false'));
-	const variantFloatingState = computed(() => (variant === 'floating' ? 'checked' : 'unchecked'));
-	const variantSidebar = computed(() => (variant === 'sidebar' ? 'true' : 'false'));
-	const variantSidebarState = computed(() => (variant === 'sidebar' ? 'checked' : 'unchecked'));
+	const layoutValue = computed(() => (prefs.open ? 'default' : prefs.collapsible));
+	const themeSystem = computed(() => (prefs.theme === 'system' ? 'true' : 'false'));
+	const themeSystemState = computed(() => (prefs.theme === 'system' ? 'checked' : 'unchecked'));
+	const themeLight = computed(() => (prefs.theme === 'light' ? 'true' : 'false'));
+	const themeLightState = computed(() => (prefs.theme === 'light' ? 'checked' : 'unchecked'));
+	const themeDark = computed(() => (prefs.theme === 'dark' ? 'true' : 'false'));
+	const themeDarkState = computed(() => (prefs.theme === 'dark' ? 'checked' : 'unchecked'));
+	const variantInset = computed(() => (prefs.variant === 'inset' ? 'true' : 'false'));
+	const variantInsetState = computed(() => (prefs.variant === 'inset' ? 'checked' : 'unchecked'));
+	const variantFloating = computed(() => (prefs.variant === 'floating' ? 'true' : 'false'));
+	const variantFloatingState = computed(() => (prefs.variant === 'floating' ? 'checked' : 'unchecked'));
+	const variantSidebar = computed(() => (prefs.variant === 'sidebar' ? 'true' : 'false'));
+	const variantSidebarState = computed(() => (prefs.variant === 'sidebar' ? 'checked' : 'unchecked'));
 	const layoutDefault = computed(() => (layoutValue === 'default' ? 'true' : 'false'));
 	const layoutDefaultState = computed(() => (layoutValue === 'default' ? 'checked' : 'unchecked'));
 	const layoutIcon = computed(() => (layoutValue === 'icon' ? 'true' : 'false'));
 	const layoutIconState = computed(() => (layoutValue === 'icon' ? 'checked' : 'unchecked'));
 	const layoutOffcanvas = computed(() => (layoutValue === 'offcanvas' ? 'true' : 'false'));
 	const layoutOffcanvasState = computed(() => (layoutValue === 'offcanvas' ? 'checked' : 'unchecked'));
-	const dirLtr = computed(() => (dir === 'ltr' ? 'true' : 'false'));
-	const dirLtrState = computed(() => (dir === 'ltr' ? 'checked' : 'unchecked'));
-	const dirRtl = computed(() => (dir === 'rtl' ? 'true' : 'false'));
-	const dirRtlState = computed(() => (dir === 'rtl' ? 'checked' : 'unchecked'));
-	const themeDefault = computed(() => theme === 'system');
-	const variantDefault = computed(() => variant === 'inset');
+	const dirLtr = computed(() => (prefs.dir === 'ltr' ? 'true' : 'false'));
+	const dirLtrState = computed(() => (prefs.dir === 'ltr' ? 'checked' : 'unchecked'));
+	const dirRtl = computed(() => (prefs.dir === 'rtl' ? 'true' : 'false'));
+	const dirRtlState = computed(() => (prefs.dir === 'rtl' ? 'checked' : 'unchecked'));
+	const themeDefault = computed(() => prefs.theme === 'system');
+	const variantDefault = computed(() => prefs.variant === 'inset');
 	const layoutIsDefault = computed(() => layoutValue === 'default');
-	const dirDefault = computed(() => dir === 'ltr');
+	// Closed and never opened, the theme drawer and the command palette carry none of their inline styles.
+	const drawerOutline = computed(() => (drawerSeen ? 'outline: none;' : undefined));
+	const paletteLabelStyle = computed(() => (searchSeen ? 'position: absolute; width: 1px; height: 1px; padding: 0px; margin: -1px; overflow: hidden; clip: rect(0px, 0px, 0px, 0px); white-space: nowrap; border-width: 0px;' : undefined));
+	const paletteListStyle = computed(() => (searchSeen ? '--cmdk-list-height: 288.0px;' : undefined));
+	const paletteScrollStyle = computed(() => (searchSeen ? 'position: relative; --radix-scroll-area-corner-width: 0px; --radix-scroll-area-corner-height: 0px;' : undefined));
+	const paletteViewportStyle = computed(() => (searchSeen ? 'overflow: hidden scroll;' : undefined));
+	const paletteTableStyle = computed(() => (searchSeen ? 'min-width: 100%; display: table;' : undefined));
+	const dirDefault = computed(() => prefs.dir === 'ltr');
 
 	const toggleSidebar = () => {
-		sidebarOpen = !sidebarOpen;
-		rememberSidebar(sidebarOpen);
+		prefs.open = !prefs.open;
+		rememberSidebar(prefs.open);
 	};
 	const openSearch = () => {
+		resetPalette();
 		searchOpen = true;
-		openPalette();
-	};
-	const closeSearch = () => {
-		searchOpen = false;
-		closePalette();
+		searchSeen = true;
 	};
 	const searchKeys = (event: KeyboardEvent) => {
-		if (event.key === 'Escape' || event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End' || event.key === 'Enter') event.preventDefault();
-		if (event.key === 'Escape') {
-			searchOpen = false;
-			closePalette();
-		} else if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
+		if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End' || event.key === 'Enter') event.preventDefault();
+		if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
 			moveSelection(event.key);
 		} else if (event.key === 'Enter') {
 			// Inline on purpose: a handler cannot call another function of the component (MARKLESS_EVENT_HANDLER_EMIT_UNSUPPORTED).
 			const command = chosenCommand();
 			if (command) {
 				searchOpen = false;
-				closePalette();
 				if (command.theme) {
-					theme = command.theme;
+					prefs.theme = command.theme;
 					applyTheme(command.theme);
 				}
 				if (command.url) location.assign(command.url);
@@ -160,45 +157,14 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 		const command = chosenCommand(event.target);
 		if (!command) return;
 		searchOpen = false;
-		closePalette();
 		if (command.theme) {
-			theme = command.theme;
+			prefs.theme = command.theme;
 			applyTheme(command.theme);
 		}
 		if (command.url) location.assign(command.url);
 	};
-	const openDrawer = () => {
-		drawerOpen = true;
-		openDialog('config-drawer', {
-			onDismiss: () => {
-				drawerOpen = false;
-				closeDialog('config-drawer');
-			},
-		});
-	};
-	const closeDrawer = () => {
-		drawerOpen = false;
-		closeDialog('config-drawer');
-	};
 	const openSignOut = () => {
 		signOutOpen = true;
-		// After the menu has closed and given focus back to its trigger.
-		setTimeout(() =>
-			openDialog('sign-out-dialog', {
-				alert: true,
-				focus: '[data-cancel]',
-				onDismiss: () => {
-					signOutOpen = false;
-					closeDialog('sign-out-dialog', false);
-					blurActive();
-				},
-			}),
-		);
-	};
-	const closeSignOut = () => {
-		signOutOpen = false;
-		closeDialog('sign-out-dialog', false);
-		blurActive();
 	};
 	const radioKey = (event: KeyboardEvent) => {
 		if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'ArrowLeft' || event.key === 'ArrowRight') event.preventDefault();
@@ -207,8 +173,8 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 
 	<div class="contents">
 		<div data-slot="sidebar-wrapper" class="group/sidebar-wrapper flex min-h-svh w-full md:has-data-[variant=inset]:bg-sidebar" style="--sidebar-width: 16rem; --sidebar-width-icon: 3rem;">
-			<a class="fixed inset-s-44 z-999 -translate-y-52 bg-primary px-4 py-2 text-sm font-medium whitespace-nowrap text-primary-foreground opacity-95 shadow-sm transition hover:bg-primary/90 focus:translate-y-3 focus:transform focus-visible:ring-1 focus-visible:ring-ring" href="#content">Skip to Main</a>
-			<div class="group peer hidden text-sidebar-foreground md:block" data-state={sidebarState} data-collapsible={sidebarCollapsible} data-variant={variant} data-side="left" data-slot="sidebar">
+			<SkipToMain />
+			<div class="group peer hidden text-sidebar-foreground md:block" data-state={sidebarState} data-collapsible={sidebarCollapsible} data-variant={prefs.variant} data-side="left" data-slot="sidebar">
 				<div data-slot="sidebar-gap" class={gapClass}></div>
 				<div data-slot="sidebar-container" class={containerClass}>
 					<div data-sidebar="sidebar" data-slot="sidebar-inner" class="flex h-full w-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow-sm">
@@ -292,7 +258,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 											<span>Users</span>
 										</a>
 									</li>
-									<li data-slot="collapsible" data-sidebar="menu-item" class="group/menu-item relative group/collapsible" hidden={!sidebarOpen} data-state={clerkState}>
+									<li data-slot="collapsible" data-sidebar="menu-item" class="group/menu-item relative group/collapsible" hidden={!prefs.open} data-state={clerkState}>
 										<button data-slot="collapsible-trigger" data-sidebar="menu-button" data-size="default" data-active="false" class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-start outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pe-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm" type="button" aria-controls="radix-_r_7_" aria-expanded={clerkExpanded} data-state={clerkState} onClick={() => {
 											clerkToggled = true;
 											if (!clerkOpen) clerkClosed = false;
@@ -332,7 +298,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 											</ul>
 										</div>
 									</li>
-									<li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative" hidden={sidebarOpen}>
+									<li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative" hidden={prefs.open}>
 										<DropdownMenuTrigger menu="nav-clerk" data-sidebar="menu-button" data-size="default" data-active={active === '/clerk/sign-in' || active === '/clerk/sign-up' || active === '/clerk/user-management' ? 'true' : 'false'} class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-start outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pe-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm">
 											<svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" id="clerk" height="24" width="24" class="[&>path]:fill-foreground">
 												<title>Clerk</title>
@@ -349,7 +315,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 							<div data-slot="sidebar-group" data-sidebar="group" class="relative flex w-full min-w-0 flex-col p-2">
 								<div data-slot="sidebar-group-label" data-sidebar="group-label" class="flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 ring-sidebar-ring outline-hidden transition-[margin,opacity] duration-200 ease-linear focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0 group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0">Pages</div>
 								<ul data-slot="sidebar-menu" data-sidebar="menu" class="flex w-full min-w-0 flex-col gap-1">
-									<li data-slot="collapsible" data-sidebar="menu-item" class="group/menu-item relative group/collapsible" hidden={!sidebarOpen} data-state={authState}>
+									<li data-slot="collapsible" data-sidebar="menu-item" class="group/menu-item relative group/collapsible" hidden={!prefs.open} data-state={authState}>
 										<button data-slot="collapsible-trigger" data-sidebar="menu-button" data-size="default" data-active="false" class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-start outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pe-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm" type="button" aria-controls="radix-_r_9_" aria-expanded={authExpanded} data-state={authState} onClick={() => {
 											authToggled = true;
 											if (!authOpen) authClosed = false;
@@ -399,7 +365,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 											</ul>
 										</div>
 									</li>
-									<li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative" hidden={sidebarOpen}>
+									<li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative" hidden={prefs.open}>
 										<DropdownMenuTrigger menu="nav-auth" data-sidebar="menu-button" data-size="default" data-active={active === '/sign-in' || active === '/sign-in-2' || active === '/sign-up' || active === '/forgot-password' || active === '/otp' ? 'true' : 'false'} class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-start outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pe-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm">
 											<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-shield-check" aria-hidden="true">
 												<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
@@ -411,7 +377,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 											</svg>
 									{' '}	</DropdownMenuTrigger>
 									</li>
-									<li data-slot="collapsible" data-sidebar="menu-item" class="group/menu-item relative group/collapsible" hidden={!sidebarOpen} data-state={errorsState}>
+									<li data-slot="collapsible" data-sidebar="menu-item" class="group/menu-item relative group/collapsible" hidden={!prefs.open} data-state={errorsState}>
 										<button data-slot="collapsible-trigger" data-sidebar="menu-button" data-size="default" data-active="false" class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-start outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pe-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm" type="button" aria-controls="radix-_r_b_" aria-expanded={errorsExpanded} data-state={errorsState} onClick={() => {
 											errorsToggled = true;
 											if (!errorsOpen) errorsClosed = false;
@@ -504,7 +470,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 											</ul>
 										</div>
 									</li>
-									<li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative" hidden={sidebarOpen}>
+									<li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative" hidden={prefs.open}>
 										<DropdownMenuTrigger menu="nav-errors" data-sidebar="menu-button" data-size="default" data-active={active === '/errors/unauthorized' || active === '/errors/forbidden' || active === '/errors/not-found' || active === '/errors/internal-server-error' || active === '/errors/maintenance-error' ? 'true' : 'false'} class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-start outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pe-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm">
 											<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-bug" aria-hidden="true">
 												<path d="M12 20v-9" />
@@ -530,7 +496,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 							<div data-slot="sidebar-group" data-sidebar="group" class="relative flex w-full min-w-0 flex-col p-2">
 								<div data-slot="sidebar-group-label" data-sidebar="group-label" class="flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 ring-sidebar-ring outline-hidden transition-[margin,opacity] duration-200 ease-linear focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0 group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0">Other</div>
 								<ul data-slot="sidebar-menu" data-sidebar="menu" class="flex w-full min-w-0 flex-col gap-1">
-									<li data-slot="collapsible" data-sidebar="menu-item" class="group/menu-item relative group/collapsible" hidden={!sidebarOpen} data-state={settingsState}>
+									<li data-slot="collapsible" data-sidebar="menu-item" class="group/menu-item relative group/collapsible" hidden={!prefs.open} data-state={settingsState}>
 										<button data-slot="collapsible-trigger" data-sidebar="menu-button" data-size="default" data-active="false" class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-start outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pe-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm" type="button" aria-controls="radix-_r_d_" aria-expanded={settingsExpanded} data-state={settingsState} onClick={() => {
 											settingsToggled = true;
 											if (!settingsOpen) settingsClosed = false;
@@ -612,7 +578,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 											</ul>
 										</div>
 									</li>
-									<li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative" hidden={sidebarOpen}>
+									<li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative" hidden={prefs.open}>
 										<DropdownMenuTrigger menu="nav-settings" data-sidebar="menu-button" data-size="default" data-active={active === '/settings' || active === '/settings/account' || active === '/settings/appearance' || active === '/settings/notifications' || active === '/settings/display' ? 'true' : 'false'} class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-start outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pe-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm">
 											<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings" aria-hidden="true">
 												<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
@@ -641,7 +607,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 							<ul data-slot="sidebar-menu" data-sidebar="menu" class="flex w-full min-w-0 flex-col gap-1">
 								<li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
 									<DropdownMenuTrigger menu="user" data-sidebar="menu-button" data-size="lg" data-active="false" class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-start outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pe-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-12 text-sm group-data-[collapsible=icon]:p-0! data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground">
-										<span data-slot="avatar" class="relative flex size-8 shrink-0 overflow-hidden h-8 w-8 rounded-lg">
+										<span data-slot="avatar" data-avatar-src="/avatars/shadcn.jpg" data-avatar-alt="satnaing" class="relative flex size-8 shrink-0 overflow-hidden h-8 w-8 rounded-lg">
 											<span data-slot="avatar-fallback" class="flex size-full items-center justify-center bg-muted rounded-lg">SN</span>
 										</span>
 										<div class="grid flex-1 text-start text-sm leading-tight">
@@ -661,627 +627,1079 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 				</div>
 			</div>
 			<div data-slot="sidebar-inset" class="relative flex w-full flex-1 flex-col bg-background md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ms-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ms-2 @container/content has-data-[layout=fixed]:h-svh peer-data-[variant=inset]:has-data-[layout=fixed]:h-[calc(100svh-(var(--spacing)*4))]">
-				@if (isTopNav) {
-					<header class="z-50 h-16 shadow-none">
-						<div class="relative flex h-full items-center gap-3 p-4 sm:gap-4">
-							<button data-slot="sidebar-trigger" onClick={toggleSidebar} class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 size-7 max-md:scale-125" data-sidebar="trigger">
+				<DialogRoot open={drawerOpen} onOpenChange={(next: boolean) => { drawerOpen = next; if (next) drawerSeen = true; }}>
+					@if (isTopNav) {
+						<header class="z-50 h-16 shadow-none">
+							<div class="relative flex h-full items-center gap-3 p-4 sm:gap-4">
+								<button data-slot="sidebar-trigger" onClick={toggleSidebar} class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 size-7 max-md:scale-125" data-sidebar="trigger">
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-panel-left" aria-hidden="true">
+										<rect width="18" height="18" x="3" y="3" rx="2" />
+										<path d="M9 3v18" />
+									</svg>
+									<span class="sr-only">Toggle Sidebar</span>
+								</button>
+								<div data-orientation="vertical" role="none" data-slot="separator" class="shrink-0 bg-border data-[orientation=horizontal]:h-px data-[orientation=horizontal]:w-full data-[orientation=vertical]:w-px h-6"></div>
+								<DropdownMenuTrigger menu="topnav" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 size-9 md:size-7 lg:hidden me-auto">
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-menu" aria-hidden="true">
+										<path d="M4 5h16" />
+										<path d="M4 12h16" />
+										<path d="M4 19h16" />
+									</svg>
+									<span class="sr-only">Toggle navigation menu</span>
+								</DropdownMenuTrigger>
+								<nav class="hidden items-center space-x-4 lg:flex lg:space-x-4 xl:space-x-6 me-auto">
+									<a href="/dashboard/overview" class="text-sm font-medium transition-colors hover:text-primary ">Overview</a>
+									<a class="text-sm font-medium transition-colors hover:text-primary text-muted-foreground" role="link" aria-disabled="true">Customers</a>
+									<a class="text-sm font-medium transition-colors hover:text-primary text-muted-foreground" role="link" aria-disabled="true">Products</a>
+									<a class="text-sm font-medium transition-colors hover:text-primary text-muted-foreground" role="link" aria-disabled="true">Settings</a>
+								</nav>
+								<button data-slot="button" onClick={openSearch} class="inline-flex items-center gap-2 whitespace-nowrap transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 px-4 py-2 has-[>svg]:px-3 group relative h-8 w-full flex-1 justify-start rounded-md bg-muted/25 text-sm font-normal text-muted-foreground shadow-none hover:bg-accent sm:w-40 sm:pe-12 md:flex-none lg:w-52 xl:w-64" aria-keyshortcuts="Meta+K Control+K">
+									<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search absolute inset-s-1.5 top-1/2 -translate-y-1/2" aria-hidden="true">
+										<path d="m21 21-4.34-4.34" />
+										<circle cx="11" cy="11" r="8" />
+									</svg>
+									<span class="ms-4">Search</span>
+									<kbd class="pointer-events-none absolute inset-e-[0.3rem] top-[0.3rem] hidden h-5 items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 select-none group-hover:bg-accent sm:flex">
+										<span class="text-xs">⌘</span>
+										K
+									</kbd>
+								</button>
+								<DropdownMenuTrigger menu="theme" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 size-9 scale-95 rounded-full">
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun size-[1.2rem] scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" aria-hidden="true">
+										<circle cx="12" cy="12" r="4" />
+										<path d="M12 2v2" />
+										<path d="M12 20v2" />
+										<path d="m4.93 4.93 1.41 1.41" />
+										<path d="m17.66 17.66 1.41 1.41" />
+										<path d="M2 12h2" />
+										<path d="M20 12h2" />
+										<path d="m6.34 17.66-1.41 1.41" />
+										<path d="m19.07 4.93-1.41 1.41" />
+									</svg>
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-moon absolute size-[1.2rem] scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" aria-hidden="true">
+										<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
+									</svg>
+									<span class="sr-only">Toggle theme</span>
+								</DropdownMenuTrigger>
+								<DialogTrigger data-slot="sheet-trigger" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 size-9 rounded-full" aria-label="Open theme settings">
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings" aria-hidden="true">
+										<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
+										<circle cx="12" cy="12" r="3" />
+									</svg>
+								</DialogTrigger>
+								<DropdownMenuTrigger menu="profile" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 px-4 py-2 has-[>svg]:px-3 relative h-8 w-8 rounded-full">
+									<span data-slot="avatar" data-avatar-src="/avatars/01.png" data-avatar-alt="@shadcn" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-8 w-8">
+										<span data-slot="avatar-fallback" class="flex size-full items-center justify-center rounded-full bg-muted">SN</span>
+									</span>
+								</DropdownMenuTrigger>
+							</div>
+						</header>
+					}
+					@if (isSearchBorder) {
+						<header class="z-50 h-16 header-fixed peer/header sticky top-0 w-[inherit] shadow-none border-b">
+							<div class="relative flex h-full items-center gap-3 p-4 sm:gap-4">
+								<button data-slot="sidebar-trigger" onClick={toggleSidebar} class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 size-7 max-md:scale-125" data-sidebar="trigger">
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-panel-left" aria-hidden="true">
+										<rect width="18" height="18" x="3" y="3" rx="2" />
+										<path d="M9 3v18" />
+									</svg>
+									<span class="sr-only">Toggle Sidebar</span>
+								</button>
+								<div data-orientation="vertical" role="none" data-slot="separator" class="shrink-0 bg-border data-[orientation=horizontal]:h-px data-[orientation=horizontal]:w-full data-[orientation=vertical]:w-px h-6"></div>
+								<button data-slot="button" onClick={openSearch} class="inline-flex items-center gap-2 whitespace-nowrap transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 px-4 py-2 has-[>svg]:px-3 group relative h-8 w-full flex-1 justify-start rounded-md bg-muted/25 text-sm font-normal text-muted-foreground shadow-none hover:bg-accent sm:w-40 sm:pe-12 md:flex-none lg:w-52 xl:w-64 me-auto" aria-keyshortcuts="Meta+K Control+K">
+									<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search absolute inset-s-1.5 top-1/2 -translate-y-1/2" aria-hidden="true">
+										<path d="m21 21-4.34-4.34" />
+										<circle cx="11" cy="11" r="8" />
+									</svg>
+									<span class="ms-4">Search</span>
+									<kbd class="pointer-events-none absolute inset-e-[0.3rem] top-[0.3rem] hidden h-5 items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 select-none group-hover:bg-accent sm:flex">
+										<span class="text-xs">⌘</span>
+										K
+									</kbd>
+								</button>
+								<DropdownMenuTrigger menu="theme" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 size-9 scale-95 rounded-full">
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun size-[1.2rem] scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" aria-hidden="true">
+										<circle cx="12" cy="12" r="4" />
+										<path d="M12 2v2" />
+										<path d="M12 20v2" />
+										<path d="m4.93 4.93 1.41 1.41" />
+										<path d="m17.66 17.66 1.41 1.41" />
+										<path d="M2 12h2" />
+										<path d="M20 12h2" />
+										<path d="m6.34 17.66-1.41 1.41" />
+										<path d="m19.07 4.93-1.41 1.41" />
+									</svg>
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-moon absolute size-[1.2rem] scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" aria-hidden="true">
+										<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
+									</svg>
+									<span class="sr-only">Toggle theme</span>
+								</DropdownMenuTrigger>
+								<DialogTrigger data-slot="sheet-trigger" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 size-9 rounded-full" aria-label="Open theme settings">
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings" aria-hidden="true">
+										<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
+										<circle cx="12" cy="12" r="3" />
+									</svg>
+								</DialogTrigger>
+								<DropdownMenuTrigger menu="profile" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 px-4 py-2 has-[>svg]:px-3 relative h-8 w-8 rounded-full">
+									<span data-slot="avatar" data-avatar-src="/avatars/01.png" data-avatar-alt="@shadcn" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-8 w-8">
+										<span data-slot="avatar-fallback" class="flex size-full items-center justify-center rounded-full bg-muted">SN</span>
+									</span>
+								</DropdownMenuTrigger>
+							</div>
+						</header>
+					}
+					@if (isSearchFixed) {
+						<header class="z-50 h-16 header-fixed peer/header sticky top-0 w-[inherit] shadow-none">
+							<div class="relative flex h-full items-center gap-3 p-4 sm:gap-4">
+								<button data-slot="sidebar-trigger" onClick={toggleSidebar} class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 size-7 max-md:scale-125" data-sidebar="trigger">
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-panel-left" aria-hidden="true">
+										<rect width="18" height="18" x="3" y="3" rx="2" />
+										<path d="M9 3v18" />
+									</svg>
+									<span class="sr-only">Toggle Sidebar</span>
+								</button>
+								<div data-orientation="vertical" role="none" data-slot="separator" class="shrink-0 bg-border data-[orientation=horizontal]:h-px data-[orientation=horizontal]:w-full data-[orientation=vertical]:w-px h-6"></div>
+								<button data-slot="button" onClick={openSearch} class="inline-flex items-center gap-2 whitespace-nowrap transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 px-4 py-2 has-[>svg]:px-3 group relative h-8 w-full flex-1 justify-start rounded-md bg-muted/25 text-sm font-normal text-muted-foreground shadow-none hover:bg-accent sm:w-40 sm:pe-12 md:flex-none lg:w-52 xl:w-64 me-auto" aria-keyshortcuts="Meta+K Control+K">
+									<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search absolute inset-s-1.5 top-1/2 -translate-y-1/2" aria-hidden="true">
+										<path d="m21 21-4.34-4.34" />
+										<circle cx="11" cy="11" r="8" />
+									</svg>
+									<span class="ms-4">Search</span>
+									<kbd class="pointer-events-none absolute inset-e-[0.3rem] top-[0.3rem] hidden h-5 items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 select-none group-hover:bg-accent sm:flex">
+										<span class="text-xs">⌘</span>
+										K
+									</kbd>
+								</button>
+								<DropdownMenuTrigger menu="theme" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 size-9 scale-95 rounded-full">
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun size-[1.2rem] scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" aria-hidden="true">
+										<circle cx="12" cy="12" r="4" />
+										<path d="M12 2v2" />
+										<path d="M12 20v2" />
+										<path d="m4.93 4.93 1.41 1.41" />
+										<path d="m17.66 17.66 1.41 1.41" />
+										<path d="M2 12h2" />
+										<path d="M20 12h2" />
+										<path d="m6.34 17.66-1.41 1.41" />
+										<path d="m19.07 4.93-1.41 1.41" />
+									</svg>
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-moon absolute size-[1.2rem] scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" aria-hidden="true">
+										<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
+									</svg>
+									<span class="sr-only">Toggle theme</span>
+								</DropdownMenuTrigger>
+								<DialogTrigger data-slot="sheet-trigger" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 size-9 rounded-full" aria-label="Open theme settings">
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings" aria-hidden="true">
+										<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
+										<circle cx="12" cy="12" r="3" />
+									</svg>
+								</DialogTrigger>
+								<DropdownMenuTrigger menu="profile" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 px-4 py-2 has-[>svg]:px-3 relative h-8 w-8 rounded-full">
+									<span data-slot="avatar" data-avatar-src="/avatars/01.png" data-avatar-alt="@shadcn" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-8 w-8">
+										<span data-slot="avatar-fallback" class="flex size-full items-center justify-center rounded-full bg-muted">SN</span>
+									</span>
+								</DropdownMenuTrigger>
+							</div>
+						</header>
+					}
+					@if (isSearch) {
+						<header class="z-50 h-16 shadow-none">
+							<div class="relative flex h-full items-center gap-3 p-4 sm:gap-4">
+								<button data-slot="sidebar-trigger" onClick={toggleSidebar} class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 size-7 max-md:scale-125" data-sidebar="trigger">
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-panel-left" aria-hidden="true">
+										<rect width="18" height="18" x="3" y="3" rx="2" />
+										<path d="M9 3v18" />
+									</svg>
+									<span class="sr-only">Toggle Sidebar</span>
+								</button>
+								<div data-orientation="vertical" role="none" data-slot="separator" class="shrink-0 bg-border data-[orientation=horizontal]:h-px data-[orientation=horizontal]:w-full data-[orientation=vertical]:w-px h-6"></div>
+								<button data-slot="button" onClick={openSearch} class="inline-flex items-center gap-2 whitespace-nowrap transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 px-4 py-2 has-[>svg]:px-3 group relative h-8 w-full flex-1 justify-start rounded-md bg-muted/25 text-sm font-normal text-muted-foreground shadow-none hover:bg-accent sm:w-40 sm:pe-12 md:flex-none lg:w-52 xl:w-64 me-auto" aria-keyshortcuts="Meta+K Control+K">
+									<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search absolute inset-s-1.5 top-1/2 -translate-y-1/2" aria-hidden="true">
+										<path d="m21 21-4.34-4.34" />
+										<circle cx="11" cy="11" r="8" />
+									</svg>
+									<span class="ms-4">Search</span>
+									<kbd class="pointer-events-none absolute inset-e-[0.3rem] top-[0.3rem] hidden h-5 items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 select-none group-hover:bg-accent sm:flex">
+										<span class="text-xs">⌘</span>
+										K
+									</kbd>
+								</button>
+								<DropdownMenuTrigger menu="theme" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 size-9 scale-95 rounded-full">
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun size-[1.2rem] scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" aria-hidden="true">
+										<circle cx="12" cy="12" r="4" />
+										<path d="M12 2v2" />
+										<path d="M12 20v2" />
+										<path d="m4.93 4.93 1.41 1.41" />
+										<path d="m17.66 17.66 1.41 1.41" />
+										<path d="M2 12h2" />
+										<path d="M20 12h2" />
+										<path d="m6.34 17.66-1.41 1.41" />
+										<path d="m19.07 4.93-1.41 1.41" />
+									</svg>
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-moon absolute size-[1.2rem] scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" aria-hidden="true">
+										<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
+									</svg>
+									<span class="sr-only">Toggle theme</span>
+								</DropdownMenuTrigger>
+								<DialogTrigger data-slot="sheet-trigger" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 size-9 rounded-full" aria-label="Open theme settings">
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings" aria-hidden="true">
+										<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
+										<circle cx="12" cy="12" r="3" />
+									</svg>
+								</DialogTrigger>
+								<DropdownMenuTrigger menu="profile" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 px-4 py-2 has-[>svg]:px-3 relative h-8 w-8 rounded-full">
+									<span data-slot="avatar" data-avatar-src="/avatars/01.png" data-avatar-alt="@shadcn" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-8 w-8">
+										<span data-slot="avatar-fallback" class="flex size-full items-center justify-center rounded-full bg-muted">SN</span>
+									</span>
+								</DropdownMenuTrigger>
+							</div>
+						</header>
+					}
+					@if (isClerk) {
+						<div class="bg-backgroundh-16 flex justify-between p-4">
+							<button data-slot="sidebar-trigger" onClick={toggleSidebar} class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 size-7 scale-125 sm:scale-100" data-sidebar="trigger">
 								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-panel-left" aria-hidden="true">
 									<rect width="18" height="18" x="3" y="3" rx="2" />
 									<path d="M9 3v18" />
 								</svg>
 								<span class="sr-only">Toggle Sidebar</span>
 							</button>
-							<div data-orientation="vertical" role="none" data-slot="separator" class="shrink-0 bg-border data-[orientation=horizontal]:h-px data-[orientation=horizontal]:w-full data-[orientation=vertical]:w-px h-6"></div>
-							<DropdownMenuTrigger menu="topnav" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 size-9 md:size-7 lg:hidden me-auto">
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-menu" aria-hidden="true">
-									<path d="M4 5h16" />
-									<path d="M4 12h16" />
-									<path d="M4 19h16" />
-								</svg>
-								<span class="sr-only">Toggle navigation menu</span>
-							</DropdownMenuTrigger>
-							<nav class="hidden items-center space-x-4 lg:flex lg:space-x-4 xl:space-x-6 me-auto">
-								<a href="/dashboard/overview" class="text-sm font-medium transition-colors hover:text-primary ">Overview</a>
-								<a class="text-sm font-medium transition-colors hover:text-primary text-muted-foreground" role="link" aria-disabled="true">Customers</a>
-								<a class="text-sm font-medium transition-colors hover:text-primary text-muted-foreground" role="link" aria-disabled="true">Products</a>
-								<a class="text-sm font-medium transition-colors hover:text-primary text-muted-foreground" role="link" aria-disabled="true">Settings</a>
-							</nav>
-							<button data-slot="button" onClick={openSearch} class="inline-flex items-center gap-2 whitespace-nowrap transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 px-4 py-2 has-[>svg]:px-3 group relative h-8 w-full flex-1 justify-start rounded-md bg-muted/25 text-sm font-normal text-muted-foreground shadow-none hover:bg-accent sm:w-40 sm:pe-12 md:flex-none lg:w-52 xl:w-64" aria-keyshortcuts="Meta+K Control+K">
-								<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search absolute inset-s-1.5 top-1/2 -translate-y-1/2" aria-hidden="true">
-									<path d="m21 21-4.34-4.34" />
-									<circle cx="11" cy="11" r="8" />
-								</svg>
-								<span class="ms-4">Search</span>
-								<kbd class="pointer-events-none absolute inset-e-[0.3rem] top-[0.3rem] hidden h-5 items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 select-none group-hover:bg-accent sm:flex">
-									<span class="text-xs">⌘</span>
-									K
-								</kbd>
-							</button>
-							<DropdownMenuTrigger menu="theme" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 size-9 scale-95 rounded-full">
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun size-[1.2rem] scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" aria-hidden="true">
-									<circle cx="12" cy="12" r="4" />
-									<path d="M12 2v2" />
-									<path d="M12 20v2" />
-									<path d="m4.93 4.93 1.41 1.41" />
-									<path d="m17.66 17.66 1.41 1.41" />
-									<path d="M2 12h2" />
-									<path d="M20 12h2" />
-									<path d="m6.34 17.66-1.41 1.41" />
-									<path d="m19.07 4.93-1.41 1.41" />
-								</svg>
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-moon absolute size-[1.2rem] scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" aria-hidden="true">
-									<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
-								</svg>
-								<span class="sr-only">Toggle theme</span>
-							</DropdownMenuTrigger>
-							<button data-slot="sheet-trigger" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 size-9 rounded-full" aria-label="Open theme settings" type="button" aria-haspopup="dialog" aria-expanded={drawerExpanded} aria-controls="config-drawer" data-state={drawerState} onClick={openDrawer}>
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings" aria-hidden="true">
-									<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
-									<circle cx="12" cy="12" r="3" />
-								</svg>
-							</button>
-							<DropdownMenuTrigger menu="profile" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 px-4 py-2 has-[>svg]:px-3 relative h-8 w-8 rounded-full">
-								<span data-slot="avatar" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-8 w-8">
-									<span data-slot="avatar-fallback" class="flex size-full items-center justify-center rounded-full bg-muted">SN</span>
-								</span>
-							</DropdownMenuTrigger>
+							<div class="space-x-4">
+								<DropdownMenuTrigger menu="theme" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 size-9 scale-95 rounded-full">
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun size-[1.2rem] scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" aria-hidden="true">
+										<circle cx="12" cy="12" r="4" />
+										<path d="M12 2v2" />
+										<path d="M12 20v2" />
+										<path d="m4.93 4.93 1.41 1.41" />
+										<path d="m17.66 17.66 1.41 1.41" />
+										<path d="M2 12h2" />
+										<path d="M20 12h2" />
+										<path d="m6.34 17.66-1.41 1.41" />
+										<path d="m19.07 4.93-1.41 1.41" />
+									</svg>
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-moon absolute size-[1.2rem] scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" aria-hidden="true">
+										<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
+									</svg>
+									<span class="sr-only">Toggle theme</span>
+								</DropdownMenuTrigger>
+								<DialogTrigger data-slot="sheet-trigger" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 size-9 rounded-full" aria-label="Open theme settings">
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings" aria-hidden="true">
+										<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
+										<circle cx="12" cy="12" r="3" />
+									</svg>
+								</DialogTrigger>
+							</div>
 						</div>
-					</header>
-				}
-				@if (isSearchBorder) {
-					<header class="z-50 h-16 header-fixed peer/header sticky top-0 w-[inherit] shadow-none border-b">
-						<div class="relative flex h-full items-center gap-3 p-4 sm:gap-4">
-							<button data-slot="sidebar-trigger" onClick={toggleSidebar} class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 size-7 max-md:scale-125" data-sidebar="trigger">
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-panel-left" aria-hidden="true">
-									<rect width="18" height="18" x="3" y="3" rx="2" />
-									<path d="M9 3v18" />
-								</svg>
-								<span class="sr-only">Toggle Sidebar</span>
-							</button>
-							<div data-orientation="vertical" role="none" data-slot="separator" class="shrink-0 bg-border data-[orientation=horizontal]:h-px data-[orientation=horizontal]:w-full data-[orientation=vertical]:w-px h-6"></div>
-							<button data-slot="button" onClick={openSearch} class="inline-flex items-center gap-2 whitespace-nowrap transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 px-4 py-2 has-[>svg]:px-3 group relative h-8 w-full flex-1 justify-start rounded-md bg-muted/25 text-sm font-normal text-muted-foreground shadow-none hover:bg-accent sm:w-40 sm:pe-12 md:flex-none lg:w-52 xl:w-64 me-auto" aria-keyshortcuts="Meta+K Control+K">
-								<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search absolute inset-s-1.5 top-1/2 -translate-y-1/2" aria-hidden="true">
-									<path d="m21 21-4.34-4.34" />
-									<circle cx="11" cy="11" r="8" />
-								</svg>
-								<span class="ms-4">Search</span>
-								<kbd class="pointer-events-none absolute inset-e-[0.3rem] top-[0.3rem] hidden h-5 items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 select-none group-hover:bg-accent sm:flex">
-									<span class="text-xs">⌘</span>
-									K
-								</kbd>
-							</button>
-							<DropdownMenuTrigger menu="theme" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 size-9 scale-95 rounded-full">
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun size-[1.2rem] scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" aria-hidden="true">
-									<circle cx="12" cy="12" r="4" />
-									<path d="M12 2v2" />
-									<path d="M12 20v2" />
-									<path d="m4.93 4.93 1.41 1.41" />
-									<path d="m17.66 17.66 1.41 1.41" />
-									<path d="M2 12h2" />
-									<path d="M20 12h2" />
-									<path d="m6.34 17.66-1.41 1.41" />
-									<path d="m19.07 4.93-1.41 1.41" />
-								</svg>
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-moon absolute size-[1.2rem] scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" aria-hidden="true">
-									<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
-								</svg>
-								<span class="sr-only">Toggle theme</span>
-							</DropdownMenuTrigger>
-							<button data-slot="sheet-trigger" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 size-9 rounded-full" aria-label="Open theme settings" type="button" aria-haspopup="dialog" aria-expanded={drawerExpanded} aria-controls="config-drawer" data-state={drawerState} onClick={openDrawer}>
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings" aria-hidden="true">
-									<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
-									<circle cx="12" cy="12" r="3" />
-								</svg>
-							</button>
-							<DropdownMenuTrigger menu="profile" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 px-4 py-2 has-[>svg]:px-3 relative h-8 w-8 rounded-full">
-								<span data-slot="avatar" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-8 w-8">
-									<span data-slot="avatar-fallback" class="flex size-full items-center justify-center rounded-full bg-muted">SN</span>
-								</span>
-							</DropdownMenuTrigger>
+					}
+				<DialogPortal data-slot="sheet-portal">
+					<DialogOverlay data-slot="sheet-overlay" class="fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0"></DialogOverlay>
+					<DialogContent data-slot="sheet-content" class="fixed z-50 gap-4 bg-background shadow-lg transition ease-in-out data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:animate-in data-[state=open]:duration-500 inset-y-0 inset-e-0 h-full w-3/4 border-s data-[state=closed]:slide-out-to-end data-[state=open]:slide-in-from-end sm:max-w-sm flex flex-col">
+						<div data-slot="sheet-header" class="flex flex-col gap-1.5 p-4 pb-0 text-start">
+							<DialogTitle data-slot="sheet-title" class="font-semibold text-foreground">Theme Settings</DialogTitle>
+							<DialogDescription data-slot="sheet-description" class="text-sm text-muted-foreground">Adjust the appearance and layout to suit your preferences.</DialogDescription>
 						</div>
-					</header>
-				}
-				@if (isSearchFixed) {
-					<header class="z-50 h-16 header-fixed peer/header sticky top-0 w-[inherit] shadow-none">
-						<div class="relative flex h-full items-center gap-3 p-4 sm:gap-4">
-							<button data-slot="sidebar-trigger" onClick={toggleSidebar} class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 size-7 max-md:scale-125" data-sidebar="trigger">
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-panel-left" aria-hidden="true">
-									<rect width="18" height="18" x="3" y="3" rx="2" />
-									<path d="M9 3v18" />
-								</svg>
-								<span class="sr-only">Toggle Sidebar</span>
-							</button>
-							<div data-orientation="vertical" role="none" data-slot="separator" class="shrink-0 bg-border data-[orientation=horizontal]:h-px data-[orientation=horizontal]:w-full data-[orientation=vertical]:w-px h-6"></div>
-							<button data-slot="button" onClick={openSearch} class="inline-flex items-center gap-2 whitespace-nowrap transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 px-4 py-2 has-[>svg]:px-3 group relative h-8 w-full flex-1 justify-start rounded-md bg-muted/25 text-sm font-normal text-muted-foreground shadow-none hover:bg-accent sm:w-40 sm:pe-12 md:flex-none lg:w-52 xl:w-64 me-auto" aria-keyshortcuts="Meta+K Control+K">
-								<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search absolute inset-s-1.5 top-1/2 -translate-y-1/2" aria-hidden="true">
-									<path d="m21 21-4.34-4.34" />
-									<circle cx="11" cy="11" r="8" />
-								</svg>
-								<span class="ms-4">Search</span>
-								<kbd class="pointer-events-none absolute inset-e-[0.3rem] top-[0.3rem] hidden h-5 items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 select-none group-hover:bg-accent sm:flex">
-									<span class="text-xs">⌘</span>
-									K
-								</kbd>
-							</button>
-							<DropdownMenuTrigger menu="theme" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 size-9 scale-95 rounded-full">
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun size-[1.2rem] scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" aria-hidden="true">
-									<circle cx="12" cy="12" r="4" />
-									<path d="M12 2v2" />
-									<path d="M12 20v2" />
-									<path d="m4.93 4.93 1.41 1.41" />
-									<path d="m17.66 17.66 1.41 1.41" />
-									<path d="M2 12h2" />
-									<path d="M20 12h2" />
-									<path d="m6.34 17.66-1.41 1.41" />
-									<path d="m19.07 4.93-1.41 1.41" />
-								</svg>
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-moon absolute size-[1.2rem] scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" aria-hidden="true">
-									<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
-								</svg>
-								<span class="sr-only">Toggle theme</span>
-							</DropdownMenuTrigger>
-							<button data-slot="sheet-trigger" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 size-9 rounded-full" aria-label="Open theme settings" type="button" aria-haspopup="dialog" aria-expanded={drawerExpanded} aria-controls="config-drawer" data-state={drawerState} onClick={openDrawer}>
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings" aria-hidden="true">
-									<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
-									<circle cx="12" cy="12" r="3" />
-								</svg>
-							</button>
-							<DropdownMenuTrigger menu="profile" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 px-4 py-2 has-[>svg]:px-3 relative h-8 w-8 rounded-full">
-								<span data-slot="avatar" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-8 w-8">
-									<span data-slot="avatar-fallback" class="flex size-full items-center justify-center rounded-full bg-muted">SN</span>
-								</span>
-							</DropdownMenuTrigger>
+						<div class="space-y-6 overflow-y-auto px-4">
+							<div>
+								<div class="mb-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+									Theme
+									<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80 size-4 rounded-full" type="button" aria-label="Reset theme preference to default" hidden={themeDefault} onClick={(event) => {
+										prefs.theme = 'system';
+										applyTheme('system');
+										focusDialogOf(event);
+									}}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rotate-ccw size-3" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg></button>
+								</div>
+								<div role="radiogroup" aria-required="false" dir={prefs.dir} onFocus={focusGroup} onFocusin={radioFocused} onKeydown={radioKey} class="grid w-full max-w-md grid-cols-3 gap-4" aria-label="Select theme preference" aria-describedby="theme-description" tabindex="0" style={drawerOutline}>
+									<button type="button" role="radio" aria-checked={themeSystem} data-state={themeSystemState} value="system" class="group outline-none transition duration-200 ease-in" aria-label="Select system" aria-describedby="system-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
+										// Radix RadioGroup calls onValueChange only when the value changes.
+										if (prefs.theme !== 'system') {
+											prefs.theme = 'system';
+											applyTheme('system');
+										}
+									}}>
+										<div class="relative rounded-[6px] ring-[1px] ring-border group-data-[state=checked]:shadow-2xl group-data-[state=checked]:ring-primary group-focus-visible:ring-2" role="img" aria-hidden="false" aria-label="System option preview">
+											<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-check size-6 fill-primary stroke-white group-data-[state=unchecked]:hidden absolute top-0 right-0 translate-x-1/2 -translate-y-1/2" aria-hidden="true">
+												<circle cx="12" cy="12" r="10" />
+												<path d="m9 12 2 2 4-4" />
+											</svg>
+											<svg data-name="icon-theme-system" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 79.86 51.14" class="overflow-hidden rounded-[6px] fill-primary stroke-primary group-data-[state=unchecked]:fill-muted-foreground group-data-[state=unchecked]:stroke-muted-foreground" aria-hidden="true">
+												<path opacity="0.2" d="M0 0.03H22.88V51.17H0z" />
+												<circle cx="6.7" cy="7.04" r="3.54" fill="#fff" opacity="0.8" stroke="#fff" stroke-linecap="round" stroke-miterlimit="10" />
+												<path d="M18.12 6.39h-5.87c-.6 0-1.09-.45-1.09-1s.49-1 1.09-1h5.87c.6 0 1.09.45 1.09 1s-.49 1-1.09 1zM16.55 9.77h-4.24c-.55 0-1-.45-1-1s.45-1 1-1h4.24c.55 0 1 .45 1 1s-.45 1-1 1z" fill="#fff" stroke="none" opacity="0.75" />
+												<path d="M18.32 17.37H4.59c-.69 0-1.25-.47-1.25-1.05s.56-1.05 1.25-1.05h13.73c.69 0 1.25.47 1.25 1.05s-.56 1.05-1.25 1.05z" fill="#fff" stroke="none" opacity="0.72" />
+												<path d="M15.34 21.26h-11c-.55 0-1-.41-1-.91s.45-.91 1-.91h11c.55 0 1 .41 1 .91s-.45.91-1 .91z" fill="#fff" stroke="none" opacity="0.55" />
+												<path d="M16.46 25.57H4.43c-.6 0-1.09-.44-1.09-.98s.49-.98 1.09-.98h12.03c.6 0 1.09.44 1.09.98s-.49.98-1.09.98z" fill="#fff" stroke="none" opacity="0.67" />
+												<rect x="33.36" y="19.73" width="2.75" height="3.42" rx="0.33" ry="0.33" opacity="0.31" stroke="none" />
+												<rect x="29.64" y="16.57" width="2.75" height="6.58" rx="0.33" ry="0.33" opacity="0.4" stroke="none" />
+												<rect x="37.16" y="14.44" width="2.75" height="8.7" rx="0.33" ry="0.33" opacity="0.26" stroke="none" />
+												<rect x="41.19" y="10.75" width="2.75" height="12.4" rx="0.33" ry="0.33" opacity="0.37" stroke="none" />
+												<g>
+													<circle cx="62.74" cy="16.32" r="8" opacity="0.25" />
+													<path d="M62.74 16.32l4.1-6.87c1.19.71 2.18 1.72 2.86 2.92s1.04 2.57 1.04 3.95h-8z" opacity="0.45" />
+												</g>
+												<rect x="29.64" y="27.75" width="41.62" height="18.62" rx="1.69" ry="1.69" opacity="0.3" stroke="none" stroke-linecap="round" stroke-miterlimit="10" />
+											</svg>
+										</div>
+										<div class="mt-1 text-xs" id="system-description" aria-live="polite">System</div>
+									</button>
+									<button type="button" role="radio" aria-checked={themeLight} data-state={themeLightState} value="light" class="group outline-none transition duration-200 ease-in" aria-label="Select light" aria-describedby="light-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
+										if (prefs.theme !== 'light') {
+											prefs.theme = 'light';
+											applyTheme('light');
+										}
+									}}>
+										<div class="relative rounded-[6px] ring-[1px] ring-border group-data-[state=checked]:shadow-2xl group-data-[state=checked]:ring-primary group-focus-visible:ring-2" role="img" aria-hidden="false" aria-label="Light option preview">
+											<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-check size-6 fill-primary stroke-white group-data-[state=unchecked]:hidden absolute top-0 right-0 translate-x-1/2 -translate-y-1/2" aria-hidden="true">
+												<circle cx="12" cy="12" r="10" />
+												<path d="m9 12 2 2 4-4" />
+											</svg>
+											<svg data-name="icon-theme-light" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 79.86 51.14" class="" aria-hidden="true">
+												<g fill="#d9d9d9">
+													<rect x="0.53" y="0.5" width="78.83" height="50.14" rx="3.5" ry="3.5" />
+													<path d="M75.86 1c1.65 0 3 1.35 3 3v43.14c0 1.65-1.35 3-3 3H4.03c-1.65 0-3-1.35-3-3V4c0-1.65 1.35-3 3-3h71.83m0-1H4.03c-2.21 0-4 1.79-4 4v43.14c0 2.21 1.79 4 4 4h71.83c2.21 0 4-1.79 4-4V4c0-2.21-1.79-4-4-4z" />
+												</g>
+												<path d="M22.88 0h52.97c2.21 0 4 1.79 4 4v43.14c0 2.21-1.79 4-4 4H22.88V0z" fill="#ecedef" />
+												<circle cx="6.7" cy="7.04" r="3.54" fill="#fff" />
+												<path d="M18.12 6.39h-5.87c-.6 0-1.09-.45-1.09-1s.49-1 1.09-1h5.87c.6 0 1.09.45 1.09 1s-.49 1-1.09 1zM16.55 9.77h-4.24c-.55 0-1-.45-1-1s.45-1 1-1h4.24c.55 0 1 .45 1 1s-.45 1-1 1zM18.32 17.37H4.59c-.69 0-1.25-.47-1.25-1.05s.56-1.05 1.25-1.05h13.73c.69 0 1.25.47 1.25 1.05s-.56 1.05-1.25 1.05zM15.34 21.26h-11c-.55 0-1-.41-1-.91s.45-.91 1-.91h11c.55 0 1 .41 1 .91s-.45.91-1 .91zM16.46 25.57H4.43c-.6 0-1.09-.44-1.09-.98s.49-.98 1.09-.98h12.03c.6 0 1.09.44 1.09.98s-.49.98-1.09.98z" fill="#fff" />
+												<g fill="#c0c4c4">
+													<rect x="33.36" y="19.73" width="2.75" height="3.42" rx="0.33" ry="0.33" opacity="0.32" />
+													<rect x="29.64" y="16.57" width="2.75" height="6.58" rx="0.33" ry="0.33" opacity="0.44" />
+													<rect x="37.16" y="14.44" width="2.75" height="8.7" rx="0.33" ry="0.33" opacity="0.53" />
+													<rect x="41.19" y="10.75" width="2.75" height="12.4" rx="0.33" ry="0.33" opacity="0.53" />
+												</g>
+												<circle cx="62.74" cy="16.32" r="8" fill="#fff" />
+												<g fill="#d9d9d9">
+													<path d="M63.62 15.82L67 10.15c.93.64 1.7 1.48 2.26 2.47.56.98.89 2.08.96 3.21h-6.6z" />
+													<path d="M67.14 10.88a6.977 6.977 0 012.52 4.44h-5.17l2.65-4.44m-.31-1.43l-4.1 6.87h8c0-1.39-.36-2.75-1.04-3.95s-1.67-2.21-2.86-2.92z" />
+												</g>
+												<rect x="29.64" y="27.75" width="41.62" height="18.62" rx="1.69" ry="1.69" fill="#fff" />
+											</svg>
+										</div>
+										<div class="mt-1 text-xs" id="light-description" aria-live="polite">Light</div>
+									</button>
+									<button type="button" role="radio" aria-checked={themeDark} data-state={themeDarkState} value="dark" class="group outline-none transition duration-200 ease-in" aria-label="Select dark" aria-describedby="dark-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
+										if (prefs.theme !== 'dark') {
+											prefs.theme = 'dark';
+											applyTheme('dark');
+										}
+									}}>
+										<div class="relative rounded-[6px] ring-[1px] ring-border group-data-[state=checked]:shadow-2xl group-data-[state=checked]:ring-primary group-focus-visible:ring-2" role="img" aria-hidden="false" aria-label="Dark option preview">
+											<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-check size-6 fill-primary stroke-white group-data-[state=unchecked]:hidden absolute top-0 right-0 translate-x-1/2 -translate-y-1/2" aria-hidden="true">
+												<circle cx="12" cy="12" r="10" />
+												<path d="m9 12 2 2 4-4" />
+											</svg>
+											<svg data-name="icon-theme-dark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 79.86 51.14" class="" aria-hidden="true">
+												<g fill="#1d2b3f">
+													<rect x="0.53" y="0.5" width="78.83" height="50.14" rx="3.5" ry="3.5" />
+													<path d="M75.86 1c1.65 0 3 1.35 3 3v43.14c0 1.65-1.35 3-3 3H4.03c-1.65 0-3-1.35-3-3V4c0-1.65 1.35-3 3-3h71.83m0-1H4.03c-2.21 0-4 1.79-4 4v43.14c0 2.21 1.79 4 4 4h71.83c2.21 0 4-1.79 4-4V4c0-2.21-1.79-4-4-4z" />
+												</g>
+												<path d="M22.88 0h52.97c2.21 0 4 1.79 4 4v43.14c0 2.21-1.79 4-4 4H22.88V0z" fill="#0d1628" />
+												<circle cx="6.7" cy="7.04" r="3.54" fill="#426187" />
+												<path d="M18.12 6.39h-5.87c-.6 0-1.09-.45-1.09-1s.49-1 1.09-1h5.87c.6 0 1.09.45 1.09 1s-.49 1-1.09 1zM16.55 9.77h-4.24c-.55 0-1-.45-1-1s.45-1 1-1h4.24c.55 0 1 .45 1 1s-.45 1-1 1zM18.32 17.37H4.59c-.69 0-1.25-.47-1.25-1.05s.56-1.05 1.25-1.05h13.73c.69 0 1.25.47 1.25 1.05s-.56 1.05-1.25 1.05zM15.34 21.26h-11c-.55 0-1-.41-1-.91s.45-.91 1-.91h11c.55 0 1 .41 1 .91s-.45.91-1 .91zM16.46 25.57H4.43c-.6 0-1.09-.44-1.09-.98s.49-.98 1.09-.98h12.03c.6 0 1.09.44 1.09.98s-.49.98-1.09.98z" fill="#426187" />
+												<g fill="#2a62bc">
+													<rect x="33.36" y="19.73" width="2.75" height="3.42" rx="0.33" ry="0.33" opacity="0.32" />
+													<rect x="29.64" y="16.57" width="2.75" height="6.58" rx="0.33" ry="0.33" opacity="0.44" />
+													<rect x="37.16" y="14.44" width="2.75" height="8.7" rx="0.33" ry="0.33" opacity="0.53" />
+													<rect x="41.19" y="10.75" width="2.75" height="12.4" rx="0.33" ry="0.33" opacity="0.53" />
+												</g>
+												<circle cx="62.74" cy="16.32" r="8" fill="#2f5491" opacity="0.5" />
+												<path d="M62.74 16.32l4.1-6.87c1.19.71 2.18 1.72 2.86 2.92s1.04 2.57 1.04 3.95h-8z" fill="#2f5491" opacity="0.74" />
+												<rect x="29.64" y="27.75" width="41.62" height="18.62" rx="1.69" ry="1.69" fill="#17273f" />
+											</svg>
+										</div>
+										<div class="mt-1 text-xs" id="dark-description" aria-live="polite">Dark</div>
+									</button>
+								</div>
+								<div id="theme-description" class="sr-only">Choose between system preference, light mode, or dark mode</div>
+							</div>
+							<div class="max-md:hidden">
+								<div class="mb-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+									Sidebar
+									<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80 size-4 rounded-full" type="button" aria-label="Reset sidebar style to default" hidden={variantDefault} onClick={(event) => {
+										prefs.variant = 'inset';
+										rememberVariant('inset');
+										focusDialogOf(event);
+									}}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rotate-ccw size-3" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg></button>
+								</div>
+								<div role="radiogroup" aria-required="false" dir={prefs.dir} onFocus={focusGroup} onFocusin={radioFocused} onKeydown={radioKey} class="grid w-full max-w-md grid-cols-3 gap-4" aria-label="Select sidebar style" aria-describedby="sidebar-description" tabindex="0" style={drawerOutline}>
+									<button type="button" role="radio" aria-checked={variantInset} data-state={variantInsetState} value="inset" class="group outline-none transition duration-200 ease-in" aria-label="Select inset" aria-describedby="inset-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
+										if (prefs.variant !== 'inset') {
+											prefs.variant = 'inset';
+											rememberVariant('inset');
+										}
+									}}>
+										<div class="relative rounded-[6px] ring-[1px] ring-border group-data-[state=checked]:shadow-2xl group-data-[state=checked]:ring-primary group-focus-visible:ring-2" role="img" aria-hidden="false" aria-label="Inset option preview">
+											<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-check size-6 fill-primary stroke-white group-data-[state=unchecked]:hidden absolute top-0 right-0 translate-x-1/2 -translate-y-1/2" aria-hidden="true">
+												<circle cx="12" cy="12" r="10" />
+												<path d="m9 12 2 2 4-4" />
+											</svg>
+											<svg data-name="icon-sidebar-inset" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 79.86 51.14" class="fill-primary stroke-primary group-data-[state=unchecked]:fill-muted-foreground group-data-[state=unchecked]:stroke-muted-foreground" aria-hidden="true">
+												<rect x="23.39" y="5.57" width="50.22" height="40" rx="2" ry="2" opacity="0.2" stroke-linecap="round" stroke-miterlimit="10" />
+												<path fill="none" opacity="0.72" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.08 17.05L17.31 17.05" />
+												<path fill="none" opacity="0.48" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.08 24.25L15.6 24.25" />
+												<path fill="none" opacity="0.55" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.08 20.54L14.46 20.54" />
+												<g stroke-linecap="round" stroke-miterlimit="10">
+													<circle cx="7.04" cy="9.57" r="2.54" opacity="0.8" />
+													<path fill="none" opacity="0.8" stroke-width="2px" d="M11.59 8.3L17.31 8.3" />
+													<path fill="none" opacity="0.6" d="M11.38 10.95L16.44 10.95" />
+												</g>
+											</svg>
+										</div>
+										<div class="mt-1 text-xs" id="inset-description" aria-live="polite">Inset</div>
+									</button>
+									<button type="button" role="radio" aria-checked={variantFloating} data-state={variantFloatingState} value="floating" class="group outline-none transition duration-200 ease-in" aria-label="Select floating" aria-describedby="floating-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
+										if (prefs.variant !== 'floating') {
+											prefs.variant = 'floating';
+											rememberVariant('floating');
+										}
+									}}>
+										<div class="relative rounded-[6px] ring-[1px] ring-border group-data-[state=checked]:shadow-2xl group-data-[state=checked]:ring-primary group-focus-visible:ring-2" role="img" aria-hidden="false" aria-label="Floating option preview">
+											<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-check size-6 fill-primary stroke-white group-data-[state=unchecked]:hidden absolute top-0 right-0 translate-x-1/2 -translate-y-1/2" aria-hidden="true">
+												<circle cx="12" cy="12" r="10" />
+												<path d="m9 12 2 2 4-4" />
+											</svg>
+											<svg data-name="icon-sidebar-floating" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 79.86 51.14" class="fill-primary stroke-primary group-data-[state=unchecked]:fill-muted-foreground group-data-[state=unchecked]:stroke-muted-foreground" aria-hidden="true">
+												<rect x="5.89" y="5.15" width="19.74" height="40" rx="2" ry="2" opacity="0.8" stroke-linecap="round" stroke-miterlimit="10" />
+												<g stroke="#fff" stroke-linecap="round" stroke-miterlimit="10">
+													<path fill="none" opacity="0.72" stroke-width="2px" d="M9.81 18.36L22.04 18.36" />
+													<path fill="none" opacity="0.48" stroke-width="2px" d="M9.81 25.57L20.33 25.57" />
+													<path fill="none" opacity="0.55" stroke-width="2px" d="M9.81 21.85L19.18 21.85" />
+													<circle cx="11.76" cy="10.88" r="2.54" fill="#fff" opacity="0.8" />
+													<path fill="none" opacity="0.8" stroke-width="2px" d="M16.31 9.62L22.04 9.62" />
+													<path fill="none" opacity="0.6" d="M16.1 12.27L21.16 12.27" />
+												</g>
+												<path fill="none" opacity="0.62" stroke-linecap="round" stroke-miterlimit="10" stroke-width="3px" d="M30.59 9.62L35.85 9.62" />
+												<rect x="29.94" y="13.42" width="26.03" height="2.73" rx="0.64" ry="0.64" opacity="0.44" stroke-linecap="round" stroke-miterlimit="10" />
+												<rect x="29.94" y="19.28" width="43.11" height="25.87" rx="2" ry="2" opacity="0.3" stroke-linecap="round" stroke-miterlimit="10" />
+											</svg>
+										</div>
+										<div class="mt-1 text-xs" id="floating-description" aria-live="polite">Floating</div>
+									</button>
+									<button type="button" role="radio" aria-checked={variantSidebar} data-state={variantSidebarState} value="sidebar" class="group outline-none transition duration-200 ease-in" aria-label="Select sidebar" aria-describedby="sidebar-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
+										if (prefs.variant !== 'sidebar') {
+											prefs.variant = 'sidebar';
+											rememberVariant('sidebar');
+										}
+									}}>
+										<div class="relative rounded-[6px] ring-[1px] ring-border group-data-[state=checked]:shadow-2xl group-data-[state=checked]:ring-primary group-focus-visible:ring-2" role="img" aria-hidden="false" aria-label="Sidebar option preview">
+											<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-check size-6 fill-primary stroke-white group-data-[state=unchecked]:hidden absolute top-0 right-0 translate-x-1/2 -translate-y-1/2" aria-hidden="true">
+												<circle cx="12" cy="12" r="10" />
+												<path d="m9 12 2 2 4-4" />
+											</svg>
+											<svg data-name="icon-sidebar-sidebar" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 79.86 51.14" class="fill-primary stroke-primary group-data-[state=unchecked]:fill-muted-foreground group-data-[state=unchecked]:stroke-muted-foreground" aria-hidden="true">
+												<path d="M23.42.51h51.99c2.21 0 4 1.79 4 4v42.18c0 2.21-1.79 4-4 4H23.42s-.04-.02-.04-.04V.55s.02-.04.04-.04z" opacity="0.2" stroke-linecap="round" stroke-miterlimit="10" />
+												<path fill="none" opacity="0.72" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.56 14.88L17.78 14.88" />
+												<path fill="none" opacity="0.48" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.56 22.09L16.08 22.09" />
+												<path fill="none" opacity="0.55" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.56 18.38L14.93 18.38" />
+												<g stroke-linecap="round" stroke-miterlimit="10">
+													<circle cx="7.51" cy="7.4" r="2.54" opacity="0.8" />
+													<path fill="none" opacity="0.8" stroke-width="2px" d="M12.06 6.14L17.78 6.14" />
+													<path fill="none" opacity="0.6" d="M11.85 8.79L16.91 8.79" />
+												</g>
+											</svg>
+										</div>
+										<div class="mt-1 text-xs" id="sidebar-description" aria-live="polite">Sidebar</div>
+									</button>
+								</div>
+								<div id="sidebar-description" class="sr-only">Choose between inset, floating, or standard sidebar layout</div>
+							</div>
+							<div class="max-md:hidden">
+								<div class="mb-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+									Layout
+									<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80 size-4 rounded-full" type="button" aria-label="Reset layout options to default" hidden={layoutIsDefault} onClick={(event) => {
+										prefs.open = true;
+										rememberSidebar(true);
+										prefs.collapsible = 'icon';
+										rememberCollapsible('icon');
+										focusDialogOf(event);
+									}}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rotate-ccw size-3" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg></button>
+								</div>
+								<div role="radiogroup" aria-required="false" dir={prefs.dir} onFocus={focusGroup} onFocusin={radioFocused} onKeydown={radioKey} class="grid w-full max-w-md grid-cols-3 gap-4" aria-label="Select layout style" aria-describedby="layout-description" tabindex="0" style={drawerOutline}>
+									<button type="button" role="radio" aria-checked={layoutDefault} data-state={layoutDefaultState} value="default" class="group outline-none transition duration-200 ease-in" aria-label="Select default" aria-describedby="default-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
+										if (!prefs.open) {
+											prefs.open = true;
+											rememberSidebar(true);
+										}
+									}}>
+										<div class="relative rounded-[6px] ring-[1px] ring-border group-data-[state=checked]:shadow-2xl group-data-[state=checked]:ring-primary group-focus-visible:ring-2" role="img" aria-hidden="false" aria-label="Default option preview">
+											<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-check size-6 fill-primary stroke-white group-data-[state=unchecked]:hidden absolute top-0 right-0 translate-x-1/2 -translate-y-1/2" aria-hidden="true">
+												<circle cx="12" cy="12" r="10" />
+												<path d="m9 12 2 2 4-4" />
+											</svg>
+											<svg data-name="con-layout-default" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 79.86 51.14" class="fill-primary stroke-primary group-data-[state=unchecked]:fill-muted-foreground group-data-[state=unchecked]:stroke-muted-foreground" aria-hidden="true">
+												<path d="M39.22 15.99h-8.16c-.79 0-1.43-.67-1.43-1.5s.64-1.5 1.43-1.5h8.16c.79 0 1.43.67 1.43 1.5s-.64 1.5-1.43 1.5z" opacity="0.75" />
+												<rect x="29.63" y="18.39" width="16.72" height="2.73" rx="1.36" ry="1.36" opacity="0.5" />
+												<path d="M75.1 6.68v1.45c0 .63-.49 1.14-1.09 1.14H30.72c-.6 0-1.09-.51-1.09-1.14V6.68c0-.62.49-1.14 1.09-1.14h43.29c.6 0 1.09.52 1.09 1.14z" opacity="0.9" />
+												<rect x="29.63" y="24.22" width="21.8" height="19.95" rx="2.11" ry="2.11" opacity="0.4" />
+												<g stroke-linecap="round" stroke-miterlimit="10">
+													<rect x="61.06" y="38.15" width="2.01" height="3.42" rx="0.33" ry="0.33" opacity="0.32" />
+													<rect x="56.78" y="34.99" width="2.01" height="6.58" rx="0.33" ry="0.33" opacity="0.44" />
+													<rect x="65.17" y="32.86" width="2.01" height="8.7" rx="0.33" ry="0.33" opacity="0.53" />
+													<rect x="69.55" y="29.17" width="2.01" height="12.4" rx="0.33" ry="0.33" opacity="0.66" />
+												</g>
+												<g opacity="0.5">
+													<circle cx="63.17" cy="18.63" r="7.5" />
+													<path d="M63.17 11.63c3.86 0 7 3.14 7 7s-3.14 7-7 7-7-3.14-7-7 3.14-7 7-7m0-1c-4.42 0-8 3.58-8 8s3.58 8 8 8 8-3.58 8-8-3.58-8-8-8z" />
+												</g>
+												<g opacity="0.74">
+													<path d="M64.05 18.13l3.38-5.67c.93.64 1.7 1.48 2.26 2.47.56.98.89 2.08.96 3.21h-6.6z" />
+													<path d="M67.57 13.19a6.977 6.977 0 012.52 4.44h-5.17l2.65-4.44m-.31-1.43l-4.1 6.87h8c0-1.39-.36-2.75-1.04-3.95a8.007 8.007 0 00-2.86-2.92z" />
+												</g>
+												<g stroke-linecap="round" stroke-miterlimit="10">
+													<rect x="5.84" y="5.02" width="19.14" height="40" rx="2" ry="2" opacity="0.8" />
+													<g stroke="#fff">
+														<path fill="none" opacity="0.72" stroke-width="2px" d="M9.02 17.39L21.25 17.39" />
+														<path fill="none" opacity="0.48" stroke-width="2px" d="M9.02 24.6L19.54 24.6" />
+														<path fill="none" opacity="0.55" stroke-width="2px" d="M9.02 20.88L18.4 20.88" />
+														<circle cx="10.98" cy="9.91" r="2.54" fill="#fff" opacity="0.8" />
+														<path fill="none" opacity="0.8" stroke-width="2px" d="M15.53 8.65L21.25 8.65" />
+														<path fill="none" opacity="0.6" d="M15.32 11.3L20.38 11.3" />
+													</g>
+												</g>
+											</svg>
+										</div>
+										<div class="mt-1 text-xs" id="default-description" aria-live="polite">Default</div>
+									</button>
+									<button type="button" role="radio" aria-checked={layoutIcon} data-state={layoutIconState} value="icon" class="group outline-none transition duration-200 ease-in" aria-label="Select compact" aria-describedby="icon-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
+										if (prefs.open || prefs.collapsible !== 'icon') {
+											prefs.open = false;
+											rememberSidebar(false);
+											prefs.collapsible = 'icon';
+											rememberCollapsible('icon');
+										}
+									}}>
+										<div class="relative rounded-[6px] ring-[1px] ring-border group-data-[state=checked]:shadow-2xl group-data-[state=checked]:ring-primary group-focus-visible:ring-2" role="img" aria-hidden="false" aria-label="Compact option preview">
+											<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-check size-6 fill-primary stroke-white group-data-[state=unchecked]:hidden absolute top-0 right-0 translate-x-1/2 -translate-y-1/2" aria-hidden="true">
+												<circle cx="12" cy="12" r="10" />
+												<path d="m9 12 2 2 4-4" />
+											</svg>
+											<svg data-name="icon-layout-compact" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 79.86 51.14" class="fill-primary stroke-primary group-data-[state=unchecked]:fill-muted-foreground group-data-[state=unchecked]:stroke-muted-foreground" aria-hidden="true">
+												<rect x="5.84" y="5.2" width="4" height="40" rx="2" ry="2" stroke-linecap="round" stroke-miterlimit="10" />
+												<g stroke="#fff" stroke-linecap="round" stroke-miterlimit="10">
+													<path fill="none" opacity="0.66" stroke-width="2px" d="M7.26 11.56L8.37 11.56" />
+													<path fill="none" opacity="0.51" stroke-width="2px" d="M7.26 14.49L8.37 14.49" />
+													<path fill="none" opacity="0.52" stroke-width="2px" d="M7.26 17.39L8.37 17.39" />
+													<circle cx="7.81" cy="7.25" r="1.16" fill="#fff" opacity="0.8" />
+												</g>
+												<path fill="none" opacity="0.75" stroke-linecap="round" stroke-miterlimit="10" stroke-width="3px" d="M15.81 14.49L22.89 14.49" />
+												<rect x="14.93" y="18.39" width="22.19" height="2.73" rx="0.64" ry="0.64" opacity="0.5" stroke-linecap="round" stroke-miterlimit="10" />
+												<rect x="14.93" y="5.89" width="59.16" height="2.73" rx="0.64" ry="0.64" opacity="0.9" stroke-linecap="round" stroke-miterlimit="10" />
+												<rect x="14.93" y="24.22" width="32.68" height="19.95" rx="2.11" ry="2.11" opacity="0.4" stroke-linecap="round" stroke-miterlimit="10" />
+												<g stroke-linecap="round" stroke-miterlimit="10">
+													<rect x="59.05" y="38.15" width="2.01" height="3.42" rx="0.33" ry="0.33" opacity="0.32" />
+													<rect x="54.78" y="34.99" width="2.01" height="6.58" rx="0.33" ry="0.33" opacity="0.44" />
+													<rect x="63.17" y="32.86" width="2.01" height="8.7" rx="0.33" ry="0.33" opacity="0.53" />
+													<rect x="67.54" y="29.17" width="2.01" height="12.4" rx="0.33" ry="0.33" opacity="0.66" />
+												</g>
+												<g opacity="0.5">
+													<circle cx="62.16" cy="18.63" r="7.5" />
+													<path d="M62.16 11.63c3.86 0 7 3.14 7 7s-3.14 7-7 7-7-3.14-7-7 3.14-7 7-7m0-1c-4.42 0-8 3.58-8 8s3.58 8 8 8 8-3.58 8-8-3.58-8-8-8z" />
+												</g>
+												<g opacity="0.74">
+													<path d="M63.04 18.13l3.38-5.67c.93.64 1.7 1.48 2.26 2.47.56.98.89 2.08.96 3.21h-6.6z" />
+													<path d="M66.57 13.19a6.977 6.977 0 012.52 4.44h-5.17l2.65-4.44m-.31-1.43l-4.1 6.87h8c0-1.39-.36-2.75-1.04-3.95a8.007 8.007 0 00-2.86-2.92z" />
+												</g>
+											</svg>
+										</div>
+										<div class="mt-1 text-xs" id="icon-description" aria-live="polite">Compact</div>
+									</button>
+									<button type="button" role="radio" aria-checked={layoutOffcanvas} data-state={layoutOffcanvasState} value="offcanvas" class="group outline-none transition duration-200 ease-in" aria-label="Select full layout" aria-describedby="offcanvas-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
+										if (prefs.open || prefs.collapsible !== 'offcanvas') {
+											prefs.open = false;
+											rememberSidebar(false);
+											prefs.collapsible = 'offcanvas';
+											rememberCollapsible('offcanvas');
+										}
+									}}>
+										<div class="relative rounded-[6px] ring-[1px] ring-border group-data-[state=checked]:shadow-2xl group-data-[state=checked]:ring-primary group-focus-visible:ring-2" role="img" aria-hidden="false" aria-label="Full layout option preview">
+											<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-check size-6 fill-primary stroke-white group-data-[state=unchecked]:hidden absolute top-0 right-0 translate-x-1/2 -translate-y-1/2" aria-hidden="true">
+												<circle cx="12" cy="12" r="10" />
+												<path d="m9 12 2 2 4-4" />
+											</svg>
+											<svg data-name="icon-layout-full" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 79.86 51.14" class="fill-primary stroke-primary group-data-[state=unchecked]:fill-muted-foreground group-data-[state=unchecked]:stroke-muted-foreground" aria-hidden="true">
+												<path fill="none" opacity="0.75" stroke-linecap="round" stroke-miterlimit="10" stroke-width="3px" d="M6.85 14.49L15.02 14.49" />
+												<rect x="5.84" y="18.39" width="25.6" height="2.73" rx="0.64" ry="0.64" opacity="0.5" stroke-linecap="round" stroke-miterlimit="10" />
+												<rect x="5.84" y="5.89" width="68.26" height="2.73" rx="0.64" ry="0.64" opacity="0.9" stroke-linecap="round" stroke-miterlimit="10" />
+												<rect x="5.84" y="24.22" width="37.71" height="19.95" rx="2.11" ry="2.11" opacity="0.4" stroke-linecap="round" stroke-miterlimit="10" />
+												<g stroke-linecap="round" stroke-miterlimit="10">
+													<rect x="59.05" y="38.15" width="2.01" height="3.42" rx="0.33" ry="0.33" opacity="0.32" />
+													<rect x="54.78" y="34.99" width="2.01" height="6.58" rx="0.33" ry="0.33" opacity="0.44" />
+													<rect x="63.17" y="32.86" width="2.01" height="8.7" rx="0.33" ry="0.33" opacity="0.53" />
+													<rect x="67.54" y="29.17" width="2.01" height="12.4" rx="0.33" ry="0.33" opacity="0.66" />
+												</g>
+												<g opacity="0.5">
+													<circle cx="62.16" cy="18.63" r="7.5" />
+													<path d="M62.16 11.63c3.86 0 7 3.14 7 7s-3.14 7-7 7-7-3.14-7-7 3.14-7 7-7m0-1c-4.42 0-8 3.58-8 8s3.58 8 8 8 8-3.58 8-8-3.58-8-8-8z" />
+												</g>
+												<g opacity="0.74">
+													<path d="M63.04 18.13l3.38-5.67c.93.64 1.7 1.48 2.26 2.47.56.98.89 2.08.96 3.21h-6.6z" />
+													<path d="M66.57 13.19a6.977 6.977 0 012.52 4.44h-5.17l2.65-4.44m-.31-1.43l-4.1 6.87h8c0-1.39-.36-2.75-1.04-3.95a8.007 8.007 0 00-2.86-2.92z" />
+												</g>
+											</svg>
+										</div>
+										<div class="mt-1 text-xs" id="offcanvas-description" aria-live="polite">Full layout</div>
+									</button>
+								</div>
+								<div id="layout-description" class="sr-only">Choose between default expanded, compact icon-only, or full layout mode</div>
+							</div>
+							<div>
+								<div class="mb-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+									Direction
+									<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80 size-4 rounded-full" type="button" aria-label="Reset text direction to default" hidden={dirDefault} onClick={(event) => {
+										prefs.dir = 'ltr';
+										applyDir('ltr');
+										focusDialogOf(event);
+									}}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rotate-ccw size-3" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg></button>
+								</div>
+								<div role="radiogroup" aria-required="false" dir={prefs.dir} onFocus={focusGroup} onFocusin={radioFocused} onKeydown={radioKey} class="grid w-full max-w-md grid-cols-3 gap-4" aria-label="Select site direction" aria-describedby="direction-description" tabindex="0" style={drawerOutline}>
+									<button type="button" role="radio" aria-checked={dirLtr} data-state={dirLtrState} value="ltr" class="group outline-none transition duration-200 ease-in" aria-label="Select left to right" aria-describedby="ltr-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
+										if (prefs.dir !== 'ltr') {
+											prefs.dir = 'ltr';
+											applyDir('ltr');
+										}
+									}}>
+										<div class="relative rounded-[6px] ring-[1px] ring-border group-data-[state=checked]:shadow-2xl group-data-[state=checked]:ring-primary group-focus-visible:ring-2" role="img" aria-hidden="false" aria-label="Left to Right option preview">
+											<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-check size-6 fill-primary stroke-white group-data-[state=unchecked]:hidden absolute top-0 right-0 translate-x-1/2 -translate-y-1/2" aria-hidden="true">
+												<circle cx="12" cy="12" r="10" />
+												<path d="m9 12 2 2 4-4" />
+											</svg>
+											<svg data-name="icon-dir-ltr" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 79.86 51.14" class="fill-primary stroke-primary group-data-[state=unchecked]:fill-muted-foreground group-data-[state=unchecked]:stroke-muted-foreground" aria-hidden="true">
+												<path d="M23.42.51h51.92c2.21 0 4 1.79 4 4v42.18c0 2.21-1.79 4-4 4H23.42s-.04-.02-.04-.04V.55s.02-.04.04-.04z" opacity="0.15" />
+												<path fill="none" opacity="0.72" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.56 14.88L17.78 14.88" />
+												<path fill="none" opacity="0.48" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.56 22.09L16.08 22.09" />
+												<path fill="none" opacity="0.55" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.56 18.38L14.93 18.38" />
+												<g stroke-linecap="round" stroke-miterlimit="10">
+													<circle cx="7.51" cy="7.4" r="2.54" opacity="0.8" />
+													<path fill="none" opacity="0.8" stroke-width="2px" d="M12.06 6.14L17.78 6.14" />
+													<path fill="none" opacity="0.6" d="M11.85 8.79L16.91 8.79" />
+												</g>
+												<path fill="none" opacity="0.62" stroke-linecap="round" stroke-miterlimit="10" stroke-width="3px" d="M29.41 7.4L34.67 7.4" />
+												<rect x="28.76" y="11.21" width="26.03" height="2.73" rx="0.64" ry="0.64" opacity="0.44" stroke-linecap="round" stroke-miterlimit="10" />
+												<rect x="28.76" y="17.01" width="44.25" height="13.48" rx="0.64" ry="0.64" opacity="0.3" stroke-linecap="round" stroke-miterlimit="10" />
+												<rect x="28.76" y="33.57" width="44.25" height="4.67" rx="0.64" ry="0.64" opacity="0.21" stroke-linecap="round" stroke-miterlimit="10" />
+												<rect x="28.76" y="41.32" width="36.21" height="4.67" rx="0.64" ry="0.64" opacity="0.3" stroke-linecap="round" stroke-miterlimit="10" />
+											</svg>
+										</div>
+										<div class="mt-1 text-xs" id="ltr-description" aria-live="polite">Left to Right</div>
+									</button>
+									<button type="button" role="radio" aria-checked={dirRtl} data-state={dirRtlState} value="rtl" class="group outline-none transition duration-200 ease-in" aria-label="Select right to left" aria-describedby="rtl-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
+										if (prefs.dir !== 'rtl') {
+											prefs.dir = 'rtl';
+											applyDir('rtl');
+										}
+									}}>
+										<div class="relative rounded-[6px] ring-[1px] ring-border group-data-[state=checked]:shadow-2xl group-data-[state=checked]:ring-primary group-focus-visible:ring-2" role="img" aria-hidden="false" aria-label="Right to Left option preview">
+											<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-check size-6 fill-primary stroke-white group-data-[state=unchecked]:hidden absolute top-0 right-0 translate-x-1/2 -translate-y-1/2" aria-hidden="true">
+												<circle cx="12" cy="12" r="10" />
+												<path d="m9 12 2 2 4-4" />
+											</svg>
+											<svg data-name="icon-dir-rtl" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 79.86 51.14" class="rotate-y-180 fill-primary stroke-primary group-data-[state=unchecked]:fill-muted-foreground group-data-[state=unchecked]:stroke-muted-foreground" aria-hidden="true">
+												<path d="M23.42.51h51.92c2.21 0 4 1.79 4 4v42.18c0 2.21-1.79 4-4 4H23.42s-.04-.02-.04-.04V.55s.02-.04.04-.04z" opacity="0.15" />
+												<path fill="none" opacity="0.72" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.56 14.88L17.78 14.88" />
+												<path fill="none" opacity="0.48" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.56 22.09L16.08 22.09" />
+												<path fill="none" opacity="0.55" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.56 18.38L14.93 18.38" />
+												<g stroke-linecap="round" stroke-miterlimit="10">
+													<circle cx="7.51" cy="7.4" r="2.54" opacity="0.8" />
+													<path fill="none" opacity="0.8" stroke-width="2px" d="M12.06 6.14L17.78 6.14" />
+													<path fill="none" opacity="0.6" d="M11.85 8.79L16.91 8.79" />
+												</g>
+												<path fill="none" opacity="0.62" stroke-linecap="round" stroke-miterlimit="10" stroke-width="3px" d="M29.41 7.4L34.67 7.4" />
+												<rect x="28.76" y="11.21" width="26.03" height="2.73" rx="0.64" ry="0.64" opacity="0.44" stroke-linecap="round" stroke-miterlimit="10" />
+												<rect x="28.76" y="17.01" width="44.25" height="13.48" rx="0.64" ry="0.64" opacity="0.3" stroke-linecap="round" stroke-miterlimit="10" />
+												<rect x="28.76" y="33.57" width="44.25" height="4.67" rx="0.64" ry="0.64" opacity="0.21" stroke-linecap="round" stroke-miterlimit="10" />
+												<rect x="28.76" y="41.32" width="36.21" height="4.67" rx="0.64" ry="0.64" opacity="0.3" stroke-linecap="round" stroke-miterlimit="10" />
+											</svg>
+										</div>
+										<div class="mt-1 text-xs" id="rtl-description" aria-live="polite">Right to Left</div>
+									</button>
+								</div>
+								<div id="direction-description" class="sr-only">Choose between left-to-right or right-to-left site direction</div>
+							</div>
 						</div>
-					</header>
-				}
-				@if (isSearch) {
-					<header class="z-50 h-16 shadow-none">
-						<div class="relative flex h-full items-center gap-3 p-4 sm:gap-4">
-							<button data-slot="sidebar-trigger" onClick={toggleSidebar} class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 size-7 max-md:scale-125" data-sidebar="trigger">
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-panel-left" aria-hidden="true">
-									<rect width="18" height="18" x="3" y="3" rx="2" />
-									<path d="M9 3v18" />
-								</svg>
-								<span class="sr-only">Toggle Sidebar</span>
-							</button>
-							<div data-orientation="vertical" role="none" data-slot="separator" class="shrink-0 bg-border data-[orientation=horizontal]:h-px data-[orientation=horizontal]:w-full data-[orientation=vertical]:w-px h-6"></div>
-							<button data-slot="button" onClick={openSearch} class="inline-flex items-center gap-2 whitespace-nowrap transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 px-4 py-2 has-[>svg]:px-3 group relative h-8 w-full flex-1 justify-start rounded-md bg-muted/25 text-sm font-normal text-muted-foreground shadow-none hover:bg-accent sm:w-40 sm:pe-12 md:flex-none lg:w-52 xl:w-64 me-auto" aria-keyshortcuts="Meta+K Control+K">
-								<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search absolute inset-s-1.5 top-1/2 -translate-y-1/2" aria-hidden="true">
-									<path d="m21 21-4.34-4.34" />
-									<circle cx="11" cy="11" r="8" />
-								</svg>
-								<span class="ms-4">Search</span>
-								<kbd class="pointer-events-none absolute inset-e-[0.3rem] top-[0.3rem] hidden h-5 items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 select-none group-hover:bg-accent sm:flex">
-									<span class="text-xs">⌘</span>
-									K
-								</kbd>
-							</button>
-							<DropdownMenuTrigger menu="theme" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 size-9 scale-95 rounded-full">
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun size-[1.2rem] scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" aria-hidden="true">
-									<circle cx="12" cy="12" r="4" />
-									<path d="M12 2v2" />
-									<path d="M12 20v2" />
-									<path d="m4.93 4.93 1.41 1.41" />
-									<path d="m17.66 17.66 1.41 1.41" />
-									<path d="M2 12h2" />
-									<path d="M20 12h2" />
-									<path d="m6.34 17.66-1.41 1.41" />
-									<path d="m19.07 4.93-1.41 1.41" />
-								</svg>
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-moon absolute size-[1.2rem] scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" aria-hidden="true">
-									<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
-								</svg>
-								<span class="sr-only">Toggle theme</span>
-							</DropdownMenuTrigger>
-							<button data-slot="sheet-trigger" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 size-9 rounded-full" aria-label="Open theme settings" type="button" aria-haspopup="dialog" aria-expanded={drawerExpanded} aria-controls="config-drawer" data-state={drawerState} onClick={openDrawer}>
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings" aria-hidden="true">
-									<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
-									<circle cx="12" cy="12" r="3" />
-								</svg>
-							</button>
-							<DropdownMenuTrigger menu="profile" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 px-4 py-2 has-[>svg]:px-3 relative h-8 w-8 rounded-full">
-								<span data-slot="avatar" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-8 w-8">
-									<span data-slot="avatar-fallback" class="flex size-full items-center justify-center rounded-full bg-muted">SN</span>
-								</span>
-							</DropdownMenuTrigger>
+						<div data-slot="sheet-footer" class="mt-auto flex flex-col p-4 gap-2">
+							<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60 h-9 px-4 py-2 has-[>svg]:px-3" aria-label="Reset all settings to default values" onClick={() => {
+						prefs.open = true;
+						rememberSidebar(true);
+						prefs.dir = 'ltr';
+						resetDir();
+						prefs.theme = 'system';
+						resetTheme();
+						prefs.collapsible = 'icon';
+						rememberCollapsible('icon');
+						prefs.variant = 'inset';
+						rememberVariant('inset');
+					}}>Reset</button>
 						</div>
-					</header>
-				}
-				@if (isClerk) {
-					<div class="bg-backgroundh-16 flex justify-between p-4">
-						<button data-slot="sidebar-trigger" onClick={toggleSidebar} class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 size-7 scale-125 sm:scale-100" data-sidebar="trigger">
-							<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-panel-left" aria-hidden="true">
-								<rect width="18" height="18" x="3" y="3" rx="2" />
-								<path d="M9 3v18" />
+						<DialogClose class="absolute inset-e-4 top-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-secondary">
+							<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x size-4" aria-hidden="true">
+								<path d="M18 6 6 18" />
+								<path d="m6 6 12 12" />
 							</svg>
-							<span class="sr-only">Toggle Sidebar</span>
-						</button>
-						<div class="space-x-4">
-							<DropdownMenuTrigger menu="theme" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 size-9 scale-95 rounded-full">
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun size-[1.2rem] scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" aria-hidden="true">
-									<circle cx="12" cy="12" r="4" />
-									<path d="M12 2v2" />
-									<path d="M12 20v2" />
-									<path d="m4.93 4.93 1.41 1.41" />
-									<path d="m17.66 17.66 1.41 1.41" />
-									<path d="M2 12h2" />
-									<path d="M20 12h2" />
-									<path d="m6.34 17.66-1.41 1.41" />
-									<path d="m19.07 4.93-1.41 1.41" />
-								</svg>
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-moon absolute size-[1.2rem] scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" aria-hidden="true">
-									<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
-								</svg>
-								<span class="sr-only">Toggle theme</span>
-							</DropdownMenuTrigger>
-							<button data-slot="sheet-trigger" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 size-9 rounded-full" aria-label="Open theme settings" type="button" aria-haspopup="dialog" aria-expanded={drawerExpanded} aria-controls="config-drawer" data-state={drawerState} onClick={openDrawer}>
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings" aria-hidden="true">
-									<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
-									<circle cx="12" cy="12" r="3" />
-								</svg>
-							</button>
-						</div>
-					</div>
-				}
+							<span class="sr-only">Close</span>
+						</DialogClose>
+					</DialogContent>
+				</DialogPortal>
+				</DialogRoot>
 				{children}
 			</div>
 		</div>
 
-		<div data-slot="dialog-header" class="flex flex-col gap-2 text-center sm:text-start sr-only">
-			<h2 id="command-palette-title" data-slot="dialog-title" class="text-lg leading-none font-semibold">Command Palette</h2>
-			<p id="command-palette-description" data-slot="dialog-description" class="text-sm text-muted-foreground">Search for a command to run...</p>
-		</div>
+		<DialogRoot open={searchOpen} onOpenChange={(next: boolean) => { searchOpen = next; if (next) searchSeen = true; }}>
+			<div data-slot="dialog-header" class="flex flex-col gap-2 text-center sm:text-start sr-only">
+				<DialogTitle data-slot="dialog-title" class="text-lg leading-none font-semibold">Command Palette</DialogTitle>
+				<DialogDescription data-slot="dialog-description" class="text-sm text-muted-foreground">Search for a command to run...</DialogDescription>
+			</div>
 
-		<div data-state={searchState} data-slot="dialog-overlay" class="fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0" style="pointer-events: auto;" hidden onClick={closeSearch}></div>
-		<div role="dialog" id="command-palette" aria-describedby="command-palette-description" aria-labelledby="command-palette-title" hidden data-state={searchState} data-slot="dialog-content" class="fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background shadow-lg duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-lg overflow-hidden p-0" tabindex="-1" style="pointer-events: auto;" onKeydown={searchKeys}>
-			<div tabindex="-1" data-slot="command" class="flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground **:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5 **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground **:[[cmdk-group]]:px-2 **:[[cmdk-input]]:h-12 **:[[cmdk-item]]:px-2 **:[[cmdk-item]]:py-3" cmdk-root="">
-				<label cmdk-label="" for="command-palette-input" id="command-palette-label" style="position: absolute; width: 1px; height: 1px; padding: 0px; margin: -1px; overflow: hidden; clip: rect(0px, 0px, 0px, 0px); white-space: nowrap; border-width: 0px;"></label>
-				<div data-slot="command-input-wrapper" class="flex h-9 items-center gap-2 border-b px-3">
-					<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search size-4 shrink-0 opacity-50" aria-hidden="true">
-						<path d="m21 21-4.34-4.34" />
-						<circle cx="11" cy="11" r="8" />
-					</svg>
-					<input data-slot="command-input" class="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-hidden placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50" placeholder="Type a command or search..." cmdk-input="" autocomplete="off" autocorrect="off" spellcheck="false" aria-autocomplete="list" role="combobox" aria-expanded="true" aria-controls="command-palette-list" aria-labelledby="command-palette-label" id="command-palette-input" type="text" value="" onInput={(event) => filterCommands((event.target as HTMLInputElement).value)} />
-				</div>
-				<div data-slot="command-list" class="max-h-75 scroll-py-1 overflow-x-hidden overflow-y-auto" cmdk-list="" role="listbox" tabindex="-1" aria-label="Suggestions" id="command-palette-list" onClick={pickCommand} style="--cmdk-list-height: 288.0px;">
-					<div cmdk-list-sizer="">
-						<div dir="ltr" data-slot="scroll-area" class="relative h-72 pe-1" style="position: relative; --radix-scroll-area-corner-width: 0px; --radix-scroll-area-corner-height: 0px;">
-							<div data-radix-scroll-area-viewport="" data-slot="scroll-area-viewport" class="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1" style="overflow: hidden scroll;">
-								<div style="min-width: 100%; display: table;">
-									<div data-slot="command-empty" class="py-6 text-center text-sm" cmdk-empty="" role="presentation" hidden>No results found.</div>
-		<div data-slot="command-group" class="overflow-hidden p-1 text-foreground **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground" cmdk-group="" role="presentation" data-value="General">
-										<div cmdk-group-heading="" aria-hidden="true" id="command-palette-1">General</div>
-										<div cmdk-group-items="" role="group" aria-labelledby="command-palette-1">
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-2" cmdk-item="" role="option" aria-disabled="false" aria-selected="true" data-disabled="false" data-selected="true" data-value="Dashboard" data-url="/">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
-													</svg>
+			<DialogPortal data-slot="dialog-portal">
+			<DialogOverlay data-slot="dialog-overlay" class="fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0"></DialogOverlay>
+			<DialogContent data-slot="dialog-content" class="fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background shadow-lg duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-lg overflow-hidden p-0" onKeydown={searchKeys}>
+				<div tabindex="-1" data-slot="command" class="flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground **:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5 **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground **:[[cmdk-group]]:px-2 **:[[cmdk-input]]:h-12 **:[[cmdk-item]]:px-2 **:[[cmdk-item]]:py-3" cmdk-root="">
+					<label cmdk-label="" for="command-palette-input" id="command-palette-label" style={paletteLabelStyle}></label>
+					<div data-slot="command-input-wrapper" class="flex h-9 items-center gap-2 border-b px-3">
+						<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search size-4 shrink-0 opacity-50" aria-hidden="true">
+							<path d="m21 21-4.34-4.34" />
+							<circle cx="11" cy="11" r="8" />
+						</svg>
+						<input data-slot="command-input" class="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-hidden placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50" placeholder="Type a command or search..." cmdk-input="" autocomplete="off" autocorrect="off" spellcheck="false" aria-autocomplete="list" role="combobox" aria-expanded="true" aria-controls="command-palette-list" aria-labelledby="command-palette-label" id="command-palette-input" type="text" value="" onInput={(event) => filterCommands((event.target as HTMLInputElement).value)} />
+					</div>
+					<div data-slot="command-list" class="max-h-75 scroll-py-1 overflow-x-hidden overflow-y-auto" cmdk-list="" role="listbox" tabindex="-1" aria-label="Suggestions" id="command-palette-list" onClick={pickCommand} style={paletteListStyle}>
+						<div cmdk-list-sizer="">
+							<div dir="ltr" data-slot="scroll-area" class="relative h-72 pe-1" style={paletteScrollStyle} onPointerenter={(event) => showScrollbar(event.target as HTMLElement)} onPointerleave={(event) => hideScrollbar(event.target as HTMLElement)}>
+								<div data-radix-scroll-area-viewport="" data-slot="scroll-area-viewport" class="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1" style={paletteViewportStyle} onScroll={(event) => placeScrollThumb((event.target as HTMLElement).parentElement)}>
+									<div style={paletteTableStyle}>
+										<div data-slot="command-empty" class="py-6 text-center text-sm" cmdk-empty="" role="presentation" hidden>No results found.</div>
+			<div data-slot="command-group" class="overflow-hidden p-1 text-foreground **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground" cmdk-group="" role="presentation" data-value="General">
+											<div cmdk-group-heading="" aria-hidden="true" id="command-palette-1">General</div>
+											<div cmdk-group-items="" role="group" aria-labelledby="command-palette-1">
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-2" cmdk-item="" role="option" aria-disabled="false" aria-selected="true" data-disabled="false" data-selected="true" data-value="Dashboard" data-url="/">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Dashboard
 												</div>
-												Dashboard
-											</div>
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-3" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Tasks" data-url="/tasks">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
-													</svg>
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-3" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Tasks" data-url="/tasks">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Tasks
 												</div>
-												Tasks
-											</div>
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-4" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Apps" data-url="/apps">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
-													</svg>
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-4" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Apps" data-url="/apps">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Apps
 												</div>
-												Apps
-											</div>
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-5" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Chats" data-url="/chats">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
-													</svg>
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-5" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Chats" data-url="/chats">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Chats
 												</div>
-												Chats
-											</div>
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-6" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Users" data-url="/users">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
-													</svg>
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-6" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Users" data-url="/users">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Users
 												</div>
-												Users
-											</div>
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-7" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Secured by Clerk-/clerk/sign-in" data-url="/clerk/sign-in">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-7" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Secured by Clerk-/clerk/sign-in" data-url="/clerk/sign-in">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Secured by Clerk{' '}
+													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
+														<path d="m9 18 6-6-6-6" />
 													</svg>
+													{' '}Sign In
 												</div>
-												Secured by Clerk{' '}
-												<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
-													<path d="m9 18 6-6-6-6" />
-												</svg>
-												{' '}Sign In
-											</div>
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-8" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Secured by Clerk-/clerk/sign-up" data-url="/clerk/sign-up">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-8" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Secured by Clerk-/clerk/sign-up" data-url="/clerk/sign-up">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Secured by Clerk{' '}
+													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
+														<path d="m9 18 6-6-6-6" />
 													</svg>
+													{' '}Sign Up
 												</div>
-												Secured by Clerk{' '}
-												<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
-													<path d="m9 18 6-6-6-6" />
-												</svg>
-												{' '}Sign Up
-											</div>
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-9" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Secured by Clerk-/clerk/user-management" data-url="/clerk/user-management">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-9" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Secured by Clerk-/clerk/user-management" data-url="/clerk/user-management">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Secured by Clerk{' '}
+													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
+														<path d="m9 18 6-6-6-6" />
 													</svg>
+													{' '}User Management
 												</div>
-												Secured by Clerk{' '}
-												<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
-													<path d="m9 18 6-6-6-6" />
-												</svg>
-												{' '}User Management
 											</div>
 										</div>
-									</div>
-									<div data-slot="command-group" class="overflow-hidden p-1 text-foreground **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground" cmdk-group="" role="presentation" data-value="Pages">
-										<div cmdk-group-heading="" aria-hidden="true" id="command-palette-10">Pages</div>
-										<div cmdk-group-items="" role="group" aria-labelledby="command-palette-10">
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-11" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Auth-/sign-in" data-url="/sign-in">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
+										<div data-slot="command-group" class="overflow-hidden p-1 text-foreground **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground" cmdk-group="" role="presentation" data-value="Pages">
+											<div cmdk-group-heading="" aria-hidden="true" id="command-palette-10">Pages</div>
+											<div cmdk-group-items="" role="group" aria-labelledby="command-palette-10">
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-11" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Auth-/sign-in" data-url="/sign-in">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Auth{' '}
+													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
+														<path d="m9 18 6-6-6-6" />
 													</svg>
+													{' '}Sign In
 												</div>
-												Auth{' '}
-												<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
-													<path d="m9 18 6-6-6-6" />
-												</svg>
-												{' '}Sign In
-											</div>
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-12" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Auth-/sign-in-2" data-url="/sign-in-2">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-12" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Auth-/sign-in-2" data-url="/sign-in-2">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Auth{' '}
+													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
+														<path d="m9 18 6-6-6-6" />
 													</svg>
+													{' '}Sign In (2 Col)
 												</div>
-												Auth{' '}
-												<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
-													<path d="m9 18 6-6-6-6" />
-												</svg>
-												{' '}Sign In (2 Col)
-											</div>
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-13" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Auth-/sign-up" data-url="/sign-up">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-13" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Auth-/sign-up" data-url="/sign-up">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Auth{' '}
+													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
+														<path d="m9 18 6-6-6-6" />
 													</svg>
+													{' '}Sign Up
 												</div>
-												Auth{' '}
-												<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
-													<path d="m9 18 6-6-6-6" />
-												</svg>
-												{' '}Sign Up
-											</div>
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-14" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Auth-/forgot-password" data-url="/forgot-password">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-14" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Auth-/forgot-password" data-url="/forgot-password">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Auth{' '}
+													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
+														<path d="m9 18 6-6-6-6" />
 													</svg>
+													{' '}Forgot Password
 												</div>
-												Auth{' '}
-												<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
-													<path d="m9 18 6-6-6-6" />
-												</svg>
-												{' '}Forgot Password
-											</div>
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-15" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Auth-/otp" data-url="/otp">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-15" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Auth-/otp" data-url="/otp">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Auth{' '}
+													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
+														<path d="m9 18 6-6-6-6" />
 													</svg>
+													{' '}OTP
 												</div>
-												Auth{' '}
-												<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
-													<path d="m9 18 6-6-6-6" />
-												</svg>
-												{' '}OTP
-											</div>
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-16" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Errors-/errors/unauthorized" data-url="/errors/unauthorized">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-16" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Errors-/errors/unauthorized" data-url="/errors/unauthorized">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Errors{' '}
+													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
+														<path d="m9 18 6-6-6-6" />
 													</svg>
+													{' '}Unauthorized
 												</div>
-												Errors{' '}
-												<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
-													<path d="m9 18 6-6-6-6" />
-												</svg>
-												{' '}Unauthorized
-											</div>
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-17" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Errors-/errors/forbidden" data-url="/errors/forbidden">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-17" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Errors-/errors/forbidden" data-url="/errors/forbidden">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Errors{' '}
+													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
+														<path d="m9 18 6-6-6-6" />
 													</svg>
+													{' '}Forbidden
 												</div>
-												Errors{' '}
-												<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
-													<path d="m9 18 6-6-6-6" />
-												</svg>
-												{' '}Forbidden
-											</div>
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-18" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Errors-/errors/not-found" data-url="/errors/not-found">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-18" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Errors-/errors/not-found" data-url="/errors/not-found">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Errors{' '}
+													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
+														<path d="m9 18 6-6-6-6" />
 													</svg>
+													{' '}Not Found
 												</div>
-												Errors{' '}
-												<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
-													<path d="m9 18 6-6-6-6" />
-												</svg>
-												{' '}Not Found
-											</div>
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-19" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Errors-/errors/internal-server-error" data-url="/errors/internal-server-error">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-19" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Errors-/errors/internal-server-error" data-url="/errors/internal-server-error">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Errors{' '}
+													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
+														<path d="m9 18 6-6-6-6" />
 													</svg>
+													{' '}Internal Server Error
 												</div>
-												Errors{' '}
-												<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
-													<path d="m9 18 6-6-6-6" />
-												</svg>
-												{' '}Internal Server Error
-											</div>
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-20" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Errors-/errors/maintenance-error" data-url="/errors/maintenance-error">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-20" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Errors-/errors/maintenance-error" data-url="/errors/maintenance-error">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Errors{' '}
+													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
+														<path d="m9 18 6-6-6-6" />
 													</svg>
+													{' '}Maintenance Error
 												</div>
-												Errors{' '}
-												<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
-													<path d="m9 18 6-6-6-6" />
-												</svg>
-												{' '}Maintenance Error
 											</div>
 										</div>
-									</div>
-									<div data-slot="command-group" class="overflow-hidden p-1 text-foreground **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground" cmdk-group="" role="presentation" data-value="Other">
-										<div cmdk-group-heading="" aria-hidden="true" id="command-palette-21">Other</div>
-										<div cmdk-group-items="" role="group" aria-labelledby="command-palette-21">
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-22" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Settings-/settings" data-url="/settings">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
+										<div data-slot="command-group" class="overflow-hidden p-1 text-foreground **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground" cmdk-group="" role="presentation" data-value="Other">
+											<div cmdk-group-heading="" aria-hidden="true" id="command-palette-21">Other</div>
+											<div cmdk-group-items="" role="group" aria-labelledby="command-palette-21">
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-22" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Settings-/settings" data-url="/settings">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Settings{' '}
+													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
+														<path d="m9 18 6-6-6-6" />
 													</svg>
+													{' '}Profile
 												</div>
-												Settings{' '}
-												<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
-													<path d="m9 18 6-6-6-6" />
-												</svg>
-												{' '}Profile
-											</div>
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-23" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Settings-/settings/account" data-url="/settings/account">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-23" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Settings-/settings/account" data-url="/settings/account">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Settings{' '}
+													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
+														<path d="m9 18 6-6-6-6" />
 													</svg>
+													{' '}Account
 												</div>
-												Settings{' '}
-												<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
-													<path d="m9 18 6-6-6-6" />
-												</svg>
-												{' '}Account
-											</div>
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-24" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Settings-/settings/appearance" data-url="/settings/appearance">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-24" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Settings-/settings/appearance" data-url="/settings/appearance">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Settings{' '}
+													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
+														<path d="m9 18 6-6-6-6" />
 													</svg>
+													{' '}Appearance
 												</div>
-												Settings{' '}
-												<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
-													<path d="m9 18 6-6-6-6" />
-												</svg>
-												{' '}Appearance
-											</div>
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-25" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Settings-/settings/notifications" data-url="/settings/notifications">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-25" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Settings-/settings/notifications" data-url="/settings/notifications">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Settings{' '}
+													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
+														<path d="m9 18 6-6-6-6" />
 													</svg>
+													{' '}Notifications
 												</div>
-												Settings{' '}
-												<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
-													<path d="m9 18 6-6-6-6" />
-												</svg>
-												{' '}Notifications
-											</div>
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-26" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Settings-/settings/display" data-url="/settings/display">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-26" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Settings-/settings/display" data-url="/settings/display">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Settings{' '}
+													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
+														<path d="m9 18 6-6-6-6" />
 													</svg>
+													{' '}Display
 												</div>
-												Settings{' '}
-												<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right" aria-hidden="true">
-													<path d="m9 18 6-6-6-6" />
-												</svg>
-												{' '}Display
-											</div>
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-27" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Help Center" data-url="/help-center">
-												<div class="flex size-4 items-center justify-center">
-													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
-														<path d="M5 12h14" />
-														<path d="m12 5 7 7-7 7" />
-													</svg>
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-27" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Help Center" data-url="/help-center">
+													<div class="flex size-4 items-center justify-center">
+														<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-2 text-muted-foreground/80" aria-hidden="true">
+															<path d="M5 12h14" />
+															<path d="m12 5 7 7-7 7" />
+														</svg>
+													</div>
+													Help Center
 												</div>
-												Help Center
 											</div>
 										</div>
-									</div>
-									<div data-slot="command-separator" class="-mx-1 h-px bg-border" cmdk-separator="" role="separator"></div>
-									<div data-slot="command-group" class="overflow-hidden p-1 text-foreground **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground" cmdk-group="" role="presentation" data-value="Theme">
-										<div cmdk-group-heading="" aria-hidden="true" id="command-palette-28">Theme</div>
-										<div cmdk-group-items="" role="group" aria-labelledby="command-palette-28">
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-29" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Light" data-theme="light">
-												<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun" aria-hidden="true">
-													<circle cx="12" cy="12" r="4" />
-													<path d="M12 2v2" />
-													<path d="M12 20v2" />
-													<path d="m4.93 4.93 1.41 1.41" />
-													<path d="m17.66 17.66 1.41 1.41" />
-													<path d="M2 12h2" />
-													<path d="M20 12h2" />
-													<path d="m6.34 17.66-1.41 1.41" />
-													<path d="m19.07 4.93-1.41 1.41" />
-												</svg>
-												<span>Light</span>
-											</div>
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-30" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Dark" data-theme="dark">
-												<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-moon scale-90" aria-hidden="true">
-													<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
-												</svg>
-												<span>Dark</span>
-											</div>
-											<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-31" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="System" data-theme="system">
-												<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-laptop" aria-hidden="true">
-													<path d="M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2z" />
-													<path d="M20.054 15.987H3.946" />
-												</svg>
-												<span>System</span>
+										<div data-slot="command-separator" class="-mx-1 h-px bg-border" cmdk-separator="" role="separator"></div>
+										<div data-slot="command-group" class="overflow-hidden p-1 text-foreground **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground" cmdk-group="" role="presentation" data-value="Theme">
+											<div cmdk-group-heading="" aria-hidden="true" id="command-palette-28">Theme</div>
+											<div cmdk-group-items="" role="group" aria-labelledby="command-palette-28">
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-29" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Light" data-theme="light">
+													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun" aria-hidden="true">
+														<circle cx="12" cy="12" r="4" />
+														<path d="M12 2v2" />
+														<path d="M12 20v2" />
+														<path d="m4.93 4.93 1.41 1.41" />
+														<path d="m17.66 17.66 1.41 1.41" />
+														<path d="M2 12h2" />
+														<path d="M20 12h2" />
+														<path d="m6.34 17.66-1.41 1.41" />
+														<path d="m19.07 4.93-1.41 1.41" />
+													</svg>
+													<span>Light</span>
+												</div>
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-30" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="Dark" data-theme="dark">
+													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-moon scale-90" aria-hidden="true">
+														<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
+													</svg>
+													<span>Dark</span>
+												</div>
+												<div data-slot="command-item" class="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground" id="command-palette-31" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-disabled="false" data-selected="false" data-value="System" data-theme="system">
+													<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-laptop" aria-hidden="true">
+														<path d="M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2z" />
+														<path d="M20.054 15.987H3.946" />
+													</svg>
+													<span>System</span>
+												</div>
 											</div>
 										</div>
 									</div>
@@ -1290,15 +1708,16 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 						</div>
 					</div>
 				</div>
-			</div>
-			<button type="button" data-slot="dialog-close" onClick={closeSearch} class="absolute inset-e-4 top-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4">
-				<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x" aria-hidden="true">
-					<path d="M18 6 6 18" />
-					<path d="m6 6 12 12" />
-				</svg>
-				<span class="sr-only">Close</span>
-			</button>
-		</div>
+				<DialogClose data-slot="dialog-close" class="absolute inset-e-4 top-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4">
+					<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x" aria-hidden="true">
+						<path d="M18 6 6 18" />
+						<path d="m6 6 12 12" />
+					</svg>
+					<span class="sr-only">Close</span>
+				</DialogClose>
+			</DialogContent>
+			</DialogPortal>
+		</DialogRoot>
 
 		<DropdownMenuContent menu="team" side="right" align="start" sideOffset={4} class="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg">
 			<DropdownMenuLabel class="text-xs text-muted-foreground">Teams</DropdownMenuLabel>
@@ -1349,15 +1768,15 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 		</DropdownMenuContent>
 
 		<DropdownMenuContent menu="theme" modal={false} align="end">
-			<DropdownMenuItem menu="theme" onSelect={() => { theme = 'light'; applyTheme('light'); }}>
+			<DropdownMenuItem menu="theme" onSelect={() => { prefs.theme = 'light'; applyTheme('light'); }}>
 				Light
 				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={lightCheck} aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>
 			</DropdownMenuItem>
-			<DropdownMenuItem menu="theme" onSelect={() => { theme = 'dark'; applyTheme('dark'); }}>
+			<DropdownMenuItem menu="theme" onSelect={() => { prefs.theme = 'dark'; applyTheme('dark'); }}>
 				Dark
 				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={darkCheck} aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>
 			</DropdownMenuItem>
-			<DropdownMenuItem menu="theme" onSelect={() => { theme = 'system'; applyTheme('system'); }}>
+			<DropdownMenuItem menu="theme" onSelect={() => { prefs.theme = 'system'; applyTheme('system'); }}>
 				System
 				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={systemCheck} aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>
 			</DropdownMenuItem>
@@ -1388,463 +1807,21 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 			<DropdownMenuLinkItem class="text-muted-foreground" aria-disabled="true">Settings</DropdownMenuLinkItem>
 		</DropdownMenuContent>
 
-		<div data-state={drawerState} data-slot="sheet-overlay" class="fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0" style="pointer-events: auto;" hidden></div>
-		<div role="dialog" id="config-drawer" aria-describedby="config-drawer-description" aria-labelledby="config-drawer-title" data-state={drawerState} hidden data-slot="sheet-content" class="fixed z-50 gap-4 bg-background shadow-lg transition ease-in-out data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:animate-in data-[state=open]:duration-500 inset-y-0 inset-e-0 h-full w-3/4 border-s data-[state=closed]:slide-out-to-end data-[state=open]:slide-in-from-end sm:max-w-sm flex flex-col" tabindex="-1" style="pointer-events: auto;">
-			<div data-slot="sheet-header" class="flex flex-col gap-1.5 p-4 pb-0 text-start">
-				<h2 id="config-drawer-title" data-slot="sheet-title" class="font-semibold text-foreground">Theme Settings</h2>
-				<p id="config-drawer-description" data-slot="sheet-description" class="text-sm text-muted-foreground">Adjust the appearance and layout to suit your preferences.</p>
-			</div>
-			<div class="space-y-6 overflow-y-auto px-4">
-				<div>
-					<div class="mb-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-						Theme
-						<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80 size-4 rounded-full" type="button" aria-label="Reset theme preference to default" hidden={themeDefault} onClick={(event) => {
-							theme = 'system';
-							applyTheme('system');
-							focusDialogOf(event);
-						}}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rotate-ccw size-3" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg></button>
+		<AlertDialogRoot open={signOutOpen} onOpenChange={(next: boolean) => { signOutOpen = next; }}>
+			<AlertDialogPortal>
+				<AlertDialogOverlay data-slot="alert-dialog-overlay" class="fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0"></AlertDialogOverlay>
+				<AlertDialogContent data-slot="alert-dialog-content" class="fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-sm">
+					<div data-slot="alert-dialog-header" class="flex flex-col gap-2 sm:text-start text-start">
+						<AlertDialogTitle data-slot="alert-dialog-title" class="text-lg font-semibold">Sign out</AlertDialogTitle>
+						<AlertDialogDescription asChild data-slot="alert-dialog-description" class="text-sm text-muted-foreground">Are you sure you want to sign out? You will need to sign in again to access your account.</AlertDialogDescription>
 					</div>
-					<div role="radiogroup" aria-required="false" dir={dir} onFocus={focusGroup} onFocusin={radioFocused} onKeydown={radioKey} class="grid w-full max-w-md grid-cols-3 gap-4" aria-label="Select theme preference" aria-describedby="theme-description" tabindex="0" style="outline: none;">
-						<button type="button" role="radio" aria-checked={themeSystem} data-state={themeSystemState} value="system" class="group outline-none transition duration-200 ease-in" aria-label="Select system" aria-describedby="system-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
-							// Radix RadioGroup calls onValueChange only when the value changes.
-							if (theme !== 'system') {
-								theme = 'system';
-								applyTheme('system');
-							}
-						}}>
-							<div class="relative rounded-[6px] ring-[1px] ring-border group-data-[state=checked]:shadow-2xl group-data-[state=checked]:ring-primary group-focus-visible:ring-2" role="img" aria-hidden="false" aria-label="System option preview">
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-check size-6 fill-primary stroke-white group-data-[state=unchecked]:hidden absolute top-0 right-0 translate-x-1/2 -translate-y-1/2" aria-hidden="true">
-									<circle cx="12" cy="12" r="10" />
-									<path d="m9 12 2 2 4-4" />
-								</svg>
-								<svg data-name="icon-theme-system" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 79.86 51.14" class="overflow-hidden rounded-[6px] fill-primary stroke-primary group-data-[state=unchecked]:fill-muted-foreground group-data-[state=unchecked]:stroke-muted-foreground" aria-hidden="true">
-									<path opacity="0.2" d="M0 0.03H22.88V51.17H0z" />
-									<circle cx="6.7" cy="7.04" r="3.54" fill="#fff" opacity="0.8" stroke="#fff" stroke-linecap="round" stroke-miterlimit="10" />
-									<path d="M18.12 6.39h-5.87c-.6 0-1.09-.45-1.09-1s.49-1 1.09-1h5.87c.6 0 1.09.45 1.09 1s-.49 1-1.09 1zM16.55 9.77h-4.24c-.55 0-1-.45-1-1s.45-1 1-1h4.24c.55 0 1 .45 1 1s-.45 1-1 1z" fill="#fff" stroke="none" opacity="0.75" />
-									<path d="M18.32 17.37H4.59c-.69 0-1.25-.47-1.25-1.05s.56-1.05 1.25-1.05h13.73c.69 0 1.25.47 1.25 1.05s-.56 1.05-1.25 1.05z" fill="#fff" stroke="none" opacity="0.72" />
-									<path d="M15.34 21.26h-11c-.55 0-1-.41-1-.91s.45-.91 1-.91h11c.55 0 1 .41 1 .91s-.45.91-1 .91z" fill="#fff" stroke="none" opacity="0.55" />
-									<path d="M16.46 25.57H4.43c-.6 0-1.09-.44-1.09-.98s.49-.98 1.09-.98h12.03c.6 0 1.09.44 1.09.98s-.49.98-1.09.98z" fill="#fff" stroke="none" opacity="0.67" />
-									<rect x="33.36" y="19.73" width="2.75" height="3.42" rx="0.33" ry="0.33" opacity="0.31" stroke="none" />
-									<rect x="29.64" y="16.57" width="2.75" height="6.58" rx="0.33" ry="0.33" opacity="0.4" stroke="none" />
-									<rect x="37.16" y="14.44" width="2.75" height="8.7" rx="0.33" ry="0.33" opacity="0.26" stroke="none" />
-									<rect x="41.19" y="10.75" width="2.75" height="12.4" rx="0.33" ry="0.33" opacity="0.37" stroke="none" />
-									<g>
-										<circle cx="62.74" cy="16.32" r="8" opacity="0.25" />
-										<path d="M62.74 16.32l4.1-6.87c1.19.71 2.18 1.72 2.86 2.92s1.04 2.57 1.04 3.95h-8z" opacity="0.45" />
-									</g>
-									<rect x="29.64" y="27.75" width="41.62" height="18.62" rx="1.69" ry="1.69" opacity="0.3" stroke="none" stroke-linecap="round" stroke-miterlimit="10" />
-								</svg>
-							</div>
-							<div class="mt-1 text-xs" id="system-description" aria-live="polite">System</div>
-						</button>
-						<button type="button" role="radio" aria-checked={themeLight} data-state={themeLightState} value="light" class="group outline-none transition duration-200 ease-in" aria-label="Select light" aria-describedby="light-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
-							if (theme !== 'light') {
-								theme = 'light';
-								applyTheme('light');
-							}
-						}}>
-							<div class="relative rounded-[6px] ring-[1px] ring-border group-data-[state=checked]:shadow-2xl group-data-[state=checked]:ring-primary group-focus-visible:ring-2" role="img" aria-hidden="false" aria-label="Light option preview">
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-check size-6 fill-primary stroke-white group-data-[state=unchecked]:hidden absolute top-0 right-0 translate-x-1/2 -translate-y-1/2" aria-hidden="true">
-									<circle cx="12" cy="12" r="10" />
-									<path d="m9 12 2 2 4-4" />
-								</svg>
-								<svg data-name="icon-theme-light" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 79.86 51.14" class="" aria-hidden="true">
-									<g fill="#d9d9d9">
-										<rect x="0.53" y="0.5" width="78.83" height="50.14" rx="3.5" ry="3.5" />
-										<path d="M75.86 1c1.65 0 3 1.35 3 3v43.14c0 1.65-1.35 3-3 3H4.03c-1.65 0-3-1.35-3-3V4c0-1.65 1.35-3 3-3h71.83m0-1H4.03c-2.21 0-4 1.79-4 4v43.14c0 2.21 1.79 4 4 4h71.83c2.21 0 4-1.79 4-4V4c0-2.21-1.79-4-4-4z" />
-									</g>
-									<path d="M22.88 0h52.97c2.21 0 4 1.79 4 4v43.14c0 2.21-1.79 4-4 4H22.88V0z" fill="#ecedef" />
-									<circle cx="6.7" cy="7.04" r="3.54" fill="#fff" />
-									<path d="M18.12 6.39h-5.87c-.6 0-1.09-.45-1.09-1s.49-1 1.09-1h5.87c.6 0 1.09.45 1.09 1s-.49 1-1.09 1zM16.55 9.77h-4.24c-.55 0-1-.45-1-1s.45-1 1-1h4.24c.55 0 1 .45 1 1s-.45 1-1 1zM18.32 17.37H4.59c-.69 0-1.25-.47-1.25-1.05s.56-1.05 1.25-1.05h13.73c.69 0 1.25.47 1.25 1.05s-.56 1.05-1.25 1.05zM15.34 21.26h-11c-.55 0-1-.41-1-.91s.45-.91 1-.91h11c.55 0 1 .41 1 .91s-.45.91-1 .91zM16.46 25.57H4.43c-.6 0-1.09-.44-1.09-.98s.49-.98 1.09-.98h12.03c.6 0 1.09.44 1.09.98s-.49.98-1.09.98z" fill="#fff" />
-									<g fill="#c0c4c4">
-										<rect x="33.36" y="19.73" width="2.75" height="3.42" rx="0.33" ry="0.33" opacity="0.32" />
-										<rect x="29.64" y="16.57" width="2.75" height="6.58" rx="0.33" ry="0.33" opacity="0.44" />
-										<rect x="37.16" y="14.44" width="2.75" height="8.7" rx="0.33" ry="0.33" opacity="0.53" />
-										<rect x="41.19" y="10.75" width="2.75" height="12.4" rx="0.33" ry="0.33" opacity="0.53" />
-									</g>
-									<circle cx="62.74" cy="16.32" r="8" fill="#fff" />
-									<g fill="#d9d9d9">
-										<path d="M63.62 15.82L67 10.15c.93.64 1.7 1.48 2.26 2.47.56.98.89 2.08.96 3.21h-6.6z" />
-										<path d="M67.14 10.88a6.977 6.977 0 012.52 4.44h-5.17l2.65-4.44m-.31-1.43l-4.1 6.87h8c0-1.39-.36-2.75-1.04-3.95s-1.67-2.21-2.86-2.92z" />
-									</g>
-									<rect x="29.64" y="27.75" width="41.62" height="18.62" rx="1.69" ry="1.69" fill="#fff" />
-								</svg>
-							</div>
-							<div class="mt-1 text-xs" id="light-description" aria-live="polite">Light</div>
-						</button>
-						<button type="button" role="radio" aria-checked={themeDark} data-state={themeDarkState} value="dark" class="group outline-none transition duration-200 ease-in" aria-label="Select dark" aria-describedby="dark-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
-							if (theme !== 'dark') {
-								theme = 'dark';
-								applyTheme('dark');
-							}
-						}}>
-							<div class="relative rounded-[6px] ring-[1px] ring-border group-data-[state=checked]:shadow-2xl group-data-[state=checked]:ring-primary group-focus-visible:ring-2" role="img" aria-hidden="false" aria-label="Dark option preview">
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-check size-6 fill-primary stroke-white group-data-[state=unchecked]:hidden absolute top-0 right-0 translate-x-1/2 -translate-y-1/2" aria-hidden="true">
-									<circle cx="12" cy="12" r="10" />
-									<path d="m9 12 2 2 4-4" />
-								</svg>
-								<svg data-name="icon-theme-dark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 79.86 51.14" class="" aria-hidden="true">
-									<g fill="#1d2b3f">
-										<rect x="0.53" y="0.5" width="78.83" height="50.14" rx="3.5" ry="3.5" />
-										<path d="M75.86 1c1.65 0 3 1.35 3 3v43.14c0 1.65-1.35 3-3 3H4.03c-1.65 0-3-1.35-3-3V4c0-1.65 1.35-3 3-3h71.83m0-1H4.03c-2.21 0-4 1.79-4 4v43.14c0 2.21 1.79 4 4 4h71.83c2.21 0 4-1.79 4-4V4c0-2.21-1.79-4-4-4z" />
-									</g>
-									<path d="M22.88 0h52.97c2.21 0 4 1.79 4 4v43.14c0 2.21-1.79 4-4 4H22.88V0z" fill="#0d1628" />
-									<circle cx="6.7" cy="7.04" r="3.54" fill="#426187" />
-									<path d="M18.12 6.39h-5.87c-.6 0-1.09-.45-1.09-1s.49-1 1.09-1h5.87c.6 0 1.09.45 1.09 1s-.49 1-1.09 1zM16.55 9.77h-4.24c-.55 0-1-.45-1-1s.45-1 1-1h4.24c.55 0 1 .45 1 1s-.45 1-1 1zM18.32 17.37H4.59c-.69 0-1.25-.47-1.25-1.05s.56-1.05 1.25-1.05h13.73c.69 0 1.25.47 1.25 1.05s-.56 1.05-1.25 1.05zM15.34 21.26h-11c-.55 0-1-.41-1-.91s.45-.91 1-.91h11c.55 0 1 .41 1 .91s-.45.91-1 .91zM16.46 25.57H4.43c-.6 0-1.09-.44-1.09-.98s.49-.98 1.09-.98h12.03c.6 0 1.09.44 1.09.98s-.49.98-1.09.98z" fill="#426187" />
-									<g fill="#2a62bc">
-										<rect x="33.36" y="19.73" width="2.75" height="3.42" rx="0.33" ry="0.33" opacity="0.32" />
-										<rect x="29.64" y="16.57" width="2.75" height="6.58" rx="0.33" ry="0.33" opacity="0.44" />
-										<rect x="37.16" y="14.44" width="2.75" height="8.7" rx="0.33" ry="0.33" opacity="0.53" />
-										<rect x="41.19" y="10.75" width="2.75" height="12.4" rx="0.33" ry="0.33" opacity="0.53" />
-									</g>
-									<circle cx="62.74" cy="16.32" r="8" fill="#2f5491" opacity="0.5" />
-									<path d="M62.74 16.32l4.1-6.87c1.19.71 2.18 1.72 2.86 2.92s1.04 2.57 1.04 3.95h-8z" fill="#2f5491" opacity="0.74" />
-									<rect x="29.64" y="27.75" width="41.62" height="18.62" rx="1.69" ry="1.69" fill="#17273f" />
-								</svg>
-							</div>
-							<div class="mt-1 text-xs" id="dark-description" aria-live="polite">Dark</div>
-						</button>
+					<div data-slot="alert-dialog-footer" class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+						<AlertDialogCancel class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-9 px-4 py-2 has-[>svg]:px-3">Cancel</AlertDialogCancel>
+						<button data-slot="button" onClick={() => signOut()} class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60 h-9 px-4 py-2 has-[>svg]:px-3" type="button">Sign out</button>
 					</div>
-					<div id="theme-description" class="sr-only">Choose between system preference, light mode, or dark mode</div>
-				</div>
-				<div class="max-md:hidden">
-					<div class="mb-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-						Sidebar
-						<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80 size-4 rounded-full" type="button" aria-label="Reset sidebar style to default" hidden={variantDefault} onClick={(event) => {
-							variant = 'inset';
-							rememberVariant('inset');
-							focusDialogOf(event);
-						}}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rotate-ccw size-3" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg></button>
-					</div>
-					<div role="radiogroup" aria-required="false" dir={dir} onFocus={focusGroup} onFocusin={radioFocused} onKeydown={radioKey} class="grid w-full max-w-md grid-cols-3 gap-4" aria-label="Select sidebar style" aria-describedby="sidebar-description" tabindex="0" style="outline: none;">
-						<button type="button" role="radio" aria-checked={variantInset} data-state={variantInsetState} value="inset" class="group outline-none transition duration-200 ease-in" aria-label="Select inset" aria-describedby="inset-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
-							if (variant !== 'inset') {
-								variant = 'inset';
-								rememberVariant('inset');
-							}
-						}}>
-							<div class="relative rounded-[6px] ring-[1px] ring-border group-data-[state=checked]:shadow-2xl group-data-[state=checked]:ring-primary group-focus-visible:ring-2" role="img" aria-hidden="false" aria-label="Inset option preview">
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-check size-6 fill-primary stroke-white group-data-[state=unchecked]:hidden absolute top-0 right-0 translate-x-1/2 -translate-y-1/2" aria-hidden="true">
-									<circle cx="12" cy="12" r="10" />
-									<path d="m9 12 2 2 4-4" />
-								</svg>
-								<svg data-name="icon-sidebar-inset" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 79.86 51.14" class="fill-primary stroke-primary group-data-[state=unchecked]:fill-muted-foreground group-data-[state=unchecked]:stroke-muted-foreground" aria-hidden="true">
-									<rect x="23.39" y="5.57" width="50.22" height="40" rx="2" ry="2" opacity="0.2" stroke-linecap="round" stroke-miterlimit="10" />
-									<path fill="none" opacity="0.72" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.08 17.05L17.31 17.05" />
-									<path fill="none" opacity="0.48" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.08 24.25L15.6 24.25" />
-									<path fill="none" opacity="0.55" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.08 20.54L14.46 20.54" />
-									<g stroke-linecap="round" stroke-miterlimit="10">
-										<circle cx="7.04" cy="9.57" r="2.54" opacity="0.8" />
-										<path fill="none" opacity="0.8" stroke-width="2px" d="M11.59 8.3L17.31 8.3" />
-										<path fill="none" opacity="0.6" d="M11.38 10.95L16.44 10.95" />
-									</g>
-								</svg>
-							</div>
-							<div class="mt-1 text-xs" id="inset-description" aria-live="polite">Inset</div>
-						</button>
-						<button type="button" role="radio" aria-checked={variantFloating} data-state={variantFloatingState} value="floating" class="group outline-none transition duration-200 ease-in" aria-label="Select floating" aria-describedby="floating-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
-							if (variant !== 'floating') {
-								variant = 'floating';
-								rememberVariant('floating');
-							}
-						}}>
-							<div class="relative rounded-[6px] ring-[1px] ring-border group-data-[state=checked]:shadow-2xl group-data-[state=checked]:ring-primary group-focus-visible:ring-2" role="img" aria-hidden="false" aria-label="Floating option preview">
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-check size-6 fill-primary stroke-white group-data-[state=unchecked]:hidden absolute top-0 right-0 translate-x-1/2 -translate-y-1/2" aria-hidden="true">
-									<circle cx="12" cy="12" r="10" />
-									<path d="m9 12 2 2 4-4" />
-								</svg>
-								<svg data-name="icon-sidebar-floating" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 79.86 51.14" class="fill-primary stroke-primary group-data-[state=unchecked]:fill-muted-foreground group-data-[state=unchecked]:stroke-muted-foreground" aria-hidden="true">
-									<rect x="5.89" y="5.15" width="19.74" height="40" rx="2" ry="2" opacity="0.8" stroke-linecap="round" stroke-miterlimit="10" />
-									<g stroke="#fff" stroke-linecap="round" stroke-miterlimit="10">
-										<path fill="none" opacity="0.72" stroke-width="2px" d="M9.81 18.36L22.04 18.36" />
-										<path fill="none" opacity="0.48" stroke-width="2px" d="M9.81 25.57L20.33 25.57" />
-										<path fill="none" opacity="0.55" stroke-width="2px" d="M9.81 21.85L19.18 21.85" />
-										<circle cx="11.76" cy="10.88" r="2.54" fill="#fff" opacity="0.8" />
-										<path fill="none" opacity="0.8" stroke-width="2px" d="M16.31 9.62L22.04 9.62" />
-										<path fill="none" opacity="0.6" d="M16.1 12.27L21.16 12.27" />
-									</g>
-									<path fill="none" opacity="0.62" stroke-linecap="round" stroke-miterlimit="10" stroke-width="3px" d="M30.59 9.62L35.85 9.62" />
-									<rect x="29.94" y="13.42" width="26.03" height="2.73" rx="0.64" ry="0.64" opacity="0.44" stroke-linecap="round" stroke-miterlimit="10" />
-									<rect x="29.94" y="19.28" width="43.11" height="25.87" rx="2" ry="2" opacity="0.3" stroke-linecap="round" stroke-miterlimit="10" />
-								</svg>
-							</div>
-							<div class="mt-1 text-xs" id="floating-description" aria-live="polite">Floating</div>
-						</button>
-						<button type="button" role="radio" aria-checked={variantSidebar} data-state={variantSidebarState} value="sidebar" class="group outline-none transition duration-200 ease-in" aria-label="Select sidebar" aria-describedby="sidebar-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
-							if (variant !== 'sidebar') {
-								variant = 'sidebar';
-								rememberVariant('sidebar');
-							}
-						}}>
-							<div class="relative rounded-[6px] ring-[1px] ring-border group-data-[state=checked]:shadow-2xl group-data-[state=checked]:ring-primary group-focus-visible:ring-2" role="img" aria-hidden="false" aria-label="Sidebar option preview">
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-check size-6 fill-primary stroke-white group-data-[state=unchecked]:hidden absolute top-0 right-0 translate-x-1/2 -translate-y-1/2" aria-hidden="true">
-									<circle cx="12" cy="12" r="10" />
-									<path d="m9 12 2 2 4-4" />
-								</svg>
-								<svg data-name="icon-sidebar-sidebar" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 79.86 51.14" class="fill-primary stroke-primary group-data-[state=unchecked]:fill-muted-foreground group-data-[state=unchecked]:stroke-muted-foreground" aria-hidden="true">
-									<path d="M23.42.51h51.99c2.21 0 4 1.79 4 4v42.18c0 2.21-1.79 4-4 4H23.42s-.04-.02-.04-.04V.55s.02-.04.04-.04z" opacity="0.2" stroke-linecap="round" stroke-miterlimit="10" />
-									<path fill="none" opacity="0.72" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.56 14.88L17.78 14.88" />
-									<path fill="none" opacity="0.48" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.56 22.09L16.08 22.09" />
-									<path fill="none" opacity="0.55" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.56 18.38L14.93 18.38" />
-									<g stroke-linecap="round" stroke-miterlimit="10">
-										<circle cx="7.51" cy="7.4" r="2.54" opacity="0.8" />
-										<path fill="none" opacity="0.8" stroke-width="2px" d="M12.06 6.14L17.78 6.14" />
-										<path fill="none" opacity="0.6" d="M11.85 8.79L16.91 8.79" />
-									</g>
-								</svg>
-							</div>
-							<div class="mt-1 text-xs" id="sidebar-description" aria-live="polite">Sidebar</div>
-						</button>
-					</div>
-					<div id="sidebar-description" class="sr-only">Choose between inset, floating, or standard sidebar layout</div>
-				</div>
-				<div class="max-md:hidden">
-					<div class="mb-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-						Layout
-						<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80 size-4 rounded-full" type="button" aria-label="Reset layout options to default" hidden={layoutIsDefault} onClick={(event) => {
-							sidebarOpen = true;
-							rememberSidebar(true);
-							collapsible = 'icon';
-							rememberCollapsible('icon');
-							focusDialogOf(event);
-						}}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rotate-ccw size-3" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg></button>
-					</div>
-					<div role="radiogroup" aria-required="false" dir={dir} onFocus={focusGroup} onFocusin={radioFocused} onKeydown={radioKey} class="grid w-full max-w-md grid-cols-3 gap-4" aria-label="Select layout style" aria-describedby="layout-description" tabindex="0" style="outline: none;">
-						<button type="button" role="radio" aria-checked={layoutDefault} data-state={layoutDefaultState} value="default" class="group outline-none transition duration-200 ease-in" aria-label="Select default" aria-describedby="default-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
-							if (!sidebarOpen) {
-								sidebarOpen = true;
-								rememberSidebar(true);
-							}
-						}}>
-							<div class="relative rounded-[6px] ring-[1px] ring-border group-data-[state=checked]:shadow-2xl group-data-[state=checked]:ring-primary group-focus-visible:ring-2" role="img" aria-hidden="false" aria-label="Default option preview">
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-check size-6 fill-primary stroke-white group-data-[state=unchecked]:hidden absolute top-0 right-0 translate-x-1/2 -translate-y-1/2" aria-hidden="true">
-									<circle cx="12" cy="12" r="10" />
-									<path d="m9 12 2 2 4-4" />
-								</svg>
-								<svg data-name="con-layout-default" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 79.86 51.14" class="fill-primary stroke-primary group-data-[state=unchecked]:fill-muted-foreground group-data-[state=unchecked]:stroke-muted-foreground" aria-hidden="true">
-									<path d="M39.22 15.99h-8.16c-.79 0-1.43-.67-1.43-1.5s.64-1.5 1.43-1.5h8.16c.79 0 1.43.67 1.43 1.5s-.64 1.5-1.43 1.5z" opacity="0.75" />
-									<rect x="29.63" y="18.39" width="16.72" height="2.73" rx="1.36" ry="1.36" opacity="0.5" />
-									<path d="M75.1 6.68v1.45c0 .63-.49 1.14-1.09 1.14H30.72c-.6 0-1.09-.51-1.09-1.14V6.68c0-.62.49-1.14 1.09-1.14h43.29c.6 0 1.09.52 1.09 1.14z" opacity="0.9" />
-									<rect x="29.63" y="24.22" width="21.8" height="19.95" rx="2.11" ry="2.11" opacity="0.4" />
-									<g stroke-linecap="round" stroke-miterlimit="10">
-										<rect x="61.06" y="38.15" width="2.01" height="3.42" rx="0.33" ry="0.33" opacity="0.32" />
-										<rect x="56.78" y="34.99" width="2.01" height="6.58" rx="0.33" ry="0.33" opacity="0.44" />
-										<rect x="65.17" y="32.86" width="2.01" height="8.7" rx="0.33" ry="0.33" opacity="0.53" />
-										<rect x="69.55" y="29.17" width="2.01" height="12.4" rx="0.33" ry="0.33" opacity="0.66" />
-									</g>
-									<g opacity="0.5">
-										<circle cx="63.17" cy="18.63" r="7.5" />
-										<path d="M63.17 11.63c3.86 0 7 3.14 7 7s-3.14 7-7 7-7-3.14-7-7 3.14-7 7-7m0-1c-4.42 0-8 3.58-8 8s3.58 8 8 8 8-3.58 8-8-3.58-8-8-8z" />
-									</g>
-									<g opacity="0.74">
-										<path d="M64.05 18.13l3.38-5.67c.93.64 1.7 1.48 2.26 2.47.56.98.89 2.08.96 3.21h-6.6z" />
-										<path d="M67.57 13.19a6.977 6.977 0 012.52 4.44h-5.17l2.65-4.44m-.31-1.43l-4.1 6.87h8c0-1.39-.36-2.75-1.04-3.95a8.007 8.007 0 00-2.86-2.92z" />
-									</g>
-									<g stroke-linecap="round" stroke-miterlimit="10">
-										<rect x="5.84" y="5.02" width="19.14" height="40" rx="2" ry="2" opacity="0.8" />
-										<g stroke="#fff">
-											<path fill="none" opacity="0.72" stroke-width="2px" d="M9.02 17.39L21.25 17.39" />
-											<path fill="none" opacity="0.48" stroke-width="2px" d="M9.02 24.6L19.54 24.6" />
-											<path fill="none" opacity="0.55" stroke-width="2px" d="M9.02 20.88L18.4 20.88" />
-											<circle cx="10.98" cy="9.91" r="2.54" fill="#fff" opacity="0.8" />
-											<path fill="none" opacity="0.8" stroke-width="2px" d="M15.53 8.65L21.25 8.65" />
-											<path fill="none" opacity="0.6" d="M15.32 11.3L20.38 11.3" />
-										</g>
-									</g>
-								</svg>
-							</div>
-							<div class="mt-1 text-xs" id="default-description" aria-live="polite">Default</div>
-						</button>
-						<button type="button" role="radio" aria-checked={layoutIcon} data-state={layoutIconState} value="icon" class="group outline-none transition duration-200 ease-in" aria-label="Select compact" aria-describedby="icon-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
-							if (sidebarOpen || collapsible !== 'icon') {
-								sidebarOpen = false;
-								rememberSidebar(false);
-								collapsible = 'icon';
-								rememberCollapsible('icon');
-							}
-						}}>
-							<div class="relative rounded-[6px] ring-[1px] ring-border group-data-[state=checked]:shadow-2xl group-data-[state=checked]:ring-primary group-focus-visible:ring-2" role="img" aria-hidden="false" aria-label="Compact option preview">
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-check size-6 fill-primary stroke-white group-data-[state=unchecked]:hidden absolute top-0 right-0 translate-x-1/2 -translate-y-1/2" aria-hidden="true">
-									<circle cx="12" cy="12" r="10" />
-									<path d="m9 12 2 2 4-4" />
-								</svg>
-								<svg data-name="icon-layout-compact" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 79.86 51.14" class="fill-primary stroke-primary group-data-[state=unchecked]:fill-muted-foreground group-data-[state=unchecked]:stroke-muted-foreground" aria-hidden="true">
-									<rect x="5.84" y="5.2" width="4" height="40" rx="2" ry="2" stroke-linecap="round" stroke-miterlimit="10" />
-									<g stroke="#fff" stroke-linecap="round" stroke-miterlimit="10">
-										<path fill="none" opacity="0.66" stroke-width="2px" d="M7.26 11.56L8.37 11.56" />
-										<path fill="none" opacity="0.51" stroke-width="2px" d="M7.26 14.49L8.37 14.49" />
-										<path fill="none" opacity="0.52" stroke-width="2px" d="M7.26 17.39L8.37 17.39" />
-										<circle cx="7.81" cy="7.25" r="1.16" fill="#fff" opacity="0.8" />
-									</g>
-									<path fill="none" opacity="0.75" stroke-linecap="round" stroke-miterlimit="10" stroke-width="3px" d="M15.81 14.49L22.89 14.49" />
-									<rect x="14.93" y="18.39" width="22.19" height="2.73" rx="0.64" ry="0.64" opacity="0.5" stroke-linecap="round" stroke-miterlimit="10" />
-									<rect x="14.93" y="5.89" width="59.16" height="2.73" rx="0.64" ry="0.64" opacity="0.9" stroke-linecap="round" stroke-miterlimit="10" />
-									<rect x="14.93" y="24.22" width="32.68" height="19.95" rx="2.11" ry="2.11" opacity="0.4" stroke-linecap="round" stroke-miterlimit="10" />
-									<g stroke-linecap="round" stroke-miterlimit="10">
-										<rect x="59.05" y="38.15" width="2.01" height="3.42" rx="0.33" ry="0.33" opacity="0.32" />
-										<rect x="54.78" y="34.99" width="2.01" height="6.58" rx="0.33" ry="0.33" opacity="0.44" />
-										<rect x="63.17" y="32.86" width="2.01" height="8.7" rx="0.33" ry="0.33" opacity="0.53" />
-										<rect x="67.54" y="29.17" width="2.01" height="12.4" rx="0.33" ry="0.33" opacity="0.66" />
-									</g>
-									<g opacity="0.5">
-										<circle cx="62.16" cy="18.63" r="7.5" />
-										<path d="M62.16 11.63c3.86 0 7 3.14 7 7s-3.14 7-7 7-7-3.14-7-7 3.14-7 7-7m0-1c-4.42 0-8 3.58-8 8s3.58 8 8 8 8-3.58 8-8-3.58-8-8-8z" />
-									</g>
-									<g opacity="0.74">
-										<path d="M63.04 18.13l3.38-5.67c.93.64 1.7 1.48 2.26 2.47.56.98.89 2.08.96 3.21h-6.6z" />
-										<path d="M66.57 13.19a6.977 6.977 0 012.52 4.44h-5.17l2.65-4.44m-.31-1.43l-4.1 6.87h8c0-1.39-.36-2.75-1.04-3.95a8.007 8.007 0 00-2.86-2.92z" />
-									</g>
-								</svg>
-							</div>
-							<div class="mt-1 text-xs" id="icon-description" aria-live="polite">Compact</div>
-						</button>
-						<button type="button" role="radio" aria-checked={layoutOffcanvas} data-state={layoutOffcanvasState} value="offcanvas" class="group outline-none transition duration-200 ease-in" aria-label="Select full layout" aria-describedby="offcanvas-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
-							if (sidebarOpen || collapsible !== 'offcanvas') {
-								sidebarOpen = false;
-								rememberSidebar(false);
-								collapsible = 'offcanvas';
-								rememberCollapsible('offcanvas');
-							}
-						}}>
-							<div class="relative rounded-[6px] ring-[1px] ring-border group-data-[state=checked]:shadow-2xl group-data-[state=checked]:ring-primary group-focus-visible:ring-2" role="img" aria-hidden="false" aria-label="Full layout option preview">
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-check size-6 fill-primary stroke-white group-data-[state=unchecked]:hidden absolute top-0 right-0 translate-x-1/2 -translate-y-1/2" aria-hidden="true">
-									<circle cx="12" cy="12" r="10" />
-									<path d="m9 12 2 2 4-4" />
-								</svg>
-								<svg data-name="icon-layout-full" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 79.86 51.14" class="fill-primary stroke-primary group-data-[state=unchecked]:fill-muted-foreground group-data-[state=unchecked]:stroke-muted-foreground" aria-hidden="true">
-									<path fill="none" opacity="0.75" stroke-linecap="round" stroke-miterlimit="10" stroke-width="3px" d="M6.85 14.49L15.02 14.49" />
-									<rect x="5.84" y="18.39" width="25.6" height="2.73" rx="0.64" ry="0.64" opacity="0.5" stroke-linecap="round" stroke-miterlimit="10" />
-									<rect x="5.84" y="5.89" width="68.26" height="2.73" rx="0.64" ry="0.64" opacity="0.9" stroke-linecap="round" stroke-miterlimit="10" />
-									<rect x="5.84" y="24.22" width="37.71" height="19.95" rx="2.11" ry="2.11" opacity="0.4" stroke-linecap="round" stroke-miterlimit="10" />
-									<g stroke-linecap="round" stroke-miterlimit="10">
-										<rect x="59.05" y="38.15" width="2.01" height="3.42" rx="0.33" ry="0.33" opacity="0.32" />
-										<rect x="54.78" y="34.99" width="2.01" height="6.58" rx="0.33" ry="0.33" opacity="0.44" />
-										<rect x="63.17" y="32.86" width="2.01" height="8.7" rx="0.33" ry="0.33" opacity="0.53" />
-										<rect x="67.54" y="29.17" width="2.01" height="12.4" rx="0.33" ry="0.33" opacity="0.66" />
-									</g>
-									<g opacity="0.5">
-										<circle cx="62.16" cy="18.63" r="7.5" />
-										<path d="M62.16 11.63c3.86 0 7 3.14 7 7s-3.14 7-7 7-7-3.14-7-7 3.14-7 7-7m0-1c-4.42 0-8 3.58-8 8s3.58 8 8 8 8-3.58 8-8-3.58-8-8-8z" />
-									</g>
-									<g opacity="0.74">
-										<path d="M63.04 18.13l3.38-5.67c.93.64 1.7 1.48 2.26 2.47.56.98.89 2.08.96 3.21h-6.6z" />
-										<path d="M66.57 13.19a6.977 6.977 0 012.52 4.44h-5.17l2.65-4.44m-.31-1.43l-4.1 6.87h8c0-1.39-.36-2.75-1.04-3.95a8.007 8.007 0 00-2.86-2.92z" />
-									</g>
-								</svg>
-							</div>
-							<div class="mt-1 text-xs" id="offcanvas-description" aria-live="polite">Full layout</div>
-						</button>
-					</div>
-					<div id="layout-description" class="sr-only">Choose between default expanded, compact icon-only, or full layout mode</div>
-				</div>
-				<div>
-					<div class="mb-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-						Direction
-						<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80 size-4 rounded-full" type="button" aria-label="Reset text direction to default" hidden={dirDefault} onClick={(event) => {
-							dir = 'ltr';
-							applyDir('ltr');
-							focusDialogOf(event);
-						}}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rotate-ccw size-3" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg></button>
-					</div>
-					<div role="radiogroup" aria-required="false" dir={dir} onFocus={focusGroup} onFocusin={radioFocused} onKeydown={radioKey} class="grid w-full max-w-md grid-cols-3 gap-4" aria-label="Select site direction" aria-describedby="direction-description" tabindex="0" style="outline: none;">
-						<button type="button" role="radio" aria-checked={dirLtr} data-state={dirLtrState} value="ltr" class="group outline-none transition duration-200 ease-in" aria-label="Select left to right" aria-describedby="ltr-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
-							if (dir !== 'ltr') {
-								dir = 'ltr';
-								applyDir('ltr');
-							}
-						}}>
-							<div class="relative rounded-[6px] ring-[1px] ring-border group-data-[state=checked]:shadow-2xl group-data-[state=checked]:ring-primary group-focus-visible:ring-2" role="img" aria-hidden="false" aria-label="Left to Right option preview">
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-check size-6 fill-primary stroke-white group-data-[state=unchecked]:hidden absolute top-0 right-0 translate-x-1/2 -translate-y-1/2" aria-hidden="true">
-									<circle cx="12" cy="12" r="10" />
-									<path d="m9 12 2 2 4-4" />
-								</svg>
-								<svg data-name="icon-dir-ltr" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 79.86 51.14" class="fill-primary stroke-primary group-data-[state=unchecked]:fill-muted-foreground group-data-[state=unchecked]:stroke-muted-foreground" aria-hidden="true">
-									<path d="M23.42.51h51.92c2.21 0 4 1.79 4 4v42.18c0 2.21-1.79 4-4 4H23.42s-.04-.02-.04-.04V.55s.02-.04.04-.04z" opacity="0.15" />
-									<path fill="none" opacity="0.72" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.56 14.88L17.78 14.88" />
-									<path fill="none" opacity="0.48" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.56 22.09L16.08 22.09" />
-									<path fill="none" opacity="0.55" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.56 18.38L14.93 18.38" />
-									<g stroke-linecap="round" stroke-miterlimit="10">
-										<circle cx="7.51" cy="7.4" r="2.54" opacity="0.8" />
-										<path fill="none" opacity="0.8" stroke-width="2px" d="M12.06 6.14L17.78 6.14" />
-										<path fill="none" opacity="0.6" d="M11.85 8.79L16.91 8.79" />
-									</g>
-									<path fill="none" opacity="0.62" stroke-linecap="round" stroke-miterlimit="10" stroke-width="3px" d="M29.41 7.4L34.67 7.4" />
-									<rect x="28.76" y="11.21" width="26.03" height="2.73" rx="0.64" ry="0.64" opacity="0.44" stroke-linecap="round" stroke-miterlimit="10" />
-									<rect x="28.76" y="17.01" width="44.25" height="13.48" rx="0.64" ry="0.64" opacity="0.3" stroke-linecap="round" stroke-miterlimit="10" />
-									<rect x="28.76" y="33.57" width="44.25" height="4.67" rx="0.64" ry="0.64" opacity="0.21" stroke-linecap="round" stroke-miterlimit="10" />
-									<rect x="28.76" y="41.32" width="36.21" height="4.67" rx="0.64" ry="0.64" opacity="0.3" stroke-linecap="round" stroke-miterlimit="10" />
-								</svg>
-							</div>
-							<div class="mt-1 text-xs" id="ltr-description" aria-live="polite">Left to Right</div>
-						</button>
-						<button type="button" role="radio" aria-checked={dirRtl} data-state={dirRtlState} value="rtl" class="group outline-none transition duration-200 ease-in" aria-label="Select right to left" aria-describedby="rtl-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
-							if (dir !== 'rtl') {
-								dir = 'rtl';
-								applyDir('rtl');
-							}
-						}}>
-							<div class="relative rounded-[6px] ring-[1px] ring-border group-data-[state=checked]:shadow-2xl group-data-[state=checked]:ring-primary group-focus-visible:ring-2" role="img" aria-hidden="false" aria-label="Right to Left option preview">
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-check size-6 fill-primary stroke-white group-data-[state=unchecked]:hidden absolute top-0 right-0 translate-x-1/2 -translate-y-1/2" aria-hidden="true">
-									<circle cx="12" cy="12" r="10" />
-									<path d="m9 12 2 2 4-4" />
-								</svg>
-								<svg data-name="icon-dir-rtl" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 79.86 51.14" class="rotate-y-180 fill-primary stroke-primary group-data-[state=unchecked]:fill-muted-foreground group-data-[state=unchecked]:stroke-muted-foreground" aria-hidden="true">
-									<path d="M23.42.51h51.92c2.21 0 4 1.79 4 4v42.18c0 2.21-1.79 4-4 4H23.42s-.04-.02-.04-.04V.55s.02-.04.04-.04z" opacity="0.15" />
-									<path fill="none" opacity="0.72" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.56 14.88L17.78 14.88" />
-									<path fill="none" opacity="0.48" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.56 22.09L16.08 22.09" />
-									<path fill="none" opacity="0.55" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2px" d="M5.56 18.38L14.93 18.38" />
-									<g stroke-linecap="round" stroke-miterlimit="10">
-										<circle cx="7.51" cy="7.4" r="2.54" opacity="0.8" />
-										<path fill="none" opacity="0.8" stroke-width="2px" d="M12.06 6.14L17.78 6.14" />
-										<path fill="none" opacity="0.6" d="M11.85 8.79L16.91 8.79" />
-									</g>
-									<path fill="none" opacity="0.62" stroke-linecap="round" stroke-miterlimit="10" stroke-width="3px" d="M29.41 7.4L34.67 7.4" />
-									<rect x="28.76" y="11.21" width="26.03" height="2.73" rx="0.64" ry="0.64" opacity="0.44" stroke-linecap="round" stroke-miterlimit="10" />
-									<rect x="28.76" y="17.01" width="44.25" height="13.48" rx="0.64" ry="0.64" opacity="0.3" stroke-linecap="round" stroke-miterlimit="10" />
-									<rect x="28.76" y="33.57" width="44.25" height="4.67" rx="0.64" ry="0.64" opacity="0.21" stroke-linecap="round" stroke-miterlimit="10" />
-									<rect x="28.76" y="41.32" width="36.21" height="4.67" rx="0.64" ry="0.64" opacity="0.3" stroke-linecap="round" stroke-miterlimit="10" />
-								</svg>
-							</div>
-							<div class="mt-1 text-xs" id="rtl-description" aria-live="polite">Right to Left</div>
-						</button>
-					</div>
-					<div id="direction-description" class="sr-only">Choose between left-to-right or right-to-left site direction</div>
-				</div>
-			</div>
-			<div data-slot="sheet-footer" class="mt-auto flex flex-col p-4 gap-2">
-				<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60 h-9 px-4 py-2 has-[>svg]:px-3" aria-label="Reset all settings to default values" onClick={() => {
-			sidebarOpen = true;
-			rememberSidebar(true);
-			dir = 'ltr';
-			resetDir();
-			theme = 'system';
-			resetTheme();
-			collapsible = 'icon';
-			rememberCollapsible('icon');
-			variant = 'inset';
-			rememberVariant('inset');
-		}}>Reset</button>
-			</div>
-			<button type="button" onClick={closeDrawer} class="absolute inset-e-4 top-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-secondary">
-				<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x size-4" aria-hidden="true">
-					<path d="M18 6 6 18" />
-					<path d="m6 6 12 12" />
-				</svg>
-				<span class="sr-only">Close</span>
-			</button>
-		</div>
-
-		<div data-state={signOutState} data-slot="alert-dialog-overlay" class="fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0" style="pointer-events: auto;" hidden></div>
-		<div role="alertdialog" id="sign-out-dialog" aria-describedby="sign-out-description" aria-labelledby="sign-out-title" data-state={signOutState} hidden data-slot="alert-dialog-content" class="fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-sm" tabindex="-1" style="pointer-events: auto;">
-			<div data-slot="alert-dialog-header" class="flex flex-col gap-2 sm:text-start text-start">
-				<h2 id="sign-out-title" data-slot="alert-dialog-title" class="text-lg font-semibold">Sign out</h2>
-				<div id="sign-out-description" data-slot="alert-dialog-description" class="text-sm text-muted-foreground">Are you sure you want to sign out? You will need to sign in again to access your account.</div>
-			</div>
-			<div data-slot="alert-dialog-footer" class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-				<button type="button" data-cancel="" onClick={closeSignOut} class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-9 px-4 py-2 has-[>svg]:px-3">Cancel</button>
-				<button data-slot="button" onClick={() => signOut()} class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60 h-9 px-4 py-2 has-[>svg]:px-3" type="button">Sign out</button>
-			</div>
-		</div>
+				</AlertDialogContent>
+			</AlertDialogPortal>
+		</AlertDialogRoot>
 
 		<DropdownMenuContent menu="nav-clerk" side="right" align="start" sideOffset={4}>
 			<DropdownMenuLabel>Secured by Clerk </DropdownMenuLabel>

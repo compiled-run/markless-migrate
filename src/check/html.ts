@@ -1,3 +1,4 @@
+import { journeyNames, pngBytes, pngSize, type Png } from './artifacts.ts';
 import { acceptedLabel } from './automatic.ts';
 import { headlines, type Sample } from './responsiveness.ts';
 import { partialLine } from './summary.ts';
@@ -95,26 +96,22 @@ function where(f: Failure): string {
 }
 
 const esc = (value: string) => value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-const inline = (buffer: Buffer) => `data:image/png;base64,${buffer.toString('base64')}`;
+const inline = (image: Png) => `data:image/png;base64,${pngBytes(image).toString('base64')}`;
 // Set for the duration of one synchronous renderHtml call.
-let png: (buffer: Buffer) => string = inline;
-
-function size(buffer: Buffer): { width: number; height: number } {
-	return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
-}
+let png: (image: Png) => string = inline;
 
 function boxes(regions: readonly Box[], width: number, height: number): string {
 	const rects = regions.map((r, i) => `<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}"><title>Region ${i + 1}: x=${r.x} y=${r.y} ${r.width}x${r.height}</title></rect>`).join('');
 	return `<svg class="boxes" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">${rects}</svg>`;
 }
 
-function figure(caption: string, image: Buffer, regions: readonly Box[]): string {
-	const { width, height } = size(image);
+function figure(caption: string, image: Png, regions: readonly Box[]): string {
+	const { width, height } = pngSize(image);
 	return `<figure><figcaption>${caption}</figcaption><div class="frame"><img src="${png(image)}" loading="lazy" width="${width}" height="${height}" alt="${esc(caption)} screenshot">${boxes(regions, width, height)}</div></figure>`;
 }
 
 function shot(s: Shot, id: string): string {
-	const { width, height } = size(s.old);
+	const { width, height } = pngSize(s.old);
 	const status = s.ok ? 'same pixels outside the noise mask' : `${s.regions.length} region${s.regions.length === 1 ? ' differs' : 's differ'}`;
 	return `<div class="shot" data-mode="side" id="${id}">
 <h3><span class="badge ${s.ok ? 'pass' : 'fail'}">${s.ok ? 'same' : 'differs'}</span> ${esc(s.label)} <small>${status}</small></h3>
@@ -138,7 +135,7 @@ function motion(r: RouteResult): string {
 }
 
 function filmstrip(f: Filmstrip): string {
-	const row = (side: string, frames: readonly Buffer[]) => `<div class="strip"><h4>${side}</h4><div class="frames">${frames.map((image, k) => `<figure><img src="${png(image)}" loading="lazy" alt="${side} at ${f.offsets[k]} ms"><figcaption>${f.offsets[k]} ms</figcaption></figure>`).join('')}</div></div>`;
+	const row = (side: string, frames: readonly Png[]) => `<div class="strip"><h4>${side}</h4><div class="frames">${frames.map((image, k) => `<figure><img src="${png(image)}" loading="lazy" alt="${side} at ${f.offsets[k]} ms"><figcaption>${f.offsets[k]} ms</figcaption></figure>`).join('')}</div></div>`;
 	return `<div class="filmstrip"><h3><span class="badge fail">moves differently</span> ${esc(f.label)} <small>frames at the same offsets into the old page's longest animation</small></h3>${row('Old', f.old)}${row('New', f.new)}</div>`;
 }
 
@@ -155,7 +152,7 @@ function coverage(r: RouteResult): string {
 }
 
 function failedJourneys(r: RouteResult): number {
-	return r.journeys?.filter((j) => r.failures.some((f) => f.check.startsWith(j.name))).length ?? 0;
+	return journeyNames(r).filter((name) => r.failures.some((f) => f.check.startsWith(name))).length;
 }
 
 function kb(bytes: number): string {
@@ -210,7 +207,7 @@ ${writes(r)}
 ${coverage(r)}
 ${timings(r)}
 ${motion(r)}
-${r.journeys?.length ? `<details class="states"><summary>Interactions explored on the old page and replayed on the new one: ${r.journeys.length}${failedJourneys(r) ? `, ${failedJourneys(r)} differ` : ''}</summary><ul>${r.journeys.map((j) => `<li${r.failures.some((f) => f.check.startsWith(j.name)) ? ' class="differs"' : ''}>${esc(j.name)}</li>`).join('')}</ul></details>` : ''}
+${journeyNames(r).length ? `<details class="states"><summary>Interactions explored on the old page and replayed on the new one: ${journeyNames(r).length}${failedJourneys(r) ? `, ${failedJourneys(r)} differ` : ''}</summary><ul>${journeyNames(r).map((name) => `<li${r.failures.some((f) => f.check.startsWith(name)) ? ' class="differs"' : ''}>${esc(name)}</li>`).join('')}</ul></details>` : ''}
 <h3>Failures (${r.failures.filter((f) => !f.accepted).length}${r.failures.some((f) => f.accepted) ? `, and ${r.failures.filter((f) => f.accepted).length} accepted differences` : ''})</h3>
 ${table}
 ${r.shots.map((s, i) => shot(s, `route-${index}-shot-${i}`)).join('\n')}
@@ -310,7 +307,7 @@ export function migrationSection(s: Status): string {
 }
 
 /** `image` turns a screenshot into the img src: inline by default; writeReport stores each one once, next to the page. `status` adds every planned route, checked in this run or not. */
-export function renderHtml(report: Report, image: (buffer: Buffer) => string = inline, status?: Status): string {
+export function renderHtml(report: Report, image: (image: Png) => string = inline, status?: Status): string {
 	png = image;
 	try {
 		return renderPage(report, status);

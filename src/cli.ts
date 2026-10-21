@@ -27,6 +27,8 @@ import { plan, plannedRoutes, summarizeInventory, writeInventory } from './plan/
 import { copiedLogin, DRIVERS, driver } from './run/drivers.ts';
 import { startAppServer } from './run/server.ts';
 import { applyIfPlanned, CACHE_USAGE, cacheCommand, planAndWrite } from './cache/cli.ts';
+import { readCachingPlan } from './cache/plan.ts';
+import { cachingRegressions, formatRegression } from './cache/regressions.ts';
 import { runRoutes, summarizeRun } from './run/loop.ts';
 import { acceptedLabel } from './check/automatic.ts';
 import { readCoverage, readInventory, readResults, recordResults, STATE_DIR, status, summarizeStatus } from './status.ts';
@@ -88,7 +90,7 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
-          [--journey-budget <seconds>] [--max-journeys <n>] [--timeout <seconds>]
+          [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--timeout <seconds>]
           [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-cache]
           [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>]
           Compare routes old vs new (default: every route of the old site plan listed). Exits 1 when any is red.
@@ -107,7 +109,8 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           and page layout); the report lists the groups. --every-dimension runs them on every page.
           Every interactive element of the old page (including those a click reveals, such as a
           dialog's controls) must be used by a journey, or the route stays red: journeys are explored main content first (tables, forms), until each element is used or
-          --journey-budget (default 120 s per route) runs out; --max-journeys caps their number. A
+          --journey-budget (default 120 s per route) runs out; --max-journeys caps their number and
+          --journey-depth (default 4) how many steps deep a journey goes (nested menus, sidebars). A
           control in a shared header, nav, sidebar or footer is exercised by the first route of the
           run that has it, and the others carry its result.
           --all adds every route the source scan knows (dynamic segments filled from crawled paths or
@@ -163,6 +166,8 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           components, props, hooks, options and fields the old app uses (narrowed to --route), plus
           behaviour.md and behaviour.json: what each usage site must do, and the recorded journeys that
           exercise it. Needs plan --source (it writes .migrate/libraries.json). Existing port files are kept.
+          For a library markless-migrate ships a certified port of (Radix Dialog, AlertDialog), copies that
+          port into lib/ports/<library>/ instead, with <module>.behaviour.md naming each used part's component.
   cli     [--config <file>] [--case <name>]... [--record] [--json]
           Compare the old and new command-line tool (default config .migrate/cli.json): each case runs
           the old tool twice and the new one once, each in fresh temporary directories with a clean
@@ -254,9 +259,10 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           check it must pass against the pre-upgrade version (--baseline serves it).
   run     --agent <id> --old <origin> --new <origin> [--route <path>]... [--all] [--attempts <n>] [--model <name>]
           [--source <path>] [--new-source <path>] [--auth <file>] [--header <name:value>]... [--cookie <name=value>]...
-          [--serve <command>] [--build <command>] [--restart-on <path>]
+          [--serve <command>] [--build <command>] [--restart-on <path>] [--agent-timeout <minutes>]
           Drive your agent's own CLI headless, one route at a time, until each route is green or is
           left red after n attempts (default 3), then go on with the next; it never waits for an answer.
+          An attempt that runs past --agent-timeout (default 30 minutes) is stopped and counts as one.
           It ends with one report: green routes, library decisions, automatic acceptances, and what to
           look at if you care. Logs to .migrate/run.log. Each route is checked
           with the same --source, --new-source, --auth and bypass flags as check (--all as in check),
@@ -276,12 +282,14 @@ function fail(message: string): never {
 	process.exit(2);
 }
 
-function journeyOptions(budget: string | undefined, max: string | undefined): NonNullable<CheckOptions['journeys']> {
+function journeyOptions(budget: string | undefined, max: string | undefined, depth?: string): NonNullable<CheckOptions['journeys']> {
 	const seconds = budget === undefined ? undefined : Number(budget);
 	if (seconds !== undefined && !(seconds > 0)) fail('--journey-budget must be a number of seconds above 0');
 	const cap = max === undefined ? undefined : Number(max);
 	if (cap !== undefined && (!Number.isInteger(cap) || cap < 1)) fail('--max-journeys must be a whole number of at least 1');
-	return { ...(seconds !== undefined ? { budgetMs: seconds * 1000 } : {}), ...(cap !== undefined ? { maxJourneys: cap } : {}) };
+	const steps = depth === undefined ? undefined : Number(depth);
+	if (steps !== undefined && (!Number.isInteger(steps) || steps < 1)) fail('--journey-depth must be a whole number of at least 1');
+	return { ...(seconds !== undefined ? { budgetMs: seconds * 1000 } : {}), ...(cap !== undefined ? { maxJourneys: cap } : {}), ...(steps !== undefined ? { maxDepth: steps } : {}) };
 }
 
 function timeoutOption(value: string | undefined): { timeoutMs?: number } {
@@ -435,19 +443,23 @@ async function run(args: string[], cwd: string): Promise<number> {
 			serve: { type: 'string' },
 			build: { type: 'string' },
 			'restart-on': { type: 'string' },
+			'agent-timeout': { type: 'string' },
 			'journey-budget': { type: 'string' },
 			'max-journeys': { type: 'string' },
+			'journey-depth': { type: 'string' },
 			timeout: { type: 'string' },
 			...TIMING_FLAGS,
 		},
 	});
 	const deadline = timeoutOption(values.timeout);
-	const journeys = journeyOptions(values['journey-budget'], values['max-journeys']);
+	const journeys = journeyOptions(values['journey-budget'], values['max-journeys'], values['journey-depth']);
 	const timing = timingOptions(values);
 	if (!values.agent) fail(`run needs --agent <id> (${DRIVERS.map((d) => d.id).join(', ')})`);
 	if (!values.old || !values.new) fail('run needs --old <origin> and --new <origin>');
 	const attempts = values.attempts ? Number(values.attempts) : 3;
 	if (!Number.isInteger(attempts) || attempts < 1) fail('--attempts must be a whole number of at least 1');
+	const agentMinutes = values['agent-timeout'] ? Number(values['agent-timeout']) : undefined;
+	if (agentMinutes !== undefined && !(agentMinutes > 0)) fail('--agent-timeout must be a number of minutes above 0');
 	if ((values.build || values['restart-on']) && !values.serve) fail('--build and --restart-on need --serve <command>, the command that serves the new app');
 	const agent = driver(values.agent);
 	const home = process.env.HOME || homedir();
@@ -495,9 +507,10 @@ async function run(args: string[], cwd: string): Promise<number> {
 			routes,
 			attempts,
 			model: values.model,
+			...(agentMinutes ? { timeoutMs: agentMinutes * 60_000 } : {}),
 			cli: [mcp.command, ...mcp.args.slice(0, -1)].join(' '),
 			mcp,
-			context: { ...(source ? { source } : {}), ...(newSource ? { newSource } : {}), ...(values.auth ? { auth: resolve(values.auth) } : {}), flags: [...(values.header ?? []).flatMap((h) => ['--header', h]), ...(values.cookie ?? []).flatMap((c) => ['--cookie', c]), ...(values['journey-budget'] ? ['--journey-budget', values['journey-budget']] : []), ...(values['max-journeys'] ? ['--max-journeys', values['max-journeys']] : []), ...timingFlags(values)] },
+			context: { ...(source ? { source } : {}), ...(newSource ? { newSource } : {}), ...(values.auth ? { auth: resolve(values.auth) } : {}), flags: [...(values.header ?? []).flatMap((h) => ['--header', h]), ...(values.cookie ?? []).flatMap((c) => ['--cookie', c]), ...(values['journey-budget'] ? ['--journey-budget', values['journey-budget']] : []), ...(values['max-journeys'] ? ['--max-journeys', values['max-journeys']] : []), ...(values['journey-depth'] ? ['--journey-depth', values['journey-depth']] : []), ...timingFlags(values)] },
 			...(server ? { server, serving: { ...(values.build ? { build: values.build } : {}), ...(values['restart-on'] ? { restartOn: values['restart-on'] } : {}) } } : {}),
 			progress: out,
 			...(usage ? { notes: async (route: string) => routeBrief(usage, await implementedNow(), route) } : {}),
@@ -535,6 +548,14 @@ async function run(args: string[], cwd: string): Promise<number> {
 					summary += guard.text;
 					guarded &&= guard.ok;
 					open.push(...guard.findings.filter((f) => f.red).map((f) => `guard: ${f.kind} ${f.subject}`));
+				}
+				const plan = page ? await readCachingPlan(stateDir) : undefined;
+				const regressions = plan ? await cachingRegressions(plan, newSource ?? cwd, plan.routes.map((r) => r.route)) : [];
+				const others = regressions.filter((r) => r.route !== route).map((r) => r.route);
+				for (const r of regressions.filter((r) => r.route === route)) {
+					summary += formatRegression(r, others);
+					guarded = false;
+					open.push(`caching: ${r.old} on the old site, ${r.new} in the port (${r.reads[0]})`);
 				}
 				const dir = await firstDir(cwd, ['.output', '.vercel/output']);
 				if (dir) {
@@ -629,6 +650,7 @@ async function main(argv: string[]): Promise<number> {
 					'new-source': { type: 'string' },
 					'journey-budget': { type: 'string' },
 					'max-journeys': { type: 'string' },
+					'journey-depth': { type: 'string' },
 					timeout: { type: 'string' },
 					only: { type: 'string' },
 					'every-dimension': { type: 'boolean' },
@@ -640,7 +662,7 @@ async function main(argv: string[]): Promise<number> {
 			if (!values.old || !values.new) fail('check needs --old <origin> and --new <origin>');
 			if (values.only !== undefined && values.only !== 'coverage') fail('--only takes coverage: whether every route of the old site exists on the new app');
 			const coverageOnly = values.only === 'coverage';
-			const journeys = journeyOptions(values['journey-budget'], values['max-journeys']);
+			const journeys = journeyOptions(values['journey-budget'], values['max-journeys'], values['journey-depth']);
 			const timing = timingOptions(values);
 			let bypass: ReturnType<typeof bypassOptions> = {};
 			try {
@@ -716,6 +738,7 @@ async function main(argv: string[]): Promise<number> {
 				...(partial ? { partial: { total: planned?.length ?? null } } : planned?.length ? { coverage: planned } : {}),
 				templates: values['every-dimension'] ? false : { patterns: inventory?.source?.routes.map((r) => r.path) ?? [] },
 				...(values['no-cache'] ? {} : { cacheDir: join(cwd, STATE_DIR, 'cache') }),
+				artifactsDir: join(cwd, STATE_DIR),
 			});
 			await recordResults(cwd, report, commit ? { commit } : {});
 			const path = await writeReport(report, join(cwd, STATE_DIR), await status(cwd));

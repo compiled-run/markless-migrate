@@ -3,8 +3,9 @@ import { embedFailures } from './embeds.ts';
 import { loopFailures } from './loops.ts';
 import { embedCandidate, embedImageCandidate, markupCandidate, runtimeCandidate, storageOwner } from './automatic.ts';
 import { compareA11y } from './a11y.ts';
+import { isClock, maskClocks } from './clock.ts';
 import { HINTS, seoHint } from './hints.ts';
-import { failureElements, failureOccurrence } from './locate.ts';
+import { failureElements, failureOccurrence, forgetLocated } from './locate.ts';
 import { compareI18n } from './i18n.ts';
 import { describe, matchElements } from './match.ts';
 import { compareNetwork, contractLines } from './network.ts';
@@ -13,7 +14,7 @@ import { at as sourceAt } from './source-facts.ts';
 import { diffFields, diffLines, fieldTemplates, lineTemplates, type LineDiff } from './noise.ts';
 import type { AssetRecord, Box, Dimension, ElementSnapshot, Failure, HttpCapture, NoiseReport, PageCapture, RouteCapture, RouteResult, Shot } from './types.ts';
 import { DIMENSIONS } from './types.ts';
-import { compareScreenshots, identicalShots, visualNoise, visuallyDifferent } from './visual.ts';
+import { compareWithNoise, identicalShots, visuallyDifferent } from './visual.ts';
 import { storageFailure } from './storage.ts';
 import { residueFailures } from './residue.ts';
 
@@ -83,6 +84,11 @@ function noisyTextBoxes(a: readonly ElementSnapshot[], others: readonly (readonl
 	return boxes;
 }
 
+// Where both pages show a clock at another reading: its glyphs differ, the clock does not.
+function clockBoxes(a: readonly ElementSnapshot[], n: readonly ElementSnapshot[]): Box[] {
+	return [...matchElements(a, n)].flatMap(([i, j]) => (isClock(a[i]!.text) && isClock(n[j]!.text) && a[i]!.text !== n[j]!.text ? [a[i]!.box, n[j]!.box] : []));
+}
+
 // Per element of the first OLD load: the properties that differed in any other OLD load. Elements some load lacked are absent.
 export function noisyStyles(a: readonly ElementSnapshot[], others: readonly (readonly ElementSnapshot[])[]): Map<number, Set<string>> {
 	const noisy = new Map<number, Set<string>>(a.map((_, i) => [i, new Set<string>()]));
@@ -145,6 +151,12 @@ export function fontFailures(route: string, viewport: string, oldA: PageCapture,
 
 /** The OLD element and properties behind each default computed-style failure, so the runner can name the rule. */
 export const cssTargets = new WeakMap<Failure, { element: ElementSnapshot; props: readonly string[] }>();
+
+/** Once a route is checked, its failures no longer need the page elements registered for them. */
+export function forgetFailures(failures: readonly Failure[]): void {
+	for (const f of failures) cssTargets.delete(f);
+	forgetLocated(failures);
+}
 
 function cssFailures(route: string, viewport: string, oldA: PageCapture, others: readonly PageCapture[], next: PageCapture): Failure[] {
 	const noisy = noisyStyles(oldA.elements, others.map((o) => o.elements));
@@ -235,10 +247,12 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 		const bs = others.map((o) => o.pages[viewport]!);
 		const n = next.pages[viewport];
 		if (!n) continue;
-		failures.push(...lineFailures(route, 'rendered', 'accessibility tree', viewport, diffLines(lineTemplates(a.aria, ...bs.map((b) => b.aria)), n.aria), HINTS.aria, { old: a.aria, new: n.aria }, (line, actual) => markupCandidate(line, actual, a, n)).slice(0, LIMIT));
-		failures.push(...lineFailures(route, 'rendered', 'visible text', viewport, diffLines(lineTemplates(a.text, ...bs.map((b) => b.text)), n.text), HINTS.text, { old: a.text, new: n.text }).slice(0, LIMIT));
+		// A clock is compared by being there, not by its reading.
+		const [aria, text] = [maskClocks(a.aria), maskClocks(a.text)];
+		failures.push(...lineFailures(route, 'rendered', 'accessibility tree', viewport, diffLines(lineTemplates(aria, ...bs.map((b) => maskClocks(b.aria))), maskClocks(n.aria)), HINTS.aria, { old: aria, new: maskClocks(n.aria) }, (line, actual) => markupCandidate(line, actual, a, n)).slice(0, LIMIT));
+		failures.push(...lineFailures(route, 'rendered', 'visible text', viewport, diffLines(lineTemplates(text, ...bs.map((b) => maskClocks(b.text))), maskClocks(n.text)), HINTS.text, { old: text, new: maskClocks(n.text) }).slice(0, LIMIT));
 
-		const diff = identicalShots(a.screenshot, n.screenshot) ?? compareScreenshots(a.screenshot, n.screenshot, visualNoise(a.screenshot, bs.map((b) => b.screenshot), noisyTextBoxes(a.elements, bs.map((b) => b.elements))));
+		const diff = identicalShots(a.screenshot, n.screenshot) ?? compareWithNoise(a.screenshot, n.screenshot, bs.map((b) => b.screenshot), [...noisyTextBoxes(a.elements, bs.map((b) => b.elements)), ...clockBoxes(a.elements, n.elements)]);
 		shots.push({ label: viewport, viewport, old: a.screenshot, new: n.screenshot, diff: diff.png, regions: visuallyDifferent(diff) ? diff.regions : [], ok: !visuallyDifferent(diff) });
 		if (visuallyDifferent(diff)) {
 			const r = diff.region;
@@ -345,5 +359,6 @@ export function withFailures(result: RouteResult, failures: readonly Failure[], 
 	const moved = Boolean(extra.motion ?? result.motion);
 	const navigated = Boolean(extra.navigation ?? result.navigation);
 	const dimensions = Object.fromEntries(DIMENSIONS.map((d) => [d, failed.has(d) ? 'fail' : (d === 'responsiveness' && !timed) || (d === 'motion' && !moved) || (d === 'navigation' && !navigated) ? 'skipped' : 'pass'])) as Record<Dimension, 'pass' | 'fail' | 'skipped'>;
-	return { ...result, ...extra, ok: failures.length === 0, dimensions, failures };
+	// A route that was never compared stays not green, whatever failures are added to it.
+	return { ...result, ...extra, ok: failures.length === 0 && !result.blocked && !result.infrastructure, dimensions, failures };
 }

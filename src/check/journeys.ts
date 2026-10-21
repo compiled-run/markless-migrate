@@ -1,6 +1,7 @@
 import { FRAMEWORK_MARKUP_SELECTOR } from './automatic.ts';
 import type { Browser, BrowserContext, Locator, Page, Request } from 'playwright';
 import { frameworkTransport, openPage, requestLine, type OpenOptions, type SideEnv } from './browser.ts';
+import { clockLine } from './clock.ts';
 import { markHandlers } from './handlers.ts';
 import { originInQuery } from './capture.ts';
 import { HINTS } from './hints.ts';
@@ -94,7 +95,7 @@ export const CLICKABLE = 'clickable';
 const DESTRUCTIVE = /\b(log ?out|sign ?out|delete|remove|destroy|unsubscribe|deactivate|close (my|your) account)\b/i;
 /** How long exploring one route may take by default; what is left is listed as not exercised. */
 export const DEFAULT_JOURNEY_BUDGET_MS = 120_000;
-const MAX_DEPTH = 4;
+const DEFAULT_MAX_DEPTH = 4;
 const CONCURRENCY = 8;
 const STEP_TIMEOUT = 3_000;
 
@@ -942,6 +943,8 @@ export interface ExploreOptions {
 	readonly budgetMs?: number;
 	/** At most this many journeys, most important elements first. */
 	readonly maxJourneys?: number;
+	/** How many steps deep exploring goes (a control revealed by the 4th click is used by a 5th step); default 4. */
+	readonly maxDepth?: number;
 	/** The route of this run that exercises a shared layout control, when it is another route. */
 	readonly owner?: (signature: string) => string | undefined;
 	/** Paths the new app serves in this run (the rest the front door sends to the old app): a stored mode is followed to one of them. */
@@ -1105,6 +1108,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	const started = Date.now();
 	const budget = options.budgetMs ?? DEFAULT_JOURNEY_BUDGET_MS;
 	const cap = options.maxJourneys ?? Number.POSITIVE_INFINITY;
+	const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
 	const tracked: Tracked[] = [];
 	const known = new Set<string>();
 	const journeys: RecordedJourney[] = [];
@@ -1295,8 +1299,8 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			}
 			if (!r.revealed.length) continue;
 			const fresh = track(r.revealed, item.journey.steps, item.element);
-			if (depth >= MAX_DEPTH) {
-				for (const t of fresh) if (!t.shared && !t.by && !t.reason) t.reason = `it appears only after ${MAX_DEPTH} steps, deeper than check explores`;
+			if (depth >= maxDepth) {
+				for (const t of fresh) if (!t.shared && !t.by && !t.reason) t.reason = `it appears only after ${maxDepth} steps, deeper than check explores: raise --journey-depth`;
 				continue;
 			}
 			const items = itemsFor(fresh, depth + 1);
@@ -1437,6 +1441,22 @@ function trail(results: readonly (StepResult | undefined)[], first: number, upto
 		.join('; ');
 }
 
+
+/** What a step added and removed, compared without a clock's reading: a clock that only ticked (the same line gone and back) is no change. */
+export function untick(r: Pick<StepResult, 'added' | 'removed'>): { added: string[]; removed: string[] } {
+	const read = clockLine;
+	const removed = [...r.removed];
+	const added: string[] = [];
+	for (const line of r.added) {
+		const clock = read(line);
+		const i = clock === undefined ? -1 : removed.findIndex((other) => other !== line && read(other) === clock);
+		if (i >= 0) removed.splice(i, 1);
+		else added.push(line);
+	}
+	const reading = (line: string) => read(line) ?? line;
+	return { added: added.map(reading), removed: removed.map(reading) };
+}
+
 export function compareJourneys(route: string, olds: readonly Run[], journeys: readonly Journey[], next: Run, owner?: StorageOwner, doorErrors?: ReadonlyMap<string, readonly string[]>): Failure[] {
 	const failures: Failure[] = [];
 	journeys.forEach((journey, j) => {
@@ -1478,7 +1498,7 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			const fields = navigated ? (following ? (['requests', 'state', 'storage', 'dialogs'] as const) : (['requests', 'storage', 'dialogs'] as const)) : reloaded ? (['added', 'removed', 'state', 'storage'] as const) : (['added', 'removed', 'moved', 'requests', 'announcements', 'state', 'storage', 'dialogs'] as const);
 			for (const field of fields.filter((f) => !(f === 'storage' && n.door))) {
 				// Requests in flight together finish in any order (a client retrying hosts it shuffled), so they count as a set.
-				const lines = (r: StepResult) => (field === 'requests' ? [...r[field]].sort() : field === 'state' ? effects(r.state, owner) : (r[field] ?? []));
+				const lines = (r: StepResult) => (field === 'requests' ? [...r[field]].sort() : field === 'state' ? effects(r.state, owner) : field === 'added' || field === 'removed' ? untick(r)[field] : (r[field] ?? []));
 				const diff = diffLines(lineTemplates(lines(a!), ...rest.map(lines)), lines(n));
 				if (diff.changed.length || diff.missing.length || diff.unexpected.length) parts.push(field);
 				if (field === 'storage') automatic = storageCandidate([...diff.missing, ...diff.changed.map((c) => c.expected)], [...diff.unexpected, ...diff.changed.map((c) => c.actual)], owner);

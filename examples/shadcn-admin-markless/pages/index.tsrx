@@ -1,15 +1,24 @@
 // The dashboard (features/dashboard/index.tsx): cards, the overview and analytics charts, recent sales.
 // Markup from the old app's rendered DOM (deploy/shadcn-admin/scripts/gen-dashboard.py); tabs on
 // @markless/ui tabs; the charts drawn by the recharts port (public/parity/recharts.js).
+// Its script sits beside <main>, not in it: a dialog's hideOthers keeps every script exposed, and the chain above it with it.
+import { computed, state } from '@markless/core';
 import { tabs } from '@markless/ui';
-import type { PageProps } from '@markless/router';
 import { Shell } from '../components/layout/shell.tsrx';
-import { layoutPrefs } from '../components/layout/prefs.ts';
+import { TabPanel } from '../components/ui/tab-panel.tsrx';
 import { AnalyticsChart, OverviewChart } from '../lib/parity/recharts/charts.tsrx';
 
-export default function Dashboard({ http }: PageProps) @{
-	const prefs = layoutPrefs(http.request.headers.get('cookie'));
-	<Shell active="/" header="topnav" prefs={prefs}>
+export default function Dashboard() @{
+	// Radix mounts a tab's content when it is first shown: the analytics bars carry their widths from then on.
+	let tab = state('overview');
+	const analyticsShown = computed(() => tab === 'analytics');
+	const bar100 = computed(() => (analyticsShown ? 'width: 100%;' : undefined));
+	const bar46 = computed(() => (analyticsShown ? 'width: 46%;' : undefined));
+	const bar34 = computed(() => (analyticsShown ? 'width: 34%;' : undefined));
+	const bar30 = computed(() => (analyticsShown ? 'width: 30%;' : undefined));
+	const bar20 = computed(() => (analyticsShown ? 'width: 20%;' : undefined));
+	const bar5 = computed(() => (analyticsShown ? 'width: 5%;' : undefined));
+	<Shell active="/" header="topnav">
 		<main data-layout="auto" class="px-4 py-6 @7xl/content:mx-auto @7xl/content:w-full @7xl/content:max-w-7xl">
 			<div class="mb-2 flex items-center justify-between space-y-2">
 				<h1 class="text-2xl font-bold tracking-tight">Dashboard</h1>
@@ -17,7 +26,7 @@ export default function Dashboard({ http }: PageProps) @{
 					<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-primary text-primary-foreground shadow-xs hover:bg-primary/90 h-9 px-4 py-2 has-[>svg]:px-3">Download</button>
 				</div>
 			</div>
-			<tabs.root value="overview" orientation="vertical" dir="ltr" data-orientation="vertical" data-slot="tabs" class="flex flex-col gap-2 space-y-4">
+			<tabs.root value="overview" onChange={(next: string) => { if (next === 'analytics') tab = next; }} orientation="vertical" dir="ltr" data-orientation="vertical" data-slot="tabs" class="flex flex-col gap-2 space-y-4">
 				<div class="w-full overflow-x-auto pb-2">
 					<tabs.list data-slot="tabs-list" class="inline-flex h-9 w-fit items-center justify-center rounded-lg bg-muted p-0.75 text-muted-foreground" data-orientation="vertical" style="outline: none;">
 						<tabs.trigger value="overview" data-slot="tabs-trigger" class="inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap text-foreground transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 [&[ui-selected]]:bg-background [&[ui-selected]]:shadow-sm dark:text-muted-foreground dark:[&[ui-selected]]:border-input dark:[&[ui-selected]]:bg-input/30 dark:[&[ui-selected]]:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4" data-orientation="vertical">Overview</tabs.trigger>
@@ -26,7 +35,7 @@ export default function Dashboard({ http }: PageProps) @{
 						<tabs.trigger value="notifications" disabled data-slot="tabs-trigger" class="inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap text-foreground transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 [&[ui-selected]]:bg-background [&[ui-selected]]:shadow-sm dark:text-muted-foreground dark:[&[ui-selected]]:border-input dark:[&[ui-selected]]:bg-input/30 dark:[&[ui-selected]]:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4" data-orientation="vertical">Notifications</tabs.trigger>
 					</tabs.list>
 				</div>
-				<tabs.content value="overview" aria-label="Overview" data-orientation="vertical" data-slot="tabs-content" class="flex-1 outline-none space-y-4">
+				<TabPanel value="overview" id="radix-_r_11_-content-overview" aria-label="Overview" style="animation-duration: 0s;" data-orientation="vertical" data-slot="tabs-content" class="flex-1 outline-none space-y-4">
 					<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 						<div data-slot="card" class="flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground shadow-sm">
 							<div data-slot="card-header" class="@container/card-header auto-rows-min grid-rows-[auto_auto] gap-1.5 px-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6 flex flex-row items-center justify-between space-y-0 pb-2">
@@ -97,7 +106,7 @@ export default function Dashboard({ http }: PageProps) @{
 							<div data-slot="card-content" class="px-6">
 								<div class="space-y-8">
 									<div class="flex items-center gap-4">
-										<span data-slot="avatar" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-9 w-9">
+										<span data-slot="avatar" data-avatar-src="/avatars/01.png" data-avatar-alt="Avatar" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-9 w-9">
 											<span data-slot="avatar-fallback" class="flex size-full items-center justify-center rounded-full bg-muted">OM</span>
 										</span>
 										<div class="flex flex-1 flex-wrap items-center justify-between">
@@ -109,7 +118,7 @@ export default function Dashboard({ http }: PageProps) @{
 										</div>
 									</div>
 									<div class="flex items-center gap-4">
-										<span data-slot="avatar" class="relative size-8 shrink-0 overflow-hidden rounded-full flex h-9 w-9 items-center justify-center space-y-0 border">
+										<span data-slot="avatar" data-avatar-src="/avatars/02.png" data-avatar-alt="Avatar" class="relative size-8 shrink-0 overflow-hidden rounded-full flex h-9 w-9 items-center justify-center space-y-0 border">
 											<span data-slot="avatar-fallback" class="flex size-full items-center justify-center rounded-full bg-muted">JL</span>
 										</span>
 										<div class="flex flex-1 flex-wrap items-center justify-between">
@@ -121,7 +130,7 @@ export default function Dashboard({ http }: PageProps) @{
 										</div>
 									</div>
 									<div class="flex items-center gap-4">
-										<span data-slot="avatar" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-9 w-9">
+										<span data-slot="avatar" data-avatar-src="/avatars/03.png" data-avatar-alt="Avatar" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-9 w-9">
 											<span data-slot="avatar-fallback" class="flex size-full items-center justify-center rounded-full bg-muted">IN</span>
 										</span>
 										<div class="flex flex-1 flex-wrap items-center justify-between">
@@ -133,7 +142,7 @@ export default function Dashboard({ http }: PageProps) @{
 										</div>
 									</div>
 									<div class="flex items-center gap-4">
-										<span data-slot="avatar" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-9 w-9">
+										<span data-slot="avatar" data-avatar-src="/avatars/04.png" data-avatar-alt="Avatar" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-9 w-9">
 											<span data-slot="avatar-fallback" class="flex size-full items-center justify-center rounded-full bg-muted">WK</span>
 										</span>
 										<div class="flex flex-1 flex-wrap items-center justify-between">
@@ -145,7 +154,7 @@ export default function Dashboard({ http }: PageProps) @{
 										</div>
 									</div>
 									<div class="flex items-center gap-4">
-										<span data-slot="avatar" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-9 w-9">
+										<span data-slot="avatar" data-avatar-src="/avatars/05.png" data-avatar-alt="Avatar" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-9 w-9">
 											<span data-slot="avatar-fallback" class="flex size-full items-center justify-center rounded-full bg-muted">SD</span>
 										</span>
 										<div class="flex flex-1 flex-wrap items-center justify-between">
@@ -160,8 +169,8 @@ export default function Dashboard({ http }: PageProps) @{
 							</div>
 						</div>
 					</div>
-				</tabs.content>
-				<tabs.content value="analytics" aria-label="Analytics" data-orientation="vertical" data-slot="tabs-content" class="flex-1 outline-none space-y-4">
+				</TabPanel>
+				<TabPanel value="analytics" id="radix-_r_11_-content-analytics" aria-label="Analytics" data-orientation="vertical" data-slot="tabs-content" class="flex-1 outline-none space-y-4">
 						<div class="space-y-4">
 							<div data-slot="card" class="flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground shadow-sm">
 								<div data-slot="card-header" class="@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-1.5 px-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6">
@@ -237,7 +246,7 @@ export default function Dashboard({ http }: PageProps) @{
 												<div class="min-w-0 flex-1">
 													<div class="mb-1 truncate text-xs text-muted-foreground">Direct</div>
 													<div class="h-2.5 w-full rounded-full bg-muted">
-														<div class="h-2.5 rounded-full bg-primary" style="width: 100%;"></div>
+														<div class="h-2.5 rounded-full bg-primary" style={bar100}></div>
 													</div>
 												</div>
 												<div class="ps-2 text-xs font-medium tabular-nums">512</div>
@@ -246,7 +255,7 @@ export default function Dashboard({ http }: PageProps) @{
 												<div class="min-w-0 flex-1">
 													<div class="mb-1 truncate text-xs text-muted-foreground">Product Hunt</div>
 													<div class="h-2.5 w-full rounded-full bg-muted">
-														<div class="h-2.5 rounded-full bg-primary" style="width: 46%;"></div>
+														<div class="h-2.5 rounded-full bg-primary" style={bar46}></div>
 													</div>
 												</div>
 												<div class="ps-2 text-xs font-medium tabular-nums">238</div>
@@ -255,7 +264,7 @@ export default function Dashboard({ http }: PageProps) @{
 												<div class="min-w-0 flex-1">
 													<div class="mb-1 truncate text-xs text-muted-foreground">Twitter</div>
 													<div class="h-2.5 w-full rounded-full bg-muted">
-														<div class="h-2.5 rounded-full bg-primary" style="width: 34%;"></div>
+														<div class="h-2.5 rounded-full bg-primary" style={bar34}></div>
 													</div>
 												</div>
 												<div class="ps-2 text-xs font-medium tabular-nums">174</div>
@@ -264,7 +273,7 @@ export default function Dashboard({ http }: PageProps) @{
 												<div class="min-w-0 flex-1">
 													<div class="mb-1 truncate text-xs text-muted-foreground">Blog</div>
 													<div class="h-2.5 w-full rounded-full bg-muted">
-														<div class="h-2.5 rounded-full bg-primary" style="width: 20%;"></div>
+														<div class="h-2.5 rounded-full bg-primary" style={bar20}></div>
 													</div>
 												</div>
 												<div class="ps-2 text-xs font-medium tabular-nums">104</div>
@@ -283,7 +292,7 @@ export default function Dashboard({ http }: PageProps) @{
 												<div class="min-w-0 flex-1">
 													<div class="mb-1 truncate text-xs text-muted-foreground">Desktop</div>
 													<div class="h-2.5 w-full rounded-full bg-muted">
-														<div class="h-2.5 rounded-full bg-muted-foreground" style="width: 100%;"></div>
+														<div class="h-2.5 rounded-full bg-muted-foreground" style={bar100}></div>
 													</div>
 												</div>
 												<div class="ps-2 text-xs font-medium tabular-nums">74%</div>
@@ -292,7 +301,7 @@ export default function Dashboard({ http }: PageProps) @{
 												<div class="min-w-0 flex-1">
 													<div class="mb-1 truncate text-xs text-muted-foreground">Mobile</div>
 													<div class="h-2.5 w-full rounded-full bg-muted">
-														<div class="h-2.5 rounded-full bg-muted-foreground" style="width: 30%;"></div>
+														<div class="h-2.5 rounded-full bg-muted-foreground" style={bar30}></div>
 													</div>
 												</div>
 												<div class="ps-2 text-xs font-medium tabular-nums">22%</div>
@@ -301,7 +310,7 @@ export default function Dashboard({ http }: PageProps) @{
 												<div class="min-w-0 flex-1">
 													<div class="mb-1 truncate text-xs text-muted-foreground">Tablet</div>
 													<div class="h-2.5 w-full rounded-full bg-muted">
-														<div class="h-2.5 rounded-full bg-muted-foreground" style="width: 5%;"></div>
+														<div class="h-2.5 rounded-full bg-muted-foreground" style={bar5}></div>
 													</div>
 												</div>
 												<div class="ps-2 text-xs font-medium tabular-nums">4%</div>
@@ -311,9 +320,9 @@ export default function Dashboard({ http }: PageProps) @{
 								</div>
 							</div>
 						</div>
-				</tabs.content>
+				</TabPanel>
 			</tabs.root>
-			<script src="/parity/recharts.js"></script>
 		</main>
+		<script src="/parity/recharts.js"></script>
 	</Shell>
 }

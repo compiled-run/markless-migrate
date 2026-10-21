@@ -1,77 +1,60 @@
 import { IMMUTABLE, NEVER_SHARED, NEVER_STORED } from './headers.ts';
 import type { RouteCaching } from './classify.ts';
 
-/** The query key a fragment request is rewritten with, so the CDN keeps it apart from the page's document. */
-export const FRAGMENT_QUERY = '__markless_fragment';
-
 export interface NitroRule {
 	prerender?: boolean;
-	isr?: boolean | number | { expiration: number | false; allowQuery?: string[] };
+	isr?: boolean | number | { expiration: number | false; allowQuery?: string[]; passQuery?: boolean };
 	headers?: Record<string, string>;
-}
-
-export interface VercelRoute {
-	src: string;
-	dest?: string;
-	has?: { type: 'header'; key: string; value?: string }[];
-	headers?: Record<string, string>;
-	continue?: boolean;
 }
 
 export interface CacheRules {
 	readonly routeRules: Record<string, NitroRule>;
-	/** Routes placed before Nitro's own in the Vercel build output, with the path each serves. */
-	readonly vercelRoutes: { readonly path: string; readonly route: VercelRoute }[];
 }
 
 export interface RulesOptions {
-	/** The request header a Markless fragment fetch carries, read from the app's @markless/router. Absent: no fragment navigation. */
+	/** The request header a Markless fragment fetch carries (@markless/router up to 0.5), read from the app's router. Absent: no header-marked fragments. */
 	readonly fragmentHeader?: string;
-	/** The path prefix a Markless fragment fetch goes to (`/_markless/fragment`): each page's fragment is its own URL, cached as the page is. */
+	/** The path prefix a Markless fragment fetch goes to (`/_markless/fragment`, 0.7 on): each page's fragment is its own URL, cached as the page is. */
 	readonly fragmentPath?: string;
+	/** The app's Nitro hands an ISR function its allowed query keys (`passQuery`), so a page that reads the query can stay on ISR. */
+	readonly passQuery?: boolean;
 	/** Same-origin content-hashed files outside the build directories Markless and Nitro already mark immutable. */
 	readonly hashedAssets?: readonly string[];
-	/** Write static pages to files at build time as well as keeping an ISR function for their fragment requests. */
+	/** Write static pages to files at build time as well as keeping an ISR function for them. */
 	readonly prerender?: boolean;
 }
 
-/** Nitro's Vercel preset names an ISR function after the route: `/docs/` is `docs/-isr`, `/` is `index-isr`. Concrete paths only. */
-export function isrFunction(path: string): string {
-	const dest = path.split('/').slice(1).map((s) => s.replace(/[^a-zA-Z0-9_.[\]/]/g, '-')).join('/') || 'index';
-	return `/${dest}-isr`;
-}
-
-const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-/** CDN caching by Cache-Control: what a page that reads the query gets, since Vercel's ISR hands the page no query (docs/notes/caching.md). */
-export const cdnCacheControl = (revalidate: number) => `public, max-age=0, s-maxage=${revalidate}, stale-while-revalidate=${revalidate * 10}`;
+/** CDN caching by Cache-Control: the CDN keys on the whole URL and honours Vary. `false`: kept until the next deploy, which starts a new cache. */
+export const cdnCacheControl = (revalidate: number | false) => (revalidate === false ? 'public, max-age=0, s-maxage=31536000' : `public, max-age=0, s-maxage=${revalidate}, stale-while-revalidate=${revalidate * 10}`);
 
 /**
- * Each route's caching as Nitro routeRules, and the Vercel routes that keep fragment requests in an ISR entry of their own.
- * Vercel's ISR cache ignores Vary, so a fragment and a document of one URL share an entry unless their keys differ.
+ * Each route's caching as Nitro routeRules. Vercel's ISR cache keeps one entry per URL and ignores Vary, so a page whose
+ * fragments differ from its document only by a request header is cached by the CDN (which honours the router's Vary) instead.
  */
 export function cacheRules(routes: readonly RouteCaching[], options: RulesOptions = {}): CacheRules {
 	const routeRules: Record<string, NitroRule> = {};
-	const vercelRoutes: { path: string; route: VercelRoute }[] = [];
-	const fragment = options.fragmentHeader;
+	const headerOnly = Boolean(options.fragmentHeader && !options.fragmentPath);
 	for (const r of routes) {
 		if (r.status !== 200 || /[:*]/.test(r.route)) continue;
 		const path = r.route.split(/[?#]/)[0]!;
+		const fragment = options.fragmentPath && r.html ? `${options.fragmentPath}${path}` : undefined;
+		const set = (rule: NitroRule) => {
+			routeRules[path] = rule;
+			if (fragment) routeRules[fragment] = structuredClone(rule);
+		};
 		if (r.class === 'no-cache') {
-			routeRules[path] = { isr: false, headers: { 'cache-control': r.sensitive ? NEVER_STORED : NEVER_SHARED } };
+			set({ isr: false, headers: { 'cache-control': r.sensitive ? NEVER_STORED : NEVER_SHARED } });
 			continue;
 		}
-		if (r.allowQuery?.length) {
-			// The CDN keys on the whole URL and honours Vary, and the page sees its query.
-			routeRules[path] = { isr: false, headers: { 'cache-control': cdnCacheControl(r.revalidate ?? 60) } };
-			continue;
-		}
-		const split = Boolean(fragment && r.html);
 		const expiration = r.class === 'isr' ? (r.revalidate ?? 60) : false;
-		routeRules[path] = { ...(r.class === 'prerender' && options.prerender && r.html ? { prerender: true } : {}), isr: { expiration, allowQuery: split ? [FRAGMENT_QUERY] : [] } };
-		if (options.fragmentPath && r.html) routeRules[`${options.fragmentPath}${path}`] = { isr: { expiration, allowQuery: [] } };
-		if (split) vercelRoutes.push({ path, route: { src: `(?<__isr_route>${escapeRegex(path)})`, has: [{ type: 'header', key: fragment!, value: '1' }], dest: `${isrFunction(path)}?__isr_route=$__isr_route&${FRAGMENT_QUERY}=1` } });
+		const keys = r.allowQuery ?? [];
+		if ((headerOnly && r.html) || (keys.length && !options.passQuery)) {
+			set({ isr: false, headers: { 'cache-control': cdnCacheControl(expiration) } });
+			continue;
+		}
+		routeRules[path] = { ...(r.class === 'prerender' && options.prerender && r.html && !keys.length ? { prerender: true } : {}), isr: { expiration, allowQuery: [...keys], ...(keys.length ? { passQuery: true } : {}) } };
+		if (fragment) routeRules[fragment] = { isr: { expiration, allowQuery: [...keys], ...(keys.length ? { passQuery: true } : {}) } };
 	}
 	for (const asset of options.hashedAssets ?? []) routeRules[asset] = { headers: { 'cache-control': IMMUTABLE } };
-	return { routeRules, vercelRoutes };
+	return { routeRules };
 }
