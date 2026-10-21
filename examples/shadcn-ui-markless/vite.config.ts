@@ -10,6 +10,7 @@ export default defineConfig({
 		// The old app's redirects, rewrites and route handlers answer before the pages.
 		handlers: [{ middleware: true, handler: fileURLToPath(new URL('./server/routing.ts', import.meta.url)) }],
 		serverAssets: [{ baseName: 'built', dir: fileURLToPath(new URL('./server/built', import.meta.url)) }],
+		traceDeps: ["@vercel/analytics","@vercel/blob","@vercel/og","cn","dedent","fumadocs-core","shadcn","ts-morph","zod"],
 	},
 	plugins: [migrateCache(), markless(), router()],
 });

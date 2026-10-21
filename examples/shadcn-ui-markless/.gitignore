@@ -18,4 +18,4 @@ head.ts
 heads.ts
 .migrate/
 .vercel/
-.markless-local/
+.output-checked/

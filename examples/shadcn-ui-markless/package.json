@@ -12,35 +12,33 @@
 		"test": "vp test"
 	},
 	"dependencies": {
-		"@markless/core": "file:./.markless-local/markless-core-0.7.0.tgz",
-		"@markless/router": "file:./.markless-local/markless-router-0.7.0.tgz",
-		"nitro": "3.0.260429-beta",
-		"vite-plus": "0.3.1",
+		"@markless/core": "0.8.0",
+		"@markless/router": "0.8.0",
+		"nitro": "3.0.260903-beta",
+		"vite-plus": "1.3.0",
 		"@floating-ui/dom": "1.7.6",
 		"path-to-regexp": "6.3.0",
 		"@vercel/analytics": "^1.4.1",
 		"shadcn": "4.22.1",
 		"zod": "^3.25.76",
 		"dedent": "^1.6.0",
-		"@vercel/blob": "^2.8.0"
+		"@vercel/blob": "^2.8.0",
+		"fumadocs-core": "16.10.5",
+		"ts-morph": "26.0.0",
+		"cn": "^0.2.2",
+		"@vercel/og": "0.11.1"
 	},
 	"devDependencies": {
-		"@markless/analyzer": "file:./.markless-local/markless-analyzer-0.7.0.tgz",
-		"@markless/typescript-plugin": "file:./.markless-local/markless-typescript-plugin-0.7.0.tgz",
+		"@markless/analyzer": "0.8.0",
+		"@markless/typescript-plugin": "0.8.0",
 		"typescript": "^5.9.3",
-		"vite": "npm:@voidzero-dev/vite-plus-core@0.3.1"
+		"vite": "npm:@voidzero-dev/vite-plus-core@1.3.0"
 	},
 	"overrides": {
 		"vite": "$vite",
-		"@markless/analyzer": "file:./.markless-local/markless-analyzer-0.7.0.tgz",
-		"@markless/bundler": "file:./.markless-local/markless-bundler-0.7.0.tgz",
-		"@markless/compiler": "file:./.markless-local/markless-compiler-0.7.0.tgz",
-		"@markless/core": "file:./.markless-local/markless-core-0.7.0.tgz",
-		"@markless/router": "file:./.markless-local/markless-router-0.7.0.tgz",
-		"@markless/runtime": "file:./.markless-local/markless-runtime-0.7.0.tgz",
-		"@markless/serializer": "file:./.markless-local/markless-serializer-0.7.0.tgz",
-		"@markless/typescript-plugin": "file:./.markless-local/markless-typescript-plugin-0.7.0.tgz",
-		"@markless/web": "file:./.markless-local/markless-web-0.7.0.tgz"
+		"fumadocs-core": {
+			"zod": "$zod"
+		}
 	},
 	"pnpm": {
 		"peerDependencyRules": {
