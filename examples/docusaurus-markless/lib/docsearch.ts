@@ -7,7 +7,6 @@ import type { AutocompleteApi, AutocompleteSource, AutocompleteState } from '@al
 import { liteClient } from 'algoliasearch-docsearch/lite';
 import docsVersions from './docs-versions.json';
 import translations from './search-translations.json';
-import { docsVersionCandidates } from './site.ts';
 import type * as AskAiModule from './docsearch-ask-ai.ts';
 
 const APP_ID = 'X1Z85QJPUV';
@@ -211,6 +210,11 @@ const snippet = (className: string, hit: Hit, attribute: string): string => `<sp
 
 function meta(name: string): string | undefined {
 	return document.querySelector(`meta[name="${name}"]`)?.getAttribute('content') ?? undefined;
+}
+// This module loads on its own (lazy.config.ts), so the page's version state comes from site.ts.
+let docsVersionCandidates: (plugin: string) => readonly { name: string }[] = () => [];
+export function useVersionCandidates(candidates: typeof docsVersionCandidates): void {
+	docsVersionCandidates = candidates;
 }
 // Docusaurus's contextual search: the site's language and the default tag plus, per docs plugin, its active,
 // preferred or latest version.

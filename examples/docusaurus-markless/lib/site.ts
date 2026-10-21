@@ -4,6 +4,7 @@ import classes from './theme-classes.json';
 import prismThemes from './prism-themes.json';
 import docsVersions from './docs-versions.json';
 import sidebarData from './sidebars.json';
+import routeAliases from './route-aliases.json';
 import { initShowcase } from './showcase.ts';
 import { initPlaygrounds } from './playground.ts';
 import { initJsonViews } from './json-view.ts';
@@ -481,7 +482,13 @@ let pointerTarget: EventTarget | null = null;
 // DocSearch's code loads when the pointer, focus or a touch reaches its button, or on Ctrl/Cmd+K and "/", as theme-search-algolia's importDocSearchModalIfNeeded does.
 let docsearch: typeof DocSearchModule | undefined;
 let loadingSearch: Promise<typeof DocSearchModule> | undefined;
-const loadSearch = () => (loadingSearch ??= import('./docsearch.ts').then((m) => (docsearch = m)));
+// Built apart from the app (lazy.config.ts): Markless preloads every module a handler can import on each page the handler is on.
+const DOCSEARCH = '/lazy/docsearch.js';
+const loadSearch = () =>
+	(loadingSearch ??= (import(/* @vite-ignore */ DOCSEARCH) as Promise<typeof DocSearchModule>).then((m) => {
+		m.useVersionCandidates(docsVersionCandidates);
+		return (docsearch = m);
+	}));
 const openSearch = (): void => void (docsearch ? docsearch.open() : loadSearch().then((m) => m.open()));
 const keepSearchHolder = (): void => docsearch?.keepHolder();
 function searchKeyDown(event: KeyboardEvent): void {
@@ -1351,6 +1358,18 @@ function pageInit(): void {
 	});
 }
 
+// The old site's static HTML files are not pages of its app, so a link to one loads the document.
+const plainPages = new Set(Object.entries(routeAliases).flat());
+function loadPlainPage(event: MouseEvent): void {
+	if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+	const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+	if (!(link instanceof HTMLAnchorElement) || (link.target && link.target !== '_self') || link.hasAttribute('download')) return;
+	const url = new URL(link.href);
+	if (url.origin !== location.origin || !plainPages.has(url.pathname)) return;
+	event.preventDefault();
+	location.assign(url.href);
+}
+
 export function siteBoot(): void {
 	if (booted) return;
 	booted = true;
@@ -1361,6 +1380,7 @@ export function siteBoot(): void {
 		if (choice() === null) applyColorMode(null);
 	});
 	document.addEventListener('click', siteClick);
+	window.addEventListener('click', loadPlainPage, true);
 	document.addEventListener('pointerover', (event) => (pointerTarget = event.target), { passive: true });
 	for (const type of ['mouseover', 'focusin', 'touchstart']) document.addEventListener(type, preloadSearch, { passive: true });
 	window.addEventListener('resize', applyWindowSize);
