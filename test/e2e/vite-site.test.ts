@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { after, before, describe, test } from 'node:test';
+import { after, before, describe } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { CONTENT, startCms, type Cms } from '../../fixtures/cms/server.ts';
 import { defaultEnv } from '../../src/check/browser.ts';
@@ -16,7 +16,7 @@ import { discoverEndpoints, redirectTargets, UNKNOWN_PATH } from '../../src/chec
 import { plan } from '../../src/plan/inventory.ts';
 import { routeTargets } from '../../src/plan/routes.ts';
 import { connect, firstText } from '../mcp-client.ts';
-import { buildVite, failuresIn, OTHER_FONT, redByRole, redDimensions, startGuard, startStatic, writeAuth, type App, type Edit, type Mutation } from './harness.ts';
+import { buildVite, failuresIn, OTHER_FONT, redByRole, redDimensions, sharded, startGuard, startStatic, SUITE_CONCURRENCY, writeAuth, type App, type Edit, type Mutation } from './harness.ts';
 import type { Dimension, Report } from '../../src/check/types.ts';
 
 const ROUTES = ['/', '/about/', '/fr/', '/ar/', '/old-about', '/missing', '/feed.xml', '/robots.txt', '/manifest.json', '/sitemap.xml'];
@@ -578,7 +578,8 @@ const AUTH_MUTATIONS: AuthMutation[] = [
 	},
 ];
 
-describe('vite multi-page site', { concurrency: 4 }, () => {
+describe('vite multi-page site', { concurrency: SUITE_CONCURRENCY }, () => {
+	const shard = sharded();
 	let browser: Browser;
 	let cms: Cms;
 	let otherCms: Cms;
@@ -595,7 +596,7 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		browser = await chromium.launch();
 		cms = await startCms();
 		otherCms = await startCms({ walks: { ...CONTENT.walks!, news: CONTENT.walks!.news.map((n) => ({ ...n, title: `${n.title} (staging copy)` })), hours: { today: 'Booking office closed for staff training' } } });
-		const all = [...MUTATIONS, ...AUTH_MUTATIONS];
+		const all = [...MUTATIONS, ...AUTH_MUTATIONS].filter((m) => shard.mutants.has(m.name));
 		const [dist, ...dists] = await Promise.all([buildVite('original'), buildVite('rebuild'), ...all.map((m) => buildVite(m.name, m.edits))]);
 		[old, twin, twinOnOtherCms, walled, walledAssets, walledWrites] = await Promise.all([startStatic(dist!, cms.origin), startStatic(dists[0]!, cms.origin), startStatic(dists[0]!, otherCms.origin), startStatic(dist!, cms.origin, { BOT_WALL: WALL }), startStatic(dist!, cms.origin, { BOT_WALL: WALL, BOT_WALL_SCOPE: 'assets' }), startStatic(dist!, cms.origin, { BOT_WALL: WALL, BOT_WALL_SCOPE: 'writes' })]);
 		const apps = await Promise.all(all.map((_, i) => startStatic(dists[i + 1]!, cms.origin)));
@@ -609,13 +610,13 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		await browser?.close();
 	});
 
-	test('an independent rebuild of the same source is green on every route', async () => {
+	shard.test('an independent rebuild of the same source is green on every route', async () => {
 		const report = await runCheck({ oldOrigin: old.origin, newOrigin: twin.origin, routes: ROUTES, browser });
 		process.stdout.write(`\n${summarize(report)}`);
 		assert.deepEqual(redDimensions(report), [], summarize(report));
 	});
 
-	test('with the browser frozen two OLD loads are identical; unfrozen, the clock and Math.random make them differ', async () => {
+	shard.test('with the browser frozen two OLD loads are identical; unfrozen, the clock and Math.random make them differ', async () => {
 		const [a, b] = await Promise.all([captureRoute(browser, old.origin, '/', VIEWPORTS), captureRoute(browser, old.origin, '/', VIEWPORTS)]);
 		assert.equal(loadsDiffer(a, b), false);
 		assert.ok(a.pages.desktop!.text.some((line) => /^Walker’s tip: \S/.test(line)));
@@ -624,7 +625,7 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		assert.notDeepEqual(c.pages.desktop!.text.find((line) => line.startsWith('Page rendered at')), d.pages.desktop!.text.find((line) => line.startsWith('Page rendered at')));
 	});
 
-	test('the network contract records server-rendered and browser requests, and the fields the page shows', async () => {
+	shard.test('the network contract records server-rendered and browser requests, and the fields the page shows', async () => {
 		const report = await runCheck({ oldOrigin: old.origin, newOrigin: twin.origin, routes: ['/'], browser });
 		const network = report.routes[0]!.network!;
 		assert.deepEqual(network.server, { old: true, new: true });
@@ -634,7 +635,7 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		assert.deepEqual(report.routes[0]!.noise!.noisy, [], 'nothing on this static page varies once the browser is frozen');
 	});
 
-	test('recorded data: record from OLD, replay to both apps, so a NEW app on another CMS sees the same content', async () => {
+	shard.test('recorded data: record from OLD, replay to both apps, so a NEW app on another CMS sees the same content', async () => {
 		const dir = await mkdtemp(join(tmpdir(), 'mm-data-'));
 		const live = await runCheck({ oldOrigin: old.origin, newOrigin: twinOnOtherCms.origin, routes: ['/'], browser });
 		assert.ok(redDimensions(live).includes('rendered'), summarize(live));
@@ -648,7 +649,7 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		assert.deepEqual(otherCms.requests.slice(before), [], 'the other CMS is never asked while replaying');
 	});
 
-	test('writes to an origin that is neither staging nor localhost are held back, compared unsent, and never reach it', async () => {
+	shard.test('writes to an origin that is neither staging nor localhost are held back, compared unsent, and never reach it', async () => {
 		const guardOld = await startGuard(old.origin);
 		const guardNew = await startGuard(mutants.get('form-path')!.origin);
 		const { facts: source } = await loadSourceFacts(join(import.meta.dirname, '../../fixtures/vite-site'));
@@ -669,9 +670,9 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		} finally {
 			await Promise.all([guardOld.stop(), guardNew.stop()]);
 		}
-	});
+	}, ['form-path']);
 
-	test('check --all takes every source route and the robots.txt, sitemap, feed and manifest the old app serves, compared as data', async () => {
+	shard.test('check --all takes every source route and the robots.txt, sitemap, feed and manifest the old app serves, compared as data', async () => {
 		const inventory = await plan({ origin: old.origin, source: SOURCE, browser });
 		const targets = routeTargets(inventory);
 		for (const r of inventory.source!.routes) assert.ok(targets.pages.includes(r.path), `${r.path} is checked`);
@@ -686,7 +687,7 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		assert.deepEqual(redDimensions(report), [], summarize(report));
 	});
 
-	test('plan finds the sitemap and crawled routes and both locales', async () => {
+	shard.test('plan finds the sitemap and crawled routes and both locales', async () => {
 		const inventory = await plan({ origin: old.origin, source: join(import.meta.dirname, '../../fixtures/vite-site'), browser });
 		assert.deepEqual(inventory.routes.map((r) => r.route), ['/', '/about/', '/ar/', '/fr/']);
 		assert.deepEqual(inventory.routes[0]!.foundIn, ['crawl', 'hreflang', 'sitemap']);
@@ -697,7 +698,7 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		assert.equal(inventory.source?.framework, 'vite');
 	});
 
-	test('an agent calling check_route over MCP gets the failure, and status remembers it', async () => {
+	shard.test('an agent calling check_route over MCP gets the failure, and status remembers it', async () => {
 		const cwd = await mkdtemp(join(tmpdir(), 'mm-e2e-'));
 		const client = await connect(cwd);
 		try {
@@ -711,9 +712,9 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		} finally {
 			await client.close();
 		}
-	});
+	}, ['title']);
 
-	test('check --open writes the visual report, boxes the changed heading and opens the page', async () => {
+	shard.test('check --open writes the visual report, boxes the changed heading and opens the page', async () => {
 		const cwd = await realpath(await mkdtemp(join(tmpdir(), 'mm-open-')));
 		const opener = join(cwd, 'opener.sh');
 		await writeFile(opener, '#!/bin/sh\necho "$1" > "$(dirname "$0")/opened.txt"\n', { mode: 0o755 });
@@ -738,9 +739,9 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		} finally {
 			await page.close();
 		}
-	});
+	}, ['heading']);
 
-	test('plan --source writes a starter auth file from the guards, and check --auth with it checks every role green', async () => {
+	shard.test('plan --source writes a starter auth file from the guards, and check --auth with it checks every role green', async () => {
 		const cwd = await realpath(await mkdtemp(join(tmpdir(), 'mm-auth-cli-')));
 		const fixture = join(import.meta.dirname, '../../fixtures/vite-site');
 		const planned = await cli(['plan', '--old', old.origin, '--source', fixture], cwd);
@@ -752,7 +753,7 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		assert.deepEqual(starter.roles.admin.login.at(-1), { wait: '!/login/' });
 		const credentials = { SIGNED_IN_EMAIL: 'sam@lighthouse.example', SIGNED_IN_PASSWORD: 'night-route', ADMIN_EMAIL: 'kit@lighthouse.example', ADMIN_PASSWORD: 'godrevy' };
 		const checked = await cli(['check', '--old', old.origin, '--new', twin.origin, '--route', '/members/', '--route', '/admin/', '--auth', join(cwd, '.migrate', 'auth.json'), '--no-responsiveness'], cwd, credentials);
-		assert.equal(checked.status, 4, 'every route it checked is green; a --route run is partial, never overall green');
+		assert.equal(checked.status, 4, `every route it checked is green; a --route run is partial, never overall green\n${checked.stdout}\n${checked.stderr}`);
 		assert.match(checked.stdout, /As anonymous:\npass +\/members\//);
 		assert.match(checked.stdout, /As signed-in:\n {6}sign-in: same session cookies \(session: Path=\/; host-only; HttpOnly; not Secure; SameSite=Lax; session\)\npass +\/members\//);
 		assert.match(checked.stdout, /6 of 6 route checks \(route and role\) green\.\nPartial run: 2 of \d+ routes checked\./);
@@ -761,7 +762,7 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		assert.match(await readFile(join(cwd, '.migrate', 'auth', 'admin.new.json'), 'utf8'), /"name": "session"/);
 	});
 
-	test('a Cloudflare-style challenge stops the route over the CLI and MCP, and --header or a cookie with the staging pass gets through', async () => {
+	shard.test('a Cloudflare-style challenge stops the route over the CLI and MCP, and --header or a cookie with the staging pass gets through', async () => {
 		const cwd = await realpath(await mkdtemp(join(tmpdir(), 'mm-wall-')));
 		const stopped = await cli(['check', '--old', walled.origin, '--new', twin.origin, '--route', '/about/', '--no-responsiveness'], cwd);
 		assert.equal(stopped.status, 1);
@@ -781,7 +782,7 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		}
 	});
 
-	test('accept turns one failure, by its stable id, into an accepted difference; status shows the reason; an accept nothing matches is stale', async () => {
+	shard.test('accept turns one failure, by its stable id, into an accepted difference; status shows the reason; an accept nothing matches is stale', async () => {
 		const cwd = await realpath(await mkdtemp(join(tmpdir(), 'mm-accept-')));
 		const args = ['check', '--old', old.origin, '--new', mutants.get('title')!.origin, '--route', '/about/', '--no-responsiveness'];
 		const first = await cli(args, cwd);
@@ -804,9 +805,9 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		const stale = await cli(['check', '--old', old.origin, '--new', twin.origin, '--route', '/about/', '--no-responsiveness'], cwd);
 		assert.equal(stale.status, 4, stale.stdout);
 		assert.match(stale.stdout, /Accepted differences that no longer match anything \(remove them from \.migrate\/accepted\.json\):\n +\/about\/ seo: title +\(Marketing renamed the page\)/);
-	});
+	}, ['title']);
 
-	test('a wall that answers only the assets, or only a journey\'s form post, stops the route as blocked instead of turning it red', async () => {
+	shard.test('a wall that answers only the assets, or only a journey\'s form post, stops the route as blocked instead of turning it red', async () => {
 		const assets = await runCheck({ oldOrigin: old.origin, newOrigin: walledAssets.origin, routes: ['/'], browser });
 		assert.deepEqual(assets.routes.map((r) => [r.blocked?.side, r.blocked?.vendor, r.failures.length]), [['new', 'Cloudflare', 0]], summarize(assets));
 		assert.match(summarize(assets), /BLOCKED +\/ +blocked by Cloudflare on NEW \(403, header cf-mitigated: challenge\)/);
@@ -814,29 +815,29 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		assert.deepEqual(writes.routes.map((r) => [r.blocked?.side, r.blocked?.vendor, r.failures.length]), [['old', 'Cloudflare', 0]], summarize(writes));
 	});
 
-	test('plan stops at a bot wall with what to do, and gets through with the bypass header', async () => {
+	shard.test('plan stops at a bot wall with what to do, and gets through with the bypass header', async () => {
 		await assert.rejects(plan({ origin: walled.origin, browser }), /plan was stopped by Cloudflare on \/ \(403, header cf-mitigated: challenge\): plan a staging URL, or pass the bypass/);
 		const through = await plan({ origin: walled.origin, browser, headers: { 'x-staging-pass': WALL } });
 		assert.deepEqual(through.routes.map((r) => r.route), ['/', '/about/', '/ar/', '/fr/']);
 	});
 
 	for (const mutation of AUTH_MUTATIONS) {
-		test(`auth mutation "${mutation.name}" turns ${Object.entries(mutation.red).filter(([, d]) => d.length).map(([role, d]) => `${d.join(' + ')} red as ${role}`).join(', ')} and nothing else`, async () => {
+		shard.test(`auth mutation "${mutation.name}" turns ${Object.entries(mutation.red).filter(([, d]) => d.length).map(([role, d]) => `${d.join(' + ')} red as ${role}`).join(', ')} and nothing else`, async () => {
 			const auth = await writeAuth({ loginRoute: '/login/', member: 'sam@lighthouse.example', admin: 'kit@lighthouse.example', landing: '/members/' });
 			const source = mutation.withSource ? (await loadSourceFacts(SOURCE)).facts : undefined;
 			const report = await runCheck({ oldOrigin: old.origin, newOrigin: mutants.get(mutation.name)!.origin, routes: [mutation.route], browser, auth, ...(source ? { source } : {}) });
 			if (process.env.SHOW_SUMMARY) process.stdout.write(`\n${summarize(report)}`);
 			assert.deepEqual(redByRole(report), mutation.red, summarize(report));
 			mutation.expect(report);
-		});
+		}, [mutation.name]);
 	}
 
 	for (const mutation of MUTATIONS) {
-		test(`mutation "${mutation.name}" ${mutation.red.length ? `turns ${mutation.red.join(' + ')} red and nothing else` : 'stays green'}`, async () => {
+		shard.test(`mutation "${mutation.name}" ${mutation.red.length ? `turns ${mutation.red.join(' + ')} red and nothing else` : 'stays green'}`, async () => {
 			const report = await runCheck({ oldOrigin: old.origin, newOrigin: mutants.get(mutation.name)!.origin, routes: [mutation.route], browser, sourceDirs: { old: SOURCE, new: sources.get(mutation.name)! }, ...mutation.check });
 			if (process.env.SHOW_SUMMARY) process.stdout.write(`\n${summarize(report)}`);
 			assert.deepEqual(redDimensions(report), [...mutation.red].sort(), summarize(report));
 			mutation.expect(report);
-		});
+		}, [mutation.name]);
 	}
 });

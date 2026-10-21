@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+
+  unit:
+    name: Unit tests (${{ matrix.shard }}/3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: node --test --test-shard=${{ matrix.shard }}/3 test/*.test.ts
+
+  e2e:
+    name: E2E ${{ matrix.suite }}${{ matrix.shard && format(' ({0})', matrix.shard) || '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: dev-builds
+          - suite: markless-site
+          - suite: motion
+          - suite: nav-parity
+          - suite: proxy
+          - suite: radix-dialog-port
+          - suite: responsiveness
+          - { suite: next-app, shard: 1/6 }
+          - { suite: next-app, shard: 2/6 }
+          - { suite: next-app, shard: 3/6 }
+          - { suite: next-app, shard: 4/6 }
+          - { suite: next-app, shard: 5/6 }
+          - { suite: next-app, shard: 6/6 }
+          - { suite: vite-site, shard: 1/4 }
+          - { suite: vite-site, shard: 2/4 }
+          - { suite: vite-site, shard: 3/4 }
+          - { suite: vite-site, shard: 4/4 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: node --test test/e2e/${{ matrix.suite }}.test.ts
+        env:
+          E2E_SHARD: ${{ matrix.shard }}
+
+  passed:
+    name: CI passed
+    if: always()
+    needs: [typecheck, unit, e2e]
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && !contains(needs.*.result, 'skipped') }}" = true

@@ -9,3 +9,8 @@ minimumReleaseAgeExclude:
   - '@markless/serializer@0.6.0 || 0.7.0'
   - '@markless/typescript-plugin@0.6.0 || 0.7.0'
   - '@markless/web@0.6.0 || 0.7.0'
+  - yuku-css@0.2.0
+allowBuilds:
+  tree-sitter-php: false
+  tree-sitter-python: false
+  tree-sitter-ruby: false

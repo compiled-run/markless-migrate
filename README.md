@@ -581,13 +581,12 @@ one, and the report between them.
 pnpm install
 pnpm browsers      # once: downloads Chromium for Playwright
 pnpm typecheck
-pnpm test          # unit tests and the three fixture suites, about five minutes
-pnpm test:unit     # unit tests only, a few seconds
+pnpm test          # unit tests and every fixture suite
+pnpm test:unit     # unit tests only (they drive Chromium too)
 pnpm test:e2e      # fixture suites only
 ```
 
-CSS is parsed with [yuku-css](https://github.com/thejackshelton/yuku-css), which is not on npm yet:
-`package.json` links it from a checkout at `../yuku-css` (build it there with `bun run build`).
+CSS is parsed with [yuku-css](https://github.com/thejackshelton/yuku-css), from npm.
 
 `fixtures/` holds a Next.js App Router app and a Vite multi-page site, each with an Arabic (RTL) locale,
 Accept-Language negotiation at `/`, a menu, a counter and a form. The fixture suites build each one,
@@ -616,6 +615,37 @@ members page shown to anonymous visitors, the admin page shown to members, a dif
 target, a session cookie without HttpOnly and with SameSite=Strict), each red only as the role it
 affects, and against a copy behind a Cloudflare-style challenge, which must stop as blocked until the
 staging pass is sent as a header or cookie.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push to `main` and on every pull request:
+
+- `Typecheck`: `pnpm typecheck`.
+- `Unit tests (1/3)` to `(3/3)`: `test/*.test.ts` split in three with `node --test --test-shard`, since
+  the unit tests drive Chromium.
+- `E2E <suite>`: one job per file in `test/e2e/`, each building its own fixtures. The two largest
+  suites are split across runners with `E2E_SHARD=i/n` (six for `next-app`, four for `vite-site`): a
+  shard registers every n-th test and builds only the mutants its tests use. Without `E2E_SHARD`
+  every test runs, as `pnpm test:e2e` does locally.
+- `CI passed`: green only when every job above passed. This is the one check to require.
+
+A fixture suite runs a quarter of the machine's cores' tests at once (one on a 4-vCPU runner), since
+each check already drives several Chromium pages. A whole run takes about 9 minutes, bounded by the
+slowest unit test shard and `next-app` shard (about 8 to 9 minutes each).
+
+Every suite runs against servers the tests start on `127.0.0.1`, and fixture data uses `.example`
+hosts. The unit tests and every fixture suite pass with outbound network denied except loopback, so
+no test needs a live external site and nothing is skipped in CI.
+
+### Branch protection
+
+The workflow does not change repository settings. To make a red `main` impossible, enable under
+Settings, Branches, a branch protection rule (or a ruleset) for `main` with:
+
+- Require a pull request before merging.
+- Require status checks to pass before merging, with `CI passed` as the required check.
+- Require branches to be up to date before merging.
+- Do not allow bypassing the above settings.
 
 ## License
 

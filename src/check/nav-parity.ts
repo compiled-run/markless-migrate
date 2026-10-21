@@ -506,10 +506,12 @@ async function findToggle(browser: Browser, env: SideEnv, viewport: Viewport, ro
 // Markless's router asks for the next page at a router-owned path (0.6) or with this header (0.5).
 const routerFetch = (url: URL, headers: Record<string, string>) => url.pathname.startsWith('/_markless/fragment/') || 'x-markless-fragment' in headers;
 
-/** Clicks a link to `to` on the page (one the visitor can see, else one the checker adds) and reports whether the document stayed, and whether the page's own code (not the router) fetched and swapped it. */
-async function follow(tab: Tab, to: string, origin: string): Promise<{ inPlace: boolean; injected: boolean; byPage: boolean; frames?: ThemeRecording }> {
+/** Clicks a link to `to` on the page (one the visitor can see, else one the checker adds) and reports whether the document stayed, and whether the page's own code (not the router) fetched and swapped it. It ends on `to` or where a fresh load of `to` ends (a login guard's redirect). */
+async function follow(tab: Tab, to: string, origin: string, landing: string): Promise<{ inPlace: boolean; injected: boolean; byPage: boolean; frames?: ThemeRecording }> {
 	const target = new URL(to, origin).href;
 	const page = tab.page;
+	const lands = new URL(landing, origin).href;
+	const ends = samePage(lands, page.url()) ? [target] : [target, lands];
 	await page.evaluate(() => ((window as unknown as { __mmNavToken?: number }).__mmNavToken = 1));
 	const found = await page.evaluate((target) => {
 		const t = new URL(target);
@@ -542,7 +544,7 @@ async function follow(tab: Tab, to: string, origin: string): Promise<{ inPlace: 
 	await armThemeFrames(page);
 	try {
 		await page.locator('a[href]').nth(found).click({ timeout: STEP_MS });
-		await page.waitForURL((u) => samePage(u.href, target), { timeout: STEP_MS, waitUntil: 'commit' });
+		await page.waitForURL((u) => ends.some((end) => samePage(u.href, end)), { timeout: STEP_MS, waitUntil: 'commit' });
 		await settled(tab);
 	} finally {
 		page.off('request', watch);
@@ -680,10 +682,10 @@ function side(browser: Browser, env: SideEnv, viewport: Viewport, opened: () => 
 				const how = `in place from ${job.from}${control ? ` after ${control.label}` : ''}`;
 				const entryRoute = (await snap(tab.page)).route;
 				tab.phase = 1;
-				const { inPlace, injected, byPage, frames } = await follow(tab, job.to, env.origin);
+				const atTo = destination ?? (await fresh(job.to, state, false));
+				const { inPlace, injected, byPage, frames } = await follow(tab, job.to, env.origin, atTo.snap.url);
 				const pair = { ...base, ...(control ? { control: control.label } : {}), inPlace, ...(injected || job.injected ? { injected: true } : {}) };
 				if (!inPlace) return { pair: { ...pair, failures: 0 }, failures: [], shots: [] };
-				const atTo = destination ?? (await fresh(job.to, state, false));
 				const reached = await snap(tab.page);
 				if (byPage || (entryRoute && reached.route === entryRoute && atTo.snap.route !== entryRoute)) return { pair: { ...pair, swappedByPage: true, failures: 0 }, failures: [], shots: [] };
 				const errorsAt = (n: number) => tab.errors.filter((e) => e.phase === n).map((e) => e.text);
@@ -744,10 +746,11 @@ function side(browser: Browser, env: SideEnv, viewport: Viewport, opened: () => 
 	}
 	/** The plain navigation again under a dark system theme, for what its frames show: a lost theme class flashes most there. */
 	async function darkSwap(job: Job): Promise<Failure[]> {
+		const landing = (await fresh(job.to, undefined, true).catch(() => undefined))?.snap.url ?? job.to;
 		opened();
 		const tab = await openTab(browser, { ...env, colorScheme: 'dark' }, viewport, job.from);
 		try {
-			const { inPlace, injected, frames } = await follow(tab, job.to, env.origin);
+			const { inPlace, injected, frames } = await follow(tab, job.to, env.origin, landing);
 			const how = `in place from ${job.from} with a dark system theme`;
 			return inPlace ? flashFailures(job.to, injected ? `${how} (through a link the checker added: no page links here)` : how, frames) : [];
 		} catch {
