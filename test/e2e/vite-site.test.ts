@@ -752,7 +752,7 @@ describe('vite multi-page site', { concurrency: 4 }, () => {
 		assert.deepEqual(starter.roles.admin.login.at(-1), { wait: '!/login/' });
 		const credentials = { SIGNED_IN_EMAIL: 'sam@lighthouse.example', SIGNED_IN_PASSWORD: 'night-route', ADMIN_EMAIL: 'kit@lighthouse.example', ADMIN_PASSWORD: 'godrevy' };
 		const checked = await cli(['check', '--old', old.origin, '--new', twin.origin, '--route', '/members/', '--route', '/admin/', '--auth', join(cwd, '.migrate', 'auth.json'), '--no-responsiveness'], cwd, credentials);
-		assert.equal(checked.status, 4, 'every route it checked is green; a --route run is partial, never overall green');
+		assert.equal(checked.status, 4, `every route it checked is green; a --route run is partial, never overall green\n${checked.stdout}\n${checked.stderr}`);
 		assert.match(checked.stdout, /As anonymous:\npass +\/members\//);
 		assert.match(checked.stdout, /As signed-in:\n {6}sign-in: same session cookies \(session: Path=\/; host-only; HttpOnly; not Secure; SameSite=Lax; session\)\npass +\/members\//);
 		assert.match(checked.stdout, /6 of 6 route checks \(route and role\) green\.\nPartial run: 2 of \d+ routes checked\./);
