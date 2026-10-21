@@ -45,7 +45,8 @@ export interface Options {
 
 // Vite's import.meta.glob transform reads .tsrx sources before Markless compiles them, so the phrase never appears verbatim.
 const lit = (text: string) => JSON.stringify(text).replace(/import\.meta/g, 'import\\u002emeta');
-const escapeText = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\{/g, '&#123;').replace(/\}/g, '&#125;').replace(/@/g, '&#64;');
+// TSRX reads `//` and `/*` in template text as comments.
+const escapeText = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\{/g, '&#123;').replace(/\}/g, '&#125;').replace(/@/g, '&#64;').replace(/\/(?=[/*])/g, '&#47;');
 const collapse = (t: string) => t.replace(/[ \t\n\r\f]+/g, ' ');
 const textOut = (t: string) => (/[\n\t\r\f\u00a0\u200b]| {2}|^ | $|import\.meta/.test(t) || !t.replace(/[ \t\n\r\f]/g, '') ? `{${lit(t)}}` : escapeText(t));
 
