@@ -702,7 +702,7 @@ describe('vite multi-page site', { concurrency: SUITE_CONCURRENCY }, () => {
 		const cwd = await mkdtemp(join(tmpdir(), 'mm-e2e-'));
 		const client = await connect(cwd);
 		try {
-			const result = await client.callTool({ name: 'check_route', arguments: { old: old.origin, new: mutants.get('title')!.origin, route: '/about/', responsiveness: false } });
+			const result = await client.callTool({ name: 'check_route', arguments: { old: old.origin, new: mutants.get('title')!.origin, route: '/about/', responsiveness: false, load: false } });
 			const structured = result.structuredContent as { ok: boolean; failures: { check: string; actual: string }[] };
 			assert.equal(structured.ok, false);
 			assert.deepEqual(structured.failures.map((f) => [f.check, f.actual]), [['title', '"About us | Lighthouse Walks"']]);
@@ -772,10 +772,10 @@ describe('vite multi-page site', { concurrency: SUITE_CONCURRENCY }, () => {
 		assert.equal(passed.status, 4, passed.stdout);
 		const client = await connect(cwd);
 		try {
-			const blocked = await client.callTool({ name: 'check_route', arguments: { old: twin.origin, new: walled.origin, route: '/', responsiveness: false } });
+			const blocked = await client.callTool({ name: 'check_route', arguments: { old: twin.origin, new: walled.origin, route: '/', responsiveness: false, load: false } });
 			assert.deepEqual((blocked.structuredContent as { blocked: { message: string }[] }).blocked.map((b) => b.message.split(':')[0]), ['blocked by Cloudflare on NEW (403, header cf-mitigated']);
 			assert.match(firstText(await client.callTool({ name: 'status', arguments: {} })), /blocked +\//);
-			const through = await client.callTool({ name: 'check_route', arguments: { old: twin.origin, new: walled.origin, route: '/', cookie: [`staging_pass=${WALL}`], responsiveness: false } });
+			const through = await client.callTool({ name: 'check_route', arguments: { old: twin.origin, new: walled.origin, route: '/', cookie: [`staging_pass=${WALL}`], responsiveness: false, load: false } });
 			assert.equal((through.structuredContent as { ok: boolean }).ok, true, firstText(through));
 		} finally {
 			await client.close();

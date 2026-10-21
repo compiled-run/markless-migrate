@@ -311,6 +311,11 @@ export function undecided(oldRuns: readonly LoadRun[], newRuns: readonly LoadRun
 	return o.length > 0 && n.length > 0 && judgeLoad(o, n).some((v) => v.worse > v.floor && v.p >= SIGNIFICANCE);
 }
 
+/** A route whose load was not measured, with why; never red. */
+export function unmeasured(reason: string): RouteLoad {
+	return { runs: 0, old: { runs: [] }, new: { runs: [] }, verdicts: [], ok: true, skipped: reason };
+}
+
 export function routeLoad(runs: number, oldRuns: readonly LoadRun[], newRuns: readonly LoadRun[]): RouteLoad {
 	const old = side(oldRuns);
 	const next = side(newRuns);

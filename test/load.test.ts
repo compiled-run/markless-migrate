@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { blockedPatterns, judgeLoad, loadFailures, loadLine, mannWhitneyGreater, measureLoad, readRun, routeLoad, type LoadRun, type Metrics } from '../src/check/load.ts';
+import { blockedPatterns, judgeLoad, loadFailures, loadLine, mannWhitneyGreater, measureLoad, readRun, routeLoad, unmeasured, type LoadRun, type Metrics } from '../src/check/load.ts';
 
 const runs = (lcps: readonly number[], over: Partial<Metrics> = {}): Metrics[] => lcps.map((lcp) => ({ score: 80, fcp: 1800, lcp, si: 1900, tbt: 50, cls: 0.001, ...over }));
 const verdict = (old: Metrics[], next: Metrics[], metric: keyof Metrics) => judgeLoad(old, next).find((v) => v.metric === metric)!;
@@ -96,9 +96,12 @@ test('a new page Lighthouse never finishes is red; an old one it never finishes 
 	const broken = routeLoad(4, [typical, typical, typical, typical], [failed, failed, failed, failed]);
 	assert.equal(broken.ok, false);
 	assert.match(loadFailures('/', broken)[0]!.actual, /no Lighthouse run of the new page finished \(NO_FCP/);
-	const unmeasured = routeLoad(4, [failed, failed, failed, failed], [typical, typical, typical, typical]);
-	assert.equal(unmeasured.ok, true);
-	assert.deepEqual(loadFailures('/', unmeasured), []);
+	const noOld = routeLoad(4, [failed, failed, failed, failed], [typical, typical, typical, typical]);
+	assert.equal(noOld.ok, true);
+	assert.deepEqual(loadFailures('/', noOld), []);
+	const skipped = unmeasured('not measured: --header and --cookie are for the apps alone');
+	assert.deepEqual(loadFailures('/', skipped), []);
+	assert.match(loadLine(skipped), /^page load \(Lighthouse, mobile\): not compared, not measured: --header/);
 });
 
 test('runs alternate which side goes first, so a machine that slows down part way falls on both', async () => {

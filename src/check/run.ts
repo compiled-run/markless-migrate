@@ -23,7 +23,7 @@ import { storageOwner, unreachableCandidate, type StorageOwner } from './automat
 import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
 import { checkMotion, motionRules, type MotionOptions } from './motion.ts';
 import { applyNavigation, checkNavigation, type NavigationOptions, type NavigationResult } from './nav-parity.ts';
-import { loadFailures, measureLoad, type LoadOptions } from './load.ts';
+import { loadFailures, measureLoad, unmeasured, type LoadOptions } from './load.ts';
 import { assetsToProbe, compareRoute, cssTargets, forgetFailures, httpFailures, noiseReport, noisyStyles, withFailures, type Probe } from './compare.ts';
 import { matchElements } from './match.ts';
 import { contractLines } from './network.ts';
@@ -647,7 +647,10 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 		if (options.load || options.only === 'load') {
 			const anonymous = (r: RouteResult) => !r.role || r.role === ANONYMOUS;
 			const loadable = routes.filter((r) => anonymous(r) && !r.endpoint && !r.blocked && !r.infrastructure && !r.notPorted && !light(r.route) && allPages.includes(r.route));
-			const loads = await measureLoad({ old: options.oldOrigin, new: options.newOrigin }, [...new Set(loadable.map((r) => r.route))], { ...(options.block ? { block: options.block } : {}), ...options.load });
+			// Lighthouse can only send extra headers to every host it loads, so a bypass token is never handed to it.
+			const bypassed = Boolean(options.headers && Object.keys(options.headers).length) || Boolean(options.cookies?.length);
+			const routesToLoad = [...new Set(loadable.map((r) => r.route))];
+			const loads = bypassed ? new Map(routesToLoad.map((route) => [route, unmeasured('not measured: --header and --cookie are for the apps alone, and Lighthouse would send them to every host it loads')])) : await measureLoad({ old: options.oldOrigin, new: options.newOrigin }, routesToLoad, { ...(options.block ? { block: options.block } : {}), ...options.load });
 			routes.forEach((r, i) => {
 				const load = anonymous(r) ? loads.get(r.route) : undefined;
 				if (!load) return;
