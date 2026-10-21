@@ -60,7 +60,17 @@ function legacyCopy(value: string): boolean {
 	return ok;
 }
 
-async function copy(value: string): Promise<boolean> {
+async function copy(value: string | Promise<string>): Promise<boolean> {
+	// Text still loading is written as a ClipboardItem of its promise, which keeps the click's user activation.
+	if (typeof value !== 'string') {
+		if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+			try {
+				await navigator.clipboard.write([new ClipboardItem({ 'text/plain': value.then((t) => new Blob([t], { type: 'text/plain' })) })]);
+				return true;
+			} catch {}
+		}
+		value = await value;
+	}
 	if (!value) return false;
 	if (navigator.clipboard?.writeText) {
 		try {

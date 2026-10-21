@@ -3,7 +3,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { chromium } from 'playwright';
 import { copyAssets, copyStaticDir, resourcePaths } from './assets.ts';
-import { captureAll, type CapturedPage } from './capture.ts';
+import { captureAll, type CapturedPage, type CapturedRef } from './capture.ts';
 import { captureAllReveals, type Reveal } from './reveal.ts';
 import { captureChoices, type Choice } from './choices.ts';
 import { parseFragment } from 'parse5';
@@ -313,7 +313,9 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const layers = currentLayers;
 	const clipboard = currentClipboard;
 	cleanDocument(doc, ctx, dropped);
-	const served = parseDocument(capture.server);
+	// Only the served <html> element's attributes are read: what precedes <head> is parsed, not the whole document.
+	const headAt = capture.server.search(/<head[\s>]/i);
+	const served = parseDocument(headAt > 0 ? capture.server.slice(0, headAt) : capture.server);
 	cleanDocument(served, ctx, new Map());
 	extractStyles(head(doc), styles);
 	extractStyles(body(doc), styles);
@@ -382,7 +384,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const htmlRoutes = inventory.routes.filter((r) => r.status === 200 && (r.contentType ?? 'text/html').includes('html')).map((r) => r.route);
 	const routes = options.only?.length ? htmlRoutes.filter((r) => options.only!.includes(r)) : htmlRoutes;
 	const browser = await chromium.launch();
-	let captures: CapturedPage[];
+	let captures: CapturedRef[];
 	const revealed = new Map<string, readonly Reveal[]>();
 	const choices: Record<string, Record<string, Choice>> = {};
 	try {
@@ -412,15 +414,13 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const styles = new Map<string, string>();
 	const unconverted: { route: string; reason: string }[] = [];
 	const prepared = new Map<string, Prepared>();
-	// Each capture (the served HTML and the settled documents, a few MB) is let go once its page is parsed.
-	for (let i = 0; i < captures.length; i++) {
-		const capture = captures[i]!;
-		captures[i] = undefined as unknown as CapturedPage;
-		if (capture.status !== 200) {
-			unconverted.push({ route: capture.route, reason: `the old site answered ${capture.status} while capturing` });
+	// Each capture (the served HTML and the settled documents, a few MB) is read from the cache only while its page is parsed.
+	for (const ref of captures) {
+		if (ref.status !== 200) {
+			unconverted.push({ route: ref.route, reason: `the old site answered ${ref.status} while capturing` });
 			continue;
 		}
-		prepared.set(capture.route, prepare(capture, revealed.get(capture.route) ?? [], options.old, dropped, styles));
+		prepared.set(ref.route, prepare(await ref.load(), revealed.get(ref.route) ?? [], options.old, dropped, styles));
 	}
 
 	const bodyParts = splitBody(new Map([...prepared].map(([route, p]) => [route, { route, before: p.before, after: p.after, htmlAttrs: p.htmlAttrs, bodyAttrs: p.bodyAttrs, head: p.head }])));
@@ -532,7 +532,11 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	log(`layers: ${extras.layers.length} distinct, each compiled once`);
 	const clipboard = Object.fromEntries([...prepared].filter(([, p]) => Object.keys(p.clipboard).length).map(([route, p]) => [pathOf(route), p.clipboard]));
 	await mkdir(join(app, 'lib', 'parts'), { recursive: true });
-	await writeFile(join(app, 'lib', 'parts', 'clipboard.ts'), `${GENERATED}\n// What each copy control wrote on the old page, by page path and the control's tag, slot, text and occurrence.\nexport const CLIPBOARD: Readonly<Record<string, Readonly<Record<string, string>>>> = ${JSON.stringify(clipboard)};\n`);
+	// One module per page, loaded on use: the copied text of every page is megabytes no page needs at once.
+	await mkdir(join(app, 'lib', 'parts', 'clipboard'), { recursive: true });
+	const loaders = Object.entries(clipboard).map(([path, texts], n) => ({ path, n, source: `${GENERATED}\nexport default ${JSON.stringify(texts)} as Readonly<Record<string, string>>;\n` }));
+	for (const l of loaders) await writeFile(join(app, 'lib', 'parts', 'clipboard', `${l.n}.ts`), l.source);
+	await writeFile(join(app, 'lib', 'parts', 'clipboard.ts'), `${GENERATED}\n// What each copy control wrote on the old page, by page path, keyed by the control's tag, slot, text and occurrence.\nexport const CLIPBOARD: Readonly<Record<string, { readonly keys: readonly string[]; readonly load: () => Promise<{ default: Readonly<Record<string, string>> }> }>> = {\n${loaders.map((l) => `\t${JSON.stringify(l.path)}: { keys: ${JSON.stringify(Object.keys(clipboard[l.path]!))}, load: () => import('./clipboard/${l.n}.ts') },`).join('\n')}\n};\n`);
 	if (unplaced.length) log(`${unplaced.length} revealed contents not placed (no Markless state drives them yet): ${unplaced.slice(0, 3).join('; ')}`);
 	await writeFile(join(app, 'heads.ts'), headModule(prepared));
 	const publicDir = join(app, 'public');
@@ -571,8 +575,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const routing = await writeRouting({ app, source: options.source, old: options.old, ...(options.fallthrough ? { fallthrough: options.fallthrough } : {}), pages: [...new Set(out.map((r) => new URL(r.route, options.old).pathname))], endpoints: handlerRoutes, redirects: scanned.redirects ?? [], builtPaths: [...builtPaths], log });
 		endpoints.push(...routing.ports);
 		const manifestPath = join(app, 'package.json');
-		const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as { dependencies?: Record<string, string> };
+		const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as { dependencies?: Record<string, string>; overrides?: Record<string, unknown> };
 		manifest.dependencies = { ...manifest.dependencies, ...routing.packages };
+		if (Object.keys(routing.overrides).length) manifest.overrides = { ...manifest.overrides, ...routing.overrides };
 		await writeFile(manifestPath, `${JSON.stringify(manifest, null, '\t')}\n`);
 		await writeFile(join(app, 'vite.config.ts'), VITE_CONFIG);
 	}
@@ -595,7 +600,7 @@ export function summarizeConvert(report: ConvertReport): string {
 	const lines = [`Converted ${report.routes.length} routes into ${new Set(report.routes.map((r) => r.page)).size} pages, ${report.shared.length} shared components; ${report.assets.copied} assets copied byte for byte${report.assets.missing.length ? ` (${report.assets.missing.length} not answered by the old site)` : ''}.`];
 	const dropped = Object.entries(report.dropped).sort((a, b) => b[1] - a[1]);
 	if (dropped.length) lines.push('Left out of the pages (the old framework\'s own):', ...dropped.slice(0, 8).map(([what, n]) => `  ${n} x ${what}`));
-	for (const e of report.endpoints) lines.push(`  endpoint ${e.route}: ${e.how === 'handler' ? 'ported' : e.how === 'build' ? 'NOT PORTED, served from the old build' : 'missing'} (${e.reason})`);
+	for (const e of report.endpoints) lines.push(`  endpoint ${e.route}: ${e.how === 'handler' ? 'ported' : e.how === 'prerendered' ? 'ported, run at convert time' : e.how === 'build' ? 'NOT PORTED, served from the old build' : 'missing'} (${e.reason})`);
 	if (report.unported.length) lines.push(`Library parts no port implements yet (${report.unported.length}):`, ...report.unported.slice(0, 12).map((u) => `  ${u.part}: ${u.routes} routes`));
 	for (const u of report.unconverted) lines.push(`  not converted ${u.route}: ${u.reason}`);
 	return `${lines.join('\n')}\n`;

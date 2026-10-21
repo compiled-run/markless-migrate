@@ -28,8 +28,8 @@ function signature(el: Element): string {
 	return `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 }
 
-/** What a copy control wrote on the old page. */
-export function clipboardFor(control: Element): string | undefined {
+/** What a copy control wrote on the old page, loaded from the page's own module; undefined for a control that copied nothing. */
+export function clipboardFor(control: Element): Promise<string> | undefined {
 	const page = CLIPBOARD[location.pathname.replace(/\/$/, '') || '/'];
 	if (!page) return undefined;
 	const sig = signature(control);
@@ -38,5 +38,7 @@ export function clipboardFor(control: Element): string | undefined {
 		if (el === control) break;
 		if (signature(el) === sig) nth++;
 	}
-	return page[`${sig}#${nth}`];
+	const key = `${sig}#${nth}`;
+	if (!page.keys.includes(key)) return undefined;
+	return page.load().then((m) => m.default[key] ?? '');
 }
