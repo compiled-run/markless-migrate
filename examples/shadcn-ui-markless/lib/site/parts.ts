@@ -212,6 +212,69 @@ const commandMenu: Part = {
 	},
 };
 
+// hooks/use-config.ts: CodeBlockCommand's package manager and CodeTabs' installation type are one jotai atom kept in
+// localStorage "config": choosing a tab in one such list chooses it in every list of the page, and is kept.
+const CONFIG_KEY = 'config';
+const CONFIG_DEFAULT = { style: 'new-york-v4', packageManager: 'pnpm', installationType: 'cli' };
+const SHARED: Readonly<Record<string, readonly string[]>> = { packageManager: ['pnpm', 'npm', 'yarn', 'bun'], installationType: ['cli', 'manual'] };
+const synthetic = new WeakSet<Event>();
+const tabValue = (tab: Element) => /-content-(.+)$/.exec(tab.getAttribute('aria-controls') ?? '')?.[1];
+function sharedKey(list: Element): string | undefined {
+	const values = [...list.querySelectorAll('[role="tab"]')].map(tabValue);
+	return Object.keys(SHARED).find((k) => values.length > 0 && values.every((v) => v && SHARED[k]!.includes(v)));
+}
+function readConfig(): Record<string, string> {
+	try {
+		return { ...CONFIG_DEFAULT, ...(JSON.parse(localStorage.getItem(CONFIG_KEY) ?? '{}') as Record<string, string>) };
+	} catch {
+		return { ...CONFIG_DEFAULT };
+	}
+}
+// Each list's own tab state is Markless's: another list is switched by the press its trigger handles.
+function chooseEverywhere(key: string, value: string): void {
+	for (const list of document.querySelectorAll('[role="tablist"]')) {
+		if (sharedKey(list) !== key) continue;
+		const tab = [...list.querySelectorAll<HTMLElement>('[role="tab"]')].find((t) => tabValue(t) === value);
+		if (!tab || tab.getAttribute('aria-selected') === 'true') continue;
+		const press = new MouseEvent('mousedown', { bubbles: true, button: 0 });
+		synthetic.add(press);
+		tab.dispatchEvent(press);
+	}
+}
+function choose(target: Element, event: Event): boolean {
+	if (synthetic.has(event)) return false;
+	const tab = target.closest('[role="tab"]');
+	const list = tab?.closest('[role="tablist"]');
+	const key = list && sharedKey(list);
+	const value = tab && tabValue(tab);
+	if (!key || !value) return false;
+	queueMicrotask(() => {
+		chooseEverywhere(key, value);
+		const config = readConfig();
+		if (config[key] === value && localStorage.getItem(CONFIG_KEY) !== null) return;
+		localStorage.setItem(CONFIG_KEY, JSON.stringify({ ...config, [key]: value }));
+	});
+	return false;
+}
+const sharedTabs: Part = {
+	pointerdown(target, event) {
+		return event.button === 0 ? choose(target, event) : false;
+	},
+	keydown(target, event) {
+		return event.key === 'Enter' || event.key === ' ' ? choose(target, event) : false;
+	},
+	// Radix Tabs activate the tab focus moves to (the arrows).
+	focusin(target, event) {
+		return choose(target, event);
+	},
+	mount(el) {
+		if (el.getAttribute('role') !== 'tab' || localStorage.getItem(CONFIG_KEY) === null) return;
+		const list = el.closest('[role="tablist"]');
+		const key = list && sharedKey(list);
+		if (key && tabValue(el) === readConfig()[key] && el.getAttribute('aria-selected') !== 'true') chooseEverywhere(key, readConfig()[key]!);
+	},
+};
+
 // registry/*/ui/sidebar.tsx's SidebarProvider: ⌘B or Ctrl+B toggles the sidebar, as its trigger does.
 const sidebarShortcut: Part = {
 	keydown(_target, event) {
@@ -224,4 +287,4 @@ const sidebarShortcut: Part = {
 	},
 };
 
-export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, docsSidebar, docsToc, sidebarShortcut];
+export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, docsSidebar, docsToc, sidebarShortcut, sharedTabs];

@@ -321,15 +321,38 @@ export class InsertedDisclosurePlan {
 		return this.bindings.get(el);
 	}
 
-	add(items: readonly { readonly trigger: Element; readonly parent: Element; readonly before: Element | null; readonly markup: string }[]): number {
+	/**
+	 * `roots`: the pages, where a Base UI disclosure open on load (its content in the page, named by aria-controls)
+	 * closes and opens again on the same state.
+	 */
+	add(items: readonly { readonly trigger: Element; readonly parent: Element; readonly before: Element | null; readonly markup: string; readonly panelId?: string }[], roots: readonly Element[] = []): number {
 		const byTrigger = new Map<Element, (typeof items)[number][]>();
 		for (const i of items) (byTrigger.get(i.trigger) ?? byTrigger.set(i.trigger, []).get(i.trigger)!).push(i);
+		const isBase = (t: Element) => /^base-ui-/.test(attr(t, 'id') ?? '') || t.attrs.some((a) => a.name.startsWith('data-base-ui') || a.name === 'data-panel-open');
+		const openPanels = new Map<Element, Element>();
+		for (const root of roots) {
+			const byId = new Map<string, Element>();
+			for (const el of walk(root)) {
+				const id = attr(el, 'id');
+				if (id) byId.set(id, el);
+			}
+			for (const t of walk(root)) {
+				if (attr(t, 'aria-expanded') !== 'true' || attr(t, 'aria-haspopup') !== undefined || !t.attrs.some((a) => a.name === 'data-panel-open')) continue;
+				const panel = byId.get(attr(t, 'aria-controls') ?? '');
+				if (panel && !this.bindings.has(t)) openPanels.set(t, panel);
+			}
+		}
+		// A Base UI disclosure's root (Collapsible.Root, Accordion.Item) carries data-open or data-closed.
+		const rootOf = (t: Element) => {
+			for (let n = t.parentNode as Element | null; n && 'tagName' in n; n = n.parentNode as Element | null) if (n.attrs.some((a) => a.name === 'data-open' || a.name === 'data-closed')) return n;
+			return undefined;
+		};
 		const accordionOf = (el: Element) => {
 			for (let n = el.parentNode as Element | null; n && 'tagName' in n; n = n.parentNode as Element | null) if (attr(n, 'data-slot') === 'accordion') return n;
 			return undefined;
 		};
 		const groups = new Map<Element, Element[]>();
-		for (const trigger of byTrigger.keys()) {
+		for (const trigger of [...byTrigger.keys(), ...[...openPanels.keys()].filter((t) => !accordionOf(t))]) {
 			if (this.bindings.has(trigger)) continue;
 			const key = accordionOf(trigger) ?? trigger;
 			// A group key is the accordion, or the trigger itself for a standalone disclosure.
@@ -339,22 +362,24 @@ export class InsertedDisclosurePlan {
 		for (const [key, closed] of groups) {
 			// An accordion's item open on load has its content in the page already (named by aria-controls): it closes
 			// when another opens, hidden by its bound attribute.
-			const openItems = key === closed[0] ? [] : [...walk(key)].filter((t) => attr(t, 'aria-expanded') === 'true' && attr(t, 'aria-haspopup') === undefined && accordionOf(t) === key && !this.bindings.has(t));
+			const standalone = key === closed[0];
+			const openItems = standalone ? [] : [...walk(key)].filter((t) => attr(t, 'aria-expanded') === 'true' && attr(t, 'aria-haspopup') === undefined && accordionOf(t) === key && !this.bindings.has(t));
 			const panels = new Map<Element, Element>();
 			for (const t of openItems) {
 				const id = attr(t, 'aria-controls');
 				const panel = id ? [...walk(key)].find((p) => attr(p, 'id') === id) : undefined;
 				if (panel) panels.set(t, panel);
 			}
-			const triggers = [...closed, ...openItems.filter((t) => panels.has(t))];
+			if (standalone && openPanels.has(key)) panels.set(key, openPanels.get(key)!);
+			const triggers = [...closed.filter((t) => !panels.has(t)), ...[...panels.keys()]];
 			const name = `ins${this.n++}`;
-			const single = key !== closed[0] && triggers.length > 1;
+			const single = !standalone && triggers.length > 1;
 			const initial = triggers.findIndex((t) => panels.has(t));
-			const declare = [`let ${name} = state(${single ? initial : 'false'});`];
+			const declare = [`let ${name} = state(${single ? initial : String(standalone && panels.has(key))});`];
 			triggers.forEach((trigger, k) => {
 				const open = single ? `${name} === ${k}` : name;
 				const toggle = single ? `${name} = ${name} === ${k} ? -1 : ${k}` : `${name} = !${name}`;
-				const base = /^base-ui-/.test(attr(trigger, 'id') ?? '') || trigger.attrs.some((a) => a.name.startsWith('data-base-ui'));
+				const base = isBase(trigger);
 				const extra = [`aria-expanded={${open} ? "true" : "false"}`, `onClick={() => { ${toggle}; }}`];
 				const omit = ['aria-expanded'];
 				if (attr(trigger, 'data-state') !== undefined) {
@@ -364,6 +389,14 @@ export class InsertedDisclosurePlan {
 				if (base) {
 					extra.push(`data-panel-open={${open} ? "" : undefined}`);
 					omit.push('data-panel-open');
+					// Base UI names the panel in aria-controls only while it is mounted.
+					const panelId = panels.has(trigger) ? attr(trigger, 'aria-controls') : byTrigger.get(trigger)?.find((i) => i.panelId)?.panelId;
+					if (panelId) {
+						extra.push(`aria-controls={${open} ? ${lit(panelId)} : undefined}`);
+						omit.push('aria-controls');
+					}
+					const root = rootOf(trigger);
+					if (root && !this.bindings.has(root)) this.bindings.set(root, { declare, omit: ['data-open', 'data-closed'], extra: [`data-open={${open} ? "" : undefined}`, `data-closed={${open} ? undefined : ""}`] });
 				}
 				this.bindings.set(trigger, { declare, omit, extra });
 				const panel = panels.get(trigger);

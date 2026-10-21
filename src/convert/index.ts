@@ -225,7 +225,7 @@ const replaced = new Map<Element, { key: string; trigger: Element; markup: strin
 const replacedParts = new Map<Element, Binding>();
 const unplaced: string[] = [];
 // Content disclosures mounted inside the page on opening, by trigger: rendered by Markless in an arm where they went.
-const inserted: { trigger: Element; parent: Element; before: Element | null; markup: string }[] = [];
+const inserted: { trigger: Element; parent: Element; before: Element | null; markup: string; panelId?: string }[] = [];
 
 /**
  * Radix Select mounts the indicator only in the checked option: every other option of a captured listbox gets a hidden
@@ -342,7 +342,8 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 				// A disclosure that mounts its content where it opens (Base UI Collapsible and Accordion, a Radix
 				// Collapsible whose content leaves while closed): a layer's trigger (aria-haspopup) is a portal's.
 				const inPlace = trigger && parent && attr(trigger, 'aria-expanded') === 'false' && attr(trigger, 'aria-haspopup') === undefined && !reveal.added.some((a) => a.into === 'body');
-				if (inPlace) inserted.push({ trigger: trigger!, parent: parent!, before: added.before >= 0 ? (elementChildren(parent!)[added.before] ?? null) : null, markup: kept.map((e) => emitElement(e, { dropped, bind: (x) => bindParts(x, templatePorts) })).join('') });
+				const panelId = kept.map((e) => attr(e, 'id')).find(Boolean);
+				if (inPlace) inserted.push({ trigger: trigger!, parent: parent!, before: added.before >= 0 ? (elementChildren(parent!)[added.before] ?? null) : null, markup: kept.map((e) => emitElement(e, { dropped, bind: (x) => bindParts(x, templatePorts) })).join(''), ...(panelId ? { panelId } : {}) });
 				else unplaced.push(`${reveal.key}: content shown inside the page by a control no Markless state drives yet`);
 			}
 		}
@@ -526,7 +527,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	for (const p of prepared.values()) disclosureGroups += disclosures.add(p.root, isRadixDisclosure, (panel) => panelContent.get(panel));
 	if (disclosureGroups) log(`accordions and collapsibles on Markless state: ${disclosureGroups}`);
 	const insertedDisclosures = new InsertedDisclosurePlan();
-	const insertedGroups = insertedDisclosures.add(inserted);
+	const insertedGroups = insertedDisclosures.add(inserted, [...prepared.values()].map((p) => p.root));
 	if (insertedGroups) log(`disclosures that mount their content in place, on Markless state: ${insertedGroups}`);
 	const switchPlan = new SwitchPlan();
 	let switchGroups = 0;
