@@ -98,6 +98,26 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   and every page had been planned never cached).
 - `convert` peak memory: 3.1 to 3.5 GB (captures are read from the cache while their page is parsed, and only the
   served `<html>` tag is parsed); the 7.3 GB reported before was measured with every capture held at once.
+- Parts that never opened on the new site: Base UI Preview Card (shadcn's hover card on Base UI), Context Menu and
+  Navigation Menu (hover with 50 ms delays, press, switching between triggers, the content's
+  `data-activation-direction`); Radix and Base UI Menubar (with one menu open, the pointer on another trigger opens it
+  and the side arrows move between menus; Radix's menubar menus are not modal); the combobox popup variant (the
+  trigger opens a dialog holding the search input, and choosing writes the item's text into the trigger).
+- Toasts (Sonner, Base UI Toast) on Markless state: `notify` controls the site lists (`lib/site/controls.json`) are
+  used once each on the old page and what they add inside a live region is an `@if` arm of that region; the page
+  renders the region itself (the shared body children around it come from `BodyAfter` in two ranges), since the
+  state lives in the page. 21 toasts on the four sonner and toast routes.
+- An accordion that lets several items be open (Radix `type="multiple"`, Base UI `multiple`) gives each item its own
+  state: `convert` opens two items of every accordion on the old page and reads whether the first stayed open.
+- Hover cards carry their own delays: `convert` times each trigger on the old page (pointer in to open, out to
+  closed) and writes the round delay at or below it (the timing includes the old page's render) on that trigger.
+  The source alone cannot give them: the demos pass 10, 100 and 200 ms to different instances of one export.
+- `usage` and the source scan: a module loaded with `import()` is rendered on the routes of the module that loads it.
+  The registry loads every demo lazily, so Base UI Accordion, Collapsible, Combobox, Context Menu, Menubar,
+  Navigation Menu, Preview Card and Scroll Area were missing from the usage inventory (185 Base UI exports reach a
+  route now, 119 before).
+- Routing: the trailing-slash redirect leaves Markless's own paths alone; `/_markless/fragment/` (the home page's
+  fragment) was redirected to `/_markless/fragment`, a 404.
 
 ## Markless framework bugs found
 

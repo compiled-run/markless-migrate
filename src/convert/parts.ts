@@ -76,6 +76,7 @@ export const PORTS: readonly Port[] = [
 	{ module: 'radix/hover-card', library: 'radix-ui', needs: ['layer', 'popper', 'presence', 'aria-hidden', 'remove-scroll'], exports: ['HoverCard.Root', 'HoverCard.Trigger', 'HoverCard.Content', 'HoverCard.Portal'], events: ['pointerover', 'pointerout', 'focusin', 'focusout'], locate: (el) => radix(el) },
 	{ module: 'base-ui/combobox', library: '@base-ui/react', exports: ['Combobox.Root', 'Combobox.Input', 'Combobox.Trigger', 'Combobox.Popup', 'Combobox.Positioner', 'Combobox.List', 'Combobox.Item', 'Combobox.Empty', 'Combobox.Portal'], events: ['pointerdown', 'click', 'pointerover', 'input', 'keydown'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
 	{ module: 'radix/context-menu', library: 'radix-ui', needs: ['layer', 'popper', 'presence', 'aria-hidden', 'remove-scroll', 'radix/dropdown-menu'], exports: ['ContextMenu.Root', 'ContextMenu.Trigger', 'ContextMenu.Content', 'ContextMenu.Item', 'ContextMenu.Portal'], events: ['contextmenu', 'click', 'pointerover', 'keydown'], locate: (el) => radix(el) },
+	{ module: 'base-ui/navigation-menu', library: '@base-ui/react', exports: ['NavigationMenu.Root', 'NavigationMenu.List', 'NavigationMenu.Item', 'NavigationMenu.Trigger', 'NavigationMenu.Content', 'NavigationMenu.Portal', 'NavigationMenu.Positioner', 'NavigationMenu.Popup', 'NavigationMenu.Viewport'], events: ['pointerover', 'pointerout', 'click'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
 	{ module: 'base-ui/preview-card', library: '@base-ui/react', exports: ['PreviewCard.Root', 'PreviewCard.Trigger', 'PreviewCard.Popup', 'PreviewCard.Positioner', 'PreviewCard.Portal'], events: ['pointerover', 'pointerout', 'focusin', 'focusout'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
 	{ module: 'base-ui/context-menu', library: '@base-ui/react', exports: ['ContextMenu.Root', 'ContextMenu.Trigger', 'ContextMenu.Popup', 'ContextMenu.Positioner', 'ContextMenu.Portal', 'ContextMenu.Item'], events: ['contextmenu', 'click'], locate: (el) => base(el) || attr(el, 'data-slot') === 'context-menu-trigger', needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition', 'base-ui/menu'] },
 	{ module: 'base-ui/dialog', library: '@base-ui/react', exports: ['Dialog.Root', 'Dialog.Trigger', 'Dialog.Popup', 'Dialog.Portal', 'Dialog.Backdrop', 'Dialog.Close', 'AlertDialog.Root', 'AlertDialog.Trigger', 'AlertDialog.Popup', 'AlertDialog.Close', 'Drawer.Root', 'Drawer.Trigger', 'Drawer.Popup', 'Drawer.Close'], events: ['click'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition', 'aria-hidden'] },
@@ -138,13 +139,19 @@ const PORT_PROPS: readonly { readonly library: string; readonly export: string; 
 	{ library: '@base-ui/react', export: 'PreviewCard.Trigger', from: [['@base-ui/react', 'PreviewCard.Trigger'], ['shadcn/ui', 'HoverCardTrigger']], props: ['delay', 'closeDelay'] },
 ];
 
-/** The props a port needs on an element, from the source's literal or parameter default. */
+let measured: ReadonlyMap<Element, Readonly<Record<string, string>>> = new Map();
+/** Props the old page showed an element itself has (a hover card's own delays), ahead of what the source gives the export. */
+export function useMeasuredProps(props: ReadonlyMap<Element, Readonly<Record<string, string>>>): void {
+	measured = props;
+}
+
+/** The props a port needs on an element, from what the old page showed of it, or the source's literal or parameter default. */
 export function portAttributes(el: Element): Binding | undefined {
 	const extra: string[] = [];
 	for (const c of candidatesOf(el)) {
 		const known = PORT_PROPS.find((p) => p.library === c.library && p.export === c.export);
 		for (const prop of known?.props ?? []) {
-			const value = (known!.from ?? [[c.library, c.export] as const]).map(([lib, exp]) => resolver?.prop(lib, exp, prop)).find((v) => v !== undefined);
+			const value = measured.get(el)?.[prop] ?? (known!.from ?? [[c.library, c.export] as const]).map(([lib, exp]) => resolver?.prop(lib, exp, prop)).find((v) => v !== undefined);
 			if (value !== undefined && /^-?\d+(\.\d+)?%?$/.test(value)) extra.push(`data-mm-${prop.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}=${JSON.stringify(value.replace(/%$/, ''))}`);
 		}
 	}

@@ -93,3 +93,31 @@ test('controls that switch the same attributes share one state, and each use wri
 	assert.match(out, /data-collapsible=\{sw0 \? "icon" : ""\}/);
 	assert.equal(out.match(/sw0 = !sw0; writeCookies\(sw0 \? \[\{"name":"sidebar_state","value":"false"/g)?.length, 2, 'the trigger and the rail switch one state');
 });
+
+test('an accordion that lets several items be open gives each item its own state; one that does not shares one', async () => {
+	const { DisclosurePlan } = await import('../src/convert/stateful.ts');
+	const html = '<body><div data-slot="accordion"><div data-slot="accordion-item"><h3><button data-slot="accordion-trigger" aria-expanded="false" aria-controls="radix-a" data-state="closed">A</button></h3><div id="radix-a" data-slot="accordion-content" data-state="closed" hidden></div></div><div data-slot="accordion-item"><h3><button data-slot="accordion-trigger" aria-expanded="false" aria-controls="radix-b" data-state="closed">B</button></h3><div id="radix-b" data-slot="accordion-content" data-state="closed" hidden></div></div></div></body>';
+	for (const several of [false, true]) {
+		const doc = parseDocument(html);
+		const plan = new DisclosurePlan();
+		const groups = plan.add(body(doc), () => true, () => undefined, (el) => several && attr(el, 'data-slot') === 'accordion');
+		assert.equal(groups, several ? 2 : 1);
+		const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+		assert.match(out, several ? /aria-expanded=\{acc1 === 0 \? "true" : "false"\}/ : /aria-expanded=\{acc0 === 1 \? "true" : "false"\}/);
+	}
+});
+
+test('a page that shows notifications renders their region between two ranges of the shared body children', async () => {
+	const { bodyAfterModule, splitBody } = await import('../src/convert/document.ts');
+	const pages = ['/a', '/b'].map((route) => {
+		const doc = parseDocument(`<body><main></main><section aria-live="polite" id="_R_${route.slice(1)}_"></section><div data-slot="toast-portal"></div></body>`);
+		const [, region, portal] = [...walk(body(doc))].slice(1) as Element[];
+		return [route, { route, before: [], after: [region!, portal!], htmlAttrs: {}, bodyAttrs: {}, head: [] }] as const;
+	});
+	const split = splitBody(new Map(pages));
+	const plain = bodyAfterModule(split, () => undefined, () => {})!;
+	assert.doesNotMatch(plain, /from \?\? 0/);
+	const ranged = bodyAfterModule(split, () => undefined, () => {}, true)!;
+	assert.match(ranged, /@if \(\(from \?\? 0\) <= 0 && 0 < \(to \?\? 2\)\) \{ <><section aria-live="polite" id=\{valueOf\(route, "b0"\)\}/, 'a value read in an arm goes through a module function, not a body constant');
+	assert.match(ranged, /BodyAfter\(\{ route, from, to \}/);
+});

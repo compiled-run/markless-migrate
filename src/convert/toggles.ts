@@ -541,3 +541,144 @@ export async function captureNotifications(browser: Browser, origin: string, rou
 	await writeFile(file, JSON.stringify(capture));
 	return capture;
 }
+
+/** An accordion of the old page, by its root's signature and occurrence, and whether two of its items stayed open together. */
+export interface AccordionMode {
+	readonly sig: string;
+	readonly nth: number;
+	readonly multiple: boolean;
+}
+
+export interface AccordionCapture {
+	readonly route: string;
+	readonly accordions: readonly AccordionMode[];
+}
+
+/**
+ * Opens two items of each accordion one after the other on a fresh load: if the first stays open when the second opens,
+ * the accordion lets several items be open at once (Radix `type="multiple"`, Base UI `multiple`).
+ */
+export async function captureAccordions(browser: Browser, origin: string, route: string, dir: string): Promise<AccordionCapture> {
+	const file = join(dir, `${createHash('sha256').update(`accordion:${route}`).digest('hex').slice(0, 16)}.json`);
+	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as AccordionCapture, () => undefined);
+	if (cached && cached.route === route) return cached;
+	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+	const accordions: AccordionMode[] = [];
+	try {
+		await loadPage(page, new URL(route, origin).href);
+		await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+		await page.waitForTimeout(300);
+		const roots = await page.evaluate(() => {
+			const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+			const counts = new Map<string, number>();
+			const order = new Map<Element, number>();
+			for (const el of document.body.querySelectorAll('*')) {
+				const sig = sigOf(el);
+				order.set(el, counts.get(sig) ?? 0);
+				counts.set(sig, (counts.get(sig) ?? 0) + 1);
+			}
+			return [...document.querySelectorAll('[data-slot="accordion"]')].map((root, i) => ({ i, sig: sigOf(root), nth: order.get(root) ?? 0 }));
+		});
+		for (const root of roots) {
+			const pick = (n: number) =>
+				page.evaluate(
+					({ i, n }) => {
+						const root = document.querySelectorAll('[data-slot="accordion"]')[i];
+						const own = [...(root?.querySelectorAll<HTMLElement>('[data-slot="accordion-trigger"]') ?? [])].filter((t) => t.closest('[data-slot="accordion"]') === root && !t.matches('[disabled], [aria-disabled="true"], [data-disabled]') && t.getBoundingClientRect().width > 0);
+						const closed = own.filter((t) => t.getAttribute('aria-expanded') !== 'true');
+						const t = closed[n];
+						if (!t) return false;
+						t.setAttribute('data-mm-probe', String(n));
+						return own.length >= 2;
+					},
+					{ i: root.i, n },
+				);
+			if (!(await pick(0)) || !(await pick(1))) continue;
+			const ok = await page.click('[data-mm-probe="0"]', { timeout: 2000 }).then(() => page.click('[data-mm-probe="1"]', { timeout: 2000 })).then(() => true, () => false);
+			if (!ok) continue;
+			await page.waitForTimeout(300);
+			const multiple = await page.evaluate(() => [...document.querySelectorAll('[data-mm-probe]')].every((t) => t.getAttribute('aria-expanded') === 'true'));
+			await page.evaluate(() => {
+				for (const t of document.querySelectorAll('[data-mm-probe]')) t.removeAttribute('data-mm-probe');
+			});
+			accordions.push({ sig: root.sig, nth: root.nth, multiple });
+		}
+	} finally {
+		await context.close().catch(() => {});
+	}
+	const capture: AccordionCapture = { route, accordions };
+	await mkdir(dir, { recursive: true });
+	await writeFile(file, JSON.stringify(capture));
+	return capture;
+}
+
+/** A hover card trigger of the old page and the delays it opened and closed after, in ms. */
+export interface HoverDelay {
+	readonly sig: string;
+	readonly nth: number;
+	readonly open: number;
+	readonly close: number;
+}
+
+/**
+ * Hovers each hover card trigger on the old page and times, in the page, from the pointer entering to the trigger
+ * marked open, and from it leaving to the trigger marked closed: each instance's own delays, floored to 10 ms.
+ */
+export async function captureHoverDelays(browser: Browser, origin: string, route: string, dir: string): Promise<{ readonly route: string; readonly delays: readonly HoverDelay[] }> {
+	const file = join(dir, `${createHash('sha256').update(`hover-delay:${route}`).digest('hex').slice(0, 16)}.json`);
+	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; delays: HoverDelay[] }, () => undefined);
+	if (cached && cached.route === route) return cached;
+	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+	const delays: HoverDelay[] = [];
+	try {
+		await loadPage(page, new URL(route, origin).href);
+		await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+		const count = await page.evaluate(() => [...document.querySelectorAll('[data-slot="hover-card-trigger"]')].filter((t) => t.getBoundingClientRect().width > 0).length);
+		for (let i = 0; i < Math.min(count, 24); i++) {
+			await page.mouse.move(1, 1);
+			await page.waitForTimeout(800);
+			const found = await page.evaluate((i) => {
+				const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+				const t = [...document.querySelectorAll<HTMLElement>('[data-slot="hover-card-trigger"]')].filter((x) => x.getBoundingClientRect().width > 0)[i]!;
+				let nth = 0;
+				for (const e of document.body.querySelectorAll('*')) {
+					if (e === t) break;
+					if (sigOf(e) === sigOf(t)) nth++;
+				}
+				const opened = () => t.getAttribute('data-state') === 'open' || t.hasAttribute('data-popup-open');
+				const w = window as unknown as { __mmTimes: number[] };
+				w.__mmTimes = [];
+				t.addEventListener('pointerenter', () => w.__mmTimes.length === 0 && w.__mmTimes.push(performance.now()), { once: true });
+				t.addEventListener('pointerleave', () => w.__mmTimes.length === 2 && w.__mmTimes.push(performance.now()));
+				const observer = new MutationObserver(() => {
+					const n = w.__mmTimes.length;
+					if (n === 1 && opened()) w.__mmTimes.push(performance.now());
+					if (n === 3 && !opened()) {
+						w.__mmTimes.push(performance.now());
+						observer.disconnect();
+					}
+				});
+				observer.observe(t, { attributes: true });
+				t.setAttribute('data-mm-probe', '');
+				return { sig: sigOf(t), nth };
+			}, i);
+			await page.hover('[data-mm-probe]', { timeout: 2000 }).catch(() => {});
+			await page.waitForFunction(() => (window as unknown as { __mmTimes: number[] }).__mmTimes.length >= 2, undefined, { timeout: 3000 }).catch(() => {});
+			await page.mouse.move(1, 1);
+			await page.waitForFunction(() => (window as unknown as { __mmTimes: number[] }).__mmTimes.length >= 4, undefined, { timeout: 3000 }).catch(() => {});
+			const times = await page.evaluate(() => {
+				document.querySelector('[data-mm-probe]')?.removeAttribute('data-mm-probe');
+				return (window as unknown as { __mmTimes: number[] }).__mmTimes;
+			});
+			if (times.length < 4) continue;
+			const floor = (ms: number) => Math.max(0, Math.floor(ms / 10) * 10);
+			delays.push({ ...found, open: floor(times[1]! - times[0]!), close: floor(times[3]! - times[2]!) });
+		}
+	} finally {
+		await context.close().catch(() => {});
+	}
+	const capture = { route, delays };
+	await mkdir(dir, { recursive: true });
+	await writeFile(file, JSON.stringify(capture));
+	return capture;
+}

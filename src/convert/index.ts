@@ -11,8 +11,8 @@ import { cleanDocument, frameworkBuilds, type Dropped } from './clean.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, walk, type Document, type Element } from './dom.ts';
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
 import { BaseTabsPlan, CheckablePlan, DisclosurePlan, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
-import { captureAllForms, captureAllSwitches, captureAllToggles, captureNotifications, type FormCapture, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
-import { bindMount, bindParts, bodyHandlers, candidatesOf, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
+import { captureAccordions, captureHoverDelays, captureAllForms, captureAllSwitches, captureAllToggles, captureNotifications, type AccordionMode, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
+import { bindMount, bindParts, bodyHandlers, candidatesOf, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { stat } from 'node:fs/promises';
 import { match } from 'path-to-regexp';
@@ -341,6 +341,10 @@ function combined(first: PartResolver, then: PartResolver): PartResolver {
 }
 
 /** Finds an element of a page by its signature and occurrence, as reveals and toggles were captured. */
+// A timed delay includes the old page's render after its timer fired (10 to 30 ms): the round delay at or below it.
+const ROUND_DELAYS = [0, 10, 50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 800, 1000, 1500, 2000];
+const delayOf = (ms: number) => ROUND_DELAYS.filter((d) => d <= ms).at(-1) ?? 0;
+
 function locator(root: Element): (sig: string, nth: number) => Element | undefined {
 	const bySig = new Map<string, Element[]>();
 	const index = (el: Element) => {
@@ -545,6 +549,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const switched = new Map<string, readonly Switch[]>();
 	const submitted = new Map<string, FormCapture['forms']>();
 	const notified = new Map<string, readonly Notify[]>();
+	const accordionModes = new Map<string, readonly AccordionMode[]>();
+	const hoverDelays = new Map<string, readonly HoverDelay[]>();
 	const choices: Record<string, Record<string, Choice>> = {};
 	try {
 		// The old site's not-found page, from a path no route has: the new app's 404 page.
@@ -558,6 +564,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			for (const r of on) notified.set(r, [...(notified.get(r) ?? []), ...(await captureNotifications(browser, options.old, r, join(state, 'convert', 'toggles'), [c.selector])).notifications]);
 		}
 		if (options.reveal !== false) for (const r of await captureAllReveals(browser, options.old, routes, join(state, 'convert', 'reveals'), { concurrency: options.concurrency ?? 4, log, extra })) revealed.set(r.route, r.reveals);
+		// Whether each accordion lets several items be open, on the routes where one revealed an item's content.
+		for (const [route, reveals] of revealed) if (reveals.some((r) => r.sig?.includes('|accordion-trigger|'))) accordionModes.set(route, (await captureAccordions(browser, options.old, route, join(state, 'convert', 'toggles'))).accordions);
+		for (const [route, reveals] of revealed) if (reveals.some((r) => r.sig?.includes('|hover-card-trigger|'))) hoverDelays.set(route, (await captureHoverDelays(browser, options.old, route, join(state, 'convert', 'toggles'))).delays);
 		if (options.reveal !== false) for (const t of await captureAllToggles(browser, options.old, routes, join(state, 'convert', 'toggles'), { concurrency: options.concurrency ?? 4, log })) toggled.set(t.route, t.groups);
 		// Controls the site lists as switching attributes in place (lib/site/controls.json, action "toggle").
 		const switchSelectors = listed.filter((c) => c.action === 'toggle').map((c) => c.selector);
@@ -625,12 +634,33 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		log(`Base UI tab lists on Markless state: ${baseTabGroups}`);
 		templatePorts.add('radix/roving');
 	}
+	const ownDelays = new Map<Element, Record<string, string>>();
+	for (const [route, p] of prepared) {
+		const delays = hoverDelays.get(route) ?? [];
+		const locate = delays.length ? locator(p.root.parentNode as Element) : undefined;
+		for (const d of delays) {
+			const el = locate!(d.sig, d.nth);
+			if (el) ownDelays.set(el, { openDelay: String(delayOf(d.open)), delay: String(delayOf(d.open)), closeDelay: String(delayOf(d.close)) });
+		}
+	}
+	useMeasuredProps(ownDelays);
+	const multipleAccordions = new Set<Element>();
+	for (const [route, p] of prepared) {
+		const several = (accordionModes.get(route) ?? []).filter((a) => a.multiple);
+		const locate = several.length ? locator(p.root.parentNode as Element) : undefined;
+		for (const a of several) {
+			const el = locate!(a.sig, a.nth);
+			if (el) multipleAccordions.add(el);
+		}
+	}
+	if (multipleAccordions.size) log(`accordions with several items open at once: ${multipleAccordions.size}`);
+	const multiple = (accordion: Element) => multipleAccordions.has(accordion);
 	const disclosures = new DisclosurePlan();
 	let disclosureGroups = 0;
-	for (const p of prepared.values()) disclosureGroups += disclosures.add(p.root, isRadixDisclosure, (panel) => panelContent.get(panel));
+	for (const p of prepared.values()) disclosureGroups += disclosures.add(p.root, isRadixDisclosure, (panel) => panelContent.get(panel), multiple);
 	if (disclosureGroups) log(`accordions and collapsibles on Markless state: ${disclosureGroups}`);
 	const insertedDisclosures = new InsertedDisclosurePlan();
-	const insertedGroups = insertedDisclosures.add(inserted, [...prepared.values()].map((p) => p.root));
+	const insertedGroups = insertedDisclosures.add(inserted, [...prepared.values()].map((p) => p.root), multiple);
 	if (insertedGroups) log(`disclosures that mount their content in place, on Markless state: ${insertedGroups}`);
 	// A form the old page's script handled (submitting it left the page where it was) does not submit natively.
 	const handledForms = new Set<Element>();
@@ -646,6 +676,13 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	let notifyCount = 0;
 	for (const [route, p] of prepared) notifyCount += notifyPlan.add(notified.get(route) ?? [], locator(p.root.parentNode as Element), (html) => emitChildren(parseFragment(html) as unknown as Element));
 	if (notifyCount) log(`notifications on Markless state: ${notifyCount}`);
+	// The shared body children holding a live region a page shows its notifications in: that page renders them.
+	const ownAfter = new Map<string, number[]>();
+	for (const route of prepared.keys())
+		bodyParts.after.forEach((c, i) => {
+			const el = c.byRoute.get(route);
+			if (el && [...walk(el)].some((x) => notifyPlan.hosts(x))) (ownAfter.get(route) ?? ownAfter.set(route, []).get(route)!).push(i);
+		});
 	const switchPlan = new SwitchPlan();
 	let switchGroups = 0;
 	for (const [route, p] of prepared) switchGroups += switchPlan.add(switched.get(route) ?? [], locator(p.root.parentNode as Element));
@@ -679,7 +716,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};
 	void appendOf;
-	const factored: Factored = factor(new Map([...prepared].map(([route, p]) => [route, p.root])), { bind: (el) => withAppend(el, bindParts(el, usedPorts)), extra: (el) => appended.get(el) });
+	const factored: Factored = factor(new Map([...prepared].map(([route, p]) => [route, p.root])), { bind: (el) => withAppend(el, bindParts(el, usedPorts)), extra: (el) => appended.get(el) ?? notifyPlan.nameOf(el) });
 	const pathnames = [...new Set(htmlRoutes.map((r) => pathOf(r)))];
 	const folders = folderSet(pathnames);
 	const written = new Map<string, string>();
@@ -687,7 +724,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const byFile = new Map<string, { route: string; search: string; markup: string; parts: PartUse[]; declarations: string[]; layers: readonly string[] }[]>();
 	const noteDropped = (what: string) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1);
 	const layers = layerTable(new Map([...prepared].map(([route, p]) => [route, p.layers])));
-	const bodyAfter = bodyAfterModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped);
+	const bodyAfter = bodyAfterModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped, ownAfter.size > 0);
 	for (const [route, p] of prepared) {
 		const url = new URL(route, options.old);
 		const file = route === NOT_FOUND ? 'pages/404.tsrx' : pageFile(url.pathname, folders);
@@ -706,7 +743,19 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		// carries only its own. Markless renders a fragment root of components only inside branches: both are arms of
 		// a branch on a module constant, which never changes.
 		const pageLayers = layers.own(route);
-		const tail = `${bodyAfter ? `<BodyAfter route={${lit(route)}} />` : ''}${pageLayers.map((n) => `<${n} />`).join('')}`;
+		let after = bodyAfter ? `<BodyAfter route={${lit(route)}} />` : '';
+		const owned = ownAfter.get(route);
+		if (bodyAfter && owned?.length) {
+			let from = 0;
+			after = '';
+			for (const i of owned) {
+				if (i > from) after += `<BodyAfter route={${lit(route)}} from={${from}} to={${i}} />`;
+				after += emitElement(bodyParts.after[i]!.byRoute.get(route)!, { declarations, bind: (el) => mergeBindings(bindParts(el, usedPorts), notifyPlan.bind(el)), dropped: noteDropped });
+				from = i + 1;
+			}
+			if (from < bodyParts.after.length) after += `<BodyAfter route={${lit(route)}} from={${from}} />`;
+		}
+		const tail = `${after}${pageLayers.map((n) => `<${n} />`).join('')}`;
 		const markup = tail ? `<>@if (${PAGE_SHOWN}) { ${rootMarkup} }@if (${PAGE_SHOWN}) { <>${tail}</> }</>` : rootMarkup;
 		const list = byFile.get(file) ?? [];
 		list.push({ route, search: url.search, markup, parts, declarations, layers: pageLayers });

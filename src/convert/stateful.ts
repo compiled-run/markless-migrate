@@ -81,8 +81,8 @@ export class TabsPlan {
 }
 
 /**
- * Radix Accordion (type single, collapsible unless an open trigger is aria-disabled) and Collapsible on Markless state:
- * the open item's key in one state() per accordion (a boolean per collapsible), and the item closing in another while
+ * Radix Accordion (collapsible unless an open trigger is aria-disabled) and Collapsible on Markless state: the open
+ * item's key in one state() per accordion (per item where several can be open, per collapsible), the item closing in another while
  * its exit animation runs. Trigger, item and header bind aria-expanded and data-state; the content binds data-state and
  * hidden, its content is an @if arm rendered while open or closing, and panel-motion.ts measures it as it is shown and
  * ends the exit.
@@ -95,7 +95,7 @@ export class DisclosurePlan {
 		return this.bindings.get(el);
 	}
 
-	add(root: Element, isRadixDisclosure: (el: Element) => boolean, content: (panel: Element) => string | undefined): number {
+	add(root: Element, isRadixDisclosure: (el: Element) => boolean, content: (panel: Element) => string | undefined, multiple: (accordion: Element) => boolean = () => false): number {
 		const byId = new Map<string, Element>();
 		for (const el of walk(root)) {
 			const id = attr(el, 'id');
@@ -118,7 +118,8 @@ export class DisclosurePlan {
 			}
 			const parent = trigger.parentNode as Element | null;
 			const header = parent && /^h[1-6]$/.test(parent.tagName ?? '') ? parent : undefined;
-			const key = accordion ?? trigger;
+			// Each item of an accordion that lets several be open is its own group.
+			const key = accordion && !multiple(accordion) ? accordion : trigger;
 			const list = groups.get(key) ?? groups.set(key, []).get(key)!;
 			list.push({ trigger, content: panel, ...(accordion && item ? { item } : {}), ...(header ? { header } : {}) });
 		}
@@ -333,7 +334,7 @@ export class InsertedDisclosurePlan {
 	 * `roots`: the pages, where a Base UI disclosure open on load (its content in the page, named by aria-controls)
 	 * closes and opens again on the same state.
 	 */
-	add(items: readonly { readonly trigger: Element; readonly parent: Element; readonly before: Element | null; readonly markup: string; readonly panelId?: string; readonly panelDepth?: number }[], roots: readonly Element[] = []): number {
+	add(items: readonly { readonly trigger: Element; readonly parent: Element; readonly before: Element | null; readonly markup: string; readonly panelId?: string; readonly panelDepth?: number }[], roots: readonly Element[] = [], multiple: (accordion: Element) => boolean = () => false): number {
 		const byTrigger = new Map<Element, (typeof items)[number][]>();
 		for (const i of items) (byTrigger.get(i.trigger) ?? byTrigger.set(i.trigger, []).get(i.trigger)!).push(i);
 		const isBase = (t: Element) => /^base-ui-/.test(attr(t, 'id') ?? '') || t.attrs.some((a) => a.name.startsWith('data-base-ui') || a.name === 'data-panel-open');
@@ -362,8 +363,9 @@ export class InsertedDisclosurePlan {
 			}
 			return out;
 		};
+		// An accordion that lets several items be open groups nothing: each item is a disclosure of its own.
 		const accordionOf = (el: Element) => {
-			for (let n = el.parentNode as Element | null; n && 'tagName' in n; n = n.parentNode as Element | null) if (attr(n, 'data-slot') === 'accordion') return n;
+			for (let n = el.parentNode as Element | null; n && 'tagName' in n; n = n.parentNode as Element | null) if (attr(n, 'data-slot') === 'accordion') return multiple(n) ? undefined : n;
 			return undefined;
 		};
 		const groups = new Map<Element, Element[]>();
@@ -490,10 +492,22 @@ export class SwitchPlan {
  */
 export class NotifyPlan {
 	private readonly bindings = new Map<Element, Binding>();
+	private readonly names = new Map<Element, string>();
+	private readonly regions = new Set<Element>();
 	private n = 0;
 
 	bind(el: Element): Binding | undefined {
 		return this.bindings.get(el);
+	}
+
+	/** The state a control sets: part of its identity, so no shared component holds it for two pages. */
+	nameOf(el: Element): string | undefined {
+		return this.names.get(el);
+	}
+
+	/** Whether the element is a live region the page shows notifications in. */
+	hosts(el: Element): boolean {
+		return this.regions.has(el);
 	}
 
 	add(notifications: readonly Notify[], locate: (sig: string, nth: number) => Element | undefined, emit: (html: string) => string): number {
@@ -506,6 +520,8 @@ export class NotifyPlan {
 			if (/@(if|switch|for) \(|<[A-Z]\w*[\s/>]/.test(markup)) continue;
 			const name = `nt${this.n++}`;
 			const declare = [`let ${name} = state(false);`];
+			this.names.set(control, name);
+			this.regions.add(region);
 			this.bindings.set(control, { declare, extra: [`onClick={() => { ${name} = true; setTimeout(() => { ${name} = false; }, ${Math.max(0, note.ms - 600)}); }}`] });
 			const own = this.bindings.get(region);
 			this.bindings.set(region, { declare: [...(own?.declare ?? []), ...declare], inserts: [...(own?.inserts ?? []), { before: null, markup: `@if (${name}) { <>${markup}</> }` }] });
