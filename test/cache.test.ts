@@ -269,8 +269,8 @@ test('check: a document request answered with a fragment, or a fragment request 
 	const shared = { fragmentFirst: [probe('fragment', frag('STALE')), probe('document', frag('HIT')), probe('document', frag('HIT'))], documentFirst: [probe('document', doc('STALE')), probe('fragment', doc('HIT')), probe('fragment', doc('HIT'))] };
 	const found = judgeRoute(plain, observation([doc('MISS'), doc('HIT')], { orders: shared }));
 	assert.deepEqual(found.map((f) => f.problem), ['wrong-body', 'wrong-body']);
-	assert.match(found[0]!.detail, /fragment first after expiry, request 2: a document request got a fragment \(HIT\), and 1 more/);
-	assert.match(found[1]!.detail, /document first after expiry, request 2: a fragment request got the document/);
+	assert.match(found[0]!.detail, /fragment first on a fresh or expired entry, request 2: a document request got a fragment \(HIT\), and 1 more/);
+	assert.match(found[1]!.detail, /document first on a fresh or expired entry, request 2: a fragment request got the document/);
 	assert.deepEqual(judgeRoute(plain, observation([vercel('MISS'), vercel('HIT')], { orders: shared })).length, 2, 'probes are judged by their own bodies');
 	assert.deepEqual(judgeRoute(plain, observation([{ ...vercel('MISS') }, vercel('HIT')])), [], 'without the router\'s markers no body is told apart');
 });

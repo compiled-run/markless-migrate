@@ -157,7 +157,7 @@ export function judgeRoute(planned: RouteCaching, observed: RouteObservation, fr
 			...passes.map((f, i): Asked => ['document', f, `pass ${i + 1}`]),
 			...(observed.fragmentPasses ?? []).map((f, i): Asked => ['fragment', f, `fragment URL pass ${i + 1}`]),
 			...(observed.fragment ? [['fragment', observed.fragment.response, `the ${fragmentHeader}: 1 request`] as Asked, ['document', observed.fragment.documentAfter, `the document after the ${fragmentHeader}: 1 request`] as Asked] : []),
-			...(['fragmentFirst', 'documentFirst'] as const).flatMap((order) => (observed.orders?.[order] ?? []).map((p, i): Asked => [p.asked, p.response, `${order === 'fragmentFirst' ? 'fragment' : 'document'} first after expiry, request ${i + 1}`])),
+			...(['fragmentFirst', 'documentFirst'] as const).flatMap((order) => (observed.orders?.[order] ?? []).map((p, i): Asked => [p.asked, p.response, `${order === 'fragmentFirst' ? 'fragment' : 'document'} first on a fresh or expired entry, request ${i + 1}`])),
 		];
 		const wrong = new Map<Probe['asked'], { first: string; n: number }>();
 		for (const [asked, f, when] of checked) {
@@ -409,7 +409,7 @@ export function summarizeCachingReport(report: CachingReport): string {
 	if (!report.findings.length) lines.push('  no caching problems');
 	for (const f of report.findings) lines.push(`  red  ${f.route}: ${LABEL[f.problem]}: ${f.detail}`);
 	const ordered = report.routes.filter((r) => r.orders).length;
-	if (ordered) lines.push(`  ${ordered} page${ordered === 1 ? '' : 's'} asked for fragment then document and document then fragment after expiry`);
+	if (ordered) lines.push(`  ${ordered} page${ordered === 1 ? '' : 's'} asked for fragment then document and document then fragment on fresh or expired entries`);
 	for (const note of report.notes ?? []) lines.push(`  note ${note}`);
 	return `${lines.join('\n')}\n`;
 }
