@@ -2,6 +2,7 @@ import { optionsOf, place, type Anchor } from './popper.ts';
 import { leave, stay } from './presence.ts';
 import { layersFor } from './reveal.ts';
 import { hideOthers } from './aria-hidden.ts';
+import { lockScroll } from './remove-scroll.ts';
 
 // What Radix's Portal, DismissableLayer and FocusScope do around a popover, menu, select or tooltip, on the content
 // Markless renders at the end of the body: shown on open, Escape and a press outside closing the top layer, focus
@@ -55,6 +56,7 @@ export function openLayer(trigger: HTMLElement, key: string, options: { readonly
 		}
 		for (const n of nodes) n.style.pointerEvents = 'auto';
 		layer.cleanup.push(hideOthers(nodes));
+		layer.cleanup.push(lockScroll(nodes));
 	}
 	open.push(layer);
 	const onKey = (event: KeyboardEvent) => {
