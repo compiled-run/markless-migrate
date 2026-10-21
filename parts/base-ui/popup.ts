@@ -28,7 +28,7 @@ export function setTrigger(trigger: HTMLElement, on: boolean): void {
 }
 
 /** Mounts a trigger's captured portal; `popupSelector` picks the popup inside it. */
-export function openPopup(trigger: HTMLElement, options: { readonly popupSelector: string; readonly positionMethod?: 'absolute' | 'fixed'; readonly sideOffset?: number; readonly onDismiss: (p: Popup) => void }): Popup | undefined {
+export function openPopup(trigger: HTMLElement, options: { readonly popupSelector: string; readonly positionMethod?: 'absolute' | 'fixed'; readonly sideOffset?: number; readonly onDismiss: (p: Popup) => void; readonly outsidePress?: boolean }): Popup | undefined {
 	const key = trigger.id;
 	if (!key || isOpen(key)) return undefined;
 	const portal = layersFor(key).find((n) => n.hasAttribute('data-base-ui-portal'));
@@ -61,7 +61,7 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 		if (!target || top() !== p || popup.contains(target) || trigger.contains(target)) return;
 		options.onDismiss(p);
 	};
-	const timer = setTimeout(() => document.addEventListener('pointerdown', onDown, true), 0);
+	const timer = options.outsidePress === false ? undefined : setTimeout(() => document.addEventListener('pointerdown', onDown, true), 0);
 	document.addEventListener('keydown', onKey, true);
 	p.cleanup.push(() => {
 		clearTimeout(timer);

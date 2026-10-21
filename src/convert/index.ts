@@ -10,7 +10,7 @@ import { parseFragment } from 'parse5';
 import { cleanDocument, frameworkBuilds, type Dropped } from './clean.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, walk, type Document, type Element } from './dom.ts';
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
-import { CheckablePlan, DisclosurePlan, SelectPlan, TabsPlan } from './stateful.ts';
+import { BaseTabsPlan, CheckablePlan, DisclosurePlan, SelectPlan, TabsPlan } from './stateful.ts';
 import { captureAllToggles, type ToggleGroup } from './toggles.ts';
 import { bindMount, bindParts, bodyHandlers, handledBy, portFor, onRoute, UNPORTED, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
@@ -171,6 +171,9 @@ let placementResolver: PartResolver | undefined;
 const templatePorts = new Set<string>();
 const isRadixTab = (el: Element) => attr(el, 'role') === 'tab' && portFor(el) === 'radix/roving';
 const isRadixDisclosure = (el: Element) => portFor(el) === 'radix/disclosure-motion';
+const isBaseTab = (el: Element) => attr(el, 'role') === 'tab' && /^base-ui-/.test(attr(el, 'id') ?? '');
+// The panel each Base UI tab showed when chosen on the old page (Base UI renders only the chosen one).
+const basePanels = new Map<Element, { attrs: Record<string, string>; inner: string }>();
 // What the old page put in a Radix tab panel when its tab was chosen, as tsrx, by panel id (TabsPlan renders it on state).
 const panelContent = new Map<Element, string>();
 
@@ -276,6 +279,11 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 		const atPath = elementAt(root, reveal.path);
 		const trigger = reveal.sig !== undefined && (!atPath || sigOf(atPath) !== reveal.sig) ? (bySig.get(reveal.sig)?.[reveal.nth ?? 0] ?? atPath) : atPath;
 		const panel = trigger && (isRadixTab(trigger) || isRadixDisclosure(trigger)) ? byId.get(attr(trigger, 'aria-controls') ?? '') : undefined;
+		if (trigger && isBaseTab(trigger)) {
+			const shown = reveal.added.filter((a) => typeof a.into !== 'string').flatMap((a) => childrenOf(parseFragment(a.html) as unknown as Element).filter(isElement)).find((e) => attr(e, 'role') === 'tabpanel');
+			if (shown) basePanels.set(trigger, { attrs: Object.fromEntries(shown.attrs.map((a) => [a.name, a.value])), inner: childrenOf(shown).map((n) => outer(n)).join('') });
+			continue;
+		}
 		if (panel) {
 			const markup = reveal.added
 				.filter((a) => typeof a.into !== 'string')
@@ -462,6 +470,14 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	let tabGroups = 0;
 	for (const p of prepared.values()) tabGroups += tabs.add(p.root, isRadixTab, (panel) => panelContent.get(panel));
 	if (tabGroups) log(`tabs on Markless state: ${tabGroups} tab lists`);
+	const baseTabs = new BaseTabsPlan();
+	let baseTabGroups = 0;
+	const emitPanel = (html: string) => emitChildren(parseFragment(html) as unknown as Element, { bind: (el) => bindParts(el, templatePorts) });
+	for (const p of prepared.values()) baseTabGroups += baseTabs.add(p.root, isBaseTab, (t) => basePanels.get(t), emitPanel);
+	if (baseTabGroups) {
+		log(`Base UI tab lists on Markless state: ${baseTabGroups}`);
+		templatePorts.add('radix/roving');
+	}
 	const disclosures = new DisclosurePlan();
 	let disclosureGroups = 0;
 	for (const p of prepared.values()) disclosureGroups += disclosures.add(p.root, isRadixDisclosure, (panel) => panelContent.get(panel));
@@ -474,7 +490,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		log(`checkboxes, switches, toggles and radio groups on Markless state: ${checkableGroups}`);
 		templatePorts.add('toggle');
 	}
-	handledBy((el) => checkables.bind(el) !== undefined);
+	handledBy((el) => checkables.bind(el) !== undefined || baseTabs.bind(el) !== undefined);
 	const selects = new SelectPlan();
 	for (const p of prepared.values()) selects.add(p.root, (el) => portFor(el) === 'base-ui/select');
 	for (const [container, r] of replaced) {
@@ -485,7 +501,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const withAppend = (el: Element, binding: Binding | undefined): Binding | undefined => {
 		const markup = appended.get(el);
 		binding = mergeBindings(replacedParts.get(el), binding);
-		const own = mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), disclosures.bind(el)), selects.bind(el)), checkables.bind(el)), binding), bindMount(el));
+		const own = mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), baseTabs.bind(el)), disclosures.bind(el)), selects.bind(el)), checkables.bind(el)), binding), bindMount(el));
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};
 	void appendOf;

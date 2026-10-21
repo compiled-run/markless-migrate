@@ -31,3 +31,17 @@ test('radios share one state: choosing one is its index, and a single-choice tog
 	assert.match(out, /radioKeys\(event, false\)/, 'a toggle group\'s arrows only move focus');
 	assert.deepEqual(plan.bind(a)?.declare, ['let rg0 = state(0);']);
 });
+
+test('Base UI tabs render the chosen tab\'s panel content in an arm per tab, with the panel\'s id and label bound', async () => {
+	const { BaseTabsPlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-slot="tabs" data-activation-direction="none"><div role="tablist" data-activation-direction="none"><button role="tab" id="base-ui-a" aria-selected="true" tabindex="0" data-active="" aria-controls="p-a">A</button><button role="tab" id="base-ui-b" aria-selected="false" tabindex="-1">B</button></div><div role="tabpanel" id="p-a" aria-labelledby="base-ui-a" data-activation-direction="none"><p>a</p></div></div></body>');
+	const b = [...walk(body(doc))].find((el) => attr(el, 'id') === 'base-ui-b')!;
+	const plan = new BaseTabsPlan();
+	const placed = plan.add(body(doc), (el) => /^base-ui-/.test(attr(el, 'id') ?? ''), (t) => (t === b ? { attrs: { role: 'tabpanel', id: 'p-b', 'aria-labelledby': 'base-ui-b' }, inner: '<p>b</p>' } : undefined), (h) => h);
+	assert.equal(placed, 1);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /@if \(btab0 === 0\) \{ <><p>a<\/p><\/> \}@if \(btab0 === 1\) \{ <><p>b<\/p><\/> \}/);
+	assert.match(out, /id=\{btab0 === 0 \? "p-a" : "p-b"\}/);
+	assert.match(out, /aria-controls=\{btab0 === 1 \? "p-b" : undefined\}/);
+	assert.match(out, /btab0d = 1 > btab0 \? "right"/);
+});
