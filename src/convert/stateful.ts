@@ -8,10 +8,10 @@ import { lit, type Binding } from './tsrx.ts';
  * data-state and hidden, and its content (what the old page showed in it, captured for the panels shown on use) is an
  * @if arm, so an inactive panel holds nothing, as Radix unmounts it. Nothing is written to the DOM by hand.
  */
-// A branch cannot hold another branch: content that holds one (a tab list inside an accordion item) stays rendered,
-// hidden by its bound attribute; the innermost content leaves the DOM while closed.
+// An arm is rebuilt from its own markup: content holding another branch, a component (one with state or per-page
+// values has to run), or attributes bound to a shared component's per-page values stays rendered, hidden instead.
 function armed(test: string, inner: string): string {
-	return /@(if|switch|for) \(/.test(inner) ? inner : `@if (${test}) { <>${inner}</> }`;
+	return /@(if|switch|for) \(|\bvalues\[|<[A-Z]\w*[\s/>]/.test(inner) ? inner : `@if (${test}) { <>${inner}</> }`;
 }
 
 export class TabsPlan {
