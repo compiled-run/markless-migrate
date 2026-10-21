@@ -296,3 +296,60 @@ the transitions and animations each step starts (property, duration, easing) and
 - The build needs about 32 GB of heap for 484 pages (`NODE_OPTIONS=--max-old-space-size=32768`).
 - `onIdle` alone boots the page late on a busy machine (the scheduler's background priority has no deadline); the root
   boots on `onVisible` as well.
+
+## Markless 0.8.0 (2026-10-21)
+
+Rebuilt on Markless 0.8.0 with the toolchain `create-markless` 0.8.0 writes (vite-plus 1.3.0, nitro 3.0.260903-beta). It
+is checked on the published 0.8.0 packages and deployed on Markless main packed locally (`fbb80634`, which keeps the
+theme script across in-place navigations) until 0.9.0 is on npm. markless-migrate
+is rebased on main (the corrected `cache apply` and `cache check`).
+
+### The new parser
+
+0.8.0 parses TSRX with `@tsrx/yuku` 0.8.0, which reads two things in the imported markup differently, so the importer writes
+them another way:
+
+| What the parser does now | Where it hit | The importer writes |
+| --- | --- | --- |
+| `//` after a tag, and `/*` anywhere, start a comment among template children | code tokens such as `//thisweekinreact.com` (the YAML sample on `/blog/releases/3.5`): the comment ran to the end of the one-line page and the file stopped parsing | a `/` before `/` or `*` in text as `&#47;` |
+| a code block renders one node | `document.tsrx`'s `@if` branches (several head tags each) and the static HTML pages (text and elements side by side) | each branch and each static page body in a fragment |
+
+### Workarounds removed
+
+| Workaround (a Markless bug this port found) | Now |
+| --- | --- |
+| page files written under `_` names (`beginner_s_guide`, `folder_with_space`, `___`) and served at their own address by route rules, since a page name with an apostrophe did not bundle and a request path was matched undecoded | each page file is named as its address (`beginner's guide.tsrx`, `folder with space/doc 1.tsrx`, `æøå.tsrx`); `lib/route-aliases.json` keeps only the two static HTML files' own addresses |
+| a script as the first child of every element with `xlink:href`, `xml:space` or `xmlns:xlink`, which Markless dropped | the attributes are in the markup |
+| a box-less `<span>` around a page that is only text | the text itself |
+
+The sidebar compares the current address with its links, which are written decoded (`/tests/docs/tests/ascii/æøå`); with
+the real names it now decodes `location.pathname` first, as Docusaurus does.
+
+### What else changed
+
+- DocSearch's dialog (with Ask AI) and the live code editor's runtime are built as modules of their own
+  (`lazy.config.ts`, into `public/lazy/`) and imported by URL when first needed: DocSearch when the pointer, focus or a touch
+  reaches its button or on Ctrl/Cmd+K and `/`, as theme-search-algolia does; the editor only on a page with a playground.
+  Bundled with the app, Markless module-preloaded both on every page (128 kB and 64 kB compressed), which put
+  `/blog/releases/3.3` over its JavaScript budget.
+- The sidebar kept across navigations moves its page hints with it (`hints is not defined` on every docs page's link clicks,
+  since the hints moved into their own module).
+- `<noscript>` content stays text after an in-place navigation (a Markless bug, below).
+- Links to the old site's static HTML files (`/pure-html`, `/dogfooding/javadoc`) load the document, as on the old site: they
+  are not pages of its app.
+- The agent runs (`run --agent claude` on `/`, `/tests/docs/tests/ascii/æøå` and `/docs/advanced/routing`): a click before
+  the theme's listeners exist is handled through the root's `onClick` as the old listeners would; ideal images are timed as
+  `@slorber/react-ideal-image` does; Mermaid diagrams carry React's `useId` ids (worked out per layout) and their tooltip
+  element in `<body>`, and switch to their dark drawing on a colour mode change.
+- Deploy: the catch-all `/$1.html` rewrite `deploy/docusaurus/build.ts` put after the filesystem step ran ahead of Nitro's
+  ISR routes and sent every page to the uncached function (`cache check`: every page MISS, MISS). Each static HTML file now
+  gets its own route.
+
+### Checker fixes
+
+- Motion (`/`, the theme toggle): the search button's `⌘` and `K` keys take their colour from the button, whose colour
+  transition starts theirs again each time theirs ends, so one interaction recorded a different number of `color`
+  transitions on each side, and the extra ones read as motion only the new page has. Transitions of one property on one
+  element in one interaction are now one motion (`test/checker-noise.test.ts`).
+- CSS: Mermaid draws shapes through rough.js, which puts a straight edge's cubic control points at random places on the
+  line. A computed `d` now compares by the shape it draws (`src/check/svg-path.ts`, `test/svg-path.test.ts`).
