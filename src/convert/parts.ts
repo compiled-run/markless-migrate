@@ -113,6 +113,12 @@ export function bindMount(el: Element): Binding | undefined {
 	return hit ? { extra: [`onVisible={() => mount(${JSON.stringify(hit)})}`] } : undefined;
 }
 
+/** The source's candidates for an element, narrowed to the library whose markup it carries. */
+export function candidatesOf(el: Element, of: PartResolver | undefined = resolver): PartUsage[] {
+	const s = slot(el);
+	return s && of ? narrow(el, of.candidates(s)) : [];
+}
+
 /** The port the source's analysis gives an element, if any. */
 export function portFor(el: Element): string | undefined {
 	const s = slot(el);

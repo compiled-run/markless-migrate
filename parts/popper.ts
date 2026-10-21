@@ -23,6 +23,12 @@ const transformOrigin: Middleware = {
 	},
 };
 
+// PopperArrow: a positioned span holding the arrow's svg, measured as Radix's useSize measures it.
+function arrowHeight(content: Element | null): number {
+	const svg = content ? [...content.children].find((c) => c.tagName === 'SPAN' && (c as HTMLElement).style.position === 'absolute')?.querySelector('svg') : null;
+	return svg ? parseFloat(getComputedStyle(svg).height) || 0 : 0;
+}
+
 const placed = new WeakMap<HTMLElement, () => void>();
 
 /** Places a wrapper off its anchor and keeps it placed while it is open; `stop` ends the tracking. */
@@ -41,7 +47,8 @@ export function place(anchor: Element, wrapper: HTMLElement, options: PlaceOptio
 			strategy: 'fixed',
 			placement,
 			middleware: [
-				offset({ mainAxis: options.sideOffset, alignmentAxis: options.alignOffset }),
+				// Radix adds its arrow's height to the side offset (PopperContent's offset middleware).
+				offset({ mainAxis: options.sideOffset + arrowHeight(content), alignmentAxis: options.alignOffset }),
 				shift({ mainAxis: true, crossAxis: false, limiter: limitShift(), ...detect }),
 				flip({ ...detect }),
 				size({

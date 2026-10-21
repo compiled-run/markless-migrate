@@ -12,7 +12,7 @@ import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, 
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
 import { BaseTabsPlan, CheckablePlan, DisclosurePlan, InsertedDisclosurePlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
 import { captureAllForms, captureAllSwitches, captureAllToggles, type FormCapture, type Switch, type ToggleGroup } from './toggles.ts';
-import { bindMount, bindParts, bodyHandlers, handledBy, portFor, onRoute, UNPORTED, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
+import { bindMount, bindParts, bodyHandlers, candidatesOf, handledBy, portFor, onRoute, UNPORTED, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { stat } from 'node:fs/promises';
 import { match } from 'path-to-regexp';
@@ -187,7 +187,10 @@ function placement(kept: readonly Element[]): string {
 		for (const el of [root, ...walkAll(root)]) {
 			const slot = attr(el, 'data-slot');
 			if (!slot || attr(el, 'data-side') === undefined) continue;
-			for (const c of placementResolver.candidates(slot)) {
+			// The offsets of the library whose markup the element carries: Base UI's tooltip popup and Radix's tooltip
+			// content share a data-slot, with defaults of 4 and 0.
+			const own = candidatesOf(el, placementResolver);
+			for (const c of own.length ? own : placementResolver.candidates(slot)) {
 				const side = placementResolver.prop(c.library, c.export, 'sideOffset');
 				const align = placementResolver.prop(c.library, c.export, 'alignOffset');
 				if (side === undefined && align === undefined) continue;
