@@ -68,6 +68,16 @@ export const PORTS: readonly Port[] = [
 	{ module: 'radix/disclosure-motion', library: 'radix-ui', exports: ['Collapsible.Root', 'Collapsible.CollapsibleTrigger', 'Collapsible.CollapsibleContent', 'Collapsible.Trigger', 'Collapsible.Content', 'Accordion.Root', 'Accordion.Item', 'Accordion.Header', 'Accordion.Trigger', 'Accordion.Content'], events: [], locate: (el) => radix(el) },
 ];
 
+// Exports whose element behaves as the native element it renders (a button, an input, a label, a heading, an icon's
+// svg): what a browser does with that element is all they do, so they need no port and are not reported as unported.
+const NATIVE: Readonly<Record<string, ReadonlySet<string>>> = {
+	'shadcn/ui': new Set(['Button', 'Label', 'Separator', 'Input', 'Textarea', 'FieldGroup', 'Field', 'FieldLabel', 'FieldDescription', 'Card', 'Badge', 'Kbd']),
+	'@base-ui/react': new Set(['Button', 'Input', 'Dialog.Title', 'Dialog.Description', 'AlertDialog.Title', 'AlertDialog.Description', 'Drawer.Title', 'Drawer.Description', 'Progress.Label', 'Progress.Value', 'Separator']),
+	'radix-ui': new Set(['Dialog.Title', 'Dialog.Description', 'AlertDialog.Title', 'AlertDialog.Description', 'Label.Root', 'Separator.Root']),
+	'lucide-react': new Set(['*']),
+};
+const native = (c: PartUsage) => NATIVE[c.library]?.has(c.export) === true || NATIVE[c.library]?.has('*') === true;
+
 export interface PartUse {
 	readonly part: string;
 	import(dir: string): string;
@@ -127,7 +137,7 @@ export function bindParts(el: Element, uses: PartUse[] | Set<string>): Binding |
 		if (uses instanceof Set) uses.add(port.module);
 		else if (!uses.some((u) => u.part === port.module)) uses.push({ part: port.module, import: () => '' });
 	}
-	if (!placed && route && !handled(el)) for (const c of candidates) (UNPORTED.get(`${c.library} ${c.export}`) ?? UNPORTED.set(`${c.library} ${c.export}`, new Set()).get(`${c.library} ${c.export}`)!).add(route);
+	if (!placed && route && !handled(el)) for (const c of candidates.filter((x) => !native(x))) (UNPORTED.get(`${c.library} ${c.export}`) ?? UNPORTED.set(`${c.library} ${c.export}`, new Set()).get(`${c.library} ${c.export}`)!).add(route);
 	return undefined;
 }
 
