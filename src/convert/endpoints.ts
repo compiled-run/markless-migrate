@@ -204,7 +204,41 @@ function serverSource(root: string, file: string, out: string, text: string, dea
 	// JSX handed to next/og's ImageResponse is its input: satori reads elements as plain { type, props } objects.
 	const elements = [...mod.imports.values()].some((i) => i.source === 'next/og');
 	const edits: { start: number; end: number; text: string }[] = [];
+	const specOf = (spec: string): string | undefined => {
+		if (spec.startsWith('@/')) {
+			const target = resolveLocal(root, file, spec);
+			if (!target) return undefined;
+			const rel = relative(dirname(join(out, relative(root, file))), join(out, relative(root, target))).replace(/\.tsx$/, '.ts');
+			return rel.startsWith('.') ? rel : `./${rel}`;
+		}
+		if (NEXT_SHIMS[spec]) return relative(dirname(join(out, relative(root, file))), join(out, NEXT_SHIMS[spec])).replace(/^(?!\.)/, './');
+		if (/\.tsx$/.test(spec)) return spec.replace(/\.tsx$/, '.ts');
+		return undefined;
+	};
+	// A module's top-level `await import(x)` is a static import: a bundler that puts both sides in one chunk would
+	// otherwise leave a cycle of top-level awaits that never settles (the server hangs at start).
+	const hoisted = new Set<number>();
+	const prepend: string[] = [];
+	for (const stmt of mod.program.body as N[]) {
+		const decl = stmt.type === 'ExportNamedDeclaration' ? stmt.declaration : stmt;
+		if (decl?.type !== 'VariableDeclaration') continue;
+		for (const d of decl.declarations as N[]) {
+			const init = d.init;
+			if (init?.type !== 'AwaitExpression' || init.argument?.type !== 'ImportExpression' || init.argument.source?.type !== 'Literal' || dead.has(init.argument.start)) continue;
+			const spec = String(init.argument.source.value);
+			const name = `__mmImport${prepend.length}`;
+			prepend.push(`import * as ${name} from ${JSON.stringify(specOf(spec) ?? spec)};\n`);
+			edits.push({ start: init.start, end: init.end, text: name });
+			hoisted.add(init.start);
+		}
+	}
 	walk(mod.program, (n: N) => {
+		if (hoisted.has(n.start) && n.type === 'AwaitExpression') return false;
+		// server-only and client-only are React's markers of which module graph a file may be in, not code to run.
+		if (n.type === 'ImportDeclaration' && /^(server|client)-only$/.test(String(n.source?.value)) && !(n.specifiers as N[] | undefined)?.length) {
+			edits.push({ start: n.start, end: n.end, text: '' });
+			return false;
+		}
 		if (n.type === 'ImportExpression' && dead.has(n.start)) {
 			edits.push({ start: n.start, end: n.end, text: `Promise.reject(new Error(${JSON.stringify(`not ported: ${String(n.source?.value)} is imported only by code no ported route handler reaches`)}))` });
 			return false;
@@ -215,22 +249,14 @@ function serverSource(root: string, file: string, out: string, text: string, dea
 		}
 		const source = n.type === 'ImportDeclaration' || n.type === 'ExportNamedDeclaration' || n.type === 'ExportAllDeclaration' || n.type === 'ImportExpression' ? n.source : undefined;
 		if (source?.type === 'Literal' && typeof source.value === 'string') {
-			const spec = source.value;
-			if (spec.startsWith('@/')) {
-				const target = resolveLocal(root, file, spec);
-				if (target) {
-					let rel = relative(dirname(join(out, relative(root, file))), join(out, relative(root, target))).replace(/\.tsx$/, '.ts');
-					if (!rel.startsWith('.')) rel = `./${rel}`;
-					edits.push({ start: source.start, end: source.end, text: JSON.stringify(rel) });
-				}
-			} else if (NEXT_SHIMS[spec]) edits.push({ start: source.start, end: source.end, text: JSON.stringify(relative(dirname(join(out, relative(root, file))), join(out, NEXT_SHIMS[spec])).replace(/^(?!\.)/, './')) });
-			else if (/\.tsx$/.test(spec)) edits.push({ start: source.start, end: source.end, text: JSON.stringify(spec.replace(/\.tsx$/, '.ts')) });
+			const next = specOf(source.value);
+			if (next !== undefined) edits.push({ start: source.start, end: source.end, text: JSON.stringify(next) });
 		}
 	});
 	edits.sort((a, b) => b.start - a.start);
-	let result = mod.ok ? text : text;
+	let result = text;
 	for (const e of edits) result = result.slice(0, e.start) + e.text + result.slice(e.end);
-	return result;
+	return prepend.join('') + result;
 }
 
 // What the handlers use of next/server, on the Fetch API.
@@ -537,7 +563,7 @@ export async function writeRouting(input: RoutingInput): Promise<{ ports: Endpoi
 		}
 		mergeDead(runtime, closure);
 		for (const p of closure.packages) {
-			if (p.startsWith('node:') || p.startsWith('next/') || ['next', 'fs', 'path', 'crypto', 'url', 'os'].includes(p)) continue;
+			if (p.startsWith('node:') || p.startsWith('next/') || ['next', 'fs', 'path', 'crypto', 'url', 'os', 'server-only', 'client-only'].includes(p)) continue;
 			const version = versions[p];
 			if (version && !version.startsWith('workspace:')) packages[p] = version;
 		}

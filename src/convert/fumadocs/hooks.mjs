@@ -9,6 +9,9 @@ function literal(node) {
 	switch (node?.type) {
 		case 'Literal':
 			return { ok: true, value: node.value };
+		// structuredData writes `heading: undefined` for text before the first heading.
+		case 'Identifier':
+			return node.name === 'undefined' ? { ok: true, value: undefined } : { ok: false };
 		case 'TemplateLiteral':
 			return node.expressions.length ? { ok: false } : { ok: true, value: node.quasis.map((q) => q.value.cooked).join('') };
 		case 'ArrayExpression': {
