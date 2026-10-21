@@ -7,11 +7,11 @@ import sidebarData from './sidebars.json';
 import { initShowcase } from './showcase.ts';
 import { initPlaygrounds } from './playground.ts';
 import { initJsonViews } from './json-view.ts';
-import { hint, readHints } from './page-hints.ts';
+import { hint, moveHints, readHints } from './page-hints.ts';
 import { startProgress } from './progress.ts';
 import { init as initImageZoom } from './image-zoom.ts';
 import { initColorGenerator, onColorModeChange } from './color-generator.ts';
-import { keepHolder as keepSearchHolder, open as openSearch, onKeyDown as searchKeyDown } from './docsearch.ts';
+import type * as DocSearchModule from './docsearch.ts';
 
 type Choice = 'light' | 'dark' | null;
 type Dict = Record<string, Record<string, string> | undefined>;
@@ -463,7 +463,7 @@ function restoreSidebar(): void {
 		return;
 	}
 	const scrolled = aside.querySelector('nav[aria-label="Docs sidebar"]')?.scrollTop ?? 0;
-	hints.set(kept, hints.get(aside) ?? {});
+	moveHints(aside, kept);
 	aside.replaceWith(kept);
 	resumeCollapsibles(kept);
 	const nav = kept.querySelector('nav[aria-label="Docs sidebar"]');
@@ -477,6 +477,26 @@ function restoreSidebar(): void {
 // links whose state changes run the stylesheet's own transition (its properties, duration and easing) by script.
 const TRANSITIONED = ['color', 'background-color'] as const;
 let pointerTarget: EventTarget | null = null;
+
+// DocSearch's code loads when the pointer, focus or a touch reaches its button, or on Ctrl/Cmd+K and "/", as theme-search-algolia's importDocSearchModalIfNeeded does.
+let docsearch: typeof DocSearchModule | undefined;
+let loadingSearch: Promise<typeof DocSearchModule> | undefined;
+const loadSearch = () => (loadingSearch ??= import('./docsearch.ts').then((m) => (docsearch = m)));
+const openSearch = (): void => void (docsearch ? docsearch.open() : loadSearch().then((m) => m.open()));
+const keepSearchHolder = (): void => docsearch?.keepHolder();
+function searchKeyDown(event: KeyboardEvent): void {
+	if (docsearch) return docsearch.onKeyDown(event);
+	const target = event.composedPath()[0] as HTMLElement;
+	const editing = target.isContentEditable || ['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(target.tagName);
+	if (!((event.key?.toLowerCase() === 'k' && (event.metaKey || event.ctrlKey)) || (event.key === '/' && !editing))) return;
+	event.preventDefault();
+	void loadSearch().then((m) => {
+		if (!m.isOpen() && !document.body.classList.contains('DocSearch--active')) m.open();
+	});
+}
+function preloadSearch(event: Event): void {
+	if (!docsearch && event.target instanceof Element && event.target.closest('button.DocSearch-Button')) void loadSearch();
+}
 function markActiveWhenHovered(nav: Element): void {
 	requestAnimationFrame(() => {
 		const links = [...nav.querySelectorAll<HTMLElement>('a.menu__link, .menu__list-item-collapsible')];
@@ -1282,7 +1302,13 @@ let booted = false;
 // AnnouncementBarProvider lives in the theme layout: it records the bar it saw once a page with the layout shows.
 let announcementSeen = false;
 // What Docusaurus redoes on every route: the router's client-side navigation swaps in a fresh page, so this runs again then.
+// The router parses a fetched page with scripting off, so <noscript> holds elements where a fresh load holds its markup as text.
+function noscriptAsText(): void {
+	for (const el of document.body.querySelectorAll('noscript')) if (el.firstElementChild) el.textContent = el.innerHTML;
+}
+
 function pageInit(): void {
+	noscriptAsText();
 	if (!announcementSeen && document.querySelector('nav.theme-layout-navbar')) {
 		announcementSeen = true;
 		if (storage()?.getItem(ANNOUNCEMENT_ID_KEY) !== ANNOUNCEMENT_ID) storage()?.setItem(DISMISS_KEY, 'false');
@@ -1336,6 +1362,7 @@ export function siteBoot(): void {
 	});
 	document.addEventListener('click', siteClick);
 	document.addEventListener('pointerover', (event) => (pointerTarget = event.target), { passive: true });
+	for (const type of ['mouseover', 'focusin', 'touchstart']) document.addEventListener(type, preloadSearch, { passive: true });
 	window.addEventListener('resize', applyWindowSize);
 	window.addEventListener('scroll', checkLazyImages, { passive: true });
 	window.addEventListener('resize', checkLazyImages, { passive: true });

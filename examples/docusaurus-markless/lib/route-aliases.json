@@ -1,11 +1,4 @@
 {
-	"/tests/docs/beginner's%20guide": "/tests/docs/beginner_s_guide",
-	"/tests/docs/folder%20with%20space/doc%201": "/tests/docs/folder_with_space/doc_1",
-	"/tests/docs/folder%20with%20space/doc%202": "/tests/docs/folder_with_space/doc_2",
-	"/tests/docs/tests/ascii/%C3%A6%C3%B8%C3%A5": "/tests/docs/tests/ascii/___",
-	"/tests/docs/tests/ascii/folder/%C3%A6%C3%B8%C3%A5": "/tests/docs/tests/ascii/folder/___",
-	"/tests/docs/tests/sidebar-display/Category%202%20Long%20Long%20Long%20Long%20Long%20Long%20Long%20Long%20Long%20Long%20Long/doc1": "/tests/docs/tests/sidebar-display/Category_2_Long_Long_Long_Long_Long_Long_Long_Long_Long_Long_Long/doc1",
-	"/tests/docs/tests/sidebar-display/Category1LongLongLongLongLongLongLongLongLongLong/doc2%20long%20long%20long%20long%20long%20long%20long%20long%20long%20long%20long%20long": "/tests/docs/tests/sidebar-display/Category1LongLongLongLongLongLongLongLongLongLong/doc2_long_long_long_long_long_long_long_long_long_long_long_long",
 	"/pure-html.html": "/pure-html",
 	"/dogfooding/javadoc/index.html": "/dogfooding/javadoc"
 }

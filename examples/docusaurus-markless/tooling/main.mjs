@@ -14,7 +14,7 @@ import { setSiteResolver, addSiteRoot } from './source/jsx-loader.mjs';
 import { templates as docsTemplates } from './templates/docs.jsx';
 import { templates as blogTemplates } from './templates/blog.jsx';
 import { templates as pagesTemplates, sitePageTemplate, pluginThemeTemplate } from './templates/pages.jsx';
-import { app, fileRoute, pageFile, writePage, writeFooter, writeHeads, pluginHtmlTags, copyFiles, clearPages, writeClientData, runPostBuild, staticHtmlPages, writeStaticPage } from './source/output.mjs';
+import { app, pageFile, writePage, writeFooter, writeHeads, pluginHtmlTags, copyFiles, clearPages, writeClientData, runPostBuild, staticHtmlPages, writeStaticPage } from './source/output.mjs';
 
 const args = process.argv.slice(2);
 const only = args.filter((a, i) => args[i - 1] === '--only');
@@ -106,7 +106,7 @@ if (!only.length) {
 	await writeClientData(site, pages);
 	await runPostBuild(site, pages);
 	await writeFile(join(app, 'lib/routes.json'), `${JSON.stringify([...pages.keys(), ...staticPages.map((page) => page.path)].filter((p) => p !== '/404').sort(), null, '\t')}\n`);
-	const aliases = Object.fromEntries([...[...pages.keys()].filter((p) => fileRoute(p) !== p).map((p) => [encodeURI(p), encodeURI(fileRoute(p))]), ...staticPages.map((page) => [encodeURI(page.file), encodeURI(page.path)])]);
+	const aliases = Object.fromEntries(staticPages.map((page) => [encodeURI(page.file), encodeURI(page.path)]));
 	await writeFile(join(app, 'lib/route-aliases.json'), `${JSON.stringify(aliases, null, '\t')}\n`);
 	await copyFiles(site, staticPages.map((page) => page.file));
 }

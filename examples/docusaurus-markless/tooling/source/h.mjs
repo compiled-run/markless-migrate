@@ -269,8 +269,9 @@ export function toHtml(nodes) {
 
 // TSRX markup. Text is written as text (entity-escaped) so it stays part of the static template; JSX-style
 // whitespace rules would drop or collapse text that contains a newline, so that text is a string expression, and an
-// element holding text is written on one line (a line break next to text would be trimmed away).
-const escapeTsrxText = (text) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\{/g, '&#123;').replace(/\}/g, '&#125;');
+// element holding text is written on one line (a line break next to text would be trimmed away). A `/` before `/` or
+// `*` is a reference, since `//` and `/*` start comments among template children.
+const escapeTsrxText = (text) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\{/g, '&#123;').replace(/\}/g, '&#125;').replace(/\/(?=[/*])/g, '&#47;');
 const tsrxAttr = (name, value) => {
 	if (value && typeof value === 'object' && value.expression) return ` ${name}={${value.expression}}`;
 	if (value === '') return ` ${name}=""`;
@@ -284,21 +285,10 @@ function styleScript(node) {
 	const attrs = node.attrs.map(([n, v]) => `e.setAttribute(${JSON.stringify(n)},${JSON.stringify(v)});`).join('');
 	return `(function(s){var e=document.createElementNS(s.parentNode.namespaceURI,"style");${attrs}e.textContent=${JSON.stringify(node.children.join(''))};s.replaceWith(e)})(document.currentScript)`;
 }
-// Markless 0.5.0 drops namespaced attributes (xlink:href, xml:space) from markup, so an element that has them gets a
-// script as its first child that sets them while the page is parsed.
-const NS = { xlink: 'http://www.w3.org/1999/xlink', xml: 'http://www.w3.org/XML/1998/namespace', xmlns: 'http://www.w3.org/2000/xmlns/' };
-function namespaced(node) {
-	const ns = node.attrs.filter(([n]) => /^(xlink|xml|xmlns):/.test(n));
-	if (!ns.length || VOID.has(node.tag) || RAW_TEXT.has(node.tag)) return node;
-	const sets = ns.map(([n, v]) => `e.setAttributeNS(${JSON.stringify(NS[n.split(':')[0]])},${JSON.stringify(n)},${JSON.stringify(v)});`).join('');
-	const script = { tag: 'script', attrs: [], children: [`(function(s){var e=s.parentNode;${sets}s.remove()})(document.currentScript)`] };
-	return { ...node, attrs: node.attrs.filter(([n]) => !/^(xlink|xml|xmlns):/.test(n)), children: [script, ...node.children] };
-}
 function inline(nodes, options) {
 	return nodes
 		.map((node) => {
 			if (typeof node === 'string') return node === '' ? '' : node.includes('\n') ? `{${JSON.stringify(node)}}` : escapeTsrxText(node);
-			if (node.attrs) node = namespaced(node);
 			if (node.expression !== undefined) return node.expression;
 			const attrs = node.attrs.map(([n, v]) => tsrxAttr(n, v)).join('') + (options.extra?.(node) ?? '');
 			if (VOID.has(node.tag)) return `<${node.tag}${attrs} />`;
@@ -313,7 +303,6 @@ export function toTsrx(nodes, depth = 0, options = {}) {
 	return nodes
 		.map((node) => {
 			if (typeof node === 'string') return node === '' ? '' : `${pad}{${JSON.stringify(node)}}\n`;
-			if (node.attrs) node = namespaced(node);
 			if (node.expression !== undefined) return `${pad}${node.expression}\n`;
 			if (hasText(node.children ?? []) || VOID.has(node.tag) || RAW_TEXT.has(node.tag) || !node.children.length) return `${pad}${inline([node], options)}\n`;
 			const attrs = node.attrs.map(([n, v]) => tsrxAttr(n, v)).join('') + (options.extra?.(node) ?? '');

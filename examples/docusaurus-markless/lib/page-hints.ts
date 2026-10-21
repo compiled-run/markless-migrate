@@ -12,3 +12,4 @@ export function readHints(root: ParentNode): void {
 	}
 }
 export const hint = (el: Element | null | undefined, name: string): string | undefined => (el ? hints.get(el)?.[name] : undefined);
+export const moveHints = (from: Element, to: Element): void => void hints.set(to, hints.get(from) ?? {});

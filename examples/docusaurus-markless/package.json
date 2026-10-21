@@ -13,8 +13,8 @@
 	},
 	"dependencies": {
 		"@algolia/autocomplete-core": "1.19.2",
-		"@markless/core": "0.7.0",
-		"@markless/router": "0.7.0",
+		"@markless/core": "file:/Users/jacksm5pro/dev/open-source/markless-080-tgz/markless-core-0.7.0.tgz",
+		"@markless/router": "file:/Users/jacksm5pro/dev/open-source/markless-080-tgz/markless-router-0.7.0.tgz",
 		"ai": "5.0.93",
 		"algoliasearch": "5.57.0",
 		"algoliasearch-docsearch": "npm:algoliasearch@5.43.0",
@@ -27,13 +27,22 @@
 		"vite-plus": "0.3.1"
 	},
 	"devDependencies": {
-		"@markless/analyzer": "0.7.0",
-		"@markless/typescript-plugin": "0.7.0",
+		"@markless/analyzer": "file:/Users/jacksm5pro/dev/open-source/markless-080-tgz/markless-analyzer-0.7.0.tgz",
+		"@markless/typescript-plugin": "file:/Users/jacksm5pro/dev/open-source/markless-080-tgz/markless-typescript-plugin-0.7.0.tgz",
 		"@types/nprogress": "^0.2.3",
 		"typescript": "^5.9.3",
 		"vite": "npm:@voidzero-dev/vite-plus-core@0.3.1"
 	},
 	"overrides": {
-		"vite": "$vite"
+		"vite": "$vite",
+		"@markless/core": "file:/Users/jacksm5pro/dev/open-source/markless-080-tgz/markless-core-0.7.0.tgz",
+		"@markless/router": "file:/Users/jacksm5pro/dev/open-source/markless-080-tgz/markless-router-0.7.0.tgz",
+		"@markless/bundler": "file:/Users/jacksm5pro/dev/open-source/markless-080-tgz/markless-bundler-0.7.0.tgz",
+		"@markless/web": "file:/Users/jacksm5pro/dev/open-source/markless-080-tgz/markless-web-0.7.0.tgz",
+		"@markless/compiler": "file:/Users/jacksm5pro/dev/open-source/markless-080-tgz/markless-compiler-0.7.0.tgz",
+		"@markless/runtime": "file:/Users/jacksm5pro/dev/open-source/markless-080-tgz/markless-runtime-0.7.0.tgz",
+		"@markless/serializer": "file:/Users/jacksm5pro/dev/open-source/markless-080-tgz/markless-serializer-0.7.0.tgz",
+		"@markless/analyzer": "file:/Users/jacksm5pro/dev/open-source/markless-080-tgz/markless-analyzer-0.7.0.tgz",
+		"@markless/typescript-plugin": "file:/Users/jacksm5pro/dev/open-source/markless-080-tgz/markless-typescript-plugin-0.7.0.tgz"
 	}
 }

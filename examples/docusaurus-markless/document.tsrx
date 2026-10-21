@@ -22,6 +22,7 @@ export default function Document({ url, children }: { readonly url?: { readonly 
 	<Html lang={plain === undefined ? 'en' : undefined} dir={plain === undefined ? 'ltr' : undefined} class={plain === undefined && head.class ? head.class : undefined}>
 		<head>
 			@if (plain === undefined) {
+				<>
 				<meta charset="UTF-8" />
 				<title>{head.title}</title>
 				<meta property={s[0]?.["property"]} content={s[0]?.["content"]} />
@@ -85,21 +86,28 @@ export default function Document({ url, children }: { readonly url?: { readonly 
 				<link rel="stylesheet" href="/katex/katex.min.css" type="text/css" />
 				<link rel="stylesheet" href="/assets/css/styles.73b9aeb138.css" />
 				<link rel="stylesheet" href="/mm-site.css" />
+				</>
 			}
 			@if (plain === 0) {
-				<title>Purely HTML page | Docusaurus</title>
-				<meta charset="utf-8" />
-				<meta name="robots" content="noindex, nofollow" />
-				<link rel="stylesheet" href="/mm-site.css" />
+				<>
+					<title>Purely HTML page | Docusaurus</title>
+					<meta charset="utf-8" />
+					<meta name="robots" content="noindex, nofollow" />
+					<link rel="stylesheet" href="/mm-site.css" />
+				</>
 			}
 			@if (plain === 1) {
-				<link rel="stylesheet" href="/mm-site.css" />
+				<>
+					<link rel="stylesheet" href="/mm-site.css" />
+				</>
 			}
 		</head>
 		<body>
 			@if (plain === undefined) {
-				<svg style="display: none;"><defs>{"\n"}<symbol id="theme-svg-external-link" viewBox="0 0 24 24"><path fill="currentColor" d="M21 13v10h-21v-19h12v2h-10v15h17v-8h2zm3-12h-10.988l4.035 4-6.977 7.07 2.828 2.828 6.977-7.07 4.125 4.172v-11z"></path></symbol>{"\n"}</defs></svg>
-				<script>{"\n(function() {\n  function getSystemColorMode() {\n    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';\n  }\n  function getQueryStringTheme() {\n    try {\n      return new URLSearchParams(window.location.search).get('docusaurus-theme')\n    } catch (e) {}\n  }\n  function getStoredTheme() {\n    try {\n      return window['localStorage'].getItem('theme-189');\n    } catch (err) {}\n  }\n  var initialTheme = getQueryStringTheme() || getStoredTheme();\n  document.documentElement.setAttribute('data-theme', initialTheme || getSystemColorMode());\n  document.documentElement.setAttribute('data-theme-choice', initialTheme || 'system');\n})();\n\n(function() {\n  try {\n    const entries = new URLSearchParams(window.location.search).entries();\n    for (var [searchKey, value] of entries) {\n      if (searchKey.startsWith('docusaurus-data-')) {\n        var key = searchKey.replace('docusaurus-data-',\"data-\")\n        document.documentElement.setAttribute(key, value);\n      }\n    }\n  } catch(e) {}\n})();\n\n(function() {\n  function isDismissed() {\n    try {\n      return localStorage.getItem('docusaurus.announcement.dismiss-189') === 'true';\n    } catch (err) {}\n    return false;\n  }\n  document.documentElement.setAttribute('data-announcement-bar-initially-dismissed', isDismissed());\n})();\n            "}</script>
+				<>
+					<svg style="display: none;"><defs>{"\n"}<symbol id="theme-svg-external-link" viewBox="0 0 24 24"><path fill="currentColor" d="M21 13v10h-21v-19h12v2h-10v15h17v-8h2zm3-12h-10.988l4.035 4-6.977 7.07 2.828 2.828 6.977-7.07 4.125 4.172v-11z"></path></symbol>{"\n"}</defs></svg>
+					<script>{"\n(function() {\n  function getSystemColorMode() {\n    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';\n  }\n  function getQueryStringTheme() {\n    try {\n      return new URLSearchParams(window.location.search).get('docusaurus-theme')\n    } catch (e) {}\n  }\n  function getStoredTheme() {\n    try {\n      return window['localStorage'].getItem('theme-189');\n    } catch (err) {}\n  }\n  var initialTheme = getQueryStringTheme() || getStoredTheme();\n  document.documentElement.setAttribute('data-theme', initialTheme || getSystemColorMode());\n  document.documentElement.setAttribute('data-theme-choice', initialTheme || 'system');\n})();\n\n(function() {\n  try {\n    const entries = new URLSearchParams(window.location.search).entries();\n    for (var [searchKey, value] of entries) {\n      if (searchKey.startsWith('docusaurus-data-')) {\n        var key = searchKey.replace('docusaurus-data-',\"data-\")\n        document.documentElement.setAttribute(key, value);\n      }\n    }\n  } catch(e) {}\n})();\n\n(function() {\n  function isDismissed() {\n    try {\n      return localStorage.getItem('docusaurus.announcement.dismiss-189') === 'true';\n    } catch (err) {}\n    return false;\n  }\n  document.documentElement.setAttribute('data-announcement-bar-initially-dismissed', isDismissed());\n})();\n            "}</script>
+				</>
 			}
 			{children}
 		</body>
