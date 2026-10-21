@@ -87,7 +87,6 @@ export function cleanDocument(doc: Document, ctx: CleanContext, dropped: Dropped
 	}
 	for (const node of doomed) remove(node);
 	stripComments(doc);
-	for (const el of [...walk(doc)]) if (isEmptyBoundary(el)) remove(el);
 }
 
 function stripComments(parent: ParentNode): void {
@@ -99,7 +98,3 @@ function stripComments(parent: ParentNode): void {
 	}
 }
 
-// What a streamed Suspense boundary leaves behind once resolved: a hidden div with nothing in it.
-function isEmptyBoundary(el: Element): boolean {
-	return el.tagName === 'div' && attr(el, 'hidden') !== undefined && el.attrs.length === 1 && childrenOf(el).every((n) => n.nodeName === '#text' && !(n as { value: string }).value.trim());
-}

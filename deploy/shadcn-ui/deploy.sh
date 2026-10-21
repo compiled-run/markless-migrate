@@ -26,7 +26,8 @@ case "${1:-}" in
 	new)
 		link "$APP" mm-shadcn-ui-new
 		rm -rf "$APP/.vercel/output"
-		(cd "$APP" && NITRO_PRESET=vercel npm run build)
+		# The pages name the site's own origin where the old ones printed NEXT_PUBLIC_APP_URL (a v0 link's url).
+		(cd "$APP" && NITRO_PRESET=vercel VITE_APP_URL="$NEW_URL" npm run build)
 		(cd "$APP" && vercel deploy --prebuilt --prod --yes --scope "$SCOPE")
 		;;
 	front)

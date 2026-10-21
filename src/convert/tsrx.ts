@@ -5,11 +5,32 @@ const BOOLEAN = new Set(['hidden', 'disabled', 'checked', 'multiple', 'selected'
 const ATTRIBUTE_NAME = /^[A-Za-z_][\w.-]*$/;
 
 export const lit = (text: string): string => JSON.stringify(text);
+
+// The old site's origin, which its pages print where they name themselves (NEXT_PUBLIC_APP_URL in a v0 link): written as
+// APP_URL, the new app's own origin given at build time (relative when unset).
+let origin: string | undefined;
+export function useOrigin(next: string | undefined): void {
+	origin = next?.replace(/\/$/, '');
+}
+export const APP_URL = 'APP_URL';
+const withOrigin = (text: string): string | undefined => (origin && text.includes(origin) ? text.split(origin).map(lit).join(` + ${APP_URL} + `) : undefined);
+/**
+ * The module with every string literal that names the old origin (a per-page value table's too) written around
+ * APP_URL, and the APP_URL constant declared when it is used.
+ */
+export function appUrlDeclaration(source: string): string {
+	const named = origin ? source.replace(/"(?:[^"\\\n]|\\.)*"/g, (literal) => (literal.includes(origin!) ? `(${(JSON.parse(literal) as string).split(origin!).map(lit).join(` + ${APP_URL} + `)})` : literal)) : source;
+	return /\+ APP_URL \+/.test(named) ? named.replace('\n', `\nconst ${APP_URL}: string = import.meta.env.VITE_APP_URL ?? '';\n`) : named;
+}
 const escapeText = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\{/g, '&#123;').replace(/\}/g, '&#125;').replace(/@/g, '&#64;');
 // HTML whitespace only: JavaScript's \s also matches the no-break spaces code samples indent with.
 const collapse = (t: string) => t.replace(/[ \t\n\r\f]+/g, ' ');
 // Text holding a comment opener is a string expression: TSRX reads `//` and `/*` in template text as comments.
-const textOut = (t: string) => (/[\n\t\r\f\u00a0]| {2}|^ | $|\/\/|\/\*/.test(t) || !t.replace(/[ \t\n\r\f]/g, '') ? `{${lit(t)}}` : escapeText(t));
+const textOut = (t: string) => {
+	const named = withOrigin(t);
+	if (named) return `{${named}}`;
+	return /[\n\t\r\f\u00a0]| {2}|^ | $|\/\/|\/\*/.test(t) || !t.replace(/[ \t\n\r\f]/g, '') ? `{${lit(t)}}` : escapeText(t);
+};
 
 /** What the emitter does with one element beyond copying it. */
 export interface Binding {
@@ -53,7 +74,7 @@ function attributes(el: Element, binding: Binding | undefined, options: EmitOpti
 			options.dropped?.(`${name} on <${el.tagName}>`);
 			continue;
 		}
-		const expression = binding?.expressions?.[name];
+		const expression = binding?.expressions?.[name] ?? withOrigin(a.value);
 		if (expression !== undefined) out.push(` ${name}={${expression}}`);
 		else if (a.value === '' && BOOLEAN.has(name)) out.push(` ${name}`);
 		else if (/["{}\\&@\n<>]/.test(a.value)) out.push(` ${name}={${lit(a.value)}}`);
