@@ -1,14 +1,17 @@
 // A small site with its own in-place router, for the navigation check. `fresh` swaps pages as a fresh load of them
 // would show them; `stale-html` keeps the <html> attributes only the landing page was served with (vite.dev's
 // data-theme, Markless before 8d7669f8); `scripts` adopts the next page's head scripts without running them and runs
-// its inline scripts at once (htmx.org's "htmx is not defined", Markless before 25196c52). It fetches pages at
+// its inline scripts at once (htmx.org's "htmx is not defined", Markless before 25196c52); `flash` serves <html class>
+// and replaces it whole on a swap, dropping the theme script's `dark` until it is put back three frames later (next-themes
+// on ui.shadcn.com, Markless 0.8): every settled state is right, only the frames between flash. It fetches pages at
 // Markless's router path, so the check counts its swaps as the router's.
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
-export type Variant = 'fresh' | 'stale-html' | 'scripts';
+export type Variant = 'fresh' | 'stale-html' | 'scripts' | 'flash';
 
-const THEME = `<script>if (localStorage.getItem('theme') === 'dark') document.documentElement.classList.add('dark')</script>`;
+const DARK = `(localStorage.getItem('theme') ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')) === 'dark'`;
+const THEME = `<script>if (${DARK}) document.documentElement.classList.add('dark')</script>`;
 const STYLE = `<style>html.dark body, html[data-theme="dark"] body { background: #111; color: #eee } body { font: 16px/1.5 sans-serif; margin: 0 } main { padding: 16px }</style>`;
 const NAV = `<header><nav><a href="/">Home</a> <a href="/docs/">Docs</a> <a href="/lib/">Library</a> <button type="button" id="theme" aria-label="Toggle dark theme">Theme</button></nav></header>`;
 
@@ -23,9 +26,9 @@ const PAGES: Record<string, { html?: string; head?: string; body: string }> = {
 
 const LIB = 'window.lib = { greet: () => "hello from lib" };';
 
-function page(path: string): string {
+function page(path: string, variant: Variant): string {
 	const p = PAGES[path]!;
-	return `<!doctype html><html lang="en"${p.html ?? ''}><head><meta charset="utf-8"><title>${path}</title>${THEME}${STYLE}${p.head ?? ''}<script src="/router.js" defer></script></head><body>${NAV}${p.body}</body></html>`;
+	return `<!doctype html><html lang="en"${variant === 'flash' ? ' class="font-sans"' : ''}${p.html ?? ''}><head><meta charset="utf-8"><title>${path}</title>${THEME}${STYLE}${p.head ?? ''}<script src="/router.js" defer></script></head><body>${NAV}${p.body}</body></html>`;
 }
 
 function router(variant: Variant): string {
@@ -51,6 +54,7 @@ function router(variant: Variant): string {
 		const root = document.documentElement;
 		${variant === 'stale-html' ? '' : "for (const name of served) if (name !== 'class' && !next.documentElement.hasAttribute(name)) root.removeAttribute(name);\n\t\tserved = next.documentElement.getAttributeNames();"}
 		for (const a of next.documentElement.attributes) root.setAttribute(a.name, a.value);
+		${variant === 'flash' ? `let frames = 0;\n\t\tconst later = () => (++frames < 3 ? requestAnimationFrame(later) : root.classList.toggle('dark', ${DARK}));\n\t\trequestAnimationFrame(later);` : ''}
 		document.title = next.title;
 		const added = [...next.head.children].filter((el) => el.localName !== 'title' && ![...document.head.children].some((own) => own.outerHTML === el.outerHTML));
 		for (const el of added) document.head.append(el);
@@ -79,7 +83,7 @@ export async function serve(variant: Variant): Promise<{ origin: string; server:
 		if (path === '/router.js') return void response.writeHead(200, { 'content-type': 'text/javascript' }).end(router(variant));
 		if (path === '/lib.js') return void response.writeHead(200, { 'content-type': 'text/javascript' }).end(LIB);
 		if (!PAGES[path]) return void response.writeHead(404, { 'content-type': 'text/html' }).end('<!doctype html><title>Not found</title><h1>Not found</h1>');
-		response.writeHead(200, { 'content-type': 'text/html' }).end(page(path));
+		response.writeHead(200, { 'content-type': 'text/html' }).end(page(path, variant));
 	});
 	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
 	return { origin: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, server };
