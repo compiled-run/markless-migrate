@@ -2,7 +2,7 @@ import { tagHeaders, type SideEnv } from './browser.ts';
 import { request } from './http.ts';
 import { matchRoute, specificity } from '../source/pattern.ts';
 
-/** Above this many pages, visual, behaviour and responsiveness run on one representative per template group. */
+/** Above this many pages, visual, behaviour, responsiveness and motion run on one representative per template group. */
 export const TEMPLATE_THRESHOLD = 20;
 
 export interface TemplateGroup {
@@ -38,7 +38,31 @@ export function domSignature(html: string): string {
 	return order.join('>');
 }
 
-/** Groups pages by URL pattern and the old page's layout; each group's representative is its first page in sorted order. */
+const WIDGET_ROLES = new Set(['button', 'tab', 'tablist', 'tabpanel', 'switch', 'checkbox', 'radio', 'radiogroup', 'slider', 'combobox', 'listbox', 'menu', 'menubar', 'menuitem', 'tooltip', 'dialog', 'alertdialog', 'tree', 'treeitem', 'region']);
+const WIDGET_TAGS = new Set(['details', 'dialog', 'select']);
+
+/**
+ * The kinds of control the page renders, each by its role (or tag) and the component slot it carries: two pages of
+ * one URL pattern that show different components (an accordion's page and a tooltip's) are not one template, since
+ * what one's controls do and animate says nothing about the other's.
+ */
+export function widgetSignature(html: string): string {
+	const body = html.replace(/<(script|style|template|noscript)\b[\s\S]*?<\/\1>/gi, '').replace(/<!--[\s\S]*?-->/g, '');
+	const kinds = new Set<string>();
+	for (const m of body.matchAll(/<([a-z][a-z0-9-]*)\b([^>]*)>/gi)) {
+		const tag = m[1]!.toLowerCase();
+		const attrs = m[2]!;
+		const value = (name: string) => new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i').exec(attrs)?.slice(1).find((v) => v !== undefined);
+		const role = value('role');
+		const slot = value('data-slot');
+		const control = /\saria-(expanded|haspopup|controls)\b/i.test(attrs) || (role !== undefined && WIDGET_ROLES.has(role)) || WIDGET_TAGS.has(tag) || /-trigger$/.test(slot ?? '');
+		if (!control) continue;
+		kinds.add(`${role ?? tag}${slot ? `#${slot}` : ''}`);
+	}
+	return [...kinds].sort().join(' ');
+}
+
+/** Groups pages by URL pattern, the old page's layout and the kinds of control it renders; each group's representative is its first page in sorted order. */
 export async function groupTemplates(env: SideEnv, pages: readonly string[], patterns: readonly string[] = []): Promise<TemplateGroup[]> {
 	const signatures = new Map<string, string>();
 	let next = 0;
@@ -47,7 +71,7 @@ export async function groupTemplates(env: SideEnv, pages: readonly string[], pat
 		while (next < list.length) {
 			const route = list[next++]!;
 			const html = await request(new URL(route, env.origin), { headers: tagHeaders(env) }).then((r) => r.text()).catch(() => '');
-			signatures.set(route, domSignature(html));
+			signatures.set(route, `${domSignature(html)}\u0000${widgetSignature(html)}`);
 		}
 	}));
 	const groups = new Map<string, string[]>();

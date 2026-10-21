@@ -1415,7 +1415,7 @@ export async function doorPageErrors(browser: Browser, old: SideEnv, viewport: V
 }
 
 /** What a cycle act is called in a check name: `click button "Theme" (use 2 of 3)`. */
-function cycleLabel(steps: number, acts: readonly CycleAct[], i: number): string {
+export function cycleLabel(steps: number, acts: readonly CycleAct[], i: number): string {
 	const step = `step ${steps + i + 1} of ${steps + acts.length}`;
 	const uses = 1 + acts.slice(0, i + 1).filter((a) => a === 'again' || (typeof a === 'object' && 'use' in a)).length;
 	const act = acts[i]!;

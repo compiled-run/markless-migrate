@@ -12,7 +12,7 @@ import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, 
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
 import { BaseTabsPlan, CheckablePlan, DisclosurePlan, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
 import { captureAllForms, captureAllSwitches, captureAllToggles, captureNotifications, type FormCapture, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
-import { bindMount, bindParts, bodyHandlers, candidatesOf, handledBy, portAttributes, portFor, onRoute, UNPORTED, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
+import { bindMount, bindParts, bodyHandlers, candidatesOf, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { stat } from 'node:fs/promises';
 import { match } from 'path-to-regexp';
@@ -32,7 +32,9 @@ function withPartImports(source: string, dir: string): string {
 	let out = used.length ? source.replace('\n', `\nimport { ${used.join(', ')} } from '${dir}/index.ts';\n`) : source;
 	const rovingNames = ['roving', 'tabValue'].filter((name) => new RegExp(`\\b${name}\\(event\\)`).test(out));
 	if (rovingNames.length) out = out.replace('\n', `\nimport { ${rovingNames.join(', ')} } from '${dir}/radix/roving.ts';\n`);
-	if (/\b(afterExit|measureWhenShown|accordionKeys)\(/.test(out)) out = out.replace('\n', `\nimport { accordionKeys, afterExit, measureWhenShown } from '${dir}/radix/disclosure-motion.ts';\n`);
+	if (/\baccordionKeys\(/.test(out)) out = out.replace('\n', `\nimport { accordionKeys } from '${dir}/radix/disclosure-motion.ts';\n`);
+	const motion = ['panelEnter', 'panelExit'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
+	if (motion.length) out = out.replace('\n', `\nimport { ${motion.join(', ')} } from '${dir}/panel-motion.ts';\n`);
 	if (/\bradioKeys\(event/.test(out)) out = out.replace('\n', `\nimport { radioKeys } from '${dir}/toggle.ts';\n`);
 	if (/\bwriteCookies\(/.test(out)) out = out.replace('\n', `\nimport { writeCookies } from '${dir}/switch.ts';\n`);
 	return out;
@@ -231,7 +233,7 @@ const replacedParts = new Map<Element, Binding>();
 const unplaced: string[] = [];
 const triggerKeys = new Map<Element, string>();
 // Content disclosures mounted inside the page on opening, by trigger: rendered by Markless in an arm where they went.
-const inserted: { trigger: Element; parent: Element; before: Element | null; markup: string; panelId?: string }[] = [];
+const inserted: { trigger: Element; parent: Element; before: Element | null; markup: string; panelId?: string; panelDepth?: number }[] = [];
 
 /**
  * Radix Select mounts the indicator only in the checked option: every other option of a captured listbox gets a hidden
@@ -261,7 +263,29 @@ function selectIndicators(top: Element): void {
 /** Replaces every whitespace-separated token of every attribute that `rename` names. */
 function renameIds(els: readonly Element[], rename: ReadonlyMap<string, string>): void {
 	if (!rename.size) return;
-	for (const el of els) for (const a of el.attrs) if (a.value) a.value = a.value.split(/(\s+)/).map((t) => rename.get(t) ?? t).join('');
+	for (const el of els)
+		for (const a of el.attrs) {
+			if (!a.value) continue;
+			if (a.name === 'id' && rename.has(a.value)) renamedFrom(el, a.value);
+			a.value = a.value.split(/(\s+)/).map((t) => rename.get(t) ?? t).join('');
+		}
+}
+
+/**
+ * The element of an inserted disclosure its motion runs from: a root with an id, else the element its trigger names
+ * (Radix NavigationMenu's content inside its viewport), with how many ancestors up to the root close with it.
+ */
+function panelOf(kept: readonly Element[], controls: string | undefined): { panelId?: string; panelDepth?: number } {
+	const own = kept.map((e) => attr(e, 'id')).find(Boolean);
+	if (own) return { panelId: own };
+	for (const top of kept) {
+		const named = controls ? walkAll(top).find((el) => attr(el, 'id') === controls) : undefined;
+		if (!named) continue;
+		let depth = 0;
+		for (let n = named; n !== top && n.parentNode; n = n.parentNode as Element) depth++;
+		return { panelId: controls!, panelDepth: depth };
+	}
+	return {};
 }
 
 const layerElements = (added: Reveal['added'][number]) => childrenOf(parseFragment(added.html) as unknown as Element).filter((n): n is Element => isElement(n) && !n.attrs.some((a) => FOCUS_GUARD.test(a.name)));
@@ -388,8 +412,8 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 				// A disclosure that mounts its content where it opens (Base UI Collapsible and Accordion, a Radix
 				// Collapsible whose content leaves while closed): a layer's trigger (aria-haspopup) is a portal's.
 				const inPlace = trigger && parent && attr(trigger, 'aria-expanded') === 'false' && attr(trigger, 'aria-haspopup') === undefined && !reveal.added.some((a) => a.into === 'body');
-				const panelId = kept.map((e) => attr(e, 'id')).find(Boolean);
-				if (inPlace) inserted.push({ trigger: trigger!, parent: parent!, before: added.before >= 0 ? (elementChildren(parent!)[added.before] ?? null) : null, markup: kept.map((e) => emitElement(e, { dropped, bind: (x) => bindParts(x, templatePorts) })).join(''), ...(panelId ? { panelId } : {}) });
+				const panel = panelOf(kept, attr(trigger!, 'aria-controls'));
+				if (inPlace) inserted.push({ trigger: trigger!, parent: parent!, before: added.before >= 0 ? (elementChildren(parent!)[added.before] ?? null) : null, markup: kept.map((e) => emitElement(e, { dropped, bind: (x) => bindParts(x, templatePorts) })).join(''), ...panel });
 				else unplaced.push(`${reveal.key}: content shown inside the page by a control no Markless state drives yet`);
 			}
 		}
@@ -731,6 +755,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const documentParts: PartUse[] = [];
 	await writeFile(join(app, 'document.tsrx'), appUrlDeclaration(documentModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped, partsDir('document.tsrx'), documentParts)));
 	await writeFile(join(app, 'head.ts'), HEAD_HELPER);
+	if (disclosureGroups || insertedGroups) usedPorts.add('panel-motion');
 	await writeParts(app, usedPorts, choices);
 	await mkdir(join(app, 'components', 'converted'), { recursive: true });
 	await mkdir(join(app, 'components', 'converted', 'layers'), { recursive: true });

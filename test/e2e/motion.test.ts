@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { serve as serveCanvas, type Variant as CanvasVariant } from '../../fixtures/motion-canvas/server.ts';
+import { serve as serveDisclosure, type Variant as DisclosureVariant } from '../../fixtures/motion-disclosure/server.ts';
 import { serve as serveModal, type Variant as ModalVariant } from '../../fixtures/motion-exit/server.ts';
 import { serve, type Variant } from '../../fixtures/motion/server.ts';
 import { pngBytes } from '../../src/check/artifacts.ts';
@@ -92,6 +93,29 @@ describe('motion: the transitions and animations each interaction starts, old vs
 		assert.equal(red.routes[0]!.dimensions.motion, 'fail');
 		const green = await run('presence', 'presence');
 		assert.deepEqual(motion(green).map((f) => `${f.check}: ${f.expected} / ${f.actual}`), [], 'each element hidden at its own exit is green, with motion allowed and reduced');
+	});
+
+	test("an accordion panel whose height variable is left at auto and that leaves at once on close is red on both: the open frames and the missing exit", async () => {
+		const faq = async (variant: DisclosureVariant) => {
+			const { origin, server } = await serveDisclosure(variant);
+			servers.push(server);
+			return origin;
+		};
+		const run = async (newVariant: DisclosureVariant) => runCheck({ oldOrigin: await faq('measured'), newOrigin: await faq(newVariant), routes: ['/'], browser, viewports: DESKTOP, motion: {} });
+		const [red, green] = await Promise.all([run('auto'), run('measured')]);
+		const open = 'click button "What is your return policy?"';
+		const lines = motion(red).map((f) => `${f.check}: ${f.expected} / ${f.actual}`).join('\n');
+		const opening = motion(red).find((f) => f.check === `${open}: frame of region "What is your return policy?" (main>region/div)`);
+		assert.ok(opening, lines);
+		assert.match(opening.expected, /^old at \d+ ms: shown at opacity 1, 1232x[1-9]\d*/, 'the old panel is part way open');
+		assert.match(opening.actual, /^new: shown at opacity 1, 1232x0 /, 'the new one has not grown at all yet');
+		const closing = motion(red).find((f) => f.check === `${open} (step 2 of 3: use 2): motion of region "What is your return policy?" (main>region/div)`);
+		assert.ok(closing, `the second use of the trigger, which closes the panel, is recorded:\n${lines}`);
+		assert.match(closing.expected, /^old animates animation accordion-up \(height\) .*→0px over 200 ms ease-out$/);
+		assert.match(closing.actual, /^new jumps: /);
+		assert.equal(red.routes[0]!.dimensions.motion, 'fail');
+		assert.deepEqual(motion(green).map((f) => `${f.check}: ${f.expected} / ${f.actual}`), [], 'a measured panel kept through its exit is green');
+		assert.ok(green.routes[0]!.motion!.interactions.some((i) => i.name === `${open} (step 2 of 3: use 2)` && i.ok && i.old.some((l) => /accordion-up/.test(l))));
 	});
 
 	test('a canvas animated from load is compared frame by frame: the same drawing started later is green with its start gap reported, the same drawing 30 px lower is red', async () => {

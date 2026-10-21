@@ -4,7 +4,7 @@ import { closeLayer, openLayer, type Layer } from '../layer.ts';
 // shows the content at once (data-state "delayed-open", "instant-open" when another tooltip closed within Radix's
 // 300 ms skip delay), with aria-describedby naming its hidden role="tooltip" text; leaving, blurring, a press on the
 // trigger or Escape hides it. The content never takes focus.
-const TRIGGER = '[data-slot="tooltip-trigger"][data-state]:not([id^="base-ui-"])';
+const TRIGGER = '[data-slot="tooltip-trigger"][data-state]';
 const SKIP_DELAY = 300;
 const shown = new Map<HTMLElement, Layer>();
 let lastClosed = 0;

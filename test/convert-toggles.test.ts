@@ -57,7 +57,25 @@ test('a disclosure that mounts its content where it opens renders that content i
 	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
 	assert.match(out, /aria-expanded=\{ins0 \? "true" : "false"\}/);
 	assert.match(out, /data-panel-open=\{ins0 \? "" : undefined\}/);
-	assert.match(out, /<\/button>@if \(ins0\) \{ <><div data-slot="collapsible-content">x<\/div><\/> \}<p>after<\/p>/);
+	assert.match(out, /<\/button>@if \(ins0 \|\| ins0x\) \{ <><div data-slot="collapsible-content">x<\/div><\/> \}<p>after<\/p>/, 'the content stays rendered while it closes');
+});
+
+test('a Base UI accordion keeps a closing panel rendered until its exit ends, and binds each item and header', async () => {
+	const { InsertedDisclosurePlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-slot="accordion"><div data-slot="accordion-item" data-closed=""><h3 data-closed=""><button id="base-ui-a" aria-expanded="false" data-slot="accordion-trigger">A</button></h3></div><div data-slot="accordion-item" data-closed=""><h3 data-closed=""><button id="base-ui-b" aria-expanded="false" data-slot="accordion-trigger">B</button></h3></div></div></body>');
+	const [a, b] = [...walk(body(doc))].filter((el) => el.tagName === 'button') as [Element, Element];
+	const item = (t: Element) => (t.parentNode as Element).parentNode as Element;
+	const plan = new InsertedDisclosurePlan();
+	plan.add([
+		{ trigger: a, parent: item(a), before: null, markup: '<div id="pa" data-open="">a</div>', panelId: 'pa' },
+		{ trigger: b, parent: item(b), before: null, markup: '<div id="pb" data-open="">b</div>', panelId: 'pb' },
+	]);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.deepEqual(plan.bind(a)?.declare, ['let ins0 = state(-1);', 'let ins0x = state(-1);']);
+	assert.match(out, /@if \(ins0 === 1 \|\| ins0x === 1\) \{ <><div id="pb" data-open="">b<\/div><\/> \}/);
+	assert.match(out, /if \(was >= 0 && was !== ins0\) \{ ins0x = was; panelExit\(\["pa", "pb"\]\[was\] \?\? '', \(\) => \{ if \(ins0x === was\) ins0x = -1; \}\); \} if \(ins0 === 1\) panelEnter\("pb"\);/, 'the item that was open is the one whose exit runs');
+	assert.equal(out.match(/<div data-slot="accordion-item" data-open=\{ins0 === \d/g)?.length, 2, 'each Accordion.Item binds data-open');
+	assert.equal(out.match(/<h3 data-open=\{ins0 === \d/g)?.length, 2, 'each Accordion.Header binds data-open');
 });
 
 test('controls that switch the same attributes share one state, and each use writes the cookies of its state', async () => {
