@@ -5747,13 +5747,10 @@ export const routeRules: Record<string, Record<string, unknown>> = {
 	}
 };
 
-/** Vercel routes placed before Nitro's own, by the path they serve. */
-export const vercelRoutes: [string, Record<string, unknown>][] = [];
-
 const CACHING_KEYS = ['isr', 'prerender', 'cache', 'swr', 'static'];
 
 interface NitroLike {
-	options: { routeRules: Record<string, Record<string, any>>; vercel?: { config?: { routes?: unknown[] } } };
+	options: { routeRules: Record<string, Record<string, any>> };
 }
 
 /** Puts each route's caching into Nitro's options, in place of any caching the app set for that path; a proxied path is left alone. */
@@ -5765,11 +5762,6 @@ export function applyRules(nitro: NitroLike): void {
 		const own = Object.fromEntries(Object.entries(rules[path] ?? {}).filter(([key]) => !CACHING_KEYS.includes(key)));
 		rules[path] = { ...own, ...structuredClone(rule), ...(rule.headers || own.headers ? { headers: { ...(own.headers as object), ...(rule.headers as object) } } : {}) };
 	}
-	const vercel = (nitro.options.vercel ??= {});
-	const output = (vercel.config ??= {});
-	const ours = vercelRoutes.filter(([path]) => !proxied(path)).map(([, route]) => route);
-	const keys = new Set(ours.map((route) => JSON.stringify(route)));
-	output.routes = [...ours, ...(output.routes ?? []).filter((route) => !keys.has(JSON.stringify(route)))];
 }
 
 /** A Vite plugin carrying a Nitro module: Nitro runs it once its options are resolved, after every plugin's config. */
