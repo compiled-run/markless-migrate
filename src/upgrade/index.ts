@@ -8,6 +8,8 @@ import { newAppImports } from '../usage/implement.ts';
 import type { UsageInventory } from '../usage/types.ts';
 import { readFamilies } from './families.ts';
 import { HEADLESS, overlap, type HeadlessCandidate } from './headless.ts';
+import { describePreload, findLateFont, measurePreload, preloadTag, type FontPreloadMeasure, type LateFont } from './fonts.ts';
+import type { LoadOptions } from '../check/load.ts';
 import { attributor, findControls, firstInteraction, measureLoad, pageButtons, type Interaction, type RouteMeasure, type Subject, type SubjectCost } from './measure.ts';
 
 export { findUi } from './families.ts';
@@ -31,17 +33,19 @@ export interface Measured {
 
 export interface Suggestion {
 	readonly id: string;
-	readonly kind: 'port kept library' | 'swap to @markless/ui';
+	readonly kind: 'port kept library' | 'swap to @markless/ui' | 'preload LCP font';
 	readonly subject: string;
 	readonly measured: Measured;
 	/** What the site uses of it: exports, members and options from the new app's code, and behaviours from the usage inventory. */
 	readonly uses: string[];
-	readonly saving: { readonly bytes: number; readonly executed: number; readonly cpuMs: number; readonly basis: string };
+	readonly saving: { readonly bytes: number; readonly executed: number; readonly cpuMs: number; readonly basis: string; readonly lcpMs?: number };
 	readonly risk: 'low' | 'medium' | 'high';
 	readonly riskReason: string;
 	readonly size: string;
 	readonly verdict: 'suggested' | 'not yet' | 'keep';
 	readonly overlap?: HeadlessCandidate;
+	/** For a font preload: the font, where it was found late, the tag to add and what Lighthouse measured with and without it. */
+	readonly font?: LateFont & { readonly tag: string; readonly routes: readonly string[]; readonly measure: string };
 	readonly rank?: number;
 }
 
@@ -67,6 +71,10 @@ export interface UpgradeOptions {
 	readonly uiDir?: string;
 	readonly browser?: Browser;
 	readonly progress?: (line: string) => void;
+	/** Look for LCP text whose web font is found late and measure a preload of it with Lighthouse; false leaves it out. */
+	readonly fonts?: LoadOptions | false;
+	/** Measures one preload; tests replace Lighthouse here. */
+	readonly measurePreload?: typeof measurePreload;
 }
 
 const SKIP = /^@markless\/|^(nitro|vite|vite-plus|typescript|@types\/.*)$/;
@@ -105,6 +113,7 @@ export async function upgrade(options: UpgradeOptions): Promise<UpgradeReport> {
 	const browser = options.browser ?? (await chromium.launch());
 	const measures: RouteMeasure[] = [];
 	const onDemand = new Map<string, { route: string; control: string } & Interaction>();
+	const fontMeasures: { measure: FontPreloadMeasure; routes: string[] }[] = [];
 	try {
 		for (const route of options.routes) {
 			say(`measuring ${route} at 4x CPU`);
@@ -138,6 +147,23 @@ export async function upgrade(options: UpgradeOptions): Promise<UpgradeReport> {
 				}
 			}
 			measures.push({ route, costs, latency });
+		}
+		if (options.fonts !== false) {
+			const seen = new Map<string, { font: LateFont; routes: string[] }>();
+			for (const route of options.routes) {
+				const found = await findLateFont(browser, options.origin, route).catch((error: Error) => ({ none: `not loaded (${error.message.split('\n')[0]})` }));
+				if ('none' in found) {
+					limits.push(`${route}: no font preload to suggest: ${found.none}`);
+					continue;
+				}
+				const known = seen.get(found.late.href);
+				if (known) known.routes.push(route);
+				else seen.set(found.late.href, { font: found.late, routes: [route] });
+			}
+			for (const { font, routes } of seen.values()) {
+				say(`measuring a preload of ${font.href} on ${font.route} with Lighthouse`);
+				fontMeasures.push({ measure: await (options.measurePreload ?? measurePreload)(options.origin, font, options.fonts ?? {}), routes });
+			}
 		}
 	} finally {
 		if (!options.browser) await browser.close();
@@ -193,7 +219,25 @@ export async function upgrade(options: UpgradeOptions): Promise<UpgradeReport> {
 			overlap: c,
 		});
 	}
-	const ranked = suggestions.filter((s) => s.verdict === 'suggested').sort((a, b) => b.saving.executed - a.saving.executed || b.saving.bytes - a.saving.bytes || (b.measured.latency?.ms ?? 0) - (a.measured.latency?.ms ?? 0));
+	for (const { measure: m, routes } of fontMeasures) {
+		const f = m.font;
+		const helps = m.significant && m.lcpSavingMs > 0 && !m.fcpWorse;
+		suggestions.push({
+			id: `preload-font:${f.href}`,
+			kind: 'preload LCP font',
+			subject: `preload ${f.family} (${f.href}), the font of the largest text on ${routes.join(', ')}`,
+			measured: { bytes: 0, executed: 0, cpuMs: 0, routes, scripts: [] },
+			uses: [`${f.element} paints with ${f.family} (font-display: ${f.display}); the page asks for ${f.href} at ${f.requestedAt} ms, after ${f.stylesheet} arrived at ${f.stylesheetAt} ms, and nothing preloads it`],
+			saving: { bytes: 0, executed: 0, cpuMs: 0, lcpMs: m.lcpSavingMs, basis: describePreload(m) },
+			risk: 'low',
+			riskReason: 'the same font file, requested earlier: nothing a visitor sees changes but when the text paints',
+			size: `one <link> in the head of the document that renders ${routes.length === 1 ? 'this page' : 'these pages'}`,
+			verdict: helps ? 'suggested' : 'keep',
+			font: { ...f, tag: preloadTag(f), routes, measure: describePreload(m) },
+		});
+		if (!helps) limits.push(`${f.href}: not suggested: ${m.fcpWorse ? 'the preload delays the first paint' : `a preload did not paint ${f.element} sooner beyond noise`} (${describePreload(m)})`);
+	}
+	const ranked = suggestions.filter((s) => s.verdict === 'suggested').sort((a, b) => (b.saving.lcpMs ?? 0) - (a.saving.lcpMs ?? 0) || b.saving.executed - a.saving.executed || b.saving.bytes - a.saving.bytes || (b.measured.latency?.ms ?? 0) - (a.measured.latency?.ms ?? 0));
 	const order = new Map(ranked.map((s, i) => [s.id, i + 1]));
 	return {
 		version: 1,
@@ -209,10 +253,14 @@ const kb = (n: number) => `${(n / 1024).toFixed(1)} kB`;
 const ms = (n: number | null | undefined) => (n === null ? 'under 16 ms' : n === undefined ? '-' : `${Math.round(n)} ms`);
 
 export function summarizeUpgrade(report: UpgradeReport): string {
-	const lines = [`Upgrade suggestions for ${report.origin}, measured on ${report.routes.length} route(s) at 4x CPU on a phone-sized page. Nothing is applied; accept one with markless-migrate upgrade accept <id>.`];
+	const lines = [`Upgrade suggestions for ${report.origin}, measured on ${report.routes.length} route(s) at 4x CPU on a phone-sized page (font preloads with Lighthouse mobile). Nothing is applied; accept one with markless-migrate upgrade accept <id>.`];
 	const block = (s: Suggestion) => {
 		const m = s.measured;
 		lines.push('', `${s.rank ? `#${s.rank} ` : ''}[${s.verdict}] ${s.id}: ${s.subject}`);
+		if (s.font) {
+			lines.push(`  found: ${s.uses[0]}`, `  measured: ${s.font.measure}`, `  add: ${s.font.tag}`, `  risk: ${s.risk} (${s.riskReason}); size: ${s.size}`);
+			return;
+		}
 		const use = m.latency ? `${m.onDemand ? 'not loaded with the page; the first use of the control that loads it' : 'first interaction with its own control'} takes ${ms(m.latency.ms)}, running ${kb(m.latency.executed)} of its code and fetching ${kb(m.latency.bytes)} (${m.latency.route}, ${m.latency.control.slice(-60)})` : 'no control that uses it found on these routes';
 		lines.push(`  measured: ${kb(m.bytes)} downloaded, ${kb(m.executed)} JS run at load, ${m.cpuMs.toFixed(1)} ms main-thread at load, on ${m.routes.length} route(s); ${use}`);
 		lines.push(`  expected saving: ${kb(s.saving.bytes)} downloaded, ${kb(s.saving.executed)} run at load, ${s.saving.cpuMs} ms main-thread (${s.saving.basis})`);
@@ -246,7 +294,7 @@ export async function acceptUpgrade(stateDir: string, id: string, baseline: stri
 	await mkdir(dir, { recursive: true });
 	const file = join(dir, `${id.replace(/[^a-z0-9]+/gi, '-')}.md`);
 	const old = baseline ?? '<the pre-upgrade build of this site, served as it is now>';
-	const body = [
+	const body = s.font ? fontTask(s, old) : [
 		`# Upgrade task: ${s.subject}`,
 		'',
 		s.kind === 'swap to @markless/ui' ? `Replace ${s.overlap?.port} with the @markless/ui ${s.overlap?.family} parts, part for part:` : `Replace ${s.subject} with Markless code that does exactly what this site uses of it:`,
@@ -264,4 +312,26 @@ export async function acceptUpgrade(stateDir: string, id: string, baseline: stri
 	await writeFile(file, `${body}\n`);
 	await writeFile(join(stateDir, UPGRADE_FILE), `${JSON.stringify({ ...report, accepted: [...((report as { accepted?: string[] }).accepted ?? []), id] }, null, '\t')}\n`);
 	return file;
+}
+
+function fontTask(s: Suggestion, old: string): string {
+	const f = s.font!;
+	return [
+		`# Upgrade task: ${s.subject}`,
+		'',
+		`The largest text on ${f.routes.join(', ')}, ${f.element}, paints with ${f.family} (font-display: ${f.display}). The page asks for ${f.href} only once ${f.stylesheet} has arrived and been parsed (${f.requestedAt} ms against ${f.stylesheetAt} ms at full speed), and nothing preloads it, so the text waits a round trip for its font.`,
+		'',
+		`Add this to the <head> of the document that renders ${f.routes.length === 1 ? 'that page' : 'those pages'}, as early as you can after <meta charset> (in the Markless app: the document or layout .tsrx; only on the pages listed, not on pages whose largest text uses another font):`,
+		'',
+		`    ${f.tag}`,
+		'',
+		'Keep `crossorigin`: fonts are always fetched in CORS mode, and a preload without it is fetched twice. Do not change the font file, its @font-face or its font-display.',
+		'',
+		`Measured now: ${f.measure}.`,
+		'',
+		'Done means, with nothing weakened:',
+		`- \`markless-migrate check --old ${old} --new <this app, upgraded> --all\` is green on every route that was green: the preload changes nothing a visitor can see or do.`,
+		'- `markless-migrate guard build` and `markless-migrate guard page` pass.',
+		`- \`markless-migrate upgrade --new <this app, upgraded> --route ${f.route}\` no longer finds ${f.href} late, and \`markless-migrate check --old <this app before the change> --new <this app, upgraded> --route ${f.route} --only load\` shows the LCP no later.`,
+	].join('\n');
 }

@@ -242,7 +242,7 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           .migrate/guard-allow.json covers it: { "allow": [{ "subject": "div.port-attribution*",
           "reason": "licence badge for this demo copy" }] } (optional "kind" and "route"; a reason is
           required; a foreign runtime is never allowed). Writes .migrate/guard.json; exits 1 on a difference.
-  upgrade --new <origin> [--route <path>]... [--limit <n>] [--new-source <path>] [--build <dir>] [--ui <dir>]
+  upgrade --new <origin> [--route <path>]... [--limit <n>] [--new-source <path>] [--build <dir>] [--ui <dir>] [--no-load] [--load-runs <n>]
           After the routes are green. Measures, per route at 4x CPU on a phone-sized page, what each
           JavaScript-only library the port kept costs (bytes downloaded, JS run at load, main-thread
           time, and the first use of its own controls) and what each port of a headless library
@@ -251,7 +251,10 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           saving, risk and size. A headless port is suggested as a swap to its @markless/ui family only
           when every part, prop, state, key, ARIA attribute and behaviour the old site used is covered
           (read from the family's API manifest and source, --ui or the app's @markless/ui); otherwise it
-          is listed as "not yet: missing ...". Nothing is applied. Writes .migrate/upgrade.json.
+          is listed as "not yet: missing ...". A page whose largest text paints with a web font it finds
+          only in its stylesheet (nothing preloads it) gets a font preload, measured with Lighthouse mobile
+          (--load-runs a side) with and without it through a local proxy; it is suggested only when the
+          LCP comes sooner beyond noise. --no-load leaves that out. Nothing is applied. Writes .migrate/upgrade.json.
   upgrade accept <id> [--baseline <origin>]
           Writes the agent task for one suggestion to .migrate/upgrades/<id>.md: what to build, and the
           check it must pass against the pre-upgrade version (--baseline serves it).
@@ -848,7 +851,7 @@ async function main(argv: string[]): Promise<number> {
 				out(`Wrote ${file}: the task for your agent (markless-migrate run, or by hand). Nothing else changed.\n`);
 				return 0;
 			}
-			const { values } = parseArgs({ args: rest, options: { new: { type: 'string' }, route: { type: 'string', multiple: true }, limit: { type: 'string' }, 'new-source': { type: 'string' }, build: { type: 'string' }, ui: { type: 'string' } } });
+			const { values } = parseArgs({ args: rest, options: { new: { type: 'string' }, route: { type: 'string', multiple: true }, limit: { type: 'string' }, 'new-source': { type: 'string' }, build: { type: 'string' }, ui: { type: 'string' }, 'no-load': { type: 'boolean' }, 'load-runs': { type: 'string' } } });
 			if (!values.new) fail('upgrade needs --new <origin>, the migrated site');
 			const newSource = resolve(values['new-source'] ?? cwd);
 			const inventory = await readInventory(cwd);
@@ -861,7 +864,7 @@ async function main(argv: string[]): Promise<number> {
 			const uiDir = await findUi(newSource, values.ui ? resolve(values.ui) : undefined);
 			const usage = await readUsage(join(cwd, STATE_DIR));
 			const oldLibraries = await readLibraries(join(cwd, STATE_DIR));
-			const report = await upgrade({ origin: values.new, routes, newSource, buildDir, newLibraries, ...(oldLibraries ? { oldLibraries } : {}), ...(usage ? { usage } : {}), ...(uiDir ? { uiDir } : {}), progress: (line) => out(`${line}\n`) });
+			const report = await upgrade({ origin: values.new, routes, newSource, buildDir, newLibraries, ...(oldLibraries ? { oldLibraries } : {}), ...(usage ? { usage } : {}), ...(uiDir ? { uiDir } : {}), fonts: loadOptions(values) ?? false, progress: (line) => out(`${line}\n`) });
 			const path = await writeUpgrade(report, join(cwd, STATE_DIR));
 			out(`\n${summarizeUpgrade(report)}Wrote ${path}\n`);
 			return 0;
