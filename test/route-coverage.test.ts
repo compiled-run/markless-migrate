@@ -137,7 +137,7 @@ async function planned(): Promise<string> {
 
 test('a --route run is a partial run: green for the route it checked, never overall green, and status is not done', async () => {
 	const cwd = await planned();
-	const run = await cli(['check', '--old', origin(old), '--new', origin(old), '--route', '/about', '--no-responsiveness', '--journey-budget', '5'], cwd);
+	const run = await cli(['check', '--old', origin(old), '--new', origin(old), '--route', '/about', '--no-responsiveness', '--no-load', '--journey-budget', '5'], cwd);
 	assert.equal(run.status, 4, run.stdout + run.stderr);
 	assert.match(run.stdout, /pass +\/about/);
 	assert.match(run.stdout, /Partial run: 1 of 10 routes checked\. A run limited by --route or --changed is never overall green/);
@@ -263,7 +263,7 @@ test('coverage per role: a signed-in route the new app lacks is missing for that
 
 test('check --all checks every planned route, not only the ones the browser inventory and the source scan list', async () => {
 	const cwd = await planned();
-	const run = await cli(['check', '--all', '--old', origin(old), '--new', origin(old), '--no-responsiveness', '--journey-budget', '3'], cwd);
+	const run = await cli(['check', '--all', '--old', origin(old), '--new', origin(old), '--no-responsiveness', '--no-load', '--journey-budget', '3'], cwd);
 	for (const route of SITEMAP_ROUTES) assert.match(run.stdout, new RegExp(`pass +${route.replace(/\//g, '\\/')} `), run.stdout + run.stderr);
 });
 

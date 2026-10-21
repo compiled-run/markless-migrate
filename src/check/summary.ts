@@ -1,6 +1,7 @@
 import { acceptedLabel } from './automatic.ts';
 import { coverageLines } from './coverage.ts';
 import { headlines, worstLine } from './responsiveness.ts';
+import { loadLine } from './load.ts';
 import { notCompared, type Coverage, type Failure, type LoginResult, type Report } from './types.ts';
 
 function kb(bytes: number): string {
@@ -53,7 +54,7 @@ export function summarize(report: Report): string {
 		const accepted = route.failures.filter((f) => f.accepted).length;
 		const w = route.weight;
 		const stopped = notCompared(route);
-		const js = stopped ? 'page not compared: the two apps did not let this role in alike' : `JS on the wire ${kb(w.old.downloaded)} -> ${kb(w.new.downloaded)}, run at load ${kb(w.old.executed)} -> ${kb(w.new.executed)} (uncompressed)`;
+		const js = route.only ? 'only page load compared (--only load)' : stopped ? 'page not compared: the two apps did not let this role in alike' : `JS on the wire ${kb(w.old.downloaded)} -> ${kb(w.new.downloaded)}, run at load ${kb(w.old.executed)} -> ${kb(w.new.executed)} (uncompressed)`;
 		lines.push(`${route.ok ? 'pass' : 'FAIL'}  ${route.route.padEnd(width)}  ${route.ok ? '' : `[${failed.join(', ')}]  `}${accepted ? `(${accepted} accepted) ` : ''}${route.endpoint ? `compared as ${route.endpoint}` : js}`);
 		if (route.template && route.template.representative !== route.route) lines.push(`      visual, behaviour and responsiveness: checked on ${route.template.representative}, the representative of its template group (${route.template.pattern}, ${route.template.members} pages)`);
 		if (route.coverage) lines.push(`      ${coverageLine(route.coverage)}`);
@@ -62,6 +63,7 @@ export function summarize(report: Report): string {
 			const differ = route.motion.interactions.filter((i) => !i.ok || i.reduced?.ok === false).length;
 			lines.push(`      motion: ${route.motion.checked} interactions recorded, ${route.motion.interactions.length} moved${differ ? `, ${differ} differently on new` : ', alike on both'}${route.motion.skipped.length ? `; ${route.motion.skipped.length} not recorded` : ''}`);
 		}
+		if (route.load) lines.push(`      ${loadLine(route.load)}`);
 		for (const f of route.failures) lines.push(...failureLines(f));
 	}
 	const samples = report.unchecked?.filter((u) => !u.reason) ?? [];

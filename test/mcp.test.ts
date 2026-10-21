@@ -10,7 +10,7 @@ test('the MCP server lists plan, check_route and status, with instructions for t
 	try {
 		const { tools } = await client.listTools();
 		assert.deepEqual(tools.map((t) => t.name).sort(), ['check_route', 'guard', 'parity', 'plan', 'status', 'switch_route', 'usage']);
-		assert.deepEqual(Object.keys(tools.find((t) => t.name === 'check_route')!.inputSchema.properties ?? {}).sort(), ['auth', 'cookie', 'data', 'header', 'motion', 'new', 'new_source', 'old', 'responsiveness', 'route', 'source', 'staging', 'userAgent']);
+		assert.deepEqual(Object.keys(tools.find((t) => t.name === 'check_route')!.inputSchema.properties ?? {}).sort(), ['auth', 'cookie', 'data', 'header', 'load', 'motion', 'new', 'new_source', 'old', 'responsiveness', 'route', 'source', 'staging', 'userAgent']);
 		assert.match(client.getInstructions() ?? '', /check_route/);
 	} finally {
 		await client.close();

@@ -719,7 +719,7 @@ describe('vite multi-page site', { concurrency: SUITE_CONCURRENCY }, () => {
 		const opener = join(cwd, 'opener.sh');
 		await writeFile(opener, '#!/bin/sh\necho "$1" > "$(dirname "$0")/opened.txt"\n', { mode: 0o755 });
 		const cli = join(import.meta.dirname, '../../src/cli.ts');
-		const child = spawn(process.execPath, [cli, 'check', '--old', old.origin, '--new', mutants.get('heading')!.origin, '--route', '/about/', '--open', '--no-responsiveness'], { cwd, env: { ...process.env, MARKLESS_MIGRATE_OPENER: opener } });
+		const child = spawn(process.execPath, [cli, 'check', '--old', old.origin, '--new', mutants.get('heading')!.origin, '--route', '/about/', '--open', '--no-responsiveness', '--no-load'], { cwd, env: { ...process.env, MARKLESS_MIGRATE_OPENER: opener } });
 		const result = { stdout: '', stderr: '', status: -1 };
 		child.stdout.on('data', (chunk) => (result.stdout += chunk));
 		child.stderr.on('data', (chunk) => (result.stderr += chunk));
@@ -752,7 +752,7 @@ describe('vite multi-page site', { concurrency: SUITE_CONCURRENCY }, () => {
 		assert.deepEqual(starter.guards, ['/members/: signed-in (middleware.ts:28)', '/admin/: admin (middleware.ts:28)'], 'the admin check runs only under /admin/');
 		assert.deepEqual(starter.roles.admin.login.at(-1), { wait: '!/login/' });
 		const credentials = { SIGNED_IN_EMAIL: 'sam@lighthouse.example', SIGNED_IN_PASSWORD: 'night-route', ADMIN_EMAIL: 'kit@lighthouse.example', ADMIN_PASSWORD: 'godrevy' };
-		const checked = await cli(['check', '--old', old.origin, '--new', twin.origin, '--route', '/members/', '--route', '/admin/', '--auth', join(cwd, '.migrate', 'auth.json'), '--no-responsiveness'], cwd, credentials);
+		const checked = await cli(['check', '--old', old.origin, '--new', twin.origin, '--route', '/members/', '--route', '/admin/', '--auth', join(cwd, '.migrate', 'auth.json'), '--no-responsiveness', '--no-load'], cwd, credentials);
 		assert.equal(checked.status, 4, `every route it checked is green; a --route run is partial, never overall green\n${checked.stdout}\n${checked.stderr}`);
 		assert.match(checked.stdout, /As anonymous:\npass +\/members\//);
 		assert.match(checked.stdout, /As signed-in:\n {6}sign-in: same session cookies \(session: Path=\/; host-only; HttpOnly; not Secure; SameSite=Lax; session\)\npass +\/members\//);
@@ -764,11 +764,11 @@ describe('vite multi-page site', { concurrency: SUITE_CONCURRENCY }, () => {
 
 	shard.test('a Cloudflare-style challenge stops the route over the CLI and MCP, and --header or a cookie with the staging pass gets through', async () => {
 		const cwd = await realpath(await mkdtemp(join(tmpdir(), 'mm-wall-')));
-		const stopped = await cli(['check', '--old', walled.origin, '--new', twin.origin, '--route', '/about/', '--no-responsiveness'], cwd);
+		const stopped = await cli(['check', '--old', walled.origin, '--new', twin.origin, '--route', '/about/', '--no-responsiveness', '--no-load'], cwd);
 		assert.equal(stopped.status, 1);
 		assert.match(stopped.stdout, /BLOCKED +\/about\/ +blocked by Cloudflare on OLD \(403, header cf-mitigated: challenge\): use a staging URL or pass --header\/--cookie with a bypass token/);
 		assert.match(stopped.stdout, /0 of 1 routes green, 1 blocked by bot protection\./);
-		const passed = await cli(['check', '--old', walled.origin, '--new', twin.origin, '--route', '/about/', '--header', `x-staging-pass: ${WALL}`, '--no-responsiveness'], cwd);
+		const passed = await cli(['check', '--old', walled.origin, '--new', twin.origin, '--route', '/about/', '--header', `x-staging-pass: ${WALL}`, '--no-responsiveness', '--no-load'], cwd);
 		assert.equal(passed.status, 4, passed.stdout);
 		const client = await connect(cwd);
 		try {
@@ -784,7 +784,7 @@ describe('vite multi-page site', { concurrency: SUITE_CONCURRENCY }, () => {
 
 	shard.test('accept turns one failure, by its stable id, into an accepted difference; status shows the reason; an accept nothing matches is stale', async () => {
 		const cwd = await realpath(await mkdtemp(join(tmpdir(), 'mm-accept-')));
-		const args = ['check', '--old', old.origin, '--new', mutants.get('title')!.origin, '--route', '/about/', '--no-responsiveness'];
+		const args = ['check', '--old', old.origin, '--new', mutants.get('title')!.origin, '--route', '/about/', '--no-responsiveness', '--no-load'];
 		const first = await cli(args, cwd);
 		assert.equal(first.status, 1, first.stderr);
 		const id = first.stdout.match(/seo \(desktop\): title  \[([0-9a-f]{10})\]|seo: title  \[([0-9a-f]{10})\]/)?.slice(1).find(Boolean);
@@ -802,7 +802,7 @@ describe('vite multi-page site', { concurrency: SUITE_CONCURRENCY }, () => {
 		assert.match(await readFile(join(cwd, '.migrate', 'report.html'), 'utf8'), /<span class="badge accepted">accepted<\/span>/);
 		const listed = await cli(['status'], cwd);
 		assert.match(listed.stdout, /green +\/about\/  \(\d+ of \d+ interactions exercised\)  \(1 accepted\)\n +accepted seo: title: Marketing renamed the page/);
-		const stale = await cli(['check', '--old', old.origin, '--new', twin.origin, '--route', '/about/', '--no-responsiveness'], cwd);
+		const stale = await cli(['check', '--old', old.origin, '--new', twin.origin, '--route', '/about/', '--no-responsiveness', '--no-load'], cwd);
 		assert.equal(stale.status, 4, stale.stdout);
 		assert.match(stale.stdout, /Accepted differences that no longer match anything \(remove them from \.migrate\/accepted\.json\):\n +\/about\/ seo: title +\(Marketing renamed the page\)/);
 	}, ['title']);

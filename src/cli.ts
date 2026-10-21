@@ -81,7 +81,7 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
           [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--timeout <seconds>]
           [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-cache]
-          [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>]
+          [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>] [--no-load] [--load-runs <n>]
           Compare routes old vs new (default: every route of the old site plan listed). Exits 1 when any is red.
           Coverage: every route of the old site must exist on the new app, with the same status class
           and the same redirect target, or carry an accepted difference (accept <id>); each missing
@@ -132,6 +132,14 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           and console errors. A link that loads a new document is a fresh load already; a difference the
           old app shows too, reached the same way, is its own; <html> class and data-* attributes are
           compared with the old app's too. --no-navigation leaves it out.
+          Page load: after every other check, each page (one per template group) is loaded with
+          Lighthouse's mobile settings (simulated slow 4G, 4x CPU, as PageSpeed Insights runs it),
+          --load-runs times on each side (default 5), old and new in turn, one run at a time. FCP, LCP,
+          Speed Index, TBT, CLS and the performance score are compared by their medians: a metric is red
+          when the new median is worse by more than max(100 ms, 5%) (TBT 50 ms, CLS 0.02, 3 score points)
+          and the runs differ beyond noise (one-sided Mann-Whitney, p < 0.05). The failure names the LCP
+          element, its breakdown and the requests that began before it, old and new. --no-load leaves it out;
+          --only load measures page load alone (a partial run: every other dimension is not compared).
           --source and --new-source map each failing element to its old and new source file and line.
           --concurrency checks that many routes at once (default half the cores, at most 4).
           --timeout stops one route's check after that many seconds (default 600, or five journey
@@ -248,7 +256,7 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           check it must pass against the pre-upgrade version (--baseline serves it).
   run     --agent <id> --old <origin> --new <origin> [--route <path>]... [--all] [--attempts <n>] [--model <name>]
           [--source <path>] [--new-source <path>] [--auth <file>] [--header <name:value>]... [--cookie <name=value>]...
-          [--serve <command>] [--build <command>] [--restart-on <path>] [--agent-timeout <minutes>]
+          [--serve <command>] [--build <command>] [--restart-on <path>] [--agent-timeout <minutes>] [--only load]
           Drive your agent's own CLI headless, one route at a time, until each route is green or is
           left red after n attempts (default 3), then go on with the next; it never waits for an answer.
           An attempt that runs past --agent-timeout (default 30 minutes) is stopped and counts as one.
@@ -296,6 +304,8 @@ const TIMING_FLAGS = {
 	'interaction-controls': { type: 'string' },
 	'no-motion': { type: 'boolean' },
 	'no-navigation': { type: 'boolean' },
+	'no-load': { type: 'boolean' },
+	'load-runs': { type: 'string' },
 	'nav-entries': { type: 'string' },
 	'nav-destinations': { type: 'string' },
 } as const;
@@ -312,6 +322,14 @@ function navigationOptions(values: { 'no-navigation'?: boolean; 'nav-entries'?: 
 	const entries = count('nav-entries');
 	const destinations = count('nav-destinations');
 	return { ...(entries ? { entries } : {}), ...(destinations ? { destinations } : {}), ...(routes?.length ? { routes } : {}) };
+}
+
+function loadOptions(values: { 'no-load'?: boolean; 'load-runs'?: string }): CheckOptions['load'] {
+	if (values['no-load']) return undefined;
+	if (values['load-runs'] === undefined) return {};
+	const runs = Number(values['load-runs']);
+	if (!Number.isInteger(runs) || runs < 4) fail('--load-runs must be a whole number of at least 4: with fewer runs a side, no difference can be told from noise');
+	return { runs };
 }
 
 function timingOptions(values: { 'no-responsiveness'?: boolean; 'interaction-budget'?: string; 'cpu-throttle'?: string; 'network-latency'?: string; 'interaction-controls'?: string }): CheckOptions['responsiveness'] {
@@ -433,6 +451,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 			build: { type: 'string' },
 			'restart-on': { type: 'string' },
 			'agent-timeout': { type: 'string' },
+			only: { type: 'string' },
 			'journey-budget': { type: 'string' },
 			'max-journeys': { type: 'string' },
 			'journey-depth': { type: 'string' },
@@ -450,6 +469,8 @@ async function run(args: string[], cwd: string): Promise<number> {
 	const agentMinutes = values['agent-timeout'] ? Number(values['agent-timeout']) : undefined;
 	if (agentMinutes !== undefined && !(agentMinutes > 0)) fail('--agent-timeout must be a number of minutes above 0');
 	if ((values.build || values['restart-on']) && !values.serve) fail('--build and --restart-on need --serve <command>, the command that serves the new app');
+	if (values.only !== undefined && values.only !== 'load') fail('run --only takes load: each route is checked for page load alone');
+	if (values.only === 'load' && values['no-load']) fail('--only load and --no-load leave nothing to check');
 	const agent = driver(values.agent);
 	const home = process.env.HOME || homedir();
 	if (!(await findBinary(agent.binary, { home, env: process.env }))) fail(`${agent.binary} is not on PATH; install it and sign in first`);
@@ -479,6 +500,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 	}
 	if (!routes?.length) fail('no routes: pass --route <path> or run plan first');
 	const navigation = navigationOptions(values, routes);
+	const load = loadOptions(values);
 	const { old, new: next } = values;
 	const server = values.serve ? await startAppServer({ cwd, serve: values.serve, ...(values.build ? { build: values.build } : {}), beforeBuild: async () => void (await applyIfPlanned(cwd, resolve(cwd, values['new-source'] ?? '.'))), ...(values['restart-on'] ? { restartOn: values['restart-on'] } : {}), origin: next, log: (line) => out(`server: ${line}\n`) }).catch((error: Error) => fail(error.message)) : undefined;
 	const mcp = serverCommand();
@@ -499,7 +521,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 			...(agentMinutes ? { timeoutMs: agentMinutes * 60_000 } : {}),
 			cli: [mcp.command, ...mcp.args.slice(0, -1)].join(' '),
 			mcp,
-			context: { ...(source ? { source } : {}), ...(newSource ? { newSource } : {}), ...(values.auth ? { auth: resolve(values.auth) } : {}), flags: [...(values.header ?? []).flatMap((h) => ['--header', h]), ...(values.cookie ?? []).flatMap((c) => ['--cookie', c]), ...(values['journey-budget'] ? ['--journey-budget', values['journey-budget']] : []), ...(values['max-journeys'] ? ['--max-journeys', values['max-journeys']] : []), ...(values['journey-depth'] ? ['--journey-depth', values['journey-depth']] : []), ...timingFlags(values)] },
+			context: { ...(source ? { source } : {}), ...(newSource ? { newSource } : {}), ...(values.auth ? { auth: resolve(values.auth) } : {}), flags: [...(values.header ?? []).flatMap((h) => ['--header', h]), ...(values.cookie ?? []).flatMap((c) => ['--cookie', c]), ...(values['journey-budget'] ? ['--journey-budget', values['journey-budget']] : []), ...(values['max-journeys'] ? ['--max-journeys', values['max-journeys']] : []), ...(values['journey-depth'] ? ['--journey-depth', values['journey-depth']] : []), ...timingFlags(values), ...(values.only ? ['--only', values.only] : [])] },
 			...(server ? { server, serving: { ...(values.build ? { build: values.build } : {}), ...(values['restart-on'] ? { restartOn: values['restart-on'] } : {}) } } : {}),
 			progress: out,
 			...(usage ? { notes: async (route: string) => routeBrief(usage, await implementedNow(), route) } : {}),
@@ -521,6 +543,8 @@ async function run(args: string[], cwd: string): Promise<number> {
 					...(timing ? { responsiveness: timing } : {}),
 				...(values['no-motion'] ? {} : { motion: {} }),
 					...(navigation ? { navigation } : {}),
+					...(load ? { load } : {}),
+					...(values.only === 'load' ? { only: 'load' as const } : {}),
 					switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 					partial: { total: inventory ? plannedRoutes(inventory).length : null },
 				});
@@ -649,8 +673,10 @@ async function main(argv: string[]): Promise<number> {
 			});
 			const deadline = timeoutOption(values.timeout);
 			if (!values.old || !values.new) fail('check needs --old <origin> and --new <origin>');
-			if (values.only !== undefined && values.only !== 'coverage') fail('--only takes coverage: whether every route of the old site exists on the new app');
+			if (values.only !== undefined && values.only !== 'coverage' && values.only !== 'load') fail('--only takes coverage (whether every route of the old site exists on the new app) or load (page load alone)');
 			const coverageOnly = values.only === 'coverage';
+			const loadOnly = values.only === 'load';
+			if (loadOnly && values['no-load']) fail('--only load and --no-load leave nothing to check');
 			const journeys = journeyOptions(values['journey-budget'], values['max-journeys'], values['journey-depth']);
 			const timing = timingOptions(values);
 			let bypass: ReturnType<typeof bypassOptions> = {};
@@ -677,8 +703,9 @@ async function main(argv: string[]): Promise<number> {
 				targets = { endpoints: await discoverEndpoints(defaultEnv(values.old), all.pages, all.endpoints), unchecked: all.needsSample, redirects: redirectTargets(all.pages, inventory.source?.redirects) };
 			}
 			if (!coverageOnly && !routes?.length && !targets?.endpoints.length) fail('no routes: pass --route <path> or run plan first');
-			const partial = !coverageOnly && Boolean(values.route?.length || values.changed);
+			const partial = !coverageOnly && Boolean(values.route?.length || values.changed || loadOnly);
 			const navigation = navigationOptions(values, partial ? planned : undefined);
+			const load = loadOptions(values);
 			const concurrency = values.concurrency ? Number(values.concurrency) : undefined;
 			if (concurrency !== undefined && (!Number.isInteger(concurrency) || concurrency < 1)) fail('--concurrency must be a whole number of at least 1');
 			const newDir = resolve(values['new-source'] ?? cwd);
@@ -722,6 +749,8 @@ async function main(argv: string[]): Promise<number> {
 				...(timing ? { responsiveness: timing } : {}),
 				...(values['no-motion'] ? {} : { motion: {} }),
 				...(navigation ? { navigation } : {}),
+				...(load && !coverageOnly ? { load } : {}),
+				...(loadOnly ? { only: 'load' as const } : {}),
 				switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 				...(!values['new-source'] && !values.changed ? {} : { sourceDirs: { ...(values.source ? { old: resolve(values.source) } : {}), new: newDir } }),
 				...(partial ? { partial: { total: planned?.length ?? null } } : planned?.length ? { coverage: planned } : {}),
