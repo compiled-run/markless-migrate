@@ -222,8 +222,8 @@ export function failuresIn(report: Report, dimension: Dimension) {
 	return report.routes.flatMap((r) => r.failures).filter((f) => f.dimension === dimension);
 }
 
-/** Tests a fixture suite runs at once: a check drives several Chromium pages, so more than half the cores makes clicks time out under load. */
-export const SUITE_CONCURRENCY = Math.max(1, Math.min(4, Math.floor(availableParallelism() / 2)));
+/** Tests a fixture suite runs at once, a quarter of the cores: each check already drives up to half the cores' pages, and two checks at once on a 4-vCPU CI runner made clicks and in-place navigations miss their wait. */
+export const SUITE_CONCURRENCY = Math.max(1, Math.min(4, Math.floor(availableParallelism() / 4)));
 
 /** E2E_SHARD=i/n registers every n-th test of a suite from the i-th, and records the mutants those tests use so only they are built; without it every test runs. */
 export function sharded() {
