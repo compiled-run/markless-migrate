@@ -68,7 +68,7 @@ export default function Document({ url, children }: { readonly url?: { readonly 
 			<script id="check-dark-mode">{'(function(){let e=localStorage.getItem("vitepress-theme-appearance")||"auto",t=window.matchMedia("(prefers-color-scheme: dark)").matches;if(!e||e==="auto"?t:e==="dark")document.documentElement.classList.add("dark")})();'}</script>
 			<script id="check-mac-os">{'document.documentElement.classList.toggle("mac",/Mac|iPhone|iPod|iPad/i.test(navigator.platform));'}</script>
 			<link rel="modulepreload" href="/page-scripts/page.js" />
-			@if (marketing) {
+			@if (!docs) {
 				<link rel="modulepreload" href="/page-scripts/home.js" />;
 			}
 			@if (docs) {
