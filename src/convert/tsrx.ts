@@ -8,9 +8,8 @@ export const lit = (text: string): string => JSON.stringify(text);
 const escapeText = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\{/g, '&#123;').replace(/\}/g, '&#125;').replace(/@/g, '&#64;');
 // HTML whitespace only: JavaScript's \s also matches the no-break spaces code samples indent with.
 const collapse = (t: string) => t.replace(/[ \t\n\r\f]+/g, ' ');
-// Text with a quote, a backtick or a comment opener is a string expression: the tsrx parser reads an @if arm's body as
-// script, where such text as markup breaks the parse.
-const textOut = (t: string) => (/[\n\t\r\f\u00a0`'"]| {2}|^ | $|\/\/|\/\*/.test(t) || !t.replace(/[ \t\n\r\f]/g, '') ? `{${lit(t)}}` : escapeText(t));
+// Text holding a comment opener is a string expression: TSRX reads `//` and `/*` in template text as comments.
+const textOut = (t: string) => (/[\n\t\r\f\u00a0]| {2}|^ | $|\/\/|\/\*/.test(t) || !t.replace(/[ \t\n\r\f]/g, '') ? `{${lit(t)}}` : escapeText(t));
 
 /** What the emitter does with one element beyond copying it. */
 export interface Binding {
