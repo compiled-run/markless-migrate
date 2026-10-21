@@ -16,6 +16,7 @@ import type { AssetRecord, Box, Dimension, ElementSnapshot, Failure, HttpCapture
 import { DIMENSIONS } from './types.ts';
 import { compareWithNoise, identicalShots, visuallyDifferent } from './visual.ts';
 import { storageFailure } from './storage.ts';
+import { samePath } from './svg-path.ts';
 import { residueFailures } from './residue.ts';
 
 const LIMIT = 20;
@@ -167,7 +168,7 @@ function cssFailures(route: string, viewport: string, oldA: PageCapture, others:
 		if (!skip) continue;
 		const expected = oldA.elements[i]!;
 		const actual = next.elements[j]!;
-		const props = Object.keys(expected.style).filter((prop) => !skip.has(prop) && !RENDERED_ELSEWHERE.has(prop) && expected.style[prop] !== actual.style[prop]);
+		const props = Object.keys(expected.style).filter((prop) => !skip.has(prop) && !RENDERED_ELSEWHERE.has(prop) && expected.style[prop] !== actual.style[prop] && !(prop === 'd' && samePath(expected.style[prop]!, actual.style[prop] ?? '')));
 		if (!props.length) continue;
 		if (failures.length >= LIMIT) {
 			extra++;
