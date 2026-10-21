@@ -436,6 +436,9 @@ export function ContentVisibility({ metadata }) {
 }
 
 // @theme/DocItem: the doc's MDX content in its layout.
+// Where theme-classic's doc page puts the MDX content in React's tree: the layout's place, packed, then the content as
+// the second of DocItem/Content's two children (the synthetic title before it).
+const DOC_CONTENT_TREE_PLACE = { overflow: 'hralaqh', forks: [[2, 1]] };
 export function DocItem({ content: Content }) {
 	const { doc } = useContext();
 	const { metadata, frontMatter, toc, contentTitle, assets } = doc;
@@ -464,7 +467,7 @@ export function DocItem({ content: Content }) {
 										<Heading as="h1">{syntheticTitle}</Heading>
 									</header>
 								)}
-								<MDXContent>
+								<MDXContent reactTreePlace={DOC_CONTENT_TREE_PLACE}>
 						<Content />
 					</MDXContent>
 							</div>

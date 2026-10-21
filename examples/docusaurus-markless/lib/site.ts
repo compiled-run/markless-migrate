@@ -46,7 +46,15 @@ const samePath = (a: string | undefined, b: string) => {
 	const norm = (p: string) => (p.endsWith('/') ? p : `${p}/`).toLowerCase();
 	return a !== undefined && norm(a) === norm(b);
 };
-const currentPath = () => window.location.pathname.replace(/\/$/, '') || '/';
+// Decoded, as the links' hrefs are written (/tests/docs/tests/ascii/æøå), where location.pathname is percent-encoded.
+const currentPath = () => {
+	const path = window.location.pathname.replace(/\/$/, '') || '/';
+	try {
+		return decodeURI(path);
+	} catch {
+		return path;
+	}
+};
 
 
 // Colour mode: the three-way toggle, the code blocks' Prism colours and the themed images.
@@ -121,6 +129,25 @@ function applyThemedImages(dark: boolean): void {
 		if (img.getAttribute('src') !== want) img.setAttribute('src', want);
 	}
 }
+// Mermaid diagrams: theme-mermaid draws each again in the colour mode's mermaid theme; the importer drew both.
+const diagramLight = new WeakMap<Element, string>();
+function applyDiagrams(dark: boolean): void {
+	for (const container of document.querySelectorAll('.docusaurus-mermaid-container')) {
+		const darkSvg = hint(container, 'mermaid-dark');
+		if (!darkSvg) continue;
+		if (!diagramLight.has(container)) diagramLight.set(container, container.innerHTML);
+		const want = dark ? darkSvg : diagramLight.get(container)!;
+		if (container.innerHTML !== want) container.innerHTML = want;
+	}
+}
+// Mermaid adds its tooltip element to <body> once a flowchart is drawn, and leaves it there.
+function addDiagramTooltip(): void {
+	if (document.querySelector('.mermaidTooltip')) return;
+	for (const container of document.querySelectorAll('.docusaurus-mermaid-container')) {
+		const tooltip = hint(container, 'mermaid-tooltip');
+		if (tooltip) return void document.body.insertAdjacentHTML('beforeend', tooltip);
+	}
+}
 const MODE_LABEL: Record<string, string> = { light: 'light mode', dark: 'dark mode', system: 'system mode' };
 function applyColorMode(next: Choice): void {
 	const root = document.documentElement;
@@ -137,6 +164,7 @@ function applyColorMode(next: Choice): void {
 		codeDark = dark;
 	}
 	applyThemedImages(dark);
+	applyDiagrams(dark);
 }
 let codeDark = false;
 function cycleColorMode(): void {
@@ -924,7 +952,7 @@ function toggleTocCollapsible(button: HTMLElement): void {
 // Ideal images (plugin-ideal-image): the placeholder loads its image once it is in the viewport, through a
 // Waypoint that starts an XHR on enter and cancels it on leave (a jump over the image counts as both).
 type Position = 'below' | 'inside' | 'above' | 'invisible';
-type Lazy = { previous: Position | null; inViewport: boolean; request?: XMLHttpRequest; loaded: boolean; url?: string; userTriggered?: boolean };
+type Lazy = { previous: Position | null; inViewport: boolean; request?: XMLHttpRequest; loaded: boolean; url?: string; pickedAt?: number; userTriggered?: boolean };
 type IdealHint = { alt?: string; width: number; height: number; srcSet: { src: string; width: number; height: number }[]; style?: string; imgStyle?: string };
 const lazy = new Map<Element, Lazy>();
 function position(el: Element): Position {
@@ -948,11 +976,11 @@ function idealMessage(el: Element, message: string | undefined): void {
 }
 // The URL is the one picked when the placeholder entered the viewport; a click before that loads "undefined", as the
 // original's does (its 404 then shows as the error message).
-function lazyLoad(el: Element, info: IdealHint, state: Lazy, userTriggered: boolean): void {
+function lazyLoad(el: Element, info: IdealHint, state: Lazy, userTriggered: boolean, picked = state.url): void {
 	if (state.loaded || state.request) return;
 	state.userTriggered = userTriggered;
 	idealMessage(el, undefined);
-	const url = String(state.url);
+	const url = String(picked);
 	const request = new XMLHttpRequest();
 	state.request = request;
 	request.open('GET', url);
@@ -986,14 +1014,16 @@ function lazyState(box: Element): Lazy {
 	if (!state) lazy.set(box, (state = { previous: null, inViewport: false, loaded: false }));
 	return state;
 }
-// A click on the placeholder loads it (again, after an error); one while it loads or once loaded does nothing.
+// A click on the placeholder loads it (again, after an error); one while it loads or once loaded does nothing. A click
+// made before the source was picked (handled late, while this module loaded) loads the URL it would have seen then.
 function idealClick(event: Event): boolean {
 	const node = event.target instanceof Element ? event.target : null;
 	let box: Element | null = node;
 	while (box && !hint(box, 'ideal')) box = box.parentElement;
 	if (!box) return false;
 	const state = lazyState(box);
-	if (!state.loaded && !state.request) lazyLoad(box, JSON.parse(hint(box, 'ideal')!) as IdealHint, state, true);
+	const picked = event.timeStamp < (state.pickedAt ?? Infinity) ? undefined : state.url;
+	if (!state.loaded && !state.request) lazyLoad(box, JSON.parse(hint(box, 'ideal')!) as IdealHint, state, true, picked);
 	return true;
 }
 function checkLazyImages(): void {
@@ -1011,7 +1041,9 @@ function checkLazyImages(): void {
 			if (state!.inViewport) return;
 			state!.inViewport = true;
 			state!.url = pickSource(box, info.srcSet).src;
-			queueMicrotask(() => lazyLoad(box, info, state!, false));
+			state!.pickedAt = performance.now();
+			// React applies onEnter's state in a later task and loads from its callback, so a click before then wins.
+			setTimeout(() => lazyLoad(box, info, state!, false));
 		};
 		const leave = () => {
 			if (!state!.request || state!.userTriggered) return;
@@ -1201,7 +1233,10 @@ function boom(button: HTMLElement): void {
 	});
 }
 
+const handledClicks = new WeakSet<Event>();
 function siteClick(event: Event): void {
+	if (handledClicks.has(event)) return;
+	handledClicks.add(event);
 	// React Router keeps the page when a link points at the address already shown (the version dropdown's "Canary").
 	const link = closest(event, 'a[href]') as HTMLAnchorElement | null;
 	if (link && !link.target && link.origin === location.origin && link.pathname === location.pathname && link.search === location.search && !link.hash && link.getAttribute('href') !== '#') event.preventDefault();
@@ -1305,6 +1340,7 @@ function siteKeyDown(event: KeyboardEvent): void {
 }
 
 let booted = false;
+let bootedAt = Infinity;
 
 // AnnouncementBarProvider lives in the theme layout: it records the bar it saw once a page with the layout shows.
 let announcementSeen = false;
@@ -1329,6 +1365,7 @@ function pageInit(): void {
 	if (storage()?.getItem(DISMISS_KEY) === 'true') document.querySelector('.theme-announcement-bar')?.remove();
 	codeDark = false;
 	applyColorMode(choice());
+	addDiagramTooltip();
 	// The navbar's body-scroll lock (useLockBodyScroll) writes the unlocked value as soon as it mounts.
 	if (document.querySelector('nav.navbar') && !document.querySelector('nav.navbar-sidebar--show')) document.body.style.overflow = 'visible';
 	// A page without the navbar (the debug panel) renders <body> without it, as a fresh load does.
@@ -1370,9 +1407,15 @@ function loadPlainPage(event: MouseEvent): void {
 	location.assign(url.href);
 }
 
-export function siteBoot(): void {
-	if (booted) return;
+// The old theme's listeners exist once React hydrates, before the page's load event; these exist once this module has
+// loaded, so a click made in between reaches here through the root's onClick and is handled as they would have.
+export function siteBoot(event?: Event): void {
+	if (!booted) startSite();
+	if (event?.type === 'click' && event.timeStamp < bootedAt) siteClick(event);
+}
+function startSite(): void {
 	booted = true;
+	bootedAt = performance.now();
 	pageInit();
 	document.addEventListener('marklessrouterrendered', pageInit);
 	startProgress();

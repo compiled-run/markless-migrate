@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { clsx, useContext, styles, ThemeClassNames, translate, Translate, Link, Heading, useAnchorTargetClassName, themeConfig, IconCopy, IconSuccess, Head, BrowserOnly, ThemedImage, isInternalUrl } from './core.jsx';
 import { TOCItems } from './docs.jsx';
 import Playground from './Playground.jsx';
-import { isElement, toArray, Fragment, isReactServerMarkup, render, withContext, toHtml } from '../source/h.mjs';
+import { isElement, toArray, Fragment, isReactServerMarkup, render, withContext, toHtml, withReactTreePlace } from '../source/h.mjs';
 import { website } from '../source/site.mjs';
 
 const require = createRequire(join(website, 'package.json'));
@@ -410,8 +410,10 @@ export function MDXImg(props) {
 const heading = (as) => (props) => <Heading as={as} {...props} />;
 
 // @theme/MDXContent: the MDX components apply only inside it (a React page rendering an MDX partial gets plain markup).
-export function MDXContent({ children }) {
-	return withContext({ mdxComponents: useContext().mdxContentComponents }, () => render(children));
+// `reactTreePlace` is where the old layout puts the content in React's tree, for the ids useId gives inside it.
+export function MDXContent({ children, reactTreePlace }) {
+	const draw = () => withContext({ mdxComponents: useContext().mdxContentComponents }, () => render(children));
+	return reactTreePlace ? withReactTreePlace(reactTreePlace, draw) : draw();
 }
 
 export function mdxComponents(extra = {}) {

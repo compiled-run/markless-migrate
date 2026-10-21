@@ -183,6 +183,39 @@ export function withReactServerMarkup(run) {
 		reactServerMarkup = previous;
 	}
 }
+// React's useId while hydrating: an element's id is its place in the tree, every array of children it sits in (its
+// length and the element's index), packed into bits as ReactFiberTreeContext does. The old site's diagrams take
+// their element ids from it, so the port names them the same.
+let treeContext = { id: 1, overflow: '' };
+const bitLength = (n) => 32 - Math.clz32(n);
+function pushTreeId(total, index) {
+	let { id: base, overflow } = treeContext;
+	let baseLength = bitLength(base) - 1;
+	base &= ~(1 << baseLength);
+	const slot = index + 1;
+	const length = bitLength(total) + baseLength;
+	if (length > 30) {
+		const overflowBits = baseLength - (baseLength % 5);
+		overflow = (base & ((1 << overflowBits) - 1)).toString(32) + overflow;
+		base >>= overflowBits;
+		baseLength -= overflowBits;
+		treeContext = { id: (1 << (bitLength(total) + baseLength)) | (slot << baseLength) | base, overflow };
+	} else treeContext = { id: (1 << length) | (slot << baseLength) | base, overflow };
+}
+// Renders from a given place in the old site's tree: what its layout packed so far (the overflow, in base 32), then
+// [total, index] forks.
+export function withReactTreePlace({ overflow = '', forks = [] }, run) {
+	const previous = treeContext;
+	treeContext = { id: 1, overflow };
+	for (const [total, index] of forks) pushTreeId(total, index);
+	try {
+		return run();
+	} finally {
+		treeContext = previous;
+	}
+}
+export const reactTreeId = () => `_R_${(treeContext.id & ~(1 << (bitLength(treeContext.id) - 1))).toString(32)}${treeContext.overflow}_`;
+
 export const TEXT_SEPARATOR = { tag: '#text-separator', attrs: [], children: [] };
 // Markup only React's server render writes (a Suspense boundary's comments), kept in React server markup only.
 const SERVER_HTML = Symbol.for('mm.server-html');
@@ -207,7 +240,17 @@ export function render(value) {
 	};
 	const walk = (item) => {
 		if (item === null || item === undefined || item === false || item === true) return;
-		if (Array.isArray(item)) return item.forEach(walk);
+		if (Array.isArray(item)) {
+			return item.forEach((child, index) => {
+				const previous = treeContext;
+				pushTreeId(item.length, index);
+				try {
+					walk(child);
+				} finally {
+					treeContext = previous;
+				}
+			});
+		}
 		if (typeof item === 'string' || typeof item === 'number' || typeof item === 'bigint') return pushText(String(item));
 		if (item[SERVER_HTML] !== undefined) return pushNode({ tag: '#server-html', attrs: [], children: [], html: item[SERVER_HTML] });
 		if (item[RAW] !== undefined) {

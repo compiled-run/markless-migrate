@@ -41,7 +41,9 @@ export async function writePage(path, file, body, boot = 'site') {
 	const rel = (target) => relative(dirname(file), join(app, target)).split('\\').join('/');
 	const [bootName, bootFile] = BOOTS[boot];
 	const imports = [`import { ${bootName} } from '${rel(bootFile)}';`, ...(footer ? [`import Footer from '${rel('components/generated/footer.tsrx')}';`] : [])];
-	const markup = toTsrx([{ ...root, children }], 1, { extra: (node) => (node === root || node.children === children ? ` onVisible={() => ${bootName}()} onIdle={() => ${bootName}()}` : '') });
+	// The site's script also boots on a click, and handles that click: one made before it loaded is not lost.
+	const triggers = ` onVisible={() => ${bootName}()} onIdle={() => ${bootName}()}${boot === 'site' ? ` onClick={(event) => ${bootName}(event)}` : ''}`;
+	const markup = toTsrx([{ ...root, children }], 1, { extra: (node) => (node === root || node.children === children ? triggers : '') });
 	await mkdir(dirname(file), { recursive: true });
 	await writeFile(file, `${HEADER} (${path})\n${imports.join('\n')}\n\nexport default function Page() @{\n${markup}}\n`);
 	return footer;

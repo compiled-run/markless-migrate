@@ -401,6 +401,9 @@ function postPaginator(prevLabel, nextLabel, aria) {
 	);
 }
 
+// Where theme-classic's blog post page puts the MDX content in React's tree: the layout's place, packed, then the
+// content as the second of two children.
+const BLOG_POST_CONTENT_TREE_PLACE = { overflow: 'ldeh', forks: [[2, 1]] };
 export function BlogPostPage({ content: Content, sidebar }) {
 	return withPost(Content, true, () => {
 		const blogMetadata = useContext().blogMetadata;
@@ -415,7 +418,7 @@ export function BlogPostPage({ content: Content, sidebar }) {
 				<BlogLayout sidebar={sidebar} toc={postPageToc()}>
 					<ContentVisibility metadata={metadata} />
 					<BlogPostItem>
-						<MDXContent>
+						<MDXContent reactTreePlace={BLOG_POST_CONTENT_TREE_PLACE}>
 						<Content />
 					</MDXContent>
 					</BlogPostItem>

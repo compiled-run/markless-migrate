@@ -75,8 +75,9 @@ async function renderWithDiagrams(route) {
 	const page = await renderRoute(route, site, siteMdxComponents);
 	if (!mermaidPending.size) return page;
 	try {
-		const drawn = await drawMermaid([...mermaidPending], site.context.siteConfig.themeConfig.mermaid);
-		for (const [value, svg] of drawn) mermaidRendered.set(value, svg);
+		const pending = [...mermaidPending];
+		const drawn = await drawMermaid(pending.map(([, diagram]) => diagram), site.context.siteConfig.themeConfig.mermaid);
+		for (const [key, diagram] of pending) mermaidRendered.set(key, drawn.get(diagram));
 	} finally {
 		mermaidPending.clear();
 	}

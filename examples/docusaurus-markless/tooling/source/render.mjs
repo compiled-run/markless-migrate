@@ -1,6 +1,6 @@
 // Renders one route of the old site through the template its theme component names: the page body (what
 // Docusaurus mounts in #__docusaurus), its <head> elements and its <html> classes.
-import { h, render, withContext, setRawParser, withReactServerMarkup, isReactServerMarkup } from './h.mjs';
+import { h, render, withContext, setRawParser, withReactServerMarkup, isReactServerMarkup, reactTreeId } from './h.mjs';
 import { parseHtml } from './html.mjs';
 import { join } from 'node:path';
 import { readGenerated, website } from './site.mjs';
@@ -63,18 +63,21 @@ function hoistPreloads(root) {
 }
 
 // Mermaid diagrams are drawn by the mermaid library in a browser: the first render of a page collects them,
-// tooling/source/mermaid.mjs draws them, and the page renders again with the SVGs.
+// tooling/source/mermaid.mjs draws them, and the page renders again with the SVGs. A diagram's element ids come from
+// theme-mermaid's useId and its render count: the first render is the light one, a page that starts dark draws again.
 export const mermaidRendered = new Map();
-export const mermaidPending = new Set();
+export const mermaidPending = new Map();
 function mermaid({ value }) {
 	if (isReactServerMarkup()) return null;
-	const svg = mermaidRendered.get(value);
+	const tree = reactTreeId();
+	const key = `${tree}\n${value}`;
+	const svg = mermaidRendered.get(key);
 	if (svg === undefined) {
-		mermaidPending.add(value);
+		mermaidPending.set(key, { value, ids: { light: `${tree}-0`, dark: `${tree}-1` } });
 		return null;
 	}
 	if (svg.error !== undefined) return h('div', { className: errorStyles().errorBoundaryFallback }, h('p', null, svg.error), h('button', { type: 'button' }, 'Try again'));
-	return h('div', { className: `docusaurus-mermaid-container ${mermaidStyles().container}`, dangerouslySetInnerHTML: { __html: svg.light }, 'data-mm-mermaid-dark': svg.dark });
+	return h('div', { className: `docusaurus-mermaid-container ${mermaidStyles().container}`, dangerouslySetInnerHTML: { __html: svg.light }, 'data-mm-mermaid-dark': svg.dark, 'data-mm-mermaid-tooltip': svg.tooltip });
 }
 let mermaidStyleMap;
 let errorStyleMap;
