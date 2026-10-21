@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { compareMotion, motionDismissals, motionJourneys, motionRules, pinnedMoments, sameEasing, type MotionCapture, type MotionRecord, type PinnedElement, type PinnedFrame } from '../src/check/motion.ts';
+import { compareMotion, motionCycles, motionDismissals, motionJourneys, motionRules, pinnedMoments, sameEasing, type MotionCapture, type MotionRecord, type PinnedElement, type PinnedFrame } from '../src/check/motion.ts';
 import type { RecordedJourney, StepResult } from '../src/check/journeys.ts';
 import type { ElementSnapshot } from '../src/check/types.ts';
 
@@ -132,6 +132,16 @@ test('journeys that lead to another page or could not be used are not recorded',
 	const { take, skipped } = motionJourneys([journey('a', [step()]), journey('b', [step({ navigated: true })]), journey('c', [step({ failed: 'gone' })])]);
 	assert.deepEqual(take.map((j) => j.name), ['a']);
 	assert.deepEqual(skipped, ['b: it leads to another page', 'c: it could not be used on the old page']);
+});
+
+test('each use of a control after its journey that stays on the page is recorded on its own (a disclosure closing on its second use), up to a reload', () => {
+	const step = (over: Partial<StepResult> = {}): StepResult => ({ url: '/', added: [], removed: [], requests: [], errors: [], announcements: [], focus: 'body', navigated: false, ...over });
+	const target = { role: 'button', name: 'FAQ', nth: 0 };
+	const toggle: RecordedJourney = { name: 'click button "FAQ"', steps: [{ action: 'click', target }], cycle: ['again', 'again', 'reload', 'again'], expected: [step(), step(), step(), step(), step()] };
+	const leaves: RecordedJourney = { name: 'click button "Next"', steps: [{ action: 'click', target }], cycle: ['again'], expected: [step(), step({ navigated: true })] };
+	const cycles = motionCycles([toggle, leaves]);
+	assert.deepEqual(cycles.map((j) => j.name), ['click button "FAQ" (step 2 of 5: use 2)', 'click button "FAQ" (step 3 of 5: use 3)']);
+	assert.deepEqual(cycles.map((j) => (j as { act?: number }).act), [0, 1]);
 });
 
 test('an interaction whose write was held back is not compared for motion: each app animates its own answer to the empty reply the checker gives instead of the server', () => {

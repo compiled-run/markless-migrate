@@ -105,8 +105,8 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           --route checks only the routes named, for iterating: such a run (and --changed) is a partial
           run, "partial run: N of M routes", never overall green; it exits 4 when what it checked is green.
           Above ${TEMPLATE_THRESHOLD} pages, every page gets every check except visual, behaviour,
-          responsiveness and motion, which run on one representative per template group (grouped by URL pattern
-          and page layout); the report lists the groups. --every-dimension runs them on every page.
+          responsiveness and motion, which run on one representative per template group (grouped by URL pattern,
+          page layout and the kinds of control each page renders); the report lists the groups. --every-dimension runs them on every page.
           Every interactive element of the old page (including those a click reveals, such as a
           dialog's controls) must be used by a journey, or the route stays red: journeys are explored main content first (tables, forms), until each element is used or
           --journey-budget (default 120 s per route) runs out; --max-journeys caps their number and
@@ -128,7 +128,8 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           once, and every timed page gets it --network-latency (default 40 ms) after asking, so the
           times compare the apps, not the hosts; each page's server time is reported apart.
           --no-responsiveness leaves it out.
-          Motion: the last step of every journey that stays on the page is replayed old then new with
+          Motion: the last step of every journey that stays on the page, and each later use of its control
+          that stays there too (the second click that closes what the first opened), is replayed old then new with
           motion allowed, recording each transition and animation it starts (element, properties,
           duration, delay, easing, iterations) and frames at fixed offsets across the longest one; an
           animation missing on new (it jumps), timed differently (beyond max(20 ms, 10%)) or only on new

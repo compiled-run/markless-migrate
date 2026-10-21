@@ -97,7 +97,7 @@ export interface CheckOptions {
 	readonly coverage?: readonly string[];
 	/** The run checks fewer routes than the plan lists (`total`, null without a plan): the report says so and is never overall green. */
 	readonly partial?: { readonly total: number | null };
-	/** Above TEMPLATE_THRESHOLD pages, visual, behaviour and responsiveness run on one representative per template group; false runs them on every page. `patterns` are the source's route patterns. */
+	/** Above TEMPLATE_THRESHOLD pages, visual, behaviour, responsiveness and motion run on one representative per template group; false runs them on every page. `patterns` are the source's route patterns. */
 	readonly templates?: false | { readonly patterns?: readonly string[] };
 	/** Where OLD's captures and journeys are kept between runs (`.migrate/cache`), reused only while every response the old page loaded is unchanged. */
 	readonly cacheDir?: string;
