@@ -8,6 +8,7 @@
 	"bin": {
 		"markless-migrate": "./src/cli.ts"
 	},
+	"packageManager": "pnpm@12.14.0",
 	"engines": {
 		"node": ">=24.11.0"
 	},
@@ -37,7 +38,7 @@
 		"tree-sitter-python": "^0.25.0",
 		"tree-sitter-ruby": "^0.23.1",
 		"web-tree-sitter": "^0.27.1",
-		"yuku-css": "link:../yuku-css",
+		"yuku-css": "0.2.0",
 		"yuku-tsrx": "0.1.4",
 		"zod": "^4.6.7"
 	},
