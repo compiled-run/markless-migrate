@@ -116,6 +116,10 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   The registry loads every demo lazily, so Base UI Accordion, Collapsible, Combobox, Context Menu, Menubar,
   Navigation Menu, Preview Card and Scroll Area were missing from the usage inventory (185 Base UI exports reach a
   route now, 119 before).
+- The part an element gets: a slot a wrapper passes on names the part the wrapped component renders
+  (`<DropdownMenuTrigger data-slot="menubar-trigger">` is a Base UI `Menu.Trigger`), through chains of wrappers, and
+  the libraries.json sites add to what the usage inventory lists for a slot instead of standing in only for a slot it
+  lacks. Base UI's menubar triggers had been opened by the Radix port, by accident.
 - Routing: the trailing-slash redirect leaves Markless's own paths alone; `/_markless/fragment/` (the home page's
   fragment) was redirected to `/_markless/fragment`, a 404.
 

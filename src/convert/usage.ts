@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import type { UsageInventory } from '../usage/types.ts';
 import { join } from 'node:path';
 import { parseModule, walk, type Module, type N } from '../source/js.ts';
+import { isScript, openProject, resolveImport } from '../source/files.ts';
 
 /** One place in the old source where a library export renders an element the page carries. */
 export interface PartUsage {
@@ -34,7 +35,7 @@ interface LibrariesFile {
 	readonly libraries: readonly {
 		readonly name: string;
 		readonly class: string;
-		readonly exports: readonly { readonly name: string; readonly sites?: readonly { readonly file: string; readonly line: number; readonly kind?: string; readonly props?: Readonly<Record<string, string>> }[] }[];
+		readonly exports: readonly { readonly name: string; readonly sites?: readonly { readonly file: string; readonly line: number; readonly in?: string; readonly kind?: string; readonly props?: Readonly<Record<string, string>> }[] }[];
 	}[];
 }
 
@@ -127,6 +128,10 @@ export async function sourceSlotResolver(librariesPath: string, source?: string)
 			}
 		}
 	}
+	if (source) for (const [slot, uses] of await forwardedSlots(file, source)) for (const u of uses) {
+		const list = bySlot.get(slot) ?? bySlot.set(slot, []).get(slot)!;
+		if (!list.some((x) => x.library === u.library && x.export === u.export)) list.push(u);
+	}
 	const modules = new Map<string, Module | undefined>();
 	const moduleOf = async (rel: string) => {
 		if (!modules.has(rel)) modules.set(rel, source ? await readFile(join(source, rel), 'utf8').then((text) => parseModule(rel, text), () => undefined) : undefined);
@@ -159,6 +164,75 @@ export async function sourceSlotResolver(librariesPath: string, source?: string)
 		libraries: () => counts,
 		prop: (library, exportName, prop) => props.get(`${library} ${exportName} ${prop}`),
 	};
+}
+
+/**
+ * The slots a component passes on to the library part it renders: `<DropdownMenuTrigger data-slot="menubar-trigger">`
+ * where DropdownMenuTrigger renders `<Menu.Trigger data-slot="dropdown-menu-trigger" {...props} />` is a Menu.Trigger
+ * the page marks menubar-trigger (the spread after the component's own slot wins), through any chain of such wrappers.
+ */
+async function forwardedSlots(file: LibrariesFile, source: string): Promise<Map<string, PartUsage[]>> {
+	const forwards = new Map<string, PartUsage[]>();
+	const spreadsLast = (props: Readonly<Record<string, string>>) => {
+		const keys = Object.keys(props);
+		return keys.includes('...') && keys.lastIndexOf('...') > keys.indexOf('data-slot');
+	};
+	for (const lib of file.libraries) {
+		if (!RENDERING.has(lib.class)) continue;
+		for (const e of lib.exports)
+			for (const site of e.sites ?? []) {
+				if (!site.in || !site.props || !spreadsLast(site.props)) continue;
+				const list = forwards.get(site.in) ?? forwards.set(site.in, []).get(site.in)!;
+				if (!list.some((u) => u.library === lib.name && u.export === e.name)) list.push({ library: lib.name, export: e.name, file: site.file, line: site.line });
+			}
+	}
+	const out = new Map<string, PartUsage[]>();
+	if (!forwards.size) return out;
+	const project = await openProject(source);
+	// Each JSX element naming a component: the component it names, the slot it writes, whether it spreads after it, and the component it sits in.
+	const edges: { target: string; slot?: string; spreads: boolean; within?: string }[] = [];
+	for (const rel of project.files) {
+		if (!isScript(rel) || !/\.[jt]sx$/.test(rel)) continue;
+		const text = await project.read(rel);
+		if (!/<[A-Z]/.test(text)) continue;
+		const mod = parseModule(rel, text);
+		const owner = (ancestors: readonly N[]) => {
+			for (let i = ancestors.length - 1; i >= 0; i--) {
+				const a = ancestors[i]!;
+				if (a.type === 'FunctionDeclaration' && a.id) return `${rel}#${a.id.name}`;
+				if (a.type === 'VariableDeclarator' && a.id?.type === 'Identifier') return `${rel}#${a.id.name}`;
+			}
+			return undefined;
+		};
+		walk(mod.program, (n: N, ancestors) => {
+			if (n.type !== 'JSXOpeningElement' || n.name?.type !== 'JSXIdentifier' || !/^[A-Z]/.test(n.name.name)) return;
+			const local = n.name.name as string;
+			const imp = mod.imports.get(local);
+			const resolved = imp ? resolveImport(project, rel, imp.source) : rel;
+			if (!resolved || imp?.imported === '*') return;
+			const attrs = (n.attributes ?? []) as N[];
+			const at = attrs.findIndex((a) => a.type === 'JSXAttribute' && a.name?.name === 'data-slot' && a.value?.type === 'Literal');
+			const spread = attrs.findIndex((a) => a.type === 'JSXSpreadAttribute');
+			edges.push({ target: `${resolved}#${imp ? (imp.imported === 'default' ? local : imp.imported) : local}`, ...(at >= 0 ? { slot: String(attrs[at]!.value.value) } : {}), spreads: spread > at, ...(owner(ancestors) ? { within: owner(ancestors)! } : {}) });
+		});
+	}
+	// A component that renders a forwarding component with the props spread last forwards too.
+	for (let grew = true; grew; ) {
+		grew = false;
+		for (const e of edges) {
+			const to = forwards.get(e.target);
+			if (!to || !e.within || !e.spreads || forwards.has(e.within)) continue;
+			forwards.set(e.within, to);
+			grew = true;
+		}
+	}
+	for (const e of edges) {
+		const to = e.slot !== undefined ? forwards.get(e.target) : undefined;
+		if (!to) continue;
+		const list = out.get(e.slot!) ?? out.set(e.slot!, []).get(e.slot!)!;
+		for (const u of to) if (!list.some((x) => x.library === u.library && x.export === u.export)) list.push(u);
+	}
+	return out;
 }
 
 /** The literal default of a destructured parameter of the function that encloses a line: `({ sideOffset = 4 })`. */

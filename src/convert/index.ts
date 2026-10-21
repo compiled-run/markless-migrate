@@ -331,20 +331,21 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 function combined(first: PartResolver, then: PartResolver): PartResolver {
 	return {
 		name: `${first.name}, then ${then.name}`,
+		// The second adds what the first does not know: a slot a wrapper passes on to another library's part.
 		candidates: (slot) => {
 			const own = first.candidates(slot);
-			return own.length ? own : then.candidates(slot);
+			return [...own, ...then.candidates(slot).filter((c) => !own.some((o) => o.library === c.library && o.export === c.export))];
 		},
 		libraries: () => new Map([...then.libraries(), ...first.libraries()]),
 		prop: (library, exportName, prop) => first.prop(library, exportName, prop) ?? then.prop(library, exportName, prop),
 	};
 }
 
-/** Finds an element of a page by its signature and occurrence, as reveals and toggles were captured. */
 // A timed delay includes the old page's render after its timer fired (10 to 30 ms): the round delay at or below it.
 const ROUND_DELAYS = [0, 10, 50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 800, 1000, 1500, 2000];
 const delayOf = (ms: number) => ROUND_DELAYS.filter((d) => d <= ms).at(-1) ?? 0;
 
+/** Finds an element of a page by its signature and occurrence, as reveals and toggles were captured. */
 function locator(root: Element): (sig: string, nth: number) => Element | undefined {
 	const bySig = new Map<string, Element[]>();
 	const index = (el: Element) => {
