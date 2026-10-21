@@ -141,6 +141,14 @@ test('the prompt names the old source, the new source and the roles, and the che
 	assert.match(prompt, /check_route` tool \(old: http:\/\/old\.test, new: http:\/\/new\.test, route: \/members\/, source: \/src\/old app, new_source: \/src\/new, auth: \/x\/auth\.json\)/);
 });
 
+test('a page-load-only run asks for page-load changes alone and checks with the command that carries --only load', () => {
+	const prompt = buildPrompt({ old: 'http://old.test', new: 'http://new.test', cli: 'markless-migrate', context: { flags: ['--only', 'load'] } }, '/', 'FAIL', 1);
+	assert.match(prompt, /Make route \/ of the new app load as fast as the old app's, or faster: this run compares page load alone/);
+	assert.match(prompt, /leave its styles, assets and markup as they are/);
+	assert.ok(prompt.includes('Check by running `markless-migrate check --old http://old.test --new http://new.test --route / --only load`'), prompt);
+	assert.doesNotMatch(buildPrompt({ old: 'http://old.test', new: 'http://new.test', cli: 'markless-migrate' }, '/', 'FAIL', 1), /page load alone/);
+});
+
 function port(): Promise<number> {
 	return new Promise((done) => {
 		const s = createServer();

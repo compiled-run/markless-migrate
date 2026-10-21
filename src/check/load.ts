@@ -62,6 +62,8 @@ export interface LoadDetail {
 	readonly htmlBytes?: number;
 	/** Requests that began before the observed LCP, which Lighthouse's simulated LCP waits for (a low-priority image excepted). */
 	readonly beforeLcp: { readonly count: number; readonly bytes: number; readonly largest: readonly LoadRequest[] };
+	/** Requests at a render-blocking priority (VeryHigh, or a High-priority script) that finished before the observed first paint: what Lighthouse's simulated FCP waits for. */
+	readonly beforeFcp?: { readonly count: number; readonly bytes: number; readonly largest: readonly LoadRequest[] };
 	readonly renderBlocking: readonly string[];
 	readonly mainThreadMs?: number;
 	readonly scripts: readonly { readonly url: string; readonly ms: number }[];
@@ -188,17 +190,20 @@ export function readRun(lhr: Lhr, origin: string): LoadRun {
 	const lcpItems = a['largest-contentful-paint-element']?.details?.items ?? [];
 	const node = lcpItems[0]?.items?.[0]?.node;
 	const phases = lcpItems[1]?.items as readonly { phase: string; timing: number }[] | undefined;
-	const requests = (a['network-requests']?.details?.items ?? []) as readonly { url: string; resourceType?: string; priority?: string; transferSize?: number; rendererStartTime?: number; networkRequestTime?: number }[];
+	const requests = (a['network-requests']?.details?.items ?? []) as readonly { url: string; resourceType?: string; priority?: string; transferSize?: number; rendererStartTime?: number; networkRequestTime?: number; networkEndTime?: number }[];
 	const asRequest = (r: (typeof requests)[number]): LoadRequest => ({ url: shortUrl(r.url, origin), type: r.resourceType ?? '', priority: r.priority ?? '', bytes: r.transferSize ?? 0, start: Math.round(r.networkRequestTime ?? r.rendererStartTime ?? 0) });
 	const cutoff = observed.lcp ?? Infinity;
 	const counted = requests.filter((r) => (r.networkRequestTime ?? r.rendererStartTime ?? 0) < cutoff && !(r.resourceType === 'Image' && /^(Low|VeryLow)$/.test(r.priority ?? '')) && !r.url.startsWith('data:'));
+	const paintBlocking = requests.filter((r) => (r.networkEndTime ?? Infinity) <= (observed.fcp ?? -Infinity) && (r.priority === 'VeryHigh' || (r.priority === 'High' && r.resourceType === 'Script')));
+	const summary = (list: typeof requests) => ({ count: list.length, bytes: list.reduce((n, r) => n + (r.transferSize ?? 0), 0), largest: [...list].sort((x, y) => (y.transferSize ?? 0) - (x.transferSize ?? 0)).slice(0, 8).map(asRequest) });
 	const blocking = [...(a['render-blocking-insight']?.details?.items ?? []), ...(a['render-blocking-resources']?.details?.items ?? [])].map((i: { url?: string }) => i.url).filter((u): u is string => Boolean(u));
 	const detail: LoadDetail = {
 		...(node ? { lcpElement: `${node.selector ?? ''}${node.nodeLabel ? ` "${String(node.nodeLabel).slice(0, 60)}"` : ''}`.trim() } : {}),
 		...(phases?.length ? { lcpPhases: Object.fromEntries(phases.map((p) => [p.phase, Math.round(p.timing)])) } : {}),
 		observed,
 		...(requests[0]?.resourceType === 'Document' ? { htmlBytes: requests[0].transferSize ?? 0 } : {}),
-		beforeLcp: { count: counted.length, bytes: counted.reduce((n, r) => n + (r.transferSize ?? 0), 0), largest: [...counted].sort((x, y) => (y.transferSize ?? 0) - (x.transferSize ?? 0)).slice(0, 8).map(asRequest) },
+		beforeLcp: summary(counted),
+		...(observed.fcp !== undefined ? { beforeFcp: summary(paintBlocking) } : {}),
 		renderBlocking: [...new Set(blocking.map((u) => shortUrl(u, origin)))],
 		...(value('mainthread-work-breakdown') !== undefined ? { mainThreadMs: Math.round(value('mainthread-work-breakdown')!) } : {}),
 		scripts: ((a['bootup-time']?.details?.items ?? []) as readonly { url: string; scripting?: number }[]).slice(0, 4).map((s) => ({ url: shortUrl(s.url, origin), ms: Math.round(s.scripting ?? 0) })),
@@ -328,6 +333,19 @@ export const formatMetric = (metric: LoadMetric, value: number): string =>
 
 const kB = (bytes: number) => `${(bytes / 1024).toFixed(1)} kB`;
 
+function describeFcp(d: LoadDetail | undefined): string {
+	if (!d?.beforeFcp) return '';
+	const largest = d.beforeFcp.largest.slice(0, 6).map((r) => `${r.url} ${kB(r.bytes)} ${r.priority} ${r.type}`).join('; ');
+	return [
+		d.observed.fcp !== undefined ? `unthrottled load first painted at ${Math.round(d.observed.fcp)} ms` : '',
+		`${d.beforeFcp.count} requests at a render-blocking priority (VeryHigh, or a High-priority script) finished before it and hold it back (${kB(d.beforeFcp.bytes)})${largest ? `: ${largest}` : ''}`,
+		d.htmlBytes !== undefined ? `HTML ${kB(d.htmlBytes)} on the wire` : '',
+		d.renderBlocking.length ? `render-blocking: ${d.renderBlocking.join(', ')}` : '',
+	]
+		.filter(Boolean)
+		.join('; ');
+}
+
 function describeSide(d: LoadDetail | undefined): string {
 	if (!d) return '';
 	const phases = d.lcpPhases ? Object.entries(d.lcpPhases).map(([k, v]) => `${k} ${v} ms`).join(', ') : '';
@@ -355,13 +373,14 @@ export function loadFailures(route: string, load: RouteLoad): Failure[] {
 		.filter((v) => !v.ok)
 		.map((v) => {
 			const paint = v.metric === 'lcp' || v.metric === 'fcp' || v.metric === 'si' || v.metric === 'score';
+			const describe = v.metric === 'fcp' ? describeFcp : describeSide;
 			return {
 				route,
 				dimension: 'load' as const,
 				check: check(METRIC_LABEL[v.metric]),
 				viewport: 'mobile',
-				expected: `${formatMetric(v.metric, v.old)} or better, the old page's median of ${load.runs} (runs ${runList(load.old.runs, v.metric)})${paint ? `; old: ${describeSide(load.old.detail)}` : ''}`,
-				actual: `${formatMetric(v.metric, v.new)}, the median of ${load.runs} (runs ${runList(load.new.runs, v.metric)}): ${v.metric === 'score' ? `${Math.round(v.worse)} points lower` : `${formatMetric(v.metric, v.worse)} worse`}, beyond the ${formatMetric(v.metric, v.floor)} allowed and the noise between runs (p = ${v.p.toFixed(3)})${paint ? `; new: ${describeSide(load.new.detail)}` : ''}`,
+				expected: `${formatMetric(v.metric, v.old)} or better, the old page's median of ${load.runs} (runs ${runList(load.old.runs, v.metric)})${paint ? `; old: ${describe(load.old.detail)}` : ''}`,
+				actual: `${formatMetric(v.metric, v.new)}, the median of ${load.runs} (runs ${runList(load.new.runs, v.metric)}): ${v.metric === 'score' ? `${Math.round(v.worse)} points lower` : `${formatMetric(v.metric, v.worse)} worse`}, beyond the ${formatMetric(v.metric, v.floor)} allowed and the noise between runs (p = ${v.p.toFixed(3)})${paint ? `; new: ${describe(load.new.detail)}` : ''}`,
 				hint: HINTS.load,
 			};
 		});

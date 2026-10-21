@@ -139,7 +139,8 @@
       "priority": "VeryHigh",
       "transferSize": 21843,
       "rendererStartTime": 0,
-      "networkRequestTime": 0.43700000643730164
+      "networkRequestTime": 0.43700000643730164,
+      "networkEndTime": 234.76000002026558
      },
      {
       "url": "https://vite-dev-markless.vercel.app/assets/style.B3BAO59d.css",
@@ -147,7 +148,8 @@
       "priority": "VeryHigh",
       "transferSize": 51424,
       "rendererStartTime": 237.63000002503395,
-      "networkRequestTime": 240.12500002980232
+      "networkRequestTime": 240.12500002980232,
+      "networkEndTime": 328.9310000240803
      },
      {
       "url": "https://vite-dev-markless.vercel.app/assets/footer-background.BIgtbvhx.jpg",
@@ -155,7 +157,8 @@
       "priority": "Low",
       "transferSize": 360679,
       "rendererStartTime": 237.79000002145767,
-      "networkRequestTime": 240.3250000178814
+      "networkRequestTime": 240.3250000178814,
+      "networkEndTime": 329.17200005054474
      },
      {
       "url": "https://vite-dev-markless.vercel.app/page-scripts/page.js",
@@ -163,7 +166,8 @@
       "priority": "High",
       "transferSize": 8424,
       "rendererStartTime": 237.83300003409386,
-      "networkRequestTime": 240.62900000810623
+      "networkRequestTime": 240.62900000810623,
+      "networkEndTime": 332.11200001835823
      },
      {
       "url": "https://vite-dev-markless.vercel.app/page-scripts/home.js",
@@ -171,7 +175,8 @@
       "priority": "High",
       "transferSize": 36648,
       "rendererStartTime": 237.86600002646446,
-      "networkRequestTime": 240.77300003170967
+      "networkRequestTime": 240.77300003170967,
+      "networkEndTime": 331.3750000298023
      },
      {
       "url": "https://vite-dev-markless.vercel.app/build/chunk-gWMjw53a.js",
@@ -179,7 +184,8 @@
       "priority": "High",
       "transferSize": 1924,
       "rendererStartTime": 237.8870000243187,
-      "networkRequestTime": 240.88100001215935
+      "networkRequestTime": 240.88100001215935,
+      "networkEndTime": 330.2930000126362
      },
      {
       "url": "https://vite-dev-markless.vercel.app/build/chunk-L5pms41U.js",
@@ -187,7 +193,8 @@
       "priority": "High",
       "transferSize": 38041,
       "rendererStartTime": 237.9070000052452,
-      "networkRequestTime": 240.98400002717972
+      "networkRequestTime": 240.98400002717972,
+      "networkEndTime": 339.77300003170967
      },
      {
       "url": "https://vite-dev-markless.vercel.app/build/chunk-BohqzpEt.js",
@@ -195,7 +202,8 @@
       "priority": "High",
       "transferSize": 235,
       "rendererStartTime": 237.92400002479553,
-      "networkRequestTime": 241.09200003743172
+      "networkRequestTime": 241.09200003743172,
+      "networkEndTime": 329.7470000088215
      },
      {
       "url": "https://vite-dev-markless.vercel.app/build/chunk-XlJRIBlP.js",
@@ -203,7 +211,8 @@
       "priority": "High",
       "transferSize": 10307,
       "rendererStartTime": 237.9510000348091,
-      "networkRequestTime": 241.1860000193119
+      "networkRequestTime": 241.1860000193119,
+      "networkEndTime": 330.7000000178814
      },
      {
       "url": "https://vite-dev-markless.vercel.app/build/chunk-T0C23Smr.js",
@@ -211,7 +220,8 @@
       "priority": "High",
       "transferSize": 1908,
       "rendererStartTime": 237.97700002789497,
-      "networkRequestTime": 241.26700001955032
+      "networkRequestTime": 241.26700001955032,
+      "networkEndTime": 330.64400002360344
      },
      {
       "url": "https://vite-dev-markless.vercel.app/_markless/links/1e0ynw3.js",
@@ -219,7 +229,8 @@
       "priority": "High",
       "transferSize": 1722,
       "rendererStartTime": 238.00300002098083,
-      "networkRequestTime": 241.34900003671646
+      "networkRequestTime": 241.34900003671646,
+      "networkEndTime": 329.5540000498295
      },
      {
       "url": "https://vite-dev-markless.vercel.app/assets/vite-dark.D2ACe7TL.svg",
@@ -227,7 +238,8 @@
       "priority": "Medium",
       "transferSize": 2122,
       "rendererStartTime": 238.03300002217293,
-      "networkRequestTime": 241.47400000691414
+      "networkRequestTime": 241.47400000691414,
+      "networkEndTime": 330.12700003385544
      },
      {
       "url": "https://vite-dev-markless.vercel.app/assets/vite-light.t8GCa_VF.svg",
@@ -235,7 +247,8 @@
       "priority": "Medium",
       "transferSize": 2110,
       "rendererStartTime": 238.0590000450611,
-      "networkRequestTime": 241.57300001382828
+      "networkRequestTime": 241.57300001382828,
+      "networkEndTime": 330.4350000321865
      },
      {
       "url": "https://vite-dev-markless.vercel.app/assets/vite-by-voidzero.D7bblMgo.png",
@@ -243,7 +256,8 @@
       "priority": "Medium",
       "transferSize": 80872,
       "rendererStartTime": 238.0770000219345,
-      "networkRequestTime": 331.5720000267029
+      "networkRequestTime": 331.5720000267029,
+      "networkEndTime": 383.54800003767014
      },
      {
       "url": "data:image/svg+xml,%3csvg%20viewBox='0%200%2023%2014'%20fill='none'%20xmlns='http://www.w3.org/2000\u2026",
@@ -251,7 +265,8 @@
       "priority": "Low",
       "transferSize": 0,
       "rendererStartTime": 336.33400002121925,
-      "networkRequestTime": 336.33400002121925
+      "networkRequestTime": 336.33400002121925,
+      "networkEndTime": 336.38000002503395
      },
      {
       "url": "data:image/svg+xml,%3csvg%20viewBox='0%200%2091%2015'%20fill='none'%20xmlns='http://www.w3.org/2000\u2026",
@@ -259,7 +274,8 @@
       "priority": "Low",
       "transferSize": 0,
       "rendererStartTime": 336.79700005054474,
-      "networkRequestTime": 336.79700005054474
+      "networkRequestTime": 336.79700005054474,
+      "networkEndTime": 336.824000030756
      },
      {
       "url": "https://vite-dev-markless.vercel.app/assets/primary-button-background.CHnwvuqy.jpg",
@@ -267,7 +283,8 @@
       "priority": "High",
       "transferSize": 56669,
       "rendererStartTime": 339.16200003027916,
-      "networkRequestTime": 339.6110000014305
+      "networkRequestTime": 339.6110000014305,
+      "networkEndTime": 389.09900003671646
      },
      {
       "url": "https://vite-dev-markless.vercel.app/assets/vite-featurepanel-4-background.Bnx0RZk-.jpg",
@@ -275,7 +292,8 @@
       "priority": "Low",
       "transferSize": 185583,
       "rendererStartTime": 339.8750000298023,
-      "networkRequestTime": 340.03600001335144
+      "networkRequestTime": 340.03600001335144,
+      "networkEndTime": 404.1390000283718
      },
      {
       "url": "https://vite-dev-markless.vercel.app/assets/KHTekaMono-Regular.CiZ9ZkmZ.woff2",
@@ -283,7 +301,8 @@
       "priority": "VeryHigh",
       "transferSize": 41113,
       "rendererStartTime": 340.7300000488758,
-      "networkRequestTime": 358.955000013113
+      "networkRequestTime": 358.955000013113,
+      "networkEndTime": 430.5450000166893
      },
      {
       "url": "https://vite-dev-markless.vercel.app/assets/APK-Protocol-Medium.C7Mq9oGh.woff2",
@@ -291,7 +310,8 @@
       "priority": "VeryHigh",
       "transferSize": 38317,
       "rendererStartTime": 340.7780000269413,
-      "networkRequestTime": 359.06400004029274
+      "networkRequestTime": 359.06400004029274,
+      "networkEndTime": 428.199000030756
      },
      {
       "url": "https://vite-dev-markless.vercel.app/assets/inter-roman-latin.Di8DUHzh.woff2",
@@ -299,7 +319,8 @@
       "priority": "VeryHigh",
       "transferSize": 67988,
       "rendererStartTime": 340.79800003767014,
-      "networkRequestTime": 359.17600002884865
+      "networkRequestTime": 359.17600002884865,
+      "networkEndTime": 407.1700000464916
      },
      {
       "url": "https://vite-dev-markless.vercel.app/trusted-by/openai.svg",
@@ -307,7 +328,8 @@
       "priority": "Low",
       "transferSize": 1528,
       "rendererStartTime": 356.83200001716614,
-      "networkRequestTime": 357.11400002241135
+      "networkRequestTime": 357.11400002241135,
+      "networkEndTime": 403.56700000166893
      },
      {
       "url": "https://vite-dev-markless.vercel.app/trusted-by/shopify.svg",
@@ -315,7 +337,8 @@
       "priority": "Low",
       "transferSize": 2115,
       "rendererStartTime": 356.8970000445843,
-      "networkRequestTime": 357.3120000064373
+      "networkRequestTime": 357.3120000064373,
+      "networkEndTime": 405.6210000216961
      },
      {
       "url": "https://vite-dev-markless.vercel.app/trusted-by/stripe.svg",
@@ -323,7 +346,8 @@
       "priority": "Low",
       "transferSize": 1267,
       "rendererStartTime": 356.9170000255108,
-      "networkRequestTime": 357.59900000691414
+      "networkRequestTime": 357.59900000691414,
+      "networkEndTime": 429.51500004529953
      },
      {
       "url": "https://vite-dev-markless.vercel.app/trusted-by/linear.svg",
@@ -331,7 +355,8 @@
       "priority": "Low",
       "transferSize": 2369,
       "rendererStartTime": 356.932000041008,
-      "networkRequestTime": 357.7610000371933
+      "networkRequestTime": 357.7610000371933,
+      "networkEndTime": 428.87700003385544
      },
      {
       "url": "https://vite-dev-markless.vercel.app/trusted-by/clickup.svg",
@@ -339,7 +364,8 @@
       "priority": "Low",
       "transferSize": 1774,
       "rendererStartTime": 356.949000030756,
-      "networkRequestTime": 357.88300001621246
+      "networkRequestTime": 357.88300001621246,
+      "networkEndTime": 429.62800002098083
      },
      {
       "url": "https://vite-dev-markless.vercel.app/trusted-by/wiz.svg",
@@ -347,7 +373,8 @@
       "priority": "Low",
       "transferSize": 1182,
       "rendererStartTime": 356.9710000157356,
-      "networkRequestTime": 357.9970000386238
+      "networkRequestTime": 357.9970000386238,
+      "networkEndTime": 406.5770000219345
      },
      {
       "url": "https://vite-dev-markless.vercel.app/assets/vite-featurepanel-1-background.BHnDg8j4.jpg",
@@ -355,7 +382,8 @@
       "priority": "Low",
       "transferSize": 203600,
       "rendererStartTime": 356.9860000014305,
-      "networkRequestTime": 358.1500000357628
+      "networkRequestTime": 358.1500000357628,
+      "networkEndTime": 410.7490000128746
      },
      {
       "url": "https://vite-dev-markless.vercel.app/assets/vite-featurepanel-1-terminal.CQVUoUSU.svg",
@@ -363,7 +391,8 @@
       "priority": "Low",
       "transferSize": 16267,
       "rendererStartTime": 357.00300002098083,
-      "networkRequestTime": 358.4220000207424
+      "networkRequestTime": 358.4220000207424,
+      "networkEndTime": 409.7980000078678
      },
      {
       "url": "https://vite-dev-markless.vercel.app/assets/vite-featurepanel-2-terminal.ChpAU6sR.png",
@@ -371,7 +400,8 @@
       "priority": "Low",
       "transferSize": 65268,
       "rendererStartTime": 357.02300003170967,
-      "networkRequestTime": 358.5620000064373
+      "networkRequestTime": 358.5620000064373,
+      "networkEndTime": 429.09800001978874
      },
      {
       "url": "https://vite-dev-markless.vercel.app/assets/vite-featurepanel-4-terminal.BRnxuy_J.svg",
@@ -379,7 +409,8 @@
       "priority": "Low",
       "transferSize": 17609,
       "rendererStartTime": 357.04700005054474,
-      "networkRequestTime": 358.6690000295639
+      "networkRequestTime": 358.6690000295639,
+      "networkEndTime": 410.13400000333786
      },
      {
       "url": "https://vite-dev-markless.vercel.app/assets/vite-typed-api.B7gyuuaS.svg",
@@ -387,7 +418,8 @@
       "priority": "Low",
       "transferSize": 25297,
       "rendererStartTime": 357.1200000047684,
-      "networkRequestTime": 358.76700004935265
+      "networkRequestTime": 358.76700004935265,
+      "networkEndTime": 431.188000023365
      },
      {
       "url": "https://vite-dev-markless.vercel.app/assets/vite-ssr-support.DvdwoLgL.png",
@@ -395,7 +427,8 @@
       "priority": "Low",
       "transferSize": 125200,
       "rendererStartTime": 357.1500000357628,
-      "networkRequestTime": 358.8700000345707
+      "networkRequestTime": 358.8700000345707,
+      "networkEndTime": 428.0330000221729
      },
      {
       "url": "https://vite-dev-markless.vercel.app/page-scripts/site-bbToY85u.js",
@@ -403,7 +436,8 @@
       "priority": "High",
       "transferSize": 2693,
       "rendererStartTime": 357.619000017643,
-      "networkRequestTime": 359.27100002765656
+      "networkRequestTime": 359.27100002765656,
+      "networkEndTime": 429.23700001835823
      },
      {
       "url": "https://api.iconify.design/lucide.json?icons=languages%2Csearch%2Cx",
@@ -411,7 +445,8 @@
       "priority": "High",
       "transferSize": 922,
       "rendererStartTime": 433.994000017643,
-      "networkRequestTime": 434.27000004053116
+      "networkRequestTime": 434.27000004053116,
+      "networkEndTime": 710.1180000305176
      },
      {
       "url": "https://api.iconify.design/simple-icons.json?icons=bluesky%2Cdiscord%2Cgithub%2Cmastodon%2Cx",
@@ -419,7 +454,8 @@
       "priority": "High",
       "transferSize": 2050,
       "rendererStartTime": 434.1510000228882,
-      "networkRequestTime": 434.9370000362396
+      "networkRequestTime": 434.9370000362396,
+      "networkEndTime": 713.6500000357628
      },
      {
       "url": "https://vite-dev-markless.vercel.app/assets/primary-button-background.Bjk7gn3x.jpg",
@@ -427,7 +463,8 @@
       "priority": "High",
       "transferSize": 46316,
       "rendererStartTime": 435.2620000243187,
-      "networkRequestTime": 435.50700002908707
+      "networkRequestTime": 435.50700002908707,
+      "networkEndTime": 473.26900002360344
      },
      {
       "url": "https://vite-dev-markless.vercel.app/assets/641_x_629_vite_masthead.CJXD3cz6.riv",
@@ -435,7 +472,8 @@
       "priority": "High",
       "transferSize": 87408,
       "rendererStartTime": 446.83300003409386,
-      "networkRequestTime": 447.233000010252
+      "networkRequestTime": 447.233000010252,
+      "networkEndTime": 503.4000000357628
      },
      {
       "url": "https://vite-dev-markless.vercel.app/assets/rive.BagEuNN0.wasm",
@@ -443,7 +481,8 @@
       "priority": "High",
       "transferSize": 259163,
       "rendererStartTime": 791.2390000224113,
-      "networkRequestTime": 791.591000020504
+      "networkRequestTime": 791.591000020504,
+      "networkEndTime": 848.9620000422001
      },
      {
       "url": "https://sponsors.vite.dev/sponsors.json",
@@ -451,7 +490,8 @@
       "priority": "High",
       "transferSize": 1072,
       "rendererStartTime": 791.6250000298023,
-      "networkRequestTime": 791.921000033617
+      "networkRequestTime": 791.921000033617,
+      "networkEndTime": 1189.550000011921
      }
     ]
    }

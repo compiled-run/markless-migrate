@@ -62,6 +62,8 @@ test('a Lighthouse report gives the metrics, the LCP element, its breakdown and 
 	assert.ok(!d.beforeLcp.largest.some((r) => r.url.includes('footer-background')), 'a low-priority image does not count toward the LCP');
 	assert.ok(d.beforeLcp.largest.every((r) => !r.url.startsWith('https://vite-dev-markless.vercel.app')), 'the app origin is left out of its own URLs');
 	assert.equal(d.filmstrip?.length, 3);
+	assert.ok(d.beforeFcp!.largest.every((r) => r.priority === 'VeryHigh' || (r.priority === 'High' && r.type === 'Script')), JSON.stringify(d.beforeFcp));
+	assert.ok(d.beforeFcp!.largest.some((r) => r.url === '/page-scripts/home.js'), 'a High-priority modulepreload that finished before the first paint holds it back');
 	assert.deepEqual(readRun({ ...lhr, runtimeError: { code: 'NO_FCP', message: 'The page did not paint any content.' } }, 'x'), { error: 'NO_FCP: The page did not paint any content.' });
 });
 
@@ -79,6 +81,9 @@ test("a red metric's failure names both sides' LCP element and the requests befo
 	assert.match(failure!.actual, /requests \(\d+\.\d kB\) began before it and count toward it, largest: \/assets\/641_x_629_vite_masthead\.CJXD3cz6\.riv 85\.4 kB High Other/);
 	assert.ok(load.new.detail?.filmstrip?.length);
 	assert.match(loadLine(load), /LCP 5\.06 s -> 7\.70 s \(worse\)/);
+	const fcp = loadFailures('/', routeLoad(5, [1500, 1500, 1501, 1499, 1500].map((v) => ({ ...at(5000), metrics: { ...typical.metrics!, fcp: v } })), [1700, 1700, 1701, 1699, 1700].map((v) => ({ ...at(5000), metrics: { ...typical.metrics!, fcp: v } }))))[0]!;
+	assert.equal(fcp.check, 'page load: First Contentful Paint (Lighthouse, mobile)');
+	assert.match(fcp.actual, /requests at a render-blocking priority \(VeryHigh, or a High-priority script\) finished before it and hold it back \(\d+\.\d kB\): .*\/page-scripts\/home\.js \d+\.\d kB High Script/);
 	const same = routeLoad(5, [5060, 5061, 4909, 5059, 5059].map(at), [5060, 5061, 4909, 5059, 5059].map(at));
 	assert.equal(same.ok, true);
 	assert.equal(same.new.detail?.filmstrip, undefined);
