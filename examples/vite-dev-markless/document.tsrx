@@ -17,7 +17,7 @@ export default function Document({ url, children }: { readonly url?: { readonly 
 	const docs = heads[path] ?? heads[path.replace(/\/$/, '')] ?? (path === '/' ? undefined : heads['/404']);
 	const marketing = !docs || path.replace(/\/$/, '') === '/live';
 
-	<Html lang="en-US" dir="ltr" data-variant="vite" data-theme={marketing ? 'dark' : undefined}>
+	<Html lang="en-US" dir="ltr" data-theme={marketing ? 'dark' : undefined}>
 		<head>
 			<meta charset="utf-8" />
 			<meta name="viewport" content="width=device-width,initial-scale=1" />

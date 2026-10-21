@@ -40,20 +40,22 @@ function transition(el: Element, name: string, phase: 'enter' | 'leave', done?: 
 // --- appearance: VitePress's isDark, through VueUse's useDark (stored 'auto' when it matches the system) ---------------
 const isDark = () => html.classList.contains('dark');
 // The served switches say aria-checked="false"; VitePress fills in their title on mount but only writes aria-checked
-// once isDark changes, so until then a page loaded dark keeps "false". The mobile menu's switch mounts in the browser.
+// once isDark changes, so until then a page loaded dark keeps "false". The mobile menu's switch mounts in the browser, and
+// so does the not-found page's header: its served markup is 404.html's, which the app renders afresh at the asked address.
 let darkChanged = false;
 function syncSwitches(): void {
+	const notFound = !!document.querySelector('.NotFound');
 	// Header.vue marks itself dark with the page, in the same update that switches the page.
 	const header = document.querySelector('.docs-layout [data-v-5773249e].relative.w-full.z-50');
 	if (isDark()) header?.setAttribute('data-theme', 'dark');
 	else header?.removeAttribute('data-theme');
 	for (const button of document.querySelectorAll('.VPSwitchAppearance')) {
 		button.setAttribute('title', isDark() ? 'Switch to light theme' : 'Switch to dark theme');
-		if (darkChanged || button.closest('#mobile-menu')) button.setAttribute('aria-checked', String(isDark()));
+		if (darkChanged || notFound || button.closest('#mobile-menu')) button.setAttribute('aria-checked', String(isDark()));
 	}
 }
-function applyDark(dark: boolean): void {
-	// useColorMode turns transitions off while the class changes.
+// useColorMode turns transitions off while it writes the class, and reads a style back so they stay off for that change.
+function writeDark(dark: boolean): void {
 	const style = document.createElement('style');
 	style.appendChild(
 		document.createTextNode(
@@ -62,11 +64,17 @@ function applyDark(dark: boolean): void {
 	);
 	document.head.appendChild(style);
 	html.classList.toggle('dark', dark);
-	darkChanged = true;
-	syncSwitches();
+	if (darkChanged) syncSwitches();
 	void window.getComputedStyle(style).opacity;
 	document.head.removeChild(style);
 }
+function applyDark(dark: boolean): void {
+	darkChanged = true;
+	writeDark(dark);
+}
+// Its watch is immediate: the app writes the appearance it starts with once on mount, before the pages' own components
+// update (the root's variant is already set by then, so the page's styles are worked out with it).
+writeDark(isDark());
 document.addEventListener('click', (event) => {
 	if (!(event.target as Element | null)?.closest?.('.VPSwitchAppearance')) return;
 	const dark = !isDark();
