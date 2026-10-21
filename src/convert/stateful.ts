@@ -1,6 +1,6 @@
 import { attr, walk, type Element } from './dom.ts';
 import { lit, type Binding } from './tsrx.ts';
-import type { ToggleGroup } from './toggles.ts';
+import type { Switch, ToggleGroup } from './toggles.ts';
 
 /**
  * Radix Tabs on Markless state: each tab list becomes one state() in the component that renders it, holding the active
@@ -380,5 +380,50 @@ export class InsertedDisclosurePlan {
 			this.bindings.set(parent, { ...own, declare: [...new Set([...(own?.declare ?? []), ...list.flatMap((l) => l.declare)])], inserts: list.map(({ before, markup }) => ({ before, markup })) });
 		}
 		return groups.size;
+	}
+}
+
+/**
+ * Controls the site lists as switching attributes in place (a sidebar's trigger and rail) on Markless state, from
+ * what one use changed on the old page (toggles.ts `captureSwitches`): controls that change the same attributes share
+ * one state(), each changed attribute binds to it, and each use writes the cookies the old page wrote for that state.
+ */
+export class SwitchPlan {
+	private readonly bindings = new Map<Element, Binding>();
+	private n = 0;
+
+	bind(el: Element): Binding | undefined {
+		return this.bindings.get(el);
+	}
+
+	add(switches: readonly Switch[], locate: (sig: string, nth: number) => Element | undefined): number {
+		const groups = new Map<string, Switch[]>();
+		for (const s of switches) {
+			const key = s.changes.map((c) => `${c.sig}#${c.nth}:${c.attr}`).sort().join('|');
+			(groups.get(key) ?? groups.set(key, []).get(key)!).push(s);
+		}
+		let placed = 0;
+		for (const members of groups.values()) {
+			const first = members[0]!;
+			const targets = first.changes.map((c) => ({ c, el: locate(c.sig, c.nth) }));
+			const controls = members.map((m) => locate(m.sig, m.nth));
+			if (targets.some((t) => !t.el) || controls.some((c) => !c || this.bindings.has(c))) continue;
+			const name = `sw${this.n++}`;
+			const declare = [`let ${name} = state(false);`];
+			const value = (v: string | undefined) => (v === undefined ? 'undefined' : lit(v));
+			const byEl = new Map<Element, typeof first.changes>();
+			for (const t of targets) byEl.set(t.el!, [...(byEl.get(t.el!) ?? []), t.c]);
+			for (const [el, changes] of byEl) {
+				const own = this.bindings.get(el);
+				this.bindings.set(el, { declare, omit: [...(own?.omit ?? []), ...changes.map((c) => c.attr)], extra: [...(own?.extra ?? []), ...changes.map((c) => `${c.attr}={${name} ? ${value(c.after)} : ${value(c.before)}}`)] });
+			}
+			const cookies = (list: Switch['cookiesOn']) => JSON.stringify(list);
+			controls.forEach((control) => {
+				const own = this.bindings.get(control!);
+				this.bindings.set(control!, { declare, omit: own?.omit ?? [], extra: [...(own?.extra ?? []), `onClick={() => { ${name} = !${name}; writeCookies(${name} ? ${cookies(first.cookiesOn)} : ${cookies(first.cookiesOff)}); }}`] });
+			});
+			placed++;
+		}
+		return placed;
 	}
 }

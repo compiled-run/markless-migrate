@@ -10,8 +10,8 @@ import { parseFragment } from 'parse5';
 import { cleanDocument, frameworkBuilds, type Dropped } from './clean.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, walk, type Document, type Element } from './dom.ts';
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
-import { BaseTabsPlan, CheckablePlan, DisclosurePlan, InsertedDisclosurePlan, SelectPlan, TabsPlan } from './stateful.ts';
-import { captureAllToggles, type ToggleGroup } from './toggles.ts';
+import { BaseTabsPlan, CheckablePlan, DisclosurePlan, InsertedDisclosurePlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
+import { captureAllSwitches, captureAllToggles, type Switch, type ToggleGroup } from './toggles.ts';
 import { bindMount, bindParts, bodyHandlers, handledBy, portFor, onRoute, UNPORTED, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { stat } from 'node:fs/promises';
@@ -32,6 +32,7 @@ function withPartImports(source: string, dir: string): string {
 	if (/\broving\(event\)/.test(out)) out = out.replace('\n', `\nimport { roving } from '${dir}/radix/roving.ts';\n`);
 	if (/\b(afterExit|measureWhenShown|accordionKeys)\(/.test(out)) out = out.replace('\n', `\nimport { accordionKeys, afterExit, measureWhenShown } from '${dir}/radix/disclosure-motion.ts';\n`);
 	if (/\bradioKeys\(event/.test(out)) out = out.replace('\n', `\nimport { radioKeys } from '${dir}/toggle.ts';\n`);
+	if (/\bwriteCookies\(/.test(out)) out = out.replace('\n', `\nimport { writeCookies } from '${dir}/switch.ts';\n`);
 	return out;
 }
 
@@ -451,13 +452,18 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	let captures: CapturedRef[];
 	const revealed = new Map<string, readonly Reveal[]>();
 	const toggled = new Map<string, readonly ToggleGroup[]>();
+	const switched = new Map<string, readonly Switch[]>();
 	const choices: Record<string, Record<string, Choice>> = {};
 	try {
 		captures = await captureAll(browser, options.old, routes, join(state, 'convert', 'captures'), { concurrency: options.concurrency ?? 4, log });
 		// Controls the site's own components reveal content with, beside those ARIA marks (lib/site/controls.json).
-		const extra = await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => (JSON.parse(t) as { selector: string; action: Reveal['action'] }[]).map((c) => [c.selector, c.action] as const), () => []);
+		const listed = await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as { selector: string; action: Reveal['action'] | 'toggle' }[], () => []);
+		const extra = listed.flatMap((c) => (c.action === 'toggle' ? [] : [[c.selector, c.action] as const]));
 		if (options.reveal !== false) for (const r of await captureAllReveals(browser, options.old, routes, join(state, 'convert', 'reveals'), { concurrency: options.concurrency ?? 4, log, extra })) revealed.set(r.route, r.reveals);
 		if (options.reveal !== false) for (const t of await captureAllToggles(browser, options.old, routes, join(state, 'convert', 'toggles'), { concurrency: options.concurrency ?? 4, log })) toggled.set(t.route, t.groups);
+		// Controls the site lists as switching attributes in place (lib/site/controls.json, action "toggle").
+		const switchSelectors = listed.filter((c) => c.action === 'toggle').map((c) => c.selector);
+		if (options.reveal !== false) for (const c of await captureAllSwitches(browser, options.old, routes, join(state, 'convert', 'toggles'), switchSelectors, { concurrency: options.concurrency ?? 4, log })) switched.set(c.route, c.switches);
 		// Options revealed without a link (a command palette's items): what choosing each did, once per control.
 		const seenKeys = new Set<string>();
 		for (const [route, reveals] of revealed)
@@ -522,6 +528,13 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const insertedDisclosures = new InsertedDisclosurePlan();
 	const insertedGroups = insertedDisclosures.add(inserted);
 	if (insertedGroups) log(`disclosures that mount their content in place, on Markless state: ${insertedGroups}`);
+	const switchPlan = new SwitchPlan();
+	let switchGroups = 0;
+	for (const [route, p] of prepared) switchGroups += switchPlan.add(switched.get(route) ?? [], locator(p.root.parentNode as Element));
+	if (switchGroups) {
+		log(`site switches on Markless state: ${switchGroups}`);
+		templatePorts.add('switch');
+	}
 	const checkables = new CheckablePlan();
 	let checkableGroups = 0;
 	const emitHtml = (html: string) => emitChildren(parseFragment(html) as unknown as Element, { dropped: (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1) });
@@ -541,7 +554,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const withAppend = (el: Element, binding: Binding | undefined): Binding | undefined => {
 		const markup = appended.get(el);
 		binding = mergeBindings(replacedParts.get(el), binding);
-		const own = mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), baseTabs.bind(el)), disclosures.bind(el)), insertedDisclosures.bind(el)), selects.bind(el)), checkables.bind(el)), binding), bindMount(el));
+		const own = mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), baseTabs.bind(el)), disclosures.bind(el)), insertedDisclosures.bind(el)), selects.bind(el)), checkables.bind(el)), switchPlan.bind(el)), binding), bindMount(el));
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};
 	void appendOf;

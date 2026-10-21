@@ -1,4 +1,5 @@
 [
 	{ "selector": "[data-slot=\"code\"] button", "action": "click" },
-	{ "selector": "[class~=\"group/buttons\"] > [data-slot=\"button\"]:first-of-type", "action": "copy" }
+	{ "selector": "[class~=\"group/buttons\"] > [data-slot=\"button\"]:first-of-type", "action": "copy" },
+	{ "selector": "[data-slot=\"sidebar-trigger\"], [data-slot=\"sidebar-rail\"]", "action": "toggle" }
 ]

@@ -59,3 +59,19 @@ test('a disclosure that mounts its content where it opens renders that content i
 	assert.match(out, /data-panel-open=\{ins0 \? "" : undefined\}/);
 	assert.match(out, /<\/button>@if \(ins0\) \{ <><div data-slot="collapsible-content">x<\/div><\/> \}<p>after<\/p>/);
 });
+
+test('controls that switch the same attributes share one state, and each use writes the cookies of its state', async () => {
+	const { SwitchPlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-slot="sidebar" data-state="expanded" data-collapsible=""></div><button data-slot="sidebar-trigger"></button><button data-slot="sidebar-rail"></button></body>');
+	const [sidebar, trigger, rail] = [...walk(body(doc))].filter((el) => el.tagName !== 'body') as [Element, Element, Element];
+	const changes = [{ sig: 's', nth: 0, attr: 'data-state', before: 'expanded', after: 'collapsed' }, { sig: 's', nth: 0, attr: 'data-collapsible', before: '', after: 'icon' }];
+	const on = [{ name: 'sidebar_state', value: 'false', path: '/', maxAge: 604800 }];
+	const off = [{ name: 'sidebar_state', value: 'true', path: '/', maxAge: 604800 }];
+	const plan = new SwitchPlan();
+	const placed = plan.add([{ sig: 't', nth: 0, changes, cookiesOn: on, cookiesOff: off }, { sig: 'r', nth: 0, changes, cookiesOn: on, cookiesOff: off }], (sig) => ({ s: sidebar, t: trigger, r: rail })[sig as 's' | 't' | 'r']);
+	assert.equal(placed, 1);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /data-state=\{sw0 \? "collapsed" : "expanded"\}/);
+	assert.match(out, /data-collapsible=\{sw0 \? "icon" : ""\}/);
+	assert.equal(out.match(/sw0 = !sw0; writeCookies\(sw0 \? \[\{"name":"sidebar_state","value":"false"/g)?.length, 2, 'the trigger and the rail switch one state');
+});

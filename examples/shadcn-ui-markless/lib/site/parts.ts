@@ -212,4 +212,16 @@ const commandMenu: Part = {
 	},
 };
 
-export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, docsSidebar, docsToc];
+// registry/*/ui/sidebar.tsx's SidebarProvider: ⌘B or Ctrl+B toggles the sidebar, as its trigger does.
+const sidebarShortcut: Part = {
+	keydown(_target, event) {
+		if (event.key !== 'b' || !(event.metaKey || event.ctrlKey)) return false;
+		const trigger = document.querySelector<HTMLElement>('[data-slot="sidebar-trigger"]');
+		if (!trigger) return false;
+		event.preventDefault();
+		trigger.click();
+		return true;
+	},
+};
+
+export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, docsSidebar, docsToc, sidebarShortcut];
