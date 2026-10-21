@@ -9,8 +9,12 @@ export type CachingProblem =
 	| 'cached-personal'
 	/** A response that sets a cookie was answered from, or offered to, a shared cache. */
 	| 'cached-set-cookie'
-	/** The page answers a fragment request differently but its Vary does not name the header, or the CDN served one for the other. */
+	/** The page answers a fragment request differently but its Vary does not name the header. */
 	| 'missing-vary'
+	/** A document request answered with a fragment, or a fragment request with a document. */
+	| 'wrong-body'
+	/** A page that reads the query answered without the value it was asked for, or with another value's. */
+	| 'query-not-rendered'
 	/** An HTML page a browser or CDN may keep without asking long after its data changed. */
 	| 'stale-forever'
 	/** A page the same for every visitor that the CDN does not keep. */
@@ -37,8 +41,29 @@ export interface RouteObservation {
 	readonly fragment?: { readonly response: ResponseFacts; readonly documentAfter: ResponseFacts };
 	/** The answers to the page's fragment URL over the passes. */
 	readonly fragmentPasses?: readonly ResponseFacts[];
+	/** After the cache entries expired (or in fresh entries): the fragment asked for first, then the document twice, and the reverse. */
+	readonly orders?: { readonly fragmentFirst: readonly Probe[]; readonly documentFirst: readonly Probe[] };
+	/** For a page that reads the query: one probe per value asked for. */
+	readonly query?: readonly QueryProbe[];
 	/** Function invocations a new visitor's page view caused after the passes: every same-origin response the browser loaded. */
 	readonly invocations?: number;
+}
+
+/** One request of an order probe: what was asked for and what came back. */
+export interface Probe {
+	readonly asked: 'fragment' | 'document';
+	readonly response: ResponseFacts;
+}
+
+export interface QueryProbe {
+	readonly key: string;
+	readonly value: string;
+	/** The document and, where the router fetches fragments by path, the fragment URL, each asked twice. */
+	readonly responses: readonly { readonly url: string; readonly facts: ResponseFacts; readonly rendered: boolean }[];
+	/** The old site's page for the same URL shows the value: the port must too. */
+	readonly oldRendered?: boolean;
+	/** A response that showed another probe's value. */
+	readonly otherValue?: string;
 }
 
 export interface CachingReport {
@@ -47,6 +72,8 @@ export interface CachingReport {
 	readonly routes: readonly RouteObservation[];
 	readonly findings: readonly CachingFinding[];
 	readonly numbers: CachingNumbers;
+	/** What the check could not test, and why. */
+	readonly notes: readonly string[];
 }
 
 export interface CachingNumbers {
@@ -122,11 +149,29 @@ export function judgeRoute(planned: RouteCaching, observed: RouteObservation, fr
 	}
 	if (fragmentHeader && observed.fragment && html) {
 		const doc = passes.at(-1)!;
-		const { response, documentAfter } = observed.fragment;
-		const differs = response.bodyHash !== doc.bodyHash;
-		if (!last.vary.includes(fragmentHeader.toLowerCase()) && differs) add('missing-vary', `answers a ${fragmentHeader} request with a different body but Vary is "${last.vary.join(', ')}"`);
-		if (!differs && servedByCdn(response)) add('missing-vary', `a ${fragmentHeader} request got the cached document (${response.cdn?.raw}): the CDN keeps one entry for both`);
-		if (documentAfter.bodyHash !== doc.bodyHash && documentAfter.bodyHash === response.bodyHash) add('missing-vary', `the document request after a ${fragmentHeader} request got the fragment (${documentAfter.cdn?.raw}): the CDN keeps one entry for both`);
+		if (!last.vary.includes(fragmentHeader.toLowerCase()) && observed.fragment.response.bodyHash !== doc.bodyHash) add('missing-vary', `answers a ${fragmentHeader} request with a different body but Vary is "${last.vary.join(', ')}"`);
+	}
+	if (html) {
+		type Asked = [Probe['asked'], ResponseFacts, string];
+		const checked: Asked[] = [
+			...passes.map((f, i): Asked => ['document', f, `pass ${i + 1}`]),
+			...(observed.fragmentPasses ?? []).map((f, i): Asked => ['fragment', f, `fragment URL pass ${i + 1}`]),
+			...(observed.fragment ? [['fragment', observed.fragment.response, `the ${fragmentHeader}: 1 request`] as Asked, ['document', observed.fragment.documentAfter, `the document after the ${fragmentHeader}: 1 request`] as Asked] : []),
+			...(['fragmentFirst', 'documentFirst'] as const).flatMap((order) => (observed.orders?.[order] ?? []).map((p, i): Asked => [p.asked, p.response, `${order === 'fragmentFirst' ? 'fragment' : 'document'} first on a fresh or expired entry, request ${i + 1}`])),
+		];
+		const wrong = new Map<Probe['asked'], { first: string; n: number }>();
+		for (const [asked, f, when] of checked) {
+			if (f.status !== 200 || f.fragmentBody === undefined || f.fragmentBody === (asked === 'fragment')) continue;
+			const seen = wrong.get(asked);
+			if (seen) seen.n++;
+			else wrong.set(asked, { first: `${when}: a ${asked} request got ${asked === 'fragment' ? 'the document' : 'a fragment'} (${f.cdn?.raw ?? 'no CDN header'})`, n: 1 });
+		}
+		for (const { first, n } of wrong.values()) add('wrong-body', `${first}${n > 1 ? `, and ${n - 1} more` : ''}`);
+	}
+	for (const q of observed.query ?? []) {
+		const missing = q.responses.find((r) => r.facts.status === 200 && !r.rendered);
+		if (q.otherValue) add('query-not-rendered', `?${q.key}=${q.value} was answered with the page for ${q.key}=${q.otherValue}: the CDN keeps one entry for both values`);
+		else if (missing && q.oldRendered) add('query-not-rendered', `${missing.url} does not show ${q.value}, which the old site's page for it does (${missing.facts.cdn?.raw ?? 'no CDN header'}): the page did not get its query`);
 	}
 	return out;
 }
@@ -155,7 +200,8 @@ async function pageInvocations(browser: Browser, url: string): Promise<number> {
 			const h = response.headers();
 			if (ranFunction(h['x-vercel-cache'], h['x-vercel-id'])) n++;
 		});
-		await page.goto(url, { waitUntil: 'load' });
+		// A view that never reaches load still counts what it ran; one slow page must not end the check.
+		await page.goto(url, { waitUntil: 'load', timeout: 30_000 }).catch(() => {});
 		await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
 	} finally {
 		await context.close();
@@ -163,14 +209,13 @@ async function pageInvocations(browser: Browser, url: string): Promise<number> {
 	return n;
 }
 
-async function facts(url: string, headers: Record<string, string> = {}): Promise<{ facts: ResponseFacts; html: string }> {
-	const got = await fetchPage(url, headers);
-	return { facts: got.facts, html: got.body };
-}
-
 export interface VerifyOptions {
 	readonly fragmentHeader?: string;
 	readonly fragmentPath?: string;
+	/** The comments the router ends a fragment response with: each response is told fragment or document by them. */
+	readonly fragmentMarkers?: readonly string[];
+	/** The old site, asked the same query URLs: a value its page shows, the port's must show too. */
+	readonly oldOrigin?: string;
 	/** Requests per route after the first (default 2): the first may be a miss, the later ones show the CDN keeping it. */
 	readonly passes?: number;
 	readonly gapMs?: number;
@@ -179,13 +224,44 @@ export interface VerifyOptions {
 	readonly pageViews?: boolean;
 	/** Routes read at once (default 4). */
 	readonly concurrency?: number;
+	/** Longest revalidation the check waits out to ask for fragment and document in both orders after expiry, in seconds (default 130; 0 skips the wait). */
+	readonly expiryWaitS?: number;
+	/** Routes on ISR with revalidation whose expiry is waited out (default 3, all waited out at once). */
+	readonly expiryRoutes?: number;
 }
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+const PROBE_KEY = '__mm_cache_probe';
 
 /** Reads the new deployment's caching route by route and judges it against the plan. */
 export async function verifyCaching(origin: string, planned: readonly RouteCaching[], options: VerifyOptions = {}, oldHashed: readonly { path: string; longLived: boolean }[] = []): Promise<CachingReport> {
 	const routes: RouteObservation[] = [];
 	const findings: CachingFinding[] = [];
+	const notes: string[] = [];
 	const oldLong = new Set(oldHashed.filter((a) => a.longLived).map((a) => a.path));
+	const markers = options.fragmentMarkers ?? [];
+	const fetchOne = async (url: string, headers: Record<string, string> = {}): Promise<{ facts: ResponseFacts; html: string }> => {
+		const got = await fetchPage(url, headers);
+		const fragmentBody = markers.length && /html/.test(got.facts.contentType) ? markers.some((m) => got.body.trimEnd().endsWith(m)) : undefined;
+		return { facts: { ...got.facts, ...(fragmentBody !== undefined ? { fragmentBody } : {}) }, html: got.body };
+	};
+	const fragmentUrl = (url: string) => (options.fragmentPath ? new URL(`${options.fragmentPath}${new URL(url).pathname}${new URL(url).search}`, origin).href : undefined);
+	const ask = async (asked: Probe['asked'], url: string): Promise<Probe> => {
+		if (asked === 'document') return { asked, response: (await fetchOne(url)).facts };
+		const byPath = fragmentUrl(url);
+		return { asked, response: (await fetchOne(byPath ?? url, byPath ? {} : { [options.fragmentHeader!]: '1' })).facts };
+	};
+	const order = async (url: string, first: Probe['asked']): Promise<Probe[]> => {
+		const second = first === 'fragment' ? 'document' : 'fragment';
+		const out = [await ask(first, url)];
+		await sleep(options.gapMs ?? 800);
+		out.push(await ask(second, url));
+		await sleep(options.gapMs ?? 800);
+		out.push(await ask(second, url));
+		return out;
+	};
+	const fragments = Boolean(options.fragmentPath || options.fragmentHeader);
 	let assetsChecked = false;
 	const browser = options.pageViews === false ? undefined : await chromium.launch();
 	const one = async (p: RouteCaching): Promise<RouteObservation> => {
@@ -193,32 +269,64 @@ export async function verifyCaching(origin: string, planned: readonly RouteCachi
 		const passes: ResponseFacts[] = [];
 		let html = '';
 		for (let i = 0; i <= (options.passes ?? 2); i++) {
-			if (i) await new Promise((r) => setTimeout(r, options.gapMs ?? 800));
-			const got = await facts(url);
+			if (i) await sleep(options.gapMs ?? 800);
+			const got = await fetchOne(url);
 			passes.push(got.facts);
 			html = got.html;
 		}
 		let fragment: RouteObservation['fragment'];
-		if (options.fragmentHeader && p.html) {
-			const response = (await facts(url, { [options.fragmentHeader]: '1' })).facts;
-			const documentAfter = (await facts(url)).facts;
+		if (options.fragmentHeader && !options.fragmentPath && p.html) {
+			const response = (await fetchOne(url, { [options.fragmentHeader]: '1' })).facts;
+			const documentAfter = (await fetchOne(url)).facts;
 			fragment = { response, documentAfter };
 		}
 		const fragmentPasses: ResponseFacts[] = [];
-		if (options.fragmentPath && p.html) {
-			const fragmentUrl = new URL(`${options.fragmentPath}${new URL(url).pathname}`, origin).href;
+		const byPath = fragmentUrl(url);
+		if (byPath && p.html) {
 			for (let i = 0; i <= (options.passes ?? 2); i++) {
-				if (i) await new Promise((r) => setTimeout(r, options.gapMs ?? 800));
-				fragmentPasses.push((await facts(fragmentUrl)).facts);
+				if (i) await sleep(options.gapMs ?? 800);
+				fragmentPasses.push((await fetchOne(byPath)).facts);
 			}
 		}
 		const last = passes.at(-1)!;
+		let orders: RouteObservation['orders'];
+		if (fragments && p.html && p.class !== 'no-cache' && last.status === 200) {
+			const fresh = (n: number) => `${url}${url.includes('?') ? '&' : '?'}${PROBE_KEY}=${Date.now().toString(36)}${n}`;
+			const tried = { fragmentFirst: await order(fresh(1), 'fragment'), documentFirst: await order(fresh(2), 'document') };
+			// A made-up query value is a fresh entry only where the cache keys on the whole URL; elsewhere the first answer is the kept one.
+			if (!servedByCdn(tried.fragmentFirst[0]!.response) && !servedByCdn(tried.documentFirst[0]!.response)) orders = tried;
+		}
+		const query = p.html && last.status === 200 && p.allowQuery?.length ? await queryProbes(url, p.allowQuery) : undefined;
 		const invocations = browser && /html/.test(last.contentType) ? await pageInvocations(browser, url) : invoked(last) ? 1 : 0;
 		if (options.assets !== false && !assetsChecked && /html/.test(last.contentType)) {
 			assetsChecked = true;
 			findings.push(...(await assetFindings(origin, p.route, html, oldLong)));
 		}
-		return { route: p.route, class: p.class, passes, ...(fragment ? { fragment } : {}), ...(fragmentPasses.length ? { fragmentPasses } : {}), invocations };
+		return { route: p.route, class: p.class, passes, ...(fragment ? { fragment } : {}), ...(fragmentPasses.length ? { fragmentPasses } : {}), ...(orders ? { orders } : {}), ...(query ? { query } : {}), invocations };
+	};
+	const queryProbes = async (url: string, keys: readonly string[]): Promise<QueryProbe[]> => {
+		const out: QueryProbe[] = [];
+		for (const key of keys) {
+			const values = [1, 2].map((n) => `mm${Date.now().toString(36)}q${n}`);
+			for (const value of values) {
+				const at = new URL(url);
+				at.searchParams.set(key, value);
+				const urls = [at.href, fragmentUrl(at.href)].filter((u): u is string => Boolean(u));
+				const responses: QueryProbe['responses'][number][] = [];
+				let otherValue: string | undefined;
+				for (const u of urls)
+					for (let i = 0; i < 2; i++) {
+						if (i) await sleep(options.gapMs ?? 800);
+						const got = await fetchOne(u);
+						responses.push({ url: new URL(u).pathname + new URL(u).search, facts: got.facts, rendered: got.html.includes(value) });
+						const other = values.find((v) => v !== value && got.html.includes(v));
+						if (other) otherValue = other;
+					}
+				const old = options.oldOrigin ? await fetchPage(new URL(at.pathname + at.search, options.oldOrigin).href).catch(() => undefined) : undefined;
+				out.push({ key, value, responses, ...(old ? { oldRendered: old.body.includes(value) } : {}), ...(otherValue ? { otherValue } : {}) });
+			}
+		}
+		return out;
 	};
 	const todo = planned.filter((r) => r.status === 200);
 	const observed: RouteObservation[] = new Array(todo.length);
@@ -235,11 +343,33 @@ export async function verifyCaching(origin: string, planned: readonly RouteCachi
 	} finally {
 		await browser?.close();
 	}
+	if (fragments) await expiryOrders(todo, observed);
 	for (const [i, o] of observed.entries()) {
 		routes.push(o);
 		findings.push(...judgeRoute(todo[i]!, o, options.fragmentHeader));
 	}
-	return { origin, checkedAt: new Date().toISOString(), routes, findings, numbers: numbersOf(routes) };
+	for (const o of observed) for (const key of new Set((o.query ?? []).filter((q) => !q.oldRendered && q.responses.some((r) => !r.rendered)).map((q) => q.key))) notes.push(`${o.route}?${key}=: neither the old site's page nor the port's shows a made-up value, so whether the port renders its query is not told by this probe`);
+	return { origin, checkedAt: new Date().toISOString(), routes, findings, numbers: numbersOf(routes), notes };
+
+	/** Waits out the revalidation of a few ISR pages and asks for fragment and document in both orders on the expired entries. */
+	async function expiryOrders(todo: readonly RouteCaching[], observed: RouteObservation[]): Promise<void> {
+		const maxWait = options.expiryWaitS ?? 130;
+		const isr = todo.map((p, i) => ({ p, i })).filter(({ p, i }) => p.html && p.class !== 'no-cache' && observed[i]!.passes.at(-1)!.status === 200 && !observed[i]!.orders);
+		const finite = isr.filter(({ p }) => p.class === 'isr' && (p.revalidate ?? 0) > 0);
+		const never = isr.length - finite.length;
+		if (never) notes.push(`${never} cached page${never === 1 ? '' : 's'} never expire before the next deploy: fragment and document were not asked for in both orders after expiry, only told apart on every request`);
+		const waited = finite.filter(({ p }) => p.revalidate! <= maxWait).slice(0, options.expiryRoutes ?? 3);
+		const skipped = finite.length - waited.length;
+		if (skipped) notes.push(`${skipped} page${skipped === 1 ? '' : 's'} on ISR with revalidation not asked for in both orders after expiry (${maxWait ? `waits up to ${maxWait} s for ${options.expiryRoutes ?? 3} pages` : 'the wait is off'})`);
+		if (!waited.length) return;
+		const wait = (Math.max(...waited.map(({ p }) => p.revalidate!)) + 2) * 1000;
+		const runs: Record<number, { fragmentFirst?: Probe[]; documentFirst?: Probe[] }> = {};
+		for (const first of ['fragment', 'document'] as const) {
+			await sleep(wait);
+			await Promise.all(waited.map(async ({ p, i }) => ((runs[i] ??= {})[first === 'fragment' ? 'fragmentFirst' : 'documentFirst'] = await order(new URL(p.route, origin).href, first))));
+		}
+		for (const { i } of waited) observed[i] = { ...observed[i]!, orders: { fragmentFirst: runs[i]!.fragmentFirst!, documentFirst: runs[i]!.documentFirst! } };
+	}
 }
 
 export function numbersOf(routes: readonly RouteObservation[]): CachingNumbers {
@@ -260,7 +390,9 @@ export function numbersOf(routes: readonly RouteObservation[]): CachingNumbers {
 const LABEL: Record<CachingProblem, string> = {
 	'cached-personal': 'a personal page is cached',
 	'cached-set-cookie': 'a response setting a cookie is cached',
-	'missing-vary': 'fragment and document share a cache entry',
+	'missing-vary': 'a fragment request answered differently without Vary naming it',
+	'wrong-body': 'fragment and document share a cache entry',
+	'query-not-rendered': 'a page that reads the query does not render it',
 	'stale-forever': 'HTML kept long after it changes',
 	'uncached-static': 'a static page the CDN does not keep',
 	'uncached-fragment': 'a cached page whose fragment the CDN does not keep',
@@ -276,5 +408,8 @@ export function summarizeCachingReport(report: CachingReport): string {
 	];
 	if (!report.findings.length) lines.push('  no caching problems');
 	for (const f of report.findings) lines.push(`  red  ${f.route}: ${LABEL[f.problem]}: ${f.detail}`);
+	const ordered = report.routes.filter((r) => r.orders).length;
+	if (ordered) lines.push(`  ${ordered} page${ordered === 1 ? '' : 's'} asked for fragment then document and document then fragment on fresh or expired entries`);
+	for (const note of report.notes ?? []) lines.push(`  note ${note}`);
 	return `${lines.join('\n')}\n`;
 }
