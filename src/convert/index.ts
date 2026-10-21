@@ -224,6 +224,7 @@ let currentClipboard: Record<string, string> = {};
 const replaced = new Map<Element, { key: string; trigger: Element; markup: string }>();
 const replacedParts = new Map<Element, Binding>();
 const unplaced: string[] = [];
+const triggerKeys = new Map<Element, string>();
 // Content disclosures mounted inside the page on opening, by trigger: rendered by Markless in an arm where they went.
 const inserted: { trigger: Element; parent: Element; before: Element | null; markup: string; panelId?: string }[] = [];
 
@@ -325,6 +326,8 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 			if (added.into === 'body') {
 				const markup = layerMarkup(reveal, added, dropped);
 				if (markup) currentLayers.push({ key: reveal.key, markup });
+				// A trigger that names its layer neither by id nor by aria-controls (a Radix tooltip's) is marked with the key.
+				if (markup && trigger && !attr(trigger, 'id') && !attr(trigger, 'aria-controls') && !triggerKeys.has(trigger)) triggerKeys.set(trigger, reveal.key);
 			} else if (added.into === 'clipboard') {
 				if (reveal.sig !== undefined) currentClipboard[`${reveal.sig}#${reveal.nth ?? 0}`] = added.html;
 			} else if (added.into === 'replace') {
@@ -567,6 +570,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const withAppend = (el: Element, binding: Binding | undefined): Binding | undefined => {
 		const markup = appended.get(el);
 		binding = mergeBindings(replacedParts.get(el), binding);
+		const keyed = triggerKeys.get(el);
+		binding = mergeBindings(binding, keyed ? { extra: [`data-mm-key=${JSON.stringify(keyed)}`] } : undefined);
 		const own = mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), baseTabs.bind(el)), disclosures.bind(el)), insertedDisclosures.bind(el)), selects.bind(el)), checkables.bind(el)), switchPlan.bind(el)), handledForms.has(el) ? formBinding : undefined), binding), bindMount(el));
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};
