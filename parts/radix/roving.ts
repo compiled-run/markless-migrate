@@ -14,3 +14,11 @@ export function roving(event: KeyboardEvent): void {
 	event.preventDefault();
 	to.focus();
 }
+
+/** The value of the enabled tab an event on a tab list happened on (Radix's `…-content-<value>` in aria-controls). */
+export function tabValue(event: Event): string | undefined {
+	const tab = (event.target as Element | null)?.closest('[role="tab"]');
+	// The handler sits on the list the tab belongs to (Markless dispatches it for events inside that element).
+	if (!tab || tab.hasAttribute('disabled') || tab.hasAttribute('data-disabled')) return undefined;
+	return /-content-(.+)$/.exec(tab.getAttribute('aria-controls') ?? '')?.[1];
+}

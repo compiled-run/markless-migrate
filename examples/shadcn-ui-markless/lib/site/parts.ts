@@ -267,11 +267,12 @@ const sharedTabs: Part = {
 	focusin(target, event) {
 		return choose(target, event);
 	},
+	// Once a docs page shows (its sidebar mounts), the kept choices apply to every list (a mount per tab would give
+	// each tab a visibility handler).
 	mount(el) {
-		if (el.getAttribute('role') !== 'tab' || localStorage.getItem(CONFIG_KEY) === null) return;
-		const list = el.closest('[role="tablist"]');
-		const key = list && sharedKey(list);
-		if (key && tabValue(el) === readConfig()[key] && el.getAttribute('aria-selected') !== 'true') chooseEverywhere(key, readConfig()[key]!);
+		if (!el.hasAttribute('data-docs-sidebar-content') || localStorage.getItem(CONFIG_KEY) === null) return;
+		const config = readConfig();
+		for (const key of Object.keys(SHARED)) if (config[key]) chooseEverywhere(key, config[key]!);
 	},
 };
 

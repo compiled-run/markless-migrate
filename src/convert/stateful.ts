@@ -1,6 +1,6 @@
 import { attr, walk, type Element } from './dom.ts';
 import { lit, type Binding } from './tsrx.ts';
-import type { Switch, ToggleGroup } from './toggles.ts';
+import type { Notify, Switch, ToggleGroup } from './toggles.ts';
 
 /**
  * Radix Tabs on Markless state: each tab list becomes one state() in the component that renders it, holding the active
@@ -45,18 +45,24 @@ export class TabsPlan {
 			const name = `tab${this.n++}`;
 			const declare = [`let ${name} = state(${lit(active.value!)});`];
 			groups++;
+			// One handler per event on the list, not on each trigger: Markless's build lists every handler's closure.
+			const listOwn = this.bindings.get(list);
+			this.bindings.set(list, {
+				declare: [...(listOwn?.declare ?? []), ...declare],
+				omit: listOwn?.omit ?? [],
+				extra: [
+					...(listOwn?.extra ?? []),
+					`onMouseDown={(event) => { const v = tabValue(event); if (v !== undefined && event.button === 0 && !event.ctrlKey) ${name} = v; }}`,
+					`onFocusIn={(event) => { const v = tabValue(event); if (v !== undefined) ${name} = v; }}`,
+					`onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { const v = tabValue(event); if (v !== undefined) ${name} = v; } else roving(event); }}`,
+				],
+			});
 			for (const tab of tabs) {
 				const v = lit(tab.value!);
 				this.bindings.set(tab.trigger, {
 					declare,
 					omit: ['aria-selected', 'data-state'],
-					extra: [
-						`aria-selected={${name} === ${v} ? "true" : "false"}`,
-						`data-state={${name} === ${v} ? "active" : "inactive"}`,
-						`onMouseDown={(event) => { if (event.button === 0 && !event.ctrlKey) ${name} = ${v}; }}`,
-						`onFocus={() => (${name} = ${v})}`,
-						`onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') ${name} = ${v}; else roving(event); }}`,
-					],
+					extra: [`aria-selected={${name} === ${v} ? "true" : "false"}`, `data-state={${name} === ${v} ? "active" : "inactive"}`],
 				});
 				const panel = byId.get(tab.panelId);
 				if (!panel) continue;
@@ -455,6 +461,37 @@ export class SwitchPlan {
 				const own = this.bindings.get(control!);
 				this.bindings.set(control!, { declare, omit: own?.omit ?? [], extra: [...(own?.extra ?? []), `onClick={() => { ${name} = !${name}; writeCookies(${name} ? ${cookies(first.cookiesOn)} : ${cookies(first.cookiesOff)}); }}`] });
 			});
+			placed++;
+		}
+		return placed;
+	}
+}
+
+/**
+ * Notifications a site-listed control shows (a toast) on Markless state: the markup the old page added inside the live
+ * region is an @if arm at the region's end, shown by the control's use for as long as the old page kept it.
+ */
+export class NotifyPlan {
+	private readonly bindings = new Map<Element, Binding>();
+	private n = 0;
+
+	bind(el: Element): Binding | undefined {
+		return this.bindings.get(el);
+	}
+
+	add(notifications: readonly Notify[], locate: (sig: string, nth: number) => Element | undefined, emit: (html: string) => string): number {
+		let placed = 0;
+		for (const note of notifications) {
+			const control = locate(note.sig, note.nth);
+			const region = locate(note.into.sig, note.into.nth);
+			if (!control || !region || this.bindings.has(control)) continue;
+			const markup = emit(note.html);
+			if (/@(if|switch|for) \(|<[A-Z]\w*[\s/>]/.test(markup)) continue;
+			const name = `nt${this.n++}`;
+			const declare = [`let ${name} = state(false);`];
+			this.bindings.set(control, { declare, extra: [`onClick={() => { ${name} = true; setTimeout(() => { ${name} = false; }, ${Math.max(0, note.ms - 600)}); }}`] });
+			const own = this.bindings.get(region);
+			this.bindings.set(region, { declare: [...(own?.declare ?? []), ...declare], inserts: [...(own?.inserts ?? []), { before: null, markup: `@if (${name}) { <>${markup}</> }` }] });
 			placed++;
 		}
 		return placed;

@@ -445,3 +445,99 @@ export async function captureAllForms(browser: Browser, origin: string, routes: 
 	await Promise.all(Array.from({ length: Math.max(1, options.concurrency ?? 4) }, worker));
 	return out;
 }
+
+/** A site-listed control whose use shows a notification in a live region (a toast), and how long it stayed. */
+export interface Notify {
+	readonly sig: string;
+	readonly nth: number;
+	/** The live region it went into, the element before which it went (null at the end), its markup and lifetime. */
+	readonly into: { readonly sig: string; readonly nth: number };
+	readonly html: string;
+	readonly ms: number;
+}
+
+export interface NotifyCapture {
+	readonly route: string;
+	readonly notifications: readonly Notify[];
+}
+
+/** Uses each listed control on a fresh load and records what it added inside a live region, until that went away. */
+export async function captureNotifications(browser: Browser, origin: string, route: string, dir: string, selectors: readonly string[]): Promise<NotifyCapture> {
+	const file = join(dir, `${createHash('sha256').update(`notify:${route}|${JSON.stringify(selectors)}`).digest('hex').slice(0, 16)}.json`);
+	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as NotifyCapture, () => undefined);
+	if (cached && cached.route === route) return cached;
+	const notifications: Notify[] = [];
+	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+	const url = new URL(route, origin).href;
+	const fresh = async () => {
+		await loadPage(page, url);
+		await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+		await page.waitForTimeout(300);
+	};
+	try {
+		await fresh();
+		const count = await page.evaluate((selector) => [...document.body.querySelectorAll(selector)].filter((el) => el.getBoundingClientRect().width > 0).length, selectors.join(', '));
+		for (let i = 0; i < Math.min(count, 24); i++) {
+			if (i > 0) await fresh();
+			const found = await page.evaluate(
+				({ selector, i }) => {
+					const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+					const nthOf = (el: Element) => {
+						const sig = sigOf(el);
+						let n = 0;
+						for (const e of document.body.querySelectorAll('*')) {
+							if (e === el) break;
+							if (sigOf(e) === sig) n++;
+						}
+						return n;
+					};
+					const control = [...document.body.querySelectorAll(selector)].filter((el) => el.getBoundingClientRect().width > 0)[i]!;
+					const w = window as unknown as { __mmAdded: { node: Element; region: Element }[]; __mmRegions: Map<Element, { sig: string; nth: number }> };
+					w.__mmAdded = [];
+					w.__mmRegions = new Map([...document.body.querySelectorAll('[aria-live]')].map((r) => [r, { sig: sigOf(r), nth: nthOf(r) }]));
+					new MutationObserver((records) => {
+						for (const r of records)
+							for (const n of r.addedNodes) {
+								if (!(n instanceof Element)) continue;
+								const region = [...w.__mmRegions.keys()].find((x) => x.contains(n) && x !== n);
+								if (region && !w.__mmAdded.some((a) => a.node.contains(n))) w.__mmAdded.push({ node: n, region });
+							}
+					}).observe(document.body, { childList: true, subtree: true });
+					(window as unknown as { __mmControl: Element }).__mmControl = control;
+					return { sig: sigOf(control), nth: nthOf(control) };
+				},
+				{ selector: selectors.join(', '), i },
+			);
+			const handle = (await page.evaluateHandle(() => (window as unknown as { __mmControl: Element }).__mmControl)).asElement();
+			if (!handle || (await handle.click({ timeout: 2000 }).then(() => false, () => true))) continue;
+			const started = Date.now();
+			await page.waitForTimeout(600);
+			const added = await page.evaluate(() => {
+				const w = window as unknown as { __mmAdded: { node: Element; region: Element }[]; __mmRegions: Map<Element, { sig: string; nth: number }> };
+				// The region's own top element the addition went under: the notification's outermost new node.
+				return w.__mmAdded.filter((a) => a.node.isConnected).map((a) => {
+					let top = a.node;
+					while (top.parentElement && top.parentElement !== a.region && !w.__mmAdded.some((b) => b.node === top.parentElement)) top = top.parentElement;
+					return { into: w.__mmRegions.get(a.region)!, html: a.node.outerHTML };
+				})[0];
+			});
+			if (!added) continue;
+			let ms = 0;
+			while (Date.now() - started < 15000) {
+				const gone = await page.evaluate(() => (window as unknown as { __mmAdded: { node: Element }[] }).__mmAdded.every((a) => !a.node.isConnected));
+				if (gone) {
+					ms = Date.now() - started;
+					break;
+				}
+				await page.waitForTimeout(250);
+			}
+			notifications.push({ sig: found.sig, nth: found.nth, into: added.into, html: added.html, ms: ms || 15000 });
+		}
+	} finally {
+		await context.close().catch(() => {});
+	}
+	const capture: NotifyCapture = { route, notifications };
+	await mkdir(dir, { recursive: true });
+	await writeFile(file, JSON.stringify(capture));
+	return capture;
+}

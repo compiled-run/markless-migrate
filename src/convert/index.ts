@@ -10,8 +10,8 @@ import { parseFragment } from 'parse5';
 import { cleanDocument, frameworkBuilds, type Dropped } from './clean.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, walk, type Document, type Element } from './dom.ts';
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
-import { BaseTabsPlan, CheckablePlan, DisclosurePlan, InsertedDisclosurePlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
-import { captureAllForms, captureAllSwitches, captureAllToggles, type FormCapture, type Switch, type ToggleGroup } from './toggles.ts';
+import { BaseTabsPlan, CheckablePlan, DisclosurePlan, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
+import { captureAllForms, captureAllSwitches, captureAllToggles, captureNotifications, type FormCapture, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
 import { bindMount, bindParts, bodyHandlers, candidatesOf, handledBy, portAttributes, portFor, onRoute, UNPORTED, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { stat } from 'node:fs/promises';
@@ -29,7 +29,8 @@ const PAGE_SHOWN = 'PAGE_SHOWN';
 function withPartImports(source: string, dir: string): string {
 	const used = ['behave', 'listen', 'mount'].filter((name) => source.includes(`=> ${name}(`));
 	let out = used.length ? source.replace('\n', `\nimport { ${used.join(', ')} } from '${dir}/index.ts';\n`) : source;
-	if (/\broving\(event\)/.test(out)) out = out.replace('\n', `\nimport { roving } from '${dir}/radix/roving.ts';\n`);
+	const rovingNames = ['roving', 'tabValue'].filter((name) => new RegExp(`\\b${name}\\(event\\)`).test(out));
+	if (rovingNames.length) out = out.replace('\n', `\nimport { ${rovingNames.join(', ')} } from '${dir}/radix/roving.ts';\n`);
 	if (/\b(afterExit|measureWhenShown|accordionKeys)\(/.test(out)) out = out.replace('\n', `\nimport { accordionKeys, afterExit, measureWhenShown } from '${dir}/radix/disclosure-motion.ts';\n`);
 	if (/\bradioKeys\(event/.test(out)) out = out.replace('\n', `\nimport { radioKeys } from '${dir}/toggle.ts';\n`);
 	if (/\bwriteCookies\(/.test(out)) out = out.replace('\n', `\nimport { writeCookies } from '${dir}/switch.ts';\n`);
@@ -474,12 +475,18 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const toggled = new Map<string, readonly ToggleGroup[]>();
 	const switched = new Map<string, readonly Switch[]>();
 	const submitted = new Map<string, FormCapture['forms']>();
+	const notified = new Map<string, readonly Notify[]>();
 	const choices: Record<string, Record<string, Choice>> = {};
 	try {
 		captures = await captureAll(browser, options.old, routes, join(state, 'convert', 'captures'), { concurrency: options.concurrency ?? 4, log });
 		// Controls the site's own components reveal content with, beside those ARIA marks (lib/site/controls.json).
-		const listed = await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as { selector: string; action: Reveal['action'] | 'toggle' }[], () => []);
-		const extra = listed.flatMap((c) => (c.action === 'toggle' ? [] : [[c.selector, c.action] as const]));
+		const listed = await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as { selector: string; action: Reveal['action'] | 'toggle' | 'notify'; routes?: string }[], () => []);
+		const extra = listed.flatMap((c) => (c.action === 'toggle' || c.action === 'notify' ? [] : [[c.selector, c.action] as const]));
+		// Controls whose use shows a notification (a toast), on the routes the site lists them for.
+		for (const c of listed.filter((x) => x.action === 'notify')) {
+			const on = routes.filter((r) => !c.routes || new RegExp(c.routes).test(r));
+			for (const r of on) notified.set(r, [...(notified.get(r) ?? []), ...(await captureNotifications(browser, options.old, r, join(state, 'convert', 'toggles'), [c.selector])).notifications]);
+		}
 		if (options.reveal !== false) for (const r of await captureAllReveals(browser, options.old, routes, join(state, 'convert', 'reveals'), { concurrency: options.concurrency ?? 4, log, extra })) revealed.set(r.route, r.reveals);
 		if (options.reveal !== false) for (const t of await captureAllToggles(browser, options.old, routes, join(state, 'convert', 'toggles'), { concurrency: options.concurrency ?? 4, log })) toggled.set(t.route, t.groups);
 		// Controls the site lists as switching attributes in place (lib/site/controls.json, action "toggle").
@@ -564,6 +571,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 	}
 	const formBinding: Binding = { extra: ['onSubmit={(event) => event.preventDefault()}'] };
+	const notifyPlan = new NotifyPlan();
+	let notifyCount = 0;
+	for (const [route, p] of prepared) notifyCount += notifyPlan.add(notified.get(route) ?? [], locator(p.root.parentNode as Element), (html) => emitChildren(parseFragment(html) as unknown as Element));
+	if (notifyCount) log(`notifications on Markless state: ${notifyCount}`);
 	const switchPlan = new SwitchPlan();
 	let switchGroups = 0;
 	for (const [route, p] of prepared) switchGroups += switchPlan.add(switched.get(route) ?? [], locator(p.root.parentNode as Element));
@@ -593,7 +604,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const keyed = triggerKeys.get(el);
 		binding = mergeBindings(binding, keyed ? { extra: [`data-mm-key=${JSON.stringify(keyed)}`] } : undefined);
 		binding = mergeBindings(binding, portAttributes(el));
-		const own = mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), baseTabs.bind(el)), disclosures.bind(el)), insertedDisclosures.bind(el)), selects.bind(el)), checkables.bind(el)), switchPlan.bind(el)), handledForms.has(el) ? formBinding : undefined), binding), bindMount(el));
+		const own = mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), baseTabs.bind(el)), disclosures.bind(el)), insertedDisclosures.bind(el)), selects.bind(el)), checkables.bind(el)), switchPlan.bind(el)), mergeBindings(notifyPlan.bind(el), handledForms.has(el) ? formBinding : undefined)), binding), bindMount(el));
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};
 	void appendOf;
