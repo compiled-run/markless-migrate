@@ -45,3 +45,17 @@ test('Base UI tabs render the chosen tab\'s panel content in an arm per tab, wit
 	assert.match(out, /aria-controls=\{btab0 === 1 \? "p-b" : undefined\}/);
 	assert.match(out, /btab0d = 1 > btab0 \? "right"/);
 });
+
+test('a disclosure that mounts its content where it opens renders that content in an arm at the same place', async () => {
+	const { InsertedDisclosurePlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div><button id="base-ui-t" aria-expanded="false">More</button><p>after</p></div></body>');
+	const trigger = [...walk(body(doc))].find((el) => attr(el, 'id') === 'base-ui-t')!;
+	const parent = trigger.parentNode as Element;
+	const after = [...walk(body(doc))].find((el) => el.tagName === 'p')!;
+	const plan = new InsertedDisclosurePlan();
+	assert.equal(plan.add([{ trigger, parent, before: after, markup: '<div data-slot="collapsible-content">x</div>' }]), 1);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /aria-expanded=\{ins0 \? "true" : "false"\}/);
+	assert.match(out, /data-panel-open=\{ins0 \? "" : undefined\}/);
+	assert.match(out, /<\/button>@if \(ins0\) \{ <><div data-slot="collapsible-content">x<\/div><\/> \}<p>after<\/p>/);
+});

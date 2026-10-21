@@ -10,7 +10,7 @@ import { parseFragment } from 'parse5';
 import { cleanDocument, frameworkBuilds, type Dropped } from './clean.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, walk, type Document, type Element } from './dom.ts';
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
-import { BaseTabsPlan, CheckablePlan, DisclosurePlan, SelectPlan, TabsPlan } from './stateful.ts';
+import { BaseTabsPlan, CheckablePlan, DisclosurePlan, InsertedDisclosurePlan, SelectPlan, TabsPlan } from './stateful.ts';
 import { captureAllToggles, type ToggleGroup } from './toggles.ts';
 import { bindMount, bindParts, bodyHandlers, handledBy, portFor, onRoute, UNPORTED, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
@@ -222,6 +222,8 @@ let currentClipboard: Record<string, string> = {};
 const replaced = new Map<Element, { key: string; trigger: Element; markup: string }>();
 const replacedParts = new Map<Element, Binding>();
 const unplaced: string[] = [];
+// Content disclosures mounted inside the page on opening, by trigger: rendered by Markless in an arm where they went.
+const inserted: { trigger: Element; parent: Element; before: Element | null; markup: string }[] = [];
 
 /**
  * Radix Select mounts the indicator only in the checked option: every other option of a captured listbox gets a hidden
@@ -331,7 +333,16 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 					const markup = after.map((top) => emitElement(top, { dropped, bind: (x) => (x === top ? mergeBindings(bindParts(x, templatePorts), { extra: ['hidden', `data-mm-after=${JSON.stringify(reveal.key)}`] }) : bindParts(x, templatePorts)) })).join('');
 					replaced.set(container, { key: reveal.key, trigger, markup });
 				}
-			} else if (childrenOf(parseFragment(added.html) as unknown as Element).some((n) => isElement(n) && !n.attrs.some((a) => FOCUS_GUARD.test(a.name)))) unplaced.push(`${reveal.key}: content shown inside the page by a control no Markless state drives yet`);
+			} else {
+				const kept = childrenOf(parseFragment(added.html) as unknown as Element).filter((n): n is Element => isElement(n) && !n.attrs.some((a) => FOCUS_GUARD.test(a.name)));
+				if (!kept.length) continue;
+				const parent = elementAt(root, added.into);
+				// A disclosure that mounts its content where it opens (Base UI Collapsible and Accordion, a Radix
+				// Collapsible whose content leaves while closed): a layer's trigger (aria-haspopup) is a portal's.
+				const inPlace = trigger && parent && attr(trigger, 'aria-expanded') === 'false' && attr(trigger, 'aria-haspopup') === undefined && !reveal.added.some((a) => a.into === 'body');
+				if (inPlace) inserted.push({ trigger: trigger!, parent: parent!, before: added.before >= 0 ? (elementChildren(parent!)[added.before] ?? null) : null, markup: kept.map((e) => emitElement(e, { dropped, bind: (x) => bindParts(x, templatePorts) })).join('') });
+				else unplaced.push(`${reveal.key}: content shown inside the page by a control no Markless state drives yet`);
+			}
 		}
 	}
 	return appends;
@@ -507,6 +518,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	let disclosureGroups = 0;
 	for (const p of prepared.values()) disclosureGroups += disclosures.add(p.root, isRadixDisclosure, (panel) => panelContent.get(panel));
 	if (disclosureGroups) log(`accordions and collapsibles on Markless state: ${disclosureGroups}`);
+	const insertedDisclosures = new InsertedDisclosurePlan();
+	const insertedGroups = insertedDisclosures.add(inserted);
+	if (insertedGroups) log(`disclosures that mount their content in place, on Markless state: ${insertedGroups}`);
 	const checkables = new CheckablePlan();
 	let checkableGroups = 0;
 	const emitHtml = (html: string) => emitChildren(parseFragment(html) as unknown as Element, { dropped: (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1) });
@@ -515,7 +529,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		log(`checkboxes, switches, toggles and radio groups on Markless state: ${checkableGroups}`);
 		templatePorts.add('toggle');
 	}
-	handledBy((el) => checkables.bind(el) !== undefined || baseTabs.bind(el) !== undefined);
+	handledBy((el) => checkables.bind(el) !== undefined || baseTabs.bind(el) !== undefined || insertedDisclosures.bind(el) !== undefined);
 	const selects = new SelectPlan();
 	for (const p of prepared.values()) selects.add(p.root, (el) => portFor(el) === 'base-ui/select' || portFor(el) === 'radix/select');
 	for (const [container, r] of replaced) {
@@ -526,7 +540,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const withAppend = (el: Element, binding: Binding | undefined): Binding | undefined => {
 		const markup = appended.get(el);
 		binding = mergeBindings(replacedParts.get(el), binding);
-		const own = mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), baseTabs.bind(el)), disclosures.bind(el)), selects.bind(el)), checkables.bind(el)), binding), bindMount(el));
+		const own = mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), baseTabs.bind(el)), disclosures.bind(el)), insertedDisclosures.bind(el)), selects.bind(el)), checkables.bind(el)), binding), bindMount(el));
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};
 	void appendOf;

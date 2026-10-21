@@ -29,6 +29,8 @@ export interface Binding {
 	readonly wrap?: (children: string) => string;
 	/** Copied attributes left out, because `extra` binds them. */
 	readonly omit?: readonly string[];
+	/** Markup placed among the element's children, before the child given (at the end for null or a child that is gone). */
+	readonly inserts?: readonly { readonly before: Node | null; readonly markup: string }[];
 }
 
 export interface EmitOptions {
@@ -73,6 +75,12 @@ function children(parent: ParentNode, pre: boolean, options: EmitOptions): strin
 		.join('');
 }
 
+function childrenWith(parent: ParentNode, pre: boolean, options: EmitOptions, inserts: NonNullable<Binding['inserts']>): string {
+	const kids = childrenOf(parent);
+	const at = (child: Node | null) => inserts.filter((i) => i.before === child).map((i) => i.markup).join('');
+	return kids.map((n) => at(n) + node(n, pre, options)).join('') + inserts.filter((i) => i.before === null || !kids.includes(i.before as Node)).map((i) => i.markup).join('');
+}
+
 export function node(n: Node, pre: boolean, options: EmitOptions): string {
 	if (n.nodeName === '#text') {
 		const t = (n as Text).value;
@@ -94,7 +102,7 @@ export function node(n: Node, pre: boolean, options: EmitOptions): string {
 	}
 	if (VOID.has(name)) return `<${name}${attributes(el, binding, options)} />`;
 	const inPre = pre || name === 'pre' || name === 'textarea';
-	const inner = binding?.children ?? children(el, inPre, options);
+	const inner = binding?.children ?? (binding?.inserts?.length ? childrenWith(el, inPre, options, binding.inserts) : children(el, inPre, options));
 	return `<${name}${attributes(el, binding, options)}>${binding?.wrap ? binding.wrap(inner) : inner}${binding?.append ?? ''}</${name}>`;
 }
 
@@ -119,6 +127,7 @@ export function mergeBindings(a: Binding | undefined, b: Binding | undefined): B
 		...(a.declare || b.declare ? { declare: [...(a.declare ?? []), ...(b.declare ?? [])] } : {}),
 		...(a.wrap || b.wrap ? { wrap: b.wrap ?? a.wrap } : {}),
 		...(a.omit || b.omit ? { omit: [...(a.omit ?? []), ...(b.omit ?? [])] } : {}),
+		...(a.inserts || b.inserts ? { inserts: [...(a.inserts ?? []), ...(b.inserts ?? [])] } : {}),
 	};
 }
 

@@ -306,3 +306,65 @@ export class BaseTabsPlan {
 		return groups;
 	}
 }
+
+/**
+ * Disclosures that mount their content where it opens (Base UI Collapsible and Accordion, a Radix Collapsible whose
+ * content leaves while closed) on Markless state: one state() per trigger, or per accordion where one item opens at a
+ * time, the trigger binding aria-expanded (and data-state, Base UI's data-panel-open) and the content the old page
+ * mounted on opening rendered in an @if arm at the place it went.
+ */
+export class InsertedDisclosurePlan {
+	private readonly bindings = new Map<Element, Binding>();
+	private n = 0;
+
+	bind(el: Element): Binding | undefined {
+		return this.bindings.get(el);
+	}
+
+	add(items: readonly { readonly trigger: Element; readonly parent: Element; readonly before: Element | null; readonly markup: string }[]): number {
+		const byTrigger = new Map<Element, (typeof items)[number][]>();
+		for (const i of items) (byTrigger.get(i.trigger) ?? byTrigger.set(i.trigger, []).get(i.trigger)!).push(i);
+		const accordionOf = (el: Element) => {
+			for (let n = el.parentNode as Element | null; n && 'tagName' in n; n = n.parentNode as Element | null) if (attr(n, 'data-slot') === 'accordion') return n;
+			return undefined;
+		};
+		const groups = new Map<Element, Element[]>();
+		for (const trigger of byTrigger.keys()) {
+			if (this.bindings.has(trigger)) continue;
+			const key = accordionOf(trigger) ?? trigger;
+			(groups.get(key) ?? groups.set(key, []).get(key)!).push(trigger);
+		}
+		const inserts = new Map<Element, { before: Element | null; markup: string; declare: string[] }[]>();
+		for (const triggers of groups.values()) {
+			const name = `ins${this.n++}`;
+			const single = triggers.length > 1;
+			const declare = [`let ${name} = state(${single ? -1 : 'false'});`];
+			triggers.forEach((trigger, k) => {
+				const open = single ? `${name} === ${k}` : name;
+				const toggle = single ? `${name} = ${name} === ${k} ? -1 : ${k}` : `${name} = !${name}`;
+				const base = /^base-ui-/.test(attr(trigger, 'id') ?? '') || trigger.attrs.some((a) => a.name.startsWith('data-base-ui'));
+				const extra = [`aria-expanded={${open} ? "true" : "false"}`, `onClick={() => { ${toggle}; }}`];
+				const omit = ['aria-expanded'];
+				if (attr(trigger, 'data-state') !== undefined) {
+					extra.push(`data-state={${open} ? "open" : "closed"}`);
+					omit.push('data-state');
+				}
+				if (base) {
+					extra.push(`data-panel-open={${open} ? "" : undefined}`);
+					omit.push('data-panel-open');
+				}
+				this.bindings.set(trigger, { declare, omit, extra });
+				for (const i of byTrigger.get(trigger)!) {
+					const list = inserts.get(i.parent) ?? inserts.set(i.parent, []).get(i.parent)!;
+					const markup = /@(if|switch|for) \(|<[A-Z]\w*[\s/>]/.test(i.markup) ? '' : `@if (${open}) { <>${i.markup}</> }`;
+					if (markup && !list.some((l) => l.before === i.before && l.markup === markup)) list.push({ before: i.before, markup, declare });
+				}
+			});
+		}
+		for (const [parent, list] of inserts) {
+			const own = this.bindings.get(parent);
+			this.bindings.set(parent, { ...own, declare: [...new Set([...(own?.declare ?? []), ...list.flatMap((l) => l.declare)])], inserts: list.map(({ before, markup }) => ({ before, markup })) });
+		}
+		return groups.size;
+	}
+}
