@@ -20,15 +20,18 @@ function toggleTheme(): void {
 
 const isEditable = (t: EventTarget | null) => (t instanceof HTMLElement && t.isContentEditable) || t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement;
 
-// @tabler/icons-react's IconCopy turned into IconCheck by its attributes (the svg is Markless's: no node is swapped).
-const CHECK = { class: 'tabler-icon tabler-icon-check ', d: 'M5 12l5 5l10 -10' };
+// @tabler/icons-react's IconCopy (lucide-react's Terminal) turned into IconCheck (lucide's Check) by its attributes (the
+// svg is Markless's: no node is swapped).
+const TABLER_CHECK = { class: 'tabler-icon tabler-icon-check ', d: 'M5 12l5 5l10 -10' };
+const LUCIDE_CHECK = { class: 'lucide lucide-check', d: 'M20 6 9 17l-5-5' };
 const copied = new WeakMap<Element, { timer: number; saved: { cls: string | null; d: (string | null)[] } }>();
 
 function setIcon(svg: SVGElement, saved: { cls: string | null; d: (string | null)[] }, check: boolean): void {
 	const paths = [...svg.querySelectorAll('path')];
 	if (check) {
-		svg.setAttribute('class', CHECK.class);
-		paths.forEach((p, i) => (i === 0 ? p.setAttribute('d', CHECK.d) : p.setAttribute('display', 'none')));
+		const icon = (saved.cls ?? '').includes('lucide') ? LUCIDE_CHECK : TABLER_CHECK;
+		svg.setAttribute('class', icon.class);
+		paths.forEach((p, i) => (i === 0 ? p.setAttribute('d', icon.d) : p.setAttribute('display', 'none')));
 	} else {
 		if (saved.cls === null) svg.removeAttribute('class');
 		else svg.setAttribute('class', saved.cls);
