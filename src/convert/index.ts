@@ -18,11 +18,12 @@ import { stat } from 'node:fs/promises';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
 import { nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
-import { documentModule, extrasModule, HEAD_HELPER, splitBody } from './document.ts';
+import { documentModule, extrasModule, HEAD_HELPER, layerTable, splitBody } from './document.ts';
 import { emitChildren, emitElement, lit, mergeBindings, type Binding } from './tsrx.ts';
 
 // Markless wires no handler written in document.tsrx, so each page's root carries the delegating handlers.
 const ROOT_HANDLERS = '__MM_ROOT_HANDLERS__';
+const PAGE_SHOWN = 'PAGE_SHOWN';
 
 /** Imports the parts runtime's functions a generated module calls, after its first line. */
 function withPartImports(source: string, dir: string): string {
@@ -549,15 +550,16 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const folders = folderSet(pathnames);
 	const written = new Map<string, string>();
 	const out: ConvertedRoute[] = [];
-	const byFile = new Map<string, { route: string; search: string; markup: string; parts: PartUse[]; declarations: string[] }[]>();
+	const byFile = new Map<string, { route: string; search: string; markup: string; parts: PartUse[]; declarations: string[]; layers: readonly string[] }[]>();
 	const noteDropped = (what: string) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1);
+	const layers = layerTable(new Map([...prepared].map(([route, p]) => [route, p.layers])));
 	for (const [route, p] of prepared) {
 		const url = new URL(route, options.old);
 		const file = pageFile(url.pathname, folders);
 		const parts: PartUse[] = [];
 		const declarations: string[] = [];
 		onRoute(route);
-		const markup = emitElement(p.root, {
+		const rootMarkup = emitElement(p.root, {
 			declarations,
 			bind: (el): Binding | undefined => {
 				const own = factored.binding(route, el) ?? withAppend(el, bindParts(el, usedPorts));
@@ -565,8 +567,13 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			},
 			dropped: noteDropped,
 		});
+		// The layers only this page portals are the page's, beside its root at the end of the body, so its server code
+		// carries only its own. Markless renders a fragment root of components only inside branches: both are arms of
+		// a branch on a module constant, which never changes.
+		const pageLayers = layers.own(route);
+		const markup = pageLayers.length ? `<>@if (${PAGE_SHOWN}) { ${rootMarkup} }@if (${PAGE_SHOWN}) { <>${pageLayers.map((n) => `<${n} />`).join('')}</> }</>` : rootMarkup;
 		const list = byFile.get(file) ?? [];
-		list.push({ route, search: url.search, markup, parts, declarations });
+		list.push({ route, search: url.search, markup, parts, declarations, layers: pageLayers });
 		byFile.set(file, list);
 	}
 	const partsDir = (from: string) => relative(dirname(join(app, from)), join(app, 'lib', 'parts')).replace(/^(?!\.)/, './');
@@ -574,6 +581,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const imports = new Set<string>(["import type { PageProps } from '@markless/router';"]);
 		for (const v of variants) for (const component of factored.used(v.route)) imports.add(`import ${component.name} from '${relative(dirname(join(app, file)), join(app, component.file)).replace(/^(?!\.)/, './')}';`);
 		for (const v of variants) for (const part of v.parts) imports.add(part.import(partsDir(file)));
+		for (const v of variants) for (const name of v.layers) imports.add(`import ${name} from '${relative(dirname(join(app, file)), join(app, 'components', 'converted', 'layers', `${name.replace(/^Layer/, 'layer-')}.tsrx`)).replace(/^(?!\.)/, './')}';`);
 		const base = variants.find((v) => v.search === '') ?? variants[0]!;
 		const others = variants.filter((v) => v !== base);
 		const pathExpr = lit(pathOf(base.route));
@@ -583,6 +591,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			const arms = others.map((v) => `\t\t@case ${lit(v.search)}: {\n\t\t\t${v.markup}\n\t\t}`).join('\n');
 			markup = `\t@switch (search) {\n${arms}\n\t\t@default: {\n\t\t\t${base.markup}\n\t\t}\n\t}\n`;
 		}
+		if (markup.includes(`(${PAGE_SHOWN})`)) imports.add(`const ${PAGE_SHOWN} = true;`);
 		const usesPath = markup.includes('path={path}') || markup.includes('path ===');
 		const declared = [...new Set(variants.flatMap((v) => v.declarations))];
 		if (declared.length) imports.add("import { state } from '@markless/core';");
@@ -610,11 +619,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	await writeFile(join(app, 'head.ts'), HEAD_HELPER);
 	await writeParts(app, usedPorts, choices);
 	await mkdir(join(app, 'components', 'converted'), { recursive: true });
-	const extras = extrasModule(bodyParts, (route) => pathOf(route), noteDropped, new Map([...prepared].map(([route, p]) => [route, p.layers])));
 	await mkdir(join(app, 'components', 'converted', 'layers'), { recursive: true });
-	for (const layer of extras.layers) await writeFile(join(app, 'components', 'converted', layer.file), layer.source);
-	await writeFile(join(app, 'components', 'converted', 'body-extras.tsrx'), extras.source);
-	log(`layers: ${extras.layers.length} distinct, each compiled once`);
+	for (const layer of layers.files) await writeFile(join(app, 'components', 'converted', layer.file), layer.source);
+	await writeFile(join(app, 'components', 'converted', 'body-extras.tsrx'), extrasModule(bodyParts, noteDropped, layers));
+	log(`layers: ${layers.files.length} distinct, each compiled once; ${layers.everywhere.length} on every page`);
 	const clipboard = Object.fromEntries([...prepared].filter(([, p]) => Object.keys(p.clipboard).length).map(([route, p]) => [pathOf(route), p.clipboard]));
 	await mkdir(join(app, 'lib', 'parts'), { recursive: true });
 	// One module per page, loaded on use: the copied text of every page is megabytes no page needs at once.
