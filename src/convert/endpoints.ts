@@ -709,8 +709,8 @@ async function answer(request: Request, pathname: string, search: string): Promi
 export default defineHandler(async (event) => {
 	const request = event.req as Request;
 	const url = new URL(request.url);
-	if (TRAILING === 'strip' && url.pathname.length > 1 && url.pathname.endsWith('/')) return new Response(null, { status: 308, headers: { location: url.pathname.replace(/\/+$/, '') + url.search } });
-	if (TRAILING === 'add' && !url.pathname.endsWith('/') && !/\.[\w]+$/.test(url.pathname) && !OWN.test(url.pathname)) return new Response(null, { status: 308, headers: { location: \`\${url.pathname}/\${url.search}\` } });
+	if (TRAILING === 'strip' && url.pathname.length > 1 && url.pathname.endsWith('/')) return new Response(null, { status: 308, headers: { location: url.pathname.replace(/\\/+$/, '') + url.search } });
+	if (TRAILING === 'add' && !url.pathname.endsWith('/') && !/\\.[\\w]+$/.test(url.pathname) && !OWN.test(url.pathname)) return new Response(null, { status: 308, headers: { location: \`\${url.pathname}/\${url.search}\` } });
 	for (const r of REDIRECTS) {
 		const m = matcher(r.from)(url.pathname);
 		if (m) return new Response(null, { status: r.permanent ? 308 : 307, headers: { location: destination(r.to, m.params, url.search) } });

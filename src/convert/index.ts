@@ -18,7 +18,7 @@ import { stat } from 'node:fs/promises';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
 import { nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
-import { documentModule, extrasModule, HEAD_HELPER, layerTable, splitBody } from './document.ts';
+import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, layerTable, splitBody } from './document.ts';
 import { appUrlDeclaration, emitChildren, emitElement, lit, mergeBindings, useOrigin, type Binding } from './tsrx.ts';
 
 // Markless wires no handler written in document.tsrx, so each page's root carries the delegating handlers.
@@ -661,6 +661,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const byFile = new Map<string, { route: string; search: string; markup: string; parts: PartUse[]; declarations: string[]; layers: readonly string[] }[]>();
 	const noteDropped = (what: string) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1);
 	const layers = layerTable(new Map([...prepared].map(([route, p]) => [route, p.layers])));
+	const bodyAfter = bodyAfterModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped);
 	for (const [route, p] of prepared) {
 		const url = new URL(route, options.old);
 		const file = pageFile(url.pathname, folders);
@@ -679,7 +680,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		// carries only its own. Markless renders a fragment root of components only inside branches: both are arms of
 		// a branch on a module constant, which never changes.
 		const pageLayers = layers.own(route);
-		const markup = pageLayers.length ? `<>@if (${PAGE_SHOWN}) { ${rootMarkup} }@if (${PAGE_SHOWN}) { <>${pageLayers.map((n) => `<${n} />`).join('')}</> }</>` : rootMarkup;
+		const tail = `${bodyAfter ? `<BodyAfter route={${lit(route)}} />` : ''}${pageLayers.map((n) => `<${n} />`).join('')}`;
+		const markup = tail ? `<>@if (${PAGE_SHOWN}) { ${rootMarkup} }@if (${PAGE_SHOWN}) { <>${tail}</> }</>` : rootMarkup;
 		const list = byFile.get(file) ?? [];
 		list.push({ route, search: url.search, markup, parts, declarations, layers: pageLayers });
 		byFile.set(file, list);
@@ -689,6 +691,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const imports = new Set<string>(["import type { PageProps } from '@markless/router';"]);
 		for (const v of variants) for (const component of factored.used(v.route)) imports.add(`import ${component.name} from '${relative(dirname(join(app, file)), join(app, component.file)).replace(/^(?!\.)/, './')}';`);
 		for (const v of variants) for (const part of v.parts) imports.add(part.import(partsDir(file)));
+		if (bodyAfter) imports.add(`import BodyAfter from '${relative(dirname(join(app, file)), join(app, 'components', 'converted', 'body-after.tsrx')).replace(/^(?!\.)/, './')}';`);
 		for (const v of variants) for (const name of v.layers) imports.add(`import ${name} from '${relative(dirname(join(app, file)), join(app, 'components', 'converted', 'layers', `${name.replace(/^Layer/, 'layer-')}.tsrx`)).replace(/^(?!\.)/, './')}';`);
 		const base = variants.find((v) => v.search === '') ?? variants[0]!;
 		const others = variants.filter((v) => v !== base);
@@ -731,6 +734,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	await mkdir(join(app, 'components', 'converted', 'layers'), { recursive: true });
 	for (const layer of layers.files) await writeFile(join(app, 'components', 'converted', layer.file), appUrlDeclaration(layer.source));
 	await writeFile(join(app, 'components', 'converted', 'body-extras.tsrx'), appUrlDeclaration(extrasModule(bodyParts, noteDropped, layers)));
+	if (bodyAfter) await writeFile(join(app, 'components', 'converted', 'body-after.tsrx'), appUrlDeclaration(bodyAfter));
 	log(`layers: ${layers.files.length} distinct, each compiled once; ${layers.everywhere.length} on every page`);
 	const clipboard = Object.fromEntries([...prepared].filter(([, p]) => Object.keys(p.clipboard).length).map(([route, p]) => [pathOf(route), p.clipboard]));
 	await mkdir(join(app, 'lib', 'parts'), { recursive: true });
