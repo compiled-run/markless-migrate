@@ -12,7 +12,7 @@ import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, 
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
 import { BaseTabsPlan, CheckablePlan, DisclosurePlan, InsertedDisclosurePlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
 import { captureAllForms, captureAllSwitches, captureAllToggles, type FormCapture, type Switch, type ToggleGroup } from './toggles.ts';
-import { bindMount, bindParts, bodyHandlers, candidatesOf, handledBy, portFor, onRoute, UNPORTED, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
+import { bindMount, bindParts, bodyHandlers, candidatesOf, handledBy, portAttributes, portFor, onRoute, UNPORTED, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { stat } from 'node:fs/promises';
 import { match } from 'path-to-regexp';
@@ -575,6 +575,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		binding = mergeBindings(replacedParts.get(el), binding);
 		const keyed = triggerKeys.get(el);
 		binding = mergeBindings(binding, keyed ? { extra: [`data-mm-key=${JSON.stringify(keyed)}`] } : undefined);
+		binding = mergeBindings(binding, portAttributes(el));
 		const own = mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), baseTabs.bind(el)), disclosures.bind(el)), insertedDisclosures.bind(el)), selects.bind(el)), checkables.bind(el)), switchPlan.bind(el)), handledForms.has(el) ? formBinding : undefined), binding), bindMount(el));
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};

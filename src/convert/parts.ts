@@ -64,6 +64,7 @@ export const PORTS: readonly Port[] = [
 	{ module: 'slider', library: 'radix-ui', exports: ['Slider.Root', 'Slider.Track', 'Slider.Range', 'Slider.Thumb'], events: ['pointerdown', 'keydown'], locate: (el) => radix(el) || attr(el, 'data-slot')?.startsWith('slider') === true },
 	{ module: 'slider', library: '@base-ui/react', exports: ['Slider.Root', 'Slider.Control', 'Slider.Track', 'Slider.Indicator', 'Slider.Thumb'], events: ['pointerdown', 'keydown'], locate: (el) => base(el) || el.attrs.some((a) => a.name.startsWith('data-base-ui-slider')) },
 	{ module: 'radix/tooltip', library: 'radix-ui', needs: ['layer', 'popper', 'presence', 'aria-hidden'], exports: ['Tooltip.Root', 'Tooltip.Trigger', 'Tooltip.Content', 'Tooltip.Portal', 'Tooltip.Provider', 'Tooltip.Arrow'], events: ['pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout'], locate: (el) => radix(el) || attr(el, 'data-slot') === 'tooltip-trigger' },
+	{ module: 'resizable', library: 'react-resizable-panels', exports: ['Group', 'Panel', 'Separator', 'PanelGroup', 'PanelResizeHandle'], events: ['keydown', 'pointerdown', 'pointerover', 'pointerout'], locate: (el) => el.attrs.some((a) => a.name === 'data-group' || a.name === 'data-panel' || a.name === 'data-separator') },
 	{ module: 'base-ui/dialog', library: '@base-ui/react', exports: ['Dialog.Root', 'Dialog.Trigger', 'Dialog.Popup', 'Dialog.Portal', 'Dialog.Backdrop', 'Dialog.Close', 'AlertDialog.Root', 'AlertDialog.Trigger', 'AlertDialog.Popup', 'AlertDialog.Close', 'Drawer.Root', 'Drawer.Trigger', 'Drawer.Popup', 'Drawer.Close'], events: ['click'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition', 'aria-hidden'] },
 	{ module: 'base-ui/select', library: '@base-ui/react', exports: ['Select.Root', 'Select.Trigger', 'Select.Value', 'Select.Popup', 'Select.Item'], events: ['pointerdown', 'click', 'pointerover', 'keydown'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
 	// Radix Collapsible and Accordion are Markless state (convert's DisclosurePlan); the part measures and ends exits.
@@ -111,6 +112,22 @@ export function useMounts(next: readonly string[]): void {
 export function bindMount(el: Element): Binding | undefined {
 	const hit = mounts.find((name) => el.attrs.some((a) => a.name === name));
 	return hit ? { extra: [`onVisible={() => mount(${JSON.stringify(hit)})}`] } : undefined;
+}
+
+// Props a port reads from the element, as the source passes them where it renders that export: written as data-mm-*.
+const PORT_PROPS: readonly { readonly library: string; readonly export: string; readonly props: readonly string[] }[] = [{ library: 'react-resizable-panels', export: 'Panel', props: ['minSize', 'maxSize'] }];
+
+/** The props a port needs on an element, from the source's literal or parameter default. */
+export function portAttributes(el: Element): Binding | undefined {
+	const extra: string[] = [];
+	for (const c of candidatesOf(el)) {
+		const known = PORT_PROPS.find((p) => p.library === c.library && p.export === c.export);
+		for (const prop of known?.props ?? []) {
+			const value = resolver?.prop(c.library, c.export, prop);
+			if (value !== undefined && /^-?\d+(\.\d+)?%?$/.test(value)) extra.push(`data-mm-${prop.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}=${JSON.stringify(value.replace(/%$/, ''))}`);
+		}
+	}
+	return extra.length ? { extra } : undefined;
 }
 
 /** The source's candidates for an element, narrowed to the library whose markup it carries. */
