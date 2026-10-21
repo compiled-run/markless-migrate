@@ -616,6 +616,29 @@ target, a session cookie without HttpOnly and with SameSite=Strict), each red on
 affects, and against a copy behind a Cloudflare-style challenge, which must stop as blocked until the
 staging pass is sent as a header or cookie.
 
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push to `main` and on every pull request:
+
+- `Typecheck`: `pnpm typecheck`.
+- `Unit tests (1/3)` to `(3/3)`: `test/*.test.ts` split in three with `node --test --test-shard`, since
+  the unit tests drive Chromium.
+- `E2E <suite>`: one job per file in `test/e2e/`, each building its own fixtures.
+- `CI passed`: green only when every job above passed. This is the one check to require.
+
+Every suite runs against servers the tests start on `127.0.0.1`; no test needs a live external site, so
+nothing is skipped in CI.
+
+### Branch protection
+
+The workflow does not change repository settings. To make a red `main` impossible, enable under
+Settings, Branches, a branch protection rule (or a ruleset) for `main` with:
+
+- Require a pull request before merging.
+- Require status checks to pass before merging, with `CI passed` as the required check.
+- Require branches to be up to date before merging.
+- Do not allow bypassing the above settings.
+
 ## License
 
 MIT. The fixtures include the Inter font under the SIL Open Font License (`fixtures/INTER-LICENSE.txt`).
