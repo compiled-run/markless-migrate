@@ -119,6 +119,22 @@ export function monthGrid({ year, month, selected, focused, lastFocused, nowMs }
 	return weeks;
 }
 
+// shadcn's Calendar hands react-day-picker an inline Root component, so every render of the old calendar mounts its
+// whole grid anew and no day's transition-all runs when the calendar's state changes. The port updates the grid in
+// place: a state change made from the calendar applies with its transitions held off for two frames, as a new mount does.
+const HOLD = '[data-slot=calendar],[data-slot=calendar] *{transition:none!important}';
+let holds = 0;
+let held: HTMLStyleElement | undefined;
+export function holdTransitions(): void {
+	held ??= Object.assign(document.createElement('style'), { textContent: HOLD });
+	if (holds++ === 0) document.head.append(held);
+	requestAnimationFrame(() =>
+		requestAnimationFrame(() => {
+			if (--holds === 0) held?.remove();
+		}),
+	);
+}
+
 /** react-day-picker's getNextFocus: the day a key moves focus to, skipping disabled days, within the navigation range. */
 export function nextFocus(from: string, key: string, shift: boolean, nowMs: number): string | undefined {
 	const now = new Date(nowMs);
