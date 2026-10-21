@@ -221,7 +221,7 @@ export async function upgrade(options: UpgradeOptions): Promise<UpgradeReport> {
 	}
 	for (const { measure: m, routes } of fontMeasures) {
 		const f = m.font;
-		const helps = m.significant && m.lcpSavingMs > 0;
+		const helps = m.significant && m.lcpSavingMs > 0 && !m.fcpWorse;
 		suggestions.push({
 			id: `preload-font:${f.href}`,
 			kind: 'preload LCP font',
@@ -235,7 +235,7 @@ export async function upgrade(options: UpgradeOptions): Promise<UpgradeReport> {
 			verdict: helps ? 'suggested' : 'keep',
 			font: { ...f, tag: preloadTag(f), routes, measure: describePreload(m) },
 		});
-		if (!helps) limits.push(`${f.href}: a preload did not paint ${f.element} sooner beyond noise (${describePreload(m)})`);
+		if (!helps) limits.push(`${f.href}: not suggested: ${m.fcpWorse ? 'the preload delays the first paint' : `a preload did not paint ${f.element} sooner beyond noise`} (${describePreload(m)})`);
 	}
 	const ranked = suggestions.filter((s) => s.verdict === 'suggested').sort((a, b) => (b.saving.lcpMs ?? 0) - (a.saving.lcpMs ?? 0) || b.saving.executed - a.saving.executed || b.saving.bytes - a.saving.bytes || (b.measured.latency?.ms ?? 0) - (a.measured.latency?.ms ?? 0));
 	const order = new Map(ranked.map((s, i) => [s.id, i + 1]));

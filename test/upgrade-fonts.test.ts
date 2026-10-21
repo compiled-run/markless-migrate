@@ -3,7 +3,7 @@ import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { serve, type Variant } from '../fixtures/late-font/server.ts';
 import { routeLoad, type LoadRun, type Metrics } from '../src/check/load.ts';
-import { findLateFont, preloadTag, proxy, withPreload } from '../src/upgrade/fonts.ts';
+import { fcpCost, findLateFont, preloadTag, proxy, withPreload } from '../src/upgrade/fonts.ts';
 import { acceptUpgrade, summarizeUpgrade, upgrade, writeUpgrade } from '../src/upgrade/index.ts';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -111,4 +111,22 @@ test('a preload that does not paint the text sooner beyond noise is kept as it i
 	const s = report.suggestions.find((x) => x.kind === 'preload LCP font')!;
 	assert.equal(s.verdict, 'keep');
 	assert.ok(report.limits.some((l) => /a preload did not paint h1 "The Build Tool for the Web" sooner beyond noise/.test(l)));
+});
+
+test('a preload that paints the largest text sooner but holds back the first paint beyond noise is not suggested', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'mm-upgrade-font-'));
+	const fcp = (lcp: number, f: number): LoadRun => ({ metrics: { ...metrics(lcp), fcp: f } });
+	const load = routeLoad(5, [2200, 2210, 2190, 2205, 2200].map((l) => fcp(l, 1600)), [4200, 4210, 4190, 4205, 4200].map((l) => fcp(l, 1150)));
+	assert.deepEqual(fcpCost(load), { ms: 450, p: 1 / 252 });
+	const report = await upgrade({
+		origin: await app('late'),
+		routes: ['/'],
+		newSource: dir,
+		buildDir: dir,
+		newLibraries: { version: 1, source: dir, libraries: [] } as never,
+		browser,
+		measurePreload: async (_, font) => ({ font, load, lcpSavingMs: 2000, significant: true, fcpWorse: fcpCost(load)! }),
+	});
+	assert.equal(report.suggestions.find((x) => x.kind === 'preload LCP font')!.verdict, 'keep');
+	assert.ok(report.limits.some((l) => /not suggested: the preload delays the first paint .*the preload makes FCP 450 ms later beyond noise/.test(l)), report.limits.join('\n'));
 });

@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { gunzipSync, brotliDecompressSync, gzipSync, inflateSync } from 'node:zlib';
 import type { Browser } from 'playwright';
 import { weightMatches } from '../check/fonts.ts';
-import { formatMetric, measureLoad, type LoadOptions, type RouteLoad } from '../check/load.ts';
+import { formatMetric, judgeLoad, measureLoad, type LoadOptions, type Metrics, type RouteLoad } from '../check/load.ts';
 
 /** The web font the largest text on a page paints with, when the page only finds it once its stylesheet has arrived and been parsed. */
 export interface LateFont {
@@ -178,7 +178,21 @@ export interface FontPreloadMeasure {
 	/** `old` is the page with the preload, `new` the page as it is: a red LCP verdict means the preload paints the largest text sooner, beyond noise. */
 	readonly load: RouteLoad;
 	readonly lcpSavingMs: number;
+	/** The LCP comes sooner with the preload, beyond noise. */
 	readonly significant: boolean;
+	/** The FCP comes later with the preload, beyond noise: the font is fetched at the highest priority, and Lighthouse counts it as holding back the first paint. */
+	readonly fcpWorse?: { readonly ms: number; readonly p: number };
+}
+
+const good = (runs: RouteLoad['old']['runs']) => runs.filter((r): r is Metrics => !('error' in r));
+
+/** FCP with the preload against FCP without it, judged the other way round. */
+export function fcpCost(load: RouteLoad): FontPreloadMeasure['fcpWorse'] {
+	const plain = good(load.new.runs);
+	const preloaded = good(load.old.runs);
+	if (!plain.length || !preloaded.length) return undefined;
+	const fcp = judgeLoad(plain, preloaded).find((v) => v.metric === 'fcp')!;
+	return fcp.ok ? undefined : { ms: Math.round(fcp.worse), p: fcp.p };
 }
 
 /** Lighthouse mobile on the page as it is and with the preload added, both through the same local proxy so only the preload differs. */
@@ -188,7 +202,8 @@ export async function measurePreload(origin: string, font: LateFont, options: Lo
 		const loads = await measure({ old: preloaded.origin, new: plain.origin }, [font.route], options);
 		const load = loads.get(font.route)!;
 		const lcp = load.verdicts.find((v) => v.metric === 'lcp');
-		return { font, load, lcpSavingMs: lcp ? Math.round(lcp.worse) : 0, significant: Boolean(lcp && !lcp.ok) };
+		const cost = fcpCost(load);
+		return { font, load, lcpSavingMs: lcp ? Math.round(lcp.worse) : 0, significant: Boolean(lcp && !lcp.ok), ...(cost ? { fcpWorse: cost } : {}) };
 	} finally {
 		await Promise.all([plain.close(), preloaded.close()]);
 	}
@@ -198,5 +213,8 @@ export function describePreload(m: FontPreloadMeasure): string {
 	const lcp = m.load.verdicts.find((v) => v.metric === 'lcp');
 	const fcp = m.load.verdicts.find((v) => v.metric === 'fcp');
 	if (!lcp) return `not measured: ${m.load.skipped ?? 'no Lighthouse run finished'}`;
-	return `Lighthouse mobile, median of ${m.load.runs} runs each: LCP ${formatMetric('lcp', lcp.new)} now, ${formatMetric('lcp', lcp.old)} with the preload (${m.lcpSavingMs >= 0 ? `${formatMetric('lcp', m.lcpSavingMs)} sooner` : `${formatMetric('lcp', -m.lcpSavingMs)} later`}, p = ${lcp.p.toFixed(3)})${fcp ? `; FCP ${formatMetric('fcp', fcp.new)} now, ${formatMetric('fcp', fcp.old)} with it` : ''}`;
+	const list = (side: 'old' | 'new', metric: 'lcp' | 'fcp') => good(m.load[side].runs).map((r) => formatMetric(metric, r[metric])).join(', ');
+	const runs = `; LCP runs now ${list('new', 'lcp')}, with the preload ${list('old', 'lcp')}`;
+	const cost = m.fcpWorse ? `; the preload makes FCP ${formatMetric('fcp', m.fcpWorse.ms)} later beyond noise (p = ${m.fcpWorse.p.toFixed(3)})` : '';
+	return `Lighthouse mobile, median of ${m.load.runs} runs each: LCP ${formatMetric('lcp', lcp.new)} now, ${formatMetric('lcp', lcp.old)} with the preload (${m.lcpSavingMs >= 0 ? `${formatMetric('lcp', m.lcpSavingMs)} sooner` : `${formatMetric('lcp', -m.lcpSavingMs)} later`}, p = ${lcp.p.toFixed(3)})${fcp ? `; FCP ${formatMetric('fcp', fcp.new)} now, ${formatMetric('fcp', fcp.old)} with it` : ''}${cost}${runs}`;
 }
