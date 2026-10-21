@@ -29,7 +29,8 @@ export function resourcePaths(doc: Document, origin: string): string[] {
 	const add = (value: string | undefined) => {
 		if (!value) return;
 		const url = URL.parse(value.trim(), origin);
-		if (url && url.origin === new URL(origin).origin && !url.pathname.endsWith('/')) out.add(url.pathname);
+		// A resource whose query picks the answer (Next.js's image optimizer: /_next/image?url=&w=&q=) keeps it.
+		if (url && url.origin === new URL(origin).origin && !url.pathname.endsWith('/')) out.add(url.search && url.pathname.startsWith('/_next/image') ? url.pathname + url.search : url.pathname);
 	};
 	for (const el of walk(doc)) {
 		for (const [tag, name] of URL_ATTRIBUTES) {

@@ -640,7 +640,8 @@ export async function writeRouting(input: RoutingInput): Promise<{ ports: Endpoi
 	for (const path of input.builtPaths) {
 		// A path a ported handler answers is the handler's.
 		if (built[path] || ported.some((m) => m(path))) continue;
-		const response = await fetch(new URL(path, input.old)).catch(() => undefined);
+		// Image answers are negotiated from Accept: a browser's.
+		const response = await fetch(new URL(path, input.old), { headers: { accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8' } }).catch(() => undefined);
 		if (!response?.ok) continue;
 		const name = `${n++}`;
 		await writeFile(join(assets, name), Buffer.from(await response.arrayBuffer()));
@@ -684,8 +685,9 @@ function destination(to: string, params: object, search: string): string {
 }
 
 async function answer(request: Request, pathname: string, search: string): Promise<Response | undefined> {
-	// The old build's output for a path is one answer; one that varies by query is not the old app's.
-	const built = search ? undefined : BUILT[pathname];
+	// The old build's output for a path is one answer, and for a path and query (an optimized image) another; any other
+	// query is not the old app's.
+	const built = BUILT[pathname + search] ?? (search ? undefined : BUILT[pathname]);
 	if (built) {
 		const body = await useStorage('assets:built').getItemRaw(built.file);
 		return new Response(body as BodyInit, { headers: { ...built.headers, 'content-type': built.type } });

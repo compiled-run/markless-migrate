@@ -749,13 +749,15 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	if (options.source) await copyStaticDir(join(options.source, 'public'), publicDir);
 	const paths = new Set<string>();
 	for (const p of prepared.values()) for (const path of p.resources) if (!path.startsWith('/_converted/')) paths.add(path);
-	const assets = await copyAssets(options.old, paths, publicDir, log);
+	// Resources a query picks are served by the routing middleware from the old build's answers, not as files.
+	const queried = [...paths].filter((p) => p.includes('?'));
+	const assets = await copyAssets(options.old, [...paths].filter((p) => !p.includes('?')), publicDir, log);
 	const endpoints: EndpointPort[] = [];
 	if (options.source) {
 		const scanned = await readSource(options.source);
 		const handlerRoutes = scanned.routes.filter((r) => r.kind === 'endpoint' && r.file).map((r) => ({ route: r.path, file: r.file! }));
 		const rewrites = (scanned.redirects ?? []).filter((r) => r.kind === 'rewrite' && r.to.startsWith('/'));
-		const builtPaths = new Set<string>();
+		const builtPaths = new Set<string>(queried);
 		for (const e of handlerRoutes) {
 			const pattern = nextPattern(e.file);
 			if (!pattern.includes(':')) builtPaths.add(pattern);
