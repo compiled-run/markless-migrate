@@ -7,7 +7,7 @@ import { carry, failureElements, failureRules } from './locate.ts';
 import { describe, matchElements } from './match.ts';
 import { describeRule, type CssRule, type CssState } from './stylesheet.ts';
 import type { Box, ElementSnapshot, Failure, Shot, Viewport } from './types.ts';
-import { compareScreenshots, identicalShots, visualNoise, visuallyDifferent } from './visual.ts';
+import { compareWithNoise, identicalShots, visuallyDifferent } from './visual.ts';
 import { loadPage } from './infrastructure.ts';
 import { holdLoops, settleMotion } from './loops.ts';
 import { maskedShot } from './embeds.ts';
@@ -361,7 +361,7 @@ export async function compareStates(input: StateInput): Promise<StateOutput> {
 				const [shot1, shot2, shotN] = await Promise.all([screenshot(o1.page, clip), screenshot(o2.page, clip), screenshot(n.page, clip)]);
 				const shift = (b: Box): Box => (clip ? { ...b, x: b.x - Math.max(0, clip.x - CLIP_PADDING), y: b.y - Math.max(0, clip.y - CLIP_PADDING) } : b);
 				const noisyBoxes = s1.flatMap((el, i) => (textNoise.has(i) || s2[p12.get(i) ?? -1]?.text !== el.text ? [shift(blockAround(s1, el))] : []));
-				const diff = identicalShots(shot1, shotN) ?? compareScreenshots(shot1, shotN, visualNoise(shot1, [shot2], noisyBoxes));
+				const diff = identicalShots(shot1, shotN) ?? compareWithNoise(shot1, shotN, [shot2], noisyBoxes);
 				const different = visuallyDifferent(diff);
 				if (different) {
 					out.failures.push({
