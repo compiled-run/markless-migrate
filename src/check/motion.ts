@@ -141,7 +141,7 @@ interface PageSample {
 type MotionWindow = Window & { __mmMotionRecorder?: { records(): PageRecord[]; hits(selectors: string[]): number[]; span(): number; ends(): { end: number; what: string; id?: number }[]; sample(): PageSample[]; clip(): Box | null; seek(t: number): void; release(): void; busy(): boolean; stop(): void } };
 
 // Runs in the page: records every transition and animation that starts from now on, and holds finite ones at their start when `pause` is set so frames can be taken at fixed offsets.
-function armMotion(pause: boolean): void {
+export function armMotion(pause: boolean): void {
 	// A property a script writes on six frames or more is animated by it; fewer is set-up (a height set before a transition, then cleared). The caret blink a screenshot hides is not motion.
 	const SCRIPT_FRAMES = 6;
 	const w = window as unknown as MotionWindow;
@@ -238,6 +238,8 @@ function armMotion(pause: boolean): void {
 	w.__mmMotionRecorder = {
 		records() {
 			const out: PageRecord[] = [];
+			// Transitions of one property on one element are one motion: a colour inherited from an ancestor's transition starts the child's again each time it ends or is retargeted, as many times as frames happened to allow.
+			const chained = new Map<Element, Map<string, number>>();
 			for (const a of found) {
 				const effect = a.effect as KeyframeEffect | null;
 				if (!effect) continue;
@@ -256,6 +258,17 @@ function armMotion(pause: boolean): void {
 				const easing = effect.getTiming().easing ?? 'linear';
 				const rule = rules.get(a);
 				const shortened = rule !== undefined && rule.duration > duration + 1;
+				if (transition && effect.target) {
+					const k = `${effect.pseudoElement ?? ''}|${(a as CSSTransition).transitionProperty}`;
+					const byKey = chained.get(effect.target) ?? new Map<string, number>();
+					chained.set(effect.target, byKey);
+					const at = byKey.get(k);
+					if (at !== undefined) {
+						if (last !== undefined && last !== null) out[at] = { ...out[at]!, to: String(last) };
+						continue;
+					}
+					byKey.set(k, out.length);
+				}
 				out.push({
 					kind: transition ? 'transition' : css ? 'animation' : 'web animation',
 					name: transition ? (a as CSSTransition).transitionProperty : css ? (a as CSSAnimation).animationName : a.id,

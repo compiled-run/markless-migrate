@@ -380,6 +380,24 @@ test('motion that differs once on the new page and not when it is recorded again
 	assert.ok(red.failures.some((f) => /click button "Go"/.test(f.check) && /opacity/.test(f.actual)), JSON.stringify(red.failures));
 });
 
+test('a child\'s transition that an ancestor\'s transition starts again and again is one motion, however many times frames let it start (docusaurus.io: the search button\'s ⌘ and K keys when the theme changes)', async () => {
+	const { armMotion } = await import('../src/check/motion.ts');
+	const site = await serve(() => ({ body: html('<button id="go">Theme</button><div id="bar"><kbd>K</kbd></div>', '<style>#bar { color: rgb(0, 0, 0); transition: color 400ms linear; } #bar.dark { color: rgb(255, 255, 255); } kbd { transition: color 100ms ease; }</style><script>addEventListener(\'DOMContentLoaded\', () => (document.getElementById(\'go\').onclick = () => document.getElementById(\'bar\').classList.add(\'dark\')));</script>') }));
+	const page = await browser.newPage({ reducedMotion: 'no-preference' });
+	try {
+		await page.goto(site);
+		await page.evaluate(armMotion, false);
+		await page.click('#go');
+		await page.waitForTimeout(700);
+		const restarts = await page.evaluate(() => document.querySelector('kbd')!.getAnimations().length);
+		const records = await page.evaluate(() => (window as unknown as { __mmMotionRecorder: { records(): { tag: string; name: string }[] } }).__mmMotionRecorder.records());
+		assert.equal(restarts, 0, 'the restarted transitions have all ended');
+		assert.deepEqual(records.map((r) => `${r.tag} ${r.name}`).sort(), ['div color', 'kbd color']);
+	} finally {
+		await page.close();
+	}
+});
+
 test('what a poll\'s own follow-up timer changed is undone with the poll when it is held, so a page captured at another phase of it looks the same', async () => {
 	const { openPage } = await import('../src/check/browser.ts');
 	const { holdLoops } = await import('../src/check/loops.ts');
