@@ -3,6 +3,7 @@ import { defaultEnv, openPage, type SideEnv } from './browser.ts';
 import { settle } from './capture.ts';
 import { readPage } from './collect.ts';
 import { HINTS } from './hints.ts';
+import { isClock } from './clock.ts';
 import { carry, failureElements, failureRules } from './locate.ts';
 import { describe, matchElements } from './match.ts';
 import { describeRule, type CssRule, type CssState } from './stylesheet.ts';
@@ -361,6 +362,8 @@ export async function compareStates(input: StateInput): Promise<StateOutput> {
 				const [shot1, shot2, shotN] = await Promise.all([screenshot(o1.page, clip), screenshot(o2.page, clip), screenshot(n.page, clip)]);
 				const shift = (b: Box): Box => (clip ? { ...b, x: b.x - Math.max(0, clip.x - CLIP_PADDING), y: b.y - Math.max(0, clip.y - CLIP_PADDING) } : b);
 				const noisyBoxes = s1.flatMap((el, i) => (textNoise.has(i) || s2[p12.get(i) ?? -1]?.text !== el.text ? [shift(blockAround(s1, el))] : []));
+				// Where both pages show a clock at another reading: its glyphs differ, the clock does not.
+				for (const [i, j] of p1n) if (isClock(s1[i]!.text) && isClock(sn[j]!.text) && s1[i]!.text !== sn[j]!.text) noisyBoxes.push(shift(blockAround(s1, s1[i]!)), shift(blockAround(sn, sn[j]!)));
 				const diff = identicalShots(shot1, shotN) ?? compareWithNoise(shot1, shotN, [shot2], noisyBoxes);
 				const different = visuallyDifferent(diff);
 				if (different) {

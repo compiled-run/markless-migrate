@@ -7,7 +7,7 @@ import { clockLine, isClock } from '../src/check/clock.ts';
 import { runCheck } from '../src/check/run.ts';
 import { VIEWPORTS } from '../src/check/types.ts';
 
-const page = (reading: string, tagline = 'Starts soon') => `<!doctype html><html lang="en"><title>Live</title><main><h1>Live</h1><p>${tagline}</p><h2>${reading}</h2></main>`;
+const page = (reading: string, tagline = 'Starts soon') => `<!doctype html><html lang="en"><title>Live</title><style>@media (min-width: 640px) { h1 { color: #646cff } }</style><main><h1>Live</h1><p>${tagline}</p><h2>${reading}</h2></main>`;
 
 let browser: Browser;
 const servers: Server[] = [];
@@ -35,9 +35,10 @@ test('a clock reads as a clock: d:hh:mm:ss and hh:mm:ss are clocks, a count, a r
 
 test('a countdown at another second on each side is no rendered or visual difference; other text still is', async () => {
 	const ticked = await check(page('63:02:59:59'), page('63:03:00:00'));
-	assert.deepEqual(ticked.failures.filter((f) => ['rendered', 'visual'].includes(f.dimension)).map((f) => f.check), []);
+	assert.deepEqual(ticked.failures.filter((f) => ['rendered', 'visual'].includes(f.dimension)).map((f) => f.check), [], 'the screenshot at each forced viewport width included');
 	const changed = await check(page('63:02:59:59'), page('63:02:59:59', 'Starts later'));
 	assert.ok(changed.failures.some((f) => f.dimension === 'rendered' && f.check === 'visible text'), 'a changed tagline is red');
+	assert.ok(changed.failures.some((f) => f.dimension === 'visual' && f.check.startsWith('screenshot in viewport width')), 'and red at a forced viewport width too');
 	const gone = await check(page('63:02:59:59'), page(''));
 	assert.ok(gone.failures.some((f) => f.dimension === 'rendered'), 'a clock the new page lost is red');
 });
