@@ -65,7 +65,7 @@ export async function usageResolver(usagePath: string, source?: string): Promise
 		const fileSites = b.sites.filter((s): s is { file: string; line: number } => 'file' in s);
 		const key = `${b.library} ${b.feature}`;
 		sitesOf.set(key, [...(sitesOf.get(key) ?? []), ...fileSites]);
-		for (const [name, value] of Object.entries(props)) if (Array.isArray(value) && value.length === 1 && typeof value[0] === 'string') literalProps.set(`${key} ${name}`, value[0]);
+		for (const [name, value] of Object.entries(props)) if (Array.isArray(value) && value.length === 1 && (typeof value[0] === 'string' || typeof value[0] === 'number')) literalProps.set(`${key} ${name}`, String(value[0]));
 		const slots = Array.isArray(props['data-slot']) ? (props['data-slot'] as unknown[]).filter((v): v is string => typeof v === 'string') : [];
 		for (const slot of slots) {
 			const list = bySlot.get(slot) ?? bySlot.set(slot, []).get(slot)!;
