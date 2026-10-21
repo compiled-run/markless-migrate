@@ -581,13 +581,12 @@ one, and the report between them.
 pnpm install
 pnpm browsers      # once: downloads Chromium for Playwright
 pnpm typecheck
-pnpm test          # unit tests and the three fixture suites, about five minutes
-pnpm test:unit     # unit tests only, a few seconds
+pnpm test          # unit tests and every fixture suite
+pnpm test:unit     # unit tests only (they drive Chromium too)
 pnpm test:e2e      # fixture suites only
 ```
 
-CSS is parsed with [yuku-css](https://github.com/thejackshelton/yuku-css), which is not on npm yet:
-`package.json` links it from a checkout at `../yuku-css` (build it there with `bun run build`).
+CSS is parsed with [yuku-css](https://github.com/thejackshelton/yuku-css), from npm.
 
 `fixtures/` holds a Next.js App Router app and a Vite multi-page site, each with an Arabic (RTL) locale,
 Accept-Language negotiation at `/`, a menu, a counter and a form. The fixture suites build each one,
