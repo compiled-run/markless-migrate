@@ -3,7 +3,6 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { runCheck } from '../src/check/run.ts';
 
-const CONCURRENCY = 4;
 const [count, dir] = [Number(process.argv[2]), process.argv[3]];
 const rows = Array.from({ length: 400 }, (_, i) => `<p class="r${i % 5}">Row ${i}: <span>value ${i * 7}</span> <em>note ${i % 13}</em></p>`).join('');
 const page = (path: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${path}</title><style>p{margin:2px 0;color:#333}.r1{color:#a00}.r2{background:#eef}em{font-size:12px}</style></head><body><main><h1>${path}</h1>${rows}</main></body></html>`;
@@ -31,15 +30,15 @@ const held = () => {
 const [old, next] = await Promise.all([app(), app()]);
 try {
 	const routes = Array.from({ length: count }, (_, i) => `/page-${i}`);
-	// Both marks are taken with the pool still full, so the routes in flight weigh the same in each.
-	const marks = { early: CONCURRENCY, late: count - CONCURRENCY };
+	// One route at a time: when a route finishes nothing else is in flight, so each mark weighs only what finished routes kept.
+	const marks = { early: 2, late: count };
 	const at: Record<string, number> = {};
 	let done = 0;
 	const report = await runCheck({
 		oldOrigin: origin(old),
 		newOrigin: origin(next),
 		routes,
-		concurrency: CONCURRENCY,
+		concurrency: 1,
 		templates: false,
 		...(dir ? { artifactsDir: dir } : {}),
 		onRoute: () => {
