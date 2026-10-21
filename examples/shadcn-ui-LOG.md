@@ -66,54 +66,88 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   with its cache).
 - The source scan tells redirects from rewrites and keeps `permanent`.
 
+### Since Markless 0.8.0 (2026-10-20/21)
+
+- All 498 pages convert and build in one app. Markless 0.8.0 from npm (vite-plus 1.3.0, Nitro 3.0.260903-beta);
+  the local-main link scripts are gone.
+- In-place controls on Markless state, from what each did on the old page (`toggles.ts` uses every checkbox,
+  switch, pressed toggle and radio once and records the markup of each state): a `state()` per control or radio
+  group binds each attribute that differs and renders the children of each state in an `@if` arm (a checkbox's
+  indicator); the hidden native input Base UI puts beside the control (its label's target) binds `checked`. 355
+  groups.
+- Base UI Tabs (only the chosen panel is mounted: the panel element binds the chosen panel's id and label, with each
+  tab's captured content in an arm) and disclosures that mount their content where they open (Base UI Collapsible
+  and Accordion, Radix Collapsible content that leaves while closed, the AI elements' trace): the captured content
+  is an arm at the place it went; an accordion item open on load closes when another opens.
+- Parts: Radix Select with its item-aligned position (Radix's `SelectItemAlignedPosition`), typeahead and pointer
+  rules, each option carrying a hidden copy of the indicator Radix mounts only in the checked one; Base UI Dialog,
+  AlertDialog and Drawer (modal focus, scroll lock, backdrop); Radix and Base UI Slider.
+- Each page imports the layers only it portals and renders them beside its root (both in branches on a module
+  constant: Markless renders a fragment root of components only inside branches). The Document imported all 1,914
+  layers before, one 78 MB server chunk that crashed V8's optimizing compiler (`Check failed: is_int26(x)`).
+- Endpoints: a route handler that reads no request runs at convert time from the old app's directory, as Next.js's
+  build runs a static route: `/rss.xml`, `/typeset.css`, `/r/registries.json` and the 383 `/docs/*.md` (`/llm/*`)
+  answers are byte for byte the old ones. `app/sitemap.ts` and `app/robots.ts` run the same way and are written as
+  Next.js writes them. `/og` runs on `@vercel/og` (what `next/og` compiles in, at Next's version) with the JSX as
+  satori's element objects: pixel-identical PNGs. `/init/v0` no longer pulls the registry's React components: a
+  dynamic `import()` counts in a handler's closure only inside code the handler reaches. `/api/search` answers as
+  the old one (the collection keeps `structuredData` whose headings are `undefined`). `next/navigation`'s
+  `notFound`/`redirect` are shimmed; the handlers' packages are traced into the server output, not bundled.
+- Copy Page text is one module per page, loaded on use (2.3 MB in every page's client code before).
+- `cache`: a request read named in a string or a comment is not one (the copied page text mentions `headers()`,
+  and every page had been planned never cached).
+- `convert` peak memory: 3.1 to 3.5 GB (captures are read from the cache while their page is parsed, and only the
+  served `<html>` tag is parsed); the 7.3 GB reported before was measured with every capture held at once.
+
 ## Markless framework bugs found
 
-1. Build memory and shipped JavaScript grow with static element count: render data has a host record for every
-   static element. A page of 12,000 `<i>N</i>` (145 KB of .tsrx, no state) peaks at 2.54 GB (empty page 0.51 GB)
-   and ships a 3.4 MB client chunk of `hosts: [{hostNodeId, tagName, coordinate}]`. About 170 KB of build memory
-   per element, mostly retained across modules; ui.shadcn.com is 256,732 elements, about 45 GB. This blocks
-   building all routes at once.
-2. Event handlers in `document.tsrx` are dropped without a diagnostic (`<body onClick>`, or on any element of the
-   Document); the same handler on a page's element works.
-3. Resume locator errors (`Resume locator h1889 expected <div> at DOM order index 1890`). Two causes: the first
-   ports inserted nodes inside the page (fixed in the pipeline: parts now only switch attributes on nodes Markless
-   renders, and a guard test fails on any part that inserts or removes nodes), and bug 5.
-4. `attach={(el) => watch(el)}` with `watch` imported from a .ts module stops the build with
-   MARKLESS_SYMBOL_MODULE_UNRESOLVED_GRAPH_REFERENCE (the diagnostic calls it a compiler gap); a handler calling the
-   same import compiles.
-5. A `<template>` with element children breaks every later handler of the page without an error: `let count =
-   state(0); <main><template><div><span>a</span></div></template><button onClick={() => count++}>{count}</button></main>`
-   stays at 0 after clicks, and counts without the template. Template content seems to be counted in Markless's
-   element census, which the browser keeps out of the document. The converter now writes no `<template>`.
-6. Captured content cannot sit in an `@if` arm (MARKLESS_BRANCH_ARM_UPDATE_UNSUPPORTED), because literal text
-   containers (`{"  "}`) count as bindings. Inactive tab panels and closed accordion items are therefore rendered,
-   hidden by their bound `hidden`, where Radix unmounts them; switch back to `@if` once that is fixed.
+Fixed in Markless 0.8.0: 1 (a 12,000-element static page now builds in 0.57 GB, was 2.54 GB), 2 (a handler in
+`document.tsrx` is a build error, MARKLESS_ROUTER_DOCUMENT_HANDLERS_UNSUPPORTED), 4, 5 and 6, and the `@if` arm text
+parse (quotes and backticks in arm text).
 
-## Status (2026-10-20)
+1. Build memory and shipped JavaScript grew with static element count (a host record per static element). Fixed.
+2. Event handlers in `document.tsrx` were dropped without a diagnostic. Now a build error.
+3. Resume locator errors: the first ports' DOM writes (fixed in the pipeline, guarded by `test/parts-guard.test.ts`)
+   and bug 5.
+4. `attach={(el) => watch(el)}` with an imported `watch` stopped the build. Fixed.
+5. A `<template>` with element children broke every later handler of the page. Fixed.
+6. Captured content could not sit in an `@if` arm. Fixed.
+7. A component-body `const` read by an attribute inside an `@if` arm stops the build, though a module constant or a
+   prop in the same place compiles:
+   ```tsrx
+   export default function Child() @{
+   	const id = 'x';
+   	let open = state(false);
+   	<div>
+   		<button onClick={() => (open = !open)}>toggle</button>
+   		@if (open) { <><p id={id}>shown</p></> }
+   	</div>
+   }
+   ```
+   MARKLESS_BRANCH_ARM_UPDATE_UNSUPPORTED "holds an attribute binding". With `const ID = 'x'` at module level, or
+   `id={path}` from a prop, it builds. The converter keeps such arms rendered and hidden (a shared component reads
+   its per-page values through a body `const values = VALUES[path]`).
+8. A page's root cannot be a fragment holding components (MARKLESS_PUBLIC_RENDER_ROOT_UNSUPPORTED), yet the same
+   components inside `@if` arms of a fragment root build and resume correctly:
+   `<>@if (SHOWN) { <main><Child /></main> }@if (SHOWN) { <><Layer /></> }</>` with `const SHOWN = true` at module
+   level. The converter uses that form to render a page's own layers beside its root.
+9. Build memory grows with page count: a synthetic app of pages that each use 20 of 200 stateful components peaks
+   at 2.07 GB with 50 pages and 3.69 GB with 200 (about 11 MB a page; generator in the PR). ui.shadcn.com's 498
+   pages peak at 15 to 19 GB and exceed Node's default 4 GB heap (`JavaScript heap out of memory` while rendering
+   chunks), so the build needs `--max-old-space-size`.
+10. Server code in one module can grow past what V8 compiles: with all 1,914 layers imported by the Document, the
+    server's 78 MB chunk (render data, about 40 KB a layer) crashed Node 24 on arm64 in Maglev
+    (`Check failed: is_int26(x)`); `node --no-maglev` serves it. Splitting the layers per page avoids it.
 
-Preview: https://mm-shadcn-ui-new.vercel.app renders `/`, `/docs/cli`, `/docs/components/radix/accordion` and
-`/blocks` with Markless; every other page is answered from https://mm-shadcn-ui-old.vercel.app, marked
-`x-markless-migrate-side: old` (a preview-only convert option). Building all 498 pages at once needs about 45 GB
-(bug 1): the four take 5.9 GB.
+## Status (2026-10-21)
 
-`check` of the four (old and new served locally): 0 green, 4 red.
-- `/docs/cli`: behaviour only. Choosing a search palette option: the old page's Next route announcer (an alert)
-  disappears and its notification regions move after the navigation; the port has no announcer (framework markup).
-  Options whose page is not in the preview land on the old app. Install tabs beyond the journey budget.
-- `/docs/components/radix/accordion`: the same, plus accordion content motion and one visual difference.
-- `/`: the same palette results, Base UI radio and the cards' controls not ported.
-- `/blocks`: every block preview is an iframe of `/view/...`, which the preview answers from the old app.
+Preview: https://mm-shadcn-ui-new.vercel.app serves all 498 HTML routes with Markless (no route falls through to
+the old deployment: `--fallthrough` is not set and the crawl of every route finds a Markless page, no old-side
+header), and every endpoint from the new app's own server code or its convert-time output.
 
-Endpoints: the 24 redirects and the rewrites answer as the old config does (spot-checked `/charts`, `/cli`,
-`/docs/components/button`, `/docs/components/accordion.md`); the 6,607 registry files under `/r/` are copied byte for
-byte; `/init`, `/init/md` and `/r/registries.json` run as the old handlers' own server code. Not ported (served from
-the old build's output): `/docs/*.md` (`/llm/*`), `/rss.xml`, `/sitemap.xml`, `/robots.txt`, `/llms.txt`,
-`/typeset.css`. Missing: `/api/search` (fumadocs' search over compiled MDX), `/og` (next/og), `/init/v0` (imports
-React components to read their source).
-
-CLI (`markless-migrate cli --config migrate-cli.json`, the pinned `shadcn` build against each registry): 10 of 10
-cases the same: view, view several, search, add --dry-run, add three components, add a block, add a chart, info,
-init with a preset, init then add.
+Full build of the 498 pages on Markless 0.8.0 (56,288 modules): peak 15.3 to 22.2 GB resident across runs, 23 to 49
+minutes (the Vercel-preset build and upload together), with `--max-old-space-size=20000`; Node's default 4 GB heap
+runs out while rendering chunks. Convert: 3.0 to 3.5 GB, 2 to 7 minutes from the captures cache.
 
 ## Open work
 
