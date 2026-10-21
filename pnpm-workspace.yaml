@@ -1,11 +1,11 @@
 packages:
   - fixtures/*
 minimumReleaseAgeExclude:
-  - '@markless/bundler@0.6.0'
-  - '@markless/compiler@0.6.0'
-  - '@markless/core@0.6.0'
-  - '@markless/router@0.6.0'
-  - '@markless/runtime@0.6.0'
-  - '@markless/serializer@0.6.0'
-  - '@markless/typescript-plugin@0.6.0'
-  - '@markless/web@0.6.0'
+  - '@markless/bundler@0.6.0 || 0.7.0'
+  - '@markless/compiler@0.6.0 || 0.7.0'
+  - '@markless/core@0.6.0 || 0.7.0'
+  - '@markless/router@0.6.0 || 0.7.0'
+  - '@markless/runtime@0.6.0 || 0.7.0'
+  - '@markless/serializer@0.6.0 || 0.7.0'
+  - '@markless/typescript-plugin@0.6.0 || 0.7.0'
+  - '@markless/web@0.6.0 || 0.7.0'

@@ -33,10 +33,16 @@
 	}
 
 	function frame(container, height) {
-		const width = Math.floor(container.getBoundingClientRect().width);
+		const width = Math.round(container.getBoundingClientRect().width);
 		if (!width) return undefined;
 		const wrapper = container.querySelector('.recharts-wrapper');
 		const svg = container.querySelector('svg.recharts-surface');
+		// A chart first shown now is mounted now: ResponsiveContainer's own styles arrive with it.
+		if (!container.hasAttribute('style')) {
+			container.setAttribute('style', `width: 100%; height: ${height}px; min-width: 0px;`);
+			container.firstElementChild.setAttribute('style', 'width: 0px; overflow-x: visible;');
+			svg.setAttribute('style', 'width: 100%; height: 100%; display: block;');
+		}
 		set(wrapper, { width, height, style: `position: relative; cursor: default; width: ${width}px; height: ${height}px;` });
 		set(svg, { width, height, viewBox: `0 0 ${width} ${height}` });
 		const plot = { x: MARGIN + Y_AXIS_WIDTH, y: MARGIN, w: width - 2 * MARGIN - Y_AXIS_WIDTH, h: height - 2 * MARGIN - X_AXIS_HEIGHT };
@@ -81,12 +87,17 @@
 			if (tspan.dataset.label === undefined) tspan.dataset.label = tspan.textContent;
 			tspan.textContent = shown[i] ? tspan.dataset.label : '';
 		});
-		container.querySelectorAll('.recharts-yAxis-tick-labels text').forEach((text, i) => {
-			const y = plot.y + plot.h * (1 - ticks[i] / top);
+		const labels = [...container.querySelectorAll('.recharts-yAxis-tick-labels text')];
+		labels.forEach((text, i) => {
+			let y = plot.y + plot.h * (1 - ticks[i] / top);
+			// The y axis's preserveEnd: the last label is moved down until its measured box fits inside the chart's top edge.
+			if (i === labels.length - 1) y = Math.max(y, measurementSpan(format(ticks[i])).getBoundingClientRect().height / 2);
 			set(text, { height: plot.h, x: plot.x - 8, y });
 			set(text.firstElementChild, { x: plot.x - 8 });
 			text.firstElementChild.textContent = format(ticks[i]);
 		});
+		// preserveEnd measures every label from the last to the first: the span is left holding the first.
+		for (let i = labels.length - 2; i >= 0; i--) measurementSpan(format(ticks[i]));
 	}
 
 	function barChart(container) {
@@ -163,13 +174,14 @@
 			document.body.append(span);
 		}
 		span.textContent = text;
+		return span;
 	}
 
 	const draw = { overview: barChart, analytics: areaChart };
 	const drawn = new WeakMap();
 	const drawAll = () => {
 		for (const container of document.querySelectorAll('[data-parity-chart]')) {
-			const width = Math.floor(container.getBoundingClientRect().width);
+			const width = Math.round(container.getBoundingClientRect().width);
 			if (!width || drawn.get(container) === width) continue;
 			if (draw[container.dataset.parityChart]?.(container)) drawn.set(container, width);
 		}

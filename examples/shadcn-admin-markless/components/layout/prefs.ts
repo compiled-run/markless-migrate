@@ -1,5 +1,7 @@
 // What the old app's providers read from cookies on load (SidebarProvider, LayoutProvider, ThemeProvider,
-// DirectionProvider), read here from the request so the first paint already matches.
+// DirectionProvider). The old app read them in the browser, and so does the port: the server renders the defaults
+// for every visitor, public/parity/layout-prefs.js puts the saved layout on the sidebar before it paints, and the
+// Shell takes the saved values into its state once it shows.
 export type Theme = 'light' | 'dark' | 'system';
 export type Variant = 'inset' | 'floating' | 'sidebar';
 export type Collapsible = 'icon' | 'offcanvas' | 'none';
@@ -22,6 +24,8 @@ export function cookieIn(header: string | null | undefined, name: string): strin
 	const parts = `; ${header ?? ''}`.split(`; ${name}=`);
 	return parts.length === 2 ? parts.pop()?.split(';').shift() : undefined;
 }
+
+export const DEFAULT_PREFS: LayoutPrefs = { open: true, variant: DEFAULT_VARIANT, collapsible: DEFAULT_COLLAPSIBLE, theme: DEFAULT_THEME, dir: DEFAULT_DIR };
 
 export function layoutPrefs(header: string | null | undefined): LayoutPrefs {
 	return {

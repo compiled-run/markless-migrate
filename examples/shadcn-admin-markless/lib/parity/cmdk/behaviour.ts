@@ -1,6 +1,8 @@
 // Parity port of cmdk inside a Radix Dialog, as command-menu.tsx uses it: the DOM half. The palette's markup is
 // rendered once by the shell inside the shared Radix Dialog port; these functions filter and select its items, and
 // say what the chosen item does.
+import { dropScrollbar } from '../radix-ui-react-scroll-area/hover-scrollbar.ts';
+
 const KEY = 'command-palette';
 
 const dialog = () => document.getElementById(`${KEY}-input`)?.closest('[role=dialog]') ?? null;
@@ -42,6 +44,8 @@ export function resetPalette(): void {
 	const field = input();
 	if (field) field.value = '';
 	filterCommands('');
+	// Radix mounts the list's ScrollArea afresh with the dialog: no scrollbar until the pointer is over it.
+	dropScrollbar(dialog()?.querySelector<HTMLElement>('[data-slot=scroll-area]'));
 }
 
 /** cmdk's matching, simplified: every typed character in order in the item's value; groups and separators with nothing left are hidden. */

@@ -26,7 +26,8 @@ export const shape = (v: ProfileValues) => ({ username: v.username, email: v.ema
 export function urlRows(urls: readonly string[], errors: Record<string, string>): UrlRow[] {
 	return urls.map((value, i) => {
 		const error = errors[`urls.${i}.value`] ?? '';
-		const base = `profile-url-${i}-form-item`;
+		// The two URLs the page starts with keep the ids React's useId gave them on the old page.
+		const base = i === 0 ? '_r_14_-form-item' : i === 1 ? '_r_15_-form-item' : `profile-url-${i}-form-item`;
 		return {
 			id: String(i),
 			name: `urls.${i}.value`,
@@ -49,4 +50,13 @@ export function firstInvalid(errors: Record<string, string>, urls: number): stri
 
 export function withUrl(urls: readonly string[], index: number, value: string): string[] {
 	return urls.map((v, i) => (i === index ? value : v));
+}
+
+export function errorOf(errors: Record<string, string>, name: string): string {
+	return errors[name] ?? '';
+}
+
+/** The field array's row at `index`, or a blank one past its end. */
+export function urlRowAt(urls: readonly string[], errors: Record<string, string>, index: number): UrlRow {
+	return urlRows(urls.length > index ? urls : [...urls, ...Array.from({ length: index + 1 - urls.length }, () => '')], errors)[index]!;
 }

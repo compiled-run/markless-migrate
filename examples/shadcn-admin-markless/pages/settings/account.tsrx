@@ -1,9 +1,7 @@
 import { computed, state } from '@markless/core';
-import type { PageProps } from '@markless/router';
 import { languageLabel } from '../../lib/settings/data.ts';
 import { revalidate, submitForm } from '../../lib/settings/validate.ts';
 import { SettingsLayout } from '../../components/settings/settings-layout.tsrx';
-import { layoutPrefs } from '../../components/layout/prefs.ts';
 import { dateOf, monthGrid, monthShort, monthYear, navRange, nextFocus, shortDate, years } from '../../lib/parity/react-day-picker/calendar.ts';
 import { menus, PopoverContent } from '../../lib/parity/radix-ui-react-dropdown-menu/menu.tsrx';
 import { closeMenu, openMenu, toggleMenu } from '../../lib/parity/radix-ui-react-dropdown-menu/behaviour.ts';
@@ -15,8 +13,7 @@ import { Toaster } from '../../lib/parity/sonner/toaster.tsrx';
 
 const LANG_TRIGGER = "inline-flex items-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-9 px-4 py-2 has-[>svg]:px-3 w-50 justify-between";
 
-export default function SettingsAccount({ http }: PageProps) @{
-	const prefs = layoutPrefs(http.request.headers.get('cookie'));
+export default function SettingsAccount() @{
 	const m = menus();
 	let name = state('');
 	let dob = state('');
@@ -82,7 +79,7 @@ export default function SettingsAccount({ http }: PageProps) @{
 	const nextDisabled = computed(() => (atEnd ? 'true' : undefined));
 	const nextTab = computed(() => (atEnd ? '-1' : undefined));
 
-	<SettingsLayout active="/settings/account" prefs={prefs} title="Account" desc="Update your account settings. Set your preferred language and timezone.">
+	<SettingsLayout active="/settings/account" title="Account" desc="Update your account settings. Set your preferred language and timezone.">
 		<form
 			class="space-y-8"
 			novalidate

@@ -1,23 +1,19 @@
 import { computed, state } from '@markless/core';
-import type { PageProps } from '@markless/router';
 import { cookieValue, fonts } from '../../lib/settings/data.ts';
 import { revalidate, submitForm } from '../../lib/settings/validate.ts';
 import { SettingsLayout } from '../../components/settings/settings-layout.tsrx';
-import { layoutPrefs } from '../../components/layout/prefs.ts';
 import { setFont, setTheme } from '../../lib/settings/appearance.ts';
 import { nextRadio } from '../../lib/settings/radio.ts';
 import { DURATION, expired, message, type Toast } from '../../lib/parity/sonner/index.ts';
 import { Toaster } from '../../lib/parity/sonner/toaster.tsrx';
 
-export default function SettingsAppearance({ http }: PageProps) @{
-	const cookie = http.request.headers.get('cookie');
-	const prefs = layoutPrefs(cookie);
-	const savedFont = cookieValue(cookie, 'font') ?? '';
-	const savedTheme = cookieValue(cookie, 'vite-ui-theme') || 'system';
-	let font = state((fonts as readonly string[]).includes(savedFont) ? savedFont : 'inter');
-	let theme = state(savedTheme);
-	let currentFont = state((fonts as readonly string[]).includes(savedFont) ? savedFont : 'inter');
-	let currentTheme = state(savedTheme);
+export default function SettingsAppearance() @{
+	// The server renders the providers' defaults for every visitor; the saved font and theme cookies are read in the
+	// browser, as the old FontProvider and ThemeProvider did (onIdle on the form below: on Markless 0.7 an onVisible loses the handlers inside the shell's moved dialogs).
+	let font = state('inter');
+	let theme = state('system');
+	let currentFont = state('inter');
+	let currentTheme = state('system');
 	let errors = state<Record<string, string>>({});
 	let submittedOnce = state(false);
 	let toasts = state<Toast[]>([]);
@@ -37,10 +33,19 @@ export default function SettingsAppearance({ http }: PageProps) @{
 	const darkOn = computed(() => theme === 'dark');
 	const darkDescribed = computed(() => (errors.theme ? 'appearance-dark-form-item-description appearance-dark-form-item-message' : 'appearance-dark-form-item-description'));
 
-	<SettingsLayout active="/settings/appearance" prefs={prefs} title="Appearance" desc="Customize the appearance of the app. Automatically switch between day and night themes.">
+	<SettingsLayout active="/settings/appearance" title="Appearance" desc="Customize the appearance of the app. Automatically switch between day and night themes.">
 		<form
 			class="space-y-8"
 			novalidate
+			onIdle={() => {
+				const savedFont = cookieValue(document.cookie, 'font') ?? '';
+				const savedTheme = cookieValue(document.cookie, 'vite-ui-theme') || 'system';
+				const loadedFont = (fonts as readonly string[]).includes(savedFont) ? savedFont : 'inter';
+				if (font !== loadedFont) font = loadedFont;
+				if (currentFont !== loadedFont) currentFont = loadedFont;
+				if (theme !== savedTheme) theme = savedTheme;
+				if (currentTheme !== savedTheme) currentTheme = savedTheme;
+			}}
 			onSubmit={async (event) => {
 				event.preventDefault();
 				submittedOnce = true;
@@ -88,7 +93,7 @@ export default function SettingsAppearance({ http }: PageProps) @{
 				@if (themeError) {
 					<p data-slot="form-message" id="appearance-theme-form-item-message" class="text-sm text-destructive">{themeError}</p>
 				}
-				<div role="radiogroup" aria-required="false" dir="ltr" data-slot="radio-group" class="grid max-w-md grid-cols-2 gap-8 pt-2" tabindex="0" style="outline: none;" onFocus={(event) => {
+				<div role="radiogroup" aria-required="false" dir="ltr" data-slot="radio-group" class="grid max-w-md grid-cols-2 gap-8 pt-2" tabindex="0" style="outline: none;" onFocusin={(event) => {
 					const group = event.target as HTMLElement;
 					if (group.getAttribute('role') === 'radiogroup') (group.querySelector<HTMLElement>('[role=radio][tabindex="0"]') ?? group.querySelector<HTMLElement>('[role=radio]'))?.focus();
 				}} onKeydown={(event) => {

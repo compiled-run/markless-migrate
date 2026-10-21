@@ -1,5 +1,8 @@
 // What the old app's providers did to the document: the theme class on <html> with its cookie (ThemeProvider),
 // the sidebar's open state cookie (SidebarProvider), the layout cookies (LayoutProvider) and dir (DirectionProvider).
+import { layoutPrefs } from './prefs.ts';
+import type { LayoutPrefs } from './prefs.ts';
+
 const YEAR = 60 * 60 * 24 * 365;
 const WEEK = 60 * 60 * 24 * 7;
 
@@ -15,6 +18,11 @@ function resolveTheme(theme: string): void {
 	const resolved = theme === 'system' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme;
 	document.documentElement.classList.remove('light', 'dark');
 	document.documentElement.classList.add(resolved);
+}
+
+/** The providers' saved values, read from the cookies in the browser as the old app read them. */
+export function savedPrefs(): LayoutPrefs {
+	return layoutPrefs(document.cookie);
 }
 
 export function applyTheme(theme: 'light' | 'dark' | 'system'): void {

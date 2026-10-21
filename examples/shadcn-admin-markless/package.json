@@ -12,8 +12,8 @@
 		"test": "vp test"
 	},
 	"dependencies": {
-		"@markless/core": "0.5.0",
-		"@markless/router": "0.5.0",
+		"@markless/core": "file:../../../mm-shadcn-markless-main/.packs/markless-core-0.7.0.tgz",
+		"@markless/router": "file:../../../mm-shadcn-markless-main/.packs/markless-router-0.7.0.tgz",
 		"@markless/ui": "^0.4.0",
 		"@tailwindcss/vite": "4.2.2",
 		"@tanstack/table-core": "^8.21.3",
@@ -27,12 +27,31 @@
 		"zod": "^4.6.7"
 	},
 	"devDependencies": {
-		"@markless/analyzer": "0.5.0",
-		"@markless/typescript-plugin": "0.5.0",
+		"@markless/analyzer": "file:../../../mm-shadcn-markless-main/.packs/markless-analyzer-0.7.0.tgz",
+		"@markless/typescript-plugin": "file:../../../mm-shadcn-markless-main/.packs/markless-typescript-plugin-0.7.0.tgz",
 		"typescript": "^5.9.3",
 		"vite": "npm:@voidzero-dev/vite-plus-core@0.3.1"
 	},
 	"overrides": {
-		"vite": "$vite"
+		"vite": "$vite",
+		"@markless/core": "$@markless/core",
+		"@markless/router": "$@markless/router",
+		"@markless/web": "file:../../../mm-shadcn-markless-main/.packs/markless-web-0.7.0.tgz",
+		"@markless/bundler": "file:../../../mm-shadcn-markless-main/.packs/markless-bundler-0.7.0.tgz",
+		"@markless/compiler": "file:../../../mm-shadcn-markless-main/.packs/markless-compiler-0.7.0.tgz",
+		"@markless/runtime": "file:../../../mm-shadcn-markless-main/.packs/markless-runtime-0.7.0.tgz",
+		"@markless/serializer": "file:../../../mm-shadcn-markless-main/.packs/markless-serializer-0.7.0.tgz",
+		"@markless/analyzer": "$@markless/analyzer",
+		"@markless/typescript-plugin": "$@markless/typescript-plugin",
+		"@markless/ui": {
+			".": "^0.4.0",
+			"@markless/compiler": "0.4.0",
+			"@markless/core": "0.4.0",
+			"@markless/runtime": "0.4.0",
+			"@markless/serializer": "0.4.0",
+			"@markless/web": "0.4.0",
+			"@markless/bundler": "0.4.0",
+			"@markless/router": "0.4.0"
+		}
 	}
 }

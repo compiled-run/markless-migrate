@@ -206,6 +206,11 @@ export function tableModel(input: TableInput): TableModel {
 	};
 }
 
+/** One field of a fixed slot in a list the page renders slot by slot (rows, page buttons, facet options). */
+export function slotField<T, K extends keyof T>(items: readonly T[], slot: number, key: K): T[K] {
+	return items[slot]?.[key] as T[K];
+}
+
 export function toggleValue(csv: string, value: string): string {
 	const values = list(csv);
 	return (values.includes(value) ? values.filter((v) => v !== value) : [...values, value]).join(',');
@@ -319,6 +324,11 @@ export function navigateSearch(patch: readonly (readonly [string, unknown])[], r
 	const next: Search = { ...validateSearch(location.search) };
 	for (const [key, value] of patch) next[key] = value;
 	const url = `${location.pathname}${stringify(next)}`;
+	// navigate() to the URL already shown commits no history entry; the router loads the match again (the loading bar runs).
+	if (url === `${location.pathname}${location.search}`) {
+		document.dispatchEvent(new Event('searchreload'));
+		return;
+	}
 	if (replace) history.replaceState(history.state, '', url);
 	else history.pushState(history.state, '', url);
 }
