@@ -6,7 +6,7 @@ import { closeLayer, layerOf, openLayer, type Layer } from '../layer.ts';
 // mouse release, Enter, Space) marks it checked, shows its indicator, writes its text into the trigger's value
 // (mmchoose, the converter's state) and closes. Escape, a press outside, blur and resize close too.
 
-const TRIGGER = 'button[role="combobox"][aria-controls][data-slot="select-trigger"]:not([id^="base-ui-"])';
+const TRIGGER = 'button[role="combobox"][aria-controls][data-slot="select-trigger"][data-state]';
 const OPTION = '[role="option"]';
 const CONTENT_MARGIN = 10;
 const OPEN_KEYS = [' ', 'Enter', 'ArrowUp', 'ArrowDown'];

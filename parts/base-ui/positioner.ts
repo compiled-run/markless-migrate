@@ -1,8 +1,9 @@
-import { autoUpdate, computePosition, flip, limitShift, offset, shift, size, type Middleware, type Placement } from '@floating-ui/dom';
+import { arrow, autoUpdate, computePosition, flip, limitShift, offset, shift, size, type Middleware, type Placement } from '@floating-ui/dom';
 
 // Base UI's useAnchorPositioning (@base-ui/react 1.6): offset on both axes, shift then flip when centred (flip then
 // shift otherwise) with a collision padding biased 1 px away from the preferred side, size writing --available-* and
-// --anchor-*, --transform-origin from the rendered side and the side offset, data-side/data-align on positioner and popup.
+// --anchor-*, the arrow placed (a stand-in centred on the anchor when the popup has none), --transform-origin from the
+// arrow's centre, the rendered side and the side offset, data-side/data-align on positioner and popup.
 
 export interface BaseOptions {
 	readonly side: string;
@@ -24,12 +25,17 @@ export function place(anchor: Element, positioner: HTMLElement, popup: HTMLEleme
 	const flipPadding = { top: padding.top + 1, right: padding.right + 1, bottom: padding.bottom + 1, left: padding.left + 1 };
 	const shiftMw = shift({ padding, mainAxis: true, crossAxis: false, limiter: limitShift() });
 	const flipMw = flip({ padding: flipPadding, mainAxis: true, crossAxis: 'alignment', fallbackAxisSideDirection: 'end' });
+	// Tooltip.Arrow and the like: the popup's own absolutely placed, aria-hidden child.
+	const arrowEl = popup ? [...popup.children].find((c): c is HTMLElement => c instanceof HTMLElement && c.getAttribute('aria-hidden') === 'true' && getComputedStyle(c).position === 'absolute') : undefined;
+	const stand = document.createElement('div');
 	const transformOrigin: Middleware = {
 		name: 'transformOrigin',
-		fn({ elements, placement: at }) {
+		fn({ elements, middlewareData, placement: at }) {
 			const s = at.split('-')[0]!;
 			const o = options.sideOffset;
-			const origin = { top: `0px calc(100% + ${o}px)`, bottom: `0px ${-o}px`, left: `calc(100% + ${o}px) 0px`, right: `${-o}px 0px` }[s] ?? '';
+			const x = (middlewareData.arrow?.x ?? 0) + (arrowEl?.clientWidth ?? 0) / 2;
+			const y = (middlewareData.arrow?.y ?? 0) + (arrowEl?.clientHeight ?? 0) / 2;
+			const origin = { top: `${x}px calc(100% + ${o}px)`, bottom: `${x}px ${-o}px`, left: `calc(100% + ${o}px) ${y}px`, right: `${-o}px ${y}px` }[s] ?? '';
 			elements.floating.style.setProperty('--transform-origin', origin);
 			return {};
 		},
@@ -57,9 +63,15 @@ export function place(anchor: Element, positioner: HTMLElement, popup: HTMLEleme
 						st.setProperty('--anchor-height', `${(Math.round((y + height) * dpr) - Math.round(y * dpr)) / dpr}px`);
 					},
 				}),
+				arrow({ element: arrowEl ?? stand, padding: 5 }),
 				transformOrigin,
 			],
-		}).then(({ x, y, placement: at }) => {
+		}).then(({ x, y, placement: at, middlewareData }) => {
+			const placed = middlewareData.arrow;
+			if (arrowEl && placed) {
+				if (placed.x !== undefined) arrowEl.style.left = `${placed.x}px`;
+				if (placed.y !== undefined) arrowEl.style.top = `${placed.y}px`;
+			}
 			positioner.style.position = options.positionMethod;
 			positioner.style.opacity = '';
 			positioner.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;

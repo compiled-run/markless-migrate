@@ -12,6 +12,8 @@ export interface Popup {
 	readonly positioner: HTMLElement | null;
 	readonly popup: HTMLElement;
 	readonly backdrop: HTMLElement | null;
+	/** The positioner and what lies between it and the popup carrying the open state (Select.Popup around its list). */
+	readonly around: readonly HTMLElement[];
 	stop?: () => void;
 	cleanup: (() => void)[];
 }
@@ -28,7 +30,7 @@ export function setTrigger(trigger: HTMLElement, on: boolean): void {
 }
 
 /** Mounts a trigger's captured portal; `popupSelector` picks the popup inside it. */
-export function openPopup(trigger: HTMLElement, options: { readonly popupSelector: string; readonly positionMethod?: 'absolute' | 'fixed'; readonly sideOffset?: number; readonly onDismiss: (p: Popup) => void; readonly outsidePress?: boolean }): Popup | undefined {
+export function openPopup(trigger: HTMLElement, options: { readonly popupSelector: string; readonly positionMethod?: 'absolute' | 'fixed'; readonly sideOffset?: number; readonly onDismiss: (p: Popup) => void; readonly outsidePress?: boolean; readonly anchored?: boolean }): Popup | undefined {
 	const key = trigger.id;
 	if (!key || isOpen(key)) return undefined;
 	const portal = layersFor(key).find((n) => n.hasAttribute('data-base-ui-portal'));
@@ -42,13 +44,16 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	const backdrop = portal.querySelector<HTMLElement>(':scope > [role="presentation"][data-base-ui-inert]');
 	portal.hidden = false;
 	for (const el of portal.querySelectorAll<HTMLElement>('[hidden]')) if (el.contains(popup)) el.hidden = false;
-	const p: Popup = { key, trigger, portal, positioner, popup, backdrop, cleanup: [] };
-	if (positioner && positioner.getAttribute('data-side') !== 'none') {
+	const around: HTMLElement[] = positioner ? [positioner] : [];
+	for (let n = popup.parentElement; n && n !== positioner && n !== portal; n = n.parentElement) if (n.hasAttribute('data-open') || n.hasAttribute('data-closed')) around.push(n);
+	const p: Popup = { key, trigger, portal, positioner, popup, backdrop, around, cleanup: [] };
+	// A dialog's or drawer's viewport fills the window: only a popup with a positioner is placed off its trigger.
+	if (positioner && options.anchored !== false && positioner.getAttribute('data-side') !== 'none') {
 		for (const prop of ['left', 'top', 'transform', 'height', 'max-height', 'margin-top', 'margin-bottom']) positioner.style.removeProperty(prop);
 		const opts: BaseOptions = { side: popup.getAttribute('data-side') ?? 'bottom', align: popup.getAttribute('data-align') ?? 'center', sideOffset: Number(portal.dataset.mmSideOffset ?? options.sideOffset ?? 0), alignOffset: Number(portal.dataset.mmAlignOffset ?? 0), positionMethod: options.positionMethod ?? 'absolute' };
 		p.stop = place(trigger, positioner, popup, opts);
 	}
-	enter(popup, [positioner]);
+	enter(popup, around);
 	setTrigger(trigger, true);
 	open.push(p);
 	const onKey = (event: KeyboardEvent) => {
@@ -78,7 +83,7 @@ export function closePopup(p: Popup, returnFocus = true, keep = false): void {
 	for (const c of p.cleanup) c();
 	setTrigger(p.trigger, false);
 	if (returnFocus) p.trigger.focus({ preventScroll: true });
-	exit(p.popup, [p.positioner], () => {
+	exit(p.popup, p.around, () => {
 		p.stop?.();
 		// Base UI's Select keeps its popup mounted once opened, hidden; other popups leave, here hidden with their portal.
 		if (keep) (p.positioner ?? p.popup).hidden = true;

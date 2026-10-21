@@ -2,7 +2,8 @@ import { closePopup, openPopup, popupOf, type Popup } from './popup.ts';
 
 // Base UI Menu: a press on the trigger opens the menu (keyboard: Enter, Space, ArrowDown highlight the first item);
 // arrows, Home, End move data-highlighted with focus; choosing an item or Escape closes it, focus back on the trigger.
-const TRIGGER = '[aria-haspopup="menu"][data-base-ui-click-trigger], [aria-haspopup="menu"][id^="base-ui-"]';
+// Radix's triggers carry data-state and React Aria's data-rac; Base UI's neither (generated ids are renamed, so they tell nothing).
+const TRIGGER = '[aria-haspopup="menu"]:not([data-state]):not([data-rac])';
 const ITEM = '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]';
 
 const items = (p: Popup) => [...p.popup.querySelectorAll<HTMLElement>(ITEM)].filter((i) => !i.hasAttribute('data-disabled') && i.getAttribute('aria-disabled') !== 'true');

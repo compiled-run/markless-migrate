@@ -22,7 +22,7 @@ function hide(trigger: HTMLElement): void {
 }
 export function pointerover(target: Element): boolean {
 	const trigger = target.closest<HTMLElement>(TRIGGER);
-	return trigger?.id.startsWith('base-ui-') || trigger?.hasAttribute('data-base-ui-click-trigger') ? show(trigger) : false;
+	return trigger && !trigger.hasAttribute('data-state') ? show(trigger) : false;
 }
 export function pointerout(target: Element, event: PointerEvent): boolean {
 	const trigger = target.closest<HTMLElement>(TRIGGER);
@@ -32,7 +32,7 @@ export function pointerout(target: Element, event: PointerEvent): boolean {
 }
 export function focusin(target: Element): boolean {
 	const trigger = target.closest<HTMLElement>(TRIGGER);
-	return trigger && trigger.matches(':focus-visible') ? show(trigger) : false;
+	return trigger && !trigger.hasAttribute('data-state') && trigger.matches(':focus-visible') ? show(trigger) : false;
 }
 export function focusout(target: Element): boolean {
 	const trigger = target.closest<HTMLElement>(TRIGGER);

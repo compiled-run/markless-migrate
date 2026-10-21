@@ -22,7 +22,7 @@ function close(p: Popup): void {
 }
 
 function open(trigger: HTMLElement): boolean {
-	const p = openPopup(trigger, { popupSelector: '[role="dialog"], [role="alertdialog"]', onDismiss: (x) => close(x), outsidePress: false });
+	const p = openPopup(trigger, { popupSelector: '[role="dialog"], [role="alertdialog"]', onDismiss: (x) => close(x), outsidePress: false, anchored: false });
 	if (!p) return false;
 	const alert = p.popup.getAttribute('role') === 'alertdialog';
 	const overlay = p.portal.querySelector<HTMLElement>('[data-slot$="overlay"], [data-slot$="backdrop"]');

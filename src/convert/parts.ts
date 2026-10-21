@@ -31,11 +31,19 @@ export interface Port {
 }
 
 const slot = (el: Element) => attr(el, 'data-slot') ?? '';
-const base = (el: Element) => el.attrs.some((a) => a.name.startsWith('data-base-ui')) || /^base-ui-/.test(attr(el, 'id') ?? '');
-// Radix writes data-state on its parts (a closed tooltip's trigger carries nothing else); Base UI, cmdk and React Aria never do.
-const radix = (el: Element) => el.attrs.some((a) => a.name.startsWith('data-radix-') || a.name === 'data-state' || ((a.name === 'id' || a.name === 'aria-controls') && a.value.startsWith('radix-')));
 
-const ids = (el: Element) => el.attrs.filter((a) => a.name === 'id' || a.name.startsWith('aria-')).map((a) => a.value).join(' ');
+// A layer's generated ids are renamed from its content (index.ts layerIds): which library generated one is still read
+// from the id it had.
+const generated = new WeakMap<Element, string>();
+export function renamedFrom(el: Element, id: string): void {
+	if (!generated.has(el)) generated.set(el, id);
+}
+const idOf = (el: Element) => generated.get(el) ?? attr(el, 'id') ?? '';
+const base = (el: Element) => el.attrs.some((a) => a.name.startsWith('data-base-ui')) || /^base-ui-/.test(idOf(el));
+// Radix writes data-state on its parts (a closed tooltip's trigger carries nothing else); Base UI, cmdk and React Aria never do.
+const radix = (el: Element) => /^radix-/.test(generated.get(el) ?? '') || el.attrs.some((a) => a.name.startsWith('data-radix-') || a.name === 'data-state' || ((a.name === 'id' || a.name === 'aria-controls') && a.value.startsWith('radix-')));
+
+const ids = (el: Element) => [generated.get(el) ?? '', ...el.attrs.filter((a) => a.name === 'id' || a.name.startsWith('aria-')).map((a) => a.value)].join(' ');
 // The markup each library writes on every part it renders, so a part of one is never taken for another's.
 const SIGNATURES: Readonly<Record<string, (el: Element) => boolean>> = {
 	cmdk: (el) => el.attrs.some((a) => a.name.startsWith('cmdk-')),
@@ -71,7 +79,9 @@ export const PORTS: readonly Port[] = [
 	{ module: 'base-ui/dialog', library: '@base-ui/react', exports: ['Dialog.Root', 'Dialog.Trigger', 'Dialog.Popup', 'Dialog.Portal', 'Dialog.Backdrop', 'Dialog.Close', 'AlertDialog.Root', 'AlertDialog.Trigger', 'AlertDialog.Popup', 'AlertDialog.Close', 'Drawer.Root', 'Drawer.Trigger', 'Drawer.Popup', 'Drawer.Close'], events: ['click'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition', 'aria-hidden'] },
 	{ module: 'base-ui/select', library: '@base-ui/react', exports: ['Select.Root', 'Select.Trigger', 'Select.Value', 'Select.Popup', 'Select.Item'], events: ['pointerdown', 'click', 'pointerover', 'keydown'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
 	// Radix Collapsible and Accordion are Markless state (convert's DisclosurePlan); the part measures and ends exits.
-	{ module: 'radix/disclosure-motion', library: 'radix-ui', exports: ['Collapsible.Root', 'Collapsible.CollapsibleTrigger', 'Collapsible.CollapsibleContent', 'Collapsible.Trigger', 'Collapsible.Content', 'Accordion.Root', 'Accordion.Item', 'Accordion.Header', 'Accordion.Trigger', 'Accordion.Content'], events: [], locate: (el) => radix(el) },
+	{ module: 'radix/disclosure-motion', library: 'radix-ui', needs: ['panel-motion'], exports: ['Collapsible.Root', 'Collapsible.CollapsibleTrigger', 'Collapsible.CollapsibleContent', 'Collapsible.Trigger', 'Collapsible.Content', 'Accordion.Root', 'Accordion.Item', 'Accordion.Header', 'Accordion.Trigger', 'Accordion.Content'], events: [], locate: (el) => radix(el) },
+	// Base UI Collapsible and Accordion are Markless state (convert's InsertedDisclosurePlan); the part measures and ends exits.
+	{ module: 'panel-motion', library: '@base-ui/react', exports: ['Collapsible.Root', 'Collapsible.Trigger', 'Collapsible.Panel', 'Accordion.Root', 'Accordion.Item', 'Accordion.Header', 'Accordion.Trigger', 'Accordion.Panel'], events: [], locate: base },
 ];
 
 // Exports whose element behaves as the native element it renders (a button, an input, a label, a heading, an icon's

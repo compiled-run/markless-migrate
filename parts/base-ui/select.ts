@@ -4,7 +4,8 @@ import { place } from './positioner.ts';
 // Base UI Select with alignItemWithTrigger (data-side="none"): the listbox opens over the trigger with the selected
 // option where the trigger's value is; arrows move data-highlighted; choosing an option marks it selected, writes its
 // text into the trigger's value and closes. With alignment off it is placed below the trigger like a popover.
-const TRIGGER = '[role="combobox"][data-slot="select-trigger"][id^="base-ui-"]';
+// Radix's trigger carries data-state; Base UI's never does (the converter renames generated ids, so they tell neither).
+const TRIGGER = '[role="combobox"][data-slot="select-trigger"]:not([data-state])';
 const OPTION = '[role="option"]';
 
 const options = (p: Popup) => [...p.popup.querySelectorAll<HTMLElement>(OPTION)].filter((o) => !o.hasAttribute('data-disabled'));

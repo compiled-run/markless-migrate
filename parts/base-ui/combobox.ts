@@ -4,7 +4,7 @@ import { closePopup, openPopup, popupOf, type Popup } from './popup.ts';
 // whose text contains what was typed (the others hidden, where Base UI unmounts them); arrows move data-highlighted
 // with aria-activedescendant on the input; choosing an item (click, Enter) writes its text into the input, marks it
 // selected and closes; Escape and a press outside close.
-const INPUT = 'input[role="combobox"][id^="base-ui-"]';
+const INPUT = 'input[role="combobox"][aria-haspopup="listbox"]:not([cmdk-input])';
 const BUTTON = '[data-slot="input-group-button"][aria-haspopup="listbox"]';
 const OPTION = '[role="option"]';
 

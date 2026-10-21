@@ -84,8 +84,8 @@ export class TabsPlan {
  * Radix Accordion (type single, collapsible unless an open trigger is aria-disabled) and Collapsible on Markless state:
  * the open item's key in one state() per accordion (a boolean per collapsible), and the item closing in another while
  * its exit animation runs. Trigger, item and header bind aria-expanded and data-state; the content binds data-state and
- * hidden, its content is an @if arm rendered while open or closing, and disclosure-motion.ts measures it as it is
- * shown and ends the exit.
+ * hidden, its content is an @if arm rendered while open or closing, and panel-motion.ts measures it as it is shown and
+ * ends the exit.
  */
 export class DisclosurePlan {
 	private readonly bindings = new Map<Element, Binding>();
@@ -129,6 +129,7 @@ export class DisclosurePlan {
 			const initial = items.findIndex((i) => attr(i.trigger, 'aria-expanded') === 'true');
 			const collapsible = !items.some((i) => attr(i.trigger, 'aria-expanded') === 'true' && attr(i.trigger, 'aria-disabled') === 'true');
 			const declare = [`let ${open} = state(${initial >= 0 ? initial : -1});`, `let ${closing} = state(-1);`];
+			const ids = `[${items.map((i) => lit(attr(i.content, 'id') ?? '')).join(', ')}]`;
 			items.forEach((i, k) => {
 				const isOpen = `${open} === ${k}`;
 				const shown = `(${open} === ${k} || ${closing} === ${k})`;
@@ -141,7 +142,7 @@ export class DisclosurePlan {
 						`aria-expanded={${isOpen} ? "true" : "false"}`,
 						`data-state={${isOpen} ? "open" : "closed"}`,
 						...(collapsible ? [] : [`aria-disabled={${isOpen} ? "true" : undefined}`]),
-						`onClick={() => { const was = ${open}; ${open} = ${toggle}; if (${open} === ${k}) measureWhenShown(${lit(id)}); if (was >= 0 && was !== ${open}) { ${closing} = was; afterExit(${lit(id)}, () => { if (${closing} === was) ${closing} = -1; }); } }}`,
+						`onClick={() => { const was = ${open}; ${open} = ${toggle}; if (${open} === ${k}) panelEnter(${lit(id)}); if (was >= 0 && was !== ${open}) { ${closing} = was; panelExit(${ids}[was] ?? '', () => { if (${closing} === was) ${closing} = -1; }); } }}`,
 						`onKeyDown={(event) => accordionKeys(event)}`,
 					],
 				});
@@ -316,8 +317,9 @@ export class BaseTabsPlan {
 /**
  * Disclosures that mount their content where it opens (Base UI Collapsible and Accordion, a Radix Collapsible whose
  * content leaves while closed) on Markless state: one state() per trigger, or per accordion where one item opens at a
- * time, the trigger binding aria-expanded (and data-state, Base UI's data-panel-open) and the content the old page
- * mounted on opening rendered in an @if arm at the place it went.
+ * time, and another for the panel closing while its exit runs; the trigger binds aria-expanded (and data-state, Base UI's
+ * data-panel-open), the item and header data-open, and the content the old page mounted on opening is an @if arm at
+ * the place it went, rendered while open or closing; panel-motion.ts measures it and ends its exit.
  */
 export class InsertedDisclosurePlan {
 	private readonly bindings = new Map<Element, Binding>();
@@ -331,7 +333,7 @@ export class InsertedDisclosurePlan {
 	 * `roots`: the pages, where a Base UI disclosure open on load (its content in the page, named by aria-controls)
 	 * closes and opens again on the same state.
 	 */
-	add(items: readonly { readonly trigger: Element; readonly parent: Element; readonly before: Element | null; readonly markup: string; readonly panelId?: string }[], roots: readonly Element[] = []): number {
+	add(items: readonly { readonly trigger: Element; readonly parent: Element; readonly before: Element | null; readonly markup: string; readonly panelId?: string; readonly panelDepth?: number }[], roots: readonly Element[] = []): number {
 		const byTrigger = new Map<Element, (typeof items)[number][]>();
 		for (const i of items) (byTrigger.get(i.trigger) ?? byTrigger.set(i.trigger, []).get(i.trigger)!).push(i);
 		const isBase = (t: Element) => /^base-ui-/.test(attr(t, 'id') ?? '') || t.attrs.some((a) => a.name.startsWith('data-base-ui') || a.name === 'data-panel-open');
@@ -348,10 +350,17 @@ export class InsertedDisclosurePlan {
 				if (panel && !this.bindings.has(t)) openPanels.set(t, panel);
 			}
 		}
-		// A Base UI disclosure's root (Collapsible.Root, Accordion.Item) carries data-open or data-closed.
-		const rootOf = (t: Element) => {
-			for (let n = t.parentNode as Element | null; n && 'tagName' in n; n = n.parentNode as Element | null) if (n.attrs.some((a) => a.name === 'data-open' || a.name === 'data-closed')) return n;
-			return undefined;
+		// A Base UI disclosure's root (Collapsible.Root, Accordion.Item) carries data-open or data-closed, and so does an
+		// Accordion.Header between it and the trigger.
+		const stated = (n: Element) => n.attrs.some((a) => a.name === 'data-open' || a.name === 'data-closed');
+		const rootsOf = (t: Element) => {
+			const out: Element[] = [];
+			for (let n = t.parentNode as Element | null; n && 'tagName' in n; n = n.parentNode as Element | null) {
+				if (!stated(n)) continue;
+				out.push(n);
+				if (!/^h[1-6]$/.test(n.tagName)) break;
+			}
+			return out;
 		};
 		const accordionOf = (el: Element) => {
 			for (let n = el.parentNode as Element | null; n && 'tagName' in n; n = n.parentNode as Element | null) if (attr(n, 'data-slot') === 'accordion') return n;
@@ -379,14 +388,25 @@ export class InsertedDisclosurePlan {
 			if (standalone && openPanels.has(key)) panels.set(key, openPanels.get(key)!);
 			const triggers = [...closed.filter((t) => !panels.has(t)), ...[...panels.keys()]];
 			const name = `ins${this.n++}`;
+			const closing = `${name}x`;
 			const single = !standalone && triggers.length > 1;
 			const initial = triggers.findIndex((t) => panels.has(t));
-			const declare = [`let ${name} = state(${single ? initial : String(standalone && panels.has(key))});`];
+			const declare = [`let ${name} = state(${single ? initial : String(standalone && panels.has(key))});`, `let ${closing} = state(${single ? -1 : false});`];
+			// Base UI names the panel in aria-controls only while it is mounted.
+			const panelIds = triggers.map((t) => (panels.has(t) ? attr(t, 'aria-controls') : byTrigger.get(t)?.find((i) => i.panelId)?.panelId) ?? '');
+			const ids = `[${panelIds.map(lit).join(', ')}]`;
+			// The arm's root closes with the panel when the panel sits inside it (a navigation menu's viewport).
+			const depth = triggers.map((t) => (panels.has(t) ? 0 : (byTrigger.get(t)?.find((i) => i.panelId)?.panelDepth ?? 0)));
+			const deep = (k: number) => (depth[k] ? `, ${depth[k]}` : '');
 			triggers.forEach((trigger, k) => {
 				const open = single ? `${name} === ${k}` : name;
-				const toggle = single ? `${name} = ${name} === ${k} ? -1 : ${k}` : `${name} = !${name}`;
+				// A closing panel stays rendered until its exit motion ends (panel-motion.ts), as Base UI keeps it mounted.
+				const shown = single ? `(${name} === ${k} || ${closing} === ${k})` : `(${name} || ${closing})`;
+				const toggle = single
+					? `const was = ${name}; ${name} = ${name} === ${k} ? -1 : ${k}; if (was >= 0 && was !== ${name}) { ${closing} = was; panelExit(${ids}[was] ?? '', () => { if (${closing} === was) ${closing} = -1; }${depth.some(Boolean) ? `, [${depth.join(', ')}][was]` : ''}); } if (${name} === ${k}) panelEnter(${lit(panelIds[k]!)}${deep(k)});`
+					: `${name} = !${name}; if (${name}) panelEnter(${lit(panelIds[k]!)}${deep(k)}); else { ${closing} = true; panelExit(${lit(panelIds[k]!)}, () => { ${closing} = false; }${deep(k)}); }`;
 				const base = isBase(trigger);
-				const extra = [`aria-expanded={${open} ? "true" : "false"}`, `onClick={() => { ${toggle}; }}`];
+				const extra = [`aria-expanded={${open} ? "true" : "false"}`, `onClick={() => { ${toggle} }}`];
 				const omit = ['aria-expanded'];
 				if (attr(trigger, 'data-state') !== undefined) {
 					extra.push(`data-state={${open} ? "open" : "closed"}`);
@@ -395,21 +415,18 @@ export class InsertedDisclosurePlan {
 				if (base) {
 					extra.push(`data-panel-open={${open} ? "" : undefined}`);
 					omit.push('data-panel-open');
-					// Base UI names the panel in aria-controls only while it is mounted.
-					const panelId = panels.has(trigger) ? attr(trigger, 'aria-controls') : byTrigger.get(trigger)?.find((i) => i.panelId)?.panelId;
-					if (panelId) {
-						extra.push(`aria-controls={${open} ? ${lit(panelId)} : undefined}`);
+					if (panelIds[k]) {
+						extra.push(`aria-controls={${open} ? ${lit(panelIds[k]!)} : undefined}`);
 						omit.push('aria-controls');
 					}
-					const root = rootOf(trigger);
-					if (root && !this.bindings.has(root)) this.bindings.set(root, { declare, omit: ['data-open', 'data-closed'], extra: [`data-open={${open} ? "" : undefined}`, `data-closed={${open} ? undefined : ""}`] });
+					for (const root of rootsOf(trigger)) if (!this.bindings.has(root)) this.bindings.set(root, { declare, omit: ['data-open', 'data-closed'], extra: [`data-open={${open} ? "" : undefined}`, `data-closed={${open} ? undefined : ""}`] });
 				}
 				this.bindings.set(trigger, { declare, omit, extra });
 				const panel = panels.get(trigger);
-				if (panel) this.bindings.set(panel, { declare, omit: ['hidden', 'data-open', 'data-closed'], extra: [`hidden={!(${open})}`, `data-open={${open} ? "" : undefined}`, `data-closed={${open} ? undefined : ""}`] });
+				if (panel) this.bindings.set(panel, { declare, omit: ['hidden', 'data-open', 'data-closed'], extra: [`hidden={!${shown}}`, `data-open={${open} ? "" : undefined}`, `data-closed={${open} ? undefined : ""}`] });
 				for (const i of byTrigger.get(trigger) ?? []) {
 					const list = inserts.get(i.parent) ?? inserts.set(i.parent, []).get(i.parent)!;
-					const markup = /@(if|switch|for) \(|<[A-Z]\w*[\s/>]/.test(i.markup) ? '' : `@if (${open}) { <>${i.markup}</> }`;
+					const markup = /@(if|switch|for) \(|<[A-Z]\w*[\s/>]/.test(i.markup) ? '' : `@if ${shown} { <>${i.markup}</> }`;
 					if (markup && !list.some((l) => l.before === i.before && l.markup === markup)) list.push({ before: i.before, markup, declare });
 				}
 			});
