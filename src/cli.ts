@@ -26,6 +26,8 @@ import { plan, plannedRoutes, summarizeInventory, writeInventory } from './plan/
 import { copiedLogin, DRIVERS, driver } from './run/drivers.ts';
 import { startAppServer } from './run/server.ts';
 import { applyIfPlanned, CACHE_USAGE, cacheCommand, planAndWrite } from './cache/cli.ts';
+import { readCachingPlan } from './cache/plan.ts';
+import { cachingRegressions, formatRegression } from './cache/regressions.ts';
 import { runRoutes, summarizeRun } from './run/loop.ts';
 import { acceptedLabel } from './check/automatic.ts';
 import { readCoverage, readInventory, readResults, recordResults, STATE_DIR, status, summarizeStatus } from './status.ts';
@@ -246,9 +248,10 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           check it must pass against the pre-upgrade version (--baseline serves it).
   run     --agent <id> --old <origin> --new <origin> [--route <path>]... [--all] [--attempts <n>] [--model <name>]
           [--source <path>] [--new-source <path>] [--auth <file>] [--header <name:value>]... [--cookie <name=value>]...
-          [--serve <command>] [--build <command>] [--restart-on <path>]
+          [--serve <command>] [--build <command>] [--restart-on <path>] [--agent-timeout <minutes>]
           Drive your agent's own CLI headless, one route at a time, until each route is green or is
           left red after n attempts (default 3), then go on with the next; it never waits for an answer.
+          An attempt that runs past --agent-timeout (default 30 minutes) is stopped and counts as one.
           It ends with one report: green routes, library decisions, automatic acceptances, and what to
           look at if you care. Logs to .migrate/run.log. Each route is checked
           with the same --source, --new-source, --auth and bypass flags as check (--all as in check),
@@ -429,6 +432,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 			serve: { type: 'string' },
 			build: { type: 'string' },
 			'restart-on': { type: 'string' },
+			'agent-timeout': { type: 'string' },
 			'journey-budget': { type: 'string' },
 			'max-journeys': { type: 'string' },
 			'journey-depth': { type: 'string' },
@@ -443,6 +447,8 @@ async function run(args: string[], cwd: string): Promise<number> {
 	if (!values.old || !values.new) fail('run needs --old <origin> and --new <origin>');
 	const attempts = values.attempts ? Number(values.attempts) : 3;
 	if (!Number.isInteger(attempts) || attempts < 1) fail('--attempts must be a whole number of at least 1');
+	const agentMinutes = values['agent-timeout'] ? Number(values['agent-timeout']) : undefined;
+	if (agentMinutes !== undefined && !(agentMinutes > 0)) fail('--agent-timeout must be a number of minutes above 0');
 	if ((values.build || values['restart-on']) && !values.serve) fail('--build and --restart-on need --serve <command>, the command that serves the new app');
 	const agent = driver(values.agent);
 	const home = process.env.HOME || homedir();
@@ -490,6 +496,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 			routes,
 			attempts,
 			model: values.model,
+			...(agentMinutes ? { timeoutMs: agentMinutes * 60_000 } : {}),
 			cli: [mcp.command, ...mcp.args.slice(0, -1)].join(' '),
 			mcp,
 			context: { ...(source ? { source } : {}), ...(newSource ? { newSource } : {}), ...(values.auth ? { auth: resolve(values.auth) } : {}), flags: [...(values.header ?? []).flatMap((h) => ['--header', h]), ...(values.cookie ?? []).flatMap((c) => ['--cookie', c]), ...(values['journey-budget'] ? ['--journey-budget', values['journey-budget']] : []), ...(values['max-journeys'] ? ['--max-journeys', values['max-journeys']] : []), ...(values['journey-depth'] ? ['--journey-depth', values['journey-depth']] : []), ...timingFlags(values)] },
@@ -530,6 +537,14 @@ async function run(args: string[], cwd: string): Promise<number> {
 					summary += guard.text;
 					guarded &&= guard.ok;
 					open.push(...guard.findings.filter((f) => f.red).map((f) => `guard: ${f.kind} ${f.subject}`));
+				}
+				const plan = page ? await readCachingPlan(stateDir) : undefined;
+				const regressions = plan ? await cachingRegressions(plan, newSource ?? cwd, plan.routes.map((r) => r.route)) : [];
+				const others = regressions.filter((r) => r.route !== route).map((r) => r.route);
+				for (const r of regressions.filter((r) => r.route === route)) {
+					summary += formatRegression(r, others);
+					guarded = false;
+					open.push(`caching: ${r.old} on the old site, ${r.new} in the port (${r.reads[0]})`);
 				}
 				const dir = await firstDir(cwd, ['.output', '.vercel/output']);
 				if (dir) {

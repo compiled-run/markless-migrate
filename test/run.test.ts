@@ -190,6 +190,36 @@ test('run owns the new app server: it builds and restarts it after each attempt,
 	await assert.rejects(fetch(origin), 'the server is stopped with run');
 });
 
+test('an app that does not build when run starts is the first prompt, not a stop: the agent gets the build error and run serves its fix', async () => {
+	const { cwd, options } = await sandbox(99);
+	const appPort = await port();
+	const origin = `http://127.0.0.1:${appPort}`;
+	await writeFile(join(cwd, 'serve.mjs'), SERVE);
+	await writeFile(join(cwd, 'broken'), '');
+	const server = await startAppServer({ cwd, serve: 'node serve.mjs', build: BUILD, origin, env: { ...process.env, APP_PORT: String(appPort) } });
+	try {
+		assert.equal(server.first.ok, false);
+		await writeFile(join(cwd, 'bin', 'codex'), `#!/bin/sh\nn=$(cat calls 2>/dev/null || echo 0); n=$((n + 1)); echo $n > calls\nfor last; do :; done\nprintf '%s' "$last" > prompt.$n\nrm -f broken\n`);
+		const checked: string[] = [];
+		const outcomes = await runRoutes({
+			...options,
+			new: origin,
+			server,
+			serving: { build: 'npm run build' },
+			check: async (route) => {
+				checked.push(route);
+				const body = await (await fetch(origin)).text();
+				return { ok: body.startsWith('build 1'), summary: `served ${body}` };
+			},
+		});
+		assert.deepEqual(outcomes.map((o) => [o.outcome, o.attempts]), [['green', 1]]);
+		assert.deepEqual(checked, ['/about/'], 'nothing is checked before the app builds');
+		assert.match(await readFile(join(cwd, 'prompt.1'), 'utf8'), /The new app does not build, so nothing was checked\.\nbuild `[^`]+` failed \(exit 3\)/);
+	} finally {
+		await server.stop();
+	}
+});
+
 test('with --restart-on the server restarts when the agent\'s own build touches that file', async () => {
 	const cwd = await mkdtemp(join(tmpdir(), 'mm-serve-'));
 	const appPort = await port();

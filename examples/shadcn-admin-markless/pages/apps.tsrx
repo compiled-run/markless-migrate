@@ -1,13 +1,11 @@
 import { computed, state } from '@markless/core';
 import type { PageProps } from '@markless/router';
 import { Shell } from '../components/layout/shell.tsrx';
-import { layoutPrefs } from '../components/layout/prefs.ts';
 import { AppLogo } from '../components/apps/app-logo.tsrx';
 import { DropdownMenuContent, DropdownMenuTrigger, SelectItem } from '../lib/parity/radix-ui-react-dropdown-menu/menu.tsrx';
 import { connectClass, filteredApps, initialSearch, navigateSearch } from '../lib/apps.ts';
 
-export default function Apps({ http, url }: PageProps) @{
-	const prefs = layoutPrefs(http.request.headers.get('cookie'));
+export default function Apps({ url }: PageProps) @{
 	const initial = initialSearch(url.search);
 	let filter = state(initial.filter);
 	let type = state<string>(initial.type);
@@ -20,7 +18,7 @@ export default function Apps({ http, url }: PageProps) @{
 	const sortAsc = computed(() => (sort === 'asc' ? 'true' : 'false'));
 	const sortDesc = computed(() => (sort === 'desc' ? 'true' : 'false'));
 
-	<Shell active="/apps" header="search" fixed={false} prefs={prefs}>
+	<Shell active="/apps" header="search" fixed={false}>
 		<main data-layout="fixed" class="px-4 py-6 flex grow flex-col overflow-hidden @7xl/content:mx-auto @7xl/content:w-full @7xl/content:max-w-7xl">
 			<div>
 				<h1 class="text-2xl font-bold tracking-tight">App Integrations</h1>

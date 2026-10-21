@@ -43,8 +43,10 @@ export function radioKeys(event: KeyboardEvent): void {
 	next.focus();
 }
 
-/** A radio took focus (pointer or keys): it becomes the group's Tab stop. */
+/** A radio took focus (pointer or keys): it becomes the group's Tab stop. Focus does not bubble, so the group taking
+ * focus itself (Tab, or a dialog's opening focus) arrives here too, as focusin. */
 export function radioFocused(event: FocusEvent): void {
+	if (event.target instanceof HTMLElement && event.target.getAttribute('role') === 'radiogroup') return focusGroup(event);
 	const radio = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>('[role=radio]') : null;
 	const group = radio?.closest('[role=radiogroup]');
 	if (radio && group) stop(group, radio);

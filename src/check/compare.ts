@@ -353,5 +353,6 @@ export function withFailures(result: RouteResult, failures: readonly Failure[], 
 	const moved = Boolean(extra.motion ?? result.motion);
 	const navigated = Boolean(extra.navigation ?? result.navigation);
 	const dimensions = Object.fromEntries(DIMENSIONS.map((d) => [d, failed.has(d) ? 'fail' : (d === 'responsiveness' && !timed) || (d === 'motion' && !moved) || (d === 'navigation' && !navigated) ? 'skipped' : 'pass'])) as Record<Dimension, 'pass' | 'fail' | 'skipped'>;
-	return { ...result, ...extra, ok: failures.length === 0, dimensions, failures };
+	// A route that was never compared stays not green, whatever failures are added to it.
+	return { ...result, ...extra, ok: failures.length === 0 && !result.blocked && !result.infrastructure, dimensions, failures };
 }

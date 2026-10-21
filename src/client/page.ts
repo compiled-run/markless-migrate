@@ -78,7 +78,8 @@ function readPage() {
 			if (el.localName === 'style') blocks.push(el.textContent ?? '');
 			const css = (el as HTMLElement).style?.cssText ?? '';
 			const replaced = /^(iframe|canvas|video|embed|object)$/.test(el.localName);
-			if (css && css !== 'display: contents;') styled.push({ key: `${host}${name(el)}`, style: css });
+			// A part kept in the page closed (a dialog the old library mounts only when it opens) shows nothing; its style is compared once it is shown.
+			if (css && css !== 'display: contents;' && !el.closest('[hidden]')) styled.push({ key: `${host}${name(el)}`, style: css });
 			if (replaced || (css && sizedStyle.test(css))) {
 				const r = el.getBoundingClientRect();
 				const src = (el as HTMLIFrameElement).src;

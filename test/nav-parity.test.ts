@@ -83,3 +83,9 @@ test("<html> attributes are compared without an old framework's runtime markers,
 	const old = { html: ['lang=en', 'class=plugin-pages', 'data-theme=light', 'data-has-hydrated=true', 'data-rh=lang,dir,class,data-has-hydrated'] };
 	assert.deepEqual(markedAttributes(old), ['class=plugin-pages', 'data-theme=light']);
 });
+
+test('a route not checked for an infrastructure failure stays not green when the navigation or shared layout adds to its failures (the summary counted four timed-out routes as green)', () => {
+	const timedOut: RouteResult = { ...route('/apps'), ok: false, infrastructure: { cause: 'check timeout', message: 'the check of /apps did not finish within 600 s' } };
+	assert.equal(withFailures(timedOut, []).ok, false);
+	assert.equal(withFailures(route('/'), []).ok, true);
+});

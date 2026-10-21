@@ -29,16 +29,24 @@ export default function Document({ children }: { readonly children?: Children })
 			<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
 			<link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Manrope:wght@200..800&display=swap" rel="stylesheet" />
 			<meta name="theme-color" content="#fff" />
+			<link rel="stylesheet" crossorigin="" href="/assets/index-ChZ-TBIh.css" />
 			<link rel="stylesheet" href={stylesheet} />
 			<script>{"(function(){var c=function(n){var m=('; '+document.cookie).split('; '+n+'=');return m.length===2?m.pop().split(';').shift():undefined};var r=document.documentElement;r.setAttribute('dir',c('dir')==='rtl'?'rtl':'ltr');var f=c('font'),t=c('vite-ui-theme')||'system',q=window.matchMedia('(prefers-color-scheme: dark)');r.classList.add('font-'+(['inter','manrope','system'].indexOf(f)+1?f:'inter'));var a=function(){r.classList.remove('light','dark');r.classList.add(t==='system'?(q.matches?'dark':'light'):t)};a();q.addEventListener('change',function(){if(t==='system')a()})})()"}</script>
+			{/* The old app navigates in place only through the links its router renders (TanStack Router's Link, all inside
+			    #root); any other link on the page loads the page. The Markless router follows every link, so one outside
+			    #root is kept from it. */}
+			<script>{"addEventListener('click',function(e){var t=e.target,a=t&&t.closest?t.closest('a[href]'):null,r=document.getElementById('root');if(a&&r&&!r.contains(a))e.stopPropagation()},true)"}</script>
 		</head>
 		<body>
 			<div id="root">
 				<LoadingBar />
 				{children}
+				<script src="/parity/layout-prefs.js"></script>
 				<script src="/parity/loading-bar.js"></script>
 				<script src="/parity/header.js"></script>
 				<script src="/parity/sonner.js"></script>
+				<script src="/parity/avatar.js"></script>
+				<script src="/parity/tooltip.js"></script>
 			</div>
 		</body>
 	</Html>

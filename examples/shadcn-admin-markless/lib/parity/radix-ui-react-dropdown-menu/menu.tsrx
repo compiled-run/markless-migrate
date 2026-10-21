@@ -8,7 +8,7 @@
 import { computed, element, shared, state } from '@markless/core';
 import type { Children, PropsOf } from '@markless/core';
 import { cn } from '../../utils.ts';
-import { closeMenu, focusItem, linkOf, menuOf, moveFocus, openMenu, selectAndClose, toggleMenu } from './behaviour.ts';
+import { closeMenu, focusItem, linkOf, menuOf, moveFocus, openMenu, pointerFocus, pointerLeave, selectAndClose, showOthers, toggleMenu } from './behaviour.ts';
 
 export const CONTENT_CLASS =
 	'z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-32 origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95';
@@ -48,7 +48,8 @@ export function DropdownMenuTrigger({ menu, haspopup, instance, slot, class: kla
 	let inst = state(instance ?? '');
 	const triggerExpanded = computed(() => (m.open === name && m.at === inst ? 'true' : 'false'));
 	const triggerState = computed(() => (m.open === name && m.at === inst ? 'open' : 'closed'));
-	const triggerId = computed(() => `radix-menu-${name}${inst}-trigger`);
+	// Radix Select's trigger carries no id; a menu's and a popover's do.
+	const triggerId = computed(() => (haspopup === 'listbox' ? undefined : `radix-menu-${name}${inst}-trigger`));
 	const contentId = computed(() => `radix-menu-${name}-content`);
 	const popupKind = computed(() => haspopup ?? 'menu');
 	const triggerSlot = computed(() => slot ?? 'dropdown-menu-trigger');
@@ -116,7 +117,8 @@ export function DropdownMenuContent({ menu, role, slot, modal, side, align, side
 	const m = menus();
 	let name = state(menu);
 	const contentState = computed(() => (m.open === name ? 'open' : 'closed'));
-	const contentClass = computed(() => cn(CONTENT_CLASS, klass));
+	// A Select's content (shadcn's SelectContent) is given its whole class; a menu's adds to the menu's own.
+	const contentClass = computed(() => (role === 'listbox' ? cn(klass) : cn(CONTENT_CLASS, klass)));
 	const contentSide = computed(() => side ?? 'bottom');
 	const contentAlign = computed(() => align ?? 'center');
 	const contentOffset = computed(() => String(sideOffset ?? 4));
@@ -126,7 +128,7 @@ export function DropdownMenuContent({ menu, role, slot, modal, side, align, side
 	const labelledBy = computed(() => `radix-menu-${name}${m.at}-trigger`);
 	const contentDomId = computed(() => `radix-menu-${name}-content`);
 
-	<div data-radix-popper-content-wrapper="" dir="ltr" hidden data-menu-wrapper={name} style="position: fixed; left: 0px; top: 0px; min-width: max-content; z-index: 50;">
+	<div data-radix-popper-content-wrapper="" dir="ltr" hidden data-menu-wrapper={name}>
 		<div
 			{...rest}
 			el={m.contents}
@@ -159,6 +161,8 @@ export function DropdownMenuContent({ menu, role, slot, modal, side, align, side
 					focusItem(m.contents, name)?.click();
 				}
 			}}
+			onPointermove={(event) => pointerFocus(event)}
+			onPointerleave={(event) => pointerLeave(event)}
 		>
 			{children}
 		</div>
@@ -193,6 +197,9 @@ export function DropdownMenuItem({ menu, role, variant, class: klass, onSelect, 
 		data-orientation="vertical"
 		data-radix-collection-item=""
 		onClick={() => {
+			// Radix's hideOthers counts each layer: a dialog the item opens keeps the page hidden after the menu's marks
+			// go. Lifting the menu's marks first lets the dialog lay its own over a page that has none.
+			showOthers(name);
 			onSelect?.();
 			m.open = '';
 			selectAndClose(m.contents, m.triggers, name);
@@ -338,7 +345,7 @@ export function PopoverContent({ menu, align, side, sideOffset, class: klass, ch
 	const popoverOffset = computed(() => String(sideOffset ?? 4));
 	const popoverDomId = computed(() => `radix-menu-${name}-content`);
 
-	<div data-radix-popper-content-wrapper="" hidden data-menu-wrapper={name} style="position: fixed; left: 0px; top: 0px; min-width: max-content; z-index: 50;">
+	<div data-radix-popper-content-wrapper="" hidden data-menu-wrapper={name}>
 		<div
 			el={m.contents}
 			data-menu={name}

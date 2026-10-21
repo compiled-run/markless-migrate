@@ -183,6 +183,12 @@ back, every usage site) and what to do with it:
   component that replaces each part the app uses. Render those components with the old classes, unchanged: the port
   writes the library's own markup and \`data-state\`, so the old selectors still apply. Never rewrite, edit or work
   around the port, and never hand-roll that library's behaviour; a prop it does not cover is a question for a person.
+  The Dialog port moves an open dialog to the end of its Markless container, as Radix's portal moves it to the body.
+  On Markless 0.7, once any element in that container has an \`onVisible\`, the handlers inside a moved dialog are no
+  longer found (a command palette option or a sheet's radio does nothing). Read browser state the first paint does
+  not need (a cookie, storage) in the handler that uses it, never in an \`onVisible\` on a page that renders the port.
+  An \`onIdle\` also works there, but it loads and runs the code of the component it sits on at load, which
+  \`weight\` counts as JavaScript run at load: put it on a small component, never on a page-wide shell.
 - **@markless/ui**: a family does the same job (tabs are \`tabs\`, a toast is \`toaster\`). Render the family and give it the old classes; translate selectors on the library's
   own attributes (\`data-[state=open]\`) to the family's (\`[ui-open]\`). When the installed @markless/ui
   lacks the family, port it like a library below and name the missing family in the final report.

@@ -247,3 +247,70 @@ that loads the page's handler chunk; one first-interaction time on `/chats` (53 
 accessibility snapshot taken during the new-message dialog's exit on `/chats` that does not reproduce by hand.
 The routes stay red for causes the previous port already had: the toaster region moving, the journey budget,
 first-interaction times and the weight of the render data.
+
+## Markless 0.8.0, cookies read in the browser, dropdowns as Radix places them (2026-10-20)
+
+Rebuilt on the published Markless 0.8.0 (`@markless/*` 0.8.0, with the toolchain `create-markless` 0.8.0 writes:
+`vite-plus` 1.3.0 and `nitro` 3.0.260903-beta; `@markless/ui` stays at 0.4.0, its `vitest` peer overridden to the
+5.0.5 that `vite-plus` brings). Every app change below was written by `markless-migrate run --agent claude` from the
+check's reports; the pipeline changed twice on the way.
+
+### What fixed what
+
+| Item | Fix |
+| --- | --- |
+| Backdrop flash when a dialog closes | The shared Radix Dialog port (`lib/ports/radix-ui-react-dialog`, PR #14), now deployed: each part leaves at the end of its own exit animation, as Radix's Presence does. Measured on the live URL below |
+| Sidebar, layout and theme cookies read on the server | The pages render the defaults and read the cookies in the browser, as the old SPA did (`components/layout/prefs.ts`, `shell-prefs.tsrx`, `public/parity/layout-prefs.js`). `cache apply` now plans 26 pages prerendered and 0 never cached (before: 11 prerendered, 15 never cached); `cache check` on the deployment: 26 routes, 100% CDN hits on the second pass, no caching problems |
+| Dropdowns | `lib/parity/radix-ui-react-dropdown-menu/behaviour.ts` writes the wrapper as Floating UI does (fixed, the transform, `--radix-popper-transform-origin`, available size) and the content's `--radix-dropdown-menu-content-transform-origin`; `data-side`/`data-align` are the placed side and alignment; a modal menu gives focus back to its trigger when its exit animation ends, also after a click outside |
+| Markless 0.8's parser: a code block renders one node | `components/apps/app-logo.tsrx` wrapped its fifteen `@if` arms in a fragment. The build failed before any check could run, so `run` now hands a build that fails at start to the agent as the first prompt instead of stopping |
+| Chart script threw during in-place navigation | Markless 0.8 swaps a navigated page in over several frames, and `public/parity/recharts.js` laid a chart out while its axis labels were half inserted (`Cannot set properties of null (setting 'textContent')` on every journey that followed a link to `/`). It now waits until all tick labels are in, and keeps each label's first measured width as recharts does |
+| `/settings/account` ran 1.5 MB of JavaScript at load | On Markless 0.8 the page preloaded its client render code (a 1.3 MB chunk) because the date picker's month grid was bound in the page. The grid and year list are now drawn when the picker opens, as react-day-picker renders them only while open: 100 kB run at load against the old 348 kB |
+
+Pipeline: `run` starts on an app that does not build (above); `check` no longer counts a route that was never
+compared (a check timeout) as green when navigation or a shared layout adds failures to it (the summary had read
+"24 of 26 routes green, -3 red").
+
+### Check against the deployments
+
+`check --old https://mm-shadcn-admin-old.vercel.app --new https://mm-shadcn-admin-new.vercel.app --source ../../deploy/shadcn-admin/old --concurrency 2`,
+then the routes that timed out or could not connect again on their own (`--timeout 2400`). Before: the live deploy
+of 2026-10-19 (Markless 0.7.0, the hand-written dialog port). After: Markless 0.8.0, this branch. The count is the
+open failures on the route.
+
+| Route | Before | After |
+| --- | --- | --- |
+| `/` | red: visual, css, behaviour, motion, navigation (91) | red: behaviour (12) |
+| `/apps` | red: visual, behaviour, responsiveness, motion (34) | red: behaviour, motion (5) |
+| `/clerk/sign-in` | red: behaviour, motion, navigation (36) | green |
+| `/clerk/sign-up` | red: behaviour, responsiveness, motion, navigation (36) | green |
+| `/settings/account` | red: behaviour, responsiveness, motion, navigation (150) | red: behaviour, motion (86) |
+| `/sign-up` | red: navigation (8) | green |
+| the other 20 routes | green | green |
+
+No route is red on a dimension it was green on before. What stays red: controls the journeys did not reach within
+their 120 s budget (most of the 86 on `/settings/account` are date-picker days), the command palette's Close and
+option picks under a dark OS theme (already red before), one "Toggle Sidebar" click that timed out at 1.5 s during the
+check and works by hand, the loading bar's motion when the apps filter changes, and the sidebar width under reduced
+motion, which the reduced-motion pass pairs with the wrong element while the transition runs.
+
+### Dialog backdrop on the live URL
+
+Each dialog opened, closed, and every backdrop's opacity read on every animation frame (`requestAnimationFrame`),
+with the OS and the theme cookie light, then dark. Before (live, 0.7.0): all 18 closes flashed, the backdrop at
+opacity 0.007 or less went back to 1 for a frame at 184 to 255 ms. After (live, 0.8.0): none of the 18 flashes; the
+backdrop fades once and is gone at 196 to 271 ms, as on the old app (199 to 267 ms).
+
+| Dialog | Light | Dark |
+| --- | --- | --- |
+| Command palette, Escape | gone at 209 ms | gone at 199 ms |
+| Command palette, pick an option | gone at 245 ms | gone at 234 ms |
+| Theme settings sheet | gone at 207 ms | gone at 206 ms |
+| Sign-out dialog | gone at 257 ms | gone at 231 ms |
+| Users: Add User | gone at 206 ms | gone at 210 ms |
+| Users: Invite User | gone at 271 ms | gone at 257 ms |
+| Tasks: Create sheet | gone at 215 ms | gone at 215 ms |
+| Tasks: Import | gone at 209 ms | gone at 208 ms |
+| Chats: new message | gone at 216 ms | gone at 196 ms |
+
+Dropdowns on the live URL, against the old app: the theme, profile, team, user, row-action and view-options menus
+have the same `data-side`, `data-align`, transform origin and focus after a click outside on both.

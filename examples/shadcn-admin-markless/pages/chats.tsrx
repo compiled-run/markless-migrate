@@ -1,15 +1,12 @@
 import { computed, element, state } from '@markless/core';
-import type { PageProps } from '@markless/router';
 import { Shell } from '../components/layout/shell.tsrx';
-import { layoutPrefs } from '../components/layout/prefs.ts';
 import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from '../lib/ports/radix-ui-react-dialog/dialog.tsrx';
 import { DURATION, expired, message, type Toast } from '../lib/parity/sonner/index.ts';
 import { Toaster } from '../lib/parity/sonner/toaster.tsrx';
 import { hideScrollbar, markActive, markChat, markChosen, placeThumb, showScrollbar } from '../lib/chats-dom.ts';
 import { chatList, chatUser, chosenUsers, commandOrder, commandUsers, conversation, firstOf, initials, moveActive, submitted, toggleChosen } from '../lib/chats.ts';
 
-export default function Chats({ http }: PageProps) @{
-	const prefs = layoutPrefs(http.request.headers.get('cookie'));
+export default function Chats() @{
 	let search = state('');
 	let selected = state('');
 	let mobile = state(false);
@@ -38,7 +35,7 @@ export default function Chats({ http }: PageProps) @{
 	const noChosen = computed(() => chosen === '');
 	const activeId = computed(() => (active && order.split(',').includes(active) ? `new-chat-item-${active}` : undefined));
 
-	<Shell active="/chats" header="search" fixed={false} prefs={prefs}>
+	<Shell active="/chats" header="search" fixed={false}>
 		<main data-layout="fixed" class="px-4 py-6 flex grow flex-col overflow-hidden @7xl/content:mx-auto @7xl/content:w-full @7xl/content:max-w-7xl">
 			<section class="flex h-full gap-6">
 				<div class="flex w-full flex-col gap-2 sm:w-56 lg:w-72 2xl:w-80">

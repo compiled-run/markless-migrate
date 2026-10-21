@@ -5,7 +5,6 @@
 import { computed, state } from '@markless/core';
 import type { PageProps } from '@markless/router';
 import { Shell } from '../components/layout/shell.tsrx';
-import { layoutPrefs } from '../components/layout/prefs.ts';
 import { UserRow } from '../components/users/user-row.tsrx';
 import { chosenIn, filterIn, moveIn } from '../lib/parity/cmdk/behaviour.ts';
 import { DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger, menus, PopoverContent, SelectItem } from '../lib/parity/radix-ui-react-dropdown-menu/menu.tsrx';
@@ -16,8 +15,7 @@ import { AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDia
 import { escapeClears, inviteForm, moveToolbarFocus, userForm } from '../lib/users-behaviour.ts';
 import { announcementFor, countOf, field, deleteSummary, facet, fromSearch, hasValue, hiddenColumns, lastPage, pageAtSlot, pageField, pushSearch, rowSlot, tableModel, toggleAllOnPage, toggleRow, toggleValue, userAt } from '../lib/parity/tanstack-react-table/users-table.ts';
 
-export default function Users({ url, http }: PageProps) @{
-	const prefs = layoutPrefs(http.request.headers.get('cookie'));
+export default function Users({ url }: PageProps) @{
 	const initial = fromSearch(url.search);
 	let sorting = state('');
 	let username = state(initial.username);
@@ -163,7 +161,7 @@ export default function Users({ url, http }: PageProps) @{
 	const page6Label = computed(() => `Go to page ${pageField(model.pages, 6, 'label')}`);
 	const page6Number = computed(() => pageField(model.pages, 6, 'label'));
 
-	<Shell active="/users" header="search" fixed={true} prefs={prefs}>
+	<Shell active="/users" header="search" fixed={true}>
 		<main data-layout="auto" class="px-4 py-6 @7xl/content:mx-auto @7xl/content:w-full @7xl/content:max-w-7xl flex flex-1 flex-col gap-4 sm:gap-6">
 			<div class="flex flex-wrap items-end justify-between gap-2">
 				<div>

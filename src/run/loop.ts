@@ -134,8 +134,9 @@ export async function runRoutes(o: RunOptions): Promise<RouteOutcome[]> {
 	await write(`\n== ${new Date().toISOString()} run --agent ${o.driver.id}${o.model ? ` --model ${o.model}` : ''}, ${o.routes.length} route(s), up to ${o.attempts} attempt(s) each\n`);
 
 	const outcomes: RouteOutcome[] = [];
+	let unserved = o.server && !o.server.first.ok ? o.server.first.output : undefined;
 	for (const route of o.routes) {
-		let check = await o.check(route);
+		let check: RouteCheck = unserved ? { ok: false, summary: `The new app does not build, so nothing was checked.\n${unserved}` } : await o.check(route);
 		if (check.infrastructure) check = await o.check(route);
 		await write(`-- ${route}: initial check ${check.ok ? 'green' : check.infrastructure ? `not checked (${check.infrastructure})` : 'red'}\n`);
 		if (check.infrastructure) {
@@ -157,6 +158,7 @@ export async function runRoutes(o: RunOptions): Promise<RouteOutcome[]> {
 			await write(`-- ${route} attempt ${attempt}: ${o.driver.binary} ${exit} after ${(run.ms / 1000).toFixed(1)}s\n${run.output.replace(/^/gm, '   | ')}\n`);
 			if (run.error) throw new Error(`could not start ${o.driver.binary}: ${run.error}`);
 			const served = o.server ? await o.server.refresh() : { ok: true, output: '' };
+			unserved = served.ok ? undefined : served.output;
 			if (!served.ok) {
 				await write(`-- ${route} attempt ${attempt}: ${served.output.replace(/\n/g, '\n   ! ')}\n`);
 				check = { ok: false, summary: `The new app could not be served after your changes, so nothing was checked.\n${served.output}` };

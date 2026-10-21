@@ -4,7 +4,7 @@
 import { computed, element, state } from '@markless/core';
 import type { PageProps } from '@markless/router';
 import { Shell } from '../components/layout/shell.tsrx';
-import { layoutPrefs } from '../components/layout/prefs.ts';
+import { TaskRow } from '../components/tasks/task-row.tsrx';
 import { chosenIn, filterIn, moveIn } from '../lib/parity/cmdk/behaviour.ts';
 import { AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogOverlay, AlertDialogPortal, AlertDialogRoot, AlertDialogTitle } from '../lib/ports/radix-ui-react-dialog/alert-dialog.tsrx';
 import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from '../lib/ports/radix-ui-react-dialog/dialog.tsrx';
@@ -14,9 +14,9 @@ import { revalidate } from '../lib/parity/react-hook-form/index.ts';
 import type { FieldErrors } from '../lib/parity/hookform-resolvers/index.ts';
 import { DURATION, expired, message, promiseLoading, promiseSuccess, type Toast } from '../lib/parity/sonner/index.ts';
 import { Toaster } from '../lib/parity/sonner/toaster.tsrx';
-import { announcementFor, countOf, fromSearch, hasValue, json, LABELS, list, pageAfterResize, pageCountFor, pushFilters, pushGlobalFilter, pushPagination, priorityFacets, selectedCount, selectionView, statusFacets, tablePages, tableRows, statusText, tableModel, taskAt, taskField, toggleAllOnPage, toggleValue } from '../lib/parity/tanstack-react-table/tasks-table.ts';
+import { announcementFor, countOf, fromSearch, hasValue, json, LABELS, list, pageAfterResize, pageCountFor, pushFilters, pushGlobalFilter, pushPagination, priorityFacets, selectedCount, selectionView, slotField, statusFacets, tablePages, tableRows, statusText, tableModel, taskAt, taskField, toggleAllOnPage, toggleValue } from '../lib/parity/tanstack-react-table/tasks-table.ts';
 import { clearFiles, CONFIRM_WORD, closeSub, fileDetails, filesIn, focusFirstError, importResolver, openSub, radioKey, subKey, taskFormResolver, trackTrigger, pageOf, toolbarOf, blurActive, selectPressed, radioValue, clearAnnouncementLater, keepPageFocus, type TaskForm } from '../lib/tasks-behaviour.ts';
-import { ALERT_CONTENT, ALERT_DESTRUCTIVE, badge, btn, CHECKBOX, COMMAND_GROUP, COMMAND_ITEM, DIALOG_CLOSE_X, DIALOG_CONTENT, FILE_INPUT, FORM_LABEL, INPUT, INPUT_BASE, LABEL, OUTLINE_BADGE, OVERLAY, RADIO, RADIO_ITEM, RADIO_LABEL, SELECT_TRIGGER, SEPARATOR_V, SHEET_CLOSE_X, SHEET_CONTENT, SUB_CONTENT, SUB_TRIGGER, TD, TH, TR } from '../lib/tasks-ui.ts';
+import { ALERT_CONTENT, ALERT_DESTRUCTIVE, badge, btn, CHECKBOX, COMMAND_GROUP, COMMAND_ITEM, DIALOG_CLOSE_X, DIALOG_CONTENT, FACET_POPOVER, FILE_INPUT, FORM_LABEL, INPUT, INPUT_BASE, LABEL, OUTLINE_BADGE, OVERLAY, RADIO, RADIO_ITEM, RADIO_LABEL, SELECT_CONTENT, SELECT_TRIGGER, SEPARATOR_V, SHEET_CLOSE_X, SHEET_CONTENT, SUB_CONTENT, SUB_TRIGGER, TD, TH, TR } from '../lib/tasks-ui.ts';
 import { escapeClears, moveToolbarFocus } from '../lib/users-behaviour.ts';
 import { cn } from '../lib/utils.ts';
 
@@ -33,8 +33,7 @@ const PRIORITY_OPTIONS = [
 	{ label: 'Low', value: 'low' },
 ];
 
-export default function Tasks({ http, url }: PageProps) @{
-	const prefs = layoutPrefs(http.request.headers.get('cookie'));
+export default function Tasks({ url }: PageProps) @{
 	const initial = fromSearch(url.search);
 	let sorting = state('');
 	let filter = state(initial.filter);
@@ -68,9 +67,11 @@ export default function Tasks({ http, url }: PageProps) @{
 	const viewTriggerClass = computed(() => btn('outline', 'sm', 'ms-auto hidden h-8 lg:flex'));
 	const sortTriggerClass = computed(() => btn('ghost', 'sm', 'h-8 data-[state=open]:bg-accent'));
 	const pageSizeTriggerClass = computed(() => cn(SELECT_TRIGGER, 'h-8 w-17.5'));
+	const pageCurrentClass = computed(() => btn('default', 'default', 'h-8 min-w-8 px-2'));
+	const pageOtherClass = computed(() => btn('outline', 'default', 'h-8 min-w-8 px-2'));
 	const bulkTriggerClass = computed(() => btn('outline', 'icon', 'size-8'));
 	const selectTriggerClass = computed(() => SELECT_TRIGGER);
-	// The rows' list must not read `selected`: a row handler's write to a cell its own @for list reads is dropped until another handler runs.
+	// The lists render as fixed slots (TaskRow, slotField): an @for whose rows carry bound attributes makes every page load carry the page's whole client render code.
 	const model = computed(() => tableModel({ sorting, filter, status, priority, page, pageSize, selected: '', hidden }));
 	const selection = computed(() => selectionView({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
 	const rows = computed(() => tableRows({ sorting, filter, status, priority, page, pageSize, selected: '', hidden }));
@@ -143,7 +144,7 @@ export default function Tasks({ http, url }: PageProps) @{
 	const priorityOptionList = computed(() => PRIORITY_OPTIONS.map((o, i) => ({ ...o, checked: o.value === values.priority, first: i === 0, tab: o.value === values.priority || (!values.priority && i === 0) ? '0' : '-1' })));
 	const labelItems = computed(() => LABELS.map((l) => ({ ...l, checked: l.value === currentLabel })));
 
-	<Shell active="/tasks" header="search" fixed={true} prefs={prefs}>
+	<Shell active="/tasks" header="search" fixed={true}>
 		<main data-layout="auto" class="px-4 py-6 @7xl/content:mx-auto @7xl/content:w-full @7xl/content:max-w-7xl flex flex-1 flex-col gap-4 sm:gap-6">
 			<div class="flex flex-wrap items-end justify-between gap-2">
 				<div>
@@ -188,9 +189,11 @@ export default function Tasks({ http, url }: PageProps) @{
 								<span data-slot="badge" class={badge('rounded-sm px-1 font-normal lg:hidden')} hidden={statusNone}>{statusCount}</span>
 								<div class="hidden space-x-1 lg:flex" hidden={statusNone}>
 									<span data-slot="badge" class={badge('rounded-sm px-1 font-normal')} hidden={statusFewOrNone}>{statusCountLabel}</span>
-									@for (const option of statusOptions; key option.value) {
-										<span data-slot="badge" class={badge('rounded-sm px-1 font-normal')} hidden={!option.selected || !statusFewOrNone}>{option.label}</span>
-									}
+									<span data-slot="badge" class={badge('rounded-sm px-1 font-normal')} hidden={!statusOptions[0].selected || !statusFewOrNone}>{statusOptions[0].label}</span>
+									<span data-slot="badge" class={badge('rounded-sm px-1 font-normal')} hidden={!statusOptions[1].selected || !statusFewOrNone}>{statusOptions[1].label}</span>
+									<span data-slot="badge" class={badge('rounded-sm px-1 font-normal')} hidden={!statusOptions[2].selected || !statusFewOrNone}>{statusOptions[2].label}</span>
+									<span data-slot="badge" class={badge('rounded-sm px-1 font-normal')} hidden={!statusOptions[3].selected || !statusFewOrNone}>{statusOptions[3].label}</span>
+									<span data-slot="badge" class={badge('rounded-sm px-1 font-normal')} hidden={!statusOptions[4].selected || !statusFewOrNone}>{statusOptions[4].label}</span>
 								</div>
 							</DropdownMenuTrigger>
 							<DropdownMenuTrigger menu="filter-priority" haspopup="dialog" slot="popover-trigger" class={facetTriggerClass}>
@@ -200,9 +203,10 @@ export default function Tasks({ http, url }: PageProps) @{
 								<span data-slot="badge" class={badge('rounded-sm px-1 font-normal lg:hidden')} hidden={priorityNone}>{priorityCount}</span>
 								<div class="hidden space-x-1 lg:flex" hidden={priorityNone}>
 									<span data-slot="badge" class={badge('rounded-sm px-1 font-normal')} hidden={priorityFewOrNone}>{priorityCountLabel}</span>
-									@for (const option of priorityOptions; key option.value) {
-										<span data-slot="badge" class={badge('rounded-sm px-1 font-normal')} hidden={!option.selected || !priorityFewOrNone}>{option.label}</span>
-									}
+									<span data-slot="badge" class={badge('rounded-sm px-1 font-normal')} hidden={!priorityOptions[0].selected || !priorityFewOrNone}>{priorityOptions[0].label}</span>
+									<span data-slot="badge" class={badge('rounded-sm px-1 font-normal')} hidden={!priorityOptions[1].selected || !priorityFewOrNone}>{priorityOptions[1].label}</span>
+									<span data-slot="badge" class={badge('rounded-sm px-1 font-normal')} hidden={!priorityOptions[2].selected || !priorityFewOrNone}>{priorityOptions[2].label}</span>
+									<span data-slot="badge" class={badge('rounded-sm px-1 font-normal')} hidden={!priorityOptions[3].selected || !priorityFewOrNone}>{priorityOptions[3].label}</span>
 								</div>
 							</DropdownMenuTrigger>
 						</div>
@@ -278,88 +282,256 @@ export default function Tasks({ http, url }: PageProps) @{
 								</tr>
 							</thead>
 							<tbody data-slot="table-body" class="[&_tr:last-child]:border-0">
-								@for (const r of rows; key r.slot) {
-									<tr data-slot="table-row" class={TR} hidden={!r.shown} data-state={hasValue(selected, r.key) ? 'selected' : 'false'}>
-										<td data-slot="table-cell" class={TD}>
-											<button type="button" role="checkbox" aria-checked={hasValue(selected, r.key) ? 'true' : 'false'} data-state={hasValue(selected, r.key) ? 'checked' : 'unchecked'} value="on" data-slot="checkbox" class={CHECKBOX} aria-label="Select row" onClick={() => {
-												selected = toggleValue(selected, r.key);
-												announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
-												clearAnnouncementLater(() => { announcement = ''; });
-											}}>
-												<span data-state="checked" data-slot="checkbox-indicator" class="flex items-center justify-center text-current transition-none" style="pointer-events: none;" hidden={!hasValue(selected, r.key)}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check size-3.5" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg></span>
-											</button>
-										</td>
-										<td data-slot="table-cell" class={TD}>
-											<div class="w-20">{r.id}</div>
-										</td>
-										<td data-slot="table-cell" class={`${TD} max-w-0 w-2/3 ps-4`} hidden={titleColumnHidden}>
-											<div class="flex space-x-2">
-												<span data-slot="badge" class={OUTLINE_BADGE}>{r.labelName}</span>
-												<span class="truncate font-medium">{r.title}</span>
-											</div>
-										</td>
-										<td data-slot="table-cell" class={`${TD} ps-4`} hidden={statusColumnHidden}>
-											<div class="flex w-25 items-center gap-2">
-												<svg hidden={r.status !== 'backlog'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><path d="M12 17h.01" /></svg>
-												<svg hidden={r.status !== 'todo'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg>
-												<svg hidden={r.status !== 'in progress'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><line x1="10" x2="14" y1="2" y2="2" /><line x1="12" x2="15" y1="14" y2="11" /><circle cx="12" cy="14" r="8" /></svg>
-												<svg hidden={r.status !== 'done'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="M21.801 10A10 10 0 1 1 17 3.335" /><path d="m9 11 3 3L22 4" /></svg>
-												<svg hidden={r.status !== 'canceled'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="m2 2 20 20" /><path d="M8.35 2.69A10 10 0 0 1 21.3 15.65" /><path d="M19.08 19.08A10 10 0 1 1 4.92 4.92" /></svg>
-												<span>{r.statusName}</span>
-											</div>
-										</td>
-										<td data-slot="table-cell" class={`${TD} ps-3`} hidden={priorityColumnHidden}>
-											<div class="flex items-center gap-2">
-												<svg hidden={r.priority !== 'low'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="M12 5v14" /><path d="m19 12-7 7-7-7" /></svg>
-												<svg hidden={r.priority !== 'medium'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
-												<svg hidden={r.priority !== 'high'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="m5 12 7-7 7 7" /><path d="M12 19V5" /></svg>
-												<svg hidden={r.priority !== 'critical'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="8" y2="12" /><line x1="12" x2="12.01" y1="16" y2="16" /></svg>
-												<span>{r.priorityName}</span>
-											</div>
-										</td>
-										<td data-slot="table-cell" class={TD}>
-											<button
-												el={m.triggers}
-												type="button"
-												data-slot="dropdown-menu-trigger"
-												class={btn('ghost', 'default', 'flex h-8 w-8 p-0 data-[state=open]:bg-muted')}
-												id={`radix-menu-row-actions${r.key}-trigger`}
-												aria-haspopup="menu"
-												aria-expanded="false"
-												aria-controls="radix-menu-row-actions-content"
-												data-state="closed"
-												data-menu="row-actions"
-												onPointerdown={(event) => {
-													if (event.button === 0) {
-														event.preventDefault();
-														m.open = m.open === 'row-actions' && m.at === r.key ? '' : 'row-actions';
-														m.at = r.key;
-														toggleMenu(m.contents, m.triggers, 'row-actions', m.open === '', event.target, (refocus) => {
-															m.open = '';
-															closeMenu(m.contents, m.triggers, 'row-actions', refocus);
-														});
-														trackTrigger(event.target);
-													}
-												}}
-												onKeydown={(event) => {
-													if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown') {
-														event.preventDefault();
-														m.open = 'row-actions';
-														m.at = r.key;
-														openMenu(m.contents, m.triggers, 'row-actions', 'first', (refocus) => {
-															m.open = '';
-															closeMenu(m.contents, m.triggers, 'row-actions', refocus);
-														}, event.target);
-														trackTrigger(event.target);
-													}
-												}}
-											>
-												<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"><path d="M3.625 7.5C3.625 8.12132 3.12132 8.625 2.5 8.625C1.87868 8.625 1.375 8.12132 1.375 7.5C1.375 6.87868 1.87868 6.375 2.5 6.375C3.12132 6.375 3.625 6.87868 3.625 7.5ZM8.625 7.5C8.625 8.12132 8.12132 8.625 7.5 8.625C6.87868 8.625 6.375 8.12132 6.375 7.5C6.375 6.87868 6.87868 6.375 7.5 6.375C8.12132 6.375 8.625 6.87868 8.625 7.5ZM12.5 8.625C13.1213 8.625 13.625 8.12132 13.625 7.5C13.625 6.87868 13.1213 6.375 12.5 6.375C11.8787 6.375 11.375 6.87868 11.375 7.5C11.375 8.12132 11.8787 8.625 12.5 8.625Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" /></svg>
-												<span class="sr-only">Open menu</span>
-											</button>
-										</td>
-									</tr>
-								}
+								<TaskRow rows={rows} slot={0} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 0, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={1} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 1, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={2} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 2, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={3} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 3, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={4} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 4, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={5} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 5, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={6} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 6, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={7} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 7, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={8} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 8, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={9} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 9, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={10} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 10, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={11} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 11, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={12} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 12, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={13} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 13, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={14} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 14, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={15} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 15, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={16} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 16, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={17} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 17, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={18} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 18, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={19} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 19, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={20} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 20, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={21} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 21, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={22} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 22, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={23} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 23, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={24} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 24, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={25} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 25, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={26} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 26, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={27} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 27, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={28} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 28, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={29} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 29, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={30} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 30, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={31} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 31, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={32} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 32, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={33} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 33, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={34} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 34, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={35} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 35, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={36} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 36, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={37} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 37, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={38} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 38, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={39} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 39, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={40} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 40, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={41} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 41, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={42} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 42, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={43} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 43, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={44} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 44, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={45} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 45, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={46} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 46, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={47} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 47, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={48} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 48, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
+								<TaskRow rows={rows} slot={49} selected={selected} hidden={hidden} onToggle={() => {
+									selected = toggleValue(selected, slotField(rows, 49, 'key'));
+									announcement = announcementFor(selectedCount({ sorting, filter, status, priority, page, pageSize, selected, hidden }));
+									clearAnnouncementLater(() => { announcement = ''; });
+								}} />
 								@if (noRows) {
 									<tr data-slot="table-row" class={TR}>
 										<td data-slot="table-cell" class={`${TD} h-24 text-center`} colspan={visibleColumns}>No results.</td>
@@ -391,19 +563,83 @@ export default function Tasks({ http, url }: PageProps) @{
 								<span class="sr-only">Go to previous page</span>
 								<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"><path d="M8.84182 3.13514C9.04327 3.32401 9.05348 3.64042 8.86462 3.84188L5.43521 7.49991L8.86462 11.1579C9.05348 11.3594 9.04327 11.6758 8.84182 11.8647C8.64036 12.0535 8.32394 12.0433 8.13508 11.8419L4.38508 7.84188C4.20477 7.64955 4.20477 7.35027 4.38508 7.15794L8.13508 3.15794C8.32394 2.95648 8.64036 2.94628 8.84182 3.13514Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" /></svg>
 							</button>
-							@for (const p of pages; key p.key) {
-								<div class="flex items-center" hidden={!p.shown}>
-									<span class="px-1 text-sm text-muted-foreground" hidden={!p.ellipsis}>...</span>
-									<button data-slot="button" class={btn(p.current ? 'default' : 'outline', 'default', 'h-8 min-w-8 px-2')} hidden={p.ellipsis} data-page={p.label} onClick={(event) => {
-										page = pageOf(event.target);
-										pushPagination(page, pageSize);
-										keepPageFocus(event.target, page);
-									}}>
-										<span class="sr-only">{`Go to page ${p.label}`}</span>
-										<span>{p.label}</span>
-									</button>
-								</div>
-							}
+							<div class="flex items-center" hidden={!pages[0].shown}>
+								<span class="px-1 text-sm text-muted-foreground" hidden={!pages[0].ellipsis}>...</span>
+								<button data-slot="button" class={pages[0].current ? pageCurrentClass : pageOtherClass} hidden={pages[0].ellipsis} data-page={pages[0].label} onClick={(event) => {
+									page = pageOf(event.target);
+									pushPagination(page, pageSize);
+									keepPageFocus(event.target, page);
+								}}>
+									<span class="sr-only">{`Go to page ${pages[0].label}`}</span>
+									<span>{pages[0].label}</span>
+								</button>
+							</div>
+							<div class="flex items-center" hidden={!pages[1].shown}>
+								<span class="px-1 text-sm text-muted-foreground" hidden={!pages[1].ellipsis}>...</span>
+								<button data-slot="button" class={pages[1].current ? pageCurrentClass : pageOtherClass} hidden={pages[1].ellipsis} data-page={pages[1].label} onClick={(event) => {
+									page = pageOf(event.target);
+									pushPagination(page, pageSize);
+									keepPageFocus(event.target, page);
+								}}>
+									<span class="sr-only">{`Go to page ${pages[1].label}`}</span>
+									<span>{pages[1].label}</span>
+								</button>
+							</div>
+							<div class="flex items-center" hidden={!pages[2].shown}>
+								<span class="px-1 text-sm text-muted-foreground" hidden={!pages[2].ellipsis}>...</span>
+								<button data-slot="button" class={pages[2].current ? pageCurrentClass : pageOtherClass} hidden={pages[2].ellipsis} data-page={pages[2].label} onClick={(event) => {
+									page = pageOf(event.target);
+									pushPagination(page, pageSize);
+									keepPageFocus(event.target, page);
+								}}>
+									<span class="sr-only">{`Go to page ${pages[2].label}`}</span>
+									<span>{pages[2].label}</span>
+								</button>
+							</div>
+							<div class="flex items-center" hidden={!pages[3].shown}>
+								<span class="px-1 text-sm text-muted-foreground" hidden={!pages[3].ellipsis}>...</span>
+								<button data-slot="button" class={pages[3].current ? pageCurrentClass : pageOtherClass} hidden={pages[3].ellipsis} data-page={pages[3].label} onClick={(event) => {
+									page = pageOf(event.target);
+									pushPagination(page, pageSize);
+									keepPageFocus(event.target, page);
+								}}>
+									<span class="sr-only">{`Go to page ${pages[3].label}`}</span>
+									<span>{pages[3].label}</span>
+								</button>
+							</div>
+							<div class="flex items-center" hidden={!pages[4].shown}>
+								<span class="px-1 text-sm text-muted-foreground" hidden={!pages[4].ellipsis}>...</span>
+								<button data-slot="button" class={pages[4].current ? pageCurrentClass : pageOtherClass} hidden={pages[4].ellipsis} data-page={pages[4].label} onClick={(event) => {
+									page = pageOf(event.target);
+									pushPagination(page, pageSize);
+									keepPageFocus(event.target, page);
+								}}>
+									<span class="sr-only">{`Go to page ${pages[4].label}`}</span>
+									<span>{pages[4].label}</span>
+								</button>
+							</div>
+							<div class="flex items-center" hidden={!pages[5].shown}>
+								<span class="px-1 text-sm text-muted-foreground" hidden={!pages[5].ellipsis}>...</span>
+								<button data-slot="button" class={pages[5].current ? pageCurrentClass : pageOtherClass} hidden={pages[5].ellipsis} data-page={pages[5].label} onClick={(event) => {
+									page = pageOf(event.target);
+									pushPagination(page, pageSize);
+									keepPageFocus(event.target, page);
+								}}>
+									<span class="sr-only">{`Go to page ${pages[5].label}`}</span>
+									<span>{pages[5].label}</span>
+								</button>
+							</div>
+							<div class="flex items-center" hidden={!pages[6].shown}>
+								<span class="px-1 text-sm text-muted-foreground" hidden={!pages[6].ellipsis}>...</span>
+								<button data-slot="button" class={pages[6].current ? pageCurrentClass : pageOtherClass} hidden={pages[6].ellipsis} data-page={pages[6].label} onClick={(event) => {
+									page = pageOf(event.target);
+									pushPagination(page, pageSize);
+									keepPageFocus(event.target, page);
+								}}>
+									<span class="sr-only">{`Go to page ${pages[6].label}`}</span>
+									<span>{pages[6].label}</span>
+								</button>
+							</div>
 							<button data-slot="button" class={btn('outline', 'default', 'size-8 p-0')} disabled={cannotNext} onClick={() => { page = Math.min(pageCountFor({ sorting, filter, status, priority, page, pageSize, selected, hidden }), page + 1); pushPagination(page, pageSize); }}>
 								<span class="sr-only">Go to next page</span>
 								<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"><path d="M6.1584 3.13508C6.35985 2.94621 6.67627 2.95642 6.86514 3.15788L10.6151 7.15788C10.7954 7.3502 10.7954 7.64949 10.6151 7.84182L6.86514 11.8418C6.67627 12.0433 6.35985 12.0535 6.1584 11.8646C5.95694 11.6757 5.94673 11.3593 6.1356 11.1579L9.565 7.49985L6.1356 3.84182C5.94673 3.64036 5.95694 3.32394 6.1584 3.13508Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" /></svg>
@@ -416,7 +652,7 @@ export default function Tasks({ http, url }: PageProps) @{
 					</div>
 				</div>
 				<div aria-live="polite" aria-atomic="true" class="sr-only" role="status" hidden={noSelection}>{announcement}</div>
-				<div role="toolbar" aria-label={toolbarLabel} aria-describedby="bulk-actions-description" tabindex="-1" class="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl transition-all delay-100 duration-300 ease-out hover:scale-105 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none" hidden={noSelection} onKeydown={(event) => {
+				<div role={noSelection ? undefined : 'toolbar'} aria-label={toolbarLabel} aria-describedby="bulk-actions-description" tabindex="-1" class="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl transition-all delay-100 duration-300 ease-out hover:scale-105 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none" hidden={noSelection} onKeydown={(event) => {
 					if (event.key === 'ArrowRight' || event.key === 'ArrowLeft' || event.key === 'Home' || event.key === 'End') {
 						event.preventDefault();
 						const bar = toolbarOf(event.target);
@@ -648,18 +884,36 @@ export default function Tasks({ http, url }: PageProps) @{
 									}
 								}
 							}}>
-								@for (const o of labelOptionList; key o.value) {
-									<div data-slot="form-item" class="gap-2 flex items-center">
-										<button type="button" role="radio" aria-checked={o.checked ? 'true' : 'false'} data-state={o.checked ? 'checked' : 'unchecked'} value={o.value} data-slot="form-control" class={RADIO} id={o.first ? 'tasks-form-label-first' : `tasks-form-label-${o.value}`} aria-describedby={labelDescribedBy} aria-invalid={labelInvalid} tabindex={o.tab} data-radix-collection-item="" onClick={(event) => {
-											values.label = radioValue(event.target);
-											errors = revalidate(form, submitted, values, errors);
-										}}>
-											<span data-state="checked" data-slot="radio-group-indicator" class="relative flex items-center justify-center" hidden={!o.checked}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 fill-primary" aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg></span>
-										</button>
-										<input aria-hidden="true" tabindex="-1" type="radio" value={o.value} checked={o.checked} style="transform: translateX(-100%); position: absolute; pointer-events: none; opacity: 0; margin: 0px; width: 16px; height: 16px;" />
-										<label data-slot="form-label" class={RADIO_LABEL} data-error={labelInvalid} for={o.first ? 'tasks-form-label-first' : `tasks-form-label-${o.value}`}>{o.label}</label>
-									</div>
-								}
+								<div data-slot="form-item" class="gap-2 flex items-center">
+									<button type="button" role="radio" aria-checked={labelOptionList[0].checked ? 'true' : 'false'} data-state={labelOptionList[0].checked ? 'checked' : 'unchecked'} value={labelOptionList[0].value} data-slot="form-control" class={RADIO} id={labelOptionList[0].first ? 'tasks-form-label-first' : `tasks-form-label-${labelOptionList[0].value}`} aria-describedby={labelDescribedBy} aria-invalid={labelInvalid} tabindex={labelOptionList[0].tab} data-radix-collection-item="" onClick={(event) => {
+										values.label = radioValue(event.target);
+										errors = revalidate(form, submitted, values, errors);
+									}}>
+										<span data-state="checked" data-slot="radio-group-indicator" class="relative flex items-center justify-center" hidden={!labelOptionList[0].checked}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 fill-primary" aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg></span>
+									</button>
+									<input aria-hidden="true" tabindex="-1" type="radio" value={labelOptionList[0].value} checked={labelOptionList[0].checked} style="transform: translateX(-100%); position: absolute; pointer-events: none; opacity: 0; margin: 0px; width: 16px; height: 16px;" />
+									<label data-slot="form-label" class={RADIO_LABEL} data-error={labelInvalid} for={labelOptionList[0].first ? 'tasks-form-label-first' : `tasks-form-label-${labelOptionList[0].value}`}>{labelOptionList[0].label}</label>
+								</div>
+								<div data-slot="form-item" class="gap-2 flex items-center">
+									<button type="button" role="radio" aria-checked={labelOptionList[1].checked ? 'true' : 'false'} data-state={labelOptionList[1].checked ? 'checked' : 'unchecked'} value={labelOptionList[1].value} data-slot="form-control" class={RADIO} id={labelOptionList[1].first ? 'tasks-form-label-first' : `tasks-form-label-${labelOptionList[1].value}`} aria-describedby={labelDescribedBy} aria-invalid={labelInvalid} tabindex={labelOptionList[1].tab} data-radix-collection-item="" onClick={(event) => {
+										values.label = radioValue(event.target);
+										errors = revalidate(form, submitted, values, errors);
+									}}>
+										<span data-state="checked" data-slot="radio-group-indicator" class="relative flex items-center justify-center" hidden={!labelOptionList[1].checked}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 fill-primary" aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg></span>
+									</button>
+									<input aria-hidden="true" tabindex="-1" type="radio" value={labelOptionList[1].value} checked={labelOptionList[1].checked} style="transform: translateX(-100%); position: absolute; pointer-events: none; opacity: 0; margin: 0px; width: 16px; height: 16px;" />
+									<label data-slot="form-label" class={RADIO_LABEL} data-error={labelInvalid} for={labelOptionList[1].first ? 'tasks-form-label-first' : `tasks-form-label-${labelOptionList[1].value}`}>{labelOptionList[1].label}</label>
+								</div>
+								<div data-slot="form-item" class="gap-2 flex items-center">
+									<button type="button" role="radio" aria-checked={labelOptionList[2].checked ? 'true' : 'false'} data-state={labelOptionList[2].checked ? 'checked' : 'unchecked'} value={labelOptionList[2].value} data-slot="form-control" class={RADIO} id={labelOptionList[2].first ? 'tasks-form-label-first' : `tasks-form-label-${labelOptionList[2].value}`} aria-describedby={labelDescribedBy} aria-invalid={labelInvalid} tabindex={labelOptionList[2].tab} data-radix-collection-item="" onClick={(event) => {
+										values.label = radioValue(event.target);
+										errors = revalidate(form, submitted, values, errors);
+									}}>
+										<span data-state="checked" data-slot="radio-group-indicator" class="relative flex items-center justify-center" hidden={!labelOptionList[2].checked}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 fill-primary" aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg></span>
+									</button>
+									<input aria-hidden="true" tabindex="-1" type="radio" value={labelOptionList[2].value} checked={labelOptionList[2].checked} style="transform: translateX(-100%); position: absolute; pointer-events: none; opacity: 0; margin: 0px; width: 16px; height: 16px;" />
+									<label data-slot="form-label" class={RADIO_LABEL} data-error={labelInvalid} for={labelOptionList[2].first ? 'tasks-form-label-first' : `tasks-form-label-${labelOptionList[2].value}`}>{labelOptionList[2].label}</label>
+								</div>
 							</div>
 							@if (labelError) {
 								<p data-slot="form-message" id="tasks-form-label-message" class="text-sm text-destructive">{labelError}</p>
@@ -677,18 +931,36 @@ export default function Tasks({ http, url }: PageProps) @{
 									}
 								}
 							}}>
-								@for (const o of priorityOptionList; key o.value) {
-									<div data-slot="form-item" class="gap-2 flex items-center">
-										<button type="button" role="radio" aria-checked={o.checked ? 'true' : 'false'} data-state={o.checked ? 'checked' : 'unchecked'} value={o.value} data-slot="form-control" class={RADIO} id={o.first ? 'tasks-form-priority-first' : `tasks-form-priority-${o.value}`} aria-describedby={priorityDescribedBy} aria-invalid={priorityInvalid} tabindex={o.tab} data-radix-collection-item="" onClick={(event) => {
-											values.priority = radioValue(event.target);
-											errors = revalidate(form, submitted, values, errors);
-										}}>
-											<span data-state="checked" data-slot="radio-group-indicator" class="relative flex items-center justify-center" hidden={!o.checked}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 fill-primary" aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg></span>
-										</button>
-										<input aria-hidden="true" tabindex="-1" type="radio" value={o.value} checked={o.checked} style="transform: translateX(-100%); position: absolute; pointer-events: none; opacity: 0; margin: 0px; width: 16px; height: 16px;" />
-										<label data-slot="form-label" class={RADIO_LABEL} data-error={priorityInvalid} for={o.first ? 'tasks-form-priority-first' : `tasks-form-priority-${o.value}`}>{o.label}</label>
-									</div>
-								}
+								<div data-slot="form-item" class="gap-2 flex items-center">
+									<button type="button" role="radio" aria-checked={priorityOptionList[0].checked ? 'true' : 'false'} data-state={priorityOptionList[0].checked ? 'checked' : 'unchecked'} value={priorityOptionList[0].value} data-slot="form-control" class={RADIO} id={priorityOptionList[0].first ? 'tasks-form-priority-first' : `tasks-form-priority-${priorityOptionList[0].value}`} aria-describedby={priorityDescribedBy} aria-invalid={priorityInvalid} tabindex={priorityOptionList[0].tab} data-radix-collection-item="" onClick={(event) => {
+										values.priority = radioValue(event.target);
+										errors = revalidate(form, submitted, values, errors);
+									}}>
+										<span data-state="checked" data-slot="radio-group-indicator" class="relative flex items-center justify-center" hidden={!priorityOptionList[0].checked}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 fill-primary" aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg></span>
+									</button>
+									<input aria-hidden="true" tabindex="-1" type="radio" value={priorityOptionList[0].value} checked={priorityOptionList[0].checked} style="transform: translateX(-100%); position: absolute; pointer-events: none; opacity: 0; margin: 0px; width: 16px; height: 16px;" />
+									<label data-slot="form-label" class={RADIO_LABEL} data-error={priorityInvalid} for={priorityOptionList[0].first ? 'tasks-form-priority-first' : `tasks-form-priority-${priorityOptionList[0].value}`}>{priorityOptionList[0].label}</label>
+								</div>
+								<div data-slot="form-item" class="gap-2 flex items-center">
+									<button type="button" role="radio" aria-checked={priorityOptionList[1].checked ? 'true' : 'false'} data-state={priorityOptionList[1].checked ? 'checked' : 'unchecked'} value={priorityOptionList[1].value} data-slot="form-control" class={RADIO} id={priorityOptionList[1].first ? 'tasks-form-priority-first' : `tasks-form-priority-${priorityOptionList[1].value}`} aria-describedby={priorityDescribedBy} aria-invalid={priorityInvalid} tabindex={priorityOptionList[1].tab} data-radix-collection-item="" onClick={(event) => {
+										values.priority = radioValue(event.target);
+										errors = revalidate(form, submitted, values, errors);
+									}}>
+										<span data-state="checked" data-slot="radio-group-indicator" class="relative flex items-center justify-center" hidden={!priorityOptionList[1].checked}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 fill-primary" aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg></span>
+									</button>
+									<input aria-hidden="true" tabindex="-1" type="radio" value={priorityOptionList[1].value} checked={priorityOptionList[1].checked} style="transform: translateX(-100%); position: absolute; pointer-events: none; opacity: 0; margin: 0px; width: 16px; height: 16px;" />
+									<label data-slot="form-label" class={RADIO_LABEL} data-error={priorityInvalid} for={priorityOptionList[1].first ? 'tasks-form-priority-first' : `tasks-form-priority-${priorityOptionList[1].value}`}>{priorityOptionList[1].label}</label>
+								</div>
+								<div data-slot="form-item" class="gap-2 flex items-center">
+									<button type="button" role="radio" aria-checked={priorityOptionList[2].checked ? 'true' : 'false'} data-state={priorityOptionList[2].checked ? 'checked' : 'unchecked'} value={priorityOptionList[2].value} data-slot="form-control" class={RADIO} id={priorityOptionList[2].first ? 'tasks-form-priority-first' : `tasks-form-priority-${priorityOptionList[2].value}`} aria-describedby={priorityDescribedBy} aria-invalid={priorityInvalid} tabindex={priorityOptionList[2].tab} data-radix-collection-item="" onClick={(event) => {
+										values.priority = radioValue(event.target);
+										errors = revalidate(form, submitted, values, errors);
+									}}>
+										<span data-state="checked" data-slot="radio-group-indicator" class="relative flex items-center justify-center" hidden={!priorityOptionList[2].checked}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 fill-primary" aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg></span>
+									</button>
+									<input aria-hidden="true" tabindex="-1" type="radio" value={priorityOptionList[2].value} checked={priorityOptionList[2].checked} style="transform: translateX(-100%); position: absolute; pointer-events: none; opacity: 0; margin: 0px; width: 16px; height: 16px;" />
+									<label data-slot="form-label" class={RADIO_LABEL} data-error={priorityInvalid} for={priorityOptionList[2].first ? 'tasks-form-priority-first' : `tasks-form-priority-${priorityOptionList[2].value}`}>{priorityOptionList[2].label}</label>
+								</div>
 							</div>
 							@if (priorityError) {
 								<p data-slot="form-message" id="tasks-form-priority-message" class="text-sm text-destructive">{priorityError}</p>
@@ -707,7 +979,7 @@ export default function Tasks({ http, url }: PageProps) @{
 			</DialogPortal>
 		</DialogRoot>
 
-		<PopoverContent menu="filter-status" align="start" class="w-50 p-0">
+		<PopoverContent menu="filter-status" align="start" class={FACET_POPOVER}>
 			<div tabindex="-1" data-slot="command" class="flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground" cmdk-root="" id="filter-status-command" onKeydown={(event) => {
 				if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End' || event.key === 'Enter') event.preventDefault();
 				if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
@@ -738,20 +1010,66 @@ export default function Tasks({ http, url }: PageProps) @{
 						<div cmdk-empty="" role="presentation" data-slot="command-empty" class="py-6 text-center text-sm" hidden>No results found.</div>
 						<div data-slot="command-group" class={COMMAND_GROUP} cmdk-group="" role="presentation" data-value="undefined">
 							<div cmdk-group-items="" role="group">
-								@for (const option of statusOptions; key option.value) {
-									<div data-slot="command-item" class={COMMAND_ITEM} id={`filter-status-${option.value.replace(' ', '-')}`} cmdk-item="" role="option" aria-disabled="false" data-disabled="false" data-value={option.label + option.count} data-option={option.value}>
-										<div class={option.selected ? 'flex size-4 items-center justify-center rounded-sm border border-primary bg-primary text-primary-foreground' : 'flex size-4 items-center justify-center rounded-sm border border-primary opacity-50 [&_svg]:invisible'}>
-											<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-background"><path d="M11.4669 3.72684C11.7558 3.91574 11.8369 4.30308 11.648 4.59198L7.39799 11.092C7.29783 11.2452 7.13556 11.3467 6.95402 11.3699C6.77247 11.3931 6.58989 11.3355 6.45446 11.2124L3.70446 8.71241C3.44905 8.48022 3.43023 8.08494 3.66242 7.82953C3.89461 7.57412 4.28989 7.55529 4.5453 7.78749L6.75292 9.79441L10.6018 3.90792C10.7907 3.61902 11.178 3.53795 11.4669 3.72684Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" /></svg>
-										</div>
-										<svg hidden={option.value !== 'backlog'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><path d="M12 17h.01" /></svg>
-									<svg hidden={option.value !== 'todo'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg>
-									<svg hidden={option.value !== 'in progress'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><line x1="10" x2="14" y1="2" y2="2" /><line x1="12" x2="15" y1="14" y2="11" /><circle cx="12" cy="14" r="8" /></svg>
-									<svg hidden={option.value !== 'done'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="M21.801 10A10 10 0 1 1 17 3.335" /><path d="m9 11 3 3L22 4" /></svg>
-									<svg hidden={option.value !== 'canceled'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="m2 2 20 20" /><path d="M8.35 2.69A10 10 0 0 1 21.3 15.65" /><path d="M19.08 19.08A10 10 0 1 1 4.92 4.92" /></svg>
-										<span>{option.label}</span>
-										<span class="ms-auto flex h-4 w-4 items-center justify-center font-mono text-xs" hidden={option.count === ''}>{option.count}</span>
+								<div data-slot="command-item" class={COMMAND_ITEM} id={`filter-status-${statusOptions[0].value.replace(' ', '-')}`} cmdk-item="" role="option" aria-disabled="false" data-disabled="false" data-value={statusOptions[0].label + statusOptions[0].count} data-option={statusOptions[0].value}>
+									<div class={statusOptions[0].selected ? 'flex size-4 items-center justify-center rounded-sm border border-primary bg-primary text-primary-foreground' : 'flex size-4 items-center justify-center rounded-sm border border-primary opacity-50 [&_svg]:invisible'}>
+										<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-background"><path d="M11.4669 3.72684C11.7558 3.91574 11.8369 4.30308 11.648 4.59198L7.39799 11.092C7.29783 11.2452 7.13556 11.3467 6.95402 11.3699C6.77247 11.3931 6.58989 11.3355 6.45446 11.2124L3.70446 8.71241C3.44905 8.48022 3.43023 8.08494 3.66242 7.82953C3.89461 7.57412 4.28989 7.55529 4.5453 7.78749L6.75292 9.79441L10.6018 3.90792C10.7907 3.61902 11.178 3.53795 11.4669 3.72684Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" /></svg>
 									</div>
-								}
+									<svg hidden={statusOptions[0].value !== 'backlog'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><path d="M12 17h.01" /></svg>
+								<svg hidden={statusOptions[0].value !== 'todo'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg>
+								<svg hidden={statusOptions[0].value !== 'in progress'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><line x1="10" x2="14" y1="2" y2="2" /><line x1="12" x2="15" y1="14" y2="11" /><circle cx="12" cy="14" r="8" /></svg>
+								<svg hidden={statusOptions[0].value !== 'done'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="M21.801 10A10 10 0 1 1 17 3.335" /><path d="m9 11 3 3L22 4" /></svg>
+								<svg hidden={statusOptions[0].value !== 'canceled'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="m2 2 20 20" /><path d="M8.35 2.69A10 10 0 0 1 21.3 15.65" /><path d="M19.08 19.08A10 10 0 1 1 4.92 4.92" /></svg>
+									<span>{statusOptions[0].label}</span>
+									<span class="ms-auto flex h-4 w-4 items-center justify-center font-mono text-xs" hidden={statusOptions[0].count === ''}>{statusOptions[0].count}</span>
+								</div>
+								<div data-slot="command-item" class={COMMAND_ITEM} id={`filter-status-${statusOptions[1].value.replace(' ', '-')}`} cmdk-item="" role="option" aria-disabled="false" data-disabled="false" data-value={statusOptions[1].label + statusOptions[1].count} data-option={statusOptions[1].value}>
+									<div class={statusOptions[1].selected ? 'flex size-4 items-center justify-center rounded-sm border border-primary bg-primary text-primary-foreground' : 'flex size-4 items-center justify-center rounded-sm border border-primary opacity-50 [&_svg]:invisible'}>
+										<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-background"><path d="M11.4669 3.72684C11.7558 3.91574 11.8369 4.30308 11.648 4.59198L7.39799 11.092C7.29783 11.2452 7.13556 11.3467 6.95402 11.3699C6.77247 11.3931 6.58989 11.3355 6.45446 11.2124L3.70446 8.71241C3.44905 8.48022 3.43023 8.08494 3.66242 7.82953C3.89461 7.57412 4.28989 7.55529 4.5453 7.78749L6.75292 9.79441L10.6018 3.90792C10.7907 3.61902 11.178 3.53795 11.4669 3.72684Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" /></svg>
+									</div>
+									<svg hidden={statusOptions[1].value !== 'backlog'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><path d="M12 17h.01" /></svg>
+								<svg hidden={statusOptions[1].value !== 'todo'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg>
+								<svg hidden={statusOptions[1].value !== 'in progress'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><line x1="10" x2="14" y1="2" y2="2" /><line x1="12" x2="15" y1="14" y2="11" /><circle cx="12" cy="14" r="8" /></svg>
+								<svg hidden={statusOptions[1].value !== 'done'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="M21.801 10A10 10 0 1 1 17 3.335" /><path d="m9 11 3 3L22 4" /></svg>
+								<svg hidden={statusOptions[1].value !== 'canceled'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="m2 2 20 20" /><path d="M8.35 2.69A10 10 0 0 1 21.3 15.65" /><path d="M19.08 19.08A10 10 0 1 1 4.92 4.92" /></svg>
+									<span>{statusOptions[1].label}</span>
+									<span class="ms-auto flex h-4 w-4 items-center justify-center font-mono text-xs" hidden={statusOptions[1].count === ''}>{statusOptions[1].count}</span>
+								</div>
+								<div data-slot="command-item" class={COMMAND_ITEM} id={`filter-status-${statusOptions[2].value.replace(' ', '-')}`} cmdk-item="" role="option" aria-disabled="false" data-disabled="false" data-value={statusOptions[2].label + statusOptions[2].count} data-option={statusOptions[2].value}>
+									<div class={statusOptions[2].selected ? 'flex size-4 items-center justify-center rounded-sm border border-primary bg-primary text-primary-foreground' : 'flex size-4 items-center justify-center rounded-sm border border-primary opacity-50 [&_svg]:invisible'}>
+										<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-background"><path d="M11.4669 3.72684C11.7558 3.91574 11.8369 4.30308 11.648 4.59198L7.39799 11.092C7.29783 11.2452 7.13556 11.3467 6.95402 11.3699C6.77247 11.3931 6.58989 11.3355 6.45446 11.2124L3.70446 8.71241C3.44905 8.48022 3.43023 8.08494 3.66242 7.82953C3.89461 7.57412 4.28989 7.55529 4.5453 7.78749L6.75292 9.79441L10.6018 3.90792C10.7907 3.61902 11.178 3.53795 11.4669 3.72684Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" /></svg>
+									</div>
+									<svg hidden={statusOptions[2].value !== 'backlog'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><path d="M12 17h.01" /></svg>
+								<svg hidden={statusOptions[2].value !== 'todo'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg>
+								<svg hidden={statusOptions[2].value !== 'in progress'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><line x1="10" x2="14" y1="2" y2="2" /><line x1="12" x2="15" y1="14" y2="11" /><circle cx="12" cy="14" r="8" /></svg>
+								<svg hidden={statusOptions[2].value !== 'done'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="M21.801 10A10 10 0 1 1 17 3.335" /><path d="m9 11 3 3L22 4" /></svg>
+								<svg hidden={statusOptions[2].value !== 'canceled'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="m2 2 20 20" /><path d="M8.35 2.69A10 10 0 0 1 21.3 15.65" /><path d="M19.08 19.08A10 10 0 1 1 4.92 4.92" /></svg>
+									<span>{statusOptions[2].label}</span>
+									<span class="ms-auto flex h-4 w-4 items-center justify-center font-mono text-xs" hidden={statusOptions[2].count === ''}>{statusOptions[2].count}</span>
+								</div>
+								<div data-slot="command-item" class={COMMAND_ITEM} id={`filter-status-${statusOptions[3].value.replace(' ', '-')}`} cmdk-item="" role="option" aria-disabled="false" data-disabled="false" data-value={statusOptions[3].label + statusOptions[3].count} data-option={statusOptions[3].value}>
+									<div class={statusOptions[3].selected ? 'flex size-4 items-center justify-center rounded-sm border border-primary bg-primary text-primary-foreground' : 'flex size-4 items-center justify-center rounded-sm border border-primary opacity-50 [&_svg]:invisible'}>
+										<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-background"><path d="M11.4669 3.72684C11.7558 3.91574 11.8369 4.30308 11.648 4.59198L7.39799 11.092C7.29783 11.2452 7.13556 11.3467 6.95402 11.3699C6.77247 11.3931 6.58989 11.3355 6.45446 11.2124L3.70446 8.71241C3.44905 8.48022 3.43023 8.08494 3.66242 7.82953C3.89461 7.57412 4.28989 7.55529 4.5453 7.78749L6.75292 9.79441L10.6018 3.90792C10.7907 3.61902 11.178 3.53795 11.4669 3.72684Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" /></svg>
+									</div>
+									<svg hidden={statusOptions[3].value !== 'backlog'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><path d="M12 17h.01" /></svg>
+								<svg hidden={statusOptions[3].value !== 'todo'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg>
+								<svg hidden={statusOptions[3].value !== 'in progress'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><line x1="10" x2="14" y1="2" y2="2" /><line x1="12" x2="15" y1="14" y2="11" /><circle cx="12" cy="14" r="8" /></svg>
+								<svg hidden={statusOptions[3].value !== 'done'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="M21.801 10A10 10 0 1 1 17 3.335" /><path d="m9 11 3 3L22 4" /></svg>
+								<svg hidden={statusOptions[3].value !== 'canceled'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="m2 2 20 20" /><path d="M8.35 2.69A10 10 0 0 1 21.3 15.65" /><path d="M19.08 19.08A10 10 0 1 1 4.92 4.92" /></svg>
+									<span>{statusOptions[3].label}</span>
+									<span class="ms-auto flex h-4 w-4 items-center justify-center font-mono text-xs" hidden={statusOptions[3].count === ''}>{statusOptions[3].count}</span>
+								</div>
+								<div data-slot="command-item" class={COMMAND_ITEM} id={`filter-status-${statusOptions[4].value.replace(' ', '-')}`} cmdk-item="" role="option" aria-disabled="false" data-disabled="false" data-value={statusOptions[4].label + statusOptions[4].count} data-option={statusOptions[4].value}>
+									<div class={statusOptions[4].selected ? 'flex size-4 items-center justify-center rounded-sm border border-primary bg-primary text-primary-foreground' : 'flex size-4 items-center justify-center rounded-sm border border-primary opacity-50 [&_svg]:invisible'}>
+										<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-background"><path d="M11.4669 3.72684C11.7558 3.91574 11.8369 4.30308 11.648 4.59198L7.39799 11.092C7.29783 11.2452 7.13556 11.3467 6.95402 11.3699C6.77247 11.3931 6.58989 11.3355 6.45446 11.2124L3.70446 8.71241C3.44905 8.48022 3.43023 8.08494 3.66242 7.82953C3.89461 7.57412 4.28989 7.55529 4.5453 7.78749L6.75292 9.79441L10.6018 3.90792C10.7907 3.61902 11.178 3.53795 11.4669 3.72684Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" /></svg>
+									</div>
+									<svg hidden={statusOptions[4].value !== 'backlog'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><path d="M12 17h.01" /></svg>
+								<svg hidden={statusOptions[4].value !== 'todo'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg>
+								<svg hidden={statusOptions[4].value !== 'in progress'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><line x1="10" x2="14" y1="2" y2="2" /><line x1="12" x2="15" y1="14" y2="11" /><circle cx="12" cy="14" r="8" /></svg>
+								<svg hidden={statusOptions[4].value !== 'done'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="M21.801 10A10 10 0 1 1 17 3.335" /><path d="m9 11 3 3L22 4" /></svg>
+								<svg hidden={statusOptions[4].value !== 'canceled'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="m2 2 20 20" /><path d="M8.35 2.69A10 10 0 0 1 21.3 15.65" /><path d="M19.08 19.08A10 10 0 1 1 4.92 4.92" /></svg>
+									<span>{statusOptions[4].label}</span>
+									<span class="ms-auto flex h-4 w-4 items-center justify-center font-mono text-xs" hidden={statusOptions[4].count === ''}>{statusOptions[4].count}</span>
+								</div>
 							</div>
 						</div>
 						<div data-slot="command-separator" class="-mx-1 h-px bg-border" cmdk-separator={statusNone ? undefined : ''} role="separator" hidden={statusNone}></div>
@@ -764,7 +1082,7 @@ export default function Tasks({ http, url }: PageProps) @{
 				</div>
 			</div>
 		</PopoverContent>
-		<PopoverContent menu="filter-priority" align="start" class="w-50 p-0">
+		<PopoverContent menu="filter-priority" align="start" class={FACET_POPOVER}>
 			<div tabindex="-1" data-slot="command" class="flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground" cmdk-root="" id="filter-priority-command" onKeydown={(event) => {
 				if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End' || event.key === 'Enter') event.preventDefault();
 				if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
@@ -795,19 +1113,50 @@ export default function Tasks({ http, url }: PageProps) @{
 						<div cmdk-empty="" role="presentation" data-slot="command-empty" class="py-6 text-center text-sm" hidden>No results found.</div>
 						<div data-slot="command-group" class={COMMAND_GROUP} cmdk-group="" role="presentation" data-value="undefined">
 							<div cmdk-group-items="" role="group">
-								@for (const option of priorityOptions; key option.value) {
-									<div data-slot="command-item" class={COMMAND_ITEM} id={`filter-priority-${option.value.replace(' ', '-')}`} cmdk-item="" role="option" aria-disabled="false" data-disabled="false" data-value={option.label + option.count} data-option={option.value}>
-										<div class={option.selected ? 'flex size-4 items-center justify-center rounded-sm border border-primary bg-primary text-primary-foreground' : 'flex size-4 items-center justify-center rounded-sm border border-primary opacity-50 [&_svg]:invisible'}>
-											<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-background"><path d="M11.4669 3.72684C11.7558 3.91574 11.8369 4.30308 11.648 4.59198L7.39799 11.092C7.29783 11.2452 7.13556 11.3467 6.95402 11.3699C6.77247 11.3931 6.58989 11.3355 6.45446 11.2124L3.70446 8.71241C3.44905 8.48022 3.43023 8.08494 3.66242 7.82953C3.89461 7.57412 4.28989 7.55529 4.5453 7.78749L6.75292 9.79441L10.6018 3.90792C10.7907 3.61902 11.178 3.53795 11.4669 3.72684Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" /></svg>
-										</div>
-										<svg hidden={option.value !== 'low'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="M12 5v14" /><path d="m19 12-7 7-7-7" /></svg>
-									<svg hidden={option.value !== 'medium'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
-									<svg hidden={option.value !== 'high'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="m5 12 7-7 7 7" /><path d="M12 19V5" /></svg>
-									<svg hidden={option.value !== 'critical'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="8" y2="12" /><line x1="12" x2="12.01" y1="16" y2="16" /></svg>
-										<span>{option.label}</span>
-										<span class="ms-auto flex h-4 w-4 items-center justify-center font-mono text-xs" hidden={option.count === ''}>{option.count}</span>
+								<div data-slot="command-item" class={COMMAND_ITEM} id={`filter-priority-${priorityOptions[0].value.replace(' ', '-')}`} cmdk-item="" role="option" aria-disabled="false" data-disabled="false" data-value={priorityOptions[0].label + priorityOptions[0].count} data-option={priorityOptions[0].value}>
+									<div class={priorityOptions[0].selected ? 'flex size-4 items-center justify-center rounded-sm border border-primary bg-primary text-primary-foreground' : 'flex size-4 items-center justify-center rounded-sm border border-primary opacity-50 [&_svg]:invisible'}>
+										<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-background"><path d="M11.4669 3.72684C11.7558 3.91574 11.8369 4.30308 11.648 4.59198L7.39799 11.092C7.29783 11.2452 7.13556 11.3467 6.95402 11.3699C6.77247 11.3931 6.58989 11.3355 6.45446 11.2124L3.70446 8.71241C3.44905 8.48022 3.43023 8.08494 3.66242 7.82953C3.89461 7.57412 4.28989 7.55529 4.5453 7.78749L6.75292 9.79441L10.6018 3.90792C10.7907 3.61902 11.178 3.53795 11.4669 3.72684Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" /></svg>
 									</div>
-								}
+									<svg hidden={priorityOptions[0].value !== 'low'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="M12 5v14" /><path d="m19 12-7 7-7-7" /></svg>
+								<svg hidden={priorityOptions[0].value !== 'medium'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
+								<svg hidden={priorityOptions[0].value !== 'high'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="m5 12 7-7 7 7" /><path d="M12 19V5" /></svg>
+								<svg hidden={priorityOptions[0].value !== 'critical'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="8" y2="12" /><line x1="12" x2="12.01" y1="16" y2="16" /></svg>
+									<span>{priorityOptions[0].label}</span>
+									<span class="ms-auto flex h-4 w-4 items-center justify-center font-mono text-xs" hidden={priorityOptions[0].count === ''}>{priorityOptions[0].count}</span>
+								</div>
+								<div data-slot="command-item" class={COMMAND_ITEM} id={`filter-priority-${priorityOptions[1].value.replace(' ', '-')}`} cmdk-item="" role="option" aria-disabled="false" data-disabled="false" data-value={priorityOptions[1].label + priorityOptions[1].count} data-option={priorityOptions[1].value}>
+									<div class={priorityOptions[1].selected ? 'flex size-4 items-center justify-center rounded-sm border border-primary bg-primary text-primary-foreground' : 'flex size-4 items-center justify-center rounded-sm border border-primary opacity-50 [&_svg]:invisible'}>
+										<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-background"><path d="M11.4669 3.72684C11.7558 3.91574 11.8369 4.30308 11.648 4.59198L7.39799 11.092C7.29783 11.2452 7.13556 11.3467 6.95402 11.3699C6.77247 11.3931 6.58989 11.3355 6.45446 11.2124L3.70446 8.71241C3.44905 8.48022 3.43023 8.08494 3.66242 7.82953C3.89461 7.57412 4.28989 7.55529 4.5453 7.78749L6.75292 9.79441L10.6018 3.90792C10.7907 3.61902 11.178 3.53795 11.4669 3.72684Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" /></svg>
+									</div>
+									<svg hidden={priorityOptions[1].value !== 'low'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="M12 5v14" /><path d="m19 12-7 7-7-7" /></svg>
+								<svg hidden={priorityOptions[1].value !== 'medium'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
+								<svg hidden={priorityOptions[1].value !== 'high'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="m5 12 7-7 7 7" /><path d="M12 19V5" /></svg>
+								<svg hidden={priorityOptions[1].value !== 'critical'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="8" y2="12" /><line x1="12" x2="12.01" y1="16" y2="16" /></svg>
+									<span>{priorityOptions[1].label}</span>
+									<span class="ms-auto flex h-4 w-4 items-center justify-center font-mono text-xs" hidden={priorityOptions[1].count === ''}>{priorityOptions[1].count}</span>
+								</div>
+								<div data-slot="command-item" class={COMMAND_ITEM} id={`filter-priority-${priorityOptions[2].value.replace(' ', '-')}`} cmdk-item="" role="option" aria-disabled="false" data-disabled="false" data-value={priorityOptions[2].label + priorityOptions[2].count} data-option={priorityOptions[2].value}>
+									<div class={priorityOptions[2].selected ? 'flex size-4 items-center justify-center rounded-sm border border-primary bg-primary text-primary-foreground' : 'flex size-4 items-center justify-center rounded-sm border border-primary opacity-50 [&_svg]:invisible'}>
+										<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-background"><path d="M11.4669 3.72684C11.7558 3.91574 11.8369 4.30308 11.648 4.59198L7.39799 11.092C7.29783 11.2452 7.13556 11.3467 6.95402 11.3699C6.77247 11.3931 6.58989 11.3355 6.45446 11.2124L3.70446 8.71241C3.44905 8.48022 3.43023 8.08494 3.66242 7.82953C3.89461 7.57412 4.28989 7.55529 4.5453 7.78749L6.75292 9.79441L10.6018 3.90792C10.7907 3.61902 11.178 3.53795 11.4669 3.72684Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" /></svg>
+									</div>
+									<svg hidden={priorityOptions[2].value !== 'low'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="M12 5v14" /><path d="m19 12-7 7-7-7" /></svg>
+								<svg hidden={priorityOptions[2].value !== 'medium'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
+								<svg hidden={priorityOptions[2].value !== 'high'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="m5 12 7-7 7 7" /><path d="M12 19V5" /></svg>
+								<svg hidden={priorityOptions[2].value !== 'critical'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="8" y2="12" /><line x1="12" x2="12.01" y1="16" y2="16" /></svg>
+									<span>{priorityOptions[2].label}</span>
+									<span class="ms-auto flex h-4 w-4 items-center justify-center font-mono text-xs" hidden={priorityOptions[2].count === ''}>{priorityOptions[2].count}</span>
+								</div>
+								<div data-slot="command-item" class={COMMAND_ITEM} id={`filter-priority-${priorityOptions[3].value.replace(' ', '-')}`} cmdk-item="" role="option" aria-disabled="false" data-disabled="false" data-value={priorityOptions[3].label + priorityOptions[3].count} data-option={priorityOptions[3].value}>
+									<div class={priorityOptions[3].selected ? 'flex size-4 items-center justify-center rounded-sm border border-primary bg-primary text-primary-foreground' : 'flex size-4 items-center justify-center rounded-sm border border-primary opacity-50 [&_svg]:invisible'}>
+										<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-background"><path d="M11.4669 3.72684C11.7558 3.91574 11.8369 4.30308 11.648 4.59198L7.39799 11.092C7.29783 11.2452 7.13556 11.3467 6.95402 11.3699C6.77247 11.3931 6.58989 11.3355 6.45446 11.2124L3.70446 8.71241C3.44905 8.48022 3.43023 8.08494 3.66242 7.82953C3.89461 7.57412 4.28989 7.55529 4.5453 7.78749L6.75292 9.79441L10.6018 3.90792C10.7907 3.61902 11.178 3.53795 11.4669 3.72684Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" /></svg>
+									</div>
+									<svg hidden={priorityOptions[3].value !== 'low'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="M12 5v14" /><path d="m19 12-7 7-7-7" /></svg>
+								<svg hidden={priorityOptions[3].value !== 'medium'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
+								<svg hidden={priorityOptions[3].value !== 'high'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><path d="m5 12 7-7 7 7" /><path d="M12 19V5" /></svg>
+								<svg hidden={priorityOptions[3].value !== 'critical'} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-muted-foreground" aria-hidden="true"><circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="8" y2="12" /><line x1="12" x2="12.01" y1="16" y2="16" /></svg>
+									<span>{priorityOptions[3].label}</span>
+									<span class="ms-auto flex h-4 w-4 items-center justify-center font-mono text-xs" hidden={priorityOptions[3].count === ''}>{priorityOptions[3].count}</span>
+								</div>
 							</div>
 						</div>
 						<div data-slot="command-separator" class="-mx-1 h-px bg-border" cmdk-separator={priorityNone ? undefined : ''} role="separator" hidden={priorityNone}></div>
@@ -904,18 +1253,36 @@ export default function Tasks({ http, url }: PageProps) @{
 					}
 				}}>
 					<div role="group" data-slot="dropdown-menu-radio-group">
-						@for (const l of labelItems; key l.value) {
-							<div role="menuitemradio" aria-checked={l.checked ? 'true' : 'false'} data-slot="dropdown-menu-radio-item" class={RADIO_ITEM} data-state={l.checked ? 'checked' : 'unchecked'} tabindex="-1" data-orientation="vertical" data-radix-collection-item="" onClick={() => {
-								closeSub(subTrigger, false);
-								m.open = '';
-								closeMenu(m.contents, m.triggers, 'row-actions', true);
-							}}>
-								<span class="pointer-events-none absolute inset-s-2 flex size-3.5 items-center justify-center">
-									<span data-state="checked" hidden={!l.checked}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle size-2 fill-current" aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg></span>
-								</span>
-								<span>{l.label}</span>
-							</div>
-						}
+						<div role="menuitemradio" aria-checked={labelItems[0].checked ? 'true' : 'false'} data-slot="dropdown-menu-radio-item" class={RADIO_ITEM} data-state={labelItems[0].checked ? 'checked' : 'unchecked'} tabindex="-1" data-orientation="vertical" data-radix-collection-item="" onClick={() => {
+							closeSub(subTrigger, false);
+							m.open = '';
+							closeMenu(m.contents, m.triggers, 'row-actions', true);
+						}}>
+							<span class="pointer-events-none absolute inset-s-2 flex size-3.5 items-center justify-center">
+								<span data-state="checked" hidden={!labelItems[0].checked}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle size-2 fill-current" aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg></span>
+							</span>
+							<span>{labelItems[0].label}</span>
+						</div>
+						<div role="menuitemradio" aria-checked={labelItems[1].checked ? 'true' : 'false'} data-slot="dropdown-menu-radio-item" class={RADIO_ITEM} data-state={labelItems[1].checked ? 'checked' : 'unchecked'} tabindex="-1" data-orientation="vertical" data-radix-collection-item="" onClick={() => {
+							closeSub(subTrigger, false);
+							m.open = '';
+							closeMenu(m.contents, m.triggers, 'row-actions', true);
+						}}>
+							<span class="pointer-events-none absolute inset-s-2 flex size-3.5 items-center justify-center">
+								<span data-state="checked" hidden={!labelItems[1].checked}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle size-2 fill-current" aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg></span>
+							</span>
+							<span>{labelItems[1].label}</span>
+						</div>
+						<div role="menuitemradio" aria-checked={labelItems[2].checked ? 'true' : 'false'} data-slot="dropdown-menu-radio-item" class={RADIO_ITEM} data-state={labelItems[2].checked ? 'checked' : 'unchecked'} tabindex="-1" data-orientation="vertical" data-radix-collection-item="" onClick={() => {
+							closeSub(subTrigger, false);
+							m.open = '';
+							closeMenu(m.contents, m.triggers, 'row-actions', true);
+						}}>
+							<span class="pointer-events-none absolute inset-s-2 flex size-3.5 items-center justify-center">
+								<span data-state="checked" hidden={!labelItems[2].checked}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle size-2 fill-current" aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg></span>
+							</span>
+							<span>{labelItems[2].label}</span>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -928,7 +1295,7 @@ export default function Tasks({ http, url }: PageProps) @{
 				<DropdownMenuShortcut><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2 lucide-trash-2" aria-hidden="true"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg></DropdownMenuShortcut>
 			</DropdownMenuItem>
 		</DropdownMenuContent>
-		<DropdownMenuContent menu="page-size" role="listbox" slot="select-content" side="top" align="start">
+		<DropdownMenuContent menu="page-size" role="listbox" slot="select-content" side="top" align="start" class={SELECT_CONTENT}>
 			<div data-radix-select-viewport="" role="presentation" class="p-1 h-(--radix-select-trigger-height) w-full min-w-(--radix-select-trigger-width) scroll-my-1" style="position: relative; flex: 1 1 0%; overflow: hidden auto;">
 				<SelectItem menu="page-size" selected={size10} onSelect={() => { page = pageAfterResize(page, pageSize, 10); pageSize = 10; pushPagination(page, pageSize); }}>10</SelectItem>
 				<SelectItem menu="page-size" selected={size20} onSelect={() => { page = pageAfterResize(page, pageSize, 20); pageSize = 20; pushPagination(page, pageSize); }}>20</SelectItem>
@@ -937,7 +1304,7 @@ export default function Tasks({ http, url }: PageProps) @{
 				<SelectItem menu="page-size" selected={size50} onSelect={() => { page = pageAfterResize(page, pageSize, 50); pageSize = 50; pushPagination(page, pageSize); }}>50</SelectItem>
 			</div>
 		</DropdownMenuContent>
-		<DropdownMenuContent menu="tasks-form-status" role="listbox" slot="select-content" align="start">
+		<DropdownMenuContent menu="tasks-form-status" role="listbox" slot="select-content" align="start" class={SELECT_CONTENT}>
 			<div data-radix-select-viewport="" role="presentation" class="p-1 h-(--radix-select-trigger-height) w-full min-w-(--radix-select-trigger-width) scroll-my-1" style="position: relative; flex: 1 1 0%; overflow: hidden auto;">
 				<SelectItem menu="tasks-form-status" selected={statusInProgressSelected} onSelect={() => { values.status = 'in progress'; errors = revalidate(form, submitted, values, errors); }}>In Progress</SelectItem>
 				<SelectItem menu="tasks-form-status" selected={statusBacklogSelected} onSelect={() => { values.status = 'backlog'; errors = revalidate(form, submitted, values, errors); }}>Backlog</SelectItem>

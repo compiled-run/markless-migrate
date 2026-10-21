@@ -15,8 +15,9 @@ import {
 	DropdownMenuTrigger,
 } from '../../lib/parity/radix-ui-react-dropdown-menu/menu.tsrx';
 import { applyDir, applyTheme, exitDone, focusDialogOf, rememberCollapsible, rememberSidebar, rememberVariant, resetDir, resetTheme, signOut } from './shell-behaviour.ts';
-import type { LayoutPrefs } from './prefs.ts';
+import { shellPrefs, SkipToMain } from './shell-prefs.tsrx';
 import { chosenCommand, filterCommands, moveSelection, resetPalette } from '../../lib/parity/cmdk/behaviour.ts';
+import { hideScrollbar, placeScrollThumb, showScrollbar } from '../../lib/parity/radix-ui-react-scroll-area/hover-scrollbar.ts';
 import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, DialogTrigger } from '../../lib/ports/radix-ui-react-dialog/dialog.tsrx';
 import { AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogOverlay, AlertDialogPortal, AlertDialogRoot, AlertDialogTitle } from '../../lib/ports/radix-ui-react-dialog/alert-dialog.tsrx';
 import { focusGroup, radioFocused, radioKeys } from '../../lib/parity/radix-ui-react-radio-group/behaviour.ts';
@@ -32,24 +33,22 @@ export type ShellProps = {
 	readonly fixed?: boolean;
 	/** The old <Header className='border-b'>. */
 	readonly border?: boolean;
-	/** The cookies the old providers read on load, read from the request. */
-	readonly prefs: LayoutPrefs;
 	readonly children?: Children;
 };
 
-export function Shell({ active, header, fixed, border, prefs, children }: ShellProps) @{
-	let sidebarOpen = state(prefs.open);
-	let variant = state(prefs.variant);
-	let collapsible = state(prefs.collapsible);
-	let dir = state(prefs.dir);
+export function Shell({ active, header, fixed, border, children }: ShellProps) @{
+	// The server renders the providers' defaults for every visitor; SkipToMain reads the saved cookies in the browser.
+	const prefs = shellPrefs();
 	let clerkOpen = state(active === '/clerk/sign-in' || active === '/clerk/sign-up' || active === '/clerk/user-management');
 	let authOpen = state(active === '/sign-in' || active === '/sign-in-2' || active === '/sign-up' || active === '/forgot-password' || active === '/otp');
 	let errorsOpen = state(active === '/errors/unauthorized' || active === '/errors/forbidden' || active === '/errors/not-found' || active === '/errors/internal-server-error' || active === '/errors/maintenance-error');
 	let settingsOpen = state(active === '/settings' || active === '/settings/account' || active === '/settings/appearance' || active === '/settings/notifications' || active === '/settings/display');
 	let team = state(0);
-	let theme = state(prefs.theme);
 	let searchOpen = state(false);
 	let drawerOpen = state(false);
+	// Radix mounts the command palette and the theme drawer on their first opening; what they carry from then on stays.
+	let searchSeen = state(false);
+	let drawerSeen = state(false);
 	let signOutOpen = state(false);
 	let toasts = state<Toast[]>([]);
 	const isTopNav = header === 'topnav';
@@ -58,9 +57,9 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 	const isSearch = header === 'search' && fixed !== true;
 	const isClerk = header === 'clerk';
 
-	const sidebarState = computed(() => (sidebarOpen ? 'expanded' : 'collapsed'));
-	const sidebarCollapsible = computed(() => (sidebarOpen ? '' : collapsible));
-	const inset = computed(() => variant === 'floating' || variant === 'inset');
+	const sidebarState = computed(() => (prefs.open ? 'expanded' : 'collapsed'));
+	const sidebarCollapsible = computed(() => (prefs.open ? '' : prefs.collapsible));
+	const inset = computed(() => prefs.variant === 'floating' || prefs.variant === 'inset');
 	const gapClass = computed(() => `relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear group-data-[collapsible=offcanvas]:w-0 group-data-[side=right]:rotate-180 ${inset ? 'group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]' : 'group-data-[collapsible=icon]:w-(--sidebar-width-icon)'}`);
 	const containerClass = computed(() => `fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[inset-inline,width] duration-200 ease-linear md:flex inset-s-0 group-data-[collapsible=offcanvas]:-inset-s-[calc(var(--sidebar-width))] ${inset ? 'p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]' : 'group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-e group-data-[side=right]:border-s'}`);
 	const clerkState = computed(() => (clerkOpen ? 'open' : 'closed'));
@@ -72,6 +71,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 	const settingsState = computed(() => (settingsOpen ? 'open' : 'closed'));
 	const settingsExpanded = computed(() => (settingsOpen ? 'true' : 'false'));
 	// Radix Collapsible holds back the open animation of content open on mount until it is first toggled, and hides closed content once its exit animation ends.
+	// Content closed on mount is not measured, so it carries no size until it is first opened.
 	let clerkToggled = state(false);
 	let clerkClosed = state(!(active === '/clerk/sign-in' || active === '/clerk/sign-up' || active === '/clerk/user-management'));
 	let authToggled = state(false);
@@ -80,53 +80,61 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 	let errorsClosed = state(!(active === '/errors/unauthorized' || active === '/errors/forbidden' || active === '/errors/not-found' || active === '/errors/internal-server-error' || active === '/errors/maintenance-error'));
 	let settingsToggled = state(false);
 	let settingsClosed = state(!(active === '/settings' || active === '/settings/account' || active === '/settings/appearance' || active === '/settings/notifications' || active === '/settings/display'));
-	const clerkStyle = computed(() => `${clerkOpen && !clerkToggled ? 'transition-duration: 0s; animation-name: none; ' : ''}--radix-collapsible-content-height: 96px; --radix-collapsible-content-width: 224px;`);
-	const authStyle = computed(() => `${authOpen && !authToggled ? 'transition-duration: 0s; animation-name: none; ' : ''}--radix-collapsible-content-height: 160px; --radix-collapsible-content-width: 224px;`);
-	const errorsStyle = computed(() => `${errorsOpen && !errorsToggled ? 'transition-duration: 0s; animation-name: none; ' : ''}--radix-collapsible-content-height: 160px; --radix-collapsible-content-width: 224px;`);
-	const settingsStyle = computed(() => `${settingsOpen && !settingsToggled ? 'transition-duration: 0s; animation-name: none; ' : ''}--radix-collapsible-content-height: 160px; --radix-collapsible-content-width: 224px;`);
+	const clerkStyle = computed(() => (clerkOpen || clerkToggled ? `${clerkOpen && !clerkToggled ? 'transition-duration: 0s; animation-name: none; ' : ''}--radix-collapsible-content-height: 96px; --radix-collapsible-content-width: 224px;` : undefined));
+	const authStyle = computed(() => (authOpen || authToggled ? `${authOpen && !authToggled ? 'transition-duration: 0s; animation-name: none; ' : ''}--radix-collapsible-content-height: 160px; --radix-collapsible-content-width: 224px;` : undefined));
+	const errorsStyle = computed(() => (errorsOpen || errorsToggled ? `${errorsOpen && !errorsToggled ? 'transition-duration: 0s; animation-name: none; ' : ''}--radix-collapsible-content-height: 160px; --radix-collapsible-content-width: 224px;` : undefined));
+	const settingsStyle = computed(() => (settingsOpen || settingsToggled ? `${settingsOpen && !settingsToggled ? 'transition-duration: 0s; animation-name: none; ' : ''}--radix-collapsible-content-height: 160px; --radix-collapsible-content-width: 224px;` : undefined));
 
 	// A state value cannot index an array in a recipe (MARKLESS_SYMBOL_MODULE_UNRESOLVED_GRAPH_REFERENCE), so the three teams are spelled out.
 	const teamName = computed(() => (team === 1 ? 'Acme Inc' : team === 2 ? 'Acme Corp.' : 'Shadcn Admin'));
 	const teamPlan = computed(() => (team === 1 ? 'Enterprise' : team === 2 ? 'Startup' : 'Vite + ShadcnUI'));
-	const lightCheck = computed(() => (theme === 'light' ? 'lucide lucide-check ms-auto' : 'lucide lucide-check ms-auto hidden'));
-	const darkCheck = computed(() => (theme === 'dark' ? 'lucide lucide-check ms-auto' : 'lucide lucide-check ms-auto hidden'));
-	const systemCheck = computed(() => (theme === 'system' ? 'lucide lucide-check ms-auto' : 'lucide lucide-check ms-auto hidden'));
+	const lightCheck = computed(() => (prefs.theme === 'light' ? 'lucide lucide-check ms-auto' : 'lucide lucide-check ms-auto hidden'));
+	const darkCheck = computed(() => (prefs.theme === 'dark' ? 'lucide lucide-check ms-auto' : 'lucide lucide-check ms-auto hidden'));
+	const systemCheck = computed(() => (prefs.theme === 'system' ? 'lucide lucide-check ms-auto' : 'lucide lucide-check ms-auto hidden'));
 
-	const layoutValue = computed(() => (sidebarOpen ? 'default' : collapsible));
-	const themeSystem = computed(() => (theme === 'system' ? 'true' : 'false'));
-	const themeSystemState = computed(() => (theme === 'system' ? 'checked' : 'unchecked'));
-	const themeLight = computed(() => (theme === 'light' ? 'true' : 'false'));
-	const themeLightState = computed(() => (theme === 'light' ? 'checked' : 'unchecked'));
-	const themeDark = computed(() => (theme === 'dark' ? 'true' : 'false'));
-	const themeDarkState = computed(() => (theme === 'dark' ? 'checked' : 'unchecked'));
-	const variantInset = computed(() => (variant === 'inset' ? 'true' : 'false'));
-	const variantInsetState = computed(() => (variant === 'inset' ? 'checked' : 'unchecked'));
-	const variantFloating = computed(() => (variant === 'floating' ? 'true' : 'false'));
-	const variantFloatingState = computed(() => (variant === 'floating' ? 'checked' : 'unchecked'));
-	const variantSidebar = computed(() => (variant === 'sidebar' ? 'true' : 'false'));
-	const variantSidebarState = computed(() => (variant === 'sidebar' ? 'checked' : 'unchecked'));
+	const layoutValue = computed(() => (prefs.open ? 'default' : prefs.collapsible));
+	const themeSystem = computed(() => (prefs.theme === 'system' ? 'true' : 'false'));
+	const themeSystemState = computed(() => (prefs.theme === 'system' ? 'checked' : 'unchecked'));
+	const themeLight = computed(() => (prefs.theme === 'light' ? 'true' : 'false'));
+	const themeLightState = computed(() => (prefs.theme === 'light' ? 'checked' : 'unchecked'));
+	const themeDark = computed(() => (prefs.theme === 'dark' ? 'true' : 'false'));
+	const themeDarkState = computed(() => (prefs.theme === 'dark' ? 'checked' : 'unchecked'));
+	const variantInset = computed(() => (prefs.variant === 'inset' ? 'true' : 'false'));
+	const variantInsetState = computed(() => (prefs.variant === 'inset' ? 'checked' : 'unchecked'));
+	const variantFloating = computed(() => (prefs.variant === 'floating' ? 'true' : 'false'));
+	const variantFloatingState = computed(() => (prefs.variant === 'floating' ? 'checked' : 'unchecked'));
+	const variantSidebar = computed(() => (prefs.variant === 'sidebar' ? 'true' : 'false'));
+	const variantSidebarState = computed(() => (prefs.variant === 'sidebar' ? 'checked' : 'unchecked'));
 	const layoutDefault = computed(() => (layoutValue === 'default' ? 'true' : 'false'));
 	const layoutDefaultState = computed(() => (layoutValue === 'default' ? 'checked' : 'unchecked'));
 	const layoutIcon = computed(() => (layoutValue === 'icon' ? 'true' : 'false'));
 	const layoutIconState = computed(() => (layoutValue === 'icon' ? 'checked' : 'unchecked'));
 	const layoutOffcanvas = computed(() => (layoutValue === 'offcanvas' ? 'true' : 'false'));
 	const layoutOffcanvasState = computed(() => (layoutValue === 'offcanvas' ? 'checked' : 'unchecked'));
-	const dirLtr = computed(() => (dir === 'ltr' ? 'true' : 'false'));
-	const dirLtrState = computed(() => (dir === 'ltr' ? 'checked' : 'unchecked'));
-	const dirRtl = computed(() => (dir === 'rtl' ? 'true' : 'false'));
-	const dirRtlState = computed(() => (dir === 'rtl' ? 'checked' : 'unchecked'));
-	const themeDefault = computed(() => theme === 'system');
-	const variantDefault = computed(() => variant === 'inset');
+	const dirLtr = computed(() => (prefs.dir === 'ltr' ? 'true' : 'false'));
+	const dirLtrState = computed(() => (prefs.dir === 'ltr' ? 'checked' : 'unchecked'));
+	const dirRtl = computed(() => (prefs.dir === 'rtl' ? 'true' : 'false'));
+	const dirRtlState = computed(() => (prefs.dir === 'rtl' ? 'checked' : 'unchecked'));
+	const themeDefault = computed(() => prefs.theme === 'system');
+	const variantDefault = computed(() => prefs.variant === 'inset');
 	const layoutIsDefault = computed(() => layoutValue === 'default');
-	const dirDefault = computed(() => dir === 'ltr');
+	// Closed and never opened, the theme drawer and the command palette carry none of their inline styles.
+	const drawerOutline = computed(() => (drawerSeen ? 'outline: none;' : undefined));
+	const paletteLabelStyle = computed(() => (searchSeen ? 'position: absolute; width: 1px; height: 1px; padding: 0px; margin: -1px; overflow: hidden; clip: rect(0px, 0px, 0px, 0px); white-space: nowrap; border-width: 0px;' : undefined));
+	const paletteListStyle = computed(() => (searchSeen ? '--cmdk-list-height: 288.0px;' : undefined));
+	const paletteScrollStyle = computed(() => (searchSeen ? 'position: relative; --radix-scroll-area-corner-width: 0px; --radix-scroll-area-corner-height: 0px;' : undefined));
+	const paletteViewportStyle = computed(() => (searchSeen ? 'overflow: hidden scroll;' : undefined));
+	const paletteTableStyle = computed(() => (searchSeen ? 'min-width: 100%; display: table;' : undefined));
+	const dirDefault = computed(() => prefs.dir === 'ltr');
 
 	const toggleSidebar = () => {
-		sidebarOpen = !sidebarOpen;
-		rememberSidebar(sidebarOpen);
+		prefs.open = !prefs.open;
+		rememberSidebar(prefs.open);
 	};
 	const openSearch = () => {
 		resetPalette();
 		searchOpen = true;
+		searchSeen = true;
 	};
 	const searchKeys = (event: KeyboardEvent) => {
 		if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End' || event.key === 'Enter') event.preventDefault();
@@ -138,7 +146,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 			if (command) {
 				searchOpen = false;
 				if (command.theme) {
-					theme = command.theme;
+					prefs.theme = command.theme;
 					applyTheme(command.theme);
 				}
 				if (command.url) location.assign(command.url);
@@ -150,7 +158,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 		if (!command) return;
 		searchOpen = false;
 		if (command.theme) {
-			theme = command.theme;
+			prefs.theme = command.theme;
 			applyTheme(command.theme);
 		}
 		if (command.url) location.assign(command.url);
@@ -165,8 +173,8 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 
 	<div class="contents">
 		<div data-slot="sidebar-wrapper" class="group/sidebar-wrapper flex min-h-svh w-full md:has-data-[variant=inset]:bg-sidebar" style="--sidebar-width: 16rem; --sidebar-width-icon: 3rem;">
-			<a class="fixed inset-s-44 z-999 -translate-y-52 bg-primary px-4 py-2 text-sm font-medium whitespace-nowrap text-primary-foreground opacity-95 shadow-sm transition hover:bg-primary/90 focus:translate-y-3 focus:transform focus-visible:ring-1 focus-visible:ring-ring" href="#content">Skip to Main</a>
-			<div class="group peer hidden text-sidebar-foreground md:block" data-state={sidebarState} data-collapsible={sidebarCollapsible} data-variant={variant} data-side="left" data-slot="sidebar">
+			<SkipToMain />
+			<div class="group peer hidden text-sidebar-foreground md:block" data-state={sidebarState} data-collapsible={sidebarCollapsible} data-variant={prefs.variant} data-side="left" data-slot="sidebar">
 				<div data-slot="sidebar-gap" class={gapClass}></div>
 				<div data-slot="sidebar-container" class={containerClass}>
 					<div data-sidebar="sidebar" data-slot="sidebar-inner" class="flex h-full w-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow-sm">
@@ -250,7 +258,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 											<span>Users</span>
 										</a>
 									</li>
-									<li data-slot="collapsible" data-sidebar="menu-item" class="group/menu-item relative group/collapsible" hidden={!sidebarOpen} data-state={clerkState}>
+									<li data-slot="collapsible" data-sidebar="menu-item" class="group/menu-item relative group/collapsible" hidden={!prefs.open} data-state={clerkState}>
 										<button data-slot="collapsible-trigger" data-sidebar="menu-button" data-size="default" data-active="false" class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-start outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pe-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm" type="button" aria-controls="radix-_r_7_" aria-expanded={clerkExpanded} data-state={clerkState} onClick={() => {
 											clerkToggled = true;
 											if (!clerkOpen) clerkClosed = false;
@@ -290,7 +298,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 											</ul>
 										</div>
 									</li>
-									<li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative" hidden={sidebarOpen}>
+									<li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative" hidden={prefs.open}>
 										<DropdownMenuTrigger menu="nav-clerk" data-sidebar="menu-button" data-size="default" data-active={active === '/clerk/sign-in' || active === '/clerk/sign-up' || active === '/clerk/user-management' ? 'true' : 'false'} class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-start outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pe-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm">
 											<svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" id="clerk" height="24" width="24" class="[&>path]:fill-foreground">
 												<title>Clerk</title>
@@ -307,7 +315,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 							<div data-slot="sidebar-group" data-sidebar="group" class="relative flex w-full min-w-0 flex-col p-2">
 								<div data-slot="sidebar-group-label" data-sidebar="group-label" class="flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 ring-sidebar-ring outline-hidden transition-[margin,opacity] duration-200 ease-linear focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0 group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0">Pages</div>
 								<ul data-slot="sidebar-menu" data-sidebar="menu" class="flex w-full min-w-0 flex-col gap-1">
-									<li data-slot="collapsible" data-sidebar="menu-item" class="group/menu-item relative group/collapsible" hidden={!sidebarOpen} data-state={authState}>
+									<li data-slot="collapsible" data-sidebar="menu-item" class="group/menu-item relative group/collapsible" hidden={!prefs.open} data-state={authState}>
 										<button data-slot="collapsible-trigger" data-sidebar="menu-button" data-size="default" data-active="false" class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-start outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pe-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm" type="button" aria-controls="radix-_r_9_" aria-expanded={authExpanded} data-state={authState} onClick={() => {
 											authToggled = true;
 											if (!authOpen) authClosed = false;
@@ -357,7 +365,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 											</ul>
 										</div>
 									</li>
-									<li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative" hidden={sidebarOpen}>
+									<li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative" hidden={prefs.open}>
 										<DropdownMenuTrigger menu="nav-auth" data-sidebar="menu-button" data-size="default" data-active={active === '/sign-in' || active === '/sign-in-2' || active === '/sign-up' || active === '/forgot-password' || active === '/otp' ? 'true' : 'false'} class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-start outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pe-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm">
 											<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-shield-check" aria-hidden="true">
 												<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
@@ -369,7 +377,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 											</svg>
 									{' '}	</DropdownMenuTrigger>
 									</li>
-									<li data-slot="collapsible" data-sidebar="menu-item" class="group/menu-item relative group/collapsible" hidden={!sidebarOpen} data-state={errorsState}>
+									<li data-slot="collapsible" data-sidebar="menu-item" class="group/menu-item relative group/collapsible" hidden={!prefs.open} data-state={errorsState}>
 										<button data-slot="collapsible-trigger" data-sidebar="menu-button" data-size="default" data-active="false" class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-start outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pe-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm" type="button" aria-controls="radix-_r_b_" aria-expanded={errorsExpanded} data-state={errorsState} onClick={() => {
 											errorsToggled = true;
 											if (!errorsOpen) errorsClosed = false;
@@ -462,7 +470,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 											</ul>
 										</div>
 									</li>
-									<li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative" hidden={sidebarOpen}>
+									<li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative" hidden={prefs.open}>
 										<DropdownMenuTrigger menu="nav-errors" data-sidebar="menu-button" data-size="default" data-active={active === '/errors/unauthorized' || active === '/errors/forbidden' || active === '/errors/not-found' || active === '/errors/internal-server-error' || active === '/errors/maintenance-error' ? 'true' : 'false'} class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-start outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pe-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm">
 											<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-bug" aria-hidden="true">
 												<path d="M12 20v-9" />
@@ -488,7 +496,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 							<div data-slot="sidebar-group" data-sidebar="group" class="relative flex w-full min-w-0 flex-col p-2">
 								<div data-slot="sidebar-group-label" data-sidebar="group-label" class="flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 ring-sidebar-ring outline-hidden transition-[margin,opacity] duration-200 ease-linear focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0 group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0">Other</div>
 								<ul data-slot="sidebar-menu" data-sidebar="menu" class="flex w-full min-w-0 flex-col gap-1">
-									<li data-slot="collapsible" data-sidebar="menu-item" class="group/menu-item relative group/collapsible" hidden={!sidebarOpen} data-state={settingsState}>
+									<li data-slot="collapsible" data-sidebar="menu-item" class="group/menu-item relative group/collapsible" hidden={!prefs.open} data-state={settingsState}>
 										<button data-slot="collapsible-trigger" data-sidebar="menu-button" data-size="default" data-active="false" class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-start outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pe-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm" type="button" aria-controls="radix-_r_d_" aria-expanded={settingsExpanded} data-state={settingsState} onClick={() => {
 											settingsToggled = true;
 											if (!settingsOpen) settingsClosed = false;
@@ -570,7 +578,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 											</ul>
 										</div>
 									</li>
-									<li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative" hidden={sidebarOpen}>
+									<li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative" hidden={prefs.open}>
 										<DropdownMenuTrigger menu="nav-settings" data-sidebar="menu-button" data-size="default" data-active={active === '/settings' || active === '/settings/account' || active === '/settings/appearance' || active === '/settings/notifications' || active === '/settings/display' ? 'true' : 'false'} class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-start outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pe-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm">
 											<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings" aria-hidden="true">
 												<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
@@ -599,7 +607,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 							<ul data-slot="sidebar-menu" data-sidebar="menu" class="flex w-full min-w-0 flex-col gap-1">
 								<li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
 									<DropdownMenuTrigger menu="user" data-sidebar="menu-button" data-size="lg" data-active="false" class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-start outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pe-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-12 text-sm group-data-[collapsible=icon]:p-0! data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground">
-										<span data-slot="avatar" class="relative flex size-8 shrink-0 overflow-hidden h-8 w-8 rounded-lg">
+										<span data-slot="avatar" data-avatar-src="/avatars/shadcn.jpg" data-avatar-alt="satnaing" class="relative flex size-8 shrink-0 overflow-hidden h-8 w-8 rounded-lg">
 											<span data-slot="avatar-fallback" class="flex size-full items-center justify-center bg-muted rounded-lg">SN</span>
 										</span>
 										<div class="grid flex-1 text-start text-sm leading-tight">
@@ -619,7 +627,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 				</div>
 			</div>
 			<div data-slot="sidebar-inset" class="relative flex w-full flex-1 flex-col bg-background md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ms-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ms-2 @container/content has-data-[layout=fixed]:h-svh peer-data-[variant=inset]:has-data-[layout=fixed]:h-[calc(100svh-(var(--spacing)*4))]">
-				<DialogRoot open={drawerOpen} onOpenChange={(next: boolean) => { drawerOpen = next; }}>
+				<DialogRoot open={drawerOpen} onOpenChange={(next: boolean) => { drawerOpen = next; if (next) drawerSeen = true; }}>
 					@if (isTopNav) {
 						<header class="z-50 h-16 shadow-none">
 							<div class="relative flex h-full items-center gap-3 p-4 sm:gap-4">
@@ -680,7 +688,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 									</svg>
 								</DialogTrigger>
 								<DropdownMenuTrigger menu="profile" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 px-4 py-2 has-[>svg]:px-3 relative h-8 w-8 rounded-full">
-									<span data-slot="avatar" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-8 w-8">
+									<span data-slot="avatar" data-avatar-src="/avatars/01.png" data-avatar-alt="@shadcn" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-8 w-8">
 										<span data-slot="avatar-fallback" class="flex size-full items-center justify-center rounded-full bg-muted">SN</span>
 									</span>
 								</DropdownMenuTrigger>
@@ -733,7 +741,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 									</svg>
 								</DialogTrigger>
 								<DropdownMenuTrigger menu="profile" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 px-4 py-2 has-[>svg]:px-3 relative h-8 w-8 rounded-full">
-									<span data-slot="avatar" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-8 w-8">
+									<span data-slot="avatar" data-avatar-src="/avatars/01.png" data-avatar-alt="@shadcn" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-8 w-8">
 										<span data-slot="avatar-fallback" class="flex size-full items-center justify-center rounded-full bg-muted">SN</span>
 									</span>
 								</DropdownMenuTrigger>
@@ -786,7 +794,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 									</svg>
 								</DialogTrigger>
 								<DropdownMenuTrigger menu="profile" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 px-4 py-2 has-[>svg]:px-3 relative h-8 w-8 rounded-full">
-									<span data-slot="avatar" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-8 w-8">
+									<span data-slot="avatar" data-avatar-src="/avatars/01.png" data-avatar-alt="@shadcn" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-8 w-8">
 										<span data-slot="avatar-fallback" class="flex size-full items-center justify-center rounded-full bg-muted">SN</span>
 									</span>
 								</DropdownMenuTrigger>
@@ -839,7 +847,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 									</svg>
 								</DialogTrigger>
 								<DropdownMenuTrigger menu="profile" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 px-4 py-2 has-[>svg]:px-3 relative h-8 w-8 rounded-full">
-									<span data-slot="avatar" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-8 w-8">
+									<span data-slot="avatar" data-avatar-src="/avatars/01.png" data-avatar-alt="@shadcn" class="relative flex size-8 shrink-0 overflow-hidden rounded-full h-8 w-8">
 										<span data-slot="avatar-fallback" class="flex size-full items-center justify-center rounded-full bg-muted">SN</span>
 									</span>
 								</DropdownMenuTrigger>
@@ -894,16 +902,16 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 								<div class="mb-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
 									Theme
 									<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80 size-4 rounded-full" type="button" aria-label="Reset theme preference to default" hidden={themeDefault} onClick={(event) => {
-										theme = 'system';
+										prefs.theme = 'system';
 										applyTheme('system');
 										focusDialogOf(event);
 									}}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rotate-ccw size-3" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg></button>
 								</div>
-								<div role="radiogroup" aria-required="false" dir={dir} onFocus={focusGroup} onFocusin={radioFocused} onKeydown={radioKey} class="grid w-full max-w-md grid-cols-3 gap-4" aria-label="Select theme preference" aria-describedby="theme-description" tabindex="0" style="outline: none;">
+								<div role="radiogroup" aria-required="false" dir={prefs.dir} onFocus={focusGroup} onFocusin={radioFocused} onKeydown={radioKey} class="grid w-full max-w-md grid-cols-3 gap-4" aria-label="Select theme preference" aria-describedby="theme-description" tabindex="0" style={drawerOutline}>
 									<button type="button" role="radio" aria-checked={themeSystem} data-state={themeSystemState} value="system" class="group outline-none transition duration-200 ease-in" aria-label="Select system" aria-describedby="system-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
 										// Radix RadioGroup calls onValueChange only when the value changes.
-										if (theme !== 'system') {
-											theme = 'system';
+										if (prefs.theme !== 'system') {
+											prefs.theme = 'system';
 											applyTheme('system');
 										}
 									}}>
@@ -933,8 +941,8 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 										<div class="mt-1 text-xs" id="system-description" aria-live="polite">System</div>
 									</button>
 									<button type="button" role="radio" aria-checked={themeLight} data-state={themeLightState} value="light" class="group outline-none transition duration-200 ease-in" aria-label="Select light" aria-describedby="light-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
-										if (theme !== 'light') {
-											theme = 'light';
+										if (prefs.theme !== 'light') {
+											prefs.theme = 'light';
 											applyTheme('light');
 										}
 									}}>
@@ -968,8 +976,8 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 										<div class="mt-1 text-xs" id="light-description" aria-live="polite">Light</div>
 									</button>
 									<button type="button" role="radio" aria-checked={themeDark} data-state={themeDarkState} value="dark" class="group outline-none transition duration-200 ease-in" aria-label="Select dark" aria-describedby="dark-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
-										if (theme !== 'dark') {
-											theme = 'dark';
+										if (prefs.theme !== 'dark') {
+											prefs.theme = 'dark';
 											applyTheme('dark');
 										}
 									}}>
@@ -1006,15 +1014,15 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 								<div class="mb-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
 									Sidebar
 									<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80 size-4 rounded-full" type="button" aria-label="Reset sidebar style to default" hidden={variantDefault} onClick={(event) => {
-										variant = 'inset';
+										prefs.variant = 'inset';
 										rememberVariant('inset');
 										focusDialogOf(event);
 									}}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rotate-ccw size-3" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg></button>
 								</div>
-								<div role="radiogroup" aria-required="false" dir={dir} onFocus={focusGroup} onFocusin={radioFocused} onKeydown={radioKey} class="grid w-full max-w-md grid-cols-3 gap-4" aria-label="Select sidebar style" aria-describedby="sidebar-description" tabindex="0" style="outline: none;">
+								<div role="radiogroup" aria-required="false" dir={prefs.dir} onFocus={focusGroup} onFocusin={radioFocused} onKeydown={radioKey} class="grid w-full max-w-md grid-cols-3 gap-4" aria-label="Select sidebar style" aria-describedby="sidebar-description" tabindex="0" style={drawerOutline}>
 									<button type="button" role="radio" aria-checked={variantInset} data-state={variantInsetState} value="inset" class="group outline-none transition duration-200 ease-in" aria-label="Select inset" aria-describedby="inset-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
-										if (variant !== 'inset') {
-											variant = 'inset';
+										if (prefs.variant !== 'inset') {
+											prefs.variant = 'inset';
 											rememberVariant('inset');
 										}
 									}}>
@@ -1038,8 +1046,8 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 										<div class="mt-1 text-xs" id="inset-description" aria-live="polite">Inset</div>
 									</button>
 									<button type="button" role="radio" aria-checked={variantFloating} data-state={variantFloatingState} value="floating" class="group outline-none transition duration-200 ease-in" aria-label="Select floating" aria-describedby="floating-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
-										if (variant !== 'floating') {
-											variant = 'floating';
+										if (prefs.variant !== 'floating') {
+											prefs.variant = 'floating';
 											rememberVariant('floating');
 										}
 									}}>
@@ -1066,8 +1074,8 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 										<div class="mt-1 text-xs" id="floating-description" aria-live="polite">Floating</div>
 									</button>
 									<button type="button" role="radio" aria-checked={variantSidebar} data-state={variantSidebarState} value="sidebar" class="group outline-none transition duration-200 ease-in" aria-label="Select sidebar" aria-describedby="sidebar-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
-										if (variant !== 'sidebar') {
-											variant = 'sidebar';
+										if (prefs.variant !== 'sidebar') {
+											prefs.variant = 'sidebar';
 											rememberVariant('sidebar');
 										}
 									}}>
@@ -1097,17 +1105,17 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 								<div class="mb-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
 									Layout
 									<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80 size-4 rounded-full" type="button" aria-label="Reset layout options to default" hidden={layoutIsDefault} onClick={(event) => {
-										sidebarOpen = true;
+										prefs.open = true;
 										rememberSidebar(true);
-										collapsible = 'icon';
+										prefs.collapsible = 'icon';
 										rememberCollapsible('icon');
 										focusDialogOf(event);
 									}}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rotate-ccw size-3" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg></button>
 								</div>
-								<div role="radiogroup" aria-required="false" dir={dir} onFocus={focusGroup} onFocusin={radioFocused} onKeydown={radioKey} class="grid w-full max-w-md grid-cols-3 gap-4" aria-label="Select layout style" aria-describedby="layout-description" tabindex="0" style="outline: none;">
+								<div role="radiogroup" aria-required="false" dir={prefs.dir} onFocus={focusGroup} onFocusin={radioFocused} onKeydown={radioKey} class="grid w-full max-w-md grid-cols-3 gap-4" aria-label="Select layout style" aria-describedby="layout-description" tabindex="0" style={drawerOutline}>
 									<button type="button" role="radio" aria-checked={layoutDefault} data-state={layoutDefaultState} value="default" class="group outline-none transition duration-200 ease-in" aria-label="Select default" aria-describedby="default-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
-										if (!sidebarOpen) {
-											sidebarOpen = true;
+										if (!prefs.open) {
+											prefs.open = true;
 											rememberSidebar(true);
 										}
 									}}>
@@ -1151,10 +1159,10 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 										<div class="mt-1 text-xs" id="default-description" aria-live="polite">Default</div>
 									</button>
 									<button type="button" role="radio" aria-checked={layoutIcon} data-state={layoutIconState} value="icon" class="group outline-none transition duration-200 ease-in" aria-label="Select compact" aria-describedby="icon-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
-										if (sidebarOpen || collapsible !== 'icon') {
-											sidebarOpen = false;
+										if (prefs.open || prefs.collapsible !== 'icon') {
+											prefs.open = false;
 											rememberSidebar(false);
-											collapsible = 'icon';
+											prefs.collapsible = 'icon';
 											rememberCollapsible('icon');
 										}
 									}}>
@@ -1194,10 +1202,10 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 										<div class="mt-1 text-xs" id="icon-description" aria-live="polite">Compact</div>
 									</button>
 									<button type="button" role="radio" aria-checked={layoutOffcanvas} data-state={layoutOffcanvasState} value="offcanvas" class="group outline-none transition duration-200 ease-in" aria-label="Select full layout" aria-describedby="offcanvas-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
-										if (sidebarOpen || collapsible !== 'offcanvas') {
-											sidebarOpen = false;
+										if (prefs.open || prefs.collapsible !== 'offcanvas') {
+											prefs.open = false;
 											rememberSidebar(false);
-											collapsible = 'offcanvas';
+											prefs.collapsible = 'offcanvas';
 											rememberCollapsible('offcanvas');
 										}
 									}}>
@@ -1236,15 +1244,15 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 								<div class="mb-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
 									Direction
 									<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80 size-4 rounded-full" type="button" aria-label="Reset text direction to default" hidden={dirDefault} onClick={(event) => {
-										dir = 'ltr';
+										prefs.dir = 'ltr';
 										applyDir('ltr');
 										focusDialogOf(event);
 									}}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rotate-ccw size-3" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg></button>
 								</div>
-								<div role="radiogroup" aria-required="false" dir={dir} onFocus={focusGroup} onFocusin={radioFocused} onKeydown={radioKey} class="grid w-full max-w-md grid-cols-3 gap-4" aria-label="Select site direction" aria-describedby="direction-description" tabindex="0" style="outline: none;">
+								<div role="radiogroup" aria-required="false" dir={prefs.dir} onFocus={focusGroup} onFocusin={radioFocused} onKeydown={radioKey} class="grid w-full max-w-md grid-cols-3 gap-4" aria-label="Select site direction" aria-describedby="direction-description" tabindex="0" style={drawerOutline}>
 									<button type="button" role="radio" aria-checked={dirLtr} data-state={dirLtrState} value="ltr" class="group outline-none transition duration-200 ease-in" aria-label="Select left to right" aria-describedby="ltr-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
-										if (dir !== 'ltr') {
-											dir = 'ltr';
+										if (prefs.dir !== 'ltr') {
+											prefs.dir = 'ltr';
 											applyDir('ltr');
 										}
 									}}>
@@ -1273,8 +1281,8 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 										<div class="mt-1 text-xs" id="ltr-description" aria-live="polite">Left to Right</div>
 									</button>
 									<button type="button" role="radio" aria-checked={dirRtl} data-state={dirRtlState} value="rtl" class="group outline-none transition duration-200 ease-in" aria-label="Select right to left" aria-describedby="rtl-description" tabindex="-1" data-radix-collection-item="" onClick={() => {
-										if (dir !== 'rtl') {
-											dir = 'rtl';
+										if (prefs.dir !== 'rtl') {
+											prefs.dir = 'rtl';
 											applyDir('rtl');
 										}
 									}}>
@@ -1308,15 +1316,15 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 						</div>
 						<div data-slot="sheet-footer" class="mt-auto flex flex-col p-4 gap-2">
 							<button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60 h-9 px-4 py-2 has-[>svg]:px-3" aria-label="Reset all settings to default values" onClick={() => {
-						sidebarOpen = true;
+						prefs.open = true;
 						rememberSidebar(true);
-						dir = 'ltr';
+						prefs.dir = 'ltr';
 						resetDir();
-						theme = 'system';
+						prefs.theme = 'system';
 						resetTheme();
-						collapsible = 'icon';
+						prefs.collapsible = 'icon';
 						rememberCollapsible('icon');
-						variant = 'inset';
+						prefs.variant = 'inset';
 						rememberVariant('inset');
 					}}>Reset</button>
 						</div>
@@ -1334,7 +1342,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 			</div>
 		</div>
 
-		<DialogRoot open={searchOpen} onOpenChange={(next: boolean) => { searchOpen = next; }}>
+		<DialogRoot open={searchOpen} onOpenChange={(next: boolean) => { searchOpen = next; if (next) searchSeen = true; }}>
 			<div data-slot="dialog-header" class="flex flex-col gap-2 text-center sm:text-start sr-only">
 				<DialogTitle data-slot="dialog-title" class="text-lg leading-none font-semibold">Command Palette</DialogTitle>
 				<DialogDescription data-slot="dialog-description" class="text-sm text-muted-foreground">Search for a command to run...</DialogDescription>
@@ -1344,7 +1352,7 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 			<DialogOverlay data-slot="dialog-overlay" class="fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0"></DialogOverlay>
 			<DialogContent data-slot="dialog-content" class="fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background shadow-lg duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-lg overflow-hidden p-0" onKeydown={searchKeys}>
 				<div tabindex="-1" data-slot="command" class="flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground **:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5 **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground **:[[cmdk-group]]:px-2 **:[[cmdk-input]]:h-12 **:[[cmdk-item]]:px-2 **:[[cmdk-item]]:py-3" cmdk-root="">
-					<label cmdk-label="" for="command-palette-input" id="command-palette-label" style="position: absolute; width: 1px; height: 1px; padding: 0px; margin: -1px; overflow: hidden; clip: rect(0px, 0px, 0px, 0px); white-space: nowrap; border-width: 0px;"></label>
+					<label cmdk-label="" for="command-palette-input" id="command-palette-label" style={paletteLabelStyle}></label>
 					<div data-slot="command-input-wrapper" class="flex h-9 items-center gap-2 border-b px-3">
 						<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search size-4 shrink-0 opacity-50" aria-hidden="true">
 							<path d="m21 21-4.34-4.34" />
@@ -1352,11 +1360,11 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 						</svg>
 						<input data-slot="command-input" class="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-hidden placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50" placeholder="Type a command or search..." cmdk-input="" autocomplete="off" autocorrect="off" spellcheck="false" aria-autocomplete="list" role="combobox" aria-expanded="true" aria-controls="command-palette-list" aria-labelledby="command-palette-label" id="command-palette-input" type="text" value="" onInput={(event) => filterCommands((event.target as HTMLInputElement).value)} />
 					</div>
-					<div data-slot="command-list" class="max-h-75 scroll-py-1 overflow-x-hidden overflow-y-auto" cmdk-list="" role="listbox" tabindex="-1" aria-label="Suggestions" id="command-palette-list" onClick={pickCommand} style="--cmdk-list-height: 288.0px;">
+					<div data-slot="command-list" class="max-h-75 scroll-py-1 overflow-x-hidden overflow-y-auto" cmdk-list="" role="listbox" tabindex="-1" aria-label="Suggestions" id="command-palette-list" onClick={pickCommand} style={paletteListStyle}>
 						<div cmdk-list-sizer="">
-							<div dir="ltr" data-slot="scroll-area" class="relative h-72 pe-1" style="position: relative; --radix-scroll-area-corner-width: 0px; --radix-scroll-area-corner-height: 0px;">
-								<div data-radix-scroll-area-viewport="" data-slot="scroll-area-viewport" class="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1" style="overflow: hidden scroll;">
-									<div style="min-width: 100%; display: table;">
+							<div dir="ltr" data-slot="scroll-area" class="relative h-72 pe-1" style={paletteScrollStyle} onPointerenter={(event) => showScrollbar(event.target as HTMLElement)} onPointerleave={(event) => hideScrollbar(event.target as HTMLElement)}>
+								<div data-radix-scroll-area-viewport="" data-slot="scroll-area-viewport" class="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1" style={paletteViewportStyle} onScroll={(event) => placeScrollThumb((event.target as HTMLElement).parentElement)}>
+									<div style={paletteTableStyle}>
 										<div data-slot="command-empty" class="py-6 text-center text-sm" cmdk-empty="" role="presentation" hidden>No results found.</div>
 			<div data-slot="command-group" class="overflow-hidden p-1 text-foreground **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground" cmdk-group="" role="presentation" data-value="General">
 											<div cmdk-group-heading="" aria-hidden="true" id="command-palette-1">General</div>
@@ -1760,15 +1768,15 @@ export function Shell({ active, header, fixed, border, prefs, children }: ShellP
 		</DropdownMenuContent>
 
 		<DropdownMenuContent menu="theme" modal={false} align="end">
-			<DropdownMenuItem menu="theme" onSelect={() => { theme = 'light'; applyTheme('light'); }}>
+			<DropdownMenuItem menu="theme" onSelect={() => { prefs.theme = 'light'; applyTheme('light'); }}>
 				Light
 				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={lightCheck} aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>
 			</DropdownMenuItem>
-			<DropdownMenuItem menu="theme" onSelect={() => { theme = 'dark'; applyTheme('dark'); }}>
+			<DropdownMenuItem menu="theme" onSelect={() => { prefs.theme = 'dark'; applyTheme('dark'); }}>
 				Dark
 				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={darkCheck} aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>
 			</DropdownMenuItem>
-			<DropdownMenuItem menu="theme" onSelect={() => { theme = 'system'; applyTheme('system'); }}>
+			<DropdownMenuItem menu="theme" onSelect={() => { prefs.theme = 'system'; applyTheme('system'); }}>
 				System
 				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={systemCheck} aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>
 			</DropdownMenuItem>
