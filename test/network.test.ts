@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { chromium } from 'playwright';
 import { frameworkTransport } from '../src/check/browser.ts';
+import { shownText } from '../src/check/capture.ts';
 import { recordable } from '../src/check/data.ts';
 import { bodyShape, compareNetwork, contractLines, normalizeUrl, usedFields, type NetworkCapture, type NetworkRecord } from '../src/check/network.ts';
 
@@ -25,6 +27,19 @@ test('the fields a page uses are the response values it shows in text or attribu
 	const used = usedFields(news(), 'Winter timetable');
 	assert.deepEqual([...used], ['items[].title']);
 	assert.deepEqual([...usedFields({ ...hours(), body: '{"count":12,"ok":"yes"}' }, '12 yes')], [], 'short values and plain numbers match by chance, so they are not counted');
+});
+
+test('a script or resource hint URL built from a response is code loading, not a field the page shows (VitePress prefetching hashmap.json chunks)', async () => {
+	const browser = await chromium.launch();
+	try {
+		const page = await browser.newPage();
+		await page.setContent('<link rel="prefetch" href="/assets/guide_index.md.Bq2sXk9P.lean.js"><link rel="modulepreload" href="/assets/index.md.Dt7mR1aZ.js"><script src="/assets/plugins_index.md.Cz4wLp0Q.js"></script><a href="/team.md.Hs8vNn2E">Team</a>');
+		const body = JSON.stringify({ 'guide_index.md': 'Bq2sXk9P', 'index.md': 'Dt7mR1aZ', 'plugins_index.md': 'Cz4wLp0Q', 'team.md': 'Hs8vNn2E' });
+		const used = usedFields({ ...hours(), url: `${OLD}/hashmap.json`, body }, await page.evaluate(shownText));
+		assert.deepEqual([...used], ['team.md'], 'a link the reader follows still shows the field');
+	} finally {
+		await browser.close();
+	}
 });
 
 test('the same requests from both apps are one contract, whatever their origins', () => {
