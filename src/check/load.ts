@@ -245,7 +245,8 @@ async function startChromium(): Promise<{ port: number; close: () => Promise<voi
 		close: async () => {
 			proc.kill();
 			await exited;
-			await rm(dir, { recursive: true, force: true });
+			// Chromium's helper processes can still write to the profile just after the browser exits.
+			await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(() => {});
 		},
 	};
 }
