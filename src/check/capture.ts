@@ -147,9 +147,10 @@ export async function finishAnimations(page: Page, seen: readonly string[] = [])
 	}, seen);
 }
 
-// Text and attribute values of the page, to tell which response fields it shows.
-function shownText(): string {
-	const attributes = [...document.querySelectorAll('*')].flatMap((el) => [...el.attributes].map((a) => a.value));
+// Text and attribute values of the page, to tell which response fields it shows; a script's or resource hint's URL loads code, it shows nothing.
+export function shownText(): string {
+	const loads = (el: Element, name: string) => (el.localName === 'script' && name === 'src') || (el.localName === 'link' && name === 'href' && /(^|\s)(preload|modulepreload|prefetch|prerender|preconnect|dns-prefetch|stylesheet)(\s|$)/i.test(el.getAttribute('rel') ?? ''));
+	const attributes = [...document.querySelectorAll('*')].flatMap((el) => [...el.attributes].filter((a) => !loads(el, a.name)).map((a) => a.value));
 	return [document.title, document.body?.innerText ?? '', ...attributes].join('\n');
 }
 

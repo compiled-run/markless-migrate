@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { withFailures } from '../src/check/compare.ts';
 import { applyNavigation, compareSnaps, errorFailures, markedAttributes, planNavigation, readServed, scriptFailures, type NavigationResult } from '../src/check/nav-parity.ts';
+import { flashFailures, themeFlashes } from '../src/check/swap-frames.ts';
 import { DIMENSIONS, notCompared, type RouteResult } from '../src/check/types.ts';
 
 const ORIGIN = 'http://127.0.0.1:4000';
@@ -88,4 +89,18 @@ test('a route not checked for an infrastructure failure stays not green when the
 	const timedOut: RouteResult = { ...route('/apps'), ok: false, infrastructure: { cause: 'check timeout', message: 'the check of /apps did not finish within 600 s' } };
 	assert.equal(withFailures(timedOut, []).ok, false);
 	assert.equal(withFailures(route('/'), []).ok, true);
+});
+
+test('themeFlashes: only a frame unlike both the page before and the page after is a flash, and dark grey to near black is not one', () => {
+	const frame = (classes: string[], backdrop: number[], scheme = 'dark') => ({ classes, scheme, backdrop });
+	const before = frame(['dark', 'font'], [8, 8]);
+	const after = frame(['dark', 'docs', 'font'], [3, 3]);
+	const swap = (...frames: ReturnType<typeof frame>[]) => themeFlashes({ before, after, frames: frames.map((f) => ({ frame: f, count: 2 })) });
+	assert.deepEqual(swap(before, frame(['dark', 'font'], [3, 3]), after), []);
+	const flashed = swap(before, frame(['font'], [100, 100], 'normal'), after);
+	assert.deepEqual(flashed.map((f) => [f.aspect, f.frames]), [['background', 2], ['color-scheme', 2], ['class', 2]]);
+	const [failure] = flashFailures('/docs/', 'in place from /', { before, after, frames: [{ frame: frame(['font'], [8, 8]), count: 3 }] });
+	assert.equal(failure?.check, 'in place from /: <html> class during the swap');
+	assert.equal(failure?.actual, '3 frames showed none of the changing classes beside the 1 class every frame has (without dark)');
+	assert.equal(failure?.expected, 'every frame shows the page before (class "dark" beside the 1 class every frame has) or after (class "dark docs" beside the 1 class every frame has)');
 });

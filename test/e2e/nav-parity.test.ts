@@ -74,6 +74,23 @@ describe('navigation: a page reached in place matches a fresh load of it', { con
 		assert.equal(without.navigation, undefined);
 	});
 
+	test('a swap that drops the script-set dark class for a few frames is red, though every settled state is right', async () => {
+		const result = await check('flash');
+		const flashes = result.failures.filter((f) => / during the swap$/.test(f.check));
+		const dark = flashes.find((f) => f.route === '/docs/' && f.check === 'in place from / with a dark system theme: page background during the swap');
+		assert.ok(dark, lines(result));
+		assert.match(dark.actual, /^\d+ frames? showed background lightness 100 /);
+		assert.ok(flashes.some((f) => f.check === 'in place from / with a dark system theme: <html> class during the swap' && /without dark/.test(f.actual)), lines(result));
+		// The theme toggle is the visitor's explicit dark choice: that swap flashes too.
+		assert.ok(flashes.some((f) => / after button "Toggle dark theme": page background during the swap$/.test(f.check)), lines(result));
+		assert.deepEqual(result.failures.filter((f) => !/ during the swap$/.test(f.check)), [], lines(result));
+	});
+
+	test('the same flash on the old app reached the same way is its own: not reported', async () => {
+		const result = await checkNavigation(browser, defaultEnv(await app('flash')), ROUTES, { concurrency: 3, old: defaultEnv(await app('flash')) });
+		assert.deepEqual(result.failures.filter((f) => / during the swap$/.test(f.check)), [], lines(result));
+	});
+
 	test('a difference the old app shows too when reached the same way is its own: not reported', async () => {
 		const stale = await app('stale-html');
 		const result = await checkNavigation(browser, defaultEnv(await app('stale-html')), ROUTES, { concurrency: 3, old: defaultEnv(stale) });

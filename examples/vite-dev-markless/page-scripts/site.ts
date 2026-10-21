@@ -2,6 +2,10 @@
 // buttons, same-page links, the stored appearance, and a hook that reruns per-page set-up after each in-place navigation.
 import { loadIcons } from './icons.ts';
 
+// The theme's enhanceApp puts its variant on the root before the app mounts, not in the served page: the first paint
+// uses the stylesheet's default variant (its primary-button background among them) until this runs.
+document.documentElement.setAttribute('data-variant', 'vite');
+
 export const RENDERED = 'marklessrouterrendered';
 
 /** Runs `setup` for the page shown now and again for each page the router swaps in, with whether it is a navigation. */

@@ -6,6 +6,7 @@ import { pool, quiet } from './journeys.ts';
 import { withFailures } from './compare.ts';
 import { RUNTIME_MARKERS } from './residue.ts';
 import { maskedShot } from './embeds.ts';
+import { armThemeFrames, flashFailures, readThemeFrames, themeFrameRecorder, type ThemeRecording } from './swap-frames.ts';
 import type { Failure, RouteNavigation, RouteResult, Shot, Viewport } from './types.ts';
 import { compareScreenshots, visualNoise, visuallyDifferent, type VisualNoise } from './visual.ts';
 import { VIEWPORTS } from './types.ts';
@@ -405,6 +406,7 @@ async function openTab(browser: Browser, env: SideEnv, viewport: Viewport, route
 		tab.scripts.push({ phase: tab.phase, run: { hash: e.hash, url: strip(url), where: documents.has(url) ? 'inline' : 'file' } });
 	});
 	await cdp.send('Debugger.enable');
+	await context.addInitScript(themeFrameRecorder);
 	await page.goto(new URL(route, env.origin).href, { waitUntil: 'load', timeout: 30_000 });
 	await settled(tab);
 	return tab;
@@ -505,7 +507,7 @@ async function findToggle(browser: Browser, env: SideEnv, viewport: Viewport, ro
 const routerFetch = (url: URL, headers: Record<string, string>) => url.pathname.startsWith('/_markless/fragment/') || 'x-markless-fragment' in headers;
 
 /** Clicks a link to `to` on the page (one the visitor can see, else one the checker adds) and reports whether the document stayed, and whether the page's own code (not the router) fetched and swapped it. It ends on `to` or where a fresh load of `to` ends (a login guard's redirect). */
-async function follow(tab: Tab, to: string, origin: string, landing: string): Promise<{ inPlace: boolean; injected: boolean; byPage: boolean }> {
+async function follow(tab: Tab, to: string, origin: string, landing: string): Promise<{ inPlace: boolean; injected: boolean; byPage: boolean; frames?: ThemeRecording }> {
 	const target = new URL(to, origin).href;
 	const page = tab.page;
 	const lands = new URL(landing, origin).href;
@@ -539,6 +541,7 @@ async function follow(tab: Tab, to: string, origin: string, landing: string): Pr
 		if (['fetch', 'xhr'].includes(r.resourceType()) && samePage(url.href, target) && !routerFetch(url, r.headers())) byPage = true;
 	};
 	page.on('request', watch);
+	await armThemeFrames(page);
 	try {
 		await page.locator('a[href]').nth(found).click({ timeout: STEP_MS });
 		await page.waitForURL((u) => ends.some((end) => samePage(u.href, end)), { timeout: STEP_MS, waitUntil: 'commit' });
@@ -547,7 +550,8 @@ async function follow(tab: Tab, to: string, origin: string, landing: string): Pr
 		page.off('request', watch);
 	}
 	const inPlace = tab.documents === before && (await page.evaluate(() => (window as unknown as { __mmNavToken?: number }).__mmNavToken === 1));
-	return { inPlace, injected, byPage };
+	const frames = inPlace ? await readThemeFrames(page) : undefined;
+	return { inPlace, injected, byPage, ...(frames ? { frames } : {}) };
 }
 
 function samePage(a: string, b: string): boolean {
@@ -679,7 +683,7 @@ function side(browser: Browser, env: SideEnv, viewport: Viewport, opened: () => 
 				const entryRoute = (await snap(tab.page)).route;
 				tab.phase = 1;
 				const atTo = destination ?? (await fresh(job.to, state, false));
-				const { inPlace, injected, byPage } = await follow(tab, job.to, env.origin, atTo.snap.url);
+				const { inPlace, injected, byPage, frames } = await follow(tab, job.to, env.origin, atTo.snap.url);
 				const pair = { ...base, ...(control ? { control: control.label } : {}), inPlace, ...(injected || job.injected ? { injected: true } : {}) };
 				if (!inPlace) return { pair: { ...pair, failures: 0 }, failures: [], shots: [] };
 				const reached = await snap(tab.page);
@@ -697,6 +701,7 @@ function side(browser: Browser, env: SideEnv, viewport: Viewport, opened: () => 
 				shotAt(shotFailure(job.to, way, atTo, await shoot(tab.page)), job.to);
 				failures.push(...scriptFailures(job.to, way, atTo.scripts, tab.scripts.map((s) => s.run.hash)));
 				failures.push(...errorFailures(job.to, way, atTo.errors, errorsAt(1)));
+				failures.push(...flashFailures(job.to, way, frames));
 				// The destination's own controls again, as a visitor goes on using the page: a theme switch twice (on, then back), then one in the content.
 				const steps = destination ? await runSteps(tab, destination.steps.map((s) => s.control), 2) : [];
 				for (const [i, step] of steps.entries()) {
@@ -739,7 +744,22 @@ function side(browser: Browser, env: SideEnv, viewport: Viewport, opened: () => 
 			return { pair: { ...base, inPlace: false, failures: failures.length, error: message }, failures, shots: [] };
 		}
 	}
-	return { fresh, pair };
+	/** The plain navigation again under a dark system theme, for what its frames show: a lost theme class flashes most there. */
+	async function darkSwap(job: Job): Promise<Failure[]> {
+		const landing = (await fresh(job.to, undefined, true).catch(() => undefined))?.snap.url ?? job.to;
+		opened();
+		const tab = await openTab(browser, { ...env, colorScheme: 'dark' }, viewport, job.from);
+		try {
+			const { inPlace, injected, frames } = await follow(tab, job.to, env.origin, landing);
+			const how = `in place from ${job.from} with a dark system theme`;
+			return inPlace ? flashFailures(job.to, injected ? `${how} (through a link the checker added: no page links here)` : how, frames) : [];
+		} catch {
+			return [];
+		} finally {
+			await tab.close();
+		}
+	}
+	return { fresh, pair, darkSwap };
 }
 
 /** What a failure says once the way it was reached is set aside: the same difference on the old app reached the same way is the old app's own. */
@@ -773,6 +793,8 @@ export async function checkNavigation(browser: Browser, env: SideEnv, routes: re
 	const done = outcomes.filter((o) => o !== undefined);
 	const failures: Failure[] = done.flatMap((o) => o.failures);
 	const pairs: NavigationPair[] = done.map((o) => o.pair);
+	const darkJobs = env.colorScheme === 'dark' ? [] : plan.destinations.flatMap((d) => done.find((o) => o.job.to === d.route && o.job.variant === 'plain' && o.pair.inPlace && !o.pair.swappedByPage)?.job ?? []);
+	const dark = await pool(darkJobs, concurrency, async (job) => ({ job, failures: await next.darkSwap(job) }));
 	if (options.old) {
 		const old = side(browser, options.old, viewport, opened);
 		const sameOnOld = new Set<string>();
@@ -806,6 +828,13 @@ export async function checkNavigation(browser: Browser, env: SideEnv, routes: re
 			const { missing, extra } = listDiff(markedAttributes(a.snap), markedAttributes(b.snap));
 			if (missing.length || extra.length) failures.push({ route: d.route, dimension: 'rendered', check: 'fresh load: <html> class and data-* attributes', expected: `as on the old app; only there:\n${say(missing)}`, actual: `only here:\n${say(extra)}`, hint: 'Render the same class and data-* attributes on <Html> (a theme, a variant, a platform class a head script sets); the page\'s CSS selects on them.' });
 		}
+	}
+	const oldDark = options.old && side(browser, options.old, viewport, opened);
+	for (const { job, failures: flashed } of dark) {
+		if (!flashed.length) continue;
+		// The old app flashing the same way reached the same way is its own.
+		const own = new Set(oldDark ? (await oldDark.darkSwap(job)).map(sameKey) : []);
+		failures.push(...flashed.filter((f) => !own.has(sameKey(f))));
 	}
 	const kept = new Set(failures);
 	return {
