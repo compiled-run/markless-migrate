@@ -1,5 +1,6 @@
 import { attr, walk, type Element } from './dom.ts';
 import { lit, type Binding } from './tsrx.ts';
+import type { ToggleGroup } from './toggles.ts';
 
 /**
  * Radix Tabs on Markless state: each tab list becomes one state() in the component that renders it, holding the active
@@ -184,4 +185,54 @@ export class SelectPlan {
 
 function textOf(el: Element): string {
 	return el.childNodes.map((n) => (n.nodeName === '#text' ? (n as unknown as { value: string }).value : 'tagName' in n ? textOf(n as Element) : '')).join('');
+}
+
+/**
+ * Controls that switch state in place on Markless state (checkboxes, switches, pressed toggles, radios and
+ * single-choice toggle groups), from the states the old page showed when each was used (toggles.ts): a state() per
+ * control (per group for radios), each attribute that differs between the states bound to it, and the children an
+ * @if arm per state when they differ (a checkbox's indicator). A hidden native input beside the control (Base UI's,
+ * the target of its label) binds `checked` and switches the state too.
+ */
+export class CheckablePlan {
+	private readonly bindings = new Map<Element, Binding>();
+	private n = 0;
+
+	bind(el: Element): Binding | undefined {
+		return this.bindings.get(el);
+	}
+
+	add(root: Element, groups: readonly ToggleGroup[], locate: (sig: string, nth: number) => Element | undefined, emit: (html: string) => string): number {
+		let placed = 0;
+		for (const group of groups) {
+			const els = group.controls.map((c) => locate(c.sig, c.nth));
+			if (els.some((el) => !el || this.bindings.has(el))) continue;
+			const name = `${group.kind === 'radio' ? 'rg' : 'tg'}${this.n++}`;
+			const initial = group.controls.findIndex((c) => c.initial);
+			const declare = [group.kind === 'radio' ? `let ${name} = state(${initial});` : `let ${name} = state(${group.controls[0]!.initial});`];
+			group.controls.forEach((c, k) => {
+				const el = els[k]!;
+				const on = group.kind === 'radio' ? `${name} === ${k}` : name;
+				const choose = group.kind === 'radio' ? (group.clears ? `${name} = ${name} === ${k} ? -1 : ${k}` : `${name} = ${k}`) : `${name} = !${name}`;
+				const names = [...new Set([...Object.keys(c.on.attrs), ...Object.keys(c.off.attrs)])].filter((a) => c.on.attrs[a] !== c.off.attrs[a] && /^[A-Za-z_][\w.-]*$/.test(a));
+				const value = (v: string | undefined) => (v === undefined ? 'undefined' : lit(v));
+				const keys = el.tagName === 'button' || el.tagName === 'input' ? [] : group.kind === 'radio' ? [`onKeyDown={(event) => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); ${choose}; } else radioKeys(event, ${!group.clears}); }}`] : [`onKeyDown={(event) => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); ${choose}; } }}`];
+				const radioRoving = el.tagName === 'button' && group.kind === 'radio' ? [`onKeyDown={(event) => radioKeys(event, ${!group.clears})}`] : [];
+				this.bindings.set(el, {
+					declare,
+					omit: names,
+					extra: [...names.map((a) => `${a}={${on} ? ${value(c.on.attrs[a])} : ${value(c.off.attrs[a])}}`), `onClick={() => { ${choose}; }}`, ...keys, ...radioRoving],
+					...(c.on.inner !== c.off.inner ? { children: `@if (${on}) { <>${emit(c.on.inner)}</> } @else { <>${emit(c.off.inner)}</> }` } : {}),
+				});
+				const parent = el.parentNode as Element | null;
+				const siblings = parent && 'childNodes' in parent ? parent.childNodes.filter((x): x is Element => 'tagName' in x) : [];
+				const input = siblings[siblings.indexOf(el) + 1];
+				if (input && input.tagName === 'input' && attr(input, 'aria-hidden') === 'true' && /^(checkbox|radio)$/.test(attr(input, 'type') ?? '')) {
+					this.bindings.set(input, { declare, omit: ['checked'], extra: [`checked={${on}}`, `onClick={() => { ${group.kind === 'radio' ? `${name} = ${k}` : choose}; }}`] });
+				}
+			});
+			placed++;
+		}
+		return placed;
+	}
 }

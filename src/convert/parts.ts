@@ -105,6 +105,12 @@ export function portFor(el: Element): string | undefined {
 	return PORTS.find((port) => candidates.some((c) => c.library === port.library && port.exports.includes(c.export)) && port.locate(el))?.module;
 }
 
+let handled: (el: Element) => boolean = () => false;
+/** Elements a converter plan already puts on Markless state (a checkbox), which are not reported as unported. */
+export function handledBy(test: (el: Element) => boolean): void {
+	handled = test;
+}
+
 /** Records the ports an element of the old page needs. Behaviour is bound once on the body, so no element gets attributes. */
 export function bindParts(el: Element, uses: PartUse[] | Set<string>): Binding | undefined {
 	const s = slot(el);
@@ -117,7 +123,7 @@ export function bindParts(el: Element, uses: PartUse[] | Set<string>): Binding |
 		if (uses instanceof Set) uses.add(port.module);
 		else if (!uses.some((u) => u.part === port.module)) uses.push({ part: port.module, import: () => '' });
 	}
-	if (!placed && route) for (const c of candidates) (UNPORTED.get(`${c.library} ${c.export}`) ?? UNPORTED.set(`${c.library} ${c.export}`, new Set()).get(`${c.library} ${c.export}`)!).add(route);
+	if (!placed && route && !handled(el)) for (const c of candidates) (UNPORTED.get(`${c.library} ${c.export}`) ?? UNPORTED.set(`${c.library} ${c.export}`, new Set()).get(`${c.library} ${c.export}`)!).add(route);
 	return undefined;
 }
 
