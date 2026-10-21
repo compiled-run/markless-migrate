@@ -47,3 +47,9 @@ rest are listed with the plan for each.
 | Timing-based UI (a toast that leaves after 5 s, an autoplaying carousel, a countdown, a session timeout warning) | the clock is frozen and moves only when a timer fires, and a step waits out timers of at most a second | a timed journey per route with the clock running: sample the accessibility tree and text at 1, 3 and 10 s after load and after each step that started a longer timer, and compare the sequences | planned |
 | Drag, swipe and pinch | journeys click, type, press keys and choose options only | add drag and swipe steps for elements that listen to pointer moves (sliders, sortable lists, carousels) and compare the step result as for clicks | planned |
 | The clipboard | a copy button's result is not on the page | record `navigator.clipboard.writeText` and `copy` events during a step and compare the text written | planned |
+
+## Known flakes
+
+| Test | What happened | Root cause to fix | Seen |
+| --- | --- | --- | --- |
+| `test/e2e/motion.test.ts`, "an accordion panel whose height variable is left at auto and that leaves at once on close is red on both" | failed once on PR #18 (d869718, run 39667727244) and passed on rerun: the closing use of the trigger was recorded only with reduced motion, not with motion allowed | the motion recording of a step's second use depends on timing under load (the runner was busy); the checker must wait for the step's animations by state, not by wall clock | 2026-10-21 |
