@@ -139,9 +139,16 @@ function saveScroll(container: Element): void {
 		sessionStorage.setItem(SIDEBAR_SCROLL_KEY, JSON.stringify({ pathname: location.pathname, scrollTop: container.scrollTop }));
 	} catch {}
 }
+// hooks/use-search-registry.ts: the directory's list asks /r/registries.json for each registry's health once mounted
+// (its answer is what the captured list already shows).
+let directoryHealth = false;
 const docsSidebar: Part = {
 	mount(el) {
 		if (!el.hasAttribute('data-docs-sidebar-content')) return;
+		if (location.pathname === '/docs/directory' && !directoryHealth) {
+			directoryHealth = true;
+			void fetch('/r/registries.json', { signal: AbortSignal.timeout(5000) }).catch(() => {});
+		}
 		saveScroll(el);
 		el.addEventListener('scroll', () => saveScroll(el), { passive: true });
 	},
