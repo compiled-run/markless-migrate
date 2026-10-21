@@ -1,0 +1,145 @@
+// Radix Slider and Base UI Slider, horizontal: a press on the control moves the closest thumb to the pointer and drags
+// it; on a focused thumb the arrows step, Page Up and Page Down (and Shift with an arrow) step ten times, Home and End
+// go to the ends. Each library's own markup is updated as it renders it: Radix's thumb wrapper `left: calc(P% + offset)`
+// (getThumbInBoundsOffset) and range `left`/`right`; Base UI's `--position` on the thumb, `--start-position` on the
+// indicator (thumbs aligned to the control's edges) and the range input's value.
+
+interface Slider {
+	readonly root: HTMLElement;
+	readonly base: boolean;
+	readonly thumbs: HTMLElement[];
+	readonly min: number;
+	readonly max: number;
+	readonly step: number;
+	readonly rtl: boolean;
+}
+
+const ROOT = '[data-slot="slider"]';
+
+function sliderOf(el: Element): Slider | undefined {
+	const root = el.closest<HTMLElement>(ROOT);
+	if (!root || root.getAttribute('data-orientation') === 'vertical' || root.hasAttribute('data-disabled') || root.getAttribute('aria-disabled') === 'true') return undefined;
+	const base = root.querySelector('[data-base-ui-slider-control]') !== null;
+	const thumbs = base ? [...root.querySelectorAll<HTMLElement>('[data-slot="slider-thumb"]')] : [...root.querySelectorAll<HTMLElement>('[role="slider"]')];
+	if (!thumbs.length) return undefined;
+	const first = base ? thumbs[0]!.querySelector('input')! : thumbs[0]!;
+	const min = Number((base ? first.getAttribute('min') : first.getAttribute('aria-valuemin')) ?? 0);
+	const max = Number((base ? first.getAttribute('max') : first.getAttribute('aria-valuemax')) ?? 100);
+	const step = Number((base ? first.getAttribute('step') : root.dataset.mmStep) ?? 1) || 1;
+	const rtl = (root.getAttribute('dir') ?? getComputedStyle(root).direction) === 'rtl';
+	return { root, base, thumbs, min, max, step, rtl };
+}
+
+const input = (s: Slider, i: number) => (s.base ? s.thumbs[i]!.querySelector('input')! : s.thumbs[i]!);
+const valueAt = (s: Slider, i: number) => Number(s.base ? input(s, i).value : s.thumbs[i]!.getAttribute('aria-valuenow'));
+const percent = (s: Slider, v: number) => ((v - s.min) / (s.max - s.min)) * 100;
+const decimals = (n: number) => (String(n).split('.')[1] ?? '').length;
+const snap = (s: Slider, v: number) => Number(Math.min(s.max, Math.max(s.min, Math.round((v - s.min) / s.step) * s.step + s.min)).toFixed(decimals(s.step)));
+
+function set(s: Slider, i: number, v: number): void {
+	const values = s.thumbs.map((_, k) => valueAt(s, k));
+	const lo = i > 0 ? values[i - 1]! : s.min;
+	const hi = i < values.length - 1 ? values[i + 1]! : s.max;
+	values[i] = Math.min(hi, Math.max(lo, snap(s, v)));
+	render(s, values);
+}
+
+function render(s: Slider, values: number[]): void {
+	const fmt = (n: number) => `${Number(n.toFixed(4))}`;
+	if (s.base) {
+		const control = s.root.querySelector<HTMLElement>('[data-base-ui-slider-control]')!;
+		const width = control.getBoundingClientRect().width || 1;
+		const positions = values.map((v, k) => {
+			const size = s.thumbs[k]!.getBoundingClientRect().width;
+			const frac = (v - s.min) / (s.max - s.min);
+			return ((size / 2 + frac * (width - size)) / width) * 100;
+		});
+		values.forEach((v, k) => {
+			const el = input(s, k);
+			el.value = String(v);
+			el.setAttribute('value', String(v));
+			el.setAttribute('aria-valuenow', String(v));
+			s.thumbs[k]!.style.setProperty('--position', `${fmt(positions[k]!)}%`);
+		});
+		const indicator = s.root.querySelector<HTMLElement>('[data-base-ui-slider-indicator]');
+		if (indicator) {
+			indicator.style.setProperty('--start-position', `${fmt(positions.length > 1 ? positions[0]! : positions[0]!)}%`);
+			if (positions.length > 1) indicator.style.setProperty('--end-position', `${fmt(positions[positions.length - 1]!)}%`);
+		}
+		return;
+	}
+	values.forEach((v, k) => {
+		const thumb = s.thumbs[k]!;
+		thumb.setAttribute('aria-valuenow', String(v));
+		const p = percent(s, v);
+		const half = thumb.getBoundingClientRect().width / 2;
+		const direction = s.rtl ? -1 : 1;
+		const offset = (half - (p / 50) * half * direction) * direction;
+		const wrapper = thumb.parentElement!;
+		const edge = s.rtl ? 'right' : 'left';
+		wrapper.style.setProperty(edge, `calc(${fmt(p)}% + ${fmt(offset)}px)`.replace('+ -', '- '));
+	});
+	const range = s.root.querySelector<HTMLElement>('[data-slot="slider-range"]');
+	if (range) {
+		const ps = values.map((v) => percent(s, v));
+		const start = ps.length > 1 ? Math.min(...ps) : 0;
+		const end = 100 - Math.max(...ps);
+		range.style.setProperty(s.rtl ? 'right' : 'left', `${fmt(start)}%`);
+		range.style.setProperty(s.rtl ? 'left' : 'right', `${fmt(end)}%`);
+	}
+}
+
+function fromPointer(s: Slider, x: number): number {
+	const track = (s.root.querySelector<HTMLElement>('[data-base-ui-slider-control]') ?? s.root).getBoundingClientRect();
+	let frac = (x - track.left) / (track.width || 1);
+	if (s.rtl) frac = 1 - frac;
+	return s.min + Math.min(1, Math.max(0, frac)) * (s.max - s.min);
+}
+
+export function pointerdown(target: Element, event: PointerEvent): boolean {
+	if (event.button !== 0) return false;
+	const s = sliderOf(target);
+	if (!s) return false;
+	const v = fromPointer(s, event.clientX);
+	const values = s.thumbs.map((_, k) => valueAt(s, k));
+	let i = 0;
+	for (let k = 1; k < values.length; k++) if (Math.abs(values[k]! - v) < Math.abs(values[i]! - v)) i = k;
+	set(s, i, v);
+	event.preventDefault();
+	input(s, i).focus({ preventScroll: true });
+	s.root.setPointerCapture?.(event.pointerId);
+	const move = (e: PointerEvent) => set(s, i, fromPointer(s, e.clientX));
+	const up = () => {
+		s.root.removeEventListener('pointermove', move);
+		s.root.removeEventListener('pointerup', up);
+		s.root.removeEventListener('pointercancel', up);
+	};
+	s.root.addEventListener('pointermove', move);
+	s.root.addEventListener('pointerup', up);
+	s.root.addEventListener('pointercancel', up);
+	return true;
+}
+
+export function keydown(target: Element, event: KeyboardEvent): boolean {
+	const s = sliderOf(target);
+	if (!s) return false;
+	const i = s.thumbs.findIndex((t) => t === target || t.contains(target));
+	if (i < 0) return false;
+	const v = valueAt(s, i);
+	const big = s.step * 10;
+	const forward = s.rtl ? -1 : 1;
+	const next = {
+		ArrowRight: v + (event.shiftKey ? big : s.step) * forward,
+		ArrowLeft: v - (event.shiftKey ? big : s.step) * forward,
+		ArrowUp: v + (event.shiftKey ? big : s.step),
+		ArrowDown: v - (event.shiftKey ? big : s.step),
+		PageUp: v + big,
+		PageDown: v - big,
+		Home: s.min,
+		End: s.max,
+	}[event.key];
+	if (next === undefined) return false;
+	event.preventDefault();
+	set(s, i, next);
+	return true;
+}
