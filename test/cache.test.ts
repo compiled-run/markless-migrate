@@ -5,13 +5,13 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
-import { cacheModule, refineWithNewSource, wireViteConfig } from '../src/cache/apply.ts';
+import { cacheModule, nitroPassesQuery, refineWithNewSource, wireViteConfig } from '../src/cache/apply.ts';
 import { classify } from '../src/cache/classify.ts';
 import type { ResponseFacts, RouteEvidence } from '../src/cache/evidence.ts';
 import { cdnFacts, isContentHashed, parseCacheControl } from '../src/cache/headers.ts';
 import { filePattern } from '../src/cache/pages.ts';
 import { planCaching, type CachingPlan } from '../src/cache/plan.ts';
-import { cacheRules, FRAGMENT_QUERY, isrFunction } from '../src/cache/rules.ts';
+import { cacheRules } from '../src/cache/rules.ts';
 import { fileSignals, NO_SIGNALS } from '../src/cache/signals.ts';
 import { invoked, judgeRoute, verifyCaching, type RouteObservation } from '../src/cache/verify.ts';
 import type { Inventory } from '../src/plan/inventory.ts';
@@ -73,43 +73,50 @@ test('a page whose data changes is served by the CDN and revalidated, copying th
 	assert.deepEqual(query.allowQuery, ['page']);
 });
 
-test('the rules key fragment requests apart in their own ISR entry, and personal pages get no shared caching', () => {
-	assert.equal(isrFunction('/'), '/index-isr');
-	assert.equal(isrFunction('/docs/'), '/docs/-isr');
-	assert.equal(isrFunction('/blog/a b'), '/blog/a-b-isr');
-	const routes = [classify({ evidence: evidence({}, {}, '/') }), classify({ evidence: evidence({ bodyHash: 'a' }, { bodyHash: 'b' }, '/news/') }), classify({ evidence: evidence({ setCookies: ['sid'] }, {}, '/account') })];
+test('a router that marks fragments only by a header gets its pages kept by the CDN by Cache-Control, which honours Vary, since Vercel\'s ISR keeps one entry per URL', () => {
+	const routes = [classify({ evidence: evidence({}, {}, '/') }), classify({ evidence: evidence({ bodyHash: 'a' }, { bodyHash: 'b' }, '/news/') }), classify({ evidence: evidence({ setCookies: ['sid'] }, {}, '/account') }), classify({ evidence: evidence({ contentType: 'application/json' }, {}, '/api/feed') })];
 	const rules = cacheRules(routes, { fragmentHeader: 'x-markless-fragment', hashedAssets: ['/js/app.3f2a9c01.js'] });
-	assert.deepEqual(rules.routeRules['/'], { isr: { expiration: false, allowQuery: [FRAGMENT_QUERY] } });
-	assert.deepEqual(rules.routeRules['/news/'], { isr: { expiration: 60, allowQuery: [FRAGMENT_QUERY] } });
+	assert.deepEqual(rules.routeRules['/'], { isr: false, headers: { 'cache-control': 'public, max-age=0, s-maxage=31536000' } }, 'kept until the next deploy');
+	assert.deepEqual(rules.routeRules['/news/'], { isr: false, headers: { 'cache-control': 'public, max-age=0, s-maxage=60, stale-while-revalidate=600' } });
 	assert.deepEqual(rules.routeRules['/account'], { isr: false, headers: { 'cache-control': 'private, no-store' } }, 'it sets a cookie: stored nowhere');
+	assert.deepEqual(rules.routeRules['/api/feed'], { isr: { expiration: false, allowQuery: [] } }, 'an endpoint has no fragments: ISR');
+	assert.deepEqual(rules.routeRules['/js/app.3f2a9c01.js'], { headers: { 'cache-control': 'public, max-age=31536000, immutable' } });
+	assert.deepEqual(Object.keys(rules), ['routeRules'], 'no Vercel routes: nothing is split by the header');
+	assert.deepEqual(cacheRules(routes).routeRules['/'], { isr: { expiration: false, allowQuery: [] } }, 'no fragment navigation: ISR');
 	const prefs = classify({ evidence: evidence({}, {}, '/dash'), new: { ...NO_SIGNALS, ...fileSignals("const prefs = read(http.request.headers.get('cookie'));", 'pages/dash.tsrx') } });
 	assert.deepEqual(cacheRules([prefs]).routeRules['/dash'], { isr: false, headers: { 'cache-control': 'private, no-cache' } }, 'a preference cookie keeps it out of shared caches only');
-	const query = classify({ evidence: evidence({}, {}, '/search'), old: { ...NO_SIGNALS, ...fileSignals("searchParams.get('q')", 'app/search/page.tsx') } });
-	assert.deepEqual(cacheRules([query], { fragmentHeader: 'x-markless-fragment' }).routeRules['/search'], { isr: false, headers: { 'cache-control': 'public, max-age=0, s-maxage=60, stale-while-revalidate=600' } }, 'Vercel ISR hands the page no query, the CDN does');
-	assert.deepEqual(rules.routeRules['/js/app.3f2a9c01.js'], { headers: { 'cache-control': 'public, max-age=31536000, immutable' } });
-	assert.deepEqual(rules.vercelRoutes.map((r) => r.route), [
-		{ src: '(?<__isr_route>/)', has: [{ type: 'header', key: 'x-markless-fragment', value: '1' }], dest: `/index-isr?__isr_route=$__isr_route&${FRAGMENT_QUERY}=1` },
-		{ src: '(?<__isr_route>/news/)', has: [{ type: 'header', key: 'x-markless-fragment', value: '1' }], dest: `/news/-isr?__isr_route=$__isr_route&${FRAGMENT_QUERY}=1` },
-	]);
-	assert.equal(cacheRules(routes).vercelRoutes.length, 0, 'no fragment navigation, no split');
+});
+
+test('a page that reads only known query keys stays on ISR with allowQuery and passQuery when the app\'s Nitro passes the query, and falls back to the CDN when it does not', () => {
+	const query = classify({ evidence: evidence({}, {}, '/search'), old: { ...NO_SIGNALS, ...fileSignals("searchParams.get('q'); searchParams.get('page')", 'app/search/page.tsx') } });
+	assert.equal(query.class, 'isr');
+	assert.deepEqual(query.allowQuery, ['page', 'q']);
+	const isr = cacheRules([query], { fragmentPath: '/_markless/fragment', passQuery: true }).routeRules;
+	assert.deepEqual(isr['/search'], { isr: { expiration: 60, allowQuery: ['page', 'q'], passQuery: true } });
+	assert.deepEqual(isr['/_markless/fragment/search'], { isr: { expiration: 60, allowQuery: ['page', 'q'], passQuery: true } }, 'its fragment URL is keyed and handed the query the same way');
+	assert.deepEqual(cacheRules([query], { fragmentPath: '/_markless/fragment' }).routeRules['/search'], { isr: false, headers: { 'cache-control': 'public, max-age=0, s-maxage=60, stale-while-revalidate=600' } }, 'an older Nitro hands an ISR page no query: the CDN does');
+	assert.deepEqual(cacheRules([query], { fragmentHeader: 'x-markless-fragment', passQuery: true }).routeRules['/search'], { isr: false, headers: { 'cache-control': 'public, max-age=0, s-maxage=60, stale-while-revalidate=600' } }, 'header-marked fragments: the CDN, whatever Nitro does');
+	assert.equal(nitroPassesQuery('3.0.260903-beta'), true);
+	assert.equal(nitroPassesQuery('3.0.261101-beta'), true);
+	assert.equal(nitroPassesQuery('3.1.0'), true);
+	assert.equal(nitroPassesQuery('3.0.260429-beta'), false, 'measured: drops the query');
+	assert.equal(nitroPassesQuery(undefined), false);
 });
 
 test('the generated plugin replaces the caching an app set for a path, keeps its other keys, leaves proxied paths alone, and is the same applied twice', async () => {
 	const routes = [classify({ evidence: evidence({}, {}, '/') }), classify({ evidence: evidence({}, {}, '/old/') })];
 	const dir = await mkdtemp(join(tmpdir(), 'mm-cache-'));
 	const file = join(dir, 'migrate-cache.ts');
-	await writeFile(file, cacheModule(cacheRules(routes, { fragmentHeader: 'x-markless-fragment' }), routes));
+	await writeFile(file, cacheModule(cacheRules(routes, { fragmentPath: '/_markless/fragment' }), routes));
 	const { applyRules } = (await import(file)) as { applyRules: (nitro: { options: Record<string, any> }) => void };
 	const nitro: { options: Record<string, any> } = { options: { routeRules: { '/': { isr: true, headers: { 'x-own': '1' } }, '/old/': { proxy: { to: 'https://old.example/old/' } } }, vercel: { config: { routes: [{ src: '/x', dest: '/y' }] } } } };
 	applyRules(nitro);
 	applyRules(nitro);
 	const config = { nitro: nitro.options };
-	assert.deepEqual(config.nitro.routeRules['/'], { headers: { 'x-own': '1' }, isr: { expiration: false, allowQuery: [FRAGMENT_QUERY] } });
+	assert.deepEqual(config.nitro.routeRules['/'], { headers: { 'x-own': '1' }, isr: { expiration: false, allowQuery: [] } });
+	assert.deepEqual(config.nitro.routeRules['/_markless/fragment/'], { isr: { expiration: false, allowQuery: [] } });
 	assert.deepEqual(config.nitro.routeRules['/old/'], { proxy: { to: 'https://old.example/old/' } });
-	assert.deepEqual(
-		config.nitro.vercel.config.routes.map((r: { src: string }) => r.src),
-		['(?<__isr_route>/)', '/x'],
-	);
+	assert.deepEqual(config.nitro.vercel.config.routes, [{ src: '/x', dest: '/y' }], 'the app\'s own Vercel routes are left as they are');
 });
 
 test('vite.config.ts gets migrateCache() in its plugins, once', () => {
@@ -154,9 +161,10 @@ test('check: a cached personal page, a shared fragment entry, stale-forever HTML
 	const plain = classify({ evidence: evidence() });
 	assert.deepEqual(judgeRoute(plain, observation([vercel('MISS'), vercel('MISS')])).map((f) => f.problem), ['uncached-static']);
 	assert.deepEqual(judgeRoute(plain, observation([{ ...vercel('MISS'), cacheControl: 'public, max-age=31536000, immutable' }, { ...vercel('HIT'), cacheControl: 'public, max-age=31536000, immutable' }])).map((f) => f.problem), ['stale-forever']);
-	const poisoned = observation([{ ...vercel('MISS'), vary: ['x-markless-fragment'] }, { ...vercel('HIT'), vary: ['x-markless-fragment'] }], { fragment: { response: facts({ ...vercel('HIT'), bodyHash: 'a', vary: ['x-markless-fragment'] }), documentAfter: facts({ ...vercel('HIT'), bodyHash: 'a' }) } });
-	assert.deepEqual(judgeRoute(plain, poisoned, 'x-markless-fragment').map((f) => f.problem), ['missing-vary']);
-	const split = observation([vercel('MISS'), { ...vercel('HIT'), vary: ['x-markless-fragment'] }], { fragment: { response: facts({ ...vercel('HIT'), bodyHash: 'f' }), documentAfter: facts({ ...vercel('HIT'), bodyHash: 'a' }) } });
+	const doc = { fragmentBody: false, vary: ['x-markless-fragment'] };
+	const poisoned = observation([{ ...vercel('MISS'), ...doc }, { ...vercel('HIT'), ...doc }], { fragment: { response: facts({ ...vercel('HIT'), ...doc }), documentAfter: facts({ ...vercel('HIT'), ...doc }) } });
+	assert.deepEqual(judgeRoute(plain, poisoned, 'x-markless-fragment').map((f) => f.problem), ['wrong-body']);
+	const split = observation([vercel('MISS'), { ...vercel('HIT'), ...doc }], { fragment: { response: facts({ ...vercel('HIT'), bodyHash: 'f', fragmentBody: true }), documentAfter: facts({ ...vercel('HIT'), ...doc }) } });
 	assert.deepEqual(judgeRoute(plain, split, 'x-markless-fragment'), []);
 	const noVary = observation([vercel('MISS'), vercel('HIT')], { fragment: { response: facts({ ...vercel('MISS'), bodyHash: 'f' }), documentAfter: facts(vercel('HIT')) } });
 	assert.deepEqual(judgeRoute(plain, noVary, 'x-markless-fragment').map((f) => f.problem), ['missing-vary']);
@@ -176,6 +184,7 @@ test('a function ran when Vercel missed or bypassed its cache and the request id
 let server: Server;
 let origin: string;
 const seen = new Map<string, number>();
+const sharedEntries = new Map<string, string>();
 before(async () => {
 	server = createServer((req, res) => {
 		const url = new URL(req.url!, 'http://x');
@@ -190,6 +199,23 @@ before(async () => {
 		if (url.pathname === '/news/') return page(`<!doctype html><p>news ${n}`, { 'cache-control': 'public, s-maxage=120, stale-while-revalidate=60' });
 		if (url.pathname === '/new/static/') return page('<!doctype html><p>static', { 'x-vercel-cache': n === 1 ? 'MISS' : 'HIT', 'x-vercel-id': 'cle1::iad1::abc', 'cache-control': 'public, max-age=0, must-revalidate' });
 		if (url.pathname === '/new/account') return page('<!doctype html><p>hi', { 'x-vercel-cache': n === 1 ? 'MISS' : 'HIT', 'x-vercel-id': 'cle1::iad1::abc' });
+		const fragment = req.headers['x-markless-fragment'] === '1' || url.pathname.startsWith('/_markless/fragment/');
+		const body = (text: string) => (fragment ? `<!doctype html><p>${text}<!--markless:region-end-->` : `<!doctype html><p>${text}</html>`);
+		const cdn = { 'cache-control': 'public, max-age=0, s-maxage=60', vary: 'x-markless-fragment' };
+		if (url.pathname === '/new/shared/') {
+			// One entry per URL whatever the header, as Vercel's ISR keeps it: the first request decides the body.
+			const key = url.pathname + url.search;
+			const kept = sharedEntries.get(key);
+			if (!kept) sharedEntries.set(key, body('shared'));
+			return page(kept ?? body('shared'), { ...cdn, 'x-vercel-cache': kept ? 'HIT' : 'MISS' });
+		}
+		if (url.pathname === '/new/apart/' || url.pathname === '/_markless/fragment/new/apart/') {
+			const key = `${fragment}${url.pathname}${url.search}`;
+			const kept = sharedEntries.has(key);
+			sharedEntries.set(key, '');
+			return page(body('apart'), { ...cdn, 'x-vercel-cache': kept ? 'HIT' : 'MISS' });
+		}
+		if (url.pathname === '/new/search' || url.pathname === '/_markless/fragment/new/search') return page(body(`results for ${url.searchParams.get('q')}`), { 'cache-control': 'public, max-age=0, must-revalidate', 'x-vercel-cache': 'HIT' });
 		res.writeHead(404).end();
 	});
 	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
@@ -223,12 +249,53 @@ test('a URLSearchParams write (searchParams.set, .delete, .append) is no query k
 
 test('a router that fetches fragments by path (Markless 0.7: /_markless/fragment/<page>) gets each page\'s fragment URL cached as the page is, and check is red when the CDN does not keep it', () => {
 	const routes = [classify({ evidence: evidence({}, {}, '/') }), classify({ evidence: evidence({ bodyHash: 'a' }, { bodyHash: 'b' }, '/news/') }), classify({ evidence: evidence({ setCookies: ['sid'] }, {}, '/account') })];
-	const rules = cacheRules(routes, { fragmentPath: '/_markless/fragment' });
+	const rules = cacheRules(routes, { fragmentPath: '/_markless/fragment', fragmentHeader: 'x-markless-fragment' });
+	assert.deepEqual(rules.routeRules['/'], { isr: { expiration: false, allowQuery: [] } }, 'a router that fetches by path is on ISR even if it still names a header');
 	assert.deepEqual(rules.routeRules['/_markless/fragment/'], { isr: { expiration: false, allowQuery: [] } });
 	assert.deepEqual(rules.routeRules['/_markless/fragment/news/'], { isr: { expiration: 60, allowQuery: [] } });
-	assert.equal(rules.routeRules['/_markless/fragment/account'], undefined, 'a personal page\'s fragment is never shared');
-	assert.equal(rules.vercelRoutes.length, 0, 'a fragment URL is its own cache key: no header split');
+	assert.deepEqual(rules.routeRules['/_markless/fragment/account'], { isr: false, headers: { 'cache-control': 'private, no-store' } }, 'a personal page\'s fragment is never shared either');
 	const plain = classify({ evidence: evidence() });
 	assert.deepEqual(judgeRoute(plain, observation([vercel('MISS'), vercel('HIT')], { fragmentPasses: [vercel('MISS'), vercel('MISS'), vercel('MISS')].map(facts) })).map((f) => f.problem), ['uncached-fragment']);
 	assert.deepEqual(judgeRoute(plain, observation([vercel('MISS'), vercel('HIT')], { fragmentPasses: [vercel('MISS'), vercel('HIT'), vercel('HIT')].map(facts) })), []);
+});
+
+test('check: a document request answered with a fragment, or a fragment request with a document, in either order after expiry, is red once per kind', () => {
+	const plain = classify({ evidence: evidence() });
+	const doc = (status: string) => ({ ...vercel(status), fragmentBody: false });
+	const frag = (status: string) => ({ ...vercel(status), fragmentBody: true });
+	const probe = (asked: 'fragment' | 'document', f: Partial<ResponseFacts>) => ({ asked, response: facts(f) });
+	const apart = { fragmentFirst: [probe('fragment', frag('STALE')), probe('document', doc('STALE')), probe('document', doc('HIT'))], documentFirst: [probe('document', doc('STALE')), probe('fragment', frag('STALE')), probe('fragment', frag('HIT'))] };
+	assert.deepEqual(judgeRoute(plain, observation([doc('MISS'), doc('HIT')], { fragmentPasses: [frag('MISS'), frag('HIT')].map(facts), orders: apart })), []);
+	const shared = { fragmentFirst: [probe('fragment', frag('STALE')), probe('document', frag('HIT')), probe('document', frag('HIT'))], documentFirst: [probe('document', doc('STALE')), probe('fragment', doc('HIT')), probe('fragment', doc('HIT'))] };
+	const found = judgeRoute(plain, observation([doc('MISS'), doc('HIT')], { orders: shared }));
+	assert.deepEqual(found.map((f) => f.problem), ['wrong-body', 'wrong-body']);
+	assert.match(found[0]!.detail, /fragment first after expiry, request 2: a document request got a fragment \(HIT\), and 1 more/);
+	assert.match(found[1]!.detail, /document first after expiry, request 2: a fragment request got the document/);
+	assert.deepEqual(judgeRoute(plain, observation([vercel('MISS'), vercel('HIT')], { orders: shared })).length, 2, 'probes are judged by their own bodies');
+	assert.deepEqual(judgeRoute(plain, observation([{ ...vercel('MISS') }, vercel('HIT')])), [], 'without the router\'s markers no body is told apart');
+});
+
+test('check: a page that reads the query is red when it does not show a value the old site\'s page shows, or shows another value\'s page', () => {
+	const query = classify({ evidence: evidence({}, {}, '/search'), old: { ...NO_SIGNALS, ...fileSignals("searchParams.get('q')", 'app/search/page.tsx') } });
+	const r = (rendered: boolean, status = 'HIT') => ({ url: '/search?q=v', facts: facts(vercel(status)), rendered });
+	assert.deepEqual(judgeRoute(query, observation([vercel('MISS'), vercel('HIT')], { query: [{ key: 'q', value: 'v1', responses: [r(true, 'MISS'), r(true)], oldRendered: true }] })), []);
+	const dropped = judgeRoute(query, observation([vercel('MISS'), vercel('HIT')], { query: [{ key: 'q', value: 'v1', responses: [r(false, 'MISS'), r(false)], oldRendered: true }] }));
+	assert.deepEqual(dropped.map((f) => f.problem), ['query-not-rendered']);
+	assert.match(dropped[0]!.detail, /did not get its query/);
+	assert.deepEqual(judgeRoute(query, observation([vercel('MISS'), vercel('HIT')], { query: [{ key: 'q', value: 'v2', responses: [r(false), r(false)], oldRendered: true, otherValue: 'v1' }] })).map((f) => f.problem), ['query-not-rendered']);
+	assert.deepEqual(judgeRoute(query, observation([vercel('MISS'), vercel('HIT')], { query: [{ key: 'q', value: 'v1', responses: [r(false), r(false)], oldRendered: false }] })), [], 'the old page does not show it either: not told');
+});
+
+test('check asks for fragment and document in both orders on fresh entries and reads a query page\'s query, against a local CDN', async () => {
+	const page = (route: string, over: Partial<ReturnType<typeof classify>> = {}) => ({ ...classify({ evidence: evidence({}, {}, route) }), ...over });
+	const markers = ['<!--markless:region-end-->'];
+	const header = await verifyCaching(origin, [page('/new/shared/'), page('/new/apart/')], { fragmentHeader: 'x-markless-fragment', fragmentMarkers: markers, gapMs: 5, assets: false, pageViews: false });
+	assert.deepEqual(header.findings.map((f) => [f.route, f.problem]), [['/new/shared/', 'wrong-body'], ['/new/shared/', 'wrong-body']], 'one URL for both kinds is red in both orders');
+	assert.ok(header.routes.every((r) => r.orders), 'a page the CDN keys on its whole URL gets fresh entries for the orders');
+	const path = await verifyCaching(origin, [page('/new/apart/'), page('/new/search', { class: 'isr', revalidate: 60, allowQuery: ['q'] })], { fragmentPath: '/_markless/fragment', fragmentMarkers: markers, oldOrigin: origin, gapMs: 5, assets: false, pageViews: false, expiryWaitS: 0 });
+	assert.deepEqual(path.findings, []);
+	const search = path.routes.find((r) => r.route === '/new/search')!;
+	assert.deepEqual(search.query?.map((q) => [q.key, q.responses.map((r) => r.rendered), q.oldRendered]), [['q', [true, true, true, true], true], ['q', [true, true, true, true], true]], 'document and fragment URL each show the value asked for');
+	assert.equal(search.orders, undefined, 'a made-up value the cache ignores is no fresh entry');
+	assert.match(path.notes.join('\n'), /1 page on ISR with revalidation not asked for in both orders after expiry \(the wait is off\)/);
 });

@@ -27,6 +27,29 @@ export const fragmentHeader = (app: string): Promise<string | undefined> => rout
 /** The path prefix the app's own @markless/router fetches fragments from (0.7 on: `/_markless/fragment/<page path>`), read from its build. */
 export const fragmentPath = (app: string): Promise<string | undefined> => routerConstant(app, 'FRAGMENT_PATH_PREFIX');
 
+/** The comments the app's own @markless/router ends a fragment response with: a body ending in one is a fragment, not a document. */
+export async function fragmentEndMarkers(app: string): Promise<string[]> {
+	return (await Promise.all(['FRAGMENT_REGION_END', 'FRAGMENT_APPEND_END'].map((name) => routerConstant(app, name)))).filter((m): m is string => Boolean(m));
+}
+
+/** First Nitro release measured to hand an ISR function its allowed query keys on Vercel (`passQuery`); 3.0.260429-beta drops them. */
+export const NITRO_PASS_QUERY = '3.0.260903-beta';
+
+/** Whether a Nitro version is NITRO_PASS_QUERY or later: `3.0.<yymmdd>-beta` betas compare by their date, any later minor or major passes. */
+export function nitroPassesQuery(version: string | undefined): boolean {
+	const m = version?.match(/^(\d+)\.(\d+)\.(\d+)/);
+	if (!m) return false;
+	const [major, minor, patch] = m.slice(1).map(Number) as [number, number, number];
+	const [, , min] = NITRO_PASS_QUERY.match(/^(\d+)\.(\d+)\.(\d+)/)!.slice(1).map(Number) as [number, number, number];
+	return major > 3 || (major === 3 && (minor > 0 || patch >= min));
+}
+
+/** The Nitro version installed in the app. */
+export async function nitroVersion(app: string): Promise<string | undefined> {
+	const pkg = await readFile(join(app, 'node_modules/nitro/package.json'), 'utf8').catch(() => undefined);
+	return pkg ? (JSON.parse(pkg) as { version?: string }).version : undefined;
+}
+
 async function walk(dir: string, rel = ''): Promise<string[]> {
 	const out: string[] = [];
 	for (const entry of await readdir(join(dir, rel), { withFileTypes: true }).catch(() => [])) {
@@ -82,13 +105,10 @@ import type { Plugin } from 'vite';
 
 export const routeRules: Record<string, Record<string, unknown>> = ${JSON.stringify(rules.routeRules, null, '\t')};
 
-/** Vercel routes placed before Nitro's own, by the path they serve. */
-export const vercelRoutes: [string, Record<string, unknown>][] = ${JSON.stringify(rules.vercelRoutes.map((r) => [r.path, r.route]), null, '\t')};
-
 const CACHING_KEYS = ['isr', 'prerender', 'cache', 'swr', 'static'];
 
 interface NitroLike {
-	options: { routeRules: Record<string, Record<string, any>>; vercel?: { config?: { routes?: unknown[] } } };
+	options: { routeRules: Record<string, Record<string, any>> };
 }
 
 /** Puts each route's caching into Nitro's options, in place of any caching the app set for that path; a proxied path is left alone. */
@@ -100,11 +120,6 @@ export function applyRules(nitro: NitroLike): void {
 		const own = Object.fromEntries(Object.entries(rules[path] ?? {}).filter(([key]) => !CACHING_KEYS.includes(key)));
 		rules[path] = { ...own, ...structuredClone(rule), ...(rule.headers || own.headers ? { headers: { ...(own.headers as object), ...(rule.headers as object) } } : {}) };
 	}
-	const vercel = (nitro.options.vercel ??= {});
-	const output = (vercel.config ??= {});
-	const ours = vercelRoutes.filter(([path]) => !proxied(path)).map(([, route]) => route);
-	const keys = new Set(ours.map((route) => JSON.stringify(route)));
-	output.routes = [...ours, ...(output.routes ?? []).filter((route) => !keys.has(JSON.stringify(route)))];
 }
 
 /** A Vite plugin carrying a Nitro module: Nitro runs it once its options are resolved, after every plugin's config. */
@@ -134,6 +149,8 @@ export interface ApplyResult {
 	readonly rules: CacheRules;
 	readonly fragmentHeader?: string;
 	readonly fragmentPath?: string;
+	readonly nitro?: string;
+	readonly passQuery: boolean;
 }
 
 /** Writes the caching rules into the Markless app and wires them into its vite.config.ts. */
@@ -141,14 +158,16 @@ export async function applyCaching(plan: CachingPlan, app: string, pageFiles: Re
 	const routes = await refineWithNewSource(plan, app, pageFiles);
 	const header = await fragmentHeader(app);
 	const prefix = await fragmentPath(app);
+	const nitro = await nitroVersion(app);
+	const passQuery = nitroPassesQuery(nitro);
 	// Only the routes a page of the app renders: a path the app leaves to its static files or the old app keeps its own answer.
 	const rendered = routes.filter((r) => pageFiles[r.route]);
-	const rules = cacheRules(rendered, { ...(header ? { fragmentHeader: header } : {}), ...(prefix ? { fragmentPath: prefix } : {}), hashedAssets: await publicHashedAssets(app, plan), ...(options.prerender ? { prerender: true } : {}) });
+	const rules = cacheRules(rendered, { ...(header ? { fragmentHeader: header } : {}), ...(prefix ? { fragmentPath: prefix } : {}), passQuery, hashedAssets: await publicHashedAssets(app, plan), ...(options.prerender ? { prerender: true } : {}) });
 	const module = join(app, CACHE_MODULE);
 	await writeFile(module, cacheModule(rules, rendered));
 	const configPath = join(app, 'vite.config.ts');
 	const config = await readFile(configPath, 'utf8').catch(() => undefined);
 	const wired = config === undefined ? false : wireViteConfig(config);
 	if (wired !== false && wired !== config) await writeFile(configPath, wired);
-	return { module, wired: wired !== false, routes: rendered, rules, ...(header ? { fragmentHeader: header } : {}), ...(prefix ? { fragmentPath: prefix } : {}) };
+	return { module, wired: wired !== false, routes: rendered, rules, ...(header ? { fragmentHeader: header } : {}), ...(prefix ? { fragmentPath: prefix } : {}), ...(nitro ? { nitro } : {}), passQuery };
 }
