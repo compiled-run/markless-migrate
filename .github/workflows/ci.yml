@@ -43,17 +43,33 @@ jobs:
       - run: node --test --test-shard=${{ matrix.shard }}/3 test/*.test.ts
 
   e2e:
-    name: E2E ${{ matrix.suite }}
+    name: E2E ${{ matrix.suite }}${{ matrix.shard && format(' ({0})', matrix.shard) || '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        suite: [dev-builds, markless-site, motion, nav-parity, next-app, proxy, radix-dialog-port, responsiveness, vite-site]
+        include:
+          - suite: dev-builds
+          - suite: markless-site
+          - suite: motion
+          - suite: nav-parity
+          - suite: proxy
+          - suite: radix-dialog-port
+          - suite: responsiveness
+          - { suite: next-app, shard: 1/4 }
+          - { suite: next-app, shard: 2/4 }
+          - { suite: next-app, shard: 3/4 }
+          - { suite: next-app, shard: 4/4 }
+          - { suite: vite-site, shard: 1/3 }
+          - { suite: vite-site, shard: 2/3 }
+          - { suite: vite-site, shard: 3/3 }
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - run: node --test test/e2e/${{ matrix.suite }}.test.ts
+        env:
+          E2E_SHARD: ${{ matrix.shard }}
 
   passed:
     name: CI passed
