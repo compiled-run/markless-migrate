@@ -53,16 +53,24 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 	return captured;
 }
 
+/** A captured route held by its status; the documents (a few MB each) are read from the cache when needed. */
+export interface CapturedRef {
+	readonly route: string;
+	readonly status: number;
+	load(): Promise<CapturedPage>;
+}
+
 /** Captures every route, `concurrency` at a time, reporting progress through `log`. */
-export async function captureAll(browser: Browser, origin: string, routes: readonly string[], dir: string, options: { concurrency?: number; log?: (line: string) => void } = {}): Promise<CapturedPage[]> {
-	const out: CapturedPage[] = new Array(routes.length);
+export async function captureAll(browser: Browser, origin: string, routes: readonly string[], dir: string, options: { concurrency?: number; log?: (line: string) => void } = {}): Promise<CapturedRef[]> {
+	const out: CapturedRef[] = new Array(routes.length);
 	let next = 0;
 	let done = 0;
 	const worker = async () => {
 		while (next < routes.length) {
 			const index = next++;
 			const route = routes[index]!;
-			out[index] = await capturePage(browser, origin, route, dir);
+			const { status } = await capturePage(browser, origin, route, dir);
+			out[index] = { route, status, load: () => capturePage(browser, origin, route, dir) };
 			done++;
 			options.log?.(`captured ${done}/${routes.length} ${route}`);
 		}
