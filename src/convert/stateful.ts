@@ -332,13 +332,25 @@ export class InsertedDisclosurePlan {
 		for (const trigger of byTrigger.keys()) {
 			if (this.bindings.has(trigger)) continue;
 			const key = accordionOf(trigger) ?? trigger;
+			// A group key is the accordion, or the trigger itself for a standalone disclosure.
 			(groups.get(key) ?? groups.set(key, []).get(key)!).push(trigger);
 		}
 		const inserts = new Map<Element, { before: Element | null; markup: string; declare: string[] }[]>();
-		for (const triggers of groups.values()) {
+		for (const [key, closed] of groups) {
+			// An accordion's item open on load has its content in the page already (named by aria-controls): it closes
+			// when another opens, hidden by its bound attribute.
+			const openItems = key === closed[0] ? [] : [...walk(key)].filter((t) => attr(t, 'aria-expanded') === 'true' && attr(t, 'aria-haspopup') === undefined && accordionOf(t) === key && !this.bindings.has(t));
+			const panels = new Map<Element, Element>();
+			for (const t of openItems) {
+				const id = attr(t, 'aria-controls');
+				const panel = id ? [...walk(key)].find((p) => attr(p, 'id') === id) : undefined;
+				if (panel) panels.set(t, panel);
+			}
+			const triggers = [...closed, ...openItems.filter((t) => panels.has(t))];
 			const name = `ins${this.n++}`;
-			const single = triggers.length > 1;
-			const declare = [`let ${name} = state(${single ? -1 : 'false'});`];
+			const single = key !== closed[0] && triggers.length > 1;
+			const initial = triggers.findIndex((t) => panels.has(t));
+			const declare = [`let ${name} = state(${single ? initial : 'false'});`];
 			triggers.forEach((trigger, k) => {
 				const open = single ? `${name} === ${k}` : name;
 				const toggle = single ? `${name} = ${name} === ${k} ? -1 : ${k}` : `${name} = !${name}`;
@@ -354,7 +366,9 @@ export class InsertedDisclosurePlan {
 					omit.push('data-panel-open');
 				}
 				this.bindings.set(trigger, { declare, omit, extra });
-				for (const i of byTrigger.get(trigger)!) {
+				const panel = panels.get(trigger);
+				if (panel) this.bindings.set(panel, { declare, omit: ['hidden', 'data-open', 'data-closed'], extra: [`hidden={!(${open})}`, `data-open={${open} ? "" : undefined}`, `data-closed={${open} ? undefined : ""}`] });
+				for (const i of byTrigger.get(trigger) ?? []) {
 					const list = inserts.get(i.parent) ?? inserts.set(i.parent, []).get(i.parent)!;
 					const markup = /@(if|switch|for) \(|<[A-Z]\w*[\s/>]/.test(i.markup) ? '' : `@if (${open}) { <>${i.markup}</> }`;
 					if (markup && !list.some((l) => l.before === i.before && l.markup === markup)) list.push({ before: i.before, markup, declare });
