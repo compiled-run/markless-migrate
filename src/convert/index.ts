@@ -589,7 +589,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		if (!others.length) markup = `\t${base.markup}\n`;
 		else {
 			const arms = others.map((v) => `\t\t@case ${lit(v.search)}: {\n\t\t\t${v.markup}\n\t\t}`).join('\n');
-			markup = `\t@switch (search) {\n${arms}\n\t\t@default: {\n\t\t\t${base.markup}\n\t\t}\n\t}\n`;
+			// A page whose root is a bare @switch builds but is no page module at request time; in a fragment it is.
+			markup = `\t<>\n\t@switch (search) {\n${arms}\n\t\t@default: {\n\t\t\t${base.markup}\n\t\t}\n\t}\n\t</>\n`;
 		}
 		if (markup.includes(`(${PAGE_SHOWN})`)) imports.add(`const ${PAGE_SHOWN} = true;`);
 		const usesPath = markup.includes('path={path}') || markup.includes('path ===');
