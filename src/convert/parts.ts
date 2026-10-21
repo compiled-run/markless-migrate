@@ -52,7 +52,7 @@ function narrow(el: Element, candidates: readonly PartUsage[]): PartUsage[] {
 
 export const PORTS: readonly Port[] = [
 	// Radix Tabs are Markless state (convert's TabsPlan); the part is only the roving focus the triggers' keydown calls.
-	{ module: 'radix/roving', library: 'radix-ui', exports: ['Tabs.Root', 'Tabs.List', 'Tabs.Trigger', 'Tabs.Content'], events: [], locate: (el) => radix(el) },
+	{ module: 'radix/roving', library: 'radix-ui', exports: ['Tabs.Root', 'Tabs.List', 'Tabs.Trigger', 'Tabs.Content', 'ToggleGroup.Root', 'ToggleGroup.Item', 'RadioGroup.Root', 'RadioGroup.Item'], events: ['focusin', 'keydown'], locate: (el) => radix(el) },
 	{ module: 'radix/dialog', library: 'radix-ui', needs: ['radix/dialog-engine'], exports: ['Dialog.Root', 'Dialog.Trigger', 'Dialog.Content', 'Dialog.Overlay', 'Dialog.Close', 'AlertDialog.Root', 'AlertDialog.Trigger', 'AlertDialog.Content', 'AlertDialog.Cancel', 'AlertDialog.Action'], events: ['click'], locate: (el) => radix(el) },
 	{ module: 'cmdk', library: 'cmdk', exports: ['Command', 'Command.Input', 'Command.List', 'Command.Item', 'Command.Group', 'Command.Empty'], events: ['input', 'keydown', 'pointerover', 'click'], locate: () => true, needs: ['choices'] },
 	{ module: 'radix/popover', library: 'radix-ui', needs: ['layer', 'popper', 'presence', 'aria-hidden', 'remove-scroll'], exports: ['Popover.Root', 'Popover.Trigger', 'Popover.Content', 'Popover.Portal', 'Popover.Anchor', 'Popover.Close'], events: ['click'], locate: (el) => radix(el) },

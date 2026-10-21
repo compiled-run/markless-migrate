@@ -1,5 +1,5 @@
 import type { Part } from '../parts/index.ts';
-import { resolvedTheme, setTheme, type ThemeOptions } from '../parts/next-themes.ts';
+import { resolvedTheme, setTheme, watchSystemTheme, type ThemeOptions } from '../parts/next-themes.ts';
 import { configure } from '../parts/cmdk.ts';
 import { clipboardFor } from '../parts/reveal.ts';
 import { closeContaining, toggle } from '../parts/radix/dialog.ts';
@@ -9,6 +9,7 @@ import { closeContaining, toggle } from '../parts/radix/dialog.ts';
 
 // components/theme-provider.tsx: <NextThemesProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange enableColorScheme>
 const THEME: ThemeOptions = { attribute: 'class', themes: ['light', 'dark'], storageKey: 'theme', defaultTheme: 'system', enableSystem: true, enableColorScheme: true, disableTransitionOnChange: true };
+watchSystemTheme(THEME);
 // hooks/use-meta-color.ts
 const META_THEME_COLORS = { light: '#ffffff', dark: '#0a0a0a' };
 

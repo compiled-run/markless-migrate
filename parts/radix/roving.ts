@@ -22,3 +22,29 @@ export function tabValue(event: Event): string | undefined {
 	if (!tab || tab.hasAttribute('disabled') || tab.hasAttribute('data-disabled')) return undefined;
 	return /-content-(.+)$/.exec(tab.getAttribute('aria-controls') ?? '')?.[1];
 }
+
+// RovingFocusGroup's own focus: Tab landing on the group (tabindex 0) moves on to its current item (the selected tab, the
+// pressed or checked toggle, else the first enabled item); Shift+Tab from an item takes the group out of the tab order
+// for that step, so focus leaves the group instead of landing on it.
+const GROUP = '[role="tablist"][tabindex="0"], [role="group"][data-slot="toggle-group"][tabindex="0"], [role="radiogroup"][tabindex="0"]';
+const ITEM = '[role="tab"], [role="radio"], button[aria-pressed], [data-slot="toggle-group-item"]';
+
+export function focusin(target: Element, event: FocusEvent): boolean {
+	if (!(target instanceof HTMLElement) || !target.matches(GROUP)) return false;
+	const from = event.relatedTarget instanceof Node ? event.relatedTarget : null;
+	if (from && target.contains(from)) return false;
+	const items = [...target.querySelectorAll<HTMLElement>(ITEM)].filter((i) => !i.hasAttribute('disabled') && i.getAttribute('aria-disabled') !== 'true' && !i.hasAttribute('data-disabled'));
+	const current = items.find((i) => i.getAttribute('aria-selected') === 'true' || i.getAttribute('aria-checked') === 'true' || i.getAttribute('data-state') === 'on' || i.getAttribute('aria-pressed') === 'true') ?? items[0];
+	if (!current) return false;
+	current.focus({ preventScroll: true });
+	return true;
+}
+
+export function keydown(target: Element, event: KeyboardEvent): boolean {
+	if (event.key !== 'Tab' || !event.shiftKey) return false;
+	const group = target.closest<HTMLElement>(GROUP);
+	if (!group || group === target) return false;
+	group.setAttribute('tabindex', '-1');
+	setTimeout(() => group.setAttribute('tabindex', '0'));
+	return false;
+}

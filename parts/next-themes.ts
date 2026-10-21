@@ -58,3 +58,11 @@ export function setTheme(theme: string, options: ThemeOptions): void {
 	} catch {}
 	apply(theme, options);
 }
+
+/** ThemeProvider's media query listener: with the system theme chosen, a change of the OS's scheme is applied. */
+export function watchSystemTheme(options: ThemeOptions): void {
+	if (!options.enableSystem) return;
+	matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+		if (storedTheme(options) === 'system') apply('system', options);
+	});
+}
