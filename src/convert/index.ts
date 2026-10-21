@@ -684,6 +684,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			const el = c.byRoute.get(route);
 			if (el && [...walk(el)].some((x) => notifyPlan.hosts(x))) (ownAfter.get(route) ?? ownAfter.set(route, []).get(route)!).push(i);
 		});
+	// A route whose own body children hold such a region renders all of them itself, after its root.
+	const ownExtras = new Map<string, readonly Element[]>();
+	for (const [route, extras] of bodyParts.extras) if (extras.some((el) => [...walk(el)].some((x) => notifyPlan.hosts(x)))) ownExtras.set(route, extras);
 	const switchPlan = new SwitchPlan();
 	let switchGroups = 0;
 	for (const [route, p] of prepared) switchGroups += switchPlan.add(switched.get(route) ?? [], locator(p.root.parentNode as Element));
@@ -756,7 +759,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			}
 			if (from < bodyParts.after.length) after += `<BodyAfter route={${lit(route)}} from={${from}} />`;
 		}
-		const tail = `${after}${pageLayers.map((n) => `<${n} />`).join('')}`;
+		const extras = (ownExtras.get(route) ?? []).map((el) => emitElement(el, { declarations, bind: (x) => notifyPlan.bind(x), dropped: noteDropped })).join('');
+		const tail = `${after}${extras}${pageLayers.map((n) => `<${n} />`).join('')}`;
 		const markup = tail ? `<>@if (${PAGE_SHOWN}) { ${rootMarkup} }@if (${PAGE_SHOWN}) { <>${tail}</> }</>` : rootMarkup;
 		const list = byFile.get(file) ?? [];
 		list.push({ route, search: url.search, markup, parts, declarations, layers: pageLayers });
@@ -810,7 +814,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	await mkdir(join(app, 'components', 'converted'), { recursive: true });
 	await mkdir(join(app, 'components', 'converted', 'layers'), { recursive: true });
 	for (const layer of layers.files) await writeFile(join(app, 'components', 'converted', layer.file), appUrlDeclaration(layer.source));
-	await writeFile(join(app, 'components', 'converted', 'body-extras.tsrx'), appUrlDeclaration(extrasModule(bodyParts, noteDropped, layers)));
+	await writeFile(join(app, 'components', 'converted', 'body-extras.tsrx'), appUrlDeclaration(extrasModule({ ...bodyParts, extras: new Map([...bodyParts.extras].filter(([route]) => !ownExtras.has(route))) }, noteDropped, layers)));
 	if (bodyAfter) await writeFile(join(app, 'components', 'converted', 'body-after.tsrx'), appUrlDeclaration(bodyAfter));
 	log(`layers: ${layers.files.length} distinct, each compiled once; ${layers.everywhere.length} on every page`);
 	const clipboard = Object.fromEntries([...prepared].filter(([, p]) => Object.keys(p.clipboard).length).map(([route, p]) => [pathOf(route), p.clipboard]));
