@@ -23,7 +23,7 @@ export const METRIC_LABEL: Readonly<Record<LoadMetric, string>> = {
 };
 
 export interface LoadOptions {
-	/** Lighthouse runs per side and route, old and new taken in turn; default 5. */
+	/** Lighthouse runs per side and route, old and new taken in turn; default 5, and as many again when a metric is worse but not yet beyond noise. */
 	readonly runs?: number;
 	/** Hosts blocked on both sides, as in the rest of the check. */
 	readonly block?: BlockList;
@@ -119,38 +119,31 @@ export function spread(values: readonly number[]): number {
 	return median(values.map((v) => Math.abs(v - m)));
 }
 
-const uStatistic = (lower: readonly number[], higher: readonly number[]) => {
-	let u = 0;
-	for (const h of higher) for (const l of lower) u += h > l ? 1 : h === l ? 0.5 : 0;
-	return u;
-};
-
-/** P(U >= observed) for `higher` against `lower` under the null that both come from one distribution, by enumerating every split of the pooled runs (ties counted as halves). */
+/** P(U >= observed) for `higher` against `lower` under the null that both come from one distribution: the exact distribution of `higher`'s rank sum over every split of the pooled runs, ties at their mid-rank. */
 export function mannWhitneyGreater(lower: readonly number[], higher: readonly number[]): number {
 	if (!lower.length || !higher.length) return 1;
-	const pooled = [...lower, ...higher];
+	const pooled = [...lower.map((v) => ({ v, high: false })), ...higher.map((v) => ({ v, high: true }))].sort((a, b) => a.v - b.v);
+	// Doubled mid-ranks keep every rank sum a whole number.
+	const ranks: number[] = [];
+	for (let i = 0; i < pooled.length; ) {
+		let j = i;
+		while (j < pooled.length && pooled[j]!.v === pooled[i]!.v) j++;
+		for (let t = i; t < j; t++) ranks.push(i + j + 1);
+		i = j;
+	}
+	const observed = ranks.reduce((sum, r, i) => sum + (pooled[i]!.high ? r : 0), 0);
 	const k = higher.length;
-	const observed = uStatistic(lower, higher);
-	let total = 0;
-	let atLeast = 0;
-	const pick: number[] = [];
-	const walk = (from: number) => {
-		if (pick.length === k) {
-			const chosen = new Set(pick);
-			const h = pick.map((i) => pooled[i]!);
-			const l = pooled.filter((_, i) => !chosen.has(i));
-			total++;
-			if (uStatistic(l, h) >= observed - 1e-9) atLeast++;
-			return;
-		}
-		for (let i = from; i <= pooled.length - (k - pick.length); i++) {
-			pick.push(i);
-			walk(i + 1);
-			pick.pop();
-		}
-	};
-	walk(0);
-	return atLeast / total;
+	const max = ranks.reduce((a, b) => a + b, 0);
+	let ways: number[][] = Array.from({ length: k + 1 }, () => new Array<number>(max + 1).fill(0));
+	ways[0]![0] = 1;
+	for (const r of ranks) {
+		const next = ways.map((row) => [...row]);
+		for (let c = 0; c < k; c++) for (let sum = 0; sum + r <= max; sum++) if (ways[c]![sum]) next[c + 1]![sum + r]! += ways[c]![sum]!;
+		ways = next;
+	}
+	const row = ways[k]!;
+	const total = row.reduce((a, b) => a + b, 0);
+	return row.reduce((n, count, sum) => n + (sum >= observed ? count : 0), 0) / total;
 }
 
 /** Each metric's verdict: red when the new median is worse than the old by more than its floor and the runs say that is not noise. */
@@ -284,23 +277,33 @@ export async function measureLoad(origins: { readonly old: string; readonly new:
 	if (!routes.length) return out;
 	const browser = await startChromium();
 	try {
+		const once = async (which: 'old' | 'new', route: string): Promise<LoadRun> => {
+			const origin = origins[which];
+			const url = new URL(route, origin).href;
+			let result: LoadRun = { error: 'not run' };
+			for (let attempt = 0; attempt <= RETRIES && !result.metrics; attempt++) result = await run(url, browser.port, blocked).then((lhr) => readRun(lhr, origin), (error: unknown) => ({ error: error instanceof Error ? error.message.split('\n')[0]! : String(error) }));
+			return result;
+		};
 		for (const route of routes) {
 			const taken: { old: LoadRun[]; new: LoadRun[] } = { old: [], new: [] };
-			for (let i = 0; i < runs; i++) {
-				for (const which of i % 2 ? (['new', 'old'] as const) : (['old', 'new'] as const)) {
-					const origin = origins[which];
-					const url = new URL(route, origin).href;
-					let result: LoadRun = { error: 'not run' };
-					for (let attempt = 0; attempt <= RETRIES && !result.metrics; attempt++) result = await run(url, browser.port, blocked).then((lhr) => readRun(lhr, origin), (error: unknown) => ({ error: error instanceof Error ? error.message.split('\n')[0]! : String(error) }));
-					taken[which].push(result);
-				}
-			}
-			out.set(route, routeLoad(runs, taken.old, taken.new));
+			const take = async (from: number) => {
+				for (let i = from; i < from + runs; i++) for (const which of i % 2 ? (['new', 'old'] as const) : (['old', 'new'] as const)) taken[which].push(await once(which, route));
+			};
+			await take(0);
+			if (undecided(taken.old, taken.new)) await take(runs);
+			out.set(route, routeLoad(taken.old.length, taken.old, taken.new));
 		}
 	} finally {
 		await browser.close();
 	}
 	return out;
+}
+
+/** A metric worse than its floor whose runs do not yet tell it from noise: worth as many runs again before judging. */
+export function undecided(oldRuns: readonly LoadRun[], newRuns: readonly LoadRun[]): boolean {
+	const o = oldRuns.flatMap((r) => (r.metrics ? [r.metrics] : []));
+	const n = newRuns.flatMap((r) => (r.metrics ? [r.metrics] : []));
+	return o.length > 0 && n.length > 0 && judgeLoad(o, n).some((v) => v.worse > v.floor && v.p >= SIGNIFICANCE);
 }
 
 export function routeLoad(runs: number, oldRuns: readonly LoadRun[], newRuns: readonly LoadRun[]): RouteLoad {

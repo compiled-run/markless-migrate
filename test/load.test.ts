@@ -13,6 +13,10 @@ test('the exact one-sided Mann-Whitney p of two runs that never overlap is one s
 	assert.equal(mannWhitneyGreater([1, 2, 3], [4, 5, 6]), 1 / 20);
 	assert.ok(mannWhitneyGreater([5, 5, 5, 5, 5], [5, 5, 5, 5, 5]) > 0.5);
 	assert.equal(mannWhitneyGreater([6, 7, 8, 9, 10], [1, 2, 3, 4, 5]), 1);
+	assert.equal(mannWhitneyGreater([1, 3], [2, 4]), 2 / 6);
+	assert.equal(mannWhitneyGreater([1, 2, 2], [2, 3]), 3 / 10);
+	const ten = Array.from({ length: 10 }, (_, i) => i);
+	assert.equal(mannWhitneyGreater(ten, ten.map((v) => v + 10)), 1 / 184756);
 });
 
 test('a new LCP slower in every run is red; the same page measured twice is not', () => {
@@ -106,6 +110,24 @@ test('a run that errors is taken again, so a paint the machine skipped does not 
 	const loads = await measureLoad({ old: 'http://old.test', new: 'http://new.test' }, ['/'], { runs: 4 }, async () => (++calls === 1 ? { ...lhr, runtimeError: { code: 'NO_FCP', message: 'The page did not paint any content.' } } : lhr));
 	assert.equal(calls, 9);
 	assert.ok(loads.get('/')!.old.runs.every((r) => !('error' in r)));
+});
+
+test('a metric worse than its floor but within noise after the first runs gets as many runs again, and is judged on all of them', async () => {
+	let calls = 0;
+	const at = (lcp: number) => ({ ...lhr, audits: { ...lhr.audits, 'largest-contentful-paint': { numericValue: lcp } } });
+	// Old stalls twice in its first five runs; new is 600 ms slower than old's typical run every time.
+	const old = [2988, 802, 2745, 796, 799, 801, 805, 798, 803, 800];
+	const loads = await measureLoad({ old: 'http://old.test', new: 'http://new.test' }, ['/'], { runs: 5 }, async (url) => {
+		calls++;
+		return url.startsWith('http://old.test') ? at(old.shift()!) : at(1400);
+	});
+	const load = loads.get('/')!;
+	assert.equal(calls, 20);
+	assert.equal(load.runs, 10);
+	assert.equal(load.verdicts.find((v) => v.metric === 'lcp')!.ok, false);
+	let steady = 0;
+	await measureLoad({ old: 'http://old.test', new: 'http://new.test' }, ['/'], { runs: 4 }, async () => (steady++, lhr));
+	assert.equal(steady, 8, 'a route already decided takes no more runs');
 });
 
 test('tracker hosts are blocked in Lighthouse as in the rest of the check, and an allowed one is not', () => {

@@ -134,7 +134,8 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           compared with the old app's too. --no-navigation leaves it out.
           Page load: after every other check, each page (one per template group) is loaded with
           Lighthouse's mobile settings (simulated slow 4G, 4x CPU, as PageSpeed Insights runs it),
-          --load-runs times on each side (default 5), old and new in turn, one run at a time. FCP, LCP,
+          --load-runs times on each side (default 5; as many again when a metric is worse but within
+          noise), old and new in turn, one run at a time. FCP, LCP,
           Speed Index, TBT, CLS and the performance score are compared by their medians: a metric is red
           when the new median is worse by more than max(100 ms, 5%) (TBT 50 ms, CLS 0.02, 3 score points)
           and the runs differ beyond noise (one-sided Mann-Whitney, p < 0.05). The failure names the LCP
