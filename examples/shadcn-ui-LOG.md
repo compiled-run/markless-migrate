@@ -139,6 +139,26 @@ parse (quotes and backticks in arm text).
     server's 78 MB chunk (render data, about 40 KB a layer) crashed Node 24 on arm64 in Maglev
     (`Check failed: is_int26(x)`); `node --no-maglev` serves it. Splitting the layers per page avoids it.
 
+11. A page whose root is a bare `@switch` builds without a diagnostic and then answers every request with
+    "Page module must export a Markless compiled artifact":
+    ```tsrx
+    export default function Page({ url }: PageProps) @{
+    	const search = url.search;
+    	@switch (search) {
+    		@case "?a": { <main><p>a</p></main> }
+    		@default: { <main><p>d</p></main> }
+    	}
+    }
+    ```
+    The same switch inside `<>…</>` works. `/create` (14 query variants) and `/docs/directory` (48) rendered that
+    message on the first full deploy; the converter now wraps the switch.
+12. The build writes `interaction-closures.json` (in `.output/.markless/public`) as one `JSON.stringify` string listing
+    every handler's module closure per route: handlers × the component's symbols, so a page with 400 handlers on a
+    component of 2,000 symbols lists 600,000 module ids. ui.shadcn.com's was 462 MB; a few hundred more handlers
+    passed V8's string limit and the build stopped with `RangeError: Invalid string length` in
+    `interactionClosuresAsset`, after 49 minutes. The converter now puts a tab list's handlers on the list (one per
+    event instead of one per trigger and event), which cut `/docs/cli`'s share from 39.6 to 26.5 MB.
+
 ## Status (2026-10-21)
 
 Preview: https://mm-shadcn-ui-new.vercel.app serves all 498 HTML routes with Markless (no route falls through to
