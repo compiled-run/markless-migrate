@@ -16,8 +16,8 @@ export interface BaseOptions {
 
 const PHYSICAL: Record<string, string> = { top: 'top', right: 'right', bottom: 'bottom', left: 'left', 'inline-end': 'right', 'inline-start': 'left' };
 
-export function place(anchor: Element, positioner: HTMLElement, popup: HTMLElement | null, options: BaseOptions): () => void {
-	const rtl = getComputedStyle(anchor).direction === 'rtl';
+export function place(anchor: Element | { getBoundingClientRect(): DOMRect }, positioner: HTMLElement, popup: HTMLElement | null, options: BaseOptions): () => void {
+	const rtl = anchor instanceof Element && getComputedStyle(anchor).direction === 'rtl';
 	const side = options.side === 'inline-end' ? (rtl ? 'left' : 'right') : options.side === 'inline-start' ? (rtl ? 'right' : 'left') : (PHYSICAL[options.side] ?? 'bottom');
 	const placement = (options.align === 'center' ? side : `${side}-${options.align}`) as Placement;
 	const pad = options.collisionPadding ?? 5;

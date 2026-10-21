@@ -4,7 +4,12 @@ import { closeLayer, layerOf, openLayer, type Layer } from '../layer.ts';
 // ArrowDown on it) opens the menu with outside pointer events off; the content takes focus (the first item from the
 // keyboard); arrows, Home and End move a roving highlight; choosing an item or Escape closes it and focus returns.
 
-const TRIGGER = '[aria-haspopup="menu"][data-slot$="menu-trigger"]';
+// Radix Menubar's triggers are menu buttons too: with one menu open, the pointer on another opens it, and the arrows
+// across an open menu move to the neighbouring menu of the bar.
+const TRIGGER = '[aria-haspopup="menu"][data-slot$="menu-trigger"], [aria-haspopup="menu"][data-slot="menubar-trigger"]';
+const BAR = '[role="menubar"]';
+const barTriggers = (trigger: HTMLElement) => [...(trigger.closest(BAR)?.querySelectorAll<HTMLElement>('[data-slot="menubar-trigger"]') ?? [])];
+const openOf = (trigger: HTMLElement) => layerOf(document.getElementById(trigger.getAttribute('aria-controls') ?? '') ?? trigger);
 const ITEM = '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]';
 const keyOf = (trigger: HTMLElement) => trigger.getAttribute('aria-controls') || trigger.id;
 
@@ -59,7 +64,25 @@ export function click(target: Element): boolean {
 	return true;
 }
 
+function switchTo(from: HTMLElement, to: HTMLElement | undefined, first: boolean): boolean {
+	const open = openOf(from);
+	if (!to || to === from) return false;
+	if (open) close(open, true);
+	openMenu(to, first);
+	to.focus({ preventScroll: true });
+	if (first) {
+		const layer = openOf(to);
+		if (layer) highlight(items(layer)[0], layer);
+	}
+	return true;
+}
+
 export function pointerover(target: Element): boolean {
+	const bar = target.closest<HTMLElement>('[data-slot="menubar-trigger"]');
+	if (bar) {
+		const open = barTriggers(bar).find((t) => t !== bar && t.getAttribute('aria-expanded') === 'true');
+		return open ? switchTo(open, bar, false) : false;
+	}
 	const item = target.closest<HTMLElement>(ITEM);
 	const layer = item && layerOf(item);
 	if (!item || !layer) return false;
@@ -75,6 +98,13 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 	}
 	const layer = layerOf(target);
 	if (!layer || !layer.content.contains(target) || !layer.content.matches('[role="menu"]')) return false;
+	if ((event.key === 'ArrowRight' || event.key === 'ArrowLeft') && layer.trigger.matches('[data-slot="menubar-trigger"]') && !target.closest('[aria-haspopup="menu"]')) {
+		const all = barTriggers(layer.trigger);
+		const rtl = getComputedStyle(layer.trigger).direction === 'rtl';
+		const step = (event.key === 'ArrowRight') !== rtl ? 1 : -1;
+		event.preventDefault();
+		return switchTo(layer.trigger, all[(all.indexOf(layer.trigger) + step + all.length) % all.length], true);
+	}
 	const list = items(layer);
 	const at = list.indexOf(target.closest<HTMLElement>(ITEM)!);
 	const to = { ArrowDown: list[Math.min(list.length - 1, at + 1)] ?? list[0], ArrowUp: at <= 0 ? list[0] : list[at - 1], Home: list[0], End: list[list.length - 1] }[event.key];

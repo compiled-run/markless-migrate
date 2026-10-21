@@ -30,8 +30,9 @@ export function setTrigger(trigger: HTMLElement, on: boolean): void {
 }
 
 /** Mounts a trigger's captured portal; `popupSelector` picks the popup inside it. */
-export function openPopup(trigger: HTMLElement, options: { readonly popupSelector: string; readonly positionMethod?: 'absolute' | 'fixed'; readonly sideOffset?: number; readonly onDismiss: (p: Popup) => void; readonly outsidePress?: boolean; readonly anchored?: boolean }): Popup | undefined {
-	const key = trigger.id;
+export function openPopup(trigger: HTMLElement, options: { readonly popupSelector: string; readonly positionMethod?: 'absolute' | 'fixed'; readonly sideOffset?: number; readonly onDismiss: (p: Popup) => void; readonly outsidePress?: boolean; readonly anchored?: boolean; readonly key?: string; readonly anchor?: Element | { getBoundingClientRect(): DOMRect } }): Popup | undefined {
+	// A context menu's trigger area has no id: its layer key, and the point it opens at.
+	const key = options.key || trigger.id;
 	if (!key || isOpen(key)) return undefined;
 	const portal = layersFor(key).find((n) => n.hasAttribute('data-base-ui-portal'));
 	if (!portal) return undefined;
@@ -51,7 +52,7 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	if (positioner && options.anchored !== false && positioner.getAttribute('data-side') !== 'none') {
 		for (const prop of ['left', 'top', 'transform', 'height', 'max-height', 'margin-top', 'margin-bottom']) positioner.style.removeProperty(prop);
 		const opts: BaseOptions = { side: popup.getAttribute('data-side') ?? 'bottom', align: popup.getAttribute('data-align') ?? 'center', sideOffset: Number(portal.dataset.mmSideOffset ?? options.sideOffset ?? 0), alignOffset: Number(portal.dataset.mmAlignOffset ?? 0), positionMethod: options.positionMethod ?? 'absolute' };
-		p.stop = place(trigger, positioner, popup, opts);
+		p.stop = place(options.anchor ?? trigger, positioner, popup, opts);
 	}
 	enter(popup, around);
 	setTrigger(trigger, true);
