@@ -51,10 +51,17 @@
 	}
 
 	const canvas = document.createElement('canvas').getContext('2d');
+	// recharts' getStringSize caches each string's size the first time it measures it, so a chart laid out again
+	// (a resize, after the web font arrived) keeps the widths it measured first.
+	const widths = new Map();
 	const textWidth = (node) => {
-		const style = getComputedStyle(node);
-		canvas.font = `${style.fontWeight} 12px ${style.fontFamily}`;
-		return canvas.measureText(node.firstElementChild?.dataset.label ?? node.textContent ?? '').width;
+		const text = node.firstElementChild?.dataset.label ?? node.textContent ?? '';
+		if (!widths.has(text)) {
+			const style = getComputedStyle(node);
+			canvas.font = `${style.fontWeight} 12px ${style.fontFamily}`;
+			widths.set(text, canvas.measureText(text).width);
+		}
+		return widths.get(text);
 	};
 
 	// The x axis's default interval, preserveEnd: walking back from the last tick, a label that would overlap
@@ -178,19 +185,37 @@
 	}
 
 	const draw = { overview: barChart, analytics: areaChart };
+	const points = { overview: overview.length, analytics: analytics.length };
+	// A page swapped in by an in-page navigation arrives over several frames: a chart is laid out once all its tick labels are in.
+	const complete = (container) => {
+		const labels = (axis) => [...container.querySelectorAll(`.recharts-${axis}-tick-labels text`)];
+		const x = labels('xAxis');
+		const y = labels('yAxis');
+		return x.length === points[container.dataset.parityChart] && y.length === 5 && [...x, ...y].every((text) => text.firstElementChild);
+	};
 	const drawn = new WeakMap();
-	const drawAll = () => {
+	const watched = new WeakSet();
+	// ResponsiveContainer lays out again at a new width; a tab that shows a chart for the first time lays it out then.
+	const resized = new ResizeObserver(() => drawAll());
+	let retry = 0;
+	function drawAll() {
 		for (const container of document.querySelectorAll('[data-parity-chart]')) {
+			if (!watched.has(container)) {
+				watched.add(container);
+				resized.observe(container);
+			}
 			const width = Math.round(container.getBoundingClientRect().width);
 			if (!width || drawn.get(container) === width) continue;
+			if (!complete(container)) {
+				cancelAnimationFrame(retry);
+				retry = requestAnimationFrame(drawAll);
+				continue;
+			}
 			if (draw[container.dataset.parityChart]?.(container)) drawn.set(container, width);
 		}
-	};
+	}
 	drawAll();
 	measurementSpan('$0');
-	// ResponsiveContainer lays out again at a new width; a tab that shows a chart for the first time lays it out then.
-	const resized = new ResizeObserver(drawAll);
 	resized.observe(document.body);
-	for (const container of document.querySelectorAll('[data-parity-chart]')) resized.observe(container);
 	new MutationObserver(drawAll).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['hidden'] });
 })();
