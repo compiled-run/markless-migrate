@@ -223,6 +223,30 @@ const replaced = new Map<Element, { key: string; trigger: Element; markup: strin
 const replacedParts = new Map<Element, Binding>();
 const unplaced: string[] = [];
 
+/**
+ * Radix Select mounts the indicator only in the checked option: every other option of a captured listbox gets a hidden
+ * copy where its own indicator would go (the option's empty first span), so choosing one only switches `hidden`.
+ */
+function selectIndicators(top: Element): void {
+	for (const listbox of [top, ...walkAll(top)]) {
+		if (attr(listbox, 'role') !== 'listbox' || attr(listbox, 'data-slot') !== 'select-content') continue;
+		const optionsOf = walkAll(listbox).filter((o) => attr(o, 'role') === 'option');
+		const holder = (o: Element) => elementChildren(o).find((c) => c.tagName === 'span' && !attr(c, 'id'));
+		const checked = optionsOf.find((o) => attr(o, 'data-state') === 'checked');
+		const indicator = checked && holder(checked) && elementChildren(holder(checked)!)[0];
+		if (!indicator) continue;
+		indicator.attrs = [...indicator.attrs, { name: 'data-mm-indicator', value: '' }];
+		for (const o of optionsOf) {
+			const h = holder(o);
+			if (o === checked || !h || elementChildren(h).length) continue;
+			const copy = parseFragment(outer(indicator)).childNodes[0] as unknown as Element;
+			copy.attrs = [...copy.attrs, { name: 'hidden', value: '' }];
+			copy.parentNode = h as never;
+			h.childNodes.push(copy as never);
+		}
+	}
+}
+
 /** A portal's nodes in their closed state: data-state="closed", data-closed for data-open, hidden, and the control's key. */
 function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (what: string) => void): string {
 	const fragment = parseFragment(added.html);
@@ -234,6 +258,7 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 				for (const a of el.attrs) if (a.name === 'data-state' && a.value === 'open') a.value = 'closed';
 				if (el.attrs.some((a) => a.name === 'data-open')) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-open'), { name: 'data-closed', value: '' }];
 			}
+			selectIndicators(top);
 			top.attrs = [...top.attrs.filter((a) => a.name !== 'hidden'), { name: 'hidden', value: '' }, { name: 'data-mm-layer', value: reveal.key }, ...(reveal.viewport !== 'desktop' ? [{ name: 'data-mm-viewport', value: reveal.viewport }] : [])];
 			const extra = placed ? placed.trim().split(/\s+(?=data-)/) : [];
 			return emitElement(top, { dropped, bind: (x) => (x === top ? mergeBindings(bindParts(x, templatePorts), extra.length ? { extra } : undefined) : bindParts(x, templatePorts)) });
@@ -492,7 +517,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	handledBy((el) => checkables.bind(el) !== undefined || baseTabs.bind(el) !== undefined);
 	const selects = new SelectPlan();
-	for (const p of prepared.values()) selects.add(p.root, (el) => portFor(el) === 'base-ui/select');
+	for (const p of prepared.values()) selects.add(p.root, (el) => portFor(el) === 'base-ui/select' || portFor(el) === 'radix/select');
 	for (const [container, r] of replaced) {
 		replacedParts.set(container, { append: r.markup });
 		for (const child of childrenOf(container)) if (isElement(child)) replacedParts.set(child, mergeBindings(replacedParts.get(child), { extra: [`data-mm-before=${JSON.stringify(r.key)}`] })!);
