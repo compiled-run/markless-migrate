@@ -11,7 +11,7 @@ import { cleanDocument, frameworkBuilds, type Dropped } from './clean.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, walk, type Document, type Element } from './dom.ts';
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
 import { BaseTabsPlan, CheckablePlan, DisclosurePlan, InsertedDisclosurePlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
-import { captureAllSwitches, captureAllToggles, type Switch, type ToggleGroup } from './toggles.ts';
+import { captureAllForms, captureAllSwitches, captureAllToggles, type FormCapture, type Switch, type ToggleGroup } from './toggles.ts';
 import { bindMount, bindParts, bodyHandlers, handledBy, portFor, onRoute, UNPORTED, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { stat } from 'node:fs/promises';
@@ -454,6 +454,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const revealed = new Map<string, readonly Reveal[]>();
 	const toggled = new Map<string, readonly ToggleGroup[]>();
 	const switched = new Map<string, readonly Switch[]>();
+	const submitted = new Map<string, FormCapture['forms']>();
 	const choices: Record<string, Record<string, Choice>> = {};
 	try {
 		captures = await captureAll(browser, options.old, routes, join(state, 'convert', 'captures'), { concurrency: options.concurrency ?? 4, log });
@@ -464,6 +465,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		if (options.reveal !== false) for (const t of await captureAllToggles(browser, options.old, routes, join(state, 'convert', 'toggles'), { concurrency: options.concurrency ?? 4, log })) toggled.set(t.route, t.groups);
 		// Controls the site lists as switching attributes in place (lib/site/controls.json, action "toggle").
 		const switchSelectors = listed.filter((c) => c.action === 'toggle').map((c) => c.selector);
+		if (options.reveal !== false) for (const f of await captureAllForms(browser, options.old, routes, join(state, 'convert', 'toggles'), { concurrency: options.concurrency ?? 4 })) submitted.set(f.route, f.forms);
 		if (options.reveal !== false) for (const c of await captureAllSwitches(browser, options.old, routes, join(state, 'convert', 'toggles'), switchSelectors, { concurrency: options.concurrency ?? 4, log })) switched.set(c.route, c.switches);
 		// Options revealed without a link (a command palette's items): what choosing each did, once per control.
 		const seenKeys = new Set<string>();
@@ -529,6 +531,16 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const insertedDisclosures = new InsertedDisclosurePlan();
 	const insertedGroups = insertedDisclosures.add(inserted, [...prepared.values()].map((p) => p.root));
 	if (insertedGroups) log(`disclosures that mount their content in place, on Markless state: ${insertedGroups}`);
+	// A form the old page's script handled (submitting it left the page where it was) does not submit natively.
+	const handledForms = new Set<Element>();
+	for (const [route, p] of prepared) {
+		const locate = locator(p.root.parentNode as Element);
+		for (const f of submitted.get(route) ?? []) {
+			const el = f.navigates ? undefined : locate(f.sig, f.nth);
+			if (el?.tagName === 'form') handledForms.add(el);
+		}
+	}
+	const formBinding: Binding = { extra: ['onSubmit={(event) => event.preventDefault()}'] };
 	const switchPlan = new SwitchPlan();
 	let switchGroups = 0;
 	for (const [route, p] of prepared) switchGroups += switchPlan.add(switched.get(route) ?? [], locator(p.root.parentNode as Element));
@@ -555,7 +567,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const withAppend = (el: Element, binding: Binding | undefined): Binding | undefined => {
 		const markup = appended.get(el);
 		binding = mergeBindings(replacedParts.get(el), binding);
-		const own = mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), baseTabs.bind(el)), disclosures.bind(el)), insertedDisclosures.bind(el)), selects.bind(el)), checkables.bind(el)), switchPlan.bind(el)), binding), bindMount(el));
+		const own = mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), baseTabs.bind(el)), disclosures.bind(el)), insertedDisclosures.bind(el)), selects.bind(el)), checkables.bind(el)), switchPlan.bind(el)), handledForms.has(el) ? formBinding : undefined), binding), bindMount(el));
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};
 	void appendOf;

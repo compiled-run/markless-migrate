@@ -369,3 +369,79 @@ export async function captureAllSwitches(browser: Browser, origin: string, route
 	await Promise.all(Array.from({ length: Math.max(1, options.concurrency ?? 4) }, worker));
 	return out;
 }
+
+/** Whether submitting each form of a route left the page on the old site (a JavaScript-handled form does not). */
+export interface FormCapture {
+	readonly route: string;
+	readonly forms: readonly { readonly sig: string; readonly nth: number; readonly navigates: boolean }[];
+}
+
+/** Submits every visible form once, from a fresh load each, and records whether the page went somewhere. */
+export async function captureForms(browser: Browser, origin: string, route: string, dir: string): Promise<FormCapture> {
+	const file = join(dir, `${createHash('sha256').update(`forms:${route}`).digest('hex').slice(0, 16)}.json`);
+	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as FormCapture, () => undefined);
+	if (cached && cached.route === route) return cached;
+	const forms: { sig: string; nth: number; navigates: boolean }[] = [];
+	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+	try {
+		const url = new URL(route, origin).href;
+		// The old page's script takes the form over once it runs: submit only after it has.
+		const ready = async () => {
+			await loadPage(page, url);
+			await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+			await page.waitForTimeout(300);
+		};
+		await ready();
+		const found = await page.evaluate(() => {
+			const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+			const counts = new Map<string, number>();
+			const out: { sig: string; nth: number; index: number }[] = [];
+			const all = [...document.body.querySelectorAll('form')];
+			for (const el of document.body.querySelectorAll('*')) {
+				const sig = sigOf(el);
+				const n = counts.get(sig) ?? 0;
+				counts.set(sig, n + 1);
+				const index = all.indexOf(el as HTMLFormElement);
+				const r = el.getBoundingClientRect();
+				if (index >= 0 && r.width > 0 && r.height > 0) out.push({ sig, nth: n, index });
+			}
+			return out;
+		});
+		for (const f of found.slice(0, 20)) {
+			if (page.url() !== url) await ready();
+			// A native submission loads a new document: the mark set on this one is gone. A script's own history
+			// change (a router updating the query) keeps the document.
+			await page.evaluate((i) => {
+				(window as unknown as { __mmMark?: boolean }).__mmMark = true;
+				const form = document.body.querySelectorAll('form')[i];
+				// Constraint validation would stop a native submission before it starts: what is asked is who handles it.
+				if (form) form.noValidate = true;
+				form?.requestSubmit();
+			}, f.index).catch(() => {});
+			await page.waitForTimeout(1500);
+			await page.waitForLoadState('load').catch(() => {});
+			const went = !(await page.evaluate(() => (window as unknown as { __mmMark?: boolean }).__mmMark === true).catch(() => false));
+			forms.push({ sig: f.sig, nth: f.nth, navigates: went });
+			if (went) await ready();
+		}
+	} finally {
+		await context.close().catch(() => {});
+	}
+	const capture: FormCapture = { route, forms };
+	await mkdir(dir, { recursive: true });
+	await writeFile(file, JSON.stringify(capture));
+	return capture;
+}
+
+export async function captureAllForms(browser: Browser, origin: string, routes: readonly string[], dir: string, options: { concurrency?: number } = {}): Promise<FormCapture[]> {
+	const out: FormCapture[] = new Array(routes.length);
+	let next = 0;
+	const worker = async () => {
+		while (next < routes.length) {
+			const index = next++;
+			out[index] = await captureForms(browser, origin, routes[index]!, dir).catch(() => ({ route: routes[index]!, forms: [] }));
+		}
+	};
+	await Promise.all(Array.from({ length: Math.max(1, options.concurrency ?? 4) }, worker));
+	return out;
+}
