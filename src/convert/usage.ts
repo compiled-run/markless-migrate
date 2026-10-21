@@ -154,7 +154,7 @@ export async function sourceSlotResolver(librariesPath: string, source?: string)
 		}
 	}
 	return {
-		name: 'libraries.json data-slot sites (no usage inventory written)',
+		name: 'libraries.json data-slot sites',
 		candidates: (slot) => bySlot.get(slot) ?? [],
 		libraries: () => counts,
 		prop: (library, exportName, prop) => props.get(`${library} ${exportName} ${prop}`),

@@ -274,6 +274,19 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 		.join('');
 }
 
+/** A resolver that asks `first`, and `then` for what `first` does not know. */
+function combined(first: PartResolver, then: PartResolver): PartResolver {
+	return {
+		name: `${first.name}, then ${then.name}`,
+		candidates: (slot) => {
+			const own = first.candidates(slot);
+			return own.length ? own : then.candidates(slot);
+		},
+		libraries: () => new Map([...then.libraries(), ...first.libraries()]),
+		prop: (library, exportName, prop) => first.prop(library, exportName, prop) ?? then.prop(library, exportName, prop),
+	};
+}
+
 /** Finds an element of a page by its signature and occurrence, as reveals and toggles were captured. */
 function locator(root: Element): (sig: string, nth: number) => Element | undefined {
 	const bySig = new Map<string, Element[]>();
@@ -486,7 +499,11 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		await browser.close();
 	}
 	const usagePath = join(state, 'usage.json');
-	const resolver: PartResolver = options.resolver ?? ((await stat(usagePath).then(() => true, () => false)) ? await usageResolver(usagePath, options.source) : await sourceSlotResolver(join(state, 'libraries.json'), options.source));
+	const librariesPath = join(state, 'libraries.json');
+	const hasUsage = await stat(usagePath).then(() => true, () => false);
+	const hasLibraries = await stat(librariesPath).then(() => true, () => false);
+	// The usage inventory first; a data-slot it has no part for (a component it did not reach) from plan's libraries.json.
+	const resolver: PartResolver = options.resolver ?? (hasUsage ? (hasLibraries ? combined(await usageResolver(usagePath, options.source), await sourceSlotResolver(librariesPath, options.source)) : await usageResolver(usagePath, options.source)) : await sourceSlotResolver(librariesPath, options.source));
 	useResolver(resolver);
 	placementResolver = resolver;
 	templatePorts.clear();
