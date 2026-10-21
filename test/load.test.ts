@@ -101,7 +101,7 @@ test('a new page Lighthouse never finishes is red; an old one it never finishes 
 	assert.deepEqual(loadFailures('/', noOld), []);
 	const skipped = unmeasured('not measured: --header and --cookie are for the apps alone');
 	assert.deepEqual(loadFailures('/', skipped), []);
-	assert.match(loadLine(skipped), /^page load \(Lighthouse, mobile\): not compared, not measured: --header/);
+	assert.match(loadLine(skipped), /^page load, PageSpeed-equivalent \(lab\): not compared, not measured: --header/);
 });
 
 test('runs alternate which side goes first, so a machine that slows down part way falls on both', async () => {
