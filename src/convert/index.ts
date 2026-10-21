@@ -24,6 +24,7 @@ import { appUrlDeclaration, emitChildren, emitElement, lit, mergeBindings, useOr
 // Markless wires no handler written in document.tsrx, so each page's root carries the delegating handlers.
 const ROOT_HANDLERS = '__MM_ROOT_HANDLERS__';
 const PAGE_SHOWN = 'PAGE_SHOWN';
+const NOT_FOUND = '/_markless-migrate/not-found';
 
 /** Imports the parts runtime's functions a generated module calls, after its first line. */
 function withPartImports(source: string, dir: string): string {
@@ -522,7 +523,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const notified = new Map<string, readonly Notify[]>();
 	const choices: Record<string, Record<string, Choice>> = {};
 	try {
-		captures = await captureAll(browser, options.old, routes, join(state, 'convert', 'captures'), { concurrency: options.concurrency ?? 4, log });
+		// The old site's not-found page, from a path no route has: the new app's 404 page.
+		captures = await captureAll(browser, options.old, options.only?.length ? routes : [...routes, NOT_FOUND], join(state, 'convert', 'captures'), { concurrency: options.concurrency ?? 4, log });
 		// Controls the site's own components reveal content with, beside those ARIA marks (lib/site/controls.json).
 		const listed = await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as { selector: string; action: Reveal['action'] | 'toggle' | 'notify'; routes?: string }[], () => []);
 		const extra = listed.flatMap((c) => (c.action === 'toggle' || c.action === 'notify' ? [] : [[c.selector, c.action] as const]));
@@ -566,7 +568,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const prepared = new Map<string, Prepared>();
 	// Each capture (the served HTML and the settled documents, a few MB) is read from the cache only while its page is parsed.
 	for (const ref of captures) {
-		if (ref.status !== 200) {
+		if (ref.status !== 200 && !(ref.route === NOT_FOUND && ref.status === 404)) {
 			unconverted.push({ route: ref.route, reason: `the old site answered ${ref.status} while capturing` });
 			continue;
 		}
@@ -664,7 +666,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const bodyAfter = bodyAfterModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped);
 	for (const [route, p] of prepared) {
 		const url = new URL(route, options.old);
-		const file = pageFile(url.pathname, folders);
+		const file = route === NOT_FOUND ? 'pages/404.tsrx' : pageFile(url.pathname, folders);
 		const parts: PartUse[] = [];
 		const declarations: string[] = [];
 		onRoute(route);

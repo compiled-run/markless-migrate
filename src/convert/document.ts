@@ -229,7 +229,8 @@ export interface PageHead {
 
 export function headOf(page: { readonly href: string } | undefined): PageHead {
 	const url = page ? new URL(page.href) : undefined;
-	const route = (url && (ROUTES[url.pathname + url.search] ?? ROUTES[url.pathname])) ?? ROUTES['/'];
+	// A path no route has is the not-found page's.
+	const route = (url && (ROUTES[url.pathname + url.search] ?? ROUTES[url.pathname] ?? ROUTES['/_markless-migrate/not-found'])) ?? ROUTES['/'];
 	if (!route) return { html: {}, body: {}, tags: [] };
 	return {
 		html: route.html,
