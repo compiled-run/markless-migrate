@@ -77,10 +77,59 @@ function queryKeys(text: string): string[] {
 	return [...keys].sort();
 }
 
+/**
+ * The text with what string literals and comments hold blanked (newlines kept, so lines still count): a generated data
+ * module of copied page text that mentions `headers()` does not read the request. Template literals keep their
+ * `${...}` expressions, which are code.
+ */
+export function codeOnly(text: string): string {
+	const out = text.split('');
+	const blank = (from: number, to: number) => {
+		for (let k = from; k < to; k++) if (out[k] !== '\n') out[k] = ' ';
+	};
+	let i = 0;
+	const depth: number[] = [];
+	while (i < text.length) {
+		const c = text[i]!;
+		const next = text[i + 1];
+		if (c === '/' && next === '/') {
+			const end = text.indexOf('\n', i);
+			const stop = end < 0 ? text.length : end;
+			blank(i, stop);
+			i = stop;
+		} else if (c === '/' && next === '*') {
+			const end = text.indexOf('*/', i + 2);
+			const stop = end < 0 ? text.length : end + 2;
+			blank(i, stop);
+			i = stop;
+		} else if (c === '"' || c === "'") {
+			let j = i + 1;
+			while (j < text.length && text[j] !== c && text[j] !== '\n') j += text[j] === '\\' ? 2 : 1;
+			blank(i + 1, j);
+			i = j + 1;
+		} else if (c === '`' || (c === '}' && depth.length && depth[depth.length - 1] === 0)) {
+			if (c === '}') depth.pop();
+			let j = i + 1;
+			while (j < text.length && text[j] !== '`' && !(text[j] === '$' && text[j + 1] === '{')) j += text[j] === '\\' ? 2 : 1;
+			blank(i + 1, j);
+			if (text[j] === '$') {
+				depth.push(0);
+				i = j + 2;
+			} else i = j + 1;
+		} else {
+			if (depth.length && c === '{') depth[depth.length - 1]!++;
+			else if (depth.length && c === '}') depth[depth.length - 1]!--;
+			i++;
+		}
+	}
+	return out.join('');
+}
+
 /** Signals in one file of server code. A client component's reads run in the browser and do not bear on caching. */
 export function fileSignals(text: string, file: string): Omit<RouteSignals, 'guard' | 'perVisitor' | 'changing'> & { changing: Signal[] } {
 	if (CLIENT_ONLY.test(text)) return { requestReads: [], queryKeys: [], setsCookies: [], changing: [] };
-	return { requestReads: scan(text, file, REQUEST_READS), queryKeys: queryKeys(text), setsCookies: scan(text, file, SETS_COOKIES), changing: [] };
+	const code = codeOnly(text);
+	return { requestReads: scan(code, file, REQUEST_READS), queryKeys: queryKeys(text), setsCookies: [...scan(code, file, SETS_COOKIES.slice(0, 1)), ...scan(text, file, SETS_COOKIES.slice(1))], changing: [] };
 }
 
 const IMPORT = /\bimport\s+(?:[^'"]*?\sfrom\s+)?['"](\.{1,2}\/[^'"]+)['"]|\bimport\(\s*['"](\.{1,2}\/[^'"]+)['"]\s*\)/g;
