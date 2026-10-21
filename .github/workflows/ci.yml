@@ -54,6 +54,7 @@ jobs:
           - suite: markless-site
           - suite: motion
           - suite: nav-parity
+          - suite: page-load
           - suite: proxy
           - suite: radix-dialog-port
           - suite: responsiveness

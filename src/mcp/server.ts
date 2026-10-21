@@ -70,6 +70,7 @@ export function createServer(cwd: string): McpServer {
 				cookie: z.array(z.string()).optional().describe('name=value cookies set on both apps, for example a bot-protection bypass cookie'),
 				userAgent: z.string().optional(),
 				responsiveness: z.boolean().optional().describe('Time the first use of each control and each internal link (default true); false leaves it out'),
+				load: z.boolean().optional().describe("Compare Lighthouse's mobile page load (FCP, LCP, Speed Index, TBT, CLS, score), a median of 5 runs per side (default true); false leaves it out"),
 				motion: z.boolean().optional().describe('Compare the transitions and animations each interaction, hover and focus starts, with motion allowed and with reduced motion (default true); false leaves it out'),
 			},
 		},
@@ -92,6 +93,7 @@ export function createServer(cwd: string): McpServer {
 				automaticOff: rulesOff(await readOverrides(join(cwd, STATE_DIR))),
 				...(args.responsiveness === false ? {} : { responsiveness: {} }),
 				...(args.motion === false ? {} : { motion: {} }),
+				...(args.load === false ? {} : { load: {} }),
 				switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 				partial: { total: inventory ? plannedRoutes(inventory).length : null },
 			});

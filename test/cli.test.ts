@@ -59,7 +59,7 @@ test('check --all with a route nothing gives a sample is not "all green": it cou
 	await mkdir(join(cwd, '.migrate'));
 	await writeFile(join(cwd, '.migrate', 'inventory.json'), JSON.stringify({ routes: [], routeUnion: [{ route: '/news/:slug', knownBy: ['source'], crawled: [], dynamic: true, kind: 'page', file: 'app/news/[slug]/page.tsx', line: 4 }] }));
 	const check = (...extra: string[]) => new Promise<{ status: number; stdout: string; stderr: string }>((done) => {
-		const child = spawn(process.execPath, [CLI, 'check', '--old', old!, '--new', next!, '--all', ...extra], { cwd });
+		const child = spawn(process.execPath, [CLI, 'check', '--old', old!, '--new', next!, '--all', '--no-load', ...extra], { cwd });
 		const r = { stdout: '', stderr: '' };
 		child.stdout.on('data', (c) => (r.stdout += c));
 		child.stderr.on('data', (c) => (r.stderr += c));
