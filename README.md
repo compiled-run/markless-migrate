@@ -623,11 +623,19 @@ staging pass is sent as a header or cookie.
 - `Typecheck`: `pnpm typecheck`.
 - `Unit tests (1/3)` to `(3/3)`: `test/*.test.ts` split in three with `node --test --test-shard`, since
   the unit tests drive Chromium.
-- `E2E <suite>`: one job per file in `test/e2e/`, each building its own fixtures.
+- `E2E <suite>`: one job per file in `test/e2e/`, each building its own fixtures. The two largest
+  suites are split across runners with `E2E_SHARD=i/n` (six for `next-app`, four for `vite-site`): a
+  shard registers every n-th test and builds only the mutants its tests use. Without `E2E_SHARD`
+  every test runs, as `pnpm test:e2e` does locally.
 - `CI passed`: green only when every job above passed. This is the one check to require.
 
-Every suite runs against servers the tests start on `127.0.0.1`; no test needs a live external site, so
-nothing is skipped in CI.
+A fixture suite runs a quarter of the machine's cores' tests at once (one on a 4-vCPU runner), since
+each check already drives several Chromium pages. A whole run takes about 9 minutes, bounded by the
+slowest unit test shard and `next-app` shard (about 8 to 9 minutes each).
+
+Every suite runs against servers the tests start on `127.0.0.1`, and fixture data uses `.example`
+hosts. The unit tests and every fixture suite pass with outbound network denied except loopback, so
+no test needs a live external site and nothing is skipped in CI.
 
 ### Branch protection
 
