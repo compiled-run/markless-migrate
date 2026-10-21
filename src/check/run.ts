@@ -1,9 +1,10 @@
-import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { availableParallelism } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { chromium, type Browser } from 'playwright';
 import { applyAccepted, type Accept } from './accepted.ts';
+import { journeysFile, journeysJson, RouteArtifacts, SHOTS_DIR, shotName, type Png } from './artifacts.ts';
 import type { AutomaticRule } from './automatic.ts';
 import { accessFailures, ANONYMOUS, saysDenied, compareLogin, loginRoutes, saveState, signIn, type AuthConfig, type RoleSpec } from './auth.ts';
 import { BlockedError, blockedResult, detectChallenge, probeWall } from './blocked.ts';
@@ -22,7 +23,7 @@ import { storageOwner, unreachableCandidate, type StorageOwner } from './automat
 import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
 import { checkMotion, motionRules, type MotionOptions } from './motion.ts';
 import { applyNavigation, checkNavigation, type NavigationOptions, type NavigationResult } from './nav-parity.ts';
-import { assetsToProbe, compareRoute, cssTargets, httpFailures, noiseReport, noisyStyles, withFailures, type Probe } from './compare.ts';
+import { assetsToProbe, compareRoute, cssTargets, forgetFailures, httpFailures, noiseReport, noisyStyles, withFailures, type Probe } from './compare.ts';
 import { matchElements } from './match.ts';
 import { contractLines } from './network.ts';
 import type { SourceFacts } from './source-facts.ts';
@@ -100,7 +101,12 @@ export interface CheckOptions {
 	readonly templates?: false | { readonly patterns?: readonly string[] };
 	/** Where OLD's captures and journeys are kept between runs (`.migrate/cache`), reused only while every response the old page loaded is unchanged. */
 	readonly cacheDir?: string;
+	/** The report directory: each route's screenshots, diffs and motion frames are written under its `shots` as soon as the route is checked, and the report keeps only their paths. */
+	readonly artifactsDir?: string;
+	/** Told as each page route's check finishes, with its result as the report will keep it. */
+	readonly onRoute?: (result: RouteResult) => void;
 }
+
 
 export const DEFAULT_CONCURRENCY = Math.max(1, Math.min(4, Math.floor(availableParallelism() / 2)));
 
@@ -213,13 +219,23 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 	const loadWrites = (Object.values(oldA.pages)[0]?.writes ?? []).map((w) => ({ ...w, during: 'page load' }));
 	const result = withFailures(compared, [...compared.failures, ...negotiationFailures(route, languages, [negotiatedA, negotiatedB], negotiatedNew)], { noise, writes: loadWrites });
 	const owner = storageOwner(olds.flatMap((o) => Object.values(o.pages)), Object.values(next.pages));
-	const explored = await checkJourneys(browser, run, route, viewports[0]!, await checkStates(browser, run, route, viewports, olds, result), owner, loads);
+	const explored = await statesAndJourneys(run, result, (input) => checkStates(browser, run, route, viewports, olds, input), (input) => checkJourneys(browser, run, route, viewports[0]!, input, owner, loads));
 	const moved = run.motion && explored.journeys?.length ? await checkMoves(browser, run, route, viewports[0]!, explored, oldA.pages[viewports[0]!.name]?.stylesheets ?? []) : explored;
 	const checked = run.responsiveness && moved.journeys?.length ? await checkTimings(browser, run, route, moved) : moved;
 	const located = await locateFailures(checked, { route, old: oldA, next, sides: { old: { origin: oldOrigin, dir: run.sourceDirs?.old }, new: { origin: newOrigin, dir: run.sourceDirs?.new } }, ...(run.source ? { facts: run.source } : {}) });
 	const done = oldA.http.status < 400 && (next.http.status === 404 || next.http.status === 410) ? { ...located, notPorted: true } : located;
 	oldCaptures.set(done, oldA);
 	return done;
+}
+
+/** The forced CSS states, then the journeys on top. While both apps hold every write back, nothing a journey does can change what a forced state shows, so the two run side by side and the result is the same. */
+export async function statesAndJourneys(run: Pick<Run, 'old' | 'new'>, result: RouteResult, states: (input: RouteResult) => Promise<RouteResult>, journeys: (input: RouteResult) => Promise<RouteResult>): Promise<RouteResult> {
+	if (run.old.sendWrites || run.new.sendWrites) return journeys(await states(result));
+	const [stated, journeyed] = await Promise.allSettled([states(result), journeys(result)]);
+	if (stated.status === 'rejected') throw stated.reason;
+	if (journeyed.status === 'rejected') throw journeyed.reason;
+	const j = journeyed.value;
+	return withFailures(stated.value, [...stated.value.failures, ...j.failures.slice(result.failures.length)], { journeys: j.journeys, coverage: j.coverage, writes: j.writes });
 }
 
 /** One viewport's http, rendered, seo, assets, css, a11y, i18n, network and weight checks: what a page gets when its template group's representative carries visual, behaviour, responsiveness and motion. */
@@ -548,6 +564,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const freeze: FreezeOptions | false = options.freeze === false ? false : { ...DEFAULT_FREEZE, ...options.freeze };
 	const bypass = { ...(options.headers ? { headers: options.headers } : {}), ...(options.cookies?.length ? { cookies: options.cookies } : {}), ...(options.userAgent ? { userAgent: options.userAgent } : {}) };
 	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [], ...bypass };
+	const artifacts = options.artifactsDir ? new RouteArtifacts(options.artifactsDir, options.oldOrigin) : undefined;
 	const oldCache = options.cacheDir ? new OldCache(join(options.cacheDir, 'old'), { block: options.block ?? null }) : undefined;
 	const base: Run = { old: defaultEnv(options.oldOrigin, shared), new: defaultEnv(options.newOrigin, shared), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
 	const auth = options.auth;
@@ -597,17 +614,24 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			roleRun = { ...roleRun, owners: [...owners].sort(), journeys: { ...options.journeys, owner: (signature) => owners.get(signature.split(' > ')[0]!) } };
 			const checked = await pool(pages, options.concurrency ?? DEFAULT_CONCURRENCY, async (route) => {
 				const { run, failures } = data?.mode === 'replay' ? await replayRoute(roleRun, data.dir, route) : { run: roleRun, failures: [] };
-				const result = withTemplate(await withDeadline(route, run, routeTimeout(options), (scoped) => checkAs(browser, scoped, route, role, loginPaths, options, light(route))).catch(unreachable(route)));
-				const old = oldCaptures.get(result);
+				const done = await withDeadline(route, run, routeTimeout(options), (scoped) => checkAs(browser, scoped, route, role, loginPaths, options, light(route))).catch(unreachable(route));
+				const old = oldCaptures.get(done);
+				oldCaptures.delete(done);
+				forgetFailures(done.failures);
 				if (data?.mode === 'record' && old) {
 					const records = Object.values(old.pages)[0]?.network?.records ?? [];
 					await writeRecording(data.dir, { route, recordedFrom: options.oldOrigin, at: startedAt, responses: recordable(records) });
 				}
-				return asRole(failures.length ? withFailures(result, [...failures, ...result.failures]) : result, role);
+				const result = withTemplate(done);
+				const checkedAs = asRole(failures.length ? withFailures(result, [...failures, ...result.failures]) : result, role);
+				const kept = artifacts ? await artifacts.keep(checkedAs) : checkedAs;
+				options.onRoute?.(kept);
+				return kept;
 			});
 			const navigated = options.navigation ? await checkNavigation(browser, roleRun.new, pages, { concurrency: options.concurrency ?? DEFAULT_CONCURRENCY, old: roleRun.old, ...options.navigation }) : undefined;
 			if (navigated) navigation.push(navigated);
-			routes.push(...(navigated ? applyNavigation(shareLayout(checked), navigated) : shareLayout(checked)));
+			const compared = navigated ? applyNavigation(shareLayout(checked), navigated) : shareLayout(checked);
+			routes.push(...(artifacts ? await Promise.all(compared.map((r) => artifacts.keep(r))) : compared));
 			for (const route of endpoints) routes.push(asRole(await checkEndpoint(roleRun, route).catch(unreachable(route)), role));
 			for (const route of redirects) routes.push(asRole(await checkRedirect(roleRun, route).catch(unreachable(route)), role));
 		}
@@ -641,35 +665,38 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 }
 
 export function jsonReport(report: Report, diffs: Readonly<Record<string, string[]>> = {}) {
-	return { ...report, routes: report.routes.map(({ visualDiffs: _, shots: __, filmstrips: ___, journeys, ...route }) => ({ ...route, visualDiffs: diffs[route.route] ?? [], journeys: journeys?.length ?? 0 })) };
+	return { ...report, routes: report.routes.map(({ visualDiffs: _, shots: __, filmstrips: ___, journeys, storedJourneys, ...route }) => ({ ...route, visualDiffs: diffs[route.route] ?? [], journeys: journeys?.length ?? storedJourneys?.names.length ?? 0 })) };
 }
 
 export async function writeReport(report: Report, dir: string, status?: Status): Promise<string> {
 	await mkdir(dir, { recursive: true });
+	const put = (png: Png, file: string) => (Buffer.isBuffer(png) ? writeFile(file, png) : copyFile(png.path, file));
 	const diffs: Record<string, string[]> = {};
 	for (const route of report.routes) {
 		for (const diff of route.visualDiffs) {
 			const file = join(dir, 'diffs', `${slug(route.route)}.${diff.viewport}.png`);
 			await mkdir(join(dir, 'diffs'), { recursive: true });
-			await writeFile(file, diff.png);
+			await put(diff.png, file);
 			(diffs[route.route] ??= []).push(file);
 		}
 	}
 	for (const route of report.routes) {
-		if (!route.journeys?.length) continue;
-		await mkdir(join(dir, 'journeys'), { recursive: true });
-		await writeFile(join(dir, 'journeys', `${slug(route.route)}.json`), `${JSON.stringify({ route: route.route, origin: report.old, viewport: 'desktop', journeys: route.journeys }, null, '\t')}\n`);
+		const file = journeysFile(dir, route.route);
+		if (!route.journeys?.length && (!route.storedJourneys || resolve(route.storedJourneys.path) === resolve(file))) continue;
+		await mkdir(dirname(file), { recursive: true });
+		await (route.journeys?.length ? writeFile(file, journeysJson(route.route, report.old, route.journeys)) : copyFile(route.storedJourneys!.path, file));
 	}
 	const path = join(dir, 'report.json');
 	await writeFile(path, `${JSON.stringify(jsonReport(report, diffs), null, '\t')}\n`);
-	const images = new Map<string, Buffer>();
+	const shots = resolve(dir, SHOTS_DIR);
+	const images = new Map<string, Png>();
 	const html = renderHtml(report, (png) => {
-		const name = `shots/${createHash('sha256').update(png).digest('hex').slice(0, 16)}.png`;
-		images.set(name, png);
+		const name = Buffer.isBuffer(png) ? shotName(png) : `${SHOTS_DIR}/${basename(png.path)}`;
+		if (Buffer.isBuffer(png) || resolve(dirname(png.path)) !== shots) images.set(name, png);
 		return name;
 	}, status);
-	if (images.size) await mkdir(join(dir, 'shots'), { recursive: true });
-	for (const [name, png] of images) await writeFile(join(dir, name), png);
+	if (images.size) await mkdir(shots, { recursive: true });
+	for (const [name, png] of images) await put(png, join(dir, name));
 	await writeFile(join(dir, 'report.html'), html);
 	return path;
 }

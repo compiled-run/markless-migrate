@@ -53,6 +53,8 @@ screenshots per route, viewport and failing state, side by side or as a slider o
 differing regions boxed and every failure listed with its fix; `--open` opens it; the screenshots are
 PNG files in `.migrate/shots/`, each stored once and loaded lazily, so publish that folder with the page),
 screenshot diffs in `.migrate/diffs/`, and the interactions it explored in `.migrate/journeys/`.
+Each route's screenshots, motion frames and journeys are written there as soon as that route is checked, and
+only their paths stay in memory, so a run of hundreds of routes holds about as much memory as a run of ten.
 Without `--route` it also measures route coverage: every route of the old site must exist on the new
 app (same status class and redirect target), and an HTML page counts as ported only when the new app's
 own Markless code renders it, which Markless's route marker (the page file the router names) shows. A

@@ -5,7 +5,7 @@ import { embedCandidate, embedImageCandidate, markupCandidate, runtimeCandidate,
 import { compareA11y } from './a11y.ts';
 import { isClock, maskClocks } from './clock.ts';
 import { HINTS, seoHint } from './hints.ts';
-import { failureElements, failureOccurrence } from './locate.ts';
+import { failureElements, failureOccurrence, forgetLocated } from './locate.ts';
 import { compareI18n } from './i18n.ts';
 import { describe, matchElements } from './match.ts';
 import { compareNetwork, contractLines } from './network.ts';
@@ -14,7 +14,7 @@ import { at as sourceAt } from './source-facts.ts';
 import { diffFields, diffLines, fieldTemplates, lineTemplates, type LineDiff } from './noise.ts';
 import type { AssetRecord, Box, Dimension, ElementSnapshot, Failure, HttpCapture, NoiseReport, PageCapture, RouteCapture, RouteResult, Shot } from './types.ts';
 import { DIMENSIONS } from './types.ts';
-import { compareScreenshots, identicalShots, visualNoise, visuallyDifferent } from './visual.ts';
+import { compareWithNoise, identicalShots, visuallyDifferent } from './visual.ts';
 import { storageFailure } from './storage.ts';
 import { residueFailures } from './residue.ts';
 
@@ -152,6 +152,12 @@ export function fontFailures(route: string, viewport: string, oldA: PageCapture,
 /** The OLD element and properties behind each default computed-style failure, so the runner can name the rule. */
 export const cssTargets = new WeakMap<Failure, { element: ElementSnapshot; props: readonly string[] }>();
 
+/** Once a route is checked, its failures no longer need the page elements registered for them. */
+export function forgetFailures(failures: readonly Failure[]): void {
+	for (const f of failures) cssTargets.delete(f);
+	forgetLocated(failures);
+}
+
 function cssFailures(route: string, viewport: string, oldA: PageCapture, others: readonly PageCapture[], next: PageCapture): Failure[] {
 	const noisy = noisyStyles(oldA.elements, others.map((o) => o.elements));
 	const failures: Failure[] = [];
@@ -246,7 +252,7 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 		failures.push(...lineFailures(route, 'rendered', 'accessibility tree', viewport, diffLines(lineTemplates(aria, ...bs.map((b) => maskClocks(b.aria))), maskClocks(n.aria)), HINTS.aria, { old: aria, new: maskClocks(n.aria) }, (line, actual) => markupCandidate(line, actual, a, n)).slice(0, LIMIT));
 		failures.push(...lineFailures(route, 'rendered', 'visible text', viewport, diffLines(lineTemplates(text, ...bs.map((b) => maskClocks(b.text))), maskClocks(n.text)), HINTS.text, { old: text, new: maskClocks(n.text) }).slice(0, LIMIT));
 
-		const diff = identicalShots(a.screenshot, n.screenshot) ?? compareScreenshots(a.screenshot, n.screenshot, visualNoise(a.screenshot, bs.map((b) => b.screenshot), [...noisyTextBoxes(a.elements, bs.map((b) => b.elements)), ...clockBoxes(a.elements, n.elements)]));
+		const diff = identicalShots(a.screenshot, n.screenshot) ?? compareWithNoise(a.screenshot, n.screenshot, bs.map((b) => b.screenshot), [...noisyTextBoxes(a.elements, bs.map((b) => b.elements)), ...clockBoxes(a.elements, n.elements)]);
 		shots.push({ label: viewport, viewport, old: a.screenshot, new: n.screenshot, diff: diff.png, regions: visuallyDifferent(diff) ? diff.regions : [], ok: !visuallyDifferent(diff) });
 		if (visuallyDifferent(diff)) {
 			const r = diff.region;

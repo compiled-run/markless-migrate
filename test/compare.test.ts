@@ -7,7 +7,7 @@ import type { PageCapture } from '../src/check/types.ts';
 import { hasContentHash, isFingerprinted, sameContentType } from '../src/check/assets.ts';
 import { matchElements } from '../src/check/match.ts';
 import type { ElementSnapshot } from '../src/check/types.ts';
-import { compareScreenshots, visualNoise, visuallyDifferent } from '../src/check/visual.ts';
+import { compareScreenshots, compareWithNoise, visualNoise, visuallyDifferent } from '../src/check/visual.ts';
 
 test('a bundler chunk whose hash reads like a word is build output when the built code names it', () => {
 	const built = ['import("./users-Bkzkyznz.js");const a="/assets/sign-in-Leyasppu.js",b="logo-yviHajhk.js",c="user-auth-form-BruTwSak.js",d="index-DNwRI-6w.css"'];
@@ -98,6 +98,17 @@ test('pixels that differ between OLD loads are masked; new differences elsewhere
 	const moved = compareScreenshots(clockA, png(100, 100, (x, y) => (x < 10 && y < 10) || (x > 50 && y > 50)), noise);
 	assert.ok(visuallyDifferent(moved));
 	assert.deepEqual(moved.region, { x: 51, y: 51, width: 49, height: 49 });
+});
+
+test('comparing with the old screenshot decoded once gives the same verdict and diff image', () => {
+	const clockA = png(100, 100, (x, y) => x < 10 && y < 10);
+	const clockB = png(100, 100, (x, y) => x < 10 && y < 10 && x % 2 === 0);
+	const boxes = [{ x: 60, y: 0, width: 20, height: 20 }];
+	for (const actual of [png(100, 100), png(100, 100, (x, y) => (x < 10 && y < 10) || (x > 50 && y > 50)), png(100, 120, (x) => x === 30), clockA]) {
+		const once = compareWithNoise(clockA, actual, [clockB], boxes);
+		const twice = compareScreenshots(clockA, actual, visualNoise(clockA, [clockB], boxes));
+		assert.deepEqual({ ...once, png: once.png?.toString('base64') }, { ...twice, png: twice.png?.toString('base64') });
+	}
 });
 
 test('a different page height is always a visual difference', () => {

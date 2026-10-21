@@ -79,7 +79,10 @@ export function identicalShots(a: Buffer, b: Buffer): VisualDiff | undefined {
 }
 
 export function visualNoise(oldA: Buffer, others: readonly Buffer[], noisyBoxes: readonly Box[]): VisualNoise {
-	const a = PNG.sync.read(oldA);
+	return noiseOf(PNG.sync.read(oldA), oldA, others, noisyBoxes);
+}
+
+function noiseOf(a: PNG, oldA: Buffer, others: readonly Buffer[], noisyBoxes: readonly Box[]): VisualNoise {
 	const mask = new Uint8Array(a.width * a.height);
 	for (const box of noisyBoxes) markBox(mask, a.width, a.height, box, NOISE_PADDING);
 	for (const other of others) {
@@ -105,7 +108,16 @@ function crop(png: PNG, width: number, height: number): PNG {
 }
 
 export function compareScreenshots(expected: Buffer, actual: Buffer, noise: VisualNoise): VisualDiff {
+	return compareDecoded(PNG.sync.read(expected), actual, noise);
+}
+
+/** `compareScreenshots` against the noise `visualNoise` finds, with the old screenshot decoded once for both. */
+export function compareWithNoise(expected: Buffer, actual: Buffer, others: readonly Buffer[], noisyBoxes: readonly Box[]): VisualDiff {
 	const fullA = PNG.sync.read(expected);
+	return compareDecoded(fullA, actual, noiseOf(fullA, expected, others, noisyBoxes));
+}
+
+function compareDecoded(fullA: PNG, actual: Buffer, noise: VisualNoise): VisualDiff {
 	const fullB = PNG.sync.read(actual);
 	const sizeMismatch = fullA.width !== fullB.width || fullA.height !== fullB.height ? { expected: `${fullA.width}x${fullA.height}`, actual: `${fullB.width}x${fullB.height}` } : undefined;
 	const width = Math.min(fullA.width, fullB.width);
@@ -113,8 +125,10 @@ export function compareScreenshots(expected: Buffer, actual: Buffer, noise: Visu
 	const a = crop(fullA, width, height);
 	const b = crop(fullB, width, height);
 	const diff = rawDiff(a, b);
-	const out = new PNG({ width: a.width, height: a.height });
-	b.data.copy(out.data);
+	const masked = (i: number) => {
+		const x = i % a.width;
+		return x < noise.width && noise.mask[Math.floor(i / a.width) * noise.width + x] === 1;
+	};
 	const marked = new Uint8Array(a.width * a.height);
 	let differing = 0;
 	let x0 = Infinity;
@@ -122,20 +136,11 @@ export function compareScreenshots(expected: Buffer, actual: Buffer, noise: Visu
 	let x1 = -1;
 	let y1 = -1;
 	for (let i = 0; i < a.width * a.height; i++) {
-		const o = i * 4;
+		if (diff[i * 4 + 3]! === 0 || masked(i)) continue;
 		const x = i % a.width;
 		const y = Math.floor(i / a.width);
-		if (x < noise.width && noise.mask[y * noise.width + x]) {
-			out.data[o + 3] = 60;
-			continue;
-		}
-		if (diff[o + 3]! === 0) {
-			out.data[o + 3] = 90;
-			continue;
-		}
 		differing++;
 		marked[i] = 1;
-		out.data.set([255, 0, 80, 255], o);
 		x0 = Math.min(x0, x);
 		y0 = Math.min(y0, y);
 		x1 = Math.max(x1, x);
@@ -144,7 +149,20 @@ export function compareScreenshots(expected: Buffer, actual: Buffer, noise: Visu
 	const region = differing ? { x: x0, y: y0, width: x1 - x0 + 1, height: y1 - y0 + 1 } : undefined;
 	const regions = differing ? diffRegions(a.width, a.height, (x, y) => marked[y * a.width + x] === 1) : [];
 	if (sizeMismatch) regions.push({ x: 0, y: height, width: Math.max(fullA.width, fullB.width), height: Math.max(fullA.height, fullB.height) - height });
-	return { sizeMismatch, differing, area: a.width * a.height, region, regions: regions.filter((r) => r.height > 0), png: differing ? PNG.sync.write(out) : undefined };
+	return { sizeMismatch, differing, area: a.width * a.height, region, regions: regions.filter((r) => r.height > 0), png: differing ? diffImage(b, marked, masked) : undefined };
+}
+
+// The new screenshot faded, the noise mask fainter still, and every differing pixel in red.
+function diffImage(b: PNG, marked: Uint8Array, masked: (i: number) => boolean): Buffer {
+	const out = new PNG({ width: b.width, height: b.height });
+	b.data.copy(out.data);
+	for (let i = 0; i < marked.length; i++) {
+		const o = i * 4;
+		if (masked(i)) out.data[o + 3] = 60;
+		else if (marked[i]) out.data.set([255, 0, 80, 255], o);
+		else out.data[o + 3] = 90;
+	}
+	return PNG.sync.write(out);
 }
 
 export function visuallyDifferent(diff: VisualDiff): boolean {
