@@ -23,7 +23,8 @@ import { storageOwner, unreachableCandidate, type StorageOwner } from './automat
 import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
 import { checkMotion, motionRules, type MotionOptions } from './motion.ts';
 import { applyNavigation, checkNavigation, type NavigationOptions, type NavigationResult } from './nav-parity.ts';
-import { loadFailures, measureLoad, unmeasured, type LoadOptions } from './load.ts';
+import { loadFailures, measureLoad, psiFailures, unmeasured, type LoadOptions } from './load.ts';
+import { measurePsi, psiKey } from './psi.ts';
 import { assetsToProbe, compareRoute, cssTargets, forgetFailures, httpFailures, noiseReport, noisyStyles, withFailures, type Probe } from './compare.ts';
 import { matchElements } from './match.ts';
 import { contractLines } from './network.ts';
@@ -651,10 +652,16 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			const bypassed = Boolean(options.headers && Object.keys(options.headers).length) || Boolean(options.cookies?.length);
 			const routesToLoad = [...new Set(loadable.map((r) => r.route))];
 			const loads = bypassed ? new Map(routesToLoad.map((route) => [route, unmeasured('not measured: --header and --cookie are for the apps alone, and Lighthouse would send them to every host it loads')])) : await measureLoad({ old: options.oldOrigin, new: options.newOrigin }, routesToLoad, { ...(options.block ? { block: options.block } : {}), ...options.load });
+			const psiOptions = options.load?.psi;
+			if (psiOptions !== false && !bypassed) {
+				const key = psiOptions?.key ?? psiKey();
+				for (const [route, load] of loads) loads.set(route, { ...load, psi: await measurePsi({ old: options.oldOrigin, new: options.newOrigin }, route, { ...psiOptions, ...(key ? { key } : {}) }) });
+			}
 			routes.forEach((r, i) => {
 				const load = anonymous(r) ? loads.get(r.route) : undefined;
 				if (!load) return;
-				const failures = [...r.failures, ...loadFailures(r.route, load)];
+				// Real PageSpeed Insights, when it answered, is the gate; the calibrated lab stands in for it otherwise.
+				const failures = [...r.failures, ...(psiFailures(r.route, load.psi) ?? loadFailures(r.route, load))];
 				routes[i] = r.only ? { ...r, load, failures, ok: failures.length === 0, dimensions: { ...r.dimensions, load: failures.length ? 'fail' : 'pass' } } : withFailures(r, failures, { load });
 			});
 		}

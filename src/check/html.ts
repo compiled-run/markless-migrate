@@ -1,7 +1,7 @@
 import { journeyNames, pngBytes, pngSize, type Png } from './artifacts.ts';
 import { acceptedLabel } from './automatic.ts';
 import { headlines, type Sample } from './responsiveness.ts';
-import { formatMetric, METRIC_LABEL, type LoadDetail } from './load.ts';
+import { formatMetric, METRIC_LABEL, psiLines, type LoadDetail } from './load.ts';
 import { partialLine } from './summary.ts';
 import type { Box, Failure, LoginResult, Report, ResponsivenessSummary, RouteResult, Shot, SourceLink } from './types.ts';
 import type { Filmstrip, MotionInteraction } from './motion.ts';
@@ -83,7 +83,9 @@ function pageLoad(r: RouteResult): string {
 	const rows = l.verdicts.map((v) => `<tr${v.ok ? '' : ' class="differs"'}><td>${esc(METRIC_LABEL[v.metric])}</td><td>${esc(formatMetric(v.metric, v.old))}</td><td>${esc(formatMetric(v.metric, v.new))}</td><td>old ±${esc(formatMetric(v.metric, v.spread.old))}, new ±${esc(formatMetric(v.metric, v.spread.new))}</td><td>${v.ok ? 'ok' : `worse by ${esc(formatMetric(v.metric, v.worse))} (allowed ${esc(formatMetric(v.metric, v.floor))}, p = ${v.p.toFixed(3)})`}</td></tr>`).join('');
 	const lcp = (side: string, d: LoadDetail | undefined) => (d?.lcpElement ? `<p><small>${side} LCP element: ${esc(d.lcpElement)}${d.lcpPhases ? `; ${esc(Object.entries(d.lcpPhases).map(([k, v]) => `${k} ${v} ms`).join(', '))}` : ''}</small></p>` : '');
 	const strips = l.old.detail?.filmstrip?.length || l.new.detail?.filmstrip?.length ? `<div class="filmstrip"><h3>Page load filmstrip <small>Lighthouse's frames of the median run, unthrottled time</small></h3>${loadStrip('Old', l.old.detail)}${loadStrip('New', l.new.detail)}</div>` : '';
-	return `<details class="states timings"${failing ? ' open' : ''}><summary>Page load (Lighthouse, mobile, median of ${l.runs} runs each)${failing ? `: <strong>${failing} metric${failing === 1 ? '' : 's'} worse</strong>` : ''}</summary><table><thead><tr><th>Metric</th><th>Old</th><th>New</th><th>Between runs</th><th>Verdict</th></tr></thead><tbody>${rows}</tbody></table>${lcp('Old', l.old.detail)}${lcp('New', l.new.detail)}${strips}</details>`;
+	const psi = psiLines(l.psi);
+	const psiBlock = psi.length ? `<h4>PageSpeed Insights</h4><ul>${psi.map((line) => `<li>${esc(line.trim())}</li>`).join('')}</ul><h4>PageSpeed-equivalent (lab, calibrated)${l.cpuMultiplier ? `: ${l.cpuMultiplier}x CPU for benchmarkIndex ${l.benchmarkIndex ?? '?'}` : ''}</h4>` : '';
+	return `<details class="states timings"${failing || r.failures.some((f) => f.dimension === 'load') ? ' open' : ''}><summary>Page load: ${l.psi && !('unavailable' in l.psi) ? 'PageSpeed Insights and ' : ''}PageSpeed-equivalent (lab, calibrated), median of ${l.runs} runs each${failing ? `: <strong>${failing} lab metric${failing === 1 ? '' : 's'} worse</strong>` : ''}</summary>${psiBlock}<table><thead><tr><th>Metric</th><th>Old</th><th>New</th><th>Between runs</th><th>Verdict</th></tr></thead><tbody>${rows}</tbody></table>${lcp('Old', l.old.detail)}${lcp('New', l.new.detail)}${strips}</details>`;
 }
 
 function writes(r: RouteResult): string {
