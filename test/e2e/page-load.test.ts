@@ -5,6 +5,8 @@ import { serve, type Variant } from '../../fixtures/page-load/server.ts';
 import { renderHtml } from '../../src/check/html.ts';
 import { runCheck } from '../../src/check/run.ts';
 import { summarize } from '../../src/check/summary.ts';
+import { serve as serveFont } from '../../fixtures/late-font/server.ts';
+import { findLateFont, measurePreload } from '../../src/upgrade/fonts.ts';
 
 const DESKTOP = [{ name: 'desktop', width: 1280, height: 800, isMobile: false }];
 
@@ -55,5 +57,15 @@ describe('page load: Lighthouse mobile metrics, old vs new, a median of several 
 		const route = report.routes[0]!;
 		assert.equal(route.dimensions.load, 'pass', JSON.stringify(route.load?.verdicts));
 		assert.equal(route.load?.new.detail?.filmstrip, undefined);
+	});
+
+	test('a preload of the late font of the largest text paints it sooner in Lighthouse, beyond noise', async () => {
+		const { origin, server } = await serveFont('late');
+		servers.push(server);
+		const found = await findLateFont(browser, origin, '/');
+		assert.ok('late' in found, JSON.stringify(found));
+		const m = await measurePreload(origin, found.late, { runs: 4 });
+		assert.equal(m.significant, true, JSON.stringify(m.load.verdicts));
+		assert.ok(m.lcpSavingMs > 100, String(m.lcpSavingMs));
 	});
 });

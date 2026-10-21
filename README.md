@@ -156,6 +156,12 @@ ported, and suggests what to change; nothing is applied.
   (`--ui <dir>`, or the app's installed package). A swap is suggested only when every row is covered; otherwise
   it is "not yet: missing ...", which is also the list of what the family lacks.
 
+- **Font preloads.** When a page's largest text (its LCP element) paints with a web font the page finds only
+  once its stylesheet has arrived and been parsed, and nothing preloads it, `upgrade` measures the page with
+  Lighthouse mobile as it is and with `<link rel="preload" as="font" crossorigin>` added after its charset,
+  both through the same local proxy so only the preload differs (`--load-runs` a side, as in check's `load`).
+  It is suggested only when the LCP comes sooner beyond noise, with the measured saving; `--no-load` leaves it out.
+
 `upgrade accept <id>` writes `.migrate/upgrades/<id>.md`, the agent's task. An accepted entry goes through the
 same pipeline: `check --old <pre-upgrade build> --new <upgraded build> --all` must be green on every route.
 
