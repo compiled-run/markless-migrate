@@ -9,6 +9,7 @@ import { settleAndHoldLoops } from '../check/loops.ts';
 import type { Box, Failure, Shot, Viewport } from '../check/types.ts';
 import { compareWithNoise, identicalShots, visuallyDifferent, type VisualDiff } from '../check/visual.ts';
 import { openShadowRoots } from './page.ts';
+import { PNG } from 'pngjs';
 import { frameProvider } from './providers.ts';
 
 export type EmbedState = 'rest' | 'hover' | 'focus';
@@ -326,6 +327,13 @@ export function sameActivation(o: Activation, n: Activation): boolean {
 	return frames(o) === frames(n) && o.playing === n.playing && JSON.stringify(o.navigations) === JSON.stringify(n.navigations);
 }
 
+/** The one colour a picture is all of, or undefined: an embed drawn nowhere it has a box. */
+function blank(png: Buffer): string | undefined {
+	const { data } = PNG.sync.read(png);
+	for (let i = 4; i < data.length; i += 4) if (data[i] !== data[0] || data[i + 1] !== data[1] || data[i + 2] !== data[2] || data[i + 3] !== data[3]) return undefined;
+	return `${data[0]},${data[1]},${data[2]},${data[3]}`;
+}
+
 async function saveImages(dir: string | undefined, name: string, label: string, images: Record<string, Buffer | undefined>): Promise<string[]> {
 	if (!dir) return [];
 	const folder = join(dir, name, 'check');
@@ -388,6 +396,11 @@ export async function checkEmbeds(browser: Browser, envs: { readonly old: SideEn
 						const label = `${viewport.name}-${scheme}-${state}`;
 						if (!c) {
 							failures.push({ route, dimension: 'visual', check: `embed ${result.name} ${scheme} ${state}`, viewport: viewport.name, expected: `the old embed ${state === 'focus' ? 'takes keyboard focus' : 'shows'}`, actual: state === 'focus' ? 'nothing inside the new one takes keyboard focus' : 'the new page has nothing in its place', hint: HINT_VISUAL });
+							continue;
+						}
+						// An embed with a box but nothing drawn on either side (inside a collapsed phone menu) shows the same: nothing.
+						if (blank(a.png) && blank(c.png) && blank(a.png) === blank(c.png)) {
+							result.visual.push({ viewport: viewport.name, scheme, state, differing: 0, area: 0, ok: true });
 							continue;
 						}
 						const diff: VisualDiff = identicalShots(a.png, c.png) ?? compareWithNoise(a.png, c.png, b ? [b.png] : [], []);
