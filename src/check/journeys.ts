@@ -1138,11 +1138,13 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			const id = `${raw.target.role}|${raw.target.name}|${raw.target.nth}`;
 			if (known.has(id)) continue;
 			known.add(id);
-			const seen = raw.group ? (sampled.get(raw.group) ?? 0) : 0;
-			if (raw.group) sampled.set(raw.group, seen + 1);
-			if (raw.group && seen >= SAMPLES) continue;
+			const layout = parent ? parent.layout : isLayout(raw);
+			// Layout controls are spread over the routes that share them (each has one owner), so they are not sampled.
+			const group = layout ? undefined : raw.group;
+			const seen = group ? (sampled.get(group) ?? 0) : 0;
+			if (group) sampled.set(group, seen + 1);
+			if (group && seen >= SAMPLES) continue;
 			const c = raw;
-			const layout = parent ? parent.layout : isLayout(c);
 			const signature = parent ? `${parent.signature} > ${c.target.role}|${c.target.name}|${c.target.nth}` : c.signature;
 			const element = `${describeTarget(c.target)}${prefix.length ? ` (after ${prefix.map(describeStep).join(', then ')})` : ''}`;
 			const t: Tracked = { candidate: c, element, signature, layout, prefix, journeys: [] };
