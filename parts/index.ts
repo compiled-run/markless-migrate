@@ -29,9 +29,10 @@ export function behave(event: Event): void {
 	const kind = event.type as Kind;
 	// The document listeners also cover what the first interaction opens at the end of the body.
 	listen();
+	// A control that takes itself away swaps its container's content; a part may still port the rest of its handler.
 	if (kind === 'click') {
 		const control = target.closest('[data-mm-replace]');
-		if (control && swap(control)) return;
+		if (control) swap(control);
 	}
 	for (const part of PARTS) {
 		const handler = part[kind] as ((target: Element, event: Event) => boolean) | undefined;

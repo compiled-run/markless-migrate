@@ -83,9 +83,16 @@ export function closePopup(p: Popup, returnFocus = true, keep = false): void {
 	open.splice(at, 1);
 	for (const c of p.cleanup) c();
 	setTrigger(p.trigger, false);
-	if (returnFocus) p.trigger.focus({ preventScroll: true });
+	// FloatingFocusManager returns focus as the popup unmounts, after its exit; a Select's popup stays mounted.
+	const refocus = () => {
+		const at = document.activeElement;
+		if (open.some((o) => o.portal === p.portal)) return;
+		if (!at || at === document.body || p.portal.contains(at)) p.trigger.focus({ preventScroll: true });
+	};
+	if (returnFocus && keep) p.trigger.focus({ preventScroll: true });
 	exit(p.popup, p.around, () => {
 		p.stop?.();
+		if (returnFocus && !keep) refocus();
 		// Base UI's Select keeps its popup mounted once opened, hidden; other popups leave, here hidden with their portal.
 		if (keep) (p.positioner ?? p.popup).hidden = true;
 		else p.portal.hidden = true;

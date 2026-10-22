@@ -132,7 +132,19 @@ export function panelExit(id: string, done: () => void, depth = 0): void {
 			return now !== 'none' && now !== before[i];
 		});
 		if (!leaving.length) return end();
-		void Promise.all(leaving.map(finished)).then(end);
+		// Presence waits for the animationend (or animationcancel) of the animation the closed state started.
+		let pending = leaving.length;
+		for (const n of leaving) {
+			const names = getComputedStyle(n).animationName.split(',').map((x) => x.trim());
+			const ended = (event: AnimationEvent) => {
+				if (event.target !== n || !names.includes(event.animationName)) return;
+				n.removeEventListener('animationend', ended);
+				n.removeEventListener('animationcancel', ended);
+				if (--pending === 0) end();
+			};
+			n.addEventListener('animationend', ended);
+			n.addEventListener('animationcancel', ended);
+		}
 		return;
 	}
 	// A panel open on load had its open animation suppressed (Base UI's first paint); its first close animates.

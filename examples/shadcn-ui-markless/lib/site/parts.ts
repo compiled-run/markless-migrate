@@ -170,6 +170,16 @@ const copyPage: Part = {
 	},
 };
 
+// components/component-preview-tabs.tsx: View Code sets isMobileCodeVisible, which its code block carries as an attribute.
+const viewCode: Part = {
+	click(target) {
+		const code = target.closest('[data-mm-replace]')?.closest<HTMLElement>('[data-slot="code"][data-mobile-code-visible]');
+		if (!code) return false;
+		code.setAttribute('data-mobile-code-visible', 'true');
+		return true;
+	},
+};
+
 // components/docs-toc.tsx's useActiveItem: the heading crossing the top fifth of the viewport marks its link active.
 const tocs = new WeakSet<Element>();
 const docsToc: Part = {
@@ -178,6 +188,8 @@ const docsToc: Part = {
 		if (!list || tocs.has(list) || !(el instanceof HTMLAnchorElement) || !el.getAttribute('href')?.startsWith('#')) return;
 		tocs.add(list);
 		const links = [...list.querySelectorAll<HTMLAnchorElement>(':scope > a[data-depth][href^="#"]')];
+		// useActiveItem starts at null; the capture's own scroll to the bottom left a link marked active in the markup.
+		for (const link of links) link.setAttribute('data-active', 'false');
 		const observer = new IntersectionObserver(
 			(entries) => {
 				for (const entry of entries) {
@@ -299,4 +311,4 @@ const sidebarShortcut: Part = {
 	},
 };
 
-export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, docsSidebar, docsToc, sidebarShortcut, sharedTabs];
+export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, docsSidebar, docsToc, sidebarShortcut, sharedTabs];
