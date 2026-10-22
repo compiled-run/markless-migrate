@@ -28,8 +28,8 @@ async function once(url: string): Promise<Run> {
 			const audit = (id: string) => lh.audits[id]?.numericValue ?? Number.NaN;
 			return { bytes: audit('total-byte-weight'), requests: lh.audits['network-requests']?.details?.items?.length ?? Number.NaN, fcp: audit('first-contentful-paint'), lcp: audit('largest-contentful-paint'), si: audit('speed-index'), tbt: audit('total-blocking-time'), score: lh.categories.performance.score };
 		}
-		if (attempt >= 3) throw new Error(`${url}: ${response.status} ${await response.text()}`);
-		await new Promise((r) => setTimeout(r, 5000 * (attempt + 1)));
+		if (attempt >= 6) throw new Error(`${url}: ${response.status} ${(await response.text()).slice(0, 200)}`);
+		await new Promise((r) => setTimeout(r, 20_000 * (attempt + 1)));
 	}
 }
 
@@ -40,7 +40,12 @@ const median = (values: number[]) => {
 
 for (const url of urls) {
 	const runs: Run[] = [];
-	for (let i = 0; i < 5; i++) runs.push(await once(url));
+	try {
+		for (let i = 0; i < 5; i++) runs.push(await once(url));
+	} catch (error) {
+		console.log(JSON.stringify({ label, url, at: new Date().toISOString(), error: (error as Error).message }));
+		continue;
+	}
 	const pick = (k: keyof Run) => median(runs.map((r) => r[k]));
 	console.log(JSON.stringify({ label, url, at: new Date().toISOString(), runs: runs.length, bytes: pick('bytes'), requests: pick('requests'), fcpMs: Math.round(pick('fcp')), lcpMs: Math.round(pick('lcp')), speedIndexMs: Math.round(pick('si')), tbtMs: Math.round(pick('tbt')), score: pick('score'), all: runs }));
 }
