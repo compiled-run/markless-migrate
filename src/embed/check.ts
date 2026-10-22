@@ -108,13 +108,14 @@ export interface Side {
 	close(): Promise<void>;
 }
 
-export async function openSide(browser: Browser, env: SideEnv, route: string, viewport: Viewport, scheme: 'light' | 'dark', study = false): Promise<Side> {
-	const { context, page } = await openPage(browser, { ...env, colorScheme: scheme }, viewport, { loops: true, shareThirdParty: true });
+/** A page for the embed step: settled and held like the checker's other captures, or, `live`, as a visitor gets it (real clock, its own loops, every third-party answer fetched afresh), which a player needs to play. */
+export async function openSide(browser: Browser, env: SideEnv, route: string, viewport: Viewport, scheme: 'light' | 'dark', options: { readonly study?: boolean; readonly live?: boolean } = {}): Promise<Side> {
+	const { context, page } = await openPage(browser, { ...env, colorScheme: scheme, ...(options.live ? { freeze: false as const } : {}) }, viewport, options.live ? { embedWrites: true } : { loops: true, shareThirdParty: true });
 	try {
-		if (study) await context.addInitScript(openShadowRoots);
+		if (options.study) await context.addInitScript(openShadowRoots);
 		await loadPage(page, new URL(route, env.origin).href);
 		await settle(page);
-		await settleAndHoldLoops(page);
+		if (!options.live) await settleAndHoldLoops(page);
 		await page.evaluate(() => scrollTo(0, 0));
 		return { page, embeds: await page.evaluate(liveEmbeds, false), close: () => context.close() };
 	} catch (error) {
@@ -369,9 +370,8 @@ export async function checkEmbeds(browser: Browser, envs: { readonly old: SideEn
 			continue;
 		}
 		for (const viewport of viewports) {
-			// A provider's player runs on the real clock: frozen time stalls it inside its frame, so activation is probed unfrozen.
 			const run = async (env: SideEnv, how: 'click' | 'keyboard') => {
-				const side = await openSide(browser, { ...env, freeze: false }, route, viewport, 'light');
+				const side = await openSide(browser, env, route, viewport, 'light', { live: true });
 				try {
 					return await activate(side, i, how);
 				} finally {

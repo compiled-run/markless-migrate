@@ -294,6 +294,8 @@ export interface OpenOptions {
 	readonly loops?: boolean | { readonly known: readonly string[] };
 	/** Answer the page's own GETs to other origins from one fetch per run, so every load of the run, old and new, gets the same third-party answer (a widget's API reply, rate limited or not). */
 	readonly shareThirdParty?: boolean;
+	/** Let an embed's own frame send its writes (a player asking for its stream by POST), as a visitor's browser does; the page's own writes are still held. */
+	readonly embedWrites?: boolean;
 	/** While timing: every answer reaches the page after the network's fixed latency, its GETs from one stored copy; `miss` is told when a copy had to be fetched during this load. */
 	readonly timed?: { readonly network: TimedNetwork; readonly miss: () => void };
 }
@@ -368,6 +370,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 		const reason = writeReason(request.method(), url, home, env.writeFacts, request.headers()) ?? (log.holdAll && same && !env.sendWrites && (request.isNavigationRequest() || ['fetch', 'xhr'].includes(request.resourceType())) ? 'a request of a control that ends the session or deletes' : undefined);
 		// An embed's own writes (its analytics, its player state) are held back too, and are the embed's, not the page's.
 		if (reason && insideEmbed(request, ownOrigin)) {
+			if (options.embedWrites) return route.continue();
 			handled.add(request);
 			return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } });
 		}

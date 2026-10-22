@@ -124,7 +124,7 @@ export async function studyEmbed(browser: Browser, env: SideEnv, use: EmbedUse, 
 	let found = false;
 	for (const viewport of viewports) {
 		for (const scheme of SCHEMES) {
-			const side = await openSide(browser, env, route, viewport, scheme, use.terms.study);
+			const side = await openSide(browser, env, route, viewport, scheme, { study: use.terms.study });
 			try {
 				const index = matchUse(use, side.embeds, ordinal);
 				if (index < 0) continue;
@@ -151,7 +151,7 @@ export async function studyEmbed(browser: Browser, env: SideEnv, use: EmbedUse, 
 	}
 	let activation: Activation | undefined;
 	if (found) {
-		const side = await openSide(browser, { ...env, freeze: false }, route, viewports[0]!, 'light');
+		const side = await openSide(browser, env, route, viewports[0]!, 'light', { live: true });
 		try {
 			activation = await activate(side, matchUse(use, side.embeds, ordinal), 'click');
 		} finally {
