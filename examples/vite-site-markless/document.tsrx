@@ -27,8 +27,10 @@ export default function Document({ children, url, status, http }: PageProps & { 
 			<meta name="twitter:card" content="summary_large_image" />
 			<link rel="icon" href="/hero.png" type="image/png" />
 			@if (head.feeds) {
-				<link rel="manifest" href="/manifest.json" />
-				<link rel="alternate" type="application/rss+xml" title="News" href="/feed.xml" />
+				<>
+					<link rel="manifest" href="/manifest.json" />
+					<link rel="alternate" type="application/rss+xml" title="News" href="/feed.xml" />
+				</>
 			}
 			<link rel="stylesheet" href={stylesheet} />
 		</head>
