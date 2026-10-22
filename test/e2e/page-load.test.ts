@@ -48,7 +48,7 @@ describe('page load: Lighthouse mobile metrics, old vs new, a median of several 
 		assert.ok(load.new.detail?.filmstrip?.length, 'a red route keeps the filmstrip of its median run');
 		const summary = summarize(report);
 		assert.match(summary, /FAIL +\/ +\[load\] +only page load compared \(--only load\)/);
-		assert.match(summary, /page load \(Lighthouse, mobile, median of 4[^)]*\): .*LCP .* \(worse\)/);
+		assert.match(summary, /page load, PageSpeed-equivalent \(lab; Lighthouse mobile, median of 4[^)]*\): .*LCP .* \(worse\)/);
 		assert.match(renderHtml(report, () => 'x.png'), /Page load filmstrip/);
 	});
 

@@ -1,13 +1,15 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import lighthouse from 'lighthouse';
+import { throttling } from 'lighthouse/core/config/constants.js';
 import { chromium } from 'playwright';
 import { HINTS } from './hints.ts';
 import { TRACKER_HOSTS, type BlockList } from './trackers.ts';
 import type { Failure } from './types.ts';
+import type { FieldData, PsiOptions, PsiResult } from './psi.ts';
 
 export const LOAD_METRICS = ['score', 'fcp', 'lcp', 'si', 'tbt', 'cls'] as const;
 export type LoadMetric = (typeof LOAD_METRICS)[number];
@@ -25,8 +27,12 @@ export const METRIC_LABEL: Readonly<Record<LoadMetric, string>> = {
 export interface LoadOptions {
 	/** Lighthouse runs per side and route, old and new taken in turn; default 5, and as many again when a metric is worse but not yet beyond noise. */
 	readonly runs?: number;
+	/** The CPU slowdown Lighthouse simulates with: 4 by default, as Lighthouse and PageSpeed Insights do; `calibrated` derives it from each run's own benchmarkIndex by Lighthouse's calculator. Against real PageSpeed Insights on ten sites, 4 came closer (TBT within 10% on 18 of 20 pages against 12) and neither matched its score within 5 points on more than 12 of 20, so real PSI is the gate whenever it answers. */
+	readonly cpu?: 'calibrated' | number;
 	/** Hosts blocked on both sides, as in the rest of the check. */
 	readonly block?: BlockList;
+	/** Real PageSpeed Insights on the deployed URLs; false leaves it out. The key defaults to the PSI_API_KEY environment variable; without one it runs on the shared keyless quota, best effort. */
+	readonly psi?: PsiOptions | false;
 }
 
 export const DEFAULT_LOAD_RUNS = 5;
@@ -73,6 +79,9 @@ export interface LoadDetail {
 
 export interface LoadRun {
 	readonly browser?: string;
+	/** This machine's speed as Lighthouse measured it during the run, and the CPU slowdown the run was simulated with. */
+	readonly benchmarkIndex?: number;
+	readonly cpuMultiplier?: number;
 	readonly metrics?: Metrics;
 	readonly error?: string;
 	readonly detail?: LoadDetail;
@@ -100,6 +109,9 @@ export interface LoadVerdict {
 
 export interface RouteLoad {
 	readonly runs: number;
+	/** The median benchmarkIndex and CPU slowdown of the runs. */
+	readonly benchmarkIndex?: number;
+	readonly cpuMultiplier?: number;
 	/** The browser Lighthouse ran in, as its user agent names it. */
 	readonly browser?: string;
 	readonly old: LoadSide;
@@ -108,6 +120,8 @@ export interface RouteLoad {
 	readonly ok: boolean;
 	/** Why the route has no verdict: a side never finished a run. */
 	readonly skipped?: string;
+	/** PageSpeed Insights on the deployments: when it answered, its verdicts gate the route instead of the lab's. */
+	readonly psi?: PsiResult;
 }
 
 export function median(values: readonly number[]): number {
@@ -169,7 +183,8 @@ interface Audit {
 	readonly details?: { readonly items?: readonly any[] };
 }
 interface Lhr {
-	readonly environment?: { readonly hostUserAgent?: string };
+	readonly environment?: { readonly hostUserAgent?: string; readonly benchmarkIndex?: number };
+	readonly configSettings?: { readonly throttling?: { readonly cpuSlowdownMultiplier?: number } };
 	readonly runtimeError?: { readonly code: string; readonly message: string };
 	readonly categories: { readonly performance?: { readonly score: number | null } };
 	readonly audits: Readonly<Record<string, Audit | undefined>>;
@@ -188,8 +203,11 @@ export function readRun(lhr: Lhr, origin: string): LoadRun {
 	const observedRaw = a.metrics?.details?.items?.[0] ?? {};
 	const observed = { fcp: observedRaw.observedFirstContentfulPaint, lcp: observedRaw.observedLargestContentfulPaint, si: observedRaw.observedSpeedIndex };
 	const lcpItems = a['largest-contentful-paint-element']?.details?.items ?? [];
-	const node = lcpItems[0]?.items?.[0]?.node;
-	const phases = lcpItems[1]?.items as readonly { phase: string; timing: number }[] | undefined;
+	// Lighthouse 13, as PageSpeed Insights runs it, reports the element and its parts in the LCP breakdown insight instead.
+	const insight = a['lcp-breakdown-insight']?.details?.items ?? [];
+	const node = lcpItems[0]?.items?.[0]?.node ?? insight.find((i: { type?: string }) => i.type === 'node');
+	const subparts = insight.find((i: { type?: string }) => i.type === 'table')?.items as readonly { label: string; duration: number }[] | undefined;
+	const phases = (lcpItems[1]?.items as readonly { phase: string; timing: number }[] | undefined) ?? subparts?.map((p) => ({ phase: p.label, timing: p.duration }));
 	const requests = (a['network-requests']?.details?.items ?? []) as readonly { url: string; resourceType?: string; priority?: string; transferSize?: number; rendererStartTime?: number; networkRequestTime?: number; networkEndTime?: number }[];
 	const asRequest = (r: (typeof requests)[number]): LoadRequest => ({ url: shortUrl(r.url, origin), type: r.resourceType ?? '', priority: r.priority ?? '', bytes: r.transferSize ?? 0, start: Math.round(r.networkRequestTime ?? r.rendererStartTime ?? 0) });
 	const cutoff = observed.lcp ?? Infinity;
@@ -210,7 +228,9 @@ export function readRun(lhr: Lhr, origin: string): LoadRun {
 		filmstrip: ((a['screenshot-thumbnails']?.details?.items ?? []) as readonly { timing: number; data: string }[]).map((f) => ({ ms: Math.round(f.timing), image: f.data })),
 	};
 	const browser = /(?:Headless)?Chrome\/[\d.]+/.exec(lhr.environment?.hostUserAgent ?? '')?.[0];
-	return { metrics, detail, ...(browser ? { browser } : {}) };
+	const benchmarkIndex = lhr.environment?.benchmarkIndex;
+	const cpuMultiplier = lhr.configSettings?.throttling?.cpuSlowdownMultiplier;
+	return { metrics, detail, ...(browser ? { browser } : {}), ...(benchmarkIndex ? { benchmarkIndex: Math.round(benchmarkIndex) } : {}), ...(cpuMultiplier ? { cpuMultiplier: Math.round(cpuMultiplier * 10) / 10 } : {}) };
 }
 
 const CHROME_STABLE: Readonly<Partial<Record<NodeJS.Platform, readonly string[]>>> = {
@@ -258,12 +278,44 @@ export function blockedPatterns(block: BlockList = {}): string[] {
 	return [...TRACKER_HOSTS, ...(block.add ?? [])].map((h) => h.toLowerCase()).filter((h) => !allow.some((a) => related(a, h))).flatMap((h) => [`*://${h}/*`, `*.${h}/*`]);
 }
 
-export type Lighthouse = (url: string, port: number, blocked: readonly string[]) => Promise<Lhr>;
+export type Lighthouse = (url: string, port: number, blocked: readonly string[], cpu: 'calibrated' | number) => Promise<Lhr>;
 
-const runLighthouse: Lighthouse = async (url, port, blocked) => {
-	const result = await lighthouse(url, { port, output: 'json', onlyCategories: ['performance'], logLevel: 'error', blockedUrlPatterns: [...blocked] });
-	if (!result) throw new Error('Lighthouse returned no result');
-	return result.lhr as unknown as Lhr;
+/**
+ * The CPU slowdown that makes a machine of this benchmarkIndex stand for Lighthouse's reference device, the one PageSpeed
+ * Insights' 4x emulates: Lighthouse's own calculator (lighthouse-cpu-throttling-calculator.vercel.app, linked from its
+ * throttling docs). A fast laptop measures about 4400 and needs about 16x; PageSpeed's servers measure about 1500.
+ */
+export function cpuMultiplier(benchmarkIndex: number): number {
+	if (benchmarkIndex >= 1300) return 3 + (benchmarkIndex - 1300) / 233;
+	if (benchmarkIndex >= 800) return 2 + (benchmarkIndex - 800) / 500;
+	if (benchmarkIndex >= 150) return 1 + (benchmarkIndex - 150) / 650;
+	return 1;
+}
+
+const runLighthouse: Lighthouse = async (url, port, blocked, cpu) => {
+	const flags = { port, output: 'json' as const, onlyCategories: ['performance'], logLevel: 'error' as const, blockedUrlPatterns: [...blocked] };
+	if (cpu !== 'calibrated') {
+		const result = await lighthouse(url, { ...flags, throttling: { ...throttling.mobileSlow4G, cpuSlowdownMultiplier: cpu } });
+		if (!result) throw new Error('Lighthouse returned no result');
+		return result.lhr as unknown as Lhr;
+	}
+	// The simulation runs when the artifacts are audited, so the load is gathered once and simulated at the slowdown its own benchmarkIndex calls for.
+	const dir = await mkdtemp(join(tmpdir(), 'markless-migrate-lhr-'));
+	try {
+		await lighthouse(url, { ...flags, gatherMode: dir });
+		const file = join(dir, 'artifacts.json');
+		const artifacts = JSON.parse(await readFile(file, 'utf8')) as { BenchmarkIndex?: number; settings?: { throttlingMethod?: string; throttling?: Record<string, number> } };
+		const multiplier = artifacts.BenchmarkIndex ? cpuMultiplier(artifacts.BenchmarkIndex) : throttling.mobileSlow4G.cpuSlowdownMultiplier;
+		// With simulated throttling the gather never slows the CPU, so the saved settings may name the slowdown the audit simulates.
+		if (artifacts.settings?.throttlingMethod !== 'simulate') throw new Error(`Lighthouse gathered with ${artifacts.settings?.throttlingMethod} throttling; a calibrated run needs simulate`);
+		artifacts.settings.throttling = { ...artifacts.settings.throttling, cpuSlowdownMultiplier: multiplier };
+		await writeFile(file, JSON.stringify(artifacts));
+		const result = await lighthouse(url, { ...flags, auditMode: dir, throttling: { ...throttling.mobileSlow4G, cpuSlowdownMultiplier: multiplier } });
+		if (!result) throw new Error('Lighthouse returned no result');
+		return result.lhr as unknown as Lhr;
+	} finally {
+		await rm(dir, { recursive: true, force: true }).catch(() => {});
+	}
 };
 
 const lcpOf = (run: LoadRun) => run.metrics?.lcp ?? Infinity;
@@ -278,6 +330,7 @@ function side(runs: readonly LoadRun[]): LoadSide {
 /** Measures each route's load on both apps with Lighthouse's mobile settings, one run at a time, old and new in turn so drift in the machine's load falls on both. */
 export async function measureLoad(origins: { readonly old: string; readonly new: string }, routes: readonly string[], options: LoadOptions = {}, run: Lighthouse = runLighthouse): Promise<Map<string, RouteLoad>> {
 	const runs = Math.max(1, options.runs ?? DEFAULT_LOAD_RUNS);
+	const cpu = options.cpu ?? throttling.mobileSlow4G.cpuSlowdownMultiplier;
 	const blocked = blockedPatterns(options.block);
 	const out = new Map<string, RouteLoad>();
 	if (!routes.length) return out;
@@ -287,7 +340,7 @@ export async function measureLoad(origins: { readonly old: string; readonly new:
 			const origin = origins[which];
 			const url = new URL(route, origin).href;
 			let result: LoadRun = { error: 'not run' };
-			for (let attempt = 0; attempt <= RETRIES && !result.metrics; attempt++) result = await run(url, browser.port, blocked).then((lhr) => readRun(lhr, origin), (error: unknown) => ({ error: error instanceof Error ? error.message.split('\n')[0]! : String(error) }));
+			for (let attempt = 0; attempt <= RETRIES && !result.metrics; attempt++) result = await run(url, browser.port, blocked, cpu).then((lhr) => readRun(lhr, origin), (error: unknown) => ({ error: error instanceof Error ? error.message.split('\n')[0]! : String(error) }));
 			return result;
 		};
 		for (const route of routes) {
@@ -327,11 +380,15 @@ export function routeLoad(runs: number, oldRuns: readonly LoadRun[], newRuns: re
 	const verdicts = judgeLoad(oldGood, newGood);
 	const ok = verdicts.every((v) => v.ok);
 	const browser = [...oldRuns, ...newRuns].find((r) => r.browser)?.browser;
+	const all = [...oldRuns, ...newRuns];
+	const indexes = all.flatMap((r) => (r.benchmarkIndex ? [r.benchmarkIndex] : []));
+	const multipliers = all.flatMap((r) => (r.cpuMultiplier ? [r.cpuMultiplier] : []));
+	const machine = { ...(indexes.length ? { benchmarkIndex: Math.round(median(indexes)) } : {}), ...(multipliers.length ? { cpuMultiplier: Math.round(median(multipliers) * 10) / 10 } : {}) };
 	if (ok) {
 		if (old.detail) delete old.detail.filmstrip;
 		if (next.detail) delete next.detail.filmstrip;
 	}
-	return { runs, ...(browser ? { browser } : {}), old, new: next, verdicts, ok };
+	return { runs, ...(browser ? { browser } : {}), ...machine, old, new: next, verdicts, ok };
 }
 
 export const formatMetric = (metric: LoadMetric, value: number): string =>
@@ -394,7 +451,46 @@ export function loadFailures(route: string, load: RouteLoad): Failure[] {
 
 /** One line per route: each metric old -> new, the medians of the runs. */
 export function loadLine(load: RouteLoad): string {
-	if (load.skipped) return `page load (Lighthouse, mobile): not compared, ${load.skipped}`;
+	if (load.skipped) return `page load, PageSpeed-equivalent (lab): not compared, ${load.skipped}`;
 	const parts = load.verdicts.map((v) => `${v.metric === 'score' ? 'score' : v.metric.toUpperCase()} ${formatMetric(v.metric, v.old)} -> ${formatMetric(v.metric, v.new)}${v.ok ? '' : ' (worse)'}`);
-	return `page load (Lighthouse, mobile, median of ${load.runs}${load.browser ? `, ${load.browser}` : ''}): ${parts.join(', ')}`;
+	const cpu = load.cpuMultiplier ? `, ${load.cpuMultiplier}x CPU${load.benchmarkIndex ? ` for benchmarkIndex ${load.benchmarkIndex}` : ''}` : '';
+	return `page load, PageSpeed-equivalent (lab; Lighthouse mobile, median of ${load.runs}${load.browser ? `, ${load.browser}` : ''}${cpu}): ${parts.join(', ')}`;
+}
+
+const PSI_LABEL = (strategy: string) => `PageSpeed Insights, ${strategy}`;
+
+/** The route's PageSpeed Insights failures, when PSI answered; a side PSI never finished is red only when it is the new one. */
+export function psiFailures(route: string, psi: PsiResult | undefined): Failure[] | undefined {
+	if (!psi || 'unavailable' in psi) return undefined;
+	return psi.strategies.flatMap((s) =>
+		s.verdicts.length
+			? s.verdicts
+					.filter((v) => !v.ok)
+					.map((v) => ({
+						route,
+						dimension: 'load' as const,
+						check: `page load: ${METRIC_LABEL[v.metric]} (${PSI_LABEL(s.strategy)})`,
+						viewport: s.strategy,
+						expected: `${formatMetric(v.metric, v.old)} or better, the old page's median of ${s.old.runs.length} PageSpeed Insights runs (${runList(s.old.runs, v.metric)})`,
+						actual: `${formatMetric(v.metric, v.new)}, the median of ${s.new.runs.length} (${runList(s.new.runs, v.metric)}): ${v.metric === 'score' ? `${Math.round(v.worse)} points lower` : `${formatMetric(v.metric, v.worse)} worse`}, beyond the ${formatMetric(v.metric, v.floor)} allowed and the noise between runs (p = ${v.p.toFixed(3)})`,
+						hint: HINTS.load,
+					}))
+			: s.new.median
+				? []
+				: [{ route, dimension: 'load' as const, check: `page load: the page (${PSI_LABEL(s.strategy)})`, viewport: s.strategy, expected: 'PageSpeed Insights finishes a run of the new page', actual: String((s.new.runs[0] as { error?: string } | undefined)?.error ?? 'no run finished'), hint: HINTS.load }],
+	);
+}
+
+const fieldLine = (f: FieldData) =>
+	`${f.scope === 'url' ? 'this URL' : 'its origin'}${f.category ? ` ${f.category}` : ''}: ${Object.entries(f.p75).map(([k, v]) => `${k.toUpperCase()} ${k === 'cls' ? v.toFixed(2) : `${Math.round(v)} ms`}`).join(', ')}`;
+
+/** One line per strategy PSI measured, or why it did not, for the summary. */
+export function psiLines(psi: PsiResult | undefined): string[] {
+	if (!psi) return [];
+	if ('unavailable' in psi) return [`PageSpeed Insights: ${psi.unavailable}`];
+	return psi.strategies.flatMap((s) => {
+		const parts = s.verdicts.map((v) => `${v.metric === 'score' ? 'score' : v.metric.toUpperCase()} ${formatMetric(v.metric, v.old)} -> ${formatMetric(v.metric, v.new)}${v.ok ? '' : ' (worse)'}`);
+		const field = [s.old.field ? `old ${fieldLine(s.old.field)}` : '', s.new.field ? `new ${fieldLine(s.new.field)}` : ''].filter(Boolean);
+		return [`PageSpeed Insights ${s.strategy}${psi.keyed ? '' : ' (keyless)'}, median of ${s.old.runs.length}${s.old.lighthouse ? `, Lighthouse ${s.old.lighthouse}` : ''}: ${parts.join(', ') || 'no run finished'}`, ...(field.length ? [`  field data (Chrome UX Report, p75): ${field.join('; ')}`] : [])];
+	});
 }

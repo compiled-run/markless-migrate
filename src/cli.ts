@@ -4,6 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline/promises';
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
+import { PSI_KEY_ENV, PSI_NOTICE, psiKey, userEnvFile } from './check/psi.ts';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { AGENTS, detectAgents, findBinary, type HostEnv, type ServerCommand } from './agents/registry.ts';
@@ -81,7 +82,8 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
           [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--timeout <seconds>]
           [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-cache]
-          [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>] [--no-load] [--load-runs <n>]
+          [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>] [--no-load] [--load-runs <n>] [--load-cpu calibrated|<n>]
+          [--psi-key <key>] [--psi-runs <n>] [--no-psi]
           Compare routes old vs new (default: every route of the old site plan listed). Exits 1 when any is red.
           Coverage: every route of the old site must exist on the new app, with the same status class
           and the same redirect target, or carry an accepted difference (accept <id>); each missing
@@ -132,15 +134,23 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           and console errors. A link that loads a new document is a fresh load already; a difference the
           old app shows too, reached the same way, is its own; <html> class and data-* attributes are
           compared with the old app's too. --no-navigation leaves it out.
-          Page load: after every other check, each page (one per template group) is loaded with
-          Lighthouse's mobile settings (simulated slow 4G, 4x CPU, as PageSpeed Insights runs it),
-          --load-runs times on each side (default 5; as many again when a metric is worse but within
-          noise), old and new in turn, one run at a time. FCP, LCP,
-          Speed Index, TBT, CLS and the performance score are compared by their medians: a metric is red
-          when the new median is worse by more than max(100 ms, 5%) (TBT 50 ms, CLS 0.02, 3 score points)
-          and the runs differ beyond noise (one-sided Mann-Whitney, p < 0.05). The failure names the LCP
-          element, its breakdown and the requests that began before it, old and new. --no-load leaves it out;
-          --only load measures page load alone (a partial run: every other dimension is not compared).
+          Page load: after every other check, each page (one per template group) is measured as PageSpeed
+          Insights measures it, on the deployed URLs, and in a calibrated lab:
+          - PageSpeed Insights (mobile and desktop, --psi-runs a side, default 5, old and new in turn),
+            with the key in PSI_API_KEY or --psi-key; with a key its verdicts gate the route and real
+            users' field data (Chrome UX Report) is shown. Without a key it runs on the shared keyless
+            quota, best effort, and says "PSI unavailable (quota), using PageSpeed-equivalent (lab)"
+            when Google refuses. A free key takes a minute: https://developers.google.com/speed/docs/insights/v5/get-started#APIKey
+            (markless-migrate setup --psi-key <key> stores it). --no-psi leaves it out.
+          - PageSpeed-equivalent (lab): Lighthouse mobile here with PageSpeed's settings (simulated slow 4G,
+            4x CPU; --load-cpu calibrated derives the slowdown from this machine's benchmarkIndex instead),
+            --load-runs a side (default 5; as many again when a metric is worse but within noise). It gates
+            the route when PageSpeed Insights cannot, and can differ from it by 10 points or more.
+          FCP, LCP, Speed Index, TBT, CLS and the score are compared by their medians: a metric is red when
+          the new median is worse by more than max(100 ms, 5%) (TBT 50 ms, CLS 0.02, 3 score points) and the
+          runs differ beyond noise (one-sided Mann-Whitney, p < 0.05). The failure names the LCP element, its
+          breakdown and the requests that began before it, old and new. --no-load leaves page load out;
+          --only load measures it alone (a partial run: every other dimension is not compared).
           --source and --new-source map each failing element to its old and new source file and line.
           --concurrency checks that many routes at once (default half the cores, at most 4).
           --timeout stops one route's check after that many seconds (default 600, or five journey
@@ -310,6 +320,10 @@ const TIMING_FLAGS = {
 	'no-navigation': { type: 'boolean' },
 	'no-load': { type: 'boolean' },
 	'load-runs': { type: 'string' },
+	'load-cpu': { type: 'string' },
+	'psi-key': { type: 'string' },
+	'psi-runs': { type: 'string' },
+	'no-psi': { type: 'boolean' },
 	'nav-entries': { type: 'string' },
 	'nav-destinations': { type: 'string' },
 } as const;
@@ -328,12 +342,22 @@ function navigationOptions(values: { 'no-navigation'?: boolean; 'nav-entries'?: 
 	return { ...(entries ? { entries } : {}), ...(destinations ? { destinations } : {}), ...(routes?.length ? { routes } : {}) };
 }
 
-function loadOptions(values: { 'no-load'?: boolean; 'load-runs'?: string }): CheckOptions['load'] {
+function loadOptions(values: { 'no-load'?: boolean; 'load-runs'?: string; 'load-cpu'?: string; 'psi-key'?: string; 'psi-runs'?: string; 'no-psi'?: boolean }): CheckOptions['load'] {
 	if (values['no-load']) return undefined;
-	if (values['load-runs'] === undefined) return {};
-	const runs = Number(values['load-runs']);
-	if (!Number.isInteger(runs) || runs < 4) fail('--load-runs must be a whole number of at least 4: with fewer runs a side, no difference can be told from noise');
-	return { runs };
+	const count = (flag: 'load-runs' | 'psi-runs') => {
+		const raw = values[flag];
+		if (raw === undefined) return undefined;
+		const n = Number(raw);
+		if (!Number.isInteger(n) || n < 4) fail(`--${flag} must be a whole number of at least 4: with fewer runs a side, no difference can be told from noise`);
+		return n;
+	};
+	const runs = count('load-runs');
+	const psiRuns = count('psi-runs');
+	const cpuFlag = values['load-cpu'];
+	const cpu = cpuFlag === undefined ? undefined : cpuFlag === 'calibrated' ? ('calibrated' as const) : Number(cpuFlag);
+	if (typeof cpu === 'number' && !(cpu >= 1)) fail('--load-cpu takes calibrated or a CPU slowdown of at least 1 (default 4)');
+	const psi = values['no-psi'] ? false : { ...(values['psi-key'] ? { key: values['psi-key'] } : {}), ...(psiRuns ? { runs: psiRuns } : {}) };
+	return { ...(runs ? { runs } : {}), ...(cpu ? { cpu } : {}), psi };
 }
 
 function timingOptions(values: { 'no-responsiveness'?: boolean; 'interaction-budget'?: string; 'cpu-throttle'?: string; 'network-latency'?: string; 'interaction-controls'?: string }): CheckOptions['responsiveness'] {
@@ -389,9 +413,31 @@ async function forceDecision(route: string, reason: string | undefined, by: stri
 	}
 }
 
+/** Writes PSI_API_KEY to the user's markless-migrate env file (mode 600), or to the project's .env, kept out of git. */
+async function storePsiKey(key: string, project: string | undefined, home: string): Promise<string> {
+	if (!/^[\w-]{20,}$/.test(key)) throw new Error('--psi-key takes the API key Google shows after creating it (letters, digits, - and _)');
+	const { readFile: read, writeFile: write, mkdir: dir, chmod } = await import('node:fs/promises');
+	const file = project ? join(project, '.env') : userEnvFile(home);
+	await dir(dirname(file), { recursive: true });
+	const lines = (await read(file, 'utf8').catch(() => '')).split('\n').filter((l) => l && !l.startsWith(`${PSI_KEY_ENV}=`));
+	await write(file, `${[...lines, `${PSI_KEY_ENV}=${key}`].join('\n')}\n`, { mode: 0o600 });
+	await chmod(file, 0o600);
+	if (project) {
+		const ignore = join(project, '.gitignore');
+		const listed = (await read(ignore, 'utf8').catch(() => '')).split('\n').some((l) => l.trim() === '.env' || l.trim() === '/.env' || l.trim() === '.env*');
+		if (!listed) await write(ignore, `${(await read(ignore, 'utf8').catch(() => '')).replace(/\n?$/, '\n')}.env\n`);
+	}
+	return file;
+}
+
 async function setup(args: string[]): Promise<number> {
-	const { values } = parseArgs({ args, options: { agent: { type: 'string', multiple: true }, yes: { type: 'boolean' }, 'dry-run': { type: 'boolean' }, undo: { type: 'boolean' } } });
+	const { values } = parseArgs({ args, options: { agent: { type: 'string', multiple: true }, yes: { type: 'boolean' }, 'dry-run': { type: 'boolean' }, undo: { type: 'boolean' }, 'psi-key': { type: 'string' }, project: { type: 'boolean' } } });
 	const host: HostEnv = { home: process.env.HOME || homedir(), env: process.env };
+	if (values['psi-key'] !== undefined) {
+		const where = await storePsiKey(values['psi-key'], values.project ? process.cwd() : undefined, host.home).catch((error: Error) => fail(error.message));
+		out(`Saved the PageSpeed Insights key to ${where}. check, run and upgrade now verify page load on PageSpeed Insights.\n`);
+		return 0;
+	}
 	const tilde = (path: string) => (path.startsWith(host.home) ? `~${path.slice(host.home.length)}` : path);
 	if (values.undo) {
 		const undone = await undoSetup(host.home);
@@ -635,6 +681,7 @@ async function main(argv: string[]): Promise<number> {
 			out(`${usage.text}Wrote ${usage.paths.usage} and ${usage.paths.obligations}\n`);
 			const authPath = join(cwd, STATE_DIR, 'auth.json');
 			if (inventory.auth) out((await writeStarterAuth(authPath, inventory.auth)) ? `Wrote ${authPath}: set the credentials it names in the environment, check its login steps, then pass --auth ${authPath} to check.\n` : `Kept ${authPath} (already there); roles found: ${Object.keys(inventory.auth.roles).join(', ')}.\n`);
+			if (!psiKey()) out(`\n${PSI_NOTICE}\n`);
 			return 0;
 		}
 		case 'check': {
@@ -851,7 +898,7 @@ async function main(argv: string[]): Promise<number> {
 				out(`Wrote ${file}: the task for your agent (markless-migrate run, or by hand). Nothing else changed.\n`);
 				return 0;
 			}
-			const { values } = parseArgs({ args: rest, options: { new: { type: 'string' }, route: { type: 'string', multiple: true }, limit: { type: 'string' }, 'new-source': { type: 'string' }, build: { type: 'string' }, ui: { type: 'string' }, 'no-load': { type: 'boolean' }, 'load-runs': { type: 'string' } } });
+			const { values } = parseArgs({ args: rest, options: { new: { type: 'string' }, route: { type: 'string', multiple: true }, limit: { type: 'string' }, 'new-source': { type: 'string' }, build: { type: 'string' }, ui: { type: 'string' }, 'no-load': { type: 'boolean' }, 'load-runs': { type: 'string' }, 'load-cpu': { type: 'string' }, 'psi-key': { type: 'string' }, 'psi-runs': { type: 'string' }, 'no-psi': { type: 'boolean' } } });
 			if (!values.new) fail('upgrade needs --new <origin>, the migrated site');
 			const newSource = resolve(values['new-source'] ?? cwd);
 			const inventory = await readInventory(cwd);
