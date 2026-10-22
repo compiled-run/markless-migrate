@@ -4,7 +4,7 @@ import type { SideEnv } from './browser.ts';
 import { readPage } from './collect.ts';
 import { loopKeys, settleAndHoldLoops } from './loops.ts';
 import { HINTS } from './hints.ts';
-import { describeTarget, locate, openSession, pool, type RecordedJourney, type Target } from './journeys.ts';
+import { cycleLabel, describeTarget, locate, openSession, pool, type CycleAct, type RecordedJourney, type Target } from './journeys.ts';
 import { checkCanvases, type CanvasComparison } from './motion-canvas.ts';
 import { describe, matchElements } from './match.ts';
 import { describeRule, type CssRule } from './stylesheet.ts';
@@ -17,6 +17,8 @@ export interface MotionOptions {
 	readonly maxHovers?: number;
 	/** At most this many opened dialogs, menus and popups dismissed with Escape per route, so their exit is recorded; default 16. */
 	readonly maxDismissals?: number;
+	/** At most this many uses of a control after its journey (closing what it opened, opening it again) per route, so a disclosure's exit is recorded; default 24. */
+	readonly maxCycles?: number;
 	/** The old stylesheets' rules that declare a transition or an animation, to list those no recorded interaction ran. */
 	readonly rules?: readonly { readonly selector: string; readonly label: string }[];
 }
@@ -104,6 +106,7 @@ export interface MotionResult {
 const DEFAULT_MAX_INTERACTIONS = 40;
 const DEFAULT_MAX_HOVERS = 24;
 const DEFAULT_MAX_DISMISSALS = 16;
+const DEFAULT_MAX_CYCLES = 24;
 const CONCURRENCY = 4;
 const FRAMES = 5;
 const LIMIT = 20;
@@ -196,7 +199,8 @@ function armMotion(pause: boolean): void {
 				if (duration !== undefined && delay !== undefined) rules.set(a, { duration, delay });
 			}
 		}
-		if (pausing && end(a) !== undefined && a.playState === 'running') {
+		// A scroll-driven animation moves with the scroll position, not the clock: it is neither paused nor seeked.
+		if (pausing && end(a) !== undefined && a.playState === 'running' && a.timeline === document.timeline) {
 			a.pause();
 			paused.push(a);
 			heldAt.set(a, clock);
@@ -397,8 +401,11 @@ async function records(page: Page, earlier: readonly ElementSnapshot[] = [], sel
 
 type Learned = SideEnv & { readonly loops: readonly string[] };
 
-/** A journey to record; `dismiss`: after all its steps, Escape is pressed where focus is, and that is the interaction recorded. */
-type MotionJourney = RecordedJourney & { readonly dismiss?: boolean };
+/**
+ * A journey to record; `dismiss`: after all its steps, Escape is pressed where focus is, and that is the interaction
+ * recorded; `act`: after all its steps and the cycle acts before this one, cycle act `act` is the interaction recorded.
+ */
+type MotionJourney = RecordedJourney & { readonly dismiss?: boolean; readonly act?: number };
 
 async function dismiss(page: Page): Promise<{ failed?: string; navigated: boolean }> {
 	const path = new URL(page.url()).pathname;
@@ -444,15 +451,20 @@ async function recordJourney(browser: Browser, env: Learned, route: string, view
 	const session = await openSession(browser, env, route, viewport, { loops: { known: env.loops } });
 	try {
 		const steps = journey.steps;
-		for (const step of journey.dismiss ? steps : steps.slice(0, -1)) {
+		const acted = journey.act !== undefined;
+		for (const step of journey.dismiss || acted ? steps : steps.slice(0, -1)) {
 			const r = await session.run(step);
+			if (r.failed) return { interaction: journey.name, motions: [], failed: r.failed };
+		}
+		for (const act of acted ? (journey.cycle ?? []).slice(0, journey.act) : []) {
+			const r = await session.cycle(steps, act);
 			if (r.failed) return { interaction: journey.name, motions: [], failed: r.failed };
 		}
 		await settleAndHoldLoops(session.page);
 		// What the step hides when its exit ends (a dialog leaving) can be gone before the page is read after it.
 		const before = await shown(session.page);
 		await session.page.evaluate(armMotion, film !== undefined);
-		const result = journey.dismiss ? await dismiss(session.page) : await session.run(steps.at(-1)!);
+		const result = journey.dismiss ? await dismiss(session.page) : acted ? await session.cycle(steps, journey.cycle![journey.act!]!) : await session.run(steps.at(-1)!);
 		if (result.failed) return { interaction: journey.name, motions: [], failed: result.failed };
 		if (result.navigated) return { interaction: journey.name, motions: [], navigated: true };
 		const earlier = await shown(session.page);
@@ -734,6 +746,22 @@ export function motionDismissals(journeys: readonly RecordedJourney[]): MotionJo
 	return out;
 }
 
+const inPlace = (act: CycleAct) => act === 'again' || act === 'reopen' || act === 'escape' || (typeof act === 'object' && ('use' in act || 'outside' in act));
+
+/** Each use of a journey's control after its steps that stays on the page (the second use of a disclosure's trigger, which closes it, and the third, which opens it again), up to the first one that leaves or reloads it. */
+export function motionCycles(journeys: readonly RecordedJourney[]): MotionJourney[] {
+	const out: MotionJourney[] = [];
+	for (const j of journeys) {
+		if (j.destructive || j.expected.length < j.steps.length) continue;
+		for (const [i, act] of (j.cycle ?? []).entries()) {
+			const r = j.expected[j.steps.length + i];
+			if (!inPlace(act) || !r || r.failed || r.navigated || r.writes?.some((w) => !w.sent)) break;
+			out.push({ ...j, name: `${j.name} (${cycleLabel(j.steps.length, j.cycle!, i)})`, act: i });
+		}
+	}
+	return out;
+}
+
 /** Journeys whose last step stays on the page: their motion is recorded. */
 export function motionJourneys(journeys: readonly RecordedJourney[]): { take: RecordedJourney[]; skipped: string[] } {
 	const take: RecordedJourney[] = [];
@@ -766,6 +794,9 @@ export async function checkMotion(browser: Browser, envs: { readonly old: SideEn
 	const dismissCap = options.maxDismissals ?? DEFAULT_MAX_DISMISSALS;
 	const dismissals = motionDismissals(journeys).filter((d) => !take.slice(0, cap).some((t) => t.name.startsWith(d.name)));
 	for (const j of dismissals.slice(dismissCap)) skipped.push(`${j.name}: past the ${dismissCap} dismissals recorded per route`);
+	const cycleCap = options.maxCycles ?? DEFAULT_MAX_CYCLES;
+	const cycles = motionCycles(take.slice(0, cap));
+	for (const j of cycles.slice(cycleCap)) skipped.push(`${j.name}: past the ${cycleCap} repeated uses recorded per route`);
 	const [oldLearned, newLearned] = await Promise.all([learnLoops(browser, motionEnv(envs.old, false), route, viewport), learnLoops(browser, motionEnv(envs.new, false), route, viewport)]);
 	const [oldLoops, newLoops] = [oldLearned.loops, newLearned.loops];
 	const [oldEnv, newEnv] = [{ ...motionEnv(envs.old, false), loops: oldLoops }, { ...motionEnv(envs.new, false), loops: newLoops }];
@@ -775,7 +806,7 @@ export async function checkMotion(browser: Browser, envs: { readonly old: SideEn
 	const name = viewport.name;
 	const selectors = (options.rules ?? []).map((r) => r.selector);
 	const hit = new Set<number>();
-	const interactions = await pool([...take.slice(0, cap), ...dismissals.slice(0, dismissCap)], CONCURRENCY, async (journey): Promise<MotionInteraction & { failures: Failure[] }> => {
+	const interactions = await pool([...take.slice(0, cap), ...dismissals.slice(0, dismissCap), ...cycles.slice(0, cycleCap)], CONCURRENCY, async (journey): Promise<MotionInteraction & { failures: Failure[] }> => {
 		const old = await recordJourney(browser, oldEnv, route, viewport, journey, 'self', selectors);
 		const next = await recordJourney(browser, newEnv, route, viewport, journey, old.film ?? 'self');
 		for (const i of old.hits ?? []) hit.add(i);

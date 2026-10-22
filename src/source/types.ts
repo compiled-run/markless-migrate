@@ -92,6 +92,9 @@ export interface Redirect {
 	to: string;
 	file: string;
 	line: number;
+	/** A rewrite serves `to` at `from` without the browser seeing it; a redirect answers 308 (permanent) or 307. */
+	kind?: 'redirect' | 'rewrite';
+	permanent?: boolean;
 }
 
 export interface PlanStep {

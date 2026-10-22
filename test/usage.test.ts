@@ -154,3 +154,16 @@ test('a JavaScript-only library is a kept library with its own checks, never a f
 	assert.ok(usage.behaviours.some((b) => b.library === 'chart.js' && b.feature === 'new Chart'), 'the page\'s own call into it is listed');
 	assert.match(summarizeUsage(usage, []), /Kept libraries \(JavaScript only, kept as they are; .*\): chart\.js/);
 });
+
+test("a minified chunk binding $ is not jQuery, and a page framework's own build chunks are its code, not plain scripts", async () => {
+	assert.deepEqual(analyseScript('function f($){ return $("x") }').effects, [], 'a parameter named $ is the script\'s own');
+	assert.equal(analyseScript('jQuery(".a").hide()').effects[0]?.kind, 'library-call', 'the jQuery global is still a use');
+	const dir = await mkdtemp(join(tmpdir(), 'mm-usage-'));
+	await mkdir(join(dir, 'built', '_next', 'static'), { recursive: true });
+	await writeFile(join(dir, 'built', '_next', 'static', 'chunk.js'), 'document.addEventListener("keydown", () => {})');
+	await writeFile(join(dir, 'built', 'own.js'), 'document.addEventListener("keydown", () => {})');
+	await writeFile(join(dir, 'built', 'index.html'), '<html><body><script src="/_next/static/chunk.js"></script><script src="/own.js"></script><script>(self.__next_f=self.__next_f||[]).push([0])</script></body></html>');
+	const usage = await scanUsage({ built: join(dir, 'built'), routes: ['/'] });
+	assert.equal(usage.scripts.find((s) => s.script.endsWith('/_next/static/chunk.js'))?.runtime, 'Next.js build');
+	assert.equal(usage.scripts.find((s) => s.script.endsWith('/own.js'))?.effects, 1, 'a script outside the build is still read');
+});

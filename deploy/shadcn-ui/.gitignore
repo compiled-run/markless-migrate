@@ -1,0 +1,7 @@
+old/
+.build.log
+.vercel
+front/.vercel/
+front/public/_migrate/report.*
+front/public/_migrate/shots/
+old-deploy/

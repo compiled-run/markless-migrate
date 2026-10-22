@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { convert, summarizeConvert } from './convert/index.ts';
 import { readOverrides, rulesOff } from './overrides.ts';
 import { readFile, writeFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline/promises';
@@ -75,6 +76,16 @@ const USAGE = `markless-migrate ${VERSION}
           checks each must pass in .migrate/obligations.json. Another framework's runtime is never
           kept: what the pages use of it is implemented in Markless. Only static assets (CSS, fonts,
           images, SVG, media) are copied byte for byte.
+  convert --old <origin> [--source <path>] [--only <file of routes>] [--fallthrough <old deployment>] [--no-reveal] [--concurrency <n>]
+          Turn every planned HTML route into a Markless page in the current app: each page as a visitor's
+          browser holds it once settled (loaded as check loads it), without the old framework's runtime;
+          shared regions (header, sidebar, footer) as components; what controls reveal (menus, dialogs,
+          tab panels) captured from the old page as inert templates; the library parts the old source
+          renders (from .migrate/usage.json) bound to Markless ports of those libraries, delegated from
+          each page's root; static assets copied byte for byte. With --source, the old config's
+          redirects and rewrites and its route handlers answer through a generated Nitro middleware.
+          Writes .migrate/convert/report.json: what was left out and why, the shared components, the
+          endpoints and how each is answered, and the library parts no port implements yet.
 ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--json] [--open]
           [--source <path>] [--data record|replay] [--staging] [--block <host>]... [--allow <host>]...
           [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
@@ -96,8 +107,8 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           --route checks only the routes named, for iterating: such a run (and --changed) is a partial
           run, "partial run: N of M routes", never overall green; it exits 4 when what it checked is green.
           Above ${TEMPLATE_THRESHOLD} pages, every page gets every check except visual, behaviour,
-          responsiveness and motion, which run on one representative per template group (grouped by URL pattern
-          and page layout); the report lists the groups. --every-dimension runs them on every page.
+          responsiveness and motion, which run on one representative per template group (grouped by URL pattern,
+          page layout and the kinds of control each page renders); the report lists the groups. --every-dimension runs them on every page.
           Every interactive element of the old page (including those a click reveals, such as a
           dialog's controls) must be used by a journey, or the route stays red: journeys are explored main content first (tables, forms), until each element is used or
           --journey-budget (default 120 s per route) runs out; --max-journeys caps their number and
@@ -119,7 +130,8 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           once, and every timed page gets it --network-latency (default 40 ms) after asking, so the
           times compare the apps, not the hosts; each page's server time is reported apart.
           --no-responsiveness leaves it out.
-          Motion: the last step of every journey that stays on the page is replayed old then new with
+          Motion: the last step of every journey that stays on the page, and each later use of its control
+          that stays there too (the second click that closes what the first opened), is replayed old then new with
           motion allowed, recording each transition and animation it starts (element, properties,
           duration, delay, easing, iterations) and frames at fixed offsets across the longest one; an
           animation missing on new (it jumps), timed differently (beyond max(20 ms, 10%)) or only on new
@@ -849,6 +861,14 @@ async function main(argv: string[]): Promise<number> {
 			await writeFile(join(cwd, STATE_DIR, CLI_REPORT), `${JSON.stringify(report, null, '\t')}\n`);
 			out(values.json ? `${JSON.stringify(report, null, '\t')}\n` : `${summarizeCli(report)}Wrote ${join(cwd, STATE_DIR, CLI_REPORT)}\n`);
 			return report.ok ? 0 : 1;
+		}
+		case 'convert': {
+			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, source: { type: 'string' }, only: { type: 'string' }, fallthrough: { type: 'string' }, 'no-reveal': { type: 'boolean' }, concurrency: { type: 'string' } } });
+			if (!values.old) fail('convert needs --old <origin>');
+			const only = values.only ? (await readFile(resolve(values.only), 'utf8')).split('\n').map((l) => l.trim()).filter(Boolean) : undefined;
+			const report = await convert({ old: values.old, app: cwd, ...(values.source ? { source: resolve(values.source) } : {}), ...(only ? { only } : {}), ...(values.fallthrough ? { fallthrough: values.fallthrough } : {}), reveal: !values['no-reveal'], ...(values.concurrency ? { concurrency: Number(values.concurrency) } : {}), log: (line) => out(`${line}\n`) });
+			out(`${summarizeConvert(report)}Wrote ${join(cwd, STATE_DIR, 'convert', 'report.json')}\n`);
+			return report.routes.length ? 0 : 1;
 		}
 		case 'usage': {
 			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, built: { type: 'string' }, source: { type: 'string' }, 'new-source': { type: 'string' }, json: { type: 'boolean' }, route: { type: 'string', multiple: true } } });

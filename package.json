@@ -31,6 +31,8 @@
 		"graphql": "^17.0.2",
 		"lighthouse": "12.8.2",
 		"oxc-parser": "0.154.0",
+		"parse5": "^7.3.0",
+		"path-to-regexp": "6.3.0",
 		"pixelmatch": "^8.0.0",
 		"playwright": "^1.64.1",
 		"pngjs": "^7.0.0",
