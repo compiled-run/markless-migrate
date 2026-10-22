@@ -678,7 +678,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			for (const route of endpoints) routes.push(asRole(await checkEndpoint(roleRun, route).catch(unreachable(route)), role));
 			for (const route of redirects) routes.push(asRole(await checkRedirect(roleRun, route).catch(unreachable(route)), role));
 		}
-		if (options.load || options.only === 'load') {
+		if ((options.load && options.only !== 'embeds') || options.only === 'load') {
 			const anonymous = (r: RouteResult) => !r.role || r.role === ANONYMOUS;
 			const loadable = routes.filter((r) => anonymous(r) && !r.endpoint && !r.blocked && !r.infrastructure && !r.notPorted && !light(r.route) && allPages.includes(r.route));
 			// Lighthouse can only send extra headers to every host it loads, so a bypass token is never handed to it.

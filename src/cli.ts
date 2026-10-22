@@ -634,8 +634,10 @@ async function run(args: string[], cwd: string): Promise<number> {
 				if (page && !network.length) {
 					const guard = await guardPages({ old, new: next, routes: [route], allow: await readAllowances(stateDir), ...(bypass.headers ? { headers: bypass.headers } : {}) });
 					summary += guard.text;
-					guarded &&= guard.ok;
-					open.push(...guard.findings.filter((f) => f.red).map((f) => `guard: ${f.kind} ${f.subject}`));
+					// A run scoped to page load or the embeds is held to the guard's foreign-runtime findings alone; the full check holds the rest.
+					const gating = guard.findings.filter((f) => f.red && (!values.only || /runtime/.test(f.kind)));
+					guarded &&= values.only ? gating.length === 0 : guard.ok;
+					open.push(...gating.map((f) => `guard: ${f.kind} ${f.subject}`));
 				}
 				const plan = page ? await readCachingPlan(stateDir) : undefined;
 				const regressions = plan ? await cachingRegressions(plan, newSource ?? cwd, plan.routes.map((r) => r.route)) : [];
