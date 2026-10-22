@@ -240,7 +240,21 @@ function liveBoxes(): { width: number; boxes: Box[] } {
 	}) };
 }
 
-export async function stateShot(side: Side, index: number, state: EmbedState, ms: number): Promise<{ png: Buffer; box: Box; live: Box[] } | undefined> {
+/** Runs in the page: whether the marked embed is drawn at all: visible, and not clipped away by an ancestor that hides its overflow. Must stay self-contained. */
+function drawn(): boolean {
+	const el = document.querySelector('[data-markless-migrate-target]');
+	if (!el || !el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return false;
+	const r = el.getBoundingClientRect();
+	for (let up = el.parentElement; up; up = up.parentElement) {
+		const s = getComputedStyle(up);
+		if (s.overflowX === 'visible' && s.overflowY === 'visible') continue;
+		const c = up.getBoundingClientRect();
+		if (r.right <= c.left || r.left >= c.right || r.bottom <= c.top || r.top >= c.bottom) return false;
+	}
+	return true;
+}
+
+export async function stateShot(side: Side, index: number, state: EmbedState, ms: number): Promise<{ png: Buffer; box: Box; live: Box[]; drawn: boolean } | undefined> {
 	if (!(await settleEmbed(side, index, ms))) return undefined;
 	if (state === 'focus' && !(await focusInside(side, index))) return undefined;
 	const box = await regionOf(side, index);
@@ -253,12 +267,13 @@ export async function stateShot(side: Side, index: number, state: EmbedState, ms
 	const png = await shoot(side, index);
 	if (!png) return undefined;
 	const found = await side.page.evaluate(liveBoxes);
+	const visible = await side.page.evaluate(drawn).catch(() => true);
 	// The picture is in device pixels, scaled again on a zoomed-out phone page: the boxes follow it.
 	const scale = png.readUInt32BE(16) / found.width;
 	const live = found.boxes.map((b) => ({ x: Math.round(b.x * scale), y: Math.round(b.y * scale), width: Math.round(b.width * scale), height: Math.round(b.height * scale) }));
 	await side.page.mouse.move(0, 0);
 	await side.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-	return { png, box, live };
+	return { png, box, live, drawn: visible };
 }
 
 async function mediaPlaying(page: Page, frames: readonly string[]): Promise<boolean> {
@@ -398,8 +413,8 @@ export async function checkEmbeds(browser: Browser, envs: { readonly old: SideEn
 							failures.push({ route, dimension: 'visual', check: `embed ${result.name} ${scheme} ${state}`, viewport: viewport.name, expected: `the old embed ${state === 'focus' ? 'takes keyboard focus' : 'shows'}`, actual: state === 'focus' ? 'nothing inside the new one takes keyboard focus' : 'the new page has nothing in its place', hint: HINT_VISUAL });
 							continue;
 						}
-						// An embed with a box but nothing drawn on either side (inside a collapsed phone menu) shows the same: nothing.
-						if (blank(a.png) && blank(c.png) && blank(a.png) === blank(c.png)) {
+						// An embed with a box but drawn nowhere on either side (inside a collapsed phone menu) shows the same: nothing.
+						if ((!a.drawn && !c.drawn) || (blank(a.png) && blank(a.png) === blank(c.png))) {
 							result.visual.push({ viewport: viewport.name, scheme, state, differing: 0, area: 0, ok: true });
 							continue;
 						}
