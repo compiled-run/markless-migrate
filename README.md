@@ -194,7 +194,9 @@ page:
 - **Write.** `run` gives the agent each embed's study and plan. A provider with a pre-built adapter (the result of
   this loop, kept for every site) is installed with `markless-migrate embeds install <adapter>`, which copies a
   certified component into `lib/embeds/` and its data into `lib/embeds/data.json`. Any other provider (Bunny
-  Stream, a GitHub Sponsors button) gets a component the agent writes from the study.
+  Stream, a GitHub Sponsors button) gets a component the agent writes from the study. `run --only embeds` (and
+  `check --only embeds`) compares the embeds alone and asks the agent for changes to them and what puts them in
+  place alone, so a site's other differences cannot pull it off course.
 - **Check.** The embed step of `check` (on by default; `--no-embeds` leaves it out) compares every old embed
   with what the new page has in its place, a component marked `data-markless-embed="<id>"` or the same embed kept:
   pixel for pixel at rest, hovered and focused, at desktop and mobile in light and dark, with two old loads giving
