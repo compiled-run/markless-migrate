@@ -198,7 +198,8 @@ export function comparePages(old: PageCapture, again: PageCapture | undefined, n
 			onlyNew.push(s);
 		}
 	}
-	const tag = (s: Styled) => s.key.replace(/[#.].*$/, '').replace(/^.* >> /, '');
+	// The element's own tag: the key's last part (after its shadow host and the ancestor that names it), before its id and classes.
+	const tag = (s: Styled) => s.key.split(' >> ').at(-1)!.split(' ').at(-1)!.replace(/[#.].*$/, '');
 	for (const s of onlyOld) {
 		// A frame's inline style carried by the Markless component that stands in for it (data-markless-embed) is the same style in the same place.
 		const standIn = /^(iframe|embed|object|video)$/.test(tag(s)) ? onlyNew.findIndex((n) => n.embed && n.style === s.style) : -1;
