@@ -40,7 +40,8 @@ test('every embed on a page is found by its frame address, its placeholder or fa
 	]);
 	const star = byId.get('github-button-bigskysoftware-htmx-star')!;
 	assert.deepEqual([star.form, star.adapter, star.url, star.keep], ['script', 'github-button', 'https://github.com/bigskysoftware/htmx', undefined]);
-	assert.equal(byId.get('youtube-EKvvptbTx6k')!.form, 'iframe');
+	assert.deepEqual([byId.get('youtube-EKvvptbTx6k')!.form, byId.get('youtube-EKvvptbTx6k')!.adapter], ['iframe', 'youtube']);
+	assert.equal(byId.get('youtube-_An9EsKPhp0')!.adapter, undefined, 'a facade keeps its own look');
 	assert.equal(byId.get('youtube-_An9EsKPhp0')!.form, 'facade', 'react-lite-youtube-embed markup is a facade the old site already uses');
 	assert.equal(byId.get('youtube-bmWQqAKLgT4')!.keep?.reason, 'autoplay', 'the /live player plays at load and the page drives it');
 	assert.equal(byId.get('twitter-1234567890')!.url, 'https://twitter.com/someone/status/1234567890?ref_src=twsrc');

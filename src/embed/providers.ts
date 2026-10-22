@@ -26,6 +26,7 @@ export const PROVIDERS: readonly Provider[] = [
 		},
 		slot: { selector: 'lite-youtube, article.yt-lite, .yt-lite[data-title]' },
 		data: 'https://www.youtube.com/oembed?format=json&url={url}',
+		adapter: 'youtube',
 		terms: { study: true, note: 'YouTube\'s oEmbed endpoint gives the title, channel and thumbnail; the player is loaded unchanged on activation, as lite-youtube-embed does', url: 'https://developers.google.com/youtube/terms/api-services-terms-of-service' },
 	},
 	{

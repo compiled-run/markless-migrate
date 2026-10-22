@@ -4,6 +4,7 @@ import { join, relative } from 'node:path';
 import { embedData, type EmbedData } from '../data.ts';
 import type { EmbedUse } from '../types.ts';
 import { GITHUB_BUTTON } from './github-button/adapter.ts';
+import { YOUTUBE } from './youtube/adapter.ts';
 
 /** A pre-built Markless component for one provider's embeds: the result of the study, write and check loop, kept for every site. */
 export interface EmbedAdapter {
@@ -13,6 +14,8 @@ export interface EmbedAdapter {
 	readonly module: string;
 	readonly component: string;
 	readonly files: readonly string[];
+	/** Files the app serves as they are (a font and its licence), copied into public/embeds/<adapter>/. */
+	readonly publicFiles?: readonly string[];
 	/** The site and check that certify it: old and new compared by the embed step. */
 	readonly certifiedBy: string;
 	readonly notes: readonly string[];
@@ -20,7 +23,7 @@ export interface EmbedAdapter {
 	props(use: EmbedUse, data: EmbedData): Record<string, unknown>;
 }
 
-export const ADAPTERS: Readonly<Record<string, EmbedAdapter>> = { [GITHUB_BUTTON.id]: GITHUB_BUTTON };
+export const ADAPTERS: Readonly<Record<string, EmbedAdapter>> = { [GITHUB_BUTTON.id]: GITHUB_BUTTON, [YOUTUBE.id]: YOUTUBE };
 
 /** Where the shipped adapters' files are. */
 export const ADAPTERS_DIR = new URL('.', import.meta.url).pathname;
@@ -53,6 +56,14 @@ export async function installAdapter(adapter: EmbedAdapter, uses: readonly Embed
 		}
 		await writeFile(target, stamped(adapter, name, source));
 		written.push(relative(app, target));
+	}
+	if (adapter.publicFiles?.length) {
+		const pub = join(app, 'public', 'embeds', adapter.dir);
+		await mkdir(pub, { recursive: true });
+		for (const name of adapter.publicFiles) {
+			await writeFile(join(pub, name), await readFile(join(ADAPTERS_DIR, adapter.dir, name)));
+			written.push(relative(app, join(pub, name)));
+		}
 	}
 	const dataPath = join(app, EMBEDS_APP_DIR, 'data.json');
 	const all = JSON.parse(await readFile(dataPath, 'utf8').catch(() => '{}')) as Record<string, unknown>;

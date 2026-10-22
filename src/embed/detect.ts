@@ -57,7 +57,7 @@ function use(provider: Provider, form: EmbedForm, key: string, el: HtmlElement, 
 		loaders,
 		element: describe(el),
 		attributes: attributesOf(el),
-		...(provider.adapter && !keep ? { adapter: provider.adapter } : {}),
+		...(provider.adapter && !keep && form !== 'facade' ? { adapter: provider.adapter } : {}),
 		...(keep ? { keep } : {}),
 		terms: provider.terms,
 		site: { route, element: describe(el), line: el.line },
@@ -163,6 +163,7 @@ export class EmbedUses {
 export function embedPlan(use: Pick<EmbedUse, 'form' | 'adapter' | 'keep' | 'providerName'>): string {
 	if (use.keep) return `keep as it is: ${use.keep.why}; upgrade measures what it costs`;
 	if (use.form === 'markup') return 'already static markup: port it as page markup';
+	if (use.form === 'facade') return `the old site already draws a click-to-load ${use.providerName} facade: port its markup as it is and make activating it do what it does (load the player in its place, playing)`;
 	if (use.adapter) return `use the pre-built ${use.adapter} component (markless-migrate embeds install ${use.adapter}), then check it against the old embed`;
 	return `write a Markless component for this ${use.providerName} embed from its study (markless-migrate embeds), then check it against the old embed`;
 }
