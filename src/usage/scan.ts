@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { classifyScript, RUNTIME_NAMES } from '../client/classify.ts';
 import { request } from '../check/http.ts';
 import type { LibrariesFile, LibraryUsage } from '../library/types.ts';
+import { EmbedUses, detectEmbeds } from '../embed/detect.ts';
+import { writeEmbeds } from '../embed/file.ts';
 import { Behaviours, pageBehaviours, scriptBehaviours, type ScriptRef } from './behaviours.ts';
 import { parseHtml } from './html.ts';
 import { obligationsFor } from './obligations.ts';
@@ -102,6 +104,7 @@ export async function scanUsage(options: UsageOptions): Promise<UsageInventory> 
 	const into = new Behaviours();
 	const limits: string[] = [];
 	const scriptsByKey = new Map<string, { ref: ScriptRef; routes: Set<string> }>();
+	const embedUses = new EmbedUses();
 	let pages = 0;
 	const builtBy = new Map<string, string>();
 	await pool(options.routes, options.concurrency ?? 6, async (route) => {
@@ -109,7 +112,10 @@ export async function scanUsage(options: UsageOptions): Promise<UsageInventory> 
 		if (html === undefined) return;
 		pages++;
 		const builds = frameworkBuilds(html);
-		for (const ref of pageBehaviours(parseHtml(html), route, into)) {
+		const elements = parseHtml(html);
+		const found = detectEmbeds(elements, route, options.origin);
+		embedUses.add(found, route);
+		for (const ref of pageBehaviours(elements, route, into, found)) {
 			const key = ref.src ? new URL(ref.src, options.origin ?? 'http://built.invalid').href : `inline:${sha8(ref.text ?? '')}`;
 			const path = ref.src ? new URL(key).pathname : undefined;
 			const build = path ? builds.find((b) => b.path.test(path)) : undefined;
@@ -189,17 +195,19 @@ export async function scanUsage(options: UsageOptions): Promise<UsageInventory> 
 		behaviours,
 		obligations,
 		scripts: scripts.sort((a, b) => a.script.localeCompare(b.script)),
+		embeds: embedUses.list(),
 		limits,
 	};
 }
 
-export async function writeUsage(inventory: UsageInventory, stateDir: string): Promise<{ usage: string; obligations: string }> {
+export async function writeUsage(inventory: UsageInventory, stateDir: string): Promise<{ usage: string; obligations: string; embeds: string }> {
 	await mkdir(stateDir, { recursive: true });
 	const usage = join(stateDir, USAGE_FILE);
 	const obligations = join(stateDir, OBLIGATIONS_FILE);
 	await writeFile(usage, `${JSON.stringify(inventory, null, '\t')}\n`);
 	await writeFile(obligations, `${JSON.stringify({ version: 1, generatedAt: inventory.generatedAt, obligations: inventory.obligations }, null, '\t')}\n`);
-	return { usage, obligations };
+	const embeds = await writeEmbeds({ version: 1, generatedAt: inventory.generatedAt, embeds: inventory.embeds ?? [] }, stateDir);
+	return { usage, obligations, embeds };
 }
 
 export async function readUsage(stateDir: string): Promise<UsageInventory | undefined> {

@@ -1,3 +1,4 @@
+import { embedPlan } from '../embed/detect.ts';
 import { isCheckable, MECHANISMS } from './obligations.ts';
 import type { Behaviour, Coverage, Implementation, Obligation, UsageInventory } from './types.ts';
 
@@ -39,6 +40,11 @@ export function summarizeUsage(inventory: UsageInventory, implemented: readonly 
 	if (kept.length) lines.push(`  Kept libraries (JavaScript only, kept as they are; the upgrade step measures them after the migration): ${[...new Set(kept.map((s) => s.runtime!.slice('kept library '.length)))].join(', ')}`);
 	const others = inventory.scripts.filter((s) => s.runtime?.startsWith('third-party '));
 	if (others.length) lines.push(`  Other sites' scripts (embeds): ${[...new Set(others.map((s) => s.runtime!.slice('third-party '.length)))].join(', ')}`);
+	if (inventory.embeds?.length) {
+		lines.push(`  Third-party embeds (${inventory.embeds.length}; per route and with each one's study in markless-migrate embeds):`);
+		for (const e of inventory.embeds.slice(0, detail)) lines.push(`    ${e.id}: ${e.providerName} (${e.form}) on ${e.routes.slice(0, 3).join(', ')}${e.routes.length > 3 ? ` and ${e.routes.length - 3} more` : ''} -> ${embedPlan(e)}`);
+		if (inventory.embeds.length > detail) lines.push(`    ... ${inventory.embeds.length - detail} more in embeds.json`);
+	}
 	for (const l of c.byLibrary.slice(0, 16)) lines.push(`  ${l.library.padEnd(28)} used ${String(l.used).padStart(3)}  implemented ${String(l.implemented).padStart(3)}  checked ${String(l.checked).padStart(3)}`);
 	if (c.byLibrary.length > 16) lines.push(`  ... ${c.byLibrary.length - 16} more libraries in usage.json`);
 	const missing = new Map(implemented.filter((i) => i.status === 'unimplemented').map((i) => [i.behaviour, i]));

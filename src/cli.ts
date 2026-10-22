@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 import { convert, summarizeConvert } from './convert/index.ts';
 import { readOverrides, rulesOff } from './overrides.ts';
+import { EMBEDS_DIR, EMBEDS_FILE, readEmbeds } from './embed/file.ts';
+import { ADAPTERS, installAdapter } from './embed/adapters/index.ts';
+import { describeActivation } from './embed/check.ts';
+import { embedBrief, embedsByRoute } from './embed/detect.ts';
+import { studyEmbed } from './embed/study.ts';
 import { readFile, writeFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline/promises';
 import { dirname, join, resolve } from 'node:path';
@@ -20,7 +25,10 @@ import { jsonReport, runCheck, writeReport, type CheckOptions } from './check/ru
 import { loadSourceFacts } from './check/source-facts.ts';
 import { partialLine, summarize } from './check/summary.ts';
 import { TEMPLATE_THRESHOLD } from './check/templates.ts';
+import { chromium } from 'playwright';
 import { defaultEnv } from './check/browser.ts';
+import { DEFAULT_FREEZE } from './check/freeze.ts';
+import { VIEWPORTS } from './check/types.ts';
 import { discoverEndpoints, redirectTargets, UNKNOWN_PATH } from './check/endpoints.ts';
 import { readSamples, routeTargets } from './plan/routes.ts';
 import { writeStarterAuth } from './plan/auth.ts';
@@ -92,7 +100,7 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
           [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--timeout <seconds>]
-          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-cache] [--resume]
+          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-cache] [--resume]
           [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>] [--no-load] [--load-runs <n>] [--load-cpu calibrated|<n>]
           [--psi-key <key>] [--psi-runs <n>] [--no-psi]
           Compare routes old vs new (default: every route of the old site plan listed). Exits 1 when any is red.
@@ -332,6 +340,7 @@ const TIMING_FLAGS = {
 	'network-latency': { type: 'string' },
 	'interaction-controls': { type: 'string' },
 	'no-motion': { type: 'boolean' },
+	'no-embeds': { type: 'boolean' },
 	'no-navigation': { type: 'boolean' },
 	'no-load': { type: 'boolean' },
 	'load-runs': { type: 'string' },
@@ -589,7 +598,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 			context: { ...(source ? { source } : {}), ...(newSource ? { newSource } : {}), ...(values.auth ? { auth: resolve(values.auth) } : {}), flags: [...(values.header ?? []).flatMap((h) => ['--header', h]), ...(values.cookie ?? []).flatMap((c) => ['--cookie', c]), ...(values['journey-budget'] ? ['--journey-budget', values['journey-budget']] : []), ...(values['max-journeys'] ? ['--max-journeys', values['max-journeys']] : []), ...(values['journey-depth'] ? ['--journey-depth', values['journey-depth']] : []), ...timingFlags(values), ...(values.only ? ['--only', values.only] : [])] },
 			...(server ? { server, serving: { ...(values.build ? { build: values.build } : {}), ...(values['restart-on'] ? { restartOn: values['restart-on'] } : {}) } } : {}),
 			progress: out,
-			...(usage ? { notes: async (route: string) => routeBrief(usage, await implementedNow(), route) } : {}),
+			...(usage ? { notes: async (route: string) => [routeBrief(usage, await implementedNow(), route), embedBrief(usage.embeds ?? [], route, join(stateDir, EMBEDS_DIR), [mcp.command, ...mcp.args.slice(0, -1)].join(' '))].filter(Boolean).join('\n\n') || undefined } : {}),
 			check: async (route) => {
 				const report = await runCheck({
 					oldOrigin: old,
@@ -607,6 +616,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 					...deadline,
 					...(timing ? { responsiveness: timing } : {}),
 				...(values['no-motion'] ? {} : { motion: {} }),
+				...(values['no-embeds'] ? {} : { embeds: { dir: join(stateDir, EMBEDS_DIR) } }),
 					...(navigation ? { navigation } : {}),
 					...(load ? { load } : {}),
 					...(values.only === 'load' ? { only: 'load' as const } : {}),
@@ -815,6 +825,7 @@ async function main(argv: string[]): Promise<number> {
 				...deadline,
 				...(timing ? { responsiveness: timing } : {}),
 				...(values['no-motion'] ? {} : { motion: {} }),
+				...(values['no-embeds'] ? {} : { embeds: { dir: join(cwd, STATE_DIR, EMBEDS_DIR) } }),
 				...(navigation ? { navigation } : {}),
 				...(load && !coverageOnly ? { load } : {}),
 				...(loadOnly ? { only: 'load' as const } : {}),
@@ -891,6 +902,43 @@ async function main(argv: string[]): Promise<number> {
 			const implemented = await implementations(inventory.behaviours, await readUsageMap(stateDir), resolve(values['new-source'] ?? cwd));
 			out(values.json ? `${JSON.stringify({ behaviours: inventory.behaviours.length, implemented, obligations: inventory.obligations.length }, null, '\t')}\n` : summarizeUsage(inventory, implemented, 20));
 			return 0;
+		}
+		case 'embeds': {
+			const [what = 'list', ...args] = rest[0]?.startsWith('-') ? ['list', ...rest] : rest;
+			const { values, positionals } = parseArgs({ args, allowPositionals: true, options: { old: { type: 'string' }, route: { type: 'string', multiple: true }, embed: { type: 'string', multiple: true }, 'new-source': { type: 'string' }, refresh: { type: 'boolean' }, json: { type: 'boolean' } } });
+			const stateDir = join(cwd, STATE_DIR);
+			const file = await readEmbeds(stateDir);
+			if (!file) fail(`no ${join(STATE_DIR, EMBEDS_FILE)}: run plan (or usage --old <origin>) first`);
+			const chosen = file.embeds.filter((e) => (!values.embed?.length || values.embed.includes(e.id)) && (!values.route?.length || e.routes.some((r) => values.route!.includes(r))));
+			if (what === 'list') {
+				out(values.json ? `${JSON.stringify(chosen, null, '\t')}\n` : embedsByRoute(chosen));
+				return 0;
+			}
+			if (what === 'study') {
+				const origin = values.old ?? (await readInventory(cwd))?.origin ?? (await readUsage(stateDir))?.origin;
+				if (!origin) fail('embeds study needs the old app: --old <origin>');
+				const browser = await chromium.launch();
+				try {
+					for (const use of chosen.filter((e) => e.form !== 'markup')) {
+						const ordinal = file.embeds.filter((e) => e.provider === use.provider && e.routes.includes(use.routes[0]!)).indexOf(use);
+						const study = await studyEmbed(browser, defaultEnv(origin, { freeze: DEFAULT_FREEZE }), use, VIEWPORTS, stateDir, Math.max(0, ordinal));
+						out(`${use.id}: ${study.found ? `${study.shots.length} pictures, ${study.markup ? 'markup and ' : ''}data${study.activation ? `; a click: ${describeActivation(study.activation)}` : ''}` : study.notes.join('; ')} -> ${join(STATE_DIR, EMBEDS_DIR, use.id, 'study.md')}\n`);
+					}
+				} finally {
+					await browser.close();
+				}
+				return 0;
+			}
+			if (what === 'install') {
+				const [name] = positionals;
+				const adapter = name ? ADAPTERS[name] : undefined;
+				if (!adapter) fail(`embeds install needs an adapter: ${Object.keys(ADAPTERS).join(', ')}`);
+				const app = resolve(values['new-source'] ?? cwd);
+				const result = await installAdapter(adapter, file.embeds.filter((e) => e.adapter === adapter.id && chosen.includes(e)), app, join(stateDir, EMBEDS_DIR), { refresh: Boolean(values.refresh) });
+				out(`${result.written.map((f) => `wrote ${f}`).join('\n')}\n${result.kept.map((f) => `kept ${f} (edited; the adapter is shared, so restore it)`).join('\n')}${result.kept.length ? '\n' : ''}${result.usage}\n`);
+				return 0;
+			}
+			fail(`embeds ${what}: use list, study or install`);
 		}
 		case 'guard': {
 			const [what, ...args] = rest;
