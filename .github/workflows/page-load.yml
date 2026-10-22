@@ -1,0 +1,63 @@
+name: Page load
+
+# Lighthouse mobile on a slow shared runner, old and new taken in turn, calibrated to PageSpeed Insights' reference
+# device from each run's benchmarkIndex, and real PageSpeed Insights beside it when the PSI_API_KEY secret is set.
+on:
+  workflow_dispatch:
+    inputs:
+      old:
+        description: Old site origin
+        required: true
+        default: https://vite.dev
+      new:
+        description: New site origin
+        required: true
+        default: https://vite-dev-markless.vercel.app
+      routes:
+        description: Routes, space-separated
+        required: true
+        default: /
+      runs:
+        description: Lighthouse runs a side
+        required: true
+        default: '9'
+  pull_request:
+    paths:
+      - .github/workflows/page-load.yml
+      - src/check/load.ts
+      - src/check/psi.ts
+
+permissions:
+  contents: read
+
+jobs:
+  load:
+    name: Page load (${{ inputs.old || 'https://vite.dev' }} vs ${{ inputs.new || 'https://vite-dev-markless.vercel.app' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Measure
+        env:
+          PSI_API_KEY: ${{ secrets.PSI_API_KEY }}
+          OLD: ${{ inputs.old || 'https://vite.dev' }}
+          NEW: ${{ inputs.new || 'https://vite-dev-markless.vercel.app' }}
+          ROUTES: ${{ inputs.routes || '/' }}
+          RUNS: ${{ inputs.runs || '9' }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/site" && cd "$RUNNER_TEMP/site"
+          args=()
+          for route in $ROUTES; do args+=(--route "$route"); done
+          status=0
+          node "$GITHUB_WORKSPACE/src/cli.ts" check --old "$OLD" --new "$NEW" "${args[@]}" --only load --load-runs "$RUNS" > summary.txt || status=$?
+          cat summary.txt
+          { echo '```'; cat summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          # 4 is a partial run that is green; 1 is a slower new site, which this workflow reports rather than fails on.
+          [ "$status" -eq 0 ] || [ "$status" -eq 1 ] || [ "$status" -eq 4 ] || exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: page-load
+          path: ${{ runner.temp }}/site/.migrate/report.json

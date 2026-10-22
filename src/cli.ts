@@ -5,6 +5,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline/promises';
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
+import { PSI_KEY_ENV, PSI_NOTICE, psiKey, userEnvFile } from './check/psi.ts';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { AGENTS, detectAgents, findBinary, type HostEnv, type ServerCommand } from './agents/registry.ts';
@@ -92,7 +93,8 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
           [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--timeout <seconds>]
           [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-cache]
-          [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>]
+          [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>] [--no-load] [--load-runs <n>] [--load-cpu calibrated|<n>]
+          [--psi-key <key>] [--psi-runs <n>] [--no-psi]
           Compare routes old vs new (default: every route of the old site plan listed). Exits 1 when any is red.
           Coverage: every route of the old site must exist on the new app, with the same status class
           and the same redirect target, or carry an accepted difference (accept <id>); each missing
@@ -144,6 +146,23 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           and console errors. A link that loads a new document is a fresh load already; a difference the
           old app shows too, reached the same way, is its own; <html> class and data-* attributes are
           compared with the old app's too. --no-navigation leaves it out.
+          Page load: after every other check, each page (one per template group) is measured as PageSpeed
+          Insights measures it, on the deployed URLs, and in a calibrated lab:
+          - PageSpeed Insights (mobile and desktop, --psi-runs a side, default 5, old and new in turn),
+            with the key in PSI_API_KEY or --psi-key; with a key its verdicts gate the route and real
+            users' field data (Chrome UX Report) is shown. Without a key it runs on the shared keyless
+            quota, best effort, and says "PSI unavailable (quota), using PageSpeed-equivalent (lab)"
+            when Google refuses. A free key takes a minute: https://developers.google.com/speed/docs/insights/v5/get-started#APIKey
+            (markless-migrate setup --psi-key <key> stores it). --no-psi leaves it out.
+          - PageSpeed-equivalent (lab): Lighthouse mobile here with PageSpeed's settings (simulated slow 4G,
+            4x CPU; --load-cpu calibrated derives the slowdown from this machine's benchmarkIndex instead),
+            --load-runs a side (default 5; as many again when a metric is worse but within noise). It gates
+            the route when PageSpeed Insights cannot, and can differ from it by 10 points or more.
+          FCP, LCP, Speed Index, TBT, CLS and the score are compared by their medians: a metric is red when
+          the new median is worse by more than max(100 ms, 5%) (TBT 50 ms, CLS 0.02, 3 score points) and the
+          runs differ beyond noise (one-sided Mann-Whitney, p < 0.05). The failure names the LCP element, its
+          breakdown and the requests that began before it, old and new. --no-load leaves page load out;
+          --only load measures it alone (a partial run: every other dimension is not compared).
           --source and --new-source map each failing element to its old and new source file and line.
           --concurrency checks that many routes at once (default half the cores, at most 4).
           --timeout stops one route's check after that many seconds (default 600, or five journey
@@ -245,7 +264,7 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           .migrate/guard-allow.json covers it: { "allow": [{ "subject": "div.port-attribution*",
           "reason": "licence badge for this demo copy" }] } (optional "kind" and "route"; a reason is
           required; a foreign runtime is never allowed). Writes .migrate/guard.json; exits 1 on a difference.
-  upgrade --new <origin> [--route <path>]... [--limit <n>] [--new-source <path>] [--build <dir>] [--ui <dir>]
+  upgrade --new <origin> [--route <path>]... [--limit <n>] [--new-source <path>] [--build <dir>] [--ui <dir>] [--no-load] [--load-runs <n>]
           After the routes are green. Measures, per route at 4x CPU on a phone-sized page, what each
           JavaScript-only library the port kept costs (bytes downloaded, JS run at load, main-thread
           time, and the first use of its own controls) and what each port of a headless library
@@ -254,13 +273,16 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           saving, risk and size. A headless port is suggested as a swap to its @markless/ui family only
           when every part, prop, state, key, ARIA attribute and behaviour the old site used is covered
           (read from the family's API manifest and source, --ui or the app's @markless/ui); otherwise it
-          is listed as "not yet: missing ...". Nothing is applied. Writes .migrate/upgrade.json.
+          is listed as "not yet: missing ...". A page whose largest text paints with a web font it finds
+          only in its stylesheet (nothing preloads it) gets a font preload, measured with Lighthouse mobile
+          (--load-runs a side) with and without it through a local proxy; it is suggested only when the
+          LCP comes sooner beyond noise. --no-load leaves that out. Nothing is applied. Writes .migrate/upgrade.json.
   upgrade accept <id> [--baseline <origin>]
           Writes the agent task for one suggestion to .migrate/upgrades/<id>.md: what to build, and the
           check it must pass against the pre-upgrade version (--baseline serves it).
   run     --agent <id> --old <origin> --new <origin> [--route <path>]... [--all] [--attempts <n>] [--model <name>]
           [--source <path>] [--new-source <path>] [--auth <file>] [--header <name:value>]... [--cookie <name=value>]...
-          [--serve <command>] [--build <command>] [--restart-on <path>] [--agent-timeout <minutes>]
+          [--serve <command>] [--build <command>] [--restart-on <path>] [--agent-timeout <minutes>] [--only load]
           Drive your agent's own CLI headless, one route at a time, until each route is green or is
           left red after n attempts (default 3), then go on with the next; it never waits for an answer.
           An attempt that runs past --agent-timeout (default 30 minutes) is stopped and counts as one.
@@ -308,6 +330,12 @@ const TIMING_FLAGS = {
 	'interaction-controls': { type: 'string' },
 	'no-motion': { type: 'boolean' },
 	'no-navigation': { type: 'boolean' },
+	'no-load': { type: 'boolean' },
+	'load-runs': { type: 'string' },
+	'load-cpu': { type: 'string' },
+	'psi-key': { type: 'string' },
+	'psi-runs': { type: 'string' },
+	'no-psi': { type: 'boolean' },
 	'nav-entries': { type: 'string' },
 	'nav-destinations': { type: 'string' },
 } as const;
@@ -324,6 +352,24 @@ function navigationOptions(values: { 'no-navigation'?: boolean; 'nav-entries'?: 
 	const entries = count('nav-entries');
 	const destinations = count('nav-destinations');
 	return { ...(entries ? { entries } : {}), ...(destinations ? { destinations } : {}), ...(routes?.length ? { routes } : {}) };
+}
+
+function loadOptions(values: { 'no-load'?: boolean; 'load-runs'?: string; 'load-cpu'?: string; 'psi-key'?: string; 'psi-runs'?: string; 'no-psi'?: boolean }): CheckOptions['load'] {
+	if (values['no-load']) return undefined;
+	const count = (flag: 'load-runs' | 'psi-runs') => {
+		const raw = values[flag];
+		if (raw === undefined) return undefined;
+		const n = Number(raw);
+		if (!Number.isInteger(n) || n < 4) fail(`--${flag} must be a whole number of at least 4: with fewer runs a side, no difference can be told from noise`);
+		return n;
+	};
+	const runs = count('load-runs');
+	const psiRuns = count('psi-runs');
+	const cpuFlag = values['load-cpu'];
+	const cpu = cpuFlag === undefined ? undefined : cpuFlag === 'calibrated' ? ('calibrated' as const) : Number(cpuFlag);
+	if (typeof cpu === 'number' && !(cpu >= 1)) fail('--load-cpu takes calibrated or a CPU slowdown of at least 1 (default 4)');
+	const psi = values['no-psi'] ? false : { ...(values['psi-key'] ? { key: values['psi-key'] } : {}), ...(psiRuns ? { runs: psiRuns } : {}) };
+	return { ...(runs ? { runs } : {}), ...(cpu ? { cpu } : {}), psi };
 }
 
 function timingOptions(values: { 'no-responsiveness'?: boolean; 'interaction-budget'?: string; 'cpu-throttle'?: string; 'network-latency'?: string; 'interaction-controls'?: string }): CheckOptions['responsiveness'] {
@@ -379,9 +425,31 @@ async function forceDecision(route: string, reason: string | undefined, by: stri
 	}
 }
 
+/** Writes PSI_API_KEY to the user's markless-migrate env file (mode 600), or to the project's .env, kept out of git. */
+async function storePsiKey(key: string, project: string | undefined, home: string): Promise<string> {
+	if (!/^[\w-]{20,}$/.test(key)) throw new Error('--psi-key takes the API key Google shows after creating it (letters, digits, - and _)');
+	const { readFile: read, writeFile: write, mkdir: dir, chmod } = await import('node:fs/promises');
+	const file = project ? join(project, '.env') : userEnvFile(home);
+	await dir(dirname(file), { recursive: true });
+	const lines = (await read(file, 'utf8').catch(() => '')).split('\n').filter((l) => l && !l.startsWith(`${PSI_KEY_ENV}=`));
+	await write(file, `${[...lines, `${PSI_KEY_ENV}=${key}`].join('\n')}\n`, { mode: 0o600 });
+	await chmod(file, 0o600);
+	if (project) {
+		const ignore = join(project, '.gitignore');
+		const listed = (await read(ignore, 'utf8').catch(() => '')).split('\n').some((l) => l.trim() === '.env' || l.trim() === '/.env' || l.trim() === '.env*');
+		if (!listed) await write(ignore, `${(await read(ignore, 'utf8').catch(() => '')).replace(/\n?$/, '\n')}.env\n`);
+	}
+	return file;
+}
+
 async function setup(args: string[]): Promise<number> {
-	const { values } = parseArgs({ args, options: { agent: { type: 'string', multiple: true }, yes: { type: 'boolean' }, 'dry-run': { type: 'boolean' }, undo: { type: 'boolean' } } });
+	const { values } = parseArgs({ args, options: { agent: { type: 'string', multiple: true }, yes: { type: 'boolean' }, 'dry-run': { type: 'boolean' }, undo: { type: 'boolean' }, 'psi-key': { type: 'string' }, project: { type: 'boolean' } } });
 	const host: HostEnv = { home: process.env.HOME || homedir(), env: process.env };
+	if (values['psi-key'] !== undefined) {
+		const where = await storePsiKey(values['psi-key'], values.project ? process.cwd() : undefined, host.home).catch((error: Error) => fail(error.message));
+		out(`Saved the PageSpeed Insights key to ${where}. check, run and upgrade now verify page load on PageSpeed Insights.\n`);
+		return 0;
+	}
 	const tilde = (path: string) => (path.startsWith(host.home) ? `~${path.slice(host.home.length)}` : path);
 	if (values.undo) {
 		const undone = await undoSetup(host.home);
@@ -445,6 +513,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 			build: { type: 'string' },
 			'restart-on': { type: 'string' },
 			'agent-timeout': { type: 'string' },
+			only: { type: 'string' },
 			'journey-budget': { type: 'string' },
 			'max-journeys': { type: 'string' },
 			'journey-depth': { type: 'string' },
@@ -462,6 +531,8 @@ async function run(args: string[], cwd: string): Promise<number> {
 	const agentMinutes = values['agent-timeout'] ? Number(values['agent-timeout']) : undefined;
 	if (agentMinutes !== undefined && !(agentMinutes > 0)) fail('--agent-timeout must be a number of minutes above 0');
 	if ((values.build || values['restart-on']) && !values.serve) fail('--build and --restart-on need --serve <command>, the command that serves the new app');
+	if (values.only !== undefined && values.only !== 'load') fail('run --only takes load: each route is checked for page load alone');
+	if (values.only === 'load' && values['no-load']) fail('--only load and --no-load leave nothing to check');
 	const agent = driver(values.agent);
 	const home = process.env.HOME || homedir();
 	if (!(await findBinary(agent.binary, { home, env: process.env }))) fail(`${agent.binary} is not on PATH; install it and sign in first`);
@@ -491,6 +562,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 	}
 	if (!routes?.length) fail('no routes: pass --route <path> or run plan first');
 	const navigation = navigationOptions(values, routes);
+	const load = loadOptions(values);
 	const { old, new: next } = values;
 	const server = values.serve ? await startAppServer({ cwd, serve: values.serve, ...(values.build ? { build: values.build } : {}), beforeBuild: async () => void (await applyIfPlanned(cwd, resolve(cwd, values['new-source'] ?? '.'))), ...(values['restart-on'] ? { restartOn: values['restart-on'] } : {}), origin: next, log: (line) => out(`server: ${line}\n`) }).catch((error: Error) => fail(error.message)) : undefined;
 	const mcp = serverCommand();
@@ -511,7 +583,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 			...(agentMinutes ? { timeoutMs: agentMinutes * 60_000 } : {}),
 			cli: [mcp.command, ...mcp.args.slice(0, -1)].join(' '),
 			mcp,
-			context: { ...(source ? { source } : {}), ...(newSource ? { newSource } : {}), ...(values.auth ? { auth: resolve(values.auth) } : {}), flags: [...(values.header ?? []).flatMap((h) => ['--header', h]), ...(values.cookie ?? []).flatMap((c) => ['--cookie', c]), ...(values['journey-budget'] ? ['--journey-budget', values['journey-budget']] : []), ...(values['max-journeys'] ? ['--max-journeys', values['max-journeys']] : []), ...(values['journey-depth'] ? ['--journey-depth', values['journey-depth']] : []), ...timingFlags(values)] },
+			context: { ...(source ? { source } : {}), ...(newSource ? { newSource } : {}), ...(values.auth ? { auth: resolve(values.auth) } : {}), flags: [...(values.header ?? []).flatMap((h) => ['--header', h]), ...(values.cookie ?? []).flatMap((c) => ['--cookie', c]), ...(values['journey-budget'] ? ['--journey-budget', values['journey-budget']] : []), ...(values['max-journeys'] ? ['--max-journeys', values['max-journeys']] : []), ...(values['journey-depth'] ? ['--journey-depth', values['journey-depth']] : []), ...timingFlags(values), ...(values.only ? ['--only', values.only] : [])] },
 			...(server ? { server, serving: { ...(values.build ? { build: values.build } : {}), ...(values['restart-on'] ? { restartOn: values['restart-on'] } : {}) } } : {}),
 			progress: out,
 			...(usage ? { notes: async (route: string) => routeBrief(usage, await implementedNow(), route) } : {}),
@@ -533,6 +605,8 @@ async function run(args: string[], cwd: string): Promise<number> {
 					...(timing ? { responsiveness: timing } : {}),
 				...(values['no-motion'] ? {} : { motion: {} }),
 					...(navigation ? { navigation } : {}),
+					...(load ? { load } : {}),
+					...(values.only === 'load' ? { only: 'load' as const } : {}),
 					switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 					partial: { total: inventory ? plannedRoutes(inventory).length : null },
 				});
@@ -619,6 +693,7 @@ async function main(argv: string[]): Promise<number> {
 			out(`${usage.text}Wrote ${usage.paths.usage} and ${usage.paths.obligations}\n`);
 			const authPath = join(cwd, STATE_DIR, 'auth.json');
 			if (inventory.auth) out((await writeStarterAuth(authPath, inventory.auth)) ? `Wrote ${authPath}: set the credentials it names in the environment, check its login steps, then pass --auth ${authPath} to check.\n` : `Kept ${authPath} (already there); roles found: ${Object.keys(inventory.auth.roles).join(', ')}.\n`);
+			if (!psiKey()) out(`\n${PSI_NOTICE}\n`);
 			return 0;
 		}
 		case 'check': {
@@ -661,8 +736,10 @@ async function main(argv: string[]): Promise<number> {
 			});
 			const deadline = timeoutOption(values.timeout);
 			if (!values.old || !values.new) fail('check needs --old <origin> and --new <origin>');
-			if (values.only !== undefined && values.only !== 'coverage') fail('--only takes coverage: whether every route of the old site exists on the new app');
+			if (values.only !== undefined && values.only !== 'coverage' && values.only !== 'load') fail('--only takes coverage (whether every route of the old site exists on the new app) or load (page load alone)');
 			const coverageOnly = values.only === 'coverage';
+			const loadOnly = values.only === 'load';
+			if (loadOnly && values['no-load']) fail('--only load and --no-load leave nothing to check');
 			const journeys = journeyOptions(values['journey-budget'], values['max-journeys'], values['journey-depth']);
 			const timing = timingOptions(values);
 			let bypass: ReturnType<typeof bypassOptions> = {};
@@ -689,8 +766,9 @@ async function main(argv: string[]): Promise<number> {
 				targets = { endpoints: await discoverEndpoints(defaultEnv(values.old), all.pages, all.endpoints), unchecked: all.needsSample, redirects: redirectTargets(all.pages, inventory.source?.redirects) };
 			}
 			if (!coverageOnly && !routes?.length && !targets?.endpoints.length) fail('no routes: pass --route <path> or run plan first');
-			const partial = !coverageOnly && Boolean(values.route?.length || values.changed);
+			const partial = !coverageOnly && Boolean(values.route?.length || values.changed || loadOnly);
 			const navigation = navigationOptions(values, partial ? planned : undefined);
+			const load = loadOptions(values);
 			const concurrency = values.concurrency ? Number(values.concurrency) : undefined;
 			if (concurrency !== undefined && (!Number.isInteger(concurrency) || concurrency < 1)) fail('--concurrency must be a whole number of at least 1');
 			const newDir = resolve(values['new-source'] ?? cwd);
@@ -734,6 +812,8 @@ async function main(argv: string[]): Promise<number> {
 				...(timing ? { responsiveness: timing } : {}),
 				...(values['no-motion'] ? {} : { motion: {} }),
 				...(navigation ? { navigation } : {}),
+				...(load && !coverageOnly ? { load } : {}),
+				...(loadOnly ? { only: 'load' as const } : {}),
 				switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 				...(!values['new-source'] && !values.changed ? {} : { sourceDirs: { ...(values.source ? { old: resolve(values.source) } : {}), new: newDir } }),
 				...(partial ? { partial: { total: planned?.length ?? null } } : planned?.length ? { coverage: planned } : {}),
@@ -838,7 +918,7 @@ async function main(argv: string[]): Promise<number> {
 				out(`Wrote ${file}: the task for your agent (markless-migrate run, or by hand). Nothing else changed.\n`);
 				return 0;
 			}
-			const { values } = parseArgs({ args: rest, options: { new: { type: 'string' }, route: { type: 'string', multiple: true }, limit: { type: 'string' }, 'new-source': { type: 'string' }, build: { type: 'string' }, ui: { type: 'string' } } });
+			const { values } = parseArgs({ args: rest, options: { new: { type: 'string' }, route: { type: 'string', multiple: true }, limit: { type: 'string' }, 'new-source': { type: 'string' }, build: { type: 'string' }, ui: { type: 'string' }, 'no-load': { type: 'boolean' }, 'load-runs': { type: 'string' }, 'load-cpu': { type: 'string' }, 'psi-key': { type: 'string' }, 'psi-runs': { type: 'string' }, 'no-psi': { type: 'boolean' } } });
 			if (!values.new) fail('upgrade needs --new <origin>, the migrated site');
 			const newSource = resolve(values['new-source'] ?? cwd);
 			const inventory = await readInventory(cwd);
@@ -851,7 +931,7 @@ async function main(argv: string[]): Promise<number> {
 			const uiDir = await findUi(newSource, values.ui ? resolve(values.ui) : undefined);
 			const usage = await readUsage(join(cwd, STATE_DIR));
 			const oldLibraries = await readLibraries(join(cwd, STATE_DIR));
-			const report = await upgrade({ origin: values.new, routes, newSource, buildDir, newLibraries, ...(oldLibraries ? { oldLibraries } : {}), ...(usage ? { usage } : {}), ...(uiDir ? { uiDir } : {}), progress: (line) => out(`${line}\n`) });
+			const report = await upgrade({ origin: values.new, routes, newSource, buildDir, newLibraries, ...(oldLibraries ? { oldLibraries } : {}), ...(usage ? { usage } : {}), ...(uiDir ? { uiDir } : {}), fonts: loadOptions(values) ?? false, progress: (line) => out(`${line}\n`) });
 			const path = await writeUpgrade(report, join(cwd, STATE_DIR));
 			out(`\n${summarizeUpgrade(report)}Wrote ${path}\n`);
 			return 0;

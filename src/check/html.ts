@@ -1,6 +1,7 @@
 import { journeyNames, pngBytes, pngSize, type Png } from './artifacts.ts';
 import { acceptedLabel } from './automatic.ts';
 import { headlines, type Sample } from './responsiveness.ts';
+import { formatMetric, METRIC_LABEL, psiLines, type LoadDetail } from './load.ts';
 import { partialLine } from './summary.ts';
 import type { Box, Failure, LoginResult, Report, ResponsivenessSummary, RouteResult, Shot, SourceLink } from './types.ts';
 import type { Filmstrip, MotionInteraction } from './motion.ts';
@@ -67,6 +68,24 @@ function timings(r: RouteResult): string {
 		.join('');
 	const left = t.notMeasured.length ? `<p>Not timed:</p>${list(t.notMeasured.map((n) => `${n.control}: ${n.reason}`), 'skipped')}` : '';
 	return `<details class="states timings"${failing ? ' open' : ''}><summary>Responsiveness: ${t.controls.length} control${t.controls.length === 1 ? '' : 's'} timed on a fresh load${failing ? `, ${failing} slower` : ''}</summary><table><thead><tr><th>Control</th><th>Speed</th><th>Old</th><th>New</th><th>Between runs</th><th>Verdict</th></tr></thead><tbody>${rows}</tbody></table>${left}</details>`;
+}
+
+function loadStrip(side: string, d: LoadDetail | undefined): string {
+	if (!d?.filmstrip?.length) return '';
+	return `<div class="strip"><h4>${side}</h4><div class="frames">${d.filmstrip.map((f) => `<figure><img src="${f.image}" loading="lazy" alt="${side} at ${f.ms} ms"><figcaption>${f.ms} ms</figcaption></figure>`).join('')}</div></div>`;
+}
+
+function pageLoad(r: RouteResult): string {
+	const l = r.load;
+	if (!l) return '';
+	if (l.skipped) return `<details class="states timings"><summary>Page load (Lighthouse, mobile): not compared</summary><p>${esc(l.skipped)}</p></details>`;
+	const failing = l.verdicts.filter((v) => !v.ok).length;
+	const rows = l.verdicts.map((v) => `<tr${v.ok ? '' : ' class="differs"'}><td>${esc(METRIC_LABEL[v.metric])}</td><td>${esc(formatMetric(v.metric, v.old))}</td><td>${esc(formatMetric(v.metric, v.new))}</td><td>old ±${esc(formatMetric(v.metric, v.spread.old))}, new ±${esc(formatMetric(v.metric, v.spread.new))}</td><td>${v.ok ? 'ok' : `worse by ${esc(formatMetric(v.metric, v.worse))} (allowed ${esc(formatMetric(v.metric, v.floor))}, p = ${v.p.toFixed(3)})`}</td></tr>`).join('');
+	const lcp = (side: string, d: LoadDetail | undefined) => (d?.lcpElement ? `<p><small>${side} LCP element: ${esc(d.lcpElement)}${d.lcpPhases ? `; ${esc(Object.entries(d.lcpPhases).map(([k, v]) => `${k} ${v} ms`).join(', '))}` : ''}</small></p>` : '');
+	const strips = l.old.detail?.filmstrip?.length || l.new.detail?.filmstrip?.length ? `<div class="filmstrip"><h3>Page load filmstrip <small>Lighthouse's frames of the median run, unthrottled time</small></h3>${loadStrip('Old', l.old.detail)}${loadStrip('New', l.new.detail)}</div>` : '';
+	const psi = psiLines(l.psi);
+	const psiBlock = psi.length ? `<h4>PageSpeed Insights</h4><ul>${psi.map((line) => `<li>${esc(line.trim())}</li>`).join('')}</ul><h4>PageSpeed-equivalent (lab)${l.cpuMultiplier ? `: ${l.cpuMultiplier}x CPU, benchmarkIndex ${l.benchmarkIndex ?? '?'}` : ''}</h4>` : '';
+	return `<details class="states timings"${failing || r.failures.some((f) => f.dimension === 'load') ? ' open' : ''}><summary>Page load: ${l.psi && !('unavailable' in l.psi) ? 'PageSpeed Insights and ' : ''}PageSpeed-equivalent (lab), median of ${l.runs} runs each${failing ? `: <strong>${failing} lab metric${failing === 1 ? '' : 's'} worse</strong>` : ''}</summary>${psiBlock}<table><thead><tr><th>Metric</th><th>Old</th><th>New</th><th>Between runs</th><th>Verdict</th></tr></thead><tbody>${rows}</tbody></table>${lcp('Old', l.old.detail)}${lcp('New', l.new.detail)}${strips}</details>`;
 }
 
 function writes(r: RouteResult): string {
@@ -206,6 +225,7 @@ ${noise(r)}
 ${writes(r)}
 ${coverage(r)}
 ${timings(r)}
+${pageLoad(r)}
 ${motion(r)}
 ${journeyNames(r).length ? `<details class="states"><summary>Interactions explored on the old page and replayed on the new one: ${journeyNames(r).length}${failedJourneys(r) ? `, ${failedJourneys(r)} differ` : ''}</summary><ul>${journeyNames(r).map((name) => `<li${r.failures.some((f) => f.check.startsWith(name)) ? ' class="differs"' : ''}>${esc(name)}</li>`).join('')}</ul></details>` : ''}
 <h3>Failures (${r.failures.filter((f) => !f.accepted).length}${r.failures.some((f) => f.accepted) ? `, and ${r.failures.filter((f) => f.accepted).length} accepted differences` : ''})</h3>

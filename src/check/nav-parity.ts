@@ -6,7 +6,7 @@ import { pool, quiet } from './journeys.ts';
 import { withFailures } from './compare.ts';
 import { RUNTIME_MARKERS } from './residue.ts';
 import { maskedShot } from './embeds.ts';
-import { armThemeFrames, flashFailures, readThemeFrames, themeFrameRecorder, type ThemeRecording } from './swap-frames.ts';
+import { armThemeFrames, flashFailures, layoutFailures, readThemeFrames, recordSwapShots, themeFrameRecorder, type SwapShot, type ThemeRecording } from './swap-frames.ts';
 import type { Failure, RouteNavigation, RouteResult, Shot, Viewport } from './types.ts';
 import { compareScreenshots, visualNoise, visuallyDifferent, type VisualNoise } from './visual.ts';
 import { VIEWPORTS } from './types.ts';
@@ -506,10 +506,12 @@ async function findToggle(browser: Browser, env: SideEnv, viewport: Viewport, ro
 // Markless's router asks for the next page at a router-owned path (0.6) or with this header (0.5).
 const routerFetch = (url: URL, headers: Record<string, string>) => url.pathname.startsWith('/_markless/fragment/') || 'x-markless-fragment' in headers;
 
-/** Clicks a link to `to` on the page (one the visitor can see, else one the checker adds) and reports whether the document stayed, and whether the page's own code (not the router) fetched and swapped it. */
-async function follow(tab: Tab, to: string, origin: string): Promise<{ inPlace: boolean; injected: boolean; byPage: boolean; frames?: ThemeRecording }> {
+/** Clicks a link to `to` on the page (one the visitor can see, else one the checker adds) and reports whether the document stayed, and whether the page's own code (not the router) fetched and swapped it. It ends on `to` or where a fresh load of `to` ends (a login guard's redirect). */
+async function follow(tab: Tab, to: string, origin: string, landing: string, painted = false): Promise<{ inPlace: boolean; injected: boolean; byPage: boolean; frames?: ThemeRecording; shots: SwapShot[] }> {
 	const target = new URL(to, origin).href;
 	const page = tab.page;
+	const lands = new URL(landing, origin).href;
+	const ends = samePage(lands, page.url()) ? [target] : [target, lands];
 	await page.evaluate(() => ((window as unknown as { __mmNavToken?: number }).__mmNavToken = 1));
 	const found = await page.evaluate((target) => {
 		const t = new URL(target);
@@ -539,17 +541,24 @@ async function follow(tab: Tab, to: string, origin: string): Promise<{ inPlace: 
 		if (['fetch', 'xhr'].includes(r.resourceType()) && samePage(url.href, target) && !routerFetch(url, r.headers())) byPage = true;
 	};
 	page.on('request', watch);
+	// Scrolled to before recording starts: the click's own scroll is not a frame of the swap.
+	await page.locator('a[href]').nth(found).scrollIntoViewIfNeeded({ timeout: STEP_MS }).catch(() => {});
+	let armedAt = Date.now();
+	const stopShots = painted ? await recordSwapShots(page, () => armedAt) : async () => [];
+	armedAt = Date.now();
 	await armThemeFrames(page);
+	let shots: SwapShot[] = [];
 	try {
 		await page.locator('a[href]').nth(found).click({ timeout: STEP_MS });
-		await page.waitForURL((u) => samePage(u.href, target), { timeout: STEP_MS, waitUntil: 'commit' });
+		await page.waitForURL((u) => ends.some((end) => samePage(u.href, end)), { timeout: STEP_MS, waitUntil: 'commit' });
 		await settled(tab);
 	} finally {
 		page.off('request', watch);
+		shots = await stopShots();
 	}
 	const inPlace = tab.documents === before && (await page.evaluate(() => (window as unknown as { __mmNavToken?: number }).__mmNavToken === 1));
 	const frames = inPlace ? await readThemeFrames(page) : undefined;
-	return { inPlace, injected, byPage, ...(frames ? { frames } : {}) };
+	return { inPlace, injected, byPage, ...(frames ? { frames } : {}), shots: inPlace ? shots : [] };
 }
 
 function samePage(a: string, b: string): boolean {
@@ -680,10 +689,10 @@ function side(browser: Browser, env: SideEnv, viewport: Viewport, opened: () => 
 				const how = `in place from ${job.from}${control ? ` after ${control.label}` : ''}`;
 				const entryRoute = (await snap(tab.page)).route;
 				tab.phase = 1;
-				const { inPlace, injected, byPage, frames } = await follow(tab, job.to, env.origin);
+				const atTo = destination ?? (await fresh(job.to, state, false));
+				const { inPlace, injected, byPage, frames, shots: painted } = await follow(tab, job.to, env.origin, atTo.snap.url, true);
 				const pair = { ...base, ...(control ? { control: control.label } : {}), inPlace, ...(injected || job.injected ? { injected: true } : {}) };
 				if (!inPlace) return { pair: { ...pair, failures: 0 }, failures: [], shots: [] };
-				const atTo = destination ?? (await fresh(job.to, state, false));
 				const reached = await snap(tab.page);
 				if (byPage || (entryRoute && reached.route === entryRoute && atTo.snap.route !== entryRoute)) return { pair: { ...pair, swappedByPage: true, failures: 0 }, failures: [], shots: [] };
 				const errorsAt = (n: number) => tab.errors.filter((e) => e.phase === n).map((e) => e.text);
@@ -700,6 +709,9 @@ function side(browser: Browser, env: SideEnv, viewport: Viewport, opened: () => 
 				failures.push(...scriptFailures(job.to, way, atTo.scripts, tab.scripts.map((s) => s.run.hash)));
 				failures.push(...errorFailures(job.to, way, atTo.errors, errorsAt(1)));
 				failures.push(...flashFailures(job.to, way, frames));
+				const layout = layoutFailures(job.to, way, viewport.name, frames, painted);
+				failures.push(...layout.failures);
+				shots.push(...layout.shots.map((shot) => ({ route: job.to, shot })));
 				// The destination's own controls again, as a visitor goes on using the page: a theme switch twice (on, then back), then one in the content.
 				const steps = destination ? await runSteps(tab, destination.steps.map((s) => s.control), 2) : [];
 				for (const [i, step] of steps.entries()) {
@@ -744,10 +756,11 @@ function side(browser: Browser, env: SideEnv, viewport: Viewport, opened: () => 
 	}
 	/** The plain navigation again under a dark system theme, for what its frames show: a lost theme class flashes most there. */
 	async function darkSwap(job: Job): Promise<Failure[]> {
+		const landing = (await fresh(job.to, undefined, true).catch(() => undefined))?.snap.url ?? job.to;
 		opened();
 		const tab = await openTab(browser, { ...env, colorScheme: 'dark' }, viewport, job.from);
 		try {
-			const { inPlace, injected, frames } = await follow(tab, job.to, env.origin);
+			const { inPlace, injected, frames } = await follow(tab, job.to, env.origin, landing);
 			const how = `in place from ${job.from} with a dark system theme`;
 			return inPlace ? flashFailures(job.to, injected ? `${how} (through a link the checker added: no page links here)` : how, frames) : [];
 		} catch {
@@ -758,6 +771,9 @@ function side(browser: Browser, env: SideEnv, viewport: Viewport, opened: () => 
 	}
 	return { fresh, pair, darkSwap };
 }
+
+// The screenshot a navigation failure carries: the page reached for a screenshot check, the frame for a layout check.
+const shotLabel = (check: string) => (check.endsWith(': screenshot') ? `navigation: ${check.slice(0, -': screenshot'.length)}` : check.endsWith(': layout during the swap') ? `navigation: ${check.slice(0, -': layout during the swap'.length)}, a frame during the swap` : undefined);
 
 /** What a failure says once the way it was reached is set aside: the same difference on the old app reached the same way is the old app's own. */
 const sameKey = (f: Failure) => `${f.route} ${f.check.replace(' (through a link the checker added: no page links here)', '').replace(/clicking [^:]*?(?= again:|:)/, 'clicking')}`;
@@ -836,7 +852,7 @@ export async function checkNavigation(browser: Browser, env: SideEnv, routes: re
 	const kept = new Set(failures);
 	return {
 		failures: dedupe(failures),
-		shots: done.flatMap((o) => o.shots.filter((s) => [...kept].some((f) => f.route === s.route && `navigation: ${f.check.slice(0, -': screenshot'.length)}` === s.shot.label))),
+		shots: done.flatMap((o) => o.shots.filter((s) => [...kept].some((f) => f.route === s.route && shotLabel(f.check) === s.shot.label))),
 		destinations: plan.destinations.map((d) => ({ route: d.route, represents: d.represents })),
 		pairs,
 		loads,

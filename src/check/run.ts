@@ -23,6 +23,8 @@ import { storageOwner, unreachableCandidate, type StorageOwner } from './automat
 import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
 import { checkMotion, motionRules, type MotionOptions } from './motion.ts';
 import { applyNavigation, checkNavigation, type NavigationOptions, type NavigationResult } from './nav-parity.ts';
+import { loadFailures, measureLoad, psiFailures, unmeasured, type LoadOptions } from './load.ts';
+import { measurePsi, psiKey } from './psi.ts';
 import { assetsToProbe, compareRoute, cssTargets, forgetFailures, httpFailures, noiseReport, noisyStyles, withFailures, type Probe } from './compare.ts';
 import { matchElements } from './match.ts';
 import { contractLines } from './network.ts';
@@ -91,6 +93,10 @@ export interface CheckOptions {
 	readonly motion?: MotionOptions;
 	/** Compare each sampled page reached by an in-place navigation (a link click, back, forward) with a fresh load of it, on the new app. */
 	readonly navigation?: NavigationOptions;
+	/** Lighthouse's mobile page load (FCP, LCP, Speed Index, TBT, CLS and the score), a median of several runs per side, after every other check so nothing else competes for the machine. */
+	readonly load?: LoadOptions;
+	/** `load`: only page load is measured, after nothing else; every other dimension is skipped. */
+	readonly only?: 'load';
 	/** How long one route's check (as one role) may take before it is stopped and reported as an infrastructure failure. */
 	readonly timeoutMs?: number;
 	/** Every route of the old site, each checked for existence on the new app (the coverage dimension). */
@@ -606,6 +612,10 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				if (!signed.run) continue;
 				roleRun = signed.run;
 			}
+			if (options.only === 'load') {
+				if (!role || role === ANONYMOUS) routes.push(...allPages.map((route) => withTemplate({ ...partialResult(route, [], []), ok: true, only: 'load' as const })));
+				continue;
+			}
 			if (options.coverage) coverages.push(await checkCoverage(roleRun.old, roleRun.new, options.coverage, role));
 			const data = options.data && role && role !== ANONYMOUS ? { ...options.data, dir: join(options.data.dir, slug(role)) } : options.data;
 			const pages = allPages;
@@ -634,6 +644,26 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			routes.push(...(artifacts ? await Promise.all(compared.map((r) => artifacts.keep(r))) : compared));
 			for (const route of endpoints) routes.push(asRole(await checkEndpoint(roleRun, route).catch(unreachable(route)), role));
 			for (const route of redirects) routes.push(asRole(await checkRedirect(roleRun, route).catch(unreachable(route)), role));
+		}
+		if (options.load || options.only === 'load') {
+			const anonymous = (r: RouteResult) => !r.role || r.role === ANONYMOUS;
+			const loadable = routes.filter((r) => anonymous(r) && !r.endpoint && !r.blocked && !r.infrastructure && !r.notPorted && !light(r.route) && allPages.includes(r.route));
+			// Lighthouse can only send extra headers to every host it loads, so a bypass token is never handed to it.
+			const bypassed = Boolean(options.headers && Object.keys(options.headers).length) || Boolean(options.cookies?.length);
+			const routesToLoad = [...new Set(loadable.map((r) => r.route))];
+			const loads = bypassed ? new Map(routesToLoad.map((route) => [route, unmeasured('not measured: --header and --cookie are for the apps alone, and Lighthouse would send them to every host it loads')])) : await measureLoad({ old: options.oldOrigin, new: options.newOrigin }, routesToLoad, { ...(options.block ? { block: options.block } : {}), ...options.load });
+			const psiOptions = options.load?.psi;
+			if (psiOptions !== false && !bypassed) {
+				const key = psiOptions?.key ?? psiKey();
+				for (const [route, load] of loads) loads.set(route, { ...load, psi: await measurePsi({ old: options.oldOrigin, new: options.newOrigin }, route, { ...psiOptions, ...(key ? { key } : {}) }) });
+			}
+			routes.forEach((r, i) => {
+				const load = anonymous(r) ? loads.get(r.route) : undefined;
+				if (!load) return;
+				// Real PageSpeed Insights, when it answered, is the gate; the calibrated lab stands in for it otherwise.
+				const failures = [...r.failures, ...(psiFailures(r.route, load.psi) ?? loadFailures(r.route, load))];
+				routes[i] = r.only ? { ...r, load, failures, ok: failures.length === 0, dimensions: { ...r.dimensions, load: failures.length ? 'fail' : 'pass' } } : withFailures(r, failures, { load });
+			});
 		}
 		const sources = options.source?.nondeterminism.map((f) => ({ ...f, pinned: pinnedBy(`${f.kind} ${f.what ?? ''}`, f.side, freeze) }));
 		const coverage = options.coverage ? mergeCoverage(coverages) : undefined;

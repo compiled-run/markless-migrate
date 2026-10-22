@@ -4,11 +4,13 @@
 // its inline scripts at once (htmx.org's "htmx is not defined", Markless before 25196c52); `flash` serves <html class>
 // and replaces it whole on a swap, dropping the theme script's `dark` until it is put back three frames later (next-themes
 // on ui.shadcn.com, Markless 0.8): every settled state is right, only the frames between flash. It fetches pages at
-// Markless's router path, so the check counts its swaps as the router's.
+// Markless's router path, so the check counts its swaps as the router's. `chunked` lays its pages out in columns and
+// inserts the next page a part per frame (Markless 0.8's chunked swap on ui.shadcn.com): the content is laid out without its
+// table of contents, then shifts when it arrives.
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
-export type Variant = 'fresh' | 'stale-html' | 'scripts' | 'flash';
+export type Variant = 'fresh' | 'stale-html' | 'scripts' | 'flash' | 'chunked';
 
 const DARK = `(localStorage.getItem('theme') ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')) === 'dark'`;
 const THEME = `<script>if (${DARK}) document.documentElement.classList.add('dark')</script>`;
@@ -26,9 +28,12 @@ const PAGES: Record<string, { html?: string; head?: string; body: string }> = {
 
 const LIB = 'window.lib = { greet: () => "hello from lib" };';
 
+const COLUMNS = `<style>.columns { display: flex; justify-content: center } .columns main { flex: 1; max-width: 640px } .columns main > * { border: 1px solid #ccc; background: #f4f4f4; min-height: 120px } .toc { width: 280px; min-height: 480px; background: #dde6fb }</style>`;
+
 function page(path: string, variant: Variant): string {
 	const p = PAGES[path]!;
-	return `<!doctype html><html lang="en"${variant === 'flash' ? ' class="font-sans"' : ''}${p.html ?? ''}><head><meta charset="utf-8"><title>${path}</title>${THEME}${STYLE}${p.head ?? ''}<script src="/router.js" defer></script></head><body>${NAV}${p.body}</body></html>`;
+	const body = variant === 'chunked' ? `<div class="columns">${p.body.replace(/<\/main>/, '</main><aside class="toc">On this page</aside>')}</div>` : p.body;
+	return `<!doctype html><html lang="en"${variant === 'flash' ? ' class="font-sans"' : ''}${p.html ?? ''}><head><meta charset="utf-8"><title>${path}</title>${THEME}${STYLE}${variant === 'chunked' ? COLUMNS : ''}${p.head ?? ''}<script src="/router.js" defer></script></head><body>${NAV}${body}</body></html>`;
 }
 
 function router(variant: Variant): string {
@@ -58,7 +63,21 @@ function router(variant: Variant): string {
 		document.title = next.title;
 		const added = [...next.head.children].filter((el) => el.localName !== 'title' && ![...document.head.children].some((own) => own.outerHTML === el.outerHTML));
 		for (const el of added) document.head.append(el);
-		document.body.replaceChildren(...next.body.childNodes);
+		${variant === 'chunked'
+			? `const frame = () => new Promise((done) => requestAnimationFrame(() => setTimeout(done)));
+		const parts = [...next.body.childNodes];
+		document.body.replaceChildren();
+		for (const part of parts) {
+			const children = part.nodeType === 1 && part.classList.contains('columns') ? [...part.childNodes] : [];
+			for (const child of children) child.remove();
+			document.body.append(part);
+			await frame();
+			for (const child of children) {
+				part.append(child);
+				await frame();
+			}
+		}`
+			: 'document.body.replaceChildren(...next.body.childNodes);'}
 		${variant === 'scripts'
 			? "for (const s of document.body.querySelectorAll('script')) run(s);"
 			: "for (const s of added.filter((el) => el.localName === 'script' && el.src && !ran.has(el.src))) { ran.add(s.src); await run(s); }\n\t\tfor (const s of document.body.querySelectorAll('script')) await run(s);"}

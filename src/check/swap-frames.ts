@@ -1,20 +1,24 @@
-import type { Page } from 'playwright';
-import type { Failure } from './types.ts';
+import type { CDPSession, Page } from 'playwright';
+import { PNG } from 'pngjs';
+import type { Failure, Shot } from './types.ts';
+import { compareScreenshots, type VisualDiff } from './visual.ts';
 
 // Settled-state checks cannot see a flash: a frame of the swap that shows neither page's theme (a dark site painted white
 // while <html> lost its script-set `dark` class). This records what every frame of an in-place navigation paints of the theme.
 
-/** What one frame shows of the theme: the <html> class tokens, its computed color-scheme, and the background lightness (0-100) at the left and right edge. */
+/** What one frame shows of the theme: the <html> class tokens, its computed color-scheme, and the background lightness (0-100) at the left and right edge; and of the layout: where each landmark, the first h1 and the document's bottom are in the viewport. */
 export interface ThemeFrame {
 	readonly classes: readonly string[];
 	readonly scheme: string;
 	readonly backdrop: readonly number[];
+	/** `name x,y,width,height` per region, `name -` for one not in the document. */
+	readonly layout?: readonly string[];
 }
 
 export interface ThemeRecording {
 	readonly before: ThemeFrame;
-	/** Consecutive identical frames are one entry. */
-	readonly frames: readonly { readonly frame: ThemeFrame; readonly count: number }[];
+	/** Consecutive identical frames are one entry; `at` is when the first of them ran, in milliseconds since recording started. */
+	readonly frames: readonly { readonly frame: ThemeFrame; readonly count: number; readonly at?: number }[];
 	readonly after: ThemeFrame;
 }
 
@@ -54,26 +58,47 @@ export function themeFrameRecorder(): void {
 		const canvas = [document.documentElement, document.body].map((e) => (e ? lightness(getComputedStyle(e).backgroundColor) : undefined)).find((l) => l !== undefined);
 		return canvas ?? (dark ? 7 : 100);
 	};
+	const landmarks = 'header, footer, main, nav, aside, [role=banner], [role=main], [role=navigation], [role=complementary], [role=contentinfo]';
+	const layout = (): string[] => {
+		const boxes: string[] = [];
+		const add = (name: string, e: Element | null | undefined) => {
+			if (!e) return void boxes.push(`${name} -`);
+			const r = e.getBoundingClientRect();
+			boxes.push(`${name} ${[r.x, r.y, r.width, r.height].map(Math.round).join(',')}`);
+		};
+		const seen = new Map<string, number>();
+		for (const e of [...document.querySelectorAll(landmarks)].slice(0, 16)) {
+			const name = e.getAttribute('role') ?? e.localName;
+			const n = (seen.get(name) ?? 0) + 1;
+			seen.set(name, n);
+			add(`${name}${n}`, e);
+		}
+		add('h1', document.querySelector('h1'));
+		boxes.push(`bottom ${Math.round(document.documentElement.scrollHeight - scrollY)}`);
+		return boxes;
+	};
 	const snapshot = (): ThemeFrame => {
 		const root = document.documentElement;
 		const scheme = getComputedStyle(root).colorScheme;
 		const dark = /\bdark\b/.test(scheme) && !/\blight\b/.test(scheme);
 		const y = innerHeight / 2;
-		return { classes: [...root.classList].sort(), scheme, backdrop: [at(1, y, dark), at(innerWidth - 2, y, dark)] };
+		return { classes: [...root.classList].sort(), scheme, backdrop: [at(1, y, dark), at(innerWidth - 2, y, dark)], layout: layout() };
 	};
-	let recording: { before: ThemeFrame; frames: { frame: ThemeFrame; count: number }[] } | undefined;
+	let recording: { before: ThemeFrame; frames: { frame: ThemeFrame; count: number; at: number }[] } | undefined;
+	let armed = 0;
 	const same = (a: ThemeFrame, b: ThemeFrame) => JSON.stringify(a) === JSON.stringify(b);
 	const tick = () => {
 		if (!recording) return;
 		const frame = snapshot();
 		const last = recording.frames.at(-1);
 		if (last && same(last.frame, frame)) last.count++;
-		else if (recording.frames.length < 500) recording.frames.push({ frame, count: 1 });
+		else if (recording.frames.length < 500) recording.frames.push({ frame, count: 1, at: Math.round(performance.now() - armed) });
 		raf(tick);
 	};
 	Object.defineProperty(w, '__mmThemeFrames', {
 		value: {
 			arm: () => {
+				armed = performance.now();
 				recording = { before: snapshot(), frames: [] };
 				raf(tick);
 			},
@@ -150,4 +175,135 @@ export function flashFailures(route: string, how: string, recording: ThemeRecord
 			hint,
 		};
 	});
+}
+
+// A swap that inserts the next page over several frames paints it while it builds up: the content laid out without a column
+// still to come, then jumping when it arrives (Markless 0.8's chunked swap on ui.shadcn.com and docusaurus.io).
+
+/** Pixels a box may be off by and still be in the same place: subpixel layout rounds either way. */
+const BOX_SLACK = 1;
+
+const boxesOf = (layout: readonly string[] = []) => new Map(layout.map((entry) => entry.split(' ') as [string, string]));
+
+function sameBox(a: string | undefined, b: string | undefined): boolean {
+	if (a === b) return true;
+	if (!a || !b || a === '-' || b === '-') return false;
+	const x = a.split(',').map(Number);
+	const y = b.split(',').map(Number);
+	return x.length === y.length && x.every((v, i) => Math.abs(v - y[i]!) <= BOX_SLACK);
+}
+
+// Regions by name, so a frame missing one is compared region for region with the pages.
+function regionsOff(frame: readonly string[] | undefined, ...pages: (readonly string[] | undefined)[]): string[] {
+	const own = boxesOf(frame);
+	const others = pages.map((page) => boxesOf(page));
+	const names = new Set([...own.keys(), ...others.flatMap((page) => [...page.keys()])]);
+	return [...names].filter((name) => others.every((page) => !sameBox(own.get(name) ?? '-', page.get(name) ?? '-')));
+}
+
+const sameLayout = (a: readonly string[] | undefined, b: readonly string[] | undefined) => (!a || !b ? a === b : regionsOff(a, b).length === 0);
+
+export interface LayoutFlash {
+	/** Frames that showed it. */
+	readonly frames: number;
+	readonly frame: ThemeFrame;
+	/** When the first such frame ran and when the page first showed its settled layout, in milliseconds since recording started. */
+	readonly from?: number;
+	readonly to?: number;
+}
+
+/** Frames, from the first that leaves the page before's layout until the page first shows the layout it settles on, whose layout is neither. */
+export function layoutFlash(recording: ThemeRecording): LayoutFlash | undefined {
+	const { before, after } = recording;
+	if (!after.layout || !before.layout) return undefined;
+	const leaves = recording.frames.findIndex((f) => !sameLayout(f.frame.layout, before.layout));
+	if (leaves < 0) return undefined;
+	const settles = recording.frames.findIndex((f, i) => i >= leaves && sameLayout(f.frame.layout, after.layout));
+	const swap = recording.frames.slice(leaves, settles < 0 ? undefined : settles);
+	const off = swap.filter((f) => f.frame.layout && !sameLayout(f.frame.layout, before.layout) && !sameLayout(f.frame.layout, after.layout));
+	if (!off.length) return undefined;
+	return { frames: off.reduce((n, f) => n + f.count, 0), frame: off[0]!.frame, from: off[0]!.at, to: settles < 0 ? off.at(-1)!.at : recording.frames[settles]!.at };
+}
+
+export interface SwapShot {
+	/** Milliseconds since recording started. */
+	readonly at: number;
+	readonly png: Buffer;
+}
+
+/** Most painted frames kept of one swap: a looping animation paints every frame. */
+const MAX_SHOTS = 90;
+
+/** Records what the compositor paints (Chromium's screencast) until the returned stop is called, timed from `started` (epoch milliseconds, the page's clock may be frozen); other browsers record nothing. */
+export async function recordSwapShots(page: Page, started: () => number): Promise<() => Promise<SwapShot[]>> {
+	const shots: SwapShot[] = [];
+	const size = page.viewportSize();
+	let cdp: CDPSession;
+	try {
+		cdp = await page.context().newCDPSession(page);
+		cdp.on('Page.screencastFrame', (frame) => {
+			if (shots.length < MAX_SHOTS) shots.push({ at: Math.round((frame.metadata.timestamp ?? Date.now() / 1000) * 1000 - started()), png: Buffer.from(frame.data, 'base64') });
+			void cdp.send('Page.screencastFrameAck', { sessionId: frame.sessionId }).catch(() => {});
+		});
+		await cdp.send('Page.startScreencast', { format: 'png', everyNthFrame: 1, ...(size ? { maxWidth: size.width, maxHeight: size.height } : {}) });
+	} catch {
+		return async () => [];
+	}
+	return async () => {
+		await cdp.send('Page.stopScreencast').catch(() => {});
+		await cdp.detach().catch(() => {});
+		return shots;
+	};
+}
+
+/** Share of the viewport the differences of a painted frame must cover, against both pages, to show a layout of its own: a docs column laid out without its table of contents covered 48% on ui.shadcn.com, the table of contents missing for a frame 8% on docusaurus.io, a link's hover about 1%. */
+const LAYOUT_SHARE = 0.05;
+/** The compositor's and the animation frames' clocks, started a round trip apart, differ by up to a frame or two. */
+const FRAME_MS = 40;
+
+// The area the differences cover, not their pixel count: text moved across a white page changes few pixels over a wide area.
+const offShare = (diff: VisualDiff) => (diff.sizeMismatch ? 1 : diff.regions.reduce((n, r) => n + r.width * r.height, 0) / diff.area);
+
+/** The painted frame of a layout flash that differs most from both pages, when it differs from each by more than a sliver. */
+export function flashShot(flash: LayoutFlash, shots: readonly SwapShot[]): { shot: SwapShot; after: SwapShot; diff: VisualDiff } | undefined {
+	if (shots.length < 3) return undefined;
+	const before = shots[0]!;
+	const after = shots.at(-1)!;
+	const { width, height } = PNG.sync.read(after.png);
+	const noise = { width, height, mask: new Uint8Array(width * height) };
+	let best: { shot: SwapShot; diff: VisualDiff; off: number } | undefined;
+	for (const shot of shots.slice(1, -1)) {
+		if (flash.from !== undefined && shot.at < flash.from - FRAME_MS) continue;
+		if (flash.to !== undefined && shot.at > flash.to + FRAME_MS) continue;
+		const diff = compareScreenshots(after.png, shot.png, noise);
+		const off = Math.min(offShare(diff), offShare(compareScreenshots(before.png, shot.png, noise)));
+		if (off > LAYOUT_SHARE && (!best || off > best.off)) best = { shot, diff, off };
+	}
+	return best && { shot: best.shot, after, diff: best.diff };
+}
+
+export const LAYOUT_HINT =
+	'For a few frames of the in-place navigation the page showed a layout neither the previous page nor the next one has: the next page was painted while it was still being inserted (a column or the content below it still missing, then jumping in). Markless 0.8 inserted a long page over several frames and painted each one: build on a Markless whose router keeps the leaving page on screen until the next one is complete. A stylesheet applied after the content or a scroll reset a frame late shows the same way. Never edit the converted output by hand.';
+
+/** A failure when frames of the swap showed a layout of their own, confirmed by a painted frame where the browser records them, with that frame as its screenshot. */
+export function layoutFailures(route: string, how: string, viewport: string, recording: ThemeRecording | undefined, shots: readonly SwapShot[], hint = LAYOUT_HINT): { failures: Failure[]; shots: Shot[] } {
+	const flash = recording && layoutFlash(recording);
+	if (!recording || !flash) return { failures: [], shots: [] };
+	const painted = flashShot(flash, shots);
+	if (shots.length >= 3 && !painted) return { failures: [], shots: [] };
+	const regions = regionsOff(flash.frame.layout, recording.before.layout, recording.after.layout);
+	return {
+		failures: [
+			{
+				route,
+				dimension: 'navigation',
+				check: `${how}: layout during the swap`,
+				viewport,
+				expected: 'every frame shows the page before or the page after, as a fresh load paints it whole',
+				actual: `${plural(flash.frames, 'frame')} showed a layout of ${flash.frames === 1 ? 'its' : 'their'} own${regions.length ? ` (${regions.join(', ')} where neither page has them)` : ''}${painted ? `; a painted frame differs from the finished page in ${painted.diff.differing} pixels` : ''}`,
+				hint,
+			},
+		],
+		shots: painted ? [{ label: `navigation: ${how}, a frame during the swap`, viewport, old: painted.after.png, new: painted.shot.png, ...(painted.diff.png ? { diff: painted.diff.png } : {}), regions: painted.diff.regions, ok: false }] : [],
+	};
 }

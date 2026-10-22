@@ -3,8 +3,9 @@ import { openSync } from 'node:fs';
 import { copyFile, cp, mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { createServer as createHttpServer, request as httpRequest } from 'node:http';
-import { networkInterfaces, tmpdir } from 'node:os';
+import { availableParallelism, networkInterfaces, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { test } from 'node:test';
 import { readAuthFile, type AuthConfig } from '../../src/check/auth.ts';
 import { recorderEnv } from '../../src/check/recorder.ts';
 import type { CheckOptions } from '../../src/check/run.ts';
@@ -219,6 +220,25 @@ export async function startGuard(target: string): Promise<Guard> {
 
 export function failuresIn(report: Report, dimension: Dimension) {
 	return report.routes.flatMap((r) => r.failures).filter((f) => f.dimension === dimension);
+}
+
+/** Tests a fixture suite runs at once, a quarter of the cores: each check already drives up to half the cores' pages, and two checks at once on a 4-vCPU CI runner made clicks and in-place navigations miss their wait. */
+export const SUITE_CONCURRENCY = Math.max(1, Math.min(4, Math.floor(availableParallelism() / 4)));
+
+/** E2E_SHARD=i/n registers every n-th test of a suite from the i-th, and records the mutants those tests use so only they are built; without it every test runs. */
+export function sharded() {
+	const spec = /^(\d+)\/(\d+)$/.exec(process.env.E2E_SHARD ?? '');
+	const [index, of] = spec ? [Number(spec[1]), Number(spec[2])] : [1, 1];
+	let n = 0;
+	const mutants = new Set<string>();
+	return {
+		mutants,
+		test(name: string, fn: () => Promise<void>, uses: readonly string[] = []): void {
+			if (n++ % of !== index - 1) return;
+			for (const u of uses) mutants.add(u);
+			test(name, fn);
+		},
+	};
 }
 
 export async function limited<T, R>(items: readonly T[], concurrency: number, task: (item: T) => Promise<R>): Promise<R[]> {

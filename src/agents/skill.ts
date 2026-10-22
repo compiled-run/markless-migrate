@@ -129,6 +129,14 @@ and dark", "dialog: close by Escape, the backdrop and the close button, during a
   first and the second use is start-up work the first interaction pays for. For a link, a full page load
   where the old app navigated in the page, a cold server function, or a missing prefetch are the usual
   causes. Never raise \`--interaction-budget\` to make it pass.
+- \`load\` failures are Lighthouse's mobile page load (as PageSpeed Insights runs it), the median of
+  several runs a side. Its simulated LCP waits for every request that began before the largest element
+  painted (a low-priority image excepted), on a slow link: compare the new page's list of those requests,
+  its LCP element and breakdown with the old page's in the failure. Make the LCP element paint sooner
+  (preload the font or image it waits for), let code and data the first paint does not use load at low
+  priority or after it (\`fetchpriority="low"\` on a modulepreload or script, an animation runtime started
+  later), keep the HTML small and nothing render-blocking in the head. Never lower \`--load-runs\` or leave
+  \`load\` out to make it pass.
 - \`motion\` is checked: every interaction that stays on the page is replayed with motion allowed, and each
   transition and animation it starts (element, properties, duration, delay, easing, iterations), each one hovering,
   focusing or scrolling starts, and each sound it plays is compared with the old page's. Port every animation and

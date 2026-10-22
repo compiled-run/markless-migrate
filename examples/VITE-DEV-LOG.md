@@ -369,3 +369,32 @@ What keeps the 6 red:
    load: neither failed on its own in the three runs before.
 
 Routes switched: none (the run agent's `switch /live` was undone; switching is the owner's call).
+
+## Page load against vite.dev (2026-10-21)
+
+PageSpeed Insights (mobile, one run each) scored the port 69 (FCP 2.6 s, LCP 7.8 s) against vite.dev's 77 (FCP 2.4 s, LCP 5.1 s).
+`check` had no page-load dimension; it has one now (`load`, Lighthouse mobile, median of runs, red only beyond the noise between them).
+
+What Lighthouse measured (`npx lighthouse@12 --form-factor=mobile --only-categories=performance`, Chrome 155, runs interleaved, medians):
+
+| | Performance | FCP | LCP | Speed Index | LCP breakdown (TTFB, render delay) |
+| --- | --- | --- | --- | --- | --- |
+| port before (5 runs) | 72 | 1.69 s | 4.61 s | 2.48 s | 632 ms, 3975 ms |
+| port after (11 runs) | 92 | 1.70 s | 3.27 s | 2.40 s | 648 ms, 2625 ms |
+| vite.dev (11 runs) | 78 | 1.74 s | 5.68 s | 2.16 s | 1534 ms, 4143 ms |
+| vite-dev-old (11 runs) | 80 | 1.83 s | 5.11 s | 2.14 s | 614 ms, 4500 ms |
+
+The LCP element is the hero heading on all three: text, so the load delay and load time are zero and the time is render delay.
+Lighthouse simulates a slow phone from one fast load: its LCP is as late as the slowest request that began before the heading
+painted. Rive's wasm and `.riv` files started before it, and a Rive task (the `.riv` decoding its embedded image) held the load
+event back and ended in a layout, which the Speed Index estimate counts at its simulated end, after those downloads.
+
+| Red before | Fix | Came from |
+| --- | --- | --- |
+| `load` FCP and Speed Index against vite.dev | the homepage's Rive canvases start in a task of their own once the page has loaded | `run --agent claude --only load` against the deployment |
+| The router's landing modulepreloads at High priority, which Lighthouse counts as render-blocking for FCP | `fetchpriority="low"` (Markless #66, merged; reaches the port with the next Markless release) | Markless |
+
+Still open: the HTML is 21.7 kB compressed against vite.dev's 10.1 kB, over the 14.6 kB that fits in the first round trip
+of Lighthouse's simulated connection (one 150 ms round trip on FCP); 3 kB of it is the import map of every chunk on the site.
+The heading's font (APK Protocol, no `font-display`) is fetched only after the stylesheet is parsed, on vite.dev as here, so
+the heading shows a frame after the first paint; preloading it moved LCP from 4.24 s to 2.24 s on a local copy.

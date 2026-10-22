@@ -136,6 +136,35 @@ guards hold this, and `run` applies both to every route it checks:
 app's bundles or built pages name its URL (or a file they load does). htmx.org serves htmx.js, its source and
 its test suite as downloads; those pass, listed as allowed, while a page that loads htmx fails.
 
+## PageSpeed Insights key (optional)
+
+Page load is verified on Google's own PageSpeed Insights when there is an API key, and with real users' field data;
+without one, a calibrated lab run stands in, labelled as such. Getting a key is free and takes about a minute:
+
+1. Open https://developers.google.com/speed/docs/insights/v5/get-started#APIKey and click **Get a Key**.
+2. Pick or create a Google Cloud project; the key is shown at once.
+3. Run `markless-migrate setup --psi-key <key>`. It is saved to `~/.config/markless-migrate/env` (readable by you
+   alone), outside every repository; `--project` saves it to the project's `.env` instead and adds `.env` to its
+   `.gitignore`. `PSI_API_KEY` in the environment takes precedence, which is how CI passes it (a repository secret).
+
+How close the lab comes to PageSpeed Insights, measured on ten old and new pairs of sites (twenty pages; PageSpeed
+Insights mobile, its cached repeats left out, against 5 to 15 lab runs a page on an Apple-silicon laptop):
+
+| Lab CPU slowdown | Score within 5 points | FCP within 10% | LCP within 10% | Speed Index within 10% | TBT within 10% or 50 ms | Says the same of old against new |
+| --- | --- | --- | --- | --- | --- | --- |
+| 4x (the default) | 12 of 20 | 8 of 20 | 9 of 20 | 3 of 20 | 18 of 20 | 26 of 40 |
+| calibrated from benchmarkIndex (about 16x here) | 11 of 20 | 8 of 20 | 9 of 20 | 2 of 20 | 12 of 20 | 22 of 40 |
+
+So the lab is a guide, not PageSpeed: expect scores 10 points or more apart on some pages. Most of the gap is
+PageSpeed's own environment. In its runs the first paint is often held back by about two seconds after the page has
+loaded (the main thread idle, no request pending), which a lab run does not reproduce, and how often depends on the page and
+on where it is hosted: vite.dev's own homepage, byte for byte, scored 78 from its host and 72 from a Vercel deployment
+(six PageSpeed runs each, the held first paint in 3 of 10 against 6 of 10). PageSpeed also answers a URL from its cache
+for about a minute; check counts only new reports.
+
+`.github/workflows/page-load.yml` runs the same measurement on a GitHub Actions runner (`workflow_dispatch` with the
+old and new origins, the routes and the number of runs; 9 by default) and posts the summary to the run.
+
 ## After the migration: upgrade
 
 Once the routes are green, `markless-migrate upgrade --new <origin>` measures what the port kept and what it
@@ -155,6 +184,12 @@ ported, and suggests what to change; nothing is applied.
   uses are compared with the matching `@markless/ui` family, read from its API manifest and its own source
   (`--ui <dir>`, or the app's installed package). A swap is suggested only when every row is covered; otherwise
   it is "not yet: missing ...", which is also the list of what the family lacks.
+
+- **Font preloads.** When a page's largest text (its LCP element) paints with a web font the page finds only
+  once its stylesheet has arrived and been parsed, and nothing preloads it, `upgrade` measures the page with
+  Lighthouse mobile as it is and with `<link rel="preload" as="font" crossorigin>` added after its charset,
+  both through the same local proxy so only the preload differs (`--load-runs` a side, as in check's `load`).
+  It is suggested only when the LCP comes sooner beyond noise, with the measured saving; `--no-load` leaves it out.
 
 `upgrade accept <id>` writes `.migrate/upgrades/<id>.md`, the agent's task. An accepted entry goes through the
 same pipeline: `check --old <pre-upgrade build> --new <upgraded build> --all` must be green on every route.
@@ -214,6 +249,7 @@ only within the same kind of character (digits stay digits); everything else mus
 | `network` | every request the page makes, in the browser and, when the server runs the request recorder, while the server renders it: method, URL (the app's own origin, ids, timestamps and cache-busters normalised, query keys and values kept), body shape, how many times, and which response fields the page shows |
 | `data` | non-page endpoints as data, with the same noise rules as pages: feeds item by item (keyed by guid, id or link), JSON field by field, `/.well-known` files, the manifest; robots.txt lines and sitemap entries count as `seo` |
 | `weight` | JavaScript on the wire and run at load (Chromium coverage), not counting what a third-party embed's own document loads; red when the new route is heavier |
+| `load` | page load as PageSpeed Insights measures it, after every other check, on one page per template group, as the anonymous visitor. **PageSpeed Insights** (mobile and desktop, `--psi-runs` a side, default 5, old and new in turn) on the deployed URLs, with the key from `PSI_API_KEY`, the project's `.env` or `setup --psi-key`: when it answers, its verdicts gate the route and real users' field data (Chrome UX Report p75) is shown. Without a key it runs on the shared keyless quota, best effort, retrying a 429 with backoff, and when Google still refuses it says `PSI unavailable (quota), using PageSpeed-equivalent (lab)`; it never fails silently and never blocks on a key. **PageSpeed-equivalent (lab)**: Lighthouse mobile here with PageSpeed's settings (Moto G Power emulation, simulated 150 ms RTT and 1.6 Mbps, 4x CPU; `--load-cpu calibrated` derives the slowdown from this machine's benchmarkIndex by Lighthouse's calculator instead, `--load-cpu <n>` fixes it), `--load-runs` a side (default 5, at least 4; as many again when a metric is worse than its floor but not yet beyond noise). It runs in the installed Chrome stable when there is one, else Playwright's Chromium (`MARKLESS_MIGRATE_CHROME` names another), and gates the route when PageSpeed Insights cannot. Each metric (FCP, LCP, Speed Index, TBT, CLS, score) is compared by its median: red when the new median is worse by more than max(100 ms, 5%) (TBT 50 ms, CLS 0.02, 3 score points) and a one-sided exact Mann-Whitney test puts the two sides' runs apart (p < 0.05). The failure names each side's LCP element, its breakdown, the requests that began before the LCP, the HTML size, render-blocking files and the scripts that ran longest; report.html shows the median run's filmstrip. A check with `--header` or `--cookie` reports page load as not measured, since Lighthouse would send them to every host it loads. `--no-load` leaves it out, `--no-psi` leaves PageSpeed Insights out; `--only load` (on `check` and `run`) measures it alone, a partial run where every other dimension is not compared |
 | `responsiveness` | the first use of every control the journeys exercised, and every internal link they followed, timed on a fresh page load, old then new, at desktop speed and on a 412x823 touch page with the CPU slowed 4x (`--cpu-throttle`). See below |
 | `motion` | the transitions and animations each interaction starts, old vs new, with motion allowed and the clock running in real time: the last step of every journey that stays on the page, hovering and keyboard-focusing each control a journey used, and scrolling down one screen. Each transition, CSS animation, Web Animation and style a script writes frame by frame is recorded with its element (paired as the other dimensions pair them), properties, duration, delay, easing and iterations, and media an interaction plays. Red when the old page animates and the new one jumps, when duration or delay differ by more than max(20 ms, 10%) or the easing differs, or when only the new page animates. Every animation an interaction starts is also held at the same moments on both sides (0, a quarter, half and three quarters into the old page's longest animation, and each old animation's last frame and the frame just after it ends, where each page's own end handlers have run), and each element that animates is compared there: shown or not (transparent counts as not shown), its opacity within 0.1, and how far it has moved or grown since the first moment within 2 px (`frame of generic (body/div)`: `old at 150 ms, just after animation exit of generic (body/div) ends: not shown`, `new: shown at opacity 1` is a dialog's backdrop that pops back after its own fade because the new page hides it only when the dialog's longer exit ends). After every journey that opened a dialog, menu or popup (once per alike opener), Escape is pressed and recorded too, so each one's exit is compared whatever the per-route cap leaves out (`maxDismissals`, 16). A canvas on the old page's first screen (a Rive or WebGL hero, which runs no CSS animation, writes nothing to the DOM and is masked as noise in screenshots) is recorded from the start of the document for 6 s, about 30 times a second, twice on the old side and once on the new, and each new frame is matched with the old frame it looks most like: the lag that lines them up is reported as the start-time gap, with how far it spreads, and the canvas is red (`canvas frames from load`) only when the best-matching frames differ by more than twice what the old page differs from a second load of itself (at least 0.5% of the canvas), so a drawing that only starts at another time is reported in `motion.canvases` and not flagged. An interaction that differs is recorded again on both sides, and stays red only if the new page's second recording differs too; every interaction that moved is replayed with `prefers-reduced-motion: reduce` too, where both must agree. report.html shows a filmstrip of each interaction that differs: five frames, old above new, at the same offsets into the old page's longest animation (held and stepped, so frames do not depend on timing). An interaction whose write the checker held back is left out (listed under skipped): what a page animates after a write follows the server's answer, and each app reacts to the checker's empty 204 in its own way (an optimistic toggle undone, a toggle that waits for success), so its motion is compared only when writes are sent; its hover and focus still are. Before an interaction is recorded the page settles (timers due within 3 s fire, finite animations end), then every loop, including one that has scheduled itself only once by then, is held with the timers it scheduled (a poll's fake server answer), and what those changed is undone with it, so both sides are held at the same phase whatever their load times; loops are held at their start while interactions are recorded, so what a loop keeps doing is not counted as an interaction's motion, and are compared on their own: each attribute, text or child list a loop kept changing, on the same element, at its period within max(20 ms, 10%) (`loop on generic "Toggle Demo"`), red when the new page lacks the loop or adds one. `--no-motion` leaves the interactions out |
 | `navigation` | the new app alone: a page reached by an in-place navigation must be the page a fresh load of its URL shows. One page per page shape (its layout, external scripts and number of inline scripts, from the served HTML; at most `--nav-destinations`, 40, layouts taken in turn) is reached by clicking a real link (one the checker adds when no page links there) on `--nav-entries` (2) other pages, other layouts first, and once more after using the entry page's control that keeps its state in the browser (a theme switch: a button whose click changes localStorage or a cookie); then the destination's own controls are used (that switch twice, then one control in the content), then back and forward. Each moment is compared with a fresh load of the same URL with the same kept state: `<html>` and `<body>` attributes, the head, the stylesheets that apply, the DOM, key computed styles, a screenshot (canvases, videos and embeds masked; what changed on its own within a second of the fresh load left out), the script files that ran, the globals the page's scripts define, and console errors. A link that loads a whole new document is a fresh load already and is not compared, nor is a swap the page's own code (htmx's `hx-boost`) made instead of the router. A difference the old app shows too when reached the same way is its own and not reported; `<html>` class and data-* attributes are also compared with the old app's, fresh (`rendered`) and reached in place. Catches what Markless 25196c52 (a swapped-in page's scripts not run: `htmx is not defined`) and 8d7669f8 (the homepage's `data-theme` kept on the next page, so turning the theme back to light left it dark) fixed. `--no-navigation` leaves it out |
@@ -607,13 +643,12 @@ one, and the report between them.
 pnpm install
 pnpm browsers      # once: downloads Chromium for Playwright
 pnpm typecheck
-pnpm test          # unit tests and the three fixture suites, about five minutes
-pnpm test:unit     # unit tests only, a few seconds
+pnpm test          # unit tests and every fixture suite
+pnpm test:unit     # unit tests only (they drive Chromium too)
 pnpm test:e2e      # fixture suites only
 ```
 
-CSS is parsed with [yuku-css](https://github.com/thejackshelton/yuku-css), which is not on npm yet:
-`package.json` links it from a checkout at `../yuku-css` (build it there with `bun run build`).
+CSS is parsed with [yuku-css](https://github.com/thejackshelton/yuku-css), from npm.
 
 `fixtures/` holds a Next.js App Router app and a Vite multi-page site, each with an Arabic (RTL) locale,
 Accept-Language negotiation at `/`, a menu, a counter and a form. The fixture suites build each one,
@@ -642,6 +677,37 @@ members page shown to anonymous visitors, the admin page shown to members, a dif
 target, a session cookie without HttpOnly and with SameSite=Strict), each red only as the role it
 affects, and against a copy behind a Cloudflare-style challenge, which must stop as blocked until the
 staging pass is sent as a header or cookie.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push to `main` and on every pull request:
+
+- `Typecheck`: `pnpm typecheck`.
+- `Unit tests (1/3)` to `(3/3)`: `test/*.test.ts` split in three with `node --test --test-shard`, since
+  the unit tests drive Chromium.
+- `E2E <suite>`: one job per file in `test/e2e/`, each building its own fixtures. The two largest
+  suites are split across runners with `E2E_SHARD=i/n` (six for `next-app`, four for `vite-site`): a
+  shard registers every n-th test and builds only the mutants its tests use. Without `E2E_SHARD`
+  every test runs, as `pnpm test:e2e` does locally.
+- `CI passed`: green only when every job above passed. This is the one check to require.
+
+A fixture suite runs a quarter of the machine's cores' tests at once (one on a 4-vCPU runner), since
+each check already drives several Chromium pages. A whole run takes about 9 minutes, bounded by the
+slowest unit test shard and `next-app` shard (about 8 to 9 minutes each).
+
+Every suite runs against servers the tests start on `127.0.0.1`, and fixture data uses `.example`
+hosts. The unit tests and every fixture suite pass with outbound network denied except loopback, so
+no test needs a live external site and nothing is skipped in CI.
+
+### Branch protection
+
+The workflow does not change repository settings. To make a red `main` impossible, enable under
+Settings, Branches, a branch protection rule (or a ruleset) for `main` with:
+
+- Require a pull request before merging.
+- Require status checks to pass before merging, with `CI passed` as the required check.
+- Require branches to be up to date before merging.
+- Do not allow bypassing the above settings.
 
 ## License
 
