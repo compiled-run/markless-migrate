@@ -219,7 +219,7 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 			if (!info) continue;
 			if (STRUCTURAL.has(role) && !(info.focusable || info.handler || info.sortable || info.selectable || (info.grid && role === 'row' && !info.header))) continue;
 			const target = { role, name, nth };
-			const base = { target, href: info.href, type: info.type, options: info.options, region: info.region, importance: importance(info), ...(info.focusable ? { focusable: true } : {}), ...(SAMPLED.has(role) ? { group: `${role}|${info.container}` } : {}) };
+			const base = { target, href: info.href, type: info.type, options: info.options, region: info.region, importance: importance(info), ...(info.focusable ? { focusable: true } : {}), ...(SAMPLED.has(role) ? { group: `${role}|${info.container}` } : info.list >= 0 && !info.handler ? { group: `${role}|list ${info.list}` } : {}) };
 			if (role === 'link') {
 				if (!info.href || /^(mailto|tel):/i.test(info.href)) {
 					add({ ...base, covered: 'its address is compared by the rendered check' });
@@ -236,6 +236,13 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 				}
 				if (DESTRUCTIVE.test(url.pathname)) {
 					add({ ...base, destructive: true });
+					continue;
+				}
+				// A link with no handler of its own goes where its address says, by the app's router: its address is compared
+				// by the rendered check, and a few links of each region (to another page, or within this one) are followed.
+				if (!info.handler && !base.group) {
+					const here = new URL(page.url());
+					add({ ...base, group: `link|${info.region}|${url.pathname === here.pathname ? 'here' : 'page'}` });
 					continue;
 				}
 			}
@@ -281,6 +288,13 @@ function describeElement(el: Element) {
 		grid: Boolean(grid && /^(grid|treegrid|tree)$/.test(grid.getAttribute('role') ?? '')),
 		header: Boolean(el.querySelector('[role="columnheader"], th')),
 		container: grid ? [...document.querySelectorAll('[role="grid"], [role="treegrid"], [role="tree"], [role="table"], table')].indexOf(grid) : -1,
+		// A list of more than 8 options, menu items, tabs or radios is sampled; a shorter one is exercised item by item.
+		list: (() => {
+			const list = el.closest('[role="listbox"], [role="menu"], [role="tablist"], [role="radiogroup"]');
+			if (!list) return -1;
+			const own = [...list.querySelectorAll('[role="option"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="tab"], [role="radio"]')].filter((x) => x.closest('[role="listbox"], [role="menu"], [role="tablist"], [role="radiogroup"]') === list);
+			return own.length > 8 ? [...document.querySelectorAll('[role="listbox"], [role="menu"], [role="tablist"], [role="radiogroup"]')].indexOf(list) : -1;
+		})(),
 	};
 }
 
@@ -1339,8 +1353,9 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	}));
 	for (const [group, n] of sampled) {
 		if (n <= SAMPLES) continue;
-		const role = group.split('|')[0]!;
-		elements.push({ element: `${n - SAMPLES} more ${role}${n - SAMPLES === 1 ? '' : 's'} of the same ${role === 'treeitem' ? 'tree' : 'grid'}`, signature: `sampled|${group}`, layout: false, by: `alike: the first ${SAMPLES} are exercised` });
+		const [role, where] = group.split('|') as [string, string];
+		const of = role === 'link' ? (group.endsWith('|here') ? `in ${where || 'the page'} to this page` : `in ${where || 'the page'} to other pages`) : where.startsWith('list ') ? 'of the same list' : `of the same ${role === 'treeitem' ? 'tree' : 'grid'}`;
+		elements.push({ element: `${n - SAMPLES} more ${role}${n - SAMPLES === 1 ? '' : 's'} ${of}`, signature: `sampled|${group}`, layout: false, by: `alike: the first ${SAMPLES} are exercised${role === 'link' ? ', and every address is compared by the rendered check' : ''}` });
 	}
 	return { journeys, elements, skipped, sequencesSkipped, deferred };
 }
@@ -1353,10 +1368,19 @@ const sameTarget = (a: Target, b: Target) => a.role === b.role && a.name === b.n
 const sameSteps = (a: readonly Step[], b: readonly Step[]) => a.length === b.length && a.every((s, i) => s.action === b[i]!.action && sameTarget(s.target, b[i]!.target));
 
 /** The initial interactive elements of the OLD page, to decide which route of a run exercises each shared layout control. */
-export async function survey(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<string[]> {
+/** A page's layout controls by signature, and how many controls of its own it has to exercise. */
+export async function survey(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<{ layout: string[]; own: number }> {
 	const session = await openSession(browser, env, route, viewport);
 	try {
-		return (await candidates(session.page, new URL(env.origin).origin)).filter(isLayout).map((c) => c.signature);
+		const found = await candidates(session.page, new URL(env.origin).origin);
+		const sampled = new Map<string, number>();
+		const exercised = found.filter((c) => {
+			if (c.covered || c.skip || isLayout(c)) return false;
+			if (!c.group) return true;
+			sampled.set(c.group, (sampled.get(c.group) ?? 0) + 1);
+			return sampled.get(c.group)! <= SAMPLES;
+		});
+		return { layout: found.filter(isLayout).map((c) => c.signature), own: exercised.length };
 	} finally {
 		await session.close();
 	}
