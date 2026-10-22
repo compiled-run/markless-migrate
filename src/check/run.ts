@@ -101,8 +101,8 @@ export interface CheckOptions {
 	readonly navigation?: NavigationOptions;
 	/** Lighthouse's mobile page load (FCP, LCP, Speed Index, TBT, CLS and the score), a median of several runs per side, after every other check so nothing else competes for the machine. */
 	readonly load?: LoadOptions;
-	/** `load`: only page load is measured, after nothing else; every other dimension is skipped. */
-	readonly only?: 'load';
+	/** `load`: only page load is measured, after nothing else; `embeds`: only the embed step runs, on each page route; every other dimension is skipped. */
+	readonly only?: 'load' | 'embeds';
 	/** How long one route's check (as one role) may take before it is stopped and reported as an infrastructure failure. */
 	readonly timeoutMs?: number;
 	/** Every route of the old site, each checked for existence on the new app (the coverage dimension). */
@@ -630,6 +630,16 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			}
 			if (options.only === 'load') {
 				if (!role || role === ANONYMOUS) routes.push(...allPages.map((route) => withTemplate({ ...partialResult(route, [], []), ok: true, only: 'load' as const })));
+				continue;
+			}
+			if (options.only === 'embeds') {
+				const step: EmbedCheckOptions = { ...(options.embeds ?? {}), claimed: new Map<string, string>() };
+				const viewports = options.viewports ?? VIEWPORTS;
+				for (const route of allPages) {
+					const out = await checkEmbeds(browser, { old: roleRun.old, new: roleRun.new }, route, viewports, step).catch((error: Error) => ({ failures: [{ route, dimension: 'rendered' as const, check: 'embed step', expected: 'the embed step runs', actual: error.message.split('\n')[0]!, hint: 'The embed step could not load the route on one side.' }], shots: [], results: [] }));
+					const result = { ...partialResult(route, out.failures, [...new Set(out.failures.map((f) => f.dimension as Dimension))]), shots: out.shots, only: 'embeds' as const };
+					routes.push(asRole(withTemplate({ ...result, ok: out.failures.length === 0 }), role));
+				}
 				continue;
 			}
 			if (options.coverage) coverages.push(await checkCoverage(roleRun.old, roleRun.new, options.coverage, role));

@@ -55,7 +55,7 @@ export function summarize(report: Report): string {
 		const accepted = route.failures.filter((f) => f.accepted).length;
 		const w = route.weight;
 		const stopped = notCompared(route);
-		const js = route.only ? 'only page load compared (--only load)' : stopped ? 'page not compared: the two apps did not let this role in alike' : `JS on the wire ${kb(w.old.downloaded)} -> ${kb(w.new.downloaded)}, run at load ${kb(w.old.executed)} -> ${kb(w.new.executed)} (uncompressed)`;
+		const js = route.only === 'embeds' ? 'only the embeds compared (--only embeds)' : route.only ? 'only page load compared (--only load)' : stopped ? 'page not compared: the two apps did not let this role in alike' : `JS on the wire ${kb(w.old.downloaded)} -> ${kb(w.new.downloaded)}, run at load ${kb(w.old.executed)} -> ${kb(w.new.executed)} (uncompressed)`;
 		lines.push(`${route.ok ? 'pass' : 'FAIL'}  ${route.route.padEnd(width)}  ${route.ok ? '' : `[${failed.join(', ')}]  `}${accepted ? `(${accepted} accepted) ` : ''}${route.endpoint ? `compared as ${route.endpoint}` : js}`);
 		if (route.template && route.template.representative !== route.route) lines.push(`      visual, behaviour, responsiveness and motion: checked on ${route.template.representative}, the representative of its template group (${route.template.pattern}, ${route.template.members} pages)`);
 		if (route.coverage) lines.push(`      ${coverageLine(route.coverage)}`);

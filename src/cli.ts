@@ -543,7 +543,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 	const agentMinutes = values['agent-timeout'] ? Number(values['agent-timeout']) : undefined;
 	if (agentMinutes !== undefined && !(agentMinutes > 0)) fail('--agent-timeout must be a number of minutes above 0');
 	if ((values.build || values['restart-on']) && !values.serve) fail('--build and --restart-on need --serve <command>, the command that serves the new app');
-	if (values.only !== undefined && values.only !== 'load') fail('run --only takes load: each route is checked for page load alone');
+	if (values.only !== undefined && values.only !== 'load' && values.only !== 'embeds') fail('run --only takes load (page load alone) or embeds (the embed step alone)');
 	if (values.only === 'load' && values['no-load']) fail('--only load and --no-load leave nothing to check');
 	const agent = driver(values.agent);
 	const home = process.env.HOME || homedir();
@@ -619,7 +619,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 				...(values['no-embeds'] ? {} : { embeds: { dir: join(stateDir, EMBEDS_DIR) } }),
 					...(navigation ? { navigation } : {}),
 					...(load ? { load } : {}),
-					...(values.only === 'load' ? { only: 'load' as const } : {}),
+					...(values.only === 'load' || values.only === 'embeds' ? { only: values.only } : {}),
 					switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 					partial: { total: inventory ? plannedRoutes(inventory).length : null },
 				});
@@ -750,9 +750,10 @@ async function main(argv: string[]): Promise<number> {
 			});
 			const deadline = timeoutOption(values.timeout);
 			if (!values.old || !values.new) fail('check needs --old <origin> and --new <origin>');
-			if (values.only !== undefined && values.only !== 'coverage' && values.only !== 'load') fail('--only takes coverage (whether every route of the old site exists on the new app) or load (page load alone)');
+			if (values.only !== undefined && values.only !== 'coverage' && values.only !== 'load' && values.only !== 'embeds') fail('--only takes coverage (whether every route of the old site exists on the new app), load (page load alone) or embeds (the embed step alone)');
 			const coverageOnly = values.only === 'coverage';
 			const loadOnly = values.only === 'load';
+			const embedsOnly = values.only === 'embeds';
 			if (loadOnly && values['no-load']) fail('--only load and --no-load leave nothing to check');
 			const journeys = journeyOptions(values['journey-budget'], values['max-journeys'], values['journey-depth']);
 			const timing = timingOptions(values);
@@ -780,7 +781,7 @@ async function main(argv: string[]): Promise<number> {
 				targets = { endpoints: await discoverEndpoints(defaultEnv(values.old), all.pages, all.endpoints), unchecked: all.needsSample, redirects: redirectTargets(all.pages, inventory.source?.redirects) };
 			}
 			if (!coverageOnly && !routes?.length && !targets?.endpoints.length) fail('no routes: pass --route <path> or run plan first');
-			const partial = !coverageOnly && Boolean(values.route?.length || values.changed || loadOnly);
+			const partial = !coverageOnly && Boolean(values.route?.length || values.changed || loadOnly || embedsOnly);
 			const navigation = navigationOptions(values, partial ? planned : undefined);
 			const load = loadOptions(values);
 			const concurrency = values.concurrency ? Number(values.concurrency) : undefined;
@@ -828,7 +829,7 @@ async function main(argv: string[]): Promise<number> {
 				...(values['no-embeds'] ? {} : { embeds: { dir: join(cwd, STATE_DIR, EMBEDS_DIR) } }),
 				...(navigation ? { navigation } : {}),
 				...(load && !coverageOnly ? { load } : {}),
-				...(loadOnly ? { only: 'load' as const } : {}),
+				...(loadOnly ? { only: 'load' as const } : embedsOnly ? { only: 'embeds' as const } : {}),
 				switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 				...(!values['new-source'] && !values.changed ? {} : { sourceDirs: { ...(values.source ? { old: resolve(values.source) } : {}), new: newDir } }),
 				...(partial ? { partial: { total: planned?.length ?? null } } : planned?.length ? { coverage: planned } : {}),
