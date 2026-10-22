@@ -132,3 +132,20 @@ export function embedFailures(route: string, viewport: string, old: PageCapture,
 	}
 	return failures;
 }
+
+/** An accessibility snapshot without each embed's own lines (their order kept, indentation ignored) and without bare frames: what is inside an embed is the embed step's to compare. */
+export function withoutEmbeds(lines: readonly string[], blocks: readonly (readonly string[])[]): string[] {
+	let out = [...lines];
+	for (const block of blocks) {
+		const want = block.map((l) => l.trim()).filter(Boolean);
+		if (!want.length) continue;
+		const trimmed = out.map((l) => l.trim());
+		for (let i = 0; i + want.length <= trimmed.length; i++) {
+			if (want.every((w, j) => trimmed[i + j] === w)) {
+				out = [...out.slice(0, i), ...out.slice(i + want.length)];
+				break;
+			}
+		}
+	}
+	return out.filter((l) => !/^\s*- iframe\b/.test(l));
+}

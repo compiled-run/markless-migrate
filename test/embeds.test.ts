@@ -123,3 +123,10 @@ test('the run prompt names each embed on the route, its study and adapter, where
 	assert.match(brief, /- spotify-track-4uLU6hMCjMI75M1A2tKUQC: .*keep as it is: Spotify's developer terms/);
 	assert.equal(embedBrief(uses.list(), '/other', '/x', 'm'), undefined);
 });
+
+test('the page-level accessibility tree leaves an embed\'s inside to the embed step: its own lines and bare frames are dropped, the rest kept in order', async () => {
+	const { withoutEmbeds } = await import('../src/check/embeds.ts');
+	const page = ['- heading "Vite 6"', '- paragraph: Watch the keynote', '- generic:', '  - \'button "Play video: Keynote"\'', '  - link "ViteConf":', '    - /url: https://www.youtube.com/@viteconf', '- iframe', '- paragraph: Next'];
+	const component = ['- generic:', '  - \'button "Play video: Keynote"\'', '  - link "ViteConf":', '    - /url: https://www.youtube.com/@viteconf'];
+	assert.deepEqual(withoutEmbeds(page, [component]), ['- heading "Vite 6"', '- paragraph: Watch the keynote', '- paragraph: Next']);
+});
