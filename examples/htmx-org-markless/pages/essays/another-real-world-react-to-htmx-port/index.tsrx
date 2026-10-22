@@ -26,9 +26,9 @@ export default function Page() @{
 			{" "}
 			<p>A very nice aspect of this port is that, because OpenUnited is open source, in contrast with Contexte, the before and after code is available to examine:</p>
 			{" "}
-			<p>{"Before: "}<a rel="noopener" target="_blank" href="https://github.com/OpenUnited/old-codebase">https://github.com/OpenUnited/old-codebase</a></p>
+			<p>{"Before: "}<a rel="noopener" target="_blank" href="https://github.com/OpenUnited/old-codebase">{"https://github.com/OpenUnited/old-codebase"}</a></p>
 			{" "}
-			<p>{"After: "}<a rel="noopener" target="_blank" href="https://github.com/OpenUnited/platform">https://github.com/OpenUnited/platform</a></p>
+			<p>{"After: "}<a rel="noopener" target="_blank" href="https://github.com/OpenUnited/platform">{"https://github.com/OpenUnited/platform"}</a></p>
 			{" "}
 			<h2 id="executive-summary"><a class="zola-anchor" href="#executive-summary" aria-label="Anchor link for: executive-summary">Executive Summary</a></h2>
 			{" "}

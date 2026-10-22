@@ -18,7 +18,7 @@ export default function Page() @{
 			{" "}
 			<h3 id="improvements-bug-fixes">Improvements &amp; Bug fixes</h3>
 			{" "}
-			<ul>{" "}<li>{"The "}<a rel="noopener" target="_blank" href="https://htmx.org/docs#security">Security</a>{" section has been expanded to help developers better understand how to properly secure their htmx-based applications."}</li>{" "}<li>Web sockets now properly pass the target id in the HEADERS struct</li>{" "}<li>A very rare loading state bug was fixed (see https://github.com/bigskysoftware/htmx/commit/93bd81b6d003bb7bc445f10192bdb8089fa3495d)</li>{" "}<li><code>hx-on</code>{" will not evaluate if "}<code>allowEval</code>{" is set to false"}</li>{" "}</ul>
+			<ul>{" "}<li>{"The "}<a rel="noopener" target="_blank" href="https://htmx.org/docs#security">Security</a>{" section has been expanded to help developers better understand how to properly secure their htmx-based applications."}</li>{" "}<li>Web sockets now properly pass the target id in the HEADERS struct</li>{" "}<li>{"A very rare loading state bug was fixed (see https://github.com/bigskysoftware/htmx/commit/93bd81b6d003bb7bc445f10192bdb8089fa3495d)"}</li>{" "}<li><code>hx-on</code>{" will not evaluate if "}<code>allowEval</code>{" is set to false"}</li>{" "}</ul>
 			{" "}
 			<p>Thank you to everyone who contributed, and enjoy!</p>
 			{" "}

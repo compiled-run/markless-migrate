@@ -20,7 +20,7 @@ export default function Page() @{
 			{" "}
 			<p>In fact, I shared this sentiment with our team in Slack:</p>
 			{" "}
-			<blockquote>{" "}<p>“https://htmx.org/ may be a way of adding simple interactions to start”</p>{" "}</blockquote>
+			<blockquote>{" "}<p>{"“https://htmx.org/ may be a way of adding simple interactions to start”"}</p>{" "}</blockquote>
 			{" "}
 			<p>And initially, it seemed promising! As one of our engineers at Gumroad eloquently put it:</p>
 			{" "}

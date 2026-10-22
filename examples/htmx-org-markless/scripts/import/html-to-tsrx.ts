@@ -30,7 +30,8 @@ const lit = (text: string) => JSON.stringify(text);
 const escapeText = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\{/g, '&#123;').replace(/\}/g, '&#125;').replace(/@/g, '&#64;');
 // HTML whitespace only: JavaScript's \s also matches the no-break spaces code samples indent with.
 const collapse = (t: string) => t.replace(/[ \t\n\r\f]+/g, ' ');
-const textOut = (t: string) => (/[\n\t\r\f\u00a0]| {2}|^ | $/.test(t) || !t.replace(/[ \t\n\r\f]/g, '') ? `{${lit(t)}}` : escapeText(t));
+// TSRX reads `//` and `/*` in markup text as comments, so such text is written as a string.
+const textOut = (t: string) => (/[\n\t\r\f\u00a0]| {2}|^ | $|\/\/|\/\*/.test(t) || !t.replace(/[ \t\n\r\f]/g, '') ? `{${lit(t)}}` : escapeText(t));
 
 function attributes(el: Element, libraries: Libraries, dropped: string[]): string {
 	return el.attrs

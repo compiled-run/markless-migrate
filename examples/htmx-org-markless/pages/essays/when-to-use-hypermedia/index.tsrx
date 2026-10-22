@@ -14,7 +14,7 @@ export default function Page() @{
 			{" "}
 			<blockquote>{" "}<p>The trade-off, though, is that a uniform interface degrades efficiency, since information is transferred in a standardized form rather than one which is specific to an application’s needs. The REST interface is designed to be efficient for large-grain hypermedia data transfer, optimizing for the common case of the Web, but resulting in an interface that is not optimal for other forms of architectural interaction.</p>{" "}</blockquote>
 			{" "}
-			<p><em>{"-Roy Fielding, "}<a rel="noopener" target="_blank" href="https://www.ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm#sec_5_1_5">https://www.ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm#sec_5_1_5</a></em></p>
+			<p><em>{"-Roy Fielding, "}<a rel="noopener" target="_blank" href="https://www.ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm#sec_5_1_5">{"https://www.ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm#sec_5_1_5"}</a></em></p>
 			{" "}
 			<p>We are obviously fans of hypermedia and think that it can address, at least in part, many of the problems that the web development world is facing today:</p>
 			{" "}
