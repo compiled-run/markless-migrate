@@ -46,6 +46,26 @@ export interface EmbedPairResult {
 	readonly activation: readonly { readonly viewport: string; readonly how: 'click' | 'keyboard'; readonly old: Activation; readonly new: Activation; readonly ok: boolean }[];
 }
 
+/** An embed's identity on any page of the route: its element and address (a component's embed id), and which of the same it is. */
+export interface EmbedIdentity {
+	readonly sig: string;
+	readonly nth: number;
+}
+
+const signature = (e: LiveEmbed) => `${e.tag}|${e.src}`;
+
+export function identityOf(list: readonly LiveEmbed[], index: number): EmbedIdentity {
+	const sig = signature(list[index]!);
+	return { sig, nth: list.slice(0, index).filter((e) => signature(e) === sig).length };
+}
+
+/** Where an embed is on another load of the route (another viewport hides or shows some), or -1. */
+export function indexOf(list: readonly LiveEmbed[], id: EmbedIdentity): number {
+	let seen = 0;
+	for (const [i, e] of list.entries()) if (signature(e) === id.sig && seen++ === id.nth) return i;
+	return -1;
+}
+
 /** A name for the embed a pair compares: the component's embed id, else the provider and key of the old embed's address. */
 export function embedName(o: LiveEmbed, n: LiveEmbed | undefined): string {
 	if (n?.role === 'component' && n.id) return n.id;
@@ -328,7 +348,7 @@ export async function checkEmbeds(browser: Browser, envs: { readonly old: SideEn
 		await probeOld.close();
 		throw error;
 	});
-	const pairs = probeOld.embeds.map((o, i) => ({ i, o, n: probeNew.embeds[i] })).filter(({ o, n }) => {
+	const pairs = probeOld.embeds.map((o, i) => ({ i, o, n: probeNew.embeds[i], oldId: identityOf(probeOld.embeds, i), newId: probeNew.embeds[i] ? identityOf(probeNew.embeds, i) : undefined })).filter(({ o, n }) => {
 		const key = `${embedName(o, n)}|${o.tag}`;
 		if (options.claimed.has(key)) return false;
 		options.claimed.set(key, route);
@@ -341,11 +361,17 @@ export async function checkEmbeds(browser: Browser, envs: { readonly old: SideEn
 		for (const scheme of SCHEMES) {
 			const sides = [await openSide(browser, envs.old, route, viewport, scheme), await openSide(browser, envs.old, route, viewport, scheme), await openSide(browser, envs.new, route, viewport, scheme)];
 			try {
-				for (const { i, o, n } of pairs) {
+				for (const { o, n, oldId, newId } of pairs) {
 					const result = results.get(embedName(o, n))!;
-					if (!n) continue;
+					if (!n || !newId) continue;
+					const [ia, ib, ic] = [indexOf(sides[0]!.embeds, oldId), indexOf(sides[1]!.embeds, oldId), indexOf(sides[2]!.embeds, newId)];
+					// Hidden on the old page at this viewport (a navbar button on a phone): the new one must be hidden too.
+					if (ia < 0) {
+						if (ic >= 0) failures.push({ route, dimension: 'visual', check: `embed ${result.name} ${scheme}`, viewport: viewport.name, expected: 'hidden, as the old embed is at this viewport', actual: `shown (${sides[2]!.embeds[ic]!.box.width}x${sides[2]!.embeds[ic]!.box.height})`, hint: HINT_VISUAL });
+						continue;
+					}
 					for (const state of STATES) {
-						const [a, b, c] = [await stateShot(sides[0]!, i, state, ms), await stateShot(sides[1]!, i, state, ms), await stateShot(sides[2]!, i, state, ms)];
+						const [a, b, c] = [await stateShot(sides[0]!, ia, state, ms), ib < 0 ? undefined : await stateShot(sides[1]!, ib, state, ms), ic < 0 ? undefined : await stateShot(sides[2]!, ic, state, ms)];
 						if (!a) continue;
 						const label = `${viewport.name}-${scheme}-${state}`;
 						if (!c) {
@@ -375,35 +401,42 @@ export async function checkEmbeds(browser: Browser, envs: { readonly old: SideEn
 		const result = results.get(embedName(o, n))!;
 		failures.push({ route, dimension: 'rendered', check: `embed ${result.name}`, viewport: first.name, expected: `<${o.tag}> ${o.src}`, actual: '(absent): no Markless component marked data-markless-embed and no kept embed in its place', hint: HINT_VISUAL });
 	}
-	const present = pairs.filter((p) => p.n);
+	const present = pairs.filter((p) => p.n && p.newId);
 	// Each embed is activated in turn on one page per side, way and viewport: a click or key never takes the page away (a new tab is recorded and closed, a navigation is recorded and stopped).
-	const activateAll = async (env: SideEnv, viewport: Viewport, how: 'click' | 'keyboard', list: typeof present): Promise<Activation[]> => {
-		if (!list.length) return [];
+	const activateAll = async (env: SideEnv, viewport: Viewport, how: 'click' | 'keyboard', ids: readonly EmbedIdentity[]): Promise<(Activation | undefined)[]> => {
 		const side = await openSide(browser, env, route, viewport, 'light', { live: true });
 		try {
-			const out: Activation[] = [];
-			for (const { i } of list) out.push(await activate(side, i, how));
+			const out: (Activation | undefined)[] = [];
+			for (const id of ids) {
+				const at = indexOf(side.embeds, id);
+				out.push(at < 0 ? undefined : await activate(side, at, how));
+			}
 			return out;
 		} finally {
 			await side.close();
 		}
 	};
-	for (const viewport of viewports) {
-		const clicked = await activateAll(envs.old, viewport, 'click', present);
-		const kept = present.filter((p) => p.n!.role !== 'component');
-		const keyedKept = await activateAll(envs.old, viewport, 'keyboard', kept);
-		const next = { click: await activateAll(envs.new, viewport, 'click', present), keyboard: await activateAll(envs.new, viewport, 'keyboard', present) };
-		present.forEach(({ o, n }, k) => {
-			const result = results.get(embedName(o, n))!;
-			for (const how of ['click', 'keyboard'] as const) {
-				// A component's keyboard activation must do what a click on the old embed does; a kept embed is held to the old one's own keyboard behaviour.
-				const old = how === 'keyboard' && n!.role !== 'component' ? keyedKept[kept.findIndex((p) => p.o === o)]! : clicked[k]!;
-				const got = next[how][k]!;
-				const ok = sameActivation(old, got) && (!got.error || Boolean(old.error));
-				result.activation.push({ viewport: viewport.name, how, old, new: got, ok });
-				if (!ok) failures.push({ route, dimension: 'behaviour', check: `embed ${result.name} activation by ${how}`, viewport: viewport.name, expected: `${how === 'keyboard' && n!.role !== 'component' ? 'as the old embed by keyboard' : 'as the old embed on a click'}: ${describeActivation(old)}`, actual: describeActivation(got), hint: HINT_ACTIVATION });
-			}
-		});
+	if (present.length) {
+		for (const viewport of viewports) {
+			const oldIds = present.map((p) => p.oldId);
+			const newIds = present.map((p) => p.newId!);
+			const clicked = await activateAll(envs.old, viewport, 'click', oldIds);
+			const keyed = await activateAll(envs.old, viewport, 'keyboard', oldIds);
+			const next = { click: await activateAll(envs.new, viewport, 'click', newIds), keyboard: await activateAll(envs.new, viewport, 'keyboard', newIds) };
+			present.forEach(({ o, n }, k) => {
+				const result = results.get(embedName(o, n))!;
+				if (!clicked[k]) return;
+				for (const how of ['click', 'keyboard'] as const) {
+					const got = next[how][k] ?? { navigations: [], frames: [], playing: false, error: 'the embed is not on the page at this viewport' };
+					// By keyboard, an embed may do what the old one does by keyboard, or what a click on it does (a component's play button is reached by Tab where the old player's first control is a link).
+					const options = how === 'click' ? [clicked[k]!] : [keyed[k], ...(n!.role === 'component' ? [clicked[k]!] : [])].filter((a): a is Activation => Boolean(a));
+					const old = options.find((a) => sameActivation(a, got) && (!got.error || Boolean(a.error))) ?? options[0]!;
+					const ok = options.some((a) => sameActivation(a, got) && (!got.error || Boolean(a.error)));
+					result.activation.push({ viewport: viewport.name, how, old, new: got, ok });
+					if (!ok) failures.push({ route, dimension: 'behaviour', check: `embed ${result.name} activation by ${how}`, viewport: viewport.name, expected: how === 'click' ? `as the old embed on a click: ${describeActivation(old)}` : `as the old embed by keyboard or on a click: ${options.map(describeActivation).join(' / or / ')}`, actual: describeActivation(got), hint: HINT_ACTIVATION });
+				}
+			});
+		}
 	}
 	if (options.dir) for (const r of results.values()) await writeFile(join(options.dir, r.name, 'check', 'result.json'), `${JSON.stringify(r, null, '\t')}\n`).catch(() => {});
 	return { failures, shots, results: [...results.values()] };

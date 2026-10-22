@@ -136,3 +136,13 @@ test('a ghbtns.com frame is mdo\'s github-buttons, its own widget: same reposito
 	const [btn] = detectEmbeds(parseHtml(`<iframe src="https://ghbtns.com/github-btn.html?user=facebook&repo=docusaurus&type=star&count=true&size=large" width="160" height="30"></iframe>`), '/', 'https://docusaurus.io');
 	assert.deepEqual([btn!.id, btn!.provider, btn!.adapter, btn!.url], ['ghbtns-facebook-docusaurus-star', 'ghbtns', undefined, 'https://github.com/facebook/docusaurus']);
 });
+
+test('an embed is found on every load of a route by its element, address and which of the same it is, wherever another viewport shifts it', async () => {
+	const { identityOf, indexOf } = await import('../src/embed/check.ts');
+	const box = { x: 0, y: 0, width: 1, height: 1 };
+	const desktop = [{ tag: 'iframe', src: 'https://ghbtns.com/github-btn.html', attributes: {}, box }, { tag: 'article', src: 'slot:youtube', attributes: {}, box, role: 'widget' as const }, { tag: 'iframe', src: 'https://ghbtns.com/github-btn.html', attributes: {}, box }];
+	const phone = [desktop[1]!, desktop[2]!];
+	assert.equal(indexOf(phone, identityOf(desktop, 1)), 0, 'the facade moves up when the navbar button is hidden');
+	assert.equal(indexOf(phone, identityOf(desktop, 0)), 1, 'the first of two same buttons is the first one still shown');
+	assert.equal(indexOf(phone, identityOf(desktop, 2)), -1);
+});
