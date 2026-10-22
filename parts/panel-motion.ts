@@ -121,6 +121,11 @@ export function panelExit(id: string, done: () => void, depth = 0): void {
 	if (parts.length) {
 		// Radix's Presence: each part whose closed state starts an animation of its own stays until that animation ends.
 		const before = parts.map((n) => getComputedStyle(n).animationName);
+		// A part open on load still holds Radix's mount suppression; Radix restores its own styles before the first close.
+		for (const n of parts) {
+			if (n.style.animationName === 'none') n.style.removeProperty('animation-name');
+			if (n.style.transitionDuration === '0s') n.style.removeProperty('transition-duration');
+		}
 		for (const n of parts) setOpen(n, false);
 		const leaving = parts.filter((n, i) => {
 			const now = getComputedStyle(n).animationName;
