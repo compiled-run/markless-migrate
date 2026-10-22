@@ -146,3 +146,11 @@ test('an embed is found on every load of a route by its element, address and whi
 	assert.equal(indexOf(phone, identityOf(desktop, 0)), 1, 'the first of two same buttons is the first one still shown');
 	assert.equal(indexOf(phone, identityOf(desktop, 2)), -1);
 });
+
+test('activation that leads to the same pages is the same whatever frame stays in place; otherwise what loads in its place and whether it plays must match', async () => {
+	const { sameActivation } = await import('../src/embed/check.ts');
+	const frame = 'iframe https://buttons.github.io/buttons.html';
+	assert.ok(sameActivation({ navigations: ['https://github.com/bigskysoftware/htmx'], frames: [frame], playing: false }, { navigations: ['https://github.com/bigskysoftware/htmx'], frames: [], playing: false }));
+	assert.ok(!sameActivation({ navigations: [], frames: ['iframe https://www.youtube-nocookie.com/embed/x'], playing: true }, { navigations: [], frames: [], playing: false }));
+	assert.ok(sameActivation({ navigations: [], frames: ['iframe https://www.youtube-nocookie.com/embed/x'], playing: true }, { navigations: [], frames: ['iframe https://www.youtube.com/embed/x'], playing: true }), 'youtube.com and youtube-nocookie.com are the same player');
+});

@@ -339,7 +339,10 @@ export const describeActivation = (a: Activation) => [a.error ?? '', a.frames.le
 
 export function sameActivation(o: Activation, n: Activation): boolean {
 	const frames = (a: Activation) => JSON.stringify(a.frames.map((f) => f.replace(/^(\S+ https:\/\/www\.youtube)(-nocookie)?(\.com\/embed)/, '$1$3')));
-	return frames(o) === frames(n) && o.playing === n.playing && JSON.stringify(o.navigations) === JSON.stringify(n.navigations);
+	const navigations = JSON.stringify(o.navigations) === JSON.stringify(n.navigations);
+	// Activation that leads to the same pages on both sides is the same, whatever frame stays in place (the old button's own frame, which a component has none of).
+	const led = navigations && o.navigations.length > 0;
+	return (led || frames(o) === frames(n)) && o.playing === n.playing && navigations;
 }
 
 /** The one colour a picture is all of, or undefined: an embed drawn nowhere it has a box. */
