@@ -74,15 +74,12 @@ export function embedName(o: LiveEmbed, n: LiveEmbed | undefined): string {
 	return found ? `${found.provider.id}-${found.key}`.replace(/[^A-Za-z0-9_-]+/g, '-') : `${o.tag}-${o.src.replace(/^https?:\/\//, '').replace(/[^A-Za-z0-9_-]+/g, '-')}`.slice(0, 80);
 }
 
-/** Runs in the page: marks the i-th live embed so Playwright can reach it. Must stay self-contained. */
+/** Runs in the page: marks the i-th live embed so Playwright can reach it: a component by its embed id, a frame by its address, a widget by its tag, the nearest to where it was if there are several. Must stay self-contained. */
 function markTarget([index, list]: [number, LiveEmbed[]]): void {
-	document.querySelector('[data-markless-migrate-target]')?.removeAttribute('data-markless-migrate-target');
+	const MARKED = 'data-markless-migrate-target';
+	for (const el of document.querySelectorAll(`[${MARKED}]`)) el.removeAttribute(MARKED);
 	const want = list[index];
 	if (!want) return;
-	const near = (el: Element) => {
-		const r = el.getBoundingClientRect();
-		return Math.abs(Math.round(r.x + scrollX) - want.box.x) <= 1 && Math.abs(Math.round(r.y + scrollY) - want.box.y) <= 1 && Math.abs(Math.round(r.width) - want.box.width) <= 1 && Math.abs(Math.round(r.height) - want.box.height) <= 1;
-	};
 	const all: Element[] = [];
 	const walk = (root: Document | ShadowRoot) => {
 		for (const el of root.querySelectorAll('*')) {
@@ -91,8 +88,22 @@ function markTarget([index, list]: [number, LiveEmbed[]]): void {
 		}
 	};
 	walk(document);
-	const el = all.find((e) => e.tagName.toLowerCase() === want.tag && near(e) && (want.role !== 'component' || e.getAttribute('data-markless-embed') === want.id));
-	el?.setAttribute('data-markless-migrate-target', '');
+	const address = (el: Element) => {
+		const url = URL.parse(el.getAttribute(el.localName === 'object' ? 'data' : 'src') ?? '', location.href);
+		return url ? (url.origin === location.origin ? url.pathname : `${url.origin}${url.pathname}`) : '';
+	};
+	const same = (el: Element) => {
+		if (el.localName !== want.tag) return false;
+		if (want.role === 'component') return el.getAttribute('data-markless-embed') === want.id;
+		if (want.role === 'widget') return true;
+		return want.tag === 'video' || address(el) === want.src;
+	};
+	const distance = (el: Element) => {
+		const r = el.getBoundingClientRect();
+		return Math.abs(r.x + scrollX - want.box.x) + Math.abs(r.y + scrollY - want.box.y) + Math.abs(r.width - want.box.width) + Math.abs(r.height - want.box.height);
+	};
+	const el = all.filter(same).sort((a, b) => distance(a) - distance(b))[0];
+	el?.setAttribute(MARKED, '');
 }
 
 /** Runs in the page: frames and media elements that overlap a box, by tag, origin and path. Must stay self-contained. */
@@ -200,7 +211,7 @@ function focusBefore(selector: string): boolean {
 async function focusInside(side: Side, index: number): Promise<boolean> {
 	const el = await target(side, index);
 	const frame = await el.elementHandle({ timeout: 2000 }).then((h) => h?.contentFrame() ?? null).catch(() => null);
-	const inner = frame ? frame.locator(FOCUSABLE).first() : (await el.evaluate((e, sel) => e.matches(sel), FOCUSABLE).catch(() => false)) ? el : el.locator(FOCUSABLE).first();
+	const inner = frame ? frame.locator(FOCUSABLE).first() : (await el.evaluate((e, sel) => e.matches(sel), FOCUSABLE, { timeout: 3000 }).catch(() => false)) ? el : el.locator(FOCUSABLE).first();
 	if (await inner.count().catch(() => 0)) {
 		await inner.focus({ timeout: 2000 }).catch(() => {});
 		// A key press makes the focus a keyboard one, so :focus-visible shows as it would for a visitor tabbing in.
@@ -285,7 +296,7 @@ export async function activate(side: Side, index: number, how: 'click' | 'keyboa
 		if (how === 'click') {
 			const el = await target(side, index);
 			await el.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
-			const r = await el.boundingBox();
+			const r = await el.boundingBox({ timeout: 3000 }).catch(() => null);
 			if (!r) return { navigations, frames: [], playing: false, error: 'the embed has no box' };
 			await page.mouse.click(r.x + r.width / 2, r.y + r.height / 2);
 		} else {
@@ -371,7 +382,8 @@ export async function checkEmbeds(browser: Browser, envs: { readonly old: SideEn
 						continue;
 					}
 					for (const state of STATES) {
-						const [a, b, c] = [await stateShot(sides[0]!, ia, state, ms), ib < 0 ? undefined : await stateShot(sides[1]!, ib, state, ms), ic < 0 ? undefined : await stateShot(sides[2]!, ic, state, ms)];
+						const shot = (side: Side, at: number) => (at < 0 ? Promise.resolve(undefined) : stateShot(side, at, state, ms).catch(() => undefined));
+						const [a, b, c] = [await shot(sides[0]!, ia), await shot(sides[1]!, ib), await shot(sides[2]!, ic)];
 						if (!a) continue;
 						const label = `${viewport.name}-${scheme}-${state}`;
 						if (!c) {
@@ -409,7 +421,7 @@ export async function checkEmbeds(browser: Browser, envs: { readonly old: SideEn
 			const out: (Activation | undefined)[] = [];
 			for (const id of ids) {
 				const at = indexOf(side.embeds, id);
-				out.push(at < 0 ? undefined : await activate(side, at, how));
+				out.push(at < 0 ? undefined : await activate(side, at, how).catch((error: Error): Activation => ({ navigations: [], frames: [], playing: false, error: `activating it failed: ${error.message.split('\n')[0]}` })));
 			}
 			return out;
 		} finally {
