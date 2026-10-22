@@ -1,6 +1,11 @@
-# @markless/migrate
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-on-dark.svg">
+  <img src="docs/assets/logo-on-light.svg" width="96" height="96" alt="">
+</picture>
 
-Move an existing app to [Markless](https://markless.dev) with your own coding agent, and prove every route still works before it switches over.
+# Markless Migrate
+
+Markless Migrate (`@markless/migrate`) moves an existing app to [Markless](https://markless.dev) with your own coding agent, and proves every route still works before it switches over.
 
 Your agent (Claude Code, Codex, Cursor...) does the converting. This tool does the rest:
 
@@ -615,7 +620,7 @@ facts behind the rules: [docs/notes/caching.md](docs/notes/caching.md).
 
 ## Certified library ports
 
-Some libraries are ported once in markless-migrate rather than once per site: `src/library/ports/<library>/`
+Some libraries are ported once in Markless Migrate rather than once per site: `src/library/ports/<library>/`
 holds a Markless port (no React and no copy of the library) that renders the library's own markup and
 attributes, so the old classes and selectors work unchanged. Today that is `@radix-ui/react-dialog` and
 `@radix-ui/react-alert-dialog` 1.1.15, which shadcn/ui's dialog, sheet, alert dialog and command dialog wrap.
