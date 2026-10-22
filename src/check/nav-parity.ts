@@ -6,7 +6,7 @@ import { pool, quiet } from './journeys.ts';
 import { withFailures } from './compare.ts';
 import { RUNTIME_MARKERS } from './residue.ts';
 import { maskedShot } from './embeds.ts';
-import { armThemeFrames, flashFailures, readThemeFrames, themeFrameRecorder, type ThemeRecording } from './swap-frames.ts';
+import { armThemeFrames, flashFailures, layoutFailures, readThemeFrames, recordSwapShots, themeFrameRecorder, type SwapShot, type ThemeRecording } from './swap-frames.ts';
 import type { Failure, RouteNavigation, RouteResult, Shot, Viewport } from './types.ts';
 import { compareScreenshots, visualNoise, visuallyDifferent, type VisualNoise } from './visual.ts';
 import { VIEWPORTS } from './types.ts';
@@ -507,7 +507,7 @@ async function findToggle(browser: Browser, env: SideEnv, viewport: Viewport, ro
 const routerFetch = (url: URL, headers: Record<string, string>) => url.pathname.startsWith('/_markless/fragment/') || 'x-markless-fragment' in headers;
 
 /** Clicks a link to `to` on the page (one the visitor can see, else one the checker adds) and reports whether the document stayed, and whether the page's own code (not the router) fetched and swapped it. It ends on `to` or where a fresh load of `to` ends (a login guard's redirect). */
-async function follow(tab: Tab, to: string, origin: string, landing: string): Promise<{ inPlace: boolean; injected: boolean; byPage: boolean; frames?: ThemeRecording }> {
+async function follow(tab: Tab, to: string, origin: string, landing: string, painted = false): Promise<{ inPlace: boolean; injected: boolean; byPage: boolean; frames?: ThemeRecording; shots: SwapShot[] }> {
 	const target = new URL(to, origin).href;
 	const page = tab.page;
 	const lands = new URL(landing, origin).href;
@@ -541,17 +541,24 @@ async function follow(tab: Tab, to: string, origin: string, landing: string): Pr
 		if (['fetch', 'xhr'].includes(r.resourceType()) && samePage(url.href, target) && !routerFetch(url, r.headers())) byPage = true;
 	};
 	page.on('request', watch);
+	// Scrolled to before recording starts: the click's own scroll is not a frame of the swap.
+	await page.locator('a[href]').nth(found).scrollIntoViewIfNeeded({ timeout: STEP_MS }).catch(() => {});
+	let armedAt = Date.now();
+	const stopShots = painted ? await recordSwapShots(page, () => armedAt) : async () => [];
+	armedAt = Date.now();
 	await armThemeFrames(page);
+	let shots: SwapShot[] = [];
 	try {
 		await page.locator('a[href]').nth(found).click({ timeout: STEP_MS });
 		await page.waitForURL((u) => ends.some((end) => samePage(u.href, end)), { timeout: STEP_MS, waitUntil: 'commit' });
 		await settled(tab);
 	} finally {
 		page.off('request', watch);
+		shots = await stopShots();
 	}
 	const inPlace = tab.documents === before && (await page.evaluate(() => (window as unknown as { __mmNavToken?: number }).__mmNavToken === 1));
 	const frames = inPlace ? await readThemeFrames(page) : undefined;
-	return { inPlace, injected, byPage, ...(frames ? { frames } : {}) };
+	return { inPlace, injected, byPage, ...(frames ? { frames } : {}), shots: inPlace ? shots : [] };
 }
 
 function samePage(a: string, b: string): boolean {
@@ -683,7 +690,7 @@ function side(browser: Browser, env: SideEnv, viewport: Viewport, opened: () => 
 				const entryRoute = (await snap(tab.page)).route;
 				tab.phase = 1;
 				const atTo = destination ?? (await fresh(job.to, state, false));
-				const { inPlace, injected, byPage, frames } = await follow(tab, job.to, env.origin, atTo.snap.url);
+				const { inPlace, injected, byPage, frames, shots: painted } = await follow(tab, job.to, env.origin, atTo.snap.url, true);
 				const pair = { ...base, ...(control ? { control: control.label } : {}), inPlace, ...(injected || job.injected ? { injected: true } : {}) };
 				if (!inPlace) return { pair: { ...pair, failures: 0 }, failures: [], shots: [] };
 				const reached = await snap(tab.page);
@@ -702,6 +709,9 @@ function side(browser: Browser, env: SideEnv, viewport: Viewport, opened: () => 
 				failures.push(...scriptFailures(job.to, way, atTo.scripts, tab.scripts.map((s) => s.run.hash)));
 				failures.push(...errorFailures(job.to, way, atTo.errors, errorsAt(1)));
 				failures.push(...flashFailures(job.to, way, frames));
+				const layout = layoutFailures(job.to, way, viewport.name, frames, painted);
+				failures.push(...layout.failures);
+				shots.push(...layout.shots.map((shot) => ({ route: job.to, shot })));
 				// The destination's own controls again, as a visitor goes on using the page: a theme switch twice (on, then back), then one in the content.
 				const steps = destination ? await runSteps(tab, destination.steps.map((s) => s.control), 2) : [];
 				for (const [i, step] of steps.entries()) {
@@ -761,6 +771,9 @@ function side(browser: Browser, env: SideEnv, viewport: Viewport, opened: () => 
 	}
 	return { fresh, pair, darkSwap };
 }
+
+// The screenshot a navigation failure carries: the page reached for a screenshot check, the frame for a layout check.
+const shotLabel = (check: string) => (check.endsWith(': screenshot') ? `navigation: ${check.slice(0, -': screenshot'.length)}` : check.endsWith(': layout during the swap') ? `navigation: ${check.slice(0, -': layout during the swap'.length)}, a frame during the swap` : undefined);
 
 /** What a failure says once the way it was reached is set aside: the same difference on the old app reached the same way is the old app's own. */
 const sameKey = (f: Failure) => `${f.route} ${f.check.replace(' (through a link the checker added: no page links here)', '').replace(/clicking [^:]*?(?= again:|:)/, 'clicking')}`;
@@ -839,7 +852,7 @@ export async function checkNavigation(browser: Browser, env: SideEnv, routes: re
 	const kept = new Set(failures);
 	return {
 		failures: dedupe(failures),
-		shots: done.flatMap((o) => o.shots.filter((s) => [...kept].some((f) => f.route === s.route && `navigation: ${f.check.slice(0, -': screenshot'.length)}` === s.shot.label))),
+		shots: done.flatMap((o) => o.shots.filter((s) => [...kept].some((f) => f.route === s.route && shotLabel(f.check) === s.shot.label))),
 		destinations: plan.destinations.map((d) => ({ route: d.route, represents: d.represents })),
 		pairs,
 		loads,
