@@ -419,7 +419,13 @@ export async function checkEmbeds(browser: Browser, envs: { readonly old: SideEn
 							continue;
 						}
 						const diff: VisualDiff = identicalShots(a.png, c.png) ?? compareWithNoise(a.png, c.png, b ? [b.png] : [], []);
-						const ok = !visuallyDifferent(diff);
+						// A box rounded a pixel or two differently, with every shared pixel the same, is the same picture: boxes compare within 2 px everywhere else.
+						const rounding = Boolean(diff.sizeMismatch) && diff.differing === 0 && (() => {
+							const [ew, eh] = diff.sizeMismatch!.expected.split('x').map(Number);
+							const [aw, ah] = diff.sizeMismatch!.actual.split('x').map(Number);
+							return Math.abs(ew! - aw!) <= 2 && Math.abs(eh! - ah!) <= 2;
+						})();
+						const ok = rounding || !visuallyDifferent(diff);
 						// The component's live values (a count read at convert time) may have moved on the provider since: offered for automatic acceptance only when nothing else differs.
 						const moved = !ok && c.live.length && !diff.sizeMismatch && !visuallyDifferent(compareWithNoise(a.png, c.png, b ? [b.png] : [], c.live)) ? { rule: 'embed-live-data' as const, reason: `only the component's live value differs (${c.live.length} element(s) marked data-markless-embed-live): the provider's value moved since the component's data was read` } : undefined;
 						const files = await saveImages(options.dir, result.name, label, { old: a.png, new: c.png, diff: diff.png });
