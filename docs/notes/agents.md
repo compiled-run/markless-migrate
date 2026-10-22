@@ -43,7 +43,7 @@ What `setup` writes and what `run` invokes, against each agent's current officia
 Do not repeat that set-up. ChatGPT refresh tokens are single-use: once the copied access token expired,
 the copy refreshed, which spent the refresh token in `~/.codex/auth.json`, and the new tokens were deleted
 with the temporary home. The owner's real login stopped working ("your refresh token was already used").
-`run` now passes the markless-migrate server to `codex exec` with `-c mcp_servers.markless-migrate.command=...`
+`run` now passes the Markless Migrate MCP server to `codex exec` with `-c mcp_servers.markless-migrate.command=...`
 and `args=...` (and to `claude -p` with `--mcp-config`), so it works with the agent's real home and changes
 nothing in it, and it refuses to start when `CODEX_HOME` is another directory holding its own copy of
 `auth.json`. To isolate configuration, use `-c` overrides or a home that ran `codex login` itself, never a

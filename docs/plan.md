@@ -1,4 +1,4 @@
-# @markless/migrate: plan
+# Markless Migrate: plan
 
 The developer's own agent (Claude Code, Cursor, Codex) converts the app. Markless supplies the
 inventory, the conformance suite and the cut-over, so "done" is a green report, not the agent's word.

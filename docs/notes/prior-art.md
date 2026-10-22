@@ -39,7 +39,7 @@ the checking code free of Markless imports so it could be split out later.
   no fetch, Vimeo's v2 JSON, publish.twitter.com/oembed, Bluesky's public AppView, a Mastodon server's
   /api/v1/statuses, the gist .json endpoint, Open Graph tags for link previews), cached only in an in-memory LRU per
   build, with fetch errors logged and swallowed. Its X post renders the oEmbed blockquote with its own CSS, so it is
-  not the widget's look. markless-migrate takes its provider list, its data sources and its URL matchers as the
+  not the widget's look. Markless Migrate takes its provider list, its data sources and its URL matchers as the
   starting point; the components are its own, and are held to the old embed pixel for pixel.
 - **lite-youtube-embed** (Paul Irish, Apache-2.0): the facade pattern. A link or button that becomes the real
   iframe with autoplay=1 on click, a preconnect on hover, focus moved into the iframe, the iframe kept in a noscript
