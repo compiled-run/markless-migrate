@@ -235,7 +235,9 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 	const explored = await statesAndJourneys(run, result, (input) => checkStates(browser, run, route, viewports, olds, input), (input) => checkJourneys(browser, run, route, viewports[0]!, input, owner, loads));
 	const moved = run.motion && explored.journeys?.length ? await checkMoves(browser, run, route, viewports[0]!, explored, oldA.pages[viewports[0]!.name]?.stylesheets ?? []) : explored;
 	const timed = run.responsiveness && moved.journeys?.length ? await checkTimings(browser, run, route, moved) : moved;
-	const checked = run.embeds ? await checkRouteEmbeds(browser, run, route, viewports, timed) : timed;
+	// The page captures already list each side's embeds: a route with none on either side has nothing for the embed step.
+	const embedded = [...olds, next].some((capture) => Object.values(capture.pages).some((page) => page.liveEmbeds?.length));
+	const checked = run.embeds && embedded ? await checkRouteEmbeds(browser, run, route, viewports, timed) : timed;
 	const located = await locateFailures(checked, { route, old: oldA, next, sides: { old: { origin: oldOrigin, dir: run.sourceDirs?.old }, new: { origin: newOrigin, dir: run.sourceDirs?.new } }, ...(run.source ? { facts: run.source } : {}) });
 	const done = oldA.http.status < 400 && (next.http.status === 404 || next.http.status === 410) ? { ...located, notPorted: true } : located;
 	oldCaptures.set(done, oldA);
