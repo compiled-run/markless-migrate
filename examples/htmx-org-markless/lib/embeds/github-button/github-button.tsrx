@@ -1,4 +1,4 @@
-// markless-migrate embed adapter github-button/github-button.tsrx, copied by markless-migrate embeds install; do not edit. sha256:482e571731d1d3a429ad0614d6e07f6f59ddaa678a0c6e412b43ca605b0d9b2e
+// markless-migrate embed adapter github-button/github-button.tsrx, copied by markless-migrate embeds install; do not edit. sha256:6c2f612c728681bbccf1613f2697edbc8449f6eb392d3d7e3f1d8887b5c6f78e
 // GitHub's star, fork, watch and follow button as buttons.js (ntkme/github-buttons, BSD-2-Clause) draws it, in
 // Markless markup with the count read at convert time: no frame and no script at load.
 import embeds from '../data.json';
@@ -38,7 +38,9 @@ export function GitHubButton({ embed }: { readonly embed: string }) @{
 	const countHref = data.countHref ?? data.href;
 	<span class="ghb-host" data-markless-embed={data.embed}>
 		<style>
+			.ghb-host, .ghb-host * { position: static; top: auto; right: auto; bottom: auto; left: auto; float: none; margin: 0; opacity: 1; transform: none; filter: none; box-shadow: none; text-shadow: none; }
 			.ghb-host { display: inline; }
+			.ghb-host a:hover, .ghb-host a:focus, .ghb-host a:active { opacity: 1; text-decoration: none; }
 			.ghb-widget { display: inline-block; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif; font-size: 0; line-height: 0; white-space: nowrap; vertical-align: baseline; }
 			.ghb-btn, .ghb-count { position: relative; display: inline-flex; box-sizing: content-box; height: 14px; margin: 0; padding: 2px 5px; font-size: 11px; font-weight: 600; font-style: normal; letter-spacing: normal; line-height: 14px; text-decoration: none; text-transform: none; vertical-align: bottom; cursor: pointer; user-select: none; background-repeat: repeat-x; background-position: -1px -1px; background-size: 110% 110%; border: 1px solid; outline: 0; }
 			.ghb-btn { border-radius: .25em; color: var(--ghb-color); background-color: var(--ghb-bg); border-color: var(--ghb-border); background-image: var(--ghb-image); }
