@@ -129,22 +129,16 @@ export async function target(side: Side, index: number) {
 	return side.page.locator(`[${TARGET}]`).first();
 }
 
-/** The embed's box in the viewport, after its own content settled, padded so a shadow or focus ring is in the picture: the page scrolls it into view first, so a capture never resizes the viewport (which makes a player frame redraw). */
+/** The embed's box as it now is, after its own content settled, in page coordinates. */
 async function regionOf(side: Side, index: number): Promise<Box | undefined> {
 	const fresh = await side.page.evaluate(liveEmbeds, false);
-	const e = fresh[index] ?? side.embeds[index];
-	if (!e) return undefined;
-	const { width, height } = side.page.viewportSize() ?? { width: 1280, height: 800 };
-	const top = Math.max(0, e.box.y - PAD - Math.max(0, Math.round((height - e.box.height - 2 * PAD) / 2)));
-	await side.page.evaluate((y) => scrollTo(scrollX, y), top);
-	const scrolled = await side.page.evaluate(() => ({ x: scrollX, y: scrollY }));
-	const x = Math.max(0, e.box.x - PAD - scrolled.x);
-	const y = Math.max(0, e.box.y - PAD - scrolled.y);
-	return { x, y, width: Math.max(1, Math.min(width - x, e.box.width + 2 * PAD)), height: Math.max(1, Math.min(height - y, e.box.height + 2 * PAD)) };
+	return (fresh[index] ?? side.embeds[index])?.box;
 }
 
-async function shoot(side: Side, box: Box): Promise<Buffer> {
-	return side.page.screenshot({ clip: box, animations: 'disabled', caret: 'hide' });
+/** A picture of the embed element itself: Playwright scrolls it into view and maps a zoomed-out phone page's scale, without resizing the viewport (which makes a player frame redraw). */
+async function shoot(side: Side, index: number): Promise<Buffer | undefined> {
+	const el = await target(side, index);
+	return el.screenshot({ animations: 'disabled', caret: 'hide', timeout: 10_000 }).catch(() => undefined);
 }
 
 /** Scrolls the embed into view and waits until two pictures of it in a row are the same: its frames loaded and drew. */
@@ -160,8 +154,8 @@ async function settleEmbed(side: Side, index: number, ms: number): Promise<Box |
 		await side.page.waitForTimeout(400);
 		box = await regionOf(side, index);
 		if (!box) break;
-		const shot = await shoot(side, box);
-		if (last?.equals(shot)) break;
+		const shot = await shoot(side, index);
+		if (!shot || last?.equals(shot)) break;
 		last = shot;
 	}
 	return box;
@@ -203,13 +197,15 @@ async function focusInside(side: Side, index: number): Promise<boolean> {
 	});
 }
 
-/** Runs in the page: the boxes of the live values (`data-markless-embed-live`) inside the marked embed, in viewport coordinates. Must stay self-contained. */
-function liveBoxes(): Box[] {
+/** Runs in the page: the marked embed's width and the boxes of its live values (`data-markless-embed-live`), relative to it, in CSS pixels. Must stay self-contained. */
+function liveBoxes(): { width: number; boxes: Box[] } {
 	const root = document.querySelector('[data-markless-migrate-target]');
-	return [...(root?.querySelectorAll('[data-markless-embed-live]') ?? [])].map((el) => {
+	if (!root) return { width: 1, boxes: [] };
+	const o = root.getBoundingClientRect();
+	return { width: o.width || 1, boxes: [...root.querySelectorAll('[data-markless-embed-live]')].map((el) => {
 		const r = el.getBoundingClientRect();
-		return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
-	});
+		return { x: r.x - o.x, y: r.y - o.y, width: r.width, height: r.height };
+	}) };
 }
 
 export async function stateShot(side: Side, index: number, state: EmbedState, ms: number): Promise<{ png: Buffer; box: Box; live: Box[] } | undefined> {
@@ -222,9 +218,12 @@ export async function stateShot(side: Side, index: number, state: EmbedState, ms
 		await el.hover({ timeout: 2000, force: true }).catch(() => {});
 		await side.page.waitForTimeout(400);
 	} else if (state === 'focus') await side.page.waitForTimeout(300);
-	const png = await shoot(side, box);
-	await target(side, index);
-	const live = (await side.page.evaluate(liveBoxes)).map((b) => ({ ...b, x: b.x - box.x, y: b.y - box.y }));
+	const png = await shoot(side, index);
+	if (!png) return undefined;
+	const found = await side.page.evaluate(liveBoxes);
+	// The picture is in device pixels, scaled again on a zoomed-out phone page: the boxes follow it.
+	const scale = png.readUInt32BE(16) / found.width;
+	const live = found.boxes.map((b) => ({ x: Math.round(b.x * scale), y: Math.round(b.y * scale), width: Math.round(b.width * scale), height: Math.round(b.height * scale) }));
 	await side.page.mouse.move(0, 0);
 	await side.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 	return { png, box, live };
@@ -362,7 +361,7 @@ export async function checkEmbeds(browser: Browser, envs: { readonly old: SideEn
 						shots.push({ label: `embed ${result.name} ${scheme} ${state}`, viewport: viewport.name, old: a.png, new: c.png, ...(diff.png ? { diff: diff.png } : {}), regions: diff.regions, ok });
 						if (!ok) {
 							const size = diff.sizeMismatch ? `the embed's picture is ${diff.sizeMismatch.actual}, the old one's ${diff.sizeMismatch.expected}; ` : '';
-							failures.push({ route, dimension: 'visual', check: `embed ${result.name} ${scheme} ${state}`, viewport: viewport.name, expected: `the settled old embed's pixels (${a.box.width - 2 * PAD}x${a.box.height - 2 * PAD})`, actual: `${size}${diff.differing} pixels (${((100 * diff.differing) / Math.max(1, diff.area)).toFixed(2)}%) differ${files.length ? `; old, new and diff: ${files.join(', ')}` : ''}`, hint: HINT_VISUAL, ...(moved ? { automatic: moved } : {}) });
+							failures.push({ route, dimension: 'visual', check: `embed ${result.name} ${scheme} ${state}`, viewport: viewport.name, expected: `the settled old embed's pixels (${a.box.width}x${a.box.height})`, actual: `${size}${diff.differing} pixels (${((100 * diff.differing) / Math.max(1, diff.area)).toFixed(2)}%) differ${files.length ? `; old, new and diff: ${files.join(', ')}` : ''}`, hint: HINT_VISUAL, ...(moved ? { automatic: moved } : {}) });
 						}
 					}
 				}
@@ -371,32 +370,40 @@ export async function checkEmbeds(browser: Browser, envs: { readonly old: SideEn
 			}
 		}
 	}
-	for (const { i, o, n } of pairs) {
+	for (const { o, n } of pairs) {
+		if (n) continue;
 		const result = results.get(embedName(o, n))!;
-		if (!n) {
-			failures.push({ route, dimension: 'rendered', check: `embed ${result.name}`, viewport: first.name, expected: `<${o.tag}> ${o.src}`, actual: '(absent): no Markless component marked data-markless-embed and no kept embed in its place', hint: HINT_VISUAL });
-			continue;
+		failures.push({ route, dimension: 'rendered', check: `embed ${result.name}`, viewport: first.name, expected: `<${o.tag}> ${o.src}`, actual: '(absent): no Markless component marked data-markless-embed and no kept embed in its place', hint: HINT_VISUAL });
+	}
+	const present = pairs.filter((p) => p.n);
+	// Each embed is activated in turn on one page per side, way and viewport: a click or key never takes the page away (a new tab is recorded and closed, a navigation is recorded and stopped).
+	const activateAll = async (env: SideEnv, viewport: Viewport, how: 'click' | 'keyboard', list: typeof present): Promise<Activation[]> => {
+		if (!list.length) return [];
+		const side = await openSide(browser, env, route, viewport, 'light', { live: true });
+		try {
+			const out: Activation[] = [];
+			for (const { i } of list) out.push(await activate(side, i, how));
+			return out;
+		} finally {
+			await side.close();
 		}
-		for (const viewport of viewports) {
-			const run = async (env: SideEnv, how: 'click' | 'keyboard') => {
-				const side = await openSide(browser, env, route, viewport, 'light', { live: true });
-				try {
-					return await activate(side, i, how);
-				} finally {
-					await side.close();
-				}
-			};
-			const clicked = await run(envs.old, 'click');
-			// A component's keyboard activation must do what a click on the old embed does; a kept embed is held to the old one's own keyboard behaviour.
-			const keyed = n.role === 'component' ? clicked : await run(envs.old, 'keyboard');
+	};
+	for (const viewport of viewports) {
+		const clicked = await activateAll(envs.old, viewport, 'click', present);
+		const kept = present.filter((p) => p.n!.role !== 'component');
+		const keyedKept = await activateAll(envs.old, viewport, 'keyboard', kept);
+		const next = { click: await activateAll(envs.new, viewport, 'click', present), keyboard: await activateAll(envs.new, viewport, 'keyboard', present) };
+		present.forEach(({ o, n }, k) => {
+			const result = results.get(embedName(o, n))!;
 			for (const how of ['click', 'keyboard'] as const) {
-				const old = how === 'click' ? clicked : keyed;
-				const next = await run(envs.new, how);
-				const ok = sameActivation(old, next) && (!next.error || Boolean(old.error));
-				result.activation.push({ viewport: viewport.name, how, old, new: next, ok });
-				if (!ok) failures.push({ route, dimension: 'behaviour', check: `embed ${result.name} activation by ${how}`, viewport: viewport.name, expected: `${how === 'keyboard' && n.role !== 'component' ? 'as the old embed by keyboard' : 'as the old embed on a click'}: ${describeActivation(old)}`, actual: describeActivation(next), hint: HINT_ACTIVATION });
+				// A component's keyboard activation must do what a click on the old embed does; a kept embed is held to the old one's own keyboard behaviour.
+				const old = how === 'keyboard' && n!.role !== 'component' ? keyedKept[kept.findIndex((p) => p.o === o)]! : clicked[k]!;
+				const got = next[how][k]!;
+				const ok = sameActivation(old, got) && (!got.error || Boolean(old.error));
+				result.activation.push({ viewport: viewport.name, how, old, new: got, ok });
+				if (!ok) failures.push({ route, dimension: 'behaviour', check: `embed ${result.name} activation by ${how}`, viewport: viewport.name, expected: `${how === 'keyboard' && n!.role !== 'component' ? 'as the old embed by keyboard' : 'as the old embed on a click'}: ${describeActivation(old)}`, actual: describeActivation(got), hint: HINT_ACTIVATION });
 			}
-		}
+		});
 	}
 	if (options.dir) for (const r of results.values()) await writeFile(join(options.dir, r.name, 'check', 'result.json'), `${JSON.stringify(r, null, '\t')}\n`).catch(() => {});
 	return { failures, shots, results: [...results.values()] };

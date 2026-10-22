@@ -475,8 +475,11 @@ export function stopped(route: string, error: unknown, [oldOrigin, newOrigin]: r
 }
 
 /** Default per route check: ten minutes, or five journey budgets when the budget is raised. */
-export function routeTimeout(options: Pick<CheckOptions, 'timeoutMs' | 'journeys'>): number {
-	return options.timeoutMs ?? Math.max(600_000, 5 * (options.journeys?.budgetMs ?? DEFAULT_JOURNEY_BUDGET_MS));
+/** What the embed step may add to a route's check: its embeds pictured in every state and scheme, then activated. */
+export const EMBED_STEP_BUDGET_MS = 600_000;
+
+export function routeTimeout(options: Pick<CheckOptions, 'timeoutMs' | 'journeys' | 'embeds'>): number {
+	return options.timeoutMs ?? Math.max(600_000, 5 * (options.journeys?.budgetMs ?? DEFAULT_JOURNEY_BUDGET_MS)) + (options.embeds ? EMBED_STEP_BUDGET_MS : 0);
 }
 
 /** Runs one route's check under a deadline: past it, every page the check opened is closed and the route is reported as an infrastructure failure. */
