@@ -62,6 +62,8 @@ export function liveEmbeds(mark = false): LiveEmbed[] {
 		const box = { x: Math.round(r.x + scrollX), y: Math.round(r.y + scrollY), width: Math.round(r.width), height: Math.round(r.height) };
 		if (role) {
 			if (mark) el.setAttribute('data-markless-migrate-embed', '');
+			// Kept after the screenshot: the focus walk counts what a loader drew as one stop, as it counts a frame.
+			if (mark && role === 'widget') el.setAttribute('data-markless-migrate-widget', '');
 			const id = role === 'component' ? (el.getAttribute('data-markless-embed') ?? '') : undefined;
 			out.push({ tag, src: role === 'component' ? `markless:${id}` : `slot:${provider}`, attributes: {}, box, role, ...(id !== undefined ? { id } : {}) });
 			continue;
