@@ -67,3 +67,59 @@ test('the same embed on many pages is one use with every route', () => {
 	assert.deepEqual(star!.routes, ['/', '/docs/']);
 	assert.deepEqual(star!.loaders, ['https://buttons.github.io/buttons.js']);
 });
+
+test('robots.txt is honoured before a page is read for its Open Graph tags: the longest matching rule of the * group wins', async () => {
+	const { robotsTxtAllows } = await import('../src/embed/data.ts');
+	const txt = 'User-agent: Googlebot\nDisallow: /\n\nUser-agent: *\nDisallow: /private\nAllow: /private/open\n';
+	assert.equal(robotsTxtAllows(txt, '/blog/post'), true);
+	assert.equal(robotsTxtAllows(txt, '/private/x'), false);
+	assert.equal(robotsTxtAllows(txt, '/private/open/y'), true);
+	assert.equal(robotsTxtAllows('', '/anything'), true);
+});
+
+test('embed data is read from the provider once and cached; a failed refresh keeps the last answer and says why', async () => {
+	const { mkdtemp } = await import('node:fs/promises');
+	const { tmpdir } = await import('node:os');
+	const { join } = await import('node:path');
+	const { embedData } = await import('../src/embed/data.ts');
+	const [star] = detectEmbeds(parseHtml(`<a class="github-button" href="https://github.com/bigskysoftware/htmx" data-show-count="true">star</a><script src="https://buttons.github.io/buttons.js"></script>`), '/', 'https://htmx.org');
+	const use = { ...star!, routes: ['/'], sites: [] };
+	const cacheDir = await mkdtemp(join(tmpdir(), 'mm-embed-data-'));
+	let calls = 0;
+	const ok = (async (url: string) => {
+		calls++;
+		assert.equal(url, 'https://api.github.com/repos/bigskysoftware/htmx');
+		return new Response(JSON.stringify({ stargazers_count: 49579, html_url: 'https://github.com/bigskysoftware/htmx' }), { headers: { 'content-type': 'application/json' } });
+	}) as typeof fetch;
+	const first = await embedData(use, { cacheDir, fetch: ok, env: {} });
+	assert.equal(first.fields.stars, 49579);
+	await embedData(use, { cacheDir, fetch: ok, env: {} });
+	assert.equal(calls, 1, 'the second read is the cache');
+	const down = (async () => new Response('rate limited', { status: 403, statusText: 'Forbidden' })) as unknown as typeof fetch;
+	const again = await embedData(use, { cacheDir, fetch: down, env: {}, refresh: true });
+	assert.equal(again.fields.stars, 49579);
+	assert.match(again.errors![0]!, /403 Forbidden; kept the answer from/);
+});
+
+test('the GitHub button adapter reads what buttons.js reads: the link, its text and icon, the colour scheme and the count it links to', async () => {
+	const { GITHUB_BUTTON, colorScheme } = await import('../src/embed/adapters/github-button/adapter.ts');
+	const [star] = detectEmbeds(parseHtml(`<a class="github-button" href="https://github.com/bigskysoftware/htmx" data-color-scheme="no-preference: light; light: light; dark: dark;" data-icon="octicon-star" data-show-count="true" aria-label="Star bigskysoftware/htmx on GitHub">star</a>`), '/', 'https://htmx.org');
+	const props = GITHUB_BUTTON.props({ ...star!, routes: ['/'], sites: [] }, { fetchedAt: '', sources: [], fields: { stars: 49579, htmlUrl: 'https://github.com/bigskysoftware/htmx' } });
+	assert.deepEqual(props, { embed: 'github-button-bigskysoftware-htmx-star', href: 'https://github.com/bigskysoftware/htmx', text: 'star', ariaLabel: 'Star bigskysoftware/htmx on GitHub', icon: 'octicon-star', scheme: { none: 'light', light: 'light', dark: 'dark' }, count: 49579, countHref: 'https://github.com/bigskysoftware/htmx', countNoun: 'stargazers' });
+	assert.deepEqual(colorScheme(undefined), { none: 'light', light: 'light', dark: 'light' }, 'buttons.js is light everywhere without data-color-scheme');
+	const [frame] = detectEmbeds(parseHtml(`<iframe src="https://buttons.github.io/buttons.html#href=https%3A%2F%2Fgithub.com%2Fbigskysoftware%2Fhtmx&data-icon=octicon-star&data-text=star&data-show-count=true"></iframe>`), '/', 'https://htmx.org');
+	assert.equal(frame!.id, 'github-button-bigskysoftware-htmx-star', 'the frame buttons.js falls back to is the same embed');
+});
+
+test('the run prompt names each embed on the route, its study and adapter, where the check writes its images, and when to keep it', async () => {
+	const { embedBrief } = await import('../src/embed/detect.ts');
+	const uses = new EmbedUses();
+	uses.add(detectEmbeds(parseHtml(PAGE), '/', 'https://site.example'), '/');
+	const brief = embedBrief(uses.list(), '/', '/app/.migrate/embeds', 'markless-migrate')!;
+	assert.match(brief, /- github-button-bigskysoftware-htmx-star: GitHub button \(script\)/);
+	assert.match(brief, /Study it first: markless-migrate embeds study --embed bunny-12345-0a1b2c3d-video/);
+	assert.match(brief, /Pre-built: markless-migrate embeds install github-button/);
+	assert.match(brief, /\/app\/\.migrate\/embeds\/github-button-bigskysoftware-htmx-star\/check\//);
+	assert.match(brief, /- spotify-track-4uLU6hMCjMI75M1A2tKUQC: .*keep as it is: Spotify's developer terms/);
+	assert.equal(embedBrief(uses.list(), '/other', '/x', 'm'), undefined);
+});

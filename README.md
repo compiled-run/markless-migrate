@@ -165,6 +165,48 @@ for about a minute; check counts only new reports.
 `.github/workflows/page-load.yml` runs the same measurement on a GitHub Actions runner (`workflow_dispatch` with the
 old and new origins, the routes and the number of runs; 9 by default) and posts the summary to the run.
 
+## Third-party embeds
+
+A YouTube or Vimeo player, an X, Bluesky or Mastodon post, a GitHub star button or gist, a link card, or any
+other site's iframe or widget becomes a Markless component in real markup: the embed's real text, images and CSS,
+fed by its real data, with nothing loaded from the provider until a visitor activates it. Activation loads the
+original embed unchanged in its place, or leads where the embed leads. Each embed goes through the same loop as a
+page:
+
+- **Detect.** `plan` (and `usage`) write `.migrate/embeds.json`: every embed on every page, by provider, read
+  from frames by address (`youtube.com/embed/<id>`, `iframe.mediadelivery.net/embed/...`, any other site's
+  frame by its host), loader scripts (`platform.twitter.com/widgets.js`, `buttons.github.io/buttons.js`, the
+  YouTube iframe API), provider markup (`blockquote.twitter-tweet`, `a.github-button`,
+  `blockquote[data-bluesky-uri]`) and click-to-load facades the old site already uses (lite-youtube-embed,
+  react-lite-youtube-embed). `markless-migrate embeds` prints them by route.
+- **Keep, with the reason.** An embed stays exactly as it is when it must be live at load (chat widgets, live
+  streams, timelines), plays at load (`autoplay`), is driven by the page's own code (`enablejsapi=1`, a loader with
+  no placeholder), shows the signed-in visitor's own state (comments, sign-in, captchas, payments), is an ad, or
+  its provider's terms forbid recreating it (Spotify, Google Maps). `upgrade` measures what each kept embed costs:
+  bytes, requests, FCP and LCP on a phone with the CPU slowed 4x, with it and with its hosts blocked.
+- **Study.** `markless-migrate embeds study` loads each old page, lets the embed settle and writes
+  `.migrate/embeds/<id>/`: pictures at rest, hovered and focused, at desktop and mobile in light and dark; the
+  settled markup and every visible element with its box and styles (only where the provider's terms allow reading
+  it: X forbids scraping, so an X post is rebuilt from its oEmbed answer alone); what a click does; and its data from
+  the provider's oEmbed endpoint or official API (YouTube oEmbed, Vimeo oEmbed, X oEmbed, Bluesky's public AppView,
+  a Mastodon server's statuses API, GitHub's REST API, a page's Open Graph tags where its robots.txt allows),
+  cached for a day.
+- **Write.** `run` gives the agent each embed's study and plan. A provider with a pre-built adapter (the result of
+  this loop, kept for every site) is installed with `markless-migrate embeds install <adapter>`, which copies a
+  certified component into `lib/embeds/` and its data into `lib/embeds/data.json`. Any other provider (Bunny
+  Stream, a GitHub Sponsors button) gets a component the agent writes from the study.
+- **Check.** The embed step of `check` (on by default; `--no-embeds` leaves it out) compares every old embed
+  with what the new page has in its place, a component marked `data-markless-embed="<id>"` or the same embed kept:
+  pixel for pixel at rest, hovered and focused, at desktop and mobile in light and dark, with two old loads giving
+  the noise; then it activates both by a click on the middle and by Enter on the first control, and compares what
+  loads in its place, whether media plays, and where it leads. The old, new and diff images go to
+  `.migrate/embeds/<id>/check/` and into the report. A value a component shows that the provider has moved since
+  (a star count) is accepted automatically only when every other pixel matches. An embed shared by many pages is
+  checked once per run.
+
+Adapters: `github-button` (buttons.js's star, fork, watch and follow buttons). The provider catalog is
+`src/embed/providers.ts`.
+
 ## After the migration: upgrade
 
 Once the routes are green, `markless-migrate upgrade --new <origin>` measures what the port kept and what it

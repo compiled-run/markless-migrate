@@ -30,7 +30,7 @@ export const GITHUB_BUTTON: EmbedAdapter = {
 	module: 'github-button.tsrx',
 	component: 'GitHubButton',
 	files: ['github-button.tsrx', 'octicons.ts'],
-	certifiedBy: 'test/e2e/embed-adapters.test.ts against buttons.js 2.33 on htmx.org',
+	certifiedBy: 'the embed step of check against buttons.js 2.33 on htmx.org: / and /examples/click-to-edit/, desktop and mobile, light and dark (examples/htmx-org-LOG.md)',
 	notes: ['Only the light and dark palettes are drawn; a data-color-scheme naming another GitHub theme falls back to light or dark.', 'The count is the one read at convert time; run embeds install --refresh before a deploy to update it.'],
 	props(use: EmbedUse, data: EmbedData) {
 		const a = use.attributes;
