@@ -1,0 +1,16 @@
+/* GitHub's star button drew itself in a shadow root, out of reach of site.css: .github-stars span (top: 4px) was meant
+   for its host span only, and a[href]:hover's fade never reached the button's links. Its host span measured the
+   button's own box; an inline block with no line height of its own does, and keeps the button on the same baseline.
+   On htmx.org the button is drawn on whole pixels; a layer of its own (will-change) lands its text there too. */
+#github-stars .ghb-host {
+  display: inline-block;
+  line-height: 0;
+  will-change: transform;
+}
+.github-stars .ghb-host span {
+  position: static;
+  top: auto;
+}
+.github-stars .ghb-host a[href]:hover {
+  opacity: 1;
+}

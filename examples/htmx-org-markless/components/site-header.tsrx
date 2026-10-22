@@ -1,6 +1,8 @@
 import { state } from '@markless/core';
+import { GitHubButton } from '../lib/embeds/github-button/github-button.tsrx';
 
-export default function SiteHeader() @{
+/** `starFrame`: the click-to-edit demo, where htmx.org's star button falls back to buttons.js's iframe. */
+export default function SiteHeader({ starFrame = false }: { readonly starFrame?: boolean }) @{
 	let open = state(false);
 
 	<header class="top-nav">
@@ -45,11 +47,14 @@ export default function SiteHeader() @{
 						</div>
 						<div>
 							<div class="github-stars" id="github-stars">
-								{/* buttons.js replaces its link with a span: serving a span and swapping the link in first keeps a span here, as Markless resume expects.
-								On the click-to-edit demo, sinon's fake XMLHttpRequest pushes buttons.js into its iframe fallback: that page gets the iframe it writes, in the span's shadow root.
-								The span stays static (a bound attribute would make it an element Markless resumes). */}
-								<span></span>
-								<script>{'(function () { var s = document.currentScript; if (!s) return; var h = s.previousElementSibling; if (!h) return; var x; if (location.pathname.indexOf("/examples/click-to-edit") === 0) { var q = ["href=" + encodeURIComponent("https://github.com/bigskysoftware/htmx"), "title=", "aria-label=" + encodeURIComponent("Star bigskysoftware/htmx on GitHub"), "data-icon=octicon-star", "data-color-scheme=" + encodeURIComponent("no-preference: light; light: light; dark: dark;"), "data-text=star", "data-show-count=true"].join("&"); x = document.createElement("iframe"); x.src = "https://buttons.github.io/buttons.html#" + q; x.setAttribute("allowtransparency", "true"); x.setAttribute("scrolling", "no"); x.setAttribute("frameborder", "0"); x.setAttribute("style", "width: 51px; height: 20px; border-width: medium; border-style: none; border-color: currentcolor; border-image: none; color-scheme: light;"); x.name = q; h.attachShadow({ mode: "open" }).append(x); return; } else { x = document.createElement("a"); x.className = "github-button"; x.href = "https://github.com/bigskysoftware/htmx"; x.setAttribute("data-color-scheme", "no-preference: light; light: light; dark: dark;"); x.setAttribute("data-icon", "octicon-star"); x.setAttribute("data-show-count", "true"); x.setAttribute("aria-label", "Star bigskysoftware/htmx on GitHub"); x.textContent = "star"; } h.replaceWith(x); })();'}</script>
+								@if (starFrame) {
+									{/* On the click-to-edit demo, sinon's fake XMLHttpRequest pushes buttons.js into its iframe fallback: that page gets the iframe it writes, in the span's shadow root.
+									The span stays static (a bound attribute would make it an element Markless resumes). */}
+									<span></span>;
+									<script>{'(function () { var s = document.currentScript; if (!s) return; var h = s.previousElementSibling; if (!h) return; var q = ["href=" + encodeURIComponent("https://github.com/bigskysoftware/htmx"), "title=", "aria-label=" + encodeURIComponent("Star bigskysoftware/htmx on GitHub"), "data-icon=octicon-star", "data-color-scheme=" + encodeURIComponent("no-preference: light; light: light; dark: dark;"), "data-text=star", "data-show-count=true"].join("&"); var x = document.createElement("iframe"); x.src = "https://buttons.github.io/buttons.html#" + q; x.setAttribute("allowtransparency", "true"); x.setAttribute("scrolling", "no"); x.setAttribute("frameborder", "0"); x.setAttribute("style", "width: 51px; height: 20px; border-width: medium; border-style: none; border-color: currentcolor; border-image: none; color-scheme: light;"); x.name = q; h.attachShadow({ mode: "open" }).append(x); })();'}</script>;
+								} @else {
+									<GitHubButton embed="github-button-bigskysoftware-htmx-star" />;
+								}
 							</div>
 						</div>
 					</nav>

@@ -19,17 +19,19 @@ export default function Document({ url, children }: { readonly url?: { readonly 
 				<link rel="alternate" type={alternate.type} title={alternate.title} href={alternate.href} />;
 			}
 			<link rel="stylesheet" href="/css/site.css" />
+			<link rel="stylesheet" href="/css/port-embeds.css" />
 			<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 			@for (const stylesheet of head.stylesheets; key stylesheet) {
 				<link rel="stylesheet" href={stylesheet} />;
 			}
+			{/* htmx's preload="mouseover" on the nav links: the browser fetches a link's page when the pointer rests on it. */}
+			<script type="speculationrules">{'{"prefetch":[{"where":{"selector_matches":".navigation-items a[href^=\\"/\\"]"},"eagerness":"moderate"}]}'}</script>
 			@for (const script of head.scripts; key script) {
 				<script src={script}></script>;
 			}
 		</head>
 		<body hx-ext="class-tools, preload">
 			{children}
-			<script async defer src="https://buttons.github.io/buttons.js"></script>
 		</body>
 	</Html>
 }
