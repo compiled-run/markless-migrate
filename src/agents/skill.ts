@@ -229,7 +229,9 @@ a link card, any other site's iframe or widget) in \`.migrate/embeds.json\`, per
   content. Its root carries \`data-markless-embed="<id>"\` and has the old embed's exact box. No frame and no script
   from the provider load until a visitor activates it. Its images (a thumbnail, an avatar) load from the provider's
   own addresses, as the embed loads them; never copy a provider's images or media into the app. Openly licensed
-  assets the embed uses (a font such as Roboto) may be copied, with their licence.
+  assets the embed uses (a font such as Roboto) may be copied, with their licence. A value the provider keeps
+  changing (a star or view count, read at convert time) goes on an element marked \`data-markless-embed-live\`: when it
+  alone has moved since, the check accepts the difference automatically.
 - Study it first: \`markless-migrate embeds study --embed <id>\` writes \`.migrate/embeds/<id>/study.md\` with
   pictures of the settled embed at rest, hovered and focused (desktop and mobile, light and dark), its markup and
   visible elements, its data, and what a click on it does.

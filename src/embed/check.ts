@@ -329,7 +329,7 @@ async function saveImages(dir: string | undefined, name: string, label: string, 
 	return files;
 }
 
-const HINT_VISUAL = 'The Markless component standing in for this embed must show what the settled old embed shows, pixel for pixel: open the old, new and diff images, compare against the embed study (markless-migrate embeds) and fix the component\'s markup, data and CSS. A kept embed that differs was changed by the port.';
+const HINT_VISUAL = 'The Markless component standing in for this embed must show what the settled old embed shows, pixel for pixel: open the old, new and diff images, compare against the embed study (markless-migrate embeds) and fix the component\'s markup, data and CSS. A value the provider keeps changing (a star or view count) goes on an element marked data-markless-embed-live: when only it differs, the difference is accepted automatically. A kept embed that differs was changed by the port.';
 const HINT_ACTIVATION = 'Activating the embed (a click on its middle, or Enter on its first control) must do what it does on the old page: load the original embed unchanged (and play, when the old one plays on that click), or lead to the same pages. Load the original on activation when in doubt.';
 
 /**
