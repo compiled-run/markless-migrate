@@ -19,6 +19,8 @@ export function toTsrx(root, options = {}) {
 		const el = node;
 		const tag = el.tagName.toLowerCase();
 		if (tag === 'script' || skip(el)) return '';
+		const replaced = options.replace?.(el);
+		if (replaced) return replaced.split('\n').map((line) => `${pad}${line}\n`).join('');
 		const attrs = [...el.attributes].map((a) => attr(a.name, a.value)).join('');
 		const extra = options.attrs?.(el) ?? '';
 		if (VOID.has(tag)) return `${pad}<${tag}${attrs}${extra} />\n`;
