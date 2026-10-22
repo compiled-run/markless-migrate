@@ -166,17 +166,40 @@ async function settleEmbed(side: Side, index: number, ms: number): Promise<Box |
 	return box;
 }
 
-/** The first control a keyboard reaches inside the embed, in its frame when it is one. */
+/** Runs in the page: focuses the last focusable element before the marked embed, so a Tab lands on the embed's first control even inside a closed shadow root. Must stay self-contained. */
+function focusBefore(selector: string): boolean {
+	const target = document.querySelector('[data-markless-migrate-target]');
+	if (!target) return false;
+	let before: HTMLElement | undefined;
+	for (const el of document.querySelectorAll<HTMLElement>(selector)) {
+		if (el === target || target.contains(el)) break;
+		if (target.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) break;
+		if (el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden') before = el;
+	}
+	if (before) before.focus();
+	else (document.activeElement as HTMLElement | null)?.blur();
+	return true;
+}
+
+/** The first control a keyboard reaches inside the embed, in its frame when it is one; a widget in a closed shadow root is reached by Tab from the control before it. */
 async function focusInside(side: Side, index: number): Promise<boolean> {
 	const el = await target(side, index);
 	const frame = await el.elementHandle({ timeout: 2000 }).then((h) => h?.contentFrame() ?? null).catch(() => null);
 	const inner = frame ? frame.locator(FOCUSABLE).first() : (await el.evaluate((e, sel) => e.matches(sel), FOCUSABLE).catch(() => false)) ? el : el.locator(FOCUSABLE).first();
-	if (!(await inner.count().catch(() => 0))) return false;
-	await inner.focus({ timeout: 2000 }).catch(() => {});
-	// A key press makes the focus a keyboard one, so :focus-visible shows as it would for a visitor tabbing in.
-	await side.page.keyboard.press('Shift+Tab');
+	if (await inner.count().catch(() => 0)) {
+		await inner.focus({ timeout: 2000 }).catch(() => {});
+		// A key press makes the focus a keyboard one, so :focus-visible shows as it would for a visitor tabbing in.
+		await side.page.keyboard.press('Shift+Tab');
+		await side.page.keyboard.press('Tab');
+		return true;
+	}
+	if (!(await side.page.evaluate(focusBefore, FOCUSABLE))) return false;
 	await side.page.keyboard.press('Tab');
-	return true;
+	return side.page.evaluate(() => {
+		const t = document.querySelector('[data-markless-migrate-target]');
+		const a = document.activeElement;
+		return Boolean(t && a && (t === a || t.contains(a)));
+	});
 }
 
 /** Runs in the page: the boxes of the live values (`data-markless-embed-live`) inside the marked embed, in viewport coordinates. Must stay self-contained. */
@@ -224,7 +247,8 @@ export async function activate(side: Side, index: number, how: 'click' | 'keyboa
 	if (!box || !e) return { navigations: [], frames: [], playing: false, error: 'the embed is not on the page' };
 	const navigations: string[] = [];
 	page.context().on('page', (popup) => {
-		void popup.waitForURL(/^https?:/, { timeout: 4000 }).catch(() => {}).then(() => {
+		const settled = /^https?:/.test(popup.url()) ? Promise.resolve() : popup.waitForURL(/^https?:/, { timeout: 3500 }).catch(() => {});
+		void settled.then(() => {
 			navigations.push(where(popup.url()));
 			return popup.close();
 		});
