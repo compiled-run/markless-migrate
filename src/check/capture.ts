@@ -13,7 +13,7 @@ import type { AssetRecord, HttpCapture, HttpHop, PageCapture, RouteCapture, Scri
 import { request } from './http.ts';
 import { loadPage } from './infrastructure.ts';
 import { holdLoops, loopEffects, settleMotion, type LoopEffect } from './loops.ts';
-import { liveEmbeds, maskedShot, withoutEmbeds } from './embeds.ts';
+import { liveEmbeds, maskedShot, withoutEmbeds, type LiveEmbed } from './embeds.ts';
 import { runtimeMarkers } from './residue.ts';
 
 const ASSET_TYPES = new Set(['image', 'font', 'stylesheet', 'script', 'media']);
@@ -209,12 +209,12 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		await finishAnimations(page, await settleMotion(page));
 		await page.evaluate(holdLoops).catch(() => 0);
 		// Marked first, so the page's text, elements and accessibility tree leave every embed's inside to the embed step.
-		await page.evaluate(liveEmbeds, true).catch(() => []);
+		const marked = await page.evaluate(liveEmbeds, true).catch(() => [] as LiveEmbed[]);
 		const collected = await readPage(page, { origin, full: true });
 		const loops = await page.evaluate(loopEffects).catch(() => [] as LoopEffect[]);
-		const embedTrees = await Promise.all((await page.locator('[data-markless-migrate-embed]').all()).map((l) => l.ariaSnapshot({ timeout: 2000 }).catch(() => '')));
+		const embedTrees = marked.length ? await Promise.all((await page.locator('[data-markless-migrate-embed]').all()).map((l) => l.ariaSnapshot({ timeout: 2000 }).catch(() => ''))) : [];
 		const aria = withoutEmbeds((await page.locator('body').ariaSnapshot()).split(origin).join('').split('\n'), embedTrees.map((t) => t.split(origin).join('').split('\n')));
-		const { shot: screenshot, embeds: live } = await maskedShot(page, (mask) => page.screenshot({ fullPage: true, animations: 'disabled', caret: 'hide', mask }));
+		const { shot: screenshot, embeds: live } = await maskedShot(page, (mask) => page.screenshot({ fullPage: true, animations: 'disabled', caret: 'hide', mask }), marked);
 		const coverage = await page.coverage.stopJSCoverage();
 		await Promise.all(pending);
 		const shown = await page.evaluate(shownText);

@@ -92,10 +92,11 @@ export function collectPage({ origin, full, styles = true }: { origin: string; f
 		return i;
 	};
 	const ofTag = new Map<Element, Map<string, number>>();
+	const embedded = document.querySelector('[data-markless-migrate-embed]') !== null;
 	for (const el of full ? [document.documentElement, document.body, ...document.body.querySelectorAll('*')] : []) {
 		if (SKIP.has(el.tagName)) continue;
 		// An embed, or the Markless component standing in for one (both marked by liveEmbeds), is the embed step's to compare: its inside is opaque here, as a frame's is.
-		if (el.parentElement?.closest('[data-markless-migrate-embed]')) continue;
+		if (embedded && el.parentElement?.closest('[data-markless-migrate-embed]')) continue;
 		const r = role(el);
 		const parent = el.parentElement;
 		const parentPath = parent && parent !== document.body ? (paths.get(parent) ?? '') : '';

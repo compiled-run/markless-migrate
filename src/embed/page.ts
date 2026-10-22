@@ -9,21 +9,22 @@ export function trackEmbedSlots(slots: readonly { readonly selector: string; rea
 	const list: { el: Element; parent: Node | null; prev: Node | null; after: boolean; provider: string }[] = [];
 	w.__marklessMigrateEmbedSlots = list;
 	const seen = new WeakSet<Element>();
+	const any = slots.map((s) => s.selector).join(', ');
 	const take = (el: Element, parent: Node | null, prev: Node | null) => {
-		if (seen.has(el) || el.closest('[data-markless-embed]')) return;
-		for (const s of slots) {
-			if (!el.matches(s.selector)) continue;
-			seen.add(el);
-			list.push({ el, parent: el.parentNode ?? parent, prev: el.parentNode ? el.previousSibling : prev, after: Boolean(s.after), provider: s.provider });
-			return;
-		}
+		if (seen.has(el)) return;
+		seen.add(el);
+		if (el.closest('[data-markless-embed]')) return;
+		const slot = slots.find((s) => el.matches(s.selector));
+		if (slot) list.push({ el, parent: el.parentNode ?? parent, prev: el.parentNode ? el.previousSibling : prev, after: Boolean(slot.after), provider: slot.provider });
 	};
+	// One native match per added element, and a native search of its subtree: the page's own rendering pays next to nothing.
 	new MutationObserver((records) => {
 		for (const r of records) {
 			for (const n of r.addedNodes) {
 				if (n.nodeType !== 1) continue;
-				take(n as Element, r.target, r.previousSibling);
-				for (const d of (n as Element).querySelectorAll('*')) take(d, null, null);
+				const el = n as Element;
+				if (el.matches(any)) take(el, r.target, r.previousSibling);
+				if (el.firstElementChild) for (const d of el.querySelectorAll(any)) take(d, null, null);
 			}
 		}
 	}).observe(document, { childList: true, subtree: true });

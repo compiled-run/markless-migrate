@@ -103,8 +103,8 @@ function unmark(): void {
 }
 
 /** A screenshot with every live embed masked (Playwright's locators reach into open shadow roots); returns the embeds too. */
-export async function maskedShot(page: Page, shoot: (mask: Locator[]) => Promise<Buffer>): Promise<{ shot: Buffer; embeds: LiveEmbed[] }> {
-	const embeds = await page.evaluate(liveEmbeds, true).catch(() => [] as LiveEmbed[]);
+export async function maskedShot(page: Page, shoot: (mask: Locator[]) => Promise<Buffer>, marked?: LiveEmbed[]): Promise<{ shot: Buffer; embeds: LiveEmbed[] }> {
+	const embeds = marked ?? (await page.evaluate(liveEmbeds, true).catch(() => [] as LiveEmbed[]));
 	try {
 		return { shot: await shoot(embeds.length ? [page.locator(`[${MARK}]`)] : []), embeds };
 	} finally {
