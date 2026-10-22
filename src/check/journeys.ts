@@ -565,7 +565,16 @@ const unOrigin = (text: string, origins: readonly string[]) => origins.reduce((t
 const IDLE_MS = 150;
 const IDLE_LIMIT_MS = 3_000;
 
-const pendingTimers = (page: Page) => page.evaluate(() => (globalThis as { __markless_migrate_pending_timers__?: () => number }).__markless_migrate_pending_timers__?.() ?? 0).catch(() => 0);
+// Timeouts of up to a second still due, and animations with up to a second left (an exit a library waits out before it removes what it closed).
+const pendingWork = (page: Page) =>
+	page
+		.evaluate(() => {
+			const timers = (globalThis as { __markless_migrate_pending_timers__?: () => number }).__markless_migrate_pending_timers__?.() ?? 0;
+			const left = (a: Animation) => Number(a.effect?.getComputedTiming().endTime ?? Infinity) - Number(a.currentTime ?? 0);
+			const moving = document.getAnimations().filter((a) => a.playState === 'running' && a.timeline === document.timeline && left(a) <= 1000).length;
+			return timers + moving;
+		})
+		.catch(() => 0);
 
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
@@ -579,13 +588,13 @@ function scheduledRefresh(): { delay: number } | null {
 	return { delay: seconds };
 }
 
-// No request in flight and no timeout of up to a second due for 150 ms (at most 3 s); a poll that came back late means the checker itself was held up, and what began meanwhile may not have been seen yet.
+// No request in flight, no timeout or animation of up to a second due for 150 ms (at most 3 s); a poll that came back late means the checker itself was held up, and what began meanwhile may not have been seen yet.
 async function idle(page: Page, inflight: () => number): Promise<void> {
 	const deadline = Date.now() + IDLE_LIMIT_MS;
 	let idleSince = Date.now();
 	let last = idleSince;
 	while (Date.now() < deadline) {
-		const busy = inflight() > 0 || (await pendingTimers(page)) > 0;
+		const busy = inflight() > 0 || (await pendingWork(page)) > 0;
 		const now = Date.now();
 		if (busy || now - last > IDLE_MS / 2) idleSince = now;
 		else if (now - idleSince >= IDLE_MS) break;
