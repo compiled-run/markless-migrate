@@ -846,6 +846,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		for (const e of handlerRoutes) {
 			const pattern = nextPattern(e.file);
 			if (!pattern.includes(':')) builtPaths.add(pattern);
+			// An optional catch-all answers its bare path too (`/llm` for `/llm/:slug*`).
+			const bare = pattern.replace(/\/:\w+\*$/, '') || '/';
+			if (bare !== pattern && !bare.includes(':')) builtPaths.add(bare);
 			for (const r of rewrites) {
 				if (!match(pattern)(r.to.replace(/:\w+\*/g, 'a/b'))) continue;
 				// Every page under the rewrite's source pattern: /docs/:path*.md takes each docs page.

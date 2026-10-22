@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Links this app against a local build of Markless main until 0.9.0 carries the router's theme fix (fbb80634: an in-place
-# navigation keeps the class a page's own script set on <html>, so the theme does not flash).
+# navigation keeps the class a page's own script set on <html>) and one-frame in-place navigations (compiled-run/markless#84).
 # MARKLESS=<checkout of compiled-run/markless at main>. The packed tarballs go in .markless-local/ (gitignored) and every
 # @markless/* package resolves to them through npm overrides; run it again after pulling main. Drop it at the next release.
 set -euo pipefail

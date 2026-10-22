@@ -193,6 +193,1070 @@ Full build of the 498 pages on Markless 0.8.0 (56,288 modules): peak 15.3 to 22.
 minutes (the Vercel-preset build and upload together), with `--max-old-space-size=20000`; Node's default 4 GB heap
 runs out while rendering chunks. Convert: 3.0 to 3.5 GB, 2 to 7 minutes from the captures cache.
 
+## Check of the live preview (2026-10-22)
+
+`check --all --concurrency 2` of https://mm-shadcn-ui-new.vercel.app (Markless main fbb80634, converter at d869718)
+against the old site served locally (the old deployment answers 403 to a headless browser), with in-place navigation
+and its swap-frames recording, and motion: 786 of 1026 routes green, 233 red, 7 not checked (timeouts); 48 before.
+In-place navigation: 31 swaps on 19 pages, no theme flash recorded. 11 h 20 min. `/llm` answered 500 (its handler
+ran only for the 383 `/docs/*.md` paths; the converter now runs it for the bare path too). The toasts on the four
+sonner and toast routes were not on that deploy (their region is a route's own body child, now rendered by the page).
+
+Leading causes (routes):
+
+| Routes | Cause |
+|---:|---|
+| 104 | behaviour: not exercised: button "…", shared with / |
+| 104 | behaviour: not exercised: link "…", shared with / |
+| 97 | behaviour: click button "…" |
+| 90 | behaviour: not exercised: link "…" |
+| 88 | behaviour: not exercised: clickable <div> (no name: matched by structure and posi |
+| 85 | behaviour: not exercised: tab "…" |
+| 84 | rendered: accessibility tree |
+| 78 | behaviour: click button |
+| 74 | behaviour: not exercised: button "…" (after click button "…") |
+| 71 | behaviour: not exercised: menuitem "…" (after click button) |
+| 68 | rendered: visible text |
+| 63 | css: computed style of generic (main/div) |
+| 59 | behaviour: not exercised: combobox |
+| 49 | css: computed style of generic "…" (main>link/span) |
+| 48 | css: computed styles |
+
+<details><summary>Every route</summary>
+
+786 green, 233 red, 7 not checked, of 1026
+
+| Route | Result | Leading causes |
+|---|---|---|
+| `/` | red | behaviour: not exercised: option "…" (after click button "…") (449); behaviour: not exercised: menuitem "…" (after click button "…") (10); behaviour: not exercised: link "…" (9) |
+| `/blocks` | red | behaviour: not exercised: link "…", shared with / (9); behaviour: click tab "…", then click button "…" (step 1) (8); behaviour: not exercised: button "…" (after click tab "…") (6) |
+| `/blocks/authentication` | not checked | infrastructure |
+| `/blocks/dashboard` | red | navigation: back to /blocks/dashboard after going in place from /blocks/dashboard  |
+| `/blocks/login` | green |  |
+| `/blocks/sidebar` | green |  |
+| `/blocks/signup` | green |  |
+| `/charts` | not checked | infrastructure |
+| `/charts/area` | not checked | infrastructure |
+| `/charts/bar` | green |  |
+| `/charts/line` | green |  |
+| `/charts/pie` | not checked | infrastructure |
+| `/charts/radar` | red | css: computed style of iframe "…" (main/iframe) (3) |
+| `/charts/radial` | green |  |
+| `/charts/tooltip` | red | css: computed style of iframe "…" (main/iframe) (8) |
+| `/cli` | red | behaviour: not exercised: link "…" (153); behaviour: not exercised: tab "…" (128); behaviour: not exercised: link "…", shared with / (9) |
+| `/colors` | red | behaviour: not exercised: button "…" (285); behaviour: not exercised: combobox (26); behaviour: click button "…" (8) |
+| `/components` | red | behaviour: not exercised: link "…", shared with / (9); behaviour: not exercised: button "…", shared with / (2); behaviour: click button |
+| `/create` | red | behaviour: not exercised: option "…" (after click button "…", then click button " (455); behaviour: not exercised: button "…" (after click button "…", then click button " (148); behaviour: click button "…", then click button "…", then click menuitemradio "…"  (68) |
+| `/docs` | red | behaviour: not exercised: link "…", shared with / (9); behaviour: click button, then click menuitem "…" (step 1) (5); motion: click button "…" : frame of region "…" (main>region/div) (2) |
+| `/docs/_blocks` | red | behaviour: not exercised: link "…", shared with / (9); behaviour: click link "…" (5); behaviour: click button, then click menuitem "…" (step 1) (5) |
+| `/docs/_v0` | green |  |
+| `/docs/ai-elements` | red | behaviour: not exercised: link "…" (159); behaviour: not exercised: link "…", shared with / (9); behaviour: click link "…" (7) |
+| `/docs/ai-elements/aria/chain-of-thought` | red | behaviour: not exercised: link "…" (96); behaviour: not exercised: link "…", shared with / (9); behaviour: not exercised: tab "…" (6) |
+| `/docs/ai-elements/aria/chat` | red | behaviour: not exercised: link "…" (113); behaviour: not exercised: link "…", shared with / (9); behaviour: not exercised: tab "…" (6) |
+| `/docs/ai-elements/aria/checkpoint` | red | behaviour: not exercised: link "…", shared with / (9); behaviour: not exercised: menuitem "…" (after click button) (5); behaviour: click link "…" (4) |
+| `/docs/ai-elements/aria/confirmation` | green |  |
+| `/docs/ai-elements/aria/context` | green |  |
+| `/docs/ai-elements/aria/file-tree` | green |  |
+| `/docs/ai-elements/aria/inline-citation` | green |  |
+| `/docs/ai-elements/aria/message` | red | behaviour: not exercised: link "…" (161); behaviour: not exercised: link "…", shared with / (9); behaviour: not exercised: tab "…" (6) |
+| `/docs/ai-elements/aria/model-selector` | green |  |
+| `/docs/ai-elements/aria/plan` | red | behaviour: not exercised: link "…" (70); behaviour: not exercised: link "…", shared with / (9); behaviour: click button "…" (6) |
+| `/docs/ai-elements/aria/prompt-input` | green |  |
+| `/docs/ai-elements/aria/queue` | green |  |
+| `/docs/ai-elements/aria/reasoning` | red | rendered: visible text (2); css: computed style of generic "…" (main>link/span) (2); css: computed style of generic (main/div) |
+| `/docs/ai-elements/aria/sources` | green |  |
+| `/docs/ai-elements/aria/stack-trace` | green |  |
+| `/docs/ai-elements/aria/subagent` | green |  |
+| `/docs/ai-elements/aria/suggestion` | green |  |
+| `/docs/ai-elements/aria/task` | green |  |
+| `/docs/ai-elements/aria/terminal` | green |  |
+| `/docs/ai-elements/aria/test-results` | green |  |
+| `/docs/ai-elements/aria/tool` | green |  |
+| `/docs/ai-elements/base/chain-of-thought` | green |  |
+| `/docs/ai-elements/base/chat` | red | behaviour: not exercised: link "…", shared with / (9); behaviour: not exercised: menuitem "…" (after click button) (5); behaviour: click button "…" (4) |
+| `/docs/ai-elements/base/checkpoint` | green |  |
+| `/docs/ai-elements/base/confirmation` | green |  |
+| `/docs/ai-elements/base/context` | red | behaviour: not exercised: link "…" (101); behaviour: not exercised: link "…", shared with / (9); behaviour: not exercised: tab "…" (6) |
+| `/docs/ai-elements/base/file-tree` | red | behaviour: not exercised: link "…" (30); behaviour: not exercised: link "…", shared with / (9); behaviour: not exercised: tab "…" (6) |
+| `/docs/ai-elements/base/inline-citation` | green |  |
+| `/docs/ai-elements/base/message` | red | behaviour: not exercised: link "…" (156); behaviour: not exercised: link "…", shared with / (9); behaviour: click button "…" (8) |
+| `/docs/ai-elements/base/model-selector` | green |  |
+| `/docs/ai-elements/base/plan` | green |  |
+| `/docs/ai-elements/base/prompt-input` | green |  |
+| `/docs/ai-elements/base/queue` | green |  |
+| `/docs/ai-elements/base/reasoning` | red | rendered: visible text (2); css: computed style of generic "…" (main>link/span) (2); css: computed style of generic (main/div) |
+| `/docs/ai-elements/base/sources` | green |  |
+| `/docs/ai-elements/base/stack-trace` | green |  |
+| `/docs/ai-elements/base/subagent` | green |  |
+| `/docs/ai-elements/base/suggestion` | green |  |
+| `/docs/ai-elements/base/task` | green |  |
+| `/docs/ai-elements/base/terminal` | green |  |
+| `/docs/ai-elements/base/test-results` | green |  |
+| `/docs/ai-elements/base/tool` | green |  |
+| `/docs/ai-elements/radix/chain-of-thought` | green |  |
+| `/docs/ai-elements/radix/chat` | green |  |
+| `/docs/ai-elements/radix/checkpoint` | green |  |
+| `/docs/ai-elements/radix/confirmation` | green |  |
+| `/docs/ai-elements/radix/context` | green |  |
+| `/docs/ai-elements/radix/file-tree` | green |  |
+| `/docs/ai-elements/radix/inline-citation` | green |  |
+| `/docs/ai-elements/radix/message` | green |  |
+| `/docs/ai-elements/radix/model-selector` | green |  |
+| `/docs/ai-elements/radix/plan` | green |  |
+| `/docs/ai-elements/radix/prompt-input` | green |  |
+| `/docs/ai-elements/radix/queue` | green |  |
+| `/docs/ai-elements/radix/reasoning` | red | rendered: visible text (2); css: computed style of generic "…" (main>link/span) (2); css: computed style of generic (main/div) |
+| `/docs/ai-elements/radix/sources` | green |  |
+| `/docs/ai-elements/radix/stack-trace` | green |  |
+| `/docs/ai-elements/radix/subagent` | green |  |
+| `/docs/ai-elements/radix/suggestion` | green |  |
+| `/docs/ai-elements/radix/task` | green |  |
+| `/docs/ai-elements/radix/terminal` | green |  |
+| `/docs/ai-elements/radix/test-results` | green |  |
+| `/docs/ai-elements/radix/tool` | green |  |
+| `/docs/changelog` | red | behaviour: not exercised: link "…" (236); behaviour: not exercised: tab "…" (36); behaviour: not exercised: button "…" (32) |
+| `/docs/changelog/2023-06-new-cli` | red | behaviour: not exercised: link "…" (183); behaviour: not exercised: tab "…" (20); behaviour: not exercised: button "…" (11) |
+| `/docs/changelog/2023-07-javascript` | green |  |
+| `/docs/changelog/2023-12-new-components` | red | behaviour: not exercised: clickable <g> in dialog>application (no name: matched b (13); behaviour: not exercised: link "…", shared with / (9); behaviour: click button "…" (8) |
+| `/docs/changelog/2024-03-blocks` | green |  |
+| `/docs/changelog/2024-03-breadcrumb-otp` | red | behaviour: not exercised: link "…" (43); behaviour: not exercised: link "…", shared with / (9); behaviour: not exercised: menuitem "…" (after click button) (5) |
+| `/docs/changelog/2024-04-lift-mode` | green |  |
+| `/docs/changelog/2024-08-npx-shadcn-init` | green |  |
+| `/docs/changelog/2024-10-react-19` | green |  |
+| `/docs/changelog/2024-10-sidebar` | green |  |
+| `/docs/changelog/2024-11-icons` | green |  |
+| `/docs/changelog/2024-12-monorepo` | green |  |
+| `/docs/changelog/2025-01-blocks` | green |  |
+| `/docs/changelog/2025-02-registry-schema` | green |  |
+| `/docs/changelog/2025-02-tailwind-v4` | green |  |
+| `/docs/changelog/2025-04-cross-framework` | green |  |
+| `/docs/changelog/2025-04-mcp` | green |  |
+| `/docs/changelog/2025-04-shadcn-2-5` | green |  |
+| `/docs/changelog/2025-05-new-site` | green |  |
+| `/docs/changelog/2025-06-calendar` | green |  |
+| `/docs/changelog/2025-06-radix-ui` | green |  |
+| `/docs/changelog/2025-07-local-file-support` | green |  |
+| `/docs/changelog/2025-07-universal-registry` | green |  |
+| `/docs/changelog/2025-08-cli-3-mcp` | green |  |
+| `/docs/changelog/2025-09-registry-index` | green |  |
+| `/docs/changelog/2025-10-new-components` | red | behaviour: not exercised: link "…" (161); behaviour: not exercised: button "…" (67); behaviour: not exercised: textbox "…" (23) |
+| `/docs/changelog/2025-10-registry-directory` | green |  |
+| `/docs/changelog/2025-12-shadcn-create` | green |  |
+| `/docs/changelog/2026-01-base-ui` | green |  |
+| `/docs/changelog/2026-01-inline-side-styles` | green |  |
+| `/docs/changelog/2026-01-rtl` | red | behaviour: not exercised: tab "…" (12); behaviour: not exercised: link "…", shared with / (9); behaviour: not exercised: link "…" (5) |
+| `/docs/changelog/2026-02-blocks` | green |  |
+| `/docs/changelog/2026-02-radix-ui` | green |  |
+| `/docs/changelog/2026-03-cli-v4` | green |  |
+| `/docs/changelog/2026-03-luma` | green |  |
+| `/docs/changelog/2026-04-component-composition` | green |  |
+| `/docs/changelog/2026-04-partial-preset-apply` | green |  |
+| `/docs/changelog/2026-04-pointer-cursor` | green |  |
+| `/docs/changelog/2026-04-preset-commands` | green |  |
+| `/docs/changelog/2026-04-sera` | green |  |
+| `/docs/changelog/2026-04-shadcn-apply` | green |  |
+| `/docs/changelog/2026-05-package-imports-target-aliases` | green |  |
+| `/docs/changelog/2026-05-registry-include` | green |  |
+| `/docs/changelog/2026-05-rhea` | green |  |
+| `/docs/changelog/2026-05-shadcn-eject` | green |  |
+| `/docs/changelog/2026-06-chat-components` | green |  |
+| `/docs/changelog/2026-06-github-registries` | green |  |
+| `/docs/changelog/2026-07-base-ui-default` | green |  |
+| `/docs/changelog/2026-07-dynamic-search` | not checked | infrastructure |
+| `/docs/changelog/2026-07-helpers` | green |  |
+| `/docs/changelog/2026-07-react-aria` | green |  |
+| `/docs/changelog/2026-07-toast` | green |  |
+| `/docs/changelog/2026-07-typeset` | green |  |
+| `/docs/changelog/2026-08-helpers-human-in-the-loop` | green |  |
+| `/docs/changelog/2026-08-private-github-registries` | green |  |
+| `/docs/changelog/2026-08-questionnaire` | red | behaviour: not exercised: link "…" (48); behaviour: not exercised: link "…", shared with / (9); behaviour: not exercised: menuitem "…" (after click button) (5) |
+| `/docs/changelog/2026-09-cn` | green |  |
+| `/docs/changelog/2026-10-ai-elements` | red | behaviour: not exercised: link "…" (166); behaviour: not exercised: link "…", shared with / (9); behaviour: not exercised: tab "…" (8) |
+| `/docs/cli` | green |  |
+| `/docs/components` | green |  |
+| `/docs/components-json` | green |  |
+| `/docs/components/aria/accordion` | red | behaviour: not exercised: link "…" (162); behaviour: click button "…" (26); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/aria/alert` | red | behaviour: not exercised: link "…" (90); behaviour: not exercised: link "…", shared with / (9); behaviour: click button "…" (7) |
+| `/docs/components/aria/alert-dialog` | green |  |
+| `/docs/components/aria/aspect-ratio` | green |  |
+| `/docs/components/aria/attachment` | red | behaviour: not exercised: link "…" (175); behaviour: not exercised: link "…", shared with / (9); behaviour: click button "…" (7) |
+| `/docs/components/aria/avatar` | green |  |
+| `/docs/components/aria/badge` | green |  |
+| `/docs/components/aria/breadcrumb` | red | behaviour: not exercised: link "…" (182); behaviour: click button "…" (11); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/aria/bubble` | red | rendered: visible text (2); css: computed style of generic "…" (main>link/span) (2); css: computed style of generic (main/div) |
+| `/docs/components/aria/button` | red | behaviour: not exercised: link "…" (182); behaviour: not exercised: button "…" (26); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/aria/button-group` | red | behaviour: not exercised: link "…" (183); behaviour: not exercised: button "…" (42); behaviour: not exercised: button (10) |
+| `/docs/components/aria/calendar` | red | behaviour: not exercised: button "…" (358); behaviour: not exercised: link "…" (168); behaviour: not exercised: row "…" (22) |
+| `/docs/components/aria/card` | red | behaviour: not exercised: link "…" (176); behaviour: not exercised: button "…" (23); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/aria/carousel` | red | behaviour: not exercised: link "…" (168); behaviour: click button "…" (17); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/aria/chart` | red | css: computed style of g (main/g) (3) |
+| `/docs/components/aria/checkbox` | green |  |
+| `/docs/components/aria/code-block` | red | behaviour: not exercised: link "…" (228); behaviour: not exercised: button "…" (67); behaviour: not exercised: tab "…" (9) |
+| `/docs/components/aria/collapsible` | red | behaviour: not exercised: link "…" (140); behaviour: not exercised: button "…" (after click button "…") (16); behaviour: click button "…" (14) |
+| `/docs/components/aria/combobox` | red | behaviour: not exercised: link "…" (171); behaviour: click button "…" (20); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/aria/command` | red | behaviour: not exercised: link "…" (151); behaviour: not exercised: menuitem "…" (after click button "…" ) (20); behaviour: click button "…" (11) |
+| `/docs/components/aria/context-menu` | red | behaviour: not exercised: link "…" (62); behaviour: click button "…" (12); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/aria/data-table` | red | behaviour: not exercised: link "…" (220); behaviour: not exercised: button "…" (37); rendered: accessibility tree (36) |
+| `/docs/components/aria/date-picker` | red | behaviour: not exercised: button "…" (after click button "…") (141); behaviour: not exercised: link "…" (55); behaviour: click button "…" (17) |
+| `/docs/components/aria/dialog` | green |  |
+| `/docs/components/aria/direction` | green |  |
+| `/docs/components/aria/drawer` | red | behaviour: not exercised: link "…" (165); behaviour: not exercised: button "…" (30); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/aria/dropdown-menu` | green |  |
+| `/docs/components/aria/empty` | green |  |
+| `/docs/components/aria/field` | red | behaviour: not exercised: link "…" (209); behaviour: not exercised: button "…" (45); behaviour: not exercised: textbox "…" (15) |
+| `/docs/components/aria/hover-card` | green |  |
+| `/docs/components/aria/input` | red | behaviour: not exercised: link "…" (144); behaviour: click button "…" (17); motion: type "…" into textbox "…": extra motion of link "…" (main>link/a) (9) |
+| `/docs/components/aria/input-group` | green |  |
+| `/docs/components/aria/input-otp` | red | css: computed style of generic (main/div) (2); navigation: back to /docs/components/aria/input-otp after going in place from /doc (2); css: computed style of group (main>group/div) |
+| `/docs/components/aria/item` | green |  |
+| `/docs/components/aria/kbd` | green |  |
+| `/docs/components/aria/label` | green |  |
+| `/docs/components/aria/marker` | green |  |
+| `/docs/components/aria/message` | red | behaviour: not exercised: link "…" (179); behaviour: not exercised: button "…" (12); behaviour: not exercised: link "…", shared with / (8) |
+| `/docs/components/aria/message-scroller` | red | behaviour: not exercised: link "…" (187); behaviour: not exercised: button "…" (52); css: computed style of region "…" (main>region/div) (12) |
+| `/docs/components/aria/native-select` | red | behaviour: not exercised: link "…" (137); behaviour: not exercised: link "…", shared with / (9); behaviour: not exercised: tab "…" (6) |
+| `/docs/components/aria/pagination` | red | behaviour: not exercised: link "…" (61); behaviour: not exercised: link "…", shared with / (9); behaviour: click button "…" (6) |
+| `/docs/components/aria/popover` | green |  |
+| `/docs/components/aria/progress` | green |  |
+| `/docs/components/aria/questionnaire` | red | http: the check of this route |
+| `/docs/components/aria/radio-group` | red | behaviour: not exercised: link "…" (70); behaviour: not exercised: link "…", shared with / (9); behaviour: click button "…" (8) |
+| `/docs/components/aria/resizable` | green |  |
+| `/docs/components/aria/scroll-area` | green |  |
+| `/docs/components/aria/select` | red | behaviour: not exercised: option "…" (after click button "…") (59); behaviour: click button "…" (14); behaviour: not exercised: clickable "…" (after click button "…") (9) |
+| `/docs/components/aria/separator` | green |  |
+| `/docs/components/aria/sheet` | green |  |
+| `/docs/components/aria/sidebar` | red | behaviour: not exercised: link "…" (202); behaviour: not exercised: button "…" (19); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/aria/skeleton` | green |  |
+| `/docs/components/aria/slider` | red | css: computed style of group "…" (main>group/div) (5); css: computed style of generic (main/div) (3) |
+| `/docs/components/aria/sonner` | green |  |
+| `/docs/components/aria/spinner` | green |  |
+| `/docs/components/aria/switch` | red | behaviour: not exercised: link "…" (42); behaviour: not exercised: link "…", shared with / (9); behaviour: click button "…" (8) |
+| `/docs/components/aria/table` | green |  |
+| `/docs/components/aria/tabs` | green |  |
+| `/docs/components/aria/textarea` | green |  |
+| `/docs/components/aria/toast` | green |  |
+| `/docs/components/aria/toggle` | green |  |
+| `/docs/components/aria/toggle-group` | red | behaviour: not exercised: link "…" (164); behaviour: not exercised: radio "…" (21); behaviour: click button "…" (10) |
+| `/docs/components/aria/tooltip` | green |  |
+| `/docs/components/aria/trace` | red | behaviour: not exercised: link "…" (221); behaviour: not exercised: button "…" (51); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/aria/typography` | red | behaviour: not exercised: link "…" (130); behaviour: not exercised: link "…", shared with / (9); motion: click button "…" : extra motion of link "…" (main>link/a) (3) |
+| `/docs/components/attachment` | green |  |
+| `/docs/components/base/accordion` | red | behaviour: not exercised: link "…" (120); behaviour: click button "…" (9); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/base/alert` | green |  |
+| `/docs/components/base/alert-dialog` | red | behaviour: not exercised: link "…" (146); behaviour: click button "…" (16); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/base/aspect-ratio` | green |  |
+| `/docs/components/base/attachment` | green |  |
+| `/docs/components/base/avatar` | green |  |
+| `/docs/components/base/badge` | green |  |
+| `/docs/components/base/breadcrumb` | red | behaviour: not exercised: link "…" (88); behaviour: click button "…" (10); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/base/bubble` | red | behaviour: not exercised: link "…" (176); behaviour: not exercised: button "…" (27); behaviour: not exercised: link "…", shared with / (8) |
+| `/docs/components/base/button` | green |  |
+| `/docs/components/base/button-group` | red | behaviour: not exercised: link "…" (184); behaviour: not exercised: button "…" (35); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/base/calendar` | red | behaviour: not exercised: button "…" (458); behaviour: not exercised: link "…" (180); behaviour: not exercised: row "…" (24) |
+| `/docs/components/base/card` | red | behaviour: not exercised: link "…" (177); behaviour: not exercised: button "…" (16); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/base/carousel` | red | css: computed style of generic (main/div) (2); css: computed style of generic (main>region/div) |
+| `/docs/components/base/chart` | red | css: computed style of g (main/g) (3) |
+| `/docs/components/base/checkbox` | red | behaviour: not exercised: link "…" (49); behaviour: not exercised: checkbox "…" (13); behaviour: click button "…" (9) |
+| `/docs/components/base/code-block` | green |  |
+| `/docs/components/base/collapsible` | red | behaviour: not exercised: link "…" (162); behaviour: not exercised: button "…" (after click button "…") (16); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/base/combobox` | red | behaviour: not exercised: link "…" (186); behaviour: not exercised: option "…" (after click combobox "…") (43); behaviour: not exercised: button "…" (9) |
+| `/docs/components/base/command` | red | behaviour: not exercised: link "…" (127); behaviour: not exercised: option "…" (after click button "…" ) (17); behaviour: click button "…" (10) |
+| `/docs/components/base/context-menu` | red | behaviour: click button "…" (12); behaviour: not exercised: link "…", shared with / (9); behaviour: not exercised: menuitem "…" (after click button) (5) |
+| `/docs/components/base/data-table` | red | behaviour: not exercised: link "…" (221); behaviour: not exercised: button "…" (39); rendered: accessibility tree (36) |
+| `/docs/components/base/date-picker` | green |  |
+| `/docs/components/base/dialog` | green |  |
+| `/docs/components/base/direction` | green |  |
+| `/docs/components/base/drawer` | green |  |
+| `/docs/components/base/dropdown-menu` | green |  |
+| `/docs/components/base/empty` | green |  |
+| `/docs/components/base/field` | red | behaviour: not exercised: link "…" (214); behaviour: not exercised: option "…" (after click combobox "…") (33); behaviour: not exercised: button "…" (27) |
+| `/docs/components/base/hover-card` | red | behaviour: not exercised: link "…" (52); behaviour: click button "…" (11); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/base/input` | green |  |
+| `/docs/components/base/input-group` | red | behaviour: not exercised: link "…" (188); behaviour: not exercised: button "…" (36); behaviour: not exercised: clickable "…" (15) |
+| `/docs/components/base/input-otp` | red | navigation: in place from / (through a link the checker added: no page links here) (5); navigation: in place from /blocks (through a link the checker added: no page links (5); css: computed style of generic (main/div) (2) |
+| `/docs/components/base/item` | green |  |
+| `/docs/components/base/kbd` | green |  |
+| `/docs/components/base/label` | red | behaviour: not exercised: option "…" (after click combobox "…") (20); behaviour: not exercised: link "…", shared with / (9); behaviour: not exercised: menuitem "…" (after click button) (5) |
+| `/docs/components/base/marker` | green |  |
+| `/docs/components/base/menubar` | red | behaviour: not exercised: link "…" (33); behaviour: not exercised: menuitem "…" (16); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/base/message` | green |  |
+| `/docs/components/base/message-scroller` | red | behaviour: not exercised: link "…" (189); behaviour: not exercised: button "…" (53); css: computed style of region "…" (main>region/div) (12) |
+| `/docs/components/base/native-select` | green |  |
+| `/docs/components/base/navigation-menu` | red | behaviour: click button "…", then click link "…" (step 1) (24); behaviour: click button "…" (9); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/base/pagination` | red | behaviour: not exercised: link "…" (75); behaviour: not exercised: link "…", shared with / (9); behaviour: not exercised: tab "…" (6) |
+| `/docs/components/base/popover` | green |  |
+| `/docs/components/base/progress` | green |  |
+| `/docs/components/base/questionnaire` | red | css: computed style of generic (main>form>group/div) |
+| `/docs/components/base/radio-group` | red | behaviour: not exercised: link "…" (41); behaviour: not exercised: radio "…" (20); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/base/resizable` | green |  |
+| `/docs/components/base/scroll-area` | red | navigation: in place from / (through a link the checker added: no page links here) (3); navigation: in place from /blocks (through a link the checker added: no page links (3); css: computed style of generic (main/div) |
+| `/docs/components/base/select` | red | behaviour: not exercised: link "…" (61); behaviour: not exercised: link "…", shared with / (9); behaviour: click button "…" (8) |
+| `/docs/components/base/separator` | green |  |
+| `/docs/components/base/sheet` | red | behaviour: click button "…" (12); behaviour: not exercised: link "…", shared with / (9); behaviour: not exercised: button "…" (after click button "…") (7) |
+| `/docs/components/base/sidebar` | green |  |
+| `/docs/components/base/skeleton` | green |  |
+| `/docs/components/base/slider` | red | css: computed style of group (main>group/div) (3); css: computed style of generic (main/div) |
+| `/docs/components/base/spinner` | green |  |
+| `/docs/components/base/switch` | green |  |
+| `/docs/components/base/table` | green |  |
+| `/docs/components/base/tabs` | green |  |
+| `/docs/components/base/textarea` | green |  |
+| `/docs/components/base/toast` | green |  |
+| `/docs/components/base/toggle` | green |  |
+| `/docs/components/base/toggle-group` | red | rendered: accessibility tree (2); css: computed style of button "…" (main>group>group>button/button) |
+| `/docs/components/base/tooltip` | red | behaviour: not exercised: link "…" (38); behaviour: click button "…" (12); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/base/trace` | red | behaviour: not exercised: link "…" (218); behaviour: not exercised: button "…" (45); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/base/typography` | green |  |
+| `/docs/components/breadcrumb` | green |  |
+| `/docs/components/bubble` | red | rendered: visible text (2); css: computed style of generic "…" (main>link/span) (2); css: computed style of generic (main/div) |
+| `/docs/components/button` | green |  |
+| `/docs/components/button-group` | green |  |
+| `/docs/components/calendar` | red | rendered: accessibility tree (11) |
+| `/docs/components/chart` | red | css: computed style of g (main/g) (3) |
+| `/docs/components/collapsible` | green |  |
+| `/docs/components/data-table` | red | rendered: accessibility tree (18); css: computed style of generic (main/div) (5); css: computed style of button "…" (main>button/button) (3) |
+| `/docs/components/input-group` | green |  |
+| `/docs/components/input-otp` | red | css: computed style of generic (main/div) (2); css: computed style of group (main>group/div) |
+| `/docs/components/marker` | green |  |
+| `/docs/components/message` | green |  |
+| `/docs/components/message-scroller` | red | css: computed style of region "…" (main>region/div) (6); css: computed style of generic (main>form>group>group>group/div) |
+| `/docs/components/popover` | green |  |
+| `/docs/components/radix/accordion` | green |  |
+| `/docs/components/radix/alert` | green |  |
+| `/docs/components/radix/alert-dialog` | green |  |
+| `/docs/components/radix/aspect-ratio` | green |  |
+| `/docs/components/radix/attachment` | green |  |
+| `/docs/components/radix/avatar` | red | rendered: accessibility tree (20); rendered: visible text (20); assets: image https://github.com/shadcn.png (13) |
+| `/docs/components/radix/badge` | green |  |
+| `/docs/components/radix/breadcrumb` | green |  |
+| `/docs/components/radix/bubble` | red | rendered: visible text (2); css: computed style of generic "…" (main>link/span) (2); css: computed style of generic (main/div) |
+| `/docs/components/radix/button` | green |  |
+| `/docs/components/radix/button-group` | red | behaviour: not exercised: link "…" (185); behaviour: not exercised: button "…" (34); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/radix/calendar` | red | rendered: accessibility tree (11) |
+| `/docs/components/radix/card` | red | behaviour: not exercised: link "…" (178); behaviour: not exercised: button "…" (30); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/radix/carousel` | red | rendered: accessibility tree (2); css: computed style of generic (main/div) (2); css: computed style of button "…" (main>region>button/button) |
+| `/docs/components/radix/chart` | red | css: computed style of g (main/g) (3) |
+| `/docs/components/radix/checkbox` | red | rendered: accessibility tree (3); css: computed style of checkbox (main>table>rowgroup>row>cell>checkbox/butt |
+| `/docs/components/radix/code-block` | green |  |
+| `/docs/components/radix/collapsible` | green |  |
+| `/docs/components/radix/combobox` | green |  |
+| `/docs/components/radix/command` | green |  |
+| `/docs/components/radix/context-menu` | red | behaviour: not exercised: link "…" (32); behaviour: click button "…" (11); behaviour: not exercised: clickable "…" (10) |
+| `/docs/components/radix/data-table` | red | rendered: accessibility tree (18); css: computed style of generic (main/div) (5); css: computed style of button "…" (main>button/button) (3) |
+| `/docs/components/radix/date-picker` | green |  |
+| `/docs/components/radix/dialog` | green |  |
+| `/docs/components/radix/direction` | green |  |
+| `/docs/components/radix/drawer` | red | behaviour: not exercised: link "…" (133); behaviour: click button "…" (14); behaviour: not exercised: clickable <g> in dialog>application (no name: matched b (14) |
+| `/docs/components/radix/dropdown-menu` | red | rendered: accessibility tree (3); rendered: visible text; a11y: axe color-contrast: Elements must meet minimum color contrast ratio th |
+| `/docs/components/radix/empty` | red | rendered: accessibility tree (7); rendered: visible text (4); assets: image https://github.com/shadcn.png (2) |
+| `/docs/components/radix/field` | red | behaviour: not exercised: link "…" (215); behaviour: not exercised: button "…" (34); behaviour: not exercised: option "…" (after click combobox "…") (32) |
+| `/docs/components/radix/hover-card` | green |  |
+| `/docs/components/radix/input` | red | behaviour: not exercised: link "…" (178); behaviour: not exercised: button "…" (23); motion: type "…" into textbox "…": extra motion of link "…" (main>link/a) (9) |
+| `/docs/components/radix/input-group` | green |  |
+| `/docs/components/radix/input-otp` | red | css: computed style of generic (main/div) (2); css: computed style of group (main>group/div) |
+| `/docs/components/radix/item` | red | css: computed style of link "…" (main>link/a) (2) |
+| `/docs/components/radix/kbd` | green |  |
+| `/docs/components/radix/label` | red | behaviour: not exercised: link "…" (90); behaviour: not exercised: option "…" (after click combobox "…") (18); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/components/radix/marker` | green |  |
+| `/docs/components/radix/menubar` | green |  |
+| `/docs/components/radix/message` | green |  |
+| `/docs/components/radix/message-scroller` | red | behaviour: not exercised: link "…" (190); behaviour: not exercised: button "…" (51); css: computed style of region "…" (main>region/div) (12) |
+| `/docs/components/radix/native-select` | green |  |
+| `/docs/components/radix/navigation-menu` | green |  |
+| `/docs/components/radix/pagination` | red | behaviour: not exercised: link "…" (164); behaviour: not exercised: link "…", shared with / (9); behaviour: not exercised: tab "…" (6) |
+| `/docs/components/radix/popover` | green |  |
+| `/docs/components/radix/progress` | red | behaviour: not exercised: link "…" (36); behaviour: not exercised: link "…", shared with / (9); behaviour: not exercised: tab "…" (6) |
+| `/docs/components/radix/questionnaire` | red | css: computed style of generic (main>form>group/div) |
+| `/docs/components/radix/radio-group` | green |  |
+| `/docs/components/radix/resizable` | green |  |
+| `/docs/components/radix/scroll-area` | green |  |
+| `/docs/components/radix/select` | red | behaviour: not exercised: link "…" (15); behaviour: not exercised: link "…", shared with / (9); behaviour: click button "…" (8) |
+| `/docs/components/radix/separator` | green |  |
+| `/docs/components/radix/sheet` | green |  |
+| `/docs/components/radix/sidebar` | green |  |
+| `/docs/components/radix/skeleton` | green |  |
+| `/docs/components/radix/slider` | red | css: computed style of generic (main/span) (5); css: computed style of generic (main/div) (3) |
+| `/docs/components/radix/sonner` | green |  |
+| `/docs/components/radix/spinner` | green |  |
+| `/docs/components/radix/switch` | green |  |
+| `/docs/components/radix/table` | green |  |
+| `/docs/components/radix/tabs` | green |  |
+| `/docs/components/radix/textarea` | green |  |
+| `/docs/components/radix/toast` | green |  |
+| `/docs/components/radix/toggle` | green |  |
+| `/docs/components/radix/toggle-group` | red | behaviour: not exercised: link "…" (29); behaviour: not exercised: radio "…" (21); behaviour: click button "…" (9) |
+| `/docs/components/radix/tooltip` | green |  |
+| `/docs/components/radix/trace` | green |  |
+| `/docs/components/radix/typography` | green |  |
+| `/docs/components/scroll-area` | red | css: computed style of generic (main/div) |
+| `/docs/components/select` | green |  |
+| `/docs/components/spinner` | green |  |
+| `/docs/components/tooltip` | green |  |
+| `/docs/dark-mode` | green |  |
+| `/docs/dark-mode/astro` | green |  |
+| `/docs/dark-mode/next` | green |  |
+| `/docs/dark-mode/remix` | green |  |
+| `/docs/dark-mode/tanstack-start` | green |  |
+| `/docs/dark-mode/vite` | green |  |
+| `/docs/directory` | green |  |
+| `/docs/directory?page=10` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of path (main>list/path) (9) |
+| `/docs/directory?page=11` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of path (main>list/path) (8) |
+| `/docs/directory?page=12` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (11) |
+| `/docs/directory?page=13` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (6) |
+| `/docs/directory?page=14` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (9) |
+| `/docs/directory?page=15` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of path (main>list/path) (12) |
+| `/docs/directory?page=16` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (9) |
+| `/docs/directory?page=17` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of path (main>list/path) (12) |
+| `/docs/directory?page=18` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (10) |
+| `/docs/directory?page=19` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (8) |
+| `/docs/directory?page=2` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (11) |
+| `/docs/directory?page=20` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (14) |
+| `/docs/directory?page=21` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (5) |
+| `/docs/directory?page=22` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of path (main>list/path) (12) |
+| `/docs/directory?page=23` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of path (main>list/path) (8) |
+| `/docs/directory?page=24` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of path (main>list/path) (13) |
+| `/docs/directory?page=25` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of path (main>link/path) (8) |
+| `/docs/directory?page=26` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of path (main>list>link/path) (6) |
+| `/docs/directory?page=27` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (11) |
+| `/docs/directory?page=28` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of path (main>list/path) (10) |
+| `/docs/directory?page=29` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (8) |
+| `/docs/directory?page=3` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of path (main>list/path) (10) |
+| `/docs/directory?page=30` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of path (main>list/path) (9) |
+| `/docs/directory?page=31` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (8) |
+| `/docs/directory?page=32` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of path (main>list/path) (7) |
+| `/docs/directory?page=33` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (8) |
+| `/docs/directory?page=34` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (7) |
+| `/docs/directory?page=35` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (9) |
+| `/docs/directory?page=36` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (8) |
+| `/docs/directory?page=37` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of path (main>list/path) (8) |
+| `/docs/directory?page=38` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of path (main>list/path) (10) |
+| `/docs/directory?page=39` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (11) |
+| `/docs/directory?page=4` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of path (main>list/path) (7) |
+| `/docs/directory?page=40` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of path (main>list/path) (13) |
+| `/docs/directory?page=41` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of path (main>list/path) (8) |
+| `/docs/directory?page=42` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of path (main>list/path) (15) |
+| `/docs/directory?page=43` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (6) |
+| `/docs/directory?page=44` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of path (main>list/path) (12) |
+| `/docs/directory?page=45` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of path (main>list/path) (14) |
+| `/docs/directory?page=46` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of path (main>list/path) (11) |
+| `/docs/directory?page=47` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (8) |
+| `/docs/directory?page=48` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of path (main>list/path) (6) |
+| `/docs/directory?page=5` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (8) |
+| `/docs/directory?page=6` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (7) |
+| `/docs/directory?page=7` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (6) |
+| `/docs/directory?page=8` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (7) |
+| `/docs/directory?page=9` | red | rendered: accessibility tree (20); rendered: visible text (20); css: computed style of generic (main>list/div) (6) |
+| `/docs/figma` | green |  |
+| `/docs/forms` | green |  |
+| `/docs/forms/formisch` | red | behaviour: not exercised: link "…" (195); behaviour: not exercised: button "…" (54); rendered: accessibility tree (16) |
+| `/docs/forms/next` | red | behaviour: not exercised: link "…" (187); rendered: accessibility tree (40); behaviour: not exercised: button "…" (31) |
+| `/docs/forms/react-hook-form` | red | rendered: accessibility tree (8); css: computed style of generic "…" (main>link/span) (2); css: computed style of checkbox (main>form>group>checkbox/input) (2) |
+| `/docs/forms/tanstack-form` | red | rendered: accessibility tree (8); css: computed style of generic "…" (main>link/span) (2); css: computed style of checkbox (main>form>group>checkbox/input) (2) |
+| `/docs/helpers/ai-sdk` | red | behaviour: not exercised: link "…" (237); behaviour: not exercised: button "…" (34); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/helpers/tanstack-ai` | green |  |
+| `/docs/installation` | green |  |
+| `/docs/installation/astro` | green |  |
+| `/docs/installation/gatsby` | green |  |
+| `/docs/installation/laravel` | green |  |
+| `/docs/installation/manual` | red | behaviour: not exercised: link "…" (79); rendered: visible text (20); rendered: accessibility tree (16) |
+| `/docs/installation/next` | green |  |
+| `/docs/installation/react-router` | green |  |
+| `/docs/installation/remix` | green |  |
+| `/docs/installation/tanstack` | green |  |
+| `/docs/installation/tanstack-router` | green |  |
+| `/docs/installation/vite` | green |  |
+| `/docs/javascript` | green |  |
+| `/docs/legacy` | green |  |
+| `/docs/mcp` | green |  |
+| `/docs/monorepo` | green |  |
+| `/docs/new` | green |  |
+| `/docs/official` | green |  |
+| `/docs/package-imports` | green |  |
+| `/docs/react-19` | red | behaviour: not exercised: link "…" (98); behaviour: not exercised: link "…", shared with / (9); behaviour: not exercised: menuitem "…" (after click button) (5) |
+| `/docs/react/message-scroller` | green |  |
+| `/docs/react/questionnaire` | red | http: the check of this route |
+| `/docs/registry` | green |  |
+| `/docs/registry/api-reference` | green |  |
+| `/docs/registry/authentication` | green |  |
+| `/docs/registry/dynamic-search` | green |  |
+| `/docs/registry/examples` | red | rendered: visible text |
+| `/docs/registry/faq` | green |  |
+| `/docs/registry/getting-started` | red | behaviour: not exercised: link "…" (143); behaviour: not exercised: tab "…" (56); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/registry/github` | green |  |
+| `/docs/registry/health` | green |  |
+| `/docs/registry/mcp` | green |  |
+| `/docs/registry/namespace` | green |  |
+| `/docs/registry/open-in-v0` | green |  |
+| `/docs/registry/registry-index` | green |  |
+| `/docs/registry/registry-item-json` | red | rendered: visible text |
+| `/docs/registry/registry-json` | green |  |
+| `/docs/rtl` | green |  |
+| `/docs/rtl/next` | green |  |
+| `/docs/rtl/start` | green |  |
+| `/docs/rtl/vite` | green |  |
+| `/docs/skills` | green |  |
+| `/docs/tailwind-v4` | green |  |
+| `/docs/theming` | red | behaviour: not exercised: link "…" (83); rendered: accessibility tree (16); behaviour: not exercised: link "…", shared with / (9) |
+| `/docs/typeset` | green |  |
+| `/docs/utils/scroll-fade` | green |  |
+| `/docs/utils/shimmer` | green |  |
+| `/examples/authentication` | red | behaviour: not exercised: link "…", shared with / (9); behaviour: click combobox "…", then click option "…" (step 1) (8); behaviour: click combobox "…", then press Enter on option "…" (step 1) (8) |
+| `/examples/dashboard` | not checked | infrastructure |
+| `/examples/playground` | red | behaviour: click combobox "…", then click option "…" (step 1) (25); behaviour: not exercised: link "…", shared with / (9); behaviour: click button "…", closed by a click outside it (5) |
+| `/examples/rtl` | not checked | infrastructure |
+| `/examples/tasks` | red | behaviour: click button "…" (35); behaviour: click checkbox "…" (26); behaviour: click button "…", then click menuitem "…" (step 1) (13) |
+| `/preview/typeset/docs` | red | weight: JavaScript downloaded; rendered: fresh load: <html> class and data-* attributes |
+| `/sera` | red | behaviour: not exercised: button "…" (after click button "…", then click button " (15); behaviour: click button "…", then click button "…" (step 1) (13); css: computed style of checkbox (main>table>rowgroup>row>cell>checkbox/inpu (11) |
+| `/skills` | red | behaviour: not exercised: link "…" (31); behaviour: not exercised: link "…", shared with / (9); behaviour: not exercised: tab "…" (4) |
+| `/typeset` | red | network: browser request missing |
+| `/view/aria-nova/sidebar-rtl` | red | behaviour: click combobox, then click option "…", then click button "…", then cli (28); behaviour: click combobox, then click option "…", then click button "…" (step 1) (16); behaviour: click combobox, then click option "…", then press Enter on button "…"  (16) |
+| `/view/base-nova/sidebar-rtl` | red | behaviour: click combobox, then click option "…", then click button "…", then pre (48); behaviour: click combobox, then click option "…", then click button "…", then cli (28); behaviour: click combobox, then click option "…", then click button "…" (step 1) (16) |
+| `/view/new-york-v4/dashboard-01` | red | behaviour: click button "…" (24); behaviour: not exercised: button "…" (after click button "…") (22); rendered: visible text (14) |
+| `/view/new-york-v4/login-01` | green |  |
+| `/view/new-york-v4/login-02` | green |  |
+| `/view/new-york-v4/login-03` | green |  |
+| `/view/new-york-v4/login-04` | green |  |
+| `/view/new-york-v4/login-05` | green |  |
+| `/view/new-york-v4/sidebar-01` | red | behaviour: click button "…", then click menuitem "…", then click button "…", clos (4); behaviour: click button "…", then click menuitem "…" (step 1) (3); behaviour: click button "…", then press Enter on menuitem "…" (step 1) (3) |
+| `/view/new-york-v4/sidebar-02` | red | behaviour: click button "…" (6); a11y: press Enter on button "…" (6); a11y: press Space on button "…" (6) |
+| `/view/new-york-v4/sidebar-03` | green |  |
+| `/view/new-york-v4/sidebar-04` | green |  |
+| `/view/new-york-v4/sidebar-05` | red | motion: press Enter on button "…" , with prefers-reduced-motion: reduce: motio (3); motion: click button "…" : motion of generic (body/div) (2); motion: click button "…" , with prefers-reduced-motion: reduce: motion of gene (2) |
+| `/view/new-york-v4/sidebar-06` | green |  |
+| `/view/new-york-v4/sidebar-07` | red | behaviour: click button "…", then click menuitem "…" (step 1) (12); behaviour: click button "…", then press Enter on menuitem "…" (step 1) (10); behaviour: click button "…", then press Space on menuitem "…" (step 1) (10) |
+| `/view/new-york-v4/sidebar-08` | green |  |
+| `/view/new-york-v4/sidebar-09` | red | rendered: visible text (20); behaviour: click button "…" (6); a11y: press Enter on button "…" (6) |
+| `/view/new-york-v4/sidebar-10` | red | behaviour: click button "…" (15); a11y: press Enter on button "…" (15); a11y: press Space on button "…" (15) |
+| `/view/new-york-v4/sidebar-11` | red | behaviour: click button "…", then click button "…", then click button "…", then p (8); motion: click button "…", with prefers-reduced-motion: reduce: motion of svg ( (5); behaviour: click button "…", then click button "…", then click button "…" (step 2 (4) |
+| `/view/new-york-v4/sidebar-12` | red | behaviour: click button "…" (6); a11y: press Enter on button "…" (6); a11y: press Space on button "…" (6) |
+| `/view/new-york-v4/sidebar-13` | red | behaviour: click link "…" (13); rendered: accessibility tree (4); rendered: visible text (4) |
+| `/view/new-york-v4/sidebar-14` | green |  |
+| `/view/new-york-v4/sidebar-15` | red | behaviour: click button "…" (16); a11y: press Enter on button "…" (16); a11y: press Space on button "…" (16) |
+| `/view/new-york-v4/sidebar-16` | red | behaviour: click button "…", then click menuitem "…" (step 1) (8); behaviour: click button "…", then press Enter on menuitem "…" (step 1) (6); behaviour: click button "…", then press Space on menuitem "…" (step 1) (6) |
+| `/view/new-york-v4/signup-01` | green |  |
+| `/view/new-york-v4/signup-02` | green |  |
+| `/view/new-york-v4/signup-03` | green |  |
+| `/view/new-york-v4/signup-04` | green |  |
+| `/view/new-york-v4/signup-05` | green |  |
+| `/view/radix-nova/sidebar-rtl` | green |  |
+| `/create?base=aria` | red | css: computed style of button "…" (dialog>button/button); a11y: focus order (Tab), first difference at stop 1 |
+| `/create?preset=b27GcrRo` | red | rendered: visible text (2); css: computed style of button "…" (dialog>button/button); css: computed style of path (main>button>img/path) |
+| `/create?preset=b2D0wqNxT` | red | rendered: visible text (8); css: computed style of path (main>button/path) (2); css: computed style of generic (main>button/div) (2) |
+| `/create?preset=b4xFeBLg4O` | red | rendered: visible text (8); css: computed style of generic (main>button/div) (3); css: computed style of button "…" (dialog>button/button) |
+| `/create?template=astro` | red | css: computed style of button "…" (dialog>button/button); a11y: focus order (Tab), first difference at stop 1 |
+| `/create?template=laravel` | red | css: computed style of button "…" (dialog>button/button); a11y: focus order (Tab), first difference at stop 1 |
+| `/create?template=next` | red | css: computed style of button "…" (dialog>button/button); a11y: focus order (Tab), first difference at stop 2 |
+| `/create?template=next&base=base&rtl=true` | red | css: computed style of button "…" (dialog>button/button); a11y: focus order (Tab), first difference at stop 1 |
+| `/create?template=react-router` | red | css: computed style of button "…" (dialog>button/button); a11y: focus order (Tab), first difference at stop 1 |
+| `/create?template=start` | red | css: computed style of button "…" (dialog>button/button); a11y: focus order (Tab), first difference at stop 1 |
+| `/create?template=start&base=base&rtl=true` | red | css: computed style of button "…" (dialog>button/button); a11y: focus order (Tab), first difference at stop 1 |
+| `/create?template=vite` | red | css: computed style of button "…" (dialog>button/button); a11y: focus order (Tab), first difference at stop 1 |
+| `/create?template=vite&base=base&rtl=true` | red | css: computed style of button "…" (dialog>button/button); a11y: focus order (Tab), first difference at stop 1 |
+| `/docs/ai-sdk-ui/chatbot-tool-usage` | red | rendered: accessibility tree (6); a11y: landmarks (2); weight: JavaScript downloaded |
+| `/docs/blocks` | red | rendered: accessibility tree (3); a11y: landmarks (2); weight: JavaScript downloaded |
+| `/login` | red | rendered: accessibility tree (6); a11y: landmarks (2); weight: JavaScript downloaded |
+| `/privacy` | red | rendered: accessibility tree (3); a11y: landmarks (2); weight: JavaScript downloaded |
+| `/terms` | red | rendered: accessibility tree (3); a11y: landmarks (2); weight: JavaScript downloaded |
+| `/markless-migrate-no-such-page` | red | rendered: accessibility tree (3); a11y: landmarks (2); weight: JavaScript downloaded |
+| `/api/search` | green |  |
+| `/llm` | red | http: status; http: content-type |
+| `/og` | red | data: line (40) |
+| `/r/registries.json` | green |  |
+| `/robots.txt` | green |  |
+| `/rss.xml` | green |  |
+| `/site.webmanifest` | green |  |
+| `/sitemap.xml` | green |  |
+| `/typeset.css` | green |  |
+| `/llms.txt` | green |  |
+| `/blocks/` | green |  |
+| `/blocks/authentication/` | green |  |
+| `/blocks/dashboard/` | green |  |
+| `/blocks/login/` | green |  |
+| `/blocks/sidebar/` | green |  |
+| `/blocks/signup/` | green |  |
+| `/charts/` | green |  |
+| `/charts/area/` | green |  |
+| `/charts/bar/` | green |  |
+| `/charts/line/` | green |  |
+| `/charts/pie/` | green |  |
+| `/charts/radar/` | green |  |
+| `/charts/radial/` | green |  |
+| `/charts/tooltip/` | green |  |
+| `/cli/` | green |  |
+| `/colors/` | green |  |
+| `/components/` | green |  |
+| `/create/` | green |  |
+| `/directory` | green |  |
+| `/docs/` | green |  |
+| `/docs/_blocks/` | green |  |
+| `/docs/_v0/` | green |  |
+| `/docs/ai-elements/` | green |  |
+| `/docs/ai-elements/aria/chain-of-thought/` | green |  |
+| `/docs/ai-elements/aria/chat/` | green |  |
+| `/docs/ai-elements/aria/checkpoint/` | green |  |
+| `/docs/ai-elements/aria/confirmation/` | green |  |
+| `/docs/ai-elements/aria/context/` | green |  |
+| `/docs/ai-elements/aria/file-tree/` | green |  |
+| `/docs/ai-elements/aria/inline-citation/` | green |  |
+| `/docs/ai-elements/aria/message/` | green |  |
+| `/docs/ai-elements/aria/model-selector/` | green |  |
+| `/docs/ai-elements/aria/plan/` | green |  |
+| `/docs/ai-elements/aria/prompt-input/` | green |  |
+| `/docs/ai-elements/aria/queue/` | green |  |
+| `/docs/ai-elements/aria/reasoning/` | green |  |
+| `/docs/ai-elements/aria/sources/` | green |  |
+| `/docs/ai-elements/aria/stack-trace/` | green |  |
+| `/docs/ai-elements/aria/subagent/` | green |  |
+| `/docs/ai-elements/aria/suggestion/` | green |  |
+| `/docs/ai-elements/aria/task/` | green |  |
+| `/docs/ai-elements/aria/terminal/` | green |  |
+| `/docs/ai-elements/aria/test-results/` | green |  |
+| `/docs/ai-elements/aria/tool/` | green |  |
+| `/docs/ai-elements/base/chain-of-thought/` | green |  |
+| `/docs/ai-elements/base/chat/` | green |  |
+| `/docs/ai-elements/base/checkpoint/` | green |  |
+| `/docs/ai-elements/base/confirmation/` | green |  |
+| `/docs/ai-elements/base/context/` | green |  |
+| `/docs/ai-elements/base/file-tree/` | green |  |
+| `/docs/ai-elements/base/inline-citation/` | green |  |
+| `/docs/ai-elements/base/message/` | green |  |
+| `/docs/ai-elements/base/model-selector/` | green |  |
+| `/docs/ai-elements/base/plan/` | green |  |
+| `/docs/ai-elements/base/prompt-input/` | green |  |
+| `/docs/ai-elements/base/queue/` | green |  |
+| `/docs/ai-elements/base/reasoning/` | green |  |
+| `/docs/ai-elements/base/sources/` | green |  |
+| `/docs/ai-elements/base/stack-trace/` | green |  |
+| `/docs/ai-elements/base/subagent/` | green |  |
+| `/docs/ai-elements/base/suggestion/` | green |  |
+| `/docs/ai-elements/base/task/` | green |  |
+| `/docs/ai-elements/base/terminal/` | green |  |
+| `/docs/ai-elements/base/test-results/` | green |  |
+| `/docs/ai-elements/base/tool/` | green |  |
+| `/docs/ai-elements/radix/chain-of-thought/` | green |  |
+| `/docs/ai-elements/radix/chat/` | green |  |
+| `/docs/ai-elements/radix/checkpoint/` | green |  |
+| `/docs/ai-elements/radix/confirmation/` | green |  |
+| `/docs/ai-elements/radix/context/` | green |  |
+| `/docs/ai-elements/radix/file-tree/` | green |  |
+| `/docs/ai-elements/radix/inline-citation/` | green |  |
+| `/docs/ai-elements/radix/message/` | green |  |
+| `/docs/ai-elements/radix/model-selector/` | green |  |
+| `/docs/ai-elements/radix/plan/` | green |  |
+| `/docs/ai-elements/radix/prompt-input/` | green |  |
+| `/docs/ai-elements/radix/queue/` | green |  |
+| `/docs/ai-elements/radix/reasoning/` | green |  |
+| `/docs/ai-elements/radix/sources/` | green |  |
+| `/docs/ai-elements/radix/stack-trace/` | green |  |
+| `/docs/ai-elements/radix/subagent/` | green |  |
+| `/docs/ai-elements/radix/suggestion/` | green |  |
+| `/docs/ai-elements/radix/task/` | green |  |
+| `/docs/ai-elements/radix/terminal/` | green |  |
+| `/docs/ai-elements/radix/test-results/` | green |  |
+| `/docs/ai-elements/radix/tool/` | green |  |
+| `/docs/ai-sdk-ui/chatbot-tool-usage/` | green |  |
+| `/docs/blocks/` | green |  |
+| `/docs/changelog/` | green |  |
+| `/docs/changelog/2023-06-new-cli/` | green |  |
+| `/docs/changelog/2023-07-javascript/` | green |  |
+| `/docs/changelog/2023-12-new-components/` | green |  |
+| `/docs/changelog/2024-03-blocks/` | green |  |
+| `/docs/changelog/2024-03-breadcrumb-otp/` | green |  |
+| `/docs/changelog/2024-04-lift-mode/` | green |  |
+| `/docs/changelog/2024-08-npx-shadcn-init/` | green |  |
+| `/docs/changelog/2024-10-react-19/` | green |  |
+| `/docs/changelog/2024-10-sidebar/` | green |  |
+| `/docs/changelog/2024-11-icons/` | green |  |
+| `/docs/changelog/2024-12-monorepo/` | green |  |
+| `/docs/changelog/2025-01-blocks/` | green |  |
+| `/docs/changelog/2025-02-registry-schema/` | green |  |
+| `/docs/changelog/2025-02-tailwind-v4/` | green |  |
+| `/docs/changelog/2025-04-cross-framework/` | green |  |
+| `/docs/changelog/2025-04-mcp/` | green |  |
+| `/docs/changelog/2025-04-shadcn-2-5/` | green |  |
+| `/docs/changelog/2025-05-new-site/` | green |  |
+| `/docs/changelog/2025-06-calendar/` | green |  |
+| `/docs/changelog/2025-06-radix-ui/` | green |  |
+| `/docs/changelog/2025-07-local-file-support/` | green |  |
+| `/docs/changelog/2025-07-universal-registry/` | green |  |
+| `/docs/changelog/2025-08-cli-3-mcp/` | green |  |
+| `/docs/changelog/2025-09-registry-index/` | green |  |
+| `/docs/changelog/2025-10-new-components/` | green |  |
+| `/docs/changelog/2025-10-registry-directory/` | green |  |
+| `/docs/changelog/2025-12-shadcn-create/` | green |  |
+| `/docs/changelog/2026-01-base-ui/` | green |  |
+| `/docs/changelog/2026-01-inline-side-styles/` | green |  |
+| `/docs/changelog/2026-01-rtl/` | green |  |
+| `/docs/changelog/2026-02-blocks/` | green |  |
+| `/docs/changelog/2026-02-radix-ui/` | green |  |
+| `/docs/changelog/2026-03-cli-v4/` | green |  |
+| `/docs/changelog/2026-03-luma/` | green |  |
+| `/docs/changelog/2026-04-component-composition/` | green |  |
+| `/docs/changelog/2026-04-partial-preset-apply/` | green |  |
+| `/docs/changelog/2026-04-pointer-cursor/` | green |  |
+| `/docs/changelog/2026-04-preset-commands/` | green |  |
+| `/docs/changelog/2026-04-sera/` | green |  |
+| `/docs/changelog/2026-04-shadcn-apply/` | green |  |
+| `/docs/changelog/2026-05-package-imports-target-aliases/` | green |  |
+| `/docs/changelog/2026-05-registry-include/` | green |  |
+| `/docs/changelog/2026-05-rhea/` | green |  |
+| `/docs/changelog/2026-05-shadcn-eject/` | green |  |
+| `/docs/changelog/2026-06-chat-components/` | green |  |
+| `/docs/changelog/2026-06-github-registries/` | green |  |
+| `/docs/changelog/2026-07-base-ui-default/` | green |  |
+| `/docs/changelog/2026-07-dynamic-search/` | green |  |
+| `/docs/changelog/2026-07-helpers/` | green |  |
+| `/docs/changelog/2026-07-react-aria/` | green |  |
+| `/docs/changelog/2026-07-toast/` | green |  |
+| `/docs/changelog/2026-07-typeset/` | green |  |
+| `/docs/changelog/2026-08-helpers-human-in-the-loop/` | green |  |
+| `/docs/changelog/2026-08-private-github-registries/` | green |  |
+| `/docs/changelog/2026-08-questionnaire/` | green |  |
+| `/docs/changelog/2026-09-cn/` | green |  |
+| `/docs/changelog/2026-10-ai-elements/` | green |  |
+| `/docs/cli/` | green |  |
+| `/docs/components-json/` | green |  |
+| `/docs/components/` | green |  |
+| `/docs/components/aria/accordion/` | green |  |
+| `/docs/components/aria/alert-dialog/` | green |  |
+| `/docs/components/aria/alert/` | green |  |
+| `/docs/components/aria/aspect-ratio/` | green |  |
+| `/docs/components/aria/attachment/` | green |  |
+| `/docs/components/aria/avatar/` | green |  |
+| `/docs/components/aria/badge/` | green |  |
+| `/docs/components/aria/breadcrumb/` | green |  |
+| `/docs/components/aria/bubble/` | green |  |
+| `/docs/components/aria/button-group/` | green |  |
+| `/docs/components/aria/button/` | green |  |
+| `/docs/components/aria/calendar/` | green |  |
+| `/docs/components/aria/card/` | green |  |
+| `/docs/components/aria/carousel/` | green |  |
+| `/docs/components/aria/chart/` | green |  |
+| `/docs/components/aria/checkbox/` | green |  |
+| `/docs/components/aria/code-block/` | green |  |
+| `/docs/components/aria/collapsible/` | green |  |
+| `/docs/components/aria/combobox/` | green |  |
+| `/docs/components/aria/command/` | green |  |
+| `/docs/components/aria/context-menu/` | green |  |
+| `/docs/components/aria/data-table/` | green |  |
+| `/docs/components/aria/date-picker/` | green |  |
+| `/docs/components/aria/dialog/` | green |  |
+| `/docs/components/aria/direction/` | green |  |
+| `/docs/components/aria/drawer/` | green |  |
+| `/docs/components/aria/dropdown-menu/` | green |  |
+| `/docs/components/aria/empty/` | green |  |
+| `/docs/components/aria/field/` | green |  |
+| `/docs/components/aria/form` | green |  |
+| `/docs/components/aria/hover-card/` | green |  |
+| `/docs/components/aria/input-group/` | green |  |
+| `/docs/components/aria/input-otp/` | green |  |
+| `/docs/components/aria/input/` | green |  |
+| `/docs/components/aria/item/` | green |  |
+| `/docs/components/aria/kbd/` | green |  |
+| `/docs/components/aria/label/` | green |  |
+| `/docs/components/aria/marker/` | green |  |
+| `/docs/components/aria/message-scroller/` | green |  |
+| `/docs/components/aria/message/` | green |  |
+| `/docs/components/aria/native-select/` | green |  |
+| `/docs/components/aria/pagination/` | green |  |
+| `/docs/components/aria/popover/` | green |  |
+| `/docs/components/aria/progress/` | green |  |
+| `/docs/components/aria/questionnaire/` | green |  |
+| `/docs/components/aria/radio-group/` | green |  |
+| `/docs/components/aria/resizable/` | green |  |
+| `/docs/components/aria/scroll-area/` | green |  |
+| `/docs/components/aria/select/` | green |  |
+| `/docs/components/aria/separator/` | green |  |
+| `/docs/components/aria/sheet/` | green |  |
+| `/docs/components/aria/sidebar/` | green |  |
+| `/docs/components/aria/skeleton/` | green |  |
+| `/docs/components/aria/slider/` | green |  |
+| `/docs/components/aria/sonner/` | green |  |
+| `/docs/components/aria/spinner/` | green |  |
+| `/docs/components/aria/switch/` | green |  |
+| `/docs/components/aria/table/` | green |  |
+| `/docs/components/aria/tabs/` | green |  |
+| `/docs/components/aria/textarea/` | green |  |
+| `/docs/components/aria/toast/` | green |  |
+| `/docs/components/aria/toggle-group/` | green |  |
+| `/docs/components/aria/toggle/` | green |  |
+| `/docs/components/aria/tooltip/` | green |  |
+| `/docs/components/aria/trace/` | green |  |
+| `/docs/components/aria/typography/` | green |  |
+| `/docs/components/attachment/` | green |  |
+| `/docs/components/base/accordion/` | green |  |
+| `/docs/components/base/alert-dialog/` | green |  |
+| `/docs/components/base/alert/` | green |  |
+| `/docs/components/base/aspect-ratio/` | green |  |
+| `/docs/components/base/attachment/` | green |  |
+| `/docs/components/base/avatar/` | green |  |
+| `/docs/components/base/badge/` | green |  |
+| `/docs/components/base/breadcrumb/` | green |  |
+| `/docs/components/base/bubble/` | green |  |
+| `/docs/components/base/button-group/` | green |  |
+| `/docs/components/base/button/` | green |  |
+| `/docs/components/base/calendar/` | green |  |
+| `/docs/components/base/card/` | green |  |
+| `/docs/components/base/carousel/` | green |  |
+| `/docs/components/base/chart/` | green |  |
+| `/docs/components/base/checkbox/` | green |  |
+| `/docs/components/base/code-block/` | green |  |
+| `/docs/components/base/collapsible/` | green |  |
+| `/docs/components/base/combobox/` | green |  |
+| `/docs/components/base/command/` | green |  |
+| `/docs/components/base/context-menu/` | green |  |
+| `/docs/components/base/data-table/` | green |  |
+| `/docs/components/base/date-picker/` | green |  |
+| `/docs/components/base/dialog/` | green |  |
+| `/docs/components/base/direction/` | green |  |
+| `/docs/components/base/drawer/` | green |  |
+| `/docs/components/base/dropdown-menu/` | green |  |
+| `/docs/components/base/empty/` | green |  |
+| `/docs/components/base/field/` | green |  |
+| `/docs/components/base/form` | green |  |
+| `/docs/components/base/hover-card/` | green |  |
+| `/docs/components/base/input-group/` | green |  |
+| `/docs/components/base/input-otp/` | green |  |
+| `/docs/components/base/input/` | green |  |
+| `/docs/components/base/item/` | green |  |
+| `/docs/components/base/kbd/` | green |  |
+| `/docs/components/base/label/` | green |  |
+| `/docs/components/base/marker/` | green |  |
+| `/docs/components/base/menubar/` | green |  |
+| `/docs/components/base/message-scroller/` | green |  |
+| `/docs/components/base/message/` | green |  |
+| `/docs/components/base/native-select/` | green |  |
+| `/docs/components/base/navigation-menu/` | green |  |
+| `/docs/components/base/pagination/` | green |  |
+| `/docs/components/base/popover/` | green |  |
+| `/docs/components/base/progress/` | green |  |
+| `/docs/components/base/questionnaire/` | green |  |
+| `/docs/components/base/radio-group/` | green |  |
+| `/docs/components/base/resizable/` | green |  |
+| `/docs/components/base/scroll-area/` | green |  |
+| `/docs/components/base/select/` | green |  |
+| `/docs/components/base/separator/` | green |  |
+| `/docs/components/base/sheet/` | green |  |
+| `/docs/components/base/sidebar/` | green |  |
+| `/docs/components/base/skeleton/` | green |  |
+| `/docs/components/base/slider/` | green |  |
+| `/docs/components/base/sonner` | green |  |
+| `/docs/components/base/sonner.md` | green |  |
+| `/docs/components/base/spinner/` | green |  |
+| `/docs/components/base/switch/` | green |  |
+| `/docs/components/base/table/` | green |  |
+| `/docs/components/base/tabs/` | green |  |
+| `/docs/components/base/textarea/` | green |  |
+| `/docs/components/base/toast/` | green |  |
+| `/docs/components/base/toggle-group/` | green |  |
+| `/docs/components/base/toggle/` | green |  |
+| `/docs/components/base/tooltip/` | green |  |
+| `/docs/components/base/trace/` | green |  |
+| `/docs/components/base/typography/` | green |  |
+| `/docs/components/breadcrumb/` | green |  |
+| `/docs/components/bubble/` | green |  |
+| `/docs/components/button-group/` | green |  |
+| `/docs/components/button/` | green |  |
+| `/docs/components/calendar/` | green |  |
+| `/docs/components/chart/` | green |  |
+| `/docs/components/collapsible/` | green |  |
+| `/docs/components/data-table/` | green |  |
+| `/docs/components/form` | green |  |
+| `/docs/components/input-group/` | green |  |
+| `/docs/components/input-otp/` | green |  |
+| `/docs/components/marker/` | green |  |
+| `/docs/components/message-scroller/` | green |  |
+| `/docs/components/message/` | green |  |
+| `/docs/components/popover/` | green |  |
+| `/docs/components/radix/accordion/` | green |  |
+| `/docs/components/radix/alert-dialog/` | green |  |
+| `/docs/components/radix/alert/` | green |  |
+| `/docs/components/radix/aspect-ratio/` | green |  |
+| `/docs/components/radix/attachment/` | green |  |
+| `/docs/components/radix/avatar/` | green |  |
+| `/docs/components/radix/badge/` | green |  |
+| `/docs/components/radix/breadcrumb/` | green |  |
+| `/docs/components/radix/bubble/` | green |  |
+| `/docs/components/radix/button-group/` | green |  |
+| `/docs/components/radix/button/` | green |  |
+| `/docs/components/radix/calendar/` | green |  |
+| `/docs/components/radix/card/` | green |  |
+| `/docs/components/radix/carousel/` | green |  |
+| `/docs/components/radix/chart/` | green |  |
+| `/docs/components/radix/checkbox/` | green |  |
+| `/docs/components/radix/code-block/` | green |  |
+| `/docs/components/radix/collapsible/` | green |  |
+| `/docs/components/radix/combobox/` | green |  |
+| `/docs/components/radix/command/` | green |  |
+| `/docs/components/radix/context-menu/` | green |  |
+| `/docs/components/radix/data-table/` | green |  |
+| `/docs/components/radix/date-picker/` | green |  |
+| `/docs/components/radix/dialog/` | green |  |
+| `/docs/components/radix/direction/` | green |  |
+| `/docs/components/radix/drawer/` | green |  |
+| `/docs/components/radix/dropdown-menu/` | green |  |
+| `/docs/components/radix/empty/` | green |  |
+| `/docs/components/radix/field/` | green |  |
+| `/docs/components/radix/form` | green |  |
+| `/docs/components/radix/hover-card/` | green |  |
+| `/docs/components/radix/input-group/` | green |  |
+| `/docs/components/radix/input-otp/` | green |  |
+| `/docs/components/radix/input/` | green |  |
+| `/docs/components/radix/item/` | green |  |
+| `/docs/components/radix/kbd/` | green |  |
+| `/docs/components/radix/label/` | green |  |
+| `/docs/components/radix/marker/` | green |  |
+| `/docs/components/radix/menubar/` | green |  |
+| `/docs/components/radix/message-scroller/` | green |  |
+| `/docs/components/radix/message/` | green |  |
+| `/docs/components/radix/native-select/` | green |  |
+| `/docs/components/radix/navigation-menu/` | green |  |
+| `/docs/components/radix/pagination/` | green |  |
+| `/docs/components/radix/popover/` | green |  |
+| `/docs/components/radix/progress/` | green |  |
+| `/docs/components/radix/questionnaire/` | green |  |
+| `/docs/components/radix/radio-group/` | green |  |
+| `/docs/components/radix/resizable/` | green |  |
+| `/docs/components/radix/scroll-area/` | green |  |
+| `/docs/components/radix/select/` | green |  |
+| `/docs/components/radix/separator/` | green |  |
+| `/docs/components/radix/sheet/` | green |  |
+| `/docs/components/radix/sidebar/` | green |  |
+| `/docs/components/radix/skeleton/` | green |  |
+| `/docs/components/radix/slider/` | green |  |
+| `/docs/components/radix/sonner/` | green |  |
+| `/docs/components/radix/spinner/` | green |  |
+| `/docs/components/radix/switch/` | green |  |
+| `/docs/components/radix/table/` | green |  |
+| `/docs/components/radix/tabs/` | green |  |
+| `/docs/components/radix/textarea/` | green |  |
+| `/docs/components/radix/toast/` | green |  |
+| `/docs/components/radix/toggle-group/` | green |  |
+| `/docs/components/radix/toggle/` | green |  |
+| `/docs/components/radix/tooltip/` | green |  |
+| `/docs/components/radix/trace/` | green |  |
+| `/docs/components/radix/typography/` | green |  |
+| `/docs/components/scroll-area/` | green |  |
+| `/docs/components/select/` | green |  |
+| `/docs/components/spinner/` | green |  |
+| `/docs/components/tooltip/` | green |  |
+| `/docs/dark-mode/` | green |  |
+| `/docs/dark-mode/astro/` | green |  |
+| `/docs/dark-mode/next/` | green |  |
+| `/docs/dark-mode/remix/` | green |  |
+| `/docs/dark-mode/tanstack-start/` | green |  |
+| `/docs/dark-mode/vite/` | green |  |
+| `/docs/directory/` | green |  |
+| `/docs/figma/` | green |  |
+| `/docs/forms/` | green |  |
+| `/docs/forms/formisch/` | green |  |
+| `/docs/forms/next/` | green |  |
+| `/docs/forms/react-hook-form/` | green |  |
+| `/docs/forms/tanstack-form/` | green |  |
+| `/docs/helpers/ai-sdk/` | green |  |
+| `/docs/helpers/tanstack-ai/` | green |  |
+| `/docs/installation/` | green |  |
+| `/docs/installation/astro/` | green |  |
+| `/docs/installation/gatsby/` | green |  |
+| `/docs/installation/laravel/` | green |  |
+| `/docs/installation/manual/` | green |  |
+| `/docs/installation/next/` | green |  |
+| `/docs/installation/react-router/` | green |  |
+| `/docs/installation/remix/` | green |  |
+| `/docs/installation/tanstack-router/` | green |  |
+| `/docs/installation/tanstack/` | green |  |
+| `/docs/installation/vite/` | green |  |
+| `/docs/javascript/` | green |  |
+| `/docs/legacy/` | green |  |
+| `/docs/mcp/` | green |  |
+| `/docs/monorepo/` | green |  |
+| `/docs/new/` | green |  |
+| `/docs/official/` | green |  |
+| `/docs/package-imports/` | green |  |
+| `/docs/react-19/` | green |  |
+| `/docs/react/message-scroller/` | green |  |
+| `/docs/react/questionnaire/` | green |  |
+| `/docs/registry/` | green |  |
+| `/docs/registry/api-reference/` | green |  |
+| `/docs/registry/authentication/` | green |  |
+| `/docs/registry/dynamic-search/` | green |  |
+| `/docs/registry/examples/` | green |  |
+| `/docs/registry/faq/` | green |  |
+| `/docs/registry/getting-started/` | green |  |
+| `/docs/registry/github/` | green |  |
+| `/docs/registry/health/` | green |  |
+| `/docs/registry/mcp/` | green |  |
+| `/docs/registry/namespace/` | green |  |
+| `/docs/registry/open-in-v0/` | green |  |
+| `/docs/registry/registry-index/` | green |  |
+| `/docs/registry/registry-item-json/` | green |  |
+| `/docs/registry/registry-json/` | green |  |
+| `/docs/rtl/` | green |  |
+| `/docs/rtl/next/` | green |  |
+| `/docs/rtl/start/` | green |  |
+| `/docs/rtl/vite/` | green |  |
+| `/docs/skills/` | green |  |
+| `/docs/tailwind-v4/` | green |  |
+| `/docs/theming/` | green |  |
+| `/docs/typeset/` | green |  |
+| `/docs/utils/scroll-fade/` | green |  |
+| `/docs/utils/shimmer/` | green |  |
+| `/examples/authentication/` | green |  |
+| `/examples/dashboard/` | green |  |
+| `/examples/playground/` | green |  |
+| `/examples/rtl/` | green |  |
+| `/examples/tasks/` | green |  |
+| `/figma` | green |  |
+| `/init.md` | green |  |
+| `/login/` | green |  |
+| `/mcp` | green |  |
+| `/new` | green |  |
+| `/official` | green |  |
+| `/oidc` | green |  |
+| `/oidc.prefetch.rsc` | green |  |
+| `/oidc.rsc` | green |  |
+| `/preview/typeset/docs/` | green |  |
+| `/privacy/` | green |  |
+| `/react-19` | green |  |
+| `/sera/` | green |  |
+| `/sidebar` | green |  |
+| `/skills/` | green |  |
+| `/terms/` | green |  |
+| `/themes` | green |  |
+| `/typeset/` | green |  |
+| `/view/aria-nova/sidebar-rtl/` | green |  |
+| `/view/base-nova/sidebar-rtl/` | green |  |
+| `/view/new-york-v4/dashboard-01/` | green |  |
+| `/view/new-york-v4/login-01/` | green |  |
+| `/view/new-york-v4/login-02/` | green |  |
+| `/view/new-york-v4/login-03/` | green |  |
+| `/view/new-york-v4/login-04/` | green |  |
+| `/view/new-york-v4/login-05/` | green |  |
+| `/view/new-york-v4/sidebar-01/` | green |  |
+| `/view/new-york-v4/sidebar-02/` | green |  |
+| `/view/new-york-v4/sidebar-03/` | green |  |
+| `/view/new-york-v4/sidebar-04/` | green |  |
+| `/view/new-york-v4/sidebar-05/` | green |  |
+| `/view/new-york-v4/sidebar-06/` | green |  |
+| `/view/new-york-v4/sidebar-07/` | green |  |
+| `/view/new-york-v4/sidebar-08/` | green |  |
+| `/view/new-york-v4/sidebar-09/` | green |  |
+| `/view/new-york-v4/sidebar-10/` | green |  |
+| `/view/new-york-v4/sidebar-11/` | green |  |
+| `/view/new-york-v4/sidebar-12/` | green |  |
+| `/view/new-york-v4/sidebar-13/` | green |  |
+| `/view/new-york-v4/sidebar-14/` | green |  |
+| `/view/new-york-v4/sidebar-15/` | green |  |
+| `/view/new-york-v4/sidebar-16/` | green |  |
+| `/view/new-york-v4/signup-01/` | green |  |
+| `/view/new-york-v4/signup-02/` | green |  |
+| `/view/new-york-v4/signup-03/` | green |  |
+| `/view/new-york-v4/signup-04/` | green |  |
+| `/view/new-york-v4/signup-05/` | green |  |
+| `/view/radix-nova/sidebar-rtl/` | green |  |
+
+</details>
+
 ## Open work
 
 - The search palette's search results (`/api/search`), the remaining endpoints above, and `/og`.
