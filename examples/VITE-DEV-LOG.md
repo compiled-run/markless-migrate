@@ -398,3 +398,16 @@ Still open: the HTML is 21.7 kB compressed against vite.dev's 10.1 kB, over the 
 of Lighthouse's simulated connection (one 150 ms round trip on FCP); 3 kB of it is the import map of every chunk on the site.
 The heading's font (APK Protocol, no `font-display`) is fetched only after the stylesheet is parsed, on vite.dev as here, so
 the heading shows a frame after the first paint; preloading it moved LCP from 4.24 s to 2.24 s on a local copy.
+
+## Embeds: the Vite 6 keynote video as a Markless component (2026-10-22)
+
+`run --agent claude` on `/blog/announcing-vite6` turned the theme's YouTube frame into `components/embeds/youtube-embed.tsrx`
+(poster and channel picture from YouTube's own addresses, the title and channel from oEmbed, Roboto served by the app),
+placed by the docs importer for every `full-width-youtube-video` frame; a click or Enter loads the same frame, playing.
+It was promoted to markless-migrate's `youtube` adapter. The embed step against https://vite-dev-old.vercel.app (live):
+the same at desktop in light and dark and at mobile in dark; at mobile in light 22 pixels of 66,000 differ (12 at the
+rounded corners, where the old page clips a frame and the component a box, and 10 inside the poster), over the
+checker's limit of 20, so that row is red; locally the agent measured 9. Activation is the same by a click and by
+Enter at both viewports (the video plays). PageSpeed Insights (mobile, median of 5), this port without and with the
+change: 3,103 -> 2,314 kB, 69 -> 60 requests, FCP 7.86 -> 2.25 s, LCP 18.2 -> 10.5 s, TBT 229 -> 0 ms, score 52 -> 68
+(the page's other weight, its Rive canvases and images, is unchanged). https://mm-embeds-evidence.vercel.app.

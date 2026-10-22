@@ -265,3 +265,21 @@ text on every page):
 Not done: a full `check` run after the acceptance fix (one full run takes about 2 to 3 hours here; the machine slept
 through parts of these runs). Tool fixes made on the way: plan no longer stops at an off-site redirect, and check no
 longer ends the whole run when a retried page load is aborted by its own `about:blank` (`test/infrastructure.test.ts`).
+
+## Embeds: the GitHub star and Sponsors buttons as Markless components (2026-10-22)
+
+Done through the pipeline: `usage` found the buttons.js star button on every page (`a.github-button`, and on the
+click-to-edit demo the frame buttons.js falls back to) and, on `/`, the GitHub Sponsors frame; `embeds study` pictured
+them; `run --agent claude --only embeds` on `/` and `/examples/click-to-edit/` did the rest. The star button is the
+certified `github-button` adapter (no buttons.js, no frame, the count from GitHub's REST API marked live); the Sponsors
+frame, which no adapter covers, is a component the agent wrote from its study. The 51 px frame the port carried on
+click-to-edit was a copy of runs where htmx.org's own frame got no count back from api.github.com (unauthenticated,
+60 requests an hour): the component draws the 101x20 button with its count.
+
+The embed step against https://htmx.org (live) and https://mm-htmx-org-new.vercel.app: the Sponsors button is the same
+in all 12 pictures (desktop and mobile, light and dark, at rest, hovered and focused) and both ways of activating it;
+the star button is the same in every picture but where GitHub's count moved since the data was read (accepted
+automatically), and leads where the old one leads by a click and by Enter. PageSpeed Insights (mobile, median of 5),
+this port without and with the change: `/` 982 -> 827 kB, 66 -> 58 requests, FCP 3.19 -> 1.22 s, LCP 4.95 -> 3.15 s,
+score 74 -> 93; `/examples/click-to-edit/` LCP 2.59 -> 1.37 s, score 96 -> 100. Pictures, recordings and the table:
+https://mm-embeds-evidence.vercel.app.
