@@ -556,13 +556,25 @@ async function signInAs(browser: Browser, base: Run, role: string, spec: RoleSpe
 }
 
 /** Which route exercises each shared layout control: the first, in the order the routes were given, that has it. */
+// About as many controls as a route's journey budget exercises at its default (49 on ui.shadcn.com's home page, its heaviest).
+const ROUTE_ROOM = 40;
+
 async function layoutOwners(browser: Browser, run: Run, routes: readonly string[], options: CheckOptions): Promise<Map<string, string>> {
 	const viewport = (options.viewports ?? VIEWPORTS)[0]!;
-	const found = await pool(routes, options.concurrency ?? DEFAULT_CONCURRENCY, (route) => survey(browser, run.old, route, viewport).catch(() => [] as string[]));
-	const owners = new Map<string, string>();
-	routes.forEach((route, i) => {
-		for (const signature of found[i]!) if (!owners.has(signature)) owners.set(signature, route);
+	const found = await pool(routes, options.concurrency ?? DEFAULT_CONCURRENCY, (route) => survey(browser, run.old, route, viewport).catch(() => ({ layout: [] as string[], own: 0 })));
+	// The first route with room exercises a shared control, so one page full of its own controls does not leave
+	// every shared one to run out of its budget; past every route's room, the least loaded takes it.
+	const load = found.map((f) => f.own);
+	const having = new Map<string, number[]>();
+	routes.forEach((_, i) => {
+		for (const signature of found[i]!.layout) (having.get(signature) ?? having.set(signature, []).get(signature)!).push(i);
 	});
+	const owners = new Map<string, string>();
+	for (const [signature, at] of having) {
+		const i = at.find((k) => load[k]! < ROUTE_ROOM) ?? at.reduce((a, b) => (load[b]! < load[a]! ? b : a));
+		load[i]!++;
+		owners.set(signature, routes[i]!);
+	}
 	return owners;
 }
 
