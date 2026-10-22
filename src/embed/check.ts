@@ -378,12 +378,15 @@ export async function checkEmbeds(browser: Browser, envs: { readonly old: SideEn
 					await side.close();
 				}
 			};
-			const old = await run(envs.old, 'click');
+			const clicked = await run(envs.old, 'click');
+			// A component's keyboard activation must do what a click on the old embed does; a kept embed is held to the old one's own keyboard behaviour.
+			const keyed = n.role === 'component' ? clicked : await run(envs.old, 'keyboard');
 			for (const how of ['click', 'keyboard'] as const) {
+				const old = how === 'click' ? clicked : keyed;
 				const next = await run(envs.new, how);
-				const ok = sameActivation(old, next) && !next.error;
+				const ok = sameActivation(old, next) && (!next.error || Boolean(old.error));
 				result.activation.push({ viewport: viewport.name, how, old, new: next, ok });
-				if (!ok) failures.push({ route, dimension: 'behaviour', check: `embed ${result.name} activation by ${how}`, viewport: viewport.name, expected: `as the old embed on a click: ${describeActivation(old)}`, actual: describeActivation(next), hint: HINT_ACTIVATION });
+				if (!ok) failures.push({ route, dimension: 'behaviour', check: `embed ${result.name} activation by ${how}`, viewport: viewport.name, expected: `${how === 'keyboard' && n.role !== 'component' ? 'as the old embed by keyboard' : 'as the old embed on a click'}: ${describeActivation(old)}`, actual: describeActivation(next), hint: HINT_ACTIVATION });
 			}
 		}
 	}
