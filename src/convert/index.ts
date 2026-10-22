@@ -760,7 +760,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (from < bodyParts.after.length) after += `<BodyAfter route={${lit(route)}} from={${from}} />`;
 		}
 		const extras = (ownExtras.get(route) ?? []).map((el) => emitElement(el, { declarations, bind: (x) => notifyPlan.bind(x), dropped: noteDropped })).join('');
-		const tail = `${after}${extras}${pageLayers.map((n) => `<${n} />`).join('')}`;
+		// A copy control's text rides in the page's HTML as the old page's props did (an attribute: template content must be literal).
+		const copied = Object.entries(p.clipboard).map(([key, text]) => `<template data-mm-clipboard=${lit(key)} data-mm-text={${lit(text)}}></template>`).join('');
+		const tail = `${after}${extras}${pageLayers.map((n) => `<${n} />`).join('')}${copied}`;
 		const markup = tail ? `<>@if (${PAGE_SHOWN}) { ${rootMarkup} }@if (${PAGE_SHOWN}) { <>${tail}</> }</>` : rootMarkup;
 		const list = byFile.get(file) ?? [];
 		list.push({ route, search: url.search, markup, parts, declarations, layers: pageLayers });
@@ -817,13 +819,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	await writeFile(join(app, 'components', 'converted', 'body-extras.tsrx'), appUrlDeclaration(extrasModule({ ...bodyParts, extras: new Map([...bodyParts.extras].filter(([route]) => !ownExtras.has(route))) }, noteDropped, layers)));
 	if (bodyAfter) await writeFile(join(app, 'components', 'converted', 'body-after.tsrx'), appUrlDeclaration(bodyAfter));
 	log(`layers: ${layers.files.length} distinct, each compiled once; ${layers.everywhere.length} on every page`);
-	const clipboard = Object.fromEntries([...prepared].filter(([, p]) => Object.keys(p.clipboard).length).map(([route, p]) => [pathOf(route), p.clipboard]));
 	await mkdir(join(app, 'lib', 'parts'), { recursive: true });
-	// One module per page, loaded on use: the copied text of every page is megabytes no page needs at once.
-	await mkdir(join(app, 'lib', 'parts', 'clipboard'), { recursive: true });
-	const loaders = Object.entries(clipboard).map(([path, texts], n) => ({ path, n, source: `${GENERATED}\nexport default ${JSON.stringify(texts)} as Readonly<Record<string, string>>;\n` }));
-	for (const l of loaders) await writeFile(join(app, 'lib', 'parts', 'clipboard', `${l.n}.ts`), l.source);
-	await writeFile(join(app, 'lib', 'parts', 'clipboard.ts'), `${GENERATED}\n// What each copy control wrote on the old page, by page path, keyed by the control's tag, slot, text and occurrence.\nexport const CLIPBOARD: Readonly<Record<string, { readonly keys: readonly string[]; readonly load: () => Promise<{ default: Readonly<Record<string, string>> }> }>> = {\n${loaders.map((l) => `\t${JSON.stringify(l.path)}: { keys: ${JSON.stringify(Object.keys(clipboard[l.path]!))}, load: () => import('./clipboard/${l.n}.ts') },`).join('\n')}\n};\n`);
+	await rm(join(app, 'lib', 'parts', 'clipboard'), { recursive: true, force: true });
+	await rm(join(app, 'lib', 'parts', 'clipboard.ts'), { force: true });
 	if (unplaced.length) log(`${unplaced.length} revealed contents not placed (no Markless state drives them yet): ${unplaced.slice(0, 3).join('; ')}`);
 	await writeFile(join(app, 'heads.ts'), headModule(prepared));
 	const publicDir = join(app, 'public');

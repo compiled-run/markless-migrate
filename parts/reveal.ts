@@ -1,5 +1,3 @@
-import { CLIPBOARD } from './clipboard.ts';
-
 // What the old page showed on use is rendered by Markless, hidden: a portal at the end of the body marked with its
 // control's key (data-mm-layer), and the content a control replaces its container's with (data-mm-after). Parts only
 // switch attributes on those nodes; they never insert or remove one.
@@ -28,17 +26,14 @@ function signature(el: Element): string {
 	return `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 }
 
-/** What a copy control wrote on the old page, loaded from the page's own module; undefined for a control that copied nothing. */
+/** What a copy control wrote on the old page, from the page's own template; undefined for a control that copied nothing. */
 export function clipboardFor(control: Element): Promise<string> | undefined {
-	const page = CLIPBOARD[location.pathname.replace(/\/$/, '') || '/'];
-	if (!page) return undefined;
 	const sig = signature(control);
 	let nth = 0;
 	for (const el of document.body.querySelectorAll('*')) {
 		if (el === control) break;
 		if (signature(el) === sig) nth++;
 	}
-	const key = `${sig}#${nth}`;
-	if (!page.keys.includes(key)) return undefined;
-	return page.load().then((m) => m.default[key] ?? '');
+	const copied = document.querySelector<HTMLTemplateElement>(`template[data-mm-clipboard="${CSS.escape(`${sig}#${nth}`)}"]`);
+	return copied ? Promise.resolve(copied.getAttribute('data-mm-text') ?? '') : undefined;
 }
