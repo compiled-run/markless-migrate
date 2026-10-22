@@ -6,6 +6,7 @@ import { drawsPixels, installedPackage } from '../library/package.ts';
 import type { LibrariesFile, LibraryUsage } from '../library/types.ts';
 import { newAppImports } from '../usage/implement.ts';
 import type { UsageInventory } from '../usage/types.ts';
+import { embedCost, type EmbedCost } from '../embed/cost.ts';
 import { readFamilies } from './families.ts';
 import { HEADLESS, overlap, type HeadlessCandidate } from './headless.ts';
 import { describePreload, findLateFont, measurePreload, preloadTag, type FontPreloadMeasure, type LateFont } from './fonts.ts';
@@ -33,7 +34,7 @@ export interface Measured {
 
 export interface Suggestion {
 	readonly id: string;
-	readonly kind: 'port kept library' | 'swap to @markless/ui' | 'preload LCP font';
+	readonly kind: 'port kept library' | 'swap to @markless/ui' | 'preload LCP font' | 'replace embed';
 	readonly subject: string;
 	readonly measured: Measured;
 	/** What the site uses of it: exports, members and options from the new app's code, and behaviours from the usage inventory. */
@@ -46,6 +47,8 @@ export interface Suggestion {
 	readonly overlap?: HeadlessCandidate;
 	/** For a font preload: the font, where it was found late, the tag to add and what Lighthouse measured with and without it. */
 	readonly font?: LateFont & { readonly tag: string; readonly routes: readonly string[]; readonly measure: string };
+	/** For an embed: the page measured as it is and with the embed's hosts blocked. */
+	readonly embed?: EmbedCost;
 	readonly rank?: number;
 }
 
@@ -199,6 +202,32 @@ export async function upgrade(options: UpgradeOptions): Promise<UpgradeReport> {
 			verdict: loaded && cost > port ? 'suggested' : 'keep',
 		});
 	}
+	const embeds = (options.usage?.embeds ?? []).filter((use) => use.form !== 'markup' && options.routes.some((r) => use.routes.includes(r)));
+	const embedBrowser = embeds.length ? (options.browser ?? (await chromium.launch())) : undefined;
+	for (const use of embeds) {
+		if (use.form === 'markup' || !use.routes.length || !options.routes.some((r) => use.routes.includes(r))) continue;
+		say(`measuring the ${use.providerName} embed ${use.id} on ${use.routes[0]}`);
+		const cost = await embedCost(embedBrowser!, options.origin, use).catch((error: Error) => {
+			limits.push(`${use.id}: not measured (${error.message.split('\n')[0]})`);
+			return undefined;
+		});
+		if (!cost || (!use.keep && !cost.embed.requests)) continue;
+		const lcp = cost.with.lcpMs !== undefined && cost.without.lcpMs !== undefined ? `, LCP ${cost.with.lcpMs} ms with it and ${cost.without.lcpMs} ms without` : '';
+		suggestions.push({
+			id: `embed:${use.id}`,
+			kind: 'replace embed',
+			subject: `${use.providerName} embed ${use.id}`,
+			measured: { bytes: cost.embed.bytes, executed: 0, cpuMs: 0, routes: [cost.route], scripts: use.loaders.slice() },
+			uses: [`${use.form} ${use.element} on ${use.routes.length} route(s)`],
+			saving: { bytes: Math.max(0, cost.with.bytes - cost.without.bytes), executed: 0, cpuMs: 0, basis: `${cost.with.requests - cost.without.requests} fewer requests${lcp}, FCP ${cost.with.fcpMs ?? '-'} ms against ${cost.without.fcpMs ?? '-'} ms (phone, 4x CPU), with a static Markless component in its place` },
+			risk: use.keep ? 'high' : 'low',
+			riskReason: use.keep ? `kept: ${use.keep.why}` : 'the check compares the component with the live embed pixel for pixel and by what activating it does',
+			size: use.adapter ? `the pre-built ${use.adapter} component` : 'one Markless component, written from its study',
+			verdict: use.keep ? 'keep' : 'suggested',
+			embed: cost,
+		});
+	}
+	if (embedBrowser && !options.browser) await embedBrowser.close();
 	for (const c of candidates) if (c.status === 'markless-ui' && c.missing.length) limits.push(`${c.library}: already on @markless/ui ${c.family}, which lacks what the site used: ${c.missing.join('; ')}`);
 	for (const c of candidates) if (c.verdict === 'no family' && c.status === 'ported') limits.push(`${c.library} (${c.port}): no @markless/ui family does its job, so there is no swap to compare`);
 	for (const c of candidates) {
@@ -297,7 +326,7 @@ export async function acceptUpgrade(stateDir: string, id: string, baseline: stri
 	const body = s.font ? fontTask(s, old) : [
 		`# Upgrade task: ${s.subject}`,
 		'',
-		s.kind === 'swap to @markless/ui' ? `Replace ${s.overlap?.port} with the @markless/ui ${s.overlap?.family} parts, part for part:` : `Replace ${s.subject} with Markless code that does exactly what this site uses of it:`,
+		s.kind === 'replace embed' ? `Replace the live ${s.subject} with a Markless component, through the embed loop (markless-migrate embeds study, then check until the embed step is green):` : s.kind === 'swap to @markless/ui' ? `Replace ${s.overlap?.port} with the @markless/ui ${s.overlap?.family} parts, part for part:` : `Replace ${s.subject} with Markless code that does exactly what this site uses of it:`,
 		'',
 		...(s.overlap ? s.overlap.rows.map((r) => `- ${r.kind} \`${r.used}\` -> ${r.family}`) : s.uses.map((u) => `- ${u}`)),
 		'',

@@ -305,3 +305,10 @@ test('the prompt carries what the route uses in the browser and forbids another 
 	assert.match(report, /used 2 \/ implemented in Markless 1 \(50%\) \/ checked 1 \(50%\)/);
 	assert.match(report, /Build guard: 3 script and HTML files/);
 });
+
+test('an embeds-only run asks for embed changes alone and checks with the command that carries --only embeds', () => {
+	const prompt = buildPrompt({ old: 'http://old.test', new: 'http://new.test', cli: 'mm', context: { flags: ['--only', 'embeds'] } }, '/', 'FAIL', 1);
+	assert.match(prompt, /Make the third-party embeds on route \/ of the new app match the old app's: this run compares the embeds alone \(`--only embeds`\)/);
+	assert.match(prompt, /leave everything else on the page as it is/);
+	assert.ok(prompt.includes('Check by running `mm check --old http://old.test --new http://new.test --route / --only embeds`'), prompt);
+});

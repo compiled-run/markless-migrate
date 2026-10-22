@@ -54,7 +54,7 @@ test('a page is read for every behaviour its markup uses, and a code sample in i
 	const scripts = pageBehaviours(parseHtml(HTMX_PAGE), '/', into);
 	const list = into.list();
 	const features = list.map((b) => `${b.library} ${b.feature}`).sort();
-	assert.deepEqual(features, ['class-tools classes', 'embed GitHub button (buttons.github.io)', 'htmx extension class-tools', 'htmx extension preload', 'htmx hx-boost', 'htmx hx-post', 'hyperscript on click']);
+	assert.deepEqual(features, ['class-tools classes', 'embed GitHub button', 'htmx extension class-tools', 'htmx extension preload', 'htmx hx-boost', 'htmx hx-post', 'hyperscript on click']);
 	const post = list.find((b) => b.feature === 'hx-post')!;
 	assert.deepEqual(post.details.target, { relation: 'selector', selector: '#search-results' });
 	assert.equal((post.details.swap as { style: string }).style, 'outerHTML');
@@ -62,9 +62,11 @@ test('a page is read for every behaviour its markup uses, and a code sample in i
 	assert.ok(list.every((b) => b.sites.every((s) => 'line' in s && typeof s.line === 'number')), 'every site has a line in the served page');
 	assert.deepEqual(scripts.map((s) => s.src), ['/js/htmx.js', '/js/_hyperscript.js', 'https://buttons.github.io/buttons.js']);
 	const star = list.find((b) => b.kind === 'embed-frame')!;
-	const [obligation] = obligationsFor(star);
-	assert.equal(obligation!.mechanism, 'client-guard');
-	assert.match(obligation!.text, /box \(width and height\) and inline style equal the old page's/);
+	assert.equal(star.details.embed, 'github-button-bigskysoftware-htmx-star');
+	const obligations = obligationsFor(star);
+	assert.deepEqual(obligations.map((o) => o.mechanism), ['embed', 'embed', 'embed']);
+	assert.match(obligations[0]!.text, /\[data-markless-embed="github-button-bigskysoftware-htmx-star"\] shows the same pixels as the settled old embed, at desktop and mobile, in light and dark/);
+	assert.match(obligations[2]!.text, /activated by click and by keyboard/);
 });
 
 test('a plain script is read from its syntax tree: a theme-init script is one behaviour, and a listener carries what its handler does', () => {

@@ -1,0 +1,31 @@
+/* GitHub's star button drew itself in a shadow root, out of reach of site.css: .github-stars span (relative, top: 4px)
+   reached its host span only, and a[href]:hover's fade never reached the button's links. The host stays an inline span
+   on the line, moved down by that rule, with the button sitting on its baseline inside it, as buttons.js left it. */
+#github-stars .ghb-host {
+  display: inline;
+  position: relative;
+  top: 4px;
+}
+.github-stars .ghb-host span {
+  position: static;
+  top: auto;
+}
+.github-stars .ghb-host a[href]:hover {
+  opacity: 1;
+}
+/* On the example pages, sinon's fake XMLHttpRequest sends buttons.js to its iframe fallback, which replaces the link with
+   a bare iframe in .github-stars: no span for .github-stars span to move, a 20px box standing on the line's baseline,
+   its button drawn from the frame's whole-pixel origin. .ghb-frame stands in for that iframe; a layer of its own
+   (will-change) lands the button on whole pixels too. */
+#github-stars .ghb-frame {
+  display: inline-block;
+  position: static;
+  top: auto;
+  line-height: 0;
+  vertical-align: baseline;
+  will-change: transform;
+}
+#github-stars .ghb-frame .ghb-host {
+  position: static;
+  top: auto;
+}

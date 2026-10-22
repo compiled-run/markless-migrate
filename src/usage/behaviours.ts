@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { alpineExpression, defaultHtmxTrigger, parseAlpineAttribute, parseClassTools, parseHtmxSwap, parseHtmxTarget, parseHtmxTrigger, parseHyperscript } from './grammar.ts';
+import { detectEmbeds, embedPlan, type PageEmbed } from '../embed/detect.ts';
 import { classesOf, describe, within, type HtmlElement } from './html.ts';
 import { analyseScript, type Effect, type Located } from './script.ts';
 import { THEME_FEATURES, type ThemeFeature } from './themes.ts';
@@ -64,7 +65,7 @@ function themeKind(feature: ThemeFeature): BehaviourKind {
 }
 
 /** Every use of htmx, its extensions, _hyperscript, Alpine, inline handlers, theme features and embeds one page's markup makes. */
-export function pageBehaviours(elements: readonly HtmlElement[], route: string, into: Behaviours): ScriptRef[] {
+export function pageBehaviours(elements: readonly HtmlElement[], route: string, into: Behaviours, embeds: readonly PageEmbed[] = detectEmbeds(elements, route)): ScriptRef[] {
 	const scripts: ScriptRef[] = [];
 	const site = (el: HtmlElement): UseSite => ({ route, element: describe(el), line: el.line });
 	const themeSeen = new Set<string>();
@@ -119,15 +120,6 @@ export function pageBehaviours(elements: readonly HtmlElement[], route: string, 
 				into.add({ library: 'alpine', feature: `${alpine.directive}${alpine.value ? `:${alpine.value}` : ''}`, kind, summary: `${name}="${value.slice(0, 50)}" on ${describe(el)}`, details: { ...alpine, expression: value, magics: expression.magics, keys: expression.keys } }, route, site(el));
 			}
 		}
-		if (el.tag === 'a' && /\bgithub-button\b/.test(el.attrs.get('class') ?? '')) {
-			const data = Object.fromEntries([...el.attrs].filter(([k]) => k.startsWith('data-') || k === 'href' || k === 'aria-label'));
-			into.add({ library: 'embed', feature: 'GitHub button (buttons.github.io)', kind: 'embed-frame', summary: `buttons.js replaces ${describe(el)} with a framed button sized to its label and count`, details: data, key: data }, route, site(el));
-		}
-		if (el.tag === 'iframe' && /^https?:\/\//.test(el.attrs.get('src') ?? '')) {
-			const src = new URL(el.attrs.get('src')!);
-			const details = { origin: src.origin, path: src.pathname.replace(/\/[\w-]{8,}$/, '/:id'), width: el.attrs.get('width'), height: el.attrs.get('height'), style: el.attrs.get('style') };
-			into.add({ library: 'embed', feature: `iframe ${src.hostname}`, kind: 'embed-frame', summary: `an embedded ${src.hostname} frame${details.width ? ` ${details.width}x${details.height}` : ''}`, details, key: { origin: src.origin, path: details.path } }, route, site(el));
-		}
 		for (const feature of THEME_FEATURES) {
 			if (feature.theme !== theme || !feature.match(el)) continue;
 			// A theme feature counts once per page, on its outermost element (a category's caret and its link are one category).
@@ -136,6 +128,10 @@ export function pageBehaviours(elements: readonly HtmlElement[], route: string, 
 			themeSeen.add(feature.feature);
 			into.add({ library: feature.theme, feature: feature.feature, kind: themeKind(feature), summary: feature.summary, details: { component: feature.component }, key: { feature: feature.feature } }, route, site(el));
 		}
+	}
+	for (const e of embeds) {
+		const plan = embedPlan(e);
+		into.add({ library: 'embed', feature: e.providerName, kind: 'embed-frame', summary: `${e.providerName} ${e.form === 'facade' ? 'facade' : e.form} ${e.element}${e.key ? ` (${e.key})` : ''}: ${plan}`, details: { embed: e.id, provider: e.provider, form: e.form, key: e.key, ...(e.url ? { url: e.url } : {}), ...(e.adapter ? { adapter: e.adapter } : {}), ...(e.keep ? { keep: e.keep } : {}), attributes: e.attributes }, key: { embed: e.id } }, route, e.site);
 	}
 	return scripts;
 }

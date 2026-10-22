@@ -249,8 +249,8 @@ export interface RouteResult {
 	readonly newFiles?: readonly string[];
 	/** The old app serves the route and the new one answers 404 or 410. */
 	readonly notPorted?: boolean;
-	/** Only this dimension was compared (`check --only load`); every other one is skipped, not passed. */
-	readonly only?: 'load';
+	/** Only this was compared (`check --only load`: page load; `--only embeds`: the embed step); every other dimension is skipped, not passed. */
+	readonly only?: 'load' | 'embeds';
 	/** How soon each control the journeys exercised answers its first use, and each internal link shows the next page, old and new, at desktop speed and on a throttled phone. */
 	readonly responsiveness?: Responsiveness;
 	/** The template group the route was put in (by URL pattern, page structure and the kinds of control it renders); visual, behaviour, responsiveness and motion were checked on its representative. */

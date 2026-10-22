@@ -217,6 +217,33 @@ back, every usage site) and what to do with it:
   nothing more. Never render React, Vue, Svelte or any other UI framework inside the Markless app, and never
   load a framework-bound library in the browser to "bridge" it. The route's check proves the port at every
   place it is used.
+
+## Embeds
+
+\`plan\` lists every third-party embed (a YouTube or Vimeo player, an X or Bluesky post, a GitHub star button, a gist,
+a link card, any other site's iframe or widget) in \`.migrate/embeds.json\`, per route and provider, with its plan.
+\`markless-migrate embeds\` prints them by route.
+
+- Each embed gets its own Markless component in real markup: real text, images and CSS fed by the embed's real
+  data (its provider's oEmbed or API answer, in the study's \`data.json\`), never a screenshot standing in for
+  content. Its root carries \`data-markless-embed="<id>"\` and has the old embed's exact box. No frame and no script
+  from the provider load until a visitor activates it. Its images (a thumbnail, an avatar) load from the provider's
+  own addresses, as the embed loads them; never copy a provider's images or media into the app. Openly licensed
+  assets the embed uses (a font such as Roboto) may be copied, with their licence. A value the provider keeps
+  changing (a star or view count, read at convert time) goes on an element marked \`data-markless-embed-live\`: when it
+  alone has moved since, the check accepts the difference automatically.
+- Study it first: \`markless-migrate embeds study --embed <id>\` writes \`.migrate/embeds/<id>/study.md\` with
+  pictures of the settled embed at rest, hovered and focused (desktop and mobile, light and dark), its markup and
+  visible elements, its data, and what a click on it does.
+- When it names a pre-built adapter, run \`markless-migrate embeds install <adapter>\`: it copies a certified
+  component into \`lib/embeds/\` (never edit it) and writes the embed's data; render it with \`embed="<id>"\`.
+- \`check\` compares the old embed and the component pixel for pixel at rest, hovered and focused, in every
+  viewport and colour scheme, then activates both by a click and by Enter on the first control: activation must
+  load the original embed unchanged in its place (playing when the old one plays on that click) or lead to the same
+  pages. Iterate on the old, new and diff images it writes to \`.migrate/embeds/<id>/check/\` until green.
+- Keep the original embed, unchanged, when it is marked kept (live at load, autoplay, driven by the page's own
+  code, signed-in state, ads, or the provider's terms) or when the component cannot match it; say why in the final
+  report. \`upgrade\` measures what each kept embed costs.
 `;
 
 function sha256(text: string): string {

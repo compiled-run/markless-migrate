@@ -73,12 +73,14 @@ export async function startAppServer(o: AppServerOptions): Promise<AppServer> {
 	const start = async (): Promise<boolean> => {
 		await kill();
 		output = '';
-		child = spawn(o.serve, { cwd: o.cwd, env, shell: true, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
-		child.stdout!.on('data', (c) => (output += c));
-		child.stderr!.on('data', (c) => (output += c));
+		// Each start watches the server it spawned: a restart can begin while another start still waits, and replaces `child`.
+		const mine = spawn(o.serve, { cwd: o.cwd, env, shell: true, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+		child = mine;
+		mine.stdout!.on('data', (c) => (output += c));
+		mine.stderr!.on('data', (c) => (output += c));
 		const deadline = Date.now() + (o.readyMs ?? 60_000);
 		while (Date.now() < deadline) {
-			if (child.exitCode !== null) return false;
+			if (mine.exitCode !== null) return child !== mine && (await answers(o.origin));
 			if (await answers(o.origin)) return true;
 			await new Promise((r) => setTimeout(r, 200));
 		}

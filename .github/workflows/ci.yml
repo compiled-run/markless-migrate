@@ -51,6 +51,7 @@ jobs:
       matrix:
         include:
           - suite: dev-builds
+          - suite: embeds
           - suite: markless-site
           - suite: motion
           - suite: nav-parity
