@@ -411,3 +411,31 @@ checker's limit of 20, so that row is red; locally the agent measured 9. Activat
 Enter at both viewports (the video plays). PageSpeed Insights (mobile, median of 5), this port without and with the
 change: 3,103 -> 2,314 kB, 69 -> 60 requests, FCP 7.86 -> 2.25 s, LCP 18.2 -> 10.5 s, TBT 229 -> 0 ms, score 52 -> 68
 (the page's other weight, its Rive canvases and images, is unchanged). https://mm-embeds-evidence.vercel.app.
+
+## Markless 0.9.0 (2026-10-22)
+
+The app is on Markless 0.9.0 from npm (core, router, analyzer, typescript-plugin). Nothing else changed: the pages,
+the importer and the toolchain build as they did on 0.8.0, and no workaround was added or removed.
+
+### Check against the deployments, before and after
+
+`check` on the ecosystem suite's sample (`/`, `/guide/`, `/guide/features`, `/config/build-options`, `/live`),
+`--concurrency 2 --timeout 1800`, old https://vite-dev-old.vercel.app, new https://vite-dev-markless.vercel.app on
+0.8.0, then the same on 0.9.0 once deployed:
+
+| | 0.8.0 | 0.9.0 |
+| --- | --- | --- |
+| Routes green | 1 of 5 (`/live`) | 1 of 5 (`/live`) |
+| Failures, not counting "not exercised" | 16 | 24 |
+| "Not exercised" | 172 | 150 |
+| Page load (lab, mobile, median of 10 or 5) | score 84, 92, 92, 92, 53 | score 82, 92, 92, 92, 53 |
+
+No failure is new in kind. What the counts move on:
+
+- `/config/build-options`: 6 more rows on the copy buttons' motion (the 2 s "Copied" timer under load, the checker
+  nondeterminism the 0.8.0 section describes; a different button each run).
+- `/`: two forced-width screenshots near the Rive canvases instead of one (quarantined in the ecosystem suite for the
+  same reason), and the first search open (52 ms and 99 ms against 24 and 56 ms), which 0.8.0 also had red: the
+  0.8.0 run could not click the control at all this time, so it was not measured there.
+- `/guide/`: PageSpeed Insights' Speed Index (5.07 s against the old site's 3.43 s), the one PageSpeed row either run
+  produced; the lab Speed Index of the same page is the same on both versions (1.54 s and 1.57 s).
