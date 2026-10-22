@@ -362,3 +362,33 @@ and the sidebar column was 4147 px tall instead of 7809 px. The router inserted 
 app's container is `<body>`, so everything went through it. Markless #84 keeps the leaving page on screen until the next
 one is complete. The port is deployed on Markless main packed locally at `b58d7000`, which contains it; nothing in the
 app changed. markless-migrate's swap-frames check now fails a frame whose layout is neither page's (#32).
+
+## Markless 0.9.0 (2026-10-22)
+
+The app is on Markless 0.9.0 from npm (core, router, analyzer, typescript-plugin) instead of the main build packed
+locally at `b58d7000`; the overrides that pinned every Markless package to those packs are gone. Nothing else in the
+app changed: the importer reran as part of the build and rewrote only the debug content page (the build data it
+prints). The build guard is green (3453 script and HTML files; prismjs kept, loaded by the live editor).
+
+Production before this was `mm-docusaurus-cjf6kw6ij` (the `b58d7000` build of 2026-10-21 22:52, the commit above);
+the embeds deploy of 2026-10-22 06:56 had been rolled back to it. It is now `mm-docusaurus-220a2bz9c`.
+
+### Check against the deployments, before and after
+
+`check --route / --route /docs --route /docs/installation --concurrency 2 --timeout 1800 --no-psi`, old
+https://mm-docusaurus-old.vercel.app, new https://mm-docusaurus-new.vercel.app, on the `b58d7000` deployment and then
+on 0.9.0 once deployed (run twice: the first ran while the machine's load average was over 20, and 39 controls were
+not exercised or timed out):
+
+| | `b58d7000` | 0.9.0 |
+| --- | --- | --- |
+| Routes green | 0 of 3 | 0 of 3 |
+| Failures, not counting "not exercised" | 17 (3, 8, 6) | 10 (3, 4, 3) |
+| "Not exercised" | 9 | 10 |
+
+Gone on 0.9.0: the extra motion when the Internationalization category expands after Guides, the colour-mode button's
+`⌘` key moving, the `<html>` class changing during the in-place swap from `/` to `/docs/installation`, and `/docs`'s
+lab First Contentful Paint. New: one click on an unnamed avatar block on `/` whose lazy images load in a different
+order on each side. Red on both: going back to `/` after an in-place navigation restores it with the navbar 32 px up
+and the other colour mode's background, the Deployment category's extra motion after Guides, and the in-place
+navigation from "best Docusaurus sites" at 4x CPU.
