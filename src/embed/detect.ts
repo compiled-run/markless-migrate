@@ -184,7 +184,7 @@ export function embedsByRoute(uses: readonly EmbedUse[]): string {
  * What the run's prompt tells the agent about one route's embeds: each one's plan, its study (pictures, markup, data),
  * the pre-built adapter when there is one, and where the check writes its old, new and diff images.
  */
-export function embedBrief(uses: readonly EmbedUse[], route: string, dir: string, cli: string): string | undefined {
+export function embedBrief(uses: readonly EmbedUse[], route: string, dir: string, cli: string, stale: ReadonlySet<string> = new Set()): string | undefined {
 	const here = uses.filter((u) => u.routes.includes(route) && u.form !== 'markup');
 	if (!here.length) return undefined;
 	const lines = [`Embeds on ${route} (from .migrate/embeds.json). Each gets its own Markless component in real markup (real text, images and CSS fed by its real data, never a screenshot), whose root carries data-markless-embed="<id>", unless it is kept. Its images load from the provider's own addresses (never copy a provider's images or media into the app); a value the provider keeps changing (a count) goes on an element marked data-markless-embed-live:`];
@@ -196,7 +196,7 @@ export function embedBrief(uses: readonly EmbedUse[], route: string, dir: string
 			continue;
 		}
 		lines.push(existsSync(study) ? `    Study: ${study} (reference pictures at rest, hovered and focused for desktop and mobile, light and dark; markup; data; what a click does).` : `    Study it first: ${cli} embeds study --embed ${u.id} (writes ${study}).`);
-		if (u.adapter) lines.push(`    Pre-built: ${cli} embeds install ${u.adapter} copies the component and writes its data; render it with the props it prints.`);
+		if (u.adapter) lines.push(`    Pre-built: ${cli} embeds install ${u.adapter} copies the component and writes its data; render it with the props it prints.${stale.has(u.adapter) ? ' The copy in lib/embeds/ is older than the adapter this markless-migrate ships: run that install again first.' : ''}`);
 		lines.push(`    The check compares it with the old embed pixel for pixel in every state and viewport, then activates both by click and by keyboard; its old, new and diff images go to ${join(dir, u.id, 'check')}/. Iterate until green. If it cannot match (the embed must be live at load, depends on a signed-in visitor, or the provider's terms forbid recreating it), keep the original and say why.`);
 	}
 	return lines.join('\n');

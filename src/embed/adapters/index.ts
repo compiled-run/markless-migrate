@@ -74,3 +74,11 @@ export async function installAdapter(adapter: EmbedAdapter, uses: readonly Embed
 	const usage = [`Use it where each embed stood: import { ${adapter.component} } from '<relative path to ${from}>'; it reads its data from ${EMBEDS_APP_DIR}/data.json by the embed's id.`, ...uses.map((u) => `  <${adapter.component} embed="${u.id}" />   on ${u.routes.slice(0, 3).join(', ')}${u.routes.length > 3 ? ` and ${u.routes.length - 3} more` : ''}`), 'Drop the old loader script. Then check: the embed step compares it with the old embed.', ...adapter.notes.map((n) => `Note: ${n}`)].join('\n');
 	return { written, kept, usage };
 }
+
+/** Whether the app's copy of an adapter (as embeds install stamped it) is older than the adapter this markless-migrate ships; undefined when it has none. */
+export async function staleAdapter(adapter: EmbedAdapter, app: string): Promise<boolean | undefined> {
+	const current = await readFile(join(app, EMBEDS_APP_DIR, adapter.dir, adapter.module), 'utf8').catch(() => undefined);
+	if (current === undefined) return undefined;
+	const source = await readFile(join(ADAPTERS_DIR, adapter.dir, adapter.module), 'utf8');
+	return current !== stamped(adapter, adapter.module, source);
+}

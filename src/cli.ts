@@ -2,7 +2,7 @@
 import { convert, summarizeConvert } from './convert/index.ts';
 import { readOverrides, rulesOff } from './overrides.ts';
 import { EMBEDS_DIR, EMBEDS_FILE, readEmbeds } from './embed/file.ts';
-import { ADAPTERS, installAdapter } from './embed/adapters/index.ts';
+import { ADAPTERS, installAdapter, staleAdapter } from './embed/adapters/index.ts';
 import { describeActivation } from './embed/check.ts';
 import { embedBrief, embedsByRoute } from './embed/detect.ts';
 import { studyEmbed } from './embed/study.ts';
@@ -598,7 +598,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 			context: { ...(source ? { source } : {}), ...(newSource ? { newSource } : {}), ...(values.auth ? { auth: resolve(values.auth) } : {}), flags: [...(values.header ?? []).flatMap((h) => ['--header', h]), ...(values.cookie ?? []).flatMap((c) => ['--cookie', c]), ...(values['journey-budget'] ? ['--journey-budget', values['journey-budget']] : []), ...(values['max-journeys'] ? ['--max-journeys', values['max-journeys']] : []), ...(values['journey-depth'] ? ['--journey-depth', values['journey-depth']] : []), ...timingFlags(values), ...(values.only ? ['--only', values.only] : [])] },
 			...(server ? { server, serving: { ...(values.build ? { build: values.build } : {}), ...(values['restart-on'] ? { restartOn: values['restart-on'] } : {}) } } : {}),
 			progress: out,
-			...(usage ? { notes: async (route: string) => [routeBrief(usage, await implementedNow(), route), embedBrief(usage.embeds ?? [], route, join(stateDir, EMBEDS_DIR), [mcp.command, ...mcp.args.slice(0, -1)].join(' '))].filter(Boolean).join('\n\n') || undefined } : {}),
+			...(usage ? { notes: async (route: string) => [routeBrief(usage, await implementedNow(), route), embedBrief(usage.embeds ?? [], route, join(stateDir, EMBEDS_DIR), [mcp.command, ...mcp.args.slice(0, -1)].join(' '), new Set((await Promise.all(Object.values(ADAPTERS).map(async (a) => ((await staleAdapter(a, resolve(newSource ?? cwd))) ? a.id : '')))).filter(Boolean)))].filter(Boolean).join('\n\n') || undefined } : {}),
 			check: async (route) => {
 				const report = await runCheck({
 					oldOrigin: old,
