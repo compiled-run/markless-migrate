@@ -91,6 +91,21 @@ describe('navigation: a page reached in place matches a fresh load of it', { con
 		assert.deepEqual(result.failures.filter((f) => / during the swap$/.test(f.check)), [], lines(result));
 	});
 
+	test('a swap that inserts the next page a part per frame is red, naming the regions, with the painted frame, though every settled state is right', async () => {
+		const result = await check('chunked');
+		const layout = result.failures.filter((f) => / layout during the swap$/.test(f.check));
+		const docs = layout.find((f) => f.route === '/docs/' && f.check === 'in place from /: layout during the swap');
+		assert.ok(docs, lines(result));
+		assert.match(docs.actual, /^\d+ frames? showed a layout of (?:its|their) own \(.*\bmain1\b.*\); a painted frame differs from the finished page in \d+ pixels$/);
+		assert.ok(result.shots.some((s) => s.route === '/docs/' && s.shot.label === 'navigation: in place from /, a frame during the swap'), JSON.stringify(result.shots.map((s) => s.shot.label)));
+		assert.deepEqual(result.failures.filter((f) => !/ layout during the swap$/.test(f.check)), [], lines(result));
+	});
+
+	test('the same layout flash on the old app reached the same way is its own: not reported', async () => {
+		const result = await checkNavigation(browser, defaultEnv(await app('chunked')), ROUTES, { concurrency: 3, old: defaultEnv(await app('chunked')) });
+		assert.deepEqual(result.failures.filter((f) => / layout during the swap$/.test(f.check)), [], lines(result));
+	});
+
 	test('a difference the old app shows too when reached the same way is its own: not reported', async () => {
 		const stale = await app('stale-html');
 		const result = await checkNavigation(browser, defaultEnv(await app('stale-html')), ROUTES, { concurrency: 3, old: defaultEnv(stale) });
