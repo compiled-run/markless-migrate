@@ -148,7 +148,7 @@ export async function openSide(browser: Browser, env: SideEnv, route: string, vi
 		await settle(page);
 		if (!options.live) await settleAndHoldLoops(page);
 		await page.evaluate(() => scrollTo(0, 0));
-		return { page, embeds: await page.evaluate(liveEmbeds, false), close: () => context.close() };
+		return { page, embeds: await page.evaluate(liveEmbeds, false), close: () => context.close().catch(() => {}) };
 	} catch (error) {
 		await context.close();
 		throw error;
