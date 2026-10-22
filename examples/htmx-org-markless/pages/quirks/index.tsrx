@@ -110,7 +110,7 @@ export default function Page() @{
 			{" "}
 			<p>{"There is no doubt that "}<code>hx-boost</code>{" is an odd-man out when compared to other htmx attributes and suffers from the dictum that “If something magically works, then it can also magically break.”"}</p>
 			{" "}
-			<p>{"Despite this fact, I (Carson) still feel it is useful in many situations, and it is used on the "}<a rel="noopener" target="_blank" href="https://htmx.org">https://htmx.org</a>{" website."}</p>
+			<p>{"Despite this fact, I (Carson) still feel it is useful in many situations, and it is used on the "}<a rel="noopener" target="_blank" href="https://htmx.org">{"https://htmx.org"}</a>{" website."}</p>
 			{" "}
 			<h2 id="loading-htmx-asynchronously-is-unreliable"><a class="zola-anchor" href="#loading-htmx-asynchronously-is-unreliable" aria-label="Anchor link for: loading-htmx-asynchronously-is-unreliable">Loading htmx asynchronously is unreliable</a></h2>
 			{" "}

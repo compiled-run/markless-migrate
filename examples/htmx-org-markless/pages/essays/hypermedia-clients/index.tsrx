@@ -76,7 +76,7 @@ export default function Page() @{
 			{" "}
 			<blockquote>{" "}<p>The trade-off, though, is that a uniform interface degrades efficiency, since information is transferred in a standardized form rather than one which is specific to an application’s needs.</p>{" "}</blockquote>
 			{" "}
-			<p><em>{"-Roy Fielding, "}<a rel="noopener" target="_blank" href="https://www.ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm#sec_5_1_5">https://www.ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm#sec_5_1_5</a></em></p>
+			<p><em>{"-Roy Fielding, "}<a rel="noopener" target="_blank" href="https://www.ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm#sec_5_1_5">{"https://www.ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm#sec_5_1_5"}</a></em></p>
 			{" "}
 			<p>A criticism of HTML is that it mixes “presentation” information with “semantic” information. This is often contrasted unfavorably with the brevity of typical JSON API responses.</p>
 			{" "}

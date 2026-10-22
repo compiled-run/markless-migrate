@@ -50,7 +50,7 @@ export default function Page() @{
 			{" "}
 			<p>The slides for the presentation can be found here (be sure to check the excellent speakers notes!)</p>
 			{" "}
-			<p><a rel="noopener" target="_blank" href="https://docs.google.com/presentation/d/1jW7vTiHFzA71m2EoCywjNXch-RPQJuAkTiLpleYFQjI/edit?usp=sharing">https://docs.google.com/presentation/d/1jW7vTiHFzA71m2EoCywjNXch-RPQJuAkTiLpleYFQjI/edit?usp=sharing</a></p>
+			<p><a rel="noopener" target="_blank" href="https://docs.google.com/presentation/d/1jW7vTiHFzA71m2EoCywjNXch-RPQJuAkTiLpleYFQjI/edit?usp=sharing">{"https://docs.google.com/presentation/d/1jW7vTiHFzA71m2EoCywjNXch-RPQJuAkTiLpleYFQjI/edit?usp=sharing"}</a></p>
 			{" "}
 			<div style="padding-top: 120px;padding-bottom:40px;text-align: center">&lt;/&gt;</div>
 		</main>

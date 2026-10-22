@@ -72,11 +72,11 @@ export default function Page() @{
 			{" "}
 			<p>The following libraries allow developers to create HDAs:</p>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://htmx.org">https://htmx.org</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://unpoly.com/">https://unpoly.com/</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://piranha.github.io/twinspark-js/">https://piranha.github.io/twinspark-js/</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://hotwire.dev">https://hotwire.dev</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://hyperview.org/">https://hyperview.org/</a>{" (a mobile hypermedia!)"}</li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://htmx.org">{"https://htmx.org"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://unpoly.com/">{"https://unpoly.com/"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://piranha.github.io/twinspark-js/">{"https://piranha.github.io/twinspark-js/"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://hotwire.dev">{"https://hotwire.dev"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://hyperview.org/">{"https://hyperview.org/"}</a>{" (a mobile hypermedia!)"}</li>{" "}</ul>
 			{" "}
 			<p>The following scripting libraries, when used appropriately, complement the HDA approach:</p>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://hyperscript.org">https://hyperscript.org</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://alpinejs.dev/">https://alpinejs.dev/</a></li>{" "}<li><a rel="noopener" target="_blank" href="http://vanilla-js.com/">http://vanilla-js.com/</a>{" (embedded directly in HTML)"}</li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://hyperscript.org">{"https://hyperscript.org"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://alpinejs.dev/">{"https://alpinejs.dev/"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="http://vanilla-js.com/">{"http://vanilla-js.com/"}</a>{" (embedded directly in HTML)"}</li>{" "}</ul>
 			{" "}
 			<h2 id="conclusion"><a class="zola-anchor" href="#conclusion" aria-label="Anchor link for: conclusion">Conclusion</a></h2>
 			{" "}

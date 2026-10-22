@@ -16,201 +16,201 @@ export default function Page() @{
 			{" "}
 			<h2 id="general-resources"><a class="zola-anchor" href="#general-resources" aria-label="Anchor link for: general-resources">General Resources</a></h2>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/rajasegar/awesome-htmx">https://github.com/rajasegar/awesome-htmx</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/rajasegar/awesome-htmx">{"https://github.com/rajasegar/awesome-htmx"}</a></li>{" "}</ul>
 			{" "}
 			<h2 id="julia"><a class="zola-anchor" href="#julia" aria-label="Anchor link for: julia">Julia</a></h2>
 			{" "}
-			<ul>{" "}<li>https://github.com/leephillips/juliaVortexWeb/</li>{" "}<li>https://github.com/leephillips/pluckit</li>{" "}</ul>
+			<ul>{" "}<li>{"https://github.com/leephillips/juliaVortexWeb/"}</li>{" "}<li>{"https://github.com/leephillips/pluckit"}</li>{" "}</ul>
 			{" "}
 			<h2 id="javascript"><a class="zola-anchor" href="#javascript" aria-label="Anchor link for: javascript">JavaScript</a></h2>
 			{" "}
 			<h3 id="node-js"><a class="zola-anchor" href="#node-js" aria-label="Anchor link for: node-js">Node.js</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/rajasegar/todomvc-htmx">https://github.com/rajasegar/todomvc-htmx</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/rajasegar/htmx-twitter-clone">https://github.com/rajasegar/htmx-twitter-clone</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/rajasegar/htmx-trello">https://github.com/rajasegar/htmx-trello</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/rajasegar/todomvc-htmx">{"https://github.com/rajasegar/todomvc-htmx"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/rajasegar/htmx-twitter-clone">{"https://github.com/rajasegar/htmx-twitter-clone"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/rajasegar/htmx-trello">{"https://github.com/rajasegar/htmx-trello"}</a></li>{" "}</ul>
 			{" "}
 			<h3 id="hapi"><a class="zola-anchor" href="#hapi" aria-label="Anchor link for: hapi">hapi</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/DamianStanger/hapi-htmx">https://github.com/DamianStanger/hapi-htmx</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/DamianStanger/hapi-htmx">{"https://github.com/DamianStanger/hapi-htmx"}</a></li>{" "}</ul>
 			{" "}
 			<h2 id="python"><a class="zola-anchor" href="#python" aria-label="Anchor link for: python">Python</a></h2>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/PyHAT-stack/awesome-python-htmx">https://github.com/PyHAT-stack/awesome-python-htmx</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/PyHAT-stack/awesome-python-htmx">{"https://github.com/PyHAT-stack/awesome-python-htmx"}</a></li>{" "}</ul>
 			{" "}
 			<h3 id="django"><a class="zola-anchor" href="#django" aria-label="Anchor link for: django">Django</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/adamchainz/django-htmx">https://github.com/adamchainz/django-htmx</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/spookylukey/django-htmx-patterns/">https://github.com/spookylukey/django-htmx-patterns/</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/idlesign/django-siteajax">https://github.com/idlesign/django-siteajax</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/guettli/django-htmx-fun/">https://github.com/guettli/django-htmx-fun/</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://www.photondesigner.com/articles/submit-async-django-form-with-htmx">https://www.photondesigner.com/articles/submit-async-django-form-with-htmx</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/adamchainz/django-htmx">{"https://github.com/adamchainz/django-htmx"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/spookylukey/django-htmx-patterns/">{"https://github.com/spookylukey/django-htmx-patterns/"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/idlesign/django-siteajax">{"https://github.com/idlesign/django-siteajax"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/guettli/django-htmx-fun/">{"https://github.com/guettli/django-htmx-fun/"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://www.photondesigner.com/articles/submit-async-django-form-with-htmx">{"https://www.photondesigner.com/articles/submit-async-django-form-with-htmx"}</a></li>{" "}</ul>
 			{" "}
 			<h3 id="fastapi"><a class="zola-anchor" href="#fastapi" aria-label="Anchor link for: fastapi">FastAPI</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/renceInbox/fastapi-todo">https://github.com/renceInbox/fastapi-todo</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/AutomationPanda/bulldoggy-reminders-app">https://github.com/AutomationPanda/bulldoggy-reminders-app</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/volfpeter/holm">https://github.com/volfpeter/holm</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/volfpeter/fasthx">https://github.com/volfpeter/fasthx</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/volfpeter/fastapi-htmx-tailwind-example">https://github.com/volfpeter/fastapi-htmx-tailwind-example</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/renceInbox/fastapi-todo">{"https://github.com/renceInbox/fastapi-todo"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/AutomationPanda/bulldoggy-reminders-app">{"https://github.com/AutomationPanda/bulldoggy-reminders-app"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/volfpeter/holm">{"https://github.com/volfpeter/holm"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/volfpeter/fasthx">{"https://github.com/volfpeter/fasthx"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/volfpeter/fastapi-htmx-tailwind-example">{"https://github.com/volfpeter/fastapi-htmx-tailwind-example"}</a></li>{" "}</ul>
 			{" "}
 			<h3 id="flask"><a class="zola-anchor" href="#flask" aria-label="Anchor link for: flask">Flask</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/edmondchuc/flask-htmx">https://github.com/edmondchuc/flask-htmx</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/cscortes/htmxflask">https://github.com/cscortes/htmxflask</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/Konfuzian/htmx-examples-with-flask/">https://github.com/Konfuzian/htmx-examples-with-flask/</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/edmondchuc/flask-htmx">{"https://github.com/edmondchuc/flask-htmx"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/cscortes/htmxflask">{"https://github.com/cscortes/htmxflask"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/Konfuzian/htmx-examples-with-flask/">{"https://github.com/Konfuzian/htmx-examples-with-flask/"}</a></li>{" "}</ul>
 			{" "}
 			<h3 id="lua"><a class="zola-anchor" href="#lua" aria-label="Anchor link for: lua">Lua</a></h3>
 			{" "}
-			<ul>{" "}<li>{"Lua Server Pages: "}<a rel="noopener" target="_blank" href="https://realtimelogic.com/articles/LSP-htmx-A-Powerful-Duo-for-Embedded-Web-Apps">https://realtimelogic.com/articles/LSP-htmx-A-Powerful-Duo-for-Embedded-Web-Apps</a></li>{" "}</ul>
+			<ul>{" "}<li>{"Lua Server Pages: "}<a rel="noopener" target="_blank" href="https://realtimelogic.com/articles/LSP-htmx-A-Powerful-Duo-for-Embedded-Web-Apps">{"https://realtimelogic.com/articles/LSP-htmx-A-Powerful-Duo-for-Embedded-Web-Apps"}</a></li>{" "}</ul>
 			{" "}
 			<h3 id="py4web"><a class="zola-anchor" href="#py4web" aria-label="Anchor link for: py4web">py4web</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/jpsteil/py4web_htmx_demo">https://github.com/jpsteil/py4web_htmx_demo</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/jpsteil/py4web_htmx_demo">{"https://github.com/jpsteil/py4web_htmx_demo"}</a></li>{" "}</ul>
 			{" "}
 			<h2 id="java"><a class="zola-anchor" href="#java" aria-label="Anchor link for: java">Java</a></h2>
 			{" "}
 			<h3 id="javalin"><a class="zola-anchor" href="#javalin" aria-label="Anchor link for: javalin">Javalin</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/AussieGuy0/java-htmx-todo/">https://github.com/AussieGuy0/java-htmx-todo/</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/erwindrsno/simple-to-do-list">https://github.com/erwindrsno/simple-to-do-list</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/AussieGuy0/java-htmx-todo/">{"https://github.com/AussieGuy0/java-htmx-todo/"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/erwindrsno/simple-to-do-list">{"https://github.com/erwindrsno/simple-to-do-list"}</a></li>{" "}</ul>
 			{" "}
 			<h3 id="jooby"><a class="zola-anchor" href="#jooby" aria-label="Anchor link for: jooby">Jooby</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/jooby-project/htmx-demo">https://github.com/jooby-project/htmx-demo</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/jooby-project/htmx-demo">{"https://github.com/jooby-project/htmx-demo"}</a></li>{" "}</ul>
 			{" "}
 			<h3 id="spring-boot"><a class="zola-anchor" href="#spring-boot" aria-label="Anchor link for: spring-boot">Spring Boot</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/wiverson/htmx-demo">https://github.com/wiverson/htmx-demo</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/wimdeblauwe/blog-example-code/tree/master/todomvc-htmx">https://github.com/wimdeblauwe/blog-example-code/tree/master/todomvc-htmx</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/wiverson/htmx-demo">{"https://github.com/wiverson/htmx-demo"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/wimdeblauwe/blog-example-code/tree/master/todomvc-htmx">{"https://github.com/wimdeblauwe/blog-example-code/tree/master/todomvc-htmx"}</a></li>{" "}</ul>
 			{" "}
 			<h3 id="quarkus"><a class="zola-anchor" href="#quarkus" aria-label="Anchor link for: quarkus">Quarkus</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/ia3andy/renotes">https://github.com/ia3andy/renotes</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/ia3andy/htmx-todo">https://github.com/ia3andy/htmx-todo</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/ia3andy/renotes">{"https://github.com/ia3andy/renotes"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/ia3andy/htmx-todo">{"https://github.com/ia3andy/htmx-todo"}</a></li>{" "}</ul>
 			{" "}
 			<h2 id="coldfusion-cfml-a-jvm-language"><a class="zola-anchor" href="#coldfusion-cfml-a-jvm-language" aria-label="Anchor link for: coldfusion-cfml-a-jvm-language">ColdFusion (CFML - a JVM Language)</a></h2>
 			{" "}
 			<h3 id="cfwheels-framework"><a class="zola-anchor" href="#cfwheels-framework" aria-label="Anchor link for: cfwheels-framework">CFWheels Framework</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/bpamiri/cfwheels-todomvc-htmx">https://github.com/bpamiri/cfwheels-todomvc-htmx</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://www.forgebox.io/view/cfwheels-htmx-plugin">https://www.forgebox.io/view/cfwheels-htmx-plugin</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/chapmandu/cfwheels-htmx-crud">https://github.com/chapmandu/cfwheels-htmx-crud</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/bpamiri/cfwheels-todomvc-htmx">{"https://github.com/bpamiri/cfwheels-todomvc-htmx"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://www.forgebox.io/view/cfwheels-htmx-plugin">{"https://www.forgebox.io/view/cfwheels-htmx-plugin"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/chapmandu/cfwheels-htmx-crud">{"https://github.com/chapmandu/cfwheels-htmx-crud"}</a></li>{" "}</ul>
 			{" "}
 			<h2 id="c"><a class="zola-anchor" href="#c" aria-label="Anchor link for: c">C#</a></h2>
 			{" "}
 			<h3 id="asp-net-core"><a class="zola-anchor" href="#asp-net-core" aria-label="Anchor link for: asp-net-core">ASP.NET Core</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/jerriepelser-blog/htmx-with-aspnet-core">https://github.com/jerriepelser-blog/htmx-with-aspnet-core</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/mryderie/aspnet-core-htmx-example">https://github.com/mryderie/aspnet-core-htmx-example</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/khalidabuhakmeh/Htmx.Net">https://github.com/khalidabuhakmeh/Htmx.Net</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/khalidabuhakmeh/Htmx.Net#htmxtaghelpers">https://github.com/khalidabuhakmeh/Htmx.Net#htmxtaghelpers</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/hlaueriksson/Markupolation/tree/main/samples">https://github.com/hlaueriksson/Markupolation/tree/main/samples</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/jerriepelser-blog/htmx-with-aspnet-core">{"https://github.com/jerriepelser-blog/htmx-with-aspnet-core"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/mryderie/aspnet-core-htmx-example">{"https://github.com/mryderie/aspnet-core-htmx-example"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/khalidabuhakmeh/Htmx.Net">{"https://github.com/khalidabuhakmeh/Htmx.Net"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/khalidabuhakmeh/Htmx.Net#htmxtaghelpers">{"https://github.com/khalidabuhakmeh/Htmx.Net#htmxtaghelpers"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/hlaueriksson/Markupolation/tree/main/samples">{"https://github.com/hlaueriksson/Markupolation/tree/main/samples"}</a></li>{" "}</ul>
 			{" "}
 			<h3 id="blazor"><a class="zola-anchor" href="#blazor" aria-label="Anchor link for: blazor">Blazor</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/grugBraid/haxor-contact-app">https://github.com/grugBraid/haxor-contact-app</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/grugBraid/haxor-contact-app">{"https://github.com/grugBraid/haxor-contact-app"}</a></li>{" "}</ul>
 			{" "}
 			<h2 id="prolog"><a class="zola-anchor" href="#prolog" aria-label="Anchor link for: prolog">Prolog</a></h2>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/Anniepoo/declswiplweb">https://github.com/Anniepoo/declswiplweb</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/Anniepoo/declswiplweb">{"https://github.com/Anniepoo/declswiplweb"}</a></li>{" "}</ul>
 			{" "}
 			<h2 id="lisp"><a class="zola-anchor" href="#lisp" aria-label="Anchor link for: lisp">Lisp</a></h2>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/rajasegar/ccl-demo-raja">https://github.com/rajasegar/ccl-demo-raja</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/rajasegar/cl-trello-clone">https://github.com/rajasegar/cl-trello-clone</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/rajasegar/cl-github-timeline">https://github.com/rajasegar/cl-github-timeline</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/rajasegar/ccl-demo-raja">{"https://github.com/rajasegar/ccl-demo-raja"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/rajasegar/cl-trello-clone">{"https://github.com/rajasegar/cl-trello-clone"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/rajasegar/cl-github-timeline">{"https://github.com/rajasegar/cl-github-timeline"}</a></li>{" "}</ul>
 			{" "}
 			<h2 id="clojure"><a class="zola-anchor" href="#clojure" aria-label="Anchor link for: clojure">Clojure</a></h2>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/whamtet/ctmx">https://github.com/whamtet/ctmx</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/jcpsantiago/htmx-clj-dashboard">https://github.com/jcpsantiago/htmx-clj-dashboard</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/prestancedesign/babashka-htmx-todoapp">https://github.com/prestancedesign/babashka-htmx-todoapp</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/dharrigan/startrek">https://github.com/dharrigan/startrek</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/whamtet/ctmx">{"https://github.com/whamtet/ctmx"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/jcpsantiago/htmx-clj-dashboard">{"https://github.com/jcpsantiago/htmx-clj-dashboard"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/prestancedesign/babashka-htmx-todoapp">{"https://github.com/prestancedesign/babashka-htmx-todoapp"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/dharrigan/startrek">{"https://github.com/dharrigan/startrek"}</a></li>{" "}</ul>
 			{" "}
 			<h2 id="ruby"><a class="zola-anchor" href="#ruby" aria-label="Anchor link for: ruby">Ruby</a></h2>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://alchemists.io/projects/htmx">https://alchemists.io/projects/htmx</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://alchemists.io/projects/htmx">{"https://alchemists.io/projects/htmx"}</a></li>{" "}</ul>
 			{" "}
 			<h3 id="rails"><a class="zola-anchor" href="#rails" aria-label="Anchor link for: rails">Rails</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/rootstrap/htmx-rails">https://github.com/rootstrap/htmx-rails</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/guilleiguaran/rails-htmx">https://github.com/guilleiguaran/rails-htmx</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/rootstrap/htmx-rails">{"https://github.com/rootstrap/htmx-rails"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/guilleiguaran/rails-htmx">{"https://github.com/guilleiguaran/rails-htmx"}</a></li>{" "}</ul>
 			{" "}
 			<h3 id="sinatra"><a class="zola-anchor" href="#sinatra" aria-label="Anchor link for: sinatra">Sinatra</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/libsyz/htmx-to-do-app">https://github.com/libsyz/htmx-to-do-app</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/beechnut/pokebutt-htmx">https://github.com/beechnut/pokebutt-htmx</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/libsyz/htmx-to-do-app">{"https://github.com/libsyz/htmx-to-do-app"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/beechnut/pokebutt-htmx">{"https://github.com/beechnut/pokebutt-htmx"}</a></li>{" "}</ul>
 			{" "}
 			<h2 id="rust"><a class="zola-anchor" href="#rust" aria-label="Anchor link for: rust">Rust</a></h2>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/paultuckey/example-todo-app-rust-htmx">https://github.com/paultuckey/example-todo-app-rust-htmx</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/welshdave/actix-htmx">https://github.com/welshdave/actix-htmx</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/paultuckey/example-todo-app-rust-htmx">{"https://github.com/paultuckey/example-todo-app-rust-htmx"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/welshdave/actix-htmx">{"https://github.com/welshdave/actix-htmx"}</a></li>{" "}</ul>
 			{" "}
 			<h2 id="scala"><a class="zola-anchor" href="#scala" aria-label="Anchor link for: scala">Scala</a></h2>
 			{" "}
 			<h3 id="http4s"><a class="zola-anchor" href="#http4s" aria-label="Anchor link for: http4s">http4s</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/martinprobson/http4s-htmx-demo">https://github.com/martinprobson/http4s-htmx-demo</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/eikek/htmx4s">https://github.com/eikek/htmx4s</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/martinprobson/http4s-htmx-demo">{"https://github.com/martinprobson/http4s-htmx-demo"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/eikek/htmx4s">{"https://github.com/eikek/htmx4s"}</a></li>{" "}</ul>
 			{" "}
 			<h3 id="zio-http"><a class="zola-anchor" href="#zio-http" aria-label="Anchor link for: zio-http">zio-http</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/rockthejvm/scalatags-htmx-demo">https://github.com/rockthejvm/scalatags-htmx-demo</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/rockthejvm/scalatags-htmx-demo">{"https://github.com/rockthejvm/scalatags-htmx-demo"}</a></li>{" "}</ul>
 			{" "}
 			<h2 id="kotlin"><a class="zola-anchor" href="#kotlin" aria-label="Anchor link for: kotlin">Kotlin</a></h2>
 			{" "}
 			<h3 id="ktor"><a class="zola-anchor" href="#ktor" aria-label="Anchor link for: ktor">Ktor</a></h3>
 			{" "}
-			<p><a rel="noopener" target="_blank" href="https://github.com/Rattlyy/htmx-ktor">https://github.com/Rattlyy/htmx-ktor</a></p>
+			<p><a rel="noopener" target="_blank" href="https://github.com/Rattlyy/htmx-ktor">{"https://github.com/Rattlyy/htmx-ktor"}</a></p>
 			{" "}
 			<h3 id="http4k"><a class="zola-anchor" href="#http4k" aria-label="Anchor link for: http4k">Http4k</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/corlaez/todo-hda-kt">https://github.com/corlaez/todo-hda-kt</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/mikaelstaldal/htmx-http4k-thymeleaf">https://github.com/mikaelstaldal/htmx-http4k-thymeleaf</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/corlaez/todo-hda-kt">{"https://github.com/corlaez/todo-hda-kt"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/mikaelstaldal/htmx-http4k-thymeleaf">{"https://github.com/mikaelstaldal/htmx-http4k-thymeleaf"}</a></li>{" "}</ul>
 			{" "}
 			<h2 id="julia-1"><a class="zola-anchor" href="#julia-1" aria-label="Anchor link for: julia-1">Julia</a></h2>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/clarkevans/TodoMVC.jl">https://github.com/clarkevans/TodoMVC.jl</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/clarkevans/TodoMVC.jl">{"https://github.com/clarkevans/TodoMVC.jl"}</a></li>{" "}</ul>
 			{" "}
 			<h2 id="ocaml"><a class="zola-anchor" href="#ocaml" aria-label="Anchor link for: ocaml">OCaml</a></h2>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://ocaml.org/p/dream-htmx">https://ocaml.org/p/dream-htmx</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/yawaramin/dream-html">https://github.com/yawaramin/dream-html</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://ocaml.org/p/dream-htmx">{"https://ocaml.org/p/dream-htmx"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/yawaramin/dream-html">{"https://github.com/yawaramin/dream-html"}</a></li>{" "}</ul>
 			{" "}
 			<h2 id="php"><a class="zola-anchor" href="#php" aria-label="Anchor link for: php">PHP</a></h2>
 			{" "}
 			<h3 id="codeigniter-4"><a class="zola-anchor" href="#codeigniter-4" aria-label="Anchor link for: codeigniter-4">CodeIgniter 4</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/michalsn/codeigniter-htmx-demo">https://github.com/michalsn/codeigniter-htmx-demo</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/michalsn/codeigniter-htmx-demo">{"https://github.com/michalsn/codeigniter-htmx-demo"}</a></li>{" "}</ul>
 			{" "}
 			<h3 id="laravel"><a class="zola-anchor" href="#laravel" aria-label="Anchor link for: laravel">Laravel</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://spirofloropoulos.com/laravel-htmx-hard-mode-1.html">https://spirofloropoulos.com/laravel-htmx-hard-mode-1.html</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://spirofloropoulos.com/laravel-htmx-hard-mode-1.html">{"https://spirofloropoulos.com/laravel-htmx-hard-mode-1.html"}</a></li>{" "}</ul>
 			{" "}
 			<h3 id="symfony"><a class="zola-anchor" href="#symfony" aria-label="Anchor link for: symfony">Symfony</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/tomcri/htmxfony">https://github.com/tomcri/htmxfony</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/tomcri/htmxfony">{"https://github.com/tomcri/htmxfony"}</a></li>{" "}</ul>
 			{" "}
 			<h2 id="elixir"><a class="zola-anchor" href="#elixir" aria-label="Anchor link for: elixir">Elixir</a></h2>
 			{" "}
 			<h3 id="phoenix"><a class="zola-anchor" href="#phoenix" aria-label="Anchor link for: phoenix">Phoenix</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/hungle00/todo-htmx">https://github.com/hungle00/todo-htmx</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/hungle00/todo-htmx">{"https://github.com/hungle00/todo-htmx"}</a></li>{" "}</ul>
 			{" "}
 			<h3 id="bandit-with-plug-application"><a class="zola-anchor" href="#bandit-with-plug-application" aria-label="Anchor link for: bandit-with-plug-application">Bandit with Plug Application</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/lorantkurthy/todo-htmex">https://github.com/lorantkurthy/todo-htmex</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/lorantkurthy/todo-htmex">{"https://github.com/lorantkurthy/todo-htmex"}</a></li>{" "}</ul>
 			{" "}
 			<h2 id="f"><a class="zola-anchor" href="#f" aria-label="Anchor link for: f">F#</a></h2>
 			{" "}
 			<h3 id="giraffe"><a class="zola-anchor" href="#giraffe" aria-label="Anchor link for: giraffe">Giraffe</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://hamy.xyz/labs/2023-12-fsharp-htmx">https://hamy.xyz/labs/2023-12-fsharp-htmx</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/bit-badger/Giraffe.Htmx">https://github.com/bit-badger/Giraffe.Htmx</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://hamy.xyz/labs/2023-12-fsharp-htmx">{"https://hamy.xyz/labs/2023-12-fsharp-htmx"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/bit-badger/Giraffe.Htmx">{"https://github.com/bit-badger/Giraffe.Htmx"}</a></li>{" "}</ul>
 			{" "}
 			<h3 id="feliz-viewengine-htmx"><a class="zola-anchor" href="#feliz-viewengine-htmx" aria-label="Anchor link for: feliz-viewengine-htmx">Feliz.ViewEngine.Htmx</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/Zaid-Ajaj/Feliz.ViewEngine.Htmx">https://github.com/Zaid-Ajaj/Feliz.ViewEngine.Htmx</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/jkone27/todo-mvc-feliz-htmx">https://github.com/jkone27/todo-mvc-feliz-htmx</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/Zaid-Ajaj/Feliz.ViewEngine.Htmx">{"https://github.com/Zaid-Ajaj/Feliz.ViewEngine.Htmx"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/jkone27/todo-mvc-feliz-htmx">{"https://github.com/jkone27/todo-mvc-feliz-htmx"}</a></li>{" "}</ul>
 			{" "}
 			<h3 id="falco-htmx"><a class="zola-anchor" href="#falco-htmx" aria-label="Anchor link for: falco-htmx">Falco.Htmx</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/dpraimeyuu/Falco.Htmx">https://github.com/dpraimeyuu/Falco.Htmx</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/dpraimeyuu/Falco.Htmx">{"https://github.com/dpraimeyuu/Falco.Htmx"}</a></li>{" "}</ul>
 			{" "}
 			<h3 id="suave-with-feliz"><a class="zola-anchor" href="#suave-with-feliz" aria-label="Anchor link for: suave-with-feliz">Suave (with Feliz)</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://jkone27-3876.medium.com/htmx-and-f-c1ffdc18fbb5">https://jkone27-3876.medium.com/htmx-and-f-c1ffdc18fbb5</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://jkone27-3876.medium.com/htmx-and-f-c1ffdc18fbb5">{"https://jkone27-3876.medium.com/htmx-and-f-c1ffdc18fbb5"}</a></li>{" "}</ul>
 			{" "}
 			<h2 id="go"><a class="zola-anchor" href="#go" aria-label="Anchor link for: go">Go</a></h2>
 			{" "}
 			<h3 id="templ"><a class="zola-anchor" href="#templ" aria-label="Anchor link for: templ">templ</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://templ.guide/server-side-rendering/htmx">https://templ.guide/server-side-rendering/htmx</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/jritsema/go-htmx-tailwind-example">https://github.com/jritsema/go-htmx-tailwind-example</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://templ.guide/server-side-rendering/htmx">{"https://templ.guide/server-side-rendering/htmx"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/jritsema/go-htmx-tailwind-example">{"https://github.com/jritsema/go-htmx-tailwind-example"}</a></li>{" "}</ul>
 			{" "}
 			<h3 id="elem-go"><a class="zola-anchor" href="#elem-go" aria-label="Anchor link for: elem-go">elem-go</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/chasefleming/elem-go/tree/main/examples/htmx-fiber-counter">https://github.com/chasefleming/elem-go/tree/main/examples/htmx-fiber-counter</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/chasefleming/elem-go/tree/main/examples/htmx-fiber-todo">https://github.com/chasefleming/elem-go/tree/main/examples/htmx-fiber-todo</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/chasefleming/elem-go/tree/main/examples/htmx-fiber-counter">{"https://github.com/chasefleming/elem-go/tree/main/examples/htmx-fiber-counter"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/chasefleming/elem-go/tree/main/examples/htmx-fiber-todo">{"https://github.com/chasefleming/elem-go/tree/main/examples/htmx-fiber-todo"}</a></li>{" "}</ul>
 			{" "}
 			<h3 id="htmgo"><a class="zola-anchor" href="#htmgo" aria-label="Anchor link for: htmgo">htmgo</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://htmgo.dev">https://htmgo.dev</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://htmgo.dev">{"https://htmgo.dev"}</a></li>{" "}</ul>
 			{" "}
 			<h2 id="delphi"><a class="zola-anchor" href="#delphi" aria-label="Anchor link for: delphi">Delphi</a></h2>
 			{" "}
 			<h3 id="delphimvcframework"><a class="zola-anchor" href="#delphimvcframework" aria-label="Anchor link for: delphimvcframework">DelphiMVCFramework</a></h3>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/danieleteti/delphi-dmvcframework-htmx-todo">https://github.com/danieleteti/delphi-dmvcframework-htmx-todo</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/danieleteti/delphimvcframework/tree/master/samples/htmx">https://github.com/danieleteti/delphimvcframework/tree/master/samples/htmx</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/danieleteti/delphi-dmvcframework-htmx-todo">{"https://github.com/danieleteti/delphi-dmvcframework-htmx-todo"}</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/danieleteti/delphimvcframework/tree/master/samples/htmx">{"https://github.com/danieleteti/delphimvcframework/tree/master/samples/htmx"}</a></li>{" "}</ul>
 			{" "}
 			<h2 id="freepascal-with-pas2js"><a class="zola-anchor" href="#freepascal-with-pas2js" aria-label="Anchor link for: freepascal-with-pas2js">FreePascal with Pas2JS</a></h2>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/zendrael/create_htmx_pascal_app">https://github.com/zendrael/create_htmx_pascal_app</a></li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/zendrael/create_htmx_pascal_app">{"https://github.com/zendrael/create_htmx_pascal_app"}</a></li>{" "}</ul>
 			{" "}
 		</main>
 		<SiteFooter />
