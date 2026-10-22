@@ -74,6 +74,8 @@ const URL_SEARCH_PARAMS_METHODS = new Set(['get', 'has', 'getAll', 'toString', '
 function queryKeys(text: string): string[] {
 	const keys = new Set<string>();
 	for (const re of QUERY_READS) for (const m of text.matchAll(re)) if (!URL_SEARCH_PARAMS_METHODS.has(m[1]!)) keys.add(m[1]!);
+	// A page that switches on its whole query string (`@switch (search) { @case "?page=2": ... }`) reads the keys its cases name.
+	if (/\b(?:url|location)\.search\b/.test(text)) for (const m of text.matchAll(/@case\s+(["'])\?([^"']*)\1/g)) for (const key of new URLSearchParams(m[2]!).keys()) keys.add(key);
 	return [...keys].sort();
 }
 
