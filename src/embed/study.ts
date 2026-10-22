@@ -75,9 +75,12 @@ function markupWithShadow(selector: string): string {
 }
 
 /** Which live embed of the old page this use is: the n-th of its provider, by frame address or by the slot its loader filled. */
-export function matchUse(use: Pick<EmbedUse, 'provider'>, embeds: readonly LiveEmbed[], ordinal = 0): number {
+export function matchUse(use: Pick<EmbedUse, 'provider' | 'attributes'>, embeds: readonly LiveEmbed[], ordinal = 0): number {
 	const providerOf = (e: LiveEmbed) => (e.role === 'widget' ? e.src.slice('slot:'.length) : e.role === 'component' ? undefined : (frameProvider(e.src)?.provider.id ?? (URL.parse(e.src) ? `host:${new URL(e.src).hostname}` : undefined)));
-	const matching = embeds.flatMap((e, i) => (providerOf(e) === use.provider ? [i] : []));
+	// A live frame is known by its origin and path; one whose provider needs the query to be told apart (ghbtns.com) is matched by that address.
+	const framed = URL.parse(use.attributes.src ?? '');
+	const sameFrame = (e: LiveEmbed) => Boolean(framed && !e.role && e.src === `${framed.origin}${framed.pathname}`);
+	const matching = embeds.flatMap((e, i) => (providerOf(e) === use.provider || sameFrame(e) ? [i] : []));
 	return matching[ordinal] ?? -1;
 }
 

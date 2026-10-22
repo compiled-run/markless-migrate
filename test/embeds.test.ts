@@ -131,3 +131,8 @@ test('the page-level accessibility tree leaves an embed\'s inside to the embed s
 	const component = ['- generic:', '  - \'button "Play video: Keynote"\'', '  - link "ViteConf":', '    - /url: https://www.youtube.com/@viteconf'];
 	assert.deepEqual(withoutEmbeds(page, [component]), ['- heading "Vite 6"', '- paragraph: Watch the keynote', '- paragraph: Next']);
 });
+
+test('a ghbtns.com frame is mdo\'s github-buttons, its own widget: same repository, no buttons.js adapter', () => {
+	const [btn] = detectEmbeds(parseHtml(`<iframe src="https://ghbtns.com/github-btn.html?user=facebook&repo=docusaurus&type=star&count=true&size=large" width="160" height="30"></iframe>`), '/', 'https://docusaurus.io');
+	assert.deepEqual([btn!.id, btn!.provider, btn!.adapter, btn!.url], ['ghbtns-facebook-docusaurus-star', 'ghbtns', undefined, 'https://github.com/facebook/docusaurus']);
+});

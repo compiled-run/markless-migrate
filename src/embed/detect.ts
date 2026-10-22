@@ -98,7 +98,7 @@ export function detectEmbeds(elements: readonly HtmlElement[], route: string, or
 			const provider = found?.provider ?? hostProvider(new URL(absolute));
 			let key = found?.key ?? new URL(absolute).pathname;
 			let url = absolute;
-			if (provider.id === 'github-button') {
+			if (provider.id === 'github-button' || provider.id === 'ghbtns') {
 				const params = frameParams(absolute);
 				const button = githubButton(params.get('href') ?? `${params.get('user') ?? ''}/${params.get('repo') ?? ''}`, new Map([['data-icon', params.get('data-icon') ?? params.get('type') ?? '']]));
 				key = button.key;

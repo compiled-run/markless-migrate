@@ -132,6 +132,7 @@ async function providerFields(use: EmbedUse, getJson: Getter, get: typeof fetch,
 			const id = /(\d+)(?:\/embed)?\/?$/.exec(url.pathname)?.[1];
 			return { fields: { url: url.href, status: await json(`${url.origin}/api/v1/statuses/${id}`) }, sources };
 		}
+		case 'ghbtns':
 		case 'github-button': {
 			const [owner, repo] = new URL(use.url ?? 'https://github.com/').pathname.slice(1).split('/');
 			const api = repo ? `https://api.github.com/repos/${owner}/${repo}` : `https://api.github.com/users/${owner}`;
