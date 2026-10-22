@@ -204,7 +204,10 @@ page:
   (a star count) is accepted automatically only when every other pixel matches. An embed shared by many pages is
   checked once per run.
 
-Adapters: `github-button` (buttons.js's star, fork, watch and follow buttons). The provider catalog is
+Adapters: `github-button` (buttons.js's star, fork, watch and follow buttons, in light and dark) and `youtube`
+(YouTube's player before it plays, promoted from the component `run` wrote for vite.dev; activation loads the page's
+own frame, playing). Vimeo, X, Bluesky, Mastodon, gists and link cards have their detection, keep rules and data
+sources in place and go through the same loop until an adapter is promoted. The provider catalog is
 `src/embed/providers.ts`.
 
 ## After the migration: upgrade
