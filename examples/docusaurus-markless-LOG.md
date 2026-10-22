@@ -353,3 +353,12 @@ the real names it now decodes `location.pathname` first, as Docusaurus does.
   element in one interaction are now one motion (`test/checker-noise.test.ts`).
 - CSS: Mermaid draws shapes through rough.js, which puts a straight edge's cubic control points at random places on the
   line. A computed `d` now compares by the shape it draws (`src/check/svg-path.ts`, `test/svg-path.test.ts`).
+
+### Layout flicker on in-place navigation (Markless b58d7000)
+
+On Markless `fbb80634` an in-place navigation painted the next page while it was still being inserted: the table of
+contents and footer were missing for one frame on desktop and two on mobile (`/docs/installation` -> `/docs/configuration`),
+and the sidebar column was 4147 px tall instead of 7809 px. The router inserted a long page 800 elements per frame and this
+app's container is `<body>`, so everything went through it. Markless #84 keeps the leaving page on screen until the next
+one is complete. The port is deployed on Markless main packed locally at `b58d7000`, which contains it; nothing in the
+app changed. markless-migrate's swap-frames check now fails a frame whose layout is neither page's (#32).
