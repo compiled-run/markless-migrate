@@ -22,6 +22,7 @@ import { compareJourneys, DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, in
 import { storageOwner, unreachableCandidate, type StorageOwner } from './automatic.ts';
 import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
 import { checkMotion, motionRules, type MotionOptions } from './motion.ts';
+import { CheckProgress } from './progress.ts';
 import { applyNavigation, checkNavigation, type NavigationOptions, type NavigationResult } from './nav-parity.ts';
 import { loadFailures, measureLoad, psiFailures, unmeasured, type LoadOptions } from './load.ts';
 import { measurePsi, psiKey } from './psi.ts';
@@ -91,6 +92,8 @@ export interface CheckOptions {
 	readonly responsiveness?: ResponsivenessOptions;
 	/** Record the transitions and animations every interaction starts, and those hovering and focusing each control start, old and new, with motion allowed and with reduced motion. */
 	readonly motion?: MotionOptions;
+	/** Write each route's result to `<dir>/check-progress/` as it finishes; `resume` takes the results an earlier run of the same check wrote. */
+	readonly progress?: { readonly dir: string; readonly resume: boolean };
 	/** Compare each sampled page reached by an in-place navigation (a link click, back, forward) with a fresh load of it, on the new app. */
 	readonly navigation?: NavigationOptions;
 	/** Lighthouse's mobile page load (FCP, LCP, Speed Index, TBT, CLS and the score), a median of several runs per side, after every other check so nothing else competes for the machine. */
@@ -622,7 +625,13 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			const full = pages.filter((route) => !light(route));
 			const owners = full.length > 1 ? await layoutOwners(browser, roleRun, full, options) : new Map<string, string>();
 			roleRun = { ...roleRun, owners: [...owners].sort(), journeys: { ...options.journeys, owner: (signature) => owners.get(signature.split(' > ')[0]!) } };
+			const progress = options.progress && artifacts ? new CheckProgress(options.progress.dir, { old: options.oldOrigin, new: options.newOrigin, routes: [...options.routes].sort(), role, freeze, block: options.block ?? null, motion: options.motion ?? null, responsiveness: options.responsiveness ?? null, journeys: options.journeys ?? null, only: options.only ?? null, templates: options.templates ?? null, data: options.data?.mode ?? null }, options.progress.resume) : undefined;
 			const checked = await pool(pages, options.concurrency ?? DEFAULT_CONCURRENCY, async (route) => {
+				const earlier = await progress?.done(route, role);
+				if (earlier) {
+					options.onRoute?.(earlier);
+					return earlier;
+				}
 				const { run, failures } = data?.mode === 'replay' ? await replayRoute(roleRun, data.dir, route) : { run: roleRun, failures: [] };
 				const done = await withDeadline(route, run, routeTimeout(options), (scoped) => checkAs(browser, scoped, route, role, loginPaths, options, light(route))).catch(unreachable(route));
 				const old = oldCaptures.get(done);
@@ -635,6 +644,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				const result = withTemplate(done);
 				const checkedAs = asRole(failures.length ? withFailures(result, [...failures, ...result.failures]) : result, role);
 				const kept = artifacts ? await artifacts.keep(checkedAs) : checkedAs;
+				await progress?.write(route, role, kept);
 				options.onRoute?.(kept);
 				return kept;
 			});

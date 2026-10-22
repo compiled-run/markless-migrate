@@ -92,7 +92,7 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
           [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--timeout <seconds>]
-          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-cache]
+          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-cache] [--resume]
           [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>] [--no-load] [--load-runs <n>] [--load-cpu calibrated|<n>]
           [--psi-key <key>] [--psi-runs <n>] [--no-psi]
           Compare routes old vs new (default: every route of the old site plan listed). Exits 1 when any is red.
@@ -104,6 +104,9 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           --only coverage measures just that, for every route.
           The old side's loads and journeys are reused from .migrate/cache while every response the old
           page loaded is unchanged (ETag, Last-Modified or content hash); --no-cache loads them again.
+          Each route's result is written to .migrate/check-progress as it finishes; --resume takes the
+          results an earlier run of the same check (same origins, routes and options) wrote, so a run that
+          stopped carries on where it was.
           --route checks only the routes named, for iterating: such a run (and --changed) is a partial
           run, "partial run: N of M routes", never overall green; it exits 4 when what it checked is green.
           Above ${TEMPLATE_THRESHOLD} pages, every page gets every check except visual, behaviour,
@@ -731,6 +734,7 @@ async function main(argv: string[]): Promise<number> {
 					only: { type: 'string' },
 					'every-dimension': { type: 'boolean' },
 					'no-cache': { type: 'boolean' },
+					resume: { type: 'boolean' },
 					...TIMING_FLAGS,
 				},
 			});
@@ -820,6 +824,7 @@ async function main(argv: string[]): Promise<number> {
 				templates: values['every-dimension'] ? false : { patterns: inventory?.source?.routes.map((r) => r.path) ?? [] },
 				...(values['no-cache'] ? {} : { cacheDir: join(cwd, STATE_DIR, 'cache') }),
 				artifactsDir: join(cwd, STATE_DIR),
+				progress: { dir: join(cwd, STATE_DIR), resume: Boolean(values.resume) },
 			});
 			await recordResults(cwd, report, commit ? { commit } : {});
 			const path = await writeReport(report, join(cwd, STATE_DIR), await status(cwd));
