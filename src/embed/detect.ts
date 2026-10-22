@@ -186,7 +186,7 @@ export function embedsByRoute(uses: readonly EmbedUse[]): string {
 export function embedBrief(uses: readonly EmbedUse[], route: string, dir: string, cli: string): string | undefined {
 	const here = uses.filter((u) => u.routes.includes(route) && u.form !== 'markup');
 	if (!here.length) return undefined;
-	const lines = [`Embeds on ${route} (from .migrate/embeds.json). Each gets its own Markless component in real markup (real text, images and CSS fed by its real data, never a screenshot), whose root carries data-markless-embed="<id>", unless it is kept:`];
+	const lines = [`Embeds on ${route} (from .migrate/embeds.json). Each gets its own Markless component in real markup (real text, images and CSS fed by its real data, never a screenshot), whose root carries data-markless-embed="<id>", unless it is kept. Its images load from the provider's own addresses (never copy a provider's images or media into the app):`];
 	for (const u of here) {
 		const study = join(dir, u.id, 'study.md');
 		lines.push(`- ${u.id}: ${u.providerName} (${u.form}) ${u.element}. ${embedPlan(u)}.`);
