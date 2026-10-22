@@ -154,7 +154,16 @@ export function contractRequest(request: Request, origin: string): boolean {
 	const same = sameApp(url, origin);
 	if (same && frameworkTransport(request, url)) return false;
 	const type = request.resourceType();
-	return CONTRACT_TYPES.has(type) || (type === 'document' && !same);
+	// Another site's document in a child frame is an embed: the embed step compares it, and a component standing in for it rightly never requests it at load.
+	return CONTRACT_TYPES.has(type) || (type === 'document' && !same && !childFrame(request));
+}
+
+function childFrame(request: Request): boolean {
+	try {
+		return Boolean(request.frame().parentFrame());
+	} catch {
+		return false;
+	}
 }
 
 function queryKey(url: URL): string {

@@ -27,7 +27,7 @@ export interface EmbedCheckOptions {
 	readonly settleMs?: number;
 }
 
-/** What activating an embed did, read 4 s after the click or key. */
+/** What activating an embed did: read once it plays or leads somewhere, or 10 s after the click or key. */
 export interface Activation {
 	/** Pages it opened or led to, by origin and path. */
 	readonly navigations: readonly string[];
@@ -273,9 +273,17 @@ export async function activate(side: Side, index: number, how: 'click' | 'keyboa
 			if (!(await focusInside(side, index))) return { navigations, frames: await page.evaluate(framesIn, { ...e.box }), playing: false, error: 'no control inside it takes keyboard focus' };
 			await page.keyboard.press('Enter');
 		}
-		await page.waitForTimeout(4000);
-		const frames = await page.evaluate(framesIn, { ...e.box });
-		return { navigations: [...new Set(navigations)].sort(), frames, playing: await mediaPlaying(page, frames) };
+		// A component loads the player only now, where the old one was loaded with the page: what it does is read as soon as it plays or leads somewhere, within 10 s.
+		let frames: string[] = [];
+		let playing = false;
+		for (const deadline = Date.now() + 10_000; Date.now() < deadline; ) {
+			await page.waitForTimeout(500);
+			frames = await page.evaluate(framesIn, { ...e.box });
+			playing = await mediaPlaying(page, frames);
+			if (playing || navigations.length) break;
+		}
+		await page.waitForTimeout(300);
+		return { navigations: [...new Set(navigations)].sort(), frames, playing };
 	} finally {
 		await page.unroute('**/*').catch(() => {});
 	}
