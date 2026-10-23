@@ -12,6 +12,8 @@ import { compareWithNoise, identicalShots, visuallyDifferent } from './visual.ts
 import { loadPage } from './infrastructure.ts';
 import { holdLoops, settleMotion } from './loops.ts';
 import { maskedShot } from './embeds.ts';
+import { responsiveRegionsCandidate } from './automatic.ts';
+import type { ImageRecord, PageCapture } from './types.ts';
 
 const MAX_STATES = 40;
 const TARGETS_PER_STATE = 2;
@@ -224,6 +226,27 @@ function union(boxes: readonly Box[]): Box | undefined {
 	return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
 }
 
+// What a resize newly draws loads now, as the page's own settle scrolled every lazy image in: the shot compares pictures, not load timing.
+async function drawnImages(page: Page): Promise<ImageRecord[]> {
+	return page.evaluate(async () => {
+		const shown = [...document.images].filter((img) => img.getClientRects().length);
+		for (const img of shown) if (img.loading === 'lazy' && !img.complete) img.loading = 'eager';
+		await Promise.all(shown.map((img) => Promise.race([img.decode().catch(() => {}), new Promise((done) => setTimeout(done, 3000))])));
+		return [...document.images].map((img) => {
+			const r = img.getBoundingClientRect();
+			const src = img.currentSrc || img.src;
+			return {
+				src: src.startsWith(location.origin) ? src.slice(location.origin.length) || '/' : src,
+				alt: img.getAttribute('alt'),
+				naturalWidth: img.naturalWidth,
+				naturalHeight: img.naturalHeight,
+				broken: img.complete && img.naturalWidth === 0,
+				...(r.width > 0 && r.height > 0 ? { box: { x: Math.round(r.x + scrollX), y: Math.round(r.y + scrollY), width: Math.round(r.width), height: Math.round(r.height) } } : {}),
+			};
+		});
+	});
+}
+
 async function screenshot(page: Page, clip: Box | undefined): Promise<Buffer> {
 	if (!clip) return (await maskedShot(page, (mask) => page.screenshot({ fullPage: true, animations: 'disabled', caret: 'hide', mask }))).shot;
 	const size = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight }));
@@ -361,6 +384,7 @@ export async function compareStates(input: StateInput): Promise<StateOutput> {
 				const pageWide = state.kind === 'media' || state.kind === 'width' || state.kind === 'container';
 				if (!pageWide && !changedBoxes.length && !differing.length) continue;
 				const clip = pageWide ? undefined : union([...changedBoxes, ...targets.map((i) => o1.base[i]!.box)]);
+				const images = state.kind === 'width' ? await Promise.all([drawnImages(o1.page), drawnImages(o2.page), drawnImages(n.page)]) : undefined;
 				const [shot1, shot2, shotN] = await Promise.all([screenshot(o1.page, clip), screenshot(o2.page, clip), screenshot(n.page, clip)]);
 				const shift = (b: Box): Box => (clip ? { ...b, x: b.x - Math.max(0, clip.x - CLIP_PADDING), y: b.y - Math.max(0, clip.y - CLIP_PADDING) } : b);
 				const noisyBoxes = s1.flatMap((el, i) => (textNoise.has(i) || s2[p12.get(i) ?? -1]?.text !== el.text ? [shift(blockAround(s1, el))] : []));
@@ -369,6 +393,7 @@ export async function compareStates(input: StateInput): Promise<StateOutput> {
 				const diff = identicalShots(shot1, shotN) ?? compareWithNoise(shot1, shotN, [shot2], noisyBoxes);
 				const different = visuallyDifferent(diff);
 				if (different) {
+					const auto = images && !diff.sizeMismatch ? responsiveRegionsCandidate(diff.regions, { images: images[0] } as unknown as PageCapture, { images: images[2] } as unknown as PageCapture, diff.differing) : undefined;
 					out.failures.push({
 						route,
 						dimension: 'visual',
@@ -377,6 +402,7 @@ export async function compareStates(input: StateInput): Promise<StateOutput> {
 						expected: diff.sizeMismatch ? diff.sizeMismatch.expected : 'same pixels outside the noise mask',
 						actual: diff.sizeMismatch ? diff.sizeMismatch.actual : `${diff.differing} pixels differ${clip ? ' around the state target' : ''}`,
 						hint: HINTS.visualState,
+						...(auto ? { automatic: auto } : {}),
 					});
 					out.shots.push({ label: `${viewport.name} in ${state.label}`, viewport: viewport.name, old: shot1, new: shotN, diff: diff.png, regions: diff.regions, ok: false });
 				}

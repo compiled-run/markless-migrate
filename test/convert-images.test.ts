@@ -61,10 +61,11 @@ test('a fixed-width optimizer image gets the widths it answers up to its own and
 	const srcset = attr(hero, 'srcset')!;
 	assert.deepEqual(
 		srcset.split(', ').map((c) => c.split(' ')[1]),
-		['640w', '750w', '828w', '1080w', '1200w', '1920w', '2048w', '3840w'],
-		'from the narrowest box it is drawn in (577 px) up to its own file',
+		['640w', '1920w', '2560w'],
+		'from the narrowest box it is drawn in (577 px) up to its own 2560 px file, only widths whose height is a whole pixel (640x691, 1920x2073)',
 	);
 	assert.match(srcset, /^\/_next\/image\?url=%2Fimages%2Flight\.png&w=640&q=75 640w, /);
+	assert.match(srcset, /w=3840&q=75 2560w$/, 'the optimizer never upscales: its 3840 answer is the 2560 px file');
 	// 577 of 390 (an overflowing hero) and 1100 of 767 on phones, 700 of 768 and 1008 of 1279 between, and 1009 px from 1280 on.
 	assert.equal(attr(hero, 'sizes'), '(max-width: 767px) 148vw, (max-width: 1279px) 92vw, 1009px');
 	const preload = find(head(doc), (el) => el.tagName === 'link')!;

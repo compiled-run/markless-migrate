@@ -11,6 +11,9 @@ export interface ImageFact {
 	readonly top: number;
 	readonly bottom: number;
 	readonly width: number;
+	/** The file's own size, as the browser decoded it; 0 when it was not loaded. */
+	readonly naturalWidth?: number;
+	readonly naturalHeight?: number;
 	/** Its CSS width at other viewport widths (the desktop page resized), by viewport width. */
 	readonly widths?: Readonly<Record<string, number>>;
 }
@@ -28,7 +31,7 @@ export function readImages(): ImageFacts {
 	const images = [...document.images].map((img) => {
 		const r = img.getBoundingClientRect();
 		const shown = img.getClientRects().length > 0 && r.width > 0 && r.height > 0 && getComputedStyle(img).visibility !== 'hidden';
-		return { key: `${img.getAttribute('src') ?? ''}|${img.getAttribute('srcset') ?? ''}`, shown, top: Math.round(r.top + scrollY), bottom: Math.round(r.bottom + scrollY), width: Math.round(r.width) };
+		return { key: `${img.getAttribute('src') ?? ''}|${img.getAttribute('srcset') ?? ''}`, shown, top: Math.round(r.top + scrollY), bottom: Math.round(r.bottom + scrollY), width: Math.round(r.width), naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight };
 	});
 	return { viewport: { width: innerWidth, height: innerHeight }, images };
 }
@@ -198,10 +201,19 @@ export function planImages(doc: Document, paired: ReadonlyMap<Element, readonly 
 		const sizes = sizesFor(widths);
 		if (!sizes) continue;
 		const top = widthOf(largest.url);
+		// The file's own size: the optimizer never upscales, and scales the height to the nearest pixel.
+		const W = views.map((v) => v.fact.naturalWidth ?? 0).find((n) => n > 0) ?? Number(attr(el, 'width'));
+		const H = views.map((v) => v.fact.naturalHeight ?? 0).find((n) => n > 0) ?? Number(attr(el, 'height'));
+		if (!(W > 0 && H > 0)) continue;
 		// Nothing narrower than the narrowest box it is drawn in: a smaller file is never picked.
 		const narrowest = Math.min(...Object.values(widths).filter((w) => w > 0));
 		const from = optimizer.widths.find((w) => w >= narrowest) ?? top;
-		const set = optimizer.widths.filter((w) => w >= from && w <= top).map((w) => `${atWidth(largest.url, optimizer, w)} ${w}w`);
+		// Only widths whose height is a whole pixel: a rounded one changes the box an auto height gets from the file by up to a pixel, and every pixel below it moves.
+		const exact = (w: number) => w >= W || (w * H) % W === 0;
+		const set = optimizer.widths
+			.filter((w) => w >= from && w <= top && exact(w))
+			.filter((w, i, all) => w < W || all.findIndex((x) => x >= W) === i)
+			.map((w) => `${atWidth(largest.url, optimizer, w)} ${Math.min(w, W)}w`);
 		if (set.length < 2) continue;
 		const next = set.join(', ');
 		rewritten.set(srcset ?? attr(el, 'src')!, { srcset: next, sizes });
