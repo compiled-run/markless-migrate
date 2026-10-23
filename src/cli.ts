@@ -747,6 +747,8 @@ async function main(argv: string[]): Promise<number> {
 					'every-dimension': { type: 'boolean' },
 					'no-cache': { type: 'boolean' },
 					resume: { type: 'boolean' },
+					targets: { type: 'string' },
+					'write-targets': { type: 'string' },
 					...TIMING_FLAGS,
 				},
 			});
@@ -782,8 +784,20 @@ async function main(argv: string[]): Promise<number> {
 				routes = [...new Set([...(values.route ?? []), ...(planned ?? []).filter((r) => !all.endpoints.includes(r)), ...all.pages, UNKNOWN_PATH])];
 				targets = { endpoints: await discoverEndpoints(defaultEnv(values.old), all.pages, all.endpoints), unchecked: all.needsSample, redirects: redirectTargets(all.pages, inventory.source?.redirects) };
 			}
+			if (values['write-targets']) {
+				if (!values.all || !routes) fail('--write-targets writes what --all checks: pass --all');
+				await writeFile(resolve(values['write-targets']), `${JSON.stringify({ routes, endpoints: targets?.endpoints ?? [], redirects: targets?.redirects ?? [], unchecked: targets?.unchecked ?? [] }, null, '\t')}\n`);
+				out(`Wrote ${values['write-targets']}: ${routes.length} pages, ${targets?.endpoints.length ?? 0} endpoints, ${targets?.redirects.length ?? 0} redirects.\n`);
+				return 0;
+			}
+			if (values.targets) {
+				if (values.all || values.route?.length) fail('--targets names the routes itself: leave out --all and --route');
+				const file = JSON.parse(await readFile(resolve(values.targets), 'utf8')) as { routes: string[]; endpoints?: string[]; redirects?: string[]; unchecked?: CheckOptions['unchecked'] };
+				routes = file.routes;
+				targets = { endpoints: file.endpoints ?? [], redirects: file.redirects ?? [], unchecked: file.unchecked ?? [] };
+			}
 			if (!coverageOnly && !routes?.length && !targets?.endpoints.length) fail('no routes: pass --route <path> or run plan first');
-			const partial = !coverageOnly && Boolean(values.route?.length || values.changed || loadOnly || embedsOnly);
+			const partial = !coverageOnly && Boolean(values.route?.length || values.targets || values.changed || loadOnly || embedsOnly);
 			const navigation = navigationOptions(values, partial ? planned : undefined);
 			const load = loadOptions(values);
 			const concurrency = values.concurrency ? Number(values.concurrency) : undefined;
