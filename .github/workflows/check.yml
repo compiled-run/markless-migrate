@@ -43,9 +43,9 @@ permissions:
 env:
   SITE: ${{ inputs.site || 'shadcn-ui' }}
   APP: ${{ inputs.app || 'examples/shadcn-ui-markless' }}
-  BUILD: ${{ inputs.build || 'https://github.com/compiled-run/markless-migrate/releases/download/shadcn-ui-deployed-build-6f528da/shadcn-ui-vercel-output.tar.gz' }}
-  TARGETS: ${{ inputs.targets || 'deploy/shadcn-ui/check-targets-components.json' }}
-  SHARDS: ${{ inputs.shards || '33' }}
+  BUILD: ${{ inputs.build || 'https://github.com/compiled-run/markless-migrate/releases/download/shadcn-ui-deployed-build-a0d56f6/shadcn-ui-vercel-output.tar.gz' }}
+  TARGETS: ${{ inputs.targets || 'deploy/shadcn-ui/check-targets-rerun.json' }}
+  SHARDS: ${{ inputs.shards || '60' }}
   OLD: http://localhost:4000
   NEW: http://127.0.0.1:3000
 
