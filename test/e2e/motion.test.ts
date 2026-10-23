@@ -134,6 +134,15 @@ describe('motion: the transitions and animations each interaction starts, old vs
 		assert.ok(green.routes[0]!.motion!.interactions.some((i) => i.name === `${open} (step 2 of 3: use 2)` && i.ok && i.old.some((l) => /accordion-up/.test(l))));
 	});
 
+	test('a canvas still drawing is left out of the page and viewport-width screenshots on both sides, where its frames are compared', async () => {
+		const { origin: oldOrigin, server: a } = await serveCanvas('base');
+		const { origin: newOrigin, server: b } = await serveCanvas('late');
+		servers.push(a, b);
+		const report = await runCheck({ oldOrigin, newOrigin, routes: ['/'], browser, viewports: DESKTOP });
+		const visual = report.routes[0]!.failures.filter((f) => f.dimension === 'visual');
+		assert.deepEqual(visual.map((f) => `${f.check}: ${f.actual}`), [], 'the moving square is no pixel difference');
+	});
+
 	test('a canvas animated from load is compared frame by frame: the same drawing started later is green with its start gap reported, the same drawing 30 px lower is red', async () => {
 		const drawn = async (variant: CanvasVariant) => {
 			const { origin, server } = await serveCanvas(variant);
