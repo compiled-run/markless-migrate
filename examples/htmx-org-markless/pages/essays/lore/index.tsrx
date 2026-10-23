@@ -84,7 +84,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="library"><a class="zola-anchor" href="#library" aria-label="Anchor link for: library">* library</a></h2>
 			{" "}
-			<p>{"People often "}<a href="https://htmx.org/essays/is-htmx-another-javascript-framework/">call htmx a framework</a>{", but it’s "}<a rel="noopener" target="_blank" href="https://x.com/htmx_org/status/1848751101035827210">a library</a></p>
+			<p>{"People often "}<a href="/essays/is-htmx-another-javascript-framework/">call htmx a framework</a>{", but it’s "}<a rel="noopener" target="_blank" href="https://x.com/htmx_org/status/1848751101035827210">a library</a></p>
 			{" "}
 			<h2 id="man"><a class="zola-anchor" href="#man" aria-label="Anchor link for: man">“man”</a></h2>
 			{" "}
@@ -96,7 +96,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="htmx-sucks"><a class="zola-anchor" href="#htmx-sucks" aria-label="Anchor link for: htmx-sucks">htmx sucks</a></h2>
 			{" "}
-			<p>{"I wrote an essay called "}<a href="https://htmx.org/essays/htmx-sucks/">htmx sucks</a>{" in which I criticize htmx (some valid, some tongue in cheek, most both.) I also released "}<a rel="noopener" target="_blank" href="https://swag.htmx.org/products/htmx-sucks-mug">a mug</a>{" that I will often link to when people are criticizing htmx."}</p>
+			<p>{"I wrote an essay called "}<a href="/essays/htmx-sucks/">htmx sucks</a>{" in which I criticize htmx (some valid, some tongue in cheek, most both.) I also released "}<a rel="noopener" target="_blank" href="https://swag.htmx.org/products/htmx-sucks-mug">a mug</a>{" that I will often link to when people are criticizing htmx."}</p>
 			{" "}
 			<h2 id="jason-knight"><a class="zola-anchor" href="#jason-knight" aria-label="Anchor link for: jason-knight">Jason Knight</a></h2>
 			{" "}

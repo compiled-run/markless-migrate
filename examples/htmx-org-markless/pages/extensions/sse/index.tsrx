@@ -10,17 +10,17 @@ export default function Page() @{
 			{" "}
 			<p>{"The "}<code>Server Sent Events</code>{" extension connects to an "}<a rel="noopener" target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events">EventSource</a>{" directly from HTML. It manages the connections to your web server, listens for server events, and then swaps their contents into your htmx webpage in real-time."}</p>
 			{" "}
-			<p>{"SSE is a lightweight alternative to WebSockets that works over existing HTTP connections, so it is easy to use through proxy servers and firewalls. Remember, SSE is a uni-directional service, so you cannot send any messages to an SSE server once the connection has been established. If you need bi-directional communication, then you should consider using "}<a href="https://htmx.org/extensions/ws/">WebSockets</a>{" instead."}</p>
+			<p>{"SSE is a lightweight alternative to WebSockets that works over existing HTTP connections, so it is easy to use through proxy servers and firewalls. Remember, SSE is a uni-directional service, so you cannot send any messages to an SSE server once the connection has been established. If you need bi-directional communication, then you should consider using "}<a href="/extensions/ws/">WebSockets</a>{" instead."}</p>
 			{" "}
 			<p>{"This extension replaces the experimental "}<code>hx-sse</code>{" attribute built into previous versions of htmx. For help migrating from older versions, see the migration guide at the bottom of this page."}</p>
 			{" "}
 			<p>Use the following attributes to configure how SSE connections behave:</p>
 			{" "}
-			<ul>{" "}<li><code>sse-connect="&lt;url&gt;"</code>{" - The URL of the SSE server."}</li>{" "}<li><code>sse-swap="&lt;message-name&gt;"</code>{" - The name of the message to swap into the DOM."}</li>{" "}<li><code>hx-trigger="sse:&lt;message-name&gt;"</code>{" - SSE messages can also trigger HTTP callbacks using the "}<a rel="noopener" target="_blank" href="https://htmx.org/attributes/hx-trigger"><code>hx-trigger</code></a>{" attribute."}</li>{" "}<li><code>sse-close=&lt;message-name&gt;</code>{" - To close the EventStream gracefully when that message is received. This might be helpful if you want to send information to a client that will eventually stop."}</li>{" "}</ul>
+			<ul>{" "}<li><code>sse-connect="&lt;url&gt;"</code>{" - The URL of the SSE server."}</li>{" "}<li><code>sse-swap="&lt;message-name&gt;"</code>{" - The name of the message to swap into the DOM."}</li>{" "}<li><code>hx-trigger="sse:&lt;message-name&gt;"</code>{" - SSE messages can also trigger HTTP callbacks using the "}<a rel="noopener" target="_blank" href="/attributes/hx-trigger"><code>hx-trigger</code></a>{" attribute."}</li>{" "}<li><code>sse-close=&lt;message-name&gt;</code>{" - To close the EventStream gracefully when that message is received. This might be helpful if you want to send information to a client that will eventually stop."}</li>{" "}</ul>
 			{" "}
 			<h2 id="installing">Installing</h2>
 			{" "}
-			<p>{"The fastest way to install "}<code>sse</code>{" is to load it via a CDN. Remember to always include the core htmx library before the extension and "}<a href="https://htmx.org/extensions/sse/#usage">enable the extension</a>.</p>
+			<p>{"The fastest way to install "}<code>sse</code>{" is to load it via a CDN. Remember to always include the core htmx library before the extension and "}<a href="/extensions/sse/#usage">enable the extension</a>.</p>
 			{" "}
 			<pre data-lang="HTML" style="background-color:#1f2329;color:#abb2bf;" class="language-HTML "><code class="language-HTML" data-lang="HTML"><span>&lt;</span><span style="color:#e06c75;">head</span><span>{">\n"}</span><span>{"    <"}</span><span style="color:#e06c75;">{"script "}</span><span style="color:#d19a66;">src</span><span>=</span><span style="color:#98c379;">{"\"https://cdn.jsdelivr.net/npm/htmx.org@2.0.11/dist/htmx.min.js\" "}</span><span style="color:#d19a66;">integrity</span><span>=</span><span style="color:#98c379;">{"\"sha384-2OatzQy1H+Zd/IIrjr1TcuDGqLXeHhbooAyJY1KdQMKnr4LZ22k31GBLdYKHmVjg\" "}</span><span style="color:#d19a66;">crossorigin</span><span>=</span><span style="color:#98c379;">"anonymous"</span><span>&gt;&lt;/</span><span style="color:#e06c75;">script</span><span>{">\n"}</span><span>{"    <"}</span><span style="color:#e06c75;">{"script "}</span><span style="color:#d19a66;">src</span><span>=</span><span style="color:#98c379;">{"\"https://cdn.jsdelivr.net/npm/htmx-ext-sse@2.2.4\" "}</span><span style="color:#d19a66;">integrity</span><span>=</span><span style="color:#98c379;">{"\"sha384-A986SAtodyH8eg8x8irJnYUk7i9inVQqYigD6qZ9evobksGNIXfeFvDwLSHcp31N\" "}</span><span style="color:#d19a66;">crossorigin</span><span>=</span><span style="color:#98c379;">"anonymous"</span><span>&gt;&lt;/</span><span style="color:#e06c75;">script</span><span>{">\n"}</span><span>&lt;/</span><span style="color:#e06c75;">head</span><span>{">\n"}</span><span>&lt;</span><span style="color:#e06c75;">{"body "}</span><span style="color:#d19a66;">hx-ext</span><span>=</span><span style="color:#98c379;">"sse"</span><span>{">\n"}</span></code></pre>
 			{" "}
@@ -40,7 +40,7 @@ export default function Page() @{
 			{" "}
 			<pre data-lang="JS" style="background-color:#1f2329;color:#abb2bf;" class="language-JS "><code class="language-JS" data-lang="JS"><span style="color:#c678dd;">{"import "}</span><span style="color:#98c379;">`htmx.org`</span><span>{";\n"}</span><span style="color:#c678dd;">{"import "}</span><span style="color:#98c379;">`htmx-ext-sse`</span><span>{"; \n"}</span></code></pre>
 			{" "}
-			<p><em>{"Note: when used with the "}<a href="https://htmx.org/extensions/idiomorph/">idiomorph extension</a>, requires htmx-ext-sse 2.2.4+ (<a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/htmx-extensions/issues/164">#164</a>).</em></p>
+			<p><em>{"Note: when used with the "}<a href="/extensions/idiomorph/">idiomorph extension</a>, requires htmx-ext-sse 2.2.4+ (<a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/htmx-extensions/issues/164">#164</a>).</em></p>
 			{" "}
 			<h2 id="usage">Usage</h2>
 			{" "}
@@ -80,7 +80,7 @@ export default function Page() @{
 			{" "}
 			<h3 id="trigger-server-callbacks">Trigger Server Callbacks</h3>
 			{" "}
-			<p>{"When a connection for server sent events has been established, child elements can listen for these events by using the special "}<a rel="noopener" target="_blank" href="https://htmx.org/attributes/hx-trigger"><code>hx-trigger</code></a>{" syntax "}<code>sse:&lt;event_name&gt;</code>{". This, when combined with an "}<code>hx-get</code>{" or similar will trigger the element to make a request."}</p>
+			<p>{"When a connection for server sent events has been established, child elements can listen for these events by using the special "}<a rel="noopener" target="_blank" href="/attributes/hx-trigger"><code>hx-trigger</code></a>{" syntax "}<code>sse:&lt;event_name&gt;</code>{". This, when combined with an "}<code>hx-get</code>{" or similar will trigger the element to make a request."}</p>
 			{" "}
 			<p>Here is an example:</p>
 			{" "}

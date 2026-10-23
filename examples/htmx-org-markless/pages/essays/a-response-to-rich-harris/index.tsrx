@@ -32,31 +32,31 @@ export default function Page() @{
 			{" "}
 			<p>{"Here we find ourselves in violent agreement with Mr. Harris, with the caveat that we would substitute “the "}<em>javascript</em>{" web platform” for just “the web platform”, since that is what is in play with Instagram."}</p>
 			{" "}
-			<p>{"We would further clarify that SPA applications and frameworks often simply "}<em>ignore</em>{" the "}<em>actual</em>{" web platform, that is, the original, "}<a href="https://htmx.org/essays/rest-explained/">REST-ful model</a>{" of the web, except as a bootstrap mechanism."}</p>
+			<p>{"We would further clarify that SPA applications and frameworks often simply "}<em>ignore</em>{" the "}<em>actual</em>{" web platform, that is, the original, "}<a href="/essays/rest-explained/">REST-ful model</a>{" of the web, except as a bootstrap mechanism."}</p>
 			{" "}
 			<h2 id="problems-with-mpas"><a class="zola-anchor" href="#problems-with-mpas" aria-label="Anchor link for: problems-with-mpas">Problems with MPAs</a></h2>
 			{" "}
 			<p>Mr. Harris then moves on to problems with Multi-Page Applications (MPAs) which are the “traditional”, click-a-link-load-a-page-of-HTML web applications we are all familiar with and that are, to an extent, being supplanted by SPAs.</p>
 			{" "}
-			<p>{"Below, we will go through the various problems he outlines, all of which are true of “standard” MPAs, and we will demonstrate how an MPA using a hypermedia-oriented technology, "}<a href="https://htmx.org/">htmx</a>, can solve each of them.</p>
+			<p>{"Below, we will go through the various problems he outlines, all of which are true of “standard” MPAs, and we will demonstrate how an MPA using a hypermedia-oriented technology, "}<a href="/">htmx</a>, can solve each of them.</p>
 			{" "}
 			<h3 id="you-can-t-keep-a-video-running-on-navigations"><a class="zola-anchor" href="#you-can-t-keep-a-video-running-on-navigations" aria-label="Anchor link for: you-can-t-keep-a-video-running-on-navigations">“You Can’t Keep A Video Running On Navigations”</a></h3>
 			{" "}
 			<p>A general problem with standard MPAs is that they issue a full page refresh on every request. This means something like a video or audio player will be replaced and, thus, stop playing, when a request is made.</p>
 			{" "}
-			<p>{"This problem can be addressed in htmx via the "}<a href="https://htmx.org/attributes/hx-preserve/"><code>hx-preserve</code></a>{" attribute, which tells htmx to preserve a particular piece of content between requests."}</p>
+			<p>{"This problem can be addressed in htmx via the "}<a href="/attributes/hx-preserve/"><code>hx-preserve</code></a>{" attribute, which tells htmx to preserve a particular piece of content between requests."}</p>
 			{" "}
 			<h3 id="back-button-infinite-scroll-don-t-work"><a class="zola-anchor" href="#back-button-infinite-scroll-don-t-work" aria-label="Anchor link for: back-button-infinite-scroll-don-t-work">“Back Button &amp; Infinite Scroll Don’t Work”</a></h3>
 			{" "}
 			<p>In the presence of infinite scroll behavior (presumably implemented via javascript of some sort) the back button will not work properly with an MPA. I would note that the presence of infinite scroll calls into question the term MPA, which would traditionally use paging instead of an infinite scroll.</p>
 			{" "}
-			<p>{"That said, "}<a href="https://htmx.org/examples/infinite-scroll/">infinite scroll</a>{" can be achieved quite easily using htmx, in a hypermedia-oriented and obvious manner. When combined with the "}<a href="https://htmx.org/attributes/hx-push-url/"><code>hx-push-url</code></a>{" attribute, history and the back button works properly with very little effort by the developer, all with nice Copy-and-Pasteable URLs, sometimes referred to as “Deep Links” by people in the SPA community."}</p>
+			<p>{"That said, "}<a href="/examples/infinite-scroll/">infinite scroll</a>{" can be achieved quite easily using htmx, in a hypermedia-oriented and obvious manner. When combined with the "}<a href="/attributes/hx-push-url/"><code>hx-push-url</code></a>{" attribute, history and the back button works properly with very little effort by the developer, all with nice Copy-and-Pasteable URLs, sometimes referred to as “Deep Links” by people in the SPA community."}</p>
 			{" "}
 			<h3 id="what-about-nice-navigation-transitions"><a class="zola-anchor" href="#what-about-nice-navigation-transitions" aria-label="Anchor link for: what-about-nice-navigation-transitions">“What about Nice Navigation Transitions?”</a></h3>
 			{" "}
 			<p>Nice transitions are, well, nice. We think that designers tend to over-estimate their contribution to application usability, however. Yes, the demo sizzles, but on the 20th click users often just want the UI to get on with it.</p>
 			{" "}
-			<p>{"That being said, htmx supports using "}<a href="https://htmx.org/examples/animations/">standard CSS transitions</a>{" to make animations possible. Obviously there is a limit to what you can achieve with these pure CSS techniques, but we believe this can give you the 80 of an 80/20 situation. (Or, perhaps, the 95 of a 95/5 situation.)"}</p>
+			<p>{"That being said, htmx supports using "}<a href="/examples/animations/">standard CSS transitions</a>{" to make animations possible. Obviously there is a limit to what you can achieve with these pure CSS techniques, but we believe this can give you the 80 of an 80/20 situation. (Or, perhaps, the 95 of a 95/5 situation.)"}</p>
 			{" "}
 			<h3 id="multipage-apps-load-javascript-libraries-every-request"><a class="zola-anchor" href="#multipage-apps-load-javascript-libraries-every-request" aria-label="Anchor link for: multipage-apps-load-javascript-libraries-every-request">“Multipage Apps Load Javascript Libraries Every Request”</a></h3>
 			{" "}
@@ -76,7 +76,7 @@ export default function Page() @{
 			{" "}
 			<p>GitHub does, indeed, have UI bugs. However, none of them are particularly difficult to solve.</p>
 			{" "}
-			<p>{"htmx offers multiple ways to "}<a href="https://htmx.org/examples/update-other-content/">update content beyond the target element</a>, all of them quite easy and any of which would work to solve the UI consistency issues Mr. Harris points out.</p>
+			<p>{"htmx offers multiple ways to "}<a href="/examples/update-other-content/">update content beyond the target element</a>, all of them quite easy and any of which would work to solve the UI consistency issues Mr. Harris points out.</p>
 			{" "}
 			<p>Contrast the GitHub UI issues with the Instagram UI issues Mr. Harris pointed out earlier: the Instagram issues would require far more sophisticated engineering work to resolve.</p>
 			{" "}
@@ -106,9 +106,9 @@ export default function Page() @{
 			{" "}
 			<p>This technical issue can be summarized as “The Hypermedia Approach” vs. “The Remote Procedure Call (RPC) Approach”.</p>
 			{" "}
-			<p>When web applications moved from MPAs to SPAs, they adopted, often unwittingly, an RPC approach to application development: AJAX moved to JSON as a data serialization format and largely (<a href="https://htmx.org/essays/hypermedia-apis-vs-data-apis/">and correctly</a>) abandoned the hypermedia concept. This abandonment of The Hypermedia Approach was driven by the admitted usability issues with vanilla MPAs.</p>
+			<p>When web applications moved from MPAs to SPAs, they adopted, often unwittingly, an RPC approach to application development: AJAX moved to JSON as a data serialization format and largely (<a href="/essays/hypermedia-apis-vs-data-apis/">and correctly</a>) abandoned the hypermedia concept. This abandonment of The Hypermedia Approach was driven by the admitted usability issues with vanilla MPAs.</p>
 			{" "}
-			<p>{"It turns out, however, that those usability issues often "}<em>can</em>{" "}<a href="https://htmx.org/examples/">be addressed</a>{" using The Hypermedia Approach: rather than "}<em>abandoning</em>{" Hypermedia for RPC, what we needed then and what we need today is a "}<em>more powerful</em>{" Hypermedia."}</p>
+			<p>{"It turns out, however, that those usability issues often "}<em>can</em>{" "}<a href="/examples/">be addressed</a>{" using The Hypermedia Approach: rather than "}<em>abandoning</em>{" Hypermedia for RPC, what we needed then and what we need today is a "}<em>more powerful</em>{" Hypermedia."}</p>
 			{" "}
 			<p>This is exactly what htmx gives you.</p>
 			{" "}

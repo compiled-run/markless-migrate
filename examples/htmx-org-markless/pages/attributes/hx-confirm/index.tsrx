@@ -22,7 +22,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="notes">Notes</h2>
 			{" "}
-			<ul>{" "}<li><code>hx-confirm</code>{" is inherited and can be placed on a parent element"}</li>{" "}<li><code>hx-confirm</code>{" uses the browser’s "}<code>window.confirm</code>{" by default. You can customize this behavior as shown "}<a href="https://htmx.org/examples/confirm/">in this example</a>.</li>{" "}<li>{"a boolean "}<code>skipConfirmation</code>{" can be passed to the "}<code>issueRequest</code>{" callback; if true (defaults to false), the "}<code>window.confirm</code>{" will not be called and the AJAX request is issued directly"}</li>{" "}</ul>
+			<ul>{" "}<li><code>hx-confirm</code>{" is inherited and can be placed on a parent element"}</li>{" "}<li><code>hx-confirm</code>{" uses the browser’s "}<code>window.confirm</code>{" by default. You can customize this behavior as shown "}<a href="/examples/confirm/">in this example</a>.</li>{" "}<li>{"a boolean "}<code>skipConfirmation</code>{" can be passed to the "}<code>issueRequest</code>{" callback; if true (defaults to false), the "}<code>window.confirm</code>{" will not be called and the AJAX request is issued directly"}</li>{" "}</ul>
 			{" "}
 		</main>
 		<SiteFooter />

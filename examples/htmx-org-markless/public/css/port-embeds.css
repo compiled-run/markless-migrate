@@ -25,7 +25,9 @@
   vertical-align: baseline;
   will-change: transform;
 }
+/* No text of its own: the host's line box would reach 3px below the 20px frame, which the iframe never did. */
 #github-stars .ghb-frame .ghb-host {
   position: static;
   top: auto;
+  font-size: 0;
 }

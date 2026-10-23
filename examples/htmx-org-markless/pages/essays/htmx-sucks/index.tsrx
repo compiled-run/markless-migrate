@@ -12,7 +12,7 @@ export default function Page() @{
 			{" "}
 			<time>February 01, 2024</time>
 			{" "}
-			<p>{"I have been following "}<a rel="noopener" target="_blank" href="https://htmx.org">htmx</a>{" for a while now. I thought it was a somewhat funny/cringey meme and that it served as some light comic relief from the real work being done in web development, things like "}<a rel="noopener" target="_blank" href="https://react.dev/reference/react/use-server">React Server Components</a>{", "}<a rel="noopener" target="_blank" href="https://svelte.dev/blog/runes">Svelte Runes</a>{" and "}<a rel="noopener" target="_blank" href="https://www.solidjs.com/tutorial/introduction_signals">Signals</a>{" that are actually pushing the state of the art forward."}</p>
+			<p>{"I have been following "}<a rel="noopener" target="_blank" href="/">htmx</a>{" for a while now. I thought it was a somewhat funny/cringey meme and that it served as some light comic relief from the real work being done in web development, things like "}<a rel="noopener" target="_blank" href="https://react.dev/reference/react/use-server">React Server Components</a>{", "}<a rel="noopener" target="_blank" href="https://svelte.dev/blog/runes">Svelte Runes</a>{" and "}<a rel="noopener" target="_blank" href="https://www.solidjs.com/tutorial/introduction_signals">Signals</a>{" that are actually pushing the state of the art forward."}</p>
 			{" "}
 			<p>{"Unfortunately at some point "}<a rel="noopener" target="_blank" href={"https://star-history.com/#bigskysoftware/htmx&Date"}>in the middle of 2023</a>{" people began to actually take htmx seriously for "}<a rel="noopener" target="_blank" href="https://www.youtube.com/watch?v=zjHHIqI9lUY">some</a>{" "}<a rel="noopener" target="_blank" href="https://www.youtube.com/watch?v=r-GSGH2RxJs">reason</a>. This is an extremely alarming turn of events that has me deeply concerned for the future of web development.</p>
 			{" "}
@@ -24,7 +24,7 @@ export default function Page() @{
 			{" "}
 			<p>Unfortunately, the language in that excellent medium post is academic and, without a solid grasp of theoretical HTML, many of the more important points in it will go over a typical web developers head.</p>
 			{" "}
-			<p>{"So, in this article, I will attempt to present, in plain language for the layman web developer, why "}<a href="https://htmx.org/essays/htmx-sucks/">htmx sucks</a>.</p>
+			<p>{"So, in this article, I will attempt to present, in plain language for the layman web developer, why "}<a href="/essays/htmx-sucks/">htmx sucks</a>.</p>
 			{" "}
 			<h2 id="the-code-is-crap"><a class="zola-anchor" href="#the-code-is-crap" aria-label="Anchor link for: the-code-is-crap">The Code Is Crap</a></h2>
 			{" "}
@@ -40,7 +40,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="no-build-tools"><a class="zola-anchor" href="#no-build-tools" aria-label="Anchor link for: no-build-tools">No Build Tools</a></h2>
 			{" "}
-			<p>{"The next red flag is the lack of a build step. Not only does htmx not have a traditional build step, thereby depriving themselves of the "}<a rel="noopener" target="_blank" href="https://vitejs.dev/guide/why.html">benefits</a>{" that the rest of the JavaScript community enjoys, but they "}<a href="https://htmx.org/essays/no-build-step/">actively brag</a>{" about it!"}</p>
+			<p>{"The next red flag is the lack of a build step. Not only does htmx not have a traditional build step, thereby depriving themselves of the "}<a rel="noopener" target="_blank" href="https://vitejs.dev/guide/why.html">benefits</a>{" that the rest of the JavaScript community enjoys, but they "}<a href="/essays/no-build-step/">actively brag</a>{" about it!"}</p>
 			{" "}
 			<p>And it gets worse.</p>
 			{" "}
@@ -88,7 +88,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="no-front-end-back-end-split"><a class="zola-anchor" href="#no-front-end-back-end-split" aria-label="Anchor link for: no-front-end-back-end-split">No Front-End/Back-End Split</a></h2>
 			{" "}
-			<p>{"Another major reason to avoid htmx is that it eliminates the split between the Back-End & Front-End teams. They even have a page with a team "}<a href="https://htmx.org/essays/a-real-world-react-to-htmx-port/">bragging about it as a virtue</a>{" when their company (foolishly) moved from React to htmx."}</p>
+			<p>{"Another major reason to avoid htmx is that it eliminates the split between the Back-End & Front-End teams. They even have a page with a team "}<a href="/essays/a-real-world-react-to-htmx-port/">bragging about it as a virtue</a>{" when their company (foolishly) moved from React to htmx."}</p>
 			{" "}
 			<p>The Front-End/Back-End split has been extremely successful for many companies, allowing the Front-End engineers to focus on building a good user experience, and the Back-End engineers to focus on getting the data access layer right.</p>
 			{" "}
@@ -100,7 +100,7 @@ export default function Page() @{
 			{" "}
 			<p>Leaving aside if the Front-End/Back-End split is good or not, we can definitively say that Back-End engineers make garbage user interfaces.</p>
 			{" "}
-			<p>{"Just look at "}<a rel="noopener" target="_blank" href="https://htmx.org">the htmx website</a>{". You’ve got inline styles, tables, a bunch of image tags didn’t have "}<code>alt</code>{" descriptions forever. Just a dogs breakfast of bad HTML, from people who are trying to tell us to use HTML!"}</p>
+			<p>{"Just look at "}<a rel="noopener" target="_blank" href="/">the htmx website</a>{". You’ve got inline styles, tables, a bunch of image tags didn’t have "}<code>alt</code>{" descriptions forever. Just a dogs breakfast of bad HTML, from people who are trying to tell us to use HTML!"}</p>
 			{" "}
 			<p>You should leave your user interfaces in the hands of people who understand how to properly build them, and those people are, today, mostly Front-End SPA developers.</p>
 			{" "}
@@ -136,7 +136,7 @@ export default function Page() @{
 			{" "}
 			<p>{"Getting back to the more technical side of things, if you adopt htmx and you want to "}<em>also</em>{" have a mobile app or an API for 3rd parties to use, you will need to create that API entirely separately from your web application’s end points."}</p>
 			{" "}
-			<p>{"Here, again, we find that, incredibly, the "}<a href="https://htmx.org/essays/splitting-your-apis/">htmx people brag about this fact</a>, completely ignoring the duplication of work involved here.</p>
+			<p>{"Here, again, we find that, incredibly, the "}<a href="/essays/splitting-your-apis/">htmx people brag about this fact</a>, completely ignoring the duplication of work involved here.</p>
 			{" "}
 			<p>It makes far more sense to have a single API maintained by a single, Back-End team that can flexibly serve all your needs.</p>
 			{" "}
@@ -154,9 +154,9 @@ export default function Page() @{
 			{" "}
 			<p>{"Just look at the "}<a rel="noopener" target="_blank" href="https://twitter.com/htmx_org">twitter feed</a>: unprofessional, childish, intentionally provocative.</p>
 			{" "}
-			<p>{"Or consider the fact that he posts "}<a href="https://htmx.org/essays/is-htmx-another-javascript-framework/">essays he</a>{") "}<a href="https://htmx.org/essays/htmx-sucks/">doesn’t agree with</a>{" to his own site."}</p>
+			<p>{"Or consider the fact that he posts "}<a href="/essays/is-htmx-another-javascript-framework/">essays he</a>{") "}<a href="/essays/htmx-sucks/">doesn’t agree with</a>{" to his own site."}</p>
 			{" "}
-			<p>{"The essays tab "}<a rel="noopener" target="_blank" href="https://htmx.org/essays/#memes">has a section for memes</a>, most of which are cringe-worthy and all of which have no business being on a website of a front end library that expects to be taken seriously.</p>
+			<p>{"The essays tab "}<a rel="noopener" target="_blank" href="/essays/#memes">has a section for memes</a>, most of which are cringe-worthy and all of which have no business being on a website of a front end library that expects to be taken seriously.</p>
 			{" "}
 			<p>{"Apparently he allows "}<a rel="noopener" target="_blank" href="https://htmx.ceo">anyone to be the CEO of htmx</a>{" and make one of those super-cringey job announcements on LinkedIn."}</p>
 			{" "}

@@ -46,7 +46,7 @@ export default function Page() @{
 			{" "}
 			<p>So far, so good. But how does this decoupling work out in practice?</p>
 			{" "}
-			<p>{"In our essay "}<a rel="noopener" target="_blank" href="https://htmx.org/essays/splitting-your-apis/">Splitting Your Data &amp; Application APIs: Going Further</a>{" you will find the following quote:"}</p>
+			<p>{"In our essay "}<a rel="noopener" target="_blank" href="/essays/splitting-your-apis/">Splitting Your Data &amp; Application APIs: Going Further</a>{" you will find the following quote:"}</p>
 			{" "}
 			<blockquote>{" "}<p>The worst part of my job these days is designing APIs for front-end developers. The conversation goes inevitably as:</p>{" "}<p>Dev – So, this screen has data element x,y,z… could you please create an API with the response format &#123;x: , y:, z: &#125;</p>{" "}<p>Me – Ok</p>{" "}<p>{"Jean-Jacques Dubray - "}<a rel="noopener" target="_blank" href="https://www.infoq.com/articles/no-more-mvc-frameworks">{"https://www.infoq.com/articles/no-more-mvc-frameworks"}</a></p>{" "}</blockquote>
 			{" "}
@@ -84,7 +84,7 @@ export default function Page() @{
 			{" "}
 			<p>{"Here we see that, at the application level, this response could not be more tightly coupled to the “front-end”. In fact, it "}<em>is</em>{" the front-end, in the sense that the API response specifies not only the data for the resource, but also provides layout information on how, exactly, to display this data to the user."}</p>
 			{" "}
-			<p>{"The response also contains "}<em>hypermedia controls</em>{", in this case, links, that an end user can select from to continue navigating the hypermedia API that this "}<a rel="noopener" target="_blank" href="https://htmx.org/essays/hypermedia-driven-applications/">Hypermedia-Driven Application</a>{" provides."}</p>
+			<p>{"The response also contains "}<em>hypermedia controls</em>{", in this case, links, that an end user can select from to continue navigating the hypermedia API that this "}<a rel="noopener" target="_blank" href="/essays/hypermedia-driven-applications/">Hypermedia-Driven Application</a>{" provides."}</p>
 			{" "}
 			<p>So, where is the decoupling in this case?</p>
 			{" "}
@@ -118,7 +118,7 @@ export default function Page() @{
 			{" "}
 			<p>This is quite true. This hypermedia API is tuned for a specific web application. It would be cumbersome and error-prone to try to download this HTML, parse it and try to extract information from it. This hypermedia API only makes sense as part of a larger hypermedia system, being consumed by a proper hypermedia client.</p>
 			{" "}
-			<p>{"This is exactly why we recommend creating a general purpose JSON API alongside your hypermedia API in "}<a rel="noopener" target="_blank" href="https://htmx.org/essays/splitting-your-apis/">Splitting Your Data &amp; Application APIs: Going Further</a>. You can take advantage of the flexibility of hypermedia for your own web application, while providing a general purpose JSON API for mobile applications, third party applications, etc.</p>
+			<p>{"This is exactly why we recommend creating a general purpose JSON API alongside your hypermedia API in "}<a rel="noopener" target="_blank" href="/essays/splitting-your-apis/">Splitting Your Data &amp; Application APIs: Going Further</a>. You can take advantage of the flexibility of hypermedia for your own web application, while providing a general purpose JSON API for mobile applications, third party applications, etc.</p>
 			{" "}
 			<p>{"(Although, we should mention, a "}<a rel="noopener" target="_blank" href="https://hyperview.org">hypermedia-based mobile application</a>{" might be a good choice too!)"}</p>
 			{" "}

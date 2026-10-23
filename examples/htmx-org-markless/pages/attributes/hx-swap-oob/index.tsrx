@@ -18,7 +18,7 @@ export default function Page() @{
 			{" "}
 			<p>{"The value of the "}<code>hx-swap-oob</code>{" can be:"}</p>
 			{" "}
-			<ul>{" "}<li><code>true</code></li>{" "}<li>{"any valid "}<a href="https://htmx.org/attributes/hx-swap/"><code>hx-swap</code></a>{" value"}</li>{" "}<li>{"any valid "}<a href="https://htmx.org/attributes/hx-swap/"><code>hx-swap</code></a>{" value, followed by a colon, followed by a CSS selector"}</li>{" "}</ul>
+			<ul>{" "}<li><code>true</code></li>{" "}<li>{"any valid "}<a href="/attributes/hx-swap/"><code>hx-swap</code></a>{" value"}</li>{" "}<li>{"any valid "}<a href="/attributes/hx-swap/"><code>hx-swap</code></a>{" value, followed by a colon, followed by a CSS selector"}</li>{" "}</ul>
 			{" "}
 			<p>{"If the value is "}<code>true</code>{" or "}<code>outerHTML</code>{" (which are equivalent) the element will be swapped inline."}</p>
 			{" "}
@@ -70,7 +70,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="nested-oob-swaps">Nested OOB Swaps</h2>
 			{" "}
-			<p>{"By default, any element with "}<code>hx-swap-oob=</code>{" attribute anywhere in the response is processed for oob swap behavior, including when an element is nested within the main response element. This can be problematic when using "}<a rel="noopener" target="_blank" href="https://htmx.org/essays/template-fragments/">template fragments</a>{" where a fragment may be reused as an oob-swap target and also as part of a bigger fragment. When the bigger fragment is the main response the inner fragment will still be processed as an oob swap, removing it from the dom."}</p>
+			<p>{"By default, any element with "}<code>hx-swap-oob=</code>{" attribute anywhere in the response is processed for oob swap behavior, including when an element is nested within the main response element. This can be problematic when using "}<a rel="noopener" target="_blank" href="/essays/template-fragments/">template fragments</a>{" where a fragment may be reused as an oob-swap target and also as part of a bigger fragment. When the bigger fragment is the main response the inner fragment will still be processed as an oob swap, removing it from the dom."}</p>
 			{" "}
 			<p>{"This behavior can be changed by setting the config "}<code>htmx.config.allowNestedOobSwaps</code>{" to "}<code>false</code>{". If this config option is "}<code>false</code>{", OOB swaps are only processed when the element is "}<em>adjacent to</em>{" the main response element, OOB swaps elsewhere will be ignored and oob-swap-related attributes stripped."}</p>
 			{" "}

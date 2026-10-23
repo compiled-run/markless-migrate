@@ -8,7 +8,7 @@ export default function Page() @{
 		<main class="c content ">
 			<h1><code>hx-vars</code></h1>
 			{" "}
-			<p><strong>{"NOTE: "}<code>hx-vars</code>{" has been deprecated in favor of "}<a href="https://htmx.org/attributes/hx-vals/"><code>hx-vals</code></a>, which is safer by default.</strong></p>
+			<p><strong>{"NOTE: "}<code>hx-vars</code>{" has been deprecated in favor of "}<a href="/attributes/hx-vals/"><code>hx-vals</code></a>, which is safer by default.</strong></p>
 			{" "}
 			<p>{"The "}<code>hx-vars</code>{" attribute allows you to dynamically add to the parameters that will be submitted with an AJAX request."}</p>
 			{" "}
@@ -18,7 +18,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="security-considerations">Security Considerations</h2>
 			{" "}
-			<ul>{" "}<li>{"The expressions in "}<code>hx-vars</code>{" are dynamically computed which allows you to add JavaScript code that will be executed. Be careful to "}<strong>never</strong>{" trust user input in your expressions as this may lead to a "}<a rel="noopener" target="_blank" href="https://owasp.org/www-community/attacks/xss/">Cross-Site Scripting (XSS)</a>{" vulnerability. If you are dealing with user input such as query strings or user-generated content, consider using "}<a href="https://htmx.org/attributes/hx-vals/">hx-vals</a>{" which is a safer alternative."}</li>{" "}</ul>
+			<ul>{" "}<li>{"The expressions in "}<code>hx-vars</code>{" are dynamically computed which allows you to add JavaScript code that will be executed. Be careful to "}<strong>never</strong>{" trust user input in your expressions as this may lead to a "}<a rel="noopener" target="_blank" href="https://owasp.org/www-community/attacks/xss/">Cross-Site Scripting (XSS)</a>{" vulnerability. If you are dealing with user input such as query strings or user-generated content, consider using "}<a href="/attributes/hx-vals/">hx-vals</a>{" which is a safer alternative."}</li>{" "}</ul>
 			{" "}
 			<h2 id="notes">Notes</h2>
 			{" "}

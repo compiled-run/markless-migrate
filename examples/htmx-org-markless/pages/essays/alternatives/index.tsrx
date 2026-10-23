@@ -12,7 +12,7 @@ export default function Page() @{
 			{" "}
 			<time>January 12, 2025</time>
 			{" "}
-			<p><a href="/">htmx</a>{" is only one of many different libraries & frameworks that take the "}<a href="https://htmx.org/essays/hypermedia-driven-applications/">hypermedia oriented</a>{" approach to building web applications. I have said before that I think the "}<a href="/essays">ideas of htmx</a>{" / "}<a rel="noopener" target="_blank" href="https://hypermedia.systems">hypermedia</a>{" are more important than htmx as an implementation."}</p>
+			<p><a href="/">htmx</a>{" is only one of many different libraries & frameworks that take the "}<a href="/essays/hypermedia-driven-applications/">hypermedia oriented</a>{" approach to building web applications. I have said before that I think the "}<a href="/essays">ideas of htmx</a>{" / "}<a rel="noopener" target="_blank" href="https://hypermedia.systems">hypermedia</a>{" are more important than htmx as an implementation."}</p>
 			{" "}
 			<p>Here are some of my favorite other takes on these ideas that I think are worth your consideration:</p>
 			{" "}
@@ -20,7 +20,7 @@ export default function Page() @{
 			{" "}
 			<p><a rel="noopener" target="_blank" href="https://unpoly.com/">Unpoly</a>{" is a wonderful, mature front end framework that has been used heavily (especially in the ruby community) for over a decade now. It offers best-in-class "}<a rel="noopener" target="_blank" href="https://developer.mozilla.org/en-US/docs/Glossary/Progressive_Enhancement">progressive enhancement</a>{" and has many useful concepts such as "}<a rel="noopener" target="_blank" href="https://unpoly.com/up.layer">layers</a>{" and sophisticated "}<a rel="noopener" target="_blank" href="https://unpoly.com/validation">form validation</a>.</p>
 			{" "}
-			<p>{"I interviewed the author, Henning Koch, "}<a href="https://htmx.org/essays/interviews/henning-koch/">here</a></p>
+			<p>{"I interviewed the author, Henning Koch, "}<a href="/essays/interviews/henning-koch/">here</a></p>
 			{" "}
 			<p>{"You can see a demo application using Unpoly "}<a rel="noopener" target="_blank" href="https://demo.unpoly.com/">here</a>.</p>
 			{" "}

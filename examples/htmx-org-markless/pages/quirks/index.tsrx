@@ -12,19 +12,19 @@ export default function Page() @{
 			{" "}
 			<h2 id="attribute-inheritance"><a class="zola-anchor" href="#attribute-inheritance" aria-label="Anchor link for: attribute-inheritance">Attribute Inheritance</a></h2>
 			{" "}
-			<p>{"Many attributes in htmx are "}<a href="https://htmx.org/docs/#inheritance">inherited</a>: child elements can receive behavior from attributes located on parent elements.</p>
+			<p>{"Many attributes in htmx are "}<a href="/docs/#inheritance">inherited</a>: child elements can receive behavior from attributes located on parent elements.</p>
 			{" "}
-			<p>{"As an example, here are two htmx-powered buttons that inherit their "}<a href="https://htmx.org/attributes/hx-target/">target</a>{" from a parent div:"}</p>
+			<p>{"As an example, here are two htmx-powered buttons that inherit their "}<a href="/attributes/hx-target/">target</a>{" from a parent div:"}</p>
 			{" "}
 			<pre data-lang="html" style="background-color:#1f2329;color:#abb2bf;" class="language-html "><code class="language-html" data-lang="html"><span>&lt;</span><span style="color:#e06c75;">{"div "}</span><span style="color:#d19a66;">hx-target</span><span>=</span><span style="color:#98c379;">"#output"</span><span>{">\n"}</span><span>{"    <"}</span><span style="color:#e06c75;">{"button "}</span><span style="color:#d19a66;">hx-post</span><span>=</span><span style="color:#98c379;">"/items/100/like"</span><span>&gt;Like&lt;/</span><span style="color:#e06c75;">button</span><span>{">\n"}</span><span>{"    <"}</span><span style="color:#e06c75;">{"button "}</span><span style="color:#d19a66;">hx-delete</span><span>=</span><span style="color:#98c379;">"/items/100"</span><span>&gt;Delete&lt;/</span><span style="color:#e06c75;">button</span><span>{">\n"}</span><span>&lt;/</span><span style="color:#e06c75;">div</span><span>{">\n"}</span><span>&lt;</span><span style="color:#e06c75;">{"output "}</span><span style="color:#d19a66;">id</span><span>=</span><span style="color:#98c379;">"output"</span><span>&gt;&lt;/</span><span style="color:#e06c75;">output</span><span>{">\n"}</span></code></pre>
 			{" "}
 			<p>{"This helps avoid repeating attributes, thus keeping code "}<a rel="noopener" target="_blank" href="https://en.wikipedia.org/wiki/Don%27t_repeat_yourself">DRY</a>.</p>
 			{" "}
-			<p>{"On the other hand, as the attributes get further away elements, you lose "}<a href="https://htmx.org/essays/locality-of-behaviour/">Locality of Behavior</a>{" and it becomes more difficult to understand what an element is doing."}</p>
+			<p>{"On the other hand, as the attributes get further away elements, you lose "}<a href="/essays/locality-of-behaviour/">Locality of Behavior</a>{" and it becomes more difficult to understand what an element is doing."}</p>
 			{" "}
 			<p>It is also possible to inadvertently change the behavior of elements by adding attributes to parents.</p>
 			{" "}
-			<p>{"Some people prefer to disable inheritance in htmx entirely, using the "}<code>htmx.config.disableInheritance</code>{" "}<a href="https://htmx.org/docs/#config">configuration variable</a>.</p>
+			<p>{"Some people prefer to disable inheritance in htmx entirely, using the "}<code>htmx.config.disableInheritance</code>{" "}<a href="/docs/#config">configuration variable</a>.</p>
 			{" "}
 			<p>{"Here is a "}<code>meta</code>{" tag configuration that does so:"}</p>
 			{" "}
@@ -32,11 +32,11 @@ export default function Page() @{
 			{" "}
 			<h2 id="the-default-swap-strategy-is-innerhtml"><a class="zola-anchor" href="#the-default-swap-strategy-is-innerhtml" aria-label="Anchor link for: the-default-swap-strategy-is-innerhtml">{"The Default Swap Strategy is "}<code>innerHTML</code></a></h2>
 			{" "}
-			<p>{"The "}<a href="https://htmx.org/attributes/hx-swap/"><code>hx-swap</code></a>{" attribute allows you to control how a swap is performed. The default strategy is "}<code>innerHTML</code>, that is, to place the response HTML content within the target element.</p>
+			<p>{"The "}<a href="/attributes/hx-swap/"><code>hx-swap</code></a>{" attribute allows you to control how a swap is performed. The default strategy is "}<code>innerHTML</code>, that is, to place the response HTML content within the target element.</p>
 			{" "}
 			<p>{"Many people prefer to use the "}<code>outerHTML</code>{" strategy as the default instead."}</p>
 			{" "}
-			<p>{"You can change this behavior using the "}<code>htmx.config.defaultSwapStyle</code>{" "}<a href="https://htmx.org/docs/#config">configuration variable</a>.</p>
+			<p>{"You can change this behavior using the "}<code>htmx.config.defaultSwapStyle</code>{" "}<a href="/docs/#config">configuration variable</a>.</p>
 			{" "}
 			<p>{"Here is a "}<code>meta</code>{" tag configuration that does so:"}</p>
 			{" "}
@@ -56,7 +56,7 @@ export default function Page() @{
 			{" "}
 			<p>This can be very confusing when it is first encountered.</p>
 			{" "}
-			<p>{"You can configure the response behavior of htmx via the "}<a href="https://htmx.org/docs/#modifying_swapping_behavior_with_events"><code>htmx:beforeSwap</code></a>{" event or "}<a rel="noopener" target="_blank" href="https://htmx.org/docs/#response-handling">{"via the "}<code>htmx.config.responseHandling</code>{" config array"}</a>.</p>
+			<p>{"You can configure the response behavior of htmx via the "}<a href="/docs/#modifying_swapping_behavior_with_events"><code>htmx:beforeSwap</code></a>{" event or "}<a rel="noopener" target="_blank" href="/docs/#response-handling">{"via the "}<code>htmx.config.responseHandling</code>{" config array"}</a>.</p>
 			{" "}
 			<p>Here is the default configuration:</p>
 			{" "}
@@ -78,19 +78,19 @@ export default function Page() @{
 			{" "}
 			<h2 id="get-requests-on-non-form-elements-do-not-include-form-values-by-default"><a class="zola-anchor" href="#get-requests-on-non-form-elements-do-not-include-form-values-by-default" aria-label="Anchor link for: get-requests-on-non-form-elements-do-not-include-form-values-by-default"><code>GET</code>{" Requests on Non-Form Elements Do Not Include Form Values by Default"}</a></h2>
 			{" "}
-			<p>If a non-form element makes a non-<code>GET</code>{" request (e.g. a "}<code>PUT</code>{" request) via htmx, the values of the enclosing form of that element (if any) "}<a href="https://htmx.org/docs/#parameters">will be included in the request</a>.</p>
+			<p>If a non-form element makes a non-<code>GET</code>{" request (e.g. a "}<code>PUT</code>{" request) via htmx, the values of the enclosing form of that element (if any) "}<a href="/docs/#parameters">will be included in the request</a>.</p>
 			{" "}
 			<p>{"However, if the element issues a "}<code>GET</code>{", the values of an enclosing form will "}<a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/htmx/blob/fb78106dc6ef20d3dfa7e54aca20408c4e4336fc/src/htmx.js#L3525">not be included.</a></p>
 			{" "}
-			<p>{"If you wish to include the values of the enclosing form when issuing an "}<code>GET</code>{" you can use the "}<a href="https://htmx.org/attributes/hx-include/"><code>hx-include</code></a>{" attribute like so:"}</p>
+			<p>{"If you wish to include the values of the enclosing form when issuing an "}<code>GET</code>{" you can use the "}<a href="/attributes/hx-include/"><code>hx-include</code></a>{" attribute like so:"}</p>
 			{" "}
 			<pre data-lang="html" style="background-color:#1f2329;color:#abb2bf;" class="language-html "><code class="language-html" data-lang="html"><span>&lt;</span><span style="color:#e06c75;">{"button "}</span><span style="color:#d19a66;">hx-get</span><span>=</span><span style="color:#98c379;">{"\"/search\"\n"}</span><span>{"        "}</span><span style="color:#d19a66;">hx-include</span><span>=</span><span style="color:#98c379;">"closest form"</span><span>{">\n"}</span><span>{"  Search\n"}</span><span>&lt;/</span><span style="color:#e06c75;">button</span><span>{">\n"}</span></code></pre>
 			{" "}
 			<h2 id="history-can-be-tricky"><a class="zola-anchor" href="#history-can-be-tricky" aria-label="Anchor link for: history-can-be-tricky">History Can Be Tricky</a></h2>
 			{" "}
-			<p>{"htmx provides support for interacting with the browser’s "}<a href="https://htmx.org/docs/#history">history</a>. This can be very powerful, but it can also be tricky, particularly if you are using 3rd party JavaScript libraries that modify the DOM.</p>
+			<p>{"htmx provides support for interacting with the browser’s "}<a href="/docs/#history">history</a>. This can be very powerful, but it can also be tricky, particularly if you are using 3rd party JavaScript libraries that modify the DOM.</p>
 			{" "}
-			<p>{"There can also be "}<a href="https://htmx.org/docs/#hx-history">security concerns</a>{" when using htmx’s history support."}</p>
+			<p>{"There can also be "}<a href="/docs/#hx-history">security concerns</a>{" when using htmx’s history support."}</p>
 			{" "}
 			<p>Most of these issues can be solved by disabling any local history cache and simply issuing a server request when a user navigates backwards in history, with the tradeoff that history navigation will be slower.</p>
 			{" "}
@@ -100,7 +100,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="some-people-don-t-like-hx-boost"><a class="zola-anchor" href="#some-people-don-t-like-hx-boost" aria-label="Anchor link for: some-people-don-t-like-hx-boost">{"Some People Don’t Like "}<code>hx-boost</code></a></h2>
 			{" "}
-			<p><a href="https://htmx.org/attributes/hx-boost/"><code>hx-boost</code></a>{" is an odd feature compared with most other aspects of htmx: it “magically” turns all anchor tags and forms into AJAX requests."}</p>
+			<p><a href="/attributes/hx-boost/"><code>hx-boost</code></a>{" is an odd feature compared with most other aspects of htmx: it “magically” turns all anchor tags and forms into AJAX requests."}</p>
 			{" "}
 			<p>{"This can speed the feel of these interactions up, and also allows the forms and anchors to continue working when "}<a rel="noopener" target="_blank" href="https://developer.mozilla.org/en-US/docs/Glossary/Progressive_Enhancement">JavaScript is disabled</a>, however it comes with some tradeoffs:</p>
 			{" "}
@@ -110,7 +110,7 @@ export default function Page() @{
 			{" "}
 			<p>{"There is no doubt that "}<code>hx-boost</code>{" is an odd-man out when compared to other htmx attributes and suffers from the dictum that “If something magically works, then it can also magically break.”"}</p>
 			{" "}
-			<p>{"Despite this fact, I (Carson) still feel it is useful in many situations, and it is used on the "}<a rel="noopener" target="_blank" href="https://htmx.org">{"https://htmx.org"}</a>{" website."}</p>
+			<p>{"Despite this fact, I (Carson) still feel it is useful in many situations, and it is used on the "}<a rel="noopener" target="_blank" href="/">{"https://htmx.org"}</a>{" website."}</p>
 			{" "}
 			<h2 id="loading-htmx-asynchronously-is-unreliable"><a class="zola-anchor" href="#loading-htmx-asynchronously-is-unreliable" aria-label="Anchor link for: loading-htmx-asynchronously-is-unreliable">Loading htmx asynchronously is unreliable</a></h2>
 			{" "}
@@ -122,11 +122,11 @@ export default function Page() @{
 			{" "}
 			<h2 id="the-javascript-api-is-not-a-focus"><a class="zola-anchor" href="#the-javascript-api-is-not-a-focus" aria-label="Anchor link for: the-javascript-api-is-not-a-focus">The JavaScript API Is Not A Focus</a></h2>
 			{" "}
-			<p>{"htmx is a hypermedia-oriented front end library. This means that htmx enhances HTML via "}<a href="https://htmx.org/reference/#attributes">attributes</a>{" in the HTML , rather than providing an elaborate JavaScript API."}</p>
+			<p>{"htmx is a hypermedia-oriented front end library. This means that htmx enhances HTML via "}<a href="/reference/#attributes">attributes</a>{" in the HTML , rather than providing an elaborate JavaScript API."}</p>
 			{" "}
-			<p>{"There "}<em>is</em>{" a "}<a href="https://htmx.org/reference/#api">JavaScript API</a>, but it is not a focus of the library and, in most cases, should not be used heavily by htmx end users.</p>
+			<p>{"There "}<em>is</em>{" a "}<a href="/reference/#api">JavaScript API</a>, but it is not a focus of the library and, in most cases, should not be used heavily by htmx end users.</p>
 			{" "}
-			<p>{"If you find yourself using it heavily, especially the "}<a href="https://htmx.org/api/#ajax"><code>htmx.ajax()</code></a>{" method, it may be worth asking yourself if there is a more htmx-ish approach to achieve what you are doing."}</p>
+			<p>{"If you find yourself using it heavily, especially the "}<a href="/api/#ajax"><code>htmx.ajax()</code></a>{" method, it may be worth asking yourself if there is a more htmx-ish approach to achieve what you are doing."}</p>
 			{" "}
 		</main>
 		<SiteFooter />

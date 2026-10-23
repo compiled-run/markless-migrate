@@ -26,11 +26,11 @@ export default function Page() @{
 			{" "}
 			<p>Not much, really:</p>
 			{" "}
-			<ul>{" "}<li>{"The "}<code>selectAndSwap()</code>{" internal API method was replaced with the public (and much better) "}<a href="/api/#swap"><code>swap()</code></a>{" method"}</li>{" "}<li>{"Web Component support has been "}<a href="https://htmx.org/examples/web-components/">improved dramatically</a></li>{" "}<li>{"And the biggest feature of this release: "}<a rel="noopener" target="_blank" href="https://htmx.org">the website</a>{" now supports dark mode! (Thanks "}<a rel="noopener" target="_blank" href="https://github.com/pokonski">&#64;pokonski</a>!)</li>{" "}</ul>
+			<ul>{" "}<li>{"The "}<code>selectAndSwap()</code>{" internal API method was replaced with the public (and much better) "}<a href="/api/#swap"><code>swap()</code></a>{" method"}</li>{" "}<li>{"Web Component support has been "}<a href="/examples/web-components/">improved dramatically</a></li>{" "}<li>{"And the biggest feature of this release: "}<a rel="noopener" target="_blank" href="/">the website</a>{" now supports dark mode! (Thanks "}<a rel="noopener" target="_blank" href="https://github.com/pokonski">&#64;pokonski</a>!)</li>{" "}</ul>
 			{" "}
 			<p>A complete upgrade guide can be found here:</p>
 			{" "}
-			<p><a href="https://htmx.org/migration-guide-htmx-1/">htmx 1.x -&gt; 2.x Migration Guide</a></p>
+			<p><a href="/migration-guide-htmx-1/">htmx 1.x -&gt; 2.x Migration Guide</a></p>
 			{" "}
 			<p>{"If you require IE compatibility, the "}<a rel="noopener" target="_blank" href="https://v1.htmx.org">1.x</a>{" will continue to be supported for the foreseeable future."}</p>
 			{" "}
