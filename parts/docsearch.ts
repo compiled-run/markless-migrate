@@ -14,6 +14,15 @@ export interface DocSearchConfig {
 }
 
 export const ATTRIBUTE = 'data-mm-docsearch';
+/** On a DocSearch button, what it says off Apple platforms: {"label":…,"shortcut":…}; DocSearch 3's wording when absent. */
+export const KEYS_ATTRIBUTE = 'data-mm-docsearch-keys';
+const CTRL_ICON = '<svg width="15" height="15" class="DocSearch-Control-Key-Icon"><path d="M4.505 4.496h2M5.505 5.496v5M8.216 4.496l.055 5.993M10 7.5c.333.333.5.667.5 1v2M12.326 4.5v5.996M8.384 4.496c1.674 0 2.116 0 2.116 1.5s-.442 1.5-2.116 1.5M3.205 9.303c-.09.448-.277 1.21-1.241 1.203C1 10.5.5 9.513.5 8V7c0-1.57.5-2.5 1.464-2.494.964.006 1.134.598 1.24 1.342M12.553 10.5h1.953" stroke-width="1.2" stroke="currentColor" fill="none" stroke-linecap="square"></path></svg>';
+/** DocSearch's button off Apple platforms, by major version: its name, its aria-keyshortcuts and its Ctrl key. */
+export const CTRL_KEYS = {
+	3: { label: 'Search (Ctrl+K)', shortcut: undefined, key: `<kbd class="DocSearch-Button-Key" data-mm-key="ctrl">${CTRL_ICON}</kbd>` },
+	4: { label: 'Search (Control+k)', shortcut: 'Control+k', key: '<kbd class="DocSearch-Button-Key DocSearch-Button-Key--ctrl" data-mm-key="ctrl">Ctrl</kbd>' },
+} as const;
+export const APPLE_KEY = '<kbd class="DocSearch-Button-Key" data-mm-key="apple">⌘</kbd>';
 const SCRIPT = 'https://cdn.jsdelivr.net/npm/@docsearch/js@3';
 
 let state: 'idle' | 'loading' | 'ready' = 'idle';
@@ -108,12 +117,21 @@ export function platformKeys(): void {
 	if (w.__mmDocsearchKeys) return;
 	w.__mmDocsearchKeys = true;
 	const apple = /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform);
+	const buttons = '[data-mm-docsearch],[data-mm-docsearch-keys]';
 	const style = document.createElement('style');
-	style.append(apple ? '[data-mm-docsearch] [data-mm-key="ctrl"]{display:none}' : '[data-mm-docsearch] [data-mm-key="apple"]{display:none}');
+	style.append(`:is(${buttons}) [data-mm-key="${apple ? 'ctrl' : 'apple'}"]{display:none}`);
 	document.head.append(style);
 	if (apple) return;
 	const label = () => {
-		for (const el of document.querySelectorAll('[data-mm-docsearch]')) if (el.getAttribute('aria-label') !== 'Search (Ctrl+K)') el.setAttribute('aria-label', 'Search (Ctrl+K)');
+		for (const el of document.querySelectorAll(buttons)) {
+			let keys: { label?: string; shortcut?: string } = {};
+			try {
+				keys = JSON.parse(el.getAttribute('data-mm-docsearch-keys') ?? '{}');
+			} catch {}
+			const name = keys.label ?? 'Search (Ctrl+K)';
+			if (el.getAttribute('aria-label') !== name) el.setAttribute('aria-label', name);
+			if (keys.shortcut && el.getAttribute('aria-keyshortcuts') !== keys.shortcut) el.setAttribute('aria-keyshortcuts', keys.shortcut);
+		}
 	};
 	label();
 	new MutationObserver((records) => {
