@@ -47,11 +47,11 @@
 			"check": "accessibility tree",
 			"match": {
 				"expected": "(absent)",
-				"actual": "/^\\s*- (paragraph:|text: Unofficial demo copy of|text: \", moved to\"|text: with markless-migrate\\..*|text: \\.|link \"(alpinejs\\.dev|Markless|MIT license)\":|\\/url: https:\\/\\/(alpinejs\\.dev|markless\\.dev|github\\.com\\/alpinejs\\/alpine\\/blob\\/main\\/LICENSE\\.md))$/"
+				"actual": "/^\\s*- (paragraph:|text: Unofficial demo copy of|text: \\..*|link \"(alpinejs\\.dev|MIT\\ license)\":|\\/url: (OLD|https:\\/\\/alpinejs\\.dev|https:\\/\\/github\\.com\\/[^ ]*\\/LICENSE[^ ]*))$/"
 			},
-			"reason": "Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares.",
-			"by": "Claude Code (converting agent), for owner review",
-			"date": "2026-10-17"
+			"reason": "Intended: a small fixed note that this is an unofficial demo copy of alpinejs.dev, with its copyright and licence (owner decision, 2026-10-23: an honest disclosure on a copy of someone else's site, without naming the tool), as a small fixed badge so it changes no layout the check compares.",
+			"by": "thejackshelton (owner decision, relayed 2026-10-23)",
+			"date": "2026-10-23"
 		},
 		{
 			"route": "**",
@@ -61,20 +61,20 @@
 				"expected": "(absent)",
 				"actual": "/^Unofficial demo copy of /"
 			},
-			"reason": "Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares.",
-			"by": "Claude Code (converting agent), for owner review",
-			"date": "2026-10-17"
+			"reason": "Intended: a small fixed note that this is an unofficial demo copy of alpinejs.dev, with its copyright and licence (owner decision, 2026-10-23: an honest disclosure on a copy of someone else's site, without naming the tool), as a small fixed badge so it changes no layout the check compares.",
+			"by": "thejackshelton (owner decision, relayed 2026-10-23)",
+			"date": "2026-10-23"
 		},
 		{
 			"route": "**",
 			"dimension": "visual",
 			"check": "screenshot",
 			"match": {
-				"actual": "/first near link \"(alpinejs\\.dev|Markless|MIT license)\"|differ in x=(9[01]\\d\\.\\.12[67]\\d, y=7[0-4]\\d\\.\\.79\\d|[1-4]\\d\\.\\.3[89]\\d, y=(7[5-9]|8[0-2])\\d\\.\\.8[3-7]\\d),/"
+				"actual": "/first near link \"(alpinejs\\.dev|MIT license)\"|differ in x=(9[01]\\d\\.\\.12[67]\\d, y=7[0-4]\\d\\.\\.79\\d|[1-4]\\d\\.\\.3[89]\\d, y=(7[5-9]|8[0-2])\\d\\.\\.8[3-7]\\d),/"
 			},
-			"reason": "Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only a difference that starts at the badge's own link or covers just the badge's box (desktop and mobile).",
-			"by": "Claude Code (converting agent), for owner review",
-			"date": "2026-10-17"
+			"reason": "Intended: a small fixed note that this is an unofficial demo copy of alpinejs.dev, with its copyright and licence (owner decision, 2026-10-23: an honest disclosure on a copy of someone else's site, without naming the tool), as a small fixed badge so it changes no layout the check compares. Matches only a difference that starts at the badge's own link or covers just the badge's box (desktop and mobile).",
+			"by": "thejackshelton (owner decision, relayed 2026-10-23)",
+			"date": "2026-10-23"
 		},
 		{
 			"route": "**",
@@ -83,20 +83,20 @@
 			"match": {
 				"actual": "/^(\\d{1,4}|1[0-9]\\d{3}) pixels differ( around the state target)?$/"
 			},
-			"reason": "Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels).",
-			"by": "Claude Code (converting agent), for owner review",
-			"date": "2026-10-17"
+			"reason": "Intended: a small fixed note that this is an unofficial demo copy of alpinejs.dev, with its copyright and licence (owner decision, 2026-10-23: an honest disclosure on a copy of someone else's site, without naming the tool), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels).",
+			"by": "thejackshelton (owner decision, relayed 2026-10-23)",
+			"date": "2026-10-23"
 		},
 		{
 			"route": "**",
 			"dimension": "a11y",
 			"check": "focus order (Tab)*",
 			"match": {
-				"actual": "/link \"alpinejs\\.dev\" → \\d+\\. link \"Markless\" → \\d+\\. link \"MIT license\"/"
+				"actual": "/link \"alpinejs\\.dev\" → \\d+\\. link \"MIT\\ license\"/"
 			},
-			"reason": "Intended: the licence attribution this public demo copy must carry (Alpine.js, MIT), as a small fixed badge so it changes no layout the check compares. Its three links are the last tab stops.",
-			"by": "Claude Code (converting agent), for owner review",
-			"date": "2026-10-17"
+			"reason": "Intended: a small fixed note that this is an unofficial demo copy of alpinejs.dev, with its copyright and licence (owner decision, 2026-10-23: an honest disclosure on a copy of someone else's site, without naming the tool), as a small fixed badge so it changes no layout the check compares. Its three links are the last tab stops.",
+			"by": "thejackshelton (owner decision, relayed 2026-10-23)",
+			"date": "2026-10-23"
 		},
 		{
 			"route": "/start-here",
