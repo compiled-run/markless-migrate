@@ -129,3 +129,11 @@ test('a styled state of an element past the right edge of the page is compared, 
 	const report = await check(() => aside, () => aside);
 	assert.ok(!report.routes[0]!.failures.some((f) => /it stopped/.test(f.actual)), JSON.stringify(report.routes[0]!.failures.map((f) => f.actual)));
 });
+
+test('a copy button that writes to the clipboard answers alike on both sides, on Linux too, and one that never copies is red', async () => {
+	const copy = (alive: boolean) => page(`<pre id="code">npm create vite</pre><button id="copy" type="button">Copy code</button>${alive ? `<script>document.getElementById('copy').onclick = async () => { await navigator.clipboard.writeText(document.getElementById('code').textContent); document.getElementById('copy').textContent = 'Copied'; };</script>` : ''}`);
+	const same = await check(() => copy(true), () => copy(true));
+	assert.deepEqual(open(same).map((f) => `${f.dimension}: ${f.check}: ${f.actual}`), []);
+	const dead = await check(() => copy(true), () => copy(false));
+	assert.ok(about(open(dead), 'click button "Copy code"').length, JSON.stringify(open(dead).map((f) => f.check)));
+});
