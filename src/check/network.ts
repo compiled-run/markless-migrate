@@ -48,10 +48,14 @@ function idLike(value: string): string | undefined {
 	return undefined;
 }
 
+// Hosts one service answers from interchangeably, its client choosing whichever answers first: Iconify's API and its documented fallbacks.
+const MIRRORS: Readonly<Record<string, string>> = { 'api.simplesvg.com': 'api.iconify.design', 'api.unisvg.com': 'api.iconify.design' };
+export const serviceHost = (host: string) => MIRRORS[host] ?? host;
+
 /** Host, path and query with ids, timestamps and cache-busters replaced, and the app's own origin as {self}. */
 export function normalizeUrl(raw: string, origin: string): string {
 	const url = new URL(raw);
-	const host = sameApp(url, origin) ? '{self}' : url.host;
+	const host = sameApp(url, origin) ? '{self}' : serviceHost(url.host);
 	const path = url.pathname
 		.split('/')
 		.map((segment) => (/^\d+$/.test(segment) ? '{id}' : (idLike(segment) ?? segment)))
@@ -140,7 +144,7 @@ function contract(capture: NetworkCapture, origin: string, sides: ReadonlySet<Si
 		for (const f of usedFields(record, capture.shown)) set.add(f);
 		fields.set(key, set);
 		const url = new URL(record.recordedUrl ?? record.url);
-		hosts.set(key, `${record.side} ${record.method} ${sameApp(url, origin) ? '' : url.host}`);
+		hosts.set(key, `${record.side} ${record.method} ${sameApp(url, origin) ? '' : serviceHost(url.host)}`);
 	}
 	return { counts, fields, hosts };
 }

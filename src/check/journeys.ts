@@ -744,6 +744,7 @@ export async function quiet(page: Page, inflight: () => number, navigations: () 
 		}
 		if (navigations() === before) break;
 	}
+	await page.evaluate(() => document.fonts?.ready).catch(() => {});
 	await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))).catch(() => {});
 }
 
@@ -834,6 +835,17 @@ async function reach(page: Page, target: Locator, act: (t: Locator, timeout: num
 	};
 	const look = async (): Promise<Diagnosis> => (await target.count().catch(() => 0)) ? await target.evaluate(diagnose, undefined, { timeout: QUICK }).catch(() => ({ kind: 'timeout', detail: 'it did not settle' }) as Diagnosis) : { kind: 'missing', detail: 'it is not on the page' };
 	let found = await look();
+	// A slow machine may not show it yet (a page still applying its styles names its controls differently): it gets the time to appear before it is called missing.
+	if (found.kind === 'missing' || found.kind === 'disabled') {
+		tried.push('waiting for it to appear');
+		if (await target.waitFor({ state: 'visible', timeout: PATIENCE }).then(() => true, () => false)) {
+			try {
+				await act(target, patience);
+				return;
+			} catch {}
+		}
+		found = await look();
+	}
 	if (found.kind === 'missing' || found.kind === 'disabled') throw new UnreachableError(found.kind, found.detail);
 	if (throughLabel && (found.kind === 'hidden' || found.kind === 'occluded')) {
 		// A radio or checkbox drawn by its label (code-group tabs, custom toggles) is used through the label, as a person does.
