@@ -17,8 +17,11 @@ case "${1:-}" in
 		mkdir -p "$dest"
 		curl -fsSL "${2:?usage: ci-serve.sh new URL}" | tar -xz -C "$dest"
 		# A Vercel build (.vercel/output, what the deployment serves) runs through serve-vercel-output.mjs; a node-server build runs itself.
-		if [ -d "$dest/.vercel/output" ]; then
-			server="$dest/.vercel/output/functions/__server.func"
+		# The archive holds .vercel/output, or that folder's contents at its root.
+		vercel=""
+		if [ -d "$dest/.vercel/output" ]; then vercel="$dest/.vercel/output"; elif [ -f "$dest/config.json" ] && [ -d "$dest/functions" ]; then vercel="$dest"; fi
+		if [ -n "$vercel" ]; then
+			server="$vercel/functions/__server.func"
 		else
 			server="$dest/.output/server"
 		fi
@@ -29,8 +32,8 @@ case "${1:-}" in
 			npm install --prefix "$RUNNER_TEMP/sharp" --no-audit --no-fund "@img/sharp-linux-x64@$version" "@img/sharp-libvips-linux-x64@$libvips" > /dev/null
 			cp -R "$RUNNER_TEMP/sharp/node_modules/@img/." "$server/node_modules/@img/"
 		fi
-		if [ -d "$dest/.vercel/output" ]; then
-			(cd "$dest" && nohup node "$DIR/serve-vercel-output.mjs" "$dest/.vercel/output" 3000 > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
+		if [ -n "$vercel" ]; then
+			(cd "$dest" && nohup node "$DIR/serve-vercel-output.mjs" "$vercel" 3000 > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
 		else
 			(cd "$dest" && PORT=3000 HOST=127.0.0.1 nohup node .output/server/index.mjs > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
 		fi
