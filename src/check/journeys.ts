@@ -1528,9 +1528,8 @@ function stable(values: readonly string[]): (value: string) => boolean {
 }
 
 const near = (a: Box, b: Box, pad = 16) => a.x - pad < b.x + b.width && b.x - pad < a.x + a.width && a.y - pad < b.y + b.height && b.y - pad < a.y + a.height;
-// The same answer a little way off (text above it wrapped differently): a region of about its size within 128 px.
-const SHIFT = 128;
-const alike = (a: Box, b: Box) => near(a, b) || (Math.min(a.width * a.height, b.width * b.height) / Math.max(a.width * a.height, b.width * b.height) >= 0.4 && Math.abs(a.x - b.x) <= SHIFT && Math.abs(a.y - b.y) <= SHIFT);
+// The same answer elsewhere in the view (text above it wrapped differently, a page laid out right to left) is a region of about its size: where it sits is the visual check's.
+const alike = (a: Box, b: Box) => near(a, b) || Math.min(a.width * a.height, b.width * b.height) / Math.max(a.width * a.height, b.width * b.height) >= 0.4;
 const boxAt = (b: Box) => `(${b.x}, ${b.y}) ${b.width}x${b.height}`;
 
 /** How every old run of a step answered that the new run did not: widget changes each old run made, and regions of the view each old run changed that the new page left as they were. */
