@@ -25,7 +25,7 @@ test('the old framework\'s runtime leaves the page, and its plain scripts and st
 
 test('what the old page\'s scripts added to the head after load neither preloads nor blocks the first paint', () => {
 	const served = `<!DOCTYPE html><html><head><link rel="preload" href="/a.woff2" as="font"><link rel="stylesheet" href="/a.css"><link rel="preload" as="image" imagesrcset="/hero.png 1x"></head><body><link rel="stylesheet" href="/streamed.css"></body></html>`;
-	const settled = parseDocument(`<!DOCTYPE html><html><head><link rel="preload" href="/a.woff2" as="font"><link rel="stylesheet" href="/a.css"><link rel="preload" as="image" imagesrcset="/hero.png 1x"><link rel="stylesheet" href="/streamed.css"><link rel="preload" href="/b.woff2" as="font"><link rel="preload" href="/route.css" as="style"><style>[data-toaster]{position:fixed}</style><meta name="theme-color" content="#000"></head><body></body></html>`);
+	const settled = parseDocument(`<!DOCTYPE html><html><head><link rel="preload" href="/a.woff2" as="font"><link rel="stylesheet" href="/a.css"><link rel="preload" as="image" imagesrcset="/hero.png 1x"><link rel="stylesheet" href="/streamed.css"><link rel="preload" href="/b.woff2" as="font"><link rel="preload" href="/route.css" as="style"><link rel="stylesheet" href="/client.css"><style>[data-toaster]{position:fixed}</style><meta name="theme-color" content="#000"></head><body></body></html>`);
 	const dropped = new Map<string, number>();
 	const late = lateHead(settled, parseDocument(served), dropped);
 	const kept = outer(head(settled));
@@ -33,6 +33,7 @@ test('what the old page\'s scripts added to the head after load neither preloads
 	assert.match(kept, /hero\.png/);
 	assert.match(kept, /streamed\.css/, 'a stylesheet the server streamed in the body was sent, so it stays');
 	assert.match(kept, /theme-color/);
+	assert.match(kept, /client\.css/, 'a stylesheet the old client linked may style what the port renders, so it stays');
 	assert.doesNotMatch(kept, /b\.woff2|route\.css|data-toaster/);
 	assert.deepEqual(late.map((el) => el.tagName), ['style']);
 	assert.equal([...dropped.values()].reduce((a, b) => a + b, 0), 2);

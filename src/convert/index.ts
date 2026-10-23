@@ -151,7 +151,7 @@ interface Prepared {
 	readonly layers: readonly { readonly key: string; readonly markup: string; readonly shell: string; readonly fill: string }[];
 	/** What copy controls write, by signature and occurrence. */
 	readonly clipboard: Readonly<Record<string, string>>;
-	/** The stylesheets the old page's scripts added after load, linked after the page so they never block its first paint. */
+	/** The styles the old page's scripts injected after load, linked after the page so they never block its first paint. */
 	readonly late: readonly string[];
 }
 
@@ -510,11 +510,10 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const headAt = capture.server.search(/<head[\s>]/i);
 	const served = parseDocument(headAt > 0 ? capture.server.slice(0, headAt) : capture.server);
 	cleanDocument(served, ctx, new Map());
-	const late = lateHead(doc, parseDocument(capture.server), dropped).flatMap((el) => {
-		if (el.tagName === 'link') return attr(el, 'href') ? [attr(el, 'href')!] : [];
+	const late = lateHead(doc, parseDocument(capture.server), dropped).map((el) => {
 		const holder = { nodeName: 'div', tagName: 'div', attrs: [], childNodes: [el] } as unknown as Element;
 		extractStyles(holder, styles);
-		return [attr(childrenOf(holder)[0] as Element, 'href')!];
+		return attr(childrenOf(holder)[0] as Element, 'href')!;
 	});
 	extractStyles(head(doc), styles);
 	extractStyles(body(doc), styles);

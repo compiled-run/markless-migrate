@@ -109,7 +109,8 @@ const lateKey = (el: Element): string | undefined => {
 /**
  * What the old page's scripts added to <head> after its server answered (React's hints from the router's prefetches, a
  * library's injected <style>): the hints are dropped, as the old page only fetched them after it was running, and the
- * stylesheets are taken out of the head and returned, to load after the page rather than hold back its first paint.
+ * injected styles are taken out of the head and returned, to load after the page rather than hold back its first paint.
+ * A stylesheet link the old client added stays: it may style what the port renders on the server.
  */
 export function lateHead(doc: Document, served: Document, dropped: Dropped): Element[] {
 	const sent = new Set<string>();
@@ -125,7 +126,7 @@ export function lateHead(doc: Document, served: Document, dropped: Dropped): Ele
 		if (el.tagName === 'link' && HINT.test(rel)) {
 			remove(el);
 			count(dropped, `<link rel=${rel}>: a hint the old page's script added after load`);
-		} else if (el.tagName === 'style' || /\bstylesheet\b/.test(rel)) {
+		} else if (el.tagName === 'style') {
 			remove(el);
 			late.push(el);
 		}
