@@ -5,7 +5,7 @@ import { body, find, attr, head, outer, parseDocument } from '../src/convert/dom
 import { nextPattern } from '../src/convert/endpoints.ts';
 import { factor } from '../src/convert/factor.ts';
 import { bindParts, useResolver } from '../src/convert/parts.ts';
-import { emitElement } from '../src/convert/tsrx.ts';
+import { emitElement, emitHtml } from '../src/convert/tsrx.ts';
 
 const NEXT_PAGE = `<!DOCTYPE html><html><head><link rel="stylesheet" href="/_next/static/a.css" data-precedence="next"><script src="/_next/static/chunks/main.js" async></script></head>
 <body><div id="app"><p>Hi</p><script>console.log("plain")</script></div><script>(self.__next_f=self.__next_f||[]).push([0])</script><script>$RC("B:0","S:0")</script><template id="B:0"></template><next-route-announcer></next-route-announcer></body></html>`;
@@ -44,6 +44,16 @@ test('tsrx output escapes braces and at-signs in text and keeps significant whit
 	const out = emitElement(body(doc));
 	assert.match(out, /a &#123;b&#125; &#64;c/);
 	assert.match(out, /\{"  x\\n  y"\}/);
+});
+
+test('text in an element styled to keep its newlines keeps them, in tsrx and in a layer\'s HTML; elsewhere it collapses', () => {
+	const doc = parseDocument('<body><div class="whitespace-pre-line"><div>1. a\n2. b</div></div><p class="text-sm sm:whitespace-pre-wrap">x\ny</p><p style="white-space: pre-wrap">s\nt</p><p class="whitespace-nowrap">c\nd</p></body>');
+	const out = emitElement(body(doc));
+	assert.match(out, /\{"1\. a\\n2\. b"\}/);
+	assert.match(out, /\{"x\\ny"\}/);
+	assert.match(out, /\{"s\\nt"\}/);
+	assert.match(out, />c d</);
+	assert.match(emitHtml(body(doc)), /1\. a\n2\. b/);
 });
 
 test('a region several pages render alike becomes one component; the current link is an expression of the path', () => {

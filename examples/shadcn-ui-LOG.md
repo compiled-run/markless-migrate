@@ -170,6 +170,10 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   radix, base and aria `input-otp`: 9 works and Disabled static on each (7 broken before on radix and base); the
   a11y tree of the demos matches. A slot shows a typed character 1 to 2 ms after the key against the old page's
   under 1 ms, within the same frame.
+- `convert`: text in an element styled to keep its newlines (`whitespace-pre*`, `white-space: pre*`, or inside one)
+  is copied as it is. It used to be collapsed as in normal flow, so a chat bubble's numbered reply
+  (`whitespace-pre-wrap`) ran onto one line: 114 px tall on the port against 159 px on the old page, and the
+  transcript around it opened 45 px short.
 
 ## Markless framework bugs found
 
