@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cleanDocument, frameworkBuilds } from '../src/convert/clean.ts';
-import { body, find, attr, parseDocument } from '../src/convert/dom.ts';
+import { cleanDocument, frameworkBuilds, lateHead } from '../src/convert/clean.ts';
+import { body, find, attr, head, outer, parseDocument } from '../src/convert/dom.ts';
 import { nextPattern } from '../src/convert/endpoints.ts';
 import { factor } from '../src/convert/factor.ts';
 import { bindParts, useResolver } from '../src/convert/parts.ts';
@@ -21,6 +21,22 @@ test('the old framework\'s runtime leaves the page, and its plain scripts and st
 	assert.equal(attr(link, 'href'), '/_next/static/a.css', 'the stylesheet is the old build\'s CSS, kept');
 	assert.equal(attr(link, 'data-precedence'), undefined);
 	assert.ok([...dropped.keys()].some((k) => /server state or streaming runtime/.test(k)));
+});
+
+test('what the old page\'s scripts added to the head after load neither preloads nor blocks the first paint', () => {
+	const served = `<!DOCTYPE html><html><head><link rel="preload" href="/a.woff2" as="font"><link rel="stylesheet" href="/a.css"><link rel="preload" as="image" imagesrcset="/hero.png 1x"></head><body><link rel="stylesheet" href="/streamed.css"></body></html>`;
+	const settled = parseDocument(`<!DOCTYPE html><html><head><link rel="preload" href="/a.woff2" as="font"><link rel="stylesheet" href="/a.css"><link rel="preload" as="image" imagesrcset="/hero.png 1x"><link rel="stylesheet" href="/streamed.css"><link rel="preload" href="/b.woff2" as="font"><link rel="preload" href="/route.css" as="style"><link rel="stylesheet" href="/client.css"><style>[data-toaster]{position:fixed}</style><meta name="theme-color" content="#000"></head><body></body></html>`);
+	const dropped = new Map<string, number>();
+	const late = lateHead(settled, parseDocument(served), dropped);
+	const kept = outer(head(settled));
+	assert.match(kept, /a\.woff2/);
+	assert.match(kept, /hero\.png/);
+	assert.match(kept, /streamed\.css/, 'a stylesheet the server streamed in the body was sent, so it stays');
+	assert.match(kept, /theme-color/);
+	assert.match(kept, /client\.css/, 'a stylesheet the old client linked may style what the port renders, so it stays');
+	assert.doesNotMatch(kept, /b\.woff2|route\.css|data-toaster/);
+	assert.deepEqual(late.map((el) => el.tagName), ['style']);
+	assert.equal([...dropped.values()].reduce((a, b) => a + b, 0), 2);
 });
 
 test('tsrx output escapes braces and at-signs in text and keeps significant whitespace', () => {
