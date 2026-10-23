@@ -141,11 +141,29 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   popup unmounts; a Select (its popup stays mounted) still does it at once. Escape on the RTL notice's popover kept
   focus in the popup for its 100 ms exit on the old page (`outline-width` 3px to 1px under `transition: all`), red
   on 12 to 14 routes.
+- Parts: @shadcn/react MessageScroller (`parts/shadcn/message-scroller.ts`). It covers the opening position,
+  following the live edge, holding a new anchored turn at the reading line with the previous row peeking above it,
+  keeping the reader's row in place when earlier rows are prepended, `data-scrollable`, `data-autoscrolling`, and
+  the scroll buttons. The provider renders no element, so `convert` reads each scroller's opening position from
+  where it opened on the old page (`src/convert/scrollers.ts`). Each scroller keeps its server render's
+  `data-pending-scroll` until the part places it as it comes into view, so it never shows at the wrong position
+  first. Bubble and Marker buttons show the old page's toasts (`notify`). Before: Jumping to Messages, Tracking the
+  Reader's Position and Reading Scroll State were broken. After: they work in the local witness. The demos whose
+  Send, Load History, Add Rocky or Reset add or remove messages through the demo's own React state are still
+  broken.
 - Site parts: the docs outline (`useActiveItem`) starts with no link active. The capture's own scroll to the bottom
   left the last heading's link marked in the markup, so it changed colour during unrelated steps (`extra motion of
   link "RTL"`, 16 to 18 routes). View Code sets `data-mobile-code-visible` on its code block, as
   ComponentPreviewTabs does, which shows the block's Copy button (`click button "View Code"`, 46 routes); a click
   on a control that swaps its container's content now still reaches the parts.
+- Parts: @shadcn/react Questionnaire (`parts/shadcn/questionnaire.ts`). Every item, error and navigation button is in
+  the markup, so the port writes back the attributes the library derives: the active item, answers, skips,
+  validation, progress, and keyboard shortcuts. A progress renderer of `{ current, total }` follows too. Held to the
+  real library by `test/questionnaire-port.test.ts`: each demo form is driven through the same 15 steps the library
+  was driven through on the old site (`test/ports/questionnaire-oracle.json`). Attributes, live properties and
+  focus must match after every step. The one exception is two demos whose own React state takes over at a known
+  step. Reset shows the old page's toast (`notify`). Before: Next, Previous, Skip, Submit and the shortcuts did
+  nothing on all 26 questionnaire demos. After: 13 of 14 base demos work in the local witness.
 - Ported route handlers carry the old build's `NEXT_PUBLIC_*` values inlined, as `next build` does. A value naming
   the old origin becomes the new app's (`import.meta.env.VITE_APP_URL`). `/init/v0` had answered 500 on the live
   port (`Failed to parse URL from undefined/r/...`); it is now byte for byte the old answer. Nitro's tracer no longer
@@ -170,6 +188,10 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   radix, base and aria `input-otp`: 9 works and Disabled static on each (7 broken before on radix and base); the
   a11y tree of the demos matches. A slot shows a typed character 1 to 2 ms after the key against the old page's
   under 1 ms, within the same frame.
+- `convert`: text in an element styled to keep its newlines (`whitespace-pre*`, `white-space: pre*`, or inside one)
+  is copied as it is. It used to be collapsed as in normal flow, so a chat bubble's numbered reply
+  (`whitespace-pre-wrap`) ran onto one line: 114 px tall on the port against 159 px on the old page, and the
+  transcript around it opened 45 px short.
 
 ## Markless framework bugs found
 

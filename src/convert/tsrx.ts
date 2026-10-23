@@ -25,6 +25,12 @@ export function appUrlDeclaration(source: string): string {
 const escapeText = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\{/g, '&#123;').replace(/\}/g, '&#125;').replace(/@/g, '&#64;');
 // HTML whitespace only: JavaScript's \s also matches the no-break spaces code samples indent with.
 const collapse = (t: string) => t.replace(/[ \t\n\r\f]+/g, ' ');
+const KEEPS_WHITESPACE = /^(?:\S*:)?whitespace-(?:pre|pre-wrap|pre-line|break-spaces)$/;
+/** An element whose text the browser lays out with its newlines and spaces: <pre>, <textarea>, or one styled to keep them. */
+const keepsWhitespace = (el: Element) =>
+	el.tagName === 'pre' ||
+	el.tagName === 'textarea' ||
+	el.attrs.some((a) => (a.name === 'class' && a.value.split(/[ \t\n\r\f]+/).some((c) => KEEPS_WHITESPACE.test(c))) || (a.name === 'style' && /white-space\s*:\s*(?:pre|break-spaces)/.test(a.value)));
 // Text holding a comment opener is a string expression: TSRX reads `//` and `/*` in template text as comments.
 const textOut = (t: string) => {
 	const named = withOrigin(t);
@@ -122,15 +128,16 @@ export function node(n: Node, pre: boolean, options: EmitOptions): string {
 		return `<script${attributes(el, binding, options)}>${text ? `{${lit(text)}}` : ''}</script>`;
 	}
 	if (VOID.has(name)) return `<${name}${attributes(el, binding, options)} />`;
-	const inPre = pre || name === 'pre' || name === 'textarea';
+	const inPre = pre || keepsWhitespace(el);
 	const inner = binding?.children ?? (binding?.inserts?.length ? childrenWith(el, inPre, options, binding.inserts) : children(el, inPre, options));
 	return `<${name}${attributes(el, binding, options)}>${binding?.wrap ? binding.wrap(inner) : inner}${binding?.append ?? ''}</${name}>`;
 }
 
 /** The children of `parent` as tsrx markup, one top-level node per line. */
 export function emitChildren(parent: ParentNode, options: EmitOptions = {}): string {
+	const pre = isElement(parent as Node) && keepsWhitespace(parent as Element);
 	return childrenOf(parent)
-		.map((n) => node(n, false, options))
+		.map((n) => node(n, pre, options))
 		.filter(Boolean)
 		.join('\n');
 }
@@ -185,7 +192,7 @@ export function emitHtml(el: Element, options: { readonly extra?: readonly strin
 
 /** The children of `el` as HTML, as emitHtml writes them. */
 export function emitHtmlChildren(el: Element, options: { readonly dropped?: (what: string) => void } = {}): string {
-	const pre = el.tagName === 'pre' || el.tagName === 'textarea';
+	const pre = keepsWhitespace(el);
 	return childrenOf(el)
 		.map((child) => htmlOf(child, [], options.dropped, pre))
 		.join('');
@@ -213,7 +220,7 @@ function htmlOf(start: Node, startExtra: readonly string[], dropped: ((what: str
 		for (const added of extra) attrs += ` ${added}`;
 		if (name === 'script') return `<script${attrs}>${rawText(n)}</script>`;
 		if (VOID.has(name)) return `<${name}${attrs}>`;
-		const inPre = pre || name === 'pre' || name === 'textarea';
+		const inPre = pre || keepsWhitespace(n);
 		return `<${name}${attrs}>${childrenOf(n).map((c) => visit(c, inPre, [])).join('')}</${name}>`;
 	};
 	return visit(start, startPre, startExtra);
