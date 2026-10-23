@@ -17,7 +17,7 @@ export type Dimension = (typeof DIMENSIONS)[number];
 export type FailureDimension = Dimension | 'coverage';
 
 /** Checked only on its template group's representative: the rest of the group gets every other dimension. */
-export const REPRESENTATIVE_ONLY: readonly Dimension[] = ['visual', 'behaviour', 'responsiveness', 'motion', 'load'];
+export const REPRESENTATIVE_ONLY: readonly Dimension[] = ['visual', 'responsiveness', 'motion', 'load'];
 
 /** A dimension was left out because a side was blocked or let this role in differently; unmeasured responsiveness or motion, or one its template's representative checks, is not that. */
 export function notCompared(route: Pick<RouteResult, 'dimensions' | 'template' | 'route' | 'only'>): boolean {
@@ -253,7 +253,7 @@ export interface RouteResult {
 	readonly only?: 'load' | 'embeds';
 	/** How soon each control the journeys exercised answers its first use, and each internal link shows the next page, old and new, at desktop speed and on a throttled phone. */
 	readonly responsiveness?: Responsiveness;
-	/** The template group the route was put in (by URL pattern, page structure and the kinds of control it renders); visual, behaviour, responsiveness and motion were checked on its representative. */
+	/** The template group the route was put in (by URL pattern, page structure and the kinds of control it renders); visual, responsiveness and motion were checked on its representative. */
 	readonly template?: { readonly pattern: string; readonly representative: string; readonly members: number };
 	/** The transitions and animations each interaction starts, old and new, with motion allowed and with reduced motion, and those hovering and focusing each control start. */
 	readonly motion?: MotionResult;
@@ -401,7 +401,7 @@ export interface Report {
 	readonly partial?: { readonly checked: number; readonly total: number | null };
 	/** Every route of the old site checked for existence on the new app. */
 	readonly coverage?: RouteCoverage;
-	/** Pages grouped by template: every page got the other dimensions, visual, behaviour, responsiveness and motion ran on each group's representative. */
+	/** Pages grouped by template: every page got the other dimensions, visual, responsiveness and motion ran on each group's representative. */
 	readonly templates?: { readonly groups: readonly { readonly pattern: string; readonly representative: string; readonly members: readonly string[] }[] };
 	/** In-place navigation compared with fresh loads on the new app: pages sampled, page loads it made and how long it took. */
 	readonly navigation?: { readonly destinations: number; readonly pairs: number; readonly inPlace: number; readonly loads: number; readonly ms: number };

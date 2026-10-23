@@ -193,7 +193,7 @@ test('template groups: URL pattern by source pattern or parent path, and the pag
 	assert.equal(widgetSignature('<main><button aria-expanded="true" data-slot="accordion-trigger">C</button><p>other text</p><script>"<div role=dialog>"</script></main>'), accordion, 'pages with the same kinds of control, whatever their text, stay one template');
 });
 
-test('above the threshold, every page gets http, rendered and seo, and visual, behaviour and responsiveness run on the template representative, said in the report', async () => {
+test('above the threshold, every page gets http, rendered, seo and behaviour, and visual and responsiveness run on the template representative, said in the report', async () => {
 	const docs = Array.from({ length: 22 }, (_, i) => `/docs/p${String(i + 1).padStart(2, '0')}`);
 	const site = await serve((path) => (docs.includes(path) ? { status: 200, body: page(`Doc ${path}`) } : undefined));
 	const changed = await serve((path) => (docs.includes(path) ? { status: 200, body: page(path === '/docs/p07' ? 'Renamed' : `Doc ${path}`) } : undefined));
@@ -203,13 +203,13 @@ test('above the threshold, every page gets http, rendered and seo, and visual, b
 		const rep = report.routes.find((r) => r.route === '/docs/p01')!;
 		const member = report.routes.find((r) => r.route === '/docs/p02')!;
 		assert.equal(rep.dimensions.visual, 'pass');
-		assert.deepEqual([member.dimensions.http, member.dimensions.rendered, member.dimensions.seo, member.dimensions.visual, member.dimensions.behaviour], ['pass', 'pass', 'pass', 'skipped', 'skipped']);
+		assert.deepEqual([member.dimensions.http, member.dimensions.rendered, member.dimensions.seo, member.dimensions.visual, member.dimensions.behaviour], ['pass', 'pass', 'pass', 'skipped', 'pass']);
 		assert.equal(member.ok, true, 'a dimension its representative carries does not count as not compared');
 		const renamed = report.routes.find((r) => r.route === '/docs/p07')!;
 		assert.deepEqual(renamed.failures.map((f) => f.dimension).filter((d, i, all) => all.indexOf(d) === i).sort(), ['rendered', 'seo']);
 		const text = summarize(report);
-		assert.match(text, /Visual, behaviour, responsiveness and motion ran on one representative per template group \(grouped by URL pattern, page layout and the kinds of control each page renders\): 1 group covering 22 pages\./);
-		assert.match(text, /pass +\/docs\/p02 .*\n {6}visual, behaviour, responsiveness and motion: checked on \/docs\/p01, the representative of its template group \(\/docs\/:page, 22 pages\)/);
+		assert.match(text, /weight and behaviour checks \(every control of every page is used\)\. Visual, responsiveness and motion ran on one representative per template group \(grouped by URL pattern, page layout and the kinds of control each page renders\): 1 group covering 22 pages\./);
+		assert.match(text, /pass +\/docs\/p02 .*\n {6}visual, responsiveness and motion: checked on \/docs\/p01, the representative of its template group \(\/docs\/:page, 22 pages\)/);
 		const every = await runCheck({ oldOrigin: origin(site), newOrigin: origin(site), routes: docs.slice(0, 1), browser, templates: false });
 		assert.equal(every.templates, undefined);
 	} finally {

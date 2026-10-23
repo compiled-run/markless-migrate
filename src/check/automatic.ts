@@ -104,13 +104,13 @@ export function embedImageCandidate(src: string, old: PageCapture, next: PageCap
 	return has(old) && has(next) ? candidate('live-embed', `${new URL(src).host} served a different image at the same address to each page, so its content is live`) : undefined;
 }
 
-/** An element the old page would not let a visitor use, which the new page refuses for the same reason (covered, hidden, outside the page); or one check could not drive on the old page at all, tried the same way on the new one. */
-export function unreachableCandidate(kind: string, oldReason: string, onNew: { readonly failed?: string; readonly unreachable?: string } | undefined, completedOnNew = false): Failure['automatic'] {
+/**
+ * An element the old page would not let a visitor use, which the new page refuses for the same reason (covered, hidden, outside the page).
+ * One check could not drive on the old page (not found again, or never settled) is never accepted: what it does was compared nowhere.
+ */
+export function unreachableCandidate(kind: string, oldReason: string, onNew: { readonly failed?: string; readonly unreachable?: string } | undefined): Failure['automatic'] {
 	const old = oldReason.replace(/^it could not be used on the old page: /, '');
-	if (kind === 'missing' || kind === 'timeout') {
-		if (!completedOnNew && onNew?.unreachable !== 'missing' && onNew?.unreachable !== 'timeout') return undefined;
-		return candidate('undrivable-on-old', `check could not drive it on the old page (${kind}: ${old}), so there is no old result to compare with; tried the same way on the new page, ${completedOnNew ? 'where it was used' : `where it could not be driven either (${onNew?.failed ?? onNew?.unreachable})`}; its role, name and address are compared by the rendered check`);
-	}
+	if (kind === 'missing' || kind === 'timeout') return undefined;
 	if (!onNew?.unreachable || onNew.unreachable !== kind) return undefined;
 	return candidate('unreachable-on-both', `neither page lets a visitor use it, for the same reason (${kind}): old ${old}; new ${onNew.failed ?? kind}`);
 }
