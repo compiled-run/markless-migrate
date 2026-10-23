@@ -36,9 +36,15 @@ test('holding and releasing navigations over and over while requests are in flig
 			release();
 		}
 		const seen: string[] = [];
-		const release = await holdNavigations(page, (url) => seen.push(url));
+		let reported!: () => void;
+		const reachedHold = new Promise<void>((resolve) => (reported = resolve));
+		const release = await holdNavigations(page, (url) => {
+			seen.push(url);
+			reported();
+		});
 		await page.evaluate((url) => void (location.href = url), `${origin}/next`).catch(() => {});
-		await page.waitForTimeout(300);
+		// Under the page's request load the navigation reaches the route late; wait for it (or for it to have gone through), not for a fixed time.
+		await Promise.race([reachedHold, page.waitForURL(`${origin}/next`, { timeout: 15_000 }).catch(() => {})]);
 		release();
 		assert.deepEqual(seen, [`${origin}/next`], 'a navigation while held is aborted and reported');
 		assert.equal(new URL(page.url()).pathname, '/', 'the held navigation did not happen');
