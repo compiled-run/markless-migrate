@@ -3,7 +3,7 @@
 import classes from './theme-classes.json';
 import prismThemes from './prism-themes.json';
 import docsVersions from './docs-versions.json';
-import sidebarData from './sidebars.json';
+import sidebarIndex from './sidebars.json';
 import routeAliases from './route-aliases.json';
 import { initShowcase } from './showcase.ts';
 import { initPlaygrounds } from './playground.ts';
@@ -399,7 +399,23 @@ function toggleDetails(event: Event, summary: HTMLElement): void {
 
 // Sidebar categories: a collapsed category's items are rendered when it is first opened (from lib/sidebars.json);
 // opening one closes its open siblings (autoCollapseCategories).
-const data = sidebarData as { classes: Record<string, string>; sidebars: Record<string, SidebarItem[]>; trailingSlash?: boolean };
+const data = sidebarIndex as { classes: Record<string, string>; files: Record<string, string>; trailingSlash?: boolean };
+// Each sidebar's items are a JSON file fetched for the page's own sidebar, so no page runs every sidebar as code.
+const sidebars = new Map<string, SidebarItem[]>();
+const loadingSidebars = new Map<string, Promise<void>>();
+function loadSidebar(key: string | undefined): Promise<void> {
+	const file = key ? data.files[key] : undefined;
+	if (!key || !file || sidebars.has(key)) return Promise.resolve();
+	let loading = loadingSidebars.get(key);
+	if (!loading) {
+		loading = fetch(file)
+			.then((response) => (response.ok ? (response.json() as Promise<SidebarItem[]>) : Promise.reject(new Error(`${file}: ${response.status}`))))
+			.then((items) => void sidebars.set(key, items))
+			.catch(() => void loadingSidebars.delete(key));
+		loadingSidebars.set(key, loading);
+	}
+	return loading;
+}
 // @docusaurus/Link's trailing-slash rule for internal links.
 function linkHref(href: string | undefined): string {
 	if (href === undefined || data.trailingSlash === undefined || !href.startsWith('/')) return href ?? '';
@@ -456,7 +472,7 @@ function sidebarOf(element: Element): SidebarItem[] | undefined {
 	const aside = document.querySelector('aside.theme-doc-sidebar-container');
 	const key = hint(aside, 'sidebar');
 	void element;
-	return key ? data.sidebars[key] : undefined;
+	return key ? sidebars.get(key) : undefined;
 }
 function categoryPath(li: Element): string[] {
 	const path: string[] = [];
@@ -529,6 +545,19 @@ function searchKeyDown(event: KeyboardEvent): void {
 		if (!m.isOpen() && !document.body.classList.contains('DocSearch--active')) m.open();
 	});
 }
+// The search button's shortcut keys for this platform, when an in-place navigation brought a button whose script did not run.
+function searchKeys(): void {
+	const mac = /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform);
+	const key = mac ? 'Meta' : 'Control';
+	for (const keys of document.querySelectorAll('.DocSearch-Button > .DocSearch-Button-Keys')) {
+		if (keys.querySelector('kbd')) continue;
+		keys.querySelector('script')?.remove();
+		const button = keys.parentElement!;
+		button.setAttribute('aria-label', `Search (${key}+k)`);
+		button.setAttribute('aria-keyshortcuts', `${key}+k`);
+		keys.insertAdjacentHTML('beforeend', mac ? '<kbd class="DocSearch-Button-Key">⌘</kbd><kbd class="DocSearch-Button-Key">K</kbd>' : '<kbd class="DocSearch-Button-Key DocSearch-Button-Key--ctrl">Ctrl</kbd><kbd class="DocSearch-Button-Key">K</kbd>');
+	}
+}
 function preloadSearch(event: Event): void {
 	if (!docsearch && event.target instanceof Element && event.target.closest('button.DocSearch-Button')) void loadSearch();
 }
@@ -598,7 +627,8 @@ function setCategory(item: Element, collapse: boolean, animate = true): void {
 	if (animate) animateCollapsible(list, collapse);
 	else collapseStyle(list, collapse);
 }
-function toggleCategory(item: Element): void {
+function toggleCategory(item: Element, loaded = false): void {
+	if (!loaded && !sidebarOf(item) && !item.querySelector(':scope > ul.menu__list')) return void loadSidebar(desktopSidebarKey()).then(() => toggleCategory(item, true));
 	const collapse = !item.classList.contains('menu__list-item--collapsed');
 	if (!collapse && autoCollapse) {
 		for (const sibling of item.parentElement?.children ?? []) {
@@ -1361,6 +1391,7 @@ function pageInit(navigation?: Event): void {
 	}
 	parked.clear();
 	keepSearchHolder();
+	searchKeys();
 	initPlaygrounds();
 	readHints(document.body);
 	restoreTabs();
@@ -1376,6 +1407,7 @@ function pageInit(navigation?: Event): void {
 		if (!document.body.getAttribute('style')) document.body.removeAttribute('style');
 	}
 	restoreSidebar();
+	void loadSidebar(desktopSidebarKey());
 	applyDocsVersions();
 	applyWindowSize();
 	queueMicrotask(checkLazyImages);

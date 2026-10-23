@@ -4,7 +4,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vp dev",
-		"build": "rm -rf public/lazy && vp build -c lazy.config.ts && NODE_OPTIONS=--max-old-space-size=32768 vp build",
+		"build": "rm -rf public/lazy && LAZY_ENTRY=docsearch vp build -c lazy.config.ts && LAZY_ENTRY=playground-runtime vp build -c lazy.config.ts && NODE_OPTIONS=--max-old-space-size=32768 vp build",
 		"preview": "vp preview",
 		"check": "vp check",
 		"doctor": "node scripts/markless-doctor.mjs",
