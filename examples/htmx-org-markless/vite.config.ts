@@ -16,6 +16,8 @@ export default defineConfig({
     // Static files, feeds, sitemap, robots.txt and alias pages htmx.org serves, written by scripts/import-htmx-org.ts;
     // fallthrough keeps Nitro's year-long immutable cache header off pages, which share this base path.
     publicAssets: [{ dir: fileURLToPath(new URL("./.import/public", import.meta.url)), baseURL: "/", fallthrough: true }],
+    // Netlify sends htmx.org's files compressed; the Node server sends these copies, written at build time, the same way.
+    compressPublicAssets: { gzip: true, brotli: true },
     routeRules: Object.fromEntries(pages.map((path) => [path, { isr: true }])),
     vercel: {
       config: {

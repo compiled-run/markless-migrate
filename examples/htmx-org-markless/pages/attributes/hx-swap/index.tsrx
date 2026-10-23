@@ -8,7 +8,7 @@ export default function Page() @{
 		<main class="c content ">
 			<h1><code>hx-swap</code></h1>
 			{" "}
-			<p>{"The "}<code>hx-swap</code>{" attribute allows you to specify how the response will be swapped in relative to the "}<a href="https://htmx.org/attributes/hx-target/">target</a>{" of an AJAX request. If you do not specify the option, the default is "}<code>htmx.config.defaultSwapStyle</code>{" ("}<code>innerHTML</code>).</p>
+			<p>{"The "}<code>hx-swap</code>{" attribute allows you to specify how the response will be swapped in relative to the "}<a href="/attributes/hx-target/">target</a>{" of an AJAX request. If you do not specify the option, the default is "}<code>htmx.config.defaultSwapStyle</code>{" ("}<code>innerHTML</code>).</p>
 			{" "}
 			<p>The possible values of this attribute are:</p>
 			{" "}
@@ -62,7 +62,7 @@ export default function Page() @{
 			{" "}
 			<pre data-lang="html" style="background-color:#1f2329;color:#abb2bf;" class="language-html "><code class="language-html" data-lang="html"><span>{"  "}</span><span style="font-style:italic;color:#848da1;">{"<!-- this will get some content and swap it into the current div, then ensure that the viewport is scrolled to the\n"}</span><span style="font-style:italic;color:#848da1;">{"       very top -->\n"}</span><span>{"  <"}</span><span style="color:#e06c75;">{"div "}</span><span style="color:#d19a66;">hx-get</span><span>=</span><span style="color:#98c379;">{"\"/example\" \n"}</span><span>{"       "}</span><span style="color:#d19a66;">hx-swap</span><span>=</span><span style="color:#98c379;">"innerHTML show:window:top"</span><span>{">\n"}</span><span>{"    Get Some Content\n"}</span><span>{"  </"}</span><span style="color:#e06c75;">div</span><span>{">\n"}</span></code></pre>
 			{" "}
-			<p>{"For boosted links and forms the default behaviour is "}<code>show:top</code>{". You can disable it globally with "}<a href="https://htmx.org/api/#config">htmx.config.scrollIntoViewOnBoost</a>{" or you can use "}<code>hx-swap="show:none"</code>{" on an element basis."}</p>
+			<p>{"For boosted links and forms the default behaviour is "}<code>show:top</code>{". You can disable it globally with "}<a href="/api/#config">htmx.config.scrollIntoViewOnBoost</a>{" or you can use "}<code>hx-swap="show:none"</code>{" on an element basis."}</p>
 			{" "}
 			<pre data-lang="html" style="background-color:#1f2329;color:#abb2bf;" class="language-html "><code class="language-html" data-lang="html"><span>&lt;</span><span style="color:#e06c75;">{"form "}</span><span style="color:#d19a66;">action</span><span>=</span><span style="color:#98c379;">{"\"/example\" "}</span><span style="color:#d19a66;">hx-swap</span><span>=</span><span style="color:#98c379;">"show:none"</span><span>{">\n"}</span><span>{"  ...\n"}</span><span>&lt;/</span><span style="color:#e06c75;">form</span><span>{">\n"}</span></code></pre>
 			{" "}

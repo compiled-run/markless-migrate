@@ -4,13 +4,9 @@ import SiteHeader from '../../../components/site-header.tsrx';
 
 export default function Page() @{
 	<div style="display: contents">
-		<SiteHeader />
+		<SiteHeader starFrame />
 		<main class="c content ">
 			<h1>File Upload</h1>
-			{" "}
-			<script src={"https://cdn.jsdelivr.net/npm/sinon@9.0.2/pkg/sinon.js"}></script>
-			{" "}
-			<script src="/js/demo.js"></script>
 			{" "}
 			<p>In this example we show how to create a file upload form that will be submitted via ajax, along with a progress bar.</p>
 			{" "}

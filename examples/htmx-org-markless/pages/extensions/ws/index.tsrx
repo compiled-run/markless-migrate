@@ -8,7 +8,7 @@ export default function Page() @{
 		<main class="c content ">
 			<h1>htmx Web Socket extension</h1>
 			{" "}
-			<p>{"The Web Sockets extension enables easy, bi-directional communication with "}<a rel="noopener" target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API/Writing_WebSocket_client_applications">Web Sockets</a>{" servers directly from HTML. This replaces the experimental "}<code>hx-ws</code>{" attribute built into previous versions of htmx. For help migrating from older versions, see the "}<a href="https://htmx.org/extensions/ws/#migrating-from-previous-versions">Migrating</a>{" guide at the bottom of this page."}</p>
+			<p>{"The Web Sockets extension enables easy, bi-directional communication with "}<a rel="noopener" target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API/Writing_WebSocket_client_applications">Web Sockets</a>{" servers directly from HTML. This replaces the experimental "}<code>hx-ws</code>{" attribute built into previous versions of htmx. For help migrating from older versions, see the "}<a href="/extensions/ws/#migrating-from-previous-versions">Migrating</a>{" guide at the bottom of this page."}</p>
 			{" "}
 			<p>Use the following attributes to configure how WebSockets behave:</p>
 			{" "}
@@ -16,7 +16,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="installing">Installing</h2>
 			{" "}
-			<p>{"The fastest way to install "}<code>ws</code>{" is to load it via a CDN. Remember to always include the core htmx library before the extension and "}<a href="https://htmx.org/extensions/ws/#usage">enable the extension</a>.</p>
+			<p>{"The fastest way to install "}<code>ws</code>{" is to load it via a CDN. Remember to always include the core htmx library before the extension and "}<a href="/extensions/ws/#usage">enable the extension</a>.</p>
 			{" "}
 			<pre data-lang="HTML" style="background-color:#1f2329;color:#abb2bf;" class="language-HTML "><code class="language-HTML" data-lang="HTML"><span>&lt;</span><span style="color:#e06c75;">head</span><span>{">\n"}</span><span>{"    <"}</span><span style="color:#e06c75;">{"script "}</span><span style="color:#d19a66;">src</span><span>=</span><span style="color:#98c379;">{"\"https://cdn.jsdelivr.net/npm/htmx.org@2.0.11/dist/htmx.min.js\" "}</span><span style="color:#d19a66;">integrity</span><span>=</span><span style="color:#98c379;">{"\"sha384-2OatzQy1H+Zd/IIrjr1TcuDGqLXeHhbooAyJY1KdQMKnr4LZ22k31GBLdYKHmVjg\" "}</span><span style="color:#d19a66;">crossorigin</span><span>=</span><span style="color:#98c379;">"anonymous"</span><span>&gt;&lt;/</span><span style="color:#e06c75;">script</span><span>{">\n"}</span><span>{"    <"}</span><span style="color:#e06c75;">{"script "}</span><span style="color:#d19a66;">src</span><span>=</span><span style="color:#98c379;">{"\"https://cdn.jsdelivr.net/npm/htmx-ext-ws@2.0.4\" "}</span><span style="color:#d19a66;">integrity</span><span>=</span><span style="color:#98c379;">{"\"sha384-1RwI/nvUSrMRuNj7hX1+27J8XDdCoSLf0EjEyF69nacuWyiJYoQ/j39RT1mSnd2G\" "}</span><span style="color:#d19a66;">crossorigin</span><span>=</span><span style="color:#98c379;">"anonymous"</span><span>&gt;&lt;/</span><span style="color:#e06c75;">script</span><span>{">\n"}</span><span>&lt;/</span><span style="color:#e06c75;">head</span><span>{">\n"}</span><span>&lt;</span><span style="color:#e06c75;">{"body "}</span><span style="color:#d19a66;">hx-ext</span><span>=</span><span style="color:#98c379;">"ws"</span><span>{">\n"}</span></code></pre>
 			{" "}
@@ -48,7 +48,7 @@ export default function Page() @{
 			{" "}
 			<h3 id="receiving-messages-from-a-websocket">Receiving Messages from a WebSocket</h3>
 			{" "}
-			<p>{"The example above establishes a WebSocket to the "}<code>/chatroom</code>{" end point. Content that is sent down from the websocket will be parsed as HTML and swapped in by the "}<code>id</code>{" property, using the same logic as "}<a rel="noopener" target="_blank" href="https://htmx.org/attributes/hx-swap-oob/">Out of Band Swaps</a>.</p>
+			<p>{"The example above establishes a WebSocket to the "}<code>/chatroom</code>{" end point. Content that is sent down from the websocket will be parsed as HTML and swapped in by the "}<code>id</code>{" property, using the same logic as "}<a rel="noopener" target="_blank" href="/attributes/hx-swap-oob/">Out of Band Swaps</a>.</p>
 			{" "}
 			<p>As such, if you want to change the swapping method (e.g., append content at the end of an element or delegate swapping to an extension), you need to specify that in the message body, sent by the server.</p>
 			{" "}
@@ -124,13 +124,13 @@ export default function Page() @{
 			{" "}
 			<h4 id="htmx:wsConfigSend">{"Event - "}<code>htmx:wsConfigSend</code></h4>
 			{" "}
-			<p>{"This event is triggered when preparing to send a message from "}<code>ws-send</code>{" element. Similarly to "}<a rel="noopener" target="_blank" href="https://htmx.org/events#htmx:configRequest"><code>htmx:configRequest</code></a>, it allows you to modify the message before sending.</p>
+			<p>{"This event is triggered when preparing to send a message from "}<code>ws-send</code>{" element. Similarly to "}<a rel="noopener" target="_blank" href="/events#htmx:configRequest"><code>htmx:configRequest</code></a>, it allows you to modify the message before sending.</p>
 			{" "}
 			<p>If the event is cancelled, no further processing will occur and no messages will be sent.</p>
 			{" "}
 			<h5 id="details-4">Details</h5>
 			{" "}
-			<ul>{" "}<li><code>detail.parameters</code>{" - the parameters that will be submitted in the request"}</li>{" "}<li><code>detail.unfilteredParameters</code>{" - the parameters that were found before filtering by "}<a rel="noopener" target="_blank" href="https://htmx.org/attributes/hx-params"><code>hx-params</code></a></li>{" "}<li><code>detail.headers</code>{" - the request headers. Will be attached to the body in "}<code>HEADERS</code>{" property, if not falsy"}</li>{" "}<li><code>detail.errors</code>{" - validation errors. Will prevent sending and trigger "}<a rel="noopener" target="_blank" href="https://htmx.org/events#htmx:validation:halted"><code>htmx:validation:halted</code></a>{" event if not empty"}</li>{" "}<li><code>detail.triggeringEvent</code>{" - the event that triggered sending"}</li>{" "}<li><code>detail.messageBody</code>{" - raw message body that will be sent to the socket. Undefined, can be set to value of any type, supported by WebSockets. If set, will override default JSON serialization. Useful, if you want to use some other format, like XML or MessagePack"}</li>{" "}<li><code>detail.elt</code>{" - the element that dispatched the sending (the one with "}<code>ws-send</code>{" attribute)"}</li>{" "}<li><code>detail.socketWrapper</code>{" - the wrapper around socket object"}</li>{" "}</ul>
+			<ul>{" "}<li><code>detail.parameters</code>{" - the parameters that will be submitted in the request"}</li>{" "}<li><code>detail.unfilteredParameters</code>{" - the parameters that were found before filtering by "}<a rel="noopener" target="_blank" href="/attributes/hx-params"><code>hx-params</code></a></li>{" "}<li><code>detail.headers</code>{" - the request headers. Will be attached to the body in "}<code>HEADERS</code>{" property, if not falsy"}</li>{" "}<li><code>detail.errors</code>{" - validation errors. Will prevent sending and trigger "}<a rel="noopener" target="_blank" href="/events#htmx:validation:halted"><code>htmx:validation:halted</code></a>{" event if not empty"}</li>{" "}<li><code>detail.triggeringEvent</code>{" - the event that triggered sending"}</li>{" "}<li><code>detail.messageBody</code>{" - raw message body that will be sent to the socket. Undefined, can be set to value of any type, supported by WebSockets. If set, will override default JSON serialization. Useful, if you want to use some other format, like XML or MessagePack"}</li>{" "}<li><code>detail.elt</code>{" - the element that dispatched the sending (the one with "}<code>ws-send</code>{" attribute)"}</li>{" "}<li><code>detail.socketWrapper</code>{" - the wrapper around socket object"}</li>{" "}</ul>
 			{" "}
 			<h4 id="htmx:wsBeforeSend">{"Event - "}<code>htmx:wsBeforeSend</code></h4>
 			{" "}

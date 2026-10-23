@@ -10,11 +10,11 @@ export default function Page() @{
 			{" "}
 			<p><a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/idiomorph">Idiomorph</a>{" is a DOM morphing algorithm created by the htmx creator. DOM morphing is a process where an existing DOM tree is “morphed” into the shape of another in a way that resuses as much of the existing DOM’s nodes as possible. By preserving nodes when changing from one tree to another you can present a much smoother transition between the two states."}</p>
 			{" "}
-			<p>{"You can use the idiomorph morphing algorithm as a "}<a href={"https://htmx.org/extensions/idiomorph/@attributes/hx-swap"}>swapping</a>{" strategy by including the idiomorph extension."}</p>
+			<p>{"You can use the idiomorph morphing algorithm as a "}<a href="/extensions/idiomorph/@attributes/hx-swap">swapping</a>{" strategy by including the idiomorph extension."}</p>
 			{" "}
 			<h2 id="installing">Installing</h2>
 			{" "}
-			<p>{"The fastest way to install "}<code>idiomorph</code>{" is to load it via a CDN. Remember to always include the core htmx library before the extension and "}<a href="https://htmx.org/extensions/idiomorph/#usage">enable the extension</a>.</p>
+			<p>{"The fastest way to install "}<code>idiomorph</code>{" is to load it via a CDN. Remember to always include the core htmx library before the extension and "}<a href="/extensions/idiomorph/#usage">enable the extension</a>.</p>
 			{" "}
 			<pre data-lang="HTML" style="background-color:#1f2329;color:#abb2bf;" class="language-HTML "><code class="language-HTML" data-lang="HTML"><span>&lt;</span><span style="color:#e06c75;">head</span><span>{">\n"}</span><span>{"    <"}</span><span style="color:#e06c75;">{"script "}</span><span style="color:#d19a66;">src</span><span>=</span><span style="color:#98c379;">{"\"https://cdn.jsdelivr.net/npm/htmx.org@2.0.11/dist/htmx.min.js\" "}</span><span style="color:#d19a66;">integrity</span><span>=</span><span style="color:#98c379;">{"\"sha384-2OatzQy1H+Zd/IIrjr1TcuDGqLXeHhbooAyJY1KdQMKnr4LZ22k31GBLdYKHmVjg\" "}</span><span style="color:#d19a66;">crossorigin</span><span>=</span><span style="color:#98c379;">"anonymous"</span><span>&gt;&lt;/</span><span style="color:#e06c75;">script</span><span>{">\n"}</span><span>{"    <"}</span><span style="color:#e06c75;">{"script "}</span><span style="color:#d19a66;">src</span><span>=</span><span style="color:#98c379;">{"\"https://unpkg.com/idiomorph@0.7.4/dist/idiomorph-ext.min.js\" "}</span><span style="color:#d19a66;">integrity</span><span>=</span><span style="color:#98c379;">{"\"sha384-SsScJKzATF/w6suEEdLbgYGsYFLzeKfOA6PY+/C5ZPxOSuA+ARquqtz/BZz9JWU8\" "}</span><span style="color:#d19a66;">crossorigin</span><span>=</span><span style="color:#98c379;">"anonymous"</span><span>&gt;&lt;/</span><span style="color:#e06c75;">script</span><span>{">\n"}</span><span>&lt;/</span><span style="color:#e06c75;">head</span><span>{">\n"}</span><span>&lt;</span><span style="color:#e06c75;">{"body "}</span><span style="color:#d19a66;">hx-ext</span><span>=</span><span style="color:#98c379;">"morph"</span><span>{">\n"}</span></code></pre>
 			{" "}
@@ -34,7 +34,7 @@ export default function Page() @{
 			{" "}
 			<pre data-lang="JS" style="background-color:#1f2329;color:#abb2bf;" class="language-JS "><code class="language-JS" data-lang="JS"><span style="color:#c678dd;">{"import "}</span><span style="color:#98c379;">`htmx.org`</span><span>{";\n"}</span><span style="color:#c678dd;">{"import "}</span><span style="color:#98c379;">`idiomorph/htmx`</span><span>{";\n"}</span></code></pre>
 			{" "}
-			<p><em>{"Note: when used with the "}<a href="https://htmx.org/extensions/sse/">SSE extension</a>, requires htmx-ext-sse 2.2.4+ (<a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/htmx-extensions/issues/164">#164</a>).</em></p>
+			<p><em>{"Note: when used with the "}<a href="/extensions/sse/">SSE extension</a>, requires htmx-ext-sse 2.2.4+ (<a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/htmx-extensions/issues/164">#164</a>).</em></p>
 			{" "}
 			<h2 id="usage">Usage</h2>
 			{" "}

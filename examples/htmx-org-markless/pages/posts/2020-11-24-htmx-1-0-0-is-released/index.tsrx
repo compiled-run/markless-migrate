@@ -16,11 +16,11 @@ export default function Page() @{
 			{" "}
 			<p>{"htmx is a different sort of javascript library. It is an HTML & hypertext-oriented reply to the current dominance of javascript-based SPA libraries. It is a response to Tom MacWright’s question: "}<a rel="noopener" target="_blank" href="https://macwright.com/2020/10/28/if-not-spas.html">“If not SPAs, What?”</a>.</p>
 			{" "}
-			<p>{"As the "}<a href="https://htmx.org/">homepage says</a>:</p>
+			<p>{"As the "}<a href="/">homepage says</a>:</p>
 			{" "}
 			<ul>{" "}<li>{"Why should only "}<code>&lt;a&gt;</code>{" and "}<code>&lt;form&gt;</code>{" be able to make HTTP requests?"}</li>{" "}<li>{"Why should only "}<code>click</code>{" & "}<code>submit</code>{" events trigger them?"}</li>{" "}<li>Why should only GET &amp; POST be available?</li>{" "}<li>Why should you only be able to replace the entire screen?</li>{" "}</ul>
 			{" "}
-			<p>{"HTML-oriented web development was abandoned not because hypertext was a bad idea, but rather because HTML didn’t have sufficient expressive power. htmx aims to fix that & allows you to implement "}<a href="https://htmx.org/examples/">many common modern web UI patterns</a>{" using the original hypertext model of the web."}</p>
+			<p>{"HTML-oriented web development was abandoned not because hypertext was a bad idea, but rather because HTML didn’t have sufficient expressive power. htmx aims to fix that & allows you to implement "}<a href="/examples/">many common modern web UI patterns</a>{" using the original hypertext model of the web."}</p>
 			{" "}
 			<h3 id="history-thanks">History &amp; Thanks</h3>
 			{" "}
@@ -30,7 +30,7 @@ export default function Page() @{
 			{" "}
 			<p>{"In "}<a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/htmx/releases/tag/v0.0.1">May</a>{" htmx reached 0.0.1. Soon thereafter I had the good fortune of being contacted by "}<a rel="noopener" target="_blank" href="https://twitter.com/ben_pylo">Ben Croker</a>{" who was interested in htmx as a base for his new reactive library, "}<a rel="noopener" target="_blank" href="https://putyourlightson.com/plugins/sprig">Sprig</a>. Ben was willing to be an early adopter of htmx and pushed the library along much faster than it would have gone otherwise.</p>
 			{" "}
-			<p>{"I have been very lucky to the have help and feedback from many contributors in "}<a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/htmx/graphs/contributors">GitHub</a>{" and on "}<a rel="noopener" target="_blank" href="https://htmx.org/discord">Discord</a>{". I’d like to thank, in particular, "}<a rel="noopener" target="_blank" href="https://github.com/benpate">Ben Pate</a>{", "}<a rel="noopener" target="_blank" href="https://github.com/rschroll">Robert Schroll</a>{" & "}<a rel="noopener" target="_blank" href="https://github.com/jreviews">Alejandro Schmeichler</a>{" for contributing code as well as new ideas and discussions."}</p>
+			<p>{"I have been very lucky to the have help and feedback from many contributors in "}<a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/htmx/graphs/contributors">GitHub</a>{" and on "}<a rel="noopener" target="_blank" href="/discord">Discord</a>{". I’d like to thank, in particular, "}<a rel="noopener" target="_blank" href="https://github.com/benpate">Ben Pate</a>{", "}<a rel="noopener" target="_blank" href="https://github.com/rschroll">Robert Schroll</a>{" & "}<a rel="noopener" target="_blank" href="https://github.com/jreviews">Alejandro Schmeichler</a>{" for contributing code as well as new ideas and discussions."}</p>
 			{" "}
 			<p>{"I would like to thank "}<a rel="noopener" target="_blank" href="https://devmode.fm/">Devmode.fm</a>{" for having me on to "}<a rel="noopener" target="_blank" href="https://devmode.fm/episodes/dynamic-html-with-htmx">talk about htmx</a>{" and for cleaning up all my “uhhs” and “umms”."}</p>
 			{" "}

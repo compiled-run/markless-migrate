@@ -8,7 +8,7 @@ export default function Page() @{
 		<main class="c content ">
 			<h1><code>hx-disinherit</code></h1>
 			{" "}
-			<p>{"The default behavior for htmx is to “inherit” many attributes automatically: that is, an attribute such as "}<a href="https://htmx.org/attributes/hx-target/">hx-target</a>{" may be placed on a parent element, and all child elements will inherit that target."}</p>
+			<p>{"The default behavior for htmx is to “inherit” many attributes automatically: that is, an attribute such as "}<a href="/attributes/hx-target/">hx-target</a>{" may be placed on a parent element, and all child elements will inherit that target."}</p>
 			{" "}
 			<p>{"The "}<code>hx-disinherit</code>{" attribute allows you to control this automatic attribute inheritance. An example scenario is to allow you to place an "}<code>hx-boost</code>{" on the "}<code>body</code>{" element of a page, but overriding that behavior in a specific part of the page to allow for more specific behaviors."}</p>
 			{" "}
@@ -24,7 +24,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="notes">Notes</h2>
 			{" "}
-			<ul>{" "}<li>{"Read more about "}<a href="https://htmx.org/docs/#inheritance">Attribute Inheritance</a></li>{" "}</ul>
+			<ul>{" "}<li>{"Read more about "}<a href="/docs/#inheritance">Attribute Inheritance</a></li>{" "}</ul>
 			{" "}
 		</main>
 		<SiteFooter />

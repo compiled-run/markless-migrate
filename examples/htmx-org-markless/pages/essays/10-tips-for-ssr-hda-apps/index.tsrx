@@ -12,7 +12,7 @@ export default function Page() @{
 			{" "}
 			<time>June 13, 2022</time>
 			{" "}
-			<p>{"Building web applications using traditional Server-Side Rendering (SSR) or, saying the same thing another way, building "}<a href="https://htmx.org/essays/hypermedia-driven-applications/">Hypermedia-Driven Applications</a>{" (HDAs) requires a mindset shift when compared with building web applications with Single Page Application frameworks like React."}</p>
+			<p>{"Building web applications using traditional Server-Side Rendering (SSR) or, saying the same thing another way, building "}<a href="/essays/hypermedia-driven-applications/">Hypermedia-Driven Applications</a>{" (HDAs) requires a mindset shift when compared with building web applications with Single Page Application frameworks like React."}</p>
 			{" "}
 			<p>If you come at this style of development with an SPA-engineering hat on, you are likely to be frustrated and miss out on many advantages of this particular architectural choice.</p>
 			{" "}
@@ -34,17 +34,17 @@ export default function Page() @{
 			{" "}
 			<p>{"Whereas SPAs user interfaces are typically organized via "}<em>components</em>{", hypermedia-driven applications are typically organized via "}<em>template inclusion</em>, where the server-side templates are broken up according to the HTML-rendering needs of the application, and then included in one another as needed. This tends to lead to fewer, chunkier files than you would find in a component-based application.</p>
 			{" "}
-			<p>{"Another technology to look for are "}<a href="https://htmx.org/essays/template-fragments/">Template Fragments</a>, which allow you to render only part of a template file. This can reduce even further the number of template files required for your server-side application.</p>
+			<p>{"Another technology to look for are "}<a href="/essays/template-fragments/">Template Fragments</a>, which allow you to render only part of a template file. This can reduce even further the number of template files required for your server-side application.</p>
 			{" "}
 			<h3 id="tip-3-specialize-your-api-end-points"><a class="zola-anchor" href="#tip-3-specialize-your-api-end-points" aria-label="Anchor link for: tip-3-specialize-your-api-end-points">Tip 3: Specialize Your API End Points</a></h3>
 			{" "}
-			<p>{"Unlike a "}<a href="https://htmx.org/essays/hypermedia-apis-vs-data-apis/">JSON API</a>{", the hypermedia API you produce for your hypermedia-driven application "}<em>should</em>{" feature end-points specialized for your particular application’s UI needs."}</p>
+			<p>{"Unlike a "}<a href="/essays/hypermedia-apis-vs-data-apis/">JSON API</a>{", the hypermedia API you produce for your hypermedia-driven application "}<em>should</em>{" feature end-points specialized for your particular application’s UI needs."}</p>
 			{" "}
-			<p>{"Because hypermedia APIs are "}<a href="https://htmx.org/essays/hypermedia-clients/">not designed to be consumed by general-purpose clients</a>{" you can set aside the pressure to keep them generalized and produce the content specifically needed for your application."}<br />{" Your end-points should be optimized to support your particular applications UI/UX needs, not for a general-purpose data-access model for your domain model."}</p>
+			<p>{"Because hypermedia APIs are "}<a href="/essays/hypermedia-clients/">not designed to be consumed by general-purpose clients</a>{" you can set aside the pressure to keep them generalized and produce the content specifically needed for your application."}<br />{" Your end-points should be optimized to support your particular applications UI/UX needs, not for a general-purpose data-access model for your domain model."}</p>
 			{" "}
 			<h3 id="tip-4-aggressively-refactor-your-api-end-points"><a class="zola-anchor" href="#tip-4-aggressively-refactor-your-api-end-points" aria-label="Anchor link for: tip-4-aggressively-refactor-your-api-end-points">Tip 4: Aggressively Refactor Your API End Points</a></h3>
 			{" "}
-			<p>{"A related tip is that, when you have a hypermedia-based API, you can aggressively refactor your API in a way that is heavily discouraged when writing JSON API-based SPAs. Because hypermedia-based applications use "}<a href="https://htmx.org/essays/hateoas/">Hypermedia As The Engine Of Application State</a>, you are able and, in fact, encouraged, to change the shape of them as your application developers and as use cases change.</p>
+			<p>{"A related tip is that, when you have a hypermedia-based API, you can aggressively refactor your API in a way that is heavily discouraged when writing JSON API-based SPAs. Because hypermedia-based applications use "}<a href="/essays/hateoas/">Hypermedia As The Engine Of Application State</a>, you are able and, in fact, encouraged, to change the shape of them as your application developers and as use cases change.</p>
 			{" "}
 			<p>A great strength of the hypermedia approach is that you can completely rework your API to adapt to new needs over time without needing to version the API or even document it.</p>
 			{" "}
@@ -64,7 +64,7 @@ export default function Page() @{
 			{" "}
 			<p>{"Unfortunately, "}<a rel="noopener" target="_blank" href="https://youdontneedamodalwindow.dev/">modal windows do not play well with much of the infrastructure of the web</a>{" and introduce client-side state that can be difficult (though not impossible) to integrate cleanly with the hypermedia-based approach."}</p>
 			{" "}
-			<p>{"Consider using alternatives such as "}<a rel="noopener" target="_blank" href="https://htmx.org/examples/click-to-edit/">inline editing</a>, rather than modals.</p>
+			<p>{"Consider using alternatives such as "}<a rel="noopener" target="_blank" href="/examples/click-to-edit/">inline editing</a>, rather than modals.</p>
 			{" "}
 			<h3 id="tip-7-accept-good-enough-ux"><a class="zola-anchor" href="#tip-7-accept-good-enough-ux" aria-label="Anchor link for: tip-7-accept-good-enough-ux">Tip 7: Accept “Good Enough” UX</a></h3>
 			{" "}
@@ -74,7 +74,7 @@ export default function Page() @{
 			{" "}
 			<blockquote>{" "}<p>The trade-off, though, is that a uniform interface degrades efficiency, since information is transferred in a standardized form rather than one which is specific to an application’s needs.</p>{" "}</blockquote>
 			{" "}
-			<p>{"Accepting a slightly less efficient and interactive solution to a particular UX can save you a tremendous amount of "}<a href="https://htmx.org/essays/complexity-budget/">complexity</a>{" when building a web application."}</p>
+			<p>{"Accepting a slightly less efficient and interactive solution to a particular UX can save you a tremendous amount of "}<a href="/essays/complexity-budget/">complexity</a>{" when building a web application."}</p>
 			{" "}
 			<p>Do not let the perfect be the enemy of the good.</p>
 			{" "}
@@ -88,7 +88,7 @@ export default function Page() @{
 			{" "}
 			<p>In cases like this, it is perfectly fine to use a front-end heavy approach as an “Island of Interactivity”.</p>
 			{" "}
-			<p>{"Consider the "}<a href="https://htmx.org/examples/sortable/">SortableJS</a>{" example. Here you have a sophisticated area of interactivity that allows for drag-and-drop, and that integrates with htmx and the broader hypermedia-driven application via events."}</p>
+			<p>{"Consider the "}<a href="/examples/sortable/">SortableJS</a>{" example. Here you have a sophisticated area of interactivity that allows for drag-and-drop, and that integrates with htmx and the broader hypermedia-driven application via events."}</p>
 			{" "}
 			<p>This is an excellent way to encapsulate richer UX within an HDA.</p>
 			{" "}
@@ -96,15 +96,15 @@ export default function Page() @{
 			{" "}
 			<p>{"Scripting is "}<a rel="noopener" target="_blank" href="https://www.ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm#sec_5_1_7">explicitly a part of the web architecture</a>{" and developers adopting the hypermedia approach shouldn’t be afraid to use it. Of course there is scripting and then there is scripting."}</p>
 			{" "}
-			<p>{"As much as possible, you should try to use the "}<a href="https://htmx.org/essays/hypermedia-friendly-scripting/">hypermedia-friendly scripting</a>{" approach, retaining hypermedia-exchanges as the primary mechanism for communicating system state changes with the server."}</p>
+			<p>{"As much as possible, you should try to use the "}<a href="/essays/hypermedia-friendly-scripting/">hypermedia-friendly scripting</a>{" approach, retaining hypermedia-exchanges as the primary mechanism for communicating system state changes with the server."}</p>
 			{" "}
 			<p>{"Inline-style scripting, as enabled by "}<a rel="noopener" target="_blank" href="https://alpinejs.dev/">alpine.js</a>{" & "}<a rel="noopener" target="_blank" href="https://hyperscript.org">hyperscript</a>{" for example, is worth exploring as well, as it refocuses your scripting on the hypermedia (HTML) itself and imposes an aesthetic constraint on just how much code you can write."}</p>
 			{" "}
 			<h3 id="tip-10-be-pragmatic"><a class="zola-anchor" href="#tip-10-be-pragmatic" aria-label="Anchor link for: tip-10-be-pragmatic">Tip 10: Be Pragmatic</a></h3>
 			{" "}
-			<p>{"Finally, do not be dogmatic about using hypermedia. At the end of the day, it is just another technology with its own "}<a href="https://htmx.org/essays/when-to-use-hypermedia/">strengths &amp; weaknesses</a>. If a particular part of an app, or if an entire app, demands something more interactive than what hypermedia can deliver, then go with a technology that can.</p>
+			<p>{"Finally, do not be dogmatic about using hypermedia. At the end of the day, it is just another technology with its own "}<a href="/essays/when-to-use-hypermedia/">strengths &amp; weaknesses</a>. If a particular part of an app, or if an entire app, demands something more interactive than what hypermedia can deliver, then go with a technology that can.</p>
 			{" "}
-			<p>{"Just be familiar with "}<a href="https://htmx.org/examples/">what hypermedia can do</a>, so you can make that decision as an informed developer.</p>
+			<p>{"Just be familiar with "}<a href="/examples/">what hypermedia can do</a>, so you can make that decision as an informed developer.</p>
 			{" "}
 			<h2 id="conclusion"><a class="zola-anchor" href="#conclusion" aria-label="Anchor link for: conclusion">Conclusion</a></h2>
 			{" "}
