@@ -472,6 +472,7 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 		if (id) byId.set(id, el);
 	}
 	const pendingLayers: { reveal: Reveal; added: Reveal['added'][number]; trigger: Element | undefined; kept: Element[] }[] = [];
+	const companions: { parent: Element; before: Element | null; kept: Element[]; key: string }[] = [];
 	for (const reveal of reveals) {
 		const atPath = elementAt(root, reveal.path);
 		const trigger = reveal.sig !== undefined && (!atPath || sigOf(atPath) !== reveal.sig) ? (bySig.get(reveal.sig)?.[reveal.nth ?? 0] ?? atPath) : atPath;
@@ -511,9 +512,25 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 				const inPlace = trigger && parent && attr(trigger, 'aria-expanded') === 'false' && attr(trigger, 'aria-haspopup') === undefined && !reveal.added.some((a) => a.into === 'body');
 				const panel = panelOf(kept, attr(trigger!, 'aria-controls'));
 				if (inPlace) inserted.push({ trigger: trigger!, parent: parent!, before: added.before >= 0 ? (elementChildren(parent!)[added.before] ?? null) : null, markup: kept.map((e) => emitElement(e, { dropped, bind: (x) => bindParts(x, templatePorts) })).join(''), ...panel });
+				// What opening a layer also puts beside its trigger (Base UI's visually hidden Dismiss button): rendered hidden
+				// there, shown with the layer (data-mm-shown-with names the trigger's key).
+				else if (trigger && parent && attr(trigger, 'aria-haspopup') !== undefined) companions.push({ parent, before: added.before >= 0 ? (elementChildren(parent)[added.before] ?? null) : null, kept, key: reveal.key });
 				else unplaced.push(`${reveal.key}: content shown inside the page by a control no Markless state drives yet`);
 			}
 		}
+	}
+	const placedWith = new Set<string>();
+	for (const c of companions) {
+		const at = `${c.key}|${outer(c.kept[0]!)}`;
+		if (placedWith.has(at)) continue;
+		placedWith.add(at);
+		const index = c.before ? c.parent.childNodes.indexOf(c.before as never) : c.parent.childNodes.length;
+		const nodes = c.kept.map((e) => {
+			e.attrs = [...e.attrs.filter((a) => a.name !== 'hidden'), { name: 'hidden', value: '' }, { name: 'data-mm-shown-with', value: c.key }];
+			e.parentNode = c.parent as never;
+			return e;
+		});
+		c.parent.childNodes.splice(index < 0 ? c.parent.childNodes.length : index, 0, ...(nodes as never[]));
 	}
 	// Layers last: their generated ids are renamed from their content, here and wherever the page names them.
 	const rename = new Map<string, string>();

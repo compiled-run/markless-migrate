@@ -116,6 +116,11 @@ export function closestTrigger<T extends HTMLElement = HTMLElement>(target: Elem
 	return null;
 }
 
+/** Shows or hides what a layer also put beside its trigger on the old page (data-mm-shown-with its key). */
+export function showCompanions(key: string, on: boolean): void {
+	for (const el of document.querySelectorAll<HTMLElement>(`[data-mm-shown-with="${CSS.escape(key)}"]`)) el.hidden = !on;
+}
+
 /** A control that took itself away on the old page (View Code): its container's content switches to what it then showed. */
 export function swap(control: Element): boolean {
 	const key = control.getAttribute('data-mm-replace');

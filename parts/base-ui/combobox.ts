@@ -87,6 +87,8 @@ function open(input: HTMLInputElement): Popup | undefined {
 	if (list.id) input.setAttribute('aria-controls', list.id);
 	input.setAttribute('data-popup-side', p.popup.getAttribute('data-side') ?? 'bottom');
 	for (const b of input.closest('[data-slot="input-group"]')?.querySelectorAll<HTMLElement>(BUTTON) ?? []) b.setAttribute('aria-expanded', 'true');
+	// Base UI hides the input's addons from assistive technology while the list is open (its trigger is the input's).
+	for (const a of input.closest('[data-slot="input-group"]')?.querySelectorAll<HTMLElement>('[data-slot="input-group-addon"]') ?? []) a.setAttribute('aria-hidden', 'true');
 	filter(p, '');
 	return p;
 }
@@ -104,6 +106,7 @@ function close(p: Popup): void {
 	input.removeAttribute('aria-activedescendant');
 	input.removeAttribute('data-popup-side');
 	for (const b of input.closest('[data-slot="input-group"]')?.querySelectorAll<HTMLElement>(BUTTON) ?? []) b.setAttribute('aria-expanded', 'false');
+	for (const a of input.closest('[data-slot="input-group"]')?.querySelectorAll<HTMLElement>('[data-slot="input-group-addon"]') ?? []) a.removeAttribute('aria-hidden');
 	closePopup(p, false);
 }
 
