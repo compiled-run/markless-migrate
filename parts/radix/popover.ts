@@ -1,5 +1,5 @@
 import { closeLayer, focusFirst, layerOf, openLayer, type Layer } from '../layer.ts';
-import { closestTrigger } from '../reveal.ts';
+import { closestTrigger, layerKey } from '../reveal.ts';
 
 // Radix Popover (@radix-ui/react-popover), non-modal as shadcn renders it: the trigger toggles the content, which takes
 // focus on open; Escape, a press outside or focus leaving closes it, and focus goes back to the trigger unless the press
@@ -22,8 +22,8 @@ function close(layer: Layer, keepFocus = false): void {
 export function click(target: Element): boolean {
 	const trigger = triggerOf(target);
 	if (trigger) {
-		const key = trigger.getAttribute('aria-controls')!;
-		const existing = layerOf(document.getElementById(key) ?? trigger);
+		const key = layerKey(trigger);
+		const existing = layerOf(document.getElementById(trigger.getAttribute('aria-controls') ?? '') ?? trigger);
 		if (trigger.getAttribute('aria-expanded') === 'true' && existing) {
 			close(existing);
 			return true;

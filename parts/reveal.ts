@@ -92,7 +92,7 @@ export function triggerSlot(el: Element): string {
 	if (own.endsWith('-trigger')) return own;
 	const known = slots.get(el);
 	if (known !== undefined) return known;
-	const key = el.getAttribute('aria-controls') || el.getAttribute('data-mm-key') || el.id;
+	const key = layerKey(el);
 	let found = '';
 	if (key) {
 		const served = document.querySelector<HTMLTemplateElement>(`${LAYER_SOURCE}[data-mm-layer-keys~="${CSS.escape(key)}"]`);
@@ -114,6 +114,15 @@ export function triggerSlot(el: Element): string {
 export function closestTrigger<T extends HTMLElement = HTMLElement>(target: Element, selector: string, slot: (name: string) => boolean): T | null {
 	for (let el = target.closest<T>(selector); el; el = el.parentElement?.closest<T>(selector) ?? null) if (slot(triggerSlot(el))) return el;
 	return null;
+}
+
+/**
+ * The key a trigger's layer is rendered under: the capture keyed a control by its own id first, then its aria-controls
+ * (a Radix trigger given an id, the date picker's, has its layer under the id while aria-controls names the content).
+ */
+export function layerKey(trigger: Element): string {
+	const keys = [trigger.getAttribute('aria-controls'), trigger.getAttribute('data-mm-key'), trigger.id].filter((k): k is string => Boolean(k));
+	return keys.find((k) => document.querySelector(`[data-mm-layer="${CSS.escape(k)}"], ${LAYER_SOURCE}[data-mm-layer-keys~="${CSS.escape(k)}"]`)) ?? keys[0] ?? '';
 }
 
 /** Shows or hides what a layer also put beside its trigger on the old page (data-mm-shown-with its key). */

@@ -1,5 +1,5 @@
 import { closeLayer, openLayer, type Layer } from '../layer.ts';
-import { closestTrigger } from '../reveal.ts';
+import { closestTrigger, layerKey } from '../reveal.ts';
 
 // Radix HoverCard: the pointer resting on the trigger (or focus) opens the content after openDelay; leaving both the
 // trigger and the content closes it after closeDelay (the delays the source gives HoverCard, written by the converter as
@@ -11,7 +11,7 @@ const open = new Map<HTMLElement, Layer>();
 const timers = new Map<HTMLElement, number>();
 const listening = new WeakSet<Element>();
 
-const keyOf = (t: HTMLElement) => t.getAttribute('aria-controls') || t.dataset.mmKey || t.id;
+const keyOf = (t: HTMLElement) => layerKey(t);
 const delay = (t: HTMLElement, name: 'mmOpenDelay' | 'mmCloseDelay', fallback: number) => {
 	const v = Number(t.dataset[name]);
 	return Number.isFinite(v) && t.dataset[name] !== undefined ? v : fallback;

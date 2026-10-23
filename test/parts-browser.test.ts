@@ -191,3 +191,17 @@ test('combobox: a query nothing matches marks the popup empty; with several valu
 	assert.equal(await page.locator('[data-mm-layer="multi"] [role="option"]', { hasText: 'Next.js' }).getAttribute('aria-selected'), 'false');
 	await page.close();
 });
+
+test('a Radix trigger with its own id has its layer under the id, while aria-controls names the content', async () => {
+	const page = await open(
+		`<main style="padding-top:300px"><button data-slot="popover-trigger" id="date-picker-simple" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="content-1" data-state="closed">Pick a date</button></main>
+		<div data-mm-layer="date-picker-simple" hidden data-radix-popper-content-wrapper style="position:fixed"><div data-slot="popover-content" role="dialog" id="content-1" data-state="closed" tabindex="-1">Calendar</div></div>`,
+		['radix/popover'],
+	);
+	await page.getByText('Pick a date').click();
+	assert.equal(await page.getByText('Pick a date').getAttribute('aria-expanded'), 'true');
+	assert.equal(await page.locator('#content-1').getAttribute('data-state'), 'open');
+	await page.getByText('Pick a date').click();
+	assert.equal(await page.getByText('Pick a date').getAttribute('aria-expanded'), 'false', 'a second press closes it');
+	await page.close();
+});

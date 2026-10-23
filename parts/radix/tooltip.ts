@@ -1,5 +1,5 @@
 import { closeLayer, openLayer, type Layer } from '../layer.ts';
-import { closestTrigger } from '../reveal.ts';
+import { closestTrigger, layerKey } from '../reveal.ts';
 
 // Radix Tooltip under shadcn's TooltipProvider delayDuration={0}: the pointer entering the trigger or keyboard focus
 // shows the content at once (data-state "delayed-open", "instant-open" when another tooltip closed within Radix's
@@ -12,7 +12,7 @@ const SKIP_DELAY = 300;
 const shown = new Map<HTMLElement, Layer>();
 let lastClosed = 0;
 
-const keyOf = (t: HTMLElement) => t.getAttribute('aria-controls') || t.dataset.mmKey || t.id;
+const keyOf = (t: HTMLElement) => layerKey(t);
 
 function show(trigger: HTMLElement): boolean {
 	if (shown.has(trigger)) return true;

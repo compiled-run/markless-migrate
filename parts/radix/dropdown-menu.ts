@@ -1,5 +1,5 @@
 import { closeLayer, layerOf, openLayer, type Layer } from '../layer.ts';
-import { closestTrigger } from '../reveal.ts';
+import { closestTrigger, layerKey } from '../reveal.ts';
 
 // Radix DropdownMenu (@radix-ui/react-dropdown-menu), modal as by default: pressing the trigger (or Enter, Space or
 // ArrowDown on it) opens the menu with outside pointer events off; the content takes focus (the first item from the
@@ -14,7 +14,7 @@ const BAR = '[role="menubar"]';
 const barTriggers = (trigger: HTMLElement) => [...(trigger.closest(BAR)?.querySelectorAll<HTMLElement>('[data-slot="menubar-trigger"][data-state]') ?? [])];
 const openOf = (trigger: HTMLElement) => layerOf(document.getElementById(trigger.getAttribute('aria-controls') ?? '') ?? trigger);
 const ITEM = '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]';
-const keyOf = (trigger: HTMLElement) => trigger.getAttribute('aria-controls') || trigger.id;
+const keyOf = (trigger: HTMLElement) => layerKey(trigger);
 
 function setTrigger(trigger: HTMLElement, open: boolean, layer?: Layer): void {
 	// A context menu's trigger area (opened by the context-menu port) is not a menu button.

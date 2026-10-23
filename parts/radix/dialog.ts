@@ -1,5 +1,5 @@
 import { installDialog } from './dialog-engine.ts';
-import { layersFor, closestTrigger } from '../reveal.ts';
+import { layersFor, closestTrigger, layerKey } from '../reveal.ts';
 
 // Radix Dialog and AlertDialog, delegated: the trigger's aria-controls names the content captured from the old page. The
 // content (and overlay) are mounted from their templates, then dialog-engine.ts (the shared port's engine, which does
@@ -36,7 +36,7 @@ function close(key: string): void {
 }
 
 function open(trigger: HTMLElement): boolean {
-	const key = trigger.getAttribute('aria-controls')!;
+	const key = layerKey(trigger);
 	if (opened.has(key)) return true;
 	const nodes = layersFor(key);
 	if (!nodes.length) return false;
@@ -73,7 +73,7 @@ export function click(target: Element): boolean {
 
 /** Opens or closes the dialog a trigger controls, for a page's own shortcut (a command menu on ⌘K). */
 export function toggle(trigger: HTMLElement): void {
-	const key = trigger.getAttribute('aria-controls');
+	const key = layerKey(trigger);
 	if (!key) return;
 	if (opened.has(key)) close(key);
 	else open(trigger);
