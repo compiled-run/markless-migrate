@@ -45,7 +45,7 @@ const check = async (options?: Parameters<typeof site>[1]) => {
 };
 const storage = (r: Awaited<ReturnType<typeof check>>) => r.failures.filter((f) => /storage|kept in the browser/.test(`${f.check} ${f.expected}`));
 
-test("htmx's history keys and Laravel's sealed cookies, which only the old framework writes, are accepted automatically when no journey differs", async () => {
+test("htmx's history keys and Laravel's sealed cookies, which only the old framework writes, are accepted automatically as framework internal", async () => {
 	const route = await check();
 	const found = storage(route);
 	assert.ok(found.some((f) => f.check === 'browser storage after the page loads'), 'the load storage difference is there');
@@ -55,9 +55,10 @@ test("htmx's history keys and Laravel's sealed cookies, which only the old frame
 	assert.ok(route.ok, route.failures.filter((f) => !f.accepted).map((f) => f.check).join('; '));
 });
 
-test('with a journey difference on the route, or an app key among them, they stay red', async () => {
+test('a journey difference on the route stays red beside them, and an app key among them keeps them red', async () => {
 	const differs = await check({ wave: '2' });
-	assert.ok(storage(differs).length && storage(differs).every((f) => !f.accepted), 'a journey differs, so the storage is not proven harmless');
+	assert.ok(storage(differs).some((f) => f.check === 'browser storage after the page loads' && f.accepted?.automatic === 'framework-storage'), 'the framework\'s own keys are its internals whatever else differs');
+	assert.ok(!differs.ok && differs.failures.some((f) => !f.accepted && f.dimension === 'behaviour'), 'the journey difference itself is still red');
 	const cart = await check({ cart: true });
 	const load = storage(cart).find((f) => f.check === 'browser storage after the page loads')!;
 	assert.match(load.actual, /localStorage cart/);

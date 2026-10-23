@@ -576,11 +576,11 @@ function watchReaction(): void {
 }
 
 // Runs in the page after a step: what changed in the page's widgets, named by role and label as a visitor's tools name them.
-function readReaction(): { changes: string[]; scrolled: boolean } {
+function readReaction(): { changes: string[]; scrolled: boolean; boxes: Record<string, { x: number; y: number; width: number; height: number }> } {
 	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; scrolls: Map<Element, string>; window: string };
 	const g = globalThis as { __markless_migrate_reaction__?: Watch };
 	const watch = g.__markless_migrate_reaction__;
-	if (!watch) return { changes: [], scrolled: false };
+	if (!watch) return { changes: [], scrolled: false, boxes: {} };
 	watch.observer.disconnect();
 	delete g.__markless_migrate_reaction__;
 	const STATES = ['aria-valuenow', 'aria-valuetext', 'aria-expanded', 'aria-selected', 'aria-checked', 'aria-pressed', 'aria-current', 'open'];
@@ -601,9 +601,19 @@ function readReaction(): { changes: string[]; scrolled: boolean } {
 		return `${role}${kind ? ` (${kind})` : ''}${name ? ` "${name}"` : ''}${nth}`;
 	};
 	// A part with no role of its own (a carousel's track) is named by the nearest widget or landmark holding it.
-	const anchor = (el: Element) => {
-		for (let at: Element | null = el; at && at !== document.body; at = at.parentElement) if (at.hasAttribute('role') || at.hasAttribute('aria-roledescription') || at.hasAttribute('aria-label') || /^(input|select|textarea|button|a|dialog|details|nav|main|header|footer|aside|form|table|section|ul|ol)$/.test(at.localName)) return describe(at);
-		return 'the page';
+	const anchorOf = (el: Element) => {
+		for (let at: Element | null = el; at && at !== document.body; at = at.parentElement) if (at.hasAttribute('role') || at.hasAttribute('aria-roledescription') || at.hasAttribute('aria-label') || /^(input|select|textarea|button|a|dialog|details|nav|main|header|footer|aside|form|table|section|ul|ol)$/.test(at.localName)) return at;
+		return undefined;
+	};
+	const boxes: Record<string, { x: number; y: number; width: number; height: number }> = {};
+	const add = (line: string, el: Element | undefined) => {
+		out.add(line);
+		const r = el?.getBoundingClientRect();
+		if (r) boxes[line] = { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
+	};
+	const anchored = (el: Element, what: string) => {
+		const at = anchorOf(el);
+		add(`${at ? describe(at) : 'the page'} ${what}`, at);
 	};
 	const moved = (style: string | null | undefined) => {
 		const probe = document.createElement('div');
@@ -617,12 +627,12 @@ function readReaction(): { changes: string[]; scrolled: boolean } {
 		for (const [attr, was] of attrs) {
 			const now = el.getAttribute(attr);
 			if (now === was) continue;
-			if (STATES.includes(attr)) out.add(`${describe(el)} ${attr}: ${was ?? '(none)'} → ${now ?? '(none)'}`);
-			else if (attr === 'style' && moved(was) !== moved(now)) out.add(`${anchor(el)} moved`);
+			if (STATES.includes(attr)) add(`${describe(el)} ${attr}: ${was ?? '(none)'} → ${now ?? '(none)'}`, el);
+			else if (attr === 'style' && moved(was) !== moved(now)) anchored(el, 'moved');
 		}
 	}
-	for (const [el, was] of watch.scrolls) if (el.isConnected && `${Math.round(el.scrollLeft)},${Math.round(el.scrollTop)}` !== was) out.add(`${anchor(el)} scrolled`);
-	return { changes: [...out].sort(), scrolled: `${Math.round(scrollX)},${Math.round(scrollY)}` !== watch.window };
+	for (const [el, was] of watch.scrolls) if (el.isConnected && `${Math.round(el.scrollLeft)},${Math.round(el.scrollTop)}` !== was) anchored(el, 'scrolled');
+	return { changes: [...out].sort(), scrolled: `${Math.round(scrollX)},${Math.round(scrollY)}` !== watch.window, boxes };
 }
 
 const AMBIENT_MS = 1_000;
@@ -635,7 +645,8 @@ async function ambientMotion(page: Page): Promise<{ changes: readonly string[]; 
 	await sleep(AMBIENT_MS);
 	const read = await page.evaluate(readReaction).catch(() => undefined);
 	const after = await page.screenshot({ timeout: 10_000 }).catch(() => undefined);
-	return { changes: read?.changes ?? [], regions: after && !read?.scrolled ? changedRegions(before, after, []) : [] };
+	const moving = Object.values(read?.boxes ?? {});
+	return { changes: read?.changes ?? [], regions: [...moving, ...(after && !read?.scrolled ? changedRegions(before, after, []) : [])] };
 }
 
 async function focusLabel(page: Page): Promise<string> {
@@ -996,7 +1007,9 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 			const frameAfter = await page.screenshot({ timeout: 10_000 }).catch(() => undefined);
 			const boxAfter = await ownBox();
 			// What the page changes on its own (an autoplaying carousel, a ticking counter) is no step's answer.
-			if (read && frameAfter) reaction = { regions: read.scrolled ? [] : changedRegions(frameBefore, frameAfter, [boxBefore, boxAfter, ...ambient.regions].filter((b): b is Box => Boolean(b))), changes: read.changes.filter((c) => !ambient.changes.includes(c)), ...(read.scrolled ? { scrolled: true } : {}) };
+			// Where those widgets sit now is left out too: what moves on its own changes different pixels every second.
+			const own = read ? read.changes.filter((c) => ambient.changes.includes(c)).flatMap((c) => (read.boxes[c] ? [read.boxes[c]!] : [])) : [];
+			if (read && frameAfter) reaction = { regions: read.scrolled ? [] : changedRegions(frameBefore, frameAfter, [boxBefore, boxAfter, ...ambient.regions, ...own].filter((b): b is Box => Boolean(b))), changes: read.changes.filter((c) => !ambient.changes.includes(c)), ...(read.scrolled ? { scrolled: true } : {}) };
 		}
 		return {
 			url: redirected && here(page.url()) === landing ? 'the page the route redirected to' : here(page.url()),
