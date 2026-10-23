@@ -200,6 +200,10 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 				})().catch(() => undefined),
 			);
 		});
+		// A stylesheet that never answered is recorded too (status 0), so a page that rendered without it can be told apart.
+		page.on('requestfailed', (request) => {
+			if (request.resourceType() === 'stylesheet' && !insideEmbed(request, own)) pending.push(Promise.resolve({ url: toLocal(request.url(), origin), type: 'stylesheet', status: 0, contentType: '', bytes: 0 }));
+		});
 		await page.coverage.startJSCoverage({ resetOnNavigation: false });
 		const navigation = await loadPage(page, new URL(route, origin).href);
 		const html = (await navigation?.text().catch(() => '')) ?? '';

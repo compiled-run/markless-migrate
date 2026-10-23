@@ -8,7 +8,7 @@ export default function Page() @{
 		<main class="c content ">
 			<h1>HX-Redirect Response Header</h1>
 			{" "}
-			<p>{"This response header can be used to trigger a client side redirection to a new url that will do a full reload of the whole page. It uses the browser to redirect to the new location which can be useful when redirecting to non htmx endpoints that may contain different HTML "}<code>head</code>{" content or scripts. See "}<a href="https://htmx.org/headers/hx-location/"><code>HX-Location</code></a>{" if you want more control over the redirect or want to use ajax requests instead of full browser reloads."}</p>
+			<p>{"This response header can be used to trigger a client side redirection to a new url that will do a full reload of the whole page. It uses the browser to redirect to the new location which can be useful when redirecting to non htmx endpoints that may contain different HTML "}<code>head</code>{" content or scripts. See "}<a href="/headers/hx-location/"><code>HX-Location</code></a>{" if you want more control over the redirect or want to use ajax requests instead of full browser reloads."}</p>
 			{" "}
 			<p>A sample response would be:</p>
 			{" "}
@@ -18,7 +18,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="notes">Notes</h2>
 			{" "}
-			<p>{"Response headers are not processed on 3xx response codes. see "}<a href="https://htmx.org/docs/#response-headers">Response Headers</a></p>
+			<p>{"Response headers are not processed on 3xx response codes. see "}<a href="/docs/#response-headers">Response Headers</a></p>
 			{" "}
 		</main>
 		<SiteFooter />

@@ -18,9 +18,9 @@ export default function Page() @{
 			{" "}
 			<p>We are obviously fans of hypermedia and think that it can address, at least in part, many of the problems that the web development world is facing today:</p>
 			{" "}
-			<ul>{" "}<li>{"Hypermedia is often "}<a href="https://htmx.org/essays/a-real-world-react-to-htmx-port/">significantly less complex</a>{" than an SPA approach would be for many problems"}</li>{" "}<li>{"Hypermedia allows your application API to be "}<a href="https://htmx.org/essays/hateoas/">much more aggressively refactored and optimized</a></li>{" "}<li>Hypermedia takes pressure off adopting a particular server technology, since you do not have an extensive JavaScript front-end code base</li>{" "}</ul>
+			<ul>{" "}<li>{"Hypermedia is often "}<a href="/essays/a-real-world-react-to-htmx-port/">significantly less complex</a>{" than an SPA approach would be for many problems"}</li>{" "}<li>{"Hypermedia allows your application API to be "}<a href="/essays/hateoas/">much more aggressively refactored and optimized</a></li>{" "}<li>Hypermedia takes pressure off adopting a particular server technology, since you do not have an extensive JavaScript front-end code base</li>{" "}</ul>
 			{" "}
-			<p>{"With "}<a href="https://htmx.org/">htmx</a>{" and the additional UX possibilities that it gives you, we believe that many modern web applications can be built using HTML and the hypermedia paradigm."}</p>
+			<p>{"With "}<a href="/">htmx</a>{" and the additional UX possibilities that it gives you, we believe that many modern web applications can be built using HTML and the hypermedia paradigm."}</p>
 			{" "}
 			<p>With that being said, as with all technical choices, there are tradeoffs associated with hypermedia. In this article we will give you some ways to think about if hypermedia will be a good fit for an application or feature you are building.</p>
 			{" "}
@@ -28,7 +28,7 @@ export default function Page() @{
 			{" "}
 			<p>{"Before we get into the details of when hypermedia is a good choice, we’d like to clarify that adopting hypermedia is not an "}<a rel="noopener" target="_blank" href="https://en.wikipedia.org/wiki/Either/Or">either/or</a>{" decision when building a web application. Even the most Single-y of Single Page Applications utilizes hypermedia after all: as a bootstrap mechanism, to start the application."}</p>
 			{" "}
-			<p>{"In his talk, "}<a rel="noopener" target="_blank" href="https://www.youtube.com/watch?v=860d8usGC0o">Have SPAs Ruined The Web</a>{", Rich Harris gives us the term “Transitional” Applications, that is applications that "}<em>mix</em>{" both hypermedia and non-hypermedia (SPA) concepts. We have responded to Mr. Harris’ talk "}<a href="https://htmx.org/essays/a-response-to-rich-harris/">in more detail here</a>, but suffice to say we violently agree with him that a pragmatic “Transitional” approach to web development is best: you should use the right tool for the particular job you are working on.</p>
+			<p>{"In his talk, "}<a rel="noopener" target="_blank" href="https://www.youtube.com/watch?v=860d8usGC0o">Have SPAs Ruined The Web</a>{", Rich Harris gives us the term “Transitional” Applications, that is applications that "}<em>mix</em>{" both hypermedia and non-hypermedia (SPA) concepts. We have responded to Mr. Harris’ talk "}<a href="/essays/a-response-to-rich-harris/">in more detail here</a>, but suffice to say we violently agree with him that a pragmatic “Transitional” approach to web development is best: you should use the right tool for the particular job you are working on.</p>
 			{" "}
 			<p>Where we would likely disagree with Mr. Harris is where “the line” is between features that can be implemented effectively in hypermedia and features that require a more sophisticated client-side approach. We feel that, with htmx, hypermedia can go much, much further than many web developers today believe is possible. And, further, that, for many applications, it can address many or all of their UX needs.</p>
 			{" "}
@@ -36,7 +36,7 @@ export default function Page() @{
 			{" "}
 			<h3 id="if-your-ui-is-mostly-text-images"><a class="zola-anchor" href="#if-your-ui-is-mostly-text-images" aria-label="Anchor link for: if-your-ui-is-mostly-text-images"><em>…If your UI is mostly text &amp; images</em></a></h3>
 			{" "}
-			<p>{"In "}<a href="https://htmx.org/essays/a-real-world-react-to-htmx-port/">The Mother Of All htmx Demos</a>, David Guillot of Contexte shows how replacing React with htmx lead to a 67% reduction in the total codebase, along with numerous other eye-popping results.</p>
+			<p>{"In "}<a href="/essays/a-real-world-react-to-htmx-port/">The Mother Of All htmx Demos</a>, David Guillot of Contexte shows how replacing React with htmx lead to a 67% reduction in the total codebase, along with numerous other eye-popping results.</p>
 			{" "}
 			<p>{"As much as we would like to claim that every team moving from React to htmx would experience these results, the fact is that the Contexte web application is "}<em>extremely amenable</em>{" to the hypermedia style."}</p>
 			{" "}
@@ -46,7 +46,7 @@ export default function Page() @{
 			{" "}
 			<p>{"Another area where hypermedia has a long track-record of success is "}<a rel="noopener" target="_blank" href="https://en.wikipedia.org/wiki/Create,_read,_update_and_delete">CRUD</a>{"-y web applications, in the "}<a rel="noopener" target="_blank" href="https://rubyonrails.org/">Ruby on Rails</a>{" style. If your main application mechanic is showing forms and saving the forms into a database, hypermedia can work very well."}</p>
 			{" "}
-			<p>{"And, with htmx, it can also be "}<a href="https://htmx.org/examples/click-to-edit/">very smooth</a>{", and not just constrained to the simple "}<a href="https://htmx.org/examples/edit-row/">list view/detail view</a>{" approach many server side applications take."}</p>
+			<p>{"And, with htmx, it can also be "}<a href="/examples/click-to-edit/">very smooth</a>{", and not just constrained to the simple "}<a href="/examples/edit-row/">list view/detail view</a>{" approach many server side applications take."}</p>
 			{" "}
 			<h3 id="if-your-ui-is-nested-with-updates-mostly-taking-place-within-well-defined-blocks"><a class="zola-anchor" href="#if-your-ui-is-nested-with-updates-mostly-taking-place-within-well-defined-blocks" aria-label="Anchor link for: if-your-ui-is-nested-with-updates-mostly-taking-place-within-well-defined-blocks"><em>…If your UI is “nested”, with updates mostly taking place within well-defined blocks</em></a></h3>
 			{" "}
@@ -54,7 +54,7 @@ export default function Page() @{
 			{" "}
 			<p>“Ah ha!”, exclaims the SPA enthusiast, “See, even GitHub can’t get this right!”</p>
 			{" "}
-			<p>{"Well, GitHub has fixed the issue, but it does demonstrate a problem with the hypermedia approach: how do you update disjoint parts of the UI cleanly? htmx offers "}<a href="https://htmx.org/examples/update-other-content/">a few techniques for making this work</a>, and Contexte, in their talk, discuss handling this situation very cleanly, using the event approach.</p>
+			<p>{"Well, GitHub has fixed the issue, but it does demonstrate a problem with the hypermedia approach: how do you update disjoint parts of the UI cleanly? htmx offers "}<a href="/examples/update-other-content/">a few techniques for making this work</a>, and Contexte, in their talk, discuss handling this situation very cleanly, using the event approach.</p>
 			{" "}
 			<p>But, let us grant that this is an area where the hypermedia approach can get into trouble. To avoid this problem, one potential strategy is to colocate dependent elements for a given resource within a given region or area on the screen in an application.</p>
 			{" "}
@@ -70,15 +70,15 @@ export default function Page() @{
 			{" "}
 			<ul>{" "}<li><code>/contacts/&lt;id&gt;/details</code>{" for the first name/last name/ etc. info"}</li>{" "}<li><code>/contacts/&lt;id&gt;/emails</code>{" for the email section"}</li>{" "}<li><code>/contacts/&lt;id&gt;/phonenumbers</code>{" for the phone numbers section"}</li>{" "}</ul>
 			{" "}
-			<p>{"The trick here is that the email and phone counts are co-located on the screen with their collections, which allows you to "}<a href="https://htmx.org/attributes/hx-target/">target</a>{" just that particular area for update when a modification is made to the respective collections. All the data dependencies are co-located within a single area that can be updated via a single, simple and obvious target, and that, further, don’t interfere with one another when they are replaced."}</p>
+			<p>{"The trick here is that the email and phone counts are co-located on the screen with their collections, which allows you to "}<a href="/attributes/hx-target/">target</a>{" just that particular area for update when a modification is made to the respective collections. All the data dependencies are co-located within a single area that can be updated via a single, simple and obvious target, and that, further, don’t interfere with one another when they are replaced."}</p>
 			{" "}
 			<p>Each area effectively forms a sort of server-side component, independent of the other areas on the screen, and they are all nested within a broader contact detail user interface.</p>
 			{" "}
 			<h4 id="a-side-node-ui-driven-hypermedia-apis"><a class="zola-anchor" href="#a-side-node-ui-driven-hypermedia-apis" aria-label="Anchor link for: a-side-node-ui-driven-hypermedia-apis">A Side Node: UI Driven Hypermedia APIs</a></h4>
 			{" "}
-			<p>{"Note that our hypermedia API (i.e. our end-points) in this case is "}<em>driven by the UI</em>{": we have a particular UI layout that we want to achieve, and we adapt our API to that. If the UI changed, we would have no qualms with completely changing our API to satisfy the new requirements. This is a "}<a href="https://htmx.org/essays/hateoas/">unique aspect</a>{" of developing with hypermedia, and we "}<a href="https://htmx.org/essays/hypermedia-apis-vs-data-apis/">discuss it in more detail here</a>.</p>
+			<p>{"Note that our hypermedia API (i.e. our end-points) in this case is "}<em>driven by the UI</em>{": we have a particular UI layout that we want to achieve, and we adapt our API to that. If the UI changed, we would have no qualms with completely changing our API to satisfy the new requirements. This is a "}<a href="/essays/hateoas/">unique aspect</a>{" of developing with hypermedia, and we "}<a href="/essays/hypermedia-apis-vs-data-apis/">discuss it in more detail here</a>.</p>
 			{" "}
-			<p>{"Of course, there may be UI requirements that do not allow for grouping of dependent element in this manner and, if the techniques "}<a href="https://htmx.org/examples/update-other-content/">mentioned above</a>{" aren’t satisfactory, then it may be time to consider an alternative approach."}</p>
+			<p>{"Of course, there may be UI requirements that do not allow for grouping of dependent element in this manner and, if the techniques "}<a href="/examples/update-other-content/">mentioned above</a>{" aren’t satisfactory, then it may be time to consider an alternative approach."}</p>
 			{" "}
 			<h3 id="if-you-need-deep-links-good-first-render-performance"><a class="zola-anchor" href="#if-you-need-deep-links-good-first-render-performance" aria-label="Anchor link for: if-you-need-deep-links-good-first-render-performance"><em>…If you need “deep links” &amp; good first-render performance</em></a></h3>
 			{" "}
@@ -94,7 +94,7 @@ export default function Page() @{
 			{" "}
 			<p>Particularly difficult for hypermedia to handle is when these dependencies are dynamic, that is, they depend on information that cannot be determined at server-side render-time. A good example of this is something like a spreadsheet: a user can enter an arbitrary function into a cell and introduce all sorts of dependencies on the screen, on the fly.</p>
 			{" "}
-			<p>{"(Note, however, that for many applications, the "}<a href="https://htmx.org/examples/edit-row/">“editable row”</a>{" pattern is an acceptable alternative to more general spreadsheet-like behavior, and this pattern does play well with hypermedia by isolating edits within a bounded area.)"}</p>
+			<p>{"(Note, however, that for many applications, the "}<a href="/examples/edit-row/">“editable row”</a>{" pattern is an acceptable alternative to more general spreadsheet-like behavior, and this pattern does play well with hypermedia by isolating edits within a bounded area.)"}</p>
 			{" "}
 			<h3 id="if-you-require-offline-functionality"><a class="zola-anchor" href="#if-you-require-offline-functionality" aria-label="Anchor link for: if-you-require-offline-functionality"><em>…If you require offline functionality</em></a></h3>
 			{" "}
@@ -108,7 +108,7 @@ export default function Page() @{
 			{" "}
 			<p>Of course, your game may also have a setting page and that setting page might be better done with hypermedia than whatever solution you use for the core of your game. There is nothing wrong with mixing approaches, in the Transitional style!</p>
 			{" "}
-			<p>{"We should note, however, that it is typically easier to embed SPA components "}<em>within</em>{" a larger hypermedia architecture, than vice-versa. Isolated client-side components can communicate with a broader hypermedia application via "}<a rel="noopener" target="_blank" href="https://developer.mozilla.org/en-US/docs/Learn/JavaScript/Building_blocks/Events">events</a>{", in the manner demonstrated in the "}<a href="https://htmx.org/examples/sortable/">drag-and-drop Sortable.js + htmx</a>{" example."}</p>
+			<p>{"We should note, however, that it is typically easier to embed SPA components "}<em>within</em>{" a larger hypermedia architecture, than vice-versa. Isolated client-side components can communicate with a broader hypermedia application via "}<a rel="noopener" target="_blank" href="https://developer.mozilla.org/en-US/docs/Learn/JavaScript/Building_blocks/Events">events</a>{", in the manner demonstrated in the "}<a href="/examples/sortable/">drag-and-drop Sortable.js + htmx</a>{" example."}</p>
 			{" "}
 			<h3 id="if-you-want-integrated-copy-paste-components"><a class="zola-anchor" href="#if-you-want-integrated-copy-paste-components" aria-label="Anchor link for: if-you-want-integrated-copy-paste-components"><em>…If you want integrated copy &amp; paste components</em></a></h3>
 			{" "}
@@ -132,7 +132,7 @@ export default function Page() @{
 			{" "}
 			<p>Of course, the vast majority of web applications are nowhere near the scale and complexity of these examples. And almost every web application, even Google Sheets or Google Maps, has parts where, potentially, the hypermedia approach would be better: simpler, faster and cleaner.</p>
 			{" "}
-			<p>{"Having hypermedia as a tool in your tool-chest will improve your ability to address engineering problems as a web developer, even if it doesn’t become your favorite hammer. There is a good "}<a href="https://htmx.org/essays/hateoas/">theoretical basis</a>{" for the approach, "}<a href="https://htmx.org/essays/a-real-world-react-to-htmx-port/">practical benefits for many applications</a>, and it is “with the grain” of the web in a way that other approaches are not.</p>
+			<p>{"Having hypermedia as a tool in your tool-chest will improve your ability to address engineering problems as a web developer, even if it doesn’t become your favorite hammer. There is a good "}<a href="/essays/hateoas/">theoretical basis</a>{" for the approach, "}<a href="/essays/a-real-world-react-to-htmx-port/">practical benefits for many applications</a>, and it is “with the grain” of the web in a way that other approaches are not.</p>
 			{" "}
 			<div style="padding-top: 120px;padding-bottom:40px;text-align: center">&lt;/&gt;</div>
 		</main>

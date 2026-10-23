@@ -117,15 +117,19 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           stopped carries on where it was.
           --route checks only the routes named, for iterating: such a run (and --changed) is a partial
           run, "partial run: N of M routes", never overall green; it exits 4 when what it checked is green.
-          Above ${TEMPLATE_THRESHOLD} pages, every page gets every check except visual, behaviour,
-          responsiveness and motion, which run on one representative per template group (grouped by URL pattern,
+          Above ${TEMPLATE_THRESHOLD} pages, every page gets every check except visual, responsiveness
+          and motion, which run on one representative per template group (grouped by URL pattern,
           page layout and the kinds of control each page renders); the report lists the groups. --every-dimension runs them on every page.
           Every interactive element of the old page (including those a click reveals, such as a
-          dialog's controls) must be used by a journey, or the route stays red: journeys are explored main content first (tables, forms), until each element is used or
-          --journey-budget (default 120 s per route) runs out; --max-journeys caps their number and
+          dialog's controls) must be used by a journey, or the route stays red, on every page whatever its template:
+          journeys are explored main content first (tables, forms), until each element is used or
+          --journey-budget (default 120 s per route, or 3 s for each control the page shows, at most 15 min) runs out; --max-journeys caps their number and
           --journey-depth (default 4) how many steps deep a journey goes (nested menus, sidebars). A
           control in a shared header, nav, sidebar or footer is exercised by the first route of the
-          run that has it, and the others carry its result.
+          run that has it, and the others carry its result. Each step is compared by what the page
+          shows and keeps after it, and by how it answered: the viewport's pixels before and after it
+          (outside the used control's own box) and its widgets' state (values, selections, what opened,
+          a track that moved or scrolled). A step the old page answers and the new page does not is red.
           --all adds every route the source scan knows (dynamic segments filled from crawled paths or
           .migrate/samples.json; check exits 1 while any is left unchecked, unless --allow-unchecked),
           a path no app has (the not-found page), redirects (the config's own and the other
@@ -176,7 +180,7 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           --only load measures it alone (a partial run: every other dimension is not compared).
           --source and --new-source map each failing element to its old and new source file and line.
           --concurrency checks that many routes at once (default half the cores, at most 4).
-          --timeout stops one route's check after that many seconds (default 600, or five journey
+          --timeout stops one route's check after that many seconds (default 1800, or five journey
           budgets when that is more). A page load that times out or cannot connect is tried again
           once, 2 s later; a route the network still fails, or that passes --timeout, is reported
           as not checked for an infrastructure failure (DNS, connection or timeout, named), not as

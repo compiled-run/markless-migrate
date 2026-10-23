@@ -12,7 +12,7 @@ export default function Page() @{
 			{" "}
 			<time>September 29, 2022</time>
 			{" "}
-			<p>{"It is all well and good talking about "}<a href="https://htmx.org/essays/hateoas/">REST &amp; HATEOAS</a>{" in theory or describing the "}<a href="https://htmx.org/essays/hypermedia-driven-applications/">Hypermedia-Driven Application</a>{" architecture, but, at the end of the day, what matters in software is practical: Does it work? Does it improve things?"}</p>
+			<p>{"It is all well and good talking about "}<a href="/essays/hateoas/">REST &amp; HATEOAS</a>{" in theory or describing the "}<a href="/essays/hypermedia-driven-applications/">Hypermedia-Driven Application</a>{" architecture, but, at the end of the day, what matters in software is practical: Does it work? Does it improve things?"}</p>
 			{" "}
 			<p>{"We can say for sure that htmx "}<em>works</em>{", since we use it in our own software. But it is hard to say that it would be an "}<em>improvement</em>{" over other approaches, since we haven’t had an apples-to-apples comparison of how htmx might compare with, say, "}<a rel="noopener" target="_blank" href="https://reactjs.org/">react</a>.</p>
 			{" "}

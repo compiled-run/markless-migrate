@@ -110,3 +110,18 @@ test('a clock that ticked during a step is not a difference, and a clock that go
 	assert.equal(compareJourneys('/live', [old, old], banner, [[result({ removed: [gone, '- heading "63:03:00:00" [level=2]'] })]]).length, 1, 'a clock the new page removes');
 	assert.equal(compareJourneys('/', [[[counted(1)]], [[counted(1)]]], journeys.slice(0, 1), [[counted(2)]]).length, 1, 'a count is not a clock');
 });
+
+test('a button the new page marks aria-expanded when it opens a menu, where the old page set no state, is an improvement, listed and not red', () => {
+	const menu: Journey[] = [{ name: 'click button "Change language"', steps: [{ action: 'click', target: { role: 'button', name: 'Change language', nth: 0 } }] }];
+	const opened = ['- paragraph: English', '- link "日本語":'];
+	const old = [[result({ added: opened })]];
+	const improvements: string[] = [];
+	const better = [[result({ added: ['- button "Change language" [expanded]:', ...opened], removed: ['- button "Change language":'] })]];
+	assert.deepEqual(compareJourneys('/', [old, old], menu, better, undefined, undefined, improvements), []);
+	assert.match(improvements[0]!, /button "Change language" sets aria-expanded when it opens what it controls/);
+	// What else the step does is still compared: the menu not opening stays red.
+	assert.equal(compareJourneys('/', [old, old], menu, [[result({ added: ['- button "Change language" [expanded]:'], removed: ['- button "Change language":'] })]]).length, 1);
+	// A state the old page sets differently is a difference, not an improvement.
+	const toggles = [[result({ added: ['- button "Change language" [pressed]:', ...opened], removed: ['- button "Change language":'] })]];
+	assert.equal(compareJourneys('/', [toggles, toggles], menu, better).length, 1);
+});

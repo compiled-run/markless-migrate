@@ -227,8 +227,9 @@ function union(boxes: readonly Box[]): Box | undefined {
 async function screenshot(page: Page, clip: Box | undefined): Promise<Buffer> {
 	if (!clip) return (await maskedShot(page, (mask) => page.screenshot({ fullPage: true, animations: 'disabled', caret: 'hide', mask }))).shot;
 	const size = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight }));
-	const x = Math.max(0, clip.x - CLIP_PADDING);
-	const y = Math.max(0, clip.y - CLIP_PADDING);
+	// An element outside the document's scroll box (a fixed aside past its right edge) is shot at the edge, not past it.
+	const x = Math.min(Math.max(0, size.width - 1), Math.max(0, clip.x - CLIP_PADDING));
+	const y = Math.min(Math.max(0, size.height - 1), Math.max(0, clip.y - CLIP_PADDING));
 	const box = { x, y, width: Math.max(1, Math.min(size.width, clip.x + clip.width + CLIP_PADDING) - x), height: Math.max(1, Math.min(size.height, clip.y + clip.height + CLIP_PADDING) - y) };
 	return (await maskedShot(page, (mask) => page.screenshot({ fullPage: true, clip: box, animations: 'disabled', caret: 'hide', mask }))).shot;
 }

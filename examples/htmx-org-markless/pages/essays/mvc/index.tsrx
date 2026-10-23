@@ -16,7 +16,7 @@ export default function Page() @{
 			{" "}
 			<blockquote>{" "}<p>The problem with returning HTML (and not JSON) from your server is that you’d probably also like to serve mobile apps and don’t want to duplicate your API</p>{" "}</blockquote>
 			{" "}
-			<p>{"I have already outlined in "}<a href="https://htmx.org/essays/splitting-your-apis/">another essay</a>{" that I think you should split your JSON API & your hypermedia API up into separate components."}</p>
+			<p>{"I have already outlined in "}<a href="/essays/splitting-your-apis/">another essay</a>{" that I think you should split your JSON API & your hypermedia API up into separate components."}</p>
 			{" "}
 			<p>In that essay I explicitly recommend “duplicating” (to an extent) your API, in order to disentangle your “churny” web application API endpoints that return HTML from your stable, regular &amp; expressive JSON Data API.</p>
 			{" "}
@@ -94,7 +94,7 @@ export default function Page() @{
 			{" "}
 			<p>{"Let’s consider another change: we want to add a graph of the number of contacts added per day to the "}<code>index.html</code>{" template in our HTML-based web application. It turns out that this graph is expensive to compute."}</p>
 			{" "}
-			<p>{"We do not want to block the rendering of the "}<code>index.html</code>{" template on the graph generation, so we will use the "}<a href="https://htmx.org/examples/lazy-load/">Lazy Loading</a>{" pattern for it instead. To do this, we need to create a new endpoint, "}<code>/graph</code>, that returns the HTML for that lazily loaded content:</p>
+			<p>{"We do not want to block the rendering of the "}<code>index.html</code>{" template on the graph generation, so we will use the "}<a href="/examples/lazy-load/">Lazy Loading</a>{" pattern for it instead. To do this, we need to create a new endpoint, "}<code>/graph</code>, that returns the HTML for that lazily loaded content:</p>
 			{" "}
 			<pre data-lang="python" style="background-color:#1f2329;color:#abb2bf;" class="language-python "><code class="language-python" data-lang="python"><span>&#64;app.</span><span style="color:#e06c75;">route</span><span>(</span><span style="color:#98c379;">"/graph"</span><span>{")\n"}</span><span style="color:#c678dd;">{"def "}</span><span style="color:#61afef;">graph</span><span>{"():\n"}</span><span>{"    graphInfo = Contact."}</span><span style="color:#e06c75;">computeGraphInfo</span><span>(</span><span style="color:#e06c75;">page</span><span>=request.args.</span><span style="color:#e06c75;">get</span><span>(</span><span style="color:#98c379;">'page'</span><span>{", "}</span><span style="color:#e06c75;">default</span><span>=</span><span style="color:#d19a66;">0</span><span>{", "}</span><span style="color:#e06c75;">type</span><span>{"=int))\n"}</span><span>{"    "}</span><span style="color:#c678dd;">{"return "}</span><span style="color:#e06c75;">render_template</span><span>(</span><span style="color:#98c379;">"graph.html"</span><span>{", "}</span><span style="color:#e06c75;">info</span><span>{"=graphInfo)\n"}</span></code></pre>
 			{" "}
@@ -102,11 +102,11 @@ export default function Page() @{
 			{" "}
 			<p>{"What’s easy to miss is that we’ve added a new endpoint to our web application HTML API, but "}<em>we haven’t added it to our JSON Data API</em>{". So we are "}<strong>not</strong>{" committing to other non-web clients that this (specialized) endpoint, which is being driven entirely by our UI needs, will be around forever."}</p>
 			{" "}
-			<p>{"Since we are not committing to "}<em>all</em>{" clients that this data will be available at "}<code>/graph</code>{" forever, and since we are using "}<a href="https://htmx.org/essays/hateoas/">Hypermedia As The Engine of Application State</a>{" in our HTML-based web application, we are free to remove or refactor this URL later on."}</p>
+			<p>{"Since we are not committing to "}<em>all</em>{" clients that this data will be available at "}<code>/graph</code>{" forever, and since we are using "}<a href="/essays/hateoas/">Hypermedia As The Engine of Application State</a>{" in our HTML-based web application, we are free to remove or refactor this URL later on."}</p>
 			{" "}
 			<p>{"Perhaps some database optimization suddenly make the graph fast to compute and we can include it inline in the response to "}<code>/contacts</code>: we can remove this end point because we have not exposed it to other clients, it’s just there to support our web application.</p>
 			{" "}
-			<p>{"So, we get the "}<a href="https://htmx.org/essays/hypermedia-apis-vs-data-apis/">flexibility we want</a>{" for our hypermedia API, and the "}<a href="https://htmx.org/essays/hypermedia-apis-vs-data-apis/">features</a>{" we want for our JSON Data API."}</p>
+			<p>{"So, we get the "}<a href="/essays/hypermedia-apis-vs-data-apis/">flexibility we want</a>{" for our hypermedia API, and the "}<a href="/essays/hypermedia-apis-vs-data-apis/">features</a>{" we want for our JSON Data API."}</p>
 			{" "}
 			<p>The most important thing to notice, in terms of MVC, is that because our domain logic has been collected in a Model, we can vary these two APIs flexibly while still achieving a significant amount of code reuse. Yes, there was a lot of initial similarity to the JSON and HTML controllers, but they diverged over time.</p>
 			{" "}
@@ -114,7 +114,7 @@ export default function Page() @{
 			{" "}
 			<p>Our two APIs are decoupled, while our domain logic remains centralized.</p>
 			{" "}
-			<p>{"(Note that this also gets at "}<a href="https://htmx.org/essays/why-tend-not-to-use-content-negotiation/">why I tend not to use content negotiation</a>{" and return HTML & JSON from the same endpoint.)"}</p>
+			<p>{"(Note that this also gets at "}<a href="/essays/why-tend-not-to-use-content-negotiation/">why I tend not to use content negotiation</a>{" and return HTML & JSON from the same endpoint.)"}</p>
 			{" "}
 			<h2 id="mvc-frameworks"><a class="zola-anchor" href="#mvc-frameworks" aria-label="Anchor link for: mvc-frameworks">MVC Frameworks</a></h2>
 			{" "}

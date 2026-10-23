@@ -16,7 +16,7 @@ export default function Page() @{
 			{" "}
 			<blockquote>{" "}<p>Well, it might work well for something small, but it won’t scale.</p>{" "}</blockquote>
 			{" "}
-			<p>{"It is always dangerous to provoke us with essay-fodder and so lets dig into this claim a bit and see if we can shed some light on whether "}<a href="https://htmx.org/essays/hypermedia-driven-applications/">Hypermedia-Driven Applications</a>{" (HDAs) can scale."}</p>
+			<p>{"It is always dangerous to provoke us with essay-fodder and so lets dig into this claim a bit and see if we can shed some light on whether "}<a href="/essays/hypermedia-driven-applications/">Hypermedia-Driven Applications</a>{" (HDAs) can scale."}</p>
 			{" "}
 			<h2 id="scaling"><a class="zola-anchor" href="#scaling" aria-label="Anchor link for: scaling">Scaling</a></h2>
 			{" "}
@@ -44,7 +44,7 @@ export default function Page() @{
 			{" "}
 			<p>{"Horizontal scaling has a long history in hypermedia-driven applications and dovetails with the stateless nature of most hypermedia-driven applications: early PAAS vendors like "}<a rel="noopener" target="_blank" href="https://www.heroku.com/">heroku</a>{" (of blessed memory) offered easy horizontal scaling of rails-driven applications, for example."}</p>
 			{" "}
-			<p>{"Feature independence is another strength of HDAs. In HDAs, end-points for screens tend to be "}<a href="https://htmx.org/essays/two-approaches-to-decoupling/"><em>decoupled</em></a>{" from one another in a way that general JSON APIs are not. This means that those endpoints can be monitored, evolved and be tuned independently of one another. We have a long history of tuning these sorts of endpoints to create sub-100 millisecond response times (e.g. minimizing database queries for a given end-point by SQL tuning.)"}</p>
+			<p>{"Feature independence is another strength of HDAs. In HDAs, end-points for screens tend to be "}<a href="/essays/two-approaches-to-decoupling/"><em>decoupled</em></a>{" from one another in a way that general JSON APIs are not. This means that those endpoints can be monitored, evolved and be tuned independently of one another. We have a long history of tuning these sorts of endpoints to create sub-100 millisecond response times (e.g. minimizing database queries for a given end-point by SQL tuning.)"}</p>
 			{" "}
 			<p>Building on the independence of end-points to support various views, platform performance is easy to monitor and understand. Rather than a generalized JSON API that can be accessed in multiple ways across your application, you have UI specific end-points that construct hypermedia for specific views. Determining what is causing a performance issue becomes much easier when views are constructed on the server-side and requests are driven through simple hypermedia exchanges.</p>
 			{" "}
@@ -76,7 +76,7 @@ export default function Page() @{
 			{" "}
 			<p>{"For deep server-side features, HDAs are often a great choice. A good example of this is something like an AI chat-bot: this is a very sophisticated server-side feature, but it interacts with the user via a simple textual interface. Many "}<a rel="noopener" target="_blank" href="https://www.sliceofexperiments.com/p/building-a-personalized-ask-me-anything">AI chat-bots</a>{" have been built using htmx, with people remarking on how simple it is."}</p>
 			{" "}
-			<p>{"For deep "}<em>client-side</em>{" features, HDAs are sometimes "}<em>not</em>{" a great choice. We outline details on this in our essay on "}<a href="https://htmx.org/essays/when-to-use-hypermedia/">when to choose hypermedia</a>. To summarize that article: if your UI requires responding to a large number of events quickly (e.g. dragging a map-view) or has significant inter-UI dependencies that cannot be updated in a bulk hypermedia exchange (e.g. a spreadsheet application), the hypermedia approach isn’t going to work well</p>
+			<p>{"For deep "}<em>client-side</em>{" features, HDAs are sometimes "}<em>not</em>{" a great choice. We outline details on this in our essay on "}<a href="/essays/when-to-use-hypermedia/">when to choose hypermedia</a>. To summarize that article: if your UI requires responding to a large number of events quickly (e.g. dragging a map-view) or has significant inter-UI dependencies that cannot be updated in a bulk hypermedia exchange (e.g. a spreadsheet application), the hypermedia approach isn’t going to work well</p>
 			{" "}
 			<p>However, we would note two things:</p>
 			{" "}

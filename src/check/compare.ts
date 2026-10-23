@@ -359,7 +359,9 @@ export function withFailures(result: RouteResult, failures: readonly Failure[], 
 	const moved = Boolean(extra.motion ?? result.motion);
 	const navigated = Boolean(extra.navigation ?? result.navigation);
 	const loaded = Boolean(extra.load ?? result.load);
-	const dimensions = Object.fromEntries(DIMENSIONS.map((d) => [d, failed.has(d) ? 'fail' : (d === 'responsiveness' && !timed) || (d === 'motion' && !moved) || (d === 'navigation' && !navigated) || (d === 'load' && !loaded) ? 'skipped' : 'pass'])) as Record<Dimension, 'pass' | 'fail' | 'skipped'>;
+	// Screenshots left to the template's representative stay skipped: adding failures does not make them checked here.
+	const leftToRepresentative = (d: Dimension) => d === 'visual' && result.dimensions?.visual === 'skipped';
+	const dimensions = Object.fromEntries(DIMENSIONS.map((d) => [d, failed.has(d) ? 'fail' : (d === 'responsiveness' && !timed) || (d === 'motion' && !moved) || (d === 'navigation' && !navigated) || (d === 'load' && !loaded) || leftToRepresentative(d) ? 'skipped' : 'pass'])) as Record<Dimension, 'pass' | 'fail' | 'skipped'>;
 	// A route that was never compared stays not green, whatever failures are added to it.
 	return { ...result, ...extra, ok: failures.length === 0 && !result.blocked && !result.infrastructure, dimensions, failures };
 }

@@ -149,10 +149,7 @@ export const HEADS: Record<string, Head> = {
 		"canonical": "https://htmx.org/attributes/hx-indicator/",
 		"alternates": [],
 		"stylesheets": [],
-		"scripts": [
-			"/js/htmx.js",
-			"/js/class-tools.js"
-		]
+		"scripts": []
 	},
 	"/attributes/hx-inherit/": {
 		"title": "</> htmx ~ hx-inherit Attribute",
@@ -663,9 +660,7 @@ export const HEADS: Record<string, Head> = {
 		"canonical": "https://htmx.org/essays/rest-copypasta/",
 		"alternates": [],
 		"stylesheets": [],
-		"scripts": [
-			"/js/_hyperscript.js"
-		]
+		"scripts": []
 	},
 	"/essays/rest-explained/": {
 		"title": "</> htmx ~ REST - Explained For Beginners",
@@ -747,9 +742,7 @@ export const HEADS: Record<string, Head> = {
 		"stylesheets": [
 			"/css/port/dcf76e5724.css"
 		],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/essays/web-security-basics-with-htmx/": {
 		"title": "</> htmx ~ Web Security Basics (with htmx)",
@@ -841,9 +834,7 @@ export const HEADS: Record<string, Head> = {
 		"stylesheets": [
 			"/css/port/389d7bf9f4.css"
 		],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/animations/": {
 		"title": "</> htmx ~ Examples ~ Animations",
@@ -858,10 +849,7 @@ export const HEADS: Record<string, Head> = {
 			"/css/port/262548cbe8.css",
 			"/css/port/ccd59d975f.css"
 		],
-		"scripts": [
-			"/js/htmx.js",
-			"/js/class-tools.js"
-		]
+		"scripts": []
 	},
 	"/examples/async-auth/": {
 		"title": "</> htmx ~ Examples ~ Async Authentication",
@@ -869,9 +857,7 @@ export const HEADS: Record<string, Head> = {
 		"canonical": "https://htmx.org/examples/async-auth/",
 		"alternates": [],
 		"stylesheets": [],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/bulk-update/": {
 		"title": "</> htmx ~ Examples ~ Bulk Update",
@@ -882,9 +868,7 @@ export const HEADS: Record<string, Head> = {
 			"/css/port/5b5cde4512.css",
 			"/css/port/389d7bf9f4.css"
 		],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/click-to-edit/": {
 		"title": "</> htmx ~ Examples ~ Click to Edit",
@@ -904,9 +888,7 @@ export const HEADS: Record<string, Head> = {
 		"stylesheets": [
 			"/css/port/389d7bf9f4.css"
 		],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/confirm/": {
 		"title": "</> htmx ~ Examples ~ A Customized Confirmation UI",
@@ -914,9 +896,7 @@ export const HEADS: Record<string, Head> = {
 		"canonical": "https://htmx.org/examples/confirm/",
 		"alternates": [],
 		"stylesheets": [],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/delete-row/": {
 		"title": "</> htmx ~ Examples ~ Delete Row",
@@ -927,9 +907,7 @@ export const HEADS: Record<string, Head> = {
 			"/css/port/1649f93385.css",
 			"/css/port/389d7bf9f4.css"
 		],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/dialogs/": {
 		"title": "</> htmx ~ Examples ~ Dialogs",
@@ -939,9 +917,7 @@ export const HEADS: Record<string, Head> = {
 		"stylesheets": [
 			"/css/port/389d7bf9f4.css"
 		],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/edit-row/": {
 		"title": "</> htmx ~ Examples ~ Edit Row",
@@ -951,9 +927,7 @@ export const HEADS: Record<string, Head> = {
 		"stylesheets": [
 			"/css/port/389d7bf9f4.css"
 		],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/file-upload-input/": {
 		"title": "</> htmx ~ Examples ~ Preserving File Inputs after Form Errors",
@@ -961,9 +935,7 @@ export const HEADS: Record<string, Head> = {
 		"canonical": "https://htmx.org/examples/file-upload-input/",
 		"alternates": [],
 		"stylesheets": [],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/file-upload/": {
 		"title": "</> htmx ~ Examples ~ File Upload",
@@ -971,9 +943,7 @@ export const HEADS: Record<string, Head> = {
 		"canonical": "https://htmx.org/examples/file-upload/",
 		"alternates": [],
 		"stylesheets": [],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/infinite-scroll/": {
 		"title": "</> htmx ~ Examples ~ Infinite Scroll",
@@ -983,9 +953,7 @@ export const HEADS: Record<string, Head> = {
 		"stylesheets": [
 			"/css/port/389d7bf9f4.css"
 		],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/inline-validation/": {
 		"title": "</> htmx ~ Examples ~ Inline Validation",
@@ -996,9 +964,7 @@ export const HEADS: Record<string, Head> = {
 			"/css/port/f12677dfcf.css",
 			"/css/port/389d7bf9f4.css"
 		],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/keyboard-shortcuts/": {
 		"title": "</> htmx ~ Examples ~ Keyboard Shortcuts",
@@ -1008,9 +974,7 @@ export const HEADS: Record<string, Head> = {
 		"stylesheets": [
 			"/css/port/389d7bf9f4.css"
 		],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/lazy-load/": {
 		"title": "</> htmx ~ Examples ~ Lazy Loading",
@@ -1021,9 +985,7 @@ export const HEADS: Record<string, Head> = {
 			"/css/port/69b2080bcf.css",
 			"/css/port/389d7bf9f4.css"
 		],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/modal-bootstrap/": {
 		"title": "</> htmx ~ Examples ~ Modal Dialogs in Bootstrap",
@@ -1034,9 +996,7 @@ export const HEADS: Record<string, Head> = {
 			"/css/port/389d7bf9f4.css",
 			"/css/port/61c0d851ae.css"
 		],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/modal-custom/": {
 		"title": "</> htmx ~ Examples ~ Custom Modal Dialogs",
@@ -1046,9 +1006,7 @@ export const HEADS: Record<string, Head> = {
 		"stylesheets": [
 			"/css/port/3aff1a49cb.css"
 		],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/modal-uikit/": {
 		"title": "</> htmx ~ Examples ~ Modal Dialogs with UIKit",
@@ -1057,11 +1015,10 @@ export const HEADS: Record<string, Head> = {
 		"alternates": [],
 		"stylesheets": [
 			"/css/port/389d7bf9f4.css",
-			"/css/port/9611f365e9.css"
+			"/css/port/9611f365e9.css",
+			"/css/port-modal-uikit.css"
 		],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/move-before/": {
 		"title": "</> htmx ~ Experimental moveBefore() Support",
@@ -1069,9 +1026,7 @@ export const HEADS: Record<string, Head> = {
 		"canonical": "https://htmx.org/examples/move-before/",
 		"alternates": [],
 		"stylesheets": [],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/move-before/details/": {
 		"title": "</> htmx ~ Experimental moveBefore() Support",
@@ -1079,9 +1034,7 @@ export const HEADS: Record<string, Head> = {
 		"canonical": "https://htmx.org/examples/move-before/details/",
 		"alternates": [],
 		"stylesheets": [],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/progress-bar/": {
 		"title": "</> htmx ~ Examples ~ Progress Bar",
@@ -1092,9 +1045,7 @@ export const HEADS: Record<string, Head> = {
 			"/css/port/389d7bf9f4.css",
 			"/css/port/bd0d868438.css"
 		],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/reset-user-input/": {
 		"title": "</> htmx ~ Examples ~ Reset user input",
@@ -1104,9 +1055,7 @@ export const HEADS: Record<string, Head> = {
 		"stylesheets": [
 			"/css/port/389d7bf9f4.css"
 		],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/sortable/": {
 		"title": "</> htmx ~ Examples ~ Sortable",
@@ -1116,9 +1065,7 @@ export const HEADS: Record<string, Head> = {
 		"stylesheets": [
 			"/css/port/389d7bf9f4.css"
 		],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/tabs-hateoas/": {
 		"title": "</> htmx ~ Examples ~ Tabs (Using HATEOAS)",
@@ -1129,9 +1076,7 @@ export const HEADS: Record<string, Head> = {
 			"/css/port/389d7bf9f4.css",
 			"/css/port/c708c1ad7f.css"
 		],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/tabs-javascript/": {
 		"title": "</> htmx ~ Examples ~ Tabs (Using JavaScript)",
@@ -1142,9 +1087,7 @@ export const HEADS: Record<string, Head> = {
 			"/css/port/389d7bf9f4.css",
 			"/css/port/3c91eb17c7.css"
 		],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/update-other-content/": {
 		"title": "</> htmx ~ Examples ~ Updating Other Content",
@@ -1152,9 +1095,7 @@ export const HEADS: Record<string, Head> = {
 		"canonical": "https://htmx.org/examples/update-other-content/",
 		"alternates": [],
 		"stylesheets": [],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/value-select/": {
 		"title": "</> htmx ~ Examples ~ Cascading Selects",
@@ -1164,9 +1105,7 @@ export const HEADS: Record<string, Head> = {
 		"stylesheets": [
 			"/css/port/389d7bf9f4.css"
 		],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/examples/web-components/": {
 		"title": "</> htmx ~ Examples ~ Web Components",
@@ -1176,9 +1115,7 @@ export const HEADS: Record<string, Head> = {
 		"stylesheets": [
 			"/css/port/389d7bf9f4.css"
 		],
-		"scripts": [
-			"/js/htmx.js"
-		]
+		"scripts": []
 	},
 	"/extensions/": {
 		"title": "</> htmx ~ Extensions",
@@ -1186,9 +1123,7 @@ export const HEADS: Record<string, Head> = {
 		"canonical": "https://htmx.org/extensions/",
 		"alternates": [],
 		"stylesheets": [],
-		"scripts": [
-			"/js/_hyperscript.js"
-		]
+		"scripts": []
 	},
 	"/extensions/building/": {
 		"title": "</> htmx ~ The Building htmx Extensions Extension",
@@ -1662,9 +1597,7 @@ export const HEADS: Record<string, Head> = {
 		"stylesheets": [
 			"/css/port/29b50c72e1.css"
 		],
-		"scripts": [
-			"/js/_hyperscript.js"
-		]
+		"scripts": []
 	},
 	"/404/": {
 		"title": "</> htmx ~ 404 Not found ",

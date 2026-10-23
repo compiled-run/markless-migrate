@@ -135,6 +135,9 @@ ${arms}
 			${before.join('\n\t\t\t')}
 			{children}
 			<BodyExtras route={route} />
+			@for (const href of page.late; key href) {
+				<link rel="stylesheet" href={href} />
+			}
 		</body>
 	</Html>
 }
@@ -263,16 +266,18 @@ export interface PageHead {
 	readonly html: Readonly<Record<string, string>>;
 	readonly body: Readonly<Record<string, string>>;
 	readonly tags: readonly { readonly key: number; readonly tag: string; readonly a: Readonly<Record<string, string | undefined>>; readonly text: string }[];
+	readonly late: readonly string[];
 }
 
 export function headOf(page: { readonly href: string } | undefined): PageHead {
 	const url = page ? new URL(page.href) : undefined;
 	// A path no route has is the not-found page's.
 	const route = (url && (ROUTES[url.pathname + url.search] ?? ROUTES[url.pathname] ?? ROUTES['/_markless-migrate/not-found'])) ?? ROUTES['/'];
-	if (!route) return { html: {}, body: {}, tags: [] };
+	if (!route) return { html: {}, body: {}, tags: [], late: [] };
 	return {
 		html: route.html,
 		body: route.body,
+		late: route.late ?? [],
 		tags: route.tags.map((id, key) => {
 			const t = TAGS[id]!;
 			const a: Record<string, string | undefined> = { ...t.attrs };

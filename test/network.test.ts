@@ -15,6 +15,8 @@ const capture = (records: NetworkRecord[], shown = 'Winter timetable\nWalks star
 test('URLs normalise the app origin, ids, timestamps and cache-busters, and sort the query', () => {
 	assert.equal(normalizeUrl('http://localhost:3000/api/posts/42?b=2&a=1&_=1739912345678', OLD), '{self}/api/posts/{id}?_={bust}&a=1&b=2');
 	assert.equal(normalizeUrl('https://cms.example/entries/3f2b8c1e-9a7d-4e2b-8f1a-2b3c4d5e6f70?since=1739912345', OLD), 'cms.example/entries/{uuid}?since={time}');
+	assert.equal(normalizeUrl('https://api.simplesvg.com/lucide.json?icons=languages,search,x', OLD), normalizeUrl('https://api.iconify.design/lucide.json?icons=languages,search,x', OLD), "Iconify's fallback host is the same service");
+	assert.notEqual(normalizeUrl('https://api.simplesvg.com/lucide.json?icons=search', OLD), normalizeUrl('https://api.iconify.design/lucide.json?icons=x', OLD), 'which icons are asked for is still compared');
 	assert.equal(normalizeUrl('https://cms.example/news?limit=2', OLD), 'cms.example/news?limit=2', 'small numbers are kept: a changed page size is a difference');
 });
 

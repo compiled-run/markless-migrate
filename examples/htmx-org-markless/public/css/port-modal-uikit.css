@@ -1,0 +1,6 @@
+/* This page loads UIKit's base stylesheet (uikit-core.min.css), whose `iframe { vertical-align: middle }` moved the
+   iframe buttons.js writes into .github-stars off the baseline. .ghb-frame stands in for that iframe (port-embeds.css),
+   so the rule applies to it here. */
+#github-stars .ghb-frame {
+  vertical-align: middle;
+}
