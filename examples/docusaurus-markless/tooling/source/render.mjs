@@ -97,6 +97,7 @@ export async function renderRoute(route, site, extraComponents = {}, options = {
 		globalData: site.globalData,
 		siteMetadata: site.siteMetadata,
 		codeTranslations: site.context.codeTranslations,
+		siteStorage: site.context.siteStorage,
 		path: routePath(route.path),
 		plugin,
 		head,
