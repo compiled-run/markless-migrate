@@ -13,7 +13,6 @@ export const AUTOMATIC_RULES = {
 	'live-embed': 'live content inside a third-party embed that both pages show',
 	'embed-live-data': 'a live value a Markless embed component shows (a star count), read at convert time, that has moved since, with every other pixel of the embed the same',
 	'unreachable-on-both': 'an element neither page lets a visitor use, for the same reason (covered, hidden or outside the page)',
-	'undrivable-on-old': 'a control check could not drive on the old page (not found again by its role and name, or it never settled), tried the same way on the new page',
 	'framework-storage': "browser storage only the old framework's own code writes, with no journey difference on the route",
 } as const;
 export type AutomaticRule = keyof typeof AUTOMATIC_RULES;
@@ -44,6 +43,8 @@ export async function readOverrides(stateDir: string): Promise<Overrides> {
 	}
 	const automatic: Partial<Record<AutomaticRule, boolean>> = {};
 	for (const [rule, on] of Object.entries((o.automatic ?? {}) as Record<string, unknown>)) {
+		// Retired: a control check could not drive on the old page was compared nowhere, so it is never accepted.
+		if (rule === 'undrivable-on-old') continue;
 		if (!(rule in AUTOMATIC_RULES)) throw new Error(`${path}: automatic["${rule}"] is not a rule; rules: ${Object.keys(AUTOMATIC_RULES).join(', ')}`);
 		if (typeof on !== 'boolean') throw new Error(`${path}: automatic["${rule}"] must be true or false`);
 		automatic[rule as AutomaticRule] = on;
