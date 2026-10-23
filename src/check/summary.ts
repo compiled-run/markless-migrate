@@ -57,8 +57,9 @@ export function summarize(report: Report): string {
 		const stopped = notCompared(route);
 		const js = route.only === 'embeds' ? 'only the embeds compared (--only embeds)' : route.only ? 'only page load compared (--only load)' : stopped ? 'page not compared: the two apps did not let this role in alike' : `JS on the wire ${kb(w.old.downloaded)} -> ${kb(w.new.downloaded)}, run at load ${kb(w.old.executed)} -> ${kb(w.new.executed)} (uncompressed)`;
 		lines.push(`${route.ok ? 'pass' : 'FAIL'}  ${route.route.padEnd(width)}  ${route.ok ? '' : `[${failed.join(', ')}]  `}${accepted ? `(${accepted} accepted) ` : ''}${route.endpoint ? `compared as ${route.endpoint}` : js}`);
-		if (route.template && route.template.representative !== route.route) lines.push(`      visual, behaviour, responsiveness and motion: checked on ${route.template.representative}, the representative of its template group (${route.template.pattern}, ${route.template.members} pages)`);
+		if (route.template && route.template.representative !== route.route) lines.push(`      visual, responsiveness and motion: checked on ${route.template.representative}, the representative of its template group (${route.template.pattern}, ${route.template.members} pages)`);
 		if (route.coverage) lines.push(`      ${coverageLine(route.coverage)}`);
+		for (const note of route.improvements ?? []) lines.push(`      improvement (not red): ${note}`);
 		if (route.responsiveness) lines.push(`      ${worstLine(route.responsiveness)}`);
 		if (route.motion) {
 			const differ = route.motion.interactions.filter((i) => !i.ok || i.reduced?.ok === false).length;
@@ -84,7 +85,7 @@ export function summarize(report: Report): string {
 	}
 	if (report.templates) {
 		const pages = report.templates.groups.reduce((n, g) => n + g.members.length, 0);
-		lines.push('', `Every page got the http, rendered, seo, assets, css, a11y, i18n, network and weight checks. Visual, behaviour, responsiveness and motion ran on one representative per template group (grouped by URL pattern, page layout and the kinds of control each page renders): ${report.templates.groups.length} group${report.templates.groups.length === 1 ? '' : 's'} covering ${pages} pages. Pass --every-dimension to run them on every page.`, ...report.templates.groups.map((g) => `  ${g.pattern}  ${g.members.length} pages, representative ${g.representative}`));
+		lines.push('', `Every page got the http, rendered, seo, assets, css, a11y, i18n, network, weight and behaviour checks (every control of every page is used). Visual, responsiveness and motion ran on one representative per template group (grouped by URL pattern, page layout and the kinds of control each page renders): ${report.templates.groups.length} group${report.templates.groups.length === 1 ? '' : 's'} covering ${pages} pages. Pass --every-dimension to run them on every page.`, ...report.templates.groups.map((g) => `  ${g.pattern}  ${g.members.length} pages, representative ${g.representative}`));
 	}
 	if (report.navigation) {
 		const n = report.navigation;

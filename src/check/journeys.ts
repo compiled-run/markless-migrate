@@ -7,7 +7,8 @@ import { originInQuery } from './capture.ts';
 import { HINTS } from './hints.ts';
 import { signInCookies, storageKeys } from './storage.ts';
 import { diffLines, lineTemplates, template } from './noise.ts';
-import type { Dimension, Failure, Viewport, WriteLine } from './types.ts';
+import type { Box, Dimension, Failure, Viewport, WriteLine } from './types.ts';
+import { changedRegions } from './visual.ts';
 import { storageCandidate, type StorageOwner } from './automatic.ts';
 import { loadPage } from './infrastructure.ts';
 import { describeStructure, STRUCTURE_ENGINE, type Structure } from './structure.ts';
@@ -57,6 +58,16 @@ export interface StepResult {
 	readonly state?: readonly string[];
 	/** The step reloaded the page: what it shows and keeps after the reload is compared with what it showed before. */
 	readonly reloaded?: boolean;
+	/** How the page answered where a visitor sees it, when the step stayed on the page: the viewport regions whose pixels changed outside the used control's own box, and what changed in its widgets (a value, a selection, a moved or scrolled track). */
+	readonly reaction?: Reaction;
+}
+
+export interface Reaction {
+	readonly regions: readonly Box[];
+	/** `slider "Volume" aria-valuenow: 50 → 51`, `region (carousel) moved`, `list "Results" scrolled`. */
+	readonly changes: readonly string[];
+	/** The window scrolled during the step, so every pixel moved and regions say nothing about what answered. */
+	readonly scrolled?: boolean;
 }
 
 export interface Journey {
@@ -66,6 +77,8 @@ export interface Journey {
 	readonly destructive?: boolean;
 	/** What is done after the steps, each compared like a step (see CycleAct). */
 	readonly cycle?: readonly CycleAct[];
+	/** How long each step may take to reach its control, when the default was too short on the old page (a busy page's control that settles late). */
+	readonly patience?: number;
 }
 
 /**
@@ -95,6 +108,8 @@ export const CLICKABLE = 'clickable';
 const DESTRUCTIVE = /\b(log ?out|sign ?out|delete|remove|destroy|unsubscribe|deactivate|close (my|your) account)\b/i;
 /** How long exploring one route may take by default; what is left is listed as not exercised. */
 export const DEFAULT_JOURNEY_BUDGET_MS = 120_000;
+const BUDGET_PER_CONTROL_MS = 3_000;
+const MAX_ADAPTIVE_BUDGET_MS = 900_000;
 const DEFAULT_MAX_DEPTH = 4;
 const CONCURRENCY = 8;
 const STEP_TIMEOUT = 3_000;
@@ -148,8 +163,11 @@ export function locate(page: Page, t: Target): Locator {
 	if (t.structure) return page.locator(`${STRUCTURE_ENGINE}=${JSON.stringify(t.structure)}`);
 	if (t.role === CLICKABLE) return page.locator(`xpath=${labelled(t.name)}`).nth(t.nth);
 	if (t.role === 'summary') return page.locator('summary').filter({ hasText: new RegExp(`^\\s*${escapeRegex(t.name)}\\s*$`) }).nth(t.nth);
-	return page.getByRole(t.role as Parameters<Page['getByRole']>[0], { name: t.name, exact: true }).nth(t.nth);
+	return page.getByRole(t.role as Parameters<Page['getByRole']>[0], t.name ? { name: spacing(t.name) } : { name: '', exact: true }).nth(t.nth);
 }
+
+// A name matched whatever whitespace it has: a port that drops the spaces between a select's options names it alike.
+const spacing = (name: string) => new RegExp(`^\\s*${[...name.replace(/\s+/g, '')].map(escapeRegex).join('\\s*')}\\s*$`);
 
 function sample(type: string, name: string): string {
 	const n = name.toLowerCase();
@@ -212,8 +230,9 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 		for (const locator of await page.getByRole(role).all()) {
 			const line = (await locator.ariaSnapshot({ timeout: STEP_TIMEOUT }).catch(() => '')).split('\n')[0] ?? '';
 			const name = snapshotName(line);
-			const nth = seen.get(name) ?? 0;
-			seen.set(name, nth + 1);
+			const key = name.replace(/\s+/g, '');
+			const nth = seen.get(key) ?? 0;
+			seen.set(key, nth + 1);
 			if (!(await locator.isVisible().catch(() => false)) || (await locator.isDisabled().catch(() => true))) continue;
 			const info = await locator.evaluate(describeElement, undefined, { timeout: STEP_TIMEOUT }).catch(() => undefined);
 			if (!info) continue;
@@ -536,6 +555,115 @@ function liveRegions() {
 		.map((el) => `${el.getAttribute('role') ?? el.tagName.toLowerCase()}: ${(el.textContent ?? '').replace(/\s+/g, ' ').trim()}`);
 }
 
+// Runs in the page before a step: records which attributes change, and where every scrolling container and the window stand.
+function watchReaction(): void {
+	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; scrolls: Map<Element, string>; window: string };
+	const g = globalThis as { __markless_migrate_reaction__?: Watch };
+	g.__markless_migrate_reaction__?.observer.disconnect();
+	const changed = new Map<Element, Map<string, string | null>>();
+	const observer = new MutationObserver((records) => {
+		for (const r of records) {
+			if (r.type !== 'attributes' || !(r.target instanceof Element) || !r.attributeName || r.attributeName.startsWith('data-markless-migrate')) continue;
+			let attrs = changed.get(r.target);
+			if (!attrs) changed.set(r.target, (attrs = new Map()));
+			if (!attrs.has(r.attributeName)) attrs.set(r.attributeName, r.oldValue);
+		}
+	});
+	observer.observe(document, { subtree: true, attributes: true, attributeOldValue: true });
+	const scrolls = new Map<Element, string>();
+	for (const el of document.body?.querySelectorAll('*') ?? []) {
+		if (scrolls.size >= 400) break;
+		if (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1) {
+			const s = getComputedStyle(el);
+			if (/(auto|scroll)/.test(`${s.overflowX} ${s.overflowY}`)) scrolls.set(el, `${Math.round(el.scrollLeft)},${Math.round(el.scrollTop)}`);
+		}
+	}
+	g.__markless_migrate_reaction__ = { observer, changed, scrolls, window: `${Math.round(scrollX)},${Math.round(scrollY)}` };
+}
+
+// Runs in the page after a step: what changed in the page's widgets, named by role and label as a visitor's tools name them.
+function readReaction(): { changes: string[]; scrolled: boolean; boxes: Record<string, { x: number; y: number; width: number; height: number }> } {
+	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; scrolls: Map<Element, string>; window: string };
+	const g = globalThis as { __markless_migrate_reaction__?: Watch };
+	const watch = g.__markless_migrate_reaction__;
+	if (!watch) return { changes: [], scrolled: false, boxes: {} };
+	watch.observer.disconnect();
+	delete g.__markless_migrate_reaction__;
+	const STATES = ['aria-valuenow', 'aria-valuetext', 'aria-expanded', 'aria-selected', 'aria-checked', 'aria-pressed', 'aria-current', 'open'];
+	const IMPLICIT: Record<string, string> = { button: 'button', a: 'link', select: 'combobox', textarea: 'textbox', dialog: 'dialog', details: 'group', summary: 'button', nav: 'navigation', main: 'main', header: 'banner', footer: 'contentinfo', aside: 'complementary', form: 'form', table: 'table', ul: 'list', ol: 'list', li: 'listitem', section: 'region', img: 'img' };
+	const roleOf = (el: Element) => el.getAttribute('role') ?? (el.localName === 'input' ? ((el as HTMLInputElement).type === 'range' ? 'slider' : (el as HTMLInputElement).type === 'checkbox' ? 'checkbox' : (el as HTMLInputElement).type === 'radio' ? 'radio' : 'textbox') : IMPLICIT[el.localName]);
+	const label = (el: Element) => {
+		const by = el.getAttribute('aria-labelledby');
+		const named = el.getAttribute('aria-label') ?? (by ? by.split(/\s+/).map((id) => document.getElementById(id)?.textContent ?? '').join(' ') : '');
+		const text = named || (/^(button|link|tab|option|menuitem|menuitemradio|menuitemcheckbox|radio|checkbox|switch|treeitem|summary)$/.test(roleOf(el) ?? '') ? (el.textContent ?? '') : '');
+		return text.replace(/\s+/g, ' ').trim().slice(0, 60);
+	};
+	const describe = (el: Element) => {
+		const role = roleOf(el) ?? el.localName;
+		const kind = el.getAttribute('aria-roledescription');
+		const name = label(el);
+		const alike = [...document.querySelectorAll(el.getAttribute('role') ? `[role="${el.getAttribute('role')}"]` : el.localName)].filter((o) => label(o) === name);
+		const nth = alike.length > 1 ? ` #${alike.indexOf(el) + 1}` : '';
+		return `${role}${kind ? ` (${kind})` : ''}${name ? ` "${name}"` : ''}${nth}`;
+	};
+	// A part with no role of its own (a carousel's track) is named by the nearest widget or landmark holding it.
+	const anchorOf = (el: Element) => {
+		for (let at: Element | null = el; at && at !== document.body; at = at.parentElement) if (at.hasAttribute('role') || at.hasAttribute('aria-roledescription') || at.hasAttribute('aria-label') || /^(input|select|textarea|button|a|dialog|details|nav|main|header|footer|aside|form|table|section|ul|ol)$/.test(at.localName)) return at;
+		return undefined;
+	};
+	const boxes: Record<string, { x: number; y: number; width: number; height: number }> = {};
+	const add = (line: string, el: Element | undefined) => {
+		out.add(line);
+		const r = el?.getBoundingClientRect();
+		if (r) boxes[line] = { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
+	};
+	const anchored = (el: Element, what: string) => {
+		const at = anchorOf(el);
+		add(`${at ? describe(at) : 'the page'} ${what}`, at);
+	};
+	const moved = (style: string | null | undefined) => {
+		const probe = document.createElement('div');
+		probe.setAttribute('style', style ?? '');
+		const s = probe.style;
+		return [s.transform, s.translate, s.left, s.top, s.right, s.bottom, s.marginLeft, s.marginTop, s.scale, s.rotate].join('|');
+	};
+	const out = new Set<string>();
+	for (const [el, attrs] of watch.changed) {
+		if (!el.isConnected) continue;
+		for (const [attr, was] of attrs) {
+			const now = el.getAttribute(attr);
+			if (now === was) continue;
+			if (STATES.includes(attr)) add(`${describe(el)} ${attr}: ${was ?? '(none)'} → ${now ?? '(none)'}`, el);
+			else if (attr === 'style' && moved(was) !== moved(now)) anchored(el, 'moved');
+		}
+	}
+	for (const [el, was] of watch.scrolls) if (el.isConnected && `${Math.round(el.scrollLeft)},${Math.round(el.scrollTop)}` !== was) anchored(el, 'scrolled');
+	return { changes: [...out].sort(), scrolled: `${Math.round(scrollX)},${Math.round(scrollY)}` !== watch.window, boxes };
+}
+
+const AMBIENT_MS = 1_000;
+const ambientSeen = new Map<string, Promise<{ changes: readonly string[]; regions: readonly Box[] }>>();
+
+// Measured on a route's first session on each side and reused by its later sessions, so a journey does not wait a second for it.
+function ambientOnce(origin: string, route: string, page: Page): Promise<{ changes: readonly string[]; regions: readonly Box[] }> {
+	const key = `${origin} ${route} ${page.viewportSize()?.width ?? 0}`;
+	let found = ambientSeen.get(key);
+	if (!found) ambientSeen.set(key, (found = ambientMotion(page)));
+	return found;
+}
+
+/** What the settled page changes on its own while nothing is used: the widgets and regions of the view that move without a step. */
+async function ambientMotion(page: Page): Promise<{ changes: readonly string[]; regions: readonly Box[] }> {
+	const before = await page.screenshot({ timeout: 10_000 }).catch(() => undefined);
+	if (!before) return { changes: [], regions: [] };
+	await page.evaluate(watchReaction).catch(() => {});
+	await sleep(AMBIENT_MS);
+	const read = await page.evaluate(readReaction).catch(() => undefined);
+	const after = await page.screenshot({ timeout: 10_000 }).catch(() => undefined);
+	const moving = Object.values(read?.boxes ?? {});
+	return { changes: read?.changes ?? [], regions: [...moving, ...(after && !read?.scrolled ? changedRegions(before, after, []) : [])] };
+}
+
 async function focusLabel(page: Page): Promise<string> {
 	// Asks whether anything has focus first, so a snapshot slowed by load is waited for instead of read as "body".
 	const focused = await page.evaluate(() => Boolean(document.activeElement && document.activeElement !== document.body)).catch(() => false);
@@ -682,12 +810,13 @@ function markDismiss(point: { x: number; y: number }): boolean {
 }
 
 const QUICK = 1_500;
+const PATIENCE = 6_000;
 
 /** Uses the target as a visitor would; when the pointer cannot reach it, scrolls it to the middle, focuses it, hovers what holds it and dismisses what covers it, and names why when nothing does. */
-async function reach(page: Page, target: Locator, act: (t: Locator, timeout: number) => Promise<unknown>, throughLabel = false): Promise<void> {
+async function reach(page: Page, target: Locator, act: (t: Locator, timeout: number) => Promise<unknown>, throughLabel = false, patience = QUICK): Promise<void> {
 	let first: unknown;
 	try {
-		await act(target, QUICK);
+		await act(target, patience);
 		return;
 	} catch (error) {
 		first = error;
@@ -697,7 +826,7 @@ async function reach(page: Page, target: Locator, act: (t: Locator, timeout: num
 		tried.push(remedy);
 		await apply().catch(() => {});
 		try {
-			await act(target, QUICK);
+			await act(target, patience);
 			return true;
 		} catch {
 			return false;
@@ -752,7 +881,7 @@ async function reach(page: Page, target: Locator, act: (t: Locator, timeout: num
 
 const USED = 'data-markless-migrate-used';
 
-async function perform(page: Page, step: Step): Promise<void> {
+async function perform(page: Page, step: Step, patience = QUICK): Promise<void> {
 	const target = locate(page, step.target);
 	await target
 		.evaluate((el, used) => {
@@ -762,17 +891,27 @@ async function perform(page: Page, step: Step): Promise<void> {
 		.catch(() => {});
 	switch (step.action) {
 		case 'click':
-			return reach(page, target, (t, timeout) => t.click({ timeout }), true);
+			return reach(page, target, (t, timeout) => t.click({ timeout }), true, patience);
 		case 'press':
-			await reach(page, target, (t, timeout) => t.focus({ timeout }));
+			await reach(page, target, (t, timeout) => t.focus({ timeout }), false, patience);
 			return page.keyboard.press(step.key);
 		case 'fill':
-			return reach(page, target, (t, timeout) => t.fill(step.value, { timeout }));
+			return reach(page, target, (t, timeout) => t.fill(step.value, { timeout }), false, patience);
 		case 'select':
-			return reach(page, target, (t, timeout) => t.selectOption(step.value, { timeout }));
+			return reach(page, target, (t, timeout) => t.selectOption(step.value, { timeout }), false, patience);
 		case 'submit':
-			for (const field of step.fields) await reach(page, locate(page, field.target), (t, timeout) => (field.check ? t.check({ timeout }) : t.fill(field.value, { timeout })));
-			return reach(page, target, (t, timeout) => t.click({ timeout }));
+			for (const field of step.fields) await reach(page, locate(page, field.target), (t, timeout) => (field.check ? t.check({ timeout }) : t.fill(field.value, { timeout })), false, patience);
+			return reach(page, target, (t, timeout) => t.click({ timeout }), false, patience);
+	}
+}
+
+/** A control that did not settle in time is tried once more with more patience, the same on both sides: a busy machine is not a different page. */
+async function patiently(page: Page, step: Step, patience = QUICK): Promise<void> {
+	try {
+		await perform(page, step, patience);
+	} catch (error) {
+		if (!(error instanceof UnreachableError) || error.kind !== 'timeout' || patience >= PATIENCE) throw error;
+		await perform(page, step, PATIENCE);
 	}
 }
 
@@ -780,7 +919,7 @@ export interface Session {
 	readonly context: BrowserContext;
 	readonly page: Page;
 	/** `destructive`: the step uses a control that ends the session or deletes, so its dialogs are accepted and, when writes are held back, every request it makes to the app is held back too. */
-	run(step: Step, destructive?: boolean): Promise<StepResult>;
+	run(step: Step, destructive?: boolean, patience?: number): Promise<StepResult>;
 	/** One act of a journey's cycle after its `steps`. */
 	cycle(steps: readonly Step[], act: CycleAct): Promise<StepResult>;
 	/** Console errors the page logged while it loaded, before any step. */
@@ -830,12 +969,19 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 	await loadPage(page, new URL(route, origin).href);
 	await quiet(page, inflight, navigations);
 	const loadErrors = [...errors];
+	const ambient = await ambientOnce(env.origin, route, page);
 	// Where a redirect landed is the http and auth checks' business; a step that stays there compares alike.
 	const landing = here(page.url());
 	const redirected = landing !== localUrl(new URL(route, origin).href, origin);
 	const observe = async (act: () => Promise<void>, what: string, step: Step | undefined, destructive: boolean, reload: boolean): Promise<StepResult> => {
 		const startPath = new URL(page.url()).pathname;
 		const href = step?.target.role === 'link' ? await locate(page, step.target).getAttribute('href', { timeout: STEP_TIMEOUT }).catch(() => null) : null;
+		const used = step && !reload ? locate(page, step.target) : undefined;
+		// The control is brought into view first, so the frames before and after the step show what it answers with, not a scroll.
+		if (used && (await used.evaluate((el) => { const r = el.getBoundingClientRect(); return r.bottom < 0 || r.right < 0 || r.top > innerHeight || r.left > innerWidth; }, undefined, { timeout: QUICK }).catch(() => false))) {
+			await used.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' }), undefined, { timeout: QUICK }).catch(() => {});
+			await quiet(page, inflight, navigations);
+		}
 		documentLoaded = false;
 		const before = await snapshot(page, hosts);
 		const liveBefore = await page.evaluate(liveRegions).catch(() => [] as string[]);
@@ -849,6 +995,10 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		dialogs = [];
 		accepting = destructive;
 		log.holdAll = destructive && !env.sendWrites;
+		const ownBox = async () => (used ? await used.boundingBox({ timeout: 500 }).catch(() => null) : null);
+		const boxBefore = await ownBox();
+		const frameBefore = reload ? undefined : await page.screenshot({ timeout: 10_000 }).catch(() => undefined);
+		if (frameBefore) await page.evaluate(watchReaction).catch(() => {});
 		try {
 			await act();
 		} catch (error) {
@@ -865,6 +1015,17 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		const writes = log.writes.slice(writesBefore);
 		const writeOf = new Map(writes.map((w) => [w.request, w.line]));
 		const state = stateChange(stateBefore, await readState(page, signedIn));
+		const stayed = !documentLoaded && new URL(page.url()).pathname === startPath;
+		let reaction: Reaction | undefined;
+		if (frameBefore && stayed) {
+			const read = await page.evaluate(readReaction).catch(() => undefined);
+			const frameAfter = await page.screenshot({ timeout: 10_000 }).catch(() => undefined);
+			const boxAfter = await ownBox();
+			// What the page changes on its own (an autoplaying carousel, a ticking counter) is no step's answer.
+			// Where those widgets sit now is left out too: what moves on its own changes different pixels every second.
+			const own = read ? read.changes.filter((c) => ambient.changes.includes(c)).flatMap((c) => (read.boxes[c] ? [read.boxes[c]!] : [])) : [];
+			if (read && frameAfter) reaction = { regions: read.scrolled ? [] : changedRegions(frameBefore, frameAfter, [boxBefore, boxAfter, ...ambient.regions, ...own].filter((b): b is Box => Boolean(b))), changes: read.changes.filter((c) => !ambient.changes.includes(c)), ...(read.scrolled ? { scrolled: true } : {}) };
+		}
 		return {
 			url: redirected && here(page.url()) === landing ? 'the page the route redirected to' : here(page.url()),
 			navigated: reload ? new URL(page.url()).pathname !== startPath : documentLoaded || new URL(page.url()).pathname !== startPath || (href !== null && new URL(href, page.url()).href === page.url()),
@@ -886,15 +1047,16 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 			...(dialogs.length ? { dialogs: [...dialogs] } : {}),
 			...(onOld(page.url()) ? { door: true } : {}),
 			...(state.length ? { state } : {}),
+			...(reaction ? { reaction } : {}),
 		};
 	};
 	return {
 		context,
 		page,
 		loadErrors,
-		run: (step, destructive = false) => observe(() => perform(page, step), describeTarget(step.target), step, destructive, false),
+		run: (step, destructive = false, patience = QUICK) => observe(() => patiently(page, step, patience), describeTarget(step.target), step, destructive, false),
 		cycle(steps, act) {
-			const use = (step: Step) => observe(() => perform(page, step), describeTarget(step.target), step, false, false);
+			const use = (step: Step) => observe(() => patiently(page, step), describeTarget(step.target), step, false, false);
 			if (act === 'again') return use(steps.at(-1)!);
 			if (typeof act === 'object' && 'use' in act) return use({ ...steps.at(-1)!, target: act.use } as Step);
 			if (act === 'reopen') return use(steps.at(-2) ?? steps.at(-1)!);
@@ -913,7 +1075,7 @@ export async function replay(browser: Browser, env: SideEnv, route: string, view
 	try {
 		const results: StepResult[] = [];
 		for (const [i, step] of journey.steps.entries()) {
-			const result = await session.run(step, Boolean(journey.destructive) && i === journey.steps.length - 1);
+			const result = await session.run(step, Boolean(journey.destructive) && i === journey.steps.length - 1, journey.patience);
 			results.push(result);
 			if (result.failed) return results;
 		}
@@ -1129,7 +1291,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	const origin = env.origin;
 	const host = new URL(origin).origin;
 	const started = Date.now();
-	const budget = options.budgetMs ?? DEFAULT_JOURNEY_BUDGET_MS;
+	let budget = options.budgetMs ?? DEFAULT_JOURNEY_BUDGET_MS;
 	const cap = options.maxJourneys ?? Number.POSITIVE_INFINITY;
 	const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
 	const tracked: Tracked[] = [];
@@ -1169,7 +1331,9 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	const itemsFor = (elements: readonly Tracked[], depth: number): { primary: Item[]; keyboard: Item[] } => {
 		const primary: Item[] = [];
 		const keyboard: Item[] = [];
-		for (const t of [...elements].sort((a, b) => b.candidate.importance - a.candidate.importance)) {
+		// A page's own widgets before links to other pages, at the same importance: a link's address is compared by the rendered check already.
+		const linkLast = (t: Tracked) => (t.candidate.target.role === 'link' ? 1 : 0);
+		for (const t of [...elements].sort((a, b) => b.candidate.importance - a.candidate.importance || linkLast(a) - linkLast(b))) {
 			if (t.shared || t.by || t.reason) continue;
 			const step = primaryStep(t.candidate);
 			if (!step) {
@@ -1197,6 +1361,8 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	let navLink: Target | undefined;
 	try {
 		const found = await candidates(start.page, host);
+		// A page with many controls gets the time they take, so the default budget does not leave its own controls unused.
+		if (options.budgetMs === undefined) budget = Math.min(MAX_ADAPTIVE_BUDGET_MS, Math.max(DEFAULT_JOURNEY_BUDGET_MS, found.length * BUDGET_PER_CONTROL_MS));
 		const here = new URL(route, origin);
 		// Another page the new app serves, else this page again by a link to it (an in-place navigation), else any page of the app.
 		const rank = (c: Candidate) => {
@@ -1229,7 +1395,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 				const watch = primary && i === item.journey.steps.length - 1;
 				const before = watch ? await page.evaluate(overlays).catch(() => undefined) : undefined;
 				const historyBefore = watch ? await page.evaluate(() => history.length).catch(() => 0) : 0;
-				const result = await session.run(step);
+				const result = await session.run(step, false, item.journey.patience);
 				expected.push(result);
 				if (result.failed) break;
 				if (!before) continue;
@@ -1294,7 +1460,12 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		// A control that changed the page's mode or what it stores is used again straight after, before deeper controls can spend the budget.
 		const results = await pool(runnable, CONCURRENCY, async (item) => {
 			if (outOfBudget()) return undefined;
-			const r = await runItem(item);
+			let r = await runItem(item);
+			// A control that did not settle in time on the old page is tried once more with more patience, which every replay then gets too.
+			if (!r.done && r.unreachable === 'timeout' && !item.journey.patience && !outOfBudget()) {
+				const patient = await runItem({ ...item, journey: { ...item.journey, patience: PATIENCE } });
+				if (patient.done) r = patient;
+			}
 			const urgent: { item: Item; r: Ran | undefined }[] = [];
 			for (const s of r.sequences) if ((s.rank ?? 0) >= URGENT) urgent.push({ item: s, r: outOfBudget() ? undefined : await runItem(s) });
 			return { ...r, urgent };
@@ -1401,7 +1572,32 @@ function stable(values: readonly string[]): (value: string) => boolean {
 	return template(values[0]!, ...values.slice(1)).test;
 }
 
-function format(result: StepResult, parts: readonly string[]): string {
+const near = (a: Box, b: Box, pad = 16) => a.x - pad < b.x + b.width && b.x - pad < a.x + a.width && a.y - pad < b.y + b.height && b.y - pad < a.y + a.height;
+// The same answer elsewhere in the view (text above it wrapped differently, a page laid out right to left) is a region of about its size: where it sits is the visual check's.
+const alike = (a: Box, b: Box) => near(a, b) || Math.min(a.width * a.height, b.width * b.height) / Math.max(a.width * a.height, b.width * b.height) >= 0.4;
+const boxAt = (b: Box) => `(${b.x}, ${b.y}) ${b.width}x${b.height}`;
+
+/** How every old run of a step answered that the new run did not: widget changes each old run made, and regions of the view each old run changed that the new page left as they were. */
+export function missingReaction(olds: readonly StepResult[], next: StepResult): { changes: string[]; regions: Box[] } {
+	const reactions = olds.map((o) => o.reaction);
+	const mine = next.reaction;
+	if (!mine || !reactions.length || reactions.some((r) => !r)) return { changes: [], regions: [] };
+	const [first, ...rest] = reactions as Reaction[];
+	const changes = first!.changes.filter((c) => rest.every((r) => r.changes.includes(c)) && !mine.changes.includes(c));
+	if (first!.scrolled && rest.every((r) => r.scrolled) && !mine.scrolled) changes.push('the page scrolled');
+	const framed = !first!.scrolled && rest.every((r) => !r.scrolled) && !mine.scrolled;
+	const regions = framed ? first!.regions.filter((box) => rest.every((r) => r.regions.some((o) => alike(o, box))) && !mine.regions.some((o) => alike(o, box))) : [];
+	return { changes, regions };
+}
+
+function answered(r: StepResult, missing: { changes: string[]; regions: Box[] }, old: boolean): string {
+	if (old) return `answers with: ${[...missing.changes, ...missing.regions.map((b) => `the view changes at ${boxAt(b)}`)].join(' | ')}`;
+	const changes = r.reaction?.changes.length ? r.reaction.changes.join(' | ') : 'no widget changes';
+	const view = missing.regions.length ? `the view does not change at ${missing.regions.map(boxAt).join(', ')}${r.reaction?.regions.length ? ` (it changes at ${r.reaction.regions.slice(0, 3).map(boxAt).join(', ')})` : ''}` : '';
+	return `answers with: ${[changes, view].filter(Boolean).join('; ')}`;
+}
+
+function format(result: StepResult, parts: readonly string[], missing?: { changes: string[]; regions: Box[] }, old = false): string {
 	const out: string[] = [];
 	if (parts.includes('failed') && result.failed) out.push(result.failed);
 	if (parts.includes('url')) out.push(`URL ${result.url}`);
@@ -1415,6 +1611,7 @@ function format(result: StepResult, parts: readonly string[]): string {
 	if (parts.includes('state')) out.push(`changed: ${result.state?.join(' | ') || '(nothing)'}`);
 	if (parts.includes('storage')) out.push(`kept in the browser: ${result.storage?.join(', ') || '(no change)'}`);
 	if (parts.includes('dialogs')) out.push(`dialogs: ${result.dialogs?.join(' | ') || '(none)'}`);
+	if (parts.includes('reaction') && missing) out.push(answered(result, missing, old));
 	return out.join('; ');
 }
 
@@ -1492,7 +1689,33 @@ export function untick(r: Pick<StepResult, 'added' | 'removed'>): { added: strin
 	return { added: added.map(reading), removed: removed.map(reading) };
 }
 
-export function compareJourneys(route: string, olds: readonly Run[], journeys: readonly Journey[], next: Run, owner?: StorageOwner, doorErrors?: ReadonlyMap<string, readonly string[]>): Failure[] {
+const EXPANDED = / \[expanded\]/;
+
+/**
+ * A button the new page marks aria-expanded when it opens or closes what it controls, where the old page set no state on it:
+ * WAI-ARIA asks a disclosure or menu button for that state, so the step is compared without it and the addition is listed.
+ */
+export function ariaImprovements(olds: readonly StepResult[], next: StepResult): { step: StepResult; notes: string[] } {
+	const notes: string[] = [];
+	let added = [...next.added];
+	let removed = [...next.removed];
+	const mentions = (r: StepResult, name: string) => [...r.added, ...r.removed].some((l) => l.includes(`button "${name}"`));
+	const opened = olds.every((o) => o.added.length || o.removed.length);
+	for (const line of next.added.concat(next.removed)) {
+		if (!EXPANDED.test(line) || !/^- button "/.test(line)) continue;
+		const plain = line.replace(EXPANDED, '');
+		const name = /^- button "((?:[^"\\]|\\.)*)"/.exec(line)?.[1] ?? '';
+		const opening = added.includes(line) && removed.includes(plain);
+		const closing = removed.includes(line) && added.includes(plain);
+		if (!(opening || closing) || !opened || olds.some((o) => mentions(o, name))) continue;
+		added = added.filter((l) => l !== (opening ? line : plain));
+		removed = removed.filter((l) => l !== (opening ? plain : line));
+		notes.push(`button "${name}" sets aria-expanded when it ${opening ? 'opens' : 'closes'} what it controls; the old page sets no state on it (WAI-ARIA disclosure or menu button)`);
+	}
+	return { step: notes.length ? { ...next, added, removed } : next, notes };
+}
+
+export function compareJourneys(route: string, olds: readonly Run[], journeys: readonly Journey[], next: Run, owner?: StorageOwner, doorErrors?: ReadonlyMap<string, readonly string[]>, improvements: string[] = []): Failure[] {
 	const failures: Failure[] = [];
 	journeys.forEach((journey, j) => {
 		const runs = olds.map((o) => o[j]!);
@@ -1510,10 +1733,14 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			const following = typeof act === 'object' && 'navigate' in act;
 			const restricted = following || (navigatedAway && act === 'reload');
 			const mine = (r: StepResult | undefined): StepResult | undefined => (!r ? r : restricted ? { ...r, added: [], removed: [], moved: [], state: (r.state ?? []).filter((l) => touched.has(subject(l))), storage: kept(r.storage) } : act === 'reload' ? { ...r, state: (r.state ?? []).filter((l) => touched.has(subject(l))), storage: kept(r.storage) } : r);
-			const oldSteps = runs.map((r) => mine(r[k]));
-			if (oldSteps.some((s) => !s || s.failed)) break;
+			// An old run that could not repeat the step is left out; the step is compared with those that did, never skipped while one did.
+			const oldSteps = runs.map((r) => mine(r[k])).filter((s): s is StepResult => Boolean(s && !s.failed));
+			if (!oldSteps.length) break;
 			const [a, ...rest] = oldSteps as StepResult[];
-			const n = mine(actual[k]);
+			const raw = mine(actual[k]);
+			const improved = raw && !raw.failed ? ariaImprovements(oldSteps, raw) : undefined;
+			for (const note of improved?.notes ?? []) if (!improvements.includes(note)) improvements.push(note);
+			const n = improved?.step ?? raw;
 			// A page the front door serves from the old app keeps its state on the old app's origin.
 			if ((following || navigatedAway) && n?.door) break;
 			const dimension: Dimension = step.action === 'press' ? 'a11y' : 'behaviour';
@@ -1542,8 +1769,11 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			const errors = diffLines(lineTemplates(a!.errors, ...rest.map((r) => r.errors)), own ? n.errors.filter((e) => !own.includes(e)) : n.errors);
 			if (errors.unexpected.length || errors.changed.length) parts.push('errors');
 			if (!navigated && !reloaded && !stable([a!.focus, ...rest.map((r) => r.focus)])(n.focus)) parts.push('focus');
+			// The old page answered the step and the new one did not: a control whose effect never happens is red whatever else matches.
+			const missing = navigated || reloaded ? { changes: [], regions: [] } : missingReaction(oldSteps as StepResult[], n);
+			if (missing.changes.length || missing.regions.length) parts.push('reaction');
 			if (parts.length) {
-				failures.push({ route, dimension, check, expected: where('old', format(a!, parts)), actual: where('new', format(n, parts)), hint, ...(automatic && parts.length === 1 && parts[0] === 'storage' ? { automatic } : {}) });
+				failures.push({ route, dimension, check, expected: where('old', format(a!, parts, missing, true)), actual: where('new', format(n, parts, missing)), hint, ...(automatic && parts.length === 1 && parts[0] === 'storage' ? { automatic } : {}) });
 				break;
 			}
 		}
