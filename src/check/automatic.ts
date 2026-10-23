@@ -1,5 +1,5 @@
 import { AUTOMATIC_RULES, type AutomaticRule } from '../overrides.ts';
-import type { AssetRecord, Box, Failure, PageCapture } from './types.ts';
+import type { AssetRecord, Box, Failure, ImageRecord, PageCapture } from './types.ts';
 
 export { AUTOMATIC_RULES, type AutomaticRule };
 
@@ -94,6 +94,46 @@ export function embedCandidate(regions: readonly Box[], old: PageCapture, next: 
 	if (!regions.every((r) => shared.some((e) => inside(r, e.box)))) return undefined;
 	const hosts = [...new Set(shared.filter((e) => regions.some((r) => inside(r, e.box))).map((e) => new URL(e.src).host))];
 	return candidate('live-embed', `every differing pixel is inside ${hosts.length === 1 ? 'an embed' : 'embeds'} from ${hosts.join(', ')} that both pages load from the same address`);
+}
+
+// An image optimizer's address names its source image in a query; a file's name, less its content hash and a width
+// suffix, names the image its renditions were made from (photo.Bx7c9Kq2.jpg, photo-640w.webp).
+const OPTIMIZERS = new Set(['/_next/image', '/_vercel/image']);
+const HASH = /[.-]([A-Za-z0-9_-]{8}|[a-f0-9]{16,})$/;
+const hashy = (token: string) => /\d/.test(token) || (/[a-z]/.test(token) && /[A-Z]/.test(token));
+export function imageIdentity(src: string): string {
+	const url = URL.parse(src, 'http://x');
+	if (!url) return src;
+	if (OPTIMIZERS.has(url.pathname) && url.searchParams.get('url')) return `${url.pathname}?url=${url.searchParams.get('url')}`;
+	let name = decodeURIComponent(url.pathname.slice(url.pathname.lastIndexOf('/') + 1)).replace(/\.[a-z0-9]+$/i, '');
+	for (let i = 0; i < 2; i++) {
+		const hash = HASH.exec(name);
+		if (hash && hashy(hash[1]!)) name = name.slice(0, hash.index);
+		name = name.replace(/[-_@]\d{2,4}w$/, '');
+	}
+	return `${url.origin}/${name}`;
+}
+
+/** The new page draws the old page's image from another rendition of it (a srcset width), as sharp as its box needs at the screenshot's scale. */
+export function responsiveImageCandidate(old: ImageRecord, next: ImageRecord | undefined): Failure['automatic'] {
+	if (!next || old.broken || next.broken || old.src === next.src || imageIdentity(old.src) !== imageIdentity(next.src)) return undefined;
+	if (!old.naturalHeight || !next.naturalHeight || Math.abs(old.naturalWidth / old.naturalHeight - next.naturalWidth / next.naturalHeight) > 0.01 * (old.naturalWidth / old.naturalHeight)) return undefined;
+	if (!next.box || next.naturalWidth < next.box.width) return undefined;
+	return candidate('responsive-image', `${next.src} is ${old.src} at ${next.naturalWidth}x${next.naturalHeight}, which the srcset gives a ${next.box.width} px wide box; the old page drew a ${old.naturalWidth} px file there`);
+}
+
+/** Pixels that differ only inside images the new page draws from a smaller rendition of the old page's file: the resampling, not the page. */
+export function responsiveRegionsCandidate(regions: readonly Box[], old: PageCapture, next: PageCapture, differing?: number): Failure['automatic'] {
+	if (!regions.length) return undefined;
+	const renditions = old.images.flatMap((img, i) => {
+		const auto = responsiveImageCandidate(img, next.images[i]);
+		return auto ? [{ box: next.images[i]!.box!, auto }] : [];
+	});
+	if (!renditions.length || !regions.every((r) => renditions.some((x) => inside(r, x.box)))) return undefined;
+	const used = renditions.filter((x) => regions.some((r) => inside(r, x.box)));
+	// Resampling moves a few edge pixels; a different picture moves most of them.
+	if (differing !== undefined && differing > 0.1 * used.reduce((s, x) => s + x.box.width * x.box.height, 0)) return undefined;
+	return candidate('responsive-image', `every differing pixel is inside ${used.length === 1 ? 'an image' : `${used.length} images`} drawn from another width of the same file: ${used.map((x) => x.auto!.reason).join('; ')}`);
 }
 
 /** A third-party image both pages load from the same address that came back different: its content is live. */

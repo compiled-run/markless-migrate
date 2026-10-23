@@ -16,6 +16,8 @@ import { captureAccordions, captureHoverDelays, captureAllForms, captureAllSwitc
 import { bindMount, bindParts, bodyHandlers, candidatesOf, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { stat } from 'node:fs/promises';
+import { existsSync, readFileSync } from 'node:fs';
+import { nextImageWidths, pairImages, planImages, type ImagePlan, type Optimizer } from './images.ts';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
 import { nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
@@ -510,10 +512,11 @@ function extractStyles(parent: Element, styles: Map<string, string>): void {
 	}
 }
 
-function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: string, dropped: Dropped, styles: Map<string, string>): Prepared {
+function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: string, dropped: Dropped, styles: Map<string, string>, optimizer: Optimizer | undefined, images: ImagePlan): Prepared {
 	const builds = frameworkBuilds(capture.server).map((b) => b.path);
 	const ctx = { builds, frameworkScripts: new Set<string>(), origin };
 	const doc = parseDocument(capture.settled.desktop ?? Object.values(capture.settled)[0] ?? capture.server);
+	const paired = pairImages(doc, capture.images);
 	currentLayers = [];
 	currentClipboard = {};
 	const appends = resolveReveals(doc, reveals, (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1));
@@ -529,6 +532,8 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 		extractStyles(holder, styles);
 		return attr(childrenOf(holder)[0] as Element, 'href')!;
 	});
+	const plan = planImages(doc, paired, optimizer, dropped);
+	for (const k of Object.keys(plan) as (keyof ImagePlan)[]) images[k] += plan[k];
 	extractStyles(head(doc), styles);
 	extractStyles(body(doc), styles);
 	const tags: HeadTag[] = [];
@@ -654,14 +659,18 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const styles = new Map<string, string>();
 	const unconverted: { route: string; reason: string }[] = [];
 	const prepared = new Map<string, Prepared>();
+	const nextConfig = options.source ? ['next.config.mjs', 'next.config.js', 'next.config.ts', 'next.config.cjs'].map((f) => join(options.source!, f)).find((f) => existsSync(f)) : undefined;
+	const optimizer: Optimizer | undefined = nextConfig ? { path: '/_next/image', widths: nextImageWidths(readFileSync(nextConfig, 'utf8')) } : undefined;
+	const images: ImagePlan = { lazy: 0, eager: 0, responsive: 0, preloadsDropped: 0, someScreens: 0 };
 	// Each capture (the served HTML and the settled documents, a few MB) is read from the cache only while its page is parsed.
 	for (const ref of captures) {
 		if (ref.status !== 200 && !(ref.route === NOT_FOUND && ref.status === 404)) {
 			unconverted.push({ route: ref.route, reason: `the old site answered ${ref.status} while capturing` });
 			continue;
 		}
-		prepared.set(ref.route, prepare(await ref.load(), revealed.get(ref.route) ?? [], options.old, dropped, styles));
+		prepared.set(ref.route, prepare(await ref.load(), revealed.get(ref.route) ?? [], options.old, dropped, styles, optimizer, images));
 	}
+	if (images.lazy + images.eager + images.responsive + images.someScreens) log(`images: ${images.lazy} lazy (in no first screen), ${images.eager} eager (in a first screen), ${images.responsive} given a width per device, ${images.preloadsDropped} head preloads dropped, ${images.someScreens} drawn only in one range of widths (lazy, preloaded there)`);
 
 	const bodyParts = splitBody(new Map([...prepared].map(([route, p]) => [route, { route, before: p.before, after: p.after, htmlAttrs: p.htmlAttrs, bodyAttrs: p.bodyAttrs, head: p.head }])));
 	const pathOf = (route: string) => new URL(route, options.old).pathname;
