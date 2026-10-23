@@ -34,11 +34,9 @@ export default function Document({ url, children }: { readonly url?: { readonly 
 			}
 			<link rel="preload stylesheet" href="/assets/style.B3BAO59d.css" as="style" />
 			@if (!docs) {
-				<>
-					<link rel="preconnect" href="https://fonts.googleapis.com" />
-					<link rel="preload" href={bannerBackground} as="image" />
-				</>;
+				<link rel="preconnect" href="https://fonts.googleapis.com" />;
 			}
+			<link rel="preload" href={bannerBackground} as="image" media="(min-width: 768px)" />
 			<script>{'if(localStorage.getItem("banner-dismissed-viteconf-2026")==="true")document.documentElement.classList.add("banner-dismissed");'}</script>
 			@if (docs) {
 				<>

@@ -6,7 +6,6 @@ import flexiblePlugin from '../assets/vite/animations/640_x_300_flexible_plugin.
 
 const SOURCES = { masthead, richFeatures, flexiblePlugin };
 export type RiveName = keyof typeof SOURCES;
-export const riveSource = (name: RiveName): string => SOURCES[name];
 
 export interface RiveOptions {
 	readonly desktopSrc: RiveName;
