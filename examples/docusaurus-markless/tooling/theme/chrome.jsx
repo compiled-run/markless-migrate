@@ -133,7 +133,9 @@ export function NavbarColorModeToggle({ className }) {
 	return <ColorModeToggle className={className} buttonClassName={navbar.style === 'dark' ? styles('Navbar/ColorModeToggle').darkNavbarColorModeToggle : undefined} />;
 }
 
-// DocSearch's button as it renders once the page has started (the shortcut keys appear then).
+// DocSearch's button as it renders once the page has started: ⌘ K on Apple platforms, Ctrl K elsewhere. The page
+// writes the keys while it is parsed (lib/site.ts again after an in-place navigation), so they never flash.
+const SEARCH_KEYS = `(function(s){var m=/(Mac|iPhone|iPod|iPad)/i.test(navigator.platform),k=m?"Meta":"Control",b=s.parentNode.parentNode;b.setAttribute("aria-label","Search ("+k+"+k)");b.setAttribute("aria-keyshortcuts",k+"+k");s.insertAdjacentHTML("beforebegin",m?'<kbd class="DocSearch-Button-Key">\u2318</kbd><kbd class="DocSearch-Button-Key">K</kbd>':'<kbd class="DocSearch-Button-Key DocSearch-Button-Key--ctrl">Ctrl</kbd><kbd class="DocSearch-Button-Key">K</kbd>');s.remove()})(document.currentScript)`;
 export function SearchBar() {
 	return (
 		<button type="button" className="DocSearch DocSearch-Button" aria-label="Search (Meta+k)" aria-keyshortcuts="Meta+k">
@@ -145,8 +147,7 @@ export function SearchBar() {
 				<span className="DocSearch-Button-Placeholder">Search</span>
 			</span>
 			<span className="DocSearch-Button-Keys">
-				<kbd className="DocSearch-Button-Key">⌘</kbd>
-				<kbd className="DocSearch-Button-Key">K</kbd>
+				<script>{SEARCH_KEYS}</script>
 			</span>
 		</button>
 	);

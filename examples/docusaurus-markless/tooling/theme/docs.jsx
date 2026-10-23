@@ -69,7 +69,7 @@ function DocSidebarItemHtml({ item, level }) {
 }
 
 // A collapsed category's items are not in the page until it is first opened (the theme's lazy Collapsible):
-// lib/site.ts renders them then, from lib/sidebars.json.
+// lib/site.ts renders them then, from the sidebar's JSON file that lib/sidebars.json names.
 function DocSidebarItemCategory({ item, activePath, level, index, ...props }) {
 	const visible = item.items.filter((sub) => isVisibleSidebarItem(sub, activePath));
 	if (visible.length === 0) {
