@@ -77,7 +77,7 @@ export function obligationsFor(b: Behaviour): Obligation[] {
 			add(`${b.feature} on ${target}: each tab or item by click`, 'journey', [{ do: 'click', target }]);
 			add(`${b.feature} on ${target}: arrow keys, Home, End and Escape`, 'keyboard', [{ do: 'press', target, key: 'ArrowRight' }]);
 			add(`${b.feature} on ${target}: open, then close by Escape and by clicking outside, twice`, 'sequence', [{ do: 'click', target, times: 2 }, { do: 'press', target, key: 'Escape' }]);
-			if (b.feature === 'navbar dropdown' || b.feature === 'navbar flyout') add(`${b.feature} on ${target}: open it by hover, choose an item that navigates and leave the pointer still: whether the menu is open on the next page matches the old page`, 'sequence', [{ do: 'hover', target }, { do: 'click', target: 'an item that navigates' }, { do: 'compare', what: ['visibility of the menu'] }]);
+			if (b.feature === 'navbar dropdown' || b.feature === 'navbar flyout') add(`${b.feature} on ${target}: open it by hover, choose an item that navigates and leave the pointer still: whether the menu is open on the next page, and how it closes (at once or by a fade), matches the old page frame by frame`, 'pinned-frames', [{ do: 'hover', target }, { do: 'click', target: 'an item that navigates' }, { do: 'compare', what: ['visibility of the menu', 'opacity of the menu'], at: ['next frame', '100 ms', '300 ms'] }]);
 			break;
 		case 'class-timeline': {
 			const steps = (b.details.steps as { op: string; className: string; delay: string }[] | undefined) ?? [];
