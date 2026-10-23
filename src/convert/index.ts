@@ -11,6 +11,7 @@ import { cleanDocument, frameworkBuilds, lateHead, type Dropped } from './clean.
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, walk, type Document, type Element } from './dom.ts';
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
 import { BaseTabsPlan, CheckablePlan, DisclosurePlan, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
+import { captureCharts, ChartPlan, type ChartFacts } from './charts.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
 import { captureAccordions, captureCarousels, captureComboboxEmpties, captureHoverDelays, captureAllForms, captureAllSwitches, captureAllToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
 import { bindMount, bindParts, bodyHandlers, candidatesOf, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
@@ -684,6 +685,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const accordionModes = new Map<string, readonly AccordionMode[]>();
 	const hoverDelays = new Map<string, readonly HoverDelay[]>();
 	const carouselFacts = new Map<string, readonly CarouselFacts[]>();
+	const chartFacts = new Map<string, readonly ChartFacts[]>();
 	const scrollerOpenings = new Map<string, readonly ScrollerOpening[]>();
 	const choices: Record<string, Record<string, Choice>> = {};
 	try {
@@ -721,6 +723,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (ref.status !== 200) continue;
 			const settled = Object.values((await ref.load()).settled);
 			if (settled.some((html) => html.includes('data-slot="carousel"'))) carouselFacts.set(ref.route, (await captureCarousels(browser, options.old, ref.route, join(state, 'convert', 'toggles'))).carousels);
+			if (settled.some((html) => html.includes('recharts-tooltip-wrapper'))) chartFacts.set(ref.route, (await captureCharts(browser, options.old, ref.route, join(state, 'convert', 'toggles'))).charts);
 		}
 		for (const c of captures) if (c && (await c.load()).server.includes('data-slot="message-scroller"')) scrollerOpenings.set(c.route, (await captureScrollers(browser, options.old, c.route, join(state, 'convert', 'toggles'))).scrollers);
 		if (options.reveal !== false) for (const t of await captureAllToggles(browser, options.old, routes, join(state, 'convert', 'toggles'), { concurrency: options.concurrency ?? 4, log })) toggled.set(t.route, t.groups);
@@ -879,6 +882,13 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		log(`checkboxes, switches, toggles and radio groups on Markless state: ${checkableGroups}`);
 		templatePorts.add('toggle');
 	}
+	const charts = new ChartPlan();
+	let chartCount = 0;
+	for (const [route, p] of prepared) chartCount += charts.add(p.root, chartFacts.get(route) ?? [], locator(p.root.parentNode as Element), emitHtml);
+	if (chartCount) {
+		log(`recharts tooltips on Markless state: ${chartCount} charts`);
+		templatePorts.add('recharts');
+	}
 	handledBy((el) => checkables.bind(el) !== undefined || baseTabs.bind(el) !== undefined || insertedDisclosures.bind(el) !== undefined);
 	// input-otp fields, used once each on the old page for the caret their site renders and the text that shows their value.
 	const otps = new OtpPlan();
@@ -907,7 +917,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		binding = mergeBindings(binding, keyed ? { extra: [`data-mm-key=${JSON.stringify(keyed)}`] } : undefined);
 		binding = mergeBindings(binding, portAttributes(el));
 		binding = mergeBindings(binding, portFor(el) === 'shadcn/message-scroller' ? bindScroller(el) : undefined);
-		const own = mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), baseTabs.bind(el)), disclosures.bind(el)), insertedDisclosures.bind(el)), selects.bind(el)), checkables.bind(el)), switchPlan.bind(el)), mergeBindings(notifyPlan.bind(el), handledForms.has(el) ? formBinding : undefined)), mergeBindings(otps.bind(el), binding)), bindMount(el));
+		const own = mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), baseTabs.bind(el)), charts.bind(el)), disclosures.bind(el)), insertedDisclosures.bind(el)), selects.bind(el)), checkables.bind(el)), switchPlan.bind(el)), mergeBindings(notifyPlan.bind(el), handledForms.has(el) ? formBinding : undefined)), mergeBindings(otps.bind(el), binding)), bindMount(el));
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};
 	void appendOf;

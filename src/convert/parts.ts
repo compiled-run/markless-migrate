@@ -86,6 +86,8 @@ export const PORTS: readonly Port[] = [
 	{ module: 'carousel', library: 'embla-carousel-react', exports: ['default', 'useEmblaCarousel'], events: ['click', 'keydown', 'pointerdown'], locate: (el) => attr(el, 'data-slot') === 'carousel' },
 	// input-otp's slots are Markless state (convert's OtpPlan); the part runs the input's handlers and dispatches it.
 	{ module: 'input-otp', library: 'input-otp', exports: ['OTPInput'], events: ['focusin', 'focusout', 'input'], locate: () => true },
+	// recharts' tooltips and active points are Markless state (convert's ChartPlan); the part follows the pointer and keys.
+	{ module: 'recharts', library: 'recharts', exports: ['Tooltip'], events: ['pointerover', 'focusin', 'focusout', 'keydown'], locate: () => false },
 	// Radix Collapsible and Accordion are Markless state (convert's DisclosurePlan); the part measures and ends exits.
 	{ module: 'radix/disclosure-motion', library: 'radix-ui', needs: ['panel-motion'], exports: ['Collapsible.Root', 'Collapsible.CollapsibleTrigger', 'Collapsible.CollapsibleContent', 'Collapsible.Trigger', 'Collapsible.Content', 'Accordion.Root', 'Accordion.Item', 'Accordion.Header', 'Accordion.Trigger', 'Accordion.Content'], events: [], locate: (el) => radix(el) },
 	// Base UI Collapsible and Accordion are Markless state (convert's InsertedDisclosurePlan); the part measures and ends exits.

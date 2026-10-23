@@ -205,3 +205,29 @@ test('a Radix trigger with its own id has its layer under the id, while aria-con
 	assert.equal(await page.getByText('Pick a date').getAttribute('aria-expanded'), 'false', 'a second press closes it');
 	await page.close();
 });
+
+test('recharts: the pointer over the plot activates the point whose range it is in, the arrow keys step, leaving hides', async () => {
+	const facts = JSON.stringify({ w: 300, h: 100, s: [[0, 99, 50, 10], [100, 199, 150, 10], [200, 300, 250, 10]] });
+	const page = await open(
+		`<div style="padding:50px"><div class="recharts-wrapper" style="position:relative;width:300px;height:100px" data-mm-chart='${facts}'><svg class="recharts-surface" tabindex="0" width="300" height="100" style="display:block"></svg><div class="recharts-tooltip-wrapper" style="visibility: hidden; position: absolute; top: 0px; left: 0px;">tip</div></div></div><button>after</button>`,
+		['recharts'],
+	);
+	await page.evaluate(() => {
+		(window as unknown as { seen: number[] }).seen = [];
+		document.querySelector('.recharts-wrapper')!.addEventListener('mmchart', (e) => (window as unknown as { seen: number[] }).seen.push((e as CustomEvent<number>).detail));
+	});
+	const tip = page.locator('.recharts-tooltip-wrapper');
+	await page.mouse.move(60, 100);
+	await page.mouse.move(210, 100, { steps: 4 });
+	assert.deepEqual(await page.evaluate(() => (window as unknown as { seen: number[] }).seen), [0, 1]);
+	assert.equal(await tip.evaluate((e) => (e as HTMLElement).style.visibility), 'visible');
+	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(150px, 60px\)/, 'x as the old page placed it, y following the pointer');
+	await page.mouse.move(5, 5);
+	assert.equal(await tip.evaluate((e) => (e as HTMLElement).style.visibility), 'hidden');
+	await page.locator('svg.recharts-surface').focus();
+	await page.keyboard.press('ArrowRight');
+	assert.deepEqual((await page.evaluate(() => (window as unknown as { seen: number[] }).seen)).slice(-3), [-1, 0, 1], 'focus shows the first point, the arrow the next');
+	await page.getByText('after').focus();
+	assert.equal(await tip.evaluate((e) => (e as HTMLElement).style.visibility), 'hidden');
+	await page.close();
+});
