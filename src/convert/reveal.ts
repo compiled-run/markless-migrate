@@ -115,8 +115,12 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 	await page.evaluate(() => {
 		const w = window as unknown as { __mmAdded?: { parent: Element; node: Element; next: Element | null }[]; __mmObserver?: MutationObserver };
 		w.__mmAdded = [];
+		(w as unknown as { __mmChanged: Element[] }).__mmChanged = [];
 		w.__mmObserver = new MutationObserver((records) => {
-			for (const r of records) for (const n of r.addedNodes) if (n instanceof Element && r.target instanceof Element) w.__mmAdded!.push({ parent: r.target, node: n, next: n.nextElementSibling });
+			for (const r of records) {
+				if (r.target instanceof Element && (r.addedNodes.length || r.removedNodes.length)) (w as unknown as { __mmChanged: Element[] }).__mmChanged.push(r.target);
+				for (const n of r.addedNodes) if (n instanceof Element && r.target instanceof Element) w.__mmAdded!.push({ parent: r.target, node: n, next: n.nextElementSibling });
+			}
 		});
 		w.__mmObserver.observe(document.body, { childList: true, subtree: true });
 	});
@@ -164,7 +168,10 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 			const w = window as unknown as { __mmObserver?: MutationObserver; __mmChain?: Element[] };
 			w.__mmObserver?.disconnect();
 			const chain = w.__mmChain ?? [];
-			const depth = chain.findIndex((n) => n.isConnected);
+			// The nearest ancestor holding every place the swap changed: the framework may keep the control's own parent and
+			// change its siblings too (shadcn's View Code keeps the button's wrapper for the comment and swaps the figure).
+			const changed = ((w as unknown as { __mmChanged?: Element[] }).__mmChanged ?? []).filter((n) => n.isConnected);
+			const depth = chain.findIndex((n) => n.isConnected && changed.every((c) => n.contains(c)));
 			return depth < 0 ? undefined : { depth: depth + 1, html: chain[depth]!.innerHTML };
 		});
 		return kept ? [{ into: 'replace', before: kept.depth, html: kept.html }] : [];
@@ -305,9 +312,13 @@ export async function captureAllReveals(browser: Browser, origin: string, routes
 			const index = next++;
 			const failed = (error: Error): RevealCapture => ({ route: routes[index]!, reveals: [], skipped: [`the route: ${error.message.split('\n')[0]}`] });
 			const own = await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, options.extra ?? []).catch(failed);
+			// The site's listed controls (View Code) again on their own, cached apart: their swaps are taken from here.
+			const listed = options.extra?.length ? await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, options.extra, { controls: [], tag: 'listed-v2:' }).catch(failed) : undefined;
+			const relisted = new Set(listed?.reveals.map((r) => r.key) ?? []);
+			const base = listed ? [...own.reveals.filter((r) => !(relisted.has(r.key) && r.added.every((a) => a.into === 'replace' || a.into === 'clipboard'))), ...listed.reveals] : own.reveals;
 			const child = await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, [], { controls: CHILD_HOVER, tag: 'child-hover:' }).catch(failed);
-			const keys = new Set(own.reveals.map((r) => r.key));
-			out[index] = { route: own.route, reveals: [...own.reveals, ...child.reveals.filter((r) => !keys.has(r.key))], skipped: [...own.skipped, ...child.skipped] };
+			const keys = new Set(base.map((r) => r.key));
+			out[index] = { route: own.route, reveals: [...base, ...child.reveals.filter((r) => !keys.has(r.key))], skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped] };
 			done++;
 			options.log?.(`revealed ${done}/${routes.length} ${routes[index]} (${out[index]!.reveals.length} controls)`);
 		}
