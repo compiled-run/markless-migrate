@@ -79,6 +79,43 @@ export function layersFor(key: string): HTMLElement[] {
 	return own.length ? own : all.filter((n) => !n.dataset.mmViewport);
 }
 
+const CONTENT = '[data-slot$="-content"], [data-slot$="-popup"]';
+const slots = new WeakMap<Element, string>();
+
+/**
+ * The trigger part a control is: its own data-slot, or, when the trigger renders its child (Radix asChild, Base UI
+ * render) and so carries the child's data-slot (`button`), the one its layer's content names (`popover-content` is a
+ * `popover-trigger`'s).
+ */
+export function triggerSlot(el: Element): string {
+	const own = el.getAttribute('data-slot') ?? '';
+	if (own.endsWith('-trigger')) return own;
+	const known = slots.get(el);
+	if (known !== undefined) return known;
+	const key = el.getAttribute('aria-controls') || el.getAttribute('data-mm-key') || el.id;
+	let found = '';
+	if (key) {
+		const served = document.querySelector<HTMLTemplateElement>(`${LAYER_SOURCE}[data-mm-layer-keys~="${CSS.escape(key)}"]`);
+		const nodes = [...document.querySelectorAll(`[data-mm-layer="${CSS.escape(key)}"]`), ...(served?.content.querySelectorAll(`[data-mm-layer="${CSS.escape(key)}"]`) ?? [])];
+		for (const n of nodes) {
+			const content = n.matches(CONTENT) ? n : n.querySelector(CONTENT);
+			const slot = content?.getAttribute('data-slot');
+			if (slot) {
+				found = slot.replace(/-(content|popup)$/, '-trigger');
+				break;
+			}
+		}
+	}
+	slots.set(el, found);
+	return found;
+}
+
+/** The closest control from `target` that matches `selector` and is the trigger part `slot` tests true for. */
+export function closestTrigger<T extends HTMLElement = HTMLElement>(target: Element, selector: string, slot: (name: string) => boolean): T | null {
+	for (let el = target.closest<T>(selector); el; el = el.parentElement?.closest<T>(selector) ?? null) if (slot(triggerSlot(el))) return el;
+	return null;
+}
+
 /** A control that took itself away on the old page (View Code): its container's content switches to what it then showed. */
 export function swap(control: Element): boolean {
 	const key = control.getAttribute('data-mm-replace');

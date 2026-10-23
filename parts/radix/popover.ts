@@ -1,10 +1,13 @@
 import { closeLayer, focusFirst, layerOf, openLayer, type Layer } from '../layer.ts';
+import { closestTrigger } from '../reveal.ts';
 
 // Radix Popover (@radix-ui/react-popover), non-modal as shadcn renders it: the trigger toggles the content, which takes
 // focus on open; Escape, a press outside or focus leaving closes it, and focus goes back to the trigger unless the press
 // outside landed on something that takes focus.
 
 const TRIGGER = '[data-slot="popover-trigger"][aria-haspopup="dialog"][aria-controls]';
+// A trigger rendered through its child (asChild, render) carries the child's data-slot; its layer names the part.
+const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[aria-haspopup="dialog"][aria-controls]', (slot) => /^popover-trigger$/.test(slot));
 
 function setTrigger(trigger: HTMLElement, open: boolean): void {
 	trigger.setAttribute('aria-expanded', String(open));
@@ -17,7 +20,7 @@ function close(layer: Layer, keepFocus = false): void {
 }
 
 export function click(target: Element): boolean {
-	const trigger = target.closest<HTMLElement>(TRIGGER);
+	const trigger = triggerOf(target);
 	if (trigger) {
 		const key = trigger.getAttribute('aria-controls')!;
 		const existing = layerOf(document.getElementById(key) ?? trigger);

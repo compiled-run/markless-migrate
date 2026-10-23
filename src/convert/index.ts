@@ -11,7 +11,7 @@ import { cleanDocument, frameworkBuilds, type Dropped } from './clean.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, walk, type Document, type Element } from './dom.ts';
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
 import { BaseTabsPlan, CheckablePlan, DisclosurePlan, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
-import { captureAccordions, captureHoverDelays, captureAllForms, captureAllSwitches, captureAllToggles, captureNotifications, type AccordionMode, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
+import { captureAccordions, captureCarousels, captureHoverDelays, captureAllForms, captureAllSwitches, captureAllToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
 import { bindMount, bindParts, bodyHandlers, candidatesOf, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { stat } from 'node:fs/promises';
@@ -583,6 +583,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const notified = new Map<string, readonly Notify[]>();
 	const accordionModes = new Map<string, readonly AccordionMode[]>();
 	const hoverDelays = new Map<string, readonly HoverDelay[]>();
+	const carouselFacts = new Map<string, readonly CarouselFacts[]>();
 	const choices: Record<string, Record<string, Choice>> = {};
 	try {
 		// The old site's not-found page, from a path no route has: the new app's 404 page.
@@ -598,7 +599,17 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		if (options.reveal !== false) for (const r of await captureAllReveals(browser, options.old, routes, join(state, 'convert', 'reveals'), { concurrency: options.concurrency ?? 4, log, extra })) revealed.set(r.route, r.reveals);
 		// Whether each accordion lets several items be open, on the routes where one revealed an item's content.
 		for (const [route, reveals] of revealed) if (reveals.some((r) => r.sig?.includes('|accordion-trigger|'))) accordionModes.set(route, (await captureAccordions(browser, options.old, route, join(state, 'convert', 'toggles'))).accordions);
-		for (const [route, reveals] of revealed) if (reveals.some((r) => r.sig?.includes('|hover-card-trigger|'))) hoverDelays.set(route, (await captureHoverDelays(browser, options.old, route, join(state, 'convert', 'toggles'))).delays);
+		for (const [route, reveals] of revealed) {
+			// Hover cards, among them those whose trigger renders its child (its data-slot is the child's).
+			const others = reveals.filter((r) => r.action === 'hover' && r.sig && !r.sig.includes('|hover-card-trigger|') && r.added.some((a) => /data-slot="hover-card-content"/.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
+			if (others.length || reveals.some((r) => r.sig?.includes('|hover-card-trigger|'))) hoverDelays.set(route, (await captureHoverDelays(browser, options.old, route, join(state, 'convert', 'toggles'), others)).delays);
+		}
+		// Each carousel's alignment and autoplay, on the routes whose settled page has one.
+		for (const ref of captures) {
+			if (ref.status !== 200) continue;
+			const settled = Object.values((await ref.load()).settled);
+			if (settled.some((html) => html.includes('data-slot="carousel"'))) carouselFacts.set(ref.route, (await captureCarousels(browser, options.old, ref.route, join(state, 'convert', 'toggles'))).carousels);
+		}
 		if (options.reveal !== false) for (const t of await captureAllToggles(browser, options.old, routes, join(state, 'convert', 'toggles'), { concurrency: options.concurrency ?? 4, log })) toggled.set(t.route, t.groups);
 		// Controls the site lists as switching attributes in place (lib/site/controls.json, action "toggle").
 		const switchSelectors = listed.filter((c) => c.action === 'toggle').map((c) => c.selector);
@@ -653,7 +664,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	};
 	const appended = new Map<Element, string>();
 	for (const p of prepared.values()) for (const [el, markup] of p.appends) appended.set(el, markup);
-	useMounts(await readFile(join(app, 'lib', 'site', 'mounts.json'), 'utf8').then((t) => JSON.parse(t) as string[], () => []));
+	useMounts([...(await readFile(join(app, 'lib', 'site', 'mounts.json'), 'utf8').then((t) => JSON.parse(t) as string[], () => [])), ...([...carouselFacts.values()].some((f) => f.some((c) => c.autoplay)) ? ['data-mm-autoplay'] : [])]);
 	const tabs = new TabsPlan();
 	let tabGroups = 0;
 	for (const p of prepared.values()) tabGroups += tabs.add(p.root, isRadixTab, (panel) => panelContent.get(panel));
@@ -675,6 +686,17 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (el) ownDelays.set(el, { openDelay: String(delayOf(d.open)), delay: String(delayOf(d.open)), closeDelay: String(delayOf(d.close)) });
 		}
 	}
+	for (const [route, p] of prepared) {
+		const facts = carouselFacts.get(route) ?? [];
+		const locate = facts.length ? locator(p.root.parentNode as Element) : undefined;
+		for (const f of facts) {
+			const el = locate!(f.sig, f.nth);
+			if (!el) continue;
+			ownDelays.set(el, { ...ownDelays.get(el), align: f.align });
+			if (f.autoplay) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-mm-autoplay'), { name: 'data-mm-autoplay', value: String(f.autoplay) }];
+		}
+	}
+	if (carouselFacts.size) log(`carousels measured: ${[...carouselFacts.values()].reduce((n, f) => n + f.length, 0)}`);
 	useMeasuredProps(ownDelays);
 	const multipleAccordions = new Set<Element>();
 	for (const [route, p] of prepared) {

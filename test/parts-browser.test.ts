@@ -1,0 +1,154 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { after, before, test } from 'node:test';
+import { chromium, type Browser, type Page } from 'playwright';
+import ts from 'typescript';
+
+// The ports run as the app runs them: parts/index.ts delegating every event to a registry of ports, in a real browser.
+const PARTS = join(import.meta.dirname, '..', 'parts');
+// Placement is not under test here; the ports only need @floating-ui/dom's functions to exist.
+const FLOATING_STUB = `export const computePosition = async () => ({ x: 0, y: 0, placement: 'bottom', middlewareData: {} });
+export const autoUpdate = () => () => {};
+export const arrow = () => ({}), flip = () => ({}), hide = () => ({}), limitShift = () => ({}), offset = () => ({}), shift = () => ({}), size = () => ({});`;
+
+let browser: Browser;
+before(async () => {
+	browser = await chromium.launch();
+});
+after(async () => {
+	await browser.close();
+});
+
+async function open(body: string, ports: readonly string[]): Promise<Page> {
+	const page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
+	const registry = `${ports.map((p, i) => `import * as p${i} from './${p}.ts';`).join('\n')}\nexport const PARTS = [${ports.map((_, i) => `p${i}`).join(', ')}];`;
+	await page.route('http://parts.test/**', async (route) => {
+		const path = new URL(route.request().url()).pathname;
+		if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js"}}</script><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif}</style></head><body>${body}<script type="module">import { listen } from '/parts/index.ts'; import { mount } from '/parts/index.ts'; listen(); window.mountParts = mount; window.ready = true;</script></body></html>` });
+		if (path === '/floating.js') return route.fulfill({ contentType: 'text/javascript', body: FLOATING_STUB });
+		const text = path === '/parts/registry.ts' ? registry : await readFile(join(PARTS, path.replace(/^\/parts\//, '')), 'utf8');
+		return route.fulfill({ contentType: 'text/javascript', body: ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText });
+	});
+	await page.goto('http://parts.test/');
+	await page.waitForFunction(() => (window as unknown as { ready?: boolean }).ready);
+	return page;
+}
+
+const transformOf = (page: Page, i = 0) => page.locator('[data-slot="carousel-content"] > div').nth(i).evaluate((el) => (el as HTMLElement).style.transform);
+const x = (t: string) => Number(/translate3d\((-?[\d.]+)px, (-?[\d.]+)px/.exec(t)?.[1]);
+const y = (t: string) => Number(/translate3d\((-?[\d.]+)px, (-?[\d.]+)px/.exec(t)?.[2]);
+const settle = (page: Page) => page.waitForTimeout(1200);
+
+// shadcn's Carousel markup with its Tailwind classes as inline styles: a 300 px viewport, the track pulled 16 px left
+// (-ml-4) and each slide padded 16 px (pl-4), so a slide is 316 px and Embla's snaps are 0, -316, -632, -948, -1264.
+function carousel(options: { basis?: string; align?: string; vertical?: boolean; autoplay?: number } = {}): string {
+	const slides = Array.from({ length: 5 }, (_, i) => `<div role="group" aria-roledescription="slide" data-slot="carousel-item" style="min-width:0;flex:0 0 ${options.basis ?? '100%'};${options.vertical ? 'padding-top:16px;height:100px' : 'padding-left:16px'}"><div style="height:${options.vertical ? '84px' : '200px'};border:1px solid">${i + 1}</div></div>`).join('');
+	return `<div style="padding:80px"><div role="region" aria-roledescription="carousel" data-slot="carousel" style="position:relative;width:300px"${options.align ? ` data-mm-align="${options.align}"` : ''}${options.autoplay ? ` data-mm-autoplay="${options.autoplay}"` : ''}>
+	<div data-slot="carousel-content" style="overflow:hidden;${options.vertical ? 'height:200px' : ''}"><div style="display:flex;${options.vertical ? 'flex-direction:column;margin-top:-16px;height:216px' : 'margin-left:-16px'};transform:translate3d(0px, 0px, 0px)">${slides}</div></div>
+	<button data-slot="carousel-previous" disabled style="position:absolute;left:-48px;top:0">Previous slide</button>
+	<button data-slot="carousel-next" style="position:absolute;right:-48px;top:0">Next slide</button></div></div>`;
+}
+
+test('carousel: Next and Previous move the track to Embla snaps and disable at the ends; the arrow keys step', async () => {
+	const page = await open(carousel(), ['carousel']);
+	await page.getByText('Next slide').click();
+	await settle(page);
+	assert.ok(Math.abs(x(await transformOf(page)) + 316) < 0.5, await transformOf(page));
+	assert.equal(await page.getByText('Previous slide').isDisabled(), false);
+	await page.getByText('Next slide').focus();
+	await page.keyboard.press('ArrowRight');
+	await settle(page);
+	assert.ok(Math.abs(x(await transformOf(page)) + 632) < 0.5, await transformOf(page));
+	for (let i = 0; i < 2; i++) await page.getByText('Next slide').click();
+	await settle(page);
+	assert.ok(Math.abs(x(await transformOf(page)) + 1264) < 0.5, await transformOf(page));
+	assert.equal(await page.getByText('Next slide').isDisabled(), true);
+	await page.getByText('Previous slide').focus();
+	await page.keyboard.press('ArrowLeft');
+	await settle(page);
+	assert.ok(Math.abs(x(await transformOf(page)) + 948) < 0.5, await transformOf(page));
+	await page.close();
+});
+
+test('carousel: a drag on the viewport follows the pointer and settles on the next snap in its direction', async () => {
+	const page = await open(carousel(), ['carousel']);
+	const box = (await page.locator('[data-slot="carousel-content"]').boundingBox())!;
+	await page.mouse.move(box.x + 250, box.y + 100);
+	await page.mouse.down();
+	for (let s = 1; s <= 6; s++) await page.mouse.move(box.x + 250 - 15 * s, box.y + 100, { steps: 2 });
+	const during = x(await transformOf(page));
+	assert.ok(during < -60 && during > -120, `follows the pointer: ${during}`);
+	await page.mouse.up();
+	await settle(page);
+	assert.ok(Math.abs(x(await transformOf(page)) + 316) < 0.5, await transformOf(page));
+	// A slow drag, the pointer resting before release, settles on the nearest snap: back where it was.
+	await page.mouse.move(box.x + 250, box.y + 100);
+	await page.mouse.down();
+	await page.mouse.move(box.x + 200, box.y + 100, { steps: 4 });
+	await page.waitForTimeout(250);
+	await page.mouse.up();
+	await settle(page);
+	assert.ok(Math.abs(x(await transformOf(page)) + 316) < 0.5, await transformOf(page));
+	await page.close();
+});
+
+test('carousel: align start with three slides in view trims the snaps to the scrollable range; vertical moves on y', async () => {
+	const page = await open(carousel({ basis: '33.3333%', align: 'start' }), ['carousel']);
+	// Embla measures offsetWidth/offsetLeft: slides 105 px at 0, 105, 211, 316, 421; content 526 px, view 316 px: snaps 0, -105, -210.
+	await page.getByText('Next slide').click();
+	await settle(page);
+	assert.ok(Math.abs(x(await transformOf(page)) + 105) < 0.6, await transformOf(page));
+	await page.getByText('Next slide').click();
+	await settle(page);
+	assert.ok(Math.abs(x(await transformOf(page)) + 210) < 0.6, await transformOf(page));
+	assert.equal(await page.getByText('Next slide').isDisabled(), true);
+	await page.close();
+	const vertical = await open(carousel({ vertical: true, basis: 'auto', align: 'start' }), ['carousel']);
+	await vertical.getByText('Next slide').click();
+	await settle(vertical);
+	assert.ok(Math.abs(y(await transformOf(vertical)) + 100) < 0.5, await transformOf(vertical));
+	await vertical.close();
+});
+
+test('carousel: with Autoplay it steps on its own every delay', async () => {
+	const page = await open(carousel({ autoplay: 400 }), ['carousel']);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-autoplay'));
+	await page.waitForTimeout(1500);
+	assert.ok(x(await transformOf(page)) <= -316, await transformOf(page));
+	await page.close();
+});
+
+// A Radix trigger rendered through asChild carries the child Button's data-slot ("button"); its layer's content names
+// which part it is.
+const popoverLayer = (key: string) => `<div data-mm-layer="${key}" hidden><div data-radix-popper-content-wrapper style="position:fixed;left:0;top:0"><div data-slot="popover-content" role="dialog" id="${key}" data-state="closed" tabindex="-1"><button>Inside</button></div></div></div>`;
+const dialogLayer = (key: string) => `<div data-mm-layer="${key}" hidden data-slot="alert-dialog-overlay" data-state="closed"></div><div data-mm-layer="${key}" hidden role="alertdialog" id="${key}" data-slot="alert-dialog-content" data-state="closed"><button data-slot="alert-dialog-cancel">Cancel</button></div>`;
+
+test('asChild: a Radix popover or alert dialog trigger with the child data-slot opens its own layer, as the part its content names', async () => {
+	const page = await open(
+		`<main><button data-slot="button" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="pop" data-state="closed">Open popover</button>
+		<button data-slot="button" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="ad" data-state="closed">Show dialog</button></main>${popoverLayer('pop')}${dialogLayer('ad')}`,
+		['radix/dialog', 'radix/popover'],
+	);
+	await page.getByText('Open popover').click();
+	assert.equal(await page.getByText('Open popover').getAttribute('aria-expanded'), 'true');
+	assert.equal(await page.locator('[data-slot="popover-content"]').getAttribute('data-state'), 'open');
+	assert.equal(await page.locator('[data-slot="alert-dialog-content"]').getAttribute('data-state'), 'closed');
+	await page.keyboard.press('Escape');
+	await page.getByText('Show dialog').click();
+	assert.equal(await page.getByText('Show dialog').getAttribute('aria-expanded'), 'true');
+	assert.equal(await page.locator('[data-slot="alert-dialog-content"]').getAttribute('data-state'), 'open');
+	await page.close();
+});
+
+test('asChild: a Radix dropdown menu trigger with the child data-slot opens the menu keyed by its id', async () => {
+	const page = await open(
+		`<main><button data-slot="button" type="button" id="menu" aria-haspopup="menu" aria-expanded="false" data-state="closed">Open</button></main>
+		<div data-mm-layer="menu" hidden><div data-radix-popper-content-wrapper style="position:fixed"><div data-slot="dropdown-menu-content" role="menu" id="menu-content" aria-labelledby="menu" data-state="closed" tabindex="-1"><div role="menuitem" tabindex="-1">Profile</div></div></div></div>`,
+		['radix/dropdown-menu'],
+	);
+	await page.getByText('Open').click();
+	assert.equal(await page.getByText('Open').getAttribute('aria-expanded'), 'true');
+	assert.equal(await page.locator('[role="menu"]').isVisible(), true);
+	await page.close();
+});

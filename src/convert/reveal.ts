@@ -46,6 +46,12 @@ const CONTROLS: readonly (readonly [selector: string, action: RevealAction])[] =
 	['[data-slot="context-menu-trigger"]', 'contextmenu'],
 ];
 
+// A hover trigger rendered through its child (Radix asChild, Base UI render) carries the child's data-slot: Radix's keeps
+// its data-state, Base UI's its generated id. Hovered in a pass of its own, cached apart from the controls above.
+const CHILD_HOVER: readonly (readonly [selector: string, action: RevealAction])[] = [
+	[':is(button, a)[data-state="closed"]:not([aria-expanded]):not([aria-pressed]):not([role]), :is(button, a)[id^="base-ui-"]:not([aria-haspopup]):not([aria-expanded]):not([aria-pressed]):not([role])', 'hover'],
+];
+
 const key = (route: string, extra: readonly (readonly [string, string])[] = []) => createHash('sha256').update(`reveal:${route}${extra.length ? `|${JSON.stringify(extra)}` : ''}`).digest('hex').slice(0, 16);
 
 interface Candidate {
@@ -59,7 +65,7 @@ interface Candidate {
 	readonly visible: boolean;
 }
 
-async function candidates(page: Page, extra: readonly (readonly [string, RevealAction])[]): Promise<Candidate[]> {
+async function candidates(page: Page, extra: readonly (readonly [string, RevealAction])[], controls: readonly (readonly [string, RevealAction])[] = CONTROLS): Promise<Candidate[]> {
 	const listed = new Set(extra.map(([selector]) => selector));
 	const found = await page.evaluate((controls) => {
 		const pathOf = (el: Element): number[] => {
@@ -91,7 +97,7 @@ async function candidates(page: Page, extra: readonly (readonly [string, RevealA
 			}
 		}
 		return out;
-	}, [...CONTROLS, ...extra] as unknown as [string, string][]);
+	}, [...controls, ...extra] as unknown as [string, string][]);
 	return found.map(({ selector, ...c }) => ({ ...c, ...(listed.has(selector) ? { extra: true } : {}) }));
 }
 
@@ -232,8 +238,8 @@ export type RevealMemo = Map<string, { readonly html: string; readonly reveal: R
 const REUSE_AFTER = 3;
 
 /** Uses every control on a route that holds content back, on each viewport where it can be used, and records what each showed. */
-export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, memo: RevealMemo = new Map(), viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = []): Promise<RevealCapture> {
-	const file = join(dir, `${key(route, extra)}.json`);
+export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, memo: RevealMemo = new Map(), viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = [], pass: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string } = { controls: CONTROLS, tag: '' }): Promise<RevealCapture> {
+	const file = join(dir, `${key(`${pass.tag}${route}`, extra)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as RevealCapture, () => undefined);
 	if (cached && cached.route === route) return cached;
 	const reveals: Reveal[] = [];
@@ -246,7 +252,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 		hidden = false;
 		let open = await fresh(browser, origin, route, viewport);
 		try {
-			const found = await candidates(open.page, extra);
+			const found = await candidates(open.page, extra, pass.controls);
 			hidden = found.some((c) => !c.visible && !done.has(c.key));
 			for (const candidate of found) {
 				if (!candidate.visible || done.has(candidate.key)) continue;
@@ -297,7 +303,11 @@ export async function captureAllReveals(browser: Browser, origin: string, routes
 	const worker = async () => {
 		while (next < routes.length) {
 			const index = next++;
-			out[index] = await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, options.extra ?? []).catch((error: Error) => ({ route: routes[index]!, reveals: [], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
+			const failed = (error: Error): RevealCapture => ({ route: routes[index]!, reveals: [], skipped: [`the route: ${error.message.split('\n')[0]}`] });
+			const own = await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, options.extra ?? []).catch(failed);
+			const child = await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, [], { controls: CHILD_HOVER, tag: 'child-hover:' }).catch(failed);
+			const keys = new Set(own.reveals.map((r) => r.key));
+			out[index] = { route: own.route, reveals: [...own.reveals, ...child.reveals.filter((r) => !keys.has(r.key))], skipped: [...own.skipped, ...child.skipped] };
 			done++;
 			options.log?.(`revealed ${done}/${routes.length} ${routes[index]} (${out[index]!.reveals.length} controls)`);
 		}

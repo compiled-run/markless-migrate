@@ -1,5 +1,5 @@
 import { installDialog } from './dialog-engine.ts';
-import { layersFor } from '../reveal.ts';
+import { layersFor, closestTrigger } from '../reveal.ts';
 
 // Radix Dialog and AlertDialog, delegated: the trigger's aria-controls names the content captured from the old page. The
 // content (and overlay) are mounted from their templates, then dialog-engine.ts (the shared port's engine, which does
@@ -7,6 +7,8 @@ import { layersFor } from '../reveal.ts';
 // their data-state. Closed and its exit animation over, a dialog leaves the page as Radix unmounts it.
 
 const TRIGGER = '[aria-haspopup="dialog"][aria-controls][data-slot$="dialog-trigger"], [aria-haspopup="dialog"][aria-controls][data-slot="sheet-trigger"], [aria-haspopup="dialog"][aria-controls][data-slot="drawer-trigger"]';
+// A trigger rendered through its child (asChild, render) carries the child's data-slot; its layer names the part.
+const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[aria-haspopup="dialog"][aria-controls]', (slot) => /(dialog|sheet|drawer)-trigger$/.test(slot));
 const CLOSE = '[data-slot$="dialog-close"], [data-slot="sheet-close"], [data-slot$="dialog-cancel"], [data-slot$="dialog-action"]';
 
 interface Open {
@@ -57,7 +59,7 @@ function open(trigger: HTMLElement): boolean {
 }
 
 export function click(target: Element): boolean {
-	const trigger = target.closest<HTMLElement>(TRIGGER);
+	const trigger = triggerOf(target);
 	if (trigger) return open(trigger);
 	const closer = target.closest<HTMLElement>(CLOSE);
 	if (!closer) return false;
