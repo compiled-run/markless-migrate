@@ -149,6 +149,16 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
 - `check`: a step counts as settled only when no animation with up to a second left is running, as for timeouts.
   The old page's region was gone once its 200 ms `accordion-up` ended, and its step settled later than the new
   page's (timeouts still due), so a closing accordion item read as not removed on the new side.
+- input-otp (1.4.2) on Markless state (`OtpPlan`, `src/convert/otp.ts`; part `parts/input-otp.ts`): per field a
+  state() for the value, the mirrored selection (`data-input-otp-mss`/`-mse`) and focus. Each slot binds
+  `data-active` and shows its character, with the fake caret shadcn's slot renders in an `@if` arm; `convert` clears
+  each field on the old page with the keyboard to capture that caret, then types into it to find app text that shows
+  the value (the Controlled demo's "You entered: ..."), which follows the state too. The part runs the library's
+  input, focus and `selectionchange` handling on the real input (pattern rejection undone, a single caret on a filled
+  slot selects it, an unfocused field drops its mirror) and its password-manager badge widening. Witness on
+  radix, base and aria `input-otp`: 9 works and Disabled static on each (7 broken before on radix and base); the
+  a11y tree of the demos matches. A slot shows a typed character 1 to 2 ms after the key against the old page's
+  under 1 ms, within the same frame.
 
 ## Markless framework bugs found
 
