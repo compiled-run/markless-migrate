@@ -18,8 +18,8 @@ import { stat } from 'node:fs/promises';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
 import { nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
-import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, layerTable, splitBody } from './document.ts';
-import { appUrlDeclaration, emitChildren, emitElement, emitHtml, lit, mergeBindings, useOrigin, type Binding } from './tsrx.ts';
+import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, splitBody } from './document.ts';
+import { appUrlDeclaration, emitChildren, emitElement, emitHtmlChildren, withOriginToken, lit, mergeBindings, useOrigin, type Binding } from './tsrx.ts';
 
 // Markless wires no handler written in document.tsrx, so each page's root carries the delegating handlers.
 const ROOT_HANDLERS = '__MM_ROOT_HANDLERS__';
@@ -148,7 +148,7 @@ interface Prepared {
 	/** Templates of what controls reveal, by the element they go in. */
 	readonly appends: Map<Element, string>;
 	/** What controls portal to the end of the body, rendered hidden by the Document. */
-	readonly layers: readonly { readonly key: string; readonly markup: string; readonly html: string }[];
+	readonly layers: readonly { readonly key: string; readonly markup: string; readonly shell: string; readonly fill: string }[];
 	/** What copy controls write, by signature and occurrence. */
 	readonly clipboard: Readonly<Record<string, string>>;
 }
@@ -224,7 +224,7 @@ function textOf(node: Element): string {
 
 // What the old page portaled to the end of the body on use (a dialog, a menu, a select), for the page being prepared:
 // rendered by Markless, hidden and in its closed state, marked with the control's key.
-let currentLayers: { key: string; markup: string; html: string }[] = [];
+let currentLayers: { key: string; markup: string; shell: string; fill: string }[] = [];
 // What the old page's copy controls wrote, by the control's signature and occurrence.
 let currentClipboard: Record<string, string> = {};
 // Containers a control replaces its content in (View Code): the content it then shows, rendered hidden beside.
@@ -309,26 +309,53 @@ function layerIds(key: string, kept: readonly Element[]): Map<string, string> {
 	return new Map(own.map((id, k) => [id, `mm-${h}-${k}`]));
 }
 
-/** A layer's markup as tsrx, and the same markup as HTML for a layer served as a file and mounted on use. */
-function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (what: string) => void, rename: ReadonlyMap<string, string> = new Map(), kept: Element[] = layerElements(added)): { markup: string; html: string } {
+/**
+ * The element of a layer most of its markup sits in (a command palette's list): a served layer's page keeps the layer
+ * with this element emptied as its shell, and the file holds this element's content.
+ */
+function hollowOf(kept: readonly Element[]): Element | undefined {
+	const size = (el: Element) => outer(el).length;
+	let at = [...kept].sort((x, y) => size(y) - size(x))[0];
+	for (let next = at; next; ) {
+		at = next;
+		const total = size(at);
+		next = elementChildren(at).find((child) => size(child) >= total * 0.9);
+	}
+	return at;
+}
+
+/**
+ * A layer as tsrx; its shell (the same with its largest content emptied and marked with LAYER_FILL); and that content as
+ * HTML, for a layer served as a file: the shell renders at once on use, the content when the file lands.
+ */
+function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (what: string) => void, rename: ReadonlyMap<string, string> = new Map(), kept: Element[] = layerElements(added)): { markup: string; shell: string; fill: string } {
 	const placed = placement(kept);
 	for (const top of kept) renameIds([top, ...walkAll(top)], rename);
 	const key = rename.get(reveal.key) ?? reveal.key;
-	let html = '';
-	const markup = kept
-		.map((top) => {
-			for (const el of [top, ...walkAll(top)]) {
-				for (const a of el.attrs) if (a.name === 'data-state' && a.value === 'open') a.value = 'closed';
-				if (el.attrs.some((a) => a.name === 'data-open')) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-open'), { name: 'data-closed', value: '' }];
-			}
-			selectIndicators(top);
-			top.attrs = [...top.attrs.filter((a) => a.name !== 'hidden'), { name: 'hidden', value: '' }, { name: 'data-mm-layer', value: key }, ...(reveal.viewport !== 'desktop' ? [{ name: 'data-mm-viewport', value: reveal.viewport }] : [])];
-			const extra = placed ? placed.trim().split(/\s+(?=data-)/) : [];
-			html += emitHtml(top, { extra });
-			return emitElement(top, { dropped, bind: (x) => (x === top ? mergeBindings(bindParts(x, templatePorts), extra.length ? { extra } : undefined) : bindParts(x, templatePorts)) });
-		})
-		.join('');
-	return { markup, html };
+	const extra = placed ? placed.trim().split(/\s+(?=data-)/) : [];
+	for (const top of kept) {
+		for (const el of [top, ...walkAll(top)]) {
+			for (const a of el.attrs) if (a.name === 'data-state' && a.value === 'open') a.value = 'closed';
+			if (el.attrs.some((a) => a.name === 'data-open')) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-open'), { name: 'data-closed', value: '' }];
+		}
+		selectIndicators(top);
+		top.attrs = [...top.attrs.filter((a) => a.name !== 'hidden'), { name: 'hidden', value: '' }, { name: 'data-mm-layer', value: key }, ...(reveal.viewport !== 'desktop' ? [{ name: 'data-mm-viewport', value: reveal.viewport }] : [])];
+	}
+	const hollow = hollowOf(kept);
+	const emit = (shell: boolean) =>
+		kept
+			.map((top) =>
+				emitElement(top, {
+					dropped,
+					bind: (x) => {
+						const own = x === top ? mergeBindings(bindParts(x, templatePorts), extra.length ? { extra } : undefined) : bindParts(x, templatePorts);
+						return shell && x === hollow ? mergeBindings(own, { children: '', extra: [`data-mm-layer-fill="${LAYER_FILL}"`] }) : own;
+					},
+				}),
+			)
+			.join('');
+	// The shell goes into a <template>, whose content Markless never resumes: its origin is the token, like the file's.
+	return { markup: emit(false), shell: withOriginToken(() => emit(true)), fill: hollow ? emitHtmlChildren(hollow) : '' };
 }
 
 /** A resolver that asks `first`, and `then` for what `first` does not know. */
@@ -440,9 +467,9 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 	}
 	renameIds([...walk(root)], rename);
 	for (const l of pendingLayers) {
-		const { markup, html } = layerMarkup(l.reveal, l.added, dropped, rename, l.kept);
+		const { markup, shell, fill } = layerMarkup(l.reveal, l.added, dropped, rename, l.kept);
 		const key = rename.get(l.reveal.key) ?? l.reveal.key;
-		if (markup) currentLayers.push({ key, markup, html });
+		if (markup) currentLayers.push({ key, markup, shell, fill });
 		// A trigger that names its layer neither by id nor by aria-controls (a Radix tooltip's) is marked with the key.
 		if (markup && l.trigger && !attr(l.trigger, 'id') && !attr(l.trigger, 'aria-controls') && !triggerKeys.has(l.trigger)) triggerKeys.set(l.trigger, key);
 	}

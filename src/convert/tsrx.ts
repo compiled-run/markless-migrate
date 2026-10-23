@@ -161,6 +161,18 @@ export const APP_URL_TOKEN = '@@MM_APP_URL@@';
 
 const escapeHtml = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const escapeAttribute = (t: string) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+/** Markup emitted with the old origin as APP_URL_TOKEN text rather than an APP_URL expression (for <template> content). */
+export function withOriginToken(emit: () => string): string {
+	const was = origin;
+	origin = undefined;
+	try {
+		const out = emit();
+		return was ? out.split(was).join(APP_URL_TOKEN) : out;
+	} finally {
+		origin = was;
+	}
+}
+
 const named = (t: string) => (origin ? t.split(origin).join(APP_URL_TOKEN) : t);
 
 /**
@@ -168,6 +180,19 @@ const named = (t: string) => (origin ? t.split(origin).join(APP_URL_TOKEN) : t);
  * the element itself), the same collapsed text, no `<style>`, and the old origin as APP_URL_TOKEN.
  */
 export function emitHtml(el: Element, options: { readonly extra?: readonly string[]; readonly dropped?: (what: string) => void } = {}): string {
+	return htmlOf(el, options.extra ?? [], options.dropped);
+}
+
+/** The children of `el` as HTML, as emitHtml writes them. */
+export function emitHtmlChildren(el: Element, options: { readonly dropped?: (what: string) => void } = {}): string {
+	const pre = el.tagName === 'pre' || el.tagName === 'textarea';
+	return childrenOf(el)
+		.map((child) => htmlOf(child, [], options.dropped, pre))
+		.join('');
+}
+
+function htmlOf(start: Node, startExtra: readonly string[], dropped: ((what: string) => void) | undefined, startPre = false): string {
+	const options = { dropped };
 	const visit = (n: Node, pre: boolean, extra: readonly string[]): string => {
 		if (n.nodeName === '#text') {
 			const t = (n as Text).value;
@@ -191,5 +216,5 @@ export function emitHtml(el: Element, options: { readonly extra?: readonly strin
 		const inPre = pre || name === 'pre' || name === 'textarea';
 		return `<${name}${attrs}>${childrenOf(n).map((c) => visit(c, inPre, [])).join('')}</${name}>`;
 	};
-	return visit(el, false, options.extra ?? []);
+	return visit(start, startPre, startExtra);
 }
