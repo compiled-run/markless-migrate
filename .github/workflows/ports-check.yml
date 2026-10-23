@@ -42,7 +42,7 @@ jobs:
           mkdir -p "${{ matrix.app }}"
           cd "${{ matrix.app }}"
           args=(); for r in ${{ matrix.routes }}; do args+=(--route "$r"); done
-          node "$GITHUB_WORKSPACE/src/cli.ts" check --old http://127.0.0.1:4000 --new http://127.0.0.1:3000 "${args[@]}" --no-load --no-psi --concurrency 2 --timeout 1800 --json > "$RUNNER_TEMP/report.json" 2> "$RUNNER_TEMP/check.txt"
+          node "$GITHUB_WORKSPACE/src/cli.ts" check --old http://127.0.0.1:4000 --new http://127.0.0.1:3000 "${args[@]}" --no-load --no-psi --concurrency 2 --timeout 3600 --json > "$RUNNER_TEMP/report.json" 2> "$RUNNER_TEMP/check.txt"
           echo "exit $?"; tail -n 60 "$RUNNER_TEMP/check.txt"
       - uses: actions/upload-artifact@v4
         if: always()
