@@ -141,6 +141,16 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   popup unmounts; a Select (its popup stays mounted) still does it at once. Escape on the RTL notice's popover kept
   focus in the popup for its 100 ms exit on the old page (`outline-width` 3px to 1px under `transition: all`), red
   on 12 to 14 routes.
+- Parts: @shadcn/react MessageScroller (`parts/shadcn/message-scroller.ts`). It covers the opening position,
+  following the live edge, holding a new anchored turn at the reading line with the previous row peeking above it,
+  keeping the reader's row in place when earlier rows are prepended, `data-scrollable`, `data-autoscrolling`, and
+  the scroll buttons. The provider renders no element, so `convert` reads each scroller's opening position from
+  where it opened on the old page (`src/convert/scrollers.ts`). Each scroller keeps its server render's
+  `data-pending-scroll` until the part places it as it comes into view, so it never shows at the wrong position
+  first. Bubble and Marker buttons show the old page's toasts (`notify`). Before: Jumping to Messages, Tracking the
+  Reader's Position and Reading Scroll State were broken. After: they work in the local witness. The demos whose
+  Send, Load History, Add Rocky or Reset add or remove messages through the demo's own React state are still
+  broken.
 - Site parts: the docs outline (`useActiveItem`) starts with no link active. The capture's own scroll to the bottom
   left the last heading's link marked in the markup, so it changed colour during unrelated steps (`extra motion of
   link "RTL"`, 16 to 18 routes). View Code sets `data-mobile-code-visible` on its code block, as

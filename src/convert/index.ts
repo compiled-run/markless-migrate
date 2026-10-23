@@ -11,6 +11,7 @@ import { cleanDocument, frameworkBuilds, lateHead, type Dropped } from './clean.
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, walk, type Document, type Element } from './dom.ts';
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
 import { BaseTabsPlan, CheckablePlan, DisclosurePlan, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
+import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
 import { captureAccordions, captureHoverDelays, captureAllForms, captureAllSwitches, captureAllToggles, captureNotifications, type AccordionMode, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
 import { bindMount, bindParts, bodyHandlers, candidatesOf, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
@@ -603,6 +604,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const notified = new Map<string, readonly Notify[]>();
 	const accordionModes = new Map<string, readonly AccordionMode[]>();
 	const hoverDelays = new Map<string, readonly HoverDelay[]>();
+	const scrollerOpenings = new Map<string, readonly ScrollerOpening[]>();
 	const choices: Record<string, Record<string, Choice>> = {};
 	try {
 		// The old site's not-found page, from a path no route has: the new app's 404 page.
@@ -619,6 +621,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		// Whether each accordion lets several items be open, on the routes where one revealed an item's content.
 		for (const [route, reveals] of revealed) if (reveals.some((r) => r.sig?.includes('|accordion-trigger|'))) accordionModes.set(route, (await captureAccordions(browser, options.old, route, join(state, 'convert', 'toggles'))).accordions);
 		for (const [route, reveals] of revealed) if (reveals.some((r) => r.sig?.includes('|hover-card-trigger|'))) hoverDelays.set(route, (await captureHoverDelays(browser, options.old, route, join(state, 'convert', 'toggles'))).delays);
+		for (const c of captures) if (c && (await c.load()).server.includes('data-slot="message-scroller"')) scrollerOpenings.set(c.route, (await captureScrollers(browser, options.old, c.route, join(state, 'convert', 'toggles'))).scrollers);
 		if (options.reveal !== false) for (const t of await captureAllToggles(browser, options.old, routes, join(state, 'convert', 'toggles'), { concurrency: options.concurrency ?? 4, log })) toggled.set(t.route, t.groups);
 		// Controls the site lists as switching attributes in place (lib/site/controls.json, action "toggle").
 		const switchSelectors = listed.filter((c) => c.action === 'toggle').map((c) => c.selector);
@@ -696,6 +699,16 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 	}
 	useMeasuredProps(ownDelays);
+	const openings = new Map<Element, ScrollerOpening['position']>();
+	for (const [route, p] of prepared) {
+		const list = scrollerOpenings.get(route) ?? [];
+		const locate = list.length ? locator(p.root.parentNode as Element) : undefined;
+		for (const s of list) {
+			const el = locate!(s.sig, s.nth);
+			if (el) openings.set(el, s.position);
+		}
+	}
+	useScrollerOpenings(openings);
 	const multipleAccordions = new Set<Element>();
 	for (const [route, p] of prepared) {
 		const several = (accordionModes.get(route) ?? []).filter((a) => a.multiple);
@@ -780,6 +793,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const keyed = triggerKeys.get(el);
 		binding = mergeBindings(binding, keyed ? { extra: [`data-mm-key=${JSON.stringify(keyed)}`] } : undefined);
 		binding = mergeBindings(binding, portAttributes(el));
+		binding = mergeBindings(binding, portFor(el) === 'shadcn/message-scroller' ? bindScroller(el) : undefined);
 		const own = mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), baseTabs.bind(el)), disclosures.bind(el)), insertedDisclosures.bind(el)), selects.bind(el)), checkables.bind(el)), switchPlan.bind(el)), mergeBindings(notifyPlan.bind(el), handledForms.has(el) ? formBinding : undefined)), mergeBindings(otps.bind(el), binding)), bindMount(el));
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};
