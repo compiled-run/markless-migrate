@@ -1,3 +1,4 @@
+import { GitHubSponsorButton } from '../components/embeds/github-sponsor-button.tsrx';
 import SiteFooter from '../components/site-footer.tsrx';
 import SiteHeader from '../components/site-header.tsrx';
 
@@ -84,7 +85,7 @@ export default function Home() @{
 				</a>
 				{" "}
 			</div>
-			<h2>sponsors <iframe src="https://github.com/sponsors/bigskysoftware/button" title="Sponsor htmx" height="32" width="114" style="border: 1px solid gray; border-radius: 12px; float:right"></iframe></h2>
+			<h2>sponsors <GitHubSponsorButton embed="host-github-com-sponsors-bigskysoftware-button" style="border: 1px solid gray; border-radius: 12px; float:right" /></h2>
 			<p>htmx development can be supported via <a rel="noopener" target="_blank" href="https://github.com/sponsors/bigskysoftware?o=esb">GitHub Sponsors</a></p>
 			<p>Thank you to all our generous <a href="https://github.com/sponsors/bigskysoftware?o=esb">supporters</a>, including:</p>
 			<div style="overflow-x: auto">

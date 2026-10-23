@@ -150,3 +150,32 @@ Routes on the new app: **11 of 11**. Route checks green: 12 of 33 (the four file
 | weight | red on all 7 pages for every role: the old pages download about 1.1 kB of JavaScript and run 0.8-1.0 kB; the new ones download 44-53 kB and run 20-45 kB. Almost all of it is Markless's own runtime chunks, which the router preloads on every page, handlers or not; moving the one script without a handler out of Markless changed nothing. Not fixable in the app |
 
 Deployed: `deploy/deploy.sh new` (the Vercel project keeps `CMS_URL`). No route is switched; the front door is unchanged.
+
+## Markless 0.9.0 (2026-10-22)
+
+The app is on Markless 0.9.0 from npm (core, router, analyzer, typescript-plugin), from 0.5.0. On 0.9.0 the build
+stopped twice, and `run --agent claude --route /admin/ --build "npm run build" --serve ...` fixed both in its first
+attempt:
+
+- `pages/admin/index.tsrx`: `MARKLESS_SERVER_ONLY_PROP_BROWSER_READ`. The page reads `http.locals` in its body, as the
+  docs say to, but the compiler counts `const forbidden = http.locals.forbidden === true` and the `@if (forbidden)` arm
+  as code the browser re-runs. The agent copied the signed-in name into `state()`, as the error's own text suggests,
+  and the build passed. (Reported as a Markless finding: a body-level `const` read from `http` should not count as a
+  browser read when nothing in the browser can change it.)
+- `document.tsrx`: TSRX2011, an `@if` arm renders one node since 0.8, so the manifest and feed links are wrapped in a
+  fragment.
+
+The run's later attempts went after the weight and load rows that were red before the upgrade too, by replacing the
+footer's, the menu's and the home page's Markless state with inline scripts and by setting a private router global
+(`document.__marklessFragmentNav`) so the router's link code stops. That left the footer's "Page rendered at" empty
+after an in-place navigation (the deployed check went red on it), and it takes the app off Markless where it is meant
+to show Markless, so those attempts were discarded and only the two build fixes kept. The router has no public way for
+a site that never navigated in place to turn the link code off; that is the weight left.
+
+### Check against the deployments, before and after
+
+`check --route / --route /about/ --route /ar/ --route /fr/ --concurrency 2 --timeout 1800 --no-psi` (the ecosystem
+suite's sample), old https://migrate-demo-old.vercel.app, new https://migrate-demo-new.vercel.app, on 0.5.0 and then on
+0.9.0 once deployed: 25 failures (10, 5, 5, 5) to 11 (5, 2, 2, 2), none of the four green on either. Gone: the lab page
+load rows (FCP, LCP, Speed Index) on every route and four in-place navigation DOM rows on `/`. New: going back to `/`
+after an in-place navigation shows another of the home page's random tips than a fresh load did.

@@ -24,7 +24,7 @@ export default function Page() @{
 			{" "}
 			<p>You can find out the conditions needed for a given keyboard shortcut here:</p>
 			{" "}
-			<p><a rel="noopener" target="_blank" href="https://javascript.info/keyboard-events">https://javascript.info/keyboard-events</a></p>
+			<p><a rel="noopener" target="_blank" href="https://javascript.info/keyboard-events">{"https://javascript.info/keyboard-events"}</a></p>
 			{" "}
 			{" "}
 			<script>{"\n  function toggleRequestInfo() {\n      var classList = document.getElementById(\"demo-server-info\").classList;\n      classList.toggle(\"show\");\n      if (classList.contains('show')) {\n          document.getElementById(\"request-info-toggler\").innerHTML = \"&downarrow; Hide\"\n      } else {\n          document.getElementById(\"request-info-toggler\").innerHTML = \"&uparrow; Show\"\n      }\n  }\n"}</script>

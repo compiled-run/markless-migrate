@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { withFailures } from '../src/check/compare.ts';
 import { applyNavigation, compareSnaps, errorFailures, markedAttributes, planNavigation, readServed, scriptFailures, type NavigationResult } from '../src/check/nav-parity.ts';
-import { flashFailures, themeFlashes } from '../src/check/swap-frames.ts';
+import { flashFailures, layoutFailures, layoutFlash, themeFlashes } from '../src/check/swap-frames.ts';
 import { DIMENSIONS, notCompared, type RouteResult } from '../src/check/types.ts';
 
 const ORIGIN = 'http://127.0.0.1:4000';
@@ -103,4 +103,23 @@ test('themeFlashes: only a frame unlike both the page before and the page after 
 	assert.equal(failure?.check, 'in place from /: <html> class during the swap');
 	assert.equal(failure?.actual, '3 frames showed none of the changing classes beside the 1 class every frame has (without dark)');
 	assert.equal(failure?.expected, 'every frame shows the page before (class "dark" beside the 1 class every frame has) or after (class "dark docs" beside the 1 class every frame has)');
+});
+
+test('layoutFlash: a frame whose landmarks are where neither page has them, before the page settles, is a flash; subpixel rounding, the old page and what changes after it settles are not', () => {
+	const frame = (main: string, toc: string) => ({ classes: [], scheme: 'normal', backdrop: [100, 100], layout: ['header1 0,0,1440,64', `main1 ${main}`, `aside1 ${toc}`, 'h1 400,110,640,40'] });
+	const before = frame('0,64,1440,2349', '1144,65,288,810');
+	const after = frame('0,64,1440,9397', '1144,65,288,810');
+	const partial = frame('0,64,1440,1645', '-');
+	const at = (frames: ReturnType<typeof frame>[]) => frames.map((f, i) => ({ frame: f, count: 1, at: i * 16 }));
+	assert.equal(layoutFlash({ before, after, frames: at([before, frame('0,64,1440,9398', '1144,65,288,810'), after]) }), undefined);
+	// Lazy content growing the page once it settled is the settled state's business, not the swap's.
+	assert.equal(layoutFlash({ before, after, frames: at([before, after, frame('0,64,1440,9900', '1144,65,288,810'), after]) }), undefined);
+	const flash = layoutFlash({ before, after, frames: at([before, partial, partial, frame('0,64,1440,7754', '-'), after]) });
+	assert.deepEqual(flash && { frames: flash.frames, from: flash.from, to: flash.to }, { frames: 3, from: 16, to: 64 });
+	// Two pages with one layout: the window opens when the page leaves it, not at the first frame.
+	assert.equal(layoutFlash({ before, after: before, frames: at([before, partial, before]) })?.frames, 1);
+	// Without painted frames (a browser with no screencast) the recorded layout alone is the evidence.
+	const { failures } = layoutFailures('/docs/button', 'in place from /docs', 'desktop', { before, after, frames: at([before, partial, after]) }, []);
+	assert.equal(failures[0]?.check, 'in place from /docs: layout during the swap');
+	assert.equal(failures[0]?.actual, '1 frame showed a layout of its own (main1, aside1 where neither page has them)');
 });

@@ -459,3 +459,16 @@ test('parity --route / finds a webpack app\'s libraries: the page is linked to t
 	assert.equal(result.sites, 1);
 	await assert.rejects(writeParity(file, 'ag-grid-react', { newApp: app, routes: ['/panel.html'] }), /is not used on \/panel\.html/);
 });
+
+test('a component a registry loads with import() is rendered on the routes of the module that loads it', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'mm-lazy-'));
+	await mkdir(join(dir, 'app/docs'), { recursive: true });
+	await mkdir(join(dir, 'examples'), { recursive: true });
+	await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'lazy', dependencies: { next: '16.0.0', react: '19.0.0', 'radix-ui': '1.4.3' } }));
+	await writeFile(join(dir, 'registry.tsx'), 'import * as React from "react";\nexport const Index = { demo: React.lazy(() => import("./examples/accordion-demo")) };\n');
+	await writeFile(join(dir, 'examples/accordion-demo.tsx'), 'import { Accordion } from "radix-ui";\nexport default function AccordionDemo() {\n\treturn <Accordion.Root type="multiple" />;\n}\n');
+	await writeFile(join(dir, 'app/docs/page.tsx'), 'import { Index } from "../../registry";\nexport default function Page() {\n\tconst Demo = Index.demo;\n\treturn <Demo />;\n}\n');
+	const file = await scanLibraries(dir);
+	assert.deepEqual(exp(file, 'radix-ui', 'Accordion.Root').sites.map((s) => s.routes), [['/docs']]);
+	await rm(dir, { recursive: true, force: true });
+});

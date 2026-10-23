@@ -7,6 +7,8 @@ import { applyCaching, fragmentEndMarkers, fragmentHeader, fragmentPath, type Ap
 import { pageFilesByConvention, pageFilesFromOrigin } from './pages.ts';
 import { planCaching, readCachingPlan, summarizeCachingPlan, writeCachingPlan, type CachingPlan } from './plan.ts';
 import { summarizeCachingReport, verifyCaching } from './verify.ts';
+import { psiFailures, psiLines } from '../check/load.ts';
+import { measurePsi, PSI_NOTICE, psiKey } from '../check/psi.ts';
 
 const STATE_DIR = '.migrate';
 
@@ -19,9 +21,10 @@ export const CACHE_USAGE = `  cache plan [--old <origin>] [--route <path>]... [-
           Write the plan into the Markless app as migrate-cache.ts (Nitro routeRules) and
           add migrateCache() to its vite.config.ts. A page the app reads cookies or the session in is never
           cached. run applies it before every build.
-  cache check --new <origin> [--app <dir>] [--passes <n>] [--expiry-wait <s>] [--json]
+  cache check --new <origin> [--app <dir>] [--passes <n>] [--expiry-wait <s>] [--json] [--no-psi] [--psi-key <key>]
           Read the deployment's caching (x-vercel-cache MISS then HIT, Age, Cache-Control, Vary) route by route
-          into .migrate/caching-report.json. Each page's fragment and document are asked for in both orders on
+          into .migrate/caching-report.json, then the homepage's load on PageSpeed Insights, old against new
+          (--no-psi leaves it out; the key as in check). Each page's fragment and document are asked for in both orders on
           fresh or expired entries (waiting out revalidations up to --expiry-wait, default 130 s). Exits 1 when a
           personal page or a cookie is cached, a document request gets a fragment or a fragment request a
           document, a page that reads the query does not render it, HTML is kept long after it changes, a static
@@ -78,7 +81,7 @@ export async function cacheCommand(args: readonly string[], cwd: string, out: (t
 		return result.wired ? 0 : 1;
 	}
 	if (sub === 'check') {
-		const { values } = parseArgs({ args: rest, options: { new: { type: 'string' }, app: { type: 'string' }, passes: { type: 'string' }, json: { type: 'boolean' }, route: { type: 'string', multiple: true }, 'expiry-wait': { type: 'string' } } });
+		const { values } = parseArgs({ args: rest, options: { new: { type: 'string' }, app: { type: 'string' }, passes: { type: 'string' }, json: { type: 'boolean' }, route: { type: 'string', multiple: true }, 'expiry-wait': { type: 'string' }, 'no-psi': { type: 'boolean' }, 'psi-key': { type: 'string' } } });
 		if (!values.new) throw new Error('cache check needs --new <origin>');
 		const plan = await readCachingPlan(join(cwd, STATE_DIR));
 		if (!plan) throw new Error('cache check needs .migrate/caching.json: run cache plan first');
@@ -90,7 +93,17 @@ export async function cacheCommand(args: readonly string[], cwd: string, out: (t
 		const report = await verifyCaching(values.new, routes, { ...(header ? { fragmentHeader: header } : {}), ...(prefix ? { fragmentPath: prefix } : {}), fragmentMarkers: markers, oldOrigin: plan.origin, ...(values.passes ? { passes: Number(values.passes) } : {}), ...(values['expiry-wait'] ? { expiryWaitS: Number(values['expiry-wait']) } : {}) }, plan.hashedAssets);
 		await writeFile(join(cwd, STATE_DIR, 'caching-report.json'), `${JSON.stringify(report, null, '\t')}\n`);
 		out(values.json ? `${JSON.stringify(report, null, '\t')}\n` : summarizeCachingReport(report));
-		return report.findings.length ? 1 : 0;
+		// The deployed pages' load, old against new, on PageSpeed Insights: what the caching was for.
+		let slower = false;
+		if (!values['no-psi'] && !values.json) {
+			const key = values['psi-key'] ?? psiKey(cwd);
+			const route = routes.find((r) => r.route === '/')?.route ?? routes[0]?.route ?? '/';
+			const psi = await measurePsi({ old: plan.origin, new: values.new }, route, { ...(key ? { key } : {}), strategies: ['mobile'] });
+			const failures = psiFailures(route, psi) ?? [];
+			slower = failures.length > 0;
+			out(`\nPage load of ${route}, deployed:\n${psiLines(psi).map((l) => `  ${l}`).join('\n')}\n${failures.map((f) => `  FAIL ${f.check}: ${f.actual}\n`).join('')}${key ? '' : `\n${PSI_NOTICE}\n`}`);
+		}
+		return report.findings.length || slower ? 1 : 0;
 	}
 	throw new Error(`cache needs plan, apply or check\n\n${CACHE_USAGE}`);
 }

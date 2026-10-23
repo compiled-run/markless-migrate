@@ -73,16 +73,18 @@ export function buildPrompt(o: Pick<RunOptions, 'old' | 'new' | 'cli' | 'context
 	const c = o.context ?? {};
 	const toolArgs = [`old: ${o.old}`, `new: ${o.new}`, `route: ${route}`, ...(c.source ? [`source: ${c.source}`] : []), ...(c.newSource ? [`new_source: ${c.newSource}`] : []), ...(c.auth ? [`auth: ${c.auth}`] : [])];
 	const command = [o.cli, 'check', '--old', o.old, '--new', o.new, '--route', route, ...(c.source ? ['--source', c.source] : []), ...(c.newSource ? ['--new-source', c.newSource] : []), ...(c.auth ? ['--auth', c.auth] : []), ...(c.flags ?? [])].map(quote).join(' ');
+	const loadOnly = (c.flags ?? []).some((flag, i, all) => flag === '--only' && all[i + 1] === 'load');
+	const embedsOnly = (c.flags ?? []).some((flag, i, all) => flag === '--only' && all[i + 1] === 'embeds');
 	return `${skillBody()}
 ## Your task now
 
-Make route ${route} of the new app match the old app. Work in the current directory, which holds the new app.
+${embedsOnly ? `Make the third-party embeds on route ${route} of the new app match the old app's: this run compares the embeds alone (\`--only embeds\`), each one's Markless component against the old embed pixel for pixel in every state, viewport and colour scheme, then what activating it does. Change only the embed components and what puts them in place (the page or its importer, and the old loader scripts they replace); leave everything else on the page as it is, even where it differs from the old app: the full check holds it to that separately.` : loadOnly ? `Make route ${route} of the new app load as fast as the old app's, or faster: this run compares page load alone (\`--only load\`). Change only what decides how the page loads (what it requests, when, and at what priority; what the first paint waits for); leave its styles, assets and markup as they are, since the full check compares those against the app's own reference.` : `Make route ${route} of the new app match the old app.`} Work in the current directory, which holds the new app.
 
 - Old app (reference, never edit it): ${o.old}${c.source ? `\n- Old app's source, to read (never edit it): ${c.source}` : ''}
 - New app: ${o.new}${c.newSource ? ` (source: ${c.newSource})` : ''}${c.auth ? `\n- Roles: ${c.auth}; the route is checked anonymous and as each role, and every one must be green.` : ''}
 ${serveLine(o)}
-- Check with the markless-migrate \`check_route\` tool (${toolArgs.join(', ')}),
-  or run \`${command}\`.
+${loadOnly || embedsOnly ? `- Check by running \`${command}\` (the \`check_route\` tool would compare every dimension, not ${loadOnly ? 'page load' : 'the embeds'} alone).` : `- Check with the markless-migrate \`check_route\` tool (${toolArgs.join(', ')}),
+  or run \`${command}\`.`}
 - When this page is one of many built from a content source (a docs page, a blog post, a CMS entry),
   build it through that template's importer, from the original content, so every route of the
   template exists and not this page alone.

@@ -68,7 +68,7 @@ test('without a cap every control is exercised, including the ones the settings 
 test('a time budget that runs out lists what it did not reach instead of dropping it', async () => {
 	const { elements } = await explore(browser, defaultEnv(origin(old)), '/', desktop[0]!, { budgetMs: 1 });
 	assert.ok(elements.length > LINKS);
-	assert.ok(elements.every((e) => e.by?.startsWith('its address') || /out of the journey budget \(0 s\)/.test(e.reason ?? '')), JSON.stringify(elements.slice(0, 3)));
+	assert.ok(elements.every((e) => e.by?.startsWith('its address') || e.by?.startsWith('alike') || /out of the journey budget \(0 s\)/.test(e.reason ?? '')), JSON.stringify(elements.slice(0, 3)));
 });
 
 test('a new app that drops the header settings dialog is red on the first route checked, and on every route sharing the header', async () => {
@@ -116,4 +116,35 @@ test('a route the old app serves and the new one answers 404 for is not ported',
 	const report = await runCheck({ oldOrigin: origin(old), newOrigin: origin(homeOnly), routes: ['/a'], viewports: desktop, browser, journeys: { maxJourneys: 1 } });
 	assert.equal(report.routes[0]!.notPorted, true);
 	assert.equal(report.routes[0]!.ok, false);
+});
+
+test('a shared control is exercised on a route with room for it, not on the first route when that one is full of its own controls', async () => {
+	const busy = (path: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${path}</title></head><body>
+<header><button type="button" onclick="this.textContent = 'Opened'">Menu</button></header>
+<main><h1>${path}</h1>${path === '/' ? Array.from({ length: 45 }, (_, i) => `<button type="button" onclick="this.textContent = 'done ${i}'">Task ${i}</button>`).join('') : ''}</main></body></html>`;
+	const server = createServer((req, res) => res.writeHead(req.url === '/favicon.ico' ? 404 : 200, { 'content-type': 'text/html; charset=utf-8' }).end(busy(new URL(req.url ?? '/', 'http://x').pathname)));
+	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+	try {
+		const at = origin(server);
+		const report = await runCheck({ oldOrigin: at, newOrigin: at, routes: ['/', '/a'], viewports: desktop, browser });
+		const [home, other] = report.routes;
+		assert.ok(other!.journeys!.some((j) => j.name === 'click button "Menu"'), 'the route with room uses the shared control');
+		assert.ok(!home!.journeys!.some((j) => j.name === 'click button "Menu"'));
+		assert.ok(home!.coverage!.elements.some((e) => e.element === 'button "Menu"' && e.shared === '/a'));
+	} finally {
+		server.close();
+	}
+});
+
+test('plain links in the page are sampled: two are followed, every address is compared by the rendered check', async () => {
+	const links = Array.from({ length: 12 }, (_, i) => `<a href="/p/${i}">Part ${i}</a>`).join(' ');
+	const server = createServer((req, res) => res.writeHead(req.url === '/favicon.ico' ? 404 : 200, { 'content-type': 'text/html; charset=utf-8' }).end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>t</title></head><body><main><h1>t</h1>${links}</main></body></html>`));
+	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+	try {
+		const { journeys, elements } = await explore(browser, defaultEnv(origin(server)), '/', desktop[0]!);
+		assert.deepEqual(journeys.map((j) => j.name).filter((n) => n.startsWith('click link')), ['click link "Part 0"', 'click link "Part 1"']);
+		assert.ok(elements.some((e) => e.element === '10 more links in main to other pages' && e.by?.startsWith('alike')), elements.map((e) => e.element).join(', '));
+	} finally {
+		server.close();
+	}
 });

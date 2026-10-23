@@ -1,0 +1,17 @@
+{
+	"github-button-bigskysoftware-htmx-star": {
+		"embed": "github-button-bigskysoftware-htmx-star",
+		"href": "https://github.com/bigskysoftware/htmx",
+		"text": "star",
+		"ariaLabel": "Star bigskysoftware/htmx on GitHub",
+		"icon": "octicon-star",
+		"scheme": {
+			"none": "light",
+			"light": "light",
+			"dark": "dark"
+		},
+		"count": 49579,
+		"countHref": "https://github.com/bigskysoftware/htmx",
+		"countNoun": "stargazers"
+	}
+}

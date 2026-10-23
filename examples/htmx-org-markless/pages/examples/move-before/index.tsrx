@@ -14,7 +14,7 @@ export default function Page() @{
 			{" "}
 			<p>For the demo to work properly you will need to install Chrome Canary and enable the API:</p>
 			{" "}
-			<ul>{" "}<li>{"Navigate to "}<a href="chrome://flags/#atomic-move">chrome://flags/#atomic-move</a></li>{" "}<li>Enable “Atomic DOM move”</li>{" "}</ul>
+			<ul>{" "}<li>{"Navigate to "}<a href="chrome://flags/#atomic-move">{"chrome://flags/#atomic-move"}</a></li>{" "}<li>Enable “Atomic DOM move”</li>{" "}</ul>
 			{" "}
 			<p>{"htmx takes advantage of this API in the "}<code>hx-preserve</code>{" functionality if it is available, allowing you to mark an element as “preserved” and having all its state preserved as it moves between areas on the screen when new content is merged in. This is significantly better developer experience than current alternatives, such as morphing, which rely on the structure of the new page being “close enough” to not have to move things like video elements."}</p>
 			{" "}

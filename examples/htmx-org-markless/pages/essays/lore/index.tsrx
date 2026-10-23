@@ -26,7 +26,7 @@ export default function Page() @{
 			{" "}
 			<p>{"At one point there was a hostile takeover attempt of the htmx CEO position and, in a desperate poison pill, I declared "}<a rel="noopener" target="_blank" href="https://x.com/htmx_org/status/1726986945430233323">everyone CEO of htmx</a>.</p>
 			{" "}
-			<p><a rel="noopener" target="_blank" href="https://x.com/gitpush_gitpaid">Turk</a>{" created "}<a rel="noopener" target="_blank" href="https://htmx.ceo">https://htmx.ceo</a>{" if you want to register as a CEO."}</p>
+			<p><a rel="noopener" target="_blank" href="https://x.com/gitpush_gitpaid">Turk</a>{" created "}<a rel="noopener" target="_blank" href="https://htmx.ceo">{"https://htmx.ceo"}</a>{" if you want to register as a CEO."}</p>
 			{" "}
 			<p>If someone emails hr&#64;bigsky.software asking if you are CEO of htmx, I will tell them yes.</p>
 			{" "}
@@ -58,7 +58,7 @@ export default function Page() @{
 			{" "}
 			<p><a rel="noopener" target="_blank" href="https://x.com/WarrenInTheBuff">&#64;WarrenInTheBuff</a>{" is the king of twitter and we regularly fight with him. This often ends in someone saying "}<a rel="noopener" target="_blank" href="https://x.com/ThePrimeagen/status/1792564215749779515">“shut up warren”</a>.</p>
 			{" "}
-			<p>{"You can see the htmx website do this by going to "}<a rel="noopener" target="_blank" href="https://htmx.org?suw=true">https://htmx.org?suw=true</a></p>
+			<p>{"You can see the htmx website do this by going to "}<a rel="noopener" target="_blank" href="https://htmx.org?suw=true">{"https://htmx.org?suw=true"}</a></p>
 			{" "}
 			<h2 id="microsoft-purchase-rumor"><a class="zola-anchor" href="#microsoft-purchase-rumor" aria-label="Anchor link for: microsoft-purchase-rumor">Microsoft Purchase Rumor</a></h2>
 			{" "}
@@ -122,7 +122,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="grug"><a class="zola-anchor" href="#grug" aria-label="Anchor link for: grug">Grug</a></h2>
 			{" "}
-			<p>{"I created "}<a rel="noopener" target="_blank" href="http://grugbrain.dev">http://grugbrain.dev</a>.</p>
+			<p>{"I created "}<a rel="noopener" target="_blank" href="http://grugbrain.dev">{"http://grugbrain.dev"}</a>.</p>
 			{" "}
 			<h2 id="the-htmx-intercooler-js-feud"><a class="zola-anchor" href="#the-htmx-intercooler-js-feud" aria-label="Anchor link for: the-htmx-intercooler-js-feud">The htmx/intercooler.js feud</a></h2>
 			{" "}

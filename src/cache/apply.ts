@@ -90,7 +90,11 @@ export async function refineWithNewSource(plan: CachingPlan, app: string, pageFi
 		const prior = plan.routes[i]!;
 		const next = classify({ evidence: e, ...(signals ? { new: signals } : {}) });
 		// The plan's old-source reasons stand: the new side can only make a route less cacheable, never more.
-		out.push(rank(next.class) < rank(prior.class) ? { ...next, reasons: [...next.reasons, ...prior.reasons] } : prior);
+		const keys = [...new Set([...(prior.allowQuery ?? []), ...(next.allowQuery ?? [])])].sort();
+		if (rank(next.class) < rank(prior.class)) out.push({ ...next, reasons: [...next.reasons, ...prior.reasons] });
+		// The new page may read query keys the old one read only in the browser: each value is its own cached page.
+		else if (keys.length > (prior.allowQuery?.length ?? 0)) out.push({ ...prior, allowQuery: keys, reasons: [...prior.reasons, `the new page reads the query (${keys.join(', ')}), so each value is cached apart`] });
+		else out.push(prior);
 	}
 	return out;
 }

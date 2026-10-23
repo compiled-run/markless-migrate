@@ -1,0 +1,77 @@
+// mdo's GitHub button (https://ghbtns.com/github-btn.html, Apache-2.0) as its frame draws it, in Markless markup fed by
+// github-buttons.json, from GitHub's REST answer for the repository: no frame and no script at load. The root takes the
+// frame's place, box and class; the styles are the frame's own, kept to the root and made to win over the host page's
+// (its border-box sizing, its link colours, margins, transitions and font smoothing, and its dark colour scheme, which
+// would draw the focus ring in dark-mode colours), since nothing inside a frame sees those. It is a layer of its own
+// (will-change) so its text lands on whole pixels, as a frame's content does. A click on either link (or Enter on it)
+// goes where the frame's link goes, and the original frame then takes the button's place.
+import buttons from './github-buttons.json';
+
+type GitHubButtonData = {
+	/** The id of the embed it stands in for, from .migrate/embeds.json. */
+	readonly embed: string;
+	/** The frame's address, loaded as it is once a visitor uses the button. */
+	readonly frame: string;
+	readonly title: string;
+	readonly owner: string;
+	readonly repo: string;
+	readonly stars: number;
+};
+
+/** The frame's count format: 66554 is "66,554". */
+const count = (n: number) => String(n).replace(/(\d)(?=(\d{3})+$)/g, '$1,');
+
+/** `embed` names the button's entry in github-buttons.json; `frameClass` is the class the page gave the frame. */
+export default function GitHubButton({ embed, frameClass: className }: { readonly embed: string; readonly frameClass: string }) @{
+	const data = (buttons as Readonly<Record<string, GitHubButtonData>>)[embed]!;
+	const repo = `https://github.com/${data.owner}/${data.repo}`;
+	const stars = count(data.stars);
+
+	<span
+		class={`${className} ghb`}
+		data-markless-embed={data.embed}
+		onClick={(event: MouseEvent) => {
+			const target = event.target as Element;
+			const root = target.closest('.ghb');
+			if (!root || !target.closest('a')) return;
+			const frame = document.createElement('iframe');
+			for (const [name, value] of Object.entries({ class: className, src: data.frame, width: '160', height: '30', title: data.title })) frame.setAttribute(name, value);
+			// After the link's own navigation has started.
+			setTimeout(() => root.replaceWith(frame));
+		}}
+	>
+		<style>
+			.ghb { width: 160px; height: 30px; padding: 0; margin: 0; color: #000; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif; font-size: 11px; font-weight: 700; font-style: normal; line-height: 14px; letter-spacing: normal; text-align: start; text-transform: none; text-shadow: none; white-space: normal; overflow-wrap: normal; -webkit-font-smoothing: auto; text-rendering: auto; font-synthesis: weight style small-caps; color-scheme: light; will-change: transform; }
+			.ghb * { box-sizing: content-box; }
+			.ghb .github-btn { height: 20px; overflow: hidden; }
+			.ghb > .github-btn > a.gh-btn, .ghb > .github-btn > a.gh-count, .ghb .gh-ico { float: left; }
+			.ghb > .github-btn > a.gh-btn, .ghb > .github-btn > a.gh-count { margin: 0; padding: 2px 5px 2px 4px; color: #333; text-decoration: none; white-space: nowrap; cursor: pointer; border-radius: 3px; transition: none; }
+			.ghb > .github-btn > a.gh-btn { background-color: #eee; background-image: linear-gradient(to bottom, #fcfcfc 0, #eee 100%); background-repeat: no-repeat; border: 1px solid #d5d5d5; }
+			.ghb > .github-btn > a.gh-btn:focus, .ghb > .github-btn > a.gh-btn:hover { color: #333; text-decoration: none; background-color: #ddd; background-image: linear-gradient(to bottom, #eee 0, #ddd 100%); border-color: #ccc; }
+			.ghb > .github-btn > a.gh-btn:active { background-color: #dcdcdc; background-image: none; border-color: #b5b5b5; box-shadow: inset 0 2px 4px rgba(0, 0, 0, .15); }
+			.ghb .gh-ico { width: 14px; height: 14px; margin-right: 4px; background: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='12 12 40 40'%3e%3cpath fill='%23333' d='M32 13.4c-10.5 0-19 8.5-19 19 0 8.4 5.5 15.5 13 18 1 .2 1.3-.4 1.3-.9v-3.2c-5.3 1.1-6.4-2.6-6.4-2.6-.9-2.1-2.1-2.7-2.1-2.7-1.7-1.2.1-1.1.1-1.1 1.9.1 2.9 2 2.9 2 1.7 2.9 4.5 2.1 5.5 1.6.2-1.2.7-2.1 1.2-2.6-4.2-.5-8.7-2.1-8.7-9.4 0-2.1.7-3.7 2-5.1-.2-.5-.8-2.4.2-5 0 0 1.6-.5 5.2 2 1.5-.4 3.1-.7 4.8-.7 1.6 0 3.3.2 4.7.7 3.6-2.4 5.2-2 5.2-2 1 2.6.4 4.6.2 5 1.2 1.3 2 3 2 5.1 0 7.3-4.5 8.9-8.7 9.4.7.6 1.3 1.7 1.3 3.5v5.2c0 .5.4 1.1 1.3.9 7.5-2.6 13-9.7 13-18.1 0-10.5-8.5-19-19-19z'/%3e%3c/svg%3e") 0 0/100% 100% no-repeat; }
+			.ghb > .github-btn > a.gh-count { position: relative; display: block; margin-left: 4px; background-color: #fafafa; border: 1px solid #d4d4d4; }
+			.ghb > .github-btn > a.gh-count:focus, .ghb > .github-btn > a.gh-count:hover { color: #0366d6; text-decoration: none; }
+			.ghb > .github-btn > a.gh-count::after, .ghb > .github-btn > a.gh-count::before { position: absolute; display: inline-block; width: 0; height: 0; content: ""; border-color: transparent; border-style: solid; }
+			.ghb > .github-btn > a.gh-count::before { top: 50%; left: -3px; margin-top: -4px; border-width: 4px 4px 4px 0; border-right-color: #fafafa; }
+			.ghb > .github-btn > a.gh-count::after { top: 50%; left: -4px; z-index: -1; margin-top: -5px; border-width: 5px 5px 5px 0; border-right-color: #d4d4d4; }
+			.ghb .github-btn-large { height: 30px; }
+			.ghb > .github-btn-large > a.gh-btn, .ghb > .github-btn-large > a.gh-count { padding: 3px 10px 3px 8px; font-size: 16px; line-height: 22px; border-radius: 4px; }
+			.ghb .github-btn-large .gh-ico { width: 20px; height: 20px; }
+			.ghb > .github-btn-large > a.gh-count { margin-left: 6px; }
+			.ghb > .github-btn-large > a.gh-count::before { left: -5px; margin-top: -6px; border-width: 6px 6px 6px 0; }
+			.ghb > .github-btn-large > a.gh-count::after { left: -6px; margin-top: -7px; border-width: 7px 7px 7px 0; }
+		</style>
+		<span class="github-btn github-stargazers github-btn-large">
+			<a class="gh-btn" href={repo} rel="noopener noreferrer" target="_blank" aria-label={`Star ${data.owner}/${data.repo} on GitHub`}>
+				<span class="gh-ico" aria-hidden="true"></span>
+				{" "}
+				<span class="gh-text">{"Star"}</span>
+				{" "}
+			</a>
+			<a class="gh-count" href={`${repo}/stargazers`} rel="noopener noreferrer" target="_blank" aria-label={`${stars} stargazers on GitHub`} data-markless-embed-live="">
+				{stars}
+			</a>
+		</span>
+	</span>
+}

@@ -31,3 +31,19 @@ parity, and by mapping a computed-style difference back to the rule that caused 
 
 Decision: Markless-only (`@markless/migrate`), separate repo because of the framework fixtures. Keep
 the checking code free of Markless imports so it could be split out later.
+
+## Embeds (researched 2026-10-21)
+
+- **astro-embed** (delucis/astro-embed, MIT): components for YouTube, Vimeo, X, Bluesky, Mastodon, gists, link
+  previews and Baseline status, fetched at build time through oEmbed or official APIs (YouTube's thumbnail URL with
+  no fetch, Vimeo's v2 JSON, publish.twitter.com/oembed, Bluesky's public AppView, a Mastodon server's
+  /api/v1/statuses, the gist .json endpoint, Open Graph tags for link previews), cached only in an in-memory LRU per
+  build, with fetch errors logged and swallowed. Its X post renders the oEmbed blockquote with its own CSS, so it is
+  not the widget's look. Markless Migrate takes its provider list, its data sources and its URL matchers as the
+  starting point; the components are its own, and are held to the old embed pixel for pixel.
+- **lite-youtube-embed** (Paul Irish, Apache-2.0): the facade pattern. A link or button that becomes the real
+  iframe with autoplay=1 on click, a preconnect on hover, focus moved into the iframe, the iframe kept in a noscript
+  for indexing; Safari and mobile need the iframe API to autoplay.
+- **github-buttons** (ntkme, BSD-2-Clause): buttons.js. Draws into a closed shadow root, or an iframe when
+  attachShadow is not native, reads counts from api.github.com and formats them with comma groups. The
+  github-button adapter reproduces its markup and palettes.

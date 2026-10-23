@@ -1,3 +1,4 @@
+import { state } from '@markless/core';
 import type { PageProps } from '@markless/router';
 import Footer from '../../components/footer.tsrx';
 import Forbidden from '../../components/forbidden.tsrx';
@@ -5,7 +6,7 @@ import Header from '../../components/header.tsrx';
 
 export default function Admin({ http }: PageProps) @{
 	const forbidden = http.locals.forbidden === true;
-	const name = http.locals.user?.name ?? 'guest';
+	let name = state(http.locals.user?.name ?? 'guest');
 	if (forbidden) http.response.status = 403;
 
 	<div class="page">

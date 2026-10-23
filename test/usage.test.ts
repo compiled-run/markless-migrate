@@ -54,7 +54,7 @@ test('a page is read for every behaviour its markup uses, and a code sample in i
 	const scripts = pageBehaviours(parseHtml(HTMX_PAGE), '/', into);
 	const list = into.list();
 	const features = list.map((b) => `${b.library} ${b.feature}`).sort();
-	assert.deepEqual(features, ['class-tools classes', 'embed GitHub button (buttons.github.io)', 'htmx extension class-tools', 'htmx extension preload', 'htmx hx-boost', 'htmx hx-post', 'hyperscript on click']);
+	assert.deepEqual(features, ['class-tools classes', 'embed GitHub button', 'htmx extension class-tools', 'htmx extension preload', 'htmx hx-boost', 'htmx hx-post', 'hyperscript on click']);
 	const post = list.find((b) => b.feature === 'hx-post')!;
 	assert.deepEqual(post.details.target, { relation: 'selector', selector: '#search-results' });
 	assert.equal((post.details.swap as { style: string }).style, 'outerHTML');
@@ -62,9 +62,11 @@ test('a page is read for every behaviour its markup uses, and a code sample in i
 	assert.ok(list.every((b) => b.sites.every((s) => 'line' in s && typeof s.line === 'number')), 'every site has a line in the served page');
 	assert.deepEqual(scripts.map((s) => s.src), ['/js/htmx.js', '/js/_hyperscript.js', 'https://buttons.github.io/buttons.js']);
 	const star = list.find((b) => b.kind === 'embed-frame')!;
-	const [obligation] = obligationsFor(star);
-	assert.equal(obligation!.mechanism, 'client-guard');
-	assert.match(obligation!.text, /box \(width and height\) and inline style equal the old page's/);
+	assert.equal(star.details.embed, 'github-button-bigskysoftware-htmx-star');
+	const obligations = obligationsFor(star);
+	assert.deepEqual(obligations.map((o) => o.mechanism), ['embed', 'embed', 'embed']);
+	assert.match(obligations[0]!.text, /\[data-markless-embed="github-button-bigskysoftware-htmx-star"\] shows the same pixels as the settled old embed, at desktop and mobile, in light and dark/);
+	assert.match(obligations[2]!.text, /activated by click and by keyboard/);
 });
 
 test('a plain script is read from its syntax tree: a theme-init script is one behaviour, and a listener carries what its handler does', () => {
@@ -153,4 +155,17 @@ test('a JavaScript-only library is a kept library with its own checks, never a f
 	assert.deepEqual(usage.obligations.filter((o) => o.behaviour === kept.id).map((o) => o.mechanism), ['client-guard', 'journey']);
 	assert.ok(usage.behaviours.some((b) => b.library === 'chart.js' && b.feature === 'new Chart'), 'the page\'s own call into it is listed');
 	assert.match(summarizeUsage(usage, []), /Kept libraries \(JavaScript only, kept as they are; .*\): chart\.js/);
+});
+
+test("a minified chunk binding $ is not jQuery, and a page framework's own build chunks are its code, not plain scripts", async () => {
+	assert.deepEqual(analyseScript('function f($){ return $("x") }').effects, [], 'a parameter named $ is the script\'s own');
+	assert.equal(analyseScript('jQuery(".a").hide()').effects[0]?.kind, 'library-call', 'the jQuery global is still a use');
+	const dir = await mkdtemp(join(tmpdir(), 'mm-usage-'));
+	await mkdir(join(dir, 'built', '_next', 'static'), { recursive: true });
+	await writeFile(join(dir, 'built', '_next', 'static', 'chunk.js'), 'document.addEventListener("keydown", () => {})');
+	await writeFile(join(dir, 'built', 'own.js'), 'document.addEventListener("keydown", () => {})');
+	await writeFile(join(dir, 'built', 'index.html'), '<html><body><script src="/_next/static/chunk.js"></script><script src="/own.js"></script><script>(self.__next_f=self.__next_f||[]).push([0])</script></body></html>');
+	const usage = await scanUsage({ built: join(dir, 'built'), routes: ['/'] });
+	assert.equal(usage.scripts.find((s) => s.script.endsWith('/_next/static/chunk.js'))?.runtime, 'Next.js build');
+	assert.equal(usage.scripts.find((s) => s.script.endsWith('/own.js'))?.effects, 1, 'a script outside the build is still read');
 });

@@ -11,7 +11,8 @@ const HERE = new URL('.', import.meta.url).pathname;
 // A finished route keeps its verdict and summaries; one route's screenshots alone weigh about 4.5 MB here, its old captures far more.
 const PER_ROUTE_BYTES = 1024 * 1024;
 
-test('a check holds the same memory however many routes it has done: screenshots go to disk as each route finishes, captures are let go', { timeout: 300_000 }, async () => {
+// CI's runner took 275 s of 300 here on main (2026-10-22), sharing its shard with other browser tests; the routes run one at a time.
+test('a check holds the same memory however many routes it has done: screenshots go to disk as each route finishes, captures are let go', { timeout: 600_000 }, async () => {
 	const dir = await mkdtemp(join(tmpdir(), 'mm-memory-'));
 	try {
 		const { stdout } = await run(process.execPath, ['--expose-gc', join(HERE, 'memory-run.ts'), '12', dir], { maxBuffer: 1 << 20 });

@@ -30,7 +30,7 @@ export default function Page() @{
 			{" "}
 			<p>{"The beta can be installed via a package manager referencing version "}<code>2.0.0-beta4</code>, or can be linked via a CDN:</p>
 			{" "}
-			<pre data-lang="html" style="background-color:#1f2329;color:#abb2bf;" class="language-html "><code class="language-html" data-lang="html"><span>&lt;</span><span style="color:#e06c75;">{"script "}</span><span style="color:#d19a66;">src</span><span>=</span><span style="color:#98c379;">"https://unpkg.com/htmx.org&#64;2.0.0-beta4/dist/htmx.min.js"</span><span>&gt;&lt;/</span><span style="color:#e06c75;">script</span><span>{">\n"}</span></code></pre>
+			<pre data-lang="html" style="background-color:#1f2329;color:#abb2bf;" class="language-html "><code class="language-html" data-lang="html"><span>&lt;</span><span style="color:#e06c75;">{"script "}</span><span style="color:#d19a66;">src</span><span>=</span><span style="color:#98c379;">{"\"https://unpkg.com/htmx.org@2.0.0-beta4/dist/htmx.min.js\""}</span><span>&gt;&lt;/</span><span style="color:#e06c75;">script</span><span>{">\n"}</span></code></pre>
 			{" "}
 			<p>{"or "}<a href={"https://unpkg.com/htmx.org@2.0.0-beta4/dist/htmx.min.js"} download="">Downloaded</a></p>
 			{" "}
@@ -38,13 +38,13 @@ export default function Page() @{
 			{" "}
 			<p>Extensions have been removed from the main codebase and are now in this github repo:</p>
 			{" "}
-			<p><a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/htmx-extensions">https://github.com/bigskysoftware/htmx-extensions</a></p>
+			<p><a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/htmx-extensions">{"https://github.com/bigskysoftware/htmx-extensions"}</a></p>
 			{" "}
-			<p>{"They are available at "}<a rel="noopener" target="_blank" href="https://extensions.htmx.org">https://extensions.htmx.org</a></p>
+			<p>{"They are available at "}<a rel="noopener" target="_blank" href="https://extensions.htmx.org">{"https://extensions.htmx.org"}</a></p>
 			{" "}
 			<p>There was one breaking change in the extensions, SSE, so you must use the newer version of that extension:</p>
 			{" "}
-			<p><a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/htmx-extensions/blob/main/ext/sse.js">https://github.com/bigskysoftware/htmx-extensions/blob/main/ext/sse.js</a></p>
+			<p><a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/htmx-extensions/blob/main/ext/sse.js">{"https://github.com/bigskysoftware/htmx-extensions/blob/main/ext/sse.js"}</a></p>
 			{" "}
 		</main>
 		<SiteFooter />

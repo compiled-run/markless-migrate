@@ -210,7 +210,7 @@ export function trackLoops(known: readonly string[] = []): void {
 			for (const key of live) changes.delete(key);
 			for (const animation of document.getAnimations()) {
 				const iterations = animation.effect?.getComputedTiming().iterations;
-				if (iterations === Number.POSITIVE_INFINITY) {
+				if (iterations === Number.POSITIVE_INFINITY && animation.timeline === document.timeline) {
 					animation.pause();
 					animation.currentTime = 0;
 				} else if (animation instanceof CSSTransition && animation.playState === 'running') animation.finish();

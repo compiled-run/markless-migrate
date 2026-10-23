@@ -8,6 +8,7 @@ import { readAuthFile } from '../check/auth.ts';
 import { bypassOptions } from '../check/blocked.ts';
 import { DATA_DIR } from '../check/data.ts';
 import { runCheck, writeReport } from '../check/run.ts';
+import { EMBEDS_DIR } from '../embed/file.ts';
 import { loadSourceFacts } from '../check/source-facts.ts';
 import { summarize } from '../check/summary.ts';
 import { writeStarterAuth } from '../plan/auth.ts';
@@ -70,7 +71,9 @@ export function createServer(cwd: string): McpServer {
 				cookie: z.array(z.string()).optional().describe('name=value cookies set on both apps, for example a bot-protection bypass cookie'),
 				userAgent: z.string().optional(),
 				responsiveness: z.boolean().optional().describe('Time the first use of each control and each internal link (default true); false leaves it out'),
+				load: z.boolean().optional().describe("Compare Lighthouse's mobile page load (FCP, LCP, Speed Index, TBT, CLS, score), a median of 5 runs per side (default true); false leaves it out"),
 				motion: z.boolean().optional().describe('Compare the transitions and animations each interaction, hover and focus starts, with motion allowed and with reduced motion (default true); false leaves it out'),
+				embeds: z.boolean().optional().describe('Compare each third-party embed on the old page with the Markless component or kept embed in its place: pixels at rest, hovered and focused, at desktop and mobile in light and dark, then what activating it does; images in .migrate/embeds/<id>/check/ (default true); false leaves it out'),
 			},
 		},
 		async (args) => {
@@ -92,6 +95,8 @@ export function createServer(cwd: string): McpServer {
 				automaticOff: rulesOff(await readOverrides(join(cwd, STATE_DIR))),
 				...(args.responsiveness === false ? {} : { responsiveness: {} }),
 				...(args.motion === false ? {} : { motion: {} }),
+				...(args.load === false ? {} : { load: {} }),
+				...(args.embeds === false ? {} : { embeds: { dir: join(cwd, STATE_DIR, EMBEDS_DIR) } }),
 				switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 				partial: { total: inventory ? plannedRoutes(inventory).length : null },
 			});

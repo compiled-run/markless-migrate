@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { checkEmbeds, type EmbedCheckOptions } from '../embed/check.ts';
 import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { availableParallelism } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -22,7 +23,10 @@ import { compareJourneys, DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, in
 import { storageOwner, unreachableCandidate, type StorageOwner } from './automatic.ts';
 import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
 import { checkMotion, motionRules, type MotionOptions } from './motion.ts';
+import { CheckProgress } from './progress.ts';
 import { applyNavigation, checkNavigation, type NavigationOptions, type NavigationResult } from './nav-parity.ts';
+import { loadFailures, measureLoad, psiFailures, unmeasured, type LoadOptions } from './load.ts';
+import { measurePsi, psiKey } from './psi.ts';
 import { assetsToProbe, compareRoute, cssTargets, forgetFailures, httpFailures, noiseReport, noisyStyles, withFailures, type Probe } from './compare.ts';
 import { matchElements } from './match.ts';
 import { contractLines } from './network.ts';
@@ -89,15 +93,23 @@ export interface CheckOptions {
 	readonly responsiveness?: ResponsivenessOptions;
 	/** Record the transitions and animations every interaction starts, and those hovering and focusing each control start, old and new, with motion allowed and with reduced motion. */
 	readonly motion?: MotionOptions;
+	/** Write each route's result to `<dir>/check-progress/` as it finishes; `resume` takes the results an earlier run of the same check wrote. */
+	readonly progress?: { readonly dir: string; readonly resume: boolean };
+	/** Compare each embed on the old page with what the new page has in its place: pixels at rest, hovered and focused, at each viewport in light and dark, then what activating it does. */
+	readonly embeds?: Omit<EmbedCheckOptions, 'claimed'>;
 	/** Compare each sampled page reached by an in-place navigation (a link click, back, forward) with a fresh load of it, on the new app. */
 	readonly navigation?: NavigationOptions;
+	/** Lighthouse's mobile page load (FCP, LCP, Speed Index, TBT, CLS and the score), a median of several runs per side, after every other check so nothing else competes for the machine. */
+	readonly load?: LoadOptions;
+	/** `load`: only page load is measured, after nothing else; `embeds`: only the embed step runs, on each page route; every other dimension is skipped. */
+	readonly only?: 'load' | 'embeds';
 	/** How long one route's check (as one role) may take before it is stopped and reported as an infrastructure failure. */
 	readonly timeoutMs?: number;
 	/** Every route of the old site, each checked for existence on the new app (the coverage dimension). */
 	readonly coverage?: readonly string[];
 	/** The run checks fewer routes than the plan lists (`total`, null without a plan): the report says so and is never overall green. */
 	readonly partial?: { readonly total: number | null };
-	/** Above TEMPLATE_THRESHOLD pages, visual, behaviour and responsiveness run on one representative per template group; false runs them on every page. `patterns` are the source's route patterns. */
+	/** Above TEMPLATE_THRESHOLD pages, visual, behaviour, responsiveness and motion run on one representative per template group; false runs them on every page. `patterns` are the source's route patterns. */
 	readonly templates?: false | { readonly patterns?: readonly string[] };
 	/** Where OLD's captures and journeys are kept between runs (`.migrate/cache`), reused only while every response the old page loaded is unchanged. */
 	readonly cacheDir?: string;
@@ -137,6 +149,7 @@ interface Run {
 	readonly switched?: readonly string[];
 	readonly responsiveness?: ResponsivenessOptions;
 	readonly motion?: MotionOptions;
+	readonly embeds?: EmbedCheckOptions;
 }
 
 async function probe(env: SideEnv, url: string): Promise<Probe> {
@@ -221,7 +234,10 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 	const owner = storageOwner(olds.flatMap((o) => Object.values(o.pages)), Object.values(next.pages));
 	const explored = await statesAndJourneys(run, result, (input) => checkStates(browser, run, route, viewports, olds, input), (input) => checkJourneys(browser, run, route, viewports[0]!, input, owner, loads));
 	const moved = run.motion && explored.journeys?.length ? await checkMoves(browser, run, route, viewports[0]!, explored, oldA.pages[viewports[0]!.name]?.stylesheets ?? []) : explored;
-	const checked = run.responsiveness && moved.journeys?.length ? await checkTimings(browser, run, route, moved) : moved;
+	const timed = run.responsiveness && moved.journeys?.length ? await checkTimings(browser, run, route, moved) : moved;
+	// The page captures already list each side's embeds: a route with none on either side has nothing for the embed step.
+	const embedded = [...olds, next].some((capture) => Object.values(capture.pages).some((page) => page.liveEmbeds?.length));
+	const checked = run.embeds && embedded ? await checkRouteEmbeds(browser, run, route, viewports, timed) : timed;
 	const located = await locateFailures(checked, { route, old: oldA, next, sides: { old: { origin: oldOrigin, dir: run.sourceDirs?.old }, new: { origin: newOrigin, dir: run.sourceDirs?.new } }, ...(run.source ? { facts: run.source } : {}) });
 	const done = oldA.http.status < 400 && (next.http.status === 404 || next.http.status === 410) ? { ...located, notPorted: true } : located;
 	oldCaptures.set(done, oldA);
@@ -236,6 +252,11 @@ export async function statesAndJourneys(run: Pick<Run, 'old' | 'new'>, result: R
 	if (journeyed.status === 'rejected') throw journeyed.reason;
 	const j = journeyed.value;
 	return withFailures(stated.value, [...stated.value.failures, ...j.failures.slice(result.failures.length)], { journeys: j.journeys, coverage: j.coverage, writes: j.writes });
+}
+
+async function checkRouteEmbeds(browser: Browser, run: Run, route: string, viewports: readonly Viewport[], result: RouteResult): Promise<RouteResult> {
+	const out = await checkEmbeds(browser, { old: run.old, new: run.new }, route, viewports, run.embeds!);
+	return out.failures.length || out.shots.length ? withFailures(result, [...result.failures, ...out.failures], { shots: [...result.shots, ...out.shots] }) : result;
 }
 
 /** One viewport's http, rendered, seo, assets, css, a11y, i18n, network and weight checks: what a page gets when its template group's representative carries visual, behaviour, responsiveness and motion. */
@@ -456,8 +477,11 @@ export function stopped(route: string, error: unknown, [oldOrigin, newOrigin]: r
 }
 
 /** Default per route check: ten minutes, or five journey budgets when the budget is raised. */
-export function routeTimeout(options: Pick<CheckOptions, 'timeoutMs' | 'journeys'>): number {
-	return options.timeoutMs ?? Math.max(600_000, 5 * (options.journeys?.budgetMs ?? DEFAULT_JOURNEY_BUDGET_MS));
+/** What the embed step may add to a route's check: its embeds pictured in every state and scheme, then activated. */
+export const EMBED_STEP_BUDGET_MS = 600_000;
+
+export function routeTimeout(options: Pick<CheckOptions, 'timeoutMs' | 'journeys' | 'embeds'>): number {
+	return options.timeoutMs ?? Math.max(600_000, 5 * (options.journeys?.budgetMs ?? DEFAULT_JOURNEY_BUDGET_MS)) + (options.embeds ? EMBED_STEP_BUDGET_MS : 0);
 }
 
 /** Runs one route's check under a deadline: past it, every page the check opened is closed and the route is reported as an infrastructure failure. */
@@ -547,13 +571,25 @@ async function signInAs(browser: Browser, base: Run, role: string, spec: RoleSpe
 }
 
 /** Which route exercises each shared layout control: the first, in the order the routes were given, that has it. */
+// About as many controls as a route's journey budget exercises at its default (49 on ui.shadcn.com's home page, its heaviest).
+const ROUTE_ROOM = 40;
+
 async function layoutOwners(browser: Browser, run: Run, routes: readonly string[], options: CheckOptions): Promise<Map<string, string>> {
 	const viewport = (options.viewports ?? VIEWPORTS)[0]!;
-	const found = await pool(routes, options.concurrency ?? DEFAULT_CONCURRENCY, (route) => survey(browser, run.old, route, viewport).catch(() => [] as string[]));
-	const owners = new Map<string, string>();
-	routes.forEach((route, i) => {
-		for (const signature of found[i]!) if (!owners.has(signature)) owners.set(signature, route);
+	const found = await pool(routes, options.concurrency ?? DEFAULT_CONCURRENCY, (route) => survey(browser, run.old, route, viewport).catch(() => ({ layout: [] as string[], own: 0 })));
+	// The first route with room exercises a shared control, so one page full of its own controls does not leave
+	// every shared one to run out of its budget; past every route's room, the least loaded takes it.
+	const load = found.map((f) => f.own);
+	const having = new Map<string, number[]>();
+	routes.forEach((_, i) => {
+		for (const signature of found[i]!.layout) (having.get(signature) ?? having.set(signature, []).get(signature)!).push(i);
 	});
+	const owners = new Map<string, string>();
+	for (const [signature, at] of having) {
+		const i = at.find((k) => load[k]! < ROUTE_ROOM) ?? at.reduce((a, b) => (load[b]! < load[a]! ? b : a));
+		load[i]!++;
+		owners.set(signature, routes[i]!);
+	}
 	return owners;
 }
 
@@ -566,7 +602,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [], ...bypass };
 	const artifacts = options.artifactsDir ? new RouteArtifacts(options.artifactsDir, options.oldOrigin) : undefined;
 	const oldCache = options.cacheDir ? new OldCache(join(options.cacheDir, 'old'), { block: options.block ?? null }) : undefined;
-	const base: Run = { old: defaultEnv(options.oldOrigin, shared), new: defaultEnv(options.newOrigin, shared), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
+	const base: Run = { old: defaultEnv(options.oldOrigin, shared), new: defaultEnv(options.newOrigin, shared), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
 	const auth = options.auth;
 	const roles: (string | undefined)[] = auth ? [ANONYMOUS, ...Object.keys(auth.roles)] : [undefined];
 	const logins: LoginResult[] = [];
@@ -606,13 +642,33 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				if (!signed.run) continue;
 				roleRun = signed.run;
 			}
+			if (options.only === 'load') {
+				if (!role || role === ANONYMOUS) routes.push(...allPages.map((route) => withTemplate({ ...partialResult(route, [], []), ok: true, only: 'load' as const })));
+				continue;
+			}
+			if (options.only === 'embeds') {
+				const step: EmbedCheckOptions = { ...(options.embeds ?? {}), claimed: new Map<string, string>() };
+				const viewports = options.viewports ?? VIEWPORTS;
+				for (const route of allPages) {
+					const out = await checkEmbeds(browser, { old: roleRun.old, new: roleRun.new }, route, viewports, step).catch((error: Error) => ({ failures: [{ route, dimension: 'rendered' as const, check: 'embed step', expected: 'the embed step runs', actual: error.message.split('\n')[0]!, hint: 'The embed step could not load the route on one side.' }], shots: [], results: [] }));
+					const result = { ...partialResult(route, out.failures, [...new Set(out.failures.map((f) => f.dimension as Dimension))]), shots: out.shots, only: 'embeds' as const };
+					routes.push(asRole(withTemplate({ ...result, ok: out.failures.length === 0 }), role));
+				}
+				continue;
+			}
 			if (options.coverage) coverages.push(await checkCoverage(roleRun.old, roleRun.new, options.coverage, role));
 			const data = options.data && role && role !== ANONYMOUS ? { ...options.data, dir: join(options.data.dir, slug(role)) } : options.data;
 			const pages = allPages;
 			const full = pages.filter((route) => !light(route));
 			const owners = full.length > 1 ? await layoutOwners(browser, roleRun, full, options) : new Map<string, string>();
 			roleRun = { ...roleRun, owners: [...owners].sort(), journeys: { ...options.journeys, owner: (signature) => owners.get(signature.split(' > ')[0]!) } };
+			const progress = options.progress && artifacts ? new CheckProgress(options.progress.dir, { old: options.oldOrigin, new: options.newOrigin, routes: [...options.routes].sort(), role, freeze, block: options.block ?? null, motion: options.motion ?? null, responsiveness: options.responsiveness ?? null, journeys: options.journeys ?? null, only: options.only ?? null, templates: options.templates ?? null, data: options.data?.mode ?? null }, options.progress.resume) : undefined;
 			const checked = await pool(pages, options.concurrency ?? DEFAULT_CONCURRENCY, async (route) => {
+				const earlier = await progress?.done(route, role);
+				if (earlier) {
+					options.onRoute?.(earlier);
+					return earlier;
+				}
 				const { run, failures } = data?.mode === 'replay' ? await replayRoute(roleRun, data.dir, route) : { run: roleRun, failures: [] };
 				const done = await withDeadline(route, run, routeTimeout(options), (scoped) => checkAs(browser, scoped, route, role, loginPaths, options, light(route))).catch(unreachable(route));
 				const old = oldCaptures.get(done);
@@ -625,6 +681,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				const result = withTemplate(done);
 				const checkedAs = asRole(failures.length ? withFailures(result, [...failures, ...result.failures]) : result, role);
 				const kept = artifacts ? await artifacts.keep(checkedAs) : checkedAs;
+				await progress?.write(route, role, kept);
 				options.onRoute?.(kept);
 				return kept;
 			});
@@ -634,6 +691,26 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			routes.push(...(artifacts ? await Promise.all(compared.map((r) => artifacts.keep(r))) : compared));
 			for (const route of endpoints) routes.push(asRole(await checkEndpoint(roleRun, route).catch(unreachable(route)), role));
 			for (const route of redirects) routes.push(asRole(await checkRedirect(roleRun, route).catch(unreachable(route)), role));
+		}
+		if ((options.load && options.only !== 'embeds') || options.only === 'load') {
+			const anonymous = (r: RouteResult) => !r.role || r.role === ANONYMOUS;
+			const loadable = routes.filter((r) => anonymous(r) && !r.endpoint && !r.blocked && !r.infrastructure && !r.notPorted && !light(r.route) && allPages.includes(r.route));
+			// Lighthouse can only send extra headers to every host it loads, so a bypass token is never handed to it.
+			const bypassed = Boolean(options.headers && Object.keys(options.headers).length) || Boolean(options.cookies?.length);
+			const routesToLoad = [...new Set(loadable.map((r) => r.route))];
+			const loads = bypassed ? new Map(routesToLoad.map((route) => [route, unmeasured('not measured: --header and --cookie are for the apps alone, and Lighthouse would send them to every host it loads')])) : await measureLoad({ old: options.oldOrigin, new: options.newOrigin }, routesToLoad, { ...(options.block ? { block: options.block } : {}), ...options.load });
+			const psiOptions = options.load?.psi;
+			if (psiOptions !== false && !bypassed) {
+				const key = psiOptions?.key ?? psiKey();
+				for (const [route, load] of loads) loads.set(route, { ...load, psi: await measurePsi({ old: options.oldOrigin, new: options.newOrigin }, route, { ...psiOptions, ...(key ? { key } : {}) }) });
+			}
+			routes.forEach((r, i) => {
+				const load = anonymous(r) ? loads.get(r.route) : undefined;
+				if (!load) return;
+				// Real PageSpeed Insights, when it answered, is the gate; the calibrated lab stands in for it otherwise.
+				const failures = [...r.failures, ...(psiFailures(r.route, load.psi) ?? loadFailures(r.route, load))];
+				routes[i] = r.only ? { ...r, load, failures, ok: failures.length === 0, dimensions: { ...r.dimensions, load: failures.length ? 'fail' : 'pass' } } : withFailures(r, failures, { load });
+			});
 		}
 		const sources = options.source?.nondeterminism.map((f) => ({ ...f, pinned: pinnedBy(`${f.kind} ${f.what ?? ''}`, f.side, freeze) }));
 		const coverage = options.coverage ? mergeCoverage(coverages) : undefined;

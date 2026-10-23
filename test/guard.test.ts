@@ -127,3 +127,11 @@ test('an allowance with a stated reason lists an intended addition instead of fa
 	await writeFile(join(dir, 'guard-allow.json'), JSON.stringify({ allow: [{ subject: 'div.port-attribution*', reason: '' }] }));
 	await assert.rejects(readAllowances(dir), /needs "reason"/);
 });
+
+test('a frame\'s inline style carried by the Markless component that stands in for it is the same style in the same place', () => {
+	const page = (styled: { key: string; style: string; embed?: boolean }[]) => ({ route: '/', assets: new Map(), styleBlocks: [], liveBlocks: [], styled, boxes: [], runtimes: [] });
+	const style = 'border: 1px solid gray; border-radius: 12px; float: right;';
+	const old = page([{ key: 'main.c.content iframe', style }]);
+	assert.deepEqual(comparePages(old, old, page([{ key: 'span.ghs-host', style, embed: true }])).findings, []);
+	assert.equal(comparePages(old, old, page([{ key: 'span.ghs-host', style }])).findings.length, 2, 'an element that is not marked as the component is another element');
+});

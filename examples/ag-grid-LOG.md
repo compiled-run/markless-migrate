@@ -250,3 +250,18 @@ JavaScript on the wire 688.5 kB to 86.0 kB, run at load 1,013.6 kB to 208.6 kB.
 ### Check again with the motion dimension (markless-migrate `3701487`)
 
 The same run after rebasing on the motion dimension: **3 of 4 checks green**, `/` red for behaviour (the 12 unlabelled grid controls) and responsiveness (the first row click at 4x CPU on a phone). Motion is green: 49 interactions recorded, 40 move, alike on both sides. First interaction old 130 → new 120 ms at 4x CPU, 80 → 80 ms desktop.
+
+## Markless 0.9.0 (2026-10-22)
+
+The app is on Markless 0.9.0 from npm (core, router, analyzer, typescript-plugin), from 0.5.0; `@markless/ui` stays at
+0.4.0. It builds on 0.9.0 with no other change. The build guard is green: no page loads React or any other framework's
+runtime; AG Grid's own code (`ag-grid-community`) is kept as a JavaScript-only library.
+
+### Check against the deployments, before and after
+
+`check --route / --concurrency 2 --timeout 1800 --no-psi` (the ecosystem suite's sample), old
+https://mm-ag-grid-old.vercel.app, new https://mm-ag-grid-new.vercel.app on 0.5.0, then on 0.9.0 once deployed: red on
+both, 16 failures on 0.5.0 and 17 on 0.9.0, not counting 5 controls not exercised on each. The difference is one row
+of the same kind on both: the first desktop click on the grid costs about 205 ms cold (17 to 24 ms the second time)
+against the old page's 33 ms; on 0.5.0 it landed on four row cells, on 0.9.0 on the same four and the "No." and "Time"
+column headers, while one 4x CPU row cell that was red on 0.5.0 is green.

@@ -46,7 +46,7 @@ function unmark() {
 	for (const el of document.querySelectorAll('[data-mm-font]')) el.removeAttribute('data-mm-font');
 }
 
-function weightMatches(range: string, weight: string): boolean {
+export function weightMatches(range: string, weight: string): boolean {
 	const named: Record<string, number> = { normal: 400, bold: 700 };
 	const [low, high = low] = range.split(/\s+/).map((part) => named[part] ?? Number(part));
 	const w = Number(weight);

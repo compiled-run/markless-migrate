@@ -323,3 +323,13 @@ test('check asks for fragment and document in both orders on fresh entries and r
 	assert.equal(search.orders, undefined, 'a made-up value the cache ignores is no fresh entry');
 	assert.match(path.notes.join('\n'), /1 page on ISR with revalidation not asked for in both orders after expiry \(the wait is off\)/);
 });
+
+test('a converted page that switches on its query string keeps each value apart in the cache', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'mm-cache-query-'));
+	await mkdir(join(dir, 'pages'), { recursive: true });
+	await writeFile(join(dir, 'pages/directory.tsrx'), 'export default function Page({ url }) @{\n\tconst search = url.search;\n\t<>@switch (search) {\n\t\t@case "?page=2": { <p>2</p> }\n\t\t@case "?page=3&sort=new": { <p>3</p> }\n\t\t@default: { <p>1</p> }\n\t}</>\n}\n');
+	const e = evidence({}, {}, '/directory');
+	const plan: CachingPlan = { version: 1, origin: 'http://old', generatedAt: '', routes: [classify({ evidence: e })], hashedAssets: [], evidence: [e] };
+	const [r] = await refineWithNewSource(plan, dir, { '/directory': 'pages/directory.tsrx' });
+	assert.deepEqual(r!.allowQuery, ['page', 'sort']);
+});

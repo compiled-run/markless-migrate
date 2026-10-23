@@ -392,3 +392,16 @@ lab First Contentful Paint. New: one click on an unnamed avatar block on `/` who
 order on each side. Red on both: going back to `/` after an in-place navigation restores it with the navbar 32 px up
 and the other colour mode's background, the Deployment category's extra motion after Guides, and the in-place
 navigation from "best Docusaurus sites" at 4x CPU.
+
+## Embeds: the intro video and the star button as Markless components (2026-10-22)
+
+`run --agent claude --only embeds` on `/`: the react-lite-youtube-embed facade keeps its markup and gets Markless
+activation (it had none: a click on the play button did nothing on the port), and the ghbtns.com star frame becomes a
+component drawn from GitHub's REST answer, both placed by the importer. Deployed on its own project,
+https://mm-docusaurus-embeds.vercel.app, so the production demo stays as it was. The embed step against
+https://mm-docusaurus-old.vercel.app: the video is the same in all 12 pictures and both ways of activating it (the
+player loads in place and plays); the star button is the same in every picture but its count, which GitHub moved since
+the data was read (accepted automatically), and Enter on it leads where the old one does; a click on its exact middle
+does not: the old frame's middle is empty space in its 160x30 box, the component's is its count link. PageSpeed
+Insights (mobile, median of 5), this port without and with the change: 407 -> 316 kB, FCP 1.82 -> 1.36 s, LCP 2.52 ->
+2.06 s, score 94 -> 97. https://mm-embeds-evidence.vercel.app.

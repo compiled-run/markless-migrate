@@ -369,3 +369,73 @@ What keeps the 6 red:
    load: neither failed on its own in the three runs before.
 
 Routes switched: none (the run agent's `switch /live` was undone; switching is the owner's call).
+
+## Page load against vite.dev (2026-10-21)
+
+PageSpeed Insights (mobile, one run each) scored the port 69 (FCP 2.6 s, LCP 7.8 s) against vite.dev's 77 (FCP 2.4 s, LCP 5.1 s).
+`check` had no page-load dimension; it has one now (`load`, Lighthouse mobile, median of runs, red only beyond the noise between them).
+
+What Lighthouse measured (`npx lighthouse@12 --form-factor=mobile --only-categories=performance`, Chrome 155, runs interleaved, medians):
+
+| | Performance | FCP | LCP | Speed Index | LCP breakdown (TTFB, render delay) |
+| --- | --- | --- | --- | --- | --- |
+| port before (5 runs) | 72 | 1.69 s | 4.61 s | 2.48 s | 632 ms, 3975 ms |
+| port after (11 runs) | 92 | 1.70 s | 3.27 s | 2.40 s | 648 ms, 2625 ms |
+| vite.dev (11 runs) | 78 | 1.74 s | 5.68 s | 2.16 s | 1534 ms, 4143 ms |
+| vite-dev-old (11 runs) | 80 | 1.83 s | 5.11 s | 2.14 s | 614 ms, 4500 ms |
+
+The LCP element is the hero heading on all three: text, so the load delay and load time are zero and the time is render delay.
+Lighthouse simulates a slow phone from one fast load: its LCP is as late as the slowest request that began before the heading
+painted. Rive's wasm and `.riv` files started before it, and a Rive task (the `.riv` decoding its embedded image) held the load
+event back and ended in a layout, which the Speed Index estimate counts at its simulated end, after those downloads.
+
+| Red before | Fix | Came from |
+| --- | --- | --- |
+| `load` FCP and Speed Index against vite.dev | the homepage's Rive canvases start in a task of their own once the page has loaded | `run --agent claude --only load` against the deployment |
+| The router's landing modulepreloads at High priority, which Lighthouse counts as render-blocking for FCP | `fetchpriority="low"` (Markless #66, merged; reaches the port with the next Markless release) | Markless |
+
+Still open: the HTML is 21.7 kB compressed against vite.dev's 10.1 kB, over the 14.6 kB that fits in the first round trip
+of Lighthouse's simulated connection (one 150 ms round trip on FCP); 3 kB of it is the import map of every chunk on the site.
+The heading's font (APK Protocol, no `font-display`) is fetched only after the stylesheet is parsed, on vite.dev as here, so
+the heading shows a frame after the first paint; preloading it moved LCP from 4.24 s to 2.24 s on a local copy.
+
+## Embeds: the Vite 6 keynote video as a Markless component (2026-10-22)
+
+`run --agent claude` on `/blog/announcing-vite6` turned the theme's YouTube frame into `components/embeds/youtube-embed.tsrx`
+(poster and channel picture from YouTube's own addresses, the title and channel from oEmbed, Roboto served by the app),
+placed by the docs importer for every `full-width-youtube-video` frame; a click or Enter loads the same frame, playing.
+It was promoted to markless-migrate's `youtube` adapter. The embed step against https://vite-dev-old.vercel.app (live):
+the same at desktop in light and dark and at mobile in dark; at mobile in light 22 pixels of 66,000 differ (12 at the
+rounded corners, where the old page clips a frame and the component a box, and 10 inside the poster), over the
+checker's limit of 20, so that row is red; locally the agent measured 9. Activation is the same by a click and by
+Enter at both viewports (the video plays). PageSpeed Insights (mobile, median of 5), this port without and with the
+change: 3,103 -> 2,314 kB, 69 -> 60 requests, FCP 7.86 -> 2.25 s, LCP 18.2 -> 10.5 s, TBT 229 -> 0 ms, score 52 -> 68
+(the page's other weight, its Rive canvases and images, is unchanged). https://mm-embeds-evidence.vercel.app.
+
+## Markless 0.9.0 (2026-10-22)
+
+The app is on Markless 0.9.0 from npm (core, router, analyzer, typescript-plugin). Nothing else changed: the pages,
+the importer and the toolchain build as they did on 0.8.0, and no workaround was added or removed.
+
+### Check against the deployments, before and after
+
+`check` on the ecosystem suite's sample (`/`, `/guide/`, `/guide/features`, `/config/build-options`, `/live`),
+`--concurrency 2 --timeout 1800`, old https://vite-dev-old.vercel.app, new https://vite-dev-markless.vercel.app on
+0.8.0, then the same on 0.9.0 once deployed:
+
+| | 0.8.0 | 0.9.0 |
+| --- | --- | --- |
+| Routes green | 1 of 5 (`/live`) | 1 of 5 (`/live`) |
+| Failures, not counting "not exercised" | 16 | 24 |
+| "Not exercised" | 172 | 150 |
+| Page load (lab, mobile, median of 10 or 5) | score 84, 92, 92, 92, 53 | score 82, 92, 92, 92, 53 |
+
+No failure is new in kind. What the counts move on:
+
+- `/config/build-options`: 6 more rows on the copy buttons' motion (the 2 s "Copied" timer under load, the checker
+  nondeterminism the 0.8.0 section describes; a different button each run).
+- `/`: two forced-width screenshots near the Rive canvases instead of one (quarantined in the ecosystem suite for the
+  same reason), and the first search open (52 ms and 99 ms against 24 and 56 ms), which 0.8.0 also had red: the
+  0.8.0 run could not click the control at all this time, so it was not measured there.
+- `/guide/`: PageSpeed Insights' Speed Index (5.07 s against the old site's 3.43 s), the one PageSpeed row either run
+  produced; the lab Speed Index of the same page is the same on both versions (1.54 s and 1.57 s).

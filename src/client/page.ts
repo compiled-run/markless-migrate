@@ -24,6 +24,8 @@ export interface PageCapture {
 interface Styled {
 	readonly key: string;
 	readonly style: string;
+	/** A Markless component standing in for an embed (`data-markless-embed`). */
+	readonly embed?: boolean;
 }
 
 interface Box {
@@ -55,7 +57,7 @@ function local(url: string, origin: string): string {
 
 /** Runs in the page: inline style attributes, inline <style> text and the boxes of frames and sized elements, open shadow roots included. */
 function readPage() {
-	const styled: { key: string; style: string }[] = [];
+	const styled: { key: string; style: string; embed?: boolean }[] = [];
 	const boxes: { key: string; width: number; height: number; what: string }[] = [];
 	const blocks: string[] = [];
 	const counts = new Map<string, number>();
@@ -79,7 +81,7 @@ function readPage() {
 			const css = (el as HTMLElement).style?.cssText ?? '';
 			const replaced = /^(iframe|canvas|video|embed|object)$/.test(el.localName);
 			// A part kept in the page closed (a dialog the old library mounts only when it opens) shows nothing; its style is compared once it is shown.
-			if (css && css !== 'display: contents;' && !el.closest('[hidden]')) styled.push({ key: `${host}${name(el)}`, style: css });
+			if (css && css !== 'display: contents;' && !el.closest('[hidden]')) styled.push({ key: `${host}${name(el)}`, style: css, ...(el.hasAttribute('data-markless-embed') ? { embed: true } : {}) });
 			if (replaced || (css && sizedStyle.test(css))) {
 				const r = el.getBoundingClientRect();
 				const src = (el as HTMLIFrameElement).src;
@@ -196,8 +198,15 @@ export function comparePages(old: PageCapture, again: PageCapture | undefined, n
 			onlyNew.push(s);
 		}
 	}
-	const tag = (s: Styled) => s.key.replace(/[#.].*$/, '').replace(/^.* >> /, '');
+	// The element's own tag: the key's last part (after its shadow host and the ancestor that names it), before its id and classes.
+	const tag = (s: Styled) => s.key.split(' >> ').at(-1)!.split(' ').at(-1)!.replace(/[#.].*$/, '');
 	for (const s of onlyOld) {
+		// A frame's inline style carried by the Markless component that stands in for it (data-markless-embed) is the same style in the same place.
+		const standIn = /^(iframe|embed|object|video)$/.test(tag(s)) ? onlyNew.findIndex((n) => n.embed && n.style === s.style) : -1;
+		if (standIn >= 0) {
+			onlyNew.splice(standIn, 1);
+			continue;
+		}
 		const twin = onlyNew.findIndex((n) => n.key === s.key) >= 0 ? onlyNew.findIndex((n) => n.key === s.key) : onlyNew.findIndex((n) => tag(n) === tag(s));
 		const pair = twin >= 0 ? onlyNew.splice(twin, 1)[0] : undefined;
 		if (pair && pair.style === s.style) findings.push({ route, kind: 'inline style differs', subject: s.key, expected: `style="${s.style}" on ${s.key}`, actual: `the same style on ${pair.key}: the element sits elsewhere (another parent or shadow root)`, red: true });

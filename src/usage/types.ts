@@ -1,3 +1,5 @@
+import type { EmbedUse } from '../embed/types.ts';
+
 /** Where a use was found: a source file and line, or a route's served page and the element. */
 export type UseSite =
 	| { readonly file: string; readonly line: number; readonly column?: number }
@@ -70,7 +72,7 @@ export interface Obligation {
 	readonly routes: readonly string[];
 }
 
-export type Mechanism = 'journey' | 'keyboard' | 'motion' | 'css-states' | 'client-guard' | 'storage' | 'sequence' | 'pinned-frames' | 'navigation-equivalence' | 'scheme-sequence' | 'load-state';
+export type Mechanism = 'journey' | 'keyboard' | 'motion' | 'css-states' | 'client-guard' | 'storage' | 'sequence' | 'pinned-frames' | 'navigation-equivalence' | 'scheme-sequence' | 'load-state' | 'embed';
 
 export type ObligationStep =
 	| { readonly do: 'load'; readonly emulate?: { readonly colorScheme?: 'light' | 'dark'; readonly storage?: Readonly<Record<string, string>> } }
@@ -100,6 +102,8 @@ export interface UsageInventory {
 	readonly obligations: readonly Obligation[];
 	/** Old-site scripts and what each turned out to be: a framework runtime (converted, never shipped) or plain script (its effects inventoried). */
 	readonly scripts: readonly ScriptFacts[];
+	/** Every third-party embed the pages carry, per provider, with what the migration does with it. */
+	readonly embeds?: readonly EmbedUse[];
 	readonly limits: readonly string[];
 }
 
