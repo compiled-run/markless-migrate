@@ -265,3 +265,20 @@ both, 16 failures on 0.5.0 and 17 on 0.9.0, not counting 5 controls not exercise
 of the same kind on both: the first desktop click on the grid costs about 205 ms cold (17 to 24 ms the second time)
 against the old page's 33 ms; on 0.5.0 it landed on four row cells, on 0.9.0 on the same four and the "No." and "Time"
 column headers, while one 4x CPU row cell that was red on 0.5.0 is green.
+
+## First row click paints like the original (2026-10-23)
+
+At 4x CPU the first click on a row painted 58-65 ms after the press against the original's 25-27 ms. The port did no
+more work than the original (115 ms of task time against 170 ms), but it painted the row highlight and the opened
+details panel together, where Devtron's React panel paints the highlight in the click's frame and renders the panel in
+a later one. `onRowClicked` now waits for the next frame before it writes the panel state, so the same two steps paint
+in the same order:
+
+| At 4x CPU, Chromium 1440x900 | old | new before | new after |
+| --- | --- | --- | --- |
+| first paint after the press | 25-27 ms | 58-65 ms | 27-29 ms |
+| details panel open | 72 ms | 49 ms (with the highlight) | 59 ms |
+
+Frame by frame both sides now show the same states: nothing, then the highlighted row with the panel still closed (or,
+when another row was selected, still showing that row), then the panel with the new row. Measured on a local build
+against Markless main 3c8bb00c9.
