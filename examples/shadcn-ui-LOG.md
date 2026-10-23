@@ -215,6 +215,27 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   is copied as it is. It used to be collapsed as in normal flow, so a chat bubble's numbered reply
   (`whitespace-pre-wrap`) ran onto one line: 114 px tall on the port against 159 px on the old page, and the
   transcript around it opened 45 px short.
+- react-day-picker (9.8) calendars on Markless state (`DayPickerPlan`, `src/convert/day-picker.ts`; engine and part
+  `parts/day-picker.ts`). `convert` reads each DayPicker from its React context on the old page (props, merged
+  classNames, the date-fns locale's names and full date pattern, numerals, a Jalali DateLib) at the capture clock and
+  at a second clock a year, four months and five days later, so a date that follows today (`useState(new Date())`,
+  `disabled={(date) => date > new Date()}`, booked dates in the current year) is written relative to today; a function
+  matcher is evaluated over 210 years into day spans. The port's first render on the capture clock is checked against
+  the old page's markup before a calendar is ported (all 22 on `/docs/components/{radix,base}/calendar` pass). The page
+  declares a `state()` view and a `computed()` model from the imported configuration (`lib/parts/day-picker-configs.ts`);
+  the template is the old markup per part, with no branch and no handler in a row (months written once each, weeks and
+  days keyed by place, a day's button always in its cell and hidden where DayPicker renders none), and the root's
+  click, focusin, focusout, keydown and change run DayPicker's handlers: single, multiple and range selection, nav
+  bounds and the month and year dropdowns, the keyboard grid (arrows, Page Up/Down, Shift, Home/End, RTL) skipping
+  disabled days, and the focus target and last-focused rules. Also measured on the old page and followed: whether a
+  day button focuses itself (shadcn's Radix CalendarDayButton does; the Base UI one never gets its ref), whether the
+  demo's wrapper mounts the calendar again when the selection or month changes (shadcn passes new `components` on each
+  render: the focus leaves the calendar and the next Tab starts at it), and buttons beside a calendar that set it (the
+  Presets row: today plus N days, and that day's month). A dropdown's `selected` attribute stays where the server
+  wrote it, as React's does. Compared step by step with the old page (navigation, clicks, eight keys, Enter, a second
+  day, Tab away, both dropdowns): all 22 calendars match at every step, and so do their accessibility trees, after
+  the first render, where the old page still shows the day it was built as today until something renders again.
+  Markless rebuilding a cell moves the focus onto its new node; React removes it, so that focus is not DayPicker's.
 
 ## Markless framework bugs found
 
