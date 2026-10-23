@@ -37,6 +37,12 @@ export function focusin(target: Element): boolean {
 	const trigger = triggerOf(target);
 	return trigger && !trigger.hasAttribute('data-state') && trigger.matches(':focus-visible') ? show(trigger) : false;
 }
+// Base UI's closeOnClick: pressing the trigger hides its tooltip.
+export function pointerdown(target: Element): boolean {
+	const trigger = triggerOf(target);
+	if (trigger && shown.has(trigger)) hide(trigger);
+	return false;
+}
 export function focusout(target: Element): boolean {
 	const trigger = triggerOf(target);
 	if (!trigger || !shown.has(trigger)) return false;
