@@ -33,6 +33,75 @@ export interface LoadOptions {
 	readonly block?: BlockList;
 	/** Real PageSpeed Insights on the deployed URLs; false leaves it out. The key defaults to the PSI_API_KEY environment variable; without one it runs on the shared keyless quota, best effort. */
 	readonly psi?: PsiOptions | false;
+	/** A bypass token for the apps alone (--header, --cookie): sent with requests to these origins only, never to another host the pages load. */
+	readonly bypass?: AppBypass;
+}
+
+export interface AppBypass {
+	readonly origins: readonly string[];
+	readonly headers?: Readonly<Record<string, string>>;
+	readonly cookies?: readonly { readonly name: string; readonly value: string }[];
+}
+
+type Cdp = { send(method: string, params?: object, sessionId?: string): Promise<any>; on(listener: (message: { method: string; params: any; sessionId?: string }) => void): void; close(): void };
+
+async function browserCdp(port: number): Promise<Cdp> {
+	const { webSocketDebuggerUrl } = (await (await fetch(`http://127.0.0.1:${port}/json/version`)).json()) as { webSocketDebuggerUrl: string };
+	const socket = new WebSocket(webSocketDebuggerUrl);
+	await new Promise((resolve, reject) => {
+		socket.addEventListener('open', resolve, { once: true });
+		socket.addEventListener('error', reject, { once: true });
+	});
+	let next = 0;
+	const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+	const listeners: ((message: any) => void)[] = [];
+	socket.addEventListener('message', (event) => {
+		const message = JSON.parse(String(event.data));
+		if (message.id !== undefined) {
+			const waiter = pending.get(message.id);
+			pending.delete(message.id);
+			if (message.error) waiter?.reject(new Error(message.error.message));
+			else waiter?.resolve(message.result);
+		} else for (const listener of listeners) listener(message);
+	});
+	return {
+		send: (method, params = {}, sessionId) =>
+			new Promise((resolve, reject) => {
+				const id = ++next;
+				pending.set(id, { resolve, reject });
+				socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
+			}),
+		on: (listener) => void listeners.push(listener),
+		close: () => socket.close(),
+	};
+}
+
+/**
+ * Hands the apps' bypass token to the load browser for their origins alone. Cookies are set for each origin (Lighthouse
+ * keeps cookies between runs); headers are added by pausing only the requests to those origins in every page, which
+ * is held until its interception is on, since Lighthouse's own extraHeaders would send them to every host.
+ */
+export async function bypassForOrigins(port: number, bypass: AppBypass): Promise<() => void> {
+	const cdp = await browserCdp(port);
+	if (bypass.cookies?.length) await cdp.send('Storage.setCookies', { cookies: bypass.origins.flatMap((url) => bypass.cookies!.map((c) => ({ name: c.name, value: c.value, url }))) });
+	const extra = Object.entries(bypass.headers ?? {});
+	if (extra.length) {
+		const patterns = bypass.origins.map((origin) => ({ urlPattern: `${new URL(origin).origin}/*`, requestStage: 'Request' }));
+		cdp.on(({ method, params, sessionId }) => {
+			if (method === 'Target.attachedToTarget') {
+				const child = params.sessionId as string;
+				void (async () => {
+					if (params.targetInfo.type === 'page' || params.targetInfo.type === 'iframe') await cdp.send('Fetch.enable', { patterns }, child).catch(() => {});
+					await cdp.send('Runtime.runIfWaitingForDebugger', {}, child).catch(() => {});
+				})();
+			} else if (method === 'Fetch.requestPaused') {
+				const own = Object.entries(params.request.headers as Record<string, string>).filter(([name]) => !extra.some(([e]) => e.toLowerCase() === name.toLowerCase()));
+				void cdp.send('Fetch.continueRequest', { requestId: params.requestId, headers: [...own, ...extra].map(([name, value]) => ({ name, value })) }, sessionId).catch(() => {});
+			}
+		});
+		await cdp.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });
+	}
+	return () => cdp.close();
 }
 
 export const DEFAULT_LOAD_RUNS = 5;
@@ -247,7 +316,7 @@ export function loadBrowserPath(): string {
 }
 
 /** A browser for Lighthouse alone: it drives the browser over its debugging port, which the check's Playwright browser does not open. */
-async function startChromium(): Promise<{ port: number; close: () => Promise<void> }> {
+export async function startChromium(): Promise<{ port: number; close: () => Promise<void> }> {
 	const dir = await mkdtemp(join(tmpdir(), 'markless-migrate-load-'));
 	const proc = spawn(loadBrowserPath(), ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${dir}`, '--no-first-run', '--no-default-browser-check', 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
 	const exited = new Promise<void>((done) => proc.once('exit', () => done()));
@@ -335,6 +404,7 @@ export async function measureLoad(origins: { readonly old: string; readonly new:
 	const out = new Map<string, RouteLoad>();
 	if (!routes.length) return out;
 	const browser = await startChromium();
+	const unbypass = options.bypass ? await bypassForOrigins(browser.port, options.bypass) : undefined;
 	try {
 		const once = async (which: 'old' | 'new', route: string): Promise<LoadRun> => {
 			const origin = origins[which];
@@ -353,6 +423,7 @@ export async function measureLoad(origins: { readonly old: string; readonly new:
 			out.set(route, routeLoad(taken.old.length, taken.old, taken.new));
 		}
 	} finally {
+		unbypass?.();
 		await browser.close();
 	}
 	return out;
