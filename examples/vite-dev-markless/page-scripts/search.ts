@@ -78,6 +78,10 @@ async function excerptMap(page: string): Promise<Map<string, string>> {
 	return map;
 }
 
+export function preloadIndex(): void {
+	void loadIndex();
+}
+
 export function openSearch(): void {
 	if (open) return;
 	open = true;
