@@ -771,6 +771,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	if (carouselFacts.size) log(`carousels measured: ${[...carouselFacts.values()].reduce((n, f) => n + f.length, 0)}`);
 	useMeasuredProps(ownDelays);
+	const measuredOf = (el: Element) => ownDelays.get(el);
 	const multipleAccordions = new Set<Element>();
 	for (const [route, p] of prepared) {
 		const several = (accordionModes.get(route) ?? []).filter((a) => a.multiple);
@@ -846,7 +847,21 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};
 	void appendOf;
-	const factored: Factored = factor(new Map([...prepared].map(([route, p]) => [route, p.root])), { bind: (el) => withAppend(el, bindParts(el, usedPorts)), extra: (el) => appended.get(el) ?? notifyPlan.nameOf(el) });
+	// What a page gives an element beyond its markup (what a control shows on use, a trigger's layer key, measured
+	// props) is part of its identity: two pages' alike code blocks whose View Code shows different sources are not one.
+	const insertedInto = new Map<Element, string>();
+	const replaceKeys = new Map<Element, string>();
+	for (const [container, r] of replaced) {
+		replaceKeys.set(r.trigger, r.key);
+		for (const child of childrenOf(container)) if (isElement(child)) replaceKeys.set(child, r.key);
+	}
+	for (const i of inserted) insertedInto.set(i.parent, `${insertedInto.get(i.parent) ?? ''}${i.markup}`);
+	const ownContent = (el: Element): string | undefined => {
+		const panel = basePanels.get(el);
+		const own = [appended.get(el), replaced.get(el)?.markup, replaceKeys.get(el), panelContent.get(el), panel && JSON.stringify(panel), insertedInto.get(el), triggerKeys.get(el), measuredOf(el) && JSON.stringify(measuredOf(el)), notifyPlan.nameOf(el)].filter((x): x is string => Boolean(x));
+		return own.length ? own.join('\u0001') : undefined;
+	};
+	const factored: Factored = factor(new Map([...prepared].map(([route, p]) => [route, p.root])), { bind: (el) => withAppend(el, bindParts(el, usedPorts)), extra: ownContent });
 	const pathnames = [...new Set(htmlRoutes.map((r) => pathOf(r)))];
 	const folders = folderSet(pathnames);
 	const written = new Map<string, string>();
