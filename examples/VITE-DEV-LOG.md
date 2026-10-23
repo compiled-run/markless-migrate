@@ -488,3 +488,20 @@ the 767 px screenshot (only the Rive canvas differs, 3,060 pixels here), Iconify
 same icon loader), the Close banner motion (same transitions on both sides; the old banner is gone in the same frame),
 the logo strip's mobile styles (taken while one side was still switching to the marquee; the port switches at 61 ms,
 the old site at 81 to 88 ms), and the first Close banner click (24 ms on the port, 48 ms on the old site at 4x CPU).
+
+### What is generic and what is this site's own
+
+- `<div id="app">`: generated pages already get it from `scripts/import/layouts.ts`, the importer's VitePress layout
+  shell. Only the homepage lacked it, because it is not generated: `index.md` is `<Home />` from
+  `.vitepress/theme/landing/Layout.vue`, vite.dev's own Vue landing page (Rive canvases, the sponsor fetch, the logo
+  marquee), which the importer, rendering Markdown pages and the components they use, does not port. So the fix is in
+  the hand port, and the importer's layout is unchanged.
+- The logo strip's mobile marquee needed no change: both pages switch to it at load (the port first).
+- Search on intent, the drawer logo link and `/live`'s fullscreen header are VitePress default-theme behaviours
+  (VPLocalSearchBox, oss/Header.vue, live/VideoIframe.vue) that this app re-implements in `page-scripts/`. Any VitePress
+  site with the same theme needs them; they live here because markless-migrate has no VitePress client parts yet (its
+  VitePress knowledge is detection in `src/usage/themes.ts` and the checker). Moving `page-scripts/site.ts`,
+  `docs-header.ts` and `search.ts` into a shared VitePress part is the step that makes them generic.
+
+Deployed to production as `vite-dev-markless-ap0dlcyfe` (https://vite-dev-markless.vercel.app), built from this
+commit's tree with `.markless-local/` linked; the one stray preview deployment was removed.
