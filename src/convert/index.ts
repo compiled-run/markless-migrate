@@ -19,7 +19,7 @@ import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
 import { nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
 import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, layerTable, splitBody } from './document.ts';
-import { appUrlDeclaration, emitChildren, emitElement, lit, mergeBindings, useOrigin, type Binding } from './tsrx.ts';
+import { appUrlDeclaration, emitChildren, emitElement, emitHtml, lit, mergeBindings, useOrigin, type Binding } from './tsrx.ts';
 
 // Markless wires no handler written in document.tsrx, so each page's root carries the delegating handlers.
 const ROOT_HANDLERS = '__MM_ROOT_HANDLERS__';
@@ -148,7 +148,7 @@ interface Prepared {
 	/** Templates of what controls reveal, by the element they go in. */
 	readonly appends: Map<Element, string>;
 	/** What controls portal to the end of the body, rendered hidden by the Document. */
-	readonly layers: readonly { readonly key: string; readonly markup: string }[];
+	readonly layers: readonly { readonly key: string; readonly markup: string; readonly html: string }[];
 	/** What copy controls write, by signature and occurrence. */
 	readonly clipboard: Readonly<Record<string, string>>;
 }
@@ -224,7 +224,7 @@ function textOf(node: Element): string {
 
 // What the old page portaled to the end of the body on use (a dialog, a menu, a select), for the page being prepared:
 // rendered by Markless, hidden and in its closed state, marked with the control's key.
-let currentLayers: { key: string; markup: string }[] = [];
+let currentLayers: { key: string; markup: string; html: string }[] = [];
 // What the old page's copy controls wrote, by the control's signature and occurrence.
 let currentClipboard: Record<string, string> = {};
 // Containers a control replaces its content in (View Code): the content it then shows, rendered hidden beside.
@@ -309,11 +309,13 @@ function layerIds(key: string, kept: readonly Element[]): Map<string, string> {
 	return new Map(own.map((id, k) => [id, `mm-${h}-${k}`]));
 }
 
-function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (what: string) => void, rename: ReadonlyMap<string, string> = new Map(), kept: Element[] = layerElements(added)): string {
+/** A layer's markup as tsrx, and the same markup as HTML for a layer served as a file and mounted on use. */
+function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (what: string) => void, rename: ReadonlyMap<string, string> = new Map(), kept: Element[] = layerElements(added)): { markup: string; html: string } {
 	const placed = placement(kept);
 	for (const top of kept) renameIds([top, ...walkAll(top)], rename);
 	const key = rename.get(reveal.key) ?? reveal.key;
-	return kept
+	let html = '';
+	const markup = kept
 		.map((top) => {
 			for (const el of [top, ...walkAll(top)]) {
 				for (const a of el.attrs) if (a.name === 'data-state' && a.value === 'open') a.value = 'closed';
@@ -322,9 +324,11 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 			selectIndicators(top);
 			top.attrs = [...top.attrs.filter((a) => a.name !== 'hidden'), { name: 'hidden', value: '' }, { name: 'data-mm-layer', value: key }, ...(reveal.viewport !== 'desktop' ? [{ name: 'data-mm-viewport', value: reveal.viewport }] : [])];
 			const extra = placed ? placed.trim().split(/\s+(?=data-)/) : [];
+			html += emitHtml(top, { extra });
 			return emitElement(top, { dropped, bind: (x) => (x === top ? mergeBindings(bindParts(x, templatePorts), extra.length ? { extra } : undefined) : bindParts(x, templatePorts)) });
 		})
 		.join('');
+	return { markup, html };
 }
 
 /** A resolver that asks `first`, and `then` for what `first` does not know. */
@@ -436,9 +440,9 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 	}
 	renameIds([...walk(root)], rename);
 	for (const l of pendingLayers) {
-		const markup = layerMarkup(l.reveal, l.added, dropped, rename, l.kept);
+		const { markup, html } = layerMarkup(l.reveal, l.added, dropped, rename, l.kept);
 		const key = rename.get(l.reveal.key) ?? l.reveal.key;
-		if (markup) currentLayers.push({ key, markup });
+		if (markup) currentLayers.push({ key, markup, html });
 		// A trigger that names its layer neither by id nor by aria-controls (a Radix tooltip's) is marked with the key.
 		if (markup && l.trigger && !attr(l.trigger, 'id') && !attr(l.trigger, 'aria-controls') && !triggerKeys.has(l.trigger)) triggerKeys.set(l.trigger, key);
 	}
@@ -816,9 +820,14 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	await mkdir(join(app, 'components', 'converted'), { recursive: true });
 	await mkdir(join(app, 'components', 'converted', 'layers'), { recursive: true });
 	for (const layer of layers.files) await writeFile(join(app, 'components', 'converted', layer.file), appUrlDeclaration(layer.source));
+	await rm(join(app, 'public', '_converted', 'layers'), { recursive: true, force: true });
+	for (const layer of layers.served) {
+		await mkdir(dirname(join(app, 'public', layer.path)), { recursive: true });
+		await writeFile(join(app, 'public', layer.path), layer.html);
+	}
 	await writeFile(join(app, 'components', 'converted', 'body-extras.tsrx'), appUrlDeclaration(extrasModule({ ...bodyParts, extras: new Map([...bodyParts.extras].filter(([route]) => !ownExtras.has(route))) }, noteDropped, layers)));
 	if (bodyAfter) await writeFile(join(app, 'components', 'converted', 'body-after.tsrx'), appUrlDeclaration(bodyAfter));
-	log(`layers: ${layers.files.length} distinct, each compiled once; ${layers.everywhere.length} on every page`);
+	log(`layers: ${layers.files.length} distinct, each compiled once; ${layers.everywhere.length} on every page; ${layers.served.length} served as files and mounted on use`);
 	await mkdir(join(app, 'lib', 'parts'), { recursive: true });
 	await rm(join(app, 'lib', 'parts', 'clipboard'), { recursive: true, force: true });
 	await rm(join(app, 'lib', 'parts', 'clipboard.ts'), { force: true });

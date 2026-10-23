@@ -155,3 +155,41 @@ export function mergeBindings(a: Binding | undefined, b: Binding | undefined): B
 export function emitElement(el: Element, options: EmitOptions = {}): string {
 	return node(el, false, options);
 }
+
+/** Stands for the new app's own origin in markup served as a file, where no APP_URL expression can run. */
+export const APP_URL_TOKEN = '@@MM_APP_URL@@';
+
+const escapeHtml = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const escapeAttribute = (t: string) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+const named = (t: string) => (origin ? t.split(origin).join(APP_URL_TOKEN) : t);
+
+/**
+ * `el` as HTML, written as emitElement writes it as tsrx: the same attributes (with `extra`, given as `name="value"`, on
+ * the element itself), the same collapsed text, no `<style>`, and the old origin as APP_URL_TOKEN.
+ */
+export function emitHtml(el: Element, options: { readonly extra?: readonly string[]; readonly dropped?: (what: string) => void } = {}): string {
+	const visit = (n: Node, pre: boolean, extra: readonly string[]): string => {
+		if (n.nodeName === '#text') {
+			const t = (n as Text).value;
+			return escapeHtml(named(pre ? t : collapse(t)));
+		}
+		if (!isElement(n)) return '';
+		const name = n.tagName;
+		if (name === 'style') return '';
+		let attrs = '';
+		for (const a of n.attrs) {
+			const attribute = a.prefix === 'xlink' && a.name === 'href' ? 'href' : a.prefix ? `${a.prefix}:${a.name}` : a.name;
+			if (!ATTRIBUTE_NAME.test(a.prefix ? a.name : attribute)) {
+				options.dropped?.(`${attribute} on <${name}>`);
+				continue;
+			}
+			attrs += a.value === '' && BOOLEAN.has(attribute) ? ` ${attribute}` : ` ${attribute}="${escapeAttribute(named(a.value))}"`;
+		}
+		for (const added of extra) attrs += ` ${added}`;
+		if (name === 'script') return `<script${attrs}>${rawText(n)}</script>`;
+		if (VOID.has(name)) return `<${name}${attrs}>`;
+		const inPre = pre || name === 'pre' || name === 'textarea';
+		return `<${name}${attrs}>${childrenOf(n).map((c) => visit(c, inPre, [])).join('')}</${name}>`;
+	};
+	return visit(el, false, options.extra ?? []);
+}
