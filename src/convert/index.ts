@@ -500,8 +500,10 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 			continue;
 		}
 		if (panel) {
+			// Only what went into this panel: a tab that also switches its page's other lists (shadcn's package manager
+			// choice) fills their panels in the same use.
 			const markup = reveal.added
-				.filter((a) => typeof a.into !== 'string')
+				.filter((a) => typeof a.into !== 'string' && elementAt(root, a.into) === panel)
 				.map((a) => childrenOf(parseFragment(a.html) as unknown as Element).filter(isElement).map((e) => emitElement(e, { dropped, bind: (x) => bindParts(x, templatePorts) })).join(''))
 				.join('');
 			if (markup) panelContent.set(panel, markup);
