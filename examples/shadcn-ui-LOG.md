@@ -151,6 +151,29 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   Reader's Position and Reading Scroll State were broken. After: they work in the local witness. The demos whose
   Send, Load History, Add Rocky or Reset add or remove messages through the demo's own React state are still
   broken.
+- Recorded demo state ("scenes", `src/convert/scenes.ts`, `src/convert/scene-plan.ts`, `parts/scene.ts`). Many of the
+  chat demos drive themselves from their own React state: Send, Replay, Show more, Load History, Add Rocky, Reset.
+  The site lists those controls (`lib/site/controls.json`, action `play`). `convert` then uses each one on the old
+  page from every state it leads to (breadth first, up to 8 states), and records every frame the demo shows with
+  its time from the click. A long use is timed again without snapshots, because snapshots slow the page down. On
+  the port, one state per demo holds the frame shown:
+  - A node that comes and goes is an `@if` arm per largest shape it takes. A reply that streams in is one arm,
+    and the part hides the parts of it not shown yet and cuts its text to the frame's prefix.
+  - Attributes and text that change on a node are written by the part on elements keyed `data-mm-k`, before paint.
+  - A use that ends in a known state ends on that state's own nodes (React's new nodes are renamed to them).
+  - Ids a framework generates per mount, and the scroll attributes the MessageScroller part computes, are not
+    told apart in states.
+  - Frames under 100 ms that the frames around them skip over (a token the highlighter split differently halfway
+    through a stream) are left out.
+  - What the old page changed as the click was handled changes in the same task on the port: the first change
+    lands 0 to 1 ms after the click on both sides.
+  - A demo whose uses would replace an element another plan already puts on Markless state (a disclosure, a tab,
+    a toggle) is not played. Convert logs it. The trace demo's Replay is one such demo: it rebuilds collapsibles
+    that the disclosure plan owns.
+  - Forms in played demos, like every handled form, carry `data-mm-form`. A delegated `submit` part prevents
+    their native submission (framework bug 14, below).
+  Cost: the code-block Streaming demo's region is 105 KB of tsrx against 65 KB without its recorded Replay (6
+  arms, 21 KB of frame data); Markdown is 29 KB against 22 KB; Show more adds 3 KB.
 - Site parts: the docs outline (`useActiveItem`) starts with no link active. The capture's own scroll to the bottom
   left the last heading's link marked in the markup, so it changed colour during unrelated steps (`extra motion of
   link "RTL"`, 16 to 18 routes). View Code sets `data-mobile-code-visible` on its code block, as
@@ -260,6 +283,11 @@ parse (quotes and backticks in arm text).
     calls `copyFor(path)` from a module mapping 40 paths to `() => import('./texts/N.ts')`. On the 0.9.0 packs it
     builds one 249 KB chunk holding all 40 texts. The same module behind a plain `index.html` in a vite-plus build
     without Markless gives 40 chunks of about 6 KB.
+14. A form's `onSubmit={(event) => event.preventDefault()}` is not resumed on `/docs/components/*/message-scroller`.
+    The served form has no `m:on`, so its Send button submits the page natively and reloads it, on the live
+    preview too. The same binding on the questionnaire page's forms is served as `m:on="submit:N!p"`, and a minimal
+    app with that form nested under handlers resumes it. Not reduced further yet. The converter backs every handled
+    form with a delegated `submit` part (`parts/form.ts`) that prevents it.
 
 ## Build memory on Markless 0.9.0 (2026-10-22)
 
