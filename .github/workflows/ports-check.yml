@@ -22,7 +22,7 @@ jobs:
           - { site: vite-dev, app: examples/vite-dev-markless, old: 'static vite-old.tar.gz 4000', new: vite-new.tar.gz, routes: '/ /guide/ /guide/features /config/build-options /live' }
           - { site: docusaurus, app: examples/docusaurus-markless, old: 'static docusaurus-old.tar.gz 4000', new: docusaurus-new.tar.gz, routes: '/ /docs /docs/installation' }
           - { site: htmx-org, app: examples/htmx-org-markless, old: 'mirror htmx-old.tar.gz https://htmx.org 4000', new: htmx-new.tar.gz, routes: '/ /docs/ /examples/click-to-edit/ /attributes/hx-indicator/' }
-          - { site: alpinejs-dev, app: examples/alpinejs-dev-markless, old: 'mirror alpine-old.tar.gz https://alpinejs.dev 4000', new: alpine-new.tar.gz, routes: '/directives/model /start-here /components /plugins/persist /essentials/templating' }
+          - { site: alpinejs-dev, app: examples/alpinejs-dev-markless, old: 'mirror alpine-old-fresh.tar.gz https://alpinejs.dev 4000', new: alpine-new.tar.gz, routes: '/directives/model /start-here /components /plugins/persist /essentials/templating' }
     env:
       RELEASE: https://github.com/compiled-run/markless-migrate/releases/download/port-builds-2026-10-23
     steps:
