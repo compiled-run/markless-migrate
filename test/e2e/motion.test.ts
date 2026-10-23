@@ -4,6 +4,7 @@ import { chromium, type Browser } from 'playwright';
 import { serve as serveCanvas, type Variant as CanvasVariant } from '../../fixtures/motion-canvas/server.ts';
 import { serve as serveDisclosure, type Variant as DisclosureVariant } from '../../fixtures/motion-disclosure/server.ts';
 import { serve as serveModal, type Variant as ModalVariant } from '../../fixtures/motion-exit/server.ts';
+import { serve as serveTimer } from '../../fixtures/motion-timer/server.ts';
 import { serve, type Variant } from '../../fixtures/motion/server.ts';
 import { pngBytes } from '../../src/check/artifacts.ts';
 import { renderHtml } from '../../src/check/html.ts';
@@ -51,6 +52,21 @@ describe('motion: the transitions and animations each interaction starts, old vs
 		assert.ok(!pngBytes(strip.old[0]!).equals(pngBytes(strip.new[0]!)), 'the old list is still open at the start, the new one has already jumped shut');
 		assert.ok(pngBytes(strip.old[4]!).equals(pngBytes(strip.new[4]!)), 'both end collapsed');
 		assert.match(renderHtml(report), /class="filmstrip"/);
+	});
+
+	test('a fade a 2 s timer starts after the click is recorded on both sides, however long the click held either page', async () => {
+		const timer = async (busy: number) => {
+			const { origin, server } = await serveTimer(busy);
+			servers.push(server);
+			return origin;
+		};
+		const report = await runCheck({ oldOrigin: await timer(0), newOrigin: await timer(1800), routes: ['/'], browser, viewports: DESKTOP, motion: {} });
+		const route = report.routes[0]!;
+		assert.equal(route.dimensions.motion, 'pass', motion(report).map((f) => `${f.check}: ${f.expected} / ${f.actual}`).join('\n'));
+		const interaction = route.motion!.interactions.find((i) => i.name === 'press Enter on button "Copy code"');
+		assert.ok(interaction, route.motion!.interactions.map((i) => i.name).join('\n'));
+		const fades = ['transition of opacity 0→1 over 250 ms ease', 'transition of opacity 1→0 over 250 ms ease'];
+		for (const side of [interaction.old, interaction.new]) assert.deepEqual(side.map((l) => l.replace(/^.*: /, '')), fades, 'each side records the fade in and, after the timer, the fade out');
 	});
 
 	test('the same animation on both sides is green, and reduced motion agrees', async () => {
