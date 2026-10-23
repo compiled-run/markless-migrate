@@ -18,7 +18,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="installing">Installing</h2>
 			{" "}
-			<p>{"The fastest way to install "}<code>response-targets</code>{" is to load it via a CDN. Remember to always include the core htmx library before the extension and "}<a href="https://htmx.org/extensions/response-targets/#usage">enable the extension</a>.</p>
+			<p>{"The fastest way to install "}<code>response-targets</code>{" is to load it via a CDN. Remember to always include the core htmx library before the extension and "}<a href="/extensions/response-targets/#usage">enable the extension</a>.</p>
 			{" "}
 			<pre data-lang="HTML" style="background-color:#1f2329;color:#abb2bf;" class="language-HTML "><code class="language-HTML" data-lang="HTML"><span>&lt;</span><span style="color:#e06c75;">head</span><span>{">\n"}</span><span>{"    <"}</span><span style="color:#e06c75;">{"script "}</span><span style="color:#d19a66;">src</span><span>=</span><span style="color:#98c379;">{"\"https://cdn.jsdelivr.net/npm/htmx.org@2.0.11/dist/htmx.min.js\" "}</span><span style="color:#d19a66;">integrity</span><span>=</span><span style="color:#98c379;">{"\"sha384-2OatzQy1H+Zd/IIrjr1TcuDGqLXeHhbooAyJY1KdQMKnr4LZ22k31GBLdYKHmVjg\" "}</span><span style="color:#d19a66;">crossorigin</span><span>=</span><span style="color:#98c379;">"anonymous"</span><span>&gt;&lt;/</span><span style="color:#e06c75;">script</span><span>{">\n"}</span><span>{"    <"}</span><span style="color:#e06c75;">{"script "}</span><span style="color:#d19a66;">src</span><span>=</span><span style="color:#98c379;">{"\"https://cdn.jsdelivr.net/npm/htmx-ext-response-targets@2.0.4\" "}</span><span style="color:#d19a66;">integrity</span><span>=</span><span style="color:#98c379;">{"\"sha384-T41oglUPvXLGBVyRdZsVRxNWnOOqCynaPubjUVjxhsjFTKrFJGEMm3/0KGmNQ+Pg\" "}</span><span style="color:#d19a66;">crossorigin</span><span>=</span><span style="color:#98c379;">"anonymous"</span><span>&gt;&lt;/</span><span style="color:#e06c75;">script</span><span>{">\n"}</span><span>&lt;/</span><span style="color:#e06c75;">head</span><span>{">\n"}</span><span>&lt;</span><span style="color:#e06c75;">{"body "}</span><span style="color:#d19a66;">hx-ext</span><span>=</span><span style="color:#98c379;">"response-targets"</span><span>{">\n"}</span><span>{"...\n"}</span></code></pre>
 			{" "}
@@ -72,7 +72,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="see-also">See also</h2>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://htmx.org/attributes/hx-target"><code>hx-target</code></a>, specifies the target element to be swapped</li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="/attributes/hx-target"><code>hx-target</code></a>, specifies the target element to be swapped</li>{" "}</ul>
 			{" "}
 		</main>
 		<SiteFooter />

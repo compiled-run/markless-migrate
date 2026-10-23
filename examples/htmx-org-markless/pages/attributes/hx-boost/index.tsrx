@@ -12,7 +12,7 @@ export default function Page() @{
 			{" "}
 			<p>{"For anchor tags, clicking on the anchor will issue a "}<code>GET</code>{" request to the url specified in the "}<code>href</code>{" and will push the url so that a history entry is created. The target is the "}<code>&lt;body&gt;</code>{" tag, and the "}<code>innerHTML</code>{" swap strategy is used by default. All of these can be modified by using the appropriate attributes, except the "}<code>click</code>{" trigger."}</p>
 			{" "}
-			<p>{"For forms the request will be converted into a "}<code>GET</code>{" or "}<code>POST</code>{", based on the method in the "}<code>method</code>{" attribute and will be triggered by a "}<code>submit</code>{". Again, the target will be the "}<code>body</code>{" of the page, and the "}<code>innerHTML</code>{" swap will be used. The url will be pushed and a history entry will be created, as with a normal form submission. (You can set "}<a href="https://htmx.org/attributes/hx-push-url/">hx-push-url</a>{" to "}<code>false</code>{" to prevent this.)"}</p>
+			<p>{"For forms the request will be converted into a "}<code>GET</code>{" or "}<code>POST</code>{", based on the method in the "}<code>method</code>{" attribute and will be triggered by a "}<code>submit</code>{". Again, the target will be the "}<code>body</code>{" of the page, and the "}<code>innerHTML</code>{" swap will be used. The url will be pushed and a history entry will be created, as with a normal form submission. (You can set "}<a href="/attributes/hx-push-url/">hx-push-url</a>{" to "}<code>false</code>{" to prevent this.)"}</p>
 			{" "}
 			<p>Here is an example of some boosted links:</p>
 			{" "}
@@ -28,7 +28,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="notes">Notes</h2>
 			{" "}
-			<ul>{" "}<li><code>hx-boost</code>{" is inherited and can be placed on a parent element"}</li>{" "}<li>Only links that are to the same domain and that are not local anchors will be boosted</li>{" "}<li>All requests are done via AJAX, so keep that in mind when doing things like redirects</li>{" "}<li>{"To find out if the request results from a boosted anchor or form, look for "}<a href="https://htmx.org/reference/#request_headers"><code>HX-Boosted</code></a>{" in the request header"}</li>{" "}<li>{"Selectively disable boost on child elements with "}<code>hx-boost="false"</code></li>{" "}<li>{"Disable the replacement of elements via boost, and their children, with "}<a href="https://htmx.org/attributes/hx-preserve/"><code>hx-preserve="true"</code></a></li>{" "}</ul>
+			<ul>{" "}<li><code>hx-boost</code>{" is inherited and can be placed on a parent element"}</li>{" "}<li>Only links that are to the same domain and that are not local anchors will be boosted</li>{" "}<li>All requests are done via AJAX, so keep that in mind when doing things like redirects</li>{" "}<li>{"To find out if the request results from a boosted anchor or form, look for "}<a href="/reference/#request_headers"><code>HX-Boosted</code></a>{" in the request header"}</li>{" "}<li>{"Selectively disable boost on child elements with "}<code>hx-boost="false"</code></li>{" "}<li>{"Disable the replacement of elements via boost, and their children, with "}<a href="/attributes/hx-preserve/"><code>hx-preserve="true"</code></a></li>{" "}</ul>
 			{" "}
 		</main>
 		<SiteFooter />

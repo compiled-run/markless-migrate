@@ -14,7 +14,7 @@ export default function Page() @{
 			{" "}
 			<h3 id="new-features">New Features</h3>
 			{" "}
-			<ul>{" "}<li>We now keep a count of outstanding requests for an indicator, so more than one overlapping request can share the same indicator without issues</li>{" "}<li>{"We now track the attribute state of an element and re-initialize it if "}<code>htmx.process()</code>{" is called on the element and the attributes have changed"}</li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/idiomorph">Idiomorph</a>{" is now available for all your morph-swapping needs"}</li>{" "}<li>{"The new "}<a href="https://htmx.org/attributes/hx-validate/"><code>hx-validate</code></a>{" attribute will force elements to validate before a request, even if they are not within a form being submitted"}</li>{" "}</ul>
+			<ul>{" "}<li>We now keep a count of outstanding requests for an indicator, so more than one overlapping request can share the same indicator without issues</li>{" "}<li>{"We now track the attribute state of an element and re-initialize it if "}<code>htmx.process()</code>{" is called on the element and the attributes have changed"}</li>{" "}<li><a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/idiomorph">Idiomorph</a>{" is now available for all your morph-swapping needs"}</li>{" "}<li>{"The new "}<a href="/attributes/hx-validate/"><code>hx-validate</code></a>{" attribute will force elements to validate before a request, even if they are not within a form being submitted"}</li>{" "}</ul>
 			{" "}
 			<h3 id="improvements-bug-fixes">Improvements &amp; Bug fixes</h3>
 			{" "}

@@ -8,7 +8,7 @@ export default function Page() @{
 		<main class="c content ">
 			<h1><code>hx-select-oob</code></h1>
 			{" "}
-			<p>{"The "}<code>hx-select-oob</code>{" attribute allows you to select content from a response to be swapped in via an out-of-band swap."}<br />{" The value of this attribute is comma separated list of elements to be swapped out of band. This attribute is almost always paired with "}<a href="https://htmx.org/attributes/hx-select/">hx-select</a>.</p>
+			<p>{"The "}<code>hx-select-oob</code>{" attribute allows you to select content from a response to be swapped in via an out-of-band swap."}<br />{" The value of this attribute is comma separated list of elements to be swapped out of band. This attribute is almost always paired with "}<a href="/attributes/hx-select/">hx-select</a>.</p>
 			{" "}
 			<p>Here is an example that selects a subset of the response content:</p>
 			{" "}
@@ -16,7 +16,7 @@ export default function Page() @{
 			{" "}
 			<p>{"This button will issue a "}<code>GET</code>{" to "}<code>/info</code>{" and then select the element with the id "}<code>info-details</code>{", which will replace the entire button in the DOM, and, in addition, pick out an element with the id "}<code>alert</code>{" in the response and swap it in for div in the DOM with the same ID."}</p>
 			{" "}
-			<p>{"Each value in the comma separated list of values can specify any valid "}<a href="https://htmx.org/attributes/hx-swap/"><code>hx-swap</code></a>{" strategy by separating the selector and the swap strategy with a "}<code>:</code>{", with the strategy otherwise defaulting to "}<code>outerHTML</code>.</p>
+			<p>{"Each value in the comma separated list of values can specify any valid "}<a href="/attributes/hx-swap/"><code>hx-swap</code></a>{" strategy by separating the selector and the swap strategy with a "}<code>:</code>{", with the strategy otherwise defaulting to "}<code>outerHTML</code>.</p>
 			{" "}
 			<p>For example, to prepend the alert content instead of replacing it:</p>
 			{" "}

@@ -8,7 +8,7 @@ export default function Page() @{
 		<main class="c content ">
 			<h1>HX-Push Response Header (Deprecated)</h1>
 			{" "}
-			<p>{"The "}<code>HX-Push</code>{" header has been replaced by "}<a href="https://htmx.org/headers/hx-push-url/"><code>HX-Push-Url</code></a></p>
+			<p>{"The "}<code>HX-Push</code>{" header has been replaced by "}<a href="/headers/hx-push-url/"><code>HX-Push-Url</code></a></p>
 			{" "}
 		</main>
 		<SiteFooter />

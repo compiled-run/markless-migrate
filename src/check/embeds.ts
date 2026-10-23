@@ -102,13 +102,66 @@ function unmark(): void {
 	walk(document);
 }
 
-/** A screenshot with every live embed masked (Playwright's locators reach into open shadow roots); returns the embeds too. */
+const DRAWING = 'data-markless-migrate-drawing';
+
+/**
+ * Init script, run in every document before its own scripts: must stay self-contained. Counts, for each canvas, the
+ * 50 ms slices of time it was drawn in, so a canvas an animation draws (a Rive hero) can be told from one drawn once.
+ */
+export function trackCanvasDraws(): void {
+	const slices = new WeakMap<object, Set<number>>();
+	const drawn: WeakRef<HTMLCanvasElement>[] = [];
+	const note = (canvas: unknown) => {
+		if (!(canvas instanceof HTMLCanvasElement)) return;
+		let set = slices.get(canvas);
+		if (!set) {
+			slices.set(canvas, (set = new Set()));
+			drawn.push(new WeakRef(canvas));
+		}
+		if (set.size < 8) set.add(Math.floor(performance.now() / 50));
+	};
+	const wrap = (proto: object | undefined, names: readonly string[]) => {
+		if (!proto) return;
+		for (const name of names) {
+			const original = (proto as Record<string, unknown>)[name];
+			if (typeof original !== 'function') continue;
+			Object.defineProperty(proto, name, {
+				configurable: true,
+				writable: true,
+				value: function (this: { canvas?: unknown }, ...args: unknown[]) {
+					note(this.canvas);
+					return (original as (...a: unknown[]) => unknown).apply(this, args);
+				},
+			});
+		}
+	};
+	wrap(globalThis.CanvasRenderingContext2D?.prototype, ['drawImage', 'fillRect', 'fill', 'stroke', 'putImageData', 'fillText', 'strokeRect']);
+	wrap(globalThis.WebGLRenderingContext?.prototype, ['drawArrays', 'drawElements']);
+	wrap(globalThis.WebGL2RenderingContext?.prototype, ['drawArrays', 'drawElements', 'drawArraysInstanced', 'drawElementsInstanced']);
+	Object.defineProperty(globalThis, '__markless_migrate_animated_canvases__', {
+		value: () => drawn.flatMap((ref) => {
+			const canvas = ref.deref();
+			return canvas?.isConnected && (slices.get(canvas)?.size ?? 0) >= 4 ? [canvas] : [];
+		}),
+	});
+}
+
+/** Runs in the page: marks the canvases an animation draws, for the screenshot to mask; how many. */
+function markDrawing(mark: string): number {
+	const found = (globalThis as { __markless_migrate_animated_canvases__?: () => HTMLCanvasElement[] }).__markless_migrate_animated_canvases__?.() ?? [];
+	for (const canvas of found) canvas.setAttribute(mark, '');
+	return found.length;
+}
+
+/** A screenshot with every live embed and every canvas an animation draws masked (Playwright's locators reach into open shadow roots); returns the embeds too. Those canvases' frames are the motion check's to compare. */
 export async function maskedShot(page: Page, shoot: (mask: Locator[]) => Promise<Buffer>, marked?: LiveEmbed[]): Promise<{ shot: Buffer; embeds: LiveEmbed[] }> {
 	const embeds = marked ?? (await page.evaluate(liveEmbeds, true).catch(() => [] as LiveEmbed[]));
+	const drawing = await page.evaluate(markDrawing, DRAWING).catch(() => 0);
 	try {
-		return { shot: await shoot(embeds.length ? [page.locator(`[${MARK}]`)] : []), embeds };
+		return { shot: await shoot([...(embeds.length ? [page.locator(`[${MARK}]`)] : []), ...(drawing ? [page.locator(`[${DRAWING}]`)] : [])]), embeds };
 	} finally {
 		if (embeds.length) await page.evaluate(unmark).catch(() => {});
+		if (drawing) await page.evaluate((mark) => document.querySelectorAll(`[${mark}]`).forEach((el) => el.removeAttribute(mark)), DRAWING).catch(() => {});
 	}
 }
 

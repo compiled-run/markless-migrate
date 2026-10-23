@@ -4,7 +4,7 @@
 // One component: rows, header cells and filter options written inline, because handlers in a child
 // component per row or per column did not reach this component's state after resume (see the log).
 import { computed, element, state } from '@markless/core';
-import { afterScroll, announce, isLastHeader, dragMove, headerBox, wasDragged, keepRowFocus, debounceFilter, dragX, firstTime, focusHeader, listUnder, focusPicker, focusWhenShown, onOutsidePointer, onGuardFocus, onHeaderKey, measureScrollbar, popupUnder, rowOf, scrollFromFake, setScrollTop, wasProgrammatic, watchSize } from './api.ts';
+import { afterScroll, announce, gridEvent, isLastHeader, dragMove, headerBox, wasDragged, keepRowFocus, debounceFilter, dragX, firstTime, focusHeader, listUnder, focusPicker, focusWhenShown, onOutsidePointer, onGuardFocus, onHeaderKey, measureScrollbar, popupUnder, rowOf, scrollFromFake, setScrollTop, wasProgrammatic, watchSize } from './api.ts';
 import { headerView } from './header.ts';
 import { ROW_HEIGHT, TEXT_OPTIONS, blankType, countOf, directionOptions, dropIndex, hideColumn, moveColumn, nextSort, optionIndex, optionLabel, parseNumbers, parseText, pickerView, resizeShown, secondShown, shownCols, shownTotal, shownWidths, shownWindow, toggleDirection, withFilterType, withFilterValue, withJoin } from './model.ts';
 import type { ColDef, Row } from './model.ts';
@@ -469,7 +469,7 @@ export function AgGridReact({ rowData, columnDefs, onRowClicked, onSelectionChan
 											const next = (e.ctrlKey || e.metaKey) && selected === id ? 0 : id;
 											onSelectionChanged(next);
 											announce(next === id ? 'Press SPACE to deselect this row' : 'Press SPACE to select this row', (text) => onAnnounce(text));
-											onRowClicked(id);
+											gridEvent(() => onRowClicked(id));
 										}}>
 											<div role="gridcell" col-id="serialNumber" class={row.c0.cls} aria-colindex={row.c0.ariaIndex} style={row.c0.style}>{row.serial}</div>
 											<div role="gridcell" col-id="timestamp" class={row.c1.cls} aria-colindex={row.c1.ariaIndex} style={row.c1.style}>{row.time}</div>

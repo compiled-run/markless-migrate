@@ -12,7 +12,7 @@ export default function Page() @{
 			{" "}
 			<p>The headers are:</p>
 			{" "}
-			<ul>{" "}<li><code>HX-Trigger</code>{" - trigger events as soon as the response is received."}</li>{" "}<li><code>HX-Trigger-After-Settle</code>{" - trigger events after the "}<a href="https://htmx.org/docs/#request-operations">settling step</a>.</li>{" "}<li><code>HX-Trigger-After-Swap</code>{" - trigger events after the "}<a href="https://htmx.org/docs/#request-operations">swap step</a>.</li>{" "}</ul>
+			<ul>{" "}<li><code>HX-Trigger</code>{" - trigger events as soon as the response is received."}</li>{" "}<li><code>HX-Trigger-After-Settle</code>{" - trigger events after the "}<a href="/docs/#request-operations">settling step</a>.</li>{" "}<li><code>HX-Trigger-After-Swap</code>{" - trigger events after the "}<a href="/docs/#request-operations">swap step</a>.</li>{" "}</ul>
 			{" "}
 			<p>To trigger a single event with no additional details you can simply send the event name in a header like so:</p>
 			{" "}
@@ -64,7 +64,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="notes">Notes</h2>
 			{" "}
-			<p>{"Response headers are not processed on 3xx response codes. see "}<a href="https://htmx.org/docs/#response-headers">Response Headers</a></p>
+			<p>{"Response headers are not processed on 3xx response codes. see "}<a href="/docs/#response-headers">Response Headers</a></p>
 			{" "}
 		</main>
 		<SiteFooter />

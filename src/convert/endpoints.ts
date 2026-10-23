@@ -199,7 +199,18 @@ export async function closureOf(root: string, entry: string, generated: Readonly
 }
 
 /** The module with JSX expressions replaced by `undefined` (data icons a handler never reads), and `@/` imports made relative. */
-function serverSource(root: string, file: string, out: string, text: string, dead: ReadonlySet<number> = new Set()): string {
+/**
+ * What Next.js inlines for `process.env.NEXT_PUBLIC_*` in server code: the build's value, as a literal. A value that
+ * names the old site's origin names the new app's own (VITE_APP_URL at build, as the pages' APP_URL does).
+ */
+export function publicEnvExpression(value: string | undefined, origin: string): string {
+	if (value === undefined) return 'undefined';
+	const own = origin.replace(/\/$/, '');
+	if (value === own || value.startsWith(`${own}/`)) return `((import.meta.env.VITE_APP_URL ?? '') + ${JSON.stringify(value.slice(own.length))})`;
+	return JSON.stringify(value);
+}
+
+export function serverSource(root: string, file: string, out: string, text: string, dead: ReadonlySet<number> = new Set(), env?: { readonly values: Readonly<Record<string, string>>; readonly origin: string }): string {
 	const mod = parseModule(file, text);
 	// JSX handed to next/og's ImageResponse is its input: satori reads elements as plain { type, props } objects.
 	const elements = [...mod.imports.values()].some((i) => i.source === 'next/og');
@@ -241,6 +252,10 @@ function serverSource(root: string, file: string, out: string, text: string, dea
 		}
 		if (n.type === 'ImportExpression' && dead.has(n.start)) {
 			edits.push({ start: n.start, end: n.end, text: `Promise.reject(new Error(${JSON.stringify(`not ported: ${String(n.source?.value)} is imported only by code no ported route handler reaches`)}))` });
+			return false;
+		}
+		if (env && n.type === 'MemberExpression' && !n.computed && n.property?.type === 'Identifier' && /^NEXT_PUBLIC_/.test(String(n.property.name)) && n.object?.type === 'MemberExpression' && !n.object.computed && n.object.object?.type === 'Identifier' && n.object.object.name === 'process' && n.object.property?.name === 'env') {
+			edits.push({ start: n.start, end: n.end, text: publicEnvExpression(env.values[String(n.property.name)], env.origin) });
 			return false;
 		}
 		if (n.type === 'JSXElement' || n.type === 'JSXFragment') {
@@ -575,7 +590,9 @@ export async function writeRouting(input: RoutingInput): Promise<{ ports: Endpoi
 		ports.push({ route: endpoint.route, file: endpoint.file, how: 'handler', reason: `${closure.files.size} files of the old app's server code${isStatic ? `; also run at convert time for ${paths.length} path${paths.length === 1 ? '' : 's'}` : ''}` });
 		ported.push(match(pattern, { decode: decodeURIComponent }));
 	}
-	const writeClosure = async (dir: string, files: ReadonlyMap<string, Set<number> | undefined>) => {
+	const publicEnv = { values: await buildEnv(source), origin: input.old };
+	// The build output inlines the old build's public values; the convert-time run reads them from process.env as next build did.
+	const writeClosure = async (dir: string, files: ReadonlyMap<string, Set<number> | undefined>, env?: typeof publicEnv) => {
 		await mkdir(dir, { recursive: true });
 		await writeFile(join(dir, '__next-server.ts'), NEXT_SERVER);
 		await writeFile(join(dir, '__next-navigation.ts'), NEXT_NAVIGATION);
@@ -589,10 +606,10 @@ export async function writeRouting(input: RoutingInput): Promise<{ ports: Endpoi
 				await collection.copyRuntime(dirname(target));
 				continue;
 			}
-			await writeFile(target, file.endsWith('.json') ? await readFile(file, 'utf8') : serverSource(source, file, dir, await readFile(file, 'utf8'), dead));
+			await writeFile(target, file.endsWith('.json') ? await readFile(file, 'utf8') : serverSource(source, file, dir, await readFile(file, 'utf8'), dead, env));
 		}
 	};
-	await writeClosure(out, runtime);
+	await writeClosure(out, runtime, publicEnv);
 	const built: Record<string, { file: string; type: string; headers?: Record<string, string> }> = {};
 	const assets = join(app, 'server', 'built');
 	await rm(assets, { recursive: true, force: true });

@@ -2,7 +2,7 @@ import { tagHeaders, type SideEnv } from './browser.ts';
 import { request } from './http.ts';
 import { matchRoute, specificity } from '../source/pattern.ts';
 
-/** Above this many pages, visual, behaviour, responsiveness and motion run on one representative per template group. */
+/** Above this many pages, visual, responsiveness and motion run on one representative per template group. */
 export const TEMPLATE_THRESHOLD = 20;
 
 export interface TemplateGroup {

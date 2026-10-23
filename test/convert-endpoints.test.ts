@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { codeOnly, fileSignals } from '../src/cache/signals.ts';
-import { closureOf, jsxObject, readsNoRequest, robotsTxt, sitemapXml } from '../src/convert/endpoints.ts';
+import { closureOf, jsxObject, publicEnvExpression, readsNoRequest, robotsTxt, serverSource, sitemapXml } from '../src/convert/endpoints.ts';
 import { parseModule, walk, type N } from '../src/source/js.ts';
 import { emitElement } from '../src/convert/tsrx.ts';
 import { body, parseDocument } from '../src/convert/dom.ts';
@@ -57,4 +57,23 @@ test('text with quotes stays markup; a comment opener in text is a string expres
 	const out = emitElement(body(parseDocument('<body><p>it\'s "x"</p><p>a // b</p></body>')));
 	assert.match(out, /<p>it's "x"<\/p>/);
 	assert.match(out, /\{"a \/\/ b"\}/);
+});
+
+test("a ported handler gets the old build's NEXT_PUBLIC_ values inlined, its own origin as the new app's", () => {
+	const text = 'export const url = `${process.env.NEXT_PUBLIC_APP_URL}/r/x.json`;\nexport const v0 = process.env.NEXT_PUBLIC_V0_URL;\nexport const none = process.env.NEXT_PUBLIC_UNSET;\nexport const secret = process.env.SECRET;\n';
+	const out = serverSource('/old', '/old/lib/utils.ts', '/new/handlers', text, new Set(), { values: { NEXT_PUBLIC_APP_URL: 'http://localhost:4000', NEXT_PUBLIC_V0_URL: 'https://v0.dev' }, origin: 'http://localhost:4000' });
+	assert.match(out, /\$\{\(\(import\.meta\.env\.VITE_APP_URL \?\? ''\) \+ ""\)\}\/r\/x\.json/);
+	assert.match(out, /v0 = "https:\/\/v0\.dev"/);
+	assert.match(out, /none = undefined/);
+	assert.match(out, /secret = process\.env\.SECRET/);
+	assert.equal(publicEnvExpression('http://localhost:4000/docs', 'http://localhost:4000/'), "((import.meta.env.VITE_APP_URL ?? '') + \"/docs\")");
+	assert.equal(serverSource('/old', '/old/lib/utils.ts', '/new/handlers', text), text);
+});
+
+test('TypeScript under ts-morph is copied whole and not parsed by the server tracer', async () => {
+	const { viteConfig } = await import('../src/convert/index.ts');
+	const config = viteConfig(['dedent', 'ts-morph']);
+	assert.match(config, /traceDeps: \["dedent","ts-morph","@ts-morph\/common\*"\]/);
+	assert.match(config, /ignore: \(path: string\) => \["@ts-morph\/common\/dist\/typescript\.js"\]/);
+	assert.doesNotMatch(viteConfig(['dedent']), /traceOpts/);
 });

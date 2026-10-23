@@ -8,7 +8,7 @@ export default function Page() @{
 		<main class="c content ">
 			<h1>HX-Push-Url Response Header</h1>
 			{" "}
-			<p>{"The "}<code>HX-Push-Url</code>{" header allows you to push a URL into the browser "}<a rel="noopener" target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/History_API">location history</a>{". This creates a new history entry, allowing navigation with the browser’s back and forward buttons. This is similar to the "}<a href="https://htmx.org/attributes/hx-push-url/"><code>hx-push-url</code>{" attribute"}</a>.</p>
+			<p>{"The "}<code>HX-Push-Url</code>{" header allows you to push a URL into the browser "}<a rel="noopener" target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/History_API">location history</a>{". This creates a new history entry, allowing navigation with the browser’s back and forward buttons. This is similar to the "}<a href="/attributes/hx-push-url/"><code>hx-push-url</code>{" attribute"}</a>.</p>
 			{" "}
 			<p>If present, this header overrides any behavior defined with attributes.</p>
 			{" "}
@@ -18,7 +18,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="notes">Notes</h2>
 			{" "}
-			<p>{"Response headers are not processed on 3xx response codes. see "}<a href="https://htmx.org/docs/#response-headers">Response Headers</a></p>
+			<p>{"Response headers are not processed on 3xx response codes. see "}<a href="/docs/#response-headers">Response Headers</a></p>
 			{" "}
 		</main>
 		<SiteFooter />

@@ -388,6 +388,21 @@ export function pinnedMoments(span: number, ended: readonly { end: number; note:
 }
 
 // Waits for every finite animation to end (at most `cap`), then for one more beat in case one chains another.
+type TimerWindow = { __markless_migrate_timer_mark__?: () => number; __markless_migrate_timers_after__?: (mark: number) => number; __markless_migrate_hold_timers__?: (on: boolean) => void };
+const holdTimers = (page: Page, on: boolean) => page.evaluate((o) => (globalThis as TimerWindow).__markless_migrate_hold_timers__?.(o), on).catch(() => {});
+const timerMark = (page: Page) => page.evaluate(() => (globalThis as TimerWindow).__markless_migrate_timer_mark__?.() ?? 0).catch(() => 0);
+
+/** Waits until the timeouts of up to 3 s set since `mark` have fired (at most 3 s), so what they do falls on the same side of a recording on both apps. */
+async function timersOut(page: Page, mark: number, cap = 3_000): Promise<void> {
+	const until = Date.now() + cap;
+	for (;;) {
+		const left = await page.evaluate((m) => (globalThis as TimerWindow).__markless_migrate_timers_after__?.(m) ?? 0, mark).catch(() => 0);
+		const room = until - Date.now();
+		if (!(left > 0) || room <= 0) return;
+		await sleep(Math.min(left + 20, room));
+	}
+}
+
 async function still(page: Page, cap = 2_000): Promise<void> {
 	const until = Date.now() + cap;
 	while (Date.now() < until && (await page.evaluate(() => (window as unknown as MotionWindow).__mmMotionRecorder?.busy() ?? document.getAnimations().some((a) => a.playState === 'running' && Number.isFinite(a.effect?.getComputedTiming().endTime ?? Infinity))).catch(() => false))) await sleep(30);
@@ -463,6 +478,7 @@ async function learnLoops(browser: Browser, env: SideEnv, route: string, viewpor
 async function recordJourney(browser: Browser, env: Learned, route: string, viewport: Viewport, journey: MotionJourney, film?: Film | 'self', selectors: readonly string[] = []): Promise<Recorded> {
 	const session = await openSession(browser, env, route, viewport, { loops: { known: env.loops } });
 	try {
+		const ready = await timerMark(session.page);
 		const steps = journey.steps;
 		const acted = journey.act !== undefined;
 		for (const step of journey.dismiss || acted ? steps : steps.slice(0, -1)) {
@@ -473,9 +489,13 @@ async function recordJourney(browser: Browser, env: Learned, route: string, view
 			const r = await session.cycle(steps, act);
 			if (r.failed) return { interaction: journey.name, motions: [], failed: r.failed };
 		}
+		// What the earlier steps set going (a "Copied" label's reset) ends before the recording starts, on both sides.
+		await timersOut(session.page, ready);
 		await settleAndHoldLoops(session.page);
 		// What the step hides when its exit ends (a dialog leaving) can be gone before the page is read after it.
 		const before = await shown(session.page);
+		const mark = await timerMark(session.page);
+		await holdTimers(session.page, true);
 		await session.page.evaluate(armMotion, film !== undefined);
 		const result = journey.dismiss ? await dismiss(session.page) : acted ? await session.cycle(steps, journey.cycle![journey.act!]!) : await session.run(steps.at(-1)!);
 		if (result.failed) return { interaction: journey.name, motions: [], failed: result.failed };
@@ -503,6 +523,9 @@ async function recordJourney(browser: Browser, env: Learned, route: string, view
 			}
 			await release(session.page);
 		}
+		// What this step set going for later lands inside the recording on both sides, however long the step took on either.
+		await holdTimers(session.page, false);
+		await timersOut(session.page, mark);
 		await still(session.page);
 		const recorded = await records(session.page, [...before, ...earlier], selectors);
 		const byId = new Map(recorded.elements.map((el) => [el.id, el]));

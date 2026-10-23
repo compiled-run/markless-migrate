@@ -98,3 +98,38 @@ function stripComments(parent: ParentNode): void {
 	}
 }
 
+
+const HINT = /\b(?:preload|modulepreload|prefetch|preconnect|dns-prefetch)\b/;
+const lateKey = (el: Element): string | undefined => {
+	if (el.tagName === 'style') return `style ${childrenOf(el).map((n) => ('value' in n ? (n as { value: string }).value : '')).join('')}`;
+	if (el.tagName !== 'link') return undefined;
+	return `link ${attr(el, 'rel') ?? ''} ${attr(el, 'href') ?? attr(el, 'imagesrcset') ?? ''}`;
+};
+
+/**
+ * What the old page's scripts added to <head> after its server answered (React's hints from the router's prefetches, a
+ * library's injected <style>): the hints are dropped, as the old page only fetched them after it was running, and the
+ * injected styles are taken out of the head and returned, to load after the page rather than hold back its first paint.
+ * A stylesheet link the old client added stays: it may style what the port renders on the server.
+ */
+export function lateHead(doc: Document, served: Document, dropped: Dropped): Element[] {
+	const sent = new Set<string>();
+	for (const el of walk(served)) {
+		const key = lateKey(el);
+		if (key) sent.add(key);
+	}
+	const late: Element[] = [];
+	for (const el of [...walk(doc)].filter((e) => e.parentNode && isElement(e.parentNode) && e.parentNode.tagName === 'head')) {
+		const key = lateKey(el);
+		if (!key || sent.has(key)) continue;
+		const rel = attr(el, 'rel') ?? '';
+		if (el.tagName === 'link' && HINT.test(rel)) {
+			remove(el);
+			count(dropped, `<link rel=${rel}>: a hint the old page's script added after load`);
+		} else if (el.tagName === 'style') {
+			remove(el);
+			late.push(el);
+		}
+	}
+	return late;
+}

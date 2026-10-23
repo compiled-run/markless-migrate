@@ -28,7 +28,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="notes">Notes</h2>
 			{" "}
-			<ul>{" "}<li><code>hx-replace-url</code>{" is inherited and can be placed on a parent element"}</li>{" "}<li>{"The "}<a href="https://htmx.org/headers/hx-replace-url/"><code>HX-Replace-Url</code>{" response header"}</a>{" has similar behavior and can override this attribute."}</li>{" "}<li>{"The "}<a href="https://htmx.org/attributes/hx-history-elt/"><code>hx-history-elt</code>{" attribute"}</a>{" allows changing which element is saved in the history cache."}</li>{" "}<li>{"The "}<a href="https://htmx.org/attributes/hx-push-url/"><code>hx-push-url</code>{" attribute"}</a>{" is a similar and more commonly used attribute, which creates a new history entry rather than replacing the current one."}</li>{" "}</ul>
+			<ul>{" "}<li><code>hx-replace-url</code>{" is inherited and can be placed on a parent element"}</li>{" "}<li>{"The "}<a href="/headers/hx-replace-url/"><code>HX-Replace-Url</code>{" response header"}</a>{" has similar behavior and can override this attribute."}</li>{" "}<li>{"The "}<a href="/attributes/hx-history-elt/"><code>hx-history-elt</code>{" attribute"}</a>{" allows changing which element is saved in the history cache."}</li>{" "}<li>{"The "}<a href="/attributes/hx-push-url/"><code>hx-push-url</code>{" attribute"}</a>{" is a similar and more commonly used attribute, which creates a new history entry rather than replacing the current one."}</li>{" "}</ul>
 			{" "}
 		</main>
 		<SiteFooter />

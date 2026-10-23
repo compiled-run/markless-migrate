@@ -25,7 +25,7 @@ import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOption
 import { checkMotion, motionRules, type MotionOptions } from './motion.ts';
 import { CheckProgress } from './progress.ts';
 import { applyNavigation, checkNavigation, type NavigationOptions, type NavigationResult } from './nav-parity.ts';
-import { loadFailures, measureLoad, psiFailures, unmeasured, type LoadOptions } from './load.ts';
+import { loadFailures, measureLoad, psiFailures, type LoadOptions } from './load.ts';
 import { measurePsi, psiKey } from './psi.ts';
 import { assetsToProbe, compareRoute, cssTargets, forgetFailures, httpFailures, noiseReport, noisyStyles, withFailures, type Probe } from './compare.ts';
 import { matchElements } from './match.ts';
@@ -109,7 +109,7 @@ export interface CheckOptions {
 	readonly coverage?: readonly string[];
 	/** The run checks fewer routes than the plan lists (`total`, null without a plan): the report says so and is never overall green. */
 	readonly partial?: { readonly total: number | null };
-	/** Above TEMPLATE_THRESHOLD pages, visual, behaviour, responsiveness and motion run on one representative per template group; false runs them on every page. `patterns` are the source's route patterns. */
+	/** Above TEMPLATE_THRESHOLD pages, visual, responsiveness and motion run on one representative per template group; false runs them on every page. `patterns` are the source's route patterns. */
 	readonly templates?: false | { readonly patterns?: readonly string[] };
 	/** Where OLD's captures and journeys are kept between runs (`.migrate/cache`), reused only while every response the old page loaded is unchanged. */
 	readonly cacheDir?: string;
@@ -214,6 +214,15 @@ async function loadBoth(browser: Browser, run: Run, route: string, viewports: re
 	return { olds, next, loads };
 }
 
+/** The old page loaded without a stylesheet of its own in every load (a stale snapshot naming a file its host no longer serves): it shows unstyled, so nothing is compared against it and the route is not checked rather than red. */
+export function brokenOld(route: string, olds: readonly RouteCapture[]): RouteResult | undefined {
+	const missing = (o: RouteCapture) => new Set(Object.values(o.pages).flatMap((p) => p.assets.filter((a) => a.type === 'stylesheet' && (a.status === 0 || a.status >= 400)).map((a) => `${a.url} (${a.status || 'no answer'})`)));
+	const [first, ...rest] = olds.map(missing);
+	const always = [...(first ?? [])].filter((s) => rest.every((r) => r.has(s)));
+	if (!always.length) return undefined;
+	return partialResult(route, [], [], undefined, { side: 'old', cause: 'old page broken', message: `OLD: the old page loads without its stylesheet ${always.join(', ')}, so it shows unstyled; serve the old side as it was (a snapshot whose files are all there) and check again` });
+}
+
 /** OLD's captures of the route, so a record run can save what OLD fetched. */
 const oldCaptures = new WeakMap<RouteResult, RouteCapture>();
 
@@ -221,6 +230,8 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 	const oldOrigin = run.old.origin;
 	const newOrigin = run.new.origin;
 	const { olds, next, loads } = await loadBoth(browser, run, route, viewports);
+	const broken = brokenOld(route, olds);
+	if (broken) return broken;
 	const oldA = olds[0]!;
 	const probes = new Map<string, Probe>();
 	const toProbe = assetsToProbe(oldA, next);
@@ -259,10 +270,12 @@ async function checkRouteEmbeds(browser: Browser, run: Run, route: string, viewp
 	return out.failures.length || out.shots.length ? withFailures(result, [...result.failures, ...out.failures], { shots: [...result.shots, ...out.shots] }) : result;
 }
 
-/** One viewport's http, rendered, seo, assets, css, a11y, i18n, network and weight checks: what a page gets when its template group's representative carries visual, behaviour, responsiveness and motion. */
+/** One viewport's http, rendered, seo, assets, css, a11y, i18n, network, weight and behaviour checks: what a page gets when its template group's representative carries visual, responsiveness and motion. Every page's own controls are used and compared, whatever its template: two pages alike in layout can hold different widgets. */
 export async function checkLight(browser: Browser, run: Run, route: string, viewports: readonly Viewport[] = VIEWPORTS): Promise<RouteResult> {
 	const first = [viewports[0]!];
-	const { olds, next } = await loadBoth(browser, run, route, first);
+	const { olds, next, loads } = await loadBoth(browser, run, route, first);
+	const broken = brokenOld(route, olds);
+	if (broken) return broken;
 	const oldA = olds[0]!;
 	const probes = new Map<string, Probe>();
 	const toProbe = assetsToProbe(oldA, next);
@@ -271,7 +284,9 @@ export async function checkLight(browser: Browser, run: Run, route: string, view
 	const kept = compared.failures.filter((f) => !REPRESENTATIVE_ONLY.includes(f.dimension as Dimension));
 	const checked = withFailures({ ...compared, visualDiffs: [], shots: [] }, kept, { noise: noiseReport(olds, run.frozen, run.source?.nondeterminism) });
 	const skipped = { ...checked, dimensions: { ...checked.dimensions, ...Object.fromEntries(REPRESENTATIVE_ONLY.map((d) => [d, 'skipped'])) } as RouteResult['dimensions'] };
-	const located = await locateFailures(skipped, { route, old: oldA, next, sides: { old: { origin: run.old.origin, dir: run.sourceDirs?.old }, new: { origin: run.new.origin, dir: run.sourceDirs?.new } }, ...(run.source ? { facts: run.source } : {}) });
+	const owner = storageOwner(olds.flatMap((o) => Object.values(o.pages)), Object.values(next.pages));
+	const journeyed = await checkJourneys(browser, run, route, first[0]!, skipped, owner, loads);
+	const located = await locateFailures(journeyed, { route, old: oldA, next, sides: { old: { origin: run.old.origin, dir: run.sourceDirs?.old }, new: { origin: run.new.origin, dir: run.sourceDirs?.new } }, ...(run.source ? { facts: run.source } : {}) });
 	const done = oldA.http.status < 400 && (next.http.status === 404 || next.http.status === 410) ? { ...located, notPorted: true } : located;
 	oldCaptures.set(done, oldA);
 	return done;
@@ -289,7 +304,7 @@ async function checkJourneys(browser: Browser, run: Run, route: string, viewport
 	const front: SideEnv = { ...run.new, frontDoor: door };
 	const [again, next] = await Promise.all([cached ? cached.runs[1]! : replayAll(browser, run.old, route, viewport, plain), replayAll(browser, front, route, viewport, plain)]);
 	const runs = cached?.runs ?? [recorded, again];
-	if (!cached && JSON.stringify(recorded) !== JSON.stringify(again)) runs.push(await replayAll(browser, run.old, route, viewport, plain));
+	if (!cached && JSON.stringify(recorded, unframed) !== JSON.stringify(again, unframed)) runs.push(await replayAll(browser, run.old, route, viewport, plain));
 	const risky = explored.deferred.map((d) => d.journey);
 	const [oldRisky, newRisky] = risky.length ? await Promise.all([cached ? cached.oldRisky : replayDestructive(browser, run.old, route, viewport, risky), replayDestructive(browser, front, route, viewport, risky)]) : [[], []];
 	// Sent, a delete cannot be done twice; held back, it can, and a second run shows what varies.
@@ -308,9 +323,14 @@ async function checkJourneys(browser: Browser, run: Run, route: string, viewport
 	const dark = themed(plain);
 	const darkOld: SideEnv = { ...run.old, colorScheme: 'dark' };
 	const [darkOlds, darkNext] = dark.length ? await Promise.all([Promise.all([replayAll(browser, darkOld, route, viewport, dark), replayAll(browser, darkOld, route, viewport, dark)]), replayAll(browser, { ...front, colorScheme: 'dark' }, route, viewport, dark)]) : [[], []];
-	const darkFailures = dark.length ? compareJourneys(route, darkOlds, inDarkMode(dark), darkNext, owner, doorErrors) : [];
-	return withFailures(result, [...result.failures, ...compareJourneys(route, olds, journeys, [...next, ...newRisky], owner, doorErrors), ...darkFailures, ...unexercised], { journeys, coverage, writes: [...(result.writes ?? []), ...writes] });
+	const improvements: string[] = [];
+	const darkFailures = dark.length ? compareJourneys(route, darkOlds, inDarkMode(dark), darkNext, owner, doorErrors, improvements) : [];
+	const compared = withFailures(result, [...result.failures, ...compareJourneys(route, olds, journeys, [...next, ...newRisky], owner, doorErrors, improvements), ...darkFailures, ...unexercised], { journeys, coverage, writes: [...(result.writes ?? []), ...writes] });
+	return improvements.length ? { ...compared, improvements } : compared;
 }
+
+// Which pixels a step changed varies a little from run to run; a third run is for steps whose other results differ.
+const unframed = (key: string, value: unknown) => (key === 'regions' ? undefined : value);
 
 /** What OLD's journeys recorded: the exploration and every replay of it. */
 interface OldJourneys {
@@ -349,7 +369,7 @@ async function unreachableOnBoth(browser: Browser, env: SideEnv, route: string, 
 	tried.forEach((e, i) => {
 		const steps = results[i]!;
 		const failed = steps.find((r) => r.failed);
-		const candidate = unreachableCandidate(e.unreachable!.kind, e.reason ?? '', failed, !failed && steps.length === e.unreachable!.journey.steps.length);
+		const candidate = unreachableCandidate(e.unreachable!.kind, e.reason ?? '', failed);
 		if (candidate) out.set(e.signature, candidate);
 	});
 	return out;
@@ -481,7 +501,7 @@ export function stopped(route: string, error: unknown, [oldOrigin, newOrigin]: r
 export const EMBED_STEP_BUDGET_MS = 600_000;
 
 export function routeTimeout(options: Pick<CheckOptions, 'timeoutMs' | 'journeys' | 'embeds'>): number {
-	return options.timeoutMs ?? Math.max(600_000, 5 * (options.journeys?.budgetMs ?? DEFAULT_JOURNEY_BUDGET_MS)) + (options.embeds ? EMBED_STEP_BUDGET_MS : 0);
+	return options.timeoutMs ?? Math.max(1_800_000, 5 * (options.journeys?.budgetMs ?? DEFAULT_JOURNEY_BUDGET_MS)) + (options.embeds ? EMBED_STEP_BUDGET_MS : 0);
 }
 
 /** Runs one route's check under a deadline: past it, every page the check opened is closed and the route is reported as an infrastructure failure. */
@@ -695,10 +715,11 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 		if ((options.load && options.only !== 'embeds') || options.only === 'load') {
 			const anonymous = (r: RouteResult) => !r.role || r.role === ANONYMOUS;
 			const loadable = routes.filter((r) => anonymous(r) && !r.endpoint && !r.blocked && !r.infrastructure && !r.notPorted && !light(r.route) && allPages.includes(r.route));
-			// Lighthouse can only send extra headers to every host it loads, so a bypass token is never handed to it.
 			const bypassed = Boolean(options.headers && Object.keys(options.headers).length) || Boolean(options.cookies?.length);
 			const routesToLoad = [...new Set(loadable.map((r) => r.route))];
-			const loads = bypassed ? new Map(routesToLoad.map((route) => [route, unmeasured('not measured: --header and --cookie are for the apps alone, and Lighthouse would send them to every host it loads')])) : await measureLoad({ old: options.oldOrigin, new: options.newOrigin }, routesToLoad, { ...(options.block ? { block: options.block } : {}), ...options.load });
+			// The bypass token goes to the two apps' origins alone; PageSpeed Insights, which cannot carry it, is left out.
+			const bypass = bypassed ? { origins: [options.oldOrigin, options.newOrigin], ...(options.headers ? { headers: options.headers } : {}), ...(options.cookies?.length ? { cookies: options.cookies } : {}) } : undefined;
+			const loads = await measureLoad({ old: options.oldOrigin, new: options.newOrigin }, routesToLoad, { ...(options.block ? { block: options.block } : {}), ...options.load, ...(bypass ? { bypass } : {}) });
 			const psiOptions = options.load?.psi;
 			if (psiOptions !== false && !bypassed) {
 				const key = psiOptions?.key ?? psiKey();

@@ -286,6 +286,35 @@ async function mediaPlaying(page: Page, frames: readonly string[]): Promise<bool
 	return false;
 }
 
+const navigationHolds = new WeakMap<Page, { onNavigation?: (url: string) => void }>();
+
+/**
+ * Aborts the page's own navigations while held, handing each URL to onNavigation. The route stays on the page for its
+ * lifetime: unrouting it while a request is between it and the context's route makes Playwright answer that request
+ * twice ("Route is already handled!"), an unhandled rejection that ends the whole check.
+ */
+export async function holdNavigations(page: Page, onNavigation: (url: string) => void): Promise<() => void> {
+	let hold = navigationHolds.get(page);
+	if (!hold) {
+		const state: { onNavigation?: (url: string) => void } = {};
+		hold = state;
+		navigationHolds.set(page, state);
+		await page.route('**/*', (route) => {
+			const request = route.request();
+			if (state.onNavigation && request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+				state.onNavigation(request.url());
+				return route.abort();
+			}
+			return route.fallback();
+		});
+	}
+	const held = hold;
+	held.onNavigation = onNavigation;
+	return () => {
+		if (held.onNavigation === onNavigation) held.onNavigation = undefined;
+	};
+}
+
 /** Clicks the embed's middle, or reaches its first control by keyboard and presses Enter, and reads what that did. */
 export async function activate(side: Side, index: number, how: 'click' | 'keyboard'): Promise<Activation> {
 	const page = side.page;
@@ -300,14 +329,7 @@ export async function activate(side: Side, index: number, how: 'click' | 'keyboa
 			return popup.close();
 		});
 	});
-	await page.route('**/*', (route) => {
-		const request = route.request();
-		if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
-			navigations.push(where(request.url()));
-			return route.abort();
-		}
-		return route.fallback();
-	});
+	const release = await holdNavigations(page, (url) => navigations.push(where(url)));
 	try {
 		if (how === 'click') {
 			const el = await target(side, index);
@@ -331,7 +353,7 @@ export async function activate(side: Side, index: number, how: 'click' | 'keyboa
 		await page.waitForTimeout(300);
 		return { navigations: [...new Set(navigations)].sort(), frames, playing };
 	} finally {
-		await page.unroute('**/*').catch(() => {});
+		release();
 	}
 }
 

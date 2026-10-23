@@ -12,7 +12,7 @@ export default function Page() @{
 			{" "}
 			<time>September 20, 2023</time>
 			{" "}
-			<p>{"The "}<a href="https://htmx.org/essays/a-real-world-react-to-htmx-port/">Mother of All htmx Demos</a>{" you can see the real world results of a port from a React-based front end to an htmx-powered front end. The results are very good, although we qualify the experience with the following:"}</p>
+			<p>{"The "}<a href="/essays/a-real-world-react-to-htmx-port/">Mother of All htmx Demos</a>{" you can see the real world results of a port from a React-based front end to an htmx-powered front end. The results are very good, although we qualify the experience with the following:"}</p>
 			{" "}
 			<blockquote>{" "}<p>These are eye-popping numbers, and they reflect the fact that the Contexte application is extremely amenable to hypermedia: it is a content-focused application that shows lots of text and images. We would not expect every web application to see these sorts of numbers.</p>{" "}<p>{"However, we "}<em>would</em>{" expect "}<em>many</em>{" applications to see dramatic improvements by adopting the hypermedia/htmx approach, at least for part of their system."}</p>{" "}</blockquote>
 			{" "}

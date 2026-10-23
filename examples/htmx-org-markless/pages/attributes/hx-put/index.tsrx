@@ -16,7 +16,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="notes">Notes</h2>
 			{" "}
-			<ul>{" "}<li><code>hx-put</code>{" is not inherited"}</li>{" "}<li>{"You can control the target of the swap using the "}<a href="https://htmx.org/attributes/hx-target/">hx-target</a>{" attribute"}</li>{" "}<li>{"You can control the swap strategy by using the "}<a href="https://htmx.org/attributes/hx-swap/">hx-swap</a>{" attribute"}</li>{" "}<li>{"You can control what event triggers the request with the "}<a href="https://htmx.org/attributes/hx-trigger/">hx-trigger</a>{" attribute"}</li>{" "}<li>{"You can control the data submitted with the request in various ways, documented here: "}<a href="https://htmx.org/docs/#parameters">Parameters</a></li>{" "}</ul>
+			<ul>{" "}<li><code>hx-put</code>{" is not inherited"}</li>{" "}<li>{"You can control the target of the swap using the "}<a href="/attributes/hx-target/">hx-target</a>{" attribute"}</li>{" "}<li>{"You can control the swap strategy by using the "}<a href="/attributes/hx-swap/">hx-swap</a>{" attribute"}</li>{" "}<li>{"You can control what event triggers the request with the "}<a href="/attributes/hx-trigger/">hx-trigger</a>{" attribute"}</li>{" "}<li>{"You can control the data submitted with the request in various ways, documented here: "}<a href="/docs/#parameters">Parameters</a></li>{" "}</ul>
 			{" "}
 		</main>
 		<SiteFooter />

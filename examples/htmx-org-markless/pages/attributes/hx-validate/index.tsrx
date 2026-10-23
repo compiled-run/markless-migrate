@@ -8,7 +8,7 @@ export default function Page() @{
 		<main class="c content ">
 			<h1><code>hx-validate</code></h1>
 			{" "}
-			<p>{"The "}<code>hx-validate</code>{" attribute will cause an element to validate itself by way of the "}<a href="https://htmx.org/docs/#validation">HTML5 Validation API</a>{" before it submits a request."}</p>
+			<p>{"The "}<code>hx-validate</code>{" attribute will cause an element to validate itself by way of the "}<a href="/docs/#validation">HTML5 Validation API</a>{" before it submits a request."}</p>
 			{" "}
 			<p>{"Only "}<code>&lt;form&gt;</code>{" elements validate data by default, but other elements do not. Adding "}<code>hx-validate="true"</code>{" to "}<code>&lt;input&gt;</code>{", "}<code>&lt;textarea&gt;</code>{" or "}<code>&lt;select&gt;</code>{" enables validation before sending requests."}</p>
 			{" "}
