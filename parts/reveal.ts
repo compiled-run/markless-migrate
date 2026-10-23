@@ -1,48 +1,73 @@
 // What the old page showed on use is rendered by Markless, hidden: a portal at the end of the body marked with its
 // control's key (data-mm-layer), and the content a control replaces its container's with (data-mm-after). Parts only
-// switch attributes on those nodes; they never insert or remove one, except a large layer's: the page carries a
-// <template data-mm-layer-src> naming its HTML file, and its nodes are mounted at the end of the body, after the page,
-// once the page is idle or the layer is first used, as the old page mounted it on use.
+// switch attributes on those nodes; they never insert or remove one, except a large layer's: the page carries its shell
+// in a <template data-mm-layer-src> and fetches the file holding the rest as it loads. On use the shell is mounted at the
+// end of the body, after the page, and its emptied element (data-mm-layer-fill) takes the file's content when it is in.
 
 const LAYER_SOURCE = 'template[data-mm-layer-src]';
 const fetched = new Map<string, Promise<string>>();
 const markup = new Map<string, string>();
 
-function mountServed(template: HTMLTemplateElement): boolean {
-	const html = markup.get(template.dataset.mmLayerSrc!);
-	if (html === undefined) return false;
-	const keys = (template.dataset.mmLayerKeys ?? '').split(' ').filter(Boolean);
-	if (keys.some((key) => document.querySelector(`[data-mm-layer="${CSS.escape(key)}"]`))) return true;
+function request(src: string): Promise<string> {
+	let pending = fetched.get(src);
+	if (!pending) {
+		pending = fetch(src).then((response) => (response.ok ? response.text() : Promise.reject(new Error(`${src}: ${response.status}`))));
+		fetched.set(src, pending);
+		pending.then((html) => markup.set(src, html), () => fetched.delete(src));
+	}
+	return pending;
+}
+
+/** Fills a mounted shell once its file is in; a field typed into meanwhile is read again. */
+function fill(template: HTMLTemplateElement): void {
+	const src = template.dataset.mmLayerSrc!;
+	const html = markup.get(src);
+	const into = document.querySelector<HTMLElement>(`[data-mm-layer-fill="${CSS.escape(src)}"]`);
+	if (html === undefined || !into) return;
+	into.removeAttribute('data-mm-layer-fill');
 	const range = document.createRange();
-	range.selectNodeContents(document.body);
-	afterPage(range.createContextualFragment(html.split('@@MM_APP_URL@@').join(template.dataset.mmAppUrl ?? '')));
-	return true;
+	range.selectNodeContents(into);
+	afterPage(range.createContextualFragment(html.split('@@MM_APP_URL@@').join(template.dataset.mmAppUrl ?? '')), into);
+	const root = into.closest('[data-mm-layer]');
+	for (const field of root?.querySelectorAll<HTMLInputElement>('input, textarea') ?? []) if (field.value) field.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-// The end of the body follows the page's end comment, where Markless counts nothing: the document's own nodes.
-function afterPage(nodes: DocumentFragment): void {
-	document.body.append(nodes);
+// The old origin a served layer names, given as a token in the page's shell and in the file: the new one in its place.
+function withOrigin(nodes: DocumentFragment, origin: string): DocumentFragment {
+	const token = '@@MM_APP_URL@@';
+	const walker = document.createTreeWalker(nodes, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+	for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+		if (node.nodeType === Node.TEXT_NODE) {
+			if (node.nodeValue?.includes(token)) node.nodeValue = node.nodeValue.split(token).join(origin);
+		} else for (const attribute of (node as Element).attributes) if (attribute.value.includes(token)) attribute.value = attribute.value.split(token).join(origin);
+	}
+	return nodes;
 }
 
-/** Fetches the page's served layers not yet here and mounts them; resolves once every one is in. */
+/** Mounts a served layer's shell, unless it is in already, and fills it if its file is. */
+function mountServed(template: HTMLTemplateElement): void {
+	const keys = (template.dataset.mmLayerKeys ?? '').split(' ').filter(Boolean);
+	if (!keys.some((key) => document.querySelector(`[data-mm-layer="${CSS.escape(key)}"]`))) afterPage(withOrigin(template.content.cloneNode(true) as DocumentFragment, template.dataset.mmAppUrl ?? ''));
+	fill(template);
+	void request(template.dataset.mmLayerSrc!).then(() => template.isConnected && fill(template), () => {});
+}
+
+// The end of the body follows the page's end comment, where Markless counts nothing: the document's own nodes, and a
+// shell mounted there.
+function afterPage(nodes: DocumentFragment, into: Element = document.body): void {
+	into.append(nodes);
+}
+
+/** Fetches the files of the page's served layers not fetched yet, and fills any shell already mounted. */
 export function loadLayers(): Promise<void> {
 	const pending: Promise<unknown>[] = [];
-	for (const template of document.querySelectorAll<HTMLTemplateElement>(LAYER_SOURCE)) {
-		if (mountServed(template)) continue;
-		const src = template.dataset.mmLayerSrc!;
-		let request = fetched.get(src);
-		if (!request) {
-			request = fetch(src).then((response) => (response.ok ? response.text() : Promise.reject(new Error(`${src}: ${response.status}`))));
-			fetched.set(src, request);
-			request.then((html) => markup.set(src, html), () => fetched.delete(src));
-		}
-		pending.push(request.then(() => template.isConnected && mountServed(template), () => {}));
-	}
+	for (const template of document.querySelectorAll<HTMLTemplateElement>(LAYER_SOURCE))
+		pending.push(request(template.dataset.mmLayerSrc!).then(() => template.isConnected && fill(template), () => {}));
 	return Promise.all(pending).then(() => {});
 }
 
-/** Whether the page names a served layer whose nodes are not mounted yet. */
-export const layersPending = (): boolean => [...document.querySelectorAll<HTMLTemplateElement>(LAYER_SOURCE)].some((t) => !mountServed(t));
+/** Whether the page names a served layer whose file is not in yet. */
+export const layersPending = (): boolean => [...document.querySelectorAll<HTMLTemplateElement>(LAYER_SOURCE)].some((t) => !markup.has(t.dataset.mmLayerSrc!));
 
 /** The nodes a control portals, for this viewport when the page has a variant of its own for it. */
 export function layersFor(key: string): HTMLElement[] {
