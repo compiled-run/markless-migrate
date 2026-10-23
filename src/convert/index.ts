@@ -624,7 +624,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			const on = routes.filter((r) => !c.routes || new RegExp(c.routes).test(r));
 			for (const r of on) notified.set(r, [...(notified.get(r) ?? []), ...(await captureNotifications(browser, options.old, r, join(state, 'convert', 'toggles'), [c.selector])).notifications]);
 		}
-		if (options.reveal !== false) for (const r of await captureAllReveals(browser, options.old, routes, join(state, 'convert', 'reveals'), { concurrency: options.concurrency ?? 4, log, extra })) revealed.set(r.route, r.reveals);
+		// A control a demo's recorded uses play is the scene's, not a disclosure's: its reveal is not planned.
+		const played = (route: string) => new Set((scenes.get(route) ?? []).flatMap(({ scene }) => scene.edges.map((e) => e.control.replace(/#\d+$/, ''))));
+		if (options.reveal !== false) for (const r of await captureAllReveals(browser, options.old, routes, join(state, 'convert', 'reveals'), { concurrency: options.concurrency ?? 4, log, extra })) revealed.set(r.route, r.reveals.filter((reveal) => !reveal.sig || !played(r.route).has(reveal.sig)));
 		// Whether each accordion lets several items be open, on the routes where one revealed an item's content.
 		for (const [route, reveals] of revealed) if (reveals.some((r) => r.sig?.includes('|accordion-trigger|'))) accordionModes.set(route, (await captureAccordions(browser, options.old, route, join(state, 'convert', 'toggles'))).accordions);
 		for (const [route, reveals] of revealed) if (reveals.some((r) => r.sig?.includes('|hover-card-trigger|'))) hoverDelays.set(route, (await captureHoverDelays(browser, options.old, route, join(state, 'convert', 'toggles'))).delays);
