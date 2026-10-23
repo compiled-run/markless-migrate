@@ -146,6 +146,14 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   link "RTL"`, 16 to 18 routes). View Code sets `data-mobile-code-visible` on its code block, as
   ComponentPreviewTabs does, which shows the block's Copy button (`click button "View Code"`, 46 routes); a click
   on a control that swaps its container's content now still reaches the parts.
+- Parts: @shadcn/react Questionnaire (`parts/shadcn/questionnaire.ts`). Every item, error and navigation button is in
+  the markup, so the port writes back the attributes the library derives: the active item, answers, skips,
+  validation, progress, and keyboard shortcuts. A progress renderer of `{ current, total }` follows too. Held to the
+  real library by `test/questionnaire-port.test.ts`: each demo form is driven through the same 15 steps the library
+  was driven through on the old site (`test/ports/questionnaire-oracle.json`). Attributes, live properties and
+  focus must match after every step. The one exception is two demos whose own React state takes over at a known
+  step. Reset shows the old page's toast (`notify`). Before: Next, Previous, Skip, Submit and the shortcuts did
+  nothing on all 26 questionnaire demos. After: 13 of 14 base demos work in the local witness.
 - Ported route handlers carry the old build's `NEXT_PUBLIC_*` values inlined, as `next build` does. A value naming
   the old origin becomes the new app's (`import.meta.env.VITE_APP_URL`). `/init/v0` had answered 500 on the live
   port (`Failed to parse URL from undefined/r/...`); it is now byte for byte the old answer. Nitro's tracer no longer
