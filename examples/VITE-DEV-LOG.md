@@ -439,3 +439,16 @@ No failure is new in kind. What the counts move on:
   0.8.0 run could not click the control at all this time, so it was not measured there.
 - `/guide/`: PageSpeed Insights' Speed Index (5.07 s against the old site's 3.43 s), the one PageSpeed row either run
   produced; the lab Speed Index of the same page is the same on both versions (1.54 s and 1.57 s).
+
+### Again, with the checker's noise settled (2026-10-23)
+
+Two of the differences above were the checker's, not the port's, and markless-migrate now settles both: a recording
+holds the copy buttons' 2 s reset until it has filmed the click and then waits it out on both sides (#46), and a
+canvas an animation draws (the Rive hero) is masked in screenshots and left to the motion check's frame-by-frame
+comparison (#47). The same sample against the same 0.9.0 deployment, `--no-psi`: 18 failures, not counting "not
+exercised" (24 before), with motion 8 to 0 and visual 3 to 1. What is left: the same 8 computed-style rows on `/` as on
+0.8.0; one mobile screenshot band at the logo strip; `/`'s first search open (189 and 64 ms against 24 ms, fetching the
+search code); the announcing-vite6 stylesheet still applied after an in-place navigation to `/` (as on 0.8.0); a lab
+score on `/guide/` (92 against 99) and `/live`'s lab LCP (one run of ten at 14 s); and on `/live` four icon requests to
+Iconify's two fallback hosts, which `@iconify/vue` and the port both make when the first host answers after 750 ms.
+That last one also turned `/live` red this run, so no route is green in it.
