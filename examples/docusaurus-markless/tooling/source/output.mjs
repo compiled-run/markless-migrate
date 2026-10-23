@@ -1,5 +1,6 @@
 // Writes what the importer rendered into the Markless app: one page per route under pages/, the footer every
 // page shares as a component, each route's <head> as data for document.tsrx, and the files the pages load.
+import { createHash } from 'node:crypto';
 import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { toTsrx } from './h.mjs';
@@ -247,7 +248,15 @@ export async function writeClientData(site, pages) {
 	const category = cssModuleMap(join(theme, 'DocSidebarItem/Category/styles.module.css'));
 	const external = cssModuleMap(join(theme, 'Icon/ExternalLink/styles.module.css'));
 	const classes = { linkLabel: link.linkLabel, menuExternalLink: link.menuExternalLink, categoryLink: category.categoryLink, categoryLinkLabel: category.categoryLinkLabel, iconExternalLink: external.iconExternalLink };
-	await writeFile(join(app, 'lib/sidebars.json'), `${JSON.stringify({ classes, sidebars, trailingSlash: site.context.siteConfig.trailingSlash })}\n`);
+	const files = {};
+	await rm(join(app, 'public/sidebars'), { recursive: true, force: true });
+	await mkdir(join(app, 'public/sidebars'), { recursive: true });
+	for (const [key, items] of Object.entries(sidebars)) {
+		const json = JSON.stringify(items);
+		files[key] = `/sidebars/${key.replace(/[^\w-]/g, '-')}.${createHash('sha256').update(json).digest('hex').slice(0, 10)}.json`;
+		await writeFile(join(app, 'public', files[key]), json);
+	}
+	await writeFile(join(app, 'lib/sidebars.json'), `${JSON.stringify({ classes, files, trailingSlash: site.context.siteConfig.trailingSlash })}\n`);
 	// The theme's CSS modules lib/site.ts toggles classes of, with their built names.
 	const modules = ['CodeBlock/Buttons', 'CodeBlock/Buttons/CopyButton', 'CodeBlock/Buttons/WordWrapButton', 'ColorModeToggle', 'Navbar/Content', 'Navbar/Layout', 'Navbar/Search', 'BackToTopButton', 'SkipToContent', 'AnnouncementBar', 'TOC', 'TOCCollapsible', 'TOCCollapsible/CollapseButton', 'DocItem/TOC/Mobile', 'DocRoot/Layout/Main', 'DocRoot/Layout/Sidebar', 'DocRoot/Layout/Sidebar/ExpandButton', 'DocSidebar/Desktop', 'DocSidebar/Desktop/Content', 'DocSidebar/Desktop/CollapseButton', 'NavbarItem/DropdownNavbarItem/Mobile', 'Tabs', 'TabItem', 'BlogSidebar/Mobile'];
 	const themeClasses = Object.fromEntries(modules.map((dir) => [dir, cssModuleMap(join(theme, dir, 'styles.module.css'))]));
