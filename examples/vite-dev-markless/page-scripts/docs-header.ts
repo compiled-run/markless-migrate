@@ -109,6 +109,9 @@ document.addEventListener('click', (event) => {
 	}
 	const menu = target.closest('#mobile-menu');
 	if (!menu) return;
+	// Header.vue's drawer logo has no close handler: on the page it links to, the drawer stays open.
+	const logo = target.closest<HTMLAnchorElement>('#mobile-menu > section > div:first-child > a[href]');
+	if (logo && new URL(logo.href).pathname === location.pathname) return;
 	if (target.closest('button[aria-label="Close navigation menu"]') || target.closest('a[href]')) {
 		closeMenu();
 		return;

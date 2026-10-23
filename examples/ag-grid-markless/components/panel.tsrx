@@ -101,9 +101,7 @@ export default function Panel() @{
 				</div>
 			</div>
 			<div class="flex-1">
-				<AgGridReact rowData={events} columnDefs={cols} dark={dark} live={live} onAnnounce={(text) => (live = text)} selected={gridSelected} onSelectionChanged={(serial) => (gridSelected = serial)} onRowClicked={async (serial) => {
-					// As in Devtron's React panel: the row highlight paints in the click's frame, the details in the next.
-					await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
+				<AgGridReact rowData={events} columnDefs={cols} dark={dark} live={live} onAnnounce={(text) => (live = text)} selected={gridSelected} onSelectionChanged={(serial) => (gridSelected = serial)} onRowClicked={(serial) => {
 					if (serial !== selected) jsonEpoch++;
 					selected = serial;
 					selectedRow = events.find((e) => e.serialNumber === serial) ?? null;

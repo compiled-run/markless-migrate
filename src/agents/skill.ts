@@ -217,6 +217,11 @@ back, every usage site) and what to do with it:
   nothing more. Never render React, Vue, Svelte or any other UI framework inside the Markless app, and never
   load a framework-bound library in the browser to "bridge" it. The route's check proves the port at every
   place it is used.
+- A ported callback fires when the library fires it. Read how the library calls each callback prop the app
+  passes: synchronously in the event, or queued (AG Grid runs every grid-option event such as \`onRowClicked\`
+  in one \`setTimeout(0)\` batch, so the row highlights first and the app's state change paints in a later
+  frame). Dispatch it the same way inside the port. Never add a wait in the app's own handler to recreate
+  the order; a library's timing belongs in its port.
 
 ## Embeds
 

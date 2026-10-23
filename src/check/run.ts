@@ -25,7 +25,7 @@ import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOption
 import { checkMotion, motionRules, type MotionOptions } from './motion.ts';
 import { CheckProgress } from './progress.ts';
 import { applyNavigation, checkNavigation, type NavigationOptions, type NavigationResult } from './nav-parity.ts';
-import { loadFailures, measureLoad, psiFailures, unmeasured, type LoadOptions } from './load.ts';
+import { loadFailures, measureLoad, psiFailures, type LoadOptions } from './load.ts';
 import { measurePsi, psiKey } from './psi.ts';
 import { assetsToProbe, compareRoute, cssTargets, forgetFailures, httpFailures, noiseReport, noisyStyles, withFailures, type Probe } from './compare.ts';
 import { matchElements } from './match.ts';
@@ -715,10 +715,11 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 		if ((options.load && options.only !== 'embeds') || options.only === 'load') {
 			const anonymous = (r: RouteResult) => !r.role || r.role === ANONYMOUS;
 			const loadable = routes.filter((r) => anonymous(r) && !r.endpoint && !r.blocked && !r.infrastructure && !r.notPorted && !light(r.route) && allPages.includes(r.route));
-			// Lighthouse can only send extra headers to every host it loads, so a bypass token is never handed to it.
 			const bypassed = Boolean(options.headers && Object.keys(options.headers).length) || Boolean(options.cookies?.length);
 			const routesToLoad = [...new Set(loadable.map((r) => r.route))];
-			const loads = bypassed ? new Map(routesToLoad.map((route) => [route, unmeasured('not measured: --header and --cookie are for the apps alone, and Lighthouse would send them to every host it loads')])) : await measureLoad({ old: options.oldOrigin, new: options.newOrigin }, routesToLoad, { ...(options.block ? { block: options.block } : {}), ...options.load });
+			// The bypass token goes to the two apps' origins alone; PageSpeed Insights, which cannot carry it, is left out.
+			const bypass = bypassed ? { origins: [options.oldOrigin, options.newOrigin], ...(options.headers ? { headers: options.headers } : {}), ...(options.cookies?.length ? { cookies: options.cookies } : {}) } : undefined;
+			const loads = await measureLoad({ old: options.oldOrigin, new: options.newOrigin }, routesToLoad, { ...(options.block ? { block: options.block } : {}), ...options.load, ...(bypass ? { bypass } : {}) });
 			const psiOptions = options.load?.psi;
 			if (psiOptions !== false && !bypassed) {
 				const key = psiOptions?.key ?? psiKey();
