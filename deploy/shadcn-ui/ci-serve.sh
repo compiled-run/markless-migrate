@@ -16,7 +16,12 @@ case "${1:-}" in
 		dest="$RUNNER_TEMP/new"
 		mkdir -p "$dest"
 		curl -fsSL "${2:?usage: ci-serve.sh new URL}" | tar -xz -C "$dest"
-		server="$dest/.output/server"
+		# A Vercel build (.vercel/output, what the deployment serves) runs through serve-vercel-output.mjs; a node-server build runs itself.
+		if [ -d "$dest/.vercel/output" ]; then
+			server="$dest/.vercel/output/functions/__server.func"
+		else
+			server="$dest/.output/server"
+		fi
 		# Built on macOS: the traced sharp (for @vercel/og) gets its Linux binaries beside the macOS ones.
 		if [ -d "$server/node_modules/sharp" ]; then
 			version=$(node -p "require('$server/node_modules/sharp/package.json').version")
@@ -24,7 +29,11 @@ case "${1:-}" in
 			npm install --prefix "$RUNNER_TEMP/sharp" --no-audit --no-fund "@img/sharp-linux-x64@$version" "@img/sharp-libvips-linux-x64@$libvips" > /dev/null
 			cp -R "$RUNNER_TEMP/sharp/node_modules/@img/." "$server/node_modules/@img/"
 		fi
-		(cd "$dest" && PORT=3000 HOST=127.0.0.1 nohup node .output/server/index.mjs > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
+		if [ -d "$dest/.vercel/output" ]; then
+			(cd "$dest" && nohup node "$DIR/serve-vercel-output.mjs" "$dest/.vercel/output" 3000 > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
+		else
+			(cd "$dest" && PORT=3000 HOST=127.0.0.1 nohup node .output/server/index.mjs > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
+		fi
 		wait_for http://127.0.0.1:3000/
 		;;
 	*) echo "usage: $0 old | new <url of the built port's .tar.gz>" >&2; exit 1 ;;
