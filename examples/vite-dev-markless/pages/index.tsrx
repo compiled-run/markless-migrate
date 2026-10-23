@@ -13,7 +13,7 @@ import Spacer from '../components/spacer.tsrx';
 import Footer from '../components/footer.tsrx';
 
 export default function Home() @{
-	<div class="marketing-layout" data-theme="dark" data-variant="vite" data-v-56d116fe="">
+	<div id="app"><div class="marketing-layout" data-theme="dark" data-variant="vite" data-v-56d116fe="">
 		<TopBanner />
 		<Header />
 		<div style="position:relative;" data-v-56d116fe="">
@@ -34,5 +34,5 @@ export default function Home() @{
 				<Footer />
 			</div>
 		</div>
-	</div>
+	</div></div>
 }

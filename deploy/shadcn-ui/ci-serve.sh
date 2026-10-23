@@ -11,6 +11,7 @@ case "${1:-}" in
 		ORIGIN=http://localhost:4000 "$DIR/fetch-old.sh" > "$RUNNER_TEMP/old-build.log" 2>&1 || { tail -n 60 "$RUNNER_TEMP/old-build.log"; exit 1; }
 		nohup "$DIR/serve-old.sh" > "$RUNNER_TEMP/old-serve.log" 2>&1 &
 		wait_for http://localhost:4000/
+		for path in / /blocks /view/new-york-v4/dashboard-01; do curl -s -o /dev/null -w "old $path: %{http_code} in %{time_total} s\n" "http://localhost:4000$path"; done
 		;;
 	new)
 		dest="$RUNNER_TEMP/new"
