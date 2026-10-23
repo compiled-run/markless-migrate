@@ -226,7 +226,7 @@ function union(boxes: readonly Box[]): Box | undefined {
 	return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
 }
 
-// What a resize newly draws loads now, as the page's own settle scrolled every lazy image in: the shot compares pictures, not load timing.
+// What a page-wide state newly draws (a breakpoint's image, a dark-mode twin) loads now, as the page's own settle scrolled every lazy image in: the shot compares pictures, not load timing.
 async function drawnImages(page: Page): Promise<ImageRecord[]> {
 	return page.evaluate(async () => {
 		const shown = [...document.images].filter((img) => img.getClientRects().length);
@@ -384,7 +384,7 @@ export async function compareStates(input: StateInput): Promise<StateOutput> {
 				const pageWide = state.kind === 'media' || state.kind === 'width' || state.kind === 'container';
 				if (!pageWide && !changedBoxes.length && !differing.length) continue;
 				const clip = pageWide ? undefined : union([...changedBoxes, ...targets.map((i) => o1.base[i]!.box)]);
-				const images = state.kind === 'width' ? await Promise.all([drawnImages(o1.page), drawnImages(o2.page), drawnImages(n.page)]) : undefined;
+				const images = pageWide ? await Promise.all([drawnImages(o1.page), drawnImages(o2.page), drawnImages(n.page)]) : undefined;
 				const [shot1, shot2, shotN] = await Promise.all([screenshot(o1.page, clip), screenshot(o2.page, clip), screenshot(n.page, clip)]);
 				const shift = (b: Box): Box => (clip ? { ...b, x: b.x - Math.max(0, clip.x - CLIP_PADDING), y: b.y - Math.max(0, clip.y - CLIP_PADDING) } : b);
 				const noisyBoxes = s1.flatMap((el, i) => (textNoise.has(i) || s2[p12.get(i) ?? -1]?.text !== el.text ? [shift(blockAround(s1, el))] : []));
