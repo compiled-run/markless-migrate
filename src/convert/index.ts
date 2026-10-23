@@ -7,7 +7,7 @@ import { captureAll, type CapturedPage, type CapturedRef } from './capture.ts';
 import { captureAllReveals, type Reveal } from './reveal.ts';
 import { captureChoices, type Choice } from './choices.ts';
 import { parseFragment } from 'parse5';
-import { cleanDocument, frameworkBuilds, type Dropped } from './clean.ts';
+import { cleanDocument, frameworkBuilds, lateHead, type Dropped } from './clean.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, walk, type Document, type Element } from './dom.ts';
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
 import { BaseTabsPlan, CheckablePlan, DisclosurePlan, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
@@ -151,6 +151,8 @@ interface Prepared {
 	readonly layers: readonly { readonly key: string; readonly markup: string; readonly shell: string; readonly fill: string }[];
 	/** What copy controls write, by signature and occurrence. */
 	readonly clipboard: Readonly<Record<string, string>>;
+	/** The stylesheets the old page's scripts added after load, linked after the page so they never block its first paint. */
+	readonly late: readonly string[];
 }
 
 // What a library's runtime adds around revealed content for focus handling; its Markless port adds its own.
@@ -508,6 +510,12 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const headAt = capture.server.search(/<head[\s>]/i);
 	const served = parseDocument(headAt > 0 ? capture.server.slice(0, headAt) : capture.server);
 	cleanDocument(served, ctx, new Map());
+	const late = lateHead(doc, parseDocument(capture.server), dropped).flatMap((el) => {
+		if (el.tagName === 'link') return attr(el, 'href') ? [attr(el, 'href')!] : [];
+		const holder = { nodeName: 'div', tagName: 'div', attrs: [], childNodes: [el] } as unknown as Element;
+		extractStyles(holder, styles);
+		return [attr(childrenOf(holder)[0] as Element, 'href')!];
+	});
 	extractStyles(head(doc), styles);
 	extractStyles(body(doc), styles);
 	const tags: HeadTag[] = [];
@@ -527,13 +535,13 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const kids = elementChildren(body(doc));
 	const root = kids.reduce((a, b) => (outer(b).length > outer(a).length ? b : a));
 	const at = kids.indexOf(root);
-	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, clipboard };
+	return { resources: resourcePaths(doc, origin), htmlAttrs: attrsOf(html(served)), bodyAttrs: attrsOf(body(doc)), head: tags, root, before: kids.slice(0, at), after: kids.slice(at + 1), appends, layers, clipboard, late };
 }
 
 function headModule(byRoute: Map<string, Prepared>): string {
 	const table: HeadTag[] = [];
 	const index = new Map<string, number>();
-	const routes: Record<string, { tags: number[]; html: Record<string, string>; body: Record<string, string> }> = {};
+	const routes: Record<string, { tags: number[]; html: Record<string, string>; body: Record<string, string>; late: readonly string[] }> = {};
 	for (const [route, p] of byRoute) {
 		const ids = p.head.map((t) => {
 			const key = JSON.stringify(t);
@@ -543,7 +551,7 @@ function headModule(byRoute: Map<string, Prepared>): string {
 			}
 			return index.get(key)!;
 		});
-		routes[route] = { tags: ids, html: p.htmlAttrs, body: p.bodyAttrs };
+		routes[route] = { tags: ids, html: p.htmlAttrs, body: p.bodyAttrs, late: p.late };
 	}
 	return `${GENERATED}
 export interface HeadTag {
@@ -555,7 +563,7 @@ export interface HeadTag {
 
 export const TAGS: readonly HeadTag[] = ${JSON.stringify(table)};
 
-export const ROUTES: Readonly<Record<string, { readonly tags: readonly number[]; readonly html: Readonly<Record<string, string>>; readonly body: Readonly<Record<string, string>> }>> = ${JSON.stringify(routes)};
+export const ROUTES: Readonly<Record<string, { readonly tags: readonly number[]; readonly html: Readonly<Record<string, string>>; readonly body: Readonly<Record<string, string>>; readonly late: readonly string[] }>> = ${JSON.stringify(routes)};
 `;
 }
 
