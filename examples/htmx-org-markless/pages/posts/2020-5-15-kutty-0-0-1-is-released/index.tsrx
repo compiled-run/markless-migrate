@@ -22,7 +22,7 @@ export default function Page() @{
 			{" "}
 			<h4 id="so-what-s-new-different-about-kutty-vs-intercooler">So what’s new &amp; different about kutty vs. intercooler?</h4>
 			{" "}
-			<ul>{" "}<li>{"First and foremost, kutty has "}<a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/kutty/blob/master/package.json"><em>no external dependencies</em></a>{" ! No more dragging in jQuery just to do HTML-oriented web development. It has been tested with IE11."}</li>{" "}<li>{"It follows conventional naming and behavior standards more closely than intercooler does (e.g. "}<a href="/attributes/kt-swap"><code>innerHTML</code></a>{" and "}<a href="/attributes/kt-swap"><code>outerHTML</code></a>)</li>{" "}<li>Kutty isn’t the kitchen-sink-of-features that intercooler is. Kutty is more focused on the features that are amenable to a declarative approache and less on replacing javascript entirely.</li>{" "}<li>{"Kutty has a better swapping mechanism which introduces a settling step, which allows for nice CSS transitions with minimal complexity. Check out the "}<a href="https://htmx.org/examples/progress-bar/">progress bar</a>{" to see how this works: by returning HTML in the old web 1.0 style, you can get nice, smooth CSS-based transitions. Fun!"}</li>{" "}</ul>
+			<ul>{" "}<li>{"First and foremost, kutty has "}<a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/kutty/blob/master/package.json"><em>no external dependencies</em></a>{" ! No more dragging in jQuery just to do HTML-oriented web development. It has been tested with IE11."}</li>{" "}<li>{"It follows conventional naming and behavior standards more closely than intercooler does (e.g. "}<a href="/attributes/kt-swap"><code>innerHTML</code></a>{" and "}<a href="/attributes/kt-swap"><code>outerHTML</code></a>)</li>{" "}<li>Kutty isn’t the kitchen-sink-of-features that intercooler is. Kutty is more focused on the features that are amenable to a declarative approache and less on replacing javascript entirely.</li>{" "}<li>{"Kutty has a better swapping mechanism which introduces a settling step, which allows for nice CSS transitions with minimal complexity. Check out the "}<a href="/examples/progress-bar/">progress bar</a>{" to see how this works: by returning HTML in the old web 1.0 style, you can get nice, smooth CSS-based transitions. Fun!"}</li>{" "}</ul>
 			{" "}
 			<p>Beyond that, basic kutty and intercooler code will look a lot a like:</p>
 			{" "}
@@ -42,7 +42,7 @@ export default function Page() @{
 			{" "}
 			<p>The usual:</p>
 			{" "}
-			<ul>{" "}<li>{"read the "}<a href="https://htmx.org/docs/">docs</a></li>{" "}<li>{"star the "}<a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/kutty">repo</a></li>{" "}<li>tell your friends</li>{" "}<li>{"enjoy fully functional HTML, the way "}<a rel="noopener" target="_blank" href="https://en.wikipedia.org/wiki/Representational_State_Transfer">Roy Fielding</a>{" intended it"}</li>{" "}</ul>
+			<ul>{" "}<li>{"read the "}<a href="/docs/">docs</a></li>{" "}<li>{"star the "}<a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/kutty">repo</a></li>{" "}<li>tell your friends</li>{" "}<li>{"enjoy fully functional HTML, the way "}<a rel="noopener" target="_blank" href="https://en.wikipedia.org/wiki/Representational_State_Transfer">Roy Fielding</a>{" intended it"}</li>{" "}</ul>
 			{" "}
 			<p>Cheers!</p>
 			{" "}

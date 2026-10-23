@@ -45,7 +45,7 @@ export default function Page() @{
 			{" "}
 			<p>REST has many constraints and concepts within it, but there is one crucial idea that I believe is the defining and most distinguishing characteristic of REST, when contrasted with other possible network architectures.</p>
 			{" "}
-			<p>{"This is known as the "}<a rel="noopener" target="_blank" href="https://en.wikipedia.org/wiki/Representational_state_transfer#Uniform_interface">uniform interface constraint</a>{", and more specifically within that concept, the idea of "}<a rel="noopener" target="_blank" href="https://htmx.org/essays/hateoas/">Hypermedia As The Engine of Application State (HATEOAS)</a>{" or as Fielding prefers to call it, the hypermedia constraint."}</p>
+			<p>{"This is known as the "}<a rel="noopener" target="_blank" href="https://en.wikipedia.org/wiki/Representational_state_transfer#Uniform_interface">uniform interface constraint</a>{", and more specifically within that concept, the idea of "}<a rel="noopener" target="_blank" href="/essays/hateoas/">Hypermedia As The Engine of Application State (HATEOAS)</a>{" or as Fielding prefers to call it, the hypermedia constraint."}</p>
 			{" "}
 			<p>In order to understand this uniform interface constraint, lets consider two HTTP responses returning information about a bank account, the first in HTML (a hypertext) and the second in JSON:</p>
 			{" "}
@@ -193,7 +193,7 @@ export default function Page() @{
 			{" "}
 			<p>And, with that, I began boring the internet to tears:</p>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://intercoolerjs.org/2016/01/18/rescuing-rest.html">Rescuing REST From the API Winter</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://intercoolerjs.org/2016/02/17/api-churn-vs-security.html">The API Churn/Security Trade-off</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://intercoolerjs.org/2016/05/08/hatoeas-is-for-humans.html">HATEOAS is for Humans</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://intercoolerjs.org/2020/01/14/taking-html-seriously">Taking HTML Seriously</a></li>{" "}<li><a href="https://htmx.org/essays/hypermedia-apis-vs-data-apis/">Hypermedia APIs vs. Data APIs</a></li>{" "}<li><a href="https://htmx.org/essays/hateoas/">HATEOAS</a></li>{" "}<li><a href="https://htmx.org/essays/hypermedia-driven-applications/">Hypermedia Driven Applications</a></li>{" "}<li>{"This, gentle reader, "}<a href="https://htmx.org/essays/how-did-rest-come-to-mean-the-opposite-of-rest/">your current article</a>.</li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="https://intercoolerjs.org/2016/01/18/rescuing-rest.html">Rescuing REST From the API Winter</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://intercoolerjs.org/2016/02/17/api-churn-vs-security.html">The API Churn/Security Trade-off</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://intercoolerjs.org/2016/05/08/hatoeas-is-for-humans.html">HATEOAS is for Humans</a></li>{" "}<li><a rel="noopener" target="_blank" href="https://intercoolerjs.org/2020/01/14/taking-html-seriously">Taking HTML Seriously</a></li>{" "}<li><a href="/essays/hypermedia-apis-vs-data-apis/">Hypermedia APIs vs. Data APIs</a></li>{" "}<li><a href="/essays/hateoas/">HATEOAS</a></li>{" "}<li><a href="/essays/hypermedia-driven-applications/">Hypermedia Driven Applications</a></li>{" "}<li>{"This, gentle reader, "}<a href="/essays/how-did-rest-come-to-mean-the-opposite-of-rest/">your current article</a>.</li>{" "}</ul>
 			{" "}
 			<h3 id="the-state-of-rest-today"><a class="zola-anchor" href="#the-state-of-rest-today" aria-label="Anchor link for: the-state-of-rest-today">The State of REST Today</a></h3>
 			{" "}
@@ -243,7 +243,7 @@ export default function Page() @{
 			{" "}
 			<p>Regardless, there is an opportunity here to explain REST and, in particular, the uniform interface to a new generation of web developers who may have never heard of those concepts in their original context, and who assume REST === JSON APIs.</p>
 			{" "}
-			<p><a href="https://htmx.org/essays/a-response-to-rich-harris/">People sense something is wrong</a>{", and maybe REST, real, actual REST, not RESTless, could be a part of "}<a href="https://htmx.org/essays/spa-alternative/">the answer to that</a>.</p>
+			<p><a href="/essays/a-response-to-rich-harris/">People sense something is wrong</a>{", and maybe REST, real, actual REST, not RESTless, could be a part of "}<a href="/essays/spa-alternative/">the answer to that</a>.</p>
 			{" "}
 			<p>At the very least, the ideas behind REST are interesting and worth knowing just as general software engineering knowledge.</p>
 			{" "}

@@ -16,7 +16,7 @@ export default function Page() @{
 			{" "}
 			<h4 id="new-features">New Features</h4>
 			{" "}
-			<ul>{" "}<li>{"Now support the "}<code>HX-Redirect</code>{" and "}<code>HX-Refresh</code>{" response headers for redirecting client side and triggering a page refresh, respectively"}</li>{" "}<li><code>hx-vars</code>{" now overrides input values"}</li>{" "}<li><code>&lt;title&gt;</code>{" tags in responses will be used to update page titles"}</li>{" "}<li>{"All uses of "}<code>eval()</code>{" have been removed in favor of "}<code>Function</code></li>{" "}<li><a href="https://htmx.org/attributes/hx-vals/"><code>hx-vals</code></a>{" is available as a save alternative to "}<code>hx-vars</code>{". It uses "}<code>JSON.parse()</code>{" rather than evaluation, if you wish to safely pass user-provided values through to htmx."}</li>{" "}</ul>
+			<ul>{" "}<li>{"Now support the "}<code>HX-Redirect</code>{" and "}<code>HX-Refresh</code>{" response headers for redirecting client side and triggering a page refresh, respectively"}</li>{" "}<li><code>hx-vars</code>{" now overrides input values"}</li>{" "}<li><code>&lt;title&gt;</code>{" tags in responses will be used to update page titles"}</li>{" "}<li>{"All uses of "}<code>eval()</code>{" have been removed in favor of "}<code>Function</code></li>{" "}<li><a href="/attributes/hx-vals/"><code>hx-vals</code></a>{" is available as a save alternative to "}<code>hx-vars</code>{". It uses "}<code>JSON.parse()</code>{" rather than evaluation, if you wish to safely pass user-provided values through to htmx."}</li>{" "}</ul>
 			{" "}
 			<h4 id="bug-fixes">Bug Fixes</h4>
 			{" "}

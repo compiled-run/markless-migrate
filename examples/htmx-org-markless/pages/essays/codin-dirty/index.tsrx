@@ -48,7 +48,7 @@ export default function Page() @{
 			{" "}
 			<ul>{" "}<li>A few large “crux” functions, the real meat of the module. I set no bound on the Lines of Code (LOC) of these functions, although I start to feel a little bad when they get larger than maybe 200-300 LOC.</li>{" "}<li>A fair number of “support” functions, which tend to be in the 10-20 LOC range</li>{" "}<li>A fair number of “utility” functions, which tend to be in the 5-10 LOC range</li>{" "}</ul>
 			{" "}
-			<p>{"As an example of a “crux” function, consider the "}<a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/htmx/blob/7fc1d61b4fdbca486263eda79c3f31feb10af783/src/htmx.js#L4057"><code>issueAjaxRequest()</code></a>{" in "}<a rel="noopener" target="_blank" href="https://htmx.org">htmx</a>. This function is nearly 400 lines long!</p>
+			<p>{"As an example of a “crux” function, consider the "}<a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/htmx/blob/7fc1d61b4fdbca486263eda79c3f31feb10af783/src/htmx.js#L4057"><code>issueAjaxRequest()</code></a>{" in "}<a rel="noopener" target="_blank" href="/">htmx</a>. This function is nearly 400 lines long!</p>
 			{" "}
 			<p>Definitely not clean!</p>
 			{" "}
@@ -108,7 +108,7 @@ export default function Page() @{
 			{" "}
 			<p>I am a huge fan of testing and highly recommend testing software as a key component of building maintainable systems.</p>
 			{" "}
-			<p>{"htmx itself is only possible because we have a good "}<a rel="noopener" target="_blank" href="https://htmx.org/test">test suite</a>{" that helps us ensure that the library stays stable as we work on it."}</p>
+			<p>{"htmx itself is only possible because we have a good "}<a rel="noopener" target="_blank" href="/test">test suite</a>{" that helps us ensure that the library stays stable as we work on it."}</p>
 			{" "}
 			<p>{"If you take a look at the "}<a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/htmx/blob/master/test/core/ajax.js">test suite</a>{" one thing you might notice is the relative lack of "}<a rel="noopener" target="_blank" href="https://en.wikipedia.org/wiki/Unit_testing">Unit Tests</a>{". We have very few test that directly call functions on the htmx object. Instead, the tests are mostly "}<a rel="noopener" target="_blank" href="https://en.wikipedia.org/wiki/Integration_testing">Integration Tests</a>: they set up a particular DOM configuration with some htmx attributes and then, for example, click a button and verify some things about the state of the DOM afterward.</p>
 			{" "}

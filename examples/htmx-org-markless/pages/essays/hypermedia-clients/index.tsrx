@@ -12,7 +12,7 @@ export default function Page() @{
 			{" "}
 			<time>January 28, 2023</time>
 			{" "}
-			<p>{"Often, when we are being insufferably pedantic in "}<a rel="noopener" target="_blank" href="https://news.ycombinator.com/item?id=32141027">online discussions</a>{" about "}<a href="https://htmx.org/essays/how-did-rest-come-to-mean-the-opposite-of-rest/">REST</a>{" & "}<a href="https://htmx.org/essays/hateoas/">HATEOAS</a>, we will say something along the lines of this:</p>
+			<p>{"Often, when we are being insufferably pedantic in "}<a rel="noopener" target="_blank" href="https://news.ycombinator.com/item?id=32141027">online discussions</a>{" about "}<a href="/essays/how-did-rest-come-to-mean-the-opposite-of-rest/">REST</a>{" & "}<a href="/essays/hateoas/">HATEOAS</a>, we will say something along the lines of this:</p>
 			{" "}
 			<blockquote>{" "}<p>JSON isn’t a hypermedia because it doesn’t have hypermedia controls.</p>{" "}<p>Look at this JSON:</p>{" "}</blockquote>
 			{" "}
@@ -90,9 +90,9 @@ export default function Page() @{
 			{" "}
 			<p>{"Now, we are all used to web browsers just being there, but think for a moment about all the technology that goes in to simply parsing and rendering HTML to an end user in a normal, every day web request. It’s "}<em>extremely</em>{" complicated."}</p>
 			{" "}
-			<p>{"That’s why, if we want to build web-based "}<a href="https://htmx.org/essays/hypermedia-driven-applications/">hypermedia-driven applications</a>, it’s probably a good idea to use the standard, web-based hypermedia client: the browser.</p>
+			<p>{"That’s why, if we want to build web-based "}<a href="/essays/hypermedia-driven-applications/">hypermedia-driven applications</a>, it’s probably a good idea to use the standard, web-based hypermedia client: the browser.</p>
 			{" "}
-			<p>{"It is already an extremely powerful, well tested hypermedia client. And, "}<a href="https://htmx.org/docs/">with a bit of help</a>, it can be an even better hypermedia client.</p>
+			<p>{"It is already an extremely powerful, well tested hypermedia client. And, "}<a href="/docs/">with a bit of help</a>, it can be an even better hypermedia client.</p>
 			{" "}
 			<p>In general, building a good hypermedia client that satisfies all the constraints of REST is hard, and we should lean towards using (and extending) existing clients rather than building our own new ones.</p>
 			{" "}

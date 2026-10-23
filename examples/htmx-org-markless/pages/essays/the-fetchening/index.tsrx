@@ -20,17 +20,17 @@ export default function Page() @{
 			{" "}
 			<h2 id="htmx-4-the-fetch-ening"><a class="zola-anchor" href="#htmx-4-the-fetch-ening" aria-label="Anchor link for: htmx-4-the-fetch-ening">htmx 4: The fetch()ening</a></h2>
 			{" "}
-			<p>{"In "}<a href="https://htmx.org/essays/hypermedia-driven-applications/">The Future of htmx</a>{" I said the following:"}</p>
+			<p>{"In "}<a href="/essays/hypermedia-driven-applications/">The Future of htmx</a>{" I said the following:"}</p>
 			{" "}
-			<blockquote>{" "}<p>{"We are going to work to ensure that htmx is extremely stable in both API & implementation. This means accepting and documenting the "}<a rel="noopener" target="_blank" href="https://htmx.org/quirks/">quirks</a>{" of the current implementation."}</p>{" "}</blockquote>
+			<blockquote>{" "}<p>{"We are going to work to ensure that htmx is extremely stable in both API & implementation. This means accepting and documenting the "}<a rel="noopener" target="_blank" href="/quirks/">quirks</a>{" of the current implementation."}</p>{" "}</blockquote>
 			{" "}
 			<p>{"Earlier this year, on a whim, I created "}<a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/fixi">fixi.js</a>{", a hyperminimalist implementation of the ideas in htmx. That work gave me a chance to get a lot more familiar with the "}<code>fetch()</code>{" and, especially, the "}<a rel="noopener" target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/async_function">async</a>{" infrastructure available in JavaScript."}</p>
 			{" "}
-			<p>{"In doing that work I began to wonder if that, while the htmx "}<a rel="noopener" target="_blank" href="https://htmx.org/reference/#attributes">API</a>{" is (at least reasonably) correct, maybe there was room for a more dramatic change of the implementation that took advantage of these features in order to simplify the library."}</p>
+			<p>{"In doing that work I began to wonder if that, while the htmx "}<a rel="noopener" target="_blank" href="/reference/#attributes">API</a>{" is (at least reasonably) correct, maybe there was room for a more dramatic change of the implementation that took advantage of these features in order to simplify the library."}</p>
 			{" "}
 			<p>{"Further, changing from ye olde "}<a rel="noopener" target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest"><code>XMLHttpRequest</code></a>{" (a legacy of htmx 1.0 IE support) to "}<a rel="noopener" target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/Window/fetch"><code>fetch()</code></a>{" would be a pretty violent change, guaranteed to break at least "}<em>some</em>{" stuff."}</p>
 			{" "}
-			<p>{"So I began thinking: if we are going to consider moving to fetch, then maybe we should "}<em>also</em>{" use this update as a chance address at least "}<em>some</em>{" of the "}<a rel="noopener" target="_blank" href="https://htmx.org/quirks/">quirks &amp; cruft</a>{" that htmx has acquired over its lifetime."}</p>
+			<p>{"So I began thinking: if we are going to consider moving to fetch, then maybe we should "}<em>also</em>{" use this update as a chance address at least "}<em>some</em>{" of the "}<a rel="noopener" target="_blank" href="/quirks/">quirks &amp; cruft</a>{" that htmx has acquired over its lifetime."}</p>
 			{" "}
 			<p>{"So, eventually & reluctantly, I have changed my mind: there "}<em>will</em>{" be another major version of htmx."}</p>
 			{" "}
@@ -112,7 +112,7 @@ export default function Page() @{
 			{" "}
 			<h3 id="explicit-htmx-partial-tag-support"><a class="zola-anchor" href="#explicit-htmx-partial-tag-support" aria-label="Anchor link for: explicit-htmx-partial-tag-support">Explicit &lt;htmx-partial&gt; Tag Support</a></h3>
 			{" "}
-			<p>{"htmx has, since very early on, supported a concept of “Out-of-band” swaps: content that is removed from the main HTML response and swapped into the DOM elsewhere. I have always been a bit ambivalent about them, because they move away from "}<a rel="noopener" target="_blank" href="https://htmx.org/essays/locality-of-behaviour/">Locality of Behavior</a>, but there is no doubt that they are useful and often crucial for achieving certain UI patterns.</p>
+			<p>{"htmx has, since very early on, supported a concept of “Out-of-band” swaps: content that is removed from the main HTML response and swapped into the DOM elsewhere. I have always been a bit ambivalent about them, because they move away from "}<a rel="noopener" target="_blank" href="/essays/locality-of-behaviour/">Locality of Behavior</a>, but there is no doubt that they are useful and often crucial for achieving certain UI patterns.</p>
 			{" "}
 			<p>{"Out-of-band swaps started off very simply: if you marked an element as "}<code>hx-swap-oob='true'</code>, htmx would swap the element as the outer HTML of any existing element already in the DOM with that id. Easy-peasy.</p>
 			{" "}
@@ -158,7 +158,7 @@ export default function Page() @{
 			{" "}
 			<h3 id="improved-hx-on-support"><a class="zola-anchor" href="#improved-hx-on-support" aria-label="Anchor link for: improved-hx-on-support">{"Improved "}<code>hx-on</code>{" Support"}</a></h3>
 			{" "}
-			<p>{"In htmx 2.0, I somewhat reluctantly added the "}<a rel="noopener" target="_blank" href="https://htmx.org/attributes/hx-on/"><code>hx-on</code></a>{" attributes to support light scripting inline on elements. I added this because HTML does not allow you to listen for arbitrary events via "}<code>on</code>{" attributes: only standard DOM events like "}<code>onclick</code>{" can be responded to."}</p>
+			<p>{"In htmx 2.0, I somewhat reluctantly added the "}<a rel="noopener" target="_blank" href="/attributes/hx-on/"><code>hx-on</code></a>{" attributes to support light scripting inline on elements. I added this because HTML does not allow you to listen for arbitrary events via "}<code>on</code>{" attributes: only standard DOM events like "}<code>onclick</code>{" can be responded to."}</p>
 			{" "}
 			<p>We hemmed and hawed about the syntax and so, unfortunately, there are a few different ways to do it.</p>
 			{" "}

@@ -22,7 +22,7 @@ export default function Page() @{
 			{" "}
 			<p>A complete upgrade guide can be found here:</p>
 			{" "}
-			<p><a href="https://htmx.org/migration-guide-htmx-1/">htmx 1.x -&gt; 2.x Migration Guide</a></p>
+			<p><a href="/migration-guide-htmx-1/">htmx 1.x -&gt; 2.x Migration Guide</a></p>
 			{" "}
 			<p>Note that htmx 2.x will no longer be IE compatible, but 1.x will continue to be supported for IE users.</p>
 			{" "}

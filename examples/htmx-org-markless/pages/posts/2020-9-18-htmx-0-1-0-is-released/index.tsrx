@@ -20,7 +20,7 @@ export default function Page() @{
 			{" "}
 			<h4 id="new-features">New Features</h4>
 			{" "}
-			<ul>{" "}<li>{"The SSE attribute "}<code>hx-sse</code>{" allows for swapping content directly on an event, in addition to triggering an htmx element, with the new "}<code>swap:&lt;event name&gt;</code>{" syntax."}</li>{" "}<li><a href="https://htmx.org/attributes/hx-target/"><code>hx-target</code></a>{" now supports a "}<code>find</code>{" syntax to find elements below the element by a CSS selector"}</li>{" "}<li>htmx plays better with deferred loading and many package managers</li>{" "}<li>{"All htmx events are dispatched in both camelCase as well as kebab-case, for better compatibility with AlpineJS and other frameworks. (e.g. "}<code>htmx:afterOnLoad</code>{" will also be triggered as "}<code>htmx:after-on-load</code>)</li>{" "}</ul>
+			<ul>{" "}<li>{"The SSE attribute "}<code>hx-sse</code>{" allows for swapping content directly on an event, in addition to triggering an htmx element, with the new "}<code>swap:&lt;event name&gt;</code>{" syntax."}</li>{" "}<li><a href="/attributes/hx-target/"><code>hx-target</code></a>{" now supports a "}<code>find</code>{" syntax to find elements below the element by a CSS selector"}</li>{" "}<li>htmx plays better with deferred loading and many package managers</li>{" "}<li>{"All htmx events are dispatched in both camelCase as well as kebab-case, for better compatibility with AlpineJS and other frameworks. (e.g. "}<code>htmx:afterOnLoad</code>{" will also be triggered as "}<code>htmx:after-on-load</code>)</li>{" "}</ul>
 			{" "}
 			<h4 id="bug-fixes">Bug Fixes</h4>
 			{" "}

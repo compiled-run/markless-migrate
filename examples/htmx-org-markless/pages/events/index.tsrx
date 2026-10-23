@@ -36,15 +36,15 @@ export default function Page() @{
 			{" "}
 			<h3 id="htmx:afterRequest"><a class="zola-anchor" href="#htmx:afterRequest" aria-label="Anchor link for: htmx:afterRequest">{"Event - "}<code>htmx:afterRequest</code></a></h3>
 			{" "}
-			<p>{"This event is triggered after an AJAX request has finished either in the case of a successful request (although one that may have returned a remote error code such as a "}<code>404</code>{") or in a network error situation. This event can be paired with "}<a href="https://htmx.org/events/#htmx:beforeRequest"><code>htmx:beforeRequest</code></a>{" to wrap behavior around a request cycle."}</p>
+			<p>{"This event is triggered after an AJAX request has finished either in the case of a successful request (although one that may have returned a remote error code such as a "}<code>404</code>{") or in a network error situation. This event can be paired with "}<a href="/events/#htmx:beforeRequest"><code>htmx:beforeRequest</code></a>{" to wrap behavior around a request cycle."}</p>
 			{" "}
 			<h5 id="details-2"><a class="zola-anchor" href="#details-2" aria-label="Anchor link for: details-2">Details</a></h5>
 			{" "}
-			<ul>{" "}<li><code>detail.elt</code>{" - the element that dispatched the request or if the body no longer contains the element then the closest parent"}</li>{" "}<li><code>detail.xhr</code>{" - the "}<code>XMLHttpRequest</code></li>{" "}<li><code>detail.target</code>{" - the target of the request"}</li>{" "}<li><code>detail.requestConfig</code>{" - the configuration of the AJAX request"}</li>{" "}<li><code>detail.successful</code>{" - true if the matched "}<a href="https://htmx.org/docs/#response-handling"><code>htmx.config.responseHandling</code></a>{" rule did not mark the response as an error (by default, 2xx and 3xx codes), or "}<code>detail.isError</code>{" was set to "}<code>false</code>{" in the "}<code>htmx:beforeSwap</code>{" event"}</li>{" "}<li><code>detail.failed</code>{" - the inverse of "}<code>detail.successful</code></li>{" "}</ul>
+			<ul>{" "}<li><code>detail.elt</code>{" - the element that dispatched the request or if the body no longer contains the element then the closest parent"}</li>{" "}<li><code>detail.xhr</code>{" - the "}<code>XMLHttpRequest</code></li>{" "}<li><code>detail.target</code>{" - the target of the request"}</li>{" "}<li><code>detail.requestConfig</code>{" - the configuration of the AJAX request"}</li>{" "}<li><code>detail.successful</code>{" - true if the matched "}<a href="/docs/#response-handling"><code>htmx.config.responseHandling</code></a>{" rule did not mark the response as an error (by default, 2xx and 3xx codes), or "}<code>detail.isError</code>{" was set to "}<code>false</code>{" in the "}<code>htmx:beforeSwap</code>{" event"}</li>{" "}<li><code>detail.failed</code>{" - the inverse of "}<code>detail.successful</code></li>{" "}</ul>
 			{" "}
 			<h3 id="htmx:afterSettle"><a class="zola-anchor" href="#htmx:afterSettle" aria-label="Anchor link for: htmx:afterSettle">{"Event - "}<code>htmx:afterSettle</code></a></h3>
 			{" "}
-			<p>{"This event is triggered after the DOM has "}<a href="https://htmx.org/docs/#request-operations">settled</a>.</p>
+			<p>{"This event is triggered after the DOM has "}<a href="/docs/#request-operations">settled</a>.</p>
 			{" "}
 			<h5 id="details-3"><a class="zola-anchor" href="#details-3" aria-label="Anchor link for: details-3">Details</a></h5>
 			{" "}
@@ -52,7 +52,7 @@ export default function Page() @{
 			{" "}
 			<h3 id="htmx:afterSwap"><a class="zola-anchor" href="#htmx:afterSwap" aria-label="Anchor link for: htmx:afterSwap">{"Event - "}<code>htmx:afterSwap</code></a></h3>
 			{" "}
-			<p>{"This event is triggered after new content has been "}<a href="https://htmx.org/docs/#swapping">swapped into the DOM</a>.</p>
+			<p>{"This event is triggered after new content has been "}<a href="/docs/#swapping">swapped into the DOM</a>.</p>
 			{" "}
 			<h5 id="details-4"><a class="zola-anchor" href="#details-4" aria-label="Anchor link for: details-4">Details</a></h5>
 			{" "}
@@ -60,7 +60,7 @@ export default function Page() @{
 			{" "}
 			<h3 id="htmx:beforeCleanupElement"><a class="zola-anchor" href="#htmx:beforeCleanupElement" aria-label="Anchor link for: htmx:beforeCleanupElement">{"Event - "}<code>htmx:beforeCleanupElement</code></a></h3>
 			{" "}
-			<p>{"This event is triggered before htmx "}<a href="https://htmx.org/attributes/hx-disable/">disables</a>{" an element or removes it from the DOM."}</p>
+			<p>{"This event is triggered before htmx "}<a href="/attributes/hx-disable/">disables</a>{" an element or removes it from the DOM."}</p>
 			{" "}
 			<h5 id="details-5"><a class="zola-anchor" href="#details-5" aria-label="Anchor link for: details-5">Details</a></h5>
 			{" "}
@@ -100,13 +100,13 @@ export default function Page() @{
 			{" "}
 			<h3 id="htmx:beforeSwap"><a class="zola-anchor" href="#htmx:beforeSwap" aria-label="Anchor link for: htmx:beforeSwap">{"Event - "}<code>htmx:beforeSwap</code></a></h3>
 			{" "}
-			<p>{"This event is triggered before any new content has been "}<a href="https://htmx.org/docs/#swapping">swapped into the DOM</a>{". Most values on "}<code>detail</code>{" can be set to override subsequent behavior, other than where response headers take precedence. If you call "}<code>preventDefault()</code>{" on the event to cancel it, no swap will occur."}</p>
+			<p>{"This event is triggered before any new content has been "}<a href="/docs/#swapping">swapped into the DOM</a>{". Most values on "}<code>detail</code>{" can be set to override subsequent behavior, other than where response headers take precedence. If you call "}<code>preventDefault()</code>{" on the event to cancel it, no swap will occur."}</p>
 			{" "}
-			<p>{"You can modify the default swap behavior by modifying the "}<code>shouldSwap</code>{", "}<code>selectOverride</code>{", "}<code>swapOverride</code>{" and "}<code>target</code>{" properties of the event detail. See the documentation on "}<a href="https://htmx.org/docs/#modifying_swapping_behavior_with_events">configuring swapping</a>{" for more details."}</p>
+			<p>{"You can modify the default swap behavior by modifying the "}<code>shouldSwap</code>{", "}<code>selectOverride</code>{", "}<code>swapOverride</code>{" and "}<code>target</code>{" properties of the event detail. See the documentation on "}<a href="/docs/#modifying_swapping_behavior_with_events">configuring swapping</a>{" for more details."}</p>
 			{" "}
 			<h5 id="details-10"><a class="zola-anchor" href="#details-10" aria-label="Anchor link for: details-10">Details</a></h5>
 			{" "}
-			<ul>{" "}<li><code>detail.elt</code>{" - the target of the swap"}</li>{" "}<li><code>detail.xhr</code>{" - the "}<code>XMLHttpRequest</code></li>{" "}<li><code>detail.boosted</code>{" - true if the request is via an element using boosting"}</li>{" "}<li><code>detail.requestConfig</code>{" - the configuration of the AJAX request"}</li>{" "}<li><code>detail.requestConfig.elt</code>{" - the element that dispatched the request"}</li>{" "}<li><code>detail.shouldSwap</code>{" - if the content will be swapped (defaults to "}<code>false</code>{" for non-200 response codes)"}</li>{" "}<li><code>detail.ignoreTitle</code>{" - if "}<code>true</code>{" any title tag in the response will be ignored"}</li>{" "}<li><code>detail.isError</code>{" - whether error events should be triggered and also determines the values of "}<code>detail.successful</code>{" and "}<code>detail.failed</code>{" in later events"}</li>{" "}<li><code>detail.serverResponse</code>{" - the server response as text to be used for the swap"}</li>{" "}<li><code>detail.selectOverride</code>{" - add this to use instead of an "}<a href="https://htmx.org/attributes/hx-select/"><code>hx-select</code></a>{" value"}</li>{" "}<li><code>detail.swapOverride</code>{" - add this to use instead of an "}<a href="https://htmx.org/attributes/hx-swap/"><code>hx-swap</code></a>{" value"}</li>{" "}<li><code>detail.target</code>{" - the target of the swap"}</li>{" "}</ul>
+			<ul>{" "}<li><code>detail.elt</code>{" - the target of the swap"}</li>{" "}<li><code>detail.xhr</code>{" - the "}<code>XMLHttpRequest</code></li>{" "}<li><code>detail.boosted</code>{" - true if the request is via an element using boosting"}</li>{" "}<li><code>detail.requestConfig</code>{" - the configuration of the AJAX request"}</li>{" "}<li><code>detail.requestConfig.elt</code>{" - the element that dispatched the request"}</li>{" "}<li><code>detail.shouldSwap</code>{" - if the content will be swapped (defaults to "}<code>false</code>{" for non-200 response codes)"}</li>{" "}<li><code>detail.ignoreTitle</code>{" - if "}<code>true</code>{" any title tag in the response will be ignored"}</li>{" "}<li><code>detail.isError</code>{" - whether error events should be triggered and also determines the values of "}<code>detail.successful</code>{" and "}<code>detail.failed</code>{" in later events"}</li>{" "}<li><code>detail.serverResponse</code>{" - the server response as text to be used for the swap"}</li>{" "}<li><code>detail.selectOverride</code>{" - add this to use instead of an "}<a href="/attributes/hx-select/"><code>hx-select</code></a>{" value"}</li>{" "}<li><code>detail.swapOverride</code>{" - add this to use instead of an "}<a href="/attributes/hx-swap/"><code>hx-swap</code></a>{" value"}</li>{" "}<li><code>detail.target</code>{" - the target of the swap"}</li>{" "}</ul>
 			{" "}
 			<h3 id="htmx:beforeTransition"><a class="zola-anchor" href="#htmx:beforeTransition" aria-label="Anchor link for: htmx:beforeTransition">{"Event - "}<code>htmx:beforeTransition</code></a></h3>
 			{" "}
@@ -126,7 +126,7 @@ export default function Page() @{
 			{" "}
 			<h5 id="details-12"><a class="zola-anchor" href="#details-12" aria-label="Anchor link for: details-12">Details</a></h5>
 			{" "}
-			<ul>{" "}<li><code>detail.parameters</code>{" - the parameters that will be submitted in the request"}</li>{" "}<li><code>detail.unfilteredParameters</code>{" - the parameters that were found before filtering by "}<a href="https://htmx.org/attributes/hx-params/"><code>hx-params</code></a></li>{" "}<li><code>detail.headers</code>{" - the request headers"}</li>{" "}<li><code>detail.elt</code>{" - the element that triggered the request"}</li>{" "}<li><code>detail.target</code>{" - the target of the request"}</li>{" "}<li><code>detail.verb</code>{" - the HTTP verb in use"}</li>{" "}</ul>
+			<ul>{" "}<li><code>detail.parameters</code>{" - the parameters that will be submitted in the request"}</li>{" "}<li><code>detail.unfilteredParameters</code>{" - the parameters that were found before filtering by "}<a href="/attributes/hx-params/"><code>hx-params</code></a></li>{" "}<li><code>detail.headers</code>{" - the request headers"}</li>{" "}<li><code>detail.elt</code>{" - the element that triggered the request"}</li>{" "}<li><code>detail.target</code>{" - the target of the request"}</li>{" "}<li><code>detail.verb</code>{" - the HTTP verb in use"}</li>{" "}</ul>
 			{" "}
 			<h3 id="htmx:confirm"><a class="zola-anchor" href="#htmx:confirm" aria-label="Anchor link for: htmx:confirm">{"Event - "}<code>htmx:confirm</code></a></h3>
 			{" "}
@@ -226,7 +226,7 @@ export default function Page() @{
 			{" "}
 			<h3 id="htmx:oobAfterSwap"><a class="zola-anchor" href="#htmx:oobAfterSwap" aria-label="Anchor link for: htmx:oobAfterSwap">{"Event - "}<code>htmx:oobAfterSwap</code></a></h3>
 			{" "}
-			<p>{"This event is triggered as part of an "}<a href="https://htmx.org/docs/#oob_swaps">out of band swap</a>{" and behaves identically to an "}<a href="https://htmx.org/events/#htmx:afterSwap">after swap event</a></p>
+			<p>{"This event is triggered as part of an "}<a href="/docs/#oob_swaps">out of band swap</a>{" and behaves identically to an "}<a href="/events/#htmx:afterSwap">after swap event</a></p>
 			{" "}
 			<h5 id="details-23"><a class="zola-anchor" href="#details-23" aria-label="Anchor link for: details-23">Details</a></h5>
 			{" "}
@@ -234,7 +234,7 @@ export default function Page() @{
 			{" "}
 			<h3 id="htmx:oobBeforeSwap"><a class="zola-anchor" href="#htmx:oobBeforeSwap" aria-label="Anchor link for: htmx:oobBeforeSwap">{"Event - "}<code>htmx:oobBeforeSwap</code></a></h3>
 			{" "}
-			<p>{"This event is triggered as part of an "}<a href="https://htmx.org/docs/#oob_swaps">out of band swap</a>{" and behaves identically to a "}<a href="https://htmx.org/events/#htmx:beforeSwap">before swap event</a></p>
+			<p>{"This event is triggered as part of an "}<a href="/docs/#oob_swaps">out of band swap</a>{" and behaves identically to a "}<a href="/events/#htmx:beforeSwap">before swap event</a></p>
 			{" "}
 			<h5 id="details-24"><a class="zola-anchor" href="#details-24" aria-label="Anchor link for: details-24">Details</a></h5>
 			{" "}
@@ -242,7 +242,7 @@ export default function Page() @{
 			{" "}
 			<h3 id="htmx:oobErrorNoTarget"><a class="zola-anchor" href="#htmx:oobErrorNoTarget" aria-label="Anchor link for: htmx:oobErrorNoTarget">{"Event - "}<code>htmx:oobErrorNoTarget</code></a></h3>
 			{" "}
-			<p>{"This event is triggered when an "}<a href="https://htmx.org/docs/#oob_swaps">out of band swap</a>{" does not have a corresponding element in the DOM to switch with."}</p>
+			<p>{"This event is triggered when an "}<a href="/docs/#oob_swaps">out of band swap</a>{" does not have a corresponding element in the DOM to switch with."}</p>
 			{" "}
 			<h5 id="details-25"><a class="zola-anchor" href="#details-25" aria-label="Anchor link for: details-25">Details</a></h5>
 			{" "}
@@ -250,7 +250,7 @@ export default function Page() @{
 			{" "}
 			<h3 id="htmx:partialAfterSwap"><a class="zola-anchor" href="#htmx:partialAfterSwap" aria-label="Anchor link for: htmx:partialAfterSwap">{"Event - "}<code>htmx:partialAfterSwap</code></a></h3>
 			{" "}
-			<p>{"This event is triggered after a "}<a href="https://htmx.org/attributes/hx-partial/"><code>&lt;hx-partial&gt;</code></a>{" element has been swapped into the DOM. It behaves identically to "}<a href="https://htmx.org/events/#htmx:oobAfterSwap"><code>htmx:oobAfterSwap</code></a>.</p>
+			<p>{"This event is triggered after a "}<a href="/attributes/hx-partial/"><code>&lt;hx-partial&gt;</code></a>{" element has been swapped into the DOM. It behaves identically to "}<a href="/events/#htmx:oobAfterSwap"><code>htmx:oobAfterSwap</code></a>.</p>
 			{" "}
 			<h5 id="details-26"><a class="zola-anchor" href="#details-26" aria-label="Anchor link for: details-26">Details</a></h5>
 			{" "}
@@ -258,7 +258,7 @@ export default function Page() @{
 			{" "}
 			<h3 id="htmx:partialBeforeSwap"><a class="zola-anchor" href="#htmx:partialBeforeSwap" aria-label="Anchor link for: htmx:partialBeforeSwap">{"Event - "}<code>htmx:partialBeforeSwap</code></a></h3>
 			{" "}
-			<p>{"This event is triggered before a "}<a href="https://htmx.org/attributes/hx-partial/"><code>&lt;hx-partial&gt;</code></a>{" element is swapped into the DOM. It behaves identically to "}<a href="https://htmx.org/events/#htmx:oobBeforeSwap"><code>htmx:oobBeforeSwap</code></a>{". Setting "}<code>detail.shouldSwap</code>{" to "}<code>false</code>{" cancels the swap. You may also reassign "}<code>detail.target</code>{" to redirect the swap to a different element, or replace "}<code>detail.fragment</code>{" to rewrite the content before it is inserted."}</p>
+			<p>{"This event is triggered before a "}<a href="/attributes/hx-partial/"><code>&lt;hx-partial&gt;</code></a>{" element is swapped into the DOM. It behaves identically to "}<a href="/events/#htmx:oobBeforeSwap"><code>htmx:oobBeforeSwap</code></a>{". Setting "}<code>detail.shouldSwap</code>{" to "}<code>false</code>{" cancels the swap. You may also reassign "}<code>detail.target</code>{" to redirect the swap to a different element, or replace "}<code>detail.fragment</code>{" to rewrite the content before it is inserted."}</p>
 			{" "}
 			<h5 id="details-27"><a class="zola-anchor" href="#details-27" aria-label="Anchor link for: details-27">Details</a></h5>
 			{" "}
@@ -266,7 +266,7 @@ export default function Page() @{
 			{" "}
 			<h3 id="htmx:partialErrorNoTarget"><a class="zola-anchor" href="#htmx:partialErrorNoTarget" aria-label="Anchor link for: htmx:partialErrorNoTarget">{"Event - "}<code>htmx:partialErrorNoTarget</code></a></h3>
 			{" "}
-			<p>{"This event is triggered on "}<code>document.body</code>{" when a "}<a href="https://htmx.org/attributes/hx-partial/"><code>&lt;hx-partial&gt;</code></a>{" element’s "}<code>hx-target</code>{" selector does not match any element in the current DOM."}</p>
+			<p>{"This event is triggered on "}<code>document.body</code>{" when a "}<a href="/attributes/hx-partial/"><code>&lt;hx-partial&gt;</code></a>{" element’s "}<code>hx-target</code>{" selector does not match any element in the current DOM."}</p>
 			{" "}
 			<h5 id="details-28"><a class="zola-anchor" href="#details-28" aria-label="Anchor link for: details-28">Details</a></h5>
 			{" "}
@@ -296,7 +296,7 @@ export default function Page() @{
 			{" "}
 			<h3 id="htmx:prompt"><a class="zola-anchor" href="#htmx:prompt" aria-label="Anchor link for: htmx:prompt">{"Event - "}<code>htmx:prompt</code></a></h3>
 			{" "}
-			<p>{"This event is triggered after a prompt has been shown to the user with the "}<a href="https://htmx.org/attributes/hx-prompt/"><code>hx-prompt</code></a>{" attribute. If this event is cancelled, the AJAX request will not occur."}</p>
+			<p>{"This event is triggered after a prompt has been shown to the user with the "}<a href="/attributes/hx-prompt/"><code>hx-prompt</code></a>{" attribute. If this event is cancelled, the AJAX request will not occur."}</p>
 			{" "}
 			<h5 id="details-31"><a class="zola-anchor" href="#details-31" aria-label="Anchor link for: details-31">Details</a></h5>
 			{" "}
@@ -368,7 +368,7 @@ export default function Page() @{
 			{" "}
 			<h3 id="htmx:targetError"><a class="zola-anchor" href="#htmx:targetError" aria-label="Anchor link for: htmx:targetError">{"Event - "}<code>htmx:targetError</code></a></h3>
 			{" "}
-			<p>{"This event is triggered when a bad selector is used for a "}<a href="https://htmx.org/attributes/hx-target/"><code>hx-target</code></a>{" attribute (e.g. an element ID without a preceding "}<code>#</code>)</p>
+			<p>{"This event is triggered when a bad selector is used for a "}<a href="/attributes/hx-target/"><code>hx-target</code></a>{" attribute (e.g. an element ID without a preceding "}<code>#</code>)</p>
 			{" "}
 			<h5 id="details-40"><a class="zola-anchor" href="#details-40" aria-label="Anchor link for: details-40">Details</a></h5>
 			{" "}
@@ -378,7 +378,7 @@ export default function Page() @{
 			{" "}
 			<p>{"This event is triggered when a request timeout occurs. This wraps the typical "}<code>timeout</code>{" event of XMLHttpRequest."}</p>
 			{" "}
-			<p>{"Timeout time can be set using "}<code>htmx.config.timeout</code>{" or per element using "}<a href="https://htmx.org/attributes/hx-request/"><code>hx-request</code></a></p>
+			<p>{"Timeout time can be set using "}<code>htmx.config.timeout</code>{" or per element using "}<a href="/attributes/hx-request/"><code>hx-request</code></a></p>
 			{" "}
 			<h5 id="details-41"><a class="zola-anchor" href="#details-41" aria-label="Anchor link for: details-41">Details</a></h5>
 			{" "}
@@ -386,7 +386,7 @@ export default function Page() @{
 			{" "}
 			<h3 id="htmx:trigger"><a class="zola-anchor" href="#htmx:trigger" aria-label="Anchor link for: htmx:trigger">{"Event - "}<code>htmx:trigger</code></a></h3>
 			{" "}
-			<p>{"This event is triggered whenever an AJAX request would be, even if no AJAX request is specified. It is primarily intended to allow "}<code>hx-trigger</code>{" to execute client-side scripts; AJAX requests have more granular events available, like "}<a href="https://htmx.org/events/#htmx:beforeRequest"><code>htmx:beforeRequest</code></a>{" or "}<a href="https://htmx.org/events/#htmx:afterRequest"><code>htmx:afterRequest</code></a>.</p>
+			<p>{"This event is triggered whenever an AJAX request would be, even if no AJAX request is specified. It is primarily intended to allow "}<code>hx-trigger</code>{" to execute client-side scripts; AJAX requests have more granular events available, like "}<a href="/events/#htmx:beforeRequest"><code>htmx:beforeRequest</code></a>{" or "}<a href="/events/#htmx:afterRequest"><code>htmx:afterRequest</code></a>.</p>
 			{" "}
 			<h5 id="details-42"><a class="zola-anchor" href="#details-42" aria-label="Anchor link for: details-42">Details</a></h5>
 			{" "}

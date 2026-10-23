@@ -24,7 +24,7 @@ export default function Page() @{
 			{" "}
 			<p>{"The LoB principle is a simple prescriptive formulation of the quoted statement from "}<a rel="noopener" target="_blank" href="https://www.dreamsongs.com">Richard Gabriel</a>. In as much as it is possible, and in balance with other concerns, developers should strive to make the behaviour of a code element obvious on inspection.</p>
 			{" "}
-			<p>{"Consider two different implementations of an AJAX request in HTML, the first in "}<a href="https://htmx.org/">htmx</a>:</p>
+			<p>{"Consider two different implementations of an AJAX request in HTML, the first in "}<a href="/">htmx</a>:</p>
 			{" "}
 			<pre data-lang="html" style="background-color:#1f2329;color:#abb2bf;" class="language-html "><code class="language-html" data-lang="html"><span>&lt;</span><span style="color:#e06c75;">{"button "}</span><span style="color:#d19a66;">hx-get</span><span>=</span><span style="color:#98c379;">"/clicked"</span><span>&gt;Click Me&lt;/</span><span style="color:#e06c75;">button</span><span>{">\n"}</span></code></pre>
 			{" "}

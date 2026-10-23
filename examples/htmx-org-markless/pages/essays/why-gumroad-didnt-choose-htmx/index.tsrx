@@ -12,7 +12,7 @@ export default function Page() @{
 			{" "}
 			<time>September 30, 2024</time>
 			{" "}
-			<p>{"At Gumroad, we recently embarked on a new project called "}<a rel="noopener" target="_blank" href="https://helper.ai">Helper</a>{". As the CEO, I was initially quite optimistic about using "}<a rel="noopener" target="_blank" href="https://htmx.org">htmx</a>{" for this project, even though some team members were less enthusiastic."}</p>
+			<p>{"At Gumroad, we recently embarked on a new project called "}<a rel="noopener" target="_blank" href="https://helper.ai">Helper</a>{". As the CEO, I was initially quite optimistic about using "}<a rel="noopener" target="_blank" href="/">htmx</a>{" for this project, even though some team members were less enthusiastic."}</p>
 			{" "}
 			<p>My optimism stemmed from previous experiences with React, which often felt like overkill for our needs. I thought htmx could be a good solution to keep our front-end super light.</p>
 			{" "}

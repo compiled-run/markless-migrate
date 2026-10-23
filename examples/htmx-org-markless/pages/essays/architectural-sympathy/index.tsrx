@@ -28,7 +28,7 @@ export default function Page() @{
 			{" "}
 			<blockquote>{" "}<p>Architectural Sympathy is the characteristic of one piece of software adopting and conforming to the architectural design of another piece of software</p>{" "}</blockquote>
 			{" "}
-			<p>{"This is a design principle that I have kept in mind when designing "}<a rel="noopener" target="_blank" href="https://htmx.org">htmx</a>{" and "}<a rel="noopener" target="_blank" href="https://hyperscript.org">hyperscript</a>{" and I wanted to write it down for reference and so others can think about, criticize and improve it."}</p>
+			<p>{"This is a design principle that I have kept in mind when designing "}<a rel="noopener" target="_blank" href="/">htmx</a>{" and "}<a rel="noopener" target="_blank" href="https://hyperscript.org">hyperscript</a>{" and I wanted to write it down for reference and so others can think about, criticize and improve it."}</p>
 			{" "}
 			<h3 id="htmx-s-architectural-sympathy-for-the-web"><a class="zola-anchor" href="#htmx-s-architectural-sympathy-for-the-web" aria-label="Anchor link for: htmx-s-architectural-sympathy-for-the-web">htmx’s Architectural Sympathy for The Web</a></h3>
 			{" "}

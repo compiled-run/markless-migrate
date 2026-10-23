@@ -78,7 +78,7 @@ export default function Page() @{
 			{" "}
 			<p>{"Now, "}<a rel="noopener" target="_blank" href="https://v1.htmx.org/">htmx 1.x</a>{" is IE compatible, and I don’t "}<em>want</em>{" polyfills for "}<em>anything</em>: I want to write code that will work in IE without any additional library support. And yet a polyfill has snuck in via a chain of dependencies (htmx does not directly rely on it) that introduces a dangerous polyfill that would let me write code that would break in IE, as well as other older browsers.</p>
 			{" "}
-			<p>{"This polyfill may or may not be available when I run the htmx "}<a rel="noopener" target="_blank" href="https://htmx.org/test/">test suite</a>{" (it’s hard to tell) but that’s the point: some dangerous code has snuck into my project without me even knowing it, due to the number and complexity of the (development) dependencies it has."}</p>
+			<p>{"This polyfill may or may not be available when I run the htmx "}<a rel="noopener" target="_blank" href="/test/">test suite</a>{" (it’s hard to tell) but that’s the point: some dangerous code has snuck into my project without me even knowing it, due to the number and complexity of the (development) dependencies it has."}</p>
 			{" "}
 			<p>{"This demonstrates significant "}<em>cultural</em>{" problem with dependency managers:"}</p>
 			{" "}

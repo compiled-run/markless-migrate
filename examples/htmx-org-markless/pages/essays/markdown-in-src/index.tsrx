@@ -22,7 +22,7 @@ export default function Page() @{
 			{" "}
 			<p>Obviously the biggest thing to happen in development in the last few years is agentic coding: using LLMs to generate code in lieu of hand coding. I have written a few essays on this topic:</p>
 			{" "}
-			<ul>{" "}<li><a href="https://htmx.org/essays/yes-and/">Yes, and…</a></li>{" "}<li><a href="https://htmx.org/essays/code-is-cheap/">Code is Cheap(er)</a></li>{" "}<li><a href="https://htmx.org/essays/universities-and-ai/">The University In The AI Era</a></li>{" "}<li><a href="https://htmx.org/essays/working-with-ai/">Working With AI: A Concrete Example</a></li>{" "}</ul>
+			<ul>{" "}<li><a href="/essays/yes-and/">Yes, and…</a></li>{" "}<li><a href="/essays/code-is-cheap/">Code is Cheap(er)</a></li>{" "}<li><a href="/essays/universities-and-ai/">The University In The AI Era</a></li>{" "}<li><a href="/essays/working-with-ai/">Working With AI: A Concrete Example</a></li>{" "}</ul>
 			{" "}
 			<p>In this essay I want to discuss an idea that is becoming increasingly clear to me as I work in companies that are prioritizing agentic coding:</p>
 			{" "}
@@ -42,7 +42,7 @@ export default function Page() @{
 			{" "}
 			<p>There is a line of thinking, captured in the quote above, that LLMs are akin to compilers, taking high-level specifications and turning them into low-level implementations. In this view, we don’t need to look at the code an LLM generates, just as we don’t look at the machine code a compiler generates.</p>
 			{" "}
-			<p>{"As I mention in "}<a href="https://htmx.org/essays/code-is-cheap/">Code is Cheap(er)</a>, I do not totally agree with this analogy for a few reasons, but the one relevant to this essay is: compiler workflows retain their original source code while LLM workflows typically do not.</p>
+			<p>{"As I mention in "}<a href="/essays/code-is-cheap/">Code is Cheap(er)</a>, I do not totally agree with this analogy for a few reasons, but the one relevant to this essay is: compiler workflows retain their original source code while LLM workflows typically do not.</p>
 			{" "}
 			<p>Today, LLM-generated code is often created via a string of prompts fed into an agent as a developer builds out a feature. In practice, this means that the generated code is the closest thing we have to “ground truth” for that feature. There may be documentation for the feature stored elsewhere (e.g. Linear, Slack threads, wikis, etc.) but, so far as the codebase is concerned, the generated code is the source of truth.</p>
 			{" "}
@@ -68,7 +68,7 @@ export default function Page() @{
 			{" "}
 			<h3 id="locality"><a class="zola-anchor" href="#locality" aria-label="Anchor link for: locality">Locality</a></h3>
 			{" "}
-			<p>{"I am a fan of "}<a href="https://htmx.org/essays/locality-of-behaviour/">locality</a>{", and I think that moving Markdown into "}<code>/src</code>{" has strong locality advantages:"}</p>
+			<p>{"I am a fan of "}<a href="/essays/locality-of-behaviour/">locality</a>{", and I think that moving Markdown into "}<code>/src</code>{" has strong locality advantages:"}</p>
 			{" "}
 			<ul>{" "}<li>Code modules would now include the Markdown that explains the intent of the code</li>{" "}<li>{"There is no spooky “specification at a distance”, where the logic of "}<em>why</em>{" is elsewhere in a wiki/Notion/Confluence/Jira"}</li>{" "}<li>{"Markdown in "}<code>/src</code>{" can be consumed by both humans "}<em>and</em>{" agents"}</li>{" "}<li>Agents no longer need to look elsewhere to get context on a given codebase</li>{" "}</ul>
 			{" "}
@@ -96,11 +96,11 @@ export default function Page() @{
 			{" "}
 			<p>{"The Markdown in "}<code>/src/md</code>{" sits between a formal specification for the system and high-level design documents."}</p>
 			{" "}
-			<p>{"As with source code, there is a "}<a href="https://htmx.org/essays/complexity-budget/">Complexity Budget</a>{" associated with this Markdown. It will require thoughtful management to keep these documents clean, well-factored and at the right level of abstraction."}</p>
+			<p>{"As with source code, there is a "}<a href="/essays/complexity-budget/">Complexity Budget</a>{" associated with this Markdown. It will require thoughtful management to keep these documents clean, well-factored and at the right level of abstraction."}</p>
 			{" "}
 			<p>{"Developers should be expected to interact with "}<em>both</em>{" the Markdown and the derived code, so synchronizing the two (when appropriate) will become an important skill."}</p>
 			{" "}
-			<p>{"For example, developers will often do "}<a href="https://htmx.org/essays/code-is-cheap/#the-subtractive-constraining-engineer">subtractive, constraining</a>{" work on generated code, and those changes may need to be moved back into the Markdown."}</p>
+			<p>{"For example, developers will often do "}<a href="/essays/code-is-cheap/#the-subtractive-constraining-engineer">subtractive, constraining</a>{" work on generated code, and those changes may need to be moved back into the Markdown."}</p>
 			{" "}
 			<p>{"I believe that agents should "}<em>not</em>{" be used to generate much content in "}<code>/src/md</code>. This directory should be mainly human authored and curated.</p>
 			{" "}

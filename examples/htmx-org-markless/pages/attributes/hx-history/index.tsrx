@@ -18,7 +18,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="notes">Notes</h2>
 			{" "}
-			<ul>{" "}<li><code>hx-history="false"</code>{" can be present "}<em>anywhere</em>{" in the document to embargo the current page state from the history cache (i.e. even outside the element specified for the history snapshot "}<a href="https://htmx.org/attributes/hx-history-elt/">hx-history-elt</a>).</li>{" "}</ul>
+			<ul>{" "}<li><code>hx-history="false"</code>{" can be present "}<em>anywhere</em>{" in the document to embargo the current page state from the history cache (i.e. even outside the element specified for the history snapshot "}<a href="/attributes/hx-history-elt/">hx-history-elt</a>).</li>{" "}</ul>
 			{" "}
 		</main>
 		<SiteFooter />

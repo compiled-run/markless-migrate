@@ -12,9 +12,9 @@ export default function Page() @{
 			{" "}
 			<time>August 03, 2022</time>
 			{" "}
-			<p>{"Template fragments are a relatively rare Server Side Rendering (SSR) template library feature that allow you to render a "}<em>fragment</em>{" or partial bit of the content within a template, rather than the entire template. This feature is very handy in "}<a href="https://htmx.org/essays/hypermedia-driven-applications/">Hypermedia Driven Applications</a>{" because it allows you to decompose a particular view for partial updates "}<em>internally</em>{" without pulling fragments of the template out to separate files for rendering, creating a large number of individual template files."}</p>
+			<p>{"Template fragments are a relatively rare Server Side Rendering (SSR) template library feature that allow you to render a "}<em>fragment</em>{" or partial bit of the content within a template, rather than the entire template. This feature is very handy in "}<a href="/essays/hypermedia-driven-applications/">Hypermedia Driven Applications</a>{" because it allows you to decompose a particular view for partial updates "}<em>internally</em>{" without pulling fragments of the template out to separate files for rendering, creating a large number of individual template files."}</p>
 			{" "}
-			<p>{"By keeping all the HTML in a single file, it is also easier to reason about how a feature works. This follows the "}<a href="https://htmx.org/essays/locality-of-behaviour/">Locality of Behavior</a>{" design principle."}</p>
+			<p>{"By keeping all the HTML in a single file, it is also easier to reason about how a feature works. This follows the "}<a href="/essays/locality-of-behaviour/">Locality of Behavior</a>{" design principle."}</p>
 			{" "}
 			<h2 id="motivation"><a class="zola-anchor" href="#motivation" aria-label="Anchor link for: motivation">Motivation</a></h2>
 			{" "}
