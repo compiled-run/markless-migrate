@@ -731,12 +731,14 @@ function toggleWordWrap(button: HTMLElement): void {
 }
 
 let lastScrollY = 0;
+// useHideableNavbar shows the navbar on a location change; the scroll a navigation restores is not the visitor's.
+let navigationScroll = false;
 // Scroll effects of the old theme: the hideable navbar, the sidebar's announcement-bar margin and back-to-top.
 function onScroll(): void {
 	const y = window.scrollY;
 	const navbar = document.querySelector(`nav.${cls('Navbar/Layout', 'navbarHideable')}`) as HTMLElement | null;
 	const hidden = cls('Navbar/Layout', 'navbarHidden');
-	if (navbar) {
+	if (navbar && !navigationScroll) {
 		const height = navbar.getBoundingClientRect().height;
 		if (y < height) navbar.classList.remove(hidden);
 		else if (lastScrollY && y >= lastScrollY) navbar.classList.add(hidden);
@@ -759,7 +761,7 @@ function mobileNavItem(link: HTMLAnchorElement): string {
 	copy.className = classesInOrder.join(' ');
 	return `<li class="menu__list-item">${copy.outerHTML}</li>`;
 }
-function mobileDropdown(dropdown: Element, label: string, labelIcon: string): string {
+function mobileDropdown(dropdown: Element, label: string, labelIcon: string, withList = false): string {
 	const items = [...dropdown.querySelectorAll(':scope > .dropdown__menu > li')];
 	const path = currentPath();
 	const isActiveItem = (li: Element) => {
@@ -782,7 +784,7 @@ function mobileDropdown(dropdown: Element, label: string, labelIcon: string): st
 			return `<li class="menu__list-item">${copy.outerHTML}</li>`;
 		})
 		.join('');
-	return `<li class="menu__list-item${collapsed ? ' menu__list-item--collapsed' : ''}"><div class="menu__list-item-collapsible"><a href="#" role="button" class="${cls('NavbarItem/DropdownNavbarItem/Mobile', 'dropdownNavbarItemMobile')} menu__link menu__link--sublist">${labelIcon}${label}</a><button aria-label="${collapsed ? 'Expand' : 'Collapse'} the dropdown" aria-expanded="${!collapsed}" type="button" class="clean-btn menu__caret"></button></div>${collapsed ? '' : `<ul class="menu__list" style="display: block; overflow: visible; height: auto;">${list}</ul>`}</li>`;
+	return `<li class="menu__list-item${collapsed ? ' menu__list-item--collapsed' : ''}"><div class="menu__list-item-collapsible"><a href="#" role="button" class="${cls('NavbarItem/DropdownNavbarItem/Mobile', 'dropdownNavbarItemMobile')} menu__link menu__link--sublist">${labelIcon}${label}</a><button aria-label="${collapsed ? 'Expand' : 'Collapse'} the dropdown" aria-expanded="${!collapsed}" type="button" class="clean-btn menu__caret"></button></div>${collapsed && !withList ? '' : `<ul class="menu__list" style="display: block; overflow: visible; height: auto;">${list}</ul>`}</li>`;
 }
 const pendingDropdownLists = new WeakMap<Element, string>();
 let keptDrawer: Element | undefined;
@@ -879,7 +881,7 @@ function toggleMobileDropdown(li: Element): void {
 		const label = li.querySelector('.menu__link--sublist')?.textContent ?? '';
 		const desktop = [...document.querySelectorAll('.navbar__inner .dropdown')].find((dropdown) => (dropdown.querySelector(':scope > .navbar__link svg') ? 'Languages' : 'Versions') === label);
 		if (!desktop) return;
-		const html = mobileDropdown(desktop, label, '');
+		const html = mobileDropdown(desktop, label, '', true);
 		const tmp = document.createElement('div');
 		tmp.innerHTML = html.replace('menu__list-item--collapsed', '');
 		const items = tmp.querySelector('ul.menu__list');
@@ -1290,7 +1292,7 @@ function siteClick(event: Event): void {
 		return toggleMobileDropdown(mobileDropdownLink.closest('.menu__list-item')!);
 	}
 	if (closest(event, 'button.navbar-sidebar__back')) return showSecondaryMenu(false);
-	if (drawer && link && !link.classList.contains('menu__link--sublist')) return toggleDrawer(false);
+	if (drawer && link && !link.classList.contains('menu__link--sublist') && !(link.matches('.navbar__brand') && samePath(link.getAttribute('href') ?? undefined, currentPath()))) return toggleDrawer(false);
 	if (closest(event, `button.${cls('DocSidebar/Desktop/CollapseButton', 'collapseSidebarButton')}`)) return setSidebarHidden(true);
 	if (closest(event, `.${cls('DocRoot/Layout/Sidebar/ExpandButton', 'expandButton')}`)) return setSidebarHidden(false);
 	if (closest(event, 'button.DocSearch-Button')) return openSearch();
@@ -1350,7 +1352,7 @@ function noscriptAsText(): void {
 	for (const el of document.body.querySelectorAll('noscript')) if (el.firstElementChild) el.textContent = el.innerHTML;
 }
 
-function pageInit(): void {
+function pageInit(navigation?: Event): void {
 	noscriptAsText();
 	if (!announcementSeen && document.querySelector('nav.theme-layout-navbar')) {
 		announcementSeen = true;
@@ -1379,6 +1381,18 @@ function pageInit(): void {
 	queueMicrotask(checkLazyImages);
 	updateWordWrap();
 	lastScrollY = window.scrollY;
+	if (navigation) {
+		// React remounts the navbar on a route change: a hover menu chosen from closes under the pointer until it moves.
+		for (const dropdown of document.querySelectorAll('.navbar .dropdown--hoverable:has(> .dropdown__menu:hover)')) {
+			const className = dropdown.className;
+			dropdown.classList.remove('dropdown--hoverable');
+			document.addEventListener('pointermove', () => (dropdown.className = className), { once: true });
+		}
+		const anchored = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1)));
+		document.querySelector(`nav.${cls('Navbar/Layout', 'navbarHideable')}`)?.classList.toggle(cls('Navbar/Layout', 'navbarHidden'), Boolean(anchored));
+		navigationScroll = true;
+		requestAnimationFrame(() => requestAnimationFrame(() => (navigationScroll = false)));
+	}
 	updateTocHighlight();
 	watchAvatars(document);
 	loadCanaryVersion();
