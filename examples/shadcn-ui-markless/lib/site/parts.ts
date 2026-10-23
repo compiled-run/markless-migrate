@@ -181,28 +181,44 @@ const viewCode: Part = {
 };
 
 // components/docs-toc.tsx's useActiveItem: the heading crossing the top fifth of the viewport marks its link active.
-const tocs = new WeakSet<Element>();
+// components/docs-toc.tsx's useActiveItem: an IntersectionObserver per page over its headings, starting with no item
+// active. A page shown in place (or by Back) keeps the list where both pages have one, so the list is synced again then.
+const observers = new Map<Element, IntersectionObserver>();
+function syncToc(list: Element): void {
+	observers.get(list)?.disconnect();
+	const links = [...list.querySelectorAll<HTMLAnchorElement>(':scope > a[data-depth][href^="#"]')];
+	for (const link of links) link.setAttribute('data-active', 'false');
+	const observer = new IntersectionObserver(
+		(entries) => {
+			for (const entry of entries) {
+				if (!entry.isIntersecting) continue;
+				for (const link of links) link.setAttribute('data-active', String(link.getAttribute('href') === `#${entry.target.id}`));
+			}
+		},
+		{ rootMargin: '0% 0% -80% 0%' },
+	);
+	for (const link of links) {
+		const heading = document.getElementById(decodeURIComponent(link.getAttribute('href')!.slice(1)));
+		if (heading) observer.observe(heading);
+	}
+	observers.set(list, observer);
+}
+function syncTocs(): void {
+	for (const list of [...observers.keys()]) {
+		if (!list.isConnected) {
+			observers.get(list)!.disconnect();
+			observers.delete(list);
+		} else syncToc(list);
+	}
+}
+const navigation = (globalThis as { navigation?: EventTarget }).navigation;
+navigation?.addEventListener('navigatesuccess', syncTocs);
+addEventListener('popstate', () => queueMicrotask(syncTocs));
 const docsToc: Part = {
 	mount(el) {
 		const list = el.parentElement;
-		if (!list || tocs.has(list) || !(el instanceof HTMLAnchorElement) || !el.getAttribute('href')?.startsWith('#')) return;
-		tocs.add(list);
-		const links = [...list.querySelectorAll<HTMLAnchorElement>(':scope > a[data-depth][href^="#"]')];
-		// useActiveItem starts at null; the capture's own scroll to the bottom left a link marked active in the markup.
-		for (const link of links) link.setAttribute('data-active', 'false');
-		const observer = new IntersectionObserver(
-			(entries) => {
-				for (const entry of entries) {
-					if (!entry.isIntersecting) continue;
-					for (const link of links) link.setAttribute('data-active', String(link.getAttribute('href') === `#${entry.target.id}`));
-				}
-			},
-			{ rootMargin: '0% 0% -80% 0%' },
-		);
-		for (const link of links) {
-			const heading = document.getElementById(decodeURIComponent(link.getAttribute('href')!.slice(1)));
-			if (heading) observer.observe(heading);
-		}
+		if (!list || !(el instanceof HTMLAnchorElement) || !el.getAttribute('href')?.startsWith('#')) return;
+		if (!observers.has(list)) syncToc(list);
 	},
 };
 
