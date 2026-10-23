@@ -625,6 +625,19 @@ function readReaction(): { changes: string[]; scrolled: boolean } {
 	return { changes: [...out].sort(), scrolled: `${Math.round(scrollX)},${Math.round(scrollY)}` !== watch.window };
 }
 
+const AMBIENT_MS = 1_000;
+
+/** What the settled page changes on its own while nothing is used: the widgets and regions of the view that move without a step. */
+async function ambientMotion(page: Page): Promise<{ changes: readonly string[]; regions: readonly Box[] }> {
+	const before = await page.screenshot({ timeout: 10_000 }).catch(() => undefined);
+	if (!before) return { changes: [], regions: [] };
+	await page.evaluate(watchReaction).catch(() => {});
+	await sleep(AMBIENT_MS);
+	const read = await page.evaluate(readReaction).catch(() => undefined);
+	const after = await page.screenshot({ timeout: 10_000 }).catch(() => undefined);
+	return { changes: read?.changes ?? [], regions: after && !read?.scrolled ? changedRegions(before, after, []) : [] };
+}
+
 async function focusLabel(page: Page): Promise<string> {
 	// Asks whether anything has focus first, so a snapshot slowed by load is waited for instead of read as "body".
 	const focused = await page.evaluate(() => Boolean(document.activeElement && document.activeElement !== document.body)).catch(() => false);
@@ -930,6 +943,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 	await loadPage(page, new URL(route, origin).href);
 	await quiet(page, inflight, navigations);
 	const loadErrors = [...errors];
+	const ambient = await ambientMotion(page);
 	// Where a redirect landed is the http and auth checks' business; a step that stays there compares alike.
 	const landing = here(page.url());
 	const redirected = landing !== localUrl(new URL(route, origin).href, origin);
@@ -981,7 +995,8 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 			const read = await page.evaluate(readReaction).catch(() => undefined);
 			const frameAfter = await page.screenshot({ timeout: 10_000 }).catch(() => undefined);
 			const boxAfter = await ownBox();
-			if (read && frameAfter) reaction = { regions: read.scrolled ? [] : changedRegions(frameBefore, frameAfter, [boxBefore, boxAfter].filter((b): b is Box => Boolean(b))), changes: read.changes, ...(read.scrolled ? { scrolled: true } : {}) };
+			// What the page changes on its own (an autoplaying carousel, a ticking counter) is no step's answer.
+			if (read && frameAfter) reaction = { regions: read.scrolled ? [] : changedRegions(frameBefore, frameAfter, [boxBefore, boxAfter, ...ambient.regions].filter((b): b is Box => Boolean(b))), changes: read.changes.filter((c) => !ambient.changes.includes(c)), ...(read.scrolled ? { scrolled: true } : {}) };
 		}
 		return {
 			url: redirected && here(page.url()) === landing ? 'the page the route redirected to' : here(page.url()),

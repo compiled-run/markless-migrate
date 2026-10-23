@@ -18,6 +18,7 @@ const WIDGETS = `
 <button id="opener" type="button">Open settings</button><div id="settings" role="dialog" aria-label="Settings" hidden><p>Settings body</p></div>
 <div role="tablist" aria-label="Account"><button id="tab-a" role="tab" aria-selected="true" aria-controls="panel-a">Profile</button><button id="tab-b" role="tab" aria-selected="false" aria-controls="panel-b">Billing</button></div>
 <div id="panel-a" role="tabpanel" aria-labelledby="tab-a">Profile panel</div><div id="panel-b" role="tabpanel" aria-labelledby="tab-b" hidden>Billing panel</div>
+<div role="region" aria-roledescription="carousel" aria-label="Autoplay" style="overflow: hidden; width: 200px"><div id="belt" style="display: flex; transform: translateX(0px)"><div style="min-width: 200px; height: 30px; background: rgb(250, 200, 0)">News</div><div style="min-width: 200px; height: 30px; background: rgb(0, 200, 250)">More news</div></div></div>
 <form id="form"><label>Name <input id="name" name="name"></label><button type="submit">Save</button></form><p id="saved" role="status"></p>`;
 
 const BEHAVIOUR = `<script>
@@ -27,6 +28,9 @@ $('volume').onkeydown = (e) => { const step = e.key === 'ArrowRight' ? 1 : e.key
 $('tint').onclick = () => $('swatch').classList.toggle('on');
 $('opener').onclick = () => { $('settings').hidden = false; };
 for (const tab of document.querySelectorAll('[role="tab"]')) tab.onclick = () => { for (const t of document.querySelectorAll('[role="tab"]')) { t.setAttribute('aria-selected', String(t === tab)); $(t.getAttribute('aria-controls')).hidden = t !== tab; } };
+// It moves on its own, used or not: no step's answer.
+const roll = (t) => { $('belt').style.transform = 'translateX(' + -Math.round((t / 20) % 200) + 'px)'; requestAnimationFrame(roll); };
+requestAnimationFrame(roll);
 $('form').onsubmit = (e) => { e.preventDefault(); $('saved').textContent = 'Saved ' + $('name').value; };
 </script>`;
 
@@ -92,6 +96,7 @@ test('a port whose controls are drawn but never answer is red for every one of t
 	const tint = about(failures, 'click button "Tint"');
 	assert.ok(tint.length, JSON.stringify(failures.map((f) => f.check)));
 	assert.match(tint[0]!.expected, /the view changes at/);
+	assert.ok(!failures.some((f) => f.expected.includes('Autoplay')), 'what moves on its own is not any step\'s answer');
 	// What opens, what is selected and what a form submits are in the accessibility tree.
 	for (const name of ['click button "Open settings"', 'click tab "Billing"', 'submit with button "Save"']) assert.ok(about(failures, name).length, `${name}: ${JSON.stringify(failures.map((f) => f.check))}`);
 });
