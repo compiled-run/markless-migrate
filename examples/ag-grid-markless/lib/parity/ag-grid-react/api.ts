@@ -140,6 +140,18 @@ export function rowOf(e: Event): HTMLElement | null {
 	return (e.target as HTMLElement | null)?.closest<HTMLElement>('[row-id]') ?? null;
 }
 
+let gridEvents: (() => void)[] = [];
+/** AG Grid's EventService.dispatchAsync: grid-option callbacks (onRowClicked...) run in one setTimeout(0) batch, after the click's own grid updates. */
+export function gridEvent(callback: () => void): void {
+	gridEvents.push(callback);
+	if (gridEvents.length > 1) return;
+	setTimeout(() => {
+		const queued = gridEvents;
+		gridEvents = [];
+		for (const run of queued) run();
+	}, 0);
+}
+
 const ran = new Set<string>();
 /** True the first time for `key`: an onIdle handler can run more than once for one element. */
 export function firstTime(key: string): boolean {
