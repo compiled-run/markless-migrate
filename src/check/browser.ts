@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { trackEmbedSlots } from '../embed/page.ts';
+import { trackCanvasDraws } from './embeds.ts';
 import { SLOTS } from '../embed/providers.ts';
 import { request as playwrightRequest, type APIRequestContext, type Browser, type BrowserContext, type BrowserContextOptions, type Frame, type Page, type Request, type Route } from 'playwright';
 import { DEFAULT_FREEZE, freezePage, type FreezeOptions } from './freeze.ts';
@@ -330,6 +331,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 	if (env.freeze) await context.addInitScript(freezePage, { time: env.freeze.time, seed: env.freeze.seed, ...(env.freeze.clock ? { clock: env.freeze.clock } : {}) });
 	if (options.loops) await context.addInitScript(trackLoops, options.loops === true ? [] : [...options.loops.known]);
 	await context.addInitScript(trackEmbedSlots, SLOTS.map((s) => ({ ...s })));
+	await context.addInitScript(trackCanvasDraws);
 	const load = randomUUID();
 	const tag = recorderTag(env, load);
 	const pending = new Set<Promise<void>>();

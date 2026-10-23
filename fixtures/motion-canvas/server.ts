@@ -9,7 +9,7 @@ export type Variant = 'base' | 'late' | 'low';
 function page(variant: Variant): string {
 	return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Canvas</title>
-<style>body { font: 16px/1.5 sans-serif; margin: 0; padding: 24px; } canvas { display: block; width: 400px; height: 200px; }</style></head>
+<style>body { font: 16px/1.5 sans-serif; margin: 0; padding: 24px; } canvas { display: block; width: 400px; height: 200px; } @media (max-width: 639px) { h1 { font-size: 24px; } }</style></head>
 <body><main><h1>Hero</h1><canvas width="400" height="200"></canvas><button type="button" id="more">Learn more</button></main>
 <script>
 document.getElementById('more').addEventListener('click', () => document.title = 'Canvas');
