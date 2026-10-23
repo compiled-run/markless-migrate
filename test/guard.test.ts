@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
-import { foreignRuntimeGuard, scanBuild } from '../src/client/guard.ts';
+import { foreignRuntimeGuard, scanBuild, summarizeBuild } from '../src/client/guard.ts';
 import { applyAllowances, readAllowances } from '../src/client/allow.ts';
 import { capturePage, comparePages, summarizePageFindings, type PageFinding } from '../src/client/page.ts';
 
@@ -102,7 +102,12 @@ test('the build guard fails on a foreign runtime a page loads or runs, allows on
 	await writeFile(join(dir, 'public', 'test', 'index.html'), '<script src="suite.js"></script>');
 	// The server renders the page heads; its static asset table lists every public file by path, as a key.
 	await writeFile(join(dir, 'server', '_ssr', 'heads.mjs'), 'export const HEADS = { "/": { scripts: ["/js/htmx.js", "/js/chart.umd.js"] } }; export const ASSETS = { "/js/download-only.js": { path: "../public/js/download-only.js" } };');
+	// A part that loads DocSearch on intent names its script; the server's copy of that code renders and loads nothing.
+	await writeFile(join(dir, 'public', 'build', 'search.js'), 'const SCRIPT = "https://cdn.jsdelivr.net/npm/@docsearch/js@3"; const img = "https://example.com/logo.png";');
+	await writeFile(join(dir, 'server', '_ssr', 'search.mjs'), 'const SCRIPT = "https://cdn.example.com/widget.js";');
 	const scan = await scanBuild(dir);
+	assert.deepEqual(scan.remote, [{ url: 'https://cdn.jsdelivr.net/npm/@docsearch/js@3', file: 'public/build/search.js', note: 'DocSearch 3 with its own UI runtime (Preact), loaded when a visitor first goes to search' }]);
+	assert.match(summarizeBuild('out', scan), /Loaded from another origin when a page runs \(not in the build, listed\): https:\/\/cdn\.jsdelivr\.net\/npm\/@docsearch\/js@3 \(DocSearch 3 with its own UI runtime/);
 	assert.deepEqual(scan.hits.map((h) => `${h.file} ${h.runtimes.join('+')} ${h.where}`).sort(), ['public/build/chunk.js React bundle', 'public/js/htmx.js htmx public file']);
 	assert.deepEqual(scan.downloads.map((d) => `${d.file} ${d.loadedBy}`).sort(), ['public/js/download-only.js none', 'public/test/suite.js copied page']);
 	assert.deepEqual(scan.libraries.map((l) => `${l.file} ${l.libraries.join('+')} ${l.loadedBy}`), ['public/js/chart.umd.js chart.js page']);
