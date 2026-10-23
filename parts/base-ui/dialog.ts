@@ -21,6 +21,25 @@ function close(p: Popup): void {
 	closePopup(p);
 }
 
+// @base-ui/utils useScrollLock where the browser keeps a stable scrollbar gutter: <html> keeps the gutter (scrollbar-gutter:
+// stable, both edges if the page asked for them) and the element that scrolls the page stops scrolling, so nothing moves.
+function lockScroll(): () => void {
+	const html = document.documentElement;
+	const body = document.body;
+	const scrolls = (el: Element) => !['visible', 'clip'].includes(getComputedStyle(el).overflowY) || !['visible', 'clip'].includes(getComputedStyle(el).overflowX);
+	const locked = scrolls(html) ? html : body;
+	const gutter = getComputedStyle(html).scrollbarGutter.includes('both-edges') ? 'stable both-edges' : 'stable';
+	const before = { gutter: html.style.scrollbarGutter, overflowY: locked.style.overflowY, overflowX: locked.style.overflowX };
+	html.style.scrollbarGutter = gutter;
+	locked.style.overflowY = 'hidden';
+	locked.style.overflowX = 'hidden';
+	return () => {
+		html.style.scrollbarGutter = before.gutter;
+		locked.style.overflowY = before.overflowY;
+		locked.style.overflowX = before.overflowX;
+	};
+}
+
 function open(trigger: HTMLElement): boolean {
 	const p = openPopup(trigger, { popupSelector: '[role="dialog"], [role="alertdialog"]', onDismiss: (x) => close(x), outsidePress: false, anchored: false });
 	if (!p) return false;
@@ -28,11 +47,7 @@ function open(trigger: HTMLElement): boolean {
 	const overlay = p.portal.querySelector<HTMLElement>('[data-slot$="overlay"], [data-slot$="backdrop"]');
 	if (overlay) enter(overlay);
 	const shown = hideOthers([p.portal]);
-	const root = document.documentElement;
-	const gap = window.innerWidth - root.clientWidth;
-	const before = { overflow: root.style.overflow, padding: root.style.paddingRight };
-	root.style.overflow = 'hidden';
-	if (gap > 0) root.style.paddingRight = `${gap}px`;
+	const unlock = lockScroll();
 	const onKey = (event: KeyboardEvent) => {
 		if (event.key !== 'Tab') return;
 		const list = tabbables(p.popup);
@@ -65,8 +80,7 @@ function open(trigger: HTMLElement): boolean {
 		document.removeEventListener('keydown', onKey, true);
 		document.removeEventListener('pointerdown', onPress, true);
 		shown();
-		root.style.overflow = before.overflow;
-		root.style.paddingRight = before.padding;
+		unlock();
 	});
 	(tabbables(p.popup)[0] ?? p.popup).focus({ preventScroll: true });
 	return true;
