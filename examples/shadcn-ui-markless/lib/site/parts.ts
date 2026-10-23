@@ -270,7 +270,8 @@ function choose(target: Element, event: Event): boolean {
 	const list = tab?.closest('[role="tablist"]');
 	const key = list && sharedKey(list);
 	const value = tab && tabValue(tab);
-	if (!key || !value) return false;
+	// Radix Tabs call onValueChange only for a tab not already chosen: the atom, and localStorage, are left alone.
+	if (!key || !value || tab.getAttribute('aria-selected') === 'true') return false;
 	queueMicrotask(() => {
 		chooseEverywhere(key, value);
 		const config = readConfig();
