@@ -282,3 +282,26 @@ in the same order:
 Frame by frame both sides now show the same states: nothing, then the highlighted row with the panel still closed (or,
 when another row was selected, still showing that row), then the panel with the new row. Measured on a local build
 against Markless main 3c8bb00c9.
+
+## onRowClicked fires when AG Grid fires it (2026-10-23)
+
+The wait added to `onRowClicked` in `components/panel.tsrx` above was a hand edit to the app, and it is gone: the
+panel's handler is again exactly Devtron's. The order came from AG Grid, not from React. AG Grid runs every
+grid-option event (`onRowClicked` among them; only `gridPreDestroyed`, `fillStart` and `pasteStart` are exempt)
+through `EventService.dispatchAsync`, one `setTimeout(0)` batch after the click's own grid updates, so the row
+highlight paints first and the app's state change lands in a later frame. Devtron's `onRowClicked` sets state directly,
+with no effect involved. The port now does the same in the part: `gridEvent` in `lib/parity/ag-grid-react/api.ts`
+queues the callback the way AG Grid does, and the run agent's rules say a ported callback fires when the library fires
+it, never through a wait in the app's handler.
+
+Measured on local builds against Markless main 3c8bb00c9, 8 clicks per side, medians, the original on production:
+
+| Chromium 1440x900 | original | port, wait in panel | port, timing in the part |
+| --- | --- | --- | --- |
+| desktop: row highlight painted | 24 ms | 25 ms | 23 ms |
+| desktop: details panel painted | 40 ms | 45 ms | 43 ms |
+| 4x CPU: row highlight painted | 34 ms | 34 ms | 33 ms |
+| 4x CPU: details panel painted | 88 ms | 75 ms | 77 ms |
+
+The highlight and the panel never paint in the same frame on any side, and switching rows shows the same three
+states as the original: the old row selected, the new row highlighted with the old details, then the new details.
