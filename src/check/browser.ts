@@ -324,7 +324,8 @@ export interface OpenPage {
 export async function openPage(browser: Browser, env: SideEnv, viewport: Viewport, options: OpenOptions = {}): Promise<OpenPage> {
 	await registerStructure();
 	const storageState = env.frontDoor ? withOldSession(env.storageState, env.frontDoor.storageState) : env.storageState;
-	const context = await browser.newContext({ ...contextOptions(viewport, env.freeze), ...(env.reducedMotion ? { reducedMotion: env.reducedMotion } : {}), ...(env.colorScheme ? { colorScheme: env.colorScheme } : {}), ...(storageState ? { storageState } : {}), ...(env.userAgent ? { userAgent: env.userAgent } : {}) });
+	// A visitor's browser lets a click write to the clipboard; headless Linux refuses unless asked, so both sides get the same grant.
+	const context = await browser.newContext({ ...contextOptions(viewport, env.freeze), permissions: ['clipboard-read', 'clipboard-write'], ...(env.reducedMotion ? { reducedMotion: env.reducedMotion } : {}), ...(env.colorScheme ? { colorScheme: env.colorScheme } : {}), ...(storageState ? { storageState } : {}), ...(env.userAgent ? { userAgent: env.userAgent } : {}) });
 	env.scope?.track(context);
 	if (env.cookies?.length) await context.addCookies(env.cookies.map((c) => ({ ...c, url: env.origin })));
 	const extra = env.headers ?? {};
