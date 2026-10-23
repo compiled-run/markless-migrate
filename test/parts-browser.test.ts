@@ -152,3 +152,41 @@ test('asChild: a Radix dropdown menu trigger with the child data-slot opens the 
 	assert.equal(await page.locator('[role="menu"]').isVisible(), true);
 	await page.close();
 });
+
+// Base UI Combobox as the converter renders it: the list a portal keyed by the input's id, every item's indicator and
+// every chip already there, hidden.
+const comboboxLayer = (key: string, multi: boolean) => `<div data-mm-layer="${key}" hidden data-base-ui-portal><div data-slot="positioner"><div data-slot="combobox-content" data-closed><div role="status" data-slot="combobox-empty" class="empty">No items found.</div><div role="listbox" id="${key}-list" data-slot="combobox-list"${multi ? ' aria-multiselectable="true"' : ''}>${['Next.js', 'SvelteKit', 'Nuxt.js']
+	.map((t, i) => `<div role="option" id="${key}-${i}" aria-selected="${multi && i === 0}" data-slot="combobox-item"${multi && i === 0 ? ' data-selected' : ''}>${t}<span aria-hidden="true" data-mm-indicator${multi && i === 0 ? ' data-selected' : ' hidden'}>✓</span></div>`)
+	.join('')}</div></div></div></div>`;
+
+test('combobox: a query nothing matches marks the popup empty; with several values choosing toggles chips, a chip removes itself, clear empties the field', async () => {
+	const page = await open(
+		`<style>.empty{display:none}[data-empty] .empty{display:block}</style><main>
+		<div data-slot="input-group"><input id="single" role="combobox" aria-haspopup="listbox" aria-expanded="false" data-slot="input-group-control" value="Next.js"><button data-slot="input-group-button" aria-haspopup="listbox">v</button><button data-slot="combobox-clear" data-visible>Clear</button></div>
+		<div role="toolbar" data-slot="combobox-chips"><div data-slot="combobox-chip" data-mm-chip="Next.js">Next.js<button data-slot="combobox-chip-remove">x</button></div><div data-slot="combobox-chip" data-mm-chip="SvelteKit" hidden>SvelteKit<button data-slot="combobox-chip-remove">x</button></div><div data-slot="combobox-chip" data-mm-chip="Nuxt.js" hidden>Nuxt.js<button data-slot="combobox-chip-remove">x</button></div><input id="multi" role="combobox" aria-haspopup="listbox" aria-expanded="false" data-slot="combobox-chip-input" value=""></div></main>
+		${comboboxLayer('single', false)}${comboboxLayer('multi', true)}`,
+		['base-ui/combobox'],
+	);
+	await page.locator('#single').click();
+	await page.locator('#single').fill('');
+	await page.locator('#single').pressSequentially('zz');
+	assert.equal(await page.locator('[data-mm-layer="single"] .empty').isVisible(), true, 'the empty message shows');
+	await page.locator('#single').fill('');
+	await page.locator('#single').pressSequentially('Sv');
+	assert.equal(await page.locator('[data-mm-layer="single"] .empty').isVisible(), false);
+	await page.keyboard.press('Escape');
+	await page.getByText('Clear').click();
+	assert.equal(await page.locator('#single').inputValue(), '');
+	assert.equal(await page.getByText('Clear').isHidden(), true);
+
+	await page.locator('#multi').click();
+	await page.locator('[data-mm-layer="multi"] [role="option"]', { hasText: 'Nuxt.js' }).click();
+	assert.equal(await page.locator('[data-mm-chip="Nuxt.js"]').isVisible(), true, 'choosing shows its chip');
+	assert.equal(await page.locator('[data-mm-layer="multi"] [role="option"]', { hasText: 'Nuxt.js' }).getAttribute('aria-selected'), 'true');
+	assert.equal(await page.locator('[data-mm-layer="multi"] [role="listbox"]').isVisible(), true, 'the list stays open');
+	await page.keyboard.press('Escape');
+	await page.locator('[data-mm-chip="Next.js"] [data-slot="combobox-chip-remove"]').click();
+	assert.equal(await page.locator('[data-mm-chip="Next.js"]').isHidden(), true, 'a removed chip goes');
+	assert.equal(await page.locator('[data-mm-layer="multi"] [role="option"]', { hasText: 'Next.js' }).getAttribute('aria-selected'), 'false');
+	await page.close();
+});

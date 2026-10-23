@@ -790,3 +790,55 @@ export async function captureCarousels(browser: Browser, origin: string, route: 
 	await writeFile(file, JSON.stringify(capture));
 	return capture;
 }
+
+export interface ComboboxEmpty {
+	readonly sig: string;
+	readonly nth: number;
+	/** What the combobox's empty element holds on the old page once nothing matches (Base UI renders it only then). */
+	readonly html: string;
+}
+
+/** Opens each combobox `controls` names on the old page, types what no item contains, and records the empty element's content. */
+export async function captureComboboxEmpties(browser: Browser, origin: string, route: string, dir: string, controls: readonly { readonly sig: string; readonly nth: number }[]): Promise<{ readonly route: string; readonly empties: readonly ComboboxEmpty[] }> {
+	const file = join(dir, `${createHash('sha256').update(`combobox-empty:${route}`).digest('hex').slice(0, 16)}.json`);
+	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; empties: ComboboxEmpty[] }, () => undefined);
+	if (cached && cached.route === route) return cached;
+	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+	const empties: ComboboxEmpty[] = [];
+	try {
+		await loadPage(page, new URL(route, origin).href);
+		await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+		for (const control of controls) {
+			const marked = await page.evaluate(({ sig, nth }) => {
+				const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+				let n = 0;
+				for (const e of document.body.querySelectorAll('*')) {
+					if (sigOf(e) !== sig) continue;
+					if (n++ === nth) {
+						e.setAttribute('data-mm-probe', '');
+						return true;
+					}
+				}
+				return false;
+			}, control);
+			if (!marked) continue;
+			await page.click('[data-mm-probe]', { timeout: 2000 }).catch(() => {});
+			await page.waitForTimeout(300);
+			await page.keyboard.type('zqxjzqxj');
+			await page.waitForTimeout(400);
+			const html = await page.evaluate(() => [...document.querySelectorAll('[data-slot="combobox-empty"]')].find((e) => e.getBoundingClientRect().height > 0 && e.innerHTML.trim())?.innerHTML ?? '');
+			for (let i = 0; i < 8; i++) await page.keyboard.press('Backspace');
+			await page.keyboard.press('Escape');
+			await page.keyboard.press('Escape');
+			await page.evaluate(() => document.querySelector('[data-mm-probe]')?.removeAttribute('data-mm-probe'));
+			await page.waitForTimeout(200);
+			if (html) empties.push({ ...control, html });
+		}
+	} finally {
+		await context.close().catch(() => {});
+	}
+	const capture = { route, empties };
+	await mkdir(dir, { recursive: true });
+	await writeFile(file, JSON.stringify(capture));
+	return capture;
+}

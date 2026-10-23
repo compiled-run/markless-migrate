@@ -11,7 +11,7 @@ import { cleanDocument, frameworkBuilds, type Dropped } from './clean.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, walk, type Document, type Element } from './dom.ts';
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
 import { BaseTabsPlan, CheckablePlan, DisclosurePlan, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
-import { captureAccordions, captureCarousels, captureHoverDelays, captureAllForms, captureAllSwitches, captureAllToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
+import { captureAccordions, captureCarousels, captureComboboxEmpties, captureHoverDelays, captureAllForms, captureAllSwitches, captureAllToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
 import { bindMount, bindParts, bodyHandlers, candidatesOf, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { stat } from 'node:fs/promises';
@@ -259,6 +259,66 @@ function selectIndicators(top: Element): void {
 	}
 }
 
+/**
+ * Base UI Combobox mounts an item's indicator only while it is selected: every other item of a captured list gets a
+ * hidden copy of a selected one's, so choosing one only switches `hidden`.
+ */
+function comboboxIndicators(top: Element): void {
+	for (const list of [top, ...walkAll(top)]) {
+		if (attr(list, 'data-slot') !== 'combobox-list') continue;
+		const items = walkAll(list).filter((o) => attr(o, 'role') === 'option');
+		const indicatorOf = (o: Element) => elementChildren(o).find((c) => c.tagName === 'span' && attr(c, 'aria-hidden') === 'true');
+		const template = items.map(indicatorOf).find((i) => i !== undefined);
+		if (!template) continue;
+		for (const o of items) {
+			const own = indicatorOf(o);
+			if (own) {
+				own.attrs = [...own.attrs.filter((a) => a.name !== 'data-mm-indicator'), { name: 'data-mm-indicator', value: '' }];
+				continue;
+			}
+			const copy = parseFragment(outer(template)).childNodes[0] as unknown as Element;
+			copy.attrs = [...copy.attrs.filter((a) => a.name !== 'data-selected'), { name: 'hidden', value: '' }, { name: 'data-mm-indicator', value: '' }];
+			copy.parentNode = o as never;
+			o.childNodes.push(copy as never);
+		}
+	}
+}
+
+const textNodes = (el: Element) => el.childNodes.filter((n) => n.nodeName === '#text') as unknown as { value: string }[];
+
+/**
+ * Base UI Combobox with several values shows a chip per chosen item, mounted as it is chosen: the chips container gets a
+ * hidden chip for every item of the list its input opens (from the old page's own chip), named by the item's text
+ * (data-mm-chip), so choosing and removing only switch `hidden`.
+ */
+function comboboxChips(doc: Document, reveals: readonly Reveal[]): void {
+	for (const chips of walk(body(doc))) {
+		if (attr(chips, 'data-slot') !== 'combobox-chips') continue;
+		const input = walkAll(chips).find((e) => attr(e, 'role') === 'combobox');
+		const reveal = input && reveals.find((r) => r.key === attr(input, 'id'));
+		const own = elementChildren(chips).filter((c) => attr(c, 'data-slot') === 'combobox-chip');
+		const template = own[0];
+		if (!reveal || !template) continue;
+		const named = (chip: Element) => textNodes(chip).map((t) => t.value).join('').trim();
+		const options = new Set<string>();
+		for (const a of reveal.added) for (const o of walkAll(parseFragment(a.html) as unknown as Element)) if (attr(o, 'role') === 'option') options.add(textOf(o).trim());
+		const shown = new Set(own.map(named));
+		for (const chip of own) chip.attrs = [...chip.attrs, { name: 'data-mm-chip', value: named(chip) }];
+		let after = own[own.length - 1]!;
+		for (const text of options) {
+			if (shown.has(text)) continue;
+			const copy = parseFragment(outer(template)).childNodes[0] as unknown as Element;
+			const first = textNodes(copy)[0];
+			if (!first) continue;
+			first.value = text;
+			copy.attrs = [...copy.attrs.filter((a) => a.name !== 'data-mm-chip'), { name: 'hidden', value: '' }, { name: 'data-mm-chip', value: text }];
+			copy.parentNode = chips as never;
+			chips.childNodes.splice(chips.childNodes.indexOf(after as never) + 1, 0, copy as never);
+			after = copy;
+		}
+	}
+}
+
 /** A portal's nodes in their closed state: data-state="closed", data-closed for data-open, hidden, and the control's key. */
 /** Replaces every whitespace-separated token of every attribute that `rename` names. */
 function renameIds(els: readonly Element[], rename: ReadonlyMap<string, string>): void {
@@ -339,6 +399,7 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 			if (el.attrs.some((a) => a.name === 'data-open')) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-open'), { name: 'data-closed', value: '' }];
 		}
 		selectIndicators(top);
+		comboboxIndicators(top);
 		top.attrs = [...top.attrs.filter((a) => a.name !== 'hidden'), { name: 'hidden', value: '' }, { name: 'data-mm-layer', value: key }, ...(reveal.viewport !== 'desktop' ? [{ name: 'data-mm-viewport', value: reveal.viewport }] : [])];
 	}
 	const hollow = hollowOf(kept);
@@ -500,6 +561,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const doc = parseDocument(capture.settled.desktop ?? Object.values(capture.settled)[0] ?? capture.server);
 	currentLayers = [];
 	currentClipboard = {};
+	comboboxChips(doc, reveals);
 	const appends = resolveReveals(doc, reveals, (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1));
 	const layers = currentLayers;
 	const clipboard = currentClipboard;
@@ -597,6 +659,17 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			for (const r of on) notified.set(r, [...(notified.get(r) ?? []), ...(await captureNotifications(browser, options.old, r, join(state, 'convert', 'toggles'), [c.selector])).notifications]);
 		}
 		if (options.reveal !== false) for (const r of await captureAllReveals(browser, options.old, routes, join(state, 'convert', 'reveals'), { concurrency: options.concurrency ?? 4, log, extra })) revealed.set(r.route, r.reveals);
+		// What each Base UI combobox shows once nothing matches, into the empty element of the layer it opens.
+		for (const [route, reveals] of revealed) {
+			const empty = /(<div\b[^>]*\bdata-slot="combobox-empty"[^>]*>)(<\/div>)/;
+			const controls = reveals.filter((r) => r.sig && r.added.some((a) => empty.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
+			if (!controls.length) continue;
+			const found = (await captureComboboxEmpties(browser, options.old, route, join(state, 'convert', 'toggles'), controls)).empties;
+			revealed.set(route, reveals.map((r) => {
+				const html = found.find((f) => f.sig === r.sig && f.nth === (r.nth ?? 0))?.html;
+				return html ? { ...r, added: r.added.map((a) => ({ ...a, html: a.html.replace(empty, (_, open: string, close: string) => `${open}${html}${close}`) })) } : r;
+			}));
+		}
 		// Whether each accordion lets several items be open, on the routes where one revealed an item's content.
 		for (const [route, reveals] of revealed) if (reveals.some((r) => r.sig?.includes('|accordion-trigger|'))) accordionModes.set(route, (await captureAccordions(browser, options.old, route, join(state, 'convert', 'toggles'))).accordions);
 		for (const [route, reveals] of revealed) {
