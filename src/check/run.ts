@@ -214,6 +214,15 @@ async function loadBoth(browser: Browser, run: Run, route: string, viewports: re
 	return { olds, next, loads };
 }
 
+/** The old page loaded without a stylesheet of its own in every load (a stale snapshot naming a file its host no longer serves): it shows unstyled, so nothing is compared against it and the route is not checked rather than red. */
+export function brokenOld(route: string, olds: readonly RouteCapture[]): RouteResult | undefined {
+	const missing = (o: RouteCapture) => new Set(Object.values(o.pages).flatMap((p) => p.assets.filter((a) => a.type === 'stylesheet' && (a.status === 0 || a.status >= 400)).map((a) => `${a.url} (${a.status || 'no answer'})`)));
+	const [first, ...rest] = olds.map(missing);
+	const always = [...(first ?? [])].filter((s) => rest.every((r) => r.has(s)));
+	if (!always.length) return undefined;
+	return partialResult(route, [], [], undefined, { side: 'old', cause: 'old page broken', message: `OLD: the old page loads without its stylesheet ${always.join(', ')}, so it shows unstyled; serve the old side as it was (a snapshot whose files are all there) and check again` });
+}
+
 /** OLD's captures of the route, so a record run can save what OLD fetched. */
 const oldCaptures = new WeakMap<RouteResult, RouteCapture>();
 
@@ -221,6 +230,8 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 	const oldOrigin = run.old.origin;
 	const newOrigin = run.new.origin;
 	const { olds, next, loads } = await loadBoth(browser, run, route, viewports);
+	const broken = brokenOld(route, olds);
+	if (broken) return broken;
 	const oldA = olds[0]!;
 	const probes = new Map<string, Probe>();
 	const toProbe = assetsToProbe(oldA, next);
@@ -263,6 +274,8 @@ async function checkRouteEmbeds(browser: Browser, run: Run, route: string, viewp
 export async function checkLight(browser: Browser, run: Run, route: string, viewports: readonly Viewport[] = VIEWPORTS): Promise<RouteResult> {
 	const first = [viewports[0]!];
 	const { olds, next, loads } = await loadBoth(browser, run, route, first);
+	const broken = brokenOld(route, olds);
+	if (broken) return broken;
 	const oldA = olds[0]!;
 	const probes = new Map<string, Probe>();
 	const toProbe = assetsToProbe(oldA, next);
@@ -310,8 +323,10 @@ async function checkJourneys(browser: Browser, run: Run, route: string, viewport
 	const dark = themed(plain);
 	const darkOld: SideEnv = { ...run.old, colorScheme: 'dark' };
 	const [darkOlds, darkNext] = dark.length ? await Promise.all([Promise.all([replayAll(browser, darkOld, route, viewport, dark), replayAll(browser, darkOld, route, viewport, dark)]), replayAll(browser, { ...front, colorScheme: 'dark' }, route, viewport, dark)]) : [[], []];
-	const darkFailures = dark.length ? compareJourneys(route, darkOlds, inDarkMode(dark), darkNext, owner, doorErrors) : [];
-	return withFailures(result, [...result.failures, ...compareJourneys(route, olds, journeys, [...next, ...newRisky], owner, doorErrors), ...darkFailures, ...unexercised], { journeys, coverage, writes: [...(result.writes ?? []), ...writes] });
+	const improvements: string[] = [];
+	const darkFailures = dark.length ? compareJourneys(route, darkOlds, inDarkMode(dark), darkNext, owner, doorErrors, improvements) : [];
+	const compared = withFailures(result, [...result.failures, ...compareJourneys(route, olds, journeys, [...next, ...newRisky], owner, doorErrors, improvements), ...darkFailures, ...unexercised], { journeys, coverage, writes: [...(result.writes ?? []), ...writes] });
+	return improvements.length ? { ...compared, improvements } : compared;
 }
 
 // Which pixels a step changed varies a little from run to run; a third run is for steps whose other results differ.
@@ -486,7 +501,7 @@ export function stopped(route: string, error: unknown, [oldOrigin, newOrigin]: r
 export const EMBED_STEP_BUDGET_MS = 600_000;
 
 export function routeTimeout(options: Pick<CheckOptions, 'timeoutMs' | 'journeys' | 'embeds'>): number {
-	return options.timeoutMs ?? Math.max(600_000, 5 * (options.journeys?.budgetMs ?? DEFAULT_JOURNEY_BUDGET_MS)) + (options.embeds ? EMBED_STEP_BUDGET_MS : 0);
+	return options.timeoutMs ?? Math.max(1_800_000, 5 * (options.journeys?.budgetMs ?? DEFAULT_JOURNEY_BUDGET_MS)) + (options.embeds ? EMBED_STEP_BUDGET_MS : 0);
 }
 
 /** Runs one route's check under a deadline: past it, every page the check opened is closed and the route is reported as an infrastructure failure. */

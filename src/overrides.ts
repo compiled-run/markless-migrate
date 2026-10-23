@@ -13,7 +13,7 @@ export const AUTOMATIC_RULES = {
 	'live-embed': 'live content inside a third-party embed that both pages show',
 	'embed-live-data': 'a live value a Markless embed component shows (a star count), read at convert time, that has moved since, with every other pixel of the embed the same',
 	'unreachable-on-both': 'an element neither page lets a visitor use, for the same reason (covered, hidden or outside the page)',
-	'framework-storage': "browser storage only the old framework's own code writes, with no journey difference on the route",
+	'framework-storage': "framework internal: browser storage only the old framework's own code writes (htmx's history keys, Laravel's sealed cookies), which a port without that framework never writes; the app's own keys are still compared",
 } as const;
 export type AutomaticRule = keyof typeof AUTOMATIC_RULES;
 

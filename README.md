@@ -29,7 +29,7 @@ markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [
     [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
     [--auth .migrate/auth.json] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
     [--all] [--allow-unchecked] [--new-source ../markless-app] [--concurrency 4] [--changed]
-    [--journey-budget 120] [--max-journeys <n>] [--journey-depth 4] [--timeout 600]
+    [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth 4] [--timeout 1800]
     [--no-responsiveness] [--interaction-budget 200] [--cpu-throttle 4] [--interaction-controls 16] [--no-motion] [--no-cache]
     [--no-navigation] [--nav-entries 2] [--nav-destinations 40]
 markless-migrate usage [--old <origin>] [--built <dir>] [--source <path>] [--new-source <path>] [--json]
@@ -547,7 +547,7 @@ results.json, apart from differences a person accepted:
 | markup the old framework adds for itself, with the accessibility tree and announcements otherwise the same | a missing accessibility tree line that is exactly the role and text of a framework's own markup the old page has and the new page lacks (Next.js's `next-route-announcer`, Gatsby's, SvelteKit's and Nuxt's announcers), and only while no other line of that route's tree and no announcement after an interaction differs |
 | live content inside a third-party embed that both pages show | screenshot differences that all lie inside iframes or images from another origin that both pages load from the same address at the same place, or a third-party image at the same address that came back a different size |
 | an element neither page lets a visitor use, for the same reason | a "not exercised" control the old page would not let the pointer reach even after the remedies above, which the new page refuses for the same reason (covered, hidden or outside the page); a control missing from the new page, or one the new page lets a visitor use, is still red |
-| browser storage only the old framework's own code writes, with no journey difference on the route | storage keys, after the page loads or after a step, that the old page keeps and the new page does not, each written by the old framework: htmx's `htmx-history-cache` and `htmx-current-path-for-history` when the old page loads htmx's runtime and the new page does not, or a cookie whose value is in a server framework's own sealed format (Laravel's encrypted `XSRF-TOKEN` and session cookie) that the new page does not set; held only while no journey on the route differs otherwise |
+| framework internal: browser storage only the old framework's own code writes | storage keys, after the page loads or after a step, that the old page keeps and the new page does not, each written by the old framework: htmx's `htmx-history-cache` and `htmx-current-path-for-history` when the old page loads htmx's runtime and the new page does not, or a cookie whose value is in a server framework's own sealed format (Laravel's encrypted `XSRF-TOKEN` and session cookie) that the new page does not set; a key the app writes (a theme, a cart, a preference) among them keeps them all red |
 
 Anything else stays red until it is fixed or a person accepts it. An expert may turn a rule off in
 `.migrate/overrides.json` (`{ "automatic": { "live-embed": false } }`); the file is optional.

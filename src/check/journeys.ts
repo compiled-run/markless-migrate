@@ -108,6 +108,8 @@ export const CLICKABLE = 'clickable';
 const DESTRUCTIVE = /\b(log ?out|sign ?out|delete|remove|destroy|unsubscribe|deactivate|close (my|your) account)\b/i;
 /** How long exploring one route may take by default; what is left is listed as not exercised. */
 export const DEFAULT_JOURNEY_BUDGET_MS = 120_000;
+const BUDGET_PER_CONTROL_MS = 3_000;
+const MAX_ADAPTIVE_BUDGET_MS = 900_000;
 const DEFAULT_MAX_DEPTH = 4;
 const CONCURRENCY = 8;
 const STEP_TIMEOUT = 3_000;
@@ -161,8 +163,11 @@ export function locate(page: Page, t: Target): Locator {
 	if (t.structure) return page.locator(`${STRUCTURE_ENGINE}=${JSON.stringify(t.structure)}`);
 	if (t.role === CLICKABLE) return page.locator(`xpath=${labelled(t.name)}`).nth(t.nth);
 	if (t.role === 'summary') return page.locator('summary').filter({ hasText: new RegExp(`^\\s*${escapeRegex(t.name)}\\s*$`) }).nth(t.nth);
-	return page.getByRole(t.role as Parameters<Page['getByRole']>[0], { name: t.name, exact: true }).nth(t.nth);
+	return page.getByRole(t.role as Parameters<Page['getByRole']>[0], t.name ? { name: spacing(t.name) } : { name: '', exact: true }).nth(t.nth);
 }
+
+// A name matched whatever whitespace it has: a port that drops the spaces between a select's options names it alike.
+const spacing = (name: string) => new RegExp(`^\\s*${[...name.replace(/\s+/g, '')].map(escapeRegex).join('\\s*')}\\s*$`);
 
 function sample(type: string, name: string): string {
 	const n = name.toLowerCase();
@@ -225,8 +230,9 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 		for (const locator of await page.getByRole(role).all()) {
 			const line = (await locator.ariaSnapshot({ timeout: STEP_TIMEOUT }).catch(() => '')).split('\n')[0] ?? '';
 			const name = snapshotName(line);
-			const nth = seen.get(name) ?? 0;
-			seen.set(name, nth + 1);
+			const key = name.replace(/\s+/g, '');
+			const nth = seen.get(key) ?? 0;
+			seen.set(key, nth + 1);
 			if (!(await locator.isVisible().catch(() => false)) || (await locator.isDisabled().catch(() => true))) continue;
 			const info = await locator.evaluate(describeElement, undefined, { timeout: STEP_TIMEOUT }).catch(() => undefined);
 			if (!info) continue;
@@ -576,11 +582,11 @@ function watchReaction(): void {
 }
 
 // Runs in the page after a step: what changed in the page's widgets, named by role and label as a visitor's tools name them.
-function readReaction(): { changes: string[]; scrolled: boolean } {
+function readReaction(): { changes: string[]; scrolled: boolean; boxes: Record<string, { x: number; y: number; width: number; height: number }> } {
 	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; scrolls: Map<Element, string>; window: string };
 	const g = globalThis as { __markless_migrate_reaction__?: Watch };
 	const watch = g.__markless_migrate_reaction__;
-	if (!watch) return { changes: [], scrolled: false };
+	if (!watch) return { changes: [], scrolled: false, boxes: {} };
 	watch.observer.disconnect();
 	delete g.__markless_migrate_reaction__;
 	const STATES = ['aria-valuenow', 'aria-valuetext', 'aria-expanded', 'aria-selected', 'aria-checked', 'aria-pressed', 'aria-current', 'open'];
@@ -601,9 +607,19 @@ function readReaction(): { changes: string[]; scrolled: boolean } {
 		return `${role}${kind ? ` (${kind})` : ''}${name ? ` "${name}"` : ''}${nth}`;
 	};
 	// A part with no role of its own (a carousel's track) is named by the nearest widget or landmark holding it.
-	const anchor = (el: Element) => {
-		for (let at: Element | null = el; at && at !== document.body; at = at.parentElement) if (at.hasAttribute('role') || at.hasAttribute('aria-roledescription') || at.hasAttribute('aria-label') || /^(input|select|textarea|button|a|dialog|details|nav|main|header|footer|aside|form|table|section|ul|ol)$/.test(at.localName)) return describe(at);
-		return 'the page';
+	const anchorOf = (el: Element) => {
+		for (let at: Element | null = el; at && at !== document.body; at = at.parentElement) if (at.hasAttribute('role') || at.hasAttribute('aria-roledescription') || at.hasAttribute('aria-label') || /^(input|select|textarea|button|a|dialog|details|nav|main|header|footer|aside|form|table|section|ul|ol)$/.test(at.localName)) return at;
+		return undefined;
+	};
+	const boxes: Record<string, { x: number; y: number; width: number; height: number }> = {};
+	const add = (line: string, el: Element | undefined) => {
+		out.add(line);
+		const r = el?.getBoundingClientRect();
+		if (r) boxes[line] = { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
+	};
+	const anchored = (el: Element, what: string) => {
+		const at = anchorOf(el);
+		add(`${at ? describe(at) : 'the page'} ${what}`, at);
 	};
 	const moved = (style: string | null | undefined) => {
 		const probe = document.createElement('div');
@@ -617,15 +633,24 @@ function readReaction(): { changes: string[]; scrolled: boolean } {
 		for (const [attr, was] of attrs) {
 			const now = el.getAttribute(attr);
 			if (now === was) continue;
-			if (STATES.includes(attr)) out.add(`${describe(el)} ${attr}: ${was ?? '(none)'} → ${now ?? '(none)'}`);
-			else if (attr === 'style' && moved(was) !== moved(now)) out.add(`${anchor(el)} moved`);
+			if (STATES.includes(attr)) add(`${describe(el)} ${attr}: ${was ?? '(none)'} → ${now ?? '(none)'}`, el);
+			else if (attr === 'style' && moved(was) !== moved(now)) anchored(el, 'moved');
 		}
 	}
-	for (const [el, was] of watch.scrolls) if (el.isConnected && `${Math.round(el.scrollLeft)},${Math.round(el.scrollTop)}` !== was) out.add(`${anchor(el)} scrolled`);
-	return { changes: [...out].sort(), scrolled: `${Math.round(scrollX)},${Math.round(scrollY)}` !== watch.window };
+	for (const [el, was] of watch.scrolls) if (el.isConnected && `${Math.round(el.scrollLeft)},${Math.round(el.scrollTop)}` !== was) anchored(el, 'scrolled');
+	return { changes: [...out].sort(), scrolled: `${Math.round(scrollX)},${Math.round(scrollY)}` !== watch.window, boxes };
 }
 
 const AMBIENT_MS = 1_000;
+const ambientSeen = new Map<string, Promise<{ changes: readonly string[]; regions: readonly Box[] }>>();
+
+// Measured on a route's first session on each side and reused by its later sessions, so a journey does not wait a second for it.
+function ambientOnce(origin: string, route: string, page: Page): Promise<{ changes: readonly string[]; regions: readonly Box[] }> {
+	const key = `${origin} ${route} ${page.viewportSize()?.width ?? 0}`;
+	let found = ambientSeen.get(key);
+	if (!found) ambientSeen.set(key, (found = ambientMotion(page)));
+	return found;
+}
 
 /** What the settled page changes on its own while nothing is used: the widgets and regions of the view that move without a step. */
 async function ambientMotion(page: Page): Promise<{ changes: readonly string[]; regions: readonly Box[] }> {
@@ -635,7 +660,8 @@ async function ambientMotion(page: Page): Promise<{ changes: readonly string[]; 
 	await sleep(AMBIENT_MS);
 	const read = await page.evaluate(readReaction).catch(() => undefined);
 	const after = await page.screenshot({ timeout: 10_000 }).catch(() => undefined);
-	return { changes: read?.changes ?? [], regions: after && !read?.scrolled ? changedRegions(before, after, []) : [] };
+	const moving = Object.values(read?.boxes ?? {});
+	return { changes: read?.changes ?? [], regions: [...moving, ...(after && !read?.scrolled ? changedRegions(before, after, []) : [])] };
 }
 
 async function focusLabel(page: Page): Promise<string> {
@@ -943,7 +969,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 	await loadPage(page, new URL(route, origin).href);
 	await quiet(page, inflight, navigations);
 	const loadErrors = [...errors];
-	const ambient = await ambientMotion(page);
+	const ambient = await ambientOnce(env.origin, route, page);
 	// Where a redirect landed is the http and auth checks' business; a step that stays there compares alike.
 	const landing = here(page.url());
 	const redirected = landing !== localUrl(new URL(route, origin).href, origin);
@@ -996,7 +1022,9 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 			const frameAfter = await page.screenshot({ timeout: 10_000 }).catch(() => undefined);
 			const boxAfter = await ownBox();
 			// What the page changes on its own (an autoplaying carousel, a ticking counter) is no step's answer.
-			if (read && frameAfter) reaction = { regions: read.scrolled ? [] : changedRegions(frameBefore, frameAfter, [boxBefore, boxAfter, ...ambient.regions].filter((b): b is Box => Boolean(b))), changes: read.changes.filter((c) => !ambient.changes.includes(c)), ...(read.scrolled ? { scrolled: true } : {}) };
+			// Where those widgets sit now is left out too: what moves on its own changes different pixels every second.
+			const own = read ? read.changes.filter((c) => ambient.changes.includes(c)).flatMap((c) => (read.boxes[c] ? [read.boxes[c]!] : [])) : [];
+			if (read && frameAfter) reaction = { regions: read.scrolled ? [] : changedRegions(frameBefore, frameAfter, [boxBefore, boxAfter, ...ambient.regions, ...own].filter((b): b is Box => Boolean(b))), changes: read.changes.filter((c) => !ambient.changes.includes(c)), ...(read.scrolled ? { scrolled: true } : {}) };
 		}
 		return {
 			url: redirected && here(page.url()) === landing ? 'the page the route redirected to' : here(page.url()),
@@ -1263,7 +1291,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	const origin = env.origin;
 	const host = new URL(origin).origin;
 	const started = Date.now();
-	const budget = options.budgetMs ?? DEFAULT_JOURNEY_BUDGET_MS;
+	let budget = options.budgetMs ?? DEFAULT_JOURNEY_BUDGET_MS;
 	const cap = options.maxJourneys ?? Number.POSITIVE_INFINITY;
 	const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
 	const tracked: Tracked[] = [];
@@ -1333,6 +1361,8 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	let navLink: Target | undefined;
 	try {
 		const found = await candidates(start.page, host);
+		// A page with many controls gets the time they take, so the default budget does not leave its own controls unused.
+		if (options.budgetMs === undefined) budget = Math.min(MAX_ADAPTIVE_BUDGET_MS, Math.max(DEFAULT_JOURNEY_BUDGET_MS, found.length * BUDGET_PER_CONTROL_MS));
 		const here = new URL(route, origin);
 		// Another page the new app serves, else this page again by a link to it (an in-place navigation), else any page of the app.
 		const rank = (c: Candidate) => {
@@ -1659,7 +1689,33 @@ export function untick(r: Pick<StepResult, 'added' | 'removed'>): { added: strin
 	return { added: added.map(reading), removed: removed.map(reading) };
 }
 
-export function compareJourneys(route: string, olds: readonly Run[], journeys: readonly Journey[], next: Run, owner?: StorageOwner, doorErrors?: ReadonlyMap<string, readonly string[]>): Failure[] {
+const EXPANDED = / \[expanded\]/;
+
+/**
+ * A button the new page marks aria-expanded when it opens or closes what it controls, where the old page set no state on it:
+ * WAI-ARIA asks a disclosure or menu button for that state, so the step is compared without it and the addition is listed.
+ */
+export function ariaImprovements(olds: readonly StepResult[], next: StepResult): { step: StepResult; notes: string[] } {
+	const notes: string[] = [];
+	let added = [...next.added];
+	let removed = [...next.removed];
+	const mentions = (r: StepResult, name: string) => [...r.added, ...r.removed].some((l) => l.includes(`button "${name}"`));
+	const opened = olds.every((o) => o.added.length || o.removed.length);
+	for (const line of next.added.concat(next.removed)) {
+		if (!EXPANDED.test(line) || !/^- button "/.test(line)) continue;
+		const plain = line.replace(EXPANDED, '');
+		const name = /^- button "((?:[^"\\]|\\.)*)"/.exec(line)?.[1] ?? '';
+		const opening = added.includes(line) && removed.includes(plain);
+		const closing = removed.includes(line) && added.includes(plain);
+		if (!(opening || closing) || !opened || olds.some((o) => mentions(o, name))) continue;
+		added = added.filter((l) => l !== (opening ? line : plain));
+		removed = removed.filter((l) => l !== (opening ? plain : line));
+		notes.push(`button "${name}" sets aria-expanded when it ${opening ? 'opens' : 'closes'} what it controls; the old page sets no state on it (WAI-ARIA disclosure or menu button)`);
+	}
+	return { step: notes.length ? { ...next, added, removed } : next, notes };
+}
+
+export function compareJourneys(route: string, olds: readonly Run[], journeys: readonly Journey[], next: Run, owner?: StorageOwner, doorErrors?: ReadonlyMap<string, readonly string[]>, improvements: string[] = []): Failure[] {
 	const failures: Failure[] = [];
 	journeys.forEach((journey, j) => {
 		const runs = olds.map((o) => o[j]!);
@@ -1681,7 +1737,10 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			const oldSteps = runs.map((r) => mine(r[k])).filter((s): s is StepResult => Boolean(s && !s.failed));
 			if (!oldSteps.length) break;
 			const [a, ...rest] = oldSteps as StepResult[];
-			const n = mine(actual[k]);
+			const raw = mine(actual[k]);
+			const improved = raw && !raw.failed ? ariaImprovements(oldSteps, raw) : undefined;
+			for (const note of improved?.notes ?? []) if (!improvements.includes(note)) improvements.push(note);
+			const n = improved?.step ?? raw;
 			// A page the front door serves from the old app keeps its state on the old app's origin.
 			if ((following || navigatedAway) && n?.door) break;
 			const dimension: Dimension = step.action === 'press' ? 'a11y' : 'behaviour';

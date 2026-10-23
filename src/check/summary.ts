@@ -59,6 +59,7 @@ export function summarize(report: Report): string {
 		lines.push(`${route.ok ? 'pass' : 'FAIL'}  ${route.route.padEnd(width)}  ${route.ok ? '' : `[${failed.join(', ')}]  `}${accepted ? `(${accepted} accepted) ` : ''}${route.endpoint ? `compared as ${route.endpoint}` : js}`);
 		if (route.template && route.template.representative !== route.route) lines.push(`      visual, responsiveness and motion: checked on ${route.template.representative}, the representative of its template group (${route.template.pattern}, ${route.template.members} pages)`);
 		if (route.coverage) lines.push(`      ${coverageLine(route.coverage)}`);
+		for (const note of route.improvements ?? []) lines.push(`      improvement (not red): ${note}`);
 		if (route.responsiveness) lines.push(`      ${worstLine(route.responsiveness)}`);
 		if (route.motion) {
 			const differ = route.motion.interactions.filter((i) => !i.ok || i.reduced?.ok === false).length;

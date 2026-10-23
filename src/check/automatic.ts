@@ -1,6 +1,4 @@
 import { AUTOMATIC_RULES, type AutomaticRule } from '../overrides.ts';
-import { HINTS } from './hints.ts';
-import { NOT_EXERCISED } from './locate.ts';
 import type { AssetRecord, Box, Failure, PageCapture } from './types.ts';
 
 export { AUTOMATIC_RULES, type AutomaticRule };
@@ -153,7 +151,6 @@ export function storageCandidate(missing: readonly string[], extra: readonly str
 	return candidate('framework-storage', `${missing.map((m, i) => `${m.replace(/^[+-] /, '').split(' ').slice(0, 2).join(' ')} (${owners[i]})`).join(', ')}: written only by the old framework's own code, which the new page does not run`);
 }
 
-const journeyDifference = (f: Failure) => !f.check.startsWith(NOT_EXERCISED) && (f.hint === HINTS.behaviour || f.hint === HINTS.keyboard);
 
 const announces = (f: Failure) => /\bannounced:/.test(f.expected) || /\bannounced:/.test(f.actual);
 
@@ -169,7 +166,6 @@ export function grantAutomatic(failures: readonly Failure[], off: readonly Autom
 		const auto = f.automatic;
 		if (f.accepted || !auto || off.includes(auto.rule)) return f;
 		if (auto.rule === 'framework-markup' && (otherTree(f) || otherAnnouncements)) return f;
-		if (auto.rule === 'framework-storage' && open.some((o) => o !== f && o.route === f.route && o.role === f.role && o.automatic?.rule !== 'framework-storage' && journeyDifference(o))) return f;
 		return { ...f, accepted: { reason: auto.reason, by: 'markless-migrate', date, automatic: auto.rule } };
 	});
 }

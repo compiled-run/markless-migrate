@@ -114,3 +114,18 @@ test('a page of a large site is exercised on its own, though its template group 
 	assert.ok(about(last.failures, 'click button "Next slide"').length, JSON.stringify(last.failures.map((f) => f.check)));
 	assert.ok(report.routes.filter((r) => r.route !== routes.at(-1)).every((r) => r.ok), JSON.stringify(report.routes.filter((r) => r.route !== routes.at(-1) && !r.ok).map((r) => [r.route, r.failures.map((f) => [f.check, f.expected, f.actual])])));
 });
+
+test('an old page that loads without its own stylesheet is not checked, never red or green against a port that has it', async () => {
+	const styled = (missing: boolean) => (path: string) => (path === '/site.css' ? (missing ? undefined : 'main { color: rgb(20, 20, 160) }') : path === '/' ? page(`<link rel="stylesheet" href="/site.css">${TRACK}`) : undefined);
+	const report = await check(styled(true), styled(false));
+	const route = report.routes[0]!;
+	assert.equal(route.ok, false);
+	assert.equal(route.infrastructure?.cause, 'old page broken');
+	assert.match(route.infrastructure!.message, /\/site\.css \(404\)/);
+});
+
+test('a styled state of an element past the right edge of the page is compared, not the end of the route check', async () => {
+	const aside = page(`<style>.toc a:hover { color: rgb(200, 0, 0) } .toc { position: fixed; left: 1400px; top: 10px }</style><aside class="toc"><a href="#installation">Installation</a></aside><h2 id="installation">Installation</h2>`);
+	const report = await check(() => aside, () => aside);
+	assert.ok(!report.routes[0]!.failures.some((f) => /it stopped/.test(f.actual)), JSON.stringify(report.routes[0]!.failures.map((f) => f.actual)));
+});

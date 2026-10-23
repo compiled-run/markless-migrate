@@ -123,7 +123,7 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           Every interactive element of the old page (including those a click reveals, such as a
           dialog's controls) must be used by a journey, or the route stays red, on every page whatever its template:
           journeys are explored main content first (tables, forms), until each element is used or
-          --journey-budget (default 120 s per route) runs out; --max-journeys caps their number and
+          --journey-budget (default 120 s per route, or 3 s for each control the page shows, at most 15 min) runs out; --max-journeys caps their number and
           --journey-depth (default 4) how many steps deep a journey goes (nested menus, sidebars). A
           control in a shared header, nav, sidebar or footer is exercised by the first route of the
           run that has it, and the others carry its result. Each step is compared by what the page
@@ -180,7 +180,7 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           --only load measures it alone (a partial run: every other dimension is not compared).
           --source and --new-source map each failing element to its old and new source file and line.
           --concurrency checks that many routes at once (default half the cores, at most 4).
-          --timeout stops one route's check after that many seconds (default 600, or five journey
+          --timeout stops one route's check after that many seconds (default 1800, or five journey
           budgets when that is more). A page load that times out or cannot connect is tried again
           once, 2 s later; a route the network still fails, or that passes --timeout, is reported
           as not checked for an infrastructure failure (DNS, connection or timeout, named), not as
