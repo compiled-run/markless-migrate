@@ -114,7 +114,8 @@ test('the checker takes a smaller rendition of the same image as the same pictur
 test('check: an image no first screen shows loads lazily, a first-screen one never does, and a phone gets a file near its box', async () => {
 	const { imageLoadingFailures } = await import('../src/check/image-loading.ts');
 	const img = (over: Record<string, unknown>) => ({ src: '/a.png', alt: 'a', naturalWidth: 800, naturalHeight: 600, broken: false, ...over });
-	const pages = (desktop: object[], mobile: object[]) => ({ desktop: { viewport: 'desktop', images: desktop }, mobile: { viewport: 'mobile', images: mobile } }) as unknown as Parameters<typeof imageLoadingFailures>[1];
+	const assets = [{ url: '/a.png', bytes: 60_000 }];
+	const pages = (desktop: object[], mobile: object[]) => ({ desktop: { viewport: 'desktop', images: desktop, assets }, mobile: { viewport: 'mobile', images: mobile, assets } }) as unknown as Parameters<typeof imageLoadingFailures>[1];
 	const below = pages([img({ box: { x: 0, y: 2400, width: 400, height: 300 } })], [img({ box: { x: 0, y: 3100, width: 390, height: 290 } })]);
 	assert.match(imageLoadingFailures('/', below)[0]!.actual, /loaded with the page; desktop drawn at y=2400, below the first 800 px, mobile drawn at y=3100/);
 	const lazyBelow = pages([img({ loading: 'lazy', box: { x: 0, y: 2400, width: 400, height: 300 } })], [img({ loading: 'lazy', box: { x: 0, y: 3100, width: 390, height: 290 } })]);
@@ -126,6 +127,8 @@ test('check: an image no first screen shows loads lazily, a first-screen one nev
 		imageLoadingFailures('/', hero).map((f) => f.expected),
 		['fetched with the page: a first screen shows it', 'a srcset of widths with sizes: its 577 px box needs at most 1154 px on a 2x phone'],
 	);
+	const small = { desktop: { viewport: 'desktop', images: [img({ box: { x: 0, y: 2400, width: 40, height: 40 } })], assets: [{ url: '/a.png', bytes: 2_000 }] }, mobile: { viewport: 'mobile', images: [img({ box: { x: 0, y: 3100, width: 40, height: 40 } })], assets: [] } } as unknown as Parameters<typeof imageLoadingFailures>[1];
+	assert.deepEqual(imageLoadingFailures('/', small), [], 'a 2 kB logo costs a request, not bandwidth worth a finding');
 	const responsive = pages([img({ widths: true, naturalWidth: 1080, naturalHeight: 1166, box: { x: 0, y: 378, width: 1009, height: 1090 } })], [img({ widths: true, naturalWidth: 1080, naturalHeight: 1166, box: { x: 0, y: 378, width: 577, height: 623 } })]);
 	assert.deepEqual(imageLoadingFailures('/', responsive), []);
 });
@@ -160,4 +163,12 @@ test("an image's renditions share its identity: the optimizer's source, or the f
 	const page = (images: (typeof old)[]) => ({ images }) as unknown as Parameters<typeof responsiveRegionsCandidate>[1];
 	assert.ok(responsiveRegionsCandidate([{ x: 0, y: 0, width: 400, height: 300 }], page([old]), page([next]), 900));
 	assert.equal(responsiveRegionsCandidate([{ x: 0, y: 0, width: 400, height: 300 }], page([old]), page([next]), 60_000), undefined, 'most of its pixels changed: another picture');
+});
+
+test('the checker leaves an image the page does not draw to load lazily, where the old page fetched it anyway', async () => {
+	const { unshownLazyCandidate } = await import('../src/check/automatic.ts');
+	const old = { src: '/assets/footer-background.BIgtbvhx.jpg', alt: '', naturalWidth: 2560, naturalHeight: 800, broken: false };
+	assert.equal(unshownLazyCandidate(old, { ...old, naturalWidth: 0, naturalHeight: 0, loading: 'lazy' })?.rule, 'unshown-lazy-image');
+	assert.equal(unshownLazyCandidate(old, { ...old, naturalWidth: 0, naturalHeight: 0 }), undefined, 'eager and not loaded: broken, not lazy');
+	assert.equal(unshownLazyCandidate(old, { ...old, naturalWidth: 0, naturalHeight: 0, loading: 'lazy', box: { x: 0, y: 0, width: 10, height: 10 } }), undefined, 'drawn and not loaded');
 });

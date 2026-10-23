@@ -2,7 +2,7 @@ import { sameContentType } from './assets.ts';
 import { embedFailures } from './embeds.ts';
 import { loopFailures } from './loops.ts';
 import { imageLoadingFailures } from './image-loading.ts';
-import { embedCandidate, embedImageCandidate, markupCandidate, responsiveImageCandidate, responsiveRegionsCandidate, runtimeCandidate, storageOwner } from './automatic.ts';
+import { embedCandidate, embedImageCandidate, markupCandidate, responsiveImageCandidate, responsiveRegionsCandidate, runtimeCandidate, unshownLazyCandidate, storageOwner } from './automatic.ts';
 import { compareA11y } from './a11y.ts';
 import { isClock, maskClocks } from './clock.ts';
 import { HINTS, seoHint } from './hints.ts';
@@ -282,7 +282,7 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 			if (bs.some((b) => !b.images[i] || b.images[i]!.naturalWidth !== img.naturalWidth || b.images[i]!.broken !== img.broken)) return;
 			const expected = img.broken ? 'broken' : `${img.naturalWidth}x${img.naturalHeight}`;
 			const actual = !other ? '(absent)' : other.broken ? 'broken' : `${other.naturalWidth}x${other.naturalHeight}`;
-			const auto = other && other.src === img.src && /^https?:/.test(img.src) ? embedImageCandidate(img.src, a, n) : responsiveImageCandidate(img, other);
+			const auto = other && other.src === img.src && /^https?:/.test(img.src) ? embedImageCandidate(img.src, a, n) : (responsiveImageCandidate(img, other) ?? unshownLazyCandidate(img, other));
 			if (expected !== actual) failures.push({ route, dimension: 'assets', check: `image #${i + 1} ${img.src}`, viewport, expected, actual, hint: HINTS.image, ...(auto ? { automatic: auto } : {}) });
 		});
 		failures.push(...fontFailures(route, viewport, a, bs, n));

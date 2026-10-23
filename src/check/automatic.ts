@@ -125,15 +125,23 @@ export function responsiveImageCandidate(old: ImageRecord, next: ImageRecord | u
 /** Pixels that differ only inside images the new page draws from a smaller rendition of the old page's file: the resampling, not the page. */
 export function responsiveRegionsCandidate(regions: readonly Box[], old: PageCapture, next: PageCapture, differing?: number): Failure['automatic'] {
 	if (!regions.length) return undefined;
-	const renditions = old.images.flatMap((img, i) => {
-		const auto = responsiveImageCandidate(img, next.images[i]);
-		return auto ? [{ box: next.images[i]!.box!, auto }] : [];
+	// Paired by the picture and where it is drawn, not by position in the list: a page may add or drop an image elsewhere.
+	const renditions = next.images.flatMap((n) => {
+		const o = n.box && old.images.find((img) => img.box && imageIdentity(img.src) === imageIdentity(n.src) && Math.abs(img.box.x - n.box!.x) <= PAD && Math.abs(img.box.y - n.box!.y) <= PAD);
+		const auto = o && responsiveImageCandidate(o, n);
+		return auto ? [{ box: n.box!, auto }] : [];
 	});
 	if (!renditions.length || !regions.every((r) => renditions.some((x) => inside(r, x.box)))) return undefined;
 	const used = renditions.filter((x) => regions.some((r) => inside(r, x.box)));
 	// Resampling moves a few edge pixels; a different picture moves most of them.
 	if (differing !== undefined && differing > 0.1 * used.reduce((s, x) => s + x.box.width * x.box.height, 0)) return undefined;
 	return candidate('responsive-image', `every differing pixel is inside ${used.length === 1 ? 'an image' : `${used.length} images`} drawn from another width of the same file: ${used.map((x) => x.auto!.reason).join('; ')}`);
+}
+
+/** An image no viewport draws, which the old page fetched anyway and the new page leaves to load when it is drawn. */
+export function unshownLazyCandidate(old: ImageRecord, next: ImageRecord | undefined): Failure['automatic'] {
+	if (!next || old.box || next.box || next.loading !== 'lazy' || next.naturalWidth || imageIdentity(old.src) !== imageIdentity(next.src)) return undefined;
+	return candidate('unshown-lazy-image', `the page does not draw ${next.src} here, and the new page marks it loading="lazy", so it loads when it is drawn; the old page fetched it anyway`);
 }
 
 /** A third-party image both pages load from the same address that came back different: its content is live. */

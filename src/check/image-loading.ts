@@ -3,8 +3,8 @@ import { VIEWPORTS, type Failure, type ImageRecord, type PageCapture } from './t
 export const IMAGE_LOADING_HINT =
 	'An image is fetched with the page only when a first screen shows it. Give an image no first screen shows (below the fold on a phone and a desktop, or not drawn at all, as a dark-mode twin) loading="lazy" and drop any <link rel="preload" as="image"> for it; never lazy-load one a first screen shows. Give a first-screen image whose file is much wider than its box a srcset of widths with sizes (convert writes them for next/image from its own optimizer), so a phone downloads the width its box needs. Every request that starts before the largest paint shares the phone\'s bandwidth with it, so Lighthouse counts it toward LCP.';
 
-// Icons and spacers cost a request but no bandwidth worth a finding.
-const MIN_AREA = 64 * 64;
+// Icons, logos and spacers cost a request but no bandwidth worth a finding.
+const MIN_BYTES = 10_000;
 // A 2x phone screen is what PageSpeed Insights' Moto G Power (1.75x) and most phones need at most.
 const PHONE_DPR = 2;
 
@@ -26,9 +26,10 @@ export function imageLoadingFailures(route: string, pages: Readonly<Record<strin
 	const first = views[0];
 	if (!first || views.some((p) => p.images.length !== first.images.length)) return [];
 	const failures: Failure[] = [];
+	const bytes = new Map(views.flatMap((p) => p.assets.map((a) => [a.url, a.bytes] as const)));
 	first.images.forEach((img, i) => {
 		const seen: Seen[] = views.map((p) => ({ viewport: p.viewport, height: VIEWPORTS.find((v) => v.name === p.viewport)?.height ?? 800, img: p.images[i]! }));
-		if (seen.some((s) => s.img.alt !== img.alt) || img.broken || img.src.startsWith('data:') || (img.naturalWidth > 0 && img.naturalWidth * img.naturalHeight < MIN_AREA)) return;
+		if (seen.some((s) => s.img.alt !== img.alt) || img.broken || img.src.startsWith('data:') || (bytes.get(img.src) ?? 0) < MIN_BYTES) return;
 		const shown = seen.filter(firstScreen);
 		const check = `image loading: ${img.src}`;
 		if (!shown.length && (img.loading !== 'lazy' || img.preloaded))
