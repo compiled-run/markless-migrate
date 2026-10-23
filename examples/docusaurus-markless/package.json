@@ -13,8 +13,8 @@
 	},
 	"dependencies": {
 		"@algolia/autocomplete-core": "1.19.2",
-		"@markless/core": "0.9.0",
-		"@markless/router": "0.9.0",
+		"@markless/core": "file:./.markless-local/markless-core-0.9.0.tgz",
+		"@markless/router": "file:./.markless-local/markless-router-0.9.0.tgz",
 		"ai": "5.0.93",
 		"algoliasearch": "5.57.0",
 		"algoliasearch-docsearch": "npm:algoliasearch@5.43.0",
@@ -27,13 +27,22 @@
 		"vite-plus": "1.3.0"
 	},
 	"devDependencies": {
-		"@markless/analyzer": "0.9.0",
-		"@markless/typescript-plugin": "0.9.0",
+		"@markless/analyzer": "file:./.markless-local/markless-analyzer-0.9.0.tgz",
+		"@markless/typescript-plugin": "file:./.markless-local/markless-typescript-plugin-0.9.0.tgz",
 		"@types/nprogress": "^0.2.3",
 		"typescript": "^5.9.3",
 		"vite": "npm:@voidzero-dev/vite-plus-core@1.3.0"
 	},
 	"overrides": {
-		"vite": "$vite"
+		"vite": "$vite",
+		"@markless/analyzer": "file:./.markless-local/markless-analyzer-0.9.0.tgz",
+		"@markless/bundler": "file:./.markless-local/markless-bundler-0.9.0.tgz",
+		"@markless/compiler": "file:./.markless-local/markless-compiler-0.9.0.tgz",
+		"@markless/core": "file:./.markless-local/markless-core-0.9.0.tgz",
+		"@markless/router": "file:./.markless-local/markless-router-0.9.0.tgz",
+		"@markless/runtime": "file:./.markless-local/markless-runtime-0.9.0.tgz",
+		"@markless/serializer": "file:./.markless-local/markless-serializer-0.9.0.tgz",
+		"@markless/typescript-plugin": "file:./.markless-local/markless-typescript-plugin-0.9.0.tgz",
+		"@markless/web": "file:./.markless-local/markless-web-0.9.0.tgz"
 	}
 }
