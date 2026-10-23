@@ -233,6 +233,8 @@ export interface RouteResult {
 	readonly states?: { readonly checked: readonly string[]; readonly skipped: readonly string[] };
 	/** Interactions explored on the OLD page and replayed on NEW, with what OLD did at each step. */
 	readonly journeys?: readonly RecordedJourney[];
+	/** What the new page does better by WAI-ARIA than the old page (a state the old page left out): listed, not red, and never hiding another difference of the same step. */
+	readonly improvements?: readonly string[];
 	/** Set instead of `journeys` once they were written to disk at the end of the route's check: the file, and each journey's name. */
 	readonly storedJourneys?: { readonly path: string; readonly names: readonly string[] };
 	/** Every interactive element of the OLD page and the journey that exercised it; one that none did keeps the route red. */
@@ -335,7 +337,7 @@ export interface Blocked {
 	readonly message: string;
 }
 
-export type InfrastructureCause = 'dns' | 'connect' | 'timeout' | 'check timeout';
+export type InfrastructureCause = 'dns' | 'connect' | 'timeout' | 'check timeout' | 'old page broken';
 
 export interface Infrastructure {
 	readonly side?: 'old' | 'new';

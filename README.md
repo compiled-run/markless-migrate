@@ -29,7 +29,7 @@ markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [
     [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
     [--auth .migrate/auth.json] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
     [--all] [--allow-unchecked] [--new-source ../markless-app] [--concurrency 4] [--changed]
-    [--journey-budget 120] [--max-journeys <n>] [--journey-depth 4] [--timeout 600]
+    [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth 4] [--timeout 1800]
     [--no-responsiveness] [--interaction-budget 200] [--cpu-throttle 4] [--interaction-controls 16] [--no-motion] [--no-cache]
     [--no-navigation] [--nav-entries 2] [--nav-destinations 40]
 markless-migrate usage [--old <origin>] [--built <dir>] [--source <path>] [--new-source <path>] [--json]
