@@ -312,4 +312,14 @@ const sidebarShortcut: Part = {
 	},
 };
 
+// examples/*/carousel-api.tsx: "Slide {current} of {count}" under the carousel, from the Embla api's select event (the
+// carousel port dispatches carouselselect on the carousel).
+document.addEventListener('carouselselect', (event) => {
+	const { index, count } = (event as CustomEvent<{ index: number; count: number }>).detail;
+	const caption = (event.target as Element).nextElementSibling;
+	if (!caption || !/^Slide \d+ of \d+$/.test((caption.textContent ?? '').trim())) return;
+	const texts = [...caption.childNodes].filter((n): n is Text => n.nodeType === Node.TEXT_NODE);
+	texts.forEach((t, i) => (t.data = i === 0 ? `Slide ${index + 1} of ${count}` : ''));
+});
+
 export const SITE_PARTS: readonly Part[] = [commandMenu, modeSwitcher, copyPage, copyButton, viewCode, docsSidebar, docsToc, sidebarShortcut, sharedTabs];
