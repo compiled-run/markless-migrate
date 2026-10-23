@@ -301,3 +301,40 @@ counting 2 and 4 controls not exercised. New on 0.9.0: following the header's "e
 click, where the old site's boosted link fetches `/examples/` (the router fetched the page ahead of the click), and on
 `/attributes/hx-indicator/` the demo button's focus and name while its "Loading..." indicator shows differ from the old
 page's (that demo still runs htmx itself).
+
+## No htmx, class-tools or _hyperscript on any page (2026-10-23)
+
+Every page that loaded `/js/htmx.js`, `/js/class-tools.js` or `/js/_hyperscript.js` (the 30 demo pages under `/examples/`,
+`/attributes/hx-indicator/`, `/essays/view-transitions/`, `/essays/rest-copypasta/`, `/extensions/` and `/webring/`) is
+now a Markless page: `run --agent claude` took each route in turn and wrote its demo as Markless state and handlers,
+with the demo's fake server (htmx.org's sinon setup and `demo.js` request log) as a plain module beside it
+(`components/<demo>.ts`). The importer keeps those pages as hand ports (`HAND_PORTED`) and writes no htmx script into
+any head. class-tools' timed classes are `lib/class-tools.ts`. The build guard is green: no page loads or runs another
+framework's runtime. htmx.org's own files (`/js/htmx.js` and the rest, `/src/`, `/test/`) are still served at their
+addresses as downloads, as htmx.org serves them; nothing in the app loads them.
+
+The run took one attempt a route (two on the first three), without the page load measure, since each check took most
+of an hour otherwise. No route went green: every one keeps the licence badge's `htmx.org` link (an accepted difference
+the checker no longer matches since it writes the old origin as `OLD` before matching) and axe's
+`label-content-name-mismatch` on the certified GitHub button's count ("49,565" shown, "49565 stargazers on GitHub"
+read, as buttons.js does inside its frame).
+
+### Check against the deployments, before and after
+
+`check --no-psi` on 36 routes (the ecosystem suite's sample and every page above), old https://htmx.org, new
+https://mm-htmx-org-new.vercel.app, with htmx and then without: 1,097 failures to 1,001, not counting controls not
+exercised; 28 routes fewer, 2 the same, 6 more. JavaScript on a demo page: 2.65 MB downloaded and 1.69 MB run at load
+to 105 kB and 66 kB (htmx.org: 2.64 MB and 1.74 MB).
+
+The six with more:
+
+- `/examples/animations/`: the color-swap demo no longer changes colour every second (htmx polled for it), and 16
+  computed-style rows on it follow. A second run on the route built a fix the compiler refused
+  (`MARKLESS_BRANCH_ARM_UPDATE_UNSUPPORTED` on a component inside an `@if`) and ran out of time; it was not kept.
+- `/examples/tabs-hateoas/`: after an in-place navigation the tabs' code (Markless's `marklessRowSlotMint` chunk) is
+  fetched on the first click instead of ahead of it, so the checker's click lands before it runs; on a fresh load the
+  tabs work as on htmx.org. The same holds on six other demo pages.
+- `/essays/rest-copypasta/`: the Copy buttons show nothing in the checker (the clipboard write is refused there and
+  the port awaits it, where _hyperscript shows "copied" anyway).
+- `/examples/infinite-scroll/`, `/examples/move-before/`, `/webring/`: a font row on the table cells, a navigation
+  row and one rendered row.
