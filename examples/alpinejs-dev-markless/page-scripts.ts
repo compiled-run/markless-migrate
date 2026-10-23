@@ -32,3 +32,48 @@ export const CONTENTS_HIGHLIGHTER = `(() => {
 export function persistDefaults(values: Readonly<Record<string, string>>): string {
 	return `(() => { const values = ${JSON.stringify(values)}; try { Object.keys(values).forEach((key) => { if (localStorage.getItem(key) === null) localStorage.setItem(key, values[key]); }); } catch {} })();`;
 }
+
+/** DocSearch (Algolia) loads on the first intent to search (hover, focus or press of the search button, Cmd/Ctrl+K or /), and a press or shortcut made while it loads opens it once it has. Off Apple platforms the button shows and announces Ctrl+K, as DocSearch's own button does, before the first paint. */
+export const DOCSEARCH_ON_INTENT = `(() => {
+	if (window.__docsearchOnIntent) return;
+	window.__docsearchOnIntent = true;
+	if (!/(Mac|iPhone|iPod|iPad)/i.test(navigator.platform)) {
+		const sheet = new CSSStyleSheet();
+		sheet.replaceSync('#docsearch .docsearch-key-apple { display: none } #docsearch .docsearch-key-ctrl { display: flex }');
+		document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+		const label = () => { for (const el of document.querySelectorAll('#docsearch .DocSearch-Button')) if (el.getAttribute('aria-label') !== 'Search (Ctrl+K)') el.setAttribute('aria-label', 'Search (Ctrl+K)'); };
+		new MutationObserver((records) => { if (records.some((record) => record.addedNodes.length)) label(); }).observe(document.documentElement, { childList: true, subtree: true });
+	}
+	let state = 0;
+	let pending = false;
+	let holder = null;
+	const open = () => { const button = holder ? holder.querySelector('.DocSearch-Button') : null; if (button) button.click(); };
+	const load = () => {
+		if (state) return;
+		state = 1;
+		const script = document.createElement('script');
+		script.src = 'https://cdn.jsdelivr.net/npm/@docsearch/js@3';
+		script.onload = () => {
+			holder = document.createElement('div');
+			holder.hidden = true;
+			document.body.append(holder);
+			docsearch({ container: holder, appId: 'SM9GAGAUKZ', apiKey: '1fad8740c0cf75209d11ae25f1f6f55c', indexName: 'alpinejs' });
+			state = 2;
+			if (pending) { pending = false; open(); }
+		};
+		script.onerror = () => { state = 0; script.remove(); };
+		document.head.append(script);
+	};
+	const request = () => { if (state === 2) open(); else { pending = true; load(); } };
+	const button = (event) => event.target instanceof Element ? event.target.closest('#docsearch .DocSearch-Button') : null;
+	for (const type of ['pointerover', 'pointerdown', 'touchstart', 'focusin']) document.addEventListener(type, (event) => { if (button(event)) load(); }, { capture: true, passive: true });
+	document.addEventListener('click', (event) => { if (button(event)) request(); }, true);
+	const editing = (target) => target instanceof Element ? target.isContentEditable || ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName) : false;
+	document.addEventListener('keydown', (event) => {
+		if (state === 2 || pending) return;
+		const shortcut = String(event.key).toLowerCase() === 'k' ? event.metaKey || event.ctrlKey : event.key === '/' ? !editing(event.target) : false;
+		if (!shortcut || !document.querySelector('#docsearch')) return;
+		event.preventDefault();
+		request();
+	}, true);
+})();`;
