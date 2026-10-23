@@ -34,6 +34,9 @@ const page = (body: string) => `<!doctype html><html lang="en"><head><meta chars
 const ALIVE = page(`${WIDGETS}${BEHAVIOUR}`);
 // The same markup, every control drawn and none answering: what a port looks like when its parts never run.
 const DEAD = page(WIDGETS);
+const TRACK = WIDGETS.slice(0, WIDGETS.indexOf('</section>') + '</section>'.length);
+const CAROUSEL = page(`${TRACK}<script>document.getElementById('next').onclick = () => { document.getElementById('track').style.transform = 'translateX(-300px)'; };</script>`);
+const DEAD_CAROUSEL = page(TRACK);
 
 let browser: Browser;
 const servers: Server[] = [];
@@ -94,10 +97,10 @@ test('a port whose controls are drawn but never answer is red for every one of t
 });
 
 test('a page of a large site is exercised on its own, though its template group shares its layout and kinds of control', async () => {
-	// Twenty-one pages of one URL pattern, one layout and the same widgets; only the last page's port is dead.
+	// Twenty-one pages of one URL pattern, one layout and the same carousel; only the last page's port is dead.
 	const routes = Array.from({ length: 21 }, (_, i) => `/docs/${String(i + 1).padStart(2, '0')}`);
 	const known = (path: string) => routes.includes(path);
-	const report = await check((path) => (known(path) ? ALIVE : undefined), (path) => (known(path) ? (path === routes.at(-1) ? DEAD : ALIVE) : undefined), routes);
+	const report = await check((path) => (known(path) ? CAROUSEL : undefined), (path) => (known(path) ? (path === routes.at(-1) ? DEAD_CAROUSEL : CAROUSEL) : undefined), routes);
 	assert.ok(report.templates?.groups.some((g) => g.members.length === routes.length), 'one template group');
 	const last = report.routes.find((r) => r.route === routes.at(-1))!;
 	assert.notEqual(last.template?.representative, last.route);
