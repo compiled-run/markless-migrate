@@ -221,7 +221,7 @@ export class ChartPlan {
 				(inserts.get(parent) ?? inserts.set(parent, []).get(parent)!).push({ before, markup: own.markup });
 			}
 			const facts = { w: chart.width, h: chart.height, s: chart.states.map((s) => [s.from, s.to, s.x, s.y]) };
-			this.bindings.set(wrapper, { declare, extra: [`data-mm-chart=${lit(JSON.stringify(facts))}`, `onMmchart={(event) => (${name} = (event as CustomEvent<number>).detail)}`] });
+			this.bindings.set(wrapper, { declare, extra: [`data-mm-chart={${lit(JSON.stringify(facts))}}`, `onMmchart={(event) => (${name} = (event as CustomEvent<number>).detail)}`] });
 			this.bindings.set(tip, { declare, children: tooltip.markup });
 			for (const [parent, list] of inserts) this.bindings.set(parent, { declare, inserts: list });
 			placed++;

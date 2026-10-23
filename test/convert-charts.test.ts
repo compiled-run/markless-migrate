@@ -20,6 +20,7 @@ test('a recharts chart: the active point in state(), the tooltip and the SVG\'s 
 	];
 	assert.equal(plan.add(body(doc), [{ sig: 's', nth: 0, width: 100, height: 50, states, points: { '0@-1': { path: [0], before: -1 } } }], () => wrapper, (h) => h), 1);
 	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /data-mm-chart=\{"\{\\"w\\":100,/, 'the facts the part reads are a string expression');
 	assert.match(out, /onMmchart=\{\(event\) => \(chart0 = \(event as CustomEvent<number>\)\.detail\)\}/);
 	assert.match(out, /<div class="recharts-tooltip-wrapper" style="visibility: hidden">@if \(chart0 >= 0\) \{ <><div><span>\{chart0t\[chart0\]\[0\]\}<\/span><\/div><\/> \}<\/div>/);
 	assert.match(out, /<g class="layer"><path d="M0"><\/path>@if \(chart0 >= 0\) \{ <><g class="recharts-active-dot"><circle cx=\{chart0a0\[chart0\]\[0\]\} cy=\{chart0a0\[chart0\]\[1\]\}><\/circle><\/g><\/> \}<\/g>/);
