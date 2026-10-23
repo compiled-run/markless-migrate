@@ -3,7 +3,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join } from 'node:path';
 const [dir, port] = process.argv.slice(2);
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.woff2': 'font/woff2', '.woff': 'font/woff', '.txt': 'text/plain', '.xml': 'application/xml', '.ico': 'image/x-icon', '.gif': 'image/gif', '.mp4': 'video/mp4', '.wasm': 'application/wasm' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.woff2': 'font/woff2', '.woff': 'font/woff', '.txt': 'text/plain', '.xml': 'application/xml', '.ico': 'image/x-icon', '.gif': 'image/gif', '.mp4': 'video/mp4', '.wasm': 'application/wasm', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav', '.webm': 'video/webm', '.avif': 'image/avif', '.ttf': 'font/ttf', '.otf': 'font/otf', '.riv': 'application/octet-stream', '.pdf': 'application/pdf', '.mjs': 'text/javascript', '.map': 'application/json', '.webmanifest': 'application/manifest+json' };
 const file = (p) => existsSync(p) && statSync(p).isFile() ? p : undefined;
 createServer((req, res) => {
 	const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
