@@ -1,0 +1,26 @@
+name: Debug copy
+
+# Not for merge: why vite.dev's port shows no "Copied" on a runner.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/debug-copy.yml
+
+permissions:
+  contents: read
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RELEASE: https://github.com/compiled-run/markless-migrate/releases/download/port-builds-2026-10-23
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: |
+          bash deploy/archive/ci-serve.sh static "$RELEASE/vite-old.tar.gz" 4000
+          bash deploy/archive/ci-serve.sh node "$RELEASE/vite-new.tar.gz" 3000
+          node scripts/debug-copy.mjs
