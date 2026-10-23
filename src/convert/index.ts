@@ -277,7 +277,7 @@ function comboboxIndicators(top: Element): void {
 				continue;
 			}
 			const copy = parseFragment(outer(template)).childNodes[0] as unknown as Element;
-			copy.attrs = [...copy.attrs.filter((a) => a.name !== 'data-selected'), { name: 'hidden', value: '' }, { name: 'data-mm-indicator', value: '' }];
+			copy.attrs = [...copy.attrs.filter((a) => a.name !== 'data-selected' && a.name !== 'hidden' && a.name !== 'data-mm-indicator'), { name: 'hidden', value: '' }, { name: 'data-mm-indicator', value: '' }];
 			copy.parentNode = o as never;
 			o.childNodes.push(copy as never);
 		}
@@ -303,7 +303,7 @@ function comboboxChips(doc: Document, reveals: readonly Reveal[]): void {
 		const options = new Set<string>();
 		for (const a of reveal.added) for (const o of walkAll(parseFragment(a.html) as unknown as Element)) if (attr(o, 'role') === 'option') options.add(textOf(o).trim());
 		const shown = new Set(own.map(named));
-		for (const chip of own) chip.attrs = [...chip.attrs, { name: 'data-mm-chip', value: named(chip) }];
+		for (const chip of own) chip.attrs = [...chip.attrs.filter((a) => a.name !== 'data-mm-chip'), { name: 'data-mm-chip', value: named(chip) }];
 		let after = own[own.length - 1]!;
 		for (const text of options) {
 			if (shown.has(text)) continue;
@@ -311,7 +311,7 @@ function comboboxChips(doc: Document, reveals: readonly Reveal[]): void {
 			const first = textNodes(copy)[0];
 			if (!first) continue;
 			first.value = text;
-			copy.attrs = [...copy.attrs.filter((a) => a.name !== 'data-mm-chip'), { name: 'hidden', value: '' }, { name: 'data-mm-chip', value: text }];
+			copy.attrs = [...copy.attrs.filter((a) => a.name !== 'data-mm-chip' && a.name !== 'hidden'), { name: 'hidden', value: '' }, { name: 'data-mm-chip', value: text }];
 			copy.parentNode = chips as never;
 			chips.childNodes.splice(chips.childNodes.indexOf(after as never) + 1, 0, copy as never);
 			after = copy;
@@ -526,7 +526,7 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 		placedWith.add(at);
 		const index = c.before ? c.parent.childNodes.indexOf(c.before as never) : c.parent.childNodes.length;
 		const nodes = c.kept.map((e) => {
-			e.attrs = [...e.attrs.filter((a) => a.name !== 'hidden'), { name: 'hidden', value: '' }, { name: 'data-mm-shown-with', value: c.key }];
+			e.attrs = [...e.attrs.filter((a) => a.name !== 'hidden' && a.name !== 'data-mm-shown-with'), { name: 'hidden', value: '' }, { name: 'data-mm-shown-with', value: c.key }];
 			e.parentNode = c.parent as never;
 			return e;
 		});
