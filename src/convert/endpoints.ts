@@ -519,6 +519,18 @@ export function readsNoRequest(file: string, text: string): boolean {
  * rewrites, each old route handler ported as server code, and build-time outputs of the old app the new app serves
  * as they are; plus the packages the ported handlers import, at the old app's versions.
  */
+/**
+ * An optimized image is answered from a file written at convert time, so it cannot change within a deployment: the CDN
+ * keeps it for the deployment's life (a new deployment starts a new cache), and browsers keep the old answer's lifetime.
+ */
+export function frozenCacheControl(old: string | null): string {
+	const kept = (old ?? 'public, max-age=0, must-revalidate')
+		.split(',')
+		.map((p) => p.trim())
+		.filter((p) => p && !/^(s-maxage|no-store|no-cache|private)\b/i.test(p));
+	return [...(kept.some((p) => /^public$/i.test(p)) ? [] : ['public']), ...kept, 's-maxage=31536000'].join(', ');
+}
+
 export async function writeRouting(input: RoutingInput): Promise<{ ports: EndpointPort[]; packages: Record<string, string>; overrides: Record<string, Record<string, string>> }> {
 	const { app, source } = input;
 	const out = join(app, 'server', 'handlers');
@@ -662,7 +674,8 @@ export async function writeRouting(input: RoutingInput): Promise<{ ports: Endpoi
 		if (!response?.ok) continue;
 		const name = `${n++}`;
 		await writeFile(join(assets, name), Buffer.from(await response.arrayBuffer()));
-		built[path] = { file: name, type: response.headers.get('content-type') ?? 'application/octet-stream' };
+		const type = response.headers.get('content-type') ?? 'application/octet-stream';
+		built[path] = { file: name, type, ...(type.startsWith('image/') ? { headers: { 'cache-control': frozenCacheControl(response.headers.get('cache-control')) } } : {}) };
 	}
 	input.log?.(`endpoints: ${handlers.length} handlers ported, ${jobs.length} run at convert time; ${Object.keys(built).length} outputs served as files`);
 	// Next.js answers a path with the other trailing-slash form by a 308 to the configured one (trailingSlash, false by default).

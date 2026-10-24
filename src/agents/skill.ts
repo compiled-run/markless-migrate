@@ -173,6 +173,12 @@ Markless state and a handler that does what the attribute did, with the same req
   priority or after it (\`fetchpriority="low"\` on a modulepreload or script, an animation runtime started
   later), keep the HTML small and nothing render-blocking in the head. Never lower \`--load-runs\` or leave
   \`load\` out to make it pass.
+- \`load\` \`image loading\` failures come from where each image is drawn at the desktop and phone viewports: give an
+  image no first screen shows \`loading="lazy"\` and drop its head preload (a dark-mode twin, a footer logo, a
+  desktop banner a phone hides, whose preload then takes \`media\`), never lazy-load one a first screen shows, and
+  give a first-screen image much wider than its phone box a \`srcset\` of widths with \`sizes\` (write the smaller
+  files next to the original as \`name-640w.webp\`, so check knows them as the same picture). Every request that
+  starts before the largest paint shares the phone's bandwidth with it.
 - \`motion\` is checked: every interaction that stays on the page is replayed with motion allowed, and each
   transition and animation it starts (element, properties, duration, delay, easing, iterations), each one hovering,
   focusing or scrolling starts, and each sound it plays is compared with the old page's. Port every animation and
