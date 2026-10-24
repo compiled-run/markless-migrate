@@ -92,6 +92,9 @@ export const PORTS: readonly Port[] = [
 	{ module: 'radix/navigation-menu', library: 'radix-ui', needs: [], exports: ['NavigationMenu.Root', 'NavigationMenu.List', 'NavigationMenu.Item', 'NavigationMenu.Trigger', 'NavigationMenu.Content', 'NavigationMenu.Link', 'NavigationMenu.Viewport', 'NavigationMenu.Indicator'], events: ['click', 'pointerover', 'pointerout', 'keydown'], locate: (el) => radix(el) },
 	// Radix Collapsible and Accordion are Markless state (convert's DisclosurePlan); the part measures and ends exits.
 	{ module: 'radix/disclosure-motion', library: 'radix-ui', needs: ['panel-motion'], exports: ['Collapsible.Root', 'Collapsible.CollapsibleTrigger', 'Collapsible.CollapsibleContent', 'Collapsible.Trigger', 'Collapsible.Content', 'Accordion.Root', 'Accordion.Item', 'Accordion.Header', 'Accordion.Trigger', 'Accordion.Content'], events: [], locate: (el) => radix(el) },
+	// react-day-picker calendars are Markless state with handlers on their root (day-picker.ts DayPickerPlan places the
+	// module); the part only prevents the keys DayPicker handles on a day.
+	{ module: 'day-picker', library: 'react-day-picker', exports: ['DayPicker'], events: ['keydown'], locate: () => false },
 	// Base UI Collapsible and Accordion are Markless state (convert's InsertedDisclosurePlan); the part measures and ends exits.
 	{ module: 'panel-motion', library: '@base-ui/react', exports: ['Collapsible.Root', 'Collapsible.Trigger', 'Collapsible.Panel', 'Accordion.Root', 'Accordion.Item', 'Accordion.Header', 'Accordion.Trigger', 'Accordion.Panel'], events: [], locate: base },
 	// DocSearch is found by the button it renders, on sites with or without source; usage.json carries its config.

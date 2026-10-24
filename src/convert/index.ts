@@ -18,7 +18,10 @@ import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpeni
 import { captureAccordions, captureCarousels, captureComboboxEmpties, captureHoverDelays, captureAllForms, captureAllSwitches, captureAllToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
 import { bindMount, bindParts, bodyHandlers, candidatesOf, docsearchConfigured, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
+import { captureDayPickers, CONFIG_PREFIX, CONFIGS_MODULE, DayPickerPlan, type CapturedPickers } from './day-picker.ts';
 import { stat } from 'node:fs/promises';
+import { existsSync, readFileSync } from 'node:fs';
+import { nextImageWidths, pairImages, planImages, type ImagePlan, type Optimizer } from './images.ts';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
 import { nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
@@ -43,6 +46,10 @@ function withPartImports(source: string, dir: string): string {
 	if (/\bradioKeys\(event/.test(out)) out = out.replace('\n', `\nimport { radioKeys } from '${dir}/toggle.ts';\n`);
 	if (/\bwriteCookies\(/.test(out)) out = out.replace('\n', `\nimport { writeCookies } from '${dir}/switch.ts';\n`);
 	if (/\bplayScene\(event/.test(out)) out = out.replace('\n', `\nimport { playScene } from '${dir}/scene.ts';\n`);
+	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
+	if (dayPicker.length) out = out.replace('\n', `\nimport { computed } from '@markless/core';\nimport { ${dayPicker.join(', ')} } from '${dir}/day-picker.ts';\n`);
+	const configs = [...new Set(out.match(new RegExp(`\\b${CONFIG_PREFIX}[0-9a-f]{10}\\b`, 'g')) ?? [])];
+	if (configs.length) out = out.replace('\n', `\nimport { ${configs.join(', ')} } from '${dir}/${CONFIGS_MODULE.replace(/\.ts$/, '')}.ts';\n`);
 	return out;
 }
 
@@ -597,10 +604,11 @@ function extractStyles(parent: Element, styles: Map<string, string>): void {
 	}
 }
 
-function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: string, dropped: Dropped, styles: Map<string, string>): Prepared {
+function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: string, dropped: Dropped, styles: Map<string, string>, optimizer: Optimizer | undefined, images: ImagePlan): Prepared {
 	const builds = frameworkBuilds(capture.server).map((b) => b.path);
 	const ctx = { builds, frameworkScripts: new Set<string>(), origin };
 	const doc = parseDocument(capture.settled.desktop ?? Object.values(capture.settled)[0] ?? capture.server);
+	const paired = pairImages(doc, capture.images);
 	currentLayers = [];
 	currentClipboard = {};
 	comboboxChips(doc, reveals);
@@ -617,6 +625,8 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 		extractStyles(holder, styles);
 		return attr(childrenOf(holder)[0] as Element, 'href')!;
 	});
+	const plan = planImages(doc, paired, optimizer, dropped);
+	for (const k of Object.keys(plan) as (keyof ImagePlan)[]) images[k] += plan[k];
 	extractStyles(head(doc), styles);
 	extractStyles(body(doc), styles);
 	const tags: HeadTag[] = [];
@@ -696,6 +706,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const chartFacts = new Map<string, readonly ChartFacts[]>();
 	const scrollerOpenings = new Map<string, readonly ScrollerOpening[]>();
 	const scenes = new Map<string, { scene: Scene; listed: string }[]>();
+	const pickers = new Map<string, CapturedPickers>();
 	const choices: Record<string, Record<string, Choice>> = {};
 	try {
 		// The old site's not-found page, from a path no route has: the new app's 404 page.
@@ -742,6 +753,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (settled.some((html) => html.includes('recharts-tooltip-wrapper'))) chartFacts.set(ref.route, (await captureCharts(browser, options.old, ref.route, join(state, 'convert', 'toggles'))).charts);
 		}
 		for (const c of captures) if (c && (await c.load()).server.includes('data-slot="message-scroller"')) scrollerOpenings.set(c.route, (await captureScrollers(browser, options.old, c.route, join(state, 'convert', 'toggles'))).scrollers);
+		// What each react-day-picker calendar was given, on the routes whose settled page shows a month grid.
+		if (options.reveal !== false)
+			for (const ref of captures) {
+				if (!ref || ref.status !== 200 || !Object.values((await ref.load()).settled).some((html) => /<table[^>]*role="grid"[^>]*aria-multiselectable/.test(html))) continue;
+				pickers.set(ref.route, await captureDayPickers(browser, options.old, ref.route, join(state, 'convert', 'day-pickers')));
+			}
 		if (options.reveal !== false) for (const t of await captureAllToggles(browser, options.old, routes, join(state, 'convert', 'toggles'), { concurrency: options.concurrency ?? 4, log })) toggled.set(t.route, t.groups);
 		// Controls the site lists as switching attributes in place (lib/site/controls.json, action "toggle").
 		const switchSelectors = listed.filter((c) => c.action === 'toggle').map((c) => c.selector);
@@ -775,14 +792,18 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const styles = new Map<string, string>();
 	const unconverted: { route: string; reason: string }[] = [];
 	const prepared = new Map<string, Prepared>();
+	const nextConfig = options.source ? ['next.config.mjs', 'next.config.js', 'next.config.ts', 'next.config.cjs'].map((f) => join(options.source!, f)).find((f) => existsSync(f)) : undefined;
+	const optimizer: Optimizer | undefined = nextConfig ? { path: '/_next/image', widths: nextImageWidths(readFileSync(nextConfig, 'utf8')) } : undefined;
+	const images: ImagePlan = { lazy: 0, eager: 0, responsive: 0, preloadsDropped: 0, someScreens: 0 };
 	// Each capture (the served HTML and the settled documents, a few MB) is read from the cache only while its page is parsed.
 	for (const ref of captures) {
 		if (ref.status !== 200 && !(ref.route === NOT_FOUND && ref.status === 404)) {
 			unconverted.push({ route: ref.route, reason: `the old site answered ${ref.status} while capturing` });
 			continue;
 		}
-		prepared.set(ref.route, prepare(await ref.load(), revealed.get(ref.route) ?? [], options.old, dropped, styles));
+		prepared.set(ref.route, prepare(await ref.load(), revealed.get(ref.route) ?? [], options.old, dropped, styles, optimizer, images));
 	}
+	if (images.lazy + images.eager + images.responsive + images.someScreens) log(`images: ${images.lazy} lazy (in no first screen), ${images.eager} eager (in a first screen), ${images.responsive} given a width per device, ${images.preloadsDropped} head preloads dropped, ${images.someScreens} drawn only in one range of widths (lazy, preloaded there)`);
 
 	const bodyParts = splitBody(new Map([...prepared].map(([route, p]) => [route, { route, before: p.before, after: p.after, htmlAttrs: p.htmlAttrs, bodyAttrs: p.bodyAttrs, head: p.head }])));
 	const pathOf = (route: string) => new URL(route, options.old).pathname;
@@ -858,6 +879,17 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	for (const p of prepared.values()) disclosureGroups += disclosures.add(p.root, isRadixDisclosure, (panel) => panelContent.get(panel), multiple);
 	if (disclosureGroups) log(`accordions and collapsibles on Markless state: ${disclosureGroups}`);
 	const insertedDisclosures = new InsertedDisclosurePlan();
+	const dayPickers = new DayPickerPlan();
+	let pickerCount = 0;
+	for (const [route, p] of prepared) {
+		const captured = pickers.get(route);
+		if (captured?.pickers.length) pickerCount += dayPickers.add(route, captured, locator(p.root.parentNode as Element));
+	}
+	for (const line of dayPickers.notes) log(`  ${line}`);
+	if (pickerCount) {
+		log(`react-day-picker calendars on Markless state: ${pickerCount}`);
+		templatePorts.add('day-picker');
+	}
 	const insertedGroups = insertedDisclosures.add(inserted, [...prepared.values()].map((p) => p.root), multiple);
 	if (insertedGroups) log(`disclosures that mount their content in place, on Markless state: ${insertedGroups}`);
 	// A form the old page's script handled (submitting it left the page where it was) does not submit natively.
@@ -907,7 +939,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		log(`recharts tooltips on Markless state: ${chartCount} charts`);
 		templatePorts.add('recharts');
 	}
-	handledBy((el) => checkables.bind(el) !== undefined || baseTabs.bind(el) !== undefined || insertedDisclosures.bind(el) !== undefined);
+	handledBy((el) => checkables.bind(el) !== undefined || baseTabs.bind(el) !== undefined || insertedDisclosures.bind(el) !== undefined || dayPickers.handles(el));
 	// input-otp fields, used once each on the old page for the caret their site renders and the text that shows their value.
 	const otps = new OtpPlan();
 	const otpRoutes = [...prepared].filter(([, p]) => [...walk(p.root)].some((el) => attr(el, 'data-input-otp-container') !== undefined));
@@ -953,6 +985,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		binding = mergeBindings(binding, keyed ? { extra: [`data-mm-key=${JSON.stringify(keyed)}`] } : undefined);
 		binding = mergeBindings(binding, portAttributes(el));
 		binding = mergeBindings(binding, portFor(el) === 'shadcn/message-scroller' ? bindScroller(el) : undefined);
+		binding = mergeBindings(dayPickers.bind(el), binding);
 		const own = mergeBindings(scenePlan.bind(el), mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), baseTabs.bind(el)), charts.bind(el)), disclosures.bind(el)), insertedDisclosures.bind(el)), selects.bind(el)), checkables.bind(el)), switchPlan.bind(el)), mergeBindings(notifyPlan.bind(el), handledForms.has(el) ? formBinding : undefined)), mergeBindings(otps.bind(el), binding)), bindMount(el)));
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};
@@ -1092,6 +1125,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	await writeFile(join(app, 'head.ts'), HEAD_HELPER);
 	if (disclosureGroups || insertedGroups) usedPorts.add('panel-motion');
 	await writeParts(app, usedPorts, choices);
+	if (pickerCount) await writeFile(join(app, 'lib', 'parts', CONFIGS_MODULE), dayPickers.configsModule());
 	await mkdir(join(app, 'components', 'converted'), { recursive: true });
 	await mkdir(join(app, 'components', 'converted', 'layers'), { recursive: true });
 	for (const layer of layers.files) await writeFile(join(app, 'components', 'converted', layer.file), appUrlDeclaration(layer.source));
