@@ -8,7 +8,7 @@ import { captureAllReveals, captureRacHovers, type Reveal } from './reveal.ts';
 import { captureChoices, type Choice } from './choices.ts';
 import { parseFragment } from 'parse5';
 import { cleanDocument, frameworkBuilds, lateHead, type Dropped } from './clean.ts';
-import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, walk, type Document, type Element } from './dom.ts';
+import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, textContent, walk, type Document, type Element } from './dom.ts';
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
 import { BaseTabsPlan, CheckablePlan, DisclosurePlan, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
 import { captureCharts, ChartPlan, type ChartFacts } from './charts.ts';
@@ -22,6 +22,8 @@ import { captureDayPickers, CONFIG_PREFIX, CONFIGS_MODULE, DayPickerPlan, type C
 import { stat } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { nextImageWidths, pairImages, planImages, type ImagePlan, type Optimizer } from './images.ts';
+import { nextThemesOptions, themeToggleOf } from './theme.ts';
+import { applyLateFonts, fontPreloads } from './fonts.ts';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
 import { nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
@@ -279,6 +281,9 @@ function textOf(node: Element): string {
 let currentLayers: { key: string; markup: string; shell: string; fill: string }[] = [];
 // What the old page's copy controls wrote, by the control's signature and occurrence.
 let currentClipboard: Record<string, string> = {};
+// Routes with a block that waits for the load event to render (its web font is fetched after the load).
+const lateFontPages = new Set<string>();
+let fontPreloadCount = 0;
 // Containers a control replaces its content in (View Code): the content it then shows, rendered hidden beside.
 const replaced = new Map<Element, { key: string; trigger: Element; markup: string }>();
 const replacedParts = new Map<Element, Binding>();
@@ -690,6 +695,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 		extractStyles(holder, styles);
 		return attr(childrenOf(holder)[0] as Element, 'href')!;
 	});
+	if (applyLateFonts(doc, (capture.lateFonts ?? []).map((f) => f.id))) lateFontPages.add(capture.route);
 	const plan = planImages(doc, paired, optimizer, dropped);
 	for (const k of Object.keys(plan) as (keyof ImagePlan)[]) images[k] += plan[k];
 	extractStyles(head(doc), styles);
@@ -707,6 +713,13 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 		const text = tag === 'title' || tag === 'script' ? childrenOf(node).map((n) => ('value' in n ? (n as { value: string }).value : '')).join('') : undefined;
 		const self = selfReferences(attrs, origin);
 		tags.push({ tag, attrs, ...(text !== undefined ? { text } : {}), ...(self ? { self } : {}) });
+	}
+	// The first screen's web fonts are fetched with the stylesheet, not after it: preloaded right after the charset.
+	const preloaded = tags.filter((t) => t.tag === 'link' && /\bpreload\b/.test(t.attrs.rel ?? '') && t.attrs.as === 'font').length;
+	const fonts = fontPreloads(capture.firstScreenFonts ?? [], origin, preloaded).map((f): HeadTag => ({ tag: 'link', attrs: { rel: 'preload', href: f.href, as: 'font', type: 'font/woff2', crossorigin: '' } }));
+	if (fonts.length) {
+		tags.splice(tags.findIndex((t) => t.tag === 'meta' && t.attrs.charset !== undefined) + 1, 0, ...fonts);
+		fontPreloadCount += fonts.length;
 	}
 	const kids = elementChildren(body(doc));
 	const root = kids.reduce((a, b) => (outer(b).length > outer(a).length ? b : a));
@@ -777,8 +790,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		// The old site's not-found page, from a path no route has: the new app's 404 page.
 		captures = await captureAll(browser, options.old, options.only?.length ? routes : [...routes, NOT_FOUND], join(state, 'convert', 'captures'), { concurrency: options.concurrency ?? 4, log });
 		// Controls the site's own components reveal content with, beside those ARIA marks (lib/site/controls.json).
-		const listed = await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as { selector: string; action: Reveal['action'] | 'toggle' | 'notify' | 'play' | 'open'; routes?: string }[], () => []);
-		const extra = listed.flatMap((c) => (c.action === 'toggle' || c.action === 'notify' || c.action === 'play' || c.action === 'open' ? [] : [[c.selector, c.action] as const]));
+		const listed = await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as { selector: string; action: Reveal['action'] | 'toggle' | 'notify' | 'play' | 'open' | 'theme'; routes?: string }[], () => []);
+		const extra = listed.flatMap((c) => (c.action === 'toggle' || c.action === 'notify' || c.action === 'play' || c.action === 'open' || c.action === 'theme' ? [] : [[c.selector, c.action] as const]));
 		// Controls the site lists as opening a layer no ARIA marks (a button whose click sets a dialog's open state).
 		const opens = listed.filter((c) => c.action === 'open').map((c) => ({ selector: c.selector, routes: c.routes }));
 		// Controls whose use the demo's own state answers (Send, Replay, Show more): every use recorded frame by frame.
@@ -877,6 +890,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const nextConfig = options.source ? ['next.config.mjs', 'next.config.js', 'next.config.ts', 'next.config.cjs'].map((f) => join(options.source!, f)).find((f) => existsSync(f)) : undefined;
 	const optimizer: Optimizer | undefined = nextConfig ? { path: '/_next/image', widths: nextImageWidths(readFileSync(nextConfig, 'utf8')) } : undefined;
 	const images: ImagePlan = { lazy: 0, eager: 0, responsive: 0, preloadsDropped: 0, someScreens: 0 };
+	lateFontPages.clear();
+	fontPreloadCount = 0;
 	// Each capture (the served HTML and the settled documents, a few MB) is read from the cache only while its page is parsed.
 	for (const ref of captures) {
 		if (ref.status !== 200 && !(ref.route === NOT_FOUND && ref.status === 404)) {
@@ -1207,6 +1222,25 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const headScripts = docsearchConfigured() ? ['DOCSEARCH_SCRIPT'] : [];
 	if (headScripts.length) usedPorts.add('docsearch');
 	if (headScripts.length) documentParts.push({ part: 'docsearch', import: (dir) => `import { DOCSEARCH_SCRIPT } from '${dir}/docsearch.ts';` });
+	if (fontPreloadCount) log(`font preloads: ${fontPreloadCount} first-screen web fonts that only a stylesheet named are preloaded`);
+	if (lateFontPages.size) {
+		headScripts.push('LATE_FONTS_SCRIPT');
+		documentParts.push({ part: 'late-fonts', import: (dir) => `import { LATE_FONTS_SCRIPT } from '${dir}/late-fonts.ts';` });
+		usedPorts.add('late-fonts');
+		log(`late fonts: on ${lateFontPages.size} pages, a web font only text below every first screen uses is fetched after the load`);
+	}
+	// A theme toggle the site names switches the theme from the first paint, before the page's code has arrived.
+	const toggle = themeToggleOf(await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as Record<string, unknown>[], () => []));
+	// ThemeProvider writes its script at the start of <body>; another site may keep it in <head>.
+	const scripts = [...prepared.values()].flatMap((p) => [...p.head.filter((t) => t.tag === 'script').map((t) => t.text ?? ''), ...p.before.flatMap((el) => [...walk(el)].filter((s) => s.tagName === 'script').map((s) => textContent(s)))]);
+	const themeScript = scripts.find((text) => nextThemesOptions(text));
+	const themeOptions = toggle && themeScript ? nextThemesOptions(themeScript, toggle.disableTransitionOnChange === true) : undefined;
+	if (toggle && themeOptions) {
+		const { disableTransitionOnChange: _, ...named } = toggle;
+		headScripts.push(`earlyThemeScript(${JSON.stringify(themeOptions)}, ${JSON.stringify(named)})`);
+		documentParts.push({ part: 'next-themes', import: (dir) => `import { earlyThemeScript } from '${dir}/next-themes.ts';` });
+		log(`theme toggle "${toggle.name}" answers from the first paint (next-themes ${themeOptions.attribute}, key ${themeOptions.storageKey})`);
+	}
 	await writeFile(join(app, 'document.tsrx'), appUrlDeclaration(documentModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped, partsDir('document.tsrx'), documentParts, headScripts)));
 	await writeFile(join(app, 'head.ts'), HEAD_HELPER);
 	if (disclosureGroups || insertedGroups) usedPorts.add('panel-motion');
