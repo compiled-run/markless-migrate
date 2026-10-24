@@ -30,17 +30,18 @@ jobs:
       - run: pnpm typecheck
 
   unit:
-    name: Unit tests (${{ matrix.shard }}/3)
+    name: Unit tests (${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        # Four shards: with journeys after in-place arrival and each route's 3.5 s look at what moves on its own, shard 1 of 3 measured 30 min, its whole budget.
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-      - run: node --test --test-shard=${{ matrix.shard }}/3 test/*.test.ts
+      - run: node --test --test-shard=${{ matrix.shard }}/4 test/*.test.ts
 
   e2e:
     name: E2E ${{ matrix.suite }}${{ matrix.shard && format(' ({0})', matrix.shard) || '' }}

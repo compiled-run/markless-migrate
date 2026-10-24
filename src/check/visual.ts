@@ -190,3 +190,16 @@ export function changedRegions(before: Buffer, after: Buffer, exclude: readonly 
 	if (count < MIN_REACTION_PIXELS) return [];
 	return diffRegions(a.width, a.height, (x, y) => hot[y * a.width + x] === 1);
 }
+
+/** Whether two pictures show the same pixels left of `width` (an embed whose live count at its right end made it wider or narrower). */
+export function sameLeftOf(expected: Buffer, actual: Buffer, width: number): boolean {
+	const a = PNG.sync.read(expected);
+	const b = PNG.sync.read(actual);
+	const w = Math.min(width, a.width, b.width);
+	const h = Math.min(a.height, b.height);
+	if (w < 4 || h < 4 || a.height !== b.height) return false;
+	const diff = rawDiff(crop(a, w, h), crop(b, w, h));
+	let differing = 0;
+	for (let i = 3; i < diff.length; i += 4) if (diff[i]! > 0) differing++;
+	return differing <= 20;
+}
