@@ -1,4 +1,5 @@
 import RiveAnimation from './rive-animation.tsrx';
+import viteViteSsrSupportWebp from '../assets/vite/vite-ssr-support.webp';
 import viteViteFeaturepanel4Background640 from '../assets/vite/vite-featurepanel-4-background-640w.webp';
 import viteViteFeaturepanel4Background828 from '../assets/vite/vite-featurepanel-4-background-828w.webp';
 import viteViteFeaturepanel4Background from '../assets/vite/vite-featurepanel-4-background.jpg';
@@ -26,7 +27,7 @@ export default function FeatureGrid2() @{
 		<div class="p-5 sm:p-10 flex flex-col gap-3 lg:border-b-0">
 			<h5 class="text-white">First class SSR Support</h5>
 			<p class="sm:max-w-[28rem] text-pretty mb-12 sm:mb-16">It's never been easier to setup custom SSR (Server-Side Rendering), or build your own SSR framework.</p>
-			<img src={viteViteSsrSupport} width="1008" height="466" alt="SSR Support" loading="lazy" class="w-full px-5" />
+			<img src={viteViteSsrSupport} srcset={`${viteViteSsrSupportWebp} 1x`} width="1008" height="466" alt="SSR Support" loading="lazy" class="w-full px-5" />
 		</div>
 		<div class="flex flex-col gap-3 justify-between">
 			<div class="p-5 sm:p-10 flex flex-col gap-3">

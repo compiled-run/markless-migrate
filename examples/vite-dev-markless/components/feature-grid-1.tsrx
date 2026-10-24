@@ -1,4 +1,5 @@
 import RiveAnimation from './rive-animation.tsrx';
+import viteViteFeaturepanel2TerminalWebp from '../assets/vite/vite-featurepanel-2-terminal.webp';
 import viteViteFeaturepanel4Background640 from '../assets/vite/vite-featurepanel-4-background-640w.webp';
 import viteViteFeaturepanel4Background828 from '../assets/vite/vite-featurepanel-4-background-828w.webp';
 import viteViteFeaturepanel1Background640 from '../assets/vite/vite-featurepanel-1-background-640w.webp';
@@ -27,7 +28,7 @@ export default function FeatureGrid1() @{
 				<p class="max-w-[26rem] text-pretty">Instantly reflect changes as you save, no matter how big your app is.</p>
 			</div>
 			<div class="flex justify-end">
-				<img src={viteViteFeaturepanel2Terminal} width="1126" height="734" class="md:max-w-[80%]" inert loading="lazy" alt="lightning fast hot module replacement" />
+				<img src={viteViteFeaturepanel2Terminal} srcset={`${viteViteFeaturepanel2TerminalWebp} 1x`} width="1126" height="734" class="md:max-w-[80%]" inert loading="lazy" alt="lightning fast hot module replacement" />
 			</div>
 		</div>
 		<div class="p-5 sm:p-10 pb-0 sm:pb-0 flex flex-col gap-3 lg:border-b-0">
