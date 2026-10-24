@@ -69,7 +69,11 @@ const decodeHtml = (html: string) =>
 function shownCode(before: string, code: string, after: string): string {
   const escaped = escapeHtml(code);
   if (before.length + escaped.length + after.length <= 750) return code;
-  return `${decodeHtml(escaped.slice(0, Math.max(0, 750 - before.length)))}...`;
+  const kept = 750 - before.length;
+  if (kept <= escaped.length) return `${decodeHtml(escaped.slice(0, Math.max(0, kept)))}...`;
+  // The cut falls in the markup after the code: a lone "<" stays text before the "...", a cut "</..." tag is dropped.
+  const tail = after.slice(0, kept - escaped.length);
+  return tail === "<" ? `${code}<...` : code;
 }
 
 export function tabEntry(n: number, tab: number): Entry {
