@@ -38,12 +38,14 @@ export function imageLoadingFailures(route: string, pages: Readonly<Record<strin
 			return [`${key}#${n}`, img] as const;
 		}));
 	});
+	// A file another image draws in a first screen is fetched with the page anyway.
+	const firstScreenFiles = new Set(views.flatMap((p) => { const h = VIEWPORTS.find((x) => x.name === p.viewport)?.height ?? 800; return p.images.filter((i) => i.box && i.box.y < h && i.box.y + i.box.height > 0).map((i) => i.src); }));
 	[...keyed[0]!].forEach(([key, img]) => {
 		const seen: Seen[] = views.flatMap((p, v) => (keyed[v]!.has(key) ? [{ viewport: p.viewport, height: VIEWPORTS.find((x) => x.name === p.viewport)?.height ?? 800, img: keyed[v]!.get(key)! }] : []));
 		if (seen.length !== views.length || img.broken || img.src.startsWith('data:') || (bytes.get(img.src) ?? 0) < MIN_BYTES) return;
 		const shown = seen.filter(firstScreen);
 		const check = `image loading: ${img.src}`;
-		if (!shown.length && (img.loading !== 'lazy' || img.preloaded))
+		if (!shown.length && (img.loading !== 'lazy' || img.preloaded) && !firstScreenFiles.has(img.src))
 			failures.push({ route, dimension: 'load', check, expected: 'loaded when it is about to be seen (loading="lazy", no head preload): no first screen shows it', actual: `${img.preloaded ? 'preloaded in the head' : 'loaded with the page'}; ${seen.map((s) => `${s.viewport} ${s.img.box ? `drawn at y=${s.img.box.y}, below the first ${s.height} px` : 'not drawn'}`).join(', ')}`, hint: IMAGE_LOADING_HINT });
 		// A lazy image some viewport does not draw is fetched early where it shows by a preload scoped to that width.
 		if (shown.length && img.loading === 'lazy' && !(img.preloaded && seen.some((s) => !s.img.box)))
