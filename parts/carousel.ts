@@ -150,7 +150,7 @@ function scrollTo(c: Carousel, index: number, duration = 25, friction = 0.68): v
 	c.duration = duration;
 	c.friction = friction;
 	buttons(c);
-	c.root.dispatchEvent(new CustomEvent('carouselselect', { detail: { index: c.index, count: c.snaps.length } }));
+	c.root.dispatchEvent(new CustomEvent('carouselselect', { bubbles: true, detail: { index: c.index, count: c.snaps.length } }));
 	animate(c);
 }
 
