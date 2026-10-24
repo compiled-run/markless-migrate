@@ -290,3 +290,15 @@ test('Radix NavigationMenu: a press opens the trigger\'s content in the viewport
 	assert.equal(await page.getByText('Alert Dialog').isVisible(), false);
 	await page.close();
 });
+
+test('a Base UI dialog a page opens from a plain button opens under the button\'s key', async () => {
+	const page = await open(
+		`<main><button data-slot="button" data-mm-key="p:3.1" type="button">Open Menu</button></main>
+		<div data-mm-layer="p:3.1" hidden data-base-ui-portal><div role="dialog" data-slot="dialog-content" data-closed tabindex="-1"><input placeholder="Type a command"></div></div>`,
+		['base-ui/dialog'],
+	);
+	await page.getByText('Open Menu').click();
+	assert.equal(await page.locator('[role="dialog"]').isVisible(), true);
+	assert.equal(await page.getByText('Open Menu').getAttribute('aria-expanded'), null);
+	await page.close();
+});

@@ -1,12 +1,15 @@
 import { hideOthers } from '../aria-hidden.ts';
 import { closePopup, openPopup, popupOf, type Popup } from './popup.ts';
 import { enter, exit } from './transition.ts';
+import { closestTrigger, layerKey } from '../reveal.ts';
 
 // Base UI Dialog, AlertDialog and Drawer (modal): a press on the trigger opens the popup with its backdrop, focus moves
 // to the first tabbable element inside and Tab stays inside, the page behind is hidden from assistive technology and
 // does not scroll; Escape, a Close part and (not for an alert dialog) a press on the backdrop close it, focus back on
 // the trigger.
 const TRIGGER = '[data-base-ui-click-trigger][aria-haspopup="dialog"]';
+// A plain button a page opens its dialog from (open state set on click, no ARIA) has the layer under its key.
+const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[data-mm-key]:not([aria-haspopup]):not([data-state])', (slot) => /(dialog|sheet|drawer)-trigger$/.test(slot));
 const CLOSE = '[data-slot$="dialog-close"], [data-slot="sheet-close"], [data-slot="drawer-close"], [data-slot$="dialog-cancel"]';
 const TABBABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]';
 
@@ -41,7 +44,7 @@ function lockScroll(): () => void {
 }
 
 function open(trigger: HTMLElement): boolean {
-	const p = openPopup(trigger, { popupSelector: '[role="dialog"], [role="alertdialog"]', onDismiss: (x) => close(x), outsidePress: false, anchored: false });
+	const p = openPopup(trigger, { popupSelector: '[role="dialog"], [role="alertdialog"]', onDismiss: (x) => close(x), outsidePress: false, anchored: false, key: trigger.id || layerKey(trigger) });
 	if (!p) return false;
 	const alert = p.popup.getAttribute('role') === 'alertdialog';
 	const overlay = p.portal.querySelector<HTMLElement>('[data-slot$="overlay"], [data-slot$="backdrop"]');
@@ -87,7 +90,7 @@ function open(trigger: HTMLElement): boolean {
 }
 
 export function click(target: Element): boolean {
-	const trigger = target.closest<HTMLElement>(TRIGGER);
+	const trigger = triggerOf(target);
 	if (trigger) {
 		const p = [...document.querySelectorAll('[data-base-ui-portal]')].map((n) => popupOf(n)).find((x) => x?.trigger === trigger);
 		if (p) return true;
