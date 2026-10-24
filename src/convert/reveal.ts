@@ -314,8 +314,8 @@ export async function captureAllReveals(browser: Browser, origin: string, routes
 			const own = await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, options.extra ?? []).catch(failed);
 			// The site's listed controls (View Code) again on their own, cached apart: their swaps are taken from here.
 			const listed = options.extra?.length ? await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, options.extra, { controls: [], tag: 'listed-v2:' }).catch(failed) : undefined;
-			const relisted = new Set(listed?.reveals.map((r) => r.key) ?? []);
-			const base = listed ? [...own.reveals.filter((r) => !(relisted.has(r.key) && r.added.every((a) => a.into === 'replace' || a.into === 'clipboard'))), ...listed.reveals] : own.reveals;
+			const relisted = new Set(listed?.reveals.flatMap((r) => [r.key, `${r.sig}#${r.nth}`]) ?? []);
+			const base = listed ? [...own.reveals.filter((r) => !((relisted.has(r.key) || relisted.has(`${r.sig}#${r.nth}`)) && r.added.every((a) => a.into === 'replace' || a.into === 'clipboard'))), ...listed.reveals] : own.reveals;
 			const child = await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, [], { controls: CHILD_HOVER, tag: 'child-hover:' }).catch(failed);
 			const keys = new Set(base.map((r) => r.key));
 			out[index] = { route: own.route, reveals: [...base, ...child.reveals.filter((r) => !keys.has(r.key))], skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped] };

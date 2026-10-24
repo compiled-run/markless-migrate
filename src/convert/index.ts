@@ -517,7 +517,8 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 			} else if (added.into === 'replace') {
 				let container: Element | null = trigger ?? null;
 				for (let depth = added.before; depth > 0 && container; depth--) container = container.parentNode as Element | null;
-				if (container && trigger) {
+				// One swap per control: a control captured twice (two passes, two keys) keeps the first.
+				if (container && trigger && ![...replaced.values()].some((r) => r.trigger === trigger) && !replaced.has(container)) {
 					const after = childrenOf(parseFragment(added.html) as unknown as Element).filter(isElement);
 					const markup = after.map((top) => emitElement(top, { dropped, bind: (x) => (x === top ? mergeBindings(bindParts(x, templatePorts), { extra: ['hidden', `data-mm-after=${JSON.stringify(reveal.key)}`] }) : bindParts(x, templatePorts)) })).join('');
 					replaced.set(container, { key: reveal.key, trigger, markup });
