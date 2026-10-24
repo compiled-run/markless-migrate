@@ -1,6 +1,6 @@
 import { optionsOf, place, type Anchor } from './popper.ts';
 import { leave, stay } from './presence.ts';
-import { layersFor } from './reveal.ts';
+import { layersFor, showCompanions } from './reveal.ts';
 import { hideOthers } from './aria-hidden.ts';
 import { lockScroll } from './remove-scroll.ts';
 
@@ -89,6 +89,7 @@ export function openLayer(trigger: HTMLElement, key: string, options: { readonly
 		document.removeEventListener('pointerdown', onDown, true);
 		document.removeEventListener('keydown', onKey, true);
 	});
+	showCompanions(key, true);
 	return layer;
 }
 
@@ -98,6 +99,7 @@ export function closeLayer(layer: Layer, keepFocus = false): void {
 	if (at < 0) return;
 	open.splice(at, 1);
 	for (const c of layer.cleanup) c();
+	showCompanions(layer.key, false);
 	if (layer.modal && !open.some((l) => l.modal)) document.body.style.pointerEvents = bodyPointerEvents;
 	if (!keepFocus) layer.trigger.focus({ preventScroll: true });
 	leave(
