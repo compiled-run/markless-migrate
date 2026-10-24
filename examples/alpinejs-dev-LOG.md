@@ -332,3 +332,14 @@ and nothing else is. Deployed from main (`31867c4`, with the DocSearch-on-intent
 https://mm-alpinejs-dev-new.vercel.app. A person's pass against alpinejs.dev before the deploy, on the local build:
 47 of the 71 demos on 25 routes respond as the original does and the other 24 have nothing to use; search, the sidebar,
 the mobile menu and the tap demos behave the same.
+
+## DocSearch from markless-migrate's shared part (2026-10-24)
+
+The search button's loading on intent, the press kept while DocSearch loads and the platform key (Ctrl+K off Apple
+platforms) now come from markless-migrate's docsearch part (`parts/docsearch.ts`, #74 and #93), which the importer
+copies to `generated/docsearch.ts`; the port's own copy of that code in `page-scripts.ts` is gone, and the button
+carries its config (`data-mm-docsearch`). Checked against alpinejs.dev on the local build, as macOS and as Windows:
+the same label and keys (⌘ K, and Ctrl K with "Search (Ctrl+K)"), the dialog opens from the first click and finds the
+same results for "model". `guard build` lists DocSearch 3 as loaded from jsDelivr on the first intent, with its own
+UI runtime (Preact), as alpinejs.dev itself loads it (at page load there). TODO after launch: the part moves onto the
+Markless-built DocSearch 4 dialog of the Docusaurus port, so no port loads DocSearch's own UI runtime.

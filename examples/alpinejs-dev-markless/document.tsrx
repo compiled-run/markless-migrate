@@ -3,7 +3,8 @@ import { Html } from '@markless/router';
 import { headFor, normalize } from './site.ts';
 import { serverStylesheets } from './generated/server-heads.ts';
 import { PERSISTED } from './generated/persist.ts';
-import { CONTENTS_HIGHLIGHTER, DOCSEARCH_ON_INTENT, persistDefaults } from './page-scripts.ts';
+import { CONTENTS_HIGHLIGHTER, persistDefaults } from './page-scripts.ts';
+import { DOCSEARCH_SCRIPT } from './generated/docsearch.ts';
 
 export default function Document({ url, children }: { readonly url?: { readonly pathname: string }; readonly children?: Children }) @{
 	const pathname = normalize(url?.pathname);
@@ -19,7 +20,7 @@ export default function Document({ url, children }: { readonly url?: { readonly 
 		<head>
 			<meta charset="UTF-8" />
 			<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-			<script>{DOCSEARCH_ON_INTENT}</script>
+			<script>{DOCSEARCH_SCRIPT}</script>
 			<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@docsearch/css@3" />
 			<link rel="stylesheet" href="/build/assets/app.9ea156ae.css" />
 			<link rel="preconnect" href="https://fonts.gstatic.com" />
