@@ -88,7 +88,7 @@ export default function Page() @{
 			{" "}
 			<p>{"In particular, we are trying to push "}<a rel="noopener" target="_blank" href="https://dl.acm.org/doi/pdf/10.1145/3648188.3675127">the ideas</a>{" of htmx into the HTML standard itself, via the "}<a rel="noopener" target="_blank" href="https://alexanderpetros.com/triptych/">Triptych project</a>. In an ideal world, htmx functionality disappears into the web platform itself.</p>
 			{" "}
-			<p>{"htmx code written "}<em>today</em>{" will continue working forever, of course, but in the very long run perhaps there will be no need to include the library to achieve "}<a rel="noopener" target="_blank" href="/examples">similar UI patterns</a>{" via hypermedia."}</p>
+			<p>{"htmx code written "}<em>today</em>{" will continue working forever, of course, but in the very long run perhaps there will be no need to include the library to achieve "}<a rel="noopener" target="_blank" href="/examples/">similar UI patterns</a>{" via hypermedia."}</p>
 			{" "}
 			<h2 id="intercooler-was-right"><a class="zola-anchor" href="#intercooler-was-right" aria-label="Anchor link for: intercooler-was-right">Intercooler Was Right</a></h2>
 			{" "}

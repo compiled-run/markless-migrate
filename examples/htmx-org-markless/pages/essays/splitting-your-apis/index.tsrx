@@ -76,7 +76,7 @@ export default function Page() @{
 			{" "}
 			<p>If you switch to a hypermedia application API (which really just means “use HTML, like you used to”) then you get all of the benefits of the REST-ful web model (simplicity, reliability, etc.) and of server-side rendering in mature web frameworks (caching, SQL tuning, etc.)</p>
 			{" "}
-			<p>{"And, by choosing a hypermedia-oriented front end technology like htmx, you can create "}<a href="/examples">excellent user experiences</a>{" within that model."}</p>
+			<p>{"And, by choosing a hypermedia-oriented front end technology like htmx, you can create "}<a href="/examples/">excellent user experiences</a>{" within that model."}</p>
 			{" "}
 			<p>Everything old is new again, but, this time, a little bit better.</p>
 			{" "}

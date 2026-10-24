@@ -32,7 +32,7 @@ export default function Page() @{
 			{" "}
 			<h3 id="htmx-s-architectural-sympathy-for-the-web"><a class="zola-anchor" href="#htmx-s-architectural-sympathy-for-the-web" aria-label="Anchor link for: htmx-s-architectural-sympathy-for-the-web">htmx’s Architectural Sympathy for The Web</a></h3>
 			{" "}
-			<p>{"htmx is architecturally sympathetic to The Web because it adopts the underlying "}<a href="/essays/hateoas">REST-ful</a>{" architecture of The Web: exchanging "}<em>hypermedia</em>{" in a REST-ful manner with a hypermedia server. As much as is practical, htmx takes design cues from the existing Web infrastructure:"}</p>
+			<p>{"htmx is architecturally sympathetic to The Web because it adopts the underlying "}<a href="/essays/hateoas/">REST-ful</a>{" architecture of The Web: exchanging "}<em>hypermedia</em>{" in a REST-ful manner with a hypermedia server. As much as is practical, htmx takes design cues from the existing Web infrastructure:"}</p>
 			{" "}
 			<ul>{" "}<li>It mimics the core hypermedia-exchange mechanic of links and forms</li>{" "}<li>It uses CSS selectors for targeting</li>{" "}<li>It uses standard URL paths for designating end points</li>{" "}<li>It uses the standard API language for specifying swap types</li>{" "}<li>Etc.</li>{" "}</ul>
 			{" "}

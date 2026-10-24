@@ -12,7 +12,7 @@ export default function Page() @{
 			{" "}
 			<time>January 12, 2025</time>
 			{" "}
-			<p><a href="/">htmx</a>{" is only one of many different libraries & frameworks that take the "}<a href="/essays/hypermedia-driven-applications/">hypermedia oriented</a>{" approach to building web applications. I have said before that I think the "}<a href="/essays">ideas of htmx</a>{" / "}<a rel="noopener" target="_blank" href="https://hypermedia.systems">hypermedia</a>{" are more important than htmx as an implementation."}</p>
+			<p><a href="/">htmx</a>{" is only one of many different libraries & frameworks that take the "}<a href="/essays/hypermedia-driven-applications/">hypermedia oriented</a>{" approach to building web applications. I have said before that I think the "}<a href="/essays/">ideas of htmx</a>{" / "}<a rel="noopener" target="_blank" href="https://hypermedia.systems">hypermedia</a>{" are more important than htmx as an implementation."}</p>
 			{" "}
 			<p>Here are some of my favorite other takes on these ideas that I think are worth your consideration:</p>
 			{" "}

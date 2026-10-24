@@ -18,7 +18,7 @@ export default function Page() @{
 			{" "}
 			<p>{"This is a joke-but-not-really "}<a rel="noopener" target="_blank" href="https://en.wikipedia.org/wiki/Solution_stack">software stack</a>{", and a reference to more well known stacks like "}<a rel="noopener" target="_blank" href="https://en.wikipedia.org/wiki/LAMP_%28software_bundle%29">The LAMP Stack</a>{" or "}<a rel="noopener" target="_blank" href="https://en.wikipedia.org/wiki/MEAN_(solution_stack)">The MEAN Stack</a>.</p>
 			{" "}
-			<p>{"The TLDR of The HOWL Stack is this: when you use a "}<a href="/essays/hypermedia-driven-applications">hypermedia-driven approach</a>{" for your web application, you free yourself up to choose "}<em>whatever</em>{" server-side technology best fits your problem and your own technical tastes."}</p>
+			<p>{"The TLDR of The HOWL Stack is this: when you use a "}<a href="/essays/hypermedia-driven-applications/">hypermedia-driven approach</a>{" for your web application, you free yourself up to choose "}<em>whatever</em>{" server-side technology best fits your problem and your own technical tastes."}</p>
 			{" "}
 			<h2 id="feeling-the-javascript-pressure"><a class="zola-anchor" href="#feeling-the-javascript-pressure" aria-label="Anchor link for: feeling-the-javascript-pressure">Feeling The JavaScript Pressure</a></h2>
 			{" "}
@@ -52,7 +52,7 @@ export default function Page() @{
 			{" "}
 			<p>Well, what if we made HTML a more powerful hypermedia?</p>
 			{" "}
-			<p>{"That’s the idea of "}<a href="/">htmx</a>{", which makes it possible to implement "}<a href="/examples">common modern web application patterns</a>{" using the hypermedia approach. This closes the UX gap between traditional MPAs and SPAs, making taking the hypermedia route feasible for a much larger set of web applications."}</p>
+			<p>{"That’s the idea of "}<a href="/">htmx</a>{", which makes it possible to implement "}<a href="/examples/">common modern web application patterns</a>{" using the hypermedia approach. This closes the UX gap between traditional MPAs and SPAs, making taking the hypermedia route feasible for a much larger set of web applications."}</p>
 			{" "}
 			<p>{"Once you adopt this hypermedia approach (and remember, you are going to be using hypermedia infrastructure "}<em>anyway</em>, so why not leverage it as much as possible?) a surprising side effect occurs:</p>
 			{" "}

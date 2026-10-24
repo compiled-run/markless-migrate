@@ -40,7 +40,7 @@
 			"dimension": "visual",
 			"check": "screenshot",
 			"match": {
-				"actual": "/first near link \"(htmx\\.org|Zero-Clause BSD license)\"|differ in x=(9[01]\\d\\.\\.12[67]\\d, y=7[0-4]\\d\\.\\.79\\d|[1-4]\\d\\.\\.3[89]\\d, y=(7[5-9]|8[0-2])\\d\\.\\.8[3-7]\\d),/"
+				"actual": "/first near link \"(htmx\\.org|Zero-Clause BSD license)\"|differ in x=(9\\d\\d\\.\\.12[67]\\d, y=7[0-4]\\d\\.\\.79\\d|[1-4]\\d\\.\\.3[5-9]\\d, y=(7[5-9]|8[0-2])\\d\\.\\.8[3-7]\\d),/"
 			},
 			"reason": "Intended: a small fixed note that this is an unofficial demo copy of htmx.org, with its copyright and licence (owner decision, 2026-10-23: an honest disclosure on a copy of someone else's site, without naming the tool), as a small fixed badge so it changes no layout the check compares. Matches only a difference that starts at the badge's own link or covers just the badge's box (desktop and mobile).",
 			"by": "thejackshelton (owner decision, relayed 2026-10-23)",

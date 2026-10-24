@@ -11,7 +11,7 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'parse5';
 import type { DefaultTreeAdapterMap } from 'parse5';
-import { canonical, convert, textOf, type Libraries } from './import/html-to-tsrx.ts';
+import { canonical, convert, textOf, usePages, type Libraries } from './import/html-to-tsrx.ts';
 import { TEMPLATES, type Meta } from './import/templates.ts';
 import { OVERLAY_TEMPLATES } from './import/zola-overlay.ts';
 
@@ -149,6 +149,7 @@ run(bin, ['build', '--force', '-o', overlay], overlaySource);
 
 const base = /base_url\s*=\s*"([^"]+)"/.exec(readFileSync(join(repo, 'www', 'config.toml'), 'utf8'))![1]!;
 const routes = [...readFileSync(join(site, 'sitemap.xml'), 'utf8').matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]!.slice(base.length) || '/');
+usePages(routes);
 routes.push('/404/');
 
 interface Head {

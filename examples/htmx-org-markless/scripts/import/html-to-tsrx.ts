@@ -8,6 +8,18 @@ type ParentNode = DefaultTreeAdapterMap['parentNode'];
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
 const BOOLEAN = new Set(['hidden', 'disabled', 'checked', 'multiple', 'selected', 'readonly', 'required', 'open', 'async', 'defer', 'autofocus', 'controls', 'autoplay', 'loop', 'muted', 'playsinline', 'allowfullscreen', 'novalidate', 'reversed', 'nomodule']);
 const SELF = /^https:\/\/htmx\.org(?=\/|$)/;
+
+// htmx.org answers a page's address without its slash with a redirect to the slashed one; an in-place navigation never
+// asks the server, so a link is written with the address the visitor ends up at.
+let pages: ReadonlySet<string> = new Set();
+export function usePages(paths: Iterable<string>): void {
+	pages = new Set(paths);
+}
+function landing(href: string): string {
+	const m = /^(\/[^?#]*?)([?#].*)?$/.exec(href);
+	if (!m || m[1]!.endsWith('/') || /\.[a-z0-9]+$/i.test(m[1]!) || !pages.has(`${m[1]}/`)) return href;
+	return `${m[1]}/${m[2] ?? ''}`;
+}
 const ATTRIBUTE_NAME = /^[A-Za-z_][\w.-]*(:[A-Za-z_][\w-]*)?$/;
 
 export interface Libraries {
@@ -76,9 +88,9 @@ function attributes(el: Element, out: Out, handles?: string[]): string {
 			if ((name === '_' && !copy && !filters) || name === 'data-script') libraries.hyperscript = true;
 			if (a.value === '' && BOOLEAN.has(name)) return ` ${name}`;
 			// A link to htmx.org itself (Zola writes the base_url into some) goes to the same page on the origin serving the port.
-			if (name === 'href' && SELF.test(a.value)) return ` href="${a.value.replace(SELF, '') || '/'}"`;
-			if (/["{}\\&@\n]/.test(a.value)) return ` ${name}={${lit(a.value)}}`;
-			return ` ${name}="${a.value}"`;
+			const value = name === 'href' ? landing(SELF.test(a.value) ? a.value.replace(SELF, '') || '/' : a.value) : a.value;
+			if (/["{}\\&@\n]/.test(value)) return ` ${name}={${lit(value)}}`;
+			return ` ${name}="${value}"`;
 		})
 		.join('') + markless;
 }

@@ -72,7 +72,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="see-also">See also</h2>
 			{" "}
-			<ul>{" "}<li><a rel="noopener" target="_blank" href="/attributes/hx-target"><code>hx-target</code></a>, specifies the target element to be swapped</li>{" "}</ul>
+			<ul>{" "}<li><a rel="noopener" target="_blank" href="/attributes/hx-target/"><code>hx-target</code></a>, specifies the target element to be swapped</li>{" "}</ul>
 			{" "}
 		</main>
 		<SiteFooter />
