@@ -67,6 +67,20 @@ const months = ['January', 'February', 'March', 'April'];
 document.getElementById('chart').addEventListener('mousemove', (e) => { const r = e.currentTarget.getBoundingClientRect(); const i = Math.min(3, Math.floor(((e.clientX - r.left) / r.width) * 4)); const tip = document.getElementById('tip'); tip.hidden = false; tip.textContent = months[i] + ': ' + (100 + i * 37); tip.style.left = e.pageX + 10 + 'px'; tip.style.top = e.pageY + 10 + 'px'; });
 </script>`}</body></html>`;
 
+// Two pages that both show a badge in another style; `morph` keeps the previous page's badge node and swaps its class, so its transition runs while the page changes.
+const badges = (morph: boolean) => {
+	const script = `<script>
+document.addEventListener('click', async (e) => {
+	const a = e.target.closest('a[data-nav]'); if (!a) return; e.preventDefault();
+	const next = new DOMParser().parseFromString(await (await fetch(a.href)).text(), 'text/html');
+	${morph ? "const badge = document.querySelector('main .badge'); const incoming = next.querySelector('main .badge'); badge.className = incoming.className; badge.textContent = incoming.textContent; document.querySelector('main h1').textContent = next.querySelector('main h1').textContent;" : "document.querySelector('main').innerHTML = next.querySelector('main').innerHTML;"}
+	history.pushState(null, '', a.href);
+});
+</script>`;
+	const page = (title: string, kind: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Badges</title><style>.badge { display: inline-block; padding: 4px 8px; transition: background-color 400ms, color 400ms } .badge.primary { background: rgb(20, 20, 20); color: white } .badge.outline { background: white; color: rgb(20, 20, 20); border: 1px solid }</style></head><body><nav><a data-nav href="/">Home</a> <a data-nav href="/badge">Badge</a></nav><main><h1>${title}</h1><span class="badge ${kind}">${kind}</span></main>${script}</body></html>`;
+	return (path: string) => (path === '/badge' ? page('Badge', 'outline') : path === '/' ? page('Home', 'primary') : undefined);
+};
+
 let browser: Browser;
 const servers: Server[] = [];
 before(async () => {
@@ -158,4 +172,13 @@ test('a chart that shows no tooltip where the original shows one as the pointer 
 	const across = dead.find((f) => /^move the pointer across surface <svg>/.test(f.check));
 	assert.ok(across, JSON.stringify(dead.map((f) => f.check)));
 	assert.match(across!.expected, /tooltip|February|January/);
+});
+
+test("content that morphs from the previous page's look while the router changes pages is red; a router that swaps the page is green", async () => {
+	const same = await check(badges(false), badges(false));
+	assert.deepEqual(open(same).map((f) => `${f.check}: ${f.actual}`), []);
+	const morphing = open(await check(badges(false), badges(true)));
+	const nav = morphing.find((f) => /^click link "Badge"/.test(f.check));
+	assert.ok(nav, JSON.stringify(morphing.map((f) => f.check)));
+	assert.match(nav!.actual, /moves while the page changes: .*background-color/);
 });
