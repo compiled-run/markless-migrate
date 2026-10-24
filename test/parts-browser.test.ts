@@ -36,6 +36,13 @@ async function open(body: string, ports: readonly string[]): Promise<Page> {
 }
 
 const transformOf = (page: Page, i = 0) => page.locator('[data-slot="carousel-content"] > div').nth(i).evaluate((el) => (el as HTMLElement).style.transform);
+
+// Chrome dispatches the pointer events of a mouse move with the next frame, after the move resolves: wait for the tooltip's own placement.
+async function tooltipAt(page: Page, expected: RegExp): Promise<string> {
+	const read = () => page.locator('.recharts-tooltip-wrapper').evaluate((e) => (e as HTMLElement).style.transform);
+	await page.waitForFunction(([source, flags]) => new RegExp(source, flags).test((document.querySelector('.recharts-tooltip-wrapper') as HTMLElement).style.transform), [expected.source, expected.flags] as const, { timeout: 5000 }).catch(() => undefined);
+	return read();
+}
 const x = (t: string) => Number(/translate3d\((-?[\d.]+)px, (-?[\d.]+)px/.exec(t)?.[1]);
 const y = (t: string) => Number(/translate3d\((-?[\d.]+)px, (-?[\d.]+)px/.exec(t)?.[2]);
 const settle = (page: Page) => page.waitForTimeout(1200);
@@ -219,19 +226,20 @@ test('recharts: the pointer picks the point whose range it is in, the tooltip go
 	const tip = page.locator('.recharts-tooltip-wrapper');
 	await page.mouse.move(60, 100);
 	await page.mouse.move(210, 100, { steps: 4 });
+	assert.match(await tooltipAt(page, /translate\(150px, 60px\)/), /translate\(150px, 60px\)/, 'x as the old page placed it, y the pointer\'s past the offset');
 	assert.deepEqual(await page.evaluate(() => (window as unknown as { seen: number[] }).seen), [0, 1]);
 	assert.equal(await tip.evaluate((e) => (e as HTMLElement).style.visibility), 'visible');
-	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(150px, 60px\)/, 'x as the old page placed it, y the pointer\'s past the offset');
 	await page.mouse.move(210, 130);
-	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(150px, 50px\)/, 'flipped above the pointer where it would leave the view box');
+	assert.match(await tooltipAt(page, /translate\(150px, 50px\)/), /translate\(150px, 50px\)/, 'flipped above the pointer where it would leave the view box');
 	await page.mouse.move(5, 5);
+	assert.equal(await tooltipAt(page, /^$/), '', 'hidden, it drops its place, so it comes in from the corner next time as recharts\' does');
 	assert.equal(await tip.evaluate((e) => (e as HTMLElement).style.visibility), 'hidden');
-	assert.equal(await tip.evaluate((e) => (e as HTMLElement).style.transform), '', 'hidden, it drops its place, so it comes in from the corner next time as recharts\' does');
 	await page.locator('svg.recharts-surface').focus();
 	await page.keyboard.press('ArrowRight');
+	assert.match(await tooltipAt(page, /translate\(150px, 60px\)/), /translate\(150px, 60px\)/);
 	assert.deepEqual((await page.evaluate(() => (window as unknown as { seen: number[] }).seen)).slice(-3), [-1, 0, 1], 'focus shows the first point, the arrow the next');
-	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(150px, 60px\)/);
 	await page.keyboard.press('Escape');
+	assert.equal(await tooltipAt(page, /^$/), '');
 	assert.equal(await tip.evaluate((e) => (e as HTMLElement).style.visibility), 'hidden');
 	await page.close();
 });
@@ -270,9 +278,9 @@ test('recharts: an SVG scaled to its container maps the pointer and the tooltip 
 	);
 	const tip = page.locator('.recharts-tooltip-wrapper');
 	await page.mouse.move(250, 100);
-	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(100px, 40px\)/, 'state 0 at x 125 in the SVG, its translate doubled');
+	assert.match(await tooltipAt(page, /translate\(100px, 40px\)/), /translate\(100px, 40px\)/, 'state 0 at x 125 in the SVG, its translate doubled');
 	await page.mouse.move(350, 100);
-	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(400px, 40px\)/);
+	assert.match(await tooltipAt(page, /translate\(400px, 40px\)/), /translate\(400px, 40px\)/);
 	await page.close();
 });
 
@@ -284,7 +292,7 @@ test('recharts: a radar\'s tooltip follows the pointer\'s radius on the point\'s
 	);
 	const tip = page.locator('.recharts-tooltip-wrapper');
 	await page.mouse.move(120, 40);
-	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(110px, 46\.7\d*px\)/, 'at the pointer\'s radius (63) straight up the axis, past the offset');
+	assert.match(await tooltipAt(page, /translate\(110px, 46\.7\d*px\)/), /translate\(110px, 46\.7\d*px\)/, 'at the pointer\'s radius (63) straight up the axis, past the offset');
 	await page.close();
 });
 
@@ -296,8 +304,8 @@ test('recharts: a pie\'s sector under the pointer is its point, and the tooltip 
 	);
 	const tip = page.locator('.recharts-tooltip-wrapper');
 	await page.mouse.move(160, 40);
-	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(120px, 40px\)/);
+	assert.match(await tooltipAt(page, /translate\(120px, 40px\)/), /translate\(120px, 40px\)/);
 	await page.mouse.move(40, 160);
-	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(30px, 120px\)/);
+	assert.match(await tooltipAt(page, /translate\(30px, 120px\)/), /translate\(30px, 120px\)/);
 	await page.close();
 });
