@@ -154,6 +154,14 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 		for (let n = e.parentElement; n && n !== document.body; n = n.parentElement) chain.push(n);
 		(window as unknown as { __mmChain?: Element[] }).__mmChain = chain;
 	});
+	// Scrolled to and settled first: a popover that closes when the page scrolls (React Aria's ComboBox) would close as the click's own smooth scroll finishes.
+	await el.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
+	await page.waitForFunction(() => new Promise((done) => {
+		let last = window.scrollY;
+		let still = 0;
+		const tick = () => (window.scrollY === last ? ++still : ((last = window.scrollY), (still = 0)), still >= 3 ? done(true) : requestAnimationFrame(tick));
+		requestAnimationFrame(tick);
+	}), undefined, { timeout: 2000 }).catch(() => {});
 	try {
 		if (candidate.action === 'click') await el.click({ timeout: 2000 });
 		else if (candidate.action === 'hover') {

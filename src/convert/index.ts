@@ -557,6 +557,8 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 		for (const el of [top, ...walkAll(top)]) {
 			for (const a of el.attrs) if (a.name === 'data-state' && a.value === 'open') a.value = 'closed';
 			if (el.attrs.some((a) => a.name === 'data-open')) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-open'), { name: 'data-closed', value: '' }];
+			// React Aria's interaction states as the capture left them: the interactions part writes them as they happen.
+			if (el.attrs.some((a) => a.name === 'data-rac' || a.name === 'data-react-aria-pressable')) el.attrs = el.attrs.filter((a) => !/^data-(focused|focus-visible|hovered|pressed|focus-within|focus-visible-within)$/.test(a.name));
 		}
 		selectIndicators(top);
 		comboboxIndicators(top);

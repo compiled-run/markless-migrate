@@ -111,7 +111,8 @@ function open(input: HTMLInputElement, query: string, strategy: 'first' | 'last'
 			if (!listbox) return;
 			if (!filter(listbox, query) && !keepsEmpty(listbox)) return close(combo);
 			const list = shown(listbox);
-			if (strategy) focusOption(combo, strategy === 'first' ? list[0] : list[list.length - 1]);
+			// useSelectableCollection's autoFocus: the selected option when there is one, else the first or the last.
+			if (strategy) focusOption(combo, list.find((o) => o.getAttribute('aria-selected') === 'true') ?? (strategy === 'first' ? list[0] : list[list.length - 1]));
 		},
 	});
 	// Typing that matches nothing closes it as it opens.
@@ -166,8 +167,26 @@ function choose(c: Combo, item: HTMLElement): void {
 	if (multiple(listbox)) return toggle(c, item);
 	if (listbox) for (const el of itemsOf(listbox, true)) markSelected(el, el === item);
 	c.input.value = textOf(item);
+	for (const clear of clearsOf(c.input)) clear.hidden = false;
 	c.input.dispatchEvent(new Event('mmchange', { bubbles: true }));
 	close(c);
+}
+
+// A clear button the page renders while there is a selection (shadcn's ComboBoxClear): hidden instead of unmounted.
+const clearsOf = (input: Element) => [...(groupOf(input)?.querySelectorAll<HTMLElement>('button[data-rac][data-slot$="-clear"]') ?? [])];
+
+function clearSelection(clear: HTMLElement): boolean {
+	const input = groupOf(clear)?.querySelector<HTMLInputElement>(INPUT);
+	const key = input && (buttonOf(input)?.id || input.id);
+	if (!input || !key) return false;
+	const c = comboOf(input);
+	if (c) close(c);
+	input.value = '';
+	for (const option of document.querySelectorAll<HTMLElement>(`[data-mm-layer="${CSS.escape(key)}"] [role="option"]`)) markSelected(option, false);
+	clear.blur();
+	clear.hidden = true;
+	input.dispatchEvent(new Event('mmchange', { bubbles: true }));
+	return true;
 }
 
 export function pointerdown(target: Element, event: PointerEvent): boolean {
@@ -192,6 +211,8 @@ export function pointerdown(target: Element, event: PointerEvent): boolean {
 export function click(target: Element): boolean {
 	const button = target.closest<HTMLElement>(BUTTON);
 	if (button && isComboButton(button)) return true;
+	const clear = target.closest<HTMLElement>('button[data-rac][data-slot$="-clear"]');
+	if (clear && groupOf(clear)?.querySelector(INPUT)) return clearSelection(clear);
 	const remove = target.closest<HTMLElement>('[role="row"] button[slot="remove"]');
 	const chip = remove?.closest<HTMLElement>('[role="row"][data-key]');
 	if (chip && groupOf(chip)?.querySelector(INPUT)) return removeChip(chip);
@@ -229,6 +250,19 @@ export function input(target: Element): boolean {
 }
 
 export function keydown(target: Element, event: KeyboardEvent): boolean {
+	// The button pressed with the keyboard opens on the first option, focus moving to the input.
+	const button = target.closest<HTMLElement>(BUTTON);
+	if (button && isComboButton(button) && (event.key === 'Enter' || event.key === ' ')) {
+		const input = inputOf(button);
+		if (!input) return false;
+		event.preventDefault();
+		setModality('keyboard');
+		const c = comboOf(input);
+		if (c) close(c);
+		else open(input, '', 'first');
+		input.focus({ preventScroll: true });
+		return true;
+	}
 	const chip = target.closest<HTMLElement>('[role="grid"][data-rac] > [role="row"][data-key]');
 	if (chip && (event.key === 'Backspace' || event.key === 'Delete') && groupOf(chip)?.querySelector(INPUT)) {
 		event.preventDefault();

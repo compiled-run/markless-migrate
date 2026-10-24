@@ -4,7 +4,8 @@ import { keyboardModality, setModality } from './interactions.ts';
 // React Aria's Autocomplete over a Menu or ListBox in the page (useAutocomplete with the `contains` filter its callers
 // pass): typing in the input shows the items whose text contains it (accents and case ignored) and hides the sections
 // left empty, and the search field says whether it is empty (data-empty); focus stays in the input while ArrowDown and
-// ArrowUp move the collection's virtual focus (aria-activedescendant, data-focused), and hovering an item focuses it.
+// ArrowUp move the collection's virtual focus (aria-activedescendant, data-focused), hovering an item focuses it while
+// the input has focus, and pressing one focuses the input and the item.
 const INPUT = 'input[data-rac][aria-controls]:not([role="combobox"])';
 
 const collectionOf = (input: Element) => {
@@ -87,11 +88,26 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 	return true;
 }
 
-export function pointerover(target: Element): boolean {
+function itemTarget(target: Element) {
 	const item = target.closest<HTMLElement>('[role^="menuitem"], [role="option"]');
 	const collection = item?.closest('[role="menu"][data-rac], [role="listbox"][data-rac]');
 	const field = collection && inputFor(collection);
-	if (!item || !collection || !field) return false;
-	focusItem(field, collection, item);
+	return item && collection && field ? { item, collection, field } : undefined;
+}
+
+// Hovering an item focuses it while the input has focus.
+export function pointerover(target: Element): boolean {
+	const at = itemTarget(target);
+	if (!at || document.activeElement !== at.field) return false;
+	focusItem(at.field, at.collection, at.item);
 	return true;
+}
+
+// A press on an item focuses the input, the item virtually.
+export function click(target: Element): boolean {
+	const at = itemTarget(target);
+	if (!at || at.item.getAttribute('aria-disabled') === 'true') return false;
+	at.field.focus({ preventScroll: true });
+	focusItem(at.field, at.collection, at.item);
+	return false;
 }
