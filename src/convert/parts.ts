@@ -11,7 +11,7 @@ export const PARTS_DIR = fileURLToPath(new URL('../../parts/', import.meta.url))
 /** The framework-agnostic packages the ports run on, at the versions the ported libraries were certified with. */
 export const PART_DEPENDENCIES: Readonly<Record<string, string>> = { '@floating-ui/dom': '1.7.6' };
 
-export type PartEvent = 'click' | 'keydown' | 'pointerover' | 'pointerout' | 'pointerdown' | 'focusin' | 'focusout' | 'contextmenu' | 'input';
+export type PartEvent = 'click' | 'keydown' | 'pointerover' | 'pointerout' | 'pointerdown' | 'focusin' | 'focusout' | 'contextmenu' | 'input' | 'submit';
 
 export interface Port {
 	/** The port's module under `parts/`, without `.ts`. */
@@ -94,6 +94,8 @@ export const PORTS: readonly Port[] = [
 	{ module: 'panel-motion', library: '@base-ui/react', exports: ['Collapsible.Root', 'Collapsible.Trigger', 'Collapsible.Panel', 'Accordion.Root', 'Accordion.Item', 'Accordion.Header', 'Accordion.Trigger', 'Accordion.Panel'], events: [], locate: base },
 	// DocSearch is found by the button it renders, on sites with or without source; usage.json carries its config.
 	{ module: 'docsearch', library: '@docsearch/react', exports: ['DocSearch'], events: ['pointerover', 'pointerdown', 'focusin', 'click', 'keydown'], locate: (el) => isDocSearchButton(el) },
+	// A form the old page's script handled does not submit: Markless's own onSubmit is not resumed on every page (LOG, bug 14).
+	{ module: 'form', library: 'markless-migrate', exports: [], events: ['submit'], locate: () => false },
 	{ module: 'shadcn/questionnaire', library: '@shadcn/react', exports: ['Questionnaire.Root', 'Questionnaire.Progress', 'Questionnaire.Item', 'Questionnaire.Title', 'Questionnaire.Description', 'Questionnaire.Choices', 'Questionnaire.Choice', 'Questionnaire.ChoiceInput', 'Questionnaire.ChoiceLabel', 'Questionnaire.ChoiceShortcut', 'Questionnaire.Input', 'Questionnaire.Error', 'Questionnaire.Previous', 'Questionnaire.Skip', 'Questionnaire.Next', 'Questionnaire.Submit'], events: ['click', 'keydown', 'input'], locate: (el) => slot(el).startsWith('questionnaire') },
 ];
 
@@ -238,7 +240,7 @@ export function bindParts(el: Element, uses: PartUse[] | Set<string>): Binding |
 export function bodyHandlers(modules: ReadonlySet<string>, hasSite: boolean): string[] {
 	const events = new Set<PartEvent>(hasSite ? ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout', 'contextmenu', 'input'] : []);
 	for (const port of PORTS) if (modules.has(port.module)) for (const e of port.events) events.add(e);
-	const prop = (e: PartEvent) => `on${{ click: 'Click', keydown: 'KeyDown', pointerover: 'PointerOver', pointerout: 'PointerOut', pointerdown: 'PointerDown', focusin: 'FocusIn', focusout: 'FocusOut', contextmenu: 'ContextMenu', input: 'Input' }[e]}`;
+	const prop = (e: PartEvent) => `on${{ click: 'Click', keydown: 'KeyDown', pointerover: 'PointerOver', pointerout: 'PointerOut', pointerdown: 'PointerDown', focusin: 'FocusIn', focusout: 'FocusOut', contextmenu: 'ContextMenu', input: 'Input', submit: 'Submit' }[e]}`;
 	return [...[...events].map((e) => `${prop(e)}={(event) => behave(event)}`), 'onIdle={() => listen()}'];
 }
 

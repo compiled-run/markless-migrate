@@ -11,6 +11,7 @@ export interface Part {
 	readonly focusout?: (target: Element, event: FocusEvent) => boolean;
 	readonly contextmenu?: (target: Element, event: MouseEvent) => boolean;
 	readonly input?: (target: Element, event: Event) => boolean;
+	readonly submit?: (target: Element, event: SubmitEvent) => boolean;
 	/** Starts what a part does to an element for as long as the page shows it (a scroll position kept, a size watched). */
 	readonly mount?: (el: Element) => void;
 }
@@ -18,7 +19,7 @@ export interface Part {
 type Kind = keyof Part;
 
 const handled = new WeakSet<Event>();
-const EVENTS: readonly Kind[] = ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout', 'contextmenu', 'input'];
+const EVENTS: readonly Kind[] = ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout', 'contextmenu', 'input', 'submit'];
 let listening = false;
 
 /** One handler per event type: each part claims the events its own markup receives. Each event is handled once. */
