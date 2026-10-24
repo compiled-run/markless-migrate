@@ -138,16 +138,24 @@ function at(wrapper: HTMLElement, event: PointerEvent): void {
 	show(wrapper, surface, inBox && event.target instanceof Element ? pick(f, surface, event.target, p.x, p.y, event) : -1, { x: p.x, y: p.y });
 }
 
+function wire(wrapper: HTMLElement): void {
+	if (wired.has(wrapper)) return;
+	wired.add(wrapper);
+	wrapper.addEventListener('pointermove', (e) => at(wrapper, e));
+	wrapper.addEventListener('pointerleave', () => show(wrapper, surfaceOf(wrapper), -1));
+}
+
 export function pointerover(target: Element, event: PointerEvent): boolean {
 	const wrapper = target.closest<HTMLElement>(WRAPPER);
 	if (!wrapper) return false;
-	if (!wired.has(wrapper)) {
-		wired.add(wrapper);
-		wrapper.addEventListener('pointermove', (e) => at(wrapper, e));
-		wrapper.addEventListener('pointerleave', () => show(wrapper, surfaceOf(wrapper), -1));
-	}
+	wire(wrapper);
 	at(wrapper, event);
 	return false;
+}
+
+// A pointer already over the chart when the page loads moves inside it without a pointerover: the chart is wired once it is visible.
+export function mount(el: Element): void {
+	if (el instanceof HTMLElement && el.matches(WRAPPER)) wire(el);
 }
 
 function step(wrapper: HTMLElement, surface: SVGSVGElement, key: number): void {

@@ -16,6 +16,8 @@ export function setModality(next: 'keyboard' | 'pointer' | 'virtual'): void {
 }
 
 const MODIFIER = /^(Meta|Control|Shift|Alt|CapsLock)$/;
+const NON_TEXT = /^(checkbox|radio|range|color|file|image|button|submit|reset)$/;
+const textInput = (el: Element) => (el instanceof HTMLInputElement && !NON_TEXT.test(el.type)) || el instanceof HTMLTextAreaElement || (el instanceof HTMLElement && el.isContentEditable);
 if (typeof document !== 'undefined') {
 	document.addEventListener('keydown', (e) => {
 		interacted = true;
@@ -24,7 +26,8 @@ if (typeof document !== 'undefined') {
 		modality = 'keyboard';
 		// useFocusRing follows the modality: what has focus shows its ring once the keyboard is used.
 		const active = document.activeElement;
-		if (was === 'pointer' && active instanceof Element && active !== document.body) refocus(active);
+		// isKeyboardFocusEvent: typing in a text field leaves its ring as it was; only Tab and Escape show it.
+		if (was === 'pointer' && active instanceof Element && active !== document.body && !(textInput(active) && e.key !== 'Tab' && e.key !== 'Escape')) refocus(active);
 	}, true);
 	const press = () => {
 		interacted = true;

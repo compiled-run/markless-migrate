@@ -328,15 +328,20 @@ export function migrationSection(s: Status): string {
 
 /** `image` turns a screenshot into the img src: inline by default; writeReport stores each one once, next to the page. `status` adds every planned route, checked in this run or not. */
 export function renderHtml(report: Report, image: (image: Png) => string = inline, status?: Status): string {
+	return [...renderHtmlParts(report, image, status)].join('');
+}
+
+/** The report page in pieces, one route at a time, so a large run's page is written as it is made instead of held whole. */
+export function* renderHtmlParts(report: Report, image: (image: Png) => string = inline, status?: Status): Generator<string> {
 	png = image;
 	try {
-		return renderPage(report, status);
+		yield* renderPage(report, status);
 	} finally {
 		png = inline;
 	}
 }
 
-function renderPage(report: Report, status?: Status): string {
+function* renderPage(report: Report, status?: Status): Generator<string> {
 	const forced = new Map((status?.routes ?? []).filter((r) => r.forced).map((r) => [r.route, r.forced!]));
 	const green = report.routes.filter((r) => r.ok).length;
 	const key = (r: RouteResult) => (r.role && r.role !== 'anonymous' ? `${r.route} as ${r.role}` : r.route);
@@ -345,12 +350,7 @@ function renderPage(report: Report, status?: Status): string {
 	const indexed = report.routes.map((r, i) => [r, i] as [RouteResult, number]);
 	const groups = report.roles ? report.roles.map((role) => ({ role, items: indexed.filter(([r]) => r.role === role) })) : [{ role: undefined, items: indexed }];
 	const toc = report.roles ? groups.map((g) => `<li>As ${esc(g.role!)}: <ul class="toc">${tocItems(g.items)}</ul></li>`).join('') : tocItems(indexed);
-	const body = groups.map((g) => {
-		const signIn = report.logins?.find((l) => l.role === g.role);
-		const head = g.role ? `<section class="role"><h2>As ${esc(g.role)}</h2>${signIn ? login(signIn) : ''}${!g.items.length && signIn ? '<p>Not checked: signing in on the old app failed.</p>' : ''}</section>\n` : '';
-		return head + g.items.map(([r, i]) => route(r, i, forced.get(key(r)))).join('\n');
-	}).join('\n');
-	return `<!doctype html>
+	yield `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -373,7 +373,13 @@ ${report.staleAccepts?.length ? `<p><strong>Accepted differences that no longer 
 ${status ? migrationSection(status) : ''}
 </header>
 <main>
-${body}
+`;
+	for (const g of groups) {
+		const signIn = report.logins?.find((l) => l.role === g.role);
+		if (g.role) yield `<section class="role"><h2>As ${esc(g.role)}</h2>${signIn ? login(signIn) : ''}${!g.items.length && signIn ? '<p>Not checked: signing in on the old app failed.</p>' : ''}</section>\n`;
+		for (const [r, i] of g.items) yield `${route(r, i, forced.get(key(r)))}\n`;
+	}
+	yield `
 </main>
 <script>${SCRIPT}</script>
 </body>

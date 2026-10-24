@@ -10,7 +10,9 @@ import type { PartResolver, PartUsage } from './usage.ts';
 export const PARTS_DIR = fileURLToPath(new URL('../../parts/', import.meta.url));
 
 /** The framework-agnostic packages the ports run on, at the versions the ported libraries were certified with. */
-export const PART_DEPENDENCIES: Readonly<Record<string, string>> = { '@floating-ui/dom': '1.7.6' };
+export const PART_DEPENDENCIES: Readonly<Record<string, string>> = { '@floating-ui/dom': '1.7.6', '@internationalized/date': '3.12.3' };
+// A package only some ports import is added to the app only when one of them is used.
+const DEPENDENCY_USERS: Readonly<Record<string, readonly string[]>> = { '@internationalized/date': ['react-aria/calendar'] };
 
 export type PartEvent = 'click' | 'keydown' | 'pointerover' | 'pointerout' | 'pointerdown' | 'focusin' | 'focusout' | 'contextmenu' | 'input' | 'submit';
 
@@ -106,9 +108,11 @@ export const PORTS: readonly Port[] = [
 	{ module: 'react-aria/select', library: 'react-aria-components', exports: ['Select', 'SelectValue', 'ListBox', 'ListBoxItem', 'ListBoxSection'], events: ['pointerdown', 'click', 'pointerover', 'keydown'], locate: () => true, needs: ['react-aria/overlay', 'react-aria/position', 'react-aria/collection', 'react-aria/interactions'] },
 	{ module: 'react-aria/menu', library: 'react-aria-components', exports: ['Menu', 'MenuItem', 'MenuSection', 'MenuTrigger'], events: ['pointerdown', 'click', 'pointerover', 'keydown', 'contextmenu'], locate: () => true, needs: ['react-aria/overlay', 'react-aria/position', 'react-aria/collection', 'react-aria/interactions'] },
 	{ module: 'react-aria/dialog', library: 'react-aria-components', exports: ['Dialog', 'Modal', 'ModalOverlay', 'Popover'], events: ['click', 'keydown'], locate: () => true, needs: ['react-aria/overlay', 'react-aria/position', 'react-aria/collection', 'react-aria/interactions'] },
-	{ module: 'react-aria/autocomplete', library: 'react-aria-components', exports: ['Autocomplete', 'SearchField'], events: ['input', 'keydown', 'pointerover'], locate: () => true, needs: ['react-aria/collection', 'react-aria/interactions'] },
+	{ module: 'react-aria/autocomplete', library: 'react-aria-components', exports: ['Autocomplete', 'SearchField'], events: ['input', 'keydown', 'pointerover', 'click'], locate: () => true, needs: ['react-aria/collection', 'react-aria/interactions'] },
 	{ module: 'react-aria/combobox', library: 'react-aria-components', exports: ['ComboBox', 'ComboBoxValue', 'ListBox', 'ListBoxItem'], events: ['pointerdown', 'click', 'pointerover', 'input', 'keydown', 'focusout'], locate: () => true, needs: ['react-aria/overlay', 'react-aria/position', 'react-aria/collection', 'react-aria/interactions'] },
 	{ module: 'react-aria/tooltip', library: 'react-aria-components', exports: ['Tooltip', 'TooltipTrigger', 'PreviewTrigger', 'OverlayArrow'], events: ['pointerover', 'pointerout', 'focusin', 'focusout', 'pointerdown'], locate: () => true, needs: ['react-aria/overlay', 'react-aria/position', 'react-aria/interactions'] },
+	// React Aria calendars are Markless state (convert's RacCalendarPlan); the part keeps a calendar key from scrolling the page and syncs its pickers.
+	{ module: 'react-aria/calendar', library: 'react-aria-components', exports: ['Calendar', 'RangeCalendar', 'CalendarGrid', 'CalendarCell', 'CalendarHeading'], events: ['keydown', 'pointerdown'], locate: () => true, needs: ['react-aria/interactions'] },
 	{ module: 'react-aria/disclosure', library: 'react-aria-components', exports: ['Disclosure', 'DisclosurePanel', 'DisclosureGroup'], events: ['click'], locate: () => true, needs: ['react-aria/interactions'] },
 	// What a native element does plus React Aria's hover, press and focus states (and the focus-within ones of the
 	// groups around them): Markless state or the browser does the rest.
@@ -305,6 +309,7 @@ export async function writeParts(app: string, modules: ReadonlySet<string>, choi
 	let added = false;
 	for (const [name, version] of Object.entries(PART_DEPENDENCIES)) {
 		if (manifest.dependencies?.[name]) continue;
+		if (DEPENDENCY_USERS[name] && !DEPENDENCY_USERS[name]!.some((m) => all.has(m))) continue;
 		(manifest.dependencies ??= {})[name] = version;
 		added = true;
 	}
