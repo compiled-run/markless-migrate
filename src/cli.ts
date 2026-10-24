@@ -21,7 +21,7 @@ import { readAuthFile } from './check/auth.ts';
 import { bypassOptions } from './check/blocked.ts';
 import { DATA_DIR } from './check/data.ts';
 import { RECORDER, recorderEnv } from './check/recorder.ts';
-import { jsonReport, runCheck, writeReport, type CheckOptions } from './check/run.ts';
+import { jsonReportParts, runCheck, writePieces, writeReport, type CheckOptions } from './check/run.ts';
 import { loadSourceFacts } from './check/source-facts.ts';
 import { partialLine, summarize } from './check/summary.ts';
 import { TEMPLATE_THRESHOLD } from './check/templates.ts';
@@ -865,7 +865,8 @@ async function main(argv: string[]): Promise<number> {
 			await recordResults(cwd, report, commit ? { commit } : {});
 			const path = await writeReport(report, join(cwd, STATE_DIR), await status(cwd));
 			const html = join(dirname(path), 'report.html');
-			out(values.json ? `${JSON.stringify(jsonReport(report), null, 2)}\n` : `${summarize(report)}Report: ${path}\nVisual report: ${html}\n`);
+			if (values.json) await writePieces(process.stdout, jsonReportParts(report));
+			else out(`${summarize(report)}Report: ${path}\nVisual report: ${html}\n`);
 			if (values.open) await openFile(html);
 			const needSample = report.unchecked?.filter((u) => !u.reason) ?? [];
 			if (report.ok && needSample.length && !values['allow-unchecked']) {
