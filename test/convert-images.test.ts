@@ -129,6 +129,8 @@ test('check: an image no first screen shows loads lazily, a first-screen one nev
 	);
 	const small = { desktop: { viewport: 'desktop', images: [img({ box: { x: 0, y: 2400, width: 40, height: 40 } })], assets: [{ url: '/a.png', bytes: 2_000 }] }, mobile: { viewport: 'mobile', images: [img({ box: { x: 0, y: 3100, width: 40, height: 40 } })], assets: [] } } as unknown as Parameters<typeof imageLoadingFailures>[1];
 	assert.deepEqual(imageLoadingFailures('/', small), [], 'a 2 kB logo costs a request, not bandwidth worth a finding');
+	const svg = { desktop: { viewport: 'desktop', images: [img({ box: { x: 0, y: 2400, width: 40, height: 40 } })], assets: [{ url: '/a.png', bytes: 12_000, contentType: 'image/svg+xml' }] }, mobile: { viewport: 'mobile', images: [img({ box: { x: 0, y: 3100, width: 40, height: 40 } })], assets: [] } } as unknown as Parameters<typeof imageLoadingFailures>[1];
+	assert.deepEqual(imageLoadingFailures('/', svg), [], 'a 12 kB SVG crosses the wire as about 3 kB');
 	const responsive = pages([img({ widths: true, naturalWidth: 1080, naturalHeight: 1166, box: { x: 0, y: 378, width: 1009, height: 1090 } })], [img({ widths: true, naturalWidth: 1080, naturalHeight: 1166, box: { x: 0, y: 378, width: 577, height: 623 } })]);
 	assert.deepEqual(imageLoadingFailures('/', responsive), []);
 });

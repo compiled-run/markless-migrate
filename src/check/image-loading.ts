@@ -27,7 +27,8 @@ export function imageLoadingFailures(route: string, pages: Readonly<Record<strin
 	const first = views[0];
 	if (!first) return [];
 	const failures: Failure[] = [];
-	const bytes = new Map(views.flatMap((p) => p.assets.map((a) => [a.url, a.bytes] as const)));
+	// What crosses the wire: an SVG is text the server compresses to about a quarter.
+	const bytes = new Map(views.flatMap((p) => p.assets.map((a) => [a.url, /svg/.test(a.contentType ?? '') ? a.bytes / 4 : a.bytes] as const)));
 	// The same image in each viewport: the nth of its picture and alt text, since a viewport may add or drop others.
 	const keyed = views.map((p) => {
 		const count = new Map<string, number>();
