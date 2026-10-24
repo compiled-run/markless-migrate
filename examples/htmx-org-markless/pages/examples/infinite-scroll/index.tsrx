@@ -77,13 +77,53 @@ export default function InfiniteScroll() @{
 				</div>
 			</div>
 			<h2><a class="zola-anchor" href="#demo" aria-label="Anchor link for: demo">🔗</a>Demo</h2>
-			{/* The page's init("/demo") drew the first page with Math.random ids as it loaded; they are drawn in the browser here too. */}
+			{/* The page's init("/demo") drew the first page with Math.random ids as it loaded; they are drawn in the browser here too.
+			    hx-get="/contacts/?page=N" hx-trigger="revealed" hx-swap="afterend" on the last row: once it is on screen the fake
+			    server answers after a second, the indicator below the table shows until then (the table's hx-indicator), and the next
+			    twenty rows follow it. The rows carry no handler of their own (an onVisible inside the @for stops it updating), so
+			    htmx's own revealed check runs here: whether the row is on screen when it arrives, then every 200 ms after the window
+			    scrolled or resized, each row revealed once. */}
 			<div
 				id="demo-canvas"
 				onIdle={() => {
 					const first = agents(10);
 					contacts = first;
 					initCode = initialCode(first);
+					const body = document.querySelector('#demo-canvas tbody')!;
+					const revealed = new WeakSet<Element>();
+					const load = () => {
+						loading = true;
+						setTimeout(() => {
+							const next = page + 1;
+							const fresh = agents(10 + contacts.length);
+							const url = `/contacts/?page=${next}`;
+							log = [responseEntry(log.length + 1, url, { page: String(next) }, rowsTemplate(next, fresh)), ...log];
+							selected = `req-${log.length}`;
+							contacts = [...contacts, ...fresh];
+							page = next;
+							loading = false;
+							// htmx processes the swapped rows once they settle (its 20 ms settle delay).
+							setTimeout(maybeReveal, 20);
+						}, RESPONSE_DELAY);
+					};
+					const maybeReveal = () => {
+						const row = body.lastElementChild;
+						if (!row || revealed.has(row)) return;
+						const rect = row.getBoundingClientRect();
+						if (!(rect.top < window.innerHeight && rect.bottom >= 0)) return;
+						revealed.add(row);
+						load();
+					};
+					let scrolling = false;
+					const onScroll = () => (scrolling = true);
+					window.addEventListener('scroll', onScroll);
+					window.addEventListener('resize', onScroll);
+					setInterval(() => {
+						if (!scrolling) return;
+						scrolling = false;
+						maybeReveal();
+					}, 200);
+					maybeReveal();
 				}}
 			>
 				<table>
@@ -92,25 +132,7 @@ export default function InfiniteScroll() @{
 					</thead>
 					<tbody>
 						@for (const contact of contacts; key contact.email) {
-							{/* hx-get="/contacts/?page=N" hx-trigger="revealed" hx-swap="afterend" on the last row: once it is on screen the
-							    fake server answers after a second, the indicator below the table shows until then (the table's hx-indicator),
-							    and the next twenty rows follow it. Every row is watched once; only the one that is last when it shows asks. */}
-							<tr
-								onVisible={(event) => {
-									if (loading || (event.target as Element).nextElementSibling) return;
-									loading = true;
-									setTimeout(() => {
-										const next = page + 1;
-										const fresh = agents(10 + contacts.length);
-										const url = `/contacts/?page=${next}`;
-										log = [responseEntry(log.length + 1, url, { page: String(next) }, rowsTemplate(next, fresh)), ...log];
-										selected = `req-${log.length}`;
-										contacts = [...contacts, ...fresh];
-										page = next;
-										loading = false;
-									}, RESPONSE_DELAY);
-								}}
-							>
+							<tr>
 								{/* Until the hashes are drawn, a hidden one of the same length holds the column's width, so the table does not reflow. */}
 								<td>{contact.name}</td><td>{contact.email}</td><td>{contact.id}@if (!contact.id) {<span aria-hidden="true" style="visibility: hidden">GDB0CF27E9</span>}</td>
 							</tr>

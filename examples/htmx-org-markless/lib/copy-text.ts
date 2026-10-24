@@ -25,7 +25,9 @@ function next(from: Element, tag: string): HTMLElement | undefined {
 async function copyOnce(button: Element, indent: boolean, message: string): Promise<void> {
 	let text = previous(button, 'div')?.innerText ?? '';
 	if (indent) text = text.split('\n').map((l) => `  ${l}`).join('\n');
-	await navigator.clipboard.writeText(text);
+	// Not awaited, as hyperscript leaves it: the message shows even when the write is refused (its rejection goes
+	// unhandled to the console).
+	void navigator.clipboard.writeText(text);
 	const output = next(button, 'output');
 	if (output) output.innerHTML = message;
 	await new Promise((resolve) => setTimeout(resolve, 2000));

@@ -235,7 +235,7 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   wrote it, as React's does. Compared step by step with the old page (navigation, clicks, eight keys, Enter, a second
   day, Tab away, both dropdowns): all 22 calendars match at every step, and so do their accessibility trees, after
   the first render, where the old page still shows the day it was built as today until something renders again.
-  Markless rebuilding a cell moves the focus onto its new node; React removes it, so that focus is not DayPicker's.
+  The cells are keyed by place, so a focused day button stays in the page as the month changes (framework bugs, 17).
 
 ## Markless framework bugs found
 
@@ -309,6 +309,24 @@ parse (quotes and backticks in arm text).
     preview too. The same binding on the questionnaire page's forms is served as `m:on="submit:N!p"`, and a minimal
     app with that form nested under handlers resumes it. Not reduced further yet. The converter backs every handled
     form with a delegated `submit` part (`parts/form.ts`) that prevents it.
+15. Reported by the calendar port: a component-body `const` read by a `state()` initializer was missing from the
+    client code. Not reproduced on Markless main 329ca30d (2026-10-24), built and clicked in Chromium. These shapes
+    all serve the initial value, update on a click and log no error: `state(step * 10)` with `const step = 2`; an
+    object passed to an imported initializer, `state(init(cfg))`, also read by a `computed()` and a click handler;
+    one body const built from others with spread (`{ ...{ by: 3 }, loc, cls }`); a 20 KB literal whose strings hold
+    quotes, backticks, `</script>`, `\u2028` and Persian digits; and an `onIdle` handler writing the state, as the
+    converter emits. A function inside the const is refused at build time (MARKLESS_CAPTURE_UNSUPPORTED_VALUE), not
+    dropped. The converter still imports the calendar configurations from `lib/parts/day-picker-configs.ts`. Reopen
+    with the page if a real one shows it.
+16. Reported by the calendar port: a handler of a second event in the same frame (focusin, then click) read state
+    from before the first handler's write. Not reproduced on the same main: a root with `onFocusIn` writing a
+    state object and `onClick` reading it saw the focusin's write on every click, both for a real mouse click and
+    for `focus()` then `click()` in one task. `parts/day-picker.ts` keeps its own record of a calendar's last write
+    (`latest`/`write`) as a guard. Reopen with the page if a real one shows it.
+17. Not a Markless bug: when the calendar's cells change month, focus stays on the day button. The port keys cells
+    by place, so the same button stays in the page; React mounts new day nodes and focus leaves them. In a list keyed
+    by identity, Markless replaces the node and focus drops to the body, as React's does. The witness shows the
+    port's focus matching the original at every step, so the keying stays as it is.
 
 ## Build memory on Markless 0.9.0 (2026-10-22)
 
@@ -2450,9 +2468,15 @@ Leading causes (routes):
 
 ## Open work
 
+- Charts: each width the old site shows a chart at is its own SVG (342, 373, 419, 1280, 1336 and 1440 px pages), so
+  the interactive charts' pages are 3-5x the original's HTML. Next: one SVG laid out from the captured data at any width.
+- `/view/new-york-v4/chart-radar-icons` and `chart-radar-radius` are not ported: no page links them, so plan never
+  found them. `.next/prerender-manifest.json` lists them with about 277 other unlinked `/view` pages; reading it in
+  plan would add all of them.
+
 - The search palette's search results (`/api/search`), the remaining endpoints above, and `/og`.
 - Base UI Radio, Switch, Checkbox, Dialog, AlertDialog, Toast; Radix ScrollArea, ToggleGroup, Select, Slider,
-  RadioGroup; vaul; react-resizable-panels; recharts (the charts are SVG from the old page, not interactive).
+  RadioGroup; vaul; react-resizable-panels.
 - Recapture every route's reveals with signatures (only the preview routes have them) and convert all 498 pages
   once bug 1 is fixed; then `check` every route.
 - check: a framework's own route announcer and the regions it moves, in what a step changes (journeys), are the old

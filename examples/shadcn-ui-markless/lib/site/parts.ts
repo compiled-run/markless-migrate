@@ -1,5 +1,5 @@
 import type { Part } from '../parts/index.ts';
-import { resolvedTheme, setTheme, watchSystemTheme, type ThemeOptions } from '../parts/next-themes.ts';
+import { handledEarly, resolvedTheme, setTheme, watchSystemTheme, type ThemeOptions } from '../parts/next-themes.ts';
 import { configure } from '../parts/cmdk.ts';
 import { clipboardFor } from '../parts/reveal.ts';
 import { closeContaining, toggle } from '../parts/radix/dialog.ts';
@@ -112,16 +112,16 @@ function showCopied(button: HTMLElement): void {
 }
 
 const modeSwitcher: Part = {
-	click(target) {
+	click(target, event) {
 		const button = target.closest('button');
 		if (!button || button.querySelector('.sr-only')?.textContent !== 'Toggle theme') return false;
-		toggleTheme();
+		if (!handledEarly(event)) toggleTheme();
 		return true;
 	},
 	keydown(target, event) {
 		if ((event.key !== 'd' && event.key !== 'D') || event.metaKey || event.ctrlKey || event.altKey || isEditable(target)) return false;
 		event.preventDefault();
-		toggleTheme();
+		if (!handledEarly(event)) toggleTheme();
 		return true;
 	},
 };

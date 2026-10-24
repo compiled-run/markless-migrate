@@ -56,6 +56,7 @@ export function obligationsFor(b: Behaviour): Obligation[] {
 			add(`${b.feature}: one frame after the close animation ends, the backdrop and the content are gone (no flash back)`, 'pinned-frames', [{ do: 'click', target }, { do: 'press', target: 'dialog', key: 'Escape' }, { do: 'compare', what: ['opacity', 'visibility', 'box'], at: ['0', '25%', '50%', '75%', 'end', 'end + 1 frame'] }]);
 			add(`${b.feature}: Tab stays inside while open; Escape closes`, 'keyboard', [{ do: 'click', target }, { do: 'press', target: 'dialog', key: 'Tab', times: 3 }]);
 			add(`${b.feature}: open once, compared as a journey`, 'journey', [{ do: 'click', target }]);
+			if (b.kind === 'search' && b.library === 'docusaurus-theme') add(`${b.feature}: point at ${target}, then click it at once: the click fetches no code and the dialog opens as fast as on the old page`, 'journey', [{ do: 'hover', target }, { do: 'click', target }, { do: 'compare', what: ['requests', 'DOM'] }]);
 			if (b.kind === 'search' && b.library === 'docusaurus-theme')
 				for (const platform of ['MacIntel', 'Win32', 'Linux x86_64'])
 					add(`${b.feature} on ${platform}: ${target}'s accessible name, aria-keyshortcuts and shortcut keys at first paint match (⌘ K and Meta+k on Apple platforms, Ctrl K and Control+k elsewhere)`, 'load-state', [{ do: 'load', emulate: { platform } }, { do: 'compare', what: ['accessible name', 'aria-keyshortcuts', 'visible text'], at: ['first paint'] }]);
@@ -70,6 +71,7 @@ export function obligationsFor(b: Behaviour): Obligation[] {
 			add(`${b.feature} on ${target}: one use, compared as a journey`, 'journey', [{ do: 'click', target }]);
 			add(`${b.feature} on ${target}: its transitions timed`, 'motion', [{ do: 'click', target }]);
 			if (b.feature === 'hideable navbar') add(`${b.feature}: scroll down until it hides, navigate in place, go Back: it is shown at the restored scroll position, as on the old page`, 'navigation-equivalence', [{ do: 'scroll', target: 'page' }, { do: 'navigate-in-place', to: 'another page' }, { do: 'press', target: 'page', key: 'Alt+ArrowLeft' }, { do: 'compare', what: ['box', 'classes'] }]);
+			if (b.feature === 'docs sidebar category') add(`${b.feature}: follow a docs link to a page with the same sidebar, then expand ${target}: no request the old page does not make`, 'journey', [{ do: 'navigate-in-place', to: 'a page with the same sidebar' }, { do: 'click', target }, { do: 'compare', what: ['requests'] }]);
 			if (b.feature === 'mobile navbar sidebar') add(`${b.feature}: open it, then expand and collapse each dropdown inside it (versions, locales) and use its logo link on the page it names`, 'journey', [{ do: 'click', target }, { do: 'click', target: 'each dropdown in the drawer', times: 2 }, { do: 'click', target: 'the drawer logo' }, { do: 'compare', what: ['DOM', 'URL'] }]);
 			break;
 		case 'tabs':

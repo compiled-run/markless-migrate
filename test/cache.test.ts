@@ -128,6 +128,19 @@ test('the generated plugin replaces the caching an app set for a path, keeps its
 	assert.deepEqual(config.nitro.vercel.config.routes, [{ src: '/x', dest: '/y' }], 'the app\'s own Vercel routes are left as they are');
 });
 
+test('the generated plugin lists each server asset once for Nitro\'s prerenderer, which copies the app\'s config with them twice', async () => {
+	const routes = [classify({ evidence: evidence({}, {}, '/') })];
+	const dir = await mkdtemp(join(tmpdir(), 'mm-cache-'));
+	const file = join(dir, 'migrate-cache.ts');
+	await writeFile(file, cacheModule(cacheRules(routes, { prerender: true }), routes));
+	const { applyRules } = (await import(file)) as { applyRules: (nitro: Record<string, any>) => void };
+	const hooks: Record<string, (renderer: { options: { serverAssets: { baseName: string }[] } }) => void> = {};
+	applyRules({ options: { routeRules: {} }, hooks: { hook: (name: string, run: (renderer: { options: { serverAssets: { baseName: string }[] } }) => void) => (hooks[name] = run) } });
+	const renderer = { options: { serverAssets: [{ baseName: 'built' }, { baseName: 'built' }, { baseName: 'server' }] } };
+	hooks['prerender:init']!(renderer);
+	assert.deepEqual(renderer.options.serverAssets, [{ baseName: 'built' }, { baseName: 'server' }]);
+});
+
 test('vite.config.ts gets migrateCache() in its plugins, once', () => {
 	const source = "import { markless } from '@markless/core/vite';\nimport { router } from '@markless/router/vite';\n\nexport default { plugins: [markless(), router()] };\n";
 	const wired = wireViteConfig(source) as string;

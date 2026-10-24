@@ -67,6 +67,36 @@ export function editTemplate({ id, ...contact }: Contact & { readonly id: number
     </tr>`;
 }
 
+// The rows the swap writes: rowTemplate() and editTemplate() as the browser received them, without htmx's attributes
+// (the tbody's click handler does what they did). The edit row's inputs stay unclosed, so the browser reads them as it
+// read the old swap.
+export function rowMarkup(contact: Contact): string {
+  return `<tr>
+      <td>${encodeParam(contact.name)}</td>
+      <td>${encodeParam(contact.email)}</td>
+      <td>
+        <button class="btn danger">
+          Edit
+        </button>
+      </td>
+    </tr>`;
+}
+
+export function editMarkup(contact: Contact): string {
+  return `<tr class='editing'>
+      <td><input autofocus name='name' value='${encodeParam(contact.name)}'</td>
+      <td><input name='email' value='${encodeParam(contact.email)}'</td>
+      <td>
+        <button class="btn danger">
+          Cancel
+        </button>
+        <button class="btn danger">
+          Save
+        </button>
+      </td>
+    </tr>`;
+}
+
 function tableTemplate(contacts: readonly Contact[]): string {
   let rows = "";
   for (let i = 0; i < contacts.length; i++) rows += rowTemplate({ ...contacts[i]!, id: i });

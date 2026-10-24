@@ -206,10 +206,10 @@ test('a Radix trigger with its own id has its layer under the id, while aria-con
 	await page.close();
 });
 
-test('recharts: the pointer over the plot activates the point whose range it is in, the arrow keys step, leaving hides', async () => {
-	const facts = JSON.stringify({ w: 300, h: 100, s: [[0, 99, 50, 10], [100, 199, 150, 10], [200, 300, 250, 10]] });
+test('recharts: the pointer picks the point whose range it is in, the tooltip goes where recharts puts it, the arrow keys step, leaving hides', async () => {
+	const facts = JSON.stringify({ w: 300, h: 100, v: [5, 5, 290, 90], m: 'x', g: [[0, 99, 0], [100, 199, 1], [200, 300, 2]], sp: [5, 95], p: [[50, null], [150, null], [250, null]], k: [[0, 50, 60], [1, 150, 60], [2, 250, 60]] });
 	const page = await open(
-		`<div style="padding:50px"><div class="recharts-wrapper" style="position:relative;width:300px;height:100px" data-mm-chart='${facts}'><svg class="recharts-surface" tabindex="0" width="300" height="100" style="display:block"></svg><div class="recharts-tooltip-wrapper" style="visibility: hidden; position: absolute; top: 0px; left: 0px;">tip</div></div></div><button>after</button>`,
+		`<div style="padding:50px"><div class="recharts-wrapper" style="position:relative;width:300px;height:100px" data-mm-chart="1"><svg class="recharts-surface" tabindex="0" width="300" height="100" style="display:block" data-mm-facts='${facts}'></svg><div class="recharts-tooltip-wrapper" style="visibility: hidden; position: absolute; top: 0px; left: 0px;"><div style="width:40px;height:20px">tip</div></div></div></div><button>after</button>`,
 		['recharts'],
 	);
 	await page.evaluate(() => {
@@ -221,13 +221,17 @@ test('recharts: the pointer over the plot activates the point whose range it is 
 	await page.mouse.move(210, 100, { steps: 4 });
 	assert.deepEqual(await page.evaluate(() => (window as unknown as { seen: number[] }).seen), [0, 1]);
 	assert.equal(await tip.evaluate((e) => (e as HTMLElement).style.visibility), 'visible');
-	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(150px, 60px\)/, 'x as the old page placed it, y following the pointer');
+	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(150px, 60px\)/, 'x as the old page placed it, y the pointer\'s past the offset');
+	await page.mouse.move(210, 130);
+	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(150px, 50px\)/, 'flipped above the pointer where it would leave the view box');
 	await page.mouse.move(5, 5);
 	assert.equal(await tip.evaluate((e) => (e as HTMLElement).style.visibility), 'hidden');
+	assert.equal(await tip.evaluate((e) => (e as HTMLElement).style.transform), '', 'hidden, it drops its place, so it comes in from the corner next time as recharts\' does');
 	await page.locator('svg.recharts-surface').focus();
 	await page.keyboard.press('ArrowRight');
 	assert.deepEqual((await page.evaluate(() => (window as unknown as { seen: number[] }).seen)).slice(-3), [-1, 0, 1], 'focus shows the first point, the arrow the next');
-	await page.getByText('after').focus();
+	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(150px, 60px\)/);
+	await page.keyboard.press('Escape');
 	assert.equal(await tip.evaluate((e) => (e as HTMLElement).style.visibility), 'hidden');
 	await page.close();
 });
@@ -300,5 +304,45 @@ test('a Base UI dialog a page opens from a plain button opens under the button\'
 	await page.getByText('Open Menu').click();
 	assert.equal(await page.locator('[role="dialog"]').isVisible(), true);
 	assert.equal(await page.getByText('Open Menu').getAttribute('aria-expanded'), null);
+	await page.close();
+});
+
+test('recharts: an SVG scaled to its container maps the pointer and the tooltip through its scale', async () => {
+	const facts = JSON.stringify({ w: 300, h: 100, v: [5, 5, 290, 90], m: 'x', g: [[0, 149, 0], [150, 300, 1]], p: [[50, 20], [200, 20]] });
+	const page = await open(
+		`<div class="recharts-wrapper" style="position:relative;width:600px;height:200px" data-mm-chart="1"><svg class="recharts-surface" viewBox="0 0 300 100" style="width:100%;height:100%;display:block" data-mm-facts='${facts}'></svg><svg class="recharts-surface" style="display:none" data-mm-facts='{}'></svg><div class="recharts-tooltip-wrapper" style="visibility: hidden; position: absolute; top: 0px; left: 0px;">tip</div></div>`,
+		['recharts'],
+	);
+	const tip = page.locator('.recharts-tooltip-wrapper');
+	await page.mouse.move(250, 100);
+	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(100px, 40px\)/, 'state 0 at x 125 in the SVG, its translate doubled');
+	await page.mouse.move(350, 100);
+	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(400px, 40px\)/);
+	await page.close();
+});
+
+test('recharts: a radar\'s tooltip follows the pointer\'s radius on the point\'s axis, as recharts anchors it', async () => {
+	const facts = JSON.stringify({ w: 200, h: 200, v: [0, 0, 200, 200], m: 'a', c: [100, 100], g: [[45, 135, 0], [225, 315, 1]], sp: [0, 100], p: [[null, null], [null, null]], q: [90, 270] });
+	const page = await open(
+		`<div class="recharts-wrapper" style="position:relative;width:200px;height:200px" data-mm-chart="1"><svg class="recharts-surface" width="200" height="200" style="display:block" data-mm-facts='${facts}'></svg><div class="recharts-tooltip-wrapper" style="visibility: hidden; position: absolute; top: 0px; left: 0px;"><div style="width:40px;height:20px">tip</div></div></div>`,
+		['recharts'],
+	);
+	const tip = page.locator('.recharts-tooltip-wrapper');
+	await page.mouse.move(120, 40);
+	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(110px, 46\.7\d*px\)/, 'at the pointer\'s radius (63) straight up the axis, past the offset');
+	await page.close();
+});
+
+test('recharts: a pie\'s sector under the pointer is its point, and the tooltip stays where recharts put it for that sector', async () => {
+	const facts = JSON.stringify({ w: 200, h: 200, v: [5, 5, 190, 190], m: 'i', g: [[0, 0, 0], [1, 1, 1]], p: [[120, 40], [30, 120]] });
+	const page = await open(
+		`<div class="recharts-wrapper" style="position:relative;width:200px;height:200px" data-mm-chart="1"><svg class="recharts-surface" width="200" height="200" style="display:block" data-mm-facts='${facts}'><g class="recharts-pie-sector"><path d="M100,100 L200,100 A100,100 0 0 0 100,0 Z"></path></g><g class="recharts-pie-sector"><path d="M100,100 L100,0 A100,100 0 1 0 200,100 Z"></path></g></svg><div class="recharts-tooltip-wrapper" style="visibility: hidden; position: absolute; top: 0px; left: 0px;">tip</div></div>`,
+		['recharts'],
+	);
+	const tip = page.locator('.recharts-tooltip-wrapper');
+	await page.mouse.move(160, 40);
+	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(120px, 40px\)/);
+	await page.mouse.move(40, 160);
+	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(30px, 120px\)/);
 	await page.close();
 });

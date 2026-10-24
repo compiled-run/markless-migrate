@@ -1,18 +1,15 @@
 import { computed, element, state } from '@markless/core';
 import SiteFooter from '../../../components/site-footer.tsrx';
 import SiteHeader from '../../../components/site-header.tsrx';
-import { CONTACTS, editTemplate, INITIAL_CODE, pushEntry, responseHtml, rowTemplate, showEntry, type Row } from '../../../components/edit-row.ts';
+import { CONTACTS, editMarkup, editTemplate, INITIAL_CODE, pushEntry, responseHtml, rowMarkup, rowTemplate, showEntry, type Contact } from '../../../components/edit-row.ts';
 
 interface SweetAlert {
 	fire(options: Record<string, unknown>): Promise<{ readonly isConfirmed: boolean }>;
 }
 
 export default function EditRow() @{
-	// The contacts as the fake server holds them, each with whether htmx has swapped its row to the edit form, and the
-	// elements whose request is in flight (htmx-request): "edit-N", "cancel-N" and "save-N" for a row's buttons, "row-N"
-	// for its cancel event.
-	let rows = state<readonly Row[]>(CONTACTS.map((contact, id) => ({ ...contact, id, editing: false })));
-	let requesting = state<readonly string[]>([]);
+	// The contacts as the fake server holds them; the rows themselves are swapped as htmx swapped them.
+	let contacts = state<readonly Contact[]>(CONTACTS);
 	let requests = state(0);
 	let showInfo = state(false);
 	const timeline = element<HTMLOListElement>();
@@ -98,112 +95,82 @@ export default function EditRow() @{
 							<th></th>
 						</tr>
 					</thead>
-					<tbody el={body}>
-						@for (const row of rows; key row.id) {
-							@if (row.editing) {
-								{/* editTemplate(): its inputs' tags are not closed, so the browser read `<` and `td` as attributes (`<` cannot be given). */}
-								<tr class={requesting.includes(`row-${row.id}`) ? 'editing htmx-request' : 'editing'}>
-									<td><input autofocus="" name="name" value={row.name} td="" /></td>
-									<td><input name="email" value={row.email} td="" /></td>
-									<td>
-										{/* hx-get="/contact/N": the row as it was. */}
-										<button
-											class={requesting.includes(`cancel-${row.id}`) ? 'btn danger htmx-request' : 'btn danger'}
-											onClick={() => {
-												const contact = row;
-												const key = `cancel-${contact.id}`;
-												if (requesting.includes(key)) return;
-												requesting = [...requesting, key];
-												setTimeout(() => {
-													requesting = requesting.filter((r) => r !== key);
-													requests = requests + 1;
-													if (timeline && current) pushEntry(timeline, current, `GET /contact/${contact.id}`, `req-${requests}`, responseHtml('GET', `/contact/${contact.id}`, {}, rowTemplate(contact)));
-													rows = rows.map((r) => (r.id === contact.id ? { ...r, editing: false } : r));
-												}, 80);
-											}}
-										>
-											{'\n          Cancel\n        '}
-										</button>
-										{' '}
-										{/* hx-put="/contact/N" with hx-include="closest tr": the server keeps the row's inputs and answers with the row. */}
-										<button
-											class={requesting.includes(`save-${row.id}`) ? 'btn danger htmx-request' : 'btn danger'}
-											onClick={(event) => {
-												const contact = row;
-												const key = `save-${contact.id}`;
-												if (requesting.includes(key)) return;
-												const inputs = (event.target as Element).closest('tr')!.querySelectorAll('input');
-												const saved = { name: inputs[0]!.value, email: inputs[1]!.value };
-												requesting = [...requesting, key];
-												setTimeout(() => {
-													requesting = requesting.filter((r) => r !== key);
-													requests = requests + 1;
-													if (timeline && current) pushEntry(timeline, current, `PUT /contact/${contact.id}`, `req-${requests}`, responseHtml('PUT', `/contact/${contact.id}`, saved, rowTemplate({ ...contact, ...saved })));
-													rows = rows.map((r) => (r.id === contact.id ? { ...r, ...saved, editing: false } : r));
-												}, 80);
-											}}
-										>
-											{'\n          Save\n        '}
-										</button>
-									</td>
-								</tr>
-							} @else {
-								<tr>
-									<td>{row.name}</td>
-									<td>{row.email}</td>
-									<td>
-										{/* hx-get="/contact/N/edit" on the custom edit event, which the button's onClick sends, after SweetAlert's
-										    confirmation (and the editing row's cancel event) when another row is being edited. */}
-										<button
-											class={requesting.includes(`edit-${row.id}`) ? 'btn danger htmx-request' : 'btn danger'}
-											onClick={() => {
-												const id = row.id;
-												const edit = () => {
-													const key = `edit-${id}`;
-													if (requesting.includes(key)) return;
-													requesting = [...requesting, key];
-													setTimeout(() => {
-														requesting = requesting.filter((r) => r !== key);
-														requests = requests + 1;
-														const contact = rows.find((r) => r.id === id)!;
-														if (timeline && current) pushEntry(timeline, current, `GET /contact/${id}/edit`, `req-${requests}`, responseHtml('GET', `/contact/${id}/edit`, {}, editTemplate(contact)));
-														rows = rows.map((r) => (r.id === id ? { ...r, editing: true } : r));
-														// htmx focuses the swapped-in row's autofocus input.
-														requestAnimationFrame(() => body?.children[id]?.querySelector<HTMLInputElement>('input[autofocus]')?.focus());
-													}, 80);
-												};
-												// The row document.querySelector('.editing') finds.
-												const other = rows.find((r) => r.editing);
-												if (!other) return edit();
-												const swal = (window as unknown as { Swal: SweetAlert }).Swal;
-												swal
-													.fire({
-														title: 'Already Editing',
-														showCancelButton: true,
-														confirmButtonText: 'Yep, Edit This Row!',
-														text: 'Hey!  You are already editing a row!  Do you want to cancel that edit and continue?',
-													})
-													.then((result) => {
-														if (!result.isConfirmed) return;
-														// The editing row's cancel event: hx-get="/contact/N" on the row.
-														const key = `row-${other.id}`;
-														requesting = [...requesting, key];
-														setTimeout(() => {
-															requesting = requesting.filter((r) => r !== key);
-															requests = requests + 1;
-															const contact = rows.find((r) => r.id === other.id)!;
-															if (timeline && current) pushEntry(timeline, current, `GET /contact/${other.id}`, `req-${requests}`, responseHtml('GET', `/contact/${other.id}`, {}, rowTemplate(contact)));
-															rows = rows.map((r) => (r.id === other.id ? { ...r, editing: false } : r));
-														}, 80);
-														edit();
-													});
-											}}
-										>
-											{'\n          Edit\n        '}
-										</button>
-									</td>
-								</tr>
+					<tbody
+						el={body}
+						onClick={(event) => {
+							const button = (event.target as Element).closest('button');
+							const tr = button?.closest('tr');
+							if (!button || !tr || !body) return;
+							const id = Array.prototype.indexOf.call(body.children, tr);
+							// htmx sends the request from this element after 80 ms of the sinon server, drops a second one while it
+							// is in flight, logs it and swaps the answer into the closest tr (the body's hx-target and hx-swap).
+							const request = (from: Element, method: string, url: string, params: Record<string, string>, after: () => [string, string]) => {
+								if (from.classList.contains('htmx-request')) return;
+								from.classList.add('htmx-request');
+								setTimeout(() => {
+									from.classList.remove('htmx-request');
+									const [logged, markup] = after();
+									requests = requests + 1;
+									if (timeline && current) pushEntry(timeline, current, `${method} ${url}`, `req-${requests}`, responseHtml(method, url, params, logged));
+									const row = from.closest('tr');
+									if (!row || !body) return;
+									const n = Array.prototype.indexOf.call(body.children, row);
+									row.outerHTML = markup;
+									// htmx focuses the swapped-in row's autofocus input.
+									body.children.item(n)?.querySelector<HTMLInputElement>('input[autofocus]')?.focus();
+								}, 80);
+							};
+							const cancel = (row: Element, from: Element) => {
+								const n = Array.prototype.indexOf.call(body!.children, row);
+								request(from, 'GET', `/contact/${n}`, {}, () => {
+									const contact = contacts.find((_, i) => i === n)!;
+									return [rowTemplate({ ...contact, id: n }), rowMarkup(contact)];
+								});
+							};
+							const label = button.textContent!.trim();
+							if (label === 'Cancel') return cancel(tr, button);
+							if (label === 'Save') {
+								// hx-put="/contact/N" with hx-include="closest tr": the server keeps the row's inputs and answers with the row.
+								const inputs = tr.querySelectorAll('input');
+								const saved = { name: inputs[0]!.value, email: inputs[1]!.value };
+								return request(button, 'PUT', `/contact/${id}`, saved, () => {
+									contacts = contacts.map((c, i) => (i === id ? saved : c));
+									return [rowTemplate({ ...saved, id }), rowMarkup(saved)];
+								});
 							}
+							// Edit: hx-get="/contact/N/edit" on the custom edit event, which the button's onClick sends, after
+							// SweetAlert's confirmation (and the editing row's cancel event) when another row is being edited.
+							const edit = () =>
+								request(button, 'GET', `/contact/${id}/edit`, {}, () => {
+									const contact = contacts.find((_, i) => i === id)!;
+									return [editTemplate({ ...contact, id }), editMarkup(contact)];
+								});
+							const editing = document.querySelector('.editing');
+							if (!editing) return edit();
+							const swal = (window as unknown as { Swal: SweetAlert }).Swal;
+							swal
+								.fire({
+									title: 'Already Editing',
+									showCancelButton: true,
+									confirmButtonText: 'Yep, Edit This Row!',
+									text: 'Hey!  You are already editing a row!  Do you want to cancel that edit and continue?',
+								})
+								.then((result) => {
+									if (!result.isConfirmed) return;
+									// The editing row's cancel event: hx-get="/contact/N" on the row itself.
+									cancel(editing, editing);
+									edit();
+								});
+						}}
+					>
+						@for (const contact of CONTACTS; key contact.email) {
+							<tr>
+								<td>{contact.name}</td>
+								<td>{contact.email}</td>
+								<td>
+									<button class="btn danger">{'\n          Edit\n        '}</button>
+								</td>
+							</tr>
 						}
 					</tbody>
 				</table>

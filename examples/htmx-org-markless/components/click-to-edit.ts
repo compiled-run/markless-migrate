@@ -93,13 +93,3 @@ export function responseEntry(
     truncated: !fits,
   };
 }
-
-export function fillForm(
-  fields: readonly (HTMLInputElement | undefined)[],
-  contact: Contact,
-): void {
-  const values = [contact.firstName, contact.lastName, contact.email];
-  fields.forEach((field, i) => {
-    if (field) field.value = values[i]!;
-  });
-}
