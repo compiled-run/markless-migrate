@@ -162,6 +162,7 @@ test("an image's renditions share its identity: the optimizer's source, or the f
 	const next = { ...old, src: '/a-640w.webp', naturalWidth: 640, naturalHeight: 477 };
 	const page = (images: (typeof old)[]) => ({ images }) as unknown as Parameters<typeof responsiveRegionsCandidate>[1];
 	assert.ok(responsiveRegionsCandidate([{ x: 0, y: 0, width: 400, height: 300 }], page([old]), page([next]), 900));
+	assert.ok(responsiveRegionsCandidate([{ x: 400, y: 304, width: 16, height: 16 }], page([old]), page([next]), 40), 'a 16 px diff cell reaching past the edge');
 	assert.equal(responsiveRegionsCandidate([{ x: 0, y: 0, width: 400, height: 300 }], page([old]), page([next]), 60_000), undefined, 'most of its pixels changed: another picture');
 });
 

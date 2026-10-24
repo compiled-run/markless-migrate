@@ -131,8 +131,10 @@ export function responsiveRegionsCandidate(regions: readonly Box[], old: PageCap
 		const auto = o && responsiveImageCandidate(o, n);
 		return auto ? [{ box: n.box!, auto }] : [];
 	});
-	if (!renditions.length || !regions.every((r) => renditions.some((x) => inside(r, x.box)))) return undefined;
-	const used = renditions.filter((x) => regions.some((r) => inside(r, x.box)));
+	// Diff regions are whole 16 px cells, so one may reach a cell past the image's edge.
+	const within = (r: Box, b: Box) => inside(r, { x: b.x - 16, y: b.y - 16, width: b.width + 32, height: b.height + 32 });
+	if (!renditions.length || !regions.every((r) => renditions.some((x) => within(r, x.box)))) return undefined;
+	const used = renditions.filter((x) => regions.some((r) => within(r, x.box)));
 	// Resampling moves a few edge pixels; a different picture moves most of them.
 	if (differing !== undefined && differing > 0.1 * used.reduce((s, x) => s + x.box.width * x.box.height, 0)) return undefined;
 	return candidate('responsive-image', `every differing pixel is inside ${used.length === 1 ? 'an image' : `${used.length} images`} drawn from another width of the same file: ${used.map((x) => x.auto!.reason).join('; ')}`);
