@@ -219,12 +219,14 @@ const classes = (el: Element) => (attr(el, 'class') ?? '').split(/\s+/);
 export const isDocSearchButton = (el: Element) => el.tagName === 'button' && classes(el).includes('DocSearch-Button');
 const textIn = (el: Element): string => childrenOf(el).map((n) => ('value' in n && n.nodeName === '#text' ? String(n.value) : 'tagName' in n ? textIn(n as Element) : '')).join('');
 const appleKey = (el: Element) => el.tagName === 'kbd' && classes(el).includes('DocSearch-Button-Key') && textIn(el).trim() === '⌘';
-let docsearch: { readonly appId: string; readonly apiKey: string; readonly indexName: string } | undefined;
+let docsearch: { readonly appId: string; readonly apiKey: string; readonly indexName: string; readonly shell?: string } | undefined;
 /** The old site's DocSearch config from usage.json: its button gets the docsearch part, which loads DocSearch on intent with it. */
 export function useDocSearch(config: typeof docsearch): void {
 	docsearch = config;
 }
 export const docsearchConfigured = () => docsearch !== undefined;
+/** DocSearch's dialog as the old site first draws it, when plan captured it. */
+export const docsearchShell = () => docsearch?.shell;
 
 // DocSearch 4's button carries aria-keyshortcuts and draws its keys once mounted; DocSearch 3's draws ⌘ K at once.
 let docsearchVersion: 3 | 4 = 3;
@@ -241,7 +243,8 @@ function docsearchBinding(el: Element, uses: PartUse[] | Set<string>): Binding |
 	else if (!uses.some((u) => u.part === 'docsearch')) uses.push({ part: 'docsearch', import: () => '' });
 	const { label, shortcut } = CTRL_KEYS[docsearchVersion];
 	const keys = docsearchVersion === 4 ? [`data-mm-docsearch-keys={${JSON.stringify(JSON.stringify({ label, shortcut }))}}`] : [];
-	return { extra: [`data-mm-docsearch={${JSON.stringify(JSON.stringify(docsearch))}}`, ...keys] };
+	const { shell: _shell, ...config } = docsearch;
+	return { extra: [`data-mm-docsearch={${JSON.stringify(JSON.stringify(config))}}`, ...keys] };
 }
 
 /** Records the ports an element of the old page needs. Behaviour is bound once on the body, so no element gets attributes. */
