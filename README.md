@@ -478,7 +478,7 @@ element is when a site renders several (Radix's, Base UI's and React Aria's tabs
 a Markless port of that library (`parts/`: Radix Dialog on the shared dialog engine, Popover, DropdownMenu,
 Tabs, Collapsible and Accordion on Floating UI as Radix uses it; Base UI Popover, Menu, Tooltip and Select),
 written once and used on every site, delegated from each page's root element. The site's own client
-components go in `lib/site/parts.ts` (and `lib/site/mounts.json` for elements a part starts on when shown).
+components go in `lib/site/parts.ts` (and `lib/site/mounts.json` for elements a part starts on when shown). A theme toggle the site names in `lib/site/controls.json` (`{ "action": "theme", "name": "Toggle theme", "key": "d" }`) answers from the first paint: on a next-themes site, an inline script in the head reads ThemeProvider's options from next-themes' own script, switches the theme in the click's frame before the page's code arrives, and marks the event, so the site's part (`handledEarly`) does only what else its toggle does.
 With `--source`, the old config's redirects and rewrites and each route handler answer through a generated
 Nitro middleware: a handler runs as the old app's own server code (its local imports copied, JSX data
 dropped, `next/server` on the Fetch API); one that needs the old framework is served from the old build and
