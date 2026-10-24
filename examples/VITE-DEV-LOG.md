@@ -535,3 +535,10 @@ comes back after Escape.
 
 **Production URL.** The project also answers at https://mm-vite-dev-new.vercel.app, a project domain, so every
 production deploy gets it. The old hostname still works.
+
+**Search click INP.** Measured after load as the showcase does (4x CPU, Slow 4G): the click took 40 ms on the port
+against 24 ms on the original. The early click script drew the box and locked scrolling inside the click's own task, so
+the click's next paint carried the overlay and a relayout without the scrollbar. It now draws them right after that
+paint, as VitePress opens its box on a later frame. The port measures 24 ms on `/`, as the original does, and on
+`/guide/` both stay under the 16 ms reporting threshold. The box still opens on the first click: 0 clicks lost, against
+the original's 37–38.
