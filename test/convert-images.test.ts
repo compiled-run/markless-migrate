@@ -129,6 +129,8 @@ test('check: an image no first screen shows loads lazily, a first-screen one nev
 	);
 	const small = { desktop: { viewport: 'desktop', images: [img({ box: { x: 0, y: 2400, width: 40, height: 40 } })], assets: [{ url: '/a.png', bytes: 2_000 }] }, mobile: { viewport: 'mobile', images: [img({ box: { x: 0, y: 3100, width: 40, height: 40 } })], assets: [] } } as unknown as Parameters<typeof imageLoadingFailures>[1];
 	assert.deepEqual(imageLoadingFailures('/', small), [], 'a 2 kB logo costs a request, not bandwidth worth a finding');
+	const svg = { desktop: { viewport: 'desktop', images: [img({ box: { x: 0, y: 2400, width: 40, height: 40 } })], assets: [{ url: '/a.png', bytes: 12_000, contentType: 'image/svg+xml' }] }, mobile: { viewport: 'mobile', images: [img({ box: { x: 0, y: 3100, width: 40, height: 40 } })], assets: [] } } as unknown as Parameters<typeof imageLoadingFailures>[1];
+	assert.deepEqual(imageLoadingFailures('/', svg), [], 'a 12 kB SVG crosses the wire as about 3 kB');
 	const responsive = pages([img({ widths: true, naturalWidth: 1080, naturalHeight: 1166, box: { x: 0, y: 378, width: 1009, height: 1090 } })], [img({ widths: true, naturalWidth: 1080, naturalHeight: 1166, box: { x: 0, y: 378, width: 577, height: 623 } })]);
 	assert.deepEqual(imageLoadingFailures('/', responsive), []);
 });
@@ -162,6 +164,7 @@ test("an image's renditions share its identity: the optimizer's source, or the f
 	const next = { ...old, src: '/a-640w.webp', naturalWidth: 640, naturalHeight: 477 };
 	const page = (images: (typeof old)[]) => ({ images }) as unknown as Parameters<typeof responsiveRegionsCandidate>[1];
 	assert.ok(responsiveRegionsCandidate([{ x: 0, y: 0, width: 400, height: 300 }], page([old]), page([next]), 900));
+	assert.ok(responsiveRegionsCandidate([{ x: 400, y: 304, width: 16, height: 16 }], page([old]), page([next]), 40), 'a 16 px diff cell reaching past the edge');
 	assert.equal(responsiveRegionsCandidate([{ x: 0, y: 0, width: 400, height: 300 }], page([old]), page([next]), 60_000), undefined, 'most of its pixels changed: another picture');
 });
 
@@ -171,4 +174,43 @@ test('the checker leaves an image the page does not draw to load lazily, where t
 	assert.equal(unshownLazyCandidate(old, { ...old, naturalWidth: 0, naturalHeight: 0, loading: 'lazy' })?.rule, 'unshown-lazy-image');
 	assert.equal(unshownLazyCandidate(old, { ...old, naturalWidth: 0, naturalHeight: 0 }), undefined, 'eager and not loaded: broken, not lazy');
 	assert.equal(unshownLazyCandidate(old, { ...old, naturalWidth: 0, naturalHeight: 0, loading: 'lazy', box: { x: 0, y: 0, width: 10, height: 10 } }), undefined, 'drawn and not loaded');
+});
+
+test('the same picture at another resolution keeps its 8 px blocks; another picture does not', async () => {
+	const { samePicture } = await import('../src/check/automatic.ts');
+	const size = 64;
+	const image = (pixel: (x: number, y: number) => [number, number, number]) => {
+		const data = new Uint8Array(size * size * 4);
+		for (let y = 0; y < size; y++)
+			for (let x = 0; x < size; x++) {
+				const [r, g, b] = pixel(x, y);
+				data.set([r, g, b, 255], (y * size + x) * 4);
+			}
+		return { width: size, height: size, data };
+	};
+	let seed = 7;
+	const noise = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31) * 80 - 40;
+	const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+	const base = (x: number, y: number): [number, number, number] => [x * 3, y * 3, 128];
+	const old = image(base);
+	const grain = image((x, y) => base(x, y).map((v) => clamp(v + noise())) as [number, number, number]);
+	const other = image((x, y) => [255 - x * 3, 128, y * 3]);
+	const box = { x: 0, y: 0, width: size, height: size };
+	assert.equal(samePicture({ old, new: grain }, box), true, 'grain re-sampled: most pixels differ, the blocks do not');
+	assert.equal(samePicture({ old, new: other }, box), false);
+});
+
+test('check: image loading the port shares with the original is an improvement, not red; what it loads worse is red', async () => {
+	const { imageLoading } = await import('../src/check/image-loading.ts');
+	const assets = [{ url: '/a.png', bytes: 60_000 }];
+	const img = { src: '/a.png', alt: 'a', naturalWidth: 800, naturalHeight: 600, broken: false };
+	const below = { desktop: { viewport: 'desktop', images: [{ ...img, box: { x: 0, y: 2400, width: 400, height: 300 } }], assets }, mobile: { viewport: 'mobile', images: [{ ...img, box: { x: 0, y: 3100, width: 390, height: 290 } }], assets } } as unknown as Parameters<typeof imageLoading>[1];
+	const lazy = { desktop: { viewport: 'desktop', images: [{ ...img, loading: 'lazy', box: { x: 0, y: 2400, width: 400, height: 300 } }], assets }, mobile: { viewport: 'mobile', images: [{ ...img, loading: 'lazy', box: { x: 0, y: 3100, width: 390, height: 290 } }], assets } } as unknown as Parameters<typeof imageLoading>[1];
+	const same = imageLoading('/', below, below);
+	assert.deepEqual(same.failures, []);
+	assert.equal(same.improvements.length, 1);
+	assert.match(same.improvements[0]!, /as on the old page/);
+	const worse = imageLoading('/', lazy, below);
+	assert.equal(worse.failures.length, 1, 'the original loads it lazily and the port does not');
+	assert.deepEqual(imageLoading('/', below, lazy), { failures: [], improvements: [] });
 });

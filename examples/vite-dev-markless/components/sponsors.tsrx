@@ -9,7 +9,7 @@ export default function Sponsors() @{
 				<a href="https://github.com/sponsors/vitejs" target="_blank" class="button w-fit mt-8 mx-auto md:mx-0" data-v-755ff878="">Become a Sponsor</a>
 			</div>
 			<a class="flex gap-8 md:gap-12 items-start justify-center md:justify-start md:pr-25" href="https://voidzero.dev" target="_blank" data-v-755ff878="">
-				<img src={viteViteByVoidzero} alt="Brought to you by VoidZero" class="h-44 max-w-full object-contain mt-10 md:mt-0" data-v-755ff878="" />
+				<img loading="lazy" src={viteViteByVoidzero} alt="Brought to you by VoidZero" class="h-44 max-w-full object-contain mt-10 md:mt-0" data-v-755ff878="" />
 			</a>
 		</div>
 	</div>

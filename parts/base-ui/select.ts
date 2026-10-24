@@ -94,7 +94,7 @@ function choose(p: Popup, option: HTMLElement): void {
 	}
 	const label = ([...option.children].find((c) => c.tagName === 'DIV') ?? option).textContent ?? '';
 	// The trigger's value is Markless state (convert's SelectPlan); its handler for this event sets it.
-	p.trigger.dispatchEvent(new CustomEvent('mmchoose', { detail: label }));
+	p.trigger.dispatchEvent(new CustomEvent('mmchoose', { bubbles: true, detail: label }));
 	selectedValue.set(p.trigger, label);
 	closePopup(p, true, true);
 }
