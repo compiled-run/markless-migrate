@@ -119,8 +119,13 @@ export function platformKeys(): void {
 	const apple = /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform);
 	const buttons = '[data-mm-docsearch],[data-mm-docsearch-keys]';
 	const style = document.createElement('style');
-	style.append(`:is(${buttons}) [data-mm-key="${apple ? 'ctrl' : 'apple'}"]{display:none}`);
+	// DocSearch 4 spaces its first key with :first-child, which the hidden ⌘ key still is off Apple platforms.
+	style.append(`:is(${buttons}) [data-mm-key="${apple ? 'ctrl' : 'apple'}"]{display:none}`, apple ? '' : `:is(${buttons}) [data-mm-key="apple"]+[data-mm-key="ctrl"]{margin-inline-end:.4em}`);
 	document.head.append(style);
+	// An in-place navigation replaces the head, and the next page's copy of this script stops at the flag above.
+	new MutationObserver(() => {
+		if (!style.isConnected) document.head.append(style);
+	}).observe(document.documentElement, { childList: true, subtree: true });
 	if (apple) return;
 	const label = () => {
 		for (const el of document.querySelectorAll(buttons)) {
