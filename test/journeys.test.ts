@@ -127,3 +127,11 @@ test('a button the new page marks aria-expanded when it opens a menu, where the 
 	const toggles = [[result({ added: ['- button "Change language" [pressed]:', ...opened], removed: ['- button "Change language":'] })]];
 	assert.equal(compareJourneys('/', [toggles, toggles], menu, better).length, 1);
 });
+
+test('a step answered more slowly on the new page is red only when neither side asked the server first', async () => {
+	const { slowerAnswer } = await import('../src/check/journeys.ts');
+	const at = (ms: number, requests: string[] = []) => result({ requests, reaction: { regions: [], changes: [], answeredMs: ms } });
+	assert.match(slowerAnswer([at(40), at(60)], at(400)) ?? '', /old page changes 60 ms after the step; the new page 400 ms/);
+	assert.equal(slowerAnswer([at(40), at(60)], at(140)), undefined, 'within 100 ms');
+	assert.equal(slowerAnswer([at(40, ['POST /api/contact']), at(60, ['POST /api/contact'])], at(3000, ['POST /api/contact'])), undefined, 'the server answered first');
+});

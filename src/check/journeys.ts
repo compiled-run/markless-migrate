@@ -1797,6 +1797,8 @@ export function extraShift(olds: readonly StepResult[], next: StepResult): strin
 
 /** The new page takes meaningfully longer than every old run to show its first change after a step. */
 export function slowerAnswer(olds: readonly StepResult[], next: StepResult): string | undefined {
+	// A step that asks the server first is as fast as the server; how fast each side's server answers is the responsiveness check's, on a fair network.
+	if ([...olds, next].some((r) => r.requests.length || r.writes?.length)) return undefined;
 	const times = olds.map((o) => o.reaction?.answeredMs);
 	const mine = next.reaction?.answeredMs;
 	if (mine === undefined || times.some((t) => t === undefined)) return undefined;
