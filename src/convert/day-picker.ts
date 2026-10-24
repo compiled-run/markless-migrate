@@ -101,7 +101,14 @@ export async function captureDayPickers(browser: Browser, origin: string, route:
 				const effects = await effectsOf(page, i, picker.config?.mode);
 				if (effects.length) out[i] = { ...picker, effects };
 			}
-			for (const [i, opener] of openers.entries()) out.push(...(await openerPickers(page, { ...opener, ...(ks[i] !== undefined ? { k: ks[i] } : {}) }, time, probe)));
+			// Each opener on the page as loaded: a pick changes what its trigger (and so its signature) shows.
+			for (const [i, opener] of openers.entries()) {
+				if (i > 0) {
+					await loadPage(page, new URL(route, origin).href);
+					await settle(page);
+				}
+				out.push(...(await openerPickers(page, { ...opener, ...(ks[i] !== undefined ? { k: ks[i] } : {}) }, time, probe)));
+			}
 			return out;
 		} finally {
 			await context.close().catch(() => {});
@@ -1109,7 +1116,7 @@ export class DayPickerPlan {
 const textContent = (el: Element): string => childrenOf(el).map((n) => (isText(n) ? (n as Text).value : isElement(n) ? textContent(n) : '')).join('');
 
 // The date-fns patterns a date picker's trigger is likely written with, tried in turn against what the old page showed.
-const LABEL_PATTERNS = ['PPP', 'PP', 'PPPP', 'LLL dd, y', 'MMM dd, y', 'MMM d, y', 'MMMM d, yyyy', 'MMMM dd, yyyy', 'dd/MM/yyyy', 'MM/dd/yyyy', 'yyyy-MM-dd', 'd MMM yyyy'];
+const LABEL_PATTERNS = ['PPP', 'PP', 'PPPP', 'LLL dd, y', 'MMM dd, y', 'MMM d, y', 'MMMM d, yyyy', 'MMMM dd, yyyy', 'M/d/yyyy', 'MM/dd/yyyy', 'dd/MM/yyyy', 'd/M/yyyy', 'yyyy-MM-dd', 'd MMM yyyy'];
 const LABEL_JOINS = [' - ', ' – ', ' to '];
 
 /** The pattern (and a range's join) that renders what the trigger showed after each pick, its unchanged leading nodes, and the rest it showed before. */
@@ -1125,9 +1132,16 @@ export function labelOf(opener: LayerOpener, config: DayPickerConfig): { readonl
 	const fragment = (list: readonly unknown[]) => emitChildren({ nodeName: '#document-fragment', childNodes: list } as never);
 	const text = (html: string) => nodes(html).slice(shared).map((n) => (isText(n) ? (n as Text).value : isElement(n) ? textContent(n) : '')).join('').trim();
 	const day = (t: Triple) => Math.round(Date.UTC(t[0], t[1], t[2]) / 86_400_000);
+	// Each pick shows the day just picked, alone or as one end of a range whose other end may be a day picked before it.
+	const one = (pattern: string, t: Triple) => dayPickerLabel(config, { t: 0, m: 0, s: [day(t)], f: null, lf: null }, pattern);
 	for (const pattern of LABEL_PATTERNS)
 		for (const join of LABEL_JOINS) {
-			const fits = opener.picks.every((p) => dayPickerLabel(config, { t: 0, m: 0, s: p.days.map(day), r: true, f: null, lf: null }, pattern, join) === text(p.html));
+			const fits = opener.picks.every((p) => {
+				const shown = text(p.html);
+				const parts = shown.split(join);
+				const own = one(pattern, p.days.at(-1)!);
+				return parts.length <= 2 && own !== undefined && parts.includes(own) && parts.every((part) => part.length === own.length || /\D/.test(part));
+			});
 			if (fits) return { pattern, join, prefix: fragment(before.slice(0, shared)), rest: fragment(before.slice(shared)) };
 		}
 	return undefined;
