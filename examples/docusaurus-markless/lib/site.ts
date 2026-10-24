@@ -6,6 +6,7 @@ import docsVersions from './docs-versions.json';
 import sidebarIndex from './sidebars.json';
 import routeAliases from './route-aliases.json';
 import { initShowcase } from './showcase.ts';
+import { drawerMarkup } from './drawer-markup.js';
 import { initPlaygrounds } from './playground.ts';
 import { initJsonViews } from './json-view.ts';
 import { hint, moveHints, readHints } from './page-hints.ts';
@@ -761,12 +762,14 @@ function toggleWordWrap(button: HTMLElement): void {
 }
 
 let lastScrollY = 0;
+// useHideableNavbar shows the navbar on a location change; the scroll a navigation restores is not the visitor's.
+let navigationScroll = false;
 // Scroll effects of the old theme: the hideable navbar, the sidebar's announcement-bar margin and back-to-top.
 function onScroll(): void {
 	const y = window.scrollY;
 	const navbar = document.querySelector(`nav.${cls('Navbar/Layout', 'navbarHideable')}`) as HTMLElement | null;
 	const hidden = cls('Navbar/Layout', 'navbarHidden');
-	if (navbar) {
+	if (navbar && !navigationScroll) {
 		const height = navbar.getBoundingClientRect().height;
 		if (y < height) navbar.classList.remove(hidden);
 		else if (lastScrollY && y >= lastScrollY) navbar.classList.add(hidden);
@@ -781,73 +784,20 @@ function onScroll(): void {
 
 // The mobile drawer (Navbar/MobileSidebar): it exists only below 997px, built from the page's navbar and its
 // sidebar (docs or blog) as the theme renders it there.
-function mobileNavItem(link: HTMLAnchorElement): string {
-	const copy = link.cloneNode(true) as HTMLAnchorElement;
-	copy.className = [...link.classList].filter((c) => c !== 'navbar__item' && c !== 'navbar__link').map((c) => (c === 'navbar__link--active' ? 'menu__link--active' : c)).join(' ');
-	copy.classList.add('menu__link');
-	const classesInOrder = ['menu__link', ...[...copy.classList].filter((c) => c !== 'menu__link')];
-	copy.className = classesInOrder.join(' ');
-	return `<li class="menu__list-item">${copy.outerHTML}</li>`;
-}
-function mobileDropdown(dropdown: Element, label: string, labelIcon: string): string {
-	const items = [...dropdown.querySelectorAll(':scope > .dropdown__menu > li')];
-	const path = currentPath();
-	const isActiveItem = (li: Element) => {
-		const a = li.querySelector('a');
-		return Boolean(a && (a.classList.contains('dropdown__link--active') || (!/^https?:/.test(a.getAttribute('href') ?? '') && samePath(a.getAttribute('href') ?? undefined, path) && !a.getAttribute('lang'))));
-	};
-	const containsActive = items.some((li) => li.querySelector('a.dropdown__link--active') && !li.querySelector('a[lang]'));
-	const collapsed = !containsActive;
-	const list = items
-		.map((li) => {
-			const a = li.querySelector('a');
-			if (!a) return `<li class="${['menu__list-item', li.className].filter(Boolean).join(' ')}">${li.innerHTML}</li>`;
-			const copy = a.cloneNode(true) as HTMLAnchorElement;
-			copy.className = ['menu__link', ...[...a.classList].filter((cl) => cl !== 'dropdown__link').map((cl) => (cl === 'dropdown__link--active' ? 'menu__link--active' : cl))].join(' ');
-			for (const svg of copy.querySelectorAll('svg[width="12"]')) {
-				svg.setAttribute('width', '13.5');
-				svg.setAttribute('height', '13.5');
-			}
-			void isActiveItem;
-			return `<li class="menu__list-item">${copy.outerHTML}</li>`;
-		})
-		.join('');
-	return `<li class="menu__list-item${collapsed ? ' menu__list-item--collapsed' : ''}"><div class="menu__list-item-collapsible"><a href="#" role="button" class="${cls('NavbarItem/DropdownNavbarItem/Mobile', 'dropdownNavbarItemMobile')} menu__link menu__link--sublist">${labelIcon}${label}</a><button aria-label="${collapsed ? 'Expand' : 'Collapse'} the dropdown" aria-expanded="${!collapsed}" type="button" class="clean-btn menu__caret"></button></div>${collapsed ? '' : `<ul class="menu__list" style="display: block; overflow: visible; height: auto;">${list}</ul>`}</li>`;
-}
-const pendingDropdownLists = new WeakMap<Element, string>();
+const drawerClasses = () => ({
+	toggle: cls('ColorModeToggle', 'toggle'),
+	colorModeToggle: cls('Navbar/Content', 'colorModeToggle'),
+	searchContainer: cls('Navbar/Search', 'navbarSearchContainer'),
+	dropdownMobile: cls('NavbarItem/DropdownNavbarItem/Mobile', 'dropdownNavbarItemMobile'),
+	yearGroupHeading: cls('BlogSidebar/Mobile', 'yearGroupHeading'),
+});
 let keptDrawer: Element | undefined;
 let drawerSidebarKey: string | undefined;
 function buildDrawer(nav: Element): void {
-	const inner = nav.querySelector(':scope > .navbar__inner');
-	if (!inner) return;
-	const brand = inner.querySelector('.navbar__brand')?.outerHTML ?? '';
-	const toggle = inner.querySelector(`.${cls('Navbar/Content', 'colorModeToggle')}`);
-	const toggleCopy = toggle?.cloneNode(true) as HTMLElement | undefined;
-	if (toggleCopy) toggleCopy.className = `${cls('ColorModeToggle', 'toggle')} margin-right--md`;
-	const primary: string[] = [];
-	const dropdownLists: string[] = [];
-	for (const el of [...inner.querySelectorAll(':scope > .navbar__items > *')]) {
-		if (el.matches('button.navbar__toggle, a.navbar__brand') || el.classList.contains(cls('Navbar/Content', 'colorModeToggle')) || el.classList.contains(cls('Navbar/Search', 'navbarSearchContainer'))) continue;
-		if (el.matches('a.navbar__item')) primary.push(mobileNavItem(el as HTMLAnchorElement));
-		else if (el.matches('.dropdown')) {
-			const link = el.querySelector(':scope > .navbar__link')!;
-			const icon = link.querySelector('svg')?.outerHTML ?? '';
-			const label = link.querySelector('svg') ? 'Languages' : 'Versions';
-			const markup = mobileDropdown(el, label, icon);
-			primary.push(markup);
-			dropdownLists.push(markup);
-		} else if (el.matches('button:not([class])')) primary.push(`<button type="button">${escapeHtml(el.textContent ?? '')} (mobile)</button>`);
-		else if (el.matches('div.navbar__item')) primary.push(`<li class="${el.className.replace('navbar__item', 'menu__list-item').trim()}">${el.innerHTML}</li>`);
-	}
 	const sidebarMenu = document.querySelector('nav[aria-label="Docs sidebar"] > ul.theme-doc-sidebar-menu') ?? parkedNode('sidebar')?.querySelector('nav[aria-label="Docs sidebar"] > ul.theme-doc-sidebar-menu');
-	const blogNav = document.querySelector('nav[aria-label="Blog recent posts navigation"]');
-	let secondary = '';
-	if (sidebarMenu) secondary = (sidebarMenu as Element).outerHTML;
-	else if (blogNav) secondary = blogSidebarMobile(blogNav);
-	const showSecondary = Boolean(secondary);
-	const close = '<svg viewBox="0 0 15 15" width="21" height="21"><g stroke="var(--ifm-color-emphasis-600)" stroke-width="1.2"><path d="M.75.75l13.5 13.5M14.25.75L.75 14.25"></path></g></svg>';
-	const panel = 'theme-layout-navbar-sidebar-panel navbar-sidebar__item menu';
-	const markup = `<div class="theme-layout-navbar-sidebar navbar-sidebar"><div class="navbar-sidebar__brand">${brand}${toggleCopy?.outerHTML ?? ''}<button type="button" aria-label="Close navigation bar" class="clean-btn navbar-sidebar__close">${close}</button></div><div class="navbar-sidebar__items${showSecondary ? ' navbar-sidebar__items--show-secondary' : ''}"><div class="${panel}"${showSecondary ? ' inert=""' : ''}><ul class="menu__list">${primary.join('')}</ul></div><div class="${panel}"${showSecondary ? '' : ' inert=""'}><button type="button" class="clean-btn navbar-sidebar__back">← Back to main menu</button>${secondary}</div></div></div>`;
+	const built = drawerMarkup(nav, drawerClasses(), sidebarMenu ?? null) as { markup: string } | null;
+	if (!built) return;
+	const { markup } = built;
 	// The drawer stays mounted across navigations, so a close started by a link click keeps sliding out.
 	const kept = keptDrawer;
 	if (kept && !kept.isConnected) {
@@ -877,16 +827,6 @@ function buildDrawer(nav: Element): void {
 	keptDrawer = nav.querySelector(':scope > .theme-layout-navbar-sidebar') ?? undefined;
 	drawerSidebarKey = desktopSidebarKey();
 	document.body.style.overflow = 'visible';
-	void pendingDropdownLists;
-	void dropdownLists;
-}
-function blogSidebarMobile(nav: Element): string {
-	const groups = [...nav.querySelectorAll(':scope > [role=group]')];
-	const list = (ul: Element) => `<ul class="menu__list">${[...ul.querySelectorAll(':scope > li > a')].map((a) => `<li class="menu__list-item"><a class="menu__link${a.getAttribute('aria-current') ? ' menu__link--active' : ''}"${a.getAttribute('aria-current') ? ' aria-current="page"' : ''} href="${a.getAttribute('href')}">${a.innerHTML}</a></li>`).join('')}</ul>`;
-	const heading = (h3: Element | null) => (h3 ? `<h3 class="${cls('BlogSidebar/Mobile', 'yearGroupHeading')}">${h3.innerHTML}</h3>` : '');
-	if (groups.length) return groups.map((g) => `<div role="group">${heading(g.querySelector('h3'))}${list(g.querySelector('ul')!)}</div>`).join('');
-	const ul = nav.querySelector(':scope > ul');
-	return ul ? list(ul) : '';
 }
 function toggleDrawer(show: boolean): void {
 	const nav = document.querySelector('nav.theme-layout-navbar');
@@ -909,7 +849,7 @@ function toggleMobileDropdown(li: Element): void {
 		const label = li.querySelector('.menu__link--sublist')?.textContent ?? '';
 		const desktop = [...document.querySelectorAll('.navbar__inner .dropdown')].find((dropdown) => (dropdown.querySelector(':scope > .navbar__link svg') ? 'Languages' : 'Versions') === label);
 		if (!desktop) return;
-		const html = mobileDropdown(desktop, label, '');
+		const html = drawerMarkup(desktop, drawerClasses(), null, { el: desktop, label, icon: '' }) as string;
 		const tmp = document.createElement('div');
 		tmp.innerHTML = html.replace('menu__list-item--collapsed', '');
 		const items = tmp.querySelector('ul.menu__list');
@@ -946,6 +886,10 @@ function applyWindowSize(): void {
 	const drawer = nav?.querySelector(':scope > .theme-layout-navbar-sidebar');
 	if (isMobile()) {
 		if (nav && !drawer) buildDrawer(nav);
+		else if (drawer && !keptDrawer) {
+			keptDrawer = drawer;
+			drawerSidebarKey = desktopSidebarKey();
+		}
 		park('sidebar', document.querySelector(`aside.theme-doc-sidebar-container .${cls('DocSidebar/Desktop', 'sidebar')}`));
 		park('toc', document.querySelector(`.${cls('TOC', 'tableOfContents')}`));
 		park('blog-sidebar', document.querySelector('nav[aria-label="Blog recent posts navigation"]')?.parentElement ?? null);
@@ -1280,7 +1224,12 @@ function siteClick(event: Event): void {
 	if (closest(event, '.navbar__items > button:not([class]), .navbar-sidebar ul.menu__list > button:not([class])')) return alert("I'm a custom navbar item type example");
 	if (closest(event, `a.${cls('SkipToContent', 'skipToContent')}`)) return skipToContent(event);
 	if (closest(event, `.${cls('AnnouncementBar', 'announcementBarClose')}`)) return dismissAnnouncement();
-	if (closest(event, `.${cls('ColorModeToggle', 'toggle')} button`)) return cycleColorMode();
+	if (closest(event, `.${cls('ColorModeToggle', 'toggle')} button`)) {
+		const early = window as Window & { __mmColorModeAt?: number };
+		// The toggle's own script already switched the mode for a click made before this module started.
+		if ((event as Event & { __mmColorMode?: number }).__mmColorMode || event.timeStamp === early.__mmColorModeAt) return;
+		return cycleColorMode();
+	}
 	const tab = closest(event, 'li[role=tab]');
 	if (tab) return selectTab(tab);
 	const wrap = closest(event, '.theme-code-block button[aria-label="Toggle word wrap"]');
@@ -1320,7 +1269,7 @@ function siteClick(event: Event): void {
 		return toggleMobileDropdown(mobileDropdownLink.closest('.menu__list-item')!);
 	}
 	if (closest(event, 'button.navbar-sidebar__back')) return showSecondaryMenu(false);
-	if (drawer && link && !link.classList.contains('menu__link--sublist')) return toggleDrawer(false);
+	if (drawer && link && !link.classList.contains('menu__link--sublist') && !(link.matches('.navbar__brand') && samePath(link.getAttribute('href') ?? undefined, currentPath()))) return toggleDrawer(false);
 	if (closest(event, `button.${cls('DocSidebar/Desktop/CollapseButton', 'collapseSidebarButton')}`)) return setSidebarHidden(true);
 	if (closest(event, `.${cls('DocRoot/Layout/Sidebar/ExpandButton', 'expandButton')}`)) return setSidebarHidden(false);
 	if (closest(event, 'button.DocSearch-Button')) return openSearch();
@@ -1380,8 +1329,10 @@ function noscriptAsText(): void {
 	for (const el of document.body.querySelectorAll('noscript')) if (el.firstElementChild) el.textContent = el.innerHTML;
 }
 
-function pageInit(): void {
+function pageInit(navigation?: Event): void {
 	noscriptAsText();
+	// Before anything reads layout: the showcase filter leaves a few cards of the hundreds the page arrives with.
+	initShowcase();
 	if (!announcementSeen && document.querySelector('nav.theme-layout-navbar')) {
 		announcementSeen = true;
 		if (storage()?.getItem(ANNOUNCEMENT_ID_KEY) !== ANNOUNCEMENT_ID) storage()?.setItem(DISMISS_KEY, 'false');
@@ -1411,13 +1362,24 @@ function pageInit(): void {
 	queueMicrotask(checkLazyImages);
 	updateWordWrap();
 	lastScrollY = window.scrollY;
+	if (navigation) {
+		// React remounts the navbar on a route change: a hover menu chosen from closes under the pointer until it moves.
+		for (const dropdown of document.querySelectorAll('.navbar .dropdown--hoverable:has(> .dropdown__menu:hover)')) {
+			const className = dropdown.className;
+			dropdown.classList.remove('dropdown--hoverable');
+			document.addEventListener('pointermove', () => (dropdown.className = className), { once: true });
+		}
+		const anchored = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1)));
+		document.querySelector(`nav.${cls('Navbar/Layout', 'navbarHideable')}`)?.classList.toggle(cls('Navbar/Layout', 'navbarHidden'), Boolean(anchored));
+		navigationScroll = true;
+		requestAnimationFrame(() => requestAnimationFrame(() => (navigationScroll = false)));
+	}
 	updateTocHighlight();
 	watchAvatars(document);
 	loadCanaryVersion();
 	loadCanny();
 	// Its Algolia client loads with the search page only, as the theme's SearchPage chunk does.
 	if (document.documentElement.classList.contains('search-page-wrapper')) void import('./search-page.ts').then((page) => page.init());
-	initShowcase();
 	initJsonViews(hint);
 	initImageZoom();
 	startYoutube();
@@ -1447,6 +1409,7 @@ export function siteBoot(event?: Event): void {
 }
 function startSite(): void {
 	booted = true;
+	(window as Window & { __mmSiteBooted?: boolean }).__mmSiteBooted = true;
 	bootedAt = performance.now();
 	pageInit();
 	document.addEventListener('marklessrouterrendered', pageInit);

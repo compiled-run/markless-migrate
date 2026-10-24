@@ -18,7 +18,7 @@ export default function Page() @{
 			{" "}
 			<p>With this release comes the release of a new sibling project:</p>
 			{" "}
-			<p><a rel="noopener" target="_blank" href="https://hyperscript.org">https://hyperscript.org</a></p>
+			<p><a rel="noopener" target="_blank" href="https://hyperscript.org">{"https://hyperscript.org"}</a></p>
 			{" "}
 			<p>{"hyperscript is a scripting language designed to be embedded directly in HTML and inspired by "}<a rel="noopener" target="_blank" href="https://hypercard.org/HyperTalk%20Reference%202.4.pdf">HyperTalk</a>, the programming language of HyperCard.</p>
 			{" "}
@@ -28,7 +28,7 @@ export default function Page() @{
 			{" "}
 			<h4 id="other-changes">Other Changes</h4>
 			{" "}
-			<ul>{" "}<li>{"empty verb attributes are now allowed and follow the anchor tag semantics (e.g. "}<code>&lt;div hx-get&gt;&lt;/div&gt;</code>)</li>{" "}<li>{"nunjuks inline rendering is now supported in the "}<code>client-side-templates</code>{" extension"}</li>{" "}<li>{"the new "}<code>ajax-header</code>{" extension includes the "}<code>X-Requested-With</code>{" header"}</li>{" "}<li>bad JSON is now handled more gracefully</li>{" "}<li><code>hx-swap="none"</code>{" will cause no swap to take place "}<a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/htmx/issues/89">https://github.com/bigskysoftware/htmx/issues/89</a></li>{" "}<li><code>hx-trigger</code>{" now supports a "}<code>throttle</code>{" modifier "}<a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/htmx/issues/88">https://github.com/bigskysoftware/htmx/issues/88</a></li>{" "}<li>the focused element is preserved if possible after a replacement</li>{" "}<li>{"perf improvements for large DOM trees with sparse "}<code>hx-</code>{" annotations"}</li>{" "}<li>general bug fixes</li>{" "}</ul>
+			<ul>{" "}<li>{"empty verb attributes are now allowed and follow the anchor tag semantics (e.g. "}<code>&lt;div hx-get&gt;&lt;/div&gt;</code>)</li>{" "}<li>{"nunjuks inline rendering is now supported in the "}<code>client-side-templates</code>{" extension"}</li>{" "}<li>{"the new "}<code>ajax-header</code>{" extension includes the "}<code>X-Requested-With</code>{" header"}</li>{" "}<li>bad JSON is now handled more gracefully</li>{" "}<li><code>hx-swap="none"</code>{" will cause no swap to take place "}<a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/htmx/issues/89">{"https://github.com/bigskysoftware/htmx/issues/89"}</a></li>{" "}<li><code>hx-trigger</code>{" now supports a "}<code>throttle</code>{" modifier "}<a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/htmx/issues/88">{"https://github.com/bigskysoftware/htmx/issues/88"}</a></li>{" "}<li>the focused element is preserved if possible after a replacement</li>{" "}<li>{"perf improvements for large DOM trees with sparse "}<code>hx-</code>{" annotations"}</li>{" "}<li>general bug fixes</li>{" "}</ul>
 			{" "}
 			<p>Enjoy!</p>
 			{" "}

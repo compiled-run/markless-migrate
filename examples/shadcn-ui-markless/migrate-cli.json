@@ -1,0 +1,215 @@
+{
+	"old": {
+		"command": [
+			"node",
+			"../../deploy/shadcn-ui/old/packages/shadcn/dist/index.js"
+		],
+		"env": {
+			"REGISTRY_URL": "http://localhost:4000/r"
+		}
+	},
+	"new": {
+		"command": [
+			"node",
+			"../../deploy/shadcn-ui/old/packages/shadcn/dist/index.js"
+		],
+		"env": {
+			"REGISTRY_URL": "http://localhost:4100/r"
+		}
+	},
+	"network": "live",
+	"ignore": [
+		"node_modules/",
+		"package-lock.json",
+		".npm/",
+		".cache/"
+	],
+	"replace": [
+		{
+			"pattern": "http://localhost:4[01]00",
+			"with": "{registry}"
+		}
+	],
+	"cases": [
+		{
+			"name": "view one component",
+			"args": [
+				"view",
+				"button"
+			],
+			"files": {
+				"package.json": "{\"name\": \"app\", \"private\": true, \"dependencies\": {\"next\": \"16.0.0\", \"react\": \"19.2.0\", \"react-dom\": \"19.2.0\", \"tailwindcss\": \"^4.1.0\", \"radix-ui\": \"^1.4.3\", \"class-variance-authority\": \"^0.7.1\", \"clsx\": \"^2.1.1\", \"tailwind-merge\": \"^3.3.1\", \"lucide-react\": \"^0.540.0\"}}",
+				"tsconfig.json": "{ \"compilerOptions\": { \"baseUrl\": \".\", \"paths\": { \"@/*\": [\"./*\"] } } }",
+				"next.config.mjs": "export default {}\n",
+				"app/globals.css": "@import \"tailwindcss\";\n",
+				"app/layout.tsx": "export default function RootLayout({ children }) { return <html><body>{children}</body></html> }\n",
+				"app/page.tsx": "export default function Page() { return null }\n",
+				"components.json": "{\n  \"$schema\": \"https://ui.shadcn.com/schema.json\",\n  \"style\": \"new-york\",\n  \"rsc\": true,\n  \"tsx\": true,\n  \"tailwind\": {\n    \"config\": \"\",\n    \"css\": \"app/globals.css\",\n    \"baseColor\": \"neutral\",\n    \"cssVariables\": true,\n    \"prefix\": \"\"\n  },\n  \"iconLibrary\": \"lucide\",\n  \"aliases\": {\n    \"components\": \"@/components\",\n    \"utils\": \"@/lib/utils\",\n    \"ui\": \"@/components/ui\",\n    \"lib\": \"@/lib\",\n    \"hooks\": \"@/hooks\"\n  }\n}"
+			}
+		},
+		{
+			"name": "view several",
+			"args": [
+				"view",
+				"card",
+				"dialog",
+				"tabs"
+			],
+			"files": {
+				"package.json": "{\"name\": \"app\", \"private\": true, \"dependencies\": {\"next\": \"16.0.0\", \"react\": \"19.2.0\", \"react-dom\": \"19.2.0\", \"tailwindcss\": \"^4.1.0\", \"radix-ui\": \"^1.4.3\", \"class-variance-authority\": \"^0.7.1\", \"clsx\": \"^2.1.1\", \"tailwind-merge\": \"^3.3.1\", \"lucide-react\": \"^0.540.0\"}}",
+				"tsconfig.json": "{ \"compilerOptions\": { \"baseUrl\": \".\", \"paths\": { \"@/*\": [\"./*\"] } } }",
+				"next.config.mjs": "export default {}\n",
+				"app/globals.css": "@import \"tailwindcss\";\n",
+				"app/layout.tsx": "export default function RootLayout({ children }) { return <html><body>{children}</body></html> }\n",
+				"app/page.tsx": "export default function Page() { return null }\n",
+				"components.json": "{\n  \"$schema\": \"https://ui.shadcn.com/schema.json\",\n  \"style\": \"new-york\",\n  \"rsc\": true,\n  \"tsx\": true,\n  \"tailwind\": {\n    \"config\": \"\",\n    \"css\": \"app/globals.css\",\n    \"baseColor\": \"neutral\",\n    \"cssVariables\": true,\n    \"prefix\": \"\"\n  },\n  \"iconLibrary\": \"lucide\",\n  \"aliases\": {\n    \"components\": \"@/components\",\n    \"utils\": \"@/lib/utils\",\n    \"ui\": \"@/components/ui\",\n    \"lib\": \"@/lib\",\n    \"hooks\": \"@/hooks\"\n  }\n}"
+			}
+		},
+		{
+			"name": "search the registry",
+			"args": [
+				"search",
+				"@shadcn",
+				"-q",
+				"card"
+			],
+			"files": {
+				"package.json": "{\"name\": \"app\", \"private\": true, \"dependencies\": {\"next\": \"16.0.0\", \"react\": \"19.2.0\", \"react-dom\": \"19.2.0\", \"tailwindcss\": \"^4.1.0\", \"radix-ui\": \"^1.4.3\", \"class-variance-authority\": \"^0.7.1\", \"clsx\": \"^2.1.1\", \"tailwind-merge\": \"^3.3.1\", \"lucide-react\": \"^0.540.0\"}}",
+				"tsconfig.json": "{ \"compilerOptions\": { \"baseUrl\": \".\", \"paths\": { \"@/*\": [\"./*\"] } } }",
+				"next.config.mjs": "export default {}\n",
+				"app/globals.css": "@import \"tailwindcss\";\n",
+				"app/layout.tsx": "export default function RootLayout({ children }) { return <html><body>{children}</body></html> }\n",
+				"app/page.tsx": "export default function Page() { return null }\n",
+				"components.json": "{\n  \"$schema\": \"https://ui.shadcn.com/schema.json\",\n  \"style\": \"new-york\",\n  \"rsc\": true,\n  \"tsx\": true,\n  \"tailwind\": {\n    \"config\": \"\",\n    \"css\": \"app/globals.css\",\n    \"baseColor\": \"neutral\",\n    \"cssVariables\": true,\n    \"prefix\": \"\"\n  },\n  \"iconLibrary\": \"lucide\",\n  \"aliases\": {\n    \"components\": \"@/components\",\n    \"utils\": \"@/lib/utils\",\n    \"ui\": \"@/components/ui\",\n    \"lib\": \"@/lib\",\n    \"hooks\": \"@/hooks\"\n  }\n}"
+			}
+		},
+		{
+			"name": "add dry run",
+			"args": [
+				"add",
+				"button",
+				"--dry-run"
+			],
+			"files": {
+				"package.json": "{\"name\": \"app\", \"private\": true, \"dependencies\": {\"next\": \"16.0.0\", \"react\": \"19.2.0\", \"react-dom\": \"19.2.0\", \"tailwindcss\": \"^4.1.0\", \"radix-ui\": \"^1.4.3\", \"class-variance-authority\": \"^0.7.1\", \"clsx\": \"^2.1.1\", \"tailwind-merge\": \"^3.3.1\", \"lucide-react\": \"^0.540.0\"}}",
+				"tsconfig.json": "{ \"compilerOptions\": { \"baseUrl\": \".\", \"paths\": { \"@/*\": [\"./*\"] } } }",
+				"next.config.mjs": "export default {}\n",
+				"app/globals.css": "@import \"tailwindcss\";\n",
+				"app/layout.tsx": "export default function RootLayout({ children }) { return <html><body>{children}</body></html> }\n",
+				"app/page.tsx": "export default function Page() { return null }\n",
+				"components.json": "{\n  \"$schema\": \"https://ui.shadcn.com/schema.json\",\n  \"style\": \"new-york\",\n  \"rsc\": true,\n  \"tsx\": true,\n  \"tailwind\": {\n    \"config\": \"\",\n    \"css\": \"app/globals.css\",\n    \"baseColor\": \"neutral\",\n    \"cssVariables\": true,\n    \"prefix\": \"\"\n  },\n  \"iconLibrary\": \"lucide\",\n  \"aliases\": {\n    \"components\": \"@/components\",\n    \"utils\": \"@/lib/utils\",\n    \"ui\": \"@/components/ui\",\n    \"lib\": \"@/lib\",\n    \"hooks\": \"@/hooks\"\n  }\n}"
+			}
+		},
+		{
+			"name": "add components",
+			"args": [
+				"add",
+				"button",
+				"card",
+				"dialog",
+				"--yes"
+			],
+			"files": {
+				"package.json": "{\"name\": \"app\", \"private\": true, \"dependencies\": {\"next\": \"16.0.0\", \"react\": \"19.2.0\", \"react-dom\": \"19.2.0\", \"tailwindcss\": \"^4.1.0\", \"radix-ui\": \"^1.4.3\", \"class-variance-authority\": \"^0.7.1\", \"clsx\": \"^2.1.1\", \"tailwind-merge\": \"^3.3.1\", \"lucide-react\": \"^0.540.0\"}}",
+				"tsconfig.json": "{ \"compilerOptions\": { \"baseUrl\": \".\", \"paths\": { \"@/*\": [\"./*\"] } } }",
+				"next.config.mjs": "export default {}\n",
+				"app/globals.css": "@import \"tailwindcss\";\n",
+				"app/layout.tsx": "export default function RootLayout({ children }) { return <html><body>{children}</body></html> }\n",
+				"app/page.tsx": "export default function Page() { return null }\n",
+				"components.json": "{\n  \"$schema\": \"https://ui.shadcn.com/schema.json\",\n  \"style\": \"new-york\",\n  \"rsc\": true,\n  \"tsx\": true,\n  \"tailwind\": {\n    \"config\": \"\",\n    \"css\": \"app/globals.css\",\n    \"baseColor\": \"neutral\",\n    \"cssVariables\": true,\n    \"prefix\": \"\"\n  },\n  \"iconLibrary\": \"lucide\",\n  \"aliases\": {\n    \"components\": \"@/components\",\n    \"utils\": \"@/lib/utils\",\n    \"ui\": \"@/components/ui\",\n    \"lib\": \"@/lib\",\n    \"hooks\": \"@/hooks\"\n  }\n}"
+			}
+		},
+		{
+			"name": "add a block",
+			"args": [
+				"add",
+				"login-01",
+				"--yes"
+			],
+			"files": {
+				"package.json": "{\"name\": \"app\", \"private\": true, \"dependencies\": {\"next\": \"16.0.0\", \"react\": \"19.2.0\", \"react-dom\": \"19.2.0\", \"tailwindcss\": \"^4.1.0\", \"radix-ui\": \"^1.4.3\", \"class-variance-authority\": \"^0.7.1\", \"clsx\": \"^2.1.1\", \"tailwind-merge\": \"^3.3.1\", \"lucide-react\": \"^0.540.0\"}}",
+				"tsconfig.json": "{ \"compilerOptions\": { \"baseUrl\": \".\", \"paths\": { \"@/*\": [\"./*\"] } } }",
+				"next.config.mjs": "export default {}\n",
+				"app/globals.css": "@import \"tailwindcss\";\n",
+				"app/layout.tsx": "export default function RootLayout({ children }) { return <html><body>{children}</body></html> }\n",
+				"app/page.tsx": "export default function Page() { return null }\n",
+				"components.json": "{\n  \"$schema\": \"https://ui.shadcn.com/schema.json\",\n  \"style\": \"new-york\",\n  \"rsc\": true,\n  \"tsx\": true,\n  \"tailwind\": {\n    \"config\": \"\",\n    \"css\": \"app/globals.css\",\n    \"baseColor\": \"neutral\",\n    \"cssVariables\": true,\n    \"prefix\": \"\"\n  },\n  \"iconLibrary\": \"lucide\",\n  \"aliases\": {\n    \"components\": \"@/components\",\n    \"utils\": \"@/lib/utils\",\n    \"ui\": \"@/components/ui\",\n    \"lib\": \"@/lib\",\n    \"hooks\": \"@/hooks\"\n  }\n}"
+			}
+		},
+		{
+			"name": "add a chart",
+			"args": [
+				"add",
+				"chart-area-default",
+				"--yes"
+			],
+			"files": {
+				"package.json": "{\"name\": \"app\", \"private\": true, \"dependencies\": {\"next\": \"16.0.0\", \"react\": \"19.2.0\", \"react-dom\": \"19.2.0\", \"tailwindcss\": \"^4.1.0\", \"radix-ui\": \"^1.4.3\", \"class-variance-authority\": \"^0.7.1\", \"clsx\": \"^2.1.1\", \"tailwind-merge\": \"^3.3.1\", \"lucide-react\": \"^0.540.0\"}}",
+				"tsconfig.json": "{ \"compilerOptions\": { \"baseUrl\": \".\", \"paths\": { \"@/*\": [\"./*\"] } } }",
+				"next.config.mjs": "export default {}\n",
+				"app/globals.css": "@import \"tailwindcss\";\n",
+				"app/layout.tsx": "export default function RootLayout({ children }) { return <html><body>{children}</body></html> }\n",
+				"app/page.tsx": "export default function Page() { return null }\n",
+				"components.json": "{\n  \"$schema\": \"https://ui.shadcn.com/schema.json\",\n  \"style\": \"new-york\",\n  \"rsc\": true,\n  \"tsx\": true,\n  \"tailwind\": {\n    \"config\": \"\",\n    \"css\": \"app/globals.css\",\n    \"baseColor\": \"neutral\",\n    \"cssVariables\": true,\n    \"prefix\": \"\"\n  },\n  \"iconLibrary\": \"lucide\",\n  \"aliases\": {\n    \"components\": \"@/components\",\n    \"utils\": \"@/lib/utils\",\n    \"ui\": \"@/components/ui\",\n    \"lib\": \"@/lib\",\n    \"hooks\": \"@/hooks\"\n  }\n}"
+			}
+		},
+		{
+			"name": "info",
+			"args": [
+				"info",
+				"--json"
+			],
+			"files": {
+				"package.json": "{\"name\": \"app\", \"private\": true, \"dependencies\": {\"next\": \"16.0.0\", \"react\": \"19.2.0\", \"react-dom\": \"19.2.0\", \"tailwindcss\": \"^4.1.0\", \"radix-ui\": \"^1.4.3\", \"class-variance-authority\": \"^0.7.1\", \"clsx\": \"^2.1.1\", \"tailwind-merge\": \"^3.3.1\", \"lucide-react\": \"^0.540.0\"}}",
+				"tsconfig.json": "{ \"compilerOptions\": { \"baseUrl\": \".\", \"paths\": { \"@/*\": [\"./*\"] } } }",
+				"next.config.mjs": "export default {}\n",
+				"app/globals.css": "@import \"tailwindcss\";\n",
+				"app/layout.tsx": "export default function RootLayout({ children }) { return <html><body>{children}</body></html> }\n",
+				"app/page.tsx": "export default function Page() { return null }\n",
+				"components.json": "{\n  \"$schema\": \"https://ui.shadcn.com/schema.json\",\n  \"style\": \"new-york\",\n  \"rsc\": true,\n  \"tsx\": true,\n  \"tailwind\": {\n    \"config\": \"\",\n    \"css\": \"app/globals.css\",\n    \"baseColor\": \"neutral\",\n    \"cssVariables\": true,\n    \"prefix\": \"\"\n  },\n  \"iconLibrary\": \"lucide\",\n  \"aliases\": {\n    \"components\": \"@/components\",\n    \"utils\": \"@/lib/utils\",\n    \"ui\": \"@/components/ui\",\n    \"lib\": \"@/lib\",\n    \"hooks\": \"@/hooks\"\n  }\n}"
+			}
+		},
+		{
+			"name": "init with a preset",
+			"args": [
+				"init",
+				"--preset",
+				"nova",
+				"--base",
+				"radix",
+				"--yes",
+				"--no-monorepo"
+			],
+			"files": {
+				"package.json": "{\"name\": \"app\", \"private\": true, \"dependencies\": {\"next\": \"16.0.0\", \"react\": \"19.2.0\", \"react-dom\": \"19.2.0\", \"tailwindcss\": \"^4.1.0\"}}",
+				"tsconfig.json": "{ \"compilerOptions\": { \"baseUrl\": \".\", \"paths\": { \"@/*\": [\"./*\"] } } }",
+				"next.config.mjs": "export default {}\n",
+				"app/globals.css": "@import \"tailwindcss\";\n",
+				"app/layout.tsx": "export default function RootLayout({ children }) { return <html><body>{children}</body></html> }\n",
+				"app/page.tsx": "export default function Page() { return null }\n"
+			}
+		},
+		{
+			"name": "init then add",
+			"args": [
+				"init",
+				"--preset",
+				"nova",
+				"--base",
+				"base",
+				"--yes",
+				"--no-monorepo",
+				"button"
+			],
+			"files": {
+				"package.json": "{\"name\": \"app\", \"private\": true, \"dependencies\": {\"next\": \"16.0.0\", \"react\": \"19.2.0\", \"react-dom\": \"19.2.0\", \"tailwindcss\": \"^4.1.0\"}}",
+				"tsconfig.json": "{ \"compilerOptions\": { \"baseUrl\": \".\", \"paths\": { \"@/*\": [\"./*\"] } } }",
+				"next.config.mjs": "export default {}\n",
+				"app/globals.css": "@import \"tailwindcss\";\n",
+				"app/layout.tsx": "export default function RootLayout({ children }) { return <html><body>{children}</body></html> }\n",
+				"app/page.tsx": "export default function Page() { return null }\n"
+			}
+		}
+	],
+	"timeoutMs": 240000
+}

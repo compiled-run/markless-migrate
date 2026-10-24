@@ -22,14 +22,17 @@ interface AxNode {
 const label = (node: AxNode | undefined) => (node ? `${node.role?.value ?? 'unknown'}${node.name?.value ? ` "${node.name.value.replace(/\s+/g, ' ').trim()}"` : ''}` : 'nothing');
 
 const INSIDE_FRAME = '\u0000inside a frame';
+/** A frame, what a loader drew in place of its placeholder, or the Markless component standing in for an embed, is one stop whatever it holds: the embed step compares its inside. */
+export const EMBED_STOP = 'embed (a frame, or the Markless component in its place)';
 const MAX_FRAME_TABS = 20;
 
 // The focused element's role and name from Chromium's accessibility tree; undefined once focus is on the body or wraps around, INSIDE_FRAME while it moves among a frame's own stops.
 async function focused(session: CDPSession): Promise<string | undefined> {
 	const { result } = await session.send('Runtime.evaluate', {
-		expression: `(() => { const el = document.activeElement; if (!el || el === document.body) return null; let deep = el; while (deep.shadowRoot && deep.shadowRoot.activeElement) deep = deep.shadowRoot.activeElement; if (el.__mmTabbed) return /^(IFRAME|FRAME)$/.test(deep.tagName) ? 'frame' : null; el.__mmTabbed = true; return el; })()`,
+		expression: `(() => { const el = document.activeElement; if (!el || el === document.body) return null; let deep = el; while (deep.shadowRoot && deep.shadowRoot.activeElement) deep = deep.shadowRoot.activeElement; const host = el.closest('[data-markless-embed], [data-markless-migrate-widget]'); if (host) { if (host.__mmTabbed) return 'frame'; host.__mmTabbed = true; return 'embed'; } if (el.__mmTabbed) return /^(IFRAME|FRAME)$/.test(deep.tagName) ? 'frame' : null; el.__mmTabbed = true; return /^(IFRAME|FRAME)$/.test(el.tagName) ? 'embed' : el; })()`,
 	});
 	if (result.value === 'frame') return INSIDE_FRAME;
+	if (result.value === 'embed') return EMBED_STOP;
 	if (!result.objectId) return undefined;
 	const { nodes } = (await session.send('Accessibility.getPartialAXTree', { objectId: result.objectId, fetchRelatives: false })) as { nodes: AxNode[] };
 	return label(nodes.find((n) => !n.ignored) ?? nodes[0]);

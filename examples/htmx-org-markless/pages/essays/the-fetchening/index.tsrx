@@ -184,7 +184,7 @@ export default function Page() @{
 			{" "}
 			<p>{"You can track our progress (and see quite a bit of dust flying around) in the "}<code>four</code>{" branch on "}<a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/htmx/tree/four">github</a>{" and at:"}</p>
 			{" "}
-			<p><a rel="noopener" target="_blank" href="https://four.htmx.org">https://four.htmx.org</a></p>
+			<p><a rel="noopener" target="_blank" href="https://four.htmx.org">{"https://four.htmx.org"}</a></p>
 			{" "}
 			<p>Thank you for your patience and pardon our dust!</p>
 			{" "}

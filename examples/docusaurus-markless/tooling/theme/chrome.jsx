@@ -25,6 +25,7 @@ import {
 	IconExternalLink,
 } from './core.jsx';
 import { isReactServerMarkup } from '../source/h.mjs';
+import { drawerMarkup, earlyDrawer } from '../../lib/drawer-markup.js';
 
 // The docs plugin's global data, read the way useActiveDocContext reads it.
 function docsPlugins() {
@@ -113,9 +114,21 @@ function NavbarLogo() {
 	return <Logo className="navbar__brand" imageClassName="navbar__logo" titleClassName="navbar__title text--truncate" />;
 }
 
+// The toggle answers its first click in that click's frame, before lib/site.ts has loaded: it sets the colour mode
+// as the theme's ColorModeProvider does and marks the click, and lib/site.ts finishes the rest when it starts.
+const colorModeScript = (key, labels) =>
+	`(function(s){var b=s.previousElementSibling,l=${JSON.stringify(labels)};b.addEventListener("click",function(e){if(window.__mmSiteBooted)return;e.__mmColorMode=1;window.__mmColorModeAt=e.timeStamp;var r=document.documentElement,c=r.getAttribute("data-theme-choice"),n=c==="light"?"dark":c==="dark"?"system":"light";try{n==="system"?localStorage.removeItem(${JSON.stringify(key)}):localStorage.setItem(${JSON.stringify(key)},n)}catch(x){}r.setAttribute("data-theme",n==="system"?(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):n);r.setAttribute("data-theme-choice",n);b.title=l[n];b.setAttribute("aria-label",l.aria.replace("{mode}",l[n]))});s.remove()})(document.currentScript)`;
+
 export function ColorModeToggle({ className, buttonClassName }) {
 	const s = styles('ColorModeToggle');
 	const label = translate({ message: 'system mode', id: 'theme.colorToggle.ariaLabel.mode.system' });
+	const labels = {
+		light: translate({ message: 'light mode', id: 'theme.colorToggle.ariaLabel.mode.light' }),
+		dark: translate({ message: 'dark mode', id: 'theme.colorToggle.ariaLabel.mode.dark' }),
+		system: label,
+		aria: translate({ message: 'Switch between dark and light mode (currently {mode})', id: 'theme.colorToggle.ariaLabel' }),
+	};
+	const { siteStorage } = useContext();
 	return (
 		<div className={clsx(s.toggle, className)}>
 			<button className={clsx('clean-btn', s.toggleButton, isReactServerMarkup() && s.toggleButtonDisabled, buttonClassName)} type="button" disabled={isReactServerMarkup()} title={label} aria-label={translate({ message: 'Switch between dark and light mode (currently {mode})', id: 'theme.colorToggle.ariaLabel' }, { mode: label })}>
@@ -123,6 +136,7 @@ export function ColorModeToggle({ className, buttonClassName }) {
 				<IconDarkMode aria-hidden={true} className={clsx(s.toggleIcon, s.darkToggleIcon)} />
 				<IconSystemColorMode aria-hidden={true} className={clsx(s.toggleIcon, s.systemToggleIcon)} />
 			</button>
+			<script>{colorModeScript(`theme${siteStorage?.namespace ?? ''}`, labels)}</script>
 		</div>
 	);
 }
@@ -322,6 +336,14 @@ function splitNavbarItems(items) {
 	return [left, right];
 }
 
+const drawerClasses = () => ({
+	toggle: styles('ColorModeToggle').toggle,
+	colorModeToggle: styles('Navbar/Content').colorModeToggle,
+	searchContainer: styles('Navbar/Search').navbarSearchContainer,
+	dropdownMobile: styles('NavbarItem/DropdownNavbarItem/Mobile').dropdownNavbarItemMobile,
+	yearGroupHeading: styles('BlogSidebar/Mobile').yearGroupHeading,
+});
+
 export function Navbar() {
 	const { navbar } = themeConfig();
 	const s = styles('Navbar/Layout');
@@ -334,6 +356,7 @@ export function Navbar() {
 					<button aria-label={translate({ id: 'theme.docs.sidebar.toggleSidebarButtonAriaLabel', message: 'Toggle navigation bar' })} aria-expanded={false} className="navbar__toggle clean-btn" type="button">
 						<IconMenu />
 					</button>
+					<script>{`(${earlyDrawer})(document.currentScript,${drawerMarkup},${JSON.stringify(drawerClasses())})`}</script>
 					<NavbarLogo />
 					{left.map((item) => (
 						<NavbarItem {...item} />

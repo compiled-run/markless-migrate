@@ -59,7 +59,7 @@ test('check --all with a route nothing gives a sample is not "all green": it cou
 	await mkdir(join(cwd, '.migrate'));
 	await writeFile(join(cwd, '.migrate', 'inventory.json'), JSON.stringify({ routes: [], routeUnion: [{ route: '/news/:slug', knownBy: ['source'], crawled: [], dynamic: true, kind: 'page', file: 'app/news/[slug]/page.tsx', line: 4 }] }));
 	const check = (...extra: string[]) => new Promise<{ status: number; stdout: string; stderr: string }>((done) => {
-		const child = spawn(process.execPath, [CLI, 'check', '--old', old!, '--new', next!, '--all', ...extra], { cwd });
+		const child = spawn(process.execPath, [CLI, 'check', '--old', old!, '--new', next!, '--all', '--no-load', ...extra], { cwd });
 		const r = { stdout: '', stderr: '' };
 		child.stdout.on('data', (c) => (r.stdout += c));
 		child.stderr.on('data', (c) => (r.stderr += c));
@@ -75,4 +75,21 @@ test('check --all with a route nothing gives a sample is not "all green": it cou
 	} finally {
 		for (const s of servers) s.close();
 	}
+});
+
+test("a package manager the tool starts is not watched: its registry traffic is not the tool's", async () => {
+	const { mkdtemp, mkdir, writeFile, readFile } = await import('node:fs/promises');
+	const { execFileSync } = await import('node:child_process');
+	const { tmpdir } = await import('node:os');
+	const { join } = await import('node:path');
+	const dir = await mkdtemp(join(tmpdir(), 'mm-cli-pm-'));
+	await mkdir(join(dir, 'node_modules', 'npm', 'bin'), { recursive: true });
+	const script = 'try { await fetch("http://127.0.0.1:9/x") } catch {}';
+	await writeFile(join(dir, 'node_modules', 'npm', 'bin', 'npm-cli.mjs'), script);
+	await writeFile(join(dir, 'tool.mjs'), script);
+	const log = join(dir, 'log.jsonl');
+	const shim = new URL('../src/check/cli/network.mjs', import.meta.url).pathname;
+	for (const file of ['node_modules/npm/bin/npm-cli.mjs', 'tool.mjs']) execFileSync(process.execPath, ['--import', shim, join(dir, file)], { env: { ...process.env, MARKLESS_MIGRATE_CLI_LOG: log, MARKLESS_MIGRATE_CLI_NETWORK: 'live' } });
+	const lines = (await readFile(log, 'utf8')).trim().split('\n');
+	assert.equal(lines.length, 1, 'only the tool itself is logged');
 });

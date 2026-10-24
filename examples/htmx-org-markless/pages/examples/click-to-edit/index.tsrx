@@ -48,7 +48,7 @@ export default function ClickToEdit() @{
 	});
 
 	<div style="display: contents">
-		<SiteHeader />
+		<SiteHeader starFrame />
 		<main class="c content ">
 			<h1>Click to Edit</h1>
 			<p>The click to edit pattern provides a way to offer inline editing of all or part of a record without a page refresh.</p>

@@ -46,7 +46,7 @@ export default function Page() @{
 			{" "}
 			<p>But this is not:</p>
 			{" "}
-			<pre data-lang="html" style="background-color:#1f2329;color:#abb2bf;" class="language-html "><code class="language-html" data-lang="html"><span>&lt;</span><span style="color:#e06c75;">{"button "}</span><span style="color:#d19a66;">hx-get</span><span>=</span><span style="color:#98c379;">"https://google.com/search?q=events"</span><span>&gt;Search events&lt;/</span><span style="color:#e06c75;">button</span><span>{">\n"}</span></code></pre>
+			<pre data-lang="html" style="background-color:#1f2329;color:#abb2bf;" class="language-html "><code class="language-html" data-lang="html"><span>&lt;</span><span style="color:#e06c75;">{"button "}</span><span style="color:#d19a66;">hx-get</span><span>=</span><span style="color:#98c379;">{"\"https://google.com/search?q=events\""}</span><span>&gt;Search events&lt;/</span><span style="color:#e06c75;">button</span><span>{">\n"}</span></code></pre>
 			{" "}
 			<p>{"The reason for this is simple: htmx inserts the response from that route directly into the user’s page. If the response has a malicious "}<code>&lt;script&gt;</code>{" inside it, that script can steal the user’s data. When you don’t control the route, you cannot guarantee that whoever does control the route won’t add a malicious script."}</p>
 			{" "}

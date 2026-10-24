@@ -22,11 +22,17 @@ export async function scanRedirects(ctx: Context): Promise<Redirect[]> {
 		if (!ctx.project.has(file)) continue;
 		const mod = await ctx.module(file);
 		if (!mod) continue;
-		walk(mod.program, (n: N) => {
+		walk(mod.program, (n: N, ancestors: readonly N[]) => {
 			if (n.type !== 'ObjectExpression') return;
-			const value = (key: string) => str(n.properties.find((p: N) => p.type === 'Property' && (p.key?.name ?? p.key?.value) === key)?.value, mod);
+			const prop = (key: string) => n.properties.find((p: N) => p.type === 'Property' && (p.key?.name ?? p.key?.value) === key)?.value;
+			const value = (key: string) => str(prop(key), mod);
 			const [from, to] = [value('source'), value('destination')];
-			if (from?.startsWith('/') && to) out.push({ from, to, file, line: mod.line(n.start) });
+			if (!from?.startsWith('/') || !to) return;
+			// Next.js reads them from the config's redirects() and rewrites() methods.
+			const owner = [...ancestors].reverse().find((a) => (a.type === 'Property' || a.type === 'MethodDefinition') && /^(redirects|rewrites)$/.test(a.key?.name ?? ''));
+			const kind = owner?.key?.name === 'rewrites' ? 'rewrite' : owner?.key?.name === 'redirects' ? 'redirect' : undefined;
+			const permanent = prop('permanent');
+			out.push({ from, to, file, line: mod.line(n.start), ...(kind ? { kind } : {}), ...(permanent?.type === 'Literal' && typeof permanent.value === 'boolean' ? { permanent: permanent.value } : {}) });
 		});
 	}
 	for (const file of ['vercel.json', 'serve.json', 'public/serve.json']) {

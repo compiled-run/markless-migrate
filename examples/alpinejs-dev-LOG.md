@@ -296,3 +296,28 @@ What keeps routes red, and why:
 7. `storage()` fails to resume in the production build (above).
 8. The router wraps every page in a block `div[data-async-container]`. `display: contents` on it (`public/port/site.css`) lets the page lay out under `<body>` as before.
 9. Static HTML still ships as render data. Docs pages download 400 kB to 1.1 MB uncompressed; the Torchlight markup is most of it.
+
+## Markless 0.9.0 (2026-10-22)
+
+The app is on Markless 0.9.0 from npm (core, router, analyzer, typescript-plugin), from 0.5.0. It builds on 0.9.0 as
+it is: the importer reran and wrote the same pages, and no other file changed. The build guard is green: no page loads or runs Alpine or any other framework's
+runtime (505 script and HTML files in `.output`).
+
+### Check against the deployments, before and after
+
+`check` on the ecosystem suite's sample (`/directives/model`, `/start-here`, `/components`, `/plugins/persist`,
+`/essentials/templating`), `--concurrency 2 --timeout 1800 --no-psi`, old https://alpinejs.dev, new
+https://mm-alpinejs-dev-new.vercel.app on 0.5.0, then on 0.9.0 once deployed:
+
+| | 0.5.0 | 0.9.0 |
+| --- | --- | --- |
+| Routes green | 0 of 5 | 0 of 5 |
+| Failures, not counting "not exercised" | 329 (48, 63, 112, 61, 45) | 262 (41, 58, 64, 62, 37) |
+| "Not exercised" | 12 | 18 |
+
+Gone on 0.9.0: the first-use responsiveness rows at 4x CPU on `/directives/model`, `/start-here` and
+`/essentials/templating` (checkboxes, radios, the Expand and Toggle buttons), the SVG computed styles on
+`/components`, JavaScript run at load on `/plugins/persist`, and two layout or screenshot rows of in-place navigation.
+New: the sidebar's active-link styles on `/plugins/persist` ("Installation" and "Via CDN"), a `:disabled` screenshot
+on `/components`, the pricing dialog's close on `/components` (the page tree around the dialog differs after it
+closes), and `/essentials/templating`'s lab LCP (2.02 s, 455 ms over the old page).

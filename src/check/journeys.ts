@@ -1,3 +1,4 @@
+import { FRAMEWORK_MARKUP_SELECTOR } from './automatic.ts';
 import type { Browser, BrowserContext, Locator, Page, Request } from 'playwright';
 import { frameworkTransport, openPage, requestLine, type OpenOptions, type SideEnv } from './browser.ts';
 import { clockLine } from './clock.ts';
@@ -218,7 +219,7 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 			if (!info) continue;
 			if (STRUCTURAL.has(role) && !(info.focusable || info.handler || info.sortable || info.selectable || (info.grid && role === 'row' && !info.header))) continue;
 			const target = { role, name, nth };
-			const base = { target, href: info.href, type: info.type, options: info.options, region: info.region, importance: importance(info), ...(info.focusable ? { focusable: true } : {}), ...(SAMPLED.has(role) ? { group: `${role}|${info.container}` } : {}) };
+			const base = { target, href: info.href, type: info.type, options: info.options, region: info.region, importance: importance(info), ...(info.focusable ? { focusable: true } : {}), ...(SAMPLED.has(role) ? { group: `${role}|${info.container}` } : info.list >= 0 && !info.handler ? { group: `${role}|list ${info.list}` } : {}) };
 			if (role === 'link') {
 				if (!info.href || /^(mailto|tel):/i.test(info.href)) {
 					add({ ...base, covered: 'its address is compared by the rendered check' });
@@ -235,6 +236,13 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 				}
 				if (DESTRUCTIVE.test(url.pathname)) {
 					add({ ...base, destructive: true });
+					continue;
+				}
+				// A link with no handler of its own goes where its address says, by the app's router: its address is compared
+				// by the rendered check, and a few links of each region (to another page, or within this one) are followed.
+				if (!info.handler && !base.group) {
+					const here = new URL(page.url());
+					add({ ...base, group: `link|${info.region}|${url.pathname === here.pathname ? 'here' : 'page'}` });
 					continue;
 				}
 			}
@@ -280,6 +288,13 @@ function describeElement(el: Element) {
 		grid: Boolean(grid && /^(grid|treegrid|tree)$/.test(grid.getAttribute('role') ?? '')),
 		header: Boolean(el.querySelector('[role="columnheader"], th')),
 		container: grid ? [...document.querySelectorAll('[role="grid"], [role="treegrid"], [role="tree"], [role="table"], table')].indexOf(grid) : -1,
+		// A list of more than 8 options, menu items, tabs or radios is sampled; a shorter one is exercised item by item.
+		list: (() => {
+			const list = el.closest('[role="listbox"], [role="menu"], [role="tablist"], [role="radiogroup"]');
+			if (!list) return -1;
+			const own = [...list.querySelectorAll('[role="option"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="tab"], [role="radio"]')].filter((x) => x.closest('[role="listbox"], [role="menu"], [role="tablist"], [role="radiogroup"]') === list);
+			return own.length > 8 ? [...document.querySelectorAll('[role="listbox"], [role="menu"], [role="tablist"], [role="radiogroup"]')].indexOf(list) : -1;
+		})(),
 	};
 }
 
@@ -532,7 +547,15 @@ async function focusLabel(page: Page): Promise<string> {
 async function snapshot(page: Page, origins: readonly string[]): Promise<string[]> {
 	// Indentation is structure, which the rendered check compares; a step's effect is which nodes appear and disappear.
 	// The app's own host name inside a URL's query (`utm_source=old.example`) is where the page runs, not what it shows.
+	// A framework's own route announcer is not the app's (the a11y comparison accepts it the same way): it is hidden from
+	// the tree for the snapshot only, so the navigation it announces does not count it as content appearing or leaving.
+	const hidden = await page.evaluate((selector) => {
+		const hosts = [...document.querySelectorAll(selector)].filter((el) => !el.hasAttribute('aria-hidden'));
+		for (const el of hosts) el.setAttribute('aria-hidden', 'true');
+		return hosts.length;
+	}, FRAMEWORK_MARKUP_SELECTOR).catch(() => 0);
 	let text = await page.locator('body').ariaSnapshot({ timeout: 5_000 }).catch(() => '');
+	if (hidden) await page.evaluate((selector) => { for (const el of document.querySelectorAll(selector)) el.removeAttribute('aria-hidden'); }, FRAMEWORK_MARKUP_SELECTOR).catch(() => {});
 	for (const origin of origins) text = text.split(origin).join('').split(`=${new URL(origin).hostname}&`).join('={host}&');
 	return text.split('\n').map((line) => line.trim());
 }
@@ -542,7 +565,16 @@ const unOrigin = (text: string, origins: readonly string[]) => origins.reduce((t
 const IDLE_MS = 150;
 const IDLE_LIMIT_MS = 3_000;
 
-const pendingTimers = (page: Page) => page.evaluate(() => (globalThis as { __markless_migrate_pending_timers__?: () => number }).__markless_migrate_pending_timers__?.() ?? 0).catch(() => 0);
+// Timeouts of up to a second still due, and animations with up to a second left (an exit a library waits out before it removes what it closed).
+const pendingWork = (page: Page) =>
+	page
+		.evaluate(() => {
+			const timers = (globalThis as { __markless_migrate_pending_timers__?: () => number }).__markless_migrate_pending_timers__?.() ?? 0;
+			const left = (a: Animation) => Number(a.effect?.getComputedTiming().endTime ?? Infinity) - Number(a.currentTime ?? 0);
+			const moving = document.getAnimations().filter((a) => a.playState === 'running' && a.timeline === document.timeline && left(a) <= 1000).length;
+			return timers + moving;
+		})
+		.catch(() => 0);
 
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
@@ -556,13 +588,13 @@ function scheduledRefresh(): { delay: number } | null {
 	return { delay: seconds };
 }
 
-// No request in flight and no timeout of up to a second due for 150 ms (at most 3 s); a poll that came back late means the checker itself was held up, and what began meanwhile may not have been seen yet.
+// No request in flight, no timeout or animation of up to a second due for 150 ms (at most 3 s); a poll that came back late means the checker itself was held up, and what began meanwhile may not have been seen yet.
 async function idle(page: Page, inflight: () => number): Promise<void> {
 	const deadline = Date.now() + IDLE_LIMIT_MS;
 	let idleSince = Date.now();
 	let last = idleSince;
 	while (Date.now() < deadline) {
-		const busy = inflight() > 0 || (await pendingTimers(page)) > 0;
+		const busy = inflight() > 0 || (await pendingWork(page)) > 0;
 		const now = Date.now();
 		if (busy || now - last > IDLE_MS / 2) idleSince = now;
 		else if (now - idleSince >= IDLE_MS) break;
@@ -1115,11 +1147,13 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			const id = `${raw.target.role}|${raw.target.name}|${raw.target.nth}`;
 			if (known.has(id)) continue;
 			known.add(id);
-			const seen = raw.group ? (sampled.get(raw.group) ?? 0) : 0;
-			if (raw.group) sampled.set(raw.group, seen + 1);
-			if (raw.group && seen >= SAMPLES) continue;
+			const layout = parent ? parent.layout : isLayout(raw);
+			// Layout controls are spread over the routes that share them (each has one owner), so they are not sampled.
+			const group = layout ? undefined : raw.group;
+			const seen = group ? (sampled.get(group) ?? 0) : 0;
+			if (group) sampled.set(group, seen + 1);
+			if (group && seen >= SAMPLES) continue;
 			const c = raw;
-			const layout = parent ? parent.layout : isLayout(c);
 			const signature = parent ? `${parent.signature} > ${c.target.role}|${c.target.name}|${c.target.nth}` : c.signature;
 			const element = `${describeTarget(c.target)}${prefix.length ? ` (after ${prefix.map(describeStep).join(', then ')})` : ''}`;
 			const t: Tracked = { candidate: c, element, signature, layout, prefix, journeys: [] };
@@ -1330,8 +1364,9 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	}));
 	for (const [group, n] of sampled) {
 		if (n <= SAMPLES) continue;
-		const role = group.split('|')[0]!;
-		elements.push({ element: `${n - SAMPLES} more ${role}${n - SAMPLES === 1 ? '' : 's'} of the same ${role === 'treeitem' ? 'tree' : 'grid'}`, signature: `sampled|${group}`, layout: false, by: `alike: the first ${SAMPLES} are exercised` });
+		const [role, where] = group.split('|') as [string, string];
+		const of = role === 'link' ? (group.endsWith('|here') ? `in ${where || 'the page'} to this page` : `in ${where || 'the page'} to other pages`) : where.startsWith('list ') ? 'of the same list' : `of the same ${role === 'treeitem' ? 'tree' : 'grid'}`;
+		elements.push({ element: `${n - SAMPLES} more ${role}${n - SAMPLES === 1 ? '' : 's'} ${of}`, signature: `sampled|${group}`, layout: false, by: `alike: the first ${SAMPLES} are exercised${role === 'link' ? ', and every address is compared by the rendered check' : ''}` });
 	}
 	return { journeys, elements, skipped, sequencesSkipped, deferred };
 }
@@ -1344,10 +1379,19 @@ const sameTarget = (a: Target, b: Target) => a.role === b.role && a.name === b.n
 const sameSteps = (a: readonly Step[], b: readonly Step[]) => a.length === b.length && a.every((s, i) => s.action === b[i]!.action && sameTarget(s.target, b[i]!.target));
 
 /** The initial interactive elements of the OLD page, to decide which route of a run exercises each shared layout control. */
-export async function survey(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<string[]> {
+/** A page's layout controls by signature, and how many controls of its own it has to exercise. */
+export async function survey(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<{ layout: string[]; own: number }> {
 	const session = await openSession(browser, env, route, viewport);
 	try {
-		return (await candidates(session.page, new URL(env.origin).origin)).filter(isLayout).map((c) => c.signature);
+		const found = await candidates(session.page, new URL(env.origin).origin);
+		const sampled = new Map<string, number>();
+		const exercised = found.filter((c) => {
+			if (c.covered || c.skip || isLayout(c)) return false;
+			if (!c.group) return true;
+			sampled.set(c.group, (sampled.get(c.group) ?? 0) + 1);
+			return sampled.get(c.group)! <= SAMPLES;
+		});
+		return { layout: found.filter(isLayout).map((c) => c.signature), own: exercised.length };
 	} finally {
 		await session.close();
 	}
@@ -1406,7 +1450,7 @@ export async function doorPageErrors(browser: Browser, old: SideEnv, viewport: V
 }
 
 /** What a cycle act is called in a check name: `click button "Theme" (use 2 of 3)`. */
-function cycleLabel(steps: number, acts: readonly CycleAct[], i: number): string {
+export function cycleLabel(steps: number, acts: readonly CycleAct[], i: number): string {
 	const step = `step ${steps + i + 1} of ${steps + acts.length}`;
 	const uses = 1 + acts.slice(0, i + 1).filter((a) => a === 'again' || (typeof a === 'object' && 'use' in a)).length;
 	const act = acts[i]!;

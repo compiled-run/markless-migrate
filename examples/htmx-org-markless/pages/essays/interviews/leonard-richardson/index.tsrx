@@ -12,7 +12,7 @@ export default function Page() @{
 			{" "}
 			<time>February 19, 2025</time>
 			{" "}
-			<p>Leonard Richardson is a long time programmer and author and was the creator of what came to be termed the Richardson Maturity Model (<a rel="noopener" target="_blank" href="https://en.wikipedia.org/wiki/Richardson_Maturity_Model">https://en.wikipedia.org/wiki/Richardson_Maturity_Model</a>{"), a system for classifying Web APIs in terms of their adherence to REST. Here, Web APIs mean "}<em>data APIs</em>, that is data intended to be consumed by automated systems or code, rather than directly by a web client.</p>
+			<p>Leonard Richardson is a long time programmer and author and was the creator of what came to be termed the Richardson Maturity Model (<a rel="noopener" target="_blank" href="https://en.wikipedia.org/wiki/Richardson_Maturity_Model">{"https://en.wikipedia.org/wiki/Richardson_Maturity_Model"}</a>{"), a system for classifying Web APIs in terms of their adherence to REST. Here, Web APIs mean "}<em>data APIs</em>, that is data intended to be consumed by automated systems or code, rather than directly by a web client.</p>
 			{" "}
 			<p>The RMM consists of four levels:</p>
 			{" "}

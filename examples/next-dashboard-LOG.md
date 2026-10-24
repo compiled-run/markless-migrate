@@ -245,3 +245,19 @@ The same `check --all --concurrency 2 --auth .migrate/auth-deployed.json` after 
 | --- | --- |
 | motion | red on the login form (`/dashboard` and `/dashboard/invoices/create` signed out answer it): clicking "Log in" fades the button to its hover colour over 150 ms on the old page and jumps there on the new one. Hovering alone fades the same way on both (same classes, same computed transition, the same transitionrun/transitioncancel sequence); only the click differs, and the cause was not found. Signed in, "Create Invoice" after a held-back save fades on the new page only, because Next replaces the form with its error page and the port keeps it |
 | everything else | as above |
+
+## Markless 0.9.0 (2026-10-22)
+
+The app is on Markless 0.9.0 from npm (core, router, analyzer, typescript-plugin), from 0.5.0. It builds on 0.9.0 with
+no other change, and the build guard is green (135 script and HTML files in `.vercel/output`; no page loads React or
+Next.js).
+
+### Check against the deployments, before and after
+
+`check --route / --route /dashboard/invoices --route /dashboard/customers --auth .migrate/auth-deployed.json
+--concurrency 2 --timeout 1800 --no-psi` (the ecosystem suite's sample, anonymous and signed in), old
+https://mm-next-dashboard-old.vercel.app, new https://mm-next-dashboard-new.vercel.app, on 0.5.0 and then on 0.9.0 once
+deployed: 38 failures to 33, no route green on either. Anonymous (each redirects to the login page): 13 to 6. Signed
+in: 25 to 27. New on 0.9.0: every dashboard page fetches `/dashboard` ahead of any click, a request the old page does
+not make (the router fetching a linked page ahead), and following the "Acme" link at 4x CPU is a full page load where
+the old app navigates in place; one other navigation row on `/dashboard/invoices` turned green.

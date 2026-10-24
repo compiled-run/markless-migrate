@@ -392,3 +392,90 @@ lab First Contentful Paint. New: one click on an unnamed avatar block on `/` who
 order on each side. Red on both: going back to `/` after an in-place navigation restores it with the navbar 32 px up
 and the other colour mode's background, the Deployment category's extra motion after Guides, and the in-place
 navigation from "best Docusaurus sites" at 4x CPU.
+
+## Embeds: the intro video and the star button as Markless components (2026-10-22)
+
+`run --agent claude --only embeds` on `/`: the react-lite-youtube-embed facade keeps its markup and gets Markless
+activation (it had none: a click on the play button did nothing on the port), and the ghbtns.com star frame becomes a
+component drawn from GitHub's REST answer, both placed by the importer. Deployed on its own project,
+https://mm-docusaurus-embeds.vercel.app, so the production demo stays as it was. The embed step against
+https://mm-docusaurus-old.vercel.app: the video is the same in all 12 pictures and both ways of activating it (the
+player loads in place and plays); the star button is the same in every picture but its count, which GitHub moved since
+the data was read (accepted automatically), and Enter on it leads where the old one does; a click on its exact middle
+does not: the old frame's middle is empty space in its 160x30 box, the component's is its count link. PageSpeed
+Insights (mobile, median of 5), this port without and with the change: 407 -> 316 kB, FCP 1.82 -> 1.36 s, LCP 2.52 ->
+2.06 s, score 94 -> 97. https://mm-embeds-evidence.vercel.app.
+
+## Every control used like a person would, side by side (2026-10-23)
+
+The checker had passed dead controls on another port, so every control on 25 views of 22 routes was used on the
+original and on this port side by side. That covered 19 desktop views (10 with a Linux platform) and 6 mobile views,
+both sites served on the Mac: the original's `docusaurus build` output and this app's Vercel build. Each control was
+clicked, hovered or typed into, and what a person could see change was compared: the URL, `<html>`'s attributes, the
+text, ARIA state, menu and dialog layers, scroll, frames and the clipboard. The harness is
+/tmp/port-audit/chrome-witness/witness.mjs.
+
+| | before | after |
+| --- | --- | --- |
+| Controls that work as on the original | 779 of 792 | 759 of 766 |
+| Real defects | 6 (below) | 0 |
+
+The 7 left after are noise in the harness: the code-blocks page's live `Clock` example ticks every second, and the
+YouTube player adds one `aria-hidden` element the original's player does not. The video plays on both sides.
+
+What was wrong, and where it is fixed:
+
+- **Mobile drawer: Versions and Languages never opened.** The chevron turned but the list never appeared:
+  `mobileDropdown()` left out the list of a dropdown that starts collapsed, so there was nothing to open. Fixed in
+  lib/site.ts, now lib/drawer-markup.js.
+- **Mobile drawer: the logo closed it on the page it names.** The original leaves it open there.
+- **Search button keys.** The button said "⌘ K" and "Search (Meta+k)" on every platform. On Windows and Linux the
+  original says "Ctrl K" and "Search (Control+k)". Fixed on docusaurus-all-routes by #65; this branch had the same fix
+  and kept #65's.
+- **Back hid the navbar.** Going Back to `/` restored a scroll that lib/site.ts read as the reader scrolling down, so
+  the hideable navbar slid away. `useHideableNavbar` shows it on every location change and hides it for a `#hash`, and
+  so does lib/site.ts now.
+- **A navbar menu stayed open after choosing an item.** With the router keeping the navbar's nodes across a swap
+  (#185), the menu stayed open under the pointer. React remounts the navbar there, so the menu now closes until the
+  pointer moves.
+- **The colour toggle and the drawer waited for lib/site.ts.** On an emulated slow phone (6x CPU, Slow 4G), a tap right
+  after load took effect after 3.6 to 3.9 s for the toggle and 1.4 s for the drawer. Both now answer in the tap's own
+  frame through inline scripts the theme template writes:
+  - The toggle script sets the colour mode, its stored choice and the toggle's name. It reads the storage namespace
+    from Docusaurus's own `loadContext`.
+  - The drawer script is the source of `drawerMarkup()` (lib/drawer-markup.js), the same function lib/site.ts calls,
+    so there is one drawer builder.
+  - Each script adds about 1 kB gzip to a page. lib/site.ts adopts what they did when it starts.
+
+| slow phone, tap right after load | original | port before | port now |
+| --- | --- | --- | --- |
+| colour toggle | 194–206 ms | 3,554–3,926 ms | 109–126 ms |
+| mobile drawer opens | 224–261 ms | 2,379–2,397 ms | 154–175 ms |
+
+Tapped as soon as the control is painted, the original drops the drawer tap (React has not hydrated yet), while the port
+opens the drawer about 0.1 s later.
+
+Speed, measured locally:
+
+- **Client navigation**, desktop, median of 5, original vs port: Docs 43 vs 36 ms, Installation 21 vs 9, Docs again
+  14 vs 6, Installation again 14 vs 6. On 0.9.0 the last link was a tie.
+- **"best Docusaurus sites"** (`/docs` to `/showcase?tags=favorite`), 4x CPU, mobile: 96 vs 81 ms; it was 140 ms. The
+  page's `pageInit` read `window.innerWidth` while every showcase card was still in the page, which forced a layout of
+  all of them. The filter now runs first.
+- **Idle download** after landing on `/docs`: 160 kB, 69 kB of it the 530 kB `/showcase` page, which the original never
+  downloads. With Markless #188 the idle tier stops at 256 KiB and leaves that page to a hover: 103 kB now.
+
+Checker reds that were the checker, not the port:
+
+- **First-interaction "Close" at 4x CPU** (184 vs 64 ms in CI). Tapped 2.5 s or more after load, both sides take
+  32 ms. The port fires `load` earlier, so a tap at a fixed time after load lands inside the same 2 s hero-logo
+  animation the original has already finished.
+- **About 30 controls "not exercised"**: they ran past the 120 s journey budget.
+
+Built on Markless main with #185 (the in-place navigation reland), #186 (prefetch once) and #188 (the idle byte budget),
+packed locally into `.markless-local/` until a release carries them.
+
+What is generic now: markless-migrate#70 adds these lessons to the migrator's Docusaurus theme features and obligations
+(src/usage), so every Docusaurus migration's agent and checker get them. The importer (tooling/) and the theme runtime
+(lib/site.ts, lib/drawer-markup.js) still live in this example. The owner approved extracting them into a reusable
+Docusaurus theme-classic kit after the launch.

@@ -1,5 +1,5 @@
 import { parseSync } from 'oxc-parser';
-import { lineIndex, walk, type N } from '../source/js.ts';
+import { lineIndex, patternNames, walk, type N } from '../source/js.ts';
 
 /** What a plain script does in the browser, read from its syntax tree. */
 export type Effect =
@@ -71,6 +71,16 @@ export function analyseScript(source: string, firstLine = 1, globals: ReadonlyMa
 			owners.push(owner);
 		},
 	};
+	const bound = new Set<string>();
+	walk(result.program as unknown as N, (n) => {
+		if (n.type === 'VariableDeclarator') for (const name of patternNames(n.id)) bound.add(name);
+		else if ((n.type === 'FunctionDeclaration' || n.type === 'FunctionExpression' || n.type === 'ArrowFunctionExpression') && n.params) {
+			if (n.id?.name) bound.add(n.id.name);
+			for (const p of n.params as N[]) for (const name of patternNames(p)) bound.add(name);
+		} else if (n.type === 'CatchClause' && n.param) for (const name of patternNames(n.param)) bound.add(name);
+		else if (n.type === 'ClassDeclaration' && n.id?.name) bound.add(n.id.name);
+		else if (n.type === 'ImportSpecifier' || n.type === 'ImportDefaultSpecifier' || n.type === 'ImportNamespaceSpecifier') bound.add(n.local.name);
+	});
 	walk(result.program as unknown as N, (n, ancestors) => {
 		ancestry = ancestors;
 		const before = found.length;
@@ -80,8 +90,9 @@ export function analyseScript(source: string, firstLine = 1, globals: ReadonlyMa
 	const defines = ((result.program as unknown as N).body as N[]).flatMap((n) => (n.type === 'FunctionDeclaration' && n.id ? [n.id.name as string] : []));
 	return { effects: found.map((e, i) => (owners[i] === undefined ? e : { ...e, in: owners[i] })), parsed: result.errors.length === 0, defines };
 
+	// A name the script binds itself is its own (a minifier's `$`), not the library global of that name.
 	function libraryOf(root: string): string | undefined {
-		return GLOBAL_LIBRARIES[root] ?? aliases.get(root) ?? globals.get(root);
+		return aliases.get(root) ?? (bound.has(root) ? undefined : (GLOBAL_LIBRARIES[root] ?? globals.get(root)));
 	}
 
 	function visit(n: N): void {

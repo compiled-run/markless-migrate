@@ -74,9 +74,58 @@ const URL_SEARCH_PARAMS_METHODS = new Set(['get', 'has', 'getAll', 'toString', '
 function queryKeys(text: string): string[] {
 	const keys = new Set<string>();
 	for (const re of QUERY_READS) for (const m of text.matchAll(re)) if (!URL_SEARCH_PARAMS_METHODS.has(m[1]!)) keys.add(m[1]!);
+	// A page that switches on its whole query string (`@switch (search) { @case "?page=2": ... }`) reads the keys its cases name.
+	if (/\b(?:url|location)\.search\b/.test(text)) for (const m of text.matchAll(/@case\s+(["'])\?([^"']*)\1/g)) for (const key of new URLSearchParams(m[2]!).keys()) keys.add(key);
 	return [...keys].sort();
 }
 
+/**
+ * The text with what string literals and comments hold blanked (newlines kept, so lines still count): a generated data
+ * module of copied page text that mentions `headers()` does not read the request. Template literals keep their
+ * `${...}` expressions, which are code.
+ */
+export function codeOnly(text: string): string {
+	const out = text.split('');
+	const blank = (from: number, to: number) => {
+		for (let k = from; k < to; k++) if (out[k] !== '\n') out[k] = ' ';
+	};
+	let i = 0;
+	const depth: number[] = [];
+	while (i < text.length) {
+		const c = text[i]!;
+		const next = text[i + 1];
+		if (c === '/' && next === '/') {
+			const end = text.indexOf('\n', i);
+			const stop = end < 0 ? text.length : end;
+			blank(i, stop);
+			i = stop;
+		} else if (c === '/' && next === '*') {
+			const end = text.indexOf('*/', i + 2);
+			const stop = end < 0 ? text.length : end + 2;
+			blank(i, stop);
+			i = stop;
+		} else if (c === '"' || c === "'") {
+			let j = i + 1;
+			while (j < text.length && text[j] !== c && text[j] !== '\n') j += text[j] === '\\' ? 2 : 1;
+			blank(i + 1, j);
+			i = j + 1;
+		} else if (c === '`' || (c === '}' && depth.length && depth[depth.length - 1] === 0)) {
+			if (c === '}') depth.pop();
+			let j = i + 1;
+			while (j < text.length && text[j] !== '`' && !(text[j] === '$' && text[j + 1] === '{')) j += text[j] === '\\' ? 2 : 1;
+			blank(i + 1, j);
+			if (text[j] === '$') {
+				depth.push(0);
+				i = j + 2;
+			} else i = j + 1;
+		} else {
+			if (depth.length && c === '{') depth[depth.length - 1]!++;
+			else if (depth.length && c === '}') depth[depth.length - 1]!--;
+			i++;
+		}
+	}
+	return out.join('');
+}
 // A getCookie/setCookie helper over document.cookie runs in the browser; the same names on the server read and write the request.
 const BROWSER_COOKIE_HELPER = /\bdocument\.cookie\b/;
 const HELPER_NAMES = /^(reads a request cookie or header|sets a cookie)$/;
@@ -84,8 +133,9 @@ const HELPER_NAMES = /^(reads a request cookie or header|sets a cookie)$/;
 /** Signals in one file of server code. A client component's reads run in the browser and do not bear on caching. */
 export function fileSignals(text: string, file: string): Omit<RouteSignals, 'guard' | 'perVisitor' | 'changing'> & { changing: Signal[] } {
 	if (CLIENT_ONLY.test(text)) return { requestReads: [], queryKeys: [], setsCookies: [], changing: [] };
+	const code = codeOnly(text);
 	const browser = BROWSER_COOKIE_HELPER.test(text) ? (signals: Signal[]) => signals.filter((s) => !HELPER_NAMES.test(s.what) || !onlyHelperCalls(text, s.what)) : (signals: Signal[]) => signals;
-	return { requestReads: browser(scan(text, file, REQUEST_READS)), queryKeys: queryKeys(text), setsCookies: browser(scan(text, file, SETS_COOKIES)), changing: [] };
+	return { requestReads: browser(scan(code, file, REQUEST_READS)), queryKeys: queryKeys(text), setsCookies: browser([...scan(code, file, SETS_COOKIES.slice(0, 1)), ...scan(text, file, SETS_COOKIES.slice(1))]), changing: [] };
 }
 
 /** Every match of the helper's pattern is a call of getCookie/setCookie (nothing a server framework names the same way also appears). */

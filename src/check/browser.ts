@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { trackEmbedSlots } from '../embed/page.ts';
+import { SLOTS } from '../embed/providers.ts';
 import { request as playwrightRequest, type APIRequestContext, type Browser, type BrowserContext, type BrowserContextOptions, type Frame, type Page, type Request, type Route } from 'playwright';
 import { DEFAULT_FREEZE, freezePage, type FreezeOptions } from './freeze.ts';
 import { bodyShape, MAX_BODY, sameApp, type NetworkRecord } from './network.ts';
@@ -152,7 +154,16 @@ export function contractRequest(request: Request, origin: string): boolean {
 	const same = sameApp(url, origin);
 	if (same && frameworkTransport(request, url)) return false;
 	const type = request.resourceType();
-	return CONTRACT_TYPES.has(type) || (type === 'document' && !same);
+	// Another site's document in a child frame is an embed: the embed step compares it, and a component standing in for it rightly never requests it at load.
+	return CONTRACT_TYPES.has(type) || (type === 'document' && !same && !childFrame(request));
+}
+
+function childFrame(request: Request): boolean {
+	try {
+		return Boolean(request.frame().parentFrame());
+	} catch {
+		return false;
+	}
 }
 
 function queryKey(url: URL): string {
@@ -292,6 +303,8 @@ export interface OpenOptions {
 	readonly loops?: boolean | { readonly known: readonly string[] };
 	/** Answer the page's own GETs to other origins from one fetch per run, so every load of the run, old and new, gets the same third-party answer (a widget's API reply, rate limited or not). */
 	readonly shareThirdParty?: boolean;
+	/** Let an embed's own frame send its writes (a player asking for its stream by POST), as a visitor's browser does; the page's own writes are still held. */
+	readonly embedWrites?: boolean;
 	/** While timing: every answer reaches the page after the network's fixed latency, its GETs from one stored copy; `miss` is told when a copy had to be fetched during this load. */
 	readonly timed?: { readonly network: TimedNetwork; readonly miss: () => void };
 }
@@ -316,6 +329,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 	const extra = env.headers ?? {};
 	if (env.freeze) await context.addInitScript(freezePage, { time: env.freeze.time, seed: env.freeze.seed, ...(env.freeze.clock ? { clock: env.freeze.clock } : {}) });
 	if (options.loops) await context.addInitScript(trackLoops, options.loops === true ? [] : [...options.loops.known]);
+	await context.addInitScript(trackEmbedSlots, SLOTS.map((s) => ({ ...s })));
 	const load = randomUUID();
 	const tag = recorderTag(env, load);
 	const pending = new Set<Promise<void>>();
@@ -365,6 +379,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 		const reason = writeReason(request.method(), url, home, env.writeFacts, request.headers()) ?? (log.holdAll && same && !env.sendWrites && (request.isNavigationRequest() || ['fetch', 'xhr'].includes(request.resourceType())) ? 'a request of a control that ends the session or deletes' : undefined);
 		// An embed's own writes (its analytics, its player state) are held back too, and are the embed's, not the page's.
 		if (reason && insideEmbed(request, ownOrigin)) {
+			if (options.embedWrites) return route.continue();
 			handled.add(request);
 			return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } });
 		}

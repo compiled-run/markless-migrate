@@ -200,6 +200,15 @@ async function withPopups(content: string, relativePath: string): Promise<string
 	return serialize(fragment);
 }
 
+// The theme's YouTubeVideo player frame: components/embeds/youtube-embed.tsrx stands in for it, named after the video
+// (its entry in components/embeds/youtube.json), and puts the same frame in its place when a visitor activates it.
+function youTubeEmbeds(content: string): string {
+	return content.replace(/(<div class="full-width-youtube-video"[^>]*>)<iframe [^>]*\bsrc="(https:\/\/www\.youtube\.com\/embed\/([\w-]+)[^"]*)"[^>]*><\/iframe>/g, (_, wrapper: string, src: string, id: string) => {
+		const props = JSON.stringify({ embed: `youtube-${id}`, src: src.replaceAll('&amp;', '&') }).replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+		return `${wrapper}<markless-component name="YouTubeEmbed" props="${props}"></markless-component>`;
+	});
+}
+
 const site = (await vite.renderPage('/guide/', '/guide/index.md')).site;
 const theme = site.themeConfig;
 const routeOf = (page: string) => `/${page.replace(/(^|\/)index\.md$/, '$1').replace(/\.md$/, '')}`;
@@ -270,6 +279,7 @@ function writePage(file: string, body: string): void {
 		['DocsHeader', 'components/docs/header.tsrx'],
 		['TopBanner', 'components/top-banner.tsrx'],
 		['Header', 'components/header.tsrx'],
+		['YouTubeEmbed', 'components/embeds/youtube-embed.tsrx'],
 	].filter(([name]) => used(name!));
 	const lines = [
 		GENERATED,
@@ -305,7 +315,7 @@ for (const relativePath of [...siteConfig.pages, '404.md']) {
 	};
 	const frontmatter = pageData.frontmatter as Record<string, unknown>;
 	// Content.vue renders the page component inside <div style="position:relative;">, which the layout writes.
-	const content = await withPopups((rendered?.html ?? '').replace(/^<div style="position:relative;">/, '').replace(/<\/div>$/, ''), relativePath);
+	const content = youTubeEmbeds(await withPopups((rendered?.html ?? '').replace(/^<div style="position:relative;">/, '').replace(/<\/div>$/, ''), relativePath));
 	const isHome = frontmatter.layout === 'home';
 	const sidebar: SidebarItem[] = isHome ? [] : vite.getSidebarGroups(vite.getSidebar(theme.sidebar, relativePath));
 	const flat = (

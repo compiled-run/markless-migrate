@@ -314,3 +314,29 @@ backdrop fades once and is gone at 196 to 271 ms, as on the old app (199 to 267 
 
 Dropdowns on the live URL, against the old app: the theme, profile, team, user, row-action and view-options menus
 have the same `data-side`, `data-align`, transform origin and focus after a click outside on both.
+
+## Markless 0.9.0 (2026-10-22)
+
+The app is on Markless 0.9.0 from npm (core, router, analyzer, typescript-plugin); `@markless/ui` stays at 0.4.0.
+Nothing in the pages changed. `cache apply` rewrote `migrate-cache.ts` in the form the current markless-migrate writes
+(without the empty list of Vercel routes placed ahead of Nitro's, which the earlier writer added); the caching is the
+same.
+
+### Check against the deployments, before and after
+
+`check` on the ecosystem suite's sample (`/`, `/users`, `/apps`, `/settings/account`, `/settings/appearance`),
+`--concurrency 2 --timeout 1800 --no-psi`, old https://mm-shadcn-admin-old.vercel.app, new
+https://mm-shadcn-admin-new.vercel.app on 0.8.0, then on 0.9.0 once deployed:
+
+| | 0.8.0 | 0.9.0 |
+| --- | --- | --- |
+| Routes green | 0 of 5 | 0 of 5 |
+| Failures, not counting "not exercised" | 88 (9, 69, 4, 5, 1) | 81 (3, 69, 2, 4, 3) |
+| "Not exercised" | 251 | 251 |
+
+Gone on 0.9.0: the sidebar toggle's motion under reduced motion on `/` and `/apps`, the command menu's theme option
+on its second opening, and the layout frame during the in-place swaps between `/` and `/users`. New: on the second
+click of a sidebar group (Settings, Auth, Errors) the new page's list is reported gone at once where the old one's
+stays through its exit; in a browser both keep the list and run `slideUp` for the same time, so this is when the
+checker reads the tree, not the page. Also new: "Update preferences" at 4x CPU (56 ms against 35 ms), and three
+clicks that timed out after 1.5 s.

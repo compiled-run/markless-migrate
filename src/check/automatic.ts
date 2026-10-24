@@ -24,6 +24,9 @@ export function frameworkRuntime(code: string): string | undefined {
 	return RUNTIMES.find(([, all]) => all.every((re) => re.test(code)))?.[0];
 }
 
+/** The elements a framework adds to every page for itself (route announcers), as one selector. */
+export const FRAMEWORK_MARKUP_SELECTOR = 'next-route-announcer, #gatsby-announcer, #svelte-announcer, .nuxt-route-announcer';
+
 /** Markup a framework adds to every page for itself. Run in the page, so it carries its own list. */
 export function frameworkMarkup(): { framework: string; what: string; selector: string; roles: string[]; text: string }[] {
 	const known = [

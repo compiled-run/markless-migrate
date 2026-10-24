@@ -9,19 +9,21 @@ import type { LoopEffect } from './loops.ts';
 import type { NondeterminismFact } from './source-facts.ts';
 import type { Responsiveness, SpeedName, Worst } from './responsiveness.ts';
 import type { Filmstrip, MotionResult } from './motion.ts';
+import type { RouteLoad } from './load.ts';
 
-export const DIMENSIONS = ['http', 'auth', 'rendered', 'visual', 'seo', 'assets', 'css', 'a11y', 'i18n', 'behaviour', 'network', 'data', 'weight', 'responsiveness', 'motion', 'navigation'] as const;
+export const DIMENSIONS = ['http', 'auth', 'rendered', 'visual', 'seo', 'assets', 'css', 'a11y', 'i18n', 'behaviour', 'network', 'data', 'weight', 'load', 'responsiveness', 'motion', 'navigation'] as const;
 export type Dimension = (typeof DIMENSIONS)[number];
 /** Route coverage is measured for the whole site, not per route: a failure of it names the route the new app lacks. */
 export type FailureDimension = Dimension | 'coverage';
 
 /** Checked only on its template group's representative: the rest of the group gets every other dimension. */
-export const REPRESENTATIVE_ONLY: readonly Dimension[] = ['visual', 'behaviour', 'responsiveness', 'motion'];
+export const REPRESENTATIVE_ONLY: readonly Dimension[] = ['visual', 'behaviour', 'responsiveness', 'motion', 'load'];
 
 /** A dimension was left out because a side was blocked or let this role in differently; unmeasured responsiveness or motion, or one its template's representative checks, is not that. */
-export function notCompared(route: Pick<RouteResult, 'dimensions' | 'template' | 'route'>): boolean {
+export function notCompared(route: Pick<RouteResult, 'dimensions' | 'template' | 'route' | 'only'>): boolean {
+	if (route.only) return false;
 	const byRepresentative = route.template && route.template.representative !== route.route;
-	return Object.entries(route.dimensions).some(([d, state]) => state === 'skipped' && d !== 'responsiveness' && d !== 'motion' && d !== 'navigation' && !(byRepresentative && REPRESENTATIVE_ONLY.includes(d as Dimension)));
+	return Object.entries(route.dimensions).some(([d, state]) => state === 'skipped' && d !== 'responsiveness' && d !== 'motion' && d !== 'navigation' && d !== 'load' && !(byRepresentative && REPRESENTATIVE_ONLY.includes(d as Dimension)));
 }
 
 export interface Viewport {
@@ -247,9 +249,11 @@ export interface RouteResult {
 	readonly newFiles?: readonly string[];
 	/** The old app serves the route and the new one answers 404 or 410. */
 	readonly notPorted?: boolean;
+	/** Only this was compared (`check --only load`: page load; `--only embeds`: the embed step); every other dimension is skipped, not passed. */
+	readonly only?: 'load' | 'embeds';
 	/** How soon each control the journeys exercised answers its first use, and each internal link shows the next page, old and new, at desktop speed and on a throttled phone. */
 	readonly responsiveness?: Responsiveness;
-	/** The template group the route was put in (by URL pattern and page structure); visual, behaviour and responsiveness were checked on its representative. */
+	/** The template group the route was put in (by URL pattern, page structure and the kinds of control it renders); visual, behaviour, responsiveness and motion were checked on its representative. */
 	readonly template?: { readonly pattern: string; readonly representative: string; readonly members: number };
 	/** The transitions and animations each interaction starts, old and new, with motion allowed and with reduced motion, and those hovering and focusing each control start. */
 	readonly motion?: MotionResult;
@@ -257,6 +261,8 @@ export interface RouteResult {
 	readonly filmstrips?: readonly Filmstrip[];
 	/** How in-place navigation to this page was compared with a fresh load of it: from which pages, or which page of the same shape stood for it. */
 	readonly navigation?: RouteNavigation;
+	/** Lighthouse's mobile page-load metrics, old and new, a median of several runs each, and each metric's verdict. */
+	readonly load?: RouteLoad;
 }
 
 /** The new app's in-place navigation to one route, compared with a fresh load of it (src/check/nav-parity.ts). */
@@ -395,7 +401,7 @@ export interface Report {
 	readonly partial?: { readonly checked: number; readonly total: number | null };
 	/** Every route of the old site checked for existence on the new app. */
 	readonly coverage?: RouteCoverage;
-	/** Pages grouped by template: every page got the other dimensions, visual, behaviour and responsiveness ran on each group's representative. */
+	/** Pages grouped by template: every page got the other dimensions, visual, behaviour, responsiveness and motion ran on each group's representative. */
 	readonly templates?: { readonly groups: readonly { readonly pattern: string; readonly representative: string; readonly members: readonly string[] }[] };
 	/** In-place navigation compared with fresh loads on the new app: pages sampled, page loads it made and how long it took. */
 	readonly navigation?: { readonly destinations: number; readonly pairs: number; readonly inPlace: number; readonly loads: number; readonly ms: number };

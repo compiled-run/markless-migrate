@@ -17,6 +17,7 @@ export const MECHANISMS: Readonly<Record<Mechanism, { readonly what: string; rea
 	'navigation-equivalence': { what: 'in-place navigation must equal a fresh load of the same page', available: false },
 	'scheme-sequence': { what: 'a sequence repeated under the OS light and dark colour schemes', available: false },
 	'load-state': { what: 'loads with stored state and OS settings preset, compared at first paint', available: false },
+	embed: { what: 'embeds: each old embed against the Markless component that replaces it, by pixels at desktop and mobile in light and dark, hovered and focused, and by what activating it does', available: true },
 };
 
 const firstSite = (b: Behaviour) => {
@@ -95,9 +96,19 @@ export function obligationsFor(b: Behaviour): Obligation[] {
 			add(`${b.library}: kept as it is: the same library file loads on the new page`, 'client-guard', [{ do: 'load' }, { do: 'compare', what: ['scripts loaded'] }]);
 			add(`${b.library}: what the page does with it (each call the page makes into it, each control it draws), compared as journeys`, 'journey', [{ do: 'load' }, { do: 'compare', what: ['DOM', 'requests'] }]);
 			break;
-		case 'embed-frame':
-			add(`${b.feature}: the frame's box (width and height) and inline style equal the old page's, and so do the element and address that frame it`, 'client-guard', [{ do: 'load' }, { do: 'wait', ms: 1500 }, { do: 'compare', what: ['frame box', 'inline style', 'src origin and path'] }]);
+		case 'embed-frame': {
+			const keep = b.details.keep as { why: string } | undefined;
+			const id = String(b.details.embed ?? b.feature);
+			if (keep) {
+				add(`${b.feature} ${id}, kept (${keep.why}): the same element loads from the same address with the same attributes, size and place`, 'client-guard', [{ do: 'load' }, { do: 'wait', ms: 1500 }, { do: 'compare', what: ['frame box', 'inline style', 'src origin and path'] }]);
+				break;
+			}
+			const target = `[data-markless-embed="${id}"]`;
+			add(`${b.feature} ${id}: the Markless component at ${target} shows the same pixels as the settled old embed, at desktop and mobile, in light and dark`, 'embed', [{ do: 'load', emulate: { colorScheme: 'light' } }, { do: 'load', emulate: { colorScheme: 'dark' } }, { do: 'compare', what: ['embed pixels', 'embed box'], at: ['desktop', 'mobile'] }]);
+			add(`${b.feature} ${id}: hovered and focused, it looks as the old embed does`, 'embed', [{ do: 'hover', target }, { do: 'focus', target }, { do: 'compare', what: ['embed pixels'] }]);
+			add(`${b.feature} ${id}: activated by click and by keyboard, it does what the old embed does (the original loads and plays, or its links lead to the same places)`, 'embed', [{ do: 'click', target }, { do: 'press', target, key: 'Enter' }, { do: 'compare', what: ['frames', 'media playing', 'navigation', 'requests to the provider'] }]);
 			break;
+		}
 		case 'copy':
 			add(`${b.feature} on ${target}: click, the label changes and comes back as on the old page`, 'journey', [{ do: 'click', target }]);
 			add(`${b.feature}: clicked twice in a row`, 'sequence', [{ do: 'click', target, times: 2 }]);

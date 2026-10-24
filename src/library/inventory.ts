@@ -360,6 +360,12 @@ export async function scanLibraries(dir: string, options: LibraryScanOptions = {
 		if (!mod) continue;
 		// Test helpers outside a test folder (test-utils/) still only serve tests.
 		if ((mod.program.body as N[]).some((s) => s.type === 'ImportDeclaration' && TEST_LIBS.test(String(s.source.value)))) continue;
+		// A module loaded by `import("…")` (a registry's lazy examples) is rendered where its loader is.
+		walk(mod.program, (n) => {
+			if (n.type !== 'ImportExpression' || n.source?.type !== 'Literal') return;
+			const target = resolveImport(project, file, String(n.source.value));
+			if (target) importers.set(target, [...(importers.get(target) ?? []), file]);
+		});
 		const locals = new Map<string, ImportLocal>();
 		for (const stmt of mod.program.body as N[]) {
 			if ((stmt.type === 'ExportNamedDeclaration' || stmt.type === 'ExportAllDeclaration') && stmt.source) {

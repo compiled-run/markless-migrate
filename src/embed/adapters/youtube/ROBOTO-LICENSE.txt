@@ -1,0 +1,3 @@
+Roboto (roboto-latin.woff2), the Latin subset of Roboto as Google Fonts serves it.
+Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic).
+Licensed under the SIL Open Font License, Version 1.1: https://openfontlicense.org

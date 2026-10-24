@@ -10,7 +10,7 @@ import { chromium, type Browser } from 'playwright';
 import { acceptFailure } from '../src/check/accepted.ts';
 import { runCheck } from '../src/check/run.ts';
 import { summarize } from '../src/check/summary.ts';
-import { domSignature, urlPattern } from '../src/check/templates.ts';
+import { domSignature, urlPattern, widgetSignature } from '../src/check/templates.ts';
 import { enumerateRoutes } from '../src/plan/enumerate.ts';
 import { plan } from '../src/plan/inventory.ts';
 import { recordResults, status } from '../src/status.ts';
@@ -137,7 +137,7 @@ async function planned(): Promise<string> {
 
 test('a --route run is a partial run: green for the route it checked, never overall green, and status is not done', async () => {
 	const cwd = await planned();
-	const run = await cli(['check', '--old', origin(old), '--new', origin(old), '--route', '/about', '--no-responsiveness', '--journey-budget', '5'], cwd);
+	const run = await cli(['check', '--old', origin(old), '--new', origin(old), '--route', '/about', '--no-responsiveness', '--no-load', '--journey-budget', '5'], cwd);
 	assert.equal(run.status, 4, run.stdout + run.stderr);
 	assert.match(run.stdout, /pass +\/about/);
 	assert.match(run.stdout, /Partial run: 1 of 10 routes checked\. A run limited by --route or --changed is never overall green/);
@@ -185,6 +185,12 @@ test('template groups: URL pattern by source pattern or parent path, and the pag
 	assert.equal(urlPattern('/orders/1234/items'), '/orders/:id/:page');
 	assert.equal(urlPattern('/'), '/');
 	assert.equal(domSignature('<header></header><nav></nav><nav></nav><main><table></table></main><script>"<form>"</script><footer>'), 'header>nav>main>table>footer');
+	// One docs pattern serves an accordion's page and a tooltip's: what one's controls animate says nothing about the other's.
+	const accordion = widgetSignature('<main><div data-slot="accordion"><h3><button aria-expanded="false" data-slot="accordion-trigger">A</button></h3></div><p>text</p></main>');
+	const tooltip = widgetSignature('<main><button data-slot="tooltip-trigger" aria-describedby="t">B</button><p>text</p></main>');
+	assert.equal(accordion, 'button#accordion-trigger');
+	assert.equal(tooltip, 'button#tooltip-trigger');
+	assert.equal(widgetSignature('<main><button aria-expanded="true" data-slot="accordion-trigger">C</button><p>other text</p><script>"<div role=dialog>"</script></main>'), accordion, 'pages with the same kinds of control, whatever their text, stay one template');
 });
 
 test('above the threshold, every page gets http, rendered and seo, and visual, behaviour and responsiveness run on the template representative, said in the report', async () => {
@@ -202,8 +208,8 @@ test('above the threshold, every page gets http, rendered and seo, and visual, b
 		const renamed = report.routes.find((r) => r.route === '/docs/p07')!;
 		assert.deepEqual(renamed.failures.map((f) => f.dimension).filter((d, i, all) => all.indexOf(d) === i).sort(), ['rendered', 'seo']);
 		const text = summarize(report);
-		assert.match(text, /Visual, behaviour and responsiveness ran on one representative per template group \(grouped by URL pattern and page layout\): 1 group covering 22 pages\./);
-		assert.match(text, /pass +\/docs\/p02 .*\n {6}visual, behaviour and responsiveness: checked on \/docs\/p01, the representative of its template group \(\/docs\/:page, 22 pages\)/);
+		assert.match(text, /Visual, behaviour, responsiveness and motion ran on one representative per template group \(grouped by URL pattern, page layout and the kinds of control each page renders\): 1 group covering 22 pages\./);
+		assert.match(text, /pass +\/docs\/p02 .*\n {6}visual, behaviour, responsiveness and motion: checked on \/docs\/p01, the representative of its template group \(\/docs\/:page, 22 pages\)/);
 		const every = await runCheck({ oldOrigin: origin(site), newOrigin: origin(site), routes: docs.slice(0, 1), browser, templates: false });
 		assert.equal(every.templates, undefined);
 	} finally {
@@ -263,7 +269,7 @@ test('coverage per role: a signed-in route the new app lacks is missing for that
 
 test('check --all checks every planned route, not only the ones the browser inventory and the source scan list', async () => {
 	const cwd = await planned();
-	const run = await cli(['check', '--all', '--old', origin(old), '--new', origin(old), '--no-responsiveness', '--journey-budget', '3'], cwd);
+	const run = await cli(['check', '--all', '--old', origin(old), '--new', origin(old), '--no-responsiveness', '--no-load', '--journey-budget', '3'], cwd);
 	for (const route of SITEMAP_ROUTES) assert.match(run.stdout, new RegExp(`pass +${route.replace(/\//g, '\\/')} `), run.stdout + run.stderr);
 });
 

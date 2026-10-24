@@ -92,8 +92,11 @@ export function collectPage({ origin, full, styles = true }: { origin: string; f
 		return i;
 	};
 	const ofTag = new Map<Element, Map<string, number>>();
+	const embedded = document.querySelector('[data-markless-migrate-embed]') !== null;
 	for (const el of full ? [document.documentElement, document.body, ...document.body.querySelectorAll('*')] : []) {
 		if (SKIP.has(el.tagName)) continue;
+		// An embed, or the Markless component standing in for one (both marked by liveEmbeds), is the embed step's to compare: its inside is opaque here, as a frame's is.
+		if (embedded && el.parentElement?.closest('[data-markless-migrate-embed]')) continue;
 		const r = role(el);
 		const parent = el.parentElement;
 		const parentPath = parent && parent !== document.body ? (paths.get(parent) ?? '') : '';
@@ -182,7 +185,14 @@ export function collectPage({ origin, full, styles = true }: { origin: string; f
 		broken: img.complete && img.naturalWidth === 0,
 	}));
 	const fonts = [...new Set([...document.fonts].filter((f) => f.status === 'loaded').map((f) => `${f.family}|${f.style}|${f.weight}`))].sort();
-	const text = document.body.innerText.split('\n').map(clean).filter(Boolean);
+	const embedLines = new Map<string, number>();
+	for (const el of document.querySelectorAll<HTMLElement>('[data-markless-migrate-embed]')) for (const line of el.innerText.split('\n').map(clean).filter(Boolean)) embedLines.set(line, (embedLines.get(line) ?? 0) + 1);
+	const text = document.body.innerText.split('\n').map(clean).filter(Boolean).filter((line) => {
+		const left = embedLines.get(line) ?? 0;
+		if (!left) return true;
+		embedLines.set(line, left - 1);
+		return false;
+	});
 	const links = [...document.querySelectorAll('a[href], link[rel~="alternate"][hreflang]')].map((a) => (a as HTMLAnchorElement).href).filter(Boolean);
 	return { elements, styles: { props, values, rows }, seo, images, fonts, text, links };
 }

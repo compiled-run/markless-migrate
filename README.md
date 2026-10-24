@@ -1,6 +1,11 @@
-# @markless/migrate
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-on-dark.svg">
+  <img src="docs/assets/logo-on-light.svg" width="96" height="96" alt="">
+</picture>
 
-Move an existing app to [Markless](https://markless.dev) with your own coding agent, and prove every route still works before it switches over.
+# Markless Migrate
+
+Markless Migrate (`@markless/migrate`) moves an existing app to [Markless](https://markless.dev) with your own coding agent, and proves every route still works before it switches over.
 
 Your agent (Claude Code, Codex, Cursor...) does the converting. This tool does the rest:
 
@@ -136,6 +141,82 @@ guards hold this, and `run` applies both to every route it checks:
 app's bundles or built pages name its URL (or a file they load does). htmx.org serves htmx.js, its source and
 its test suite as downloads; those pass, listed as allowed, while a page that loads htmx fails.
 
+## PageSpeed Insights key (optional)
+
+Page load is verified on Google's own PageSpeed Insights when there is an API key, and with real users' field data;
+without one, a calibrated lab run stands in, labelled as such. Getting a key is free and takes about a minute:
+
+1. Open https://developers.google.com/speed/docs/insights/v5/get-started#APIKey and click **Get a Key**.
+2. Pick or create a Google Cloud project; the key is shown at once.
+3. Run `markless-migrate setup --psi-key <key>`. It is saved to `~/.config/markless-migrate/env` (readable by you
+   alone), outside every repository; `--project` saves it to the project's `.env` instead and adds `.env` to its
+   `.gitignore`. `PSI_API_KEY` in the environment takes precedence, which is how CI passes it (a repository secret).
+
+How close the lab comes to PageSpeed Insights, measured on ten old and new pairs of sites (twenty pages; PageSpeed
+Insights mobile, its cached repeats left out, against 5 to 15 lab runs a page on an Apple-silicon laptop):
+
+| Lab CPU slowdown | Score within 5 points | FCP within 10% | LCP within 10% | Speed Index within 10% | TBT within 10% or 50 ms | Says the same of old against new |
+| --- | --- | --- | --- | --- | --- | --- |
+| 4x (the default) | 12 of 20 | 8 of 20 | 9 of 20 | 3 of 20 | 18 of 20 | 26 of 40 |
+| calibrated from benchmarkIndex (about 16x here) | 11 of 20 | 8 of 20 | 9 of 20 | 2 of 20 | 12 of 20 | 22 of 40 |
+
+So the lab is a guide, not PageSpeed: expect scores 10 points or more apart on some pages. Most of the gap is
+PageSpeed's own environment. In its runs the first paint is often held back by about two seconds after the page has
+loaded (the main thread idle, no request pending), which a lab run does not reproduce, and how often depends on the page and
+on where it is hosted: vite.dev's own homepage, byte for byte, scored 78 from its host and 72 from a Vercel deployment
+(six PageSpeed runs each, the held first paint in 3 of 10 against 6 of 10). PageSpeed also answers a URL from its cache
+for about a minute; check counts only new reports.
+
+`.github/workflows/page-load.yml` runs the same measurement on a GitHub Actions runner (`workflow_dispatch` with the
+old and new origins, the routes and the number of runs; 9 by default) and posts the summary to the run.
+
+## Third-party embeds
+
+A YouTube or Vimeo player, an X, Bluesky or Mastodon post, a GitHub star button or gist, a link card, or any
+other site's iframe or widget becomes a Markless component in real markup: the embed's real text, images and CSS,
+fed by its real data, with nothing loaded from the provider until a visitor activates it. Activation loads the
+original embed unchanged in its place, or leads where the embed leads. Each embed goes through the same loop as a
+page:
+
+- **Detect.** `plan` (and `usage`) write `.migrate/embeds.json`: every embed on every page, by provider, read
+  from frames by address (`youtube.com/embed/<id>`, `iframe.mediadelivery.net/embed/...`, any other site's
+  frame by its host), loader scripts (`platform.twitter.com/widgets.js`, `buttons.github.io/buttons.js`, the
+  YouTube iframe API), provider markup (`blockquote.twitter-tweet`, `a.github-button`,
+  `blockquote[data-bluesky-uri]`) and click-to-load facades the old site already uses (lite-youtube-embed,
+  react-lite-youtube-embed). `markless-migrate embeds` prints them by route.
+- **Keep, with the reason.** An embed stays exactly as it is when it must be live at load (chat widgets, live
+  streams, timelines), plays at load (`autoplay`), is driven by the page's own code (`enablejsapi=1`, a loader with
+  no placeholder), shows the signed-in visitor's own state (comments, sign-in, captchas, payments), is an ad, or
+  its provider's terms forbid recreating it (Spotify, Google Maps). `upgrade` measures what each kept embed costs:
+  bytes, requests, FCP and LCP on a phone with the CPU slowed 4x, with it and with its hosts blocked.
+- **Study.** `markless-migrate embeds study` loads each old page, lets the embed settle and writes
+  `.migrate/embeds/<id>/`: pictures at rest, hovered and focused, at desktop and mobile in light and dark; the
+  settled markup and every visible element with its box and styles (only where the provider's terms allow reading
+  it: X forbids scraping, so an X post is rebuilt from its oEmbed answer alone); what a click does; and its data from
+  the provider's oEmbed endpoint or official API (YouTube oEmbed, Vimeo oEmbed, X oEmbed, Bluesky's public AppView,
+  a Mastodon server's statuses API, GitHub's REST API, a page's Open Graph tags where its robots.txt allows),
+  cached for a day.
+- **Write.** `run` gives the agent each embed's study and plan. A provider with a pre-built adapter (the result of
+  this loop, kept for every site) is installed with `markless-migrate embeds install <adapter>`, which copies a
+  certified component into `lib/embeds/` and its data into `lib/embeds/data.json`. Any other provider (Bunny
+  Stream, a GitHub Sponsors button) gets a component the agent writes from the study. `run --only embeds` (and
+  `check --only embeds`) compares the embeds alone and asks the agent for changes to them and what puts them in
+  place alone, so a site's other differences cannot pull it off course.
+- **Check.** The embed step of `check` (on by default; `--no-embeds` leaves it out) compares every old embed
+  with what the new page has in its place, a component marked `data-markless-embed="<id>"` or the same embed kept:
+  pixel for pixel at rest, hovered and focused, at desktop and mobile in light and dark, with two old loads giving
+  the noise; then it activates both by a click on the middle and by Enter on the first control, and compares what
+  loads in its place, whether media plays, and where it leads. The old, new and diff images go to
+  `.migrate/embeds/<id>/check/` and into the report. A value a component shows that the provider has moved since
+  (a star count) is accepted automatically only when every other pixel matches. An embed shared by many pages is
+  checked once per run.
+
+Adapters: `github-button` (buttons.js's star, fork, watch and follow buttons, in light and dark) and `youtube`
+(YouTube's player before it plays, promoted from the component `run` wrote for vite.dev; activation loads the page's
+own frame, playing). Vimeo, X, Bluesky, Mastodon, gists and link cards have their detection, keep rules and data
+sources in place and go through the same loop until an adapter is promoted. The provider catalog is
+`src/embed/providers.ts`.
+
 ## After the migration: upgrade
 
 Once the routes are green, `markless-migrate upgrade --new <origin>` measures what the port kept and what it
@@ -155,6 +236,12 @@ ported, and suggests what to change; nothing is applied.
   uses are compared with the matching `@markless/ui` family, read from its API manifest and its own source
   (`--ui <dir>`, or the app's installed package). A swap is suggested only when every row is covered; otherwise
   it is "not yet: missing ...", which is also the list of what the family lacks.
+
+- **Font preloads.** When a page's largest text (its LCP element) paints with a web font the page finds only
+  once its stylesheet has arrived and been parsed, and nothing preloads it, `upgrade` measures the page with
+  Lighthouse mobile as it is and with `<link rel="preload" as="font" crossorigin>` added after its charset,
+  both through the same local proxy so only the preload differs (`--load-runs` a side, as in check's `load`).
+  It is suggested only when the LCP comes sooner beyond noise, with the measured saving; `--no-load` leaves it out.
 
 `upgrade accept <id>` writes `.migrate/upgrades/<id>.md`, the agent's task. An accepted entry goes through the
 same pipeline: `check --old <pre-upgrade build> --new <upgraded build> --all` must be green on every route.
@@ -214,6 +301,7 @@ only within the same kind of character (digits stay digits); everything else mus
 | `network` | every request the page makes, in the browser and, when the server runs the request recorder, while the server renders it: method, URL (the app's own origin, ids, timestamps and cache-busters normalised, query keys and values kept), body shape, how many times, and which response fields the page shows |
 | `data` | non-page endpoints as data, with the same noise rules as pages: feeds item by item (keyed by guid, id or link), JSON field by field, `/.well-known` files, the manifest; robots.txt lines and sitemap entries count as `seo` |
 | `weight` | JavaScript on the wire and run at load (Chromium coverage), not counting what a third-party embed's own document loads; red when the new route is heavier |
+| `load` | page load as PageSpeed Insights measures it, after every other check, on one page per template group, as the anonymous visitor. **PageSpeed Insights** (mobile and desktop, `--psi-runs` a side, default 5, old and new in turn) on the deployed URLs, with the key from `PSI_API_KEY`, the project's `.env` or `setup --psi-key`: when it answers, its verdicts gate the route and real users' field data (Chrome UX Report p75) is shown. Without a key it runs on the shared keyless quota, best effort, retrying a 429 with backoff, and when Google still refuses it says `PSI unavailable (quota), using PageSpeed-equivalent (lab)`; it never fails silently and never blocks on a key. **PageSpeed-equivalent (lab)**: Lighthouse mobile here with PageSpeed's settings (Moto G Power emulation, simulated 150 ms RTT and 1.6 Mbps, 4x CPU; `--load-cpu calibrated` derives the slowdown from this machine's benchmarkIndex by Lighthouse's calculator instead, `--load-cpu <n>` fixes it), `--load-runs` a side (default 5, at least 4; as many again when a metric is worse than its floor but not yet beyond noise). It runs in the installed Chrome stable when there is one, else Playwright's Chromium (`MARKLESS_MIGRATE_CHROME` names another), and gates the route when PageSpeed Insights cannot. Each metric (FCP, LCP, Speed Index, TBT, CLS, score) is compared by its median: red when the new median is worse by more than max(100 ms, 5%) (TBT 50 ms, CLS 0.02, 3 score points) and a one-sided exact Mann-Whitney test puts the two sides' runs apart (p < 0.05). The failure names each side's LCP element, its breakdown, the requests that began before the LCP, the HTML size, render-blocking files and the scripts that ran longest; report.html shows the median run's filmstrip. A check with `--header` or `--cookie` reports page load as not measured, since Lighthouse would send them to every host it loads. `--no-load` leaves it out, `--no-psi` leaves PageSpeed Insights out; `--only load` (on `check` and `run`) measures it alone, a partial run where every other dimension is not compared |
 | `responsiveness` | the first use of every control the journeys exercised, and every internal link they followed, timed on a fresh page load, old then new, at desktop speed and on a 412x823 touch page with the CPU slowed 4x (`--cpu-throttle`). See below |
 | `motion` | the transitions and animations each interaction starts, old vs new, with motion allowed and the clock running in real time: the last step of every journey that stays on the page, hovering and keyboard-focusing each control a journey used, and scrolling down one screen. Each transition, CSS animation, Web Animation and style a script writes frame by frame is recorded with its element (paired as the other dimensions pair them), properties, duration, delay, easing and iterations, and media an interaction plays. Red when the old page animates and the new one jumps, when duration or delay differ by more than max(20 ms, 10%) or the easing differs, or when only the new page animates. Every animation an interaction starts is also held at the same moments on both sides (0, a quarter, half and three quarters into the old page's longest animation, and each old animation's last frame and the frame just after it ends, where each page's own end handlers have run), and each element that animates is compared there: shown or not (transparent counts as not shown), its opacity within 0.1, and how far it has moved or grown since the first moment within 2 px (`frame of generic (body/div)`: `old at 150 ms, just after animation exit of generic (body/div) ends: not shown`, `new: shown at opacity 1` is a dialog's backdrop that pops back after its own fade because the new page hides it only when the dialog's longer exit ends). After every journey that opened a dialog, menu or popup (once per alike opener), Escape is pressed and recorded too, so each one's exit is compared whatever the per-route cap leaves out (`maxDismissals`, 16). A canvas on the old page's first screen (a Rive or WebGL hero, which runs no CSS animation, writes nothing to the DOM and is masked as noise in screenshots) is recorded from the start of the document for 6 s, about 30 times a second, twice on the old side and once on the new, and each new frame is matched with the old frame it looks most like: the lag that lines them up is reported as the start-time gap, with how far it spreads, and the canvas is red (`canvas frames from load`) only when the best-matching frames differ by more than twice what the old page differs from a second load of itself (at least 0.5% of the canvas), so a drawing that only starts at another time is reported in `motion.canvases` and not flagged. An interaction that differs is recorded again on both sides, and stays red only if the new page's second recording differs too; every interaction that moved is replayed with `prefers-reduced-motion: reduce` too, where both must agree. report.html shows a filmstrip of each interaction that differs: five frames, old above new, at the same offsets into the old page's longest animation (held and stepped, so frames do not depend on timing). An interaction whose write the checker held back is left out (listed under skipped): what a page animates after a write follows the server's answer, and each app reacts to the checker's empty 204 in its own way (an optimistic toggle undone, a toggle that waits for success), so its motion is compared only when writes are sent; its hover and focus still are. Before an interaction is recorded the page settles (timers due within 3 s fire, finite animations end), then every loop, including one that has scheduled itself only once by then, is held with the timers it scheduled (a poll's fake server answer), and what those changed is undone with it, so both sides are held at the same phase whatever their load times; loops are held at their start while interactions are recorded, so what a loop keeps doing is not counted as an interaction's motion, and are compared on their own: each attribute, text or child list a loop kept changing, on the same element, at its period within max(20 ms, 10%) (`loop on generic "Toggle Demo"`), red when the new page lacks the loop or adds one. `--no-motion` leaves the interactions out |
 | `navigation` | the new app alone: a page reached by an in-place navigation must be the page a fresh load of its URL shows. One page per page shape (its layout, external scripts and number of inline scripts, from the served HTML; at most `--nav-destinations`, 40, layouts taken in turn) is reached by clicking a real link (one the checker adds when no page links there) on `--nav-entries` (2) other pages, other layouts first, and once more after using the entry page's control that keeps its state in the browser (a theme switch: a button whose click changes localStorage or a cookie); then the destination's own controls are used (that switch twice, then one control in the content), then back and forward. Each moment is compared with a fresh load of the same URL with the same kept state: `<html>` and `<body>` attributes, the head, the stylesheets that apply, the DOM, key computed styles, a screenshot (canvases, videos and embeds masked; what changed on its own within a second of the fresh load left out), the script files that ran, the globals the page's scripts define, and console errors. A link that loads a whole new document is a fresh load already and is not compared, nor is a swap the page's own code (htmx's `hx-boost`) made instead of the router. A difference the old app shows too when reached the same way is its own and not reported; `<html>` class and data-* attributes are also compared with the old app's, fresh (`rendered`) and reached in place. Catches what Markless 25196c52 (a swapped-in page's scripts not run: `htmx is not defined`) and 8d7669f8 (the homepage's `data-theme` kept on the next page, so turning the theme back to light left it dark) fixed. `--no-navigation` leaves it out |
@@ -363,6 +451,32 @@ the route is reported as not checked for an infrastructure failure, naming DNS (
 connection (`ECONNREFUSED`) or the timeout, rather than as red. The checker's own requests are retried
 the same way. `check` exits 3 when nothing is red but such a route was not checked.
 
+## Converting pages
+
+`convert` writes the Markless app from the old site instead of leaving every page to the agent. Each HTML
+route is loaded the way `check` loads it, and the document a visitor's browser ends up with becomes the page's
+`.tsrx`: the old framework's runtime is left out (its scripts, its server state and streaming scripts, its
+marker attributes and elements), plain scripts and every other tag stay as they were, and inline `<style>`
+blocks become stylesheet files. Regions several pages render alike (a header, a docs sidebar) are written once
+as components that take the page's path; the current page's link and per-page values are expressions.
+Every control ARIA marks as holding content back (`aria-expanded="false"`, an unselected tab, a tooltip
+trigger) is used on the old page, and what it shows is kept in an inert `<template>` next to it.
+
+Which library part each element is comes from the old source, not the markup: the usage inventory names
+the export that renders each `data-slot`, and the markup only tells which of the source's candidates an
+element is when a site renders several (Radix's, Base UI's and React Aria's tabs). Each part is then driven by
+a Markless port of that library (`parts/`: Radix Dialog on the shared dialog engine, Popover, DropdownMenu,
+Tabs, Collapsible and Accordion on Floating UI as Radix uses it; Base UI Popover, Menu, Tooltip and Select),
+written once and used on every site, delegated from each page's root element. The site's own client
+components go in `lib/site/parts.ts` (and `lib/site/mounts.json` for elements a part starts on when shown).
+With `--source`, the old config's redirects and rewrites and each route handler answer through a generated
+Nitro middleware: a handler runs as the old app's own server code (its local imports copied, JSX data
+dropped, `next/server` on the Fetch API); one that needs the old framework is served from the old build and
+reported as not ported. `.migrate/convert/report.json` lists what was left out, the endpoints and how each is
+answered, and the library parts no port implements yet. `--only <file>` converts the routes listed;
+`--fallthrough <old deployment>` makes a preview answer every other page from there, marked
+`x-markless-migrate-side: old`.
+
 ## Command-line tools
 
 When the product includes a command-line tool (a scaffolder, a code generator, shadcn's `shadcn add`),
@@ -506,7 +620,7 @@ facts behind the rules: [docs/notes/caching.md](docs/notes/caching.md).
 
 ## Certified library ports
 
-Some libraries are ported once in markless-migrate rather than once per site: `src/library/ports/<library>/`
+Some libraries are ported once in Markless Migrate rather than once per site: `src/library/ports/<library>/`
 holds a Markless port (no React and no copy of the library) that renders the library's own markup and
 attributes, so the old classes and selectors work unchanged. Today that is `@radix-ui/react-dialog` and
 `@radix-ui/react-alert-dialog` 1.1.15, which shadcn/ui's dialog, sheet, alert dialog and command dialog wrap.
