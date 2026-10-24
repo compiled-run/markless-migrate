@@ -46,8 +46,14 @@ function withOrigin(nodes: DocumentFragment, origin: string): DocumentFragment {
 
 /** Mounts a served layer's shell, unless it is in already, and fills it if its file is. */
 function mountServed(template: HTMLTemplateElement): void {
-	const keys = (template.dataset.mmLayerKeys ?? '').split(' ').filter(Boolean);
-	if (!keys.some((key) => document.querySelector(`[data-mm-layer="${CSS.escape(key)}"]`))) afterPage(withOrigin(template.content.cloneNode(true) as DocumentFragment, template.dataset.mmAppUrl ?? ''));
+	// A layer of several nodes (React Aria's focus scope markers and underlay beside its popover) has only its largest
+	// served: the page already holds the rest under the same key, so the shell is looked for by its source.
+	const src = template.dataset.mmLayerSrc!;
+	if (!document.querySelector(`[data-mm-served="${CSS.escape(src)}"]`)) {
+		const shell = withOrigin(template.content.cloneNode(true) as DocumentFragment, template.dataset.mmAppUrl ?? '');
+		for (const node of shell.children) node.setAttribute('data-mm-served', src);
+		afterPage(shell);
+	}
 	fill(template);
 	void request(template.dataset.mmLayerSrc!).then(() => template.isConnected && fill(template), () => {});
 }
