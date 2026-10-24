@@ -161,6 +161,14 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 		return `could not ${candidate.action}: ${(error as Error).message.split('\n')[0]}`;
 	}
 	await quiet(page, candidate.action === 'hover' ? 900 : candidate.extra ? 1500 : 300);
+	// A control that also opens on hover (Radix NavigationMenu) can be opened by the pointer arriving and closed by the
+	// press itself: one still collapsed is pressed again without the pointer.
+	if (candidate.action === 'click' && (await el.evaluate((e) => e.isConnected && e.getAttribute('aria-expanded') === 'false').catch(() => false)) && (await page.evaluate(() => (window as unknown as { __mmAdded?: unknown[] }).__mmAdded?.length ?? 0)) === 0) {
+		await page.mouse.move(1, 1).catch(() => {});
+		await quiet(page, 400);
+		await el.evaluate((e) => (e as HTMLElement).click()).catch(() => {});
+		await quiet(page, 300);
+	}
 	const replaced = await el.evaluate((e) => !e.isConnected).catch(() => true);
 	if (replaced) {
 		// A control that takes itself away (a "View Code" button swapping in the full source): what its container holds now.
