@@ -42,7 +42,17 @@ const accordion = `
 <div data-slot="accordion-item" data-rac=""><h3><button id="a2" data-rac="" type="button" aria-expanded="false" aria-controls="p2" slot="trigger">Two</button></h3><div id="p2" data-rac="" role="group" aria-hidden="true" hidden="until-found" style="--disclosure-panel-width: 0px; --disclosure-panel-height: 0px;"><div>Second</div></div></div>
 </div>`;
 
-const PARTS = ['react-aria/select', 'react-aria/menu', 'react-aria/dialog', 'react-aria/disclosure'];
+const combobox = `
+<div data-rac=""><div data-slot="input-group" data-rac="" role="group"><input id="cb" aria-label="Framework" type="text" role="combobox" aria-expanded="false" data-rac="" value=""><button id="cbb" data-slot="combobox-trigger" data-rac="" type="button" tabindex="-1" aria-label="Show suggestions" aria-haspopup="listbox" aria-expanded="false"></button></div></div>
+<!--layers--><div style="display: contents;" hidden data-mm-layer="cbb"><div data-slot="combobox-content" data-rac="" data-trigger="ComboBox" style="position:absolute" data-placement="bottom">
+<div id="cbl" data-rac="" role="listbox"><div data-rac="" role="option" aria-selected="false" id="c1">Next.js</div><div data-rac="" role="option" aria-selected="false" id="c2">SvelteKit</div><div data-rac="" role="option" aria-selected="false" id="c3">Nuxt.js</div></div>
+</div></div>`;
+
+const tooltip = `
+<button id="tt" data-slot="button" data-rac="" type="button" data-react-aria-pressable="true">Hover</button>
+<!--layers--><div hidden data-mm-layer="tt"><div id="tip" data-slot="tooltip-content" data-rac="" role="tooltip" data-placement="top" style="position:absolute"><p>Add to library</p></div></div>`;
+
+const PARTS = ['react-aria/select', 'react-aria/menu', 'react-aria/dialog', 'react-aria/disclosure', 'react-aria/combobox', 'react-aria/tooltip'];
 
 async function open(html: string): Promise<Page> {
 	const page = await browser.newPage();
@@ -60,7 +70,7 @@ async function open(html: string): Promise<Page> {
 	await page.evaluate(async (parts) => {
 		const loaded = await Promise.all(parts.map((p) => import(`/parts/${p}.ts`)));
 		const seen = new WeakSet<Event>();
-		for (const type of ['click', 'keydown', 'pointerover', 'pointerdown', 'input']) {
+		for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'input', 'focusin', 'focusout']) {
 			document.addEventListener(type, (event) => {
 				if (seen.has(event) || !(event.target instanceof Element)) return;
 				seen.add(event);
@@ -168,5 +178,40 @@ test('Disclosure: expanding one collapses the other in its group', async () => {
 	assert.equal(await page.getAttribute('#a1', 'aria-expanded'), 'false');
 	assert.equal(await page.evaluate(() => document.getElementById('a2')!.closest('[data-slot="accordion-item"]')!.getAttribute('data-expanded')), 'true');
 	assert.equal(await page.evaluate(() => document.getElementById('p2')!.style.getPropertyValue('--disclosure-panel-height')), 'auto');
+	await page.close();
+});
+
+test('ComboBox: typing shows the options containing the text, ArrowDown and Enter choose with focus kept in the input', async () => {
+	const page = await open(combobox);
+	await page.click('#cb');
+	await page.keyboard.type('xt');
+	await page.waitForTimeout(50);
+	assert.equal(await page.getAttribute('#cb', 'aria-expanded'), 'true');
+	assert.deepEqual(await page.evaluate(() => ['c1', 'c2', 'c3'].map((id) => document.getElementById(id)!.hidden)), [false, true, false]);
+	await page.keyboard.press('ArrowDown');
+	await page.keyboard.press('ArrowDown');
+	assert.equal(await page.getAttribute('#cb', 'aria-activedescendant'), 'c3');
+	assert.equal(await active(page), 'cb');
+	await page.keyboard.press('Enter');
+	await page.waitForTimeout(50);
+	assert.equal(await page.inputValue('#cb'), 'Nuxt.js');
+	assert.equal(await page.getAttribute('#cb', 'aria-expanded'), 'false');
+	await page.fill('#cb', 'zz');
+	assert.equal(await page.getAttribute('#cb', 'aria-expanded'), 'false', 'no option contains it, so it stays closed');
+	await page.close();
+});
+
+test('Tooltip: a hover after the pointer moved shows it and describes the trigger; Escape hides it', async () => {
+	const page = await open(tooltip);
+	await page.mouse.move(2, 2);
+	await page.mouse.move(4, 4);
+	await page.hover('#tt');
+	await page.waitForTimeout(50);
+	assert.equal(await page.isVisible('#tip'), true);
+	assert.equal(await page.getAttribute('#tt', 'aria-describedby'), 'tip');
+	assert.equal(await page.getAttribute('#tt', 'aria-expanded'), null);
+	await page.keyboard.press('Escape');
+	await page.waitForTimeout(50);
+	assert.equal(await page.isVisible('#tip'), false);
 	await page.close();
 });
