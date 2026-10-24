@@ -47,6 +47,14 @@ export function input(target: Element): boolean {
 	for (const item of itemsOf(collection, true)) item.hidden = !contains(textOf(item), query);
 	for (const section of collection.querySelectorAll<HTMLElement>('[role="group"], section')) section.hidden = !section.querySelector('[role^="menuitem"]:not([hidden]), [role="option"]:not([hidden])');
 	for (const sep of collection.querySelectorAll<HTMLElement>('[role="separator"]')) sep.hidden = query !== '';
+	// The collection's empty state (renderEmptyState) and data-empty once nothing matches.
+	const empty = collection.querySelector<HTMLElement>(':scope > [data-mm-empty]');
+	if (empty) {
+		const none = shown(collection).length === 0;
+		empty.hidden = !none;
+		if (none) collection.setAttribute('data-empty', 'true');
+		else collection.removeAttribute('data-empty');
+	}
 	// SearchField's data-empty, on the field around the input.
 	const wrapper = field.parentElement?.closest<HTMLElement>('[data-rac][data-empty], [data-rac]:has(> * > input[type="search"])') ?? null;
 	if (wrapper) {

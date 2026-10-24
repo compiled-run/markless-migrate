@@ -93,7 +93,10 @@ async function candidates(page: Page, extra: readonly (readonly [string, RevealA
 				const style = getComputedStyle(el);
 				const visible = rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.pointerEvents !== 'none';
 				const path = pathOf(el);
-				out.push({ path, key: el.id || el.getAttribute('aria-controls') || `p:${path.join('.')}`, action: action as 'click' | 'hover' | 'contextmenu', visible, selector, sig: sigOf(el), nth: order.get(el) ?? 0 });
+				// A second control with an id the page already gave another (shadcn's React Aria date pickers) is keyed by the id the converter gives it.
+				let key = el.id || el.getAttribute('aria-controls') || `p:${path.join('.')}`;
+				if (el.id && document.querySelectorAll(`[id="${CSS.escape(el.id)}"]`)[0] !== el) key = `${el.id}-${[...document.querySelectorAll(`[id="${CSS.escape(el.id)}"]`)].indexOf(el) + 1}`;
+				out.push({ path, key, action: action as 'click' | 'hover' | 'contextmenu', visible, selector, sig: sigOf(el), nth: order.get(el) ?? 0 });
 			}
 		}
 		return out;
@@ -417,4 +420,139 @@ export async function captureRacHovers(browser: Browser, origin: string, route: 
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify({ route, reveals }));
 	return reveals;
+}
+
+/**
+ * React Aria's submenus: a menu item with aria-haspopup opens its own popover when hovered, which no control in the
+ * page shows. Each menu a reveal opened is opened again, each such item in it hovered, and what it showed recorded as a
+ * reveal keyed by the item's id (one level deep). Cached by route.
+ */
+export async function captureRacSubmenus(browser: Browser, origin: string, route: string, dir: string, reveals: readonly Reveal[]): Promise<readonly Reveal[]> {
+	const menus = reveals.filter((r) => r.action === 'click' && r.added.some((a) => /role="menuitem[^"]*"[^>]*aria-haspopup="menu"|aria-haspopup="menu"[^>]*role="menuitem/.test(a.html) && a.html.includes('data-rac')));
+	if (!menus.length) return [];
+	const file = join(dir, `${createHash('sha256').update(`rac-submenus:1:${route}|${JSON.stringify(menus.map((m) => [m.sig, m.nth, m.path]))}`).digest('hex').slice(0, 16)}.json`);
+	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
+	if (cached && cached.route === route) return cached.reveals;
+	const out: Reveal[] = [];
+	const viewport = VIEWPORTS[0]!;
+	for (const menu of menus) {
+		const { context, page, baseline } = await fresh(browser, origin, route, viewport);
+		void baseline;
+		try {
+			const open = async () => {
+				const el = (
+					await page.evaluateHandle((path) => {
+						let node: globalThis.Element | undefined = document.body;
+						for (const i of path) node = node?.children[i];
+						return node ?? null;
+					}, menu.path)
+				).asElement();
+				if (!el) return false;
+				await el.click({ timeout: 2000 });
+				await quiet(page, 400);
+				return true;
+			};
+			if (!(await open())) continue;
+			const ids = await page.evaluate(() => [...document.querySelectorAll('[data-trigger="MenuTrigger"] [role^="menuitem"][aria-haspopup="menu"], [data-trigger] [role="menu"] [role^="menuitem"][aria-haspopup="menu"]')].map((e) => e.id).filter(Boolean));
+			for (const id of [...new Set(ids)]) {
+				await page.evaluate(() => {
+					const w = window as unknown as { __mmAdded?: globalThis.Element[]; __mmObserver?: MutationObserver };
+					w.__mmAdded = [];
+					w.__mmObserver = new MutationObserver((records) => {
+						for (const r of records) for (const n of r.addedNodes) if (n instanceof globalThis.Element) w.__mmAdded!.push(n);
+					});
+					w.__mmObserver.observe(document.body, { childList: true, subtree: true });
+				});
+				const item = page.locator(`[id="${id}"]`);
+				const hovered = await item.hover({ timeout: 2000 }).then(() => true, () => false);
+				if (!hovered) continue;
+				await quiet(page, 500);
+				const added = await page.evaluate(() => {
+					const w = window as unknown as { __mmAdded?: globalThis.Element[]; __mmObserver?: MutationObserver };
+					w.__mmObserver?.disconnect();
+					const nodes = (w.__mmAdded ?? []).filter((n) => n.isConnected && n.querySelector('[data-trigger="SubmenuTrigger"], [role="menu"]'));
+					// The submenu's popover, outermost first, without what is inside another added node.
+					return nodes.filter((n) => !nodes.some((m) => m !== n && m.contains(n))).map((n) => n.outerHTML);
+				});
+				if (added.length) out.push({ key: id, path: [-1], action: 'hover', viewport: viewport.name, added: added.map((html) => ({ into: 'body' as const, before: -1, html })) });
+				// Back to the menu alone: away from the item, so the submenu closes, then the menu is the only layer.
+				await page.keyboard.press('Escape').catch(() => {});
+				await quiet(page, 300);
+				if (!(await page.locator('[data-trigger="MenuTrigger"]').count())) await open();
+			}
+		} catch {
+			// a menu that cannot be opened again keeps its submenus static
+		} finally {
+			await context.close().catch(() => {});
+		}
+	}
+	await mkdir(dir, { recursive: true });
+	await writeFile(file, JSON.stringify({ route, reveals: out }));
+	return out;
+}
+
+/**
+ * React Aria ComboBoxes without a button (a multiple-selection one whose chips are a TagGroup): their popover opens
+ * only on ArrowDown or typing, which no click shows. Each such input is focused on a fresh page, ArrowDown pressed and
+ * what it showed recorded as a reveal keyed by the input's id. Cached by route.
+ */
+export async function captureRacComboInputs(browser: Browser, origin: string, route: string, dir: string): Promise<readonly Reveal[]> {
+	const file = join(dir, `${createHash('sha256').update(`rac-combo-inputs:4:${route}`).digest('hex').slice(0, 16)}.json`);
+	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
+	if (cached && cached.route === route) return cached.reveals;
+	const out: Reveal[] = [];
+	const viewport = VIEWPORTS[0]!;
+	const list = async (page: Page) =>
+		page.evaluate(() => {
+			const pathOf = (el: globalThis.Element) => {
+				const path: number[] = [];
+				for (let node: globalThis.Element | null = el; node && node !== document.body; node = node.parentElement) path.unshift([...node.parentElement!.children].indexOf(node));
+				return path;
+			};
+			const sigOf = (el: globalThis.Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+			const all = [...document.body.querySelectorAll('*')].filter((e) => !e.closest('template'));
+			return [...document.querySelectorAll<HTMLInputElement>('input[data-rac][role="combobox"]')].filter((i) => i.id && i.getClientRects().length && !i.closest('[data-rac]:has(input[role="combobox"])')?.querySelector('button[aria-haspopup="listbox"]')).map((i) => ({ id: i.id, path: pathOf(i), sig: sigOf(i), nth: all.filter((e) => sigOf(e) === sigOf(i)).indexOf(i) }));
+		});
+	{
+		const { context, page } = await fresh(browser, origin, route, viewport);
+		const inputs = await list(page).catch(() => []);
+		await context.close().catch(() => {});
+		for (const input of inputs) {
+			const { context, page } = await fresh(browser, origin, route, viewport);
+			try {
+				await page.evaluate(() => {
+					const w = window as unknown as { __mmAdded?: globalThis.Element[]; __mmObserver?: MutationObserver };
+					w.__mmAdded = [];
+					w.__mmObserver = new MutationObserver((records) => {
+						for (const r of records) for (const n of r.addedNodes) if (n instanceof globalThis.Element) w.__mmAdded!.push(n);
+					});
+					w.__mmObserver.observe(document.body, { childList: true });
+				});
+				const id = await page.evaluate((path) => {
+					let node: globalThis.Element | undefined = document.body;
+					for (const i of path) node = node?.children[i];
+					node?.setAttribute('data-mm-probe', '');
+					return node?.id;
+				}, input.path);
+				if (!id) continue;
+				await page.click('[data-mm-probe]', { timeout: 5000 });
+				await page.keyboard.press('ArrowDown');
+				await page.waitForSelector('[data-trigger="ComboBox"] [role="option"]', { timeout: 8000 }).catch(() => {});
+				await quiet(page, 300);
+				const added = await page.evaluate(() => {
+					const w = window as unknown as { __mmAdded?: globalThis.Element[]; __mmObserver?: MutationObserver };
+					w.__mmObserver?.disconnect();
+					return (w.__mmAdded ?? []).filter((n) => n.isConnected && (n.matches('[data-trigger="ComboBox"]') || n.querySelector('[data-trigger="ComboBox"]'))).map((n) => n.outerHTML);
+				});
+				if (added.length) out.push({ key: id, path: input.path, sig: input.sig, nth: input.nth, action: 'click', viewport: viewport.name, added: added.map((html) => ({ into: 'body' as const, before: -1, html })) });
+			} catch {
+				// an input that cannot be opened keeps its popover unported
+			} finally {
+				await context.close().catch(() => {});
+			}
+		}
+	}
+	await mkdir(dir, { recursive: true });
+	await writeFile(file, JSON.stringify({ route, reveals: out }));
+	return out;
 }
