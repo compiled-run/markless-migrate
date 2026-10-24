@@ -447,6 +447,7 @@ function gridItems(grid: HTMLElement, items: readonly Sponsor[]): void {
 		box.className = 'vp-sponsor-grid-box';
 		const img = document.createElement('img');
 		img.className = 'vp-sponsor-grid-image';
+		img.loading = 'lazy';
 		img.src = sponsor.img;
 		if (sponsor.name != null) img.alt = sponsor.name;
 		box.append(img);
