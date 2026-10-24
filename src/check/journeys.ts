@@ -28,7 +28,9 @@ export type Step =
 	| { readonly action: 'press'; readonly key: Key; readonly target: Target }
 	| { readonly action: 'fill'; readonly target: Target; readonly value: string }
 	| { readonly action: 'select'; readonly target: Target; readonly value: string }
-	| { readonly action: 'submit'; readonly target: Target; readonly fields: readonly { readonly target: Target; readonly value: string; readonly check?: boolean }[] };
+	| { readonly action: 'submit'; readonly target: Target; readonly fields: readonly { readonly target: Target; readonly value: string; readonly check?: boolean }[] }
+	| { readonly action: 'scroll'; readonly target: Target }
+	| { readonly action: 'hover'; readonly target: Target; readonly at: number };
 
 export interface StepResult {
 	readonly url: string;
@@ -58,6 +60,8 @@ export interface StepResult {
 	readonly state?: readonly string[];
 	/** The step reloaded the page: what it shows and keeps after the reload is compared with what it showed before. */
 	readonly reloaded?: boolean;
+	/** A document loaded during the step (not a router's swap in place). */
+	readonly loaded?: boolean;
 	/** How the page answered where a visitor sees it, when the step stayed on the page: the viewport regions whose pixels changed outside the used control's own box, and what changed in its widgets (a value, a selection, a moved or scrolled track). */
 	readonly reaction?: Reaction;
 }
@@ -68,6 +72,10 @@ export interface Reaction {
 	readonly changes: readonly string[];
 	/** The window scrolled during the step, so every pixel moved and regions say nothing about what answered. */
 	readonly scrolled?: boolean;
+	/** Milliseconds from the step to the page's first change. */
+	readonly answeredMs?: number;
+	/** Layout shifts while the step ran: their summed score and the largest sideways and vertical jump of any element, in px. */
+	readonly shift?: { readonly score: number; readonly x: number; readonly y: number };
 }
 
 export interface Journey {
@@ -79,6 +87,8 @@ export interface Journey {
 	readonly cycle?: readonly CycleAct[];
 	/** How long each step may take to reach its control, when the default was too short on the old page (a busy page's control that settles late). */
 	readonly patience?: number;
+	/** The page the journey starts on, when not the route itself: its first step follows a link to the route in place, as a visitor arrives from another page. */
+	readonly start?: string;
 }
 
 /**
@@ -112,6 +122,10 @@ const BUDGET_PER_CONTROL_MS = 3_000;
 const MAX_ADAPTIVE_BUDGET_MS = 900_000;
 const DEFAULT_MAX_DEPTH = 4;
 const CONCURRENCY = 8;
+// Other pages tried as the place a visitor arrives from.
+const ARRIVAL_ENTRIES = 3;
+// Journeys run again after arriving in place, most important first.
+export const MAX_ARRIVED = 30;
 const STEP_TIMEOUT = 3_000;
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
@@ -134,6 +148,7 @@ export function snapshotName(line: string): string {
 }
 
 export function describeTarget(t: Target): string {
+	if (t.role === SECTION) return `section #${t.name}`;
 	if (t.structure) return `${t.role} ${describeStructure(t.structure)} (no name: matched by structure and position)`;
 	return `${t.role}${t.name ? ` "${t.name}"` : ''}${t.nth ? ` #${t.nth + 1}` : ''}`;
 }
@@ -150,6 +165,10 @@ export function describeStep(step: Step): string {
 			return `choose "${step.value}" in ${describeTarget(step.target)}`;
 		case 'submit':
 			return `fill ${step.fields.map((f) => describeTarget(f.target)).join(', ')} and submit with ${describeTarget(step.target)}`;
+		case 'scroll':
+			return `scroll to ${describeTarget(step.target)}`;
+		case 'hover':
+			return `point at ${Math.round(step.at * 100)}% across ${describeTarget(step.target)}`;
 	}
 }
 
@@ -162,6 +181,7 @@ export function labelled(name: string): string {
 export function locate(page: Page, t: Target): Locator {
 	if (t.structure) return page.locator(`${STRUCTURE_ENGINE}=${JSON.stringify(t.structure)}`);
 	if (t.role === CLICKABLE) return page.locator(`xpath=${labelled(t.name)}`).nth(t.nth);
+	if (t.role === SECTION) return page.locator(`[id="${t.name.replace(/["\\]/g, '\\$&')}"]`).first();
 	if (t.role === 'summary') return page.locator('summary').filter({ hasText: new RegExp(`^\\s*${escapeRegex(t.name)}\\s*$`) }).nth(t.nth);
 	return page.getByRole(t.role as Parameters<Page['getByRole']>[0], t.name ? { name: spacing(t.name) } : { name: '', exact: true }).nth(t.nth);
 }
@@ -315,6 +335,49 @@ function describeElement(el: Element) {
 			return own.length > 8 ? [...document.querySelectorAll('[role="listbox"], [role="menu"], [role="tablist"], [role="radiogroup"]')].indexOf(list) : -1;
 		})(),
 	};
+}
+
+const HOVER_POINTS = [0.2, 0.4, 0.6, 0.8];
+
+/** Runs in the page: the outermost large elements that listen for the pointer moving over them and are no control, by structure, at most 6. */
+function hoverSurfaces(): { tag: string; scope: string; index: number }[] {
+	const hover = (globalThis as { __markless_migrate_hover__?: WeakSet<Element> }).__markless_migrate_hover__;
+	if (!hover) return [];
+	const LANDMARK: Record<string, string> = { main: 'main', nav: 'navigation', header: 'banner', footer: 'contentinfo', aside: 'complementary', form: 'form', table: 'table', dialog: 'dialog', figure: 'figure', svg: 'svg', ul: 'list', ol: 'list' };
+	const scopeOf = (el: Element) => {
+		const parts: string[] = [];
+		for (let at = el.parentElement; at; at = at.parentElement) {
+			const role = at.getAttribute('role') ?? LANDMARK[at.localName];
+			if (role && role !== 'presentation' && role !== 'none' && role !== 'generic') parts.unshift(role);
+		}
+		return parts.join('>');
+	};
+	const control = 'a[href], button, input, select, textarea, summary, label, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], [role="slider"]';
+	const big = (el: Element) => {
+		const r = el.getBoundingClientRect();
+		return r.width >= 120 && r.height >= 60;
+	};
+	const hits = [...(document.body?.querySelectorAll('*') ?? [])].filter((el) => hover.has(el) && big(el) && !el.matches(control) && !el.closest(control) && el.checkVisibility({ visibilityProperty: true }));
+	const outer = hits.filter((el) => !hits.some((other) => other !== el && other.contains(el))).slice(0, 6);
+	return outer.map((el) => {
+		const scope = scopeOf(el);
+		return { tag: el.localName, scope, index: [...document.querySelectorAll(el.localName)].filter((other) => scopeOf(other) === scope && other.checkVisibility({ visibilityProperty: true })).indexOf(el) };
+	});
+}
+
+/** A section of the page found by its id (the target of a contents list's link). */
+export const SECTION = 'section';
+
+/** Runs in the page: the ids of the sections a contents list links to (in-page links in a nav or aside), in page order, at most 12. */
+function contentsSections(): string[] {
+	const links = [...document.querySelectorAll('nav a[href^="#"], aside a[href^="#"], [class*="toc" i] a[href^="#"]')].filter((a) => a.checkVisibility({ visibilityProperty: true }));
+	const ids: string[] = [];
+	for (const a of links) {
+		const id = decodeURIComponent((a.getAttribute('href') ?? '').slice(1));
+		if (id && document.getElementById(id) && !ids.includes(id)) ids.push(id);
+		if (ids.length >= 12) break;
+	}
+	return ids;
 }
 
 /** Elements that answer a click or a key themselves but have no interactive role, each with its label and its index among the elements `labelled` finds for it. */
@@ -557,11 +620,20 @@ function liveRegions() {
 
 // Runs in the page before a step: records which attributes change, and where every scrolling container and the window stand.
 function watchReaction(): void {
-	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; scrolls: Map<Element, string>; window: string };
+	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number } };
 	const g = globalThis as { __markless_migrate_reaction__?: Watch };
 	g.__markless_migrate_reaction__?.observer.disconnect();
+	g.__markless_migrate_reaction__?.shifts?.disconnect();
 	const changed = new Map<Element, Map<string, string | null>>();
+	const timing = { started: performance.now(), first: undefined as number | undefined, input: undefined as number | undefined };
+	// Timed from the input the page received, not from when the checker asked for it: how fast the checker's own clicks land is no page's.
+	const input = (event: Event) => {
+		if (timing.input === undefined) timing.input = event.timeStamp;
+	};
+	for (const type of ['pointerdown', 'mousedown', 'keydown', 'click', 'input']) addEventListener(type, input, { capture: true, once: true });
+	const shift = { score: 0, x: 0, y: 0 };
 	const observer = new MutationObserver((records) => {
+		if (timing.first === undefined && timing.input !== undefined && records.some((r) => !(r.target instanceof Element && r.attributeName?.startsWith('data-markless-migrate')))) timing.first = performance.now();
 		for (const r of records) {
 			if (r.type !== 'attributes' || !(r.target instanceof Element) || !r.attributeName || r.attributeName.startsWith('data-markless-migrate')) continue;
 			let attrs = changed.get(r.target);
@@ -569,7 +641,23 @@ function watchReaction(): void {
 			if (!attrs.has(r.attributeName)) attrs.set(r.attributeName, r.oldValue);
 		}
 	});
-	observer.observe(document, { subtree: true, attributes: true, attributeOldValue: true });
+	observer.observe(document, { subtree: true, attributes: true, attributeOldValue: true, childList: true, characterData: true });
+	// Every layout shift while the step runs, those right after the input too: a page that jumps when a dialog closes is no answer the old page gave.
+	let shifts: PerformanceObserver | undefined;
+	try {
+		shifts = new PerformanceObserver((list) => {
+			for (const entry of list.getEntries() as (PerformanceEntry & { value: number; sources?: { previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }[] })[]) {
+				shift.score += entry.value;
+				// Only a large part of the page moving counts as the page jumping; a word reflowing beside a changed number does not.
+				for (const source of entry.sources ?? []) {
+					if (source.currentRect.width * source.currentRect.height < innerWidth * innerHeight * 0.25) continue;
+					shift.x = Math.max(shift.x, Math.abs(source.currentRect.x - source.previousRect.x));
+					shift.y = Math.max(shift.y, Math.abs(source.currentRect.y - source.previousRect.y));
+				}
+			}
+		});
+		shifts.observe({ type: 'layout-shift', buffered: false });
+	} catch {}
 	const scrolls = new Map<Element, string>();
 	for (const el of document.body?.querySelectorAll('*') ?? []) {
 		if (scrolls.size >= 400) break;
@@ -578,15 +666,20 @@ function watchReaction(): void {
 			if (/(auto|scroll)/.test(`${s.overflowX} ${s.overflowY}`)) scrolls.set(el, `${Math.round(el.scrollLeft)},${Math.round(el.scrollTop)}`);
 		}
 	}
-	g.__markless_migrate_reaction__ = { observer, changed, scrolls, window: `${Math.round(scrollX)},${Math.round(scrollY)}` };
+	g.__markless_migrate_reaction__ = { observer, changed, scrolls, window: `${Math.round(scrollX)},${Math.round(scrollY)}`, shifts, shift, get started() { return timing.input ?? timing.started; }, get first() { return timing.first; } };
 }
 
 // Runs in the page after a step: what changed in the page's widgets, named by role and label as a visitor's tools name them.
-function readReaction(): { changes: string[]; scrolled: boolean; boxes: Record<string, { x: number; y: number; width: number; height: number }> } {
-	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; scrolls: Map<Element, string>; window: string };
+function readReaction(): { changes: string[]; scrolled: boolean; boxes: Record<string, { x: number; y: number; width: number; height: number }>; answeredMs?: number; shift: { score: number; x: number; y: number } } {
+	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number } };
 	const g = globalThis as { __markless_migrate_reaction__?: Watch };
 	const watch = g.__markless_migrate_reaction__;
-	if (!watch) return { changes: [], scrolled: false, boxes: {} };
+	if (!watch) return { changes: [], scrolled: false, boxes: {}, shift: { score: 0, x: 0, y: 0 } };
+	for (const entry of (watch.shifts?.takeRecords() ?? []) as (PerformanceEntry & { value: number; sources?: { previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }[] })[]) {
+		watch.shift.score += entry.value;
+		for (const source of entry.sources ?? []) if (source.currentRect.width * source.currentRect.height >= innerWidth * innerHeight * 0.25) watch.shift.x = Math.max(watch.shift.x, Math.abs(source.currentRect.x - source.previousRect.x));
+	}
+	watch.shifts?.disconnect();
 	watch.observer.disconnect();
 	delete g.__markless_migrate_reaction__;
 	const STATES = ['aria-valuenow', 'aria-valuetext', 'aria-expanded', 'aria-selected', 'aria-checked', 'aria-pressed', 'aria-current', 'open'];
@@ -635,10 +728,32 @@ function readReaction(): { changes: string[]; scrolled: boolean; boxes: Record<s
 			if (now === was) continue;
 			if (STATES.includes(attr)) add(`${describe(el)} ${attr}: ${was ?? '(none)'} → ${now ?? '(none)'}`, el);
 			else if (attr === 'style' && moved(was) !== moved(now)) anchored(el, 'moved');
+			// A contents list marks its current section by a class or a data attribute on the in-page link.
+			else if (el.matches('a[href^="#"]') && attr === 'class') {
+				const before = new Set((was ?? '').split(/\s+/).filter(Boolean));
+				const after = new Set((now ?? '').split(/\s+/).filter(Boolean));
+				const diff = [...[...after].filter((c) => !before.has(c)).map((c) => `+${c}`), ...[...before].filter((c) => !after.has(c)).map((c) => `-${c}`)].sort();
+				if (diff.length) add(`${describe(el)} class ${diff.join(' ')}`, el);
+			} else if (el.matches('a[href^="#"]') && attr.startsWith('data-')) add(`${describe(el)} ${attr}: ${was ?? '(none)'} → ${now ?? '(none)'}`, el);
 		}
 	}
 	for (const [el, was] of watch.scrolls) if (el.isConnected && `${Math.round(el.scrollLeft)},${Math.round(el.scrollTop)}` !== was) anchored(el, 'scrolled');
-	return { changes: [...out].sort(), scrolled: `${Math.round(scrollX)},${Math.round(scrollY)}` !== watch.window, boxes };
+	return { changes: [...out].sort(), scrolled: `${Math.round(scrollX)},${Math.round(scrollY)}` !== watch.window, boxes, ...(watch.first !== undefined ? { answeredMs: Math.round(watch.first - watch.started) } : {}), shift: { score: Math.round(watch.shift.score * 1000) / 1000, x: Math.round(watch.shift.x), y: Math.round(watch.shift.y) } };
+}
+
+type TimerWindow = { __markless_migrate_timer_mark__?: () => number; __markless_migrate_timers_after__?: (mark: number) => number; __markless_migrate_hold_timers__?: (on: boolean) => void };
+const holdTimers = (page: Page, on: boolean) => page.evaluate((o) => (globalThis as TimerWindow).__markless_migrate_hold_timers__?.(o), on).catch(() => {});
+const timerMark = (page: Page) => page.evaluate(() => (globalThis as TimerWindow).__markless_migrate_timer_mark__?.() ?? 0).catch(() => 0);
+
+/** Waits (at most `cap`) until the timeouts of up to 3 s set since `mark` have fired. */
+async function timersOut(page: Page, mark: number, cap = 3_500): Promise<void> {
+	const until = Date.now() + cap;
+	for (;;) {
+		const left = await page.evaluate((m) => (globalThis as TimerWindow).__markless_migrate_timers_after__?.(m) ?? 0, mark).catch(() => 0);
+		const room = until - Date.now();
+		if (!(left > 0) || room <= 0) return;
+		await sleep(Math.min(left + 20, room));
+	}
 }
 
 const AMBIENT_MS = 1_000;
@@ -914,6 +1029,15 @@ async function perform(page: Page, step: Step, patience = QUICK): Promise<void> 
 		case 'submit':
 			for (const field of step.fields) await reach(page, locate(page, field.target), (t, timeout) => (field.check ? t.check({ timeout }) : t.fill(field.value, { timeout })), false, patience);
 			return reach(page, target, (t, timeout) => t.click({ timeout }), false, patience);
+		case 'scroll':
+			// The wheel brings the section to the top, as a reader scrolls, so what follows the scroll position (a contents list's current link) answers.
+			return void (await reach(page, target, (t, timeout) => t.evaluate((el) => el.scrollIntoView({ block: 'start' }), undefined, { timeout }), false, patience));
+		case 'hover':
+			return reach(page, target, async (t, timeout) => {
+				const box = await t.boundingBox({ timeout });
+				if (!box) throw new Error('it has no box to point at');
+				await page.mouse.move(box.x + box.width * step.at, box.y + box.height / 2, { steps: 4 });
+			}, false, patience);
 	}
 }
 
@@ -982,13 +1106,15 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 	await quiet(page, inflight, navigations);
 	const loadErrors = [...errors];
 	const ambient = await ambientOnce(env.origin, route, page);
+	// A motion recording holds the timeouts itself, across its film.
+	const ownTimers = !options.loops;
 	// Where a redirect landed is the http and auth checks' business; a step that stays there compares alike.
 	const landing = here(page.url());
 	const redirected = landing !== localUrl(new URL(route, origin).href, origin);
 	const observe = async (act: () => Promise<void>, what: string, step: Step | undefined, destructive: boolean, reload: boolean): Promise<StepResult> => {
 		const startPath = new URL(page.url()).pathname;
 		const href = step?.target.role === 'link' ? await locate(page, step.target).getAttribute('href', { timeout: STEP_TIMEOUT }).catch(() => null) : null;
-		const used = step && !reload ? locate(page, step.target) : undefined;
+		const used = step && !reload && step.action !== 'scroll' ? locate(page, step.target) : undefined;
 		// The control is brought into view first, so the frames before and after the step show what it answers with, not a scroll.
 		if (used && (await used.evaluate((el) => { const r = el.getBoundingClientRect(); return r.bottom < 0 || r.right < 0 || r.top > innerHeight || r.left > innerWidth; }, undefined, { timeout: QUICK }).catch(() => false))) {
 			await used.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' }), undefined, { timeout: QUICK }).catch(() => {});
@@ -1007,9 +1133,13 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		dialogs = [];
 		accepting = destructive;
 		log.holdAll = destructive && !env.sendWrites;
-		const ownBox = async () => (used ? await used.boundingBox({ timeout: 500 }).catch(() => null) : null);
+		// What a surface shows where it is pointed at (a chart's tooltip) is inside its own box, so that box is not left out for a hover.
+		const ownBox = async () => (used && step?.action !== 'hover' ? await used.boundingBox({ timeout: 500 }).catch(() => null) : null);
 		const boxBefore = await ownBox();
 		const frameBefore = reload ? undefined : await page.screenshot({ timeout: 10_000 }).catch(() => undefined);
+		// However long reading the result takes on a slow machine, what the step set going for later has not happened yet on either side.
+		const mark = await timerMark(page);
+		if (ownTimers) await holdTimers(page, true);
 		if (frameBefore) await page.evaluate(watchReaction).catch(() => {});
 		try {
 			await act();
@@ -1036,12 +1166,13 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 			// What the page changes on its own (an autoplaying carousel, a ticking counter) is no step's answer.
 			// Where those widgets sit now is left out too: what moves on its own changes different pixels every second.
 			const own = read ? read.changes.filter((c) => ambient.changes.includes(c)).flatMap((c) => (read.boxes[c] ? [read.boxes[c]!] : [])) : [];
-			if (read && frameAfter) reaction = { regions: read.scrolled ? [] : changedRegions(frameBefore, frameAfter, [boxBefore, boxAfter, ...ambient.regions, ...own].filter((b): b is Box => Boolean(b))), changes: read.changes.filter((c) => !ambient.changes.includes(c)), ...(read.scrolled ? { scrolled: true } : {}) };
+			if (read && frameAfter) reaction = { regions: read.scrolled ? [] : changedRegions(frameBefore, frameAfter, [boxBefore, boxAfter, ...ambient.regions, ...own].filter((b): b is Box => Boolean(b))), changes: read.changes.filter((c) => !ambient.changes.includes(c)), ...(read.scrolled ? { scrolled: true } : {}), ...(read.answeredMs !== undefined ? { answeredMs: read.answeredMs } : {}), ...(read.shift.score || read.shift.x || read.shift.y ? { shift: read.shift } : {}) };
 		}
-		return {
+		const done: StepResult = {
 			url: redirected && here(page.url()) === landing ? 'the page the route redirected to' : here(page.url()),
 			navigated: reload ? new URL(page.url()).pathname !== startPath : documentLoaded || new URL(page.url()).pathname !== startPath || (href !== null && new URL(href, page.url()).href === page.url()),
 			...(reload ? { reloaded: true } : {}),
+			...(documentLoaded ? { loaded: true } : {}),
 			added,
 			removed,
 			...(moved.length ? { moved } : {}),
@@ -1061,6 +1192,12 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 			...(state.length ? { state } : {}),
 			...(reaction ? { reaction } : {}),
 		};
+		// The 1 to 3 s timeouts the step set (a "Copied" label's reset) run once its result is read, and are waited out before the next step.
+		if (ownTimers) {
+			await holdTimers(page, false);
+			await timersOut(page, mark);
+		}
+		return done;
 	};
 	return {
 		context,
@@ -1083,7 +1220,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 }
 
 export async function replay(browser: Browser, env: SideEnv, route: string, viewport: Viewport, journey: Journey): Promise<StepResult[]> {
-	const session = await openSession(browser, env, route, viewport);
+	const session = await openSession(browser, env, journey.start ?? route, viewport);
 	try {
 		const results: StepResult[] = [];
 		for (const [i, step] of journey.steps.entries()) {
@@ -1178,6 +1315,8 @@ export interface Exploration {
 	readonly sequencesSkipped?: number;
 	/** Journeys that end the session or delete, not run here: run.ts runs them after every other journey on both sides. */
 	readonly deferred: readonly { readonly journey: Journey; readonly signature: string }[];
+	/** Another page of the app with a link that brings a visitor to this route in place (the router swaps the page, no document loads): the journeys run again arriving that way. */
+	readonly arrival?: { readonly entry: string; readonly link: Target };
 }
 
 interface Item {
@@ -1371,6 +1510,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	const start = await openSession(browser, env, route, viewport);
 	let wave: Item[];
 	let navLink: Target | undefined;
+	let entries: string[] = [];
 	try {
 		const found = await candidates(start.page, host);
 		// A page with many controls gets the time they take, so the default budget does not leave its own controls unused.
@@ -1386,12 +1526,51 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		};
 		const links = found.map((c) => ({ c, rank: rank(c) * 2 + (isLayout(c) ? 1 : 0) })).filter((l) => l.rank > 1);
 		navLink = links.sort((a, b) => b.rank - a.rank)[0]?.c.target;
+		entries = [...new Set(found.flatMap((c) => {
+			if (c.target.role !== 'link' || !c.href || c.covered || c.destructive || /^javascript:/i.test(c.href)) return [];
+			const to = new URL(c.href, here);
+			return to.origin === host && to.pathname !== here.pathname ? [to.pathname + to.search] : [];
+		}))]
+			// A sibling page first (the same component under another library links straight back), then the rest in page order.
+			.map((path, i) => ({ path, i, shared: path.split('/').filter((part, k) => part && part === here.pathname.split('/')[k]).length }))
+			.sort((a, b) => b.shared - a.shared || a.i - b.i)
+			.map((e) => e.path)
+			.slice(0, ARRIVAL_ENTRIES);
 		const first = itemsFor(track(found, [], undefined), 1);
 		formSteps = await forms(start.page, host, found);
 		wave = [...first.primary, ...formSteps.map((step): Item => ({ journey: { name: describeStep(step), steps: [step] }, depth: 1, expand: false }))];
 		later.push(...first.keyboard);
+		// A contents list of this page's sections: the page is scrolled to each section in turn, and what marks the current one is compared.
+		// A surface that answers the pointer moving over it (a chart showing a tooltip and its active point) is pointed at across its width.
+		for (const structure of await start.page.evaluate(hoverSurfaces).catch(() => [] as Structure[])) {
+			const target: Target = { role: 'surface', name: '', nth: 0, structure };
+			const steps = HOVER_POINTS.map((at): Step => ({ action: 'hover', target, at }));
+			wave.push({ journey: { name: `move the pointer across ${describeTarget(target)}`, steps }, depth: 1, expand: false });
+		}
+		const sections = await start.page.evaluate(contentsSections).catch(() => [] as string[]);
+		if (sections.length >= 2) {
+			const steps = sections.map((id): Step => ({ action: 'scroll', target: { role: SECTION, name: id, nth: 0 } }));
+			wave.push({ journey: { name: `scroll through the ${sections.length} sections the page's contents list names`, steps }, depth: 1, expand: false });
+		}
 	} finally {
 		await start.close();
+	}
+
+	// A page this one links to that links back: following that link must bring the route in place, or arriving that way is no different from a fresh load.
+	let arrival: { entry: string; link: Target } | undefined;
+	for (const entry of entries) {
+		if (arrival || outOfBudget()) break;
+		const back = await openSession(browser, env, entry, viewport).catch(() => undefined);
+		if (!back) continue;
+		try {
+			const here = new URL(route, origin);
+			const link = (await candidates(back.page, host)).find((c) => c.target.role === 'link' && c.href && !c.destructive && new URL(c.href, back.page.url()).pathname === here.pathname && !new URL(c.href, back.page.url()).hash)?.target;
+			if (!link) continue;
+			const went = await back.run({ action: 'click', target: link });
+			if (!went.failed && !went.loaded && new URL(back.page.url()).pathname === here.pathname) arrival = { entry, link };
+		} finally {
+			await back.close();
+		}
 	}
 
 	const runItem = async (item: Item) => {
@@ -1551,7 +1730,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		const of = role === 'link' ? (group.endsWith('|here') ? `in ${where || 'the page'} to this page` : `in ${where || 'the page'} to other pages`) : where.startsWith('list ') ? 'of the same list' : `of the same ${role === 'treeitem' ? 'tree' : 'grid'}`;
 		elements.push({ element: `${n - SAMPLES} more ${role}${n - SAMPLES === 1 ? '' : 's'} ${of}`, signature: `sampled|${group}`, layout: false, by: `alike: the first ${SAMPLES} are exercised${role === 'link' ? ', and every address is compared by the rendered check' : ''}` });
 	}
-	return { journeys, elements, skipped, sequencesSkipped, deferred };
+	return { journeys, elements, skipped, sequencesSkipped, deferred, ...(arrival ? { arrival } : {}) };
 }
 
 function budgetReason(budgetMs: number, maxJourneys: number | undefined): string {
@@ -1586,7 +1765,7 @@ function stable(values: readonly string[]): (value: string) => boolean {
 
 const near = (a: Box, b: Box, pad = 16) => a.x - pad < b.x + b.width && b.x - pad < a.x + a.width && a.y - pad < b.y + b.height && b.y - pad < a.y + a.height;
 // The same answer elsewhere in the view (text above it wrapped differently, a page laid out right to left) is a region of about its size: where it sits is the visual check's.
-const alike = (a: Box, b: Box) => near(a, b) || Math.min(a.width * a.height, b.width * b.height) / Math.max(a.width * a.height, b.width * b.height) >= 0.4;
+const alike = (a: Box, b: Box) => near(a, b) || Math.min(a.width * a.height, b.width * b.height) / Math.max(a.width * a.height, b.width * b.height) >= 0.25;
 const boxAt = (b: Box) => `(${b.x}, ${b.y}) ${b.width}x${b.height}`;
 
 /** How every old run of a step answered that the new run did not: widget changes each old run made, and regions of the view each old run changed that the new page left as they were. */
@@ -1600,6 +1779,37 @@ export function missingReaction(olds: readonly StepResult[], next: StepResult): 
 	const framed = !first!.scrolled && rest.every((r) => !r.scrolled) && !mine.scrolled;
 	const regions = framed ? first!.regions.filter((box) => rest.every((r) => r.regions.some((o) => alike(o, box))) && !mine.regions.some((o) => alike(o, box))) : [];
 	return { changes, regions };
+}
+
+/** Failures that are a slower answer alone, with the journey and step to time again one side at a time before they stand. */
+export const timedOnly = new WeakMap<Failure, { readonly journey: number; readonly step: number }>();
+
+const SHIFT_PX = 4;
+const SHIFT_SCORE = 0.02;
+// Measured on a 2-core runner: identical pages differ by up to about 90 ms from input to first change.
+const SLOWER_MS = 100;
+const SLOWER_RATIO = 1.5;
+
+/** The new page shifts its layout during a step where every old run held still, or by more: a jump a visitor sees (scroll-lock padding released at the wrong moment). */
+export function extraShift(olds: readonly StepResult[], next: StepResult): string | undefined {
+	if (!next.reaction || olds.some((o) => !o.reaction)) return undefined;
+	const most = (pick: (s: NonNullable<Reaction['shift']>) => number) => Math.max(0, ...olds.map((o) => (o.reaction!.shift ? pick(o.reaction!.shift) : 0)));
+	const n = next.reaction.shift ?? { score: 0, x: 0, y: 0 };
+	const [x, y, score] = [most((s) => s.x), most((s) => s.y), most((s) => s.score)];
+	if (n.x <= x + SHIFT_PX && n.y <= y + SHIFT_PX && n.score <= score + SHIFT_SCORE) return undefined;
+	return `old: a large part of the page moves at most ${x} px sideways and ${y} px up or down (layout shift ${score}); new: ${n.x} px sideways and ${n.y} px up or down (layout shift ${n.score})`;
+}
+
+/** The new page takes meaningfully longer than every old run to show its first change after a step. */
+export function slowerAnswer(olds: readonly StepResult[], next: StepResult): string | undefined {
+	// A step that asks the server first is as fast as the server; how fast each side's server answers is the responsiveness check's, on a fair network.
+	if ([...olds, next].some((r) => r.requests.length || r.writes?.length)) return undefined;
+	const times = olds.map((o) => o.reaction?.answeredMs);
+	const mine = next.reaction?.answeredMs;
+	if (mine === undefined || times.some((t) => t === undefined)) return undefined;
+	const old = Math.max(...(times as number[]));
+	if (mine - old <= SLOWER_MS || mine <= old * SLOWER_RATIO) return undefined;
+	return `the old page changes ${old} ms after the step; the new page ${mine} ms after it`;
 }
 
 function answered(r: StepResult, missing: { changes: string[]; regions: Box[] }, old: boolean): string {
@@ -1624,6 +1834,9 @@ function format(result: StepResult, parts: readonly string[], missing?: { change
 	if (parts.includes('storage')) out.push(`kept in the browser: ${result.storage?.join(', ') || '(no change)'}`);
 	if (parts.includes('dialogs')) out.push(`dialogs: ${result.dialogs?.join(' | ') || '(none)'}`);
 	if (parts.includes('reaction') && missing) out.push(answered(result, missing, old));
+	const shifted = result.reaction?.shift;
+	if (parts.includes('shift')) out.push(`layout: ${shifted ? `a large part of the page moves ${shifted.x} px sideways and ${shifted.y} px up or down (layout shift ${shifted.score})` : 'nothing moves'}`);
+	if (parts.includes('answer time')) out.push(`first change ${result.reaction?.answeredMs ?? '?'} ms after the step`);
 	return out.join('; ');
 }
 
@@ -1724,7 +1937,10 @@ export function ariaImprovements(olds: readonly StepResult[], next: StepResult):
 		removed = removed.filter((l) => l !== (opening ? plain : line));
 		notes.push(`button "${name}" sets aria-expanded when it ${opening ? 'opens' : 'closes'} what it controls; the old page sets no state on it (WAI-ARIA disclosure or menu button)`);
 	}
-	return { step: notes.length ? { ...next, added, removed } : next, notes };
+	// Focus on that button is the same focus, with or without its new state.
+	const named = notes.map((n) => /^button "((?:[^"\\]|\\.)*)"/.exec(n)?.[1]);
+	const focus = EXPANDED.test(next.focus) && named.some((name) => next.focus.startsWith(`button "${name}"`)) && olds.every((o) => o.focus === next.focus.replace(EXPANDED, '')) ? next.focus.replace(EXPANDED, '') : next.focus;
+	return { step: notes.length ? { ...next, added, removed, focus } : next, notes };
 }
 
 export function compareJourneys(route: string, olds: readonly Run[], journeys: readonly Journey[], next: Run, owner?: StorageOwner, doorErrors?: ReadonlyMap<string, readonly string[]>, improvements: string[] = []): Failure[] {
@@ -1784,8 +2000,14 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			// The old page answered the step and the new one did not: a control whose effect never happens is red whatever else matches.
 			const missing = navigated || reloaded ? { changes: [], regions: [] } : missingReaction(oldSteps as StepResult[], n);
 			if (missing.changes.length || missing.regions.length) parts.push('reaction');
+			const jumped = navigated || reloaded ? undefined : extraShift(oldSteps as StepResult[], n);
+			if (jumped) parts.push('shift');
+			const slower = navigated || reloaded ? undefined : slowerAnswer(oldSteps as StepResult[], n);
+			if (slower) parts.push('answer time');
 			if (parts.length) {
-				failures.push({ route, dimension, check, expected: where('old', format(a!, parts, missing, true)), actual: where('new', format(n, parts, missing)), hint, ...(automatic && parts.length === 1 && parts[0] === 'storage' ? { automatic } : {}) });
+				const failure: Failure = { route, dimension, check, expected: where('old', format(a!, parts, missing, true)), actual: where('new', format(n, parts, missing)), hint, ...(automatic && parts.length === 1 && parts[0] === 'storage' ? { automatic } : {}) };
+				if (parts.length === 1 && parts[0] === 'answer time') timedOnly.set(failure, { journey: j, step: k });
+				failures.push(failure);
 				break;
 			}
 		}
