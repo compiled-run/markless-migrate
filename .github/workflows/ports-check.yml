@@ -1,0 +1,52 @@
+name: Ports check
+
+# Not for merge: the fixed checker on the vite.dev, Docusaurus, htmx.org and alpinejs.dev samples, each side served on the runner from release port-builds-2026-10-23.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/ports-check.yml
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      # The org runs 60 jobs at once: a check leaves room for every other repository's CI.
+      max-parallel: 20
+      matrix:
+        include:
+          - { site: vite-dev, app: examples/vite-dev-markless, old: 'static vite-old.tar.gz 4000', new: vite-new.tar.gz, routes: '/ /guide/ /guide/features /config/build-options /live' }
+    env:
+      RELEASE: https://github.com/compiled-run/markless-migrate/releases/download/port-builds-2026-10-23
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Serve both sides
+        run: |
+          set -euo pipefail
+          read -r kind file rest <<< "${{ matrix.old }}"
+          bash deploy/archive/ci-serve.sh "$kind" "$RELEASE/$file" $rest
+          bash deploy/archive/ci-serve.sh node "$RELEASE/${{ matrix.new }}" 3000
+      - name: Check
+        run: |
+          set -uo pipefail
+          mkdir -p "${{ matrix.app }}"
+          cd "${{ matrix.app }}"
+          args=(); for r in ${{ matrix.routes }}; do args+=(--route "$r"); done
+          node "$GITHUB_WORKSPACE/src/cli.ts" check --old http://127.0.0.1:4000 --new http://127.0.0.1:3000 "${args[@]}" --no-load --no-psi --concurrency 2 --timeout 3600 --json > "$RUNNER_TEMP/report.json" 2> "$RUNNER_TEMP/check.txt"
+          echo "exit $?"; tail -n 60 "$RUNNER_TEMP/check.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ports-${{ matrix.site }}
+          path: |
+            ${{ runner.temp }}/report.json
+            ${{ runner.temp }}/check.txt
+            ${{ runner.temp }}/*.log
+          retention-days: 14

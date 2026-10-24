@@ -1,0 +1,21 @@
+name: Debug copy
+
+# Not for merge: the dead-carousel fixture run repeatedly on a runner.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/debug-copy.yml
+
+permissions:
+  contents: read
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: node scripts/debug-flaky.ts 6
