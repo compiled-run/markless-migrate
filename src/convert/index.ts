@@ -4,7 +4,7 @@ import { dirname, join, relative } from 'node:path';
 import { chromium } from 'playwright';
 import { copyAssets, copyStaticDir, resourcePaths } from './assets.ts';
 import { captureAll, type CapturedPage, type CapturedRef } from './capture.ts';
-import { captureAllReveals, type Reveal } from './reveal.ts';
+import { captureAllReveals, captureRacHovers, type Reveal } from './reveal.ts';
 import { captureChoices, type Choice } from './choices.ts';
 import { parseFragment } from 'parse5';
 import { cleanDocument, frameworkBuilds, lateHead, type Dropped } from './clean.ts';
@@ -206,7 +206,8 @@ let placementResolver: PartResolver | undefined;
 const templatePorts = new Set<string>();
 const isRadixTab = (el: Element) => attr(el, 'role') === 'tab' && portFor(el) === 'radix/roving';
 const isRadixDisclosure = (el: Element) => portFor(el) === 'radix/disclosure-motion';
-const isBaseTab = (el: Element) => attr(el, 'role') === 'tab' && /^base-ui-/.test(attr(el, 'id') ?? '');
+// Tabs that render only the chosen panel: Base UI's, and React Aria's (whose markup carries data-rac).
+const isBaseTab = (el: Element) => attr(el, 'role') === 'tab' && (/^base-ui-/.test(attr(el, 'id') ?? '') || attr(el, 'data-rac') !== undefined);
 // The panel each Base UI tab showed when chosen on the old page (Base UI renders only the chosen one).
 const basePanels = new Map<Element, { attrs: Record<string, string>; inner: string }>();
 // What the old page put in a Radix tab panel when its tab was chosen, as tsrx, by panel id (TabsPlan renders it on state).
@@ -218,6 +219,7 @@ function placement(kept: readonly Element[]): string {
 	if (!placementResolver) return '';
 	for (const root of kept) {
 		for (const el of [root, ...walkAll(root)]) {
+			if ((attr(el, 'data-trigger') !== undefined || attr(el, 'role') === 'tooltip') && attr(el, 'data-rac') !== undefined) return racPlacement(el, placementResolver);
 			const slot = attr(el, 'data-slot');
 			if (!slot || attr(el, 'data-side') === undefined) continue;
 			// The offsets of the library whose markup the element carries: Base UI's tooltip popup and Radix's tooltip
@@ -232,6 +234,29 @@ function placement(kept: readonly Element[]): string {
 		}
 	}
 	return '';
+}
+
+// React Aria's Popover and Tooltip: the side is the content's own data-placement; the alignment along it is where the
+// trigger's anchor point sat (--trigger-anchor-point: at the start, the middle or the end of --trigger-width); the
+// offsets are the source's where it renders the part with this element's data-slot.
+function racPlacement(el: Element, resolver: PartResolver): string {
+	const style = attr(el, 'style') ?? '';
+	const side = attr(el, 'data-placement') ?? 'bottom';
+	const [x = 0, y = 0] = (/--trigger-anchor-point:\s*(-?[\d.]+)px\s+(-?[\d.]+)px/.exec(style) ?? []).slice(1).map(Number);
+	const width = Number(/--trigger-width:\s*([\d.]+)px/.exec(style)?.[1] ?? NaN);
+	const along = side === 'top' || side === 'bottom' ? (Math.abs(x) < 1 ? ' left' : !Number.isNaN(width) && Math.abs(x - width / 2) < 1 ? '' : !Number.isNaN(width) && Math.abs(x - width) < 1 ? ' right' : '') : Math.abs(y) < 1 ? ' top' : '';
+	const slot = attr(el, 'data-slot');
+	const own = candidatesOf(el, resolver).filter((c) => c.library === 'react-aria-components');
+	const read = (prop: string) => {
+		for (const c of own) {
+			const value = (slot ? resolver.slotProp?.(c.library, c.export, slot, prop) : undefined) ?? resolver.prop(c.library, c.export, prop);
+			if (value !== undefined && /^-?\d+(\.\d+)?$/.test(value)) return value;
+		}
+		return undefined;
+	};
+	const offset = read('offset');
+	const cross = read('crossOffset');
+	return ` data-mm-placement="${side}${along}"${offset !== undefined ? ` data-mm-offset="${offset}"` : ''}${cross !== undefined ? ` data-mm-cross-offset="${cross}"` : ''}`;
 }
 
 function walkAll(root: Element): Element[] {
@@ -350,6 +375,46 @@ function comboboxChips(doc: Document, reveals: readonly Reveal[]): void {
 	}
 }
 
+// React Aria renders a selectable item's check only while it is selected: a listbox option's in its last span, a
+// menu checkbox or radio item's in its *-indicator span. Each empty one gets a hidden copy of a selected sibling's, so
+// the port only shows it (data-mm-indicator) when the item is chosen.
+function racIndicators(top: Element): void {
+	for (const collection of [top, ...walkAll(top)]) {
+		const role = attr(collection, 'role');
+		if ((role !== 'listbox' && role !== 'menu') || attr(collection, 'data-rac') === undefined) continue;
+		const kinds = role === 'listbox' ? ['option'] : ['menuitemcheckbox', 'menuitemradio'];
+		for (const kind of kinds) {
+			const items = walkAll(collection).filter((o) => attr(o, 'role') === kind);
+			const holder = (o: Element) => {
+				const spans = elementChildren(o).filter((c) => c.tagName === 'span');
+				return role === 'listbox' ? spans[spans.length - 1] : spans.find((c) => /-indicator$/.test(attr(c, 'data-slot') ?? ''));
+			};
+			const on = (o: Element) => (role === 'listbox' ? attr(o, 'aria-selected') === 'true' : attr(o, 'aria-checked') === 'true');
+			const checked = items.find((o) => on(o) && holder(o) && elementChildren(holder(o)!).length);
+			const indicator = checked && elementChildren(holder(checked)!)[0];
+			if (!indicator) continue;
+			const mark = (el: Element) => {
+				if (attr(el, 'data-mm-indicator') === undefined) el.attrs = [...el.attrs, { name: 'data-mm-indicator', value: '' }];
+			};
+			const html = outer(indicator);
+			for (const o of items) {
+				const h = holder(o);
+				if (!h) continue;
+				if (on(o)) {
+					for (const c of elementChildren(h)) mark(c);
+					continue;
+				}
+				if (elementChildren(h).length) continue;
+				const copy = parseFragment(html).childNodes[0] as unknown as Element;
+				mark(copy);
+				copy.attrs = [...copy.attrs.filter((a) => a.name !== 'hidden'), { name: 'hidden', value: '' }];
+				copy.parentNode = h as never;
+				h.childNodes.push(copy as never);
+			}
+		}
+	}
+}
+
 /** A portal's nodes in their closed state: data-state="closed", data-closed for data-open, hidden, and the control's key. */
 /** Replaces every whitespace-separated token of every attribute that `rename` names. */
 function renameIds(els: readonly Element[], rename: ReadonlyMap<string, string>): void {
@@ -434,6 +499,7 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 		}
 		selectIndicators(top);
 		comboboxIndicators(top);
+		racIndicators(top);
 		top.attrs = [...top.attrs.filter((a) => a.name !== 'hidden'), { name: 'hidden', value: '' }, { name: 'data-mm-layer', value: key }, ...(reveal.viewport !== 'desktop' ? [{ name: 'data-mm-viewport', value: reveal.viewport }] : [])];
 	}
 	const hollow = hollowOf(kept);
@@ -466,6 +532,7 @@ function combined(first: PartResolver, then: PartResolver): PartResolver {
 		},
 		libraries: () => new Map([...then.libraries(), ...first.libraries()]),
 		prop: (library, exportName, prop) => first.prop(library, exportName, prop) ?? then.prop(library, exportName, prop),
+		slotProp: (library, exportName, slot, prop) => first.slotProp?.(library, exportName, slot, prop) ?? then.slotProp?.(library, exportName, slot, prop),
 	};
 }
 
@@ -737,6 +804,21 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		// A control a demo's recorded uses play is the scene's, not a disclosure's: its reveal is not planned.
 		const played = (route: string) => new Set((scenes.get(route) ?? []).flatMap(({ scene }) => scene.edges.map((e) => e.control.replace(/#\d+$/, ''))));
 		if (options.reveal !== false) for (const r of await captureAllReveals(browser, options.old, routes, join(state, 'convert', 'reveals'), { concurrency: options.concurrency ?? 4, log, extra, opens })) revealed.set(r.route, r.reveals.filter((reveal) => !reveal.sig || !played(r.route).has(reveal.sig)));
+		// React Aria tooltips and previews, on the pages whose server HTML has React Aria controls.
+		if (options.reveal !== false) {
+			const queue = [...captures];
+			const worker = async () => {
+				for (let c = queue.shift(); c; c = queue.shift()) {
+					if (!(await c.load()).server.includes('data-react-aria-pressable')) continue;
+					const route = c.route;
+					const hovers = await captureRacHovers(browser, options.old, route, join(state, 'convert', 'reveals'));
+					const own = revealed.get(route) ?? [];
+					const added = hovers.filter((h) => !own.some((r) => r.key === h.key));
+					if (added.length) revealed.set(route, [...own, ...added]);
+				}
+			};
+			await Promise.all(Array.from({ length: Math.max(1, options.concurrency ?? 4) }, worker));
+		}
 		// What each Base UI combobox shows once nothing matches, into the empty element of the layer it opens.
 		for (const [route, reveals] of revealed) {
 			const empty = /(<div\b[^>]*\bdata-slot="combobox-empty"[^>]*>)(<\/div>)/;
@@ -750,6 +832,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 		// Whether each accordion lets several items be open, on the routes where one revealed an item's content.
 		for (const [route, reveals] of revealed) if (reveals.some((r) => r.sig?.includes('|accordion-trigger|'))) accordionModes.set(route, (await captureAccordions(browser, options.old, route, join(state, 'convert', 'toggles'))).accordions);
+		// React Aria's accordion panels are in the page while collapsed, so expanding one reveals nothing: its server HTML says it is there.
+		for (const c of captures) if (c && !accordionModes.has(c.route) && /data-slot="accordion"[^>]*data-rac=/.test((await c.load()).server)) accordionModes.set(c.route, (await captureAccordions(browser, options.old, c.route, join(state, 'convert', 'toggles'))).accordions);
 		for (const [route, reveals] of revealed) {
 			// Hover cards, among them those whose trigger renders its child (its data-slot is the child's).
 			const others = reveals.filter((r) => r.action === 'hover' && r.sig && !r.sig.includes('|hover-card-trigger|') && r.added.some((a) => /data-slot="hover-card-content"/.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
@@ -979,7 +1063,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 	}
 	const selects = new SelectPlan();
-	for (const p of prepared.values()) selects.add(p.root, (el) => portFor(el) === 'base-ui/select' || portFor(el) === 'radix/select');
+	const racSelect = (el: Element) => attr(el, 'aria-haspopup') === 'listbox' && candidatesOf(el).some((c) => c.library === 'react-aria-components');
+	const emitTrigger = (html: string) => emitChildren(parseFragment(html) as unknown as Element, { bind: (el) => bindParts(el, templatePorts) });
+	for (const p of prepared.values()) selects.add(p.root, (el) => portFor(el) === 'base-ui/select' || portFor(el) === 'radix/select' || racSelect(el), emitTrigger);
 	// A demo's recorded uses never take over an element another plan puts on Markless state (a disclosure, a tab, a toggle).
 	const scenePlan = new ScenePlan((el) => [tabs, baseTabs, disclosures, insertedDisclosures, selects, checkables, switchPlan, notifyPlan, otps].some((plan) => plan.bind(el) !== undefined));
 	let sceneCount = 0;
@@ -1009,6 +1095,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const keyed = triggerKeys.get(el);
 		binding = mergeBindings(binding, keyed ? { extra: [`data-mm-key=${JSON.stringify(keyed)}`] } : undefined);
 		binding = mergeBindings(binding, portAttributes(el));
+		// A React Aria DisclosureGroup that lets several Disclosures be expanded (allowsMultipleExpanded writes nothing).
+		binding = mergeBindings(binding, multipleAccordions.has(el) && attr(el, 'data-rac') !== undefined ? { extra: ['data-mm-multiple=""'] } : undefined);
 		binding = mergeBindings(binding, portFor(el) === 'shadcn/message-scroller' ? bindScroller(el) : undefined);
 		binding = mergeBindings(dayPickers.bind(el), binding);
 		const own = mergeBindings(scenePlan.bind(el), mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), baseTabs.bind(el)), charts.bind(el)), disclosures.bind(el)), insertedDisclosures.bind(el)), selects.bind(el)), checkables.bind(el)), switchPlan.bind(el)), mergeBindings(notifyPlan.bind(el), handledForms.has(el) ? formBinding : undefined)), mergeBindings(otps.bind(el), binding)), bindMount(el)));
@@ -1142,10 +1230,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		await writeFile(join(app, component.file), appUrlDeclaration(withPartImports(imports ? component.source.replace('\n', `\n${imports}\n`) : component.source, partsDir(component.file))));
 	}
 	const documentParts: PartUse[] = [];
-	// DocSearch's Ctrl key off Apple platforms is set before the first paint, as DocSearch's own button draws it.
-	const headScripts = docsearchConfigured() ? ['PLATFORM_KEYS_SCRIPT'] : [];
+	// DocSearch's button keys and loading on intent run from the head, before the first paint and the first press.
+	const headScripts = docsearchConfigured() ? ['DOCSEARCH_SCRIPT'] : [];
 	if (headScripts.length) usedPorts.add('docsearch');
-	if (headScripts.length) documentParts.push({ part: 'docsearch', import: (dir) => `import { PLATFORM_KEYS_SCRIPT } from '${dir}/docsearch.ts';` });
+	if (headScripts.length) documentParts.push({ part: 'docsearch', import: (dir) => `import { DOCSEARCH_SCRIPT } from '${dir}/docsearch.ts';` });
 	await writeFile(join(app, 'document.tsrx'), appUrlDeclaration(documentModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped, partsDir('document.tsrx'), documentParts, headScripts)));
 	await writeFile(join(app, 'head.ts'), HEAD_HELPER);
 	if (disclosureGroups || insertedGroups) usedPorts.add('panel-motion');
