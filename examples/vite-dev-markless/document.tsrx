@@ -2,6 +2,7 @@ import { Html } from '@markless/router';
 import type { Children } from '@markless/core';
 import bannerBackground from './assets/vite/footer-background.jpg';
 import docsHeads from './lib/docs-heads.json' with { type: 'json' };
+import { EARLY_SEARCH_SCRIPT } from './page-scripts/search-shell.ts';
 
 interface Head {
 	readonly title: string;
@@ -65,7 +66,7 @@ export default function Document({ url, children }: { readonly url?: { readonly 
 			}
 			<script id="check-dark-mode">{'(function(){let e=localStorage.getItem("vitepress-theme-appearance")||"auto",t=window.matchMedia("(prefers-color-scheme: dark)").matches;if(!e||e==="auto"?t:e==="dark")document.documentElement.classList.add("dark")})();'}</script>
 			<script id="check-mac-os">{'document.documentElement.classList.toggle("mac",/Mac|iPhone|iPod|iPad/i.test(navigator.platform));'}</script>
-			<script id="search-on-click">{'addEventListener("click",function(e){var t=e.target;t&&t.closest&&t.closest(".VPNavBarSearchButton, button[aria-label=\\"Search\\"]")&&import("/page-scripts/search.js").then(function(s){s.openSearch()})});'}</script>
+			<script id="search-on-click">{EARLY_SEARCH_SCRIPT}</script>
 			<link rel="modulepreload" href="/page-scripts/page.js" />
 			@if (!docs) {
 				<link rel="modulepreload" href="/page-scripts/home.js" />;

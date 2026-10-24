@@ -1,0 +1,156 @@
+name: Check
+
+# `markless-migrate check` of a port split by route across runners. Each runner serves both sides itself, never a
+# deployment: the old site built from its source and the port from a build archive, through the site's
+# deploy/<site>/ci-serve.sh (`old`, and `new <archive URL>`). A --write-targets file is dealt into shards, each runner
+# checks one, and a last job joins their reports.
+on:
+  workflow_dispatch:
+    inputs:
+      site:
+        description: The deploy/<site> folder whose ci-serve.sh serves both sides
+        required: true
+        default: shadcn-ui
+      app:
+        description: The port's folder (where .migrate/ goes)
+        required: true
+        default: examples/shadcn-ui-markless
+      build:
+        description: URL of the port's build (a .tar.gz of its .output, node-server preset)
+        required: true
+      targets:
+        description: A `check --all --write-targets` file in the repository
+        required: true
+        default: deploy/shadcn-ui/check-targets.json
+      shards:
+        description: Runners to split the routes across
+        required: true
+        default: '24'
+      flags:
+        description: Extra check flags
+        required: false
+        default: ''
+  # A change to the workflow checks the 25-route build of ui.shadcn.com the same way, on two runners.
+  pull_request:
+    paths:
+      - .github/workflows/check.yml
+      - scripts/check-shards.ts
+      - deploy/shadcn-ui/ci-serve.sh
+
+permissions:
+  contents: read
+
+env:
+  SITE: ${{ inputs.site || 'shadcn-ui' }}
+  APP: ${{ inputs.app || 'examples/shadcn-ui-markless' }}
+  BUILD: ${{ inputs.build || 'https://github.com/compiled-run/markless-migrate/releases/download/shadcn-ui-subset-build-6f528da/shadcn-ui-markless-output.tar.gz' }}
+  TARGETS: ${{ inputs.targets || 'deploy/shadcn-ui/check-targets-subset.json' }}
+  SHARDS: ${{ inputs.shards || '2' }}
+  OLD: http://localhost:4000
+  NEW: http://127.0.0.1:3000
+
+concurrency:
+  group: check-${{ inputs.build || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.split.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - id: split
+        run: echo "matrix=$(node scripts/check-shards.ts split "$TARGETS" "$SHARDS" shards)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: check-shards
+          path: shards
+          retention-days: 3
+
+  check:
+    needs: plan
+    runs-on: ubuntu-latest
+    # GitHub stops a job at 6 h: the old site's build takes about 25 minutes, the shard the rest.
+    timeout-minutes: 345
+    strategy:
+      fail-fast: false
+      # The org runs 60 jobs at once: a check leaves room for every other repository's CI.
+      max-parallel: 20
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      # The old site's own build scripts call bun (ui.shadcn.com's registry:build).
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/download-artifact@v4
+        with:
+          name: check-shards
+          path: ${{ runner.temp }}/shards
+      - name: Serve the old site
+        run: bash "deploy/$SITE/ci-serve.sh" old
+      - name: Serve the port
+        run: bash "deploy/$SITE/ci-serve.sh" new "$BUILD"
+      - name: Check
+        env:
+          SHARD: ${{ matrix.shard }}
+          FLAGS: ${{ inputs.flags }}
+        run: |
+          set -uo pipefail
+          cd "$APP"
+          status=0
+          # shellcheck disable=SC2086
+          node "$GITHUB_WORKSPACE/src/cli.ts" check --old "$OLD" --new "$NEW" --targets "$RUNNER_TEMP/shards/shard-$SHARD.json" --concurrency 2 --timeout 1800 $FLAGS > "$RUNNER_TEMP/check.txt" 2>&1 || status=$?
+          tail -n 40 "$RUNNER_TEMP/check.txt"
+          # 1 is a red route and 4 a partial run, which is what a shard is: both are results, reported by the merge.
+          [ "$status" -eq 0 ] || [ "$status" -eq 1 ] || [ "$status" -eq 3 ] || [ "$status" -eq 4 ] || exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: check-${{ matrix.shard }}
+          path: |
+            ${{ env.APP }}/.migrate/report.json
+            ${{ env.APP }}/.migrate/check-progress
+            ${{ runner.temp }}/check.txt
+            ${{ runner.temp }}/new-serve.log
+            ${{ runner.temp }}/old-serve.log
+            ${{ runner.temp }}/old-build.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  merge:
+    needs: [plan, check]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: check-*
+          path: shards
+      - name: Merge
+        run: |
+          set -euo pipefail
+          node scripts/check-shards.ts merge shards merged
+          reported=$(find shards -name report.json | wc -l)
+          { echo "### $SITE: $BUILD"; echo; echo "$reported of $SHARDS shards reported."; echo; cat merged/summary.md; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: check-merged
+          path: merged
+          retention-days: 30

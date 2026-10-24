@@ -1,7 +1,7 @@
 import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { attr, type Element } from './dom.ts';
+import { attr, childrenOf, type Element } from './dom.ts';
 import type { Binding } from './tsrx.ts';
 import type { PartResolver, PartUsage } from './usage.ts';
 
@@ -11,7 +11,7 @@ export const PARTS_DIR = fileURLToPath(new URL('../../parts/', import.meta.url))
 /** The framework-agnostic packages the ports run on, at the versions the ported libraries were certified with. */
 export const PART_DEPENDENCIES: Readonly<Record<string, string>> = { '@floating-ui/dom': '1.7.6' };
 
-export type PartEvent = 'click' | 'keydown' | 'pointerover' | 'pointerout' | 'pointerdown' | 'focusin' | 'focusout' | 'contextmenu' | 'input';
+export type PartEvent = 'click' | 'keydown' | 'pointerover' | 'pointerout' | 'pointerdown' | 'focusin' | 'focusout' | 'contextmenu' | 'input' | 'submit';
 
 export interface Port {
 	/** The port's module under `parts/`, without `.ts`. */
@@ -88,6 +88,10 @@ export const PORTS: readonly Port[] = [
 	{ module: 'radix/disclosure-motion', library: 'radix-ui', needs: ['panel-motion'], exports: ['Collapsible.Root', 'Collapsible.CollapsibleTrigger', 'Collapsible.CollapsibleContent', 'Collapsible.Trigger', 'Collapsible.Content', 'Accordion.Root', 'Accordion.Item', 'Accordion.Header', 'Accordion.Trigger', 'Accordion.Content'], events: [], locate: (el) => radix(el) },
 	// Base UI Collapsible and Accordion are Markless state (convert's InsertedDisclosurePlan); the part measures and ends exits.
 	{ module: 'panel-motion', library: '@base-ui/react', exports: ['Collapsible.Root', 'Collapsible.Trigger', 'Collapsible.Panel', 'Accordion.Root', 'Accordion.Item', 'Accordion.Header', 'Accordion.Trigger', 'Accordion.Panel'], events: [], locate: base },
+	// DocSearch is found by the button it renders, on sites with or without source; usage.json carries its config.
+	{ module: 'docsearch', library: '@docsearch/react', exports: ['DocSearch'], events: ['pointerover', 'pointerdown', 'focusin', 'click', 'keydown'], locate: (el) => isDocSearchButton(el) },
+	// A form the old page's script handled does not submit: Markless's own onSubmit is not resumed on every page (LOG, bug 14).
+	{ module: 'form', library: 'markless-migrate', exports: [], events: ['submit'], locate: () => false },
 	{ module: 'shadcn/questionnaire', library: '@shadcn/react', exports: ['Questionnaire.Root', 'Questionnaire.Progress', 'Questionnaire.Item', 'Questionnaire.Title', 'Questionnaire.Description', 'Questionnaire.Choices', 'Questionnaire.Choice', 'Questionnaire.ChoiceInput', 'Questionnaire.ChoiceLabel', 'Questionnaire.ChoiceShortcut', 'Questionnaire.Input', 'Questionnaire.Error', 'Questionnaire.Previous', 'Questionnaire.Skip', 'Questionnaire.Next', 'Questionnaire.Submit'], events: ['click', 'keydown', 'input'], locate: (el) => slot(el).startsWith('questionnaire') },
 ];
 
@@ -182,8 +186,34 @@ export function handledBy(test: (el: Element) => boolean): void {
 	handled = test;
 }
 
+const classes = (el: Element) => (attr(el, 'class') ?? '').split(/\s+/);
+export const isDocSearchButton = (el: Element) => el.tagName === 'button' && classes(el).includes('DocSearch-Button');
+const textIn = (el: Element): string => childrenOf(el).map((n) => ('value' in n && n.nodeName === '#text' ? String(n.value) : 'tagName' in n ? textIn(n as Element) : '')).join('');
+const appleKey = (el: Element) => el.tagName === 'kbd' && classes(el).includes('DocSearch-Button-Key') && textIn(el).trim() === '⌘';
+// DocSearch's Ctrl key, as its button draws it off Apple platforms.
+const CTRL_KEY = '<kbd class="DocSearch-Button-Key" data-mm-key="ctrl"><svg width="15" height="15" class="DocSearch-Control-Key-Icon"><path d="M4.505 4.496h2M5.505 5.496v5M8.216 4.496l.055 5.993M10 7.5c.333.333.5.667.5 1v2M12.326 4.5v5.996M8.384 4.496c1.674 0 2.116 0 2.116 1.5s-.442 1.5-2.116 1.5M3.205 9.303c-.09.448-.277 1.21-1.241 1.203C1 10.5.5 9.513.5 8V7c0-1.57.5-2.5 1.464-2.494.964.006 1.134.598 1.24 1.342M12.553 10.5h1.953" stroke-width="1.2" stroke="currentColor" fill="none" stroke-linecap="square"></path></svg></kbd>';
+
+let docsearch: { readonly appId: string; readonly apiKey: string; readonly indexName: string } | undefined;
+/** The old site's DocSearch config from usage.json: its button gets the docsearch part, which loads DocSearch on intent with it. */
+export function useDocSearch(config: typeof docsearch): void {
+	docsearch = config;
+}
+export const docsearchConfigured = () => docsearch !== undefined;
+
+/** A DocSearch button carries its config for the part; its ⌘ key gets the Ctrl key beside it, shown off Apple platforms. */
+function docsearchBinding(el: Element, uses: PartUse[] | Set<string>): Binding | undefined {
+	if (!docsearch) return undefined;
+	if (appleKey(el)) return { replace: `<kbd class="DocSearch-Button-Key" data-mm-key="apple">⌘</kbd>${CTRL_KEY}` };
+	if (!isDocSearchButton(el)) return undefined;
+	if (uses instanceof Set) uses.add('docsearch');
+	else if (!uses.some((u) => u.part === 'docsearch')) uses.push({ part: 'docsearch', import: () => '' });
+	return { extra: [`data-mm-docsearch={${JSON.stringify(JSON.stringify(docsearch))}}`] };
+}
+
 /** Records the ports an element of the old page needs. Behaviour is bound once on the body, so no element gets attributes. */
 export function bindParts(el: Element, uses: PartUse[] | Set<string>): Binding | undefined {
+	const found = docsearchBinding(el, uses);
+	if (found) return found;
 	const s = slot(el);
 	if (!s || !resolver) return undefined;
 	const candidates = narrow(el, resolver.candidates(s));
@@ -202,7 +232,7 @@ export function bindParts(el: Element, uses: PartUse[] | Set<string>): Binding |
 export function bodyHandlers(modules: ReadonlySet<string>, hasSite: boolean): string[] {
 	const events = new Set<PartEvent>(hasSite ? ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout', 'contextmenu', 'input'] : []);
 	for (const port of PORTS) if (modules.has(port.module)) for (const e of port.events) events.add(e);
-	const prop = (e: PartEvent) => `on${{ click: 'Click', keydown: 'KeyDown', pointerover: 'PointerOver', pointerout: 'PointerOut', pointerdown: 'PointerDown', focusin: 'FocusIn', focusout: 'FocusOut', contextmenu: 'ContextMenu', input: 'Input' }[e]}`;
+	const prop = (e: PartEvent) => `on${{ click: 'Click', keydown: 'KeyDown', pointerover: 'PointerOver', pointerout: 'PointerOut', pointerdown: 'PointerDown', focusin: 'FocusIn', focusout: 'FocusOut', contextmenu: 'ContextMenu', input: 'Input', submit: 'Submit' }[e]}`;
 	return [...[...events].map((e) => `${prop(e)}={(event) => behave(event)}`), 'onIdle={() => listen()}'];
 }
 

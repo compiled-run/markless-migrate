@@ -7,3 +7,4 @@ public/page-scripts/
 public/assets/
 .vercel
 .env*
+.markless-local/

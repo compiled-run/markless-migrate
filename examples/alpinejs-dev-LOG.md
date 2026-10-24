@@ -321,3 +321,14 @@ Gone on 0.9.0: the first-use responsiveness rows at 4x CPU on `/directives/model
 New: the sidebar's active-link styles on `/plugins/persist` ("Installation" and "Via CDN"), a `:disabled` screenshot
 on `/components`, the pricing dialog's close on `/components` (the page tree around the dialog differs after it
 closes), and `/essentials/templating`'s lab LCP (2.02 s, 455 ms over the old page).
+
+## The disclosure note, and the deploy from main (2026-10-23)
+
+The fixed note at the bottom right now reads "Unofficial demo copy of alpinejs.dev. Alpine.js and its documentation ©
+Caleb Porzio and contributors, MIT license." The tool's name and links are gone (owner decision). Its accepted
+differences in `.migrate/accepted.json` were re-recorded against the new text, including its link's address as the
+checker now writes it (`OLD`), and checked: on `/start-here` against alpinejs.dev every row from the note is accepted
+and nothing else is. Deployed from main (`31867c4`, with the DocSearch-on-intent and Ctrl+K changes of #64) at
+https://mm-alpinejs-dev-new.vercel.app. A person's pass against alpinejs.dev before the deploy, on the local build:
+47 of the 71 demos on 25 routes respond as the original does and the other 24 have nothing to use; search, the sidebar,
+the mobile menu and the tap demos behave the same.

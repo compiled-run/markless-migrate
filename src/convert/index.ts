@@ -11,11 +11,15 @@ import { cleanDocument, frameworkBuilds, lateHead, type Dropped } from './clean.
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, walk, type Document, type Element } from './dom.ts';
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
 import { BaseTabsPlan, CheckablePlan, DisclosurePlan, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
+import { captureScenes, type Scene } from './scenes.ts';
+import { ScenePlan } from './scene-plan.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
 import { captureAccordions, captureHoverDelays, captureAllForms, captureAllSwitches, captureAllToggles, captureNotifications, type AccordionMode, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
-import { bindMount, bindParts, bodyHandlers, candidatesOf, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
+import { bindMount, bindParts, bodyHandlers, candidatesOf, docsearchConfigured, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { stat } from 'node:fs/promises';
+import { existsSync, readFileSync } from 'node:fs';
+import { nextImageWidths, pairImages, planImages, type ImagePlan, type Optimizer } from './images.ts';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
 import { nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
@@ -39,6 +43,7 @@ function withPartImports(source: string, dir: string): string {
 	if (motion.length) out = out.replace('\n', `\nimport { ${motion.join(', ')} } from '${dir}/panel-motion.ts';\n`);
 	if (/\bradioKeys\(event/.test(out)) out = out.replace('\n', `\nimport { radioKeys } from '${dir}/toggle.ts';\n`);
 	if (/\bwriteCookies\(/.test(out)) out = out.replace('\n', `\nimport { writeCookies } from '${dir}/switch.ts';\n`);
+	if (/\bplayScene\(event/.test(out)) out = out.replace('\n', `\nimport { playScene } from '${dir}/scene.ts';\n`);
 	return out;
 }
 
@@ -510,10 +515,11 @@ function extractStyles(parent: Element, styles: Map<string, string>): void {
 	}
 }
 
-function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: string, dropped: Dropped, styles: Map<string, string>): Prepared {
+function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: string, dropped: Dropped, styles: Map<string, string>, optimizer: Optimizer | undefined, images: ImagePlan): Prepared {
 	const builds = frameworkBuilds(capture.server).map((b) => b.path);
 	const ctx = { builds, frameworkScripts: new Set<string>(), origin };
 	const doc = parseDocument(capture.settled.desktop ?? Object.values(capture.settled)[0] ?? capture.server);
+	const paired = pairImages(doc, capture.images);
 	currentLayers = [];
 	currentClipboard = {};
 	const appends = resolveReveals(doc, reveals, (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1));
@@ -529,6 +535,8 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 		extractStyles(holder, styles);
 		return attr(childrenOf(holder)[0] as Element, 'href')!;
 	});
+	const plan = planImages(doc, paired, optimizer, dropped);
+	for (const k of Object.keys(plan) as (keyof ImagePlan)[]) images[k] += plan[k];
 	extractStyles(head(doc), styles);
 	extractStyles(body(doc), styles);
 	const tags: HeadTag[] = [];
@@ -605,19 +613,25 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const accordionModes = new Map<string, readonly AccordionMode[]>();
 	const hoverDelays = new Map<string, readonly HoverDelay[]>();
 	const scrollerOpenings = new Map<string, readonly ScrollerOpening[]>();
+	const scenes = new Map<string, { scene: Scene; listed: string }[]>();
 	const choices: Record<string, Record<string, Choice>> = {};
 	try {
 		// The old site's not-found page, from a path no route has: the new app's 404 page.
 		captures = await captureAll(browser, options.old, options.only?.length ? routes : [...routes, NOT_FOUND], join(state, 'convert', 'captures'), { concurrency: options.concurrency ?? 4, log });
 		// Controls the site's own components reveal content with, beside those ARIA marks (lib/site/controls.json).
-		const listed = await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as { selector: string; action: Reveal['action'] | 'toggle' | 'notify'; routes?: string }[], () => []);
-		const extra = listed.flatMap((c) => (c.action === 'toggle' || c.action === 'notify' ? [] : [[c.selector, c.action] as const]));
+		const listed = await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as { selector: string; action: Reveal['action'] | 'toggle' | 'notify' | 'play'; routes?: string }[], () => []);
+		const extra = listed.flatMap((c) => (c.action === 'toggle' || c.action === 'notify' || c.action === 'play' ? [] : [[c.selector, c.action] as const]));
+		// Controls whose use the demo's own state answers (Send, Replay, Show more): every use recorded frame by frame.
+		for (const c of listed.filter((x) => x.action === 'play'))
+			for (const r of routes.filter((x) => !c.routes || new RegExp(c.routes).test(x))) scenes.set(r, [...(scenes.get(r) ?? []), ...(await captureScenes(browser, options.old, r, join(state, 'convert', 'scenes'), c.selector)).scenes.map((scene) => ({ scene, listed: c.selector }))]);
 		// Controls whose use shows a notification (a toast), on the routes the site lists them for.
 		for (const c of listed.filter((x) => x.action === 'notify')) {
 			const on = routes.filter((r) => !c.routes || new RegExp(c.routes).test(r));
 			for (const r of on) notified.set(r, [...(notified.get(r) ?? []), ...(await captureNotifications(browser, options.old, r, join(state, 'convert', 'toggles'), [c.selector])).notifications]);
 		}
-		if (options.reveal !== false) for (const r of await captureAllReveals(browser, options.old, routes, join(state, 'convert', 'reveals'), { concurrency: options.concurrency ?? 4, log, extra })) revealed.set(r.route, r.reveals);
+		// A control a demo's recorded uses play is the scene's, not a disclosure's: its reveal is not planned.
+		const played = (route: string) => new Set((scenes.get(route) ?? []).flatMap(({ scene }) => scene.edges.map((e) => e.control.replace(/#\d+$/, ''))));
+		if (options.reveal !== false) for (const r of await captureAllReveals(browser, options.old, routes, join(state, 'convert', 'reveals'), { concurrency: options.concurrency ?? 4, log, extra })) revealed.set(r.route, r.reveals.filter((reveal) => !reveal.sig || !played(r.route).has(reveal.sig)));
 		// Whether each accordion lets several items be open, on the routes where one revealed an item's content.
 		for (const [route, reveals] of revealed) if (reveals.some((r) => r.sig?.includes('|accordion-trigger|'))) accordionModes.set(route, (await captureAccordions(browser, options.old, route, join(state, 'convert', 'toggles'))).accordions);
 		for (const [route, reveals] of revealed) if (reveals.some((r) => r.sig?.includes('|hover-card-trigger|'))) hoverDelays.set(route, (await captureHoverDelays(browser, options.old, route, join(state, 'convert', 'toggles'))).delays);
@@ -646,6 +660,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	// The usage inventory first; a data-slot it has no part for (a component it did not reach) from plan's libraries.json.
 	const resolver: PartResolver = options.resolver ?? (hasUsage ? (hasLibraries ? combined(await usageResolver(usagePath, options.source), await sourceSlotResolver(librariesPath, options.source)) : await usageResolver(usagePath, options.source)) : await sourceSlotResolver(librariesPath, options.source));
 	useResolver(resolver);
+	useDocSearch(hasUsage ? ((JSON.parse(await readFile(usagePath, 'utf8')) as { docsearch?: Parameters<typeof useDocSearch>[0] }).docsearch) : undefined);
 	useOrigin(new URL(options.old).origin);
 	placementResolver = resolver;
 	templatePorts.clear();
@@ -654,14 +669,18 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const styles = new Map<string, string>();
 	const unconverted: { route: string; reason: string }[] = [];
 	const prepared = new Map<string, Prepared>();
+	const nextConfig = options.source ? ['next.config.mjs', 'next.config.js', 'next.config.ts', 'next.config.cjs'].map((f) => join(options.source!, f)).find((f) => existsSync(f)) : undefined;
+	const optimizer: Optimizer | undefined = nextConfig ? { path: '/_next/image', widths: nextImageWidths(readFileSync(nextConfig, 'utf8')) } : undefined;
+	const images: ImagePlan = { lazy: 0, eager: 0, responsive: 0, preloadsDropped: 0, someScreens: 0 };
 	// Each capture (the served HTML and the settled documents, a few MB) is read from the cache only while its page is parsed.
 	for (const ref of captures) {
 		if (ref.status !== 200 && !(ref.route === NOT_FOUND && ref.status === 404)) {
 			unconverted.push({ route: ref.route, reason: `the old site answered ${ref.status} while capturing` });
 			continue;
 		}
-		prepared.set(ref.route, prepare(await ref.load(), revealed.get(ref.route) ?? [], options.old, dropped, styles));
+		prepared.set(ref.route, prepare(await ref.load(), revealed.get(ref.route) ?? [], options.old, dropped, styles, optimizer, images));
 	}
+	if (images.lazy + images.eager + images.responsive + images.someScreens) log(`images: ${images.lazy} lazy (in no first screen), ${images.eager} eager (in a first screen), ${images.responsive} given a width per device, ${images.preloadsDropped} head preloads dropped, ${images.someScreens} drawn only in one range of widths (lazy, preloaded there)`);
 
 	const bodyParts = splitBody(new Map([...prepared].map(([route, p]) => [route, { route, before: p.before, after: p.after, htmlAttrs: p.htmlAttrs, bodyAttrs: p.bodyAttrs, head: p.head }])));
 	const pathOf = (route: string) => new URL(route, options.old).pathname;
@@ -736,7 +755,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (el?.tagName === 'form') handledForms.add(el);
 		}
 	}
-	const formBinding: Binding = { extra: ['onSubmit={(event) => event.preventDefault()}'] };
+	const formBinding: Binding = { extra: ['data-mm-form=""', 'onSubmit={(event) => event.preventDefault()}'] };
+	if (handledForms.size) templatePorts.add('form');
 	const notifyPlan = new NotifyPlan();
 	let notifyCount = 0;
 	for (const [route, p] of prepared) notifyCount += notifyPlan.add(notified.get(route) ?? [], locator(p.root.parentNode as Element), (html) => emitChildren(parseFragment(html) as unknown as Element));
@@ -782,6 +802,24 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	const selects = new SelectPlan();
 	for (const p of prepared.values()) selects.add(p.root, (el) => portFor(el) === 'base-ui/select' || portFor(el) === 'radix/select');
+	// A demo's recorded uses never take over an element another plan puts on Markless state (a disclosure, a tab, a toggle).
+	const scenePlan = new ScenePlan((el) => [tabs, baseTabs, disclosures, insertedDisclosures, selects, checkables, switchPlan, notifyPlan, otps].some((plan) => plan.bind(el) !== undefined));
+	let sceneCount = 0;
+	for (const [route, p] of prepared) {
+		const list = scenes.get(route) ?? [];
+		const locate = list.length ? locator(p.root.parentNode as Element) : undefined;
+		for (const { scene, listed } of list) {
+			const region = locate!(scene.sig, scene.nth);
+			if (region && scenePlan.add(scene, region, listed)) sceneCount++;
+			else if (!region) log(`  recorded uses not played: ${scene.sig}#${scene.nth} is not on the converted page`);
+		}
+	}
+	if (sceneCount) {
+		log(`demos playing their recorded uses on Markless state: ${sceneCount}`);
+		templatePorts.add('scene');
+		templatePorts.add('form');
+	}
+	for (const why of scenePlan.refused) log(`  recorded uses not played: ${why}`);
 	for (const [container, r] of replaced) {
 		replacedParts.set(container, { append: r.markup });
 		for (const child of childrenOf(container)) if (isElement(child)) replacedParts.set(child, mergeBindings(replacedParts.get(child), { extra: [`data-mm-before=${JSON.stringify(r.key)}`] })!);
@@ -794,11 +832,11 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		binding = mergeBindings(binding, keyed ? { extra: [`data-mm-key=${JSON.stringify(keyed)}`] } : undefined);
 		binding = mergeBindings(binding, portAttributes(el));
 		binding = mergeBindings(binding, portFor(el) === 'shadcn/message-scroller' ? bindScroller(el) : undefined);
-		const own = mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), baseTabs.bind(el)), disclosures.bind(el)), insertedDisclosures.bind(el)), selects.bind(el)), checkables.bind(el)), switchPlan.bind(el)), mergeBindings(notifyPlan.bind(el), handledForms.has(el) ? formBinding : undefined)), mergeBindings(otps.bind(el), binding)), bindMount(el));
+		const own = mergeBindings(scenePlan.bind(el), mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), baseTabs.bind(el)), disclosures.bind(el)), insertedDisclosures.bind(el)), selects.bind(el)), checkables.bind(el)), switchPlan.bind(el)), mergeBindings(notifyPlan.bind(el), handledForms.has(el) ? formBinding : undefined)), mergeBindings(otps.bind(el), binding)), bindMount(el)));
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};
 	void appendOf;
-	const factored: Factored = factor(new Map([...prepared].map(([route, p]) => [route, p.root])), { bind: (el) => withAppend(el, bindParts(el, usedPorts)), extra: (el) => appended.get(el) ?? notifyPlan.nameOf(el) });
+	const factored: Factored = factor(new Map([...prepared].map(([route, p]) => [route, p.root])), { bind: (el) => withAppend(el, bindParts(el, usedPorts)), extra: (el) => appended.get(el) ?? notifyPlan.nameOf(el) ?? scenePlan.nameOf(el) });
 	const pathnames = [...new Set(htmlRoutes.map((r) => pathOf(r)))];
 	const folders = folderSet(pathnames);
 	const written = new Map<string, string>();
@@ -887,7 +925,11 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		await writeFile(join(app, component.file), appUrlDeclaration(withPartImports(imports ? component.source.replace('\n', `\n${imports}\n`) : component.source, partsDir(component.file))));
 	}
 	const documentParts: PartUse[] = [];
-	await writeFile(join(app, 'document.tsrx'), appUrlDeclaration(documentModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped, partsDir('document.tsrx'), documentParts)));
+	// DocSearch's Ctrl key off Apple platforms is set before the first paint, as DocSearch's own button draws it.
+	const headScripts = docsearchConfigured() ? ['PLATFORM_KEYS_SCRIPT'] : [];
+	if (headScripts.length) usedPorts.add('docsearch');
+	if (headScripts.length) documentParts.push({ part: 'docsearch', import: (dir) => `import { PLATFORM_KEYS_SCRIPT } from '${dir}/docsearch.ts';` });
+	await writeFile(join(app, 'document.tsrx'), appUrlDeclaration(documentModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped, partsDir('document.tsrx'), documentParts, headScripts)));
 	await writeFile(join(app, 'head.ts'), HEAD_HELPER);
 	if (disclosureGroups || insertedGroups) usedPorts.add('panel-motion');
 	await writeParts(app, usedPorts, choices);

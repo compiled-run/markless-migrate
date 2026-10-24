@@ -90,6 +90,13 @@ export interface ImageRecord {
 	readonly naturalWidth: number;
 	readonly naturalHeight: number;
 	readonly broken: boolean;
+	/** Where it is drawn, in page coordinates (as a full-page screenshot has them); absent when it is not drawn. */
+	readonly box?: Box;
+	readonly loading?: string;
+	/** A `<link rel=preload as=image>` in the head fetches it. */
+	readonly preloaded?: boolean;
+	/** Its srcset lists widths (`w` descriptors), so the browser picks a file per device. */
+	readonly widths?: boolean;
 }
 
 export interface ScriptWeight {

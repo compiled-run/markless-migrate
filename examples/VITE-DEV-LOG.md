@@ -439,3 +439,99 @@ No failure is new in kind. What the counts move on:
   0.8.0 run could not click the control at all this time, so it was not measured there.
 - `/guide/`: PageSpeed Insights' Speed Index (5.07 s against the old site's 3.43 s), the one PageSpeed row either run
   produced; the lab Speed Index of the same page is the same on both versions (1.54 s and 1.57 s).
+
+### Again, with the checker's noise settled (2026-10-23)
+
+Two of the differences above were the checker's, not the port's, and markless-migrate now settles both: a recording
+holds the copy buttons' 2 s reset until it has filmed the click and then waits it out on both sides (#46), and a
+canvas an animation draws (the Rive hero) is masked in screenshots and left to the motion check's frame-by-frame
+comparison (#47). The same sample against the same 0.9.0 deployment, `--no-psi`: 18 failures, not counting "not
+exercised" (24 before), with motion 8 to 0 and visual 3 to 1. What is left: the same 8 computed-style rows on `/` as on
+0.8.0; one mobile screenshot band at the logo strip; `/`'s first search open (189 and 64 ms against 24 ms, fetching the
+search code); the announcing-vite6 stylesheet still applied after an in-place navigation to `/` (as on 0.8.0); a lab
+score on `/guide/` (92 against 99) and `/live`'s lab LCP (one run of ten at 14 s); and on `/live` four icon requests to
+Iconify's two fallback hosts, which `@iconify/vue` and the port both make when the first host answers after 750 ms.
+That last one also turned `/live` red this run, so no route is green in it.
+
+## Interactions witnessed side by side, and Markless main with #140 and #149 (2026-10-23)
+
+Every control on 20 routes, desktop and mobile, was used on the original (the VitePress build, served locally) and
+on the port (served locally from its Vercel output), and what a person could see change was compared: attributes,
+text, layers, scroll, frames, the clipboard and where links lead (`/tmp/port-audit/chrome-witness/witness.mjs`).
+
+The app links Markless main at `ba8e52901` with #140 (an in-place navigation keeps the nodes both pages share) and #149
+(the idle tier fetches each page once a session), packed into `.markless-local/` (gitignored) with npm overrides, until
+a release carries them. What changed in the app:
+
+- `pages/index.tsrx` (the homepage, ported by hand; `scripts/import-docs.ts` does not write it) is wrapped in
+  `<div id="app">` as VitePress mounts it. Without it the checker compared the old `#app` with `.marketing-layout`
+  and reported eight computed-style differences on `/`.
+- Search: the search box's module and its index load when a pointer or focus reaches the search button, or a ⌘ or
+  Ctrl key goes down (`page-scripts/site.ts`), so the click that opens search fetches nothing. The old site fetches
+  VPLocalSearchBox and its 577 kB index on that click.
+- `/live`: in fullscreen the player shows the site header and the exit icon, as VideoIframe.vue renders them
+  (`page-scripts/live.ts`); before, only the button's label changed.
+- The mobile menu's logo link leaves the menu open when it points at the page already shown, as Header.vue's does (it
+  has no close handler); every other link still closes it (`components/header.tsrx`, `page-scripts/docs-header.ts`).
+- With #140 the Resources and version flyouts stay open under the pointer after a click inside them, as on the old
+  site (the swap used to replace the header, which dropped `:hover`).
+
+Client navigation, local, median of 5 (start `/guide/`): Features 38 ms against the old 42, CLI 4 against 14, Using
+Plugins 3 against 14, Features again 3 against 15, Guide 5 against 9. On Markless 0.9.0 the port was slower on four of
+the five.
+
+Checker reds from the Ports check run (39994152841) that do not reproduce here, with the same build and the checker at
+the same commit, on this Mac: the code-group radios (a click on a label switches the tab, before and after boot), Copy
+code's "Copied" name and the "Get Started" link. The radio, label and copy markup and CSS are the old site's byte for
+byte. Others were the checker's: `/vite.mp3`'s content type (the old side's static server has no MIME type for it),
+the 767 px screenshot (only the Rive canvas differs, 3,060 pixels here), Iconify's fallback host (both sides use the
+same icon loader), the Close banner motion (same transitions on both sides; the old banner is gone in the same frame),
+the logo strip's mobile styles (taken while one side was still switching to the marquee; the port switches at 61 ms,
+the old site at 81 to 88 ms), and the first Close banner click (24 ms on the port, 48 ms on the old site at 4x CPU).
+
+### What is generic and what is this site's own
+
+- `<div id="app">`: generated pages already get it from `scripts/import/layouts.ts`, the importer's VitePress layout
+  shell. Only the homepage lacked it, because it is not generated: `index.md` is `<Home />` from
+  `.vitepress/theme/landing/Layout.vue`, vite.dev's own Vue landing page (Rive canvases, the sponsor fetch, the logo
+  marquee), which the importer, rendering Markdown pages and the components they use, does not port. So the fix is in
+  the hand port, and the importer's layout is unchanged.
+- The logo strip's mobile marquee needed no change: both pages switch to it at load (the port first).
+- Search on intent, the drawer logo link and `/live`'s fullscreen header are VitePress default-theme behaviours
+  (VPLocalSearchBox, oss/Header.vue, live/VideoIframe.vue) that this app re-implements in `page-scripts/`. Any VitePress
+  site with the same theme needs them; they live here because markless-migrate has no VitePress client parts yet (its
+  VitePress knowledge is detection in `src/usage/themes.ts` and the checker). Moving `page-scripts/site.ts`,
+  `docs-header.ts` and `search.ts` into a shared VitePress part is the step that makes them generic.
+
+Deployed to production as `vite-dev-markless-ap0dlcyfe` (https://vite-dev-markless.vercel.app), built from this
+commit's tree with `.markless-local/` linked; the one stray preview deployment was removed.
+
+## Markless with the navigation reland, and search on the first click (2026-10-23)
+
+**Markless build.** The app now links Markless main with #185 (the in-place navigation reland), #186 (prefetch once) and
+#188 (the idle byte budget), packed locally into `.markless-local/`. The earlier link was `ba8e52901`, which carried the
+first #140, since reverted on main.
+
+**Check on this build.** Every control was used side by side with the original, both served locally, on 20 views
+(16 desktop, 4 mobile):
+
+- Controls: 542 of 542 work as on the original.
+- Client navigation from `/guide/`, median of 5, original vs port: 47 vs 40 ms, 14 vs 4, 15 vs 3, 15 vs 3, 9 vs 5.
+
+**Search on the first click.** On a slow phone the port lost early clicks on the search button. Measured with the
+showcase harness's profile (4x CPU, Lighthouse Slow 4G, a click every 100 ms from when the button shows, local
+servers): the earlier port lost 35 clicks and the original loses 38. The port now loses 0: the box shows 25 ms after
+the first click.
+
+How: `page-scripts/search-shell.ts` holds the box's first state, the "Loading search index..." shell, as the
+markup `search.ts` writes.
+
+- The document's inline click script draws that shell in the click's own frame, then imports the search box.
+- `search.ts` builds its box from the same markup and puts it in the shell's place in one task, so nothing flickers.
+- A close or backdrop click on the shell before the code arrives closes it.
+
+After an early click and after a normal one alike, the box opens, finds 16 results for "config", and page scrolling
+comes back after Escape.
+
+**Production URL.** The project also answers at https://mm-vite-dev-new.vercel.app, a project domain, so every
+production deploy gets it. The old hostname still works.
