@@ -7,7 +7,7 @@ import { liveEmbeds, type LiveEmbed } from '../check/embeds.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { settleAndHoldLoops } from '../check/loops.ts';
 import type { Box, Failure, Shot, Viewport } from '../check/types.ts';
-import { compareWithNoise, identicalShots, visuallyDifferent, type VisualDiff } from '../check/visual.ts';
+import { compareWithNoise, sameLeftOf, identicalShots, visuallyDifferent, type VisualDiff } from '../check/visual.ts';
 import { openShadowRoots } from './page.ts';
 import { PNG } from 'pngjs';
 import { frameProvider } from './providers.ts';
@@ -452,7 +452,10 @@ export async function checkEmbeds(browser: Browser, envs: { readonly old: SideEn
 						})();
 						const ok = rounding || !visuallyDifferent(diff);
 						// The component's live values (a count read at convert time) may have moved on the provider since: offered for automatic acceptance only when nothing else differs.
-						const moved = !ok && c.live.length && !diff.sizeMismatch && !visuallyDifferent(compareWithNoise(a.png, c.png, b ? [b.png] : [], c.live)) ? { rule: 'embed-live-data' as const, reason: `only the component's live value differs (${c.live.length} element(s) marked data-markless-embed-live): the provider's value moved since the component's data was read` } : undefined;
+						// A count with another number of digits changes the embed's width; what lies left of it (the icon and label) must still be the same pixels.
+						const liveLeft = c.live.length ? Math.min(...c.live.map((box) => box.x)) : 0;
+						const widened = Boolean(diff.sizeMismatch) && liveLeft > 0 && sameLeftOf(a.png, c.png, liveLeft);
+						const moved = !ok && c.live.length && ((!diff.sizeMismatch && !visuallyDifferent(compareWithNoise(a.png, c.png, b ? [b.png] : [], c.live))) || widened) ? { rule: 'embed-live-data' as const, reason: `only the component's live value differs (${c.live.length} element(s) marked data-markless-embed-live)${widened ? `, which made the embed ${diff.sizeMismatch!.actual} instead of ${diff.sizeMismatch!.expected} with every pixel left of it the same` : ''}: the provider's value moved since the component's data was read` } : undefined;
 						const files = await saveImages(options.dir, result.name, label, { old: a.png, new: c.png, diff: diff.png });
 						result.visual.push({ viewport: viewport.name, scheme, state, differing: diff.differing, area: diff.area, ok, files });
 						shots.push({ label: `embed ${result.name} ${scheme} ${state}`, viewport: viewport.name, old: a.png, new: c.png, ...(diff.png ? { diff: diff.png } : {}), regions: diff.regions, ok });

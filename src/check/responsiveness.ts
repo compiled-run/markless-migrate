@@ -337,6 +337,8 @@ export async function measureOnce(browser: Browser, env: SideEnv, route: string,
 		const navigations = () => documents;
 		await loadPage(page, new URL(route, env.origin).href);
 		await quiet(page, inflight, navigations);
+		// The first interaction lands once what the load started has finished on that side (a 2 s hero animation): timed from load, the side that loads sooner taps into its own animation.
+		await page.waitForFunction(() => !document.getAnimations().some((a) => a.playState === 'running' && Number.isFinite(Number(a.effect?.getComputedTiming().endTime ?? Infinity))), undefined, { timeout: 4_000, polling: 50 }).catch(() => {});
 		await probeCall(page, 'arm');
 		await sleep(NOISE_WINDOW_MS);
 		watched = [];
