@@ -83,6 +83,7 @@ export function setCookieNames(headers: Headers): string[] {
 /** A file name carrying a bundler content hash (`app.CdD1aHkZ.js`, `chunk-L4A9asp4.js`, `main.3f2a9c01.css`). */
 export function isContentHashed(path: string): boolean {
 	const name = path.split(/[?#]/)[0]!.split('/').pop() ?? '';
+	if (/^(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{12,}(?:\.[a-z0-9]+)+$/.test(name)) return true;
 	const match = name.match(/[.-]([A-Za-z0-9_]{8,})(?:\.[a-z0-9]+)+$/);
 	if (!match) return false;
 	const hash = match[1]!;
