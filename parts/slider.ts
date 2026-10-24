@@ -12,14 +12,18 @@ interface Slider {
 	readonly max: number;
 	readonly step: number;
 	readonly rtl: boolean;
+	/** Radix's vertical slider: from the bottom, its thumbs at `bottom: calc(P% + offset)`, its range's bottom and top. */
+	readonly vertical: boolean;
 }
 
 const ROOT = '[data-slot="slider"]';
 
 function sliderOf(el: Element): Slider | undefined {
 	const root = el.closest<HTMLElement>(ROOT);
-	if (!root || root.getAttribute('data-orientation') === 'vertical' || root.hasAttribute('data-disabled') || root.getAttribute('aria-disabled') === 'true') return undefined;
+	if (!root || root.hasAttribute('data-disabled') || root.getAttribute('aria-disabled') === 'true') return undefined;
 	const base = root.querySelector('[data-base-ui-slider-control]') !== null;
+	const vertical = root.getAttribute('data-orientation') === 'vertical';
+	if (vertical && base) return undefined;
 	const thumbs = base ? [...root.querySelectorAll<HTMLElement>('[data-slot="slider-thumb"]')] : [...root.querySelectorAll<HTMLElement>('[role="slider"]')];
 	if (!thumbs.length) return undefined;
 	const first = base ? thumbs[0]!.querySelector('input')! : thumbs[0]!;
@@ -27,7 +31,7 @@ function sliderOf(el: Element): Slider | undefined {
 	const max = Number((base ? first.getAttribute('max') : first.getAttribute('aria-valuemax')) ?? 100);
 	const step = Number((base ? first.getAttribute('step') : root.dataset.mmStep) ?? 1) || 1;
 	const rtl = (root.getAttribute('dir') ?? getComputedStyle(root).direction) === 'rtl';
-	return { root, base, thumbs, min, max, step, rtl };
+	return { root, base, thumbs, min, max, step, rtl, vertical };
 }
 
 const input = (s: Slider, i: number) => (s.base ? s.thumbs[i]!.querySelector('input')! : s.thumbs[i]!);
@@ -72,6 +76,11 @@ function render(s: Slider, values: number[]): void {
 		const thumb = s.thumbs[k]!;
 		thumb.setAttribute('aria-valuenow', String(v));
 		const p = percent(s, v);
+		if (s.vertical) {
+			const half = thumb.getBoundingClientRect().height / 2;
+			thumb.parentElement!.style.setProperty('bottom', `calc(${fmt(p)}% + ${fmt(half - (p / 50) * half)}px)`.replace('+ -', '- '));
+			return;
+		}
 		const half = thumb.getBoundingClientRect().width / 2;
 		const direction = s.rtl ? -1 : 1;
 		const offset = (half - (p / 50) * half * direction) * direction;
@@ -84,15 +93,20 @@ function render(s: Slider, values: number[]): void {
 		const ps = values.map((v) => percent(s, v));
 		const start = ps.length > 1 ? Math.min(...ps) : 0;
 		const end = 100 - Math.max(...ps);
+		if (s.vertical) {
+			range.style.setProperty('bottom', `${fmt(start)}%`);
+			range.style.setProperty('top', `${fmt(end)}%`);
+			return;
+		}
 		range.style.setProperty(s.rtl ? 'right' : 'left', `${fmt(start)}%`);
 		range.style.setProperty(s.rtl ? 'left' : 'right', `${fmt(end)}%`);
 	}
 }
 
-function fromPointer(s: Slider, x: number): number {
+function fromPointer(s: Slider, x: number, y = 0): number {
 	const track = (s.root.querySelector<HTMLElement>('[data-base-ui-slider-control]') ?? s.root).getBoundingClientRect();
-	let frac = (x - track.left) / (track.width || 1);
-	if (s.rtl) frac = 1 - frac;
+	let frac = s.vertical ? (track.bottom - y) / (track.height || 1) : (x - track.left) / (track.width || 1);
+	if (s.rtl && !s.vertical) frac = 1 - frac;
 	return s.min + Math.min(1, Math.max(0, frac)) * (s.max - s.min);
 }
 
@@ -100,7 +114,7 @@ export function pointerdown(target: Element, event: PointerEvent): boolean {
 	if (event.button !== 0) return false;
 	const s = sliderOf(target);
 	if (!s) return false;
-	const v = fromPointer(s, event.clientX);
+	const v = fromPointer(s, event.clientX, event.clientY);
 	const values = s.thumbs.map((_, k) => valueAt(s, k));
 	let i = 0;
 	for (let k = 1; k < values.length; k++) if (Math.abs(values[k]! - v) < Math.abs(values[i]! - v)) i = k;
@@ -108,7 +122,7 @@ export function pointerdown(target: Element, event: PointerEvent): boolean {
 	event.preventDefault();
 	input(s, i).focus({ preventScroll: true });
 	s.root.setPointerCapture?.(event.pointerId);
-	const move = (e: PointerEvent) => set(s, i, fromPointer(s, e.clientX));
+	const move = (e: PointerEvent) => set(s, i, fromPointer(s, e.clientX, e.clientY));
 	const up = () => {
 		s.root.removeEventListener('pointermove', move);
 		s.root.removeEventListener('pointerup', up);
@@ -129,8 +143,8 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 	const big = s.step * 10;
 	const forward = s.rtl ? -1 : 1;
 	const next = {
-		ArrowRight: v + (event.shiftKey ? big : s.step) * forward,
-		ArrowLeft: v - (event.shiftKey ? big : s.step) * forward,
+		ArrowRight: v + (event.shiftKey ? big : s.step) * (s.vertical ? 1 : forward),
+		ArrowLeft: v - (event.shiftKey ? big : s.step) * (s.vertical ? 1 : forward),
 		ArrowUp: v + (event.shiftKey ? big : s.step),
 		ArrowDown: v - (event.shiftKey ? big : s.step),
 		PageUp: v + big,

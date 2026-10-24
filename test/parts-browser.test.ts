@@ -257,3 +257,20 @@ test('a plain button a page opens its dialog from (no ARIA) opens the dialog cap
 	assert.equal(await page.locator('[role="dialog"]').getAttribute('data-state'), 'closed');
 	await page.close();
 });
+
+test('a Radix vertical slider steps up with ArrowUp and follows the pointer from the bottom', async () => {
+	const page = await open(
+		`<div style="padding:50px"><span data-orientation="vertical" data-slot="slider" data-state="x" style="position:relative;display:block;height:200px;width:20px"><span data-slot="slider-track" style="position:absolute;inset:0"><span data-slot="slider-range" style="position:absolute;bottom:0%;top:50%;left:0;right:0"></span></span><span style="position:absolute;bottom:calc(50% + 0px)"><span role="slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" aria-orientation="vertical" data-orientation="vertical" tabindex="0" data-slot="slider-thumb" style="display:block;width:16px;height:16px"></span></span></span></div>`,
+		['slider'],
+	);
+	await page.locator('[role="slider"]').focus();
+	await page.keyboard.press('ArrowUp');
+	assert.equal(await page.locator('[role="slider"]').getAttribute('aria-valuenow'), '51');
+	assert.match(await page.locator('[data-slot="slider-range"]').evaluate((e) => (e as HTMLElement).style.top), /^49%$/);
+	const box = (await page.locator('[data-slot="slider"]').boundingBox())!;
+	await page.mouse.move(box.x + 10, box.y + box.height * 0.25);
+	await page.mouse.down();
+	await page.mouse.up();
+	assert.equal(await page.locator('[role="slider"]').getAttribute('aria-valuenow'), '75', 'a press a quarter down the track is 75');
+	await page.close();
+});
