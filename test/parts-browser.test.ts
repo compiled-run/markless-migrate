@@ -262,6 +262,51 @@ test('a plain button a page opens its dialog from (no ARIA) opens the dialog cap
 	await page.close();
 });
 
+test('a Radix vertical slider steps up with ArrowUp and follows the pointer from the bottom', async () => {
+	const page = await open(
+		`<div style="padding:50px"><span data-orientation="vertical" data-slot="slider" data-state="x" style="position:relative;display:block;height:200px;width:20px"><span data-slot="slider-track" style="position:absolute;inset:0"><span data-slot="slider-range" style="position:absolute;bottom:0%;top:50%;left:0;right:0"></span></span><span style="position:absolute;bottom:calc(50% + 0px)"><span role="slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" aria-orientation="vertical" data-orientation="vertical" tabindex="0" data-slot="slider-thumb" style="display:block;width:16px;height:16px"></span></span></span></div>`,
+		['slider'],
+	);
+	await page.locator('[role="slider"]').focus();
+	await page.keyboard.press('ArrowUp');
+	assert.equal(await page.locator('[role="slider"]').getAttribute('aria-valuenow'), '51');
+	assert.match(await page.locator('[data-slot="slider-range"]').evaluate((e) => (e as HTMLElement).style.top), /^49%$/);
+	const box = (await page.locator('[data-slot="slider"]').boundingBox())!;
+	await page.mouse.move(box.x + 10, box.y + box.height * 0.25);
+	await page.mouse.down();
+	await page.mouse.up();
+	assert.equal(await page.locator('[role="slider"]').getAttribute('aria-valuenow'), '75', 'a press a quarter down the track is 75');
+	await page.close();
+});
+
+test('Radix NavigationMenu: a press opens the trigger\'s content in the viewport rendered beside the list, Escape closes it', async () => {
+	const page = await open(
+		`<nav data-slot="navigation-menu"><ul><li><button id="t1" data-slot="navigation-menu-trigger" data-state="closed" aria-expanded="false" aria-controls="c1">Components</button></li></ul>
+		<div hidden data-mm-shown-with="t1"><div data-slot="navigation-menu-viewport" data-state="open"><div data-slot="navigation-menu-content" id="c1" data-state="open" style="width:300px;height:120px">Alert Dialog</div></div></div></nav>`,
+		['radix/navigation-menu'],
+	);
+	await page.getByText('Components').click();
+	assert.equal(await page.getByText('Components').getAttribute('aria-expanded'), 'true');
+	assert.equal(await page.getByText('Alert Dialog').isVisible(), true);
+	assert.equal(await page.locator('[data-slot="navigation-menu-viewport"]').evaluate((e) => (e as HTMLElement).style.getPropertyValue('--radix-navigation-menu-viewport-width')), '300px');
+	await page.keyboard.press('Escape');
+	assert.equal(await page.getByText('Components').getAttribute('aria-expanded'), 'false');
+	assert.equal(await page.getByText('Alert Dialog').isVisible(), false);
+	await page.close();
+});
+
+test('a Base UI dialog a page opens from a plain button opens under the button\'s key', async () => {
+	const page = await open(
+		`<main><button data-slot="button" data-mm-key="p:3.1" type="button">Open Menu</button></main>
+		<div data-mm-layer="p:3.1" hidden data-base-ui-portal><div role="dialog" data-slot="dialog-content" data-closed tabindex="-1"><input placeholder="Type a command"></div></div>`,
+		['base-ui/dialog'],
+	);
+	await page.getByText('Open Menu').click();
+	assert.equal(await page.locator('[role="dialog"]').isVisible(), true);
+	assert.equal(await page.getByText('Open Menu').getAttribute('aria-expanded'), null);
+	await page.close();
+});
+
 test('recharts: an SVG scaled to its container maps the pointer and the tooltip through its scale', async () => {
 	const facts = JSON.stringify({ w: 300, h: 100, v: [5, 5, 290, 90], m: 'x', g: [[0, 149, 0], [150, 300, 1]], p: [[50, 20], [200, 20]] });
 	const page = await open(
@@ -299,5 +344,20 @@ test('recharts: a pie\'s sector under the pointer is its point, and the tooltip 
 	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(120px, 40px\)/);
 	await page.mouse.move(40, 160);
 	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(30px, 120px\)/);
+	await page.close();
+});
+
+test('Radix ScrollArea: the scrollbar rendered beside the content shows on hover, its thumb sized and moved with the scroll', async () => {
+	const rows = Array.from({ length: 40 }, (_, i) => `<div style="height:20px">row ${i}</div>`).join('');
+	const page = await open(
+		`<div data-slot="scroll-area" style="position:relative;width:200px;height:200px"><div data-slot="scroll-area-viewport" style="overflow:hidden scroll;height:100%">${rows}</div><div hidden data-mm-shown-with="p:1"><div data-slot="scroll-area-scrollbar" data-orientation="vertical" data-state="hidden" style="position:absolute;top:0;right:0;bottom:0;width:10px"><div data-slot="scroll-area-thumb" style="height:var(--radix-scroll-area-thumb-height)"></div></div></div></div>`,
+		['radix/scroll-area'],
+	);
+	await page.mouse.move(100, 100);
+	assert.equal(await page.locator('[data-slot="scroll-area-scrollbar"]').getAttribute('data-state'), 'visible');
+	assert.equal(await page.locator('[data-slot="scroll-area-scrollbar"]').evaluate((e) => (e as HTMLElement).style.getPropertyValue('--radix-scroll-area-thumb-height')), '50px', '200 of 800 px in view on a 200 px track');
+	await page.mouse.wheel(0, 300);
+	await page.waitForTimeout(200);
+	assert.match(await page.locator('[data-slot="scroll-area-thumb"]').evaluate((e) => (e as HTMLElement).style.transform), /translate3d\(0px, 75px, 0px\)/);
 	await page.close();
 });

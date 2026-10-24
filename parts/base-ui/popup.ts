@@ -24,6 +24,8 @@ export const top = () => open[open.length - 1];
 export const isOpen = (key: string) => open.some((p) => p.key === key);
 
 export function setTrigger(trigger: HTMLElement, on: boolean): void {
+	// A plain button a page opens a popup from carries no ARIA for it.
+	if (!trigger.hasAttribute('aria-haspopup') && !trigger.hasAttribute('data-base-ui-click-trigger') && trigger.hasAttribute('data-mm-key')) return;
 	trigger.setAttribute('aria-expanded', String(on));
 	if (on) trigger.setAttribute('data-popup-open', '');
 	else trigger.removeAttribute('data-popup-open');
