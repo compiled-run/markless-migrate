@@ -848,3 +848,64 @@ export async function captureComboboxEmpties(browser: Browser, origin: string, r
 	await writeFile(file, JSON.stringify(capture));
 	return capture;
 }
+
+/** How the input whose empty state is read is reached from the control: beside it (a ComboBox's button), in the layer it opens (a dialog's Autocomplete), or the control itself. */
+export type EmptyReach = 'beside' | 'opens' | 'self';
+
+/**
+ * What a React Aria collection filtered by an input renders once nothing matches (its renderEmptyState, which keeps a
+ * ComboBox's popover open): the input is reached from the control at sig/nth, typed into, and the listbox's or menu's
+ * content read whole.
+ */
+export async function captureRacEmpties(browser: Browser, origin: string, route: string, dir: string, controls: readonly { readonly sig: string; readonly nth: number; readonly reach: EmptyReach }[]): Promise<{ readonly route: string; readonly empties: readonly ComboboxEmpty[] }> {
+	const file = join(dir, `${createHash('sha256').update(`rac-empty:1:${route}|${JSON.stringify(controls)}`).digest('hex').slice(0, 16)}.json`);
+	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; empties: ComboboxEmpty[] }, () => undefined);
+	if (cached && cached.route === route) return cached;
+	const empties: ComboboxEmpty[] = [];
+	for (const control of controls) {
+		const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+		try {
+			await loadPage(page, new URL(route, origin).href);
+			await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+			const mark = (reach: EmptyReach) =>
+				page.evaluate(({ sig, nth, reach }) => {
+					const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+					const visible = (e: Element) => e.getClientRects().length > 0;
+					const el = reach === 'opens' ? [...document.querySelectorAll('input[data-rac][aria-autocomplete="list"]')].find((e) => visible(e) && e.closest('[role="dialog"], [data-trigger]')) : [...document.body.querySelectorAll('*')].filter((e) => sigOf(e) === sig)[nth];
+					const input = reach === 'beside' ? el?.closest('[data-rac]:has(input[role="combobox"])')?.querySelector('input[role="combobox"]') : el;
+					input?.setAttribute('data-mm-probe', '');
+					return Boolean(input);
+				}, { ...control, reach });
+			if (control.reach === 'opens') {
+				const opened = await page.evaluate(({ sig, nth }) => {
+					const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+					const el = [...document.body.querySelectorAll('*')].filter((e) => sigOf(e) === sig)[nth];
+					el?.setAttribute('data-mm-trigger', '');
+					return Boolean(el);
+				}, control);
+				if (!opened) continue;
+				await page.click('[data-mm-trigger]', { timeout: 2000 }).catch(() => {});
+				await page.waitForTimeout(500);
+			}
+			if (!(await mark(control.reach))) continue;
+			await page.click('[data-mm-probe]', { timeout: 2000 }).catch(() => {});
+			await page.keyboard.type('zqxjzqxj');
+			await page.waitForTimeout(400);
+			const html = await page.evaluate(() => {
+				const input = document.querySelector('[data-mm-probe]');
+				const named = document.getElementById(input?.getAttribute('aria-controls') ?? '');
+				const collection = named?.matches('[data-empty]') ? named : [...document.querySelectorAll('[role="listbox"][data-empty], [role="menu"][data-empty]')].find((e) => e.getClientRects().length);
+				return collection ? [...collection.children].map((c) => c.outerHTML).join('') : '';
+			});
+			if (html) empties.push({ sig: control.sig, nth: control.nth, html });
+		} catch {
+			// a control whose input cannot be reached keeps no empty state
+		} finally {
+			await context.close().catch(() => {});
+		}
+	}
+	const capture = { route, empties };
+	await mkdir(dir, { recursive: true });
+	await writeFile(file, JSON.stringify(capture));
+	return capture;
+}

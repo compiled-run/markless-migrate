@@ -4,7 +4,7 @@ import { closeOverlay, openOverlay, overlayFor, overlayOf, type Overlay } from '
 
 // React Aria's ComboBox (useComboBox, useComboBoxState with its default `contains` filter): the input keeps focus and
 // the listbox's focused option is virtual (aria-activedescendant, data-focused). Typing opens the popover on the options
-// whose text contains the input's (accents and case ignored), and closes it when none does; the button and ArrowDown /
+// whose text contains the input's (accents and case ignored), and closes it when none does unless the listbox has an empty state; the button and ArrowDown /
 // ArrowUp open it on every option; arrows move the focused option, Enter or a press chooses it (its text becomes the
 // input's value), Escape and leaving the input close it. Its popover is non-modal: the page stays usable.
 const INPUT = 'input[data-rac][role="combobox"]';
@@ -39,8 +39,18 @@ function filter(listbox: HTMLElement, query: string): number {
 	for (const item of itemsOf(listbox, true)) item.hidden = !contains(textOf(item), query);
 	for (const section of listbox.querySelectorAll<HTMLElement>('[role="group"], section')) section.hidden = !section.querySelector('[role="option"]:not([hidden])');
 	for (const sep of listbox.querySelectorAll<HTMLElement>('[role="separator"]')) sep.hidden = query !== '';
-	return itemsOf(listbox).filter((i) => !i.hidden).length;
+	const count = itemsOf(listbox).filter((i) => !i.hidden).length;
+	const empty = listbox.querySelector<HTMLElement>(':scope > [data-mm-empty]');
+	if (empty) {
+		empty.hidden = count > 0;
+		if (count) listbox.removeAttribute('data-empty');
+		else listbox.setAttribute('data-empty', 'true');
+	}
+	return count;
 }
+
+// A listbox with an empty state (renderEmptyState) keeps the popover open when nothing matches.
+const keepsEmpty = (listbox: HTMLElement) => !!listbox.querySelector(':scope > [data-mm-empty]');
 
 const shown = (listbox: HTMLElement) => itemsOf(listbox).filter((i) => !i.hidden);
 
@@ -84,51 +94,108 @@ function open(input: HTMLInputElement, query: string, strategy: 'first' | 'last'
 	const existing = comboOf(input);
 	if (existing) return existing;
 	const button = buttonOf(input);
-	if (!button?.id) return undefined;
+	// Without a button (a multiple-selection ComboBox) the layer is the input's, placed under the group around it.
+	const key = button ? button.id : input.id;
+	if (!key) return undefined;
 	const combo = { input } as { -readonly [K in keyof Combo]: Combo[K] };
-	const overlay = openOverlay(button, button.id, {
+	const overlay = openOverlay(button ?? input, key, {
 		modal: false,
 		dismissable: false,
 		placement: 'bottom left',
 		offset: 8,
+		...(button ? {} : { markTrigger: false, anchor: input.closest<HTMLElement>('[role="group"]') ?? input }),
 		onDismiss: () => close(combo),
 		onReady: (o) => {
 			combo.overlay = o;
 			const listbox = listboxOf(o);
 			if (!listbox) return;
-			if (!filter(listbox, query)) return close(combo);
+			if (!filter(listbox, query) && !keepsEmpty(listbox)) return close(combo);
 			const list = shown(listbox);
-			if (strategy) focusOption(combo, strategy === 'first' ? list[0] : list[list.length - 1]);
+			// useSelectableCollection's autoFocus: the selected option when there is one, else the first or the last.
+			if (strategy) focusOption(combo, list.find((o) => o.getAttribute('aria-selected') === 'true') ?? (strategy === 'first' ? list[0] : list[list.length - 1]));
 		},
 	});
 	// Typing that matches nothing closes it as it opens.
-	if (!overlay || !overlayFor(button)) return undefined;
+	if (!overlay || !overlayFor(button ?? input)) return undefined;
 	combo.overlay = overlay;
 	combos.push(combo);
 	input.setAttribute('aria-expanded', 'true');
 	rootOf(input)?.setAttribute('data-open', 'true');
 	const listbox = listboxOf(overlay);
 	if (listbox?.id) input.setAttribute('aria-controls', listbox.id);
-	holdPressed(button, true);
+	if (button) holdPressed(button, true);
 	return combo;
+}
+
+const multiple = (listbox: Element | null) => listbox?.getAttribute('aria-multiselectable') === 'true';
+
+function markSelected(item: HTMLElement, on: boolean): void {
+	item.setAttribute('aria-selected', String(on));
+	if (on) item.setAttribute('data-selected', 'true');
+	else item.removeAttribute('data-selected');
+	for (const icon of item.querySelectorAll('[data-mm-indicator]')) icon.toggleAttribute('hidden', !on);
+}
+
+// The chips (a TagGroup's rows, one per option, the converter's) beside a multiple-selection ComboBox's input.
+const chipsOf = (input: Element) => [...(groupOf(input)?.querySelectorAll<HTMLElement>('[role="grid"][data-rac] > [role="row"][data-key]') ?? [])];
+
+/** Chooses an option of a multiple-selection ComboBox or takes it back: its chip shows or hides, the input empties, the popover stays. */
+function toggle(c: Combo, item: HTMLElement): void {
+	const on = item.getAttribute('aria-selected') !== 'true';
+	markSelected(item, on);
+	const key = item.getAttribute('data-key');
+	for (const chip of chipsOf(c.input)) if (chip.getAttribute('data-key') === key) chip.hidden = !on;
+	c.input.value = '';
+	const listbox = listboxOf(c.overlay);
+	if (listbox) filter(listbox, '');
+	c.input.dispatchEvent(new Event('mmchange', { bubbles: true }));
+}
+
+/** Removes a chip: it hides, and the option it stands for is no longer chosen. */
+function removeChip(chip: HTMLElement): boolean {
+	const input = groupOf(chip)?.querySelector<HTMLInputElement>(INPUT);
+	if (!input?.id) return false;
+	chip.hidden = true;
+	const key = chip.getAttribute('data-key');
+	for (const option of document.querySelectorAll<HTMLElement>(`[data-mm-layer="${CSS.escape(input.id)}"] [role="option"]`)) if (option.getAttribute('data-key') === key) markSelected(option, false);
+	input.focus({ preventScroll: true });
+	return true;
 }
 
 function choose(c: Combo, item: HTMLElement): void {
 	const listbox = listboxOf(c.overlay);
-	if (listbox)
-		for (const el of itemsOf(listbox, true)) {
-			const on = el === item;
-			el.setAttribute('aria-selected', String(on));
-			if (on) el.setAttribute('data-selected', 'true');
-			else el.removeAttribute('data-selected');
-			for (const icon of el.querySelectorAll('[data-mm-indicator]')) icon.toggleAttribute('hidden', !on);
-		}
+	if (multiple(listbox)) return toggle(c, item);
+	if (listbox) for (const el of itemsOf(listbox, true)) markSelected(el, el === item);
 	c.input.value = textOf(item);
+	for (const clear of clearsOf(c.input)) clear.hidden = false;
 	c.input.dispatchEvent(new Event('mmchange', { bubbles: true }));
 	close(c);
 }
 
+// A clear button the page renders while there is a selection (shadcn's ComboBoxClear): hidden instead of unmounted.
+const clearsOf = (input: Element) => [...(groupOf(input)?.querySelectorAll<HTMLElement>('button[data-rac][data-slot$="-clear"]') ?? [])];
+
+function clearSelection(clear: HTMLElement): boolean {
+	const input = groupOf(clear)?.querySelector<HTMLInputElement>(INPUT);
+	const key = input && (buttonOf(input)?.id || input.id);
+	if (!input || !key) return false;
+	const c = comboOf(input);
+	if (c) close(c);
+	input.value = '';
+	for (const option of document.querySelectorAll<HTMLElement>(`[data-mm-layer="${CSS.escape(key)}"] [role="option"]`)) markSelected(option, false);
+	clear.blur();
+	clear.hidden = true;
+	input.dispatchEvent(new Event('mmchange', { bubbles: true }));
+	return true;
+}
+
 export function pointerdown(target: Element, event: PointerEvent): boolean {
+	// Focus stays in the input while an option is pressed (the listbox's focus is virtual).
+	const o = overlayOf(target);
+	if (o && combos.some((c) => c.overlay === o) && target.closest('[role="option"]')) {
+		event.preventDefault();
+		return true;
+	}
 	const button = target.closest<HTMLElement>(BUTTON);
 	if (!button || !isComboButton(button) || event.button !== 0) return false;
 	const input = inputOf(button);
@@ -144,6 +211,11 @@ export function pointerdown(target: Element, event: PointerEvent): boolean {
 export function click(target: Element): boolean {
 	const button = target.closest<HTMLElement>(BUTTON);
 	if (button && isComboButton(button)) return true;
+	const clear = target.closest<HTMLElement>('button[data-rac][data-slot$="-clear"]');
+	if (clear && groupOf(clear)?.querySelector(INPUT)) return clearSelection(clear);
+	const remove = target.closest<HTMLElement>('[role="row"] button[slot="remove"]');
+	const chip = remove?.closest<HTMLElement>('[role="row"][data-key]');
+	if (chip && groupOf(chip)?.querySelector(INPUT)) return removeChip(chip);
 	const item = target.closest<HTMLElement>('[role="option"]');
 	const o = item && overlayOf(item);
 	const c = o && combos.find((x) => x.overlay === o);
@@ -172,12 +244,30 @@ export function input(target: Element): boolean {
 	}
 	const listbox = listboxOf(c.overlay);
 	if (!listbox) return true;
-	if (!filter(listbox, el.value)) close(c);
+	if (!filter(listbox, el.value) && !keepsEmpty(listbox)) close(c);
 	else focusOption(c, undefined);
 	return true;
 }
 
 export function keydown(target: Element, event: KeyboardEvent): boolean {
+	// The button pressed with the keyboard opens on the first option, focus moving to the input.
+	const button = target.closest<HTMLElement>(BUTTON);
+	if (button && isComboButton(button) && (event.key === 'Enter' || event.key === ' ')) {
+		const input = inputOf(button);
+		if (!input) return false;
+		event.preventDefault();
+		setModality('keyboard');
+		const c = comboOf(input);
+		if (c) close(c);
+		else open(input, '', 'first');
+		input.focus({ preventScroll: true });
+		return true;
+	}
+	const chip = target.closest<HTMLElement>('[role="grid"][data-rac] > [role="row"][data-key]');
+	if (chip && (event.key === 'Backspace' || event.key === 'Delete') && groupOf(chip)?.querySelector(INPUT)) {
+		event.preventDefault();
+		return removeChip(chip);
+	}
 	if (!target.matches(INPUT)) return false;
 	const el = target as HTMLInputElement;
 	const c = comboOf(el);
