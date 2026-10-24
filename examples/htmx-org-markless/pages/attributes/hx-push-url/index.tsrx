@@ -12,7 +12,7 @@ export default function Page() @{
 			{" "}
 			<p>The possible values of this attribute are:</p>
 			{" "}
-			<ol>{" "}<li><code>true</code>, which pushes the fetched URL into history.</li>{" "}<li><code>false</code>{", which disables pushing the fetched URL if it would otherwise be pushed due to inheritance or "}<a href="/attributes/hx-boost/"><code>hx-boost</code></a>.</li>{" "}<li>{"A URL to be pushed into the location bar. This may be relative or absolute, as per "}<a rel="noopener" target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/History/pushState"><code>history.pushState()</code></a>.</li>{" "}</ol>
+			<ol>{" "}<li><code>true</code>, which pushes the fetched URL into history.</li>{" "}<li><code>false</code>{", which disables pushing the fetched URL if it would otherwise be pushed due to inheritance or "}<a href="/attributes/hx-boost"><code>hx-boost</code></a>.</li>{" "}<li>{"A URL to be pushed into the location bar. This may be relative or absolute, as per "}<a rel="noopener" target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/History/pushState"><code>history.pushState()</code></a>.</li>{" "}</ol>
 			{" "}
 			<p>Here is an example:</p>
 			{" "}

@@ -16,7 +16,7 @@ export default function Page() @{
 			{" "}
 			<p>Use the following attributes to configure how SSE connections behave:</p>
 			{" "}
-			<ul>{" "}<li><code>sse-connect="&lt;url&gt;"</code>{" - The URL of the SSE server."}</li>{" "}<li><code>sse-swap="&lt;message-name&gt;"</code>{" - The name of the message to swap into the DOM."}</li>{" "}<li><code>hx-trigger="sse:&lt;message-name&gt;"</code>{" - SSE messages can also trigger HTTP callbacks using the "}<a rel="noopener" target="_blank" href="/attributes/hx-trigger/"><code>hx-trigger</code></a>{" attribute."}</li>{" "}<li><code>sse-close=&lt;message-name&gt;</code>{" - To close the EventStream gracefully when that message is received. This might be helpful if you want to send information to a client that will eventually stop."}</li>{" "}</ul>
+			<ul>{" "}<li><code>sse-connect="&lt;url&gt;"</code>{" - The URL of the SSE server."}</li>{" "}<li><code>sse-swap="&lt;message-name&gt;"</code>{" - The name of the message to swap into the DOM."}</li>{" "}<li><code>hx-trigger="sse:&lt;message-name&gt;"</code>{" - SSE messages can also trigger HTTP callbacks using the "}<a rel="noopener" target="_blank" href="/attributes/hx-trigger"><code>hx-trigger</code></a>{" attribute."}</li>{" "}<li><code>sse-close=&lt;message-name&gt;</code>{" - To close the EventStream gracefully when that message is received. This might be helpful if you want to send information to a client that will eventually stop."}</li>{" "}</ul>
 			{" "}
 			<h2 id="installing">Installing</h2>
 			{" "}
@@ -80,7 +80,7 @@ export default function Page() @{
 			{" "}
 			<h3 id="trigger-server-callbacks">Trigger Server Callbacks</h3>
 			{" "}
-			<p>{"When a connection for server sent events has been established, child elements can listen for these events by using the special "}<a rel="noopener" target="_blank" href="/attributes/hx-trigger/"><code>hx-trigger</code></a>{" syntax "}<code>sse:&lt;event_name&gt;</code>{". This, when combined with an "}<code>hx-get</code>{" or similar will trigger the element to make a request."}</p>
+			<p>{"When a connection for server sent events has been established, child elements can listen for these events by using the special "}<a rel="noopener" target="_blank" href="/attributes/hx-trigger"><code>hx-trigger</code></a>{" syntax "}<code>sse:&lt;event_name&gt;</code>{". This, when combined with an "}<code>hx-get</code>{" or similar will trigger the element to make a request."}</p>
 			{" "}
 			<p>Here is an example:</p>
 			{" "}

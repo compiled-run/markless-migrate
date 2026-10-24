@@ -8,7 +8,7 @@ export default function Page() @{
 		<main class="c content ">
 			<h1>Javascript API</h1>
 			{" "}
-			<p>{"While it is not a focus of the library, htmx does provide a small API of helper methods, intended mainly for "}<a rel="noopener" target="_blank" href="/extensions/">extension development</a>{" or for working with "}<a href="/events/">events</a>.</p>
+			<p>{"While it is not a focus of the library, htmx does provide a small API of helper methods, intended mainly for "}<a rel="noopener" target="_blank" href="/extensions">extension development</a>{" or for working with "}<a href="/events/">events</a>.</p>
 			{" "}
 			<p>{"The "}<a rel="noopener" target="_blank" href="https://hyperscript.org">hyperscript</a>{" project is intended to provide more extensive scripting support for htmx-based applications."}</p>
 			{" "}
@@ -100,7 +100,7 @@ export default function Page() @{
 			{" "}
 			<h3 id="defineExtension"><a class="zola-anchor" href="#defineExtension" aria-label="Anchor link for: defineExtension">{"Method - "}<code>htmx.defineExtension()</code></a></h3>
 			{" "}
-			<p>{"Defines a new htmx "}<a rel="noopener" target="_blank" href="/extensions/">extension</a>.</p>
+			<p>{"Defines a new htmx "}<a rel="noopener" target="_blank" href="/extensions">extension</a>.</p>
 			{" "}
 			<h5 id="parameters-3"><a class="zola-anchor" href="#parameters-3" aria-label="Anchor link for: parameters-3">Parameters</a></h5>
 			{" "}

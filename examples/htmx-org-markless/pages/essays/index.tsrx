@@ -11,7 +11,7 @@ export default function Page() @{
 			{" "}
 			<ol>{" "}<li>{" "}<time datetime="2026-09-21">Sep 21, 2026</time>{" "}<a href="/essays/markdown-in-src/">Markdown in /src</a>{" "}</li>{" "}<li>{" "}<time datetime="2026-06-29">Jun 29, 2026</time>{" "}<a href="/essays/working-with-ai/">Working With AI: A Concrete Example</a>{" "}</li>{" "}<li>{" "}<time datetime="2026-06-11">Jun 11, 2026</time>{" "}<a href="/essays/universities-and-ai/">The University In The AI Era</a>{" "}</li>{" "}<li>{" "}<time datetime="2026-06-04">Jun 04, 2026</time>{" "}<a href="/essays/code-is-cheap/">Code is Cheap(er)</a>{" "}</li>{" "}<li>{" "}<time datetime="2026-03-18">Mar 18, 2026</time>{" "}<a href="/essays/mcp-apps-hypermedia/">Hypermedia Friendly Model Context Protocol App Architecture</a>{" "}</li>{" "}</ol>
 			{" "}
-			<a href="/essays/all/" style="display: block; padding-top: 10px">See all essays</a>
+			<a href="/essays/all" style="display: block; padding-top: 10px">See all essays</a>
 			{" "}
 			<h3 id="hypermedia-and-rest"><a class="zola-anchor" href="#hypermedia-and-rest" aria-label="Anchor link for: hypermedia-and-rest">Hypermedia and REST</a></h3>
 			{" "}

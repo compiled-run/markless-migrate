@@ -10,7 +10,7 @@ export default function Page() @{
 			{" "}
 			<p><a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/idiomorph">Idiomorph</a>{" is a DOM morphing algorithm created by the htmx creator. DOM morphing is a process where an existing DOM tree is “morphed” into the shape of another in a way that resuses as much of the existing DOM’s nodes as possible. By preserving nodes when changing from one tree to another you can present a much smoother transition between the two states."}</p>
 			{" "}
-			<p>{"You can use the idiomorph morphing algorithm as a "}<a href={"/extensions/idiomorph/@attributes/hx-swap"}>swapping</a>{" strategy by including the idiomorph extension."}</p>
+			<p>{"You can use the idiomorph morphing algorithm as a "}<a href="/extensions/idiomorph/@attributes/hx-swap">swapping</a>{" strategy by including the idiomorph extension."}</p>
 			{" "}
 			<h2 id="installing">Installing</h2>
 			{" "}

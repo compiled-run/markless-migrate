@@ -92,7 +92,7 @@ export default function Page() @{
 			{" "}
 			<p>{"The decoupling in this case is occurring at a "}<em>lower level</em>{". It is happening at the "}<em>network architecture</em>{" level, which is to say, at the system level. "}<a rel="noopener" target="_blank" href="https://hypermedia.systems">Hypermedia systems</a>{" are designed to decouple the hypermedia client (in the case of the web, the browser) from the hypermedia server."}</p>
 			{" "}
-			<p>This is accomplished primarily via the Uniform Interface constraint of REST and, in particular, by using Hypermedia As The Engine of Application State (<a href="/essays/hateoas/">HATEOAS</a>).</p>
+			<p>This is accomplished primarily via the Uniform Interface constraint of REST and, in particular, by using Hypermedia As The Engine of Application State (<a href="/essays/hateoas">HATEOAS</a>).</p>
 			{" "}
 			<p>{"This style of decoupling allows tighter coupling at the higher application level (which we have seen may be an "}<em>inherent</em>{" coupling) while still retaining the benefits of decoupling for the overall system."}</p>
 			{" "}

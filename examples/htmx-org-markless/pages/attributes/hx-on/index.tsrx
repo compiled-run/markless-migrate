@@ -10,7 +10,7 @@ export default function Page() @{
 			{" "}
 			<p>{"The "}<code>hx-on*</code>{" attributes allow you to embed scripts inline to respond to events directly on an element; similar to the "}<a rel="noopener" target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/Events/Event_handlers#using_onevent_properties"><code>onevent</code>{" properties"}</a>{" found in HTML, such as "}<code>onClick</code>.</p>
 			{" "}
-			<p>{"The "}<code>hx-on*</code>{" attributes improve upon "}<code>onevent</code>{" by enabling the handling of any arbitrary JavaScript event, for enhanced "}<a href="/essays/locality-of-behaviour/">Locality of Behaviour (LoB)</a>{" even when dealing with non-standard DOM events. For example, these attributes allow you to handle "}<a href="/reference/#events">htmx events</a>.</p>
+			<p>{"The "}<code>hx-on*</code>{" attributes improve upon "}<code>onevent</code>{" by enabling the handling of any arbitrary JavaScript event, for enhanced "}<a href="/essays/locality-of-behaviour/">Locality of Behaviour (LoB)</a>{" even when dealing with non-standard DOM events. For example, these attributes allow you to handle "}<a href="/reference#events">htmx events</a>.</p>
 			{" "}
 			<p>{"With "}<code>hx-on</code>{" attributes, you specify the event name as part of the attribute name, after a colon. So, for example, if you want to respond to a "}<code>click</code>{" event, you would use the attribute "}<code>hx-on:click</code>:</p>
 			{" "}
