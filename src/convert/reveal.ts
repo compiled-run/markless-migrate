@@ -156,12 +156,7 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 	});
 	// Scrolled to and settled first: a popover that closes when the page scrolls (React Aria's ComboBox) would close as the click's own smooth scroll finishes.
 	await el.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
-	await page.waitForFunction(() => new Promise((done) => {
-		let last = window.scrollY;
-		let still = 0;
-		const tick = () => (window.scrollY === last ? ++still : ((last = window.scrollY), (still = 0)), still >= 3 ? done(true) : requestAnimationFrame(tick));
-		requestAnimationFrame(tick);
-	}), undefined, { timeout: 2000 }).catch(() => {});
+	await settleScroll(page);
 	try {
 		if (candidate.action === 'click') await el.click({ timeout: 2000 });
 		else if (candidate.action === 'hover') {
@@ -202,6 +197,23 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 			return { into: a.parent === document.body ? ('body' as const) : pathOf(a.parent), before: at, html: a.node.outerHTML };
 		});
 	});
+}
+
+/** Waits until the page has not scrolled for three frames (a smooth scroll has finished). */
+async function settleScroll(page: Page): Promise<void> {
+	await page
+		.waitForFunction(
+			() =>
+				new Promise((done) => {
+					let last = window.scrollY;
+					let still = 0;
+					const tick = () => (window.scrollY === last ? ++still : ((last = window.scrollY), (still = 0)), still >= 3 ? done(true) : requestAnimationFrame(tick));
+					requestAnimationFrame(tick);
+				}),
+			undefined,
+			{ timeout: 2000 },
+		)
+		.catch(() => {});
 }
 
 /** Waits for what a gesture started: a short pause, then the requests it made and the animations it ran. */
@@ -500,12 +512,13 @@ export async function captureRacSubmenus(browser: Browser, origin: string, route
 }
 
 /**
- * React Aria ComboBoxes without a button (a multiple-selection one whose chips are a TagGroup): their popover opens
- * only on ArrowDown or typing, which no click shows. Each such input is focused on a fresh page, ArrowDown pressed and
- * what it showed recorded as a reveal keyed by the input's id. Cached by route.
+ * React Aria ComboBoxes whose button cannot be clicked (none, for a multiple-selection one whose chips are a TagGroup;
+ * hidden, while a clear button shows): their popover opens on ArrowDown or typing, which no click shows. Each such
+ * input is focused on a fresh page, ArrowDown pressed and what it showed recorded as a reveal keyed by the button's id,
+ * else the input's. Cached by route.
  */
 export async function captureRacComboInputs(browser: Browser, origin: string, route: string, dir: string): Promise<readonly Reveal[]> {
-	const file = join(dir, `${createHash('sha256').update(`rac-combo-inputs:4:${route}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`rac-combo-inputs:5:${route}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
 	if (cached && cached.route === route) return cached.reveals;
 	const out: Reveal[] = [];
@@ -519,7 +532,8 @@ export async function captureRacComboInputs(browser: Browser, origin: string, ro
 			};
 			const sigOf = (el: globalThis.Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 			const all = [...document.body.querySelectorAll('*')].filter((e) => !e.closest('template'));
-			return [...document.querySelectorAll<HTMLInputElement>('input[data-rac][role="combobox"]')].filter((i) => i.id && i.getClientRects().length && !i.closest('[data-rac]:has(input[role="combobox"])')?.querySelector('button[aria-haspopup="listbox"]')).map((i) => ({ id: i.id, path: pathOf(i), sig: sigOf(i), nth: all.filter((e) => sigOf(e) === sigOf(i)).indexOf(i) }));
+			const button = (i: globalThis.Element) => i.closest('[data-rac]:has(input[role="combobox"])')?.querySelector('button[aria-haspopup="listbox"]');
+			return [...document.querySelectorAll<HTMLInputElement>('input[data-rac][role="combobox"]')].filter((i) => i.id && i.getClientRects().length && !button(i)?.getClientRects().length).map((i) => ({ id: i.id, path: pathOf(i), sig: sigOf(i), nth: all.filter((e) => sigOf(e) === sigOf(i)).indexOf(i) }));
 		});
 	{
 		const { context, page } = await fresh(browser, origin, route, viewport);
@@ -540,9 +554,13 @@ export async function captureRacComboInputs(browser: Browser, origin: string, ro
 					let node: globalThis.Element | undefined = document.body;
 					for (const i of path) node = node?.children[i];
 					node?.setAttribute('data-mm-probe', '');
-					return node?.id;
+					// The layer is the button's when there is one (hidden while a value shows its clear button), else the input's.
+					return node?.closest('[data-rac]:has(input[role="combobox"])')?.querySelector('button[aria-haspopup="listbox"]')?.id || node?.id;
 				}, input.path);
 				if (!id) continue;
+				// Scrolled to and settled first: the popover closes when the page scrolls.
+				await page.locator('[data-mm-probe]').scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
+				await settleScroll(page);
 				await page.click('[data-mm-probe]', { timeout: 5000 });
 				await page.keyboard.press('ArrowDown');
 				await page.waitForSelector('[data-trigger="ComboBox"] [role="option"]', { timeout: 8000 }).catch(() => {});
