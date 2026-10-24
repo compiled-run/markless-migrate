@@ -110,6 +110,7 @@ test('theme features are recognised only on a page that theme drew, and the conf
 	const platforms = usage.obligations.filter((o) => o.behaviour === search.id && o.mechanism === 'load-state').map((o) => o.steps[0]);
 	assert.deepEqual(platforms.map((s) => (s?.do === 'load' ? s.emulate?.platform : undefined)), ['MacIntel', 'Win32', 'Linux x86_64'], 'the search shortcut keys are checked per platform');
 	assert.ok(usage.obligations.some((o) => o.behaviour === toggle.id && /in the click's own frame/.test(o.text)), 'the first toggle click must not wait for the site code');
+	assert.ok(usage.obligations.some((o) => o.behaviour === search.id && /fetches no code/.test(o.text)), 'the first search click fetches nothing');
 	const hideable = usage.behaviours.find((b) => b.feature === 'hideable navbar')!;
 	assert.ok(usage.obligations.some((o) => o.behaviour === hideable.id && o.mechanism === 'navigation-equivalence' && /go Back/.test(o.text)));
 	const drawer = usage.behaviours.find((b) => b.feature === 'mobile navbar sidebar')!;
