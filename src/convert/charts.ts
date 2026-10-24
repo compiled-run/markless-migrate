@@ -5,7 +5,7 @@ import { parseFragment } from 'parse5';
 import type { Browser, Locator, Page } from 'playwright';
 import { defaultEnv, openPage } from '../check/browser.ts';
 import { loadPage } from '../check/infrastructure.ts';
-import { VIEWPORTS } from '../check/types.ts';
+import { VIEWPORTS, type Viewport } from '../check/types.ts';
 import { attr, childrenOf, isElement, setAttr, walk, type Element as Tree } from './dom.ts';
 import { emitChildren, emitElement, lit, type Binding } from './tsrx.ts';
 
@@ -29,7 +29,7 @@ export interface ChartState {
 export type HitMode = 'x' | 'y' | 'r' | 'a' | 'i';
 
 export interface ChartVariant {
-	/** The SVG and the legend the chart drew for this state of its card's controls (absent for the one shown at rest). */
+	/** The SVG and the legend the chart drew for this state of its card's controls. */
 	readonly svg?: string;
 	readonly legend?: string;
 	readonly mode: HitMode;
@@ -60,15 +60,29 @@ export interface ChartDriver {
 	readonly active?: boolean;
 }
 
+/** The chart as the old page drew it at another width. */
+export interface ChartWidth {
+	/** The page's width (a frame's, where the old site shows the chart in one). */
+	readonly viewport: number;
+	readonly width: number;
+	readonly height: number;
+	readonly view: readonly [number, number, number, number];
+	readonly variants: readonly ChartVariant[];
+	readonly drivers: readonly ChartDriver[];
+}
+
 export interface ChartFacts {
 	readonly sig: string;
 	readonly nth: number;
+	/** The chart's place among the page's charts, which finds it at other widths, where its text differs. */
+	readonly index: number;
 	readonly width: number;
 	readonly height: number;
 	/** recharts' view box: the plot area inside the margins, which the tooltip is kept in. */
 	readonly view: readonly [number, number, number, number];
 	readonly variants: readonly ChartVariant[];
 	readonly drivers: readonly ChartDriver[];
+	readonly widths: readonly ChartWidth[];
 }
 
 declare global {
@@ -339,11 +353,8 @@ const CONTROLS = '[data-slot="card-header"] button, [data-slot="card-action"] bu
  * tooltip's content and placement, the nodes recharts adds to the SVG and the attributes it changes, and for each
  * control the SVG it draws instead.
  */
-export async function captureCharts(browser: Browser, origin: string, route: string, dir: string): Promise<{ readonly route: string; readonly charts: readonly ChartFacts[] }> {
-	const file = join(dir, `${createHash('sha256').update(`charts2:${route}`).digest('hex').slice(0, 16)}.json`);
-	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; charts: ChartFacts[] }, () => undefined);
-	if (cached && cached.route === route) return cached;
-	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+async function captureAt(browser: Browser, origin: string, route: string, viewport: Viewport): Promise<ChartFacts[]> {
+	const { context, page } = await openPage(browser, defaultEnv(origin), viewport);
 	const charts: ChartFacts[] = [];
 	const load = async () => {
 		await loadPage(page, new URL(route, origin).href);
@@ -391,7 +402,7 @@ export async function captureCharts(browser: Browser, origin: string, route: str
 			const seen = new Map<string, number>();
 			const rest = await svgNow();
 			seen.set(rest.svg, 0);
-			variants.push(await captureVariant(page, wrapper, found.view));
+			variants.push({ svg: rest.svg, ...(rest.legend ? { legend: rest.legend } : {}), ...(await captureVariant(page, wrapper, found.view)) });
 			const drivers: ChartDriver[] = [];
 			const settle = () => page.waitForTimeout(2100);
 			const record = async (driver: Omit<ChartDriver, 'variant'>) => {
@@ -402,7 +413,7 @@ export async function captureCharts(browser: Browser, origin: string, route: str
 				if (variant === undefined) {
 					variant = variants.length;
 					seen.set(now.svg, variant);
-					variants.push({ svg: now.svg, ...(now.legend !== rest.legend ? { legend: now.legend } : {}), ...(await captureVariant(page, wrapper, found.view)) });
+					variants.push({ svg: now.svg, ...(now.legend ? { legend: now.legend } : {}), ...(await captureVariant(page, wrapper, found.view)) });
 				}
 				drivers.push({ ...driver, variant });
 			};
@@ -438,10 +449,35 @@ export async function captureCharts(browser: Browser, origin: string, route: str
 				}
 			}
 			if (found.drivers.length) await load();
-			charts.push({ sig: found.sig, nth: found.nth, width: found.w, height: found.h, view: found.view, variants, drivers });
+			charts.push({ sig: found.sig, nth: found.nth, index: i, width: found.w, height: found.h, view: found.view, variants, drivers, widths: [] });
 		}
 	} finally {
 		await context.close().catch(() => {});
+	}
+	return charts;
+}
+
+/** The widths a chart is captured at besides the desktop page: the frames the old site shows it in (a phone, a 1280 and a 1440 screen's grid column, a 1440 screen's full row) and a 1440 screen's page. */
+export const CHART_WIDTHS: readonly number[] = [342, 373, 419, 1336, 1440];
+
+/**
+ * Every recharts chart on the old page, on the desktop page and at each of CHART_WIDTHS: recharts lays a chart out
+ * again for its container's width, so each width the old site shows it at is drawn as the old page drew it there.
+ */
+export async function captureCharts(browser: Browser, origin: string, route: string, dir: string): Promise<{ readonly route: string; readonly charts: readonly ChartFacts[] }> {
+	const file = join(dir, `${createHash('sha256').update(`charts3:${route}`).digest('hex').slice(0, 16)}.json`);
+	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; charts: ChartFacts[] }, () => undefined);
+	const known = cached?.route === route ? cached.charts : undefined;
+	const have = new Set(known?.flatMap((c) => c.widths.map((w) => w.viewport)) ?? []);
+	const missing = known && !known.length ? [] : CHART_WIDTHS.filter((w) => !have.has(w));
+	if (known && !missing.length) return { route, charts: known };
+	const charts = known ?? (await captureAt(browser, origin, route, VIEWPORTS[0]!));
+	for (const width of missing) {
+		const other = await captureAt(browser, origin, route, { name: `w${width}`, width, height: 900, isMobile: false });
+		for (const chart of charts) {
+			const same = other.find((o) => o.index === chart.index);
+			if (same) (chart.widths as ChartWidth[]).push({ viewport: width, width: same.width, height: same.height, view: same.view, variants: same.variants, drivers: same.drivers });
+		}
 	}
 	const capture = { route, charts };
 	await mkdir(dir, { recursive: true });
@@ -603,14 +639,31 @@ export const MOTION_CSS = `@property --mm-t { syntax: '<number>'; inherits: fals
 }
 `;
 
-export const MOTION_FILE = `/_converted/styles/recharts-motion-${createHash('sha256').update(MOTION_CSS).digest('hex').slice(0, 12)}.css`;
+
+/** Container widths in 40 px steps from 280 px: each SVG a chart has is shown in the steps nearest the width it was drawn at. */
+const BUCKETS = 34;
+const bucketRange = (b: number): [number, number] => [b === 0 ? 0 : 280 + 40 * (b - 1), b === BUCKETS - 1 ? Infinity : 280 + 40 * b];
+
+/** Hides each SVG outside the container widths it was drawn for (the chart's container is an inline-size container). */
+export const WIDTH_CSS = Array.from({ length: BUCKETS }, (_, b) => {
+	const [lo, hi] = bucketRange(b);
+	const query = [lo > 0 ? `(min-width: ${lo}px)` : '', Number.isFinite(hi) ? `(max-width: ${hi - 0.02}px)` : ''].filter(Boolean).join(' and ');
+	return `@container ${query} { [data-mm-b]:not([data-mm-b~="${b}"]) { display: none !important; } }`;
+}).join('\n');
+
+/** The stylesheet every chart page links: the entry animation and the widths. */
+export const CHART_CSS = `${MOTION_CSS}${WIDTH_CSS}\n`;
+export const MOTION_FILE = `/_converted/styles/recharts-${createHash('sha256').update(CHART_CSS).digest('hex').slice(0, 12)}.css`;
+
+const labelOf = (d: ChartDriver) => d.label ?? d.sig.split('|')[2] ?? '';
 
 /**
  * recharts charts on Markless state: the active point's index in a state() per chart, set by the recharts part from
  * where the pointer is (or the arrow keys); the tooltip, the nodes recharts adds to the SVG and the attributes it
- * changes are one template each over a table of the old page's values per point. A card whose controls change the
- * chart has a state() for which SVG it shows, each one the old page drew, set by those controls. The part places the
- * tooltip as recharts does; the shared stylesheet plays recharts' entry animation.
+ * changes are one template each over a table of the old page's values per point. Each width the old site shows the
+ * chart at has the SVG the old page drew there, shown by a container query; a card whose controls change the chart
+ * has a state() for which SVG it shows, set by those controls. The part places the tooltip as recharts does; the
+ * shared stylesheet plays recharts' entry animation.
  */
 export class ChartPlan {
 	private readonly bindings = new Map<Tree, Binding>();
@@ -635,77 +688,80 @@ export class ChartPlan {
 			const v = `${name}v`;
 			const many = chart.variants.length > 1;
 			const declare = [`let ${name} = state(-1);`, ...(many ? [`let ${v} = state(0);`] : [])];
-			const facts: string[] = [];
+			const entries: ChartWidth[] = [{ viewport: 0, width: chart.width, height: chart.height, view: chart.view, variants: chart.variants, drivers: chart.drivers }, ...chart.widths];
+			// Each width's variants by the reference's: the rest is 0, a control's state is the one the same control (by its text) shows.
+			const refOf = (entry: ChartWidth, j: number): number => {
+				if (entry === entries[0]) return j;
+				for (const driver of entry.drivers.filter((d) => d.variant === j)) {
+					const k = chart.drivers.find((d) => labelOf(d) === labelOf(driver))?.variant;
+					if (k !== undefined) return k;
+				}
+				return j === 0 ? 0 : -1;
+			};
+			const buckets = new Map<string, number[]>();
 			const tooltips: string[] = [];
 			const svgs: string[] = [];
-			const legends: string[] = [];
-			chart.variants.forEach((variant, k) => {
-				const tree = k === 0 ? svg : svgTree(variant.svg!.replace(/^<svg[^>]*>|<\/svg>$/g, ''));
-				const own = k === 0 ? svg : this.reparent(svg, tree);
-				const local = new Map<Tree, Binding>();
-				const prefix = `${name}${many ? `v${k}` : ''}`;
-				// Every SVG the card can show is on the page, the ones not shown hidden: an @if may not hold another.
+			chart.variants.forEach((reference, k) => {
+				const shown = entries.map((entry) => ({ entry, j: entry.variants.findIndex((_, j) => refOf(entry, j) === k) })).filter((x) => x.j >= 0);
+				for (let b = 0; b < BUCKETS; b++) {
+					const [lo, hi] = bucketRange(b);
+					const mid = Number.isFinite(hi) ? (lo + hi) / 2 : lo + 20;
+					const near = shown.reduce((best, x) => (Math.abs(x.entry.width - mid) < Math.abs(best.entry.width - mid) ? x : best));
+					const key = `${entries.indexOf(near.entry)}/${k}`;
+					(buckets.get(key) ?? buckets.set(key, []).get(key)!).push(b);
+				}
 				const on = many ? `${v} === ${k} && ` : '';
 				const arms = (htmls: readonly string[], table: string, inSvg = false): { markup: string; declare: string[] } => {
 					const t = template(htmls, `${table}[${name}]`, inSvg);
 					if (t) return { markup: `@if (${on}${name} >= 0) { <>${t.markup}</> }`, declare: [`const ${table} = ${JSON.stringify(t.rows)};`] };
-					return { markup: htmls.map((h, s) => `@if (${on}${name} === ${s}) { <>${inSvg ? emitChildren(svgTree(h) as never) : emit(h)}</> }`).join(''), declare: [] };
+					return { markup: htmls.map((h, st) => (h ? `@if (${on}${name} === ${st}) { <>${inSvg ? emitChildren(svgTree(h) as never) : emit(h)}</> }` : '')).join(''), declare: [] };
 				};
-				if (tip && variant.states.length) {
-					const t = arms(variant.states.map((s) => s.tooltip), `${prefix}t`);
+				if (tip && reference.states.length) {
+					const t = arms(reference.states.map((st) => st.tooltip), `${name}${many ? `v${k}` : ''}t`);
 					declare.push(...t.declare);
 					tooltips.push(t.markup);
 				}
-				const elements = [...walk(own)].length - 1;
-				if (elements === variant.elements) {
-					let p = 0;
-					for (const [at, point] of Object.entries(variant.points)) {
-						let parent: Tree | undefined = own;
-						for (const index of point.path) parent = parent && childrenOf(parent).filter(isElement)[index];
-						if (!parent) continue;
-						const a = arms(variant.states.map((s) => s.added.filter((x) => x.at === at).map((x) => x.html).join('')), `${prefix}a${p++}`, true);
-						declare.push(...a.declare);
-						const before = point.before >= 0 ? (childrenOf(parent).filter(isElement)[point.before] ?? null) : null;
-						const prev = local.get(parent);
-						local.set(parent, { ...prev, inserts: [...(prev?.inserts ?? []), { before, markup: a.markup }] });
-					}
-					const changes = new Map<string, { path: readonly number[]; attr: string }>();
-					for (const s of variant.states) for (const c of s.changed) changes.set(`${c.path.join('.')}|${c.attr}`, c);
-					let c = 0;
-					for (const change of changes.values()) {
-						let el: Tree | undefined = own;
-						for (const index of change.path) el = el && childrenOf(el).filter(isElement)[index];
-						if (!el || el === own) continue;
-						const atRest = attr(el, change.attr);
-						const values = variant.states.map((s) => {
-							const hit = s.changed.find((x) => x.attr === change.attr && x.path.join('.') === change.path.join('.'));
-							return hit ? hit.value : (atRest ?? null);
-						});
-						const table = `${prefix}c${c++}`;
-						declare.push(`const ${table} = ${JSON.stringify(values)};`);
-						const prev = local.get(el);
-						const expression = `${on}${name} >= 0 ? (${table}[${name}] ?? undefined) : ${atRest === undefined ? 'undefined' : lit(atRest)}`;
-						// An attribute the point adds is written after the copied ones; one it changes, in place of the copy.
-						local.set(el, atRest === undefined ? { ...prev, extra: [...(prev?.extra ?? []), `${change.attr}={${expression}}`] } : { ...prev, expressions: { ...prev?.expressions, [change.attr]: expression } });
-					}
+				for (const { entry, j } of shown) {
+					const e = entries.indexOf(entry);
+					const own = buckets.get(`${e}/${k}`);
+					if (!own?.length) continue;
+					const variant = e === 0 ? reference : align(entry.variants[j]!, reference);
+					const tree = e === 0 && k === 0 ? svg : parsedSvg(entry.variants[j]!.svg ?? '');
+					if (!tree) continue;
+					const prefix = `${name}w${e}v${k}`;
+					const local = new Map<Tree, Binding>();
+					this.states(tree, variant, prefix, name, on, arms, local, declare);
+					motion(tree, entry.view);
+					const style = attr(tree, 'style');
+					const extra = [`data-mm-b="${own.join(' ')}"`, `data-mm-facts={${lit(JSON.stringify(this.factsOf(entry, variant, tree)))}}`];
+					const hide = `${v} === ${k} ? ${lit(style ?? '')} : ${lit(`${style ? `${style.replace(/;?\s*$/, ';')} ` : ''}display: none;`)}`;
+					if (many && style === undefined) extra.unshift(`style={${hide}}`);
+					const rootBinding: Binding = { ...local.get(tree), extra: [...(local.get(tree)?.extra ?? []), ...extra], ...(many && style !== undefined ? { expressions: { ...local.get(tree)?.expressions, style: hide } } : {}) };
+					local.set(tree, rootBinding);
+					const declarations: string[] = [];
+					svgs.push(emitElement(tree, { bind: (el) => local.get(el), declarations }));
+					declare.push(...declarations);
 				}
-				motion(own, chart.view);
-				if (many) local.set(own, { ...local.get(own), extra: [...(local.get(own)?.extra ?? []), `display={${v} === ${k} ? undefined : "none"}`] });
-				const declarations: string[] = [];
-				svgs.push(emitElement(own, { bind: (el) => local.get(el), declarations }));
-				declare.push(...declarations);
-				if (legend) legends.push(variant.legend ?? '');
-				facts.push(JSON.stringify(this.factsOf(chart, variant)));
 			});
-			this.bindings.set(svg, { declare, replace: svgs.join('') });
-			if (legend && many && legends.some(Boolean)) this.bindings.set(legend, { declare, replace: legends.map((l, k) => `@if (${v} === ${k}) { <>${k === 0 || !l ? emitElement(legend) : emit(l)}</> }`).join('') });
-			const factsExpr = facts.slice(0, -1).reduceRight((rest, f, k) => `${v} === ${k} ? ${lit(f)} : ${rest}`, lit(facts.at(-1)!));
-			const extra = [`data-mm-chart={${factsExpr}}`, `onMmchart={(event) => (${name} = (event as CustomEvent<number>).detail)}`];
+			this.bindings.set(svg, { declare, replace: svgs.length > 1 ? `<>${svgs.join('')}</>` : svgs.join('') });
+			if (legend) {
+				const legends = entries.flatMap((entry, e) => entry.variants.map((variant, j) => ({ e, k: refOf(entry, j), html: variant.legend }))).filter((x) => x.k >= 0 && x.html && buckets.get(`${x.e}/${x.k}`)?.length);
+				const markup = legends.map((x) => this.legendMarkup(x.html!, buckets.get(`${x.e}/${x.k}`)!, many ? `${v} === ${x.k}` : undefined));
+				if (legends.length) this.bindings.set(legend, { declare, replace: markup.length > 1 ? `<>${markup.join('')}</>` : markup.join('') });
+			}
+			// The chart fills its container, which its SVGs are scaled to and which picks among them by width.
+			const fluid = (el: Tree, css: string) => setAttr(el, 'style', css);
+			const parent = wrapper.parentNode as Tree;
+			if (isElement(parent) && /width:\s*0/.test(attr(parent, 'style') ?? '')) fluid(parent, 'width:100%;height:100%;container-type:inline-size');
+			if (attr(wrapper, 'style')) fluid(wrapper, attr(wrapper, 'style')!.replace(/width:\s*[\d.]+px/, 'width: 100%').replace(/height:\s*[\d.]+px/, 'height: 100%'));
+			for (const name of ['width', 'height']) wrapper.attrs = wrapper.attrs.filter((a) => a.name !== name);
+			const extra = ['data-mm-chart="1"', `onMmchart={(event) => (${name} = (event as CustomEvent<number>).detail)}`];
 			if (!linked) {
 				linked = true;
-				const parent = wrapper.parentNode as Tree;
 				const link = { nodeName: 'link', tagName: 'link', attrs: [{ name: 'rel', value: 'stylesheet' }, { name: 'href', value: MOTION_FILE }], namespaceURI: wrapper.namespaceURI, childNodes: [], parentNode: parent } as unknown as Tree;
-				parent.childNodes.splice(parent.childNodes.indexOf(wrapper as never), 0, link as never);
+				const holder = isElement(parent) && /container-type/.test(attr(parent, 'style') ?? '') ? (parent.parentNode as Tree) : parent;
+				const before = holder === parent ? wrapper : parent;
+				holder.childNodes.splice(holder.childNodes.indexOf(before as never), 0, link as never);
 			}
 			this.bindings.set(wrapper, { declare, extra });
 			if (tip && tooltips.length) this.bindings.set(tip, { declare, children: tooltips.join('') });
@@ -715,44 +771,85 @@ export class ChartPlan {
 		return placed;
 	}
 
+	/** The bindings that draw a variant's states into its SVG: the nodes each point adds and the attributes it changes. */
+	private states(own: Tree, variant: ChartVariant, prefix: string, name: string, on: string, arms: (htmls: readonly string[], table: string, inSvg?: boolean) => { markup: string; declare: string[] }, local: Map<Tree, Binding>, declare: string[]): void {
+		if ([...walk(own)].length - 1 !== variant.elements) return;
+		let p = 0;
+		for (const [at, point] of Object.entries(variant.points)) {
+			let parent: Tree | undefined = own;
+			for (const index of point.path) parent = parent && childrenOf(parent).filter(isElement)[index];
+			if (!parent) continue;
+			const a = arms(variant.states.map((s) => s.added.filter((x) => x.at === at).map((x) => x.html).join('')), `${prefix}a${p++}`, true);
+			declare.push(...a.declare);
+			const before = point.before >= 0 ? (childrenOf(parent).filter(isElement)[point.before] ?? null) : null;
+			const prev = local.get(parent);
+			local.set(parent, { ...prev, inserts: [...(prev?.inserts ?? []), { before, markup: a.markup }] });
+		}
+		const changes = new Map<string, { path: readonly number[]; attr: string }>();
+		for (const s of variant.states) for (const c of s.changed) changes.set(`${c.path.join('.')}|${c.attr}`, c);
+		let c = 0;
+		for (const change of changes.values()) {
+			let el: Tree | undefined = own;
+			for (const index of change.path) el = el && childrenOf(el).filter(isElement)[index];
+			if (!el || el === own) continue;
+			const atRest = attr(el, change.attr);
+			const values = variant.states.map((s) => {
+				const hit = s.changed.find((x) => x.attr === change.attr && x.path.join('.') === change.path.join('.'));
+				return hit ? hit.value : (atRest ?? null);
+			});
+			const table = `${prefix}c${c++}`;
+			declare.push(`const ${table} = ${JSON.stringify(values)};`);
+			const prev = local.get(el);
+			const expression = `${on}${name} >= 0 ? (${table}[${name}] ?? undefined) : ${atRest === undefined ? 'undefined' : lit(atRest)}`;
+			// An attribute the point adds is written after the copied ones; one it changes, in place of the copy.
+			local.set(el, atRest === undefined ? { ...prev, extra: [...(prev?.extra ?? []), `${change.attr}={${expression}}`] } : { ...prev, expressions: { ...prev?.expressions, [change.attr]: expression } });
+		}
+	}
+
+	private legendMarkup(html: string, buckets: readonly number[], when: string | undefined): string {
+		const tree = childrenOf(parseFragment(html) as unknown as Tree).find(isElement);
+		if (!tree) return '';
+		const style = attr(tree, 'style');
+		const extra = [`data-mm-b="${buckets.join(' ')}"`];
+		const hide = when && `${when} ? ${lit(style ?? '')} : ${lit(`${style ? `${style.replace(/;?\s*$/, ';')} ` : ''}display: none;`)}`;
+		if (hide && style === undefined) extra.unshift(`style={${hide}}`);
+		const binding: Binding = { extra, ...(hide && style !== undefined ? { expressions: { style: hide } } : {}) };
+		return emitElement(tree, { bind: (el) => (el === tree ? binding : undefined) });
+	}
+
 	/** The facts the part reads, compact: the view box, how the pointer picks a state, and where the tooltip goes. */
-	private factsOf(chart: ChartFacts, variant: ChartVariant): Record<string, unknown> {
+	private factsOf(entry: ChartWidth, variant: ChartVariant, tree?: Tree): Record<string, unknown> {
+		// A polar chart's tooltip is at the pointer's radius on the point's axis (a radar) or at the point's ring on the pointer's angle (radial bars).
+		const polar = variant.mode === 'a' || variant.mode === 'r';
 		return {
-			w: chart.width,
-			h: chart.height,
-			v: chart.view,
+			w: entry.width,
+			h: entry.height,
+			v: entry.view,
 			m: variant.mode,
 			...(variant.center ? { c: variant.center } : {}),
 			g: variant.segments.map((s) => s.map(round)),
 			...(variant.span ? { sp: variant.span.map(round) } : {}),
-			p: variant.states.map((s) => [s.x, s.y]),
+			p: variant.states.map((s) => (polar ? [null, null] : [s.x, s.y])),
+			...(polar ? { q: variant.states.map((_, k) => round(snap(variant, axisOf(variant, k), tree))) } : {}),
 			...(variant.keys ? { k: variant.keys } : {}),
 		};
-	}
-
-	/** A variant's SVG parsed on its own, with the attributes of the SVG shown at rest (its size, class and role). */
-	private reparent(rest: Tree, tree: Tree): Tree {
-		const holder = svgTree('');
-		holder.attrs = rest.attrs.map((a) => ({ ...a }));
-		holder.childNodes = childrenOf(tree);
-		for (const child of holder.childNodes) (child as { parentNode: unknown }).parentNode = holder;
-		return holder;
 	}
 
 	/** The card's controls set which SVG the chart shows: a press by the control, a choice by the option's text. */
 	private drive(chart: ChartFacts, wrapper: Tree, name: string, v: string, locate: (sig: string, nth: number) => Tree | undefined, declare: string[]): void {
 		const controls = chart.drivers.map((d) => ({ d, el: locate(d.sig, d.nth) })).filter((x): x is { d: ChartDriver; el: Tree } => x.el !== undefined);
-		if (!controls.length) return;
+		const chosen: Record<string, number> = {};
+		for (const d of [chart.drivers, ...chart.widths.map((w) => w.drivers)].flat()) {
+			if (d.kind !== 'choose' || d.label === undefined) continue;
+			const k = chart.drivers.find((r) => labelOf(r) === d.label)?.variant;
+			if (k !== undefined) chosen[d.label] = k;
+		}
 		let card: Tree | undefined = wrapper;
 		const within = (outer: Tree, el: Tree) => [...walk(outer)].includes(el);
 		while (card && !controls.every((c) => within(card!, c.el))) card = card.parentNode as Tree | undefined;
 		if (!card || !isElement(card)) return;
 		const pressed = new Map<Tree, number>();
-		const chosen: Record<string, number> = {};
-		for (const { d, el } of controls) {
-			if (d.kind === 'press') pressed.set(el, d.variant);
-			else if (d.label !== undefined) chosen[d.label] = d.variant;
-		}
+		for (const { d, el } of controls) if (d.kind === 'press') pressed.set(el, d.variant);
 		for (const [el, k] of pressed) {
 			const own: Binding = { extra: [`data-mm-variant="${k}"`] };
 			const active = controls.find((c) => c.el === el)?.d.active;
@@ -767,4 +864,62 @@ export class ChartPlan {
 		const prev = this.bindings.get(card);
 		this.bindings.set(card, { ...prev, declare: [...(prev?.declare ?? []), ...declare], extra: [...(prev?.extra ?? []), ...extra] });
 	}
+}
+
+/** The angle (a radar) or radius (radial bars) of a state's axis: the middle of the range it answers, across 0° for an angle. */
+function axisOf(variant: ChartVariant, state: number): number {
+	const own = variant.segments.filter((g) => g[2] === state);
+	if (!own.length) return 0;
+	if (variant.mode === 'a' && own.some((g) => g[0] <= 1) && own.some((g) => g[1] >= 359)) {
+		const unwrapped = own.map((g) => (g[0] <= 1 ? [g[0] + 360, g[1] + 360] : [g[0], g[1]]));
+		const lo = Math.min(...unwrapped.map((g) => g[0]!));
+		const hi = Math.max(...unwrapped.map((g) => g[1]!));
+		return ((lo + hi) / 2) % 360;
+	}
+	return (Math.min(...own.map((g) => g[0])) + Math.max(...own.map((g) => g[1]))) / 2;
+}
+
+/**
+ * A polar axis as recharts drew it rather than as the sweep's 1 px or 1° steps met it: a radar's angles are 90° less
+ * whole shares of the circle, a radial bar's ring is the middle of its sector's radii.
+ */
+function snap(variant: ChartVariant, value: number, tree: Tree | undefined): number {
+	if (variant.mode === 'a') {
+		const step = 360 / new Set(variant.segments.map((g) => g[2])).size;
+		const k = Math.round((90 - value) / step);
+		const exact = (((90 - k * step) % 360) + 360) % 360;
+		return Math.abs(((exact - value + 540) % 360) - 180) < 2 ? exact : value;
+	}
+	if (variant.mode === 'r' && tree) {
+		const rings = [...walk(tree)].filter((e) => classes(e).includes('recharts-radial-bar-sector')).map((e) => {
+			const all = [...(attr(e, 'd') ?? '').matchAll(/A\s*(-?[\d.]+)/gi)].map((m) => Number(m[1]));
+			// A rounded sector's corner arcs are small; its ring is between its outer and inner arcs.
+			const radii = all.filter((r) => r > Math.max(...all) * 0.25);
+			return radii.length ? (Math.max(...radii) + (radii.length > 1 ? Math.min(...radii) : 0)) / 2 : NaN;
+		});
+		const near = rings.filter((r) => !Number.isNaN(r)).sort((a, b) => Math.abs(a - value) - Math.abs(b - value))[0];
+		return near !== undefined && Math.abs(near - value) < 3 ? near : value;
+	}
+	return value;
+}
+
+/** A captured SVG as a tree, with its own attributes (each width's size and view box). */
+function parsedSvg(html: string): Tree | undefined {
+	return childrenOf(parseFragment(html) as unknown as Tree).find((n): n is Tree => isElement(n) && n.tagName === 'svg');
+}
+
+/** Another width's states in the reference's order (the same point shows the same tooltip at every width). */
+function align(variant: ChartVariant, reference: ChartVariant): ChartVariant {
+	const index = new Map(reference.states.map((s, k) => [s.tooltip, k]));
+	const to = variant.states.map((s) => index.get(s.tooltip) ?? -1);
+	const states: ChartState[] = reference.states.map((r) => ({ ...r, added: [], changed: [], x: r.x, y: r.y }));
+	variant.states.forEach((s, k) => {
+		if (to[k]! >= 0) states[to[k]!] = s;
+	});
+	return {
+		...variant,
+		states,
+		segments: variant.segments.filter((s) => to[s[2]]! >= 0).map((s) => [s[0], s[1], to[s[2]]!] as const),
+		...(variant.keys ? { keys: variant.keys.filter((key) => to[key[0]]! >= 0).map((key) => [to[key[0]]!, key[1], key[2]] as const) } : {}),
+	};
 }

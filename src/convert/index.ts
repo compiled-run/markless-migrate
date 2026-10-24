@@ -11,7 +11,7 @@ import { cleanDocument, frameworkBuilds, lateHead, type Dropped } from './clean.
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, walk, type Document, type Element } from './dom.ts';
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
 import { BaseTabsPlan, CheckablePlan, DisclosurePlan, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
-import { captureCharts, ChartPlan, MOTION_CSS, MOTION_FILE, type ChartFacts } from './charts.ts';
+import { captureCharts, CHART_CSS, ChartPlan, MOTION_FILE, type ChartFacts } from './charts.ts';
 import { captureScenes, type Scene } from './scenes.ts';
 import { ScenePlan } from './scene-plan.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
@@ -1025,7 +1025,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	for (const [route, p] of prepared) chartCount += charts.add(p.root, chartFacts.get(route) ?? [], locator(p.root.parentNode as Element), emitHtml);
 	if (chartCount) {
 		log(`recharts charts on Markless state: ${chartCount} charts`);
-		styles.set(MOTION_FILE, MOTION_CSS);
+		styles.set(MOTION_FILE, CHART_CSS);
 		templatePorts.add('recharts');
 	}
 	handledBy((el) => checkables.bind(el) !== undefined || baseTabs.bind(el) !== undefined || insertedDisclosures.bind(el) !== undefined || dayPickers.handles(el));
@@ -1118,7 +1118,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	const ownContent = (el: Element): string | undefined => {
 		const panel = basePanels.get(el);
-		const own = [appended.get(el), replaced.get(el)?.markup, replaceKeys.get(el), groupContent.get(el), panelContent.get(el), panel && JSON.stringify(panel), insertedInto.get(el), triggerKeys.get(el), measuredOf(el) && JSON.stringify(measuredOf(el)), notifyPlan.nameOf(el), scenePlan.nameOf(el)].filter((x): x is string => Boolean(x));
+		const own = [appended.get(el), replaced.get(el)?.markup, replaceKeys.get(el), groupContent.get(el), panelContent.get(el), panel && JSON.stringify(panel), insertedInto.get(el), triggerKeys.get(el), measuredOf(el) && JSON.stringify(measuredOf(el)), notifyPlan.nameOf(el), scenePlan.nameOf(el), charts.bind(el)?.declare?.[0]].filter((x): x is string => Boolean(x));
 		return own.length ? own.join('\u0001') : undefined;
 	};
 	const factored: Factored = factor(new Map([...prepared].map(([route, p]) => [route, p.root])), { bind: (el) => withAppend(el, bindParts(el, usedPorts)), extra: ownContent });

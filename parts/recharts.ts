@@ -15,28 +15,33 @@ interface Facts {
 	readonly sp?: readonly [number, number];
 	/** Per state, the tooltip's translate on each axis, or null where it follows the pointer. */
 	readonly p: readonly (readonly [number | null, number | null])[];
+	/** A polar chart's axis per state: its angle (a radar) or the middle of its ring (radial bars). */
+	readonly q?: readonly number[];
 	/** The arrow keys' order: [state, x, y]. */
 	readonly k?: readonly (readonly [number, number, number])[];
 }
 
 const WRAPPER = '[data-mm-chart]';
 const OFFSET = 10;
-const parsed = new WeakMap<Element, { raw: string; facts: Facts | undefined }>();
-const active = new WeakMap<Element, { raw: string; state: number; key: number }>();
+const parsed = new WeakMap<Element, Facts | undefined>();
+const active = new WeakMap<Element, { surface: Element; state: number; key: number }>();
 const wired = new WeakSet<Element>();
 
-function factsOf(wrapper: Element): Facts | undefined {
-	const raw = wrapper.getAttribute('data-mm-chart') ?? '';
-	const known = parsed.get(wrapper);
-	if (known?.raw === raw) return known.facts;
-	let facts: Facts | undefined;
-	try {
-		facts = JSON.parse(raw) as Facts;
-	} catch {
-		facts = undefined;
+/** The SVG the chart shows now: one per width the old page drew it at and per state of its card's controls. */
+function surfaceOf(wrapper: Element): SVGSVGElement | undefined {
+	for (const el of wrapper.children) if (el instanceof SVGSVGElement && el.classList.contains('recharts-surface') && el.getBoundingClientRect().width > 0) return el;
+	return undefined;
+}
+
+function factsOf(surface: Element): Facts | undefined {
+	if (!parsed.has(surface)) {
+		try {
+			parsed.set(surface, JSON.parse(surface.getAttribute('data-mm-facts') ?? '') as Facts);
+		} catch {
+			parsed.set(surface, undefined);
+		}
 	}
-	parsed.set(wrapper, { raw, facts });
-	return facts;
+	return parsed.get(surface);
 }
 
 function inside(segments: Facts['g'], at: number): number {
@@ -51,23 +56,34 @@ function follow(at: number, size: number, start: number, length: number): number
 	return Math.max(positive, start);
 }
 
-function show(wrapper: HTMLElement, state: number, place?: { x: number; y: number } | { key: number }): void {
-	const f = factsOf(wrapper);
+// Where recharts anchors a tooltip that follows the pointer: the pointer, or for a polar chart the point on the state's axis.
+function anchor(f: Facts, state: number, x: number, y: number): [number, number] {
+	const q = f.q?.[state];
+	if (q === undefined || !f.c) return [x, y];
+	const [cx, cy] = f.c;
+	const angle = f.m === 'a' ? (q * Math.PI) / 180 : Math.atan2(cy - y, x - cx);
+	const radius = f.m === 'a' ? Math.hypot(x - cx, y - cy) : q;
+	return [cx + radius * Math.cos(angle), cy - radius * Math.sin(angle)];
+}
+
+function show(wrapper: HTMLElement, surface: SVGSVGElement | undefined, state: number, place?: { x: number; y: number } | { key: number }): void {
+	const f = surface && factsOf(surface);
 	const tip = wrapper.querySelector<HTMLElement>('.recharts-tooltip-wrapper');
-	if (!f || !tip) return;
-	const raw = wrapper.getAttribute('data-mm-chart') ?? '';
+	if (!tip) return;
 	const now = active.get(wrapper);
-	if (!now || now.raw !== raw || now.state !== state) wrapper.dispatchEvent(new CustomEvent('mmchart', { detail: state }));
-	active.set(wrapper, { raw, state, key: place && 'key' in place ? place.key : (now?.key ?? -1) });
-	if (state < 0 || !place) {
+	const shown = f ? state : -1;
+	if (!now || now.surface !== surface || now.state !== shown) wrapper.dispatchEvent(new CustomEvent('mmchart', { detail: shown }));
+	if (surface) active.set(wrapper, { surface, state: shown, key: place && 'key' in place ? place.key : (now?.key ?? -1) });
+	if (shown < 0 || !place || !f || !surface) {
 		tip.style.visibility = 'hidden';
 		return;
 	}
 	// The tooltip's content is the chart's state, written when this event is done; it is measured then.
 	queueMicrotask(() => {
-		if (active.get(wrapper)?.state !== state) return;
-		const surface = wrapper.querySelector('svg.recharts-surface');
-		const scale = surface ? surface.getBoundingClientRect().width / f.w || 1 : 1;
+		if (active.get(wrapper)?.state !== shown) return;
+		const m = surface.getScreenCTM();
+		if (!m) return;
+		const scale = m.a || 1;
 		let x: number;
 		let y: number;
 		if ('key' in place) {
@@ -75,21 +91,25 @@ function show(wrapper: HTMLElement, state: number, place?: { x: number; y: numbe
 			x = entry[1];
 			y = entry[2];
 		} else {
-			const [fx, fy] = f.p[state] ?? [null, null];
+			const [fx, fy] = f.p[shown] ?? [null, null];
 			const [vx, vy, vw, vh] = f.v;
-			x = fx ?? follow(place.x, tip.offsetWidth / scale, vx, vw);
-			y = fy ?? follow(place.y, tip.offsetHeight / scale, vy, vh);
+			const [ax, ay] = anchor(f, shown, place.x, place.y);
+			x = fx ?? follow(ax, tip.offsetWidth / scale, vx, vw);
+			y = fy ?? follow(ay, tip.offsetHeight / scale, vy, vh);
 		}
+		// The old page's translate is in its SVG's pixels; this SVG is scaled to its container.
+		const at = new DOMPoint(x, y).matrixTransform(m);
+		const box = wrapper.getBoundingClientRect();
 		tip.style.visibility = 'visible';
 		tip.style.transition = 'transform 400ms';
-		tip.style.transform = `translate(${x * scale}px, ${y * scale}px)`;
+		tip.style.transform = `translate(${at.x - box.left}px, ${at.y - box.top}px)`;
 	});
 }
 
 function pick(f: Facts, svg: Element, target: Element, x: number, y: number): number {
 	if (f.m === 'i') {
 		const sector = target.closest('.recharts-pie-sector');
-		return sector ? inside(f.g, [...svg.querySelectorAll('.recharts-pie-sector')].indexOf(sector)) : -1;
+		return sector && svg.contains(sector) ? inside(f.g, [...svg.querySelectorAll('.recharts-pie-sector')].indexOf(sector)) : -1;
 	}
 	if (f.m === 'x' || f.m === 'y') {
 		const cross = f.m === 'x' ? y : x;
@@ -104,14 +124,13 @@ function pick(f: Facts, svg: Element, target: Element, x: number, y: number): nu
 }
 
 function at(wrapper: HTMLElement, event: PointerEvent): void {
-	const f = factsOf(wrapper);
-	const svg = wrapper.querySelector('svg.recharts-surface');
-	if (!f || !svg || !f.p.length) return;
-	const box = svg.getBoundingClientRect();
-	const x = (event.clientX - box.left) * (f.w / (box.width || f.w));
-	const y = (event.clientY - box.top) * (f.h / (box.height || f.h));
-	const inBox = x >= 0 && y >= 0 && x <= f.w && y <= f.h;
-	show(wrapper, inBox && event.target instanceof Element ? pick(f, svg, event.target, x, y) : -1, { x, y });
+	const surface = surfaceOf(wrapper);
+	const f = surface && factsOf(surface);
+	const m = surface?.getScreenCTM();
+	if (!surface || !f || !m || !f.p.length) return;
+	const p = new DOMPoint(event.clientX, event.clientY).matrixTransform(m.inverse());
+	const inBox = p.x >= 0 && p.y >= 0 && p.x <= f.w && p.y <= f.h;
+	show(wrapper, surface, inBox && event.target instanceof Element ? pick(f, surface, event.target, p.x, p.y) : -1, { x: p.x, y: p.y });
 }
 
 export function pointerover(target: Element, event: PointerEvent): boolean {
@@ -120,45 +139,44 @@ export function pointerover(target: Element, event: PointerEvent): boolean {
 	if (!wired.has(wrapper)) {
 		wired.add(wrapper);
 		wrapper.addEventListener('pointermove', (e) => at(wrapper, e));
-		wrapper.addEventListener('pointerleave', () => show(wrapper, -1));
+		wrapper.addEventListener('pointerleave', () => show(wrapper, surfaceOf(wrapper), -1));
 	}
 	at(wrapper, event);
 	return false;
 }
 
-function step(wrapper: HTMLElement, key: number): void {
-	const f = factsOf(wrapper);
-	const entry = f?.k?.[key];
-	if (entry) show(wrapper, entry[0], { key });
+function step(wrapper: HTMLElement, surface: SVGSVGElement, key: number): void {
+	const entry = factsOf(surface)?.k?.[key];
+	if (entry) show(wrapper, surface, entry[0], { key });
 }
 
 export function focusin(target: Element): boolean {
 	const wrapper = target.closest<HTMLElement>(WRAPPER);
-	if (!wrapper || !target.matches('svg.recharts-surface')) return false;
-	step(wrapper, 0);
+	if (!wrapper || !(target instanceof SVGSVGElement) || !target.matches('svg.recharts-surface')) return false;
+	step(wrapper, target, 0);
 	return true;
 }
 
 export function focusout(target: Element): boolean {
 	const wrapper = target.closest<HTMLElement>(WRAPPER);
-	if (!wrapper || !target.matches('svg.recharts-surface')) return false;
-	show(wrapper, -1);
+	if (!wrapper || !(target instanceof SVGSVGElement) || !target.matches('svg.recharts-surface')) return false;
+	show(wrapper, target, -1);
 	return true;
 }
 
 export function keydown(target: Element, event: KeyboardEvent): boolean {
 	const wrapper = target.closest<HTMLElement>(WRAPPER);
-	if (!wrapper || !target.matches('svg.recharts-surface')) return false;
-	const f = factsOf(wrapper);
+	if (!wrapper || !(target instanceof SVGSVGElement) || !target.matches('svg.recharts-surface')) return false;
+	const f = factsOf(target);
 	if (!f?.k?.length) return false;
 	if (event.key === 'Escape') {
-		show(wrapper, -1);
+		show(wrapper, target, -1);
 		return true;
 	}
 	if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return false;
 	event.preventDefault();
 	const now = active.get(wrapper);
 	const key = now && now.state >= 0 ? now.key : -1;
-	step(wrapper, key < 0 ? 0 : Math.min(f.k.length - 1, Math.max(0, key + (event.key === 'ArrowRight' ? 1 : -1))));
+	step(wrapper, target, key < 0 ? 0 : Math.min(f.k.length - 1, Math.max(0, key + (event.key === 'ArrowRight' ? 1 : -1))));
 	return true;
 }

@@ -209,7 +209,7 @@ test('a Radix trigger with its own id has its layer under the id, while aria-con
 test('recharts: the pointer picks the point whose range it is in, the tooltip goes where recharts puts it, the arrow keys step, leaving hides', async () => {
 	const facts = JSON.stringify({ w: 300, h: 100, v: [5, 5, 290, 90], m: 'x', g: [[0, 99, 0], [100, 199, 1], [200, 300, 2]], sp: [5, 95], p: [[50, null], [150, null], [250, null]], k: [[0, 50, 60], [1, 150, 60], [2, 250, 60]] });
 	const page = await open(
-		`<div style="padding:50px"><div class="recharts-wrapper" style="position:relative;width:300px;height:100px" data-mm-chart='${facts}'><svg class="recharts-surface" tabindex="0" width="300" height="100" style="display:block"></svg><div class="recharts-tooltip-wrapper" style="visibility: hidden; position: absolute; top: 0px; left: 0px;"><div style="width:40px;height:20px">tip</div></div></div></div><button>after</button>`,
+		`<div style="padding:50px"><div class="recharts-wrapper" style="position:relative;width:300px;height:100px" data-mm-chart="1"><svg class="recharts-surface" tabindex="0" width="300" height="100" style="display:block" data-mm-facts='${facts}'></svg><div class="recharts-tooltip-wrapper" style="visibility: hidden; position: absolute; top: 0px; left: 0px;"><div style="width:40px;height:20px">tip</div></div></div></div><button>after</button>`,
 		['recharts'],
 	);
 	await page.evaluate(() => {
@@ -261,10 +261,24 @@ test('a plain button a page opens its dialog from (no ARIA) opens the dialog cap
 	await page.close();
 });
 
+test('recharts: an SVG scaled to its container maps the pointer and the tooltip through its scale', async () => {
+	const facts = JSON.stringify({ w: 300, h: 100, v: [5, 5, 290, 90], m: 'x', g: [[0, 149, 0], [150, 300, 1]], p: [[50, 20], [200, 20]] });
+	const page = await open(
+		`<div class="recharts-wrapper" style="position:relative;width:600px;height:200px" data-mm-chart="1"><svg class="recharts-surface" viewBox="0 0 300 100" style="width:100%;height:100%;display:block" data-mm-facts='${facts}'></svg><svg class="recharts-surface" style="display:none" data-mm-facts='{}'></svg><div class="recharts-tooltip-wrapper" style="visibility: hidden; position: absolute; top: 0px; left: 0px;">tip</div></div>`,
+		['recharts'],
+	);
+	const tip = page.locator('.recharts-tooltip-wrapper');
+	await page.mouse.move(250, 100);
+	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(100px, 40px\)/, 'state 0 at x 125 in the SVG, its translate doubled');
+	await page.mouse.move(350, 100);
+	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(400px, 40px\)/);
+	await page.close();
+});
+
 test('recharts: a pie\'s sector under the pointer is its point, and the tooltip stays where recharts put it for that sector', async () => {
 	const facts = JSON.stringify({ w: 200, h: 200, v: [5, 5, 190, 190], m: 'i', g: [[0, 0, 0], [1, 1, 1]], p: [[120, 40], [30, 120]] });
 	const page = await open(
-		`<div class="recharts-wrapper" style="position:relative;width:200px;height:200px" data-mm-chart='${facts}'><svg class="recharts-surface" width="200" height="200" style="display:block"><g class="recharts-pie-sector"><path d="M100,100 L200,100 A100,100 0 0 0 100,0 Z"></path></g><g class="recharts-pie-sector"><path d="M100,100 L100,0 A100,100 0 1 0 200,100 Z"></path></g></svg><div class="recharts-tooltip-wrapper" style="visibility: hidden; position: absolute; top: 0px; left: 0px;">tip</div></div>`,
+		`<div class="recharts-wrapper" style="position:relative;width:200px;height:200px" data-mm-chart="1"><svg class="recharts-surface" width="200" height="200" style="display:block" data-mm-facts='${facts}'><g class="recharts-pie-sector"><path d="M100,100 L200,100 A100,100 0 0 0 100,0 Z"></path></g><g class="recharts-pie-sector"><path d="M100,100 L100,0 A100,100 0 1 0 200,100 Z"></path></g></svg><div class="recharts-tooltip-wrapper" style="visibility: hidden; position: absolute; top: 0px; left: 0px;">tip</div></div>`,
 		['recharts'],
 	);
 	const tip = page.locator('.recharts-tooltip-wrapper');
