@@ -510,8 +510,11 @@ async function pageState(): Promise<string[]> {
 	const root = document.documentElement;
 	const body = document.body as HTMLElement | null;
 	const own = [root, body].filter((el): el is HTMLElement => Boolean(el));
-	const running = own.flatMap((el) => el.getAnimations()).filter((a) => a instanceof CSSTransition && /^(background|color|color-scheme|all)/.test(a.transitionProperty));
-	if (running.length) await Promise.race([Promise.all(running.map((a) => a.finished.catch(() => {}))), new Promise((done) => setTimeout(done, 1_000))]);
+	// A colour is read once its transition has ended: one that starts a frame later (`transition: all` on <html> after a theme class) is waited for too, at most 2 s.
+	await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+	const until = performance.now() + 2_000;
+	// Frames, not timeouts: a step holds the page's 1 to 3 s timeouts while it is read.
+	while (performance.now() < until && own.flatMap((el) => el.getAnimations()).some((a) => a instanceof CSSTransition && /^(background|color|color-scheme|all)/.test(a.transitionProperty) && a.playState === 'running')) await new Promise((done) => requestAnimationFrame(done));
 	const out: string[] = [];
 	const clip = (v: string) => (v.length > 120 ? `${v.slice(0, 120)}…` : v);
 	for (const el of own) {
@@ -771,27 +774,34 @@ async function timersOut(page: Page, mark: number, cap = 3_500): Promise<void> {
 	}
 }
 
-const AMBIENT_MS = 1_000;
-const ambientSeen = new Map<string, Promise<{ changes: readonly string[]; regions: readonly Box[] }>>();
+// Long enough to see a page's own 3 s cycle once (htmx's class-tools demo toggling a class every 3 s).
+const AMBIENT_MS = 3_500;
+const ambientSeen = new Map<string, Promise<{ changes: readonly string[]; regions: readonly Box[]; lines: readonly string[] }>>();
 
 // Measured on a route's first session on each side and reused by its later sessions, so a journey does not wait a second for it.
-function ambientOnce(origin: string, route: string, page: Page): Promise<{ changes: readonly string[]; regions: readonly Box[] }> {
+function ambientOnce(origin: string, route: string, page: Page, hosts: readonly string[]): Promise<{ changes: readonly string[]; regions: readonly Box[]; lines: readonly string[] }> {
 	const key = `${origin} ${route} ${page.viewportSize()?.width ?? 0}`;
 	let found = ambientSeen.get(key);
-	if (!found) ambientSeen.set(key, (found = ambientMotion(page)));
+	if (!found) ambientSeen.set(key, (found = ambientMotion(page, hosts)));
 	return found;
 }
 
 /** What the settled page changes on its own while nothing is used: the widgets and regions of the view that move without a step. */
-async function ambientMotion(page: Page): Promise<{ changes: readonly string[]; regions: readonly Box[] }> {
+async function ambientMotion(page: Page, hosts: readonly string[]): Promise<{ changes: readonly string[]; regions: readonly Box[]; lines: readonly string[] }> {
 	const before = await page.screenshot({ timeout: 10_000 }).catch(() => undefined);
-	if (!before) return { changes: [], regions: [] };
+	if (!before) return { changes: [], regions: [], lines: [] };
+	const treeBefore = await snapshot(page, hosts);
 	await page.evaluate(watchReaction).catch(() => {});
-	await sleep(AMBIENT_MS);
+	// The tree is read again part way through and at the end, so a cycle back to where it started is still seen.
+	await sleep(AMBIENT_MS / 2);
+	const treeMid = await snapshot(page, hosts);
+	await sleep(AMBIENT_MS / 2);
 	const read = await page.evaluate(readReaction).catch(() => undefined);
 	const after = await page.screenshot({ timeout: 10_000 }).catch(() => undefined);
+	const treeAfter = await snapshot(page, hosts);
 	const moving = Object.values(read?.boxes ?? {});
-	return { changes: read?.changes ?? [], regions: [...moving, ...(after && !read?.scrolled ? changedRegions(before, after, []) : [])] };
+	const lines = [...new Set([treeMid, treeAfter].flatMap((tree) => { const { added, removed } = multisetDiff(treeBefore, tree); return [...added, ...removed]; }))];
+	return { changes: read?.changes ?? [], regions: [...moving, ...(after && !read?.scrolled ? changedRegions(before, after, []) : [])], lines };
 }
 
 async function focusLabel(page: Page): Promise<string> {
@@ -1120,7 +1130,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 	await loadPage(page, new URL(route, origin).href);
 	await quiet(page, inflight, navigations);
 	const loadErrors = [...errors];
-	const ambient = await ambientOnce(env.origin, route, page);
+	const ambient = await ambientOnce(env.origin, route, page, hosts);
 	// A motion recording holds the timeouts itself, across its film.
 	const ownTimers = !options.loops;
 	// Where a redirect landed is the http and auth checks' business; a step that stays there compares alike.
@@ -1167,7 +1177,11 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		accepting = false;
 		const after = await snapshot(page, hosts);
 		const liveAfter = await page.evaluate(liveRegions).catch(() => [] as string[]);
-		const { added, removed } = multisetDiff(before, after);
+		// Lines the page changes on its own while nothing is used (a demo toggling a class on a timer) are no step's doing.
+		const own = (lines: string[]) => (documentLoaded || !ambient.lines.length ? lines : lines.filter((l) => !ambient.lines.includes(l)));
+		const diff = multisetDiff(before, after);
+		const added = own(diff.added);
+		const removed = own(diff.removed);
 		const moved = documentLoaded && !reload ? [] : movedLines(before, after);
 		const writes = log.writes.slice(writesBefore);
 		const writeOf = new Map(writes.map((w) => [w.request, w.line]));
