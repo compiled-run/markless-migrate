@@ -6,7 +6,7 @@ import type { Browser, Locator, Page } from 'playwright';
 import { defaultEnv, openPage } from '../check/browser.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS, type Viewport } from '../check/types.ts';
-import { attr, childrenOf, isElement, setAttr, walk, type Element as Tree } from './dom.ts';
+import { attr, childrenOf, isElement, setAttr, textContent, walk, type Element as Tree } from './dom.ts';
 import { emitChildren, emitElement, lit, type Binding } from './tsrx.ts';
 
 /** What a recharts chart shows for one active data point, as the old page drew it with that point active. */
@@ -155,6 +155,10 @@ class States {
 	readonly points: Record<string, { path: number[]; before: number }> = {};
 	private readonly keys = new Map<string, number>();
 
+	knows(seen: Awaited<ReturnType<NonNullable<Window['__mmc']>['read']>>): boolean {
+		return this.keys.has(JSON.stringify([seen.tooltip, seen.added.map((a) => ({ at: `${a.path.join('.')}@${a.before}`, html: a.html })), seen.changed]));
+	}
+
 	add(seen: Awaited<ReturnType<NonNullable<Window['__mmc']>['read']>>): number {
 		if (!seen.visible) return -1;
 		const added = seen.added.map((a) => {
@@ -171,23 +175,6 @@ class States {
 	}
 }
 
-/** Contiguous runs of one state along a sweep, as [from, to, state]. */
-function runs(samples: readonly { readonly at: number; readonly state: number }[], step: number): [number, number, number][] {
-	const out: [number, number, number][] = [];
-	for (const s of samples) {
-		const last = out.at(-1);
-		if (s.state < 0) continue;
-		if (last && last[2] === s.state && s.at - last[1] <= step + 1e-6) last[1] = s.at;
-		else out.push([s.at, s.at, s.state]);
-	}
-	// A run covers the gap halfway to its neighbours, as the old page's pointer would.
-	for (let i = 0; i < out.length; i++) {
-		out[i]![0] -= step / 2;
-		out[i]![1] += step / 2;
-	}
-	return out;
-}
-
 async function captureVariant(page: Page, wrapper: Locator, view: readonly [number, number, number, number]): Promise<Omit<ChartVariant, 'svg' | 'legend'>> {
 	const elements = await wrapper.evaluate((root) => window.__mmc!.mark(root));
 	const surface = wrapper.locator('svg.recharts-surface').first();
@@ -197,18 +184,60 @@ async function captureVariant(page: Page, wrapper: Locator, view: readonly [numb
 		if (svg.querySelector('.recharts-pie-sector')) return { mode: 'i' as const };
 		const radial = svg.querySelector('.recharts-radial-bar-sector');
 		if (radial) return { mode: 'r' as const, center: [Number(radial.getAttribute('cx')), Number(radial.getAttribute('cy'))] as [number, number] };
-		if (svg.querySelector('.recharts-radar')) return { mode: 'a' as const };
+		if (svg.querySelector('.recharts-radar')) {
+			// The radar's centre: where its grid's spokes start, or the middle of its angle axis' outline.
+			const spoke = svg.querySelector('.recharts-polar-grid-angle line');
+			if (spoke) return { mode: 'a' as const, center: [Number(spoke.getAttribute('x1')), Number(spoke.getAttribute('y1'))] as [number, number] };
+			const outline = svg.querySelector('.recharts-polar-angle-axis-line');
+			if (outline?.tagName === 'circle') return { mode: 'a' as const, center: [Number(outline.getAttribute('cx')), Number(outline.getAttribute('cy'))] as [number, number] };
+			const points = [...(outline?.getAttribute('d') ?? '').matchAll(/(-?[\d.]+)[ ,](-?[\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+			if (points.length > 2) return { mode: 'a' as const, center: [points.reduce((t, q) => t + q[0]!, 0) / points.length, points.reduce((t, q) => t + q[1]!, 0) / points.length] as [number, number] };
+			return { mode: 'a' as const };
+		}
 		return { mode: 'c' as const };
 	});
 	const states = new States();
 	const samples: Sample[] = [];
+	let last = '';
 	const at = async (px: number, py: number): Promise<number> => {
 		await page.mouse.move(box.x + px, box.y + py);
 		await page.waitForTimeout(16);
-		const seen = await wrapper.evaluate((root) => window.__mmc!.read(root));
+		let seen = await wrapper.evaluate((root) => window.__mmc!.read(root));
+		// recharts adds a point's active dots a frame after its tooltip: a reading not seen before is read again until it holds.
+		for (let i = 0; i < 6 && seen.visible && !states.knows(seen) && JSON.stringify([seen.tooltip, seen.added, seen.changed]) !== last; i++) {
+			last = JSON.stringify([seen.tooltip, seen.added, seen.changed]);
+			await page.waitForTimeout(16);
+			seen = await wrapper.evaluate((root) => window.__mmc!.read(root));
+		}
+		last = '';
 		const state = states.add(seen);
 		if (state >= 0) samples.push({ px, py, state, x: seen.x, y: seen.y });
 		return state;
+	};
+	// Runs of one state along a sweep, each boundary found to a quarter of the step between the samples on either side.
+	const sharpen = async (sweep: readonly { at: number; state: number }[], probe: (at: number) => Promise<number>, step: number): Promise<[number, number, number][]> => {
+		const bounds: number[] = [];
+		for (let i = 0; i + 1 < sweep.length; i++) {
+			const a = sweep[i]!;
+			const b = sweep[i + 1]!;
+			if (a.state === b.state) continue;
+			let lo = a.at;
+			let hi = b.at;
+			for (let k = 0; k < 2; k++) {
+				const mid = (lo + hi) / 2;
+				if ((await probe(mid)) === a.state) lo = mid;
+				else hi = mid;
+			}
+			bounds[i] = (lo + hi) / 2;
+		}
+		const out: [number, number, number][] = [];
+		for (let i = 0; i < sweep.length; ) {
+			let j = i;
+			while (j + 1 < sweep.length && sweep[j + 1]!.state === sweep[i]!.state) j++;
+			if (sweep[i]!.state >= 0) out.push([i > 0 ? bounds[i - 1]! : sweep[i]!.at - step / 2, j + 1 < sweep.length ? bounds[j]! : sweep[j]!.at + step / 2, sweep[i]!.state]);
+			i = j + 1;
+		}
+		return out;
 	};
 	let mode: HitMode;
 	let segments: [number, number, number][] = [];
@@ -246,16 +275,18 @@ async function captureVariant(page: Page, wrapper: Locator, view: readonly [numb
 		const reach = Math.max(cy, box.height - cy, cx, box.width - cx);
 		const dir = [[0, -1], [0, 1], [-1, 0], [1, 0]][[cy, box.height - cy, cx, box.width - cx].indexOf(reach)]!;
 		const sweep: { at: number; state: number }[] = [];
-		for (let r = 0; r < reach; r += 1) sweep.push({ at: r, state: await at(cx + dir[0]! * r, cy + dir[1]! * r) });
-		segments = runs(sweep, 1);
+		const probe = (r: number) => at(cx + dir[0]! * r, cy + dir[1]! * r);
+		for (let r = 0; r < reach; r += 1) sweep.push({ at: r, state: await probe(r) });
+		segments = await sharpen(sweep, probe, 1);
 	} else if (kind.mode === 'a') {
 		mode = 'a';
-		center = [vx + vw / 2, vy + vh / 2];
+		center = kind.center ?? [vx + vw / 2, vy + vh / 2];
 		const [cx, cy] = center;
 		const radius = Math.min(vw, vh) / 2;
 		const sweep: { at: number; state: number }[] = [];
-		for (let a = 0; a < 360; a += 1) sweep.push({ at: a, state: await at(cx + Math.cos((a * Math.PI) / 180) * radius * 0.5, cy - Math.sin((a * Math.PI) / 180) * radius * 0.5) });
-		segments = runs(sweep, 1);
+		const probe = (a: number) => at(cx + Math.cos((a * Math.PI) / 180) * radius * 0.5, cy - Math.sin((a * Math.PI) / 180) * radius * 0.5);
+		for (let a = 0; a < 360; a += 1) sweep.push({ at: a, state: await probe(a) });
+		segments = await sharpen(sweep, probe, 1);
 		const first = segments[0];
 		if (first) {
 			const a = (((first[0] + first[1]) / 2) * Math.PI) / 180;
@@ -269,9 +300,11 @@ async function captureVariant(page: Page, wrapper: Locator, view: readonly [numb
 		const along = async (axis: 'x' | 'y', cross: number) => {
 			const sweep: { at: number; state: number }[] = [];
 			const length = axis === 'x' ? box.width : box.height;
-			for (let p = 0; p <= length; p += step) sweep.push({ at: p, state: axis === 'x' ? await at(p, cross) : await at(cross, p) });
-			return runs(sweep, step);
+			const probe = (p: number) => (axis === 'x' ? at(p, cross) : at(cross, p));
+			for (let p = 0; p <= length; p += step) sweep.push({ at: p, state: await probe(p) });
+			return sharpen(sweep, probe, step);
 		};
+
 		const byX = await along('x', vy + vh / 2);
 		const byY = new Set(byX.map((s) => s[2])).size > 1 ? [] : await along('y', vx + vw / 2);
 		mode = byY.length > byX.length ? 'y' : 'x';
@@ -303,7 +336,7 @@ async function captureVariant(page: Page, wrapper: Locator, view: readonly [numb
 	const placed = states.list.map((_, k) => samples.find((s) => s.state === k));
 	// The arrow keys, once the chart has focus (recharts' accessibilityLayer).
 	let keys: [number, number, number][] | undefined;
-	if (mode !== 'i' && (await surface.getAttribute('tabindex')) === '0') {
+	if ((await surface.getAttribute('tabindex')) === '0') {
 		keys = [];
 		await page.mouse.move(1, 1);
 		for (let i = 0; i < 20 && (await wrapper.evaluate((root) => window.__mmc!.read(root).visible)); i++) await page.waitForTimeout(50);
@@ -465,7 +498,7 @@ export const CHART_WIDTHS: readonly number[] = [342, 373, 419, 1336, 1440];
  * again for its container's width, so each width the old site shows it at is drawn as the old page drew it there.
  */
 export async function captureCharts(browser: Browser, origin: string, route: string, dir: string): Promise<{ readonly route: string; readonly charts: readonly ChartFacts[] }> {
-	const file = join(dir, `${createHash('sha256').update(`charts3:${route}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`charts4:${route}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; charts: ChartFacts[] }, () => undefined);
 	const known = cached?.route === route ? cached.charts : undefined;
 	const have = new Set(known?.flatMap((c) => c.widths.map((w) => w.viewport)) ?? []);
@@ -592,10 +625,8 @@ export function motion(svg: Tree, view: readonly [number, number, number, number
 		const vertical = side[1] > base[1];
 		for (const g of els.filter((e) => classes(e).includes('recharts-bar-rectangles'))) styleWith(g, vertical ? `--mm-o: ${side[0]}px 0px; --mm-s: scaleX(0)` : `--mm-o: 0px ${base[0]}px; --mm-s: scaleY(0)`);
 	}
-	for (const curve of els.filter((e) => classes(e).includes('recharts-line-curve'))) {
-		const length = num(/^\s*(-?[\d.]+)/.exec(attr(curve, 'stroke-dasharray') ?? '')?.[1]);
-		if (!Number.isNaN(length)) styleWith(curve, `--mm-l: ${length}px`);
-	}
+	// A line draws over its own length, which recharts measures in the browser: pathLength makes it 1.
+	for (const curve of els.filter((e) => classes(e).includes('recharts-line-curve'))) setAttr(curve, 'pathLength', '1');
 	for (const radar of els.filter((e) => classes(e).includes('recharts-radar-polygon'))) styleWith(radar, `--mm-c: ${round(view[0] + view[2] / 2)}px ${round(view[1] + view[3] / 2)}px`);
 	const sweep = (sectors: readonly Tree[], cumulative: boolean) => {
 		const angles = sectors.map(sectorAngles);
@@ -619,7 +650,7 @@ export function motion(svg: Tree, view: readonly [number, number, number, number
 export const MOTION_CSS = `@property --mm-t { syntax: '<number>'; inherits: false; initial-value: 1; }
 @keyframes mm-wipe { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 @keyframes mm-grow { from { transform: var(--mm-s); } to { transform: none; } }
-@keyframes mm-draw { from { stroke-dasharray: 0px var(--mm-l); } }
+@keyframes mm-draw { from { stroke-dasharray: 0 1; } to { stroke-dasharray: 1 0; } }
 @keyframes mm-scale { from { transform: scale(0); } to { transform: none; } }
 @keyframes mm-sweep { from { --mm-t: 0; } to { --mm-t: 1; } }
 @keyframes mm-after { from { opacity: 0; } to { opacity: 0; } }
@@ -676,8 +707,13 @@ export class ChartPlan {
 	add(root: Tree, charts: readonly ChartFacts[], locate: (sig: string, nth: number) => Tree | undefined, emit: (html: string) => string): number {
 		let placed = 0;
 		let linked = false;
+		// The chart's place among the page's charts finds it where its signature's count is thrown off by markup the page lost or gained.
+		const scope = (root.parentNode as Tree | null) ?? root;
+		const wrappers = [...walk(scope)].filter((e) => classes(e).includes('recharts-wrapper'));
+		const text = (el: Tree) => textContent(el).trim().replace(/\s+/g, ' ').slice(0, 60);
 		for (const chart of charts) {
-			const wrapper = locate(chart.sig, chart.nth);
+			const at = wrappers[chart.index];
+			const wrapper = at && text(at) === chart.sig.split('|').slice(2).join('|') ? at : locate(chart.sig, chart.nth);
 			if (!wrapper || this.bindings.has(wrapper)) continue;
 			const kids = childrenOf(wrapper).filter(isElement);
 			const svg = kids.find((e) => e.tagName === 'svg');
@@ -824,7 +860,8 @@ export class ChartPlan {
 		return {
 			w: entry.width,
 			h: entry.height,
-			v: entry.view,
+			// recharts keeps a polar chart's tooltip in the whole surface.
+			v: polar ? [0, 0, entry.width, entry.height] : entry.view,
 			m: variant.mode,
 			...(variant.center ? { c: variant.center } : {}),
 			g: variant.segments.map((s) => s.map(round)),
