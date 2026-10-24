@@ -648,7 +648,9 @@ function watchReaction(): void {
 		shifts = new PerformanceObserver((list) => {
 			for (const entry of list.getEntries() as (PerformanceEntry & { value: number; sources?: { previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }[] })[]) {
 				shift.score += entry.value;
+				// Only a large part of the page moving counts as the page jumping; a word reflowing beside a changed number does not.
 				for (const source of entry.sources ?? []) {
+					if (source.currentRect.width * source.currentRect.height < innerWidth * innerHeight * 0.25) continue;
 					shift.x = Math.max(shift.x, Math.abs(source.currentRect.x - source.previousRect.x));
 					shift.y = Math.max(shift.y, Math.abs(source.currentRect.y - source.previousRect.y));
 				}
@@ -675,7 +677,7 @@ function readReaction(): { changes: string[]; scrolled: boolean; boxes: Record<s
 	if (!watch) return { changes: [], scrolled: false, boxes: {}, shift: { score: 0, x: 0, y: 0 } };
 	for (const entry of (watch.shifts?.takeRecords() ?? []) as (PerformanceEntry & { value: number; sources?: { previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }[] })[]) {
 		watch.shift.score += entry.value;
-		for (const source of entry.sources ?? []) watch.shift.x = Math.max(watch.shift.x, Math.abs(source.currentRect.x - source.previousRect.x));
+		for (const source of entry.sources ?? []) if (source.currentRect.width * source.currentRect.height >= innerWidth * innerHeight * 0.25) watch.shift.x = Math.max(watch.shift.x, Math.abs(source.currentRect.x - source.previousRect.x));
 	}
 	watch.shifts?.disconnect();
 	watch.observer.disconnect();
@@ -1763,7 +1765,7 @@ function stable(values: readonly string[]): (value: string) => boolean {
 
 const near = (a: Box, b: Box, pad = 16) => a.x - pad < b.x + b.width && b.x - pad < a.x + a.width && a.y - pad < b.y + b.height && b.y - pad < a.y + a.height;
 // The same answer elsewhere in the view (text above it wrapped differently, a page laid out right to left) is a region of about its size: where it sits is the visual check's.
-const alike = (a: Box, b: Box) => near(a, b) || Math.min(a.width * a.height, b.width * b.height) / Math.max(a.width * a.height, b.width * b.height) >= 0.4;
+const alike = (a: Box, b: Box) => near(a, b) || Math.min(a.width * a.height, b.width * b.height) / Math.max(a.width * a.height, b.width * b.height) >= 0.25;
 const boxAt = (b: Box) => `(${b.x}, ${b.y}) ${b.width}x${b.height}`;
 
 /** How every old run of a step answered that the new run did not: widget changes each old run made, and regions of the view each old run changed that the new page left as they were. */
@@ -1795,7 +1797,7 @@ export function extraShift(olds: readonly StepResult[], next: StepResult): strin
 	const n = next.reaction.shift ?? { score: 0, x: 0, y: 0 };
 	const [x, y, score] = [most((s) => s.x), most((s) => s.y), most((s) => s.score)];
 	if (n.x <= x + SHIFT_PX && n.y <= y + SHIFT_PX && n.score <= score + SHIFT_SCORE) return undefined;
-	return `old content moves at most ${x} px sideways and ${y} px up or down (layout shift ${score}); new moves it ${n.x} px sideways and ${n.y} px up or down (layout shift ${n.score})`;
+	return `old: a large part of the page moves at most ${x} px sideways and ${y} px up or down (layout shift ${score}); new: ${n.x} px sideways and ${n.y} px up or down (layout shift ${n.score})`;
 }
 
 /** The new page takes meaningfully longer than every old run to show its first change after a step. */
@@ -1833,7 +1835,7 @@ function format(result: StepResult, parts: readonly string[], missing?: { change
 	if (parts.includes('dialogs')) out.push(`dialogs: ${result.dialogs?.join(' | ') || '(none)'}`);
 	if (parts.includes('reaction') && missing) out.push(answered(result, missing, old));
 	const shifted = result.reaction?.shift;
-	if (parts.includes('shift')) out.push(`layout: ${shifted ? `content moves ${shifted.x} px sideways and ${shifted.y} px up or down (layout shift ${shifted.score})` : 'nothing moves'}`);
+	if (parts.includes('shift')) out.push(`layout: ${shifted ? `a large part of the page moves ${shifted.x} px sideways and ${shifted.y} px up or down (layout shift ${shifted.score})` : 'nothing moves'}`);
 	if (parts.includes('answer time')) out.push(`first change ${result.reaction?.answeredMs ?? '?'} ms after the step`);
 	return out.join('; ');
 }

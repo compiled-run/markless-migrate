@@ -120,7 +120,7 @@ test('a dialog whose close shifts the page sideways is red; the same dialog on b
 	const early = open(await check(dialog(false), dialog(true)));
 	const close = early.find((f) => /click button "Close"/.test(f.check));
 	assert.ok(close, JSON.stringify(early.map((f) => f.check)));
-	assert.match(close!.actual, /layout: content moves [1-9]\d* px sideways/);
+	assert.match(close!.actual, /layout: a large part of the page moves [1-9]\d* px sideways/);
 });
 
 test('tabs that switch more than 50 ms and half again slower than the original are red; the same tabs are green', async () => {
