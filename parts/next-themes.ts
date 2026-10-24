@@ -92,11 +92,15 @@ function earlyToggle(o: ThemeOptions & ThemeToggle): void {
 			localStorage.setItem(o.storageKey, next);
 		} catch {}
 		const root = document.documentElement;
-		let hold: HTMLStyleElement | undefined;
+		let release: (() => void) | undefined;
 		if (o.disableTransitionOnChange) {
-			hold = document.createElement('style');
-			hold.textContent = '*,*::before,*::after{transition:none!important}';
-			document.head.appendChild(hold);
+			const style = document.createElement('style');
+			style.appendChild(document.createTextNode('*,*::before,*::after{transition:none!important}'));
+			document.head.appendChild(style);
+			release = () => {
+				getComputedStyle(document.body);
+				setTimeout(() => document.head.removeChild(style), 1);
+			};
 		}
 		if (o.attribute === 'class') {
 			root.classList.remove(...o.themes);
@@ -104,10 +108,7 @@ function earlyToggle(o: ThemeOptions & ThemeToggle): void {
 		} else root.setAttribute(o.attribute, next);
 		if (o.enableColorScheme) root.style.colorScheme = next;
 		if (o.metaColors?.[next]) document.querySelector('meta[name="theme-color"]')?.setAttribute('content', o.metaColors[next]!);
-		if (hold) {
-			getComputedStyle(document.body);
-			setTimeout(() => hold!.remove(), 1);
-		}
+		release?.();
 	};
 	const isToggle = (target: EventTarget | null) => {
 		const button = target instanceof Element ? target.closest('button') : null;
