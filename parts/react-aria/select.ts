@@ -33,12 +33,14 @@ function choose(trigger: HTMLElement, listbox: Element, option: HTMLElement): vo
 	trigger.dispatchEvent(new CustomEvent('mmchoose', { detail: (option.firstElementChild ?? option).textContent ?? '' }));
 }
 
-// The Select itself is marked open (data-open) while its listbox is.
+// The Select itself is marked open (data-open) while its listbox is, and focused (useSelectState's isFocused) though
+// focus is in the listbox.
 const rootOf = (trigger: Element) => (trigger.parentElement?.hasAttribute('data-rac') ? trigger.parentElement : null);
 
 function close(o: Overlay, keepFocus = false): void {
 	holdPressed(o.trigger, false);
 	rootOf(o.trigger)?.removeAttribute('data-open');
+	rootOf(o.trigger)?.removeAttribute('data-focused');
 	closeOverlay(o, keepFocus);
 }
 
@@ -48,6 +50,7 @@ function openSelect(trigger: HTMLElement, strategy: 'first' | 'last' | null): bo
 	if (!o) return false;
 	holdPressed(trigger, true);
 	rootOf(trigger)?.setAttribute('data-open', 'true');
+	rootOf(trigger)?.setAttribute('data-focused', 'true');
 	return true;
 }
 
