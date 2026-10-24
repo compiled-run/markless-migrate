@@ -7,9 +7,10 @@ import { settle } from '../check/capture.ts';
 import { DEFAULT_FREEZE } from '../check/freeze.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
-import { dayPickerModel, dayPickerView, type DayPickerEffect, type DayModel, type DayPickerConfig, type DayPickerModel, type LocaleTable, type Matcher, type When } from '../../parts/day-picker.ts';
+import { dayPickerLabel, dayPickerModel, dayPickerView, type DayPickerEffect, type DayModel, type DayPickerConfig, type DayPickerModel, type LocaleTable, type Matcher, type When } from '../../parts/day-picker.ts';
 import { attr, childrenOf, elementChildren, isElement, isText, walk, type Element, type Text } from './dom.ts';
-import { emitElement, mergeBindings, type Binding } from './tsrx.ts';
+import { emitChildren, emitElement, mergeBindings, type Binding } from './tsrx.ts';
+import { parseFragment } from 'parse5';
 
 // react-day-picker's DayPicker on Markless state (parts/day-picker.ts). What each calendar on the old page was given is
 // read from its DayPicker context at two clock settings, so a date that follows today (a selection of `new Date()`, a
@@ -38,6 +39,20 @@ export interface RawPicker {
 	readonly effects?: readonly RawEffect[];
 	/** Whether choosing a day, and moving a month, mounts the calendar's markup again (a day button, a nav button replaced). */
 	readonly remounts?: { readonly select: boolean; readonly month: boolean };
+	/** In a layer: found by its signature and place in the layer, not the page. */
+	readonly inLayer?: true;
+	/** The control whose layer holds the calendar (a date picker's trigger), and what that control shows as days are picked. */
+	readonly opener?: LayerOpener;
+}
+
+/** A date picker's trigger and what it showed: its children before, after one day was picked, and after a second (range). */
+export interface LayerOpener {
+	readonly sig: string;
+	readonly nth: number;
+	/** Its place among the elements of its tag and data-slot. */
+	readonly k: number;
+	readonly before: string;
+	readonly picks: readonly { readonly days: readonly Triple[]; readonly html: string; readonly open: boolean }[];
 }
 
 interface RawEffect {
@@ -62,11 +77,11 @@ const READ_VERSION = 6;
 const fileFor = (dir: string, route: string) => join(dir, `${createHash('sha256').update(`day-picker:${READ_VERSION}:${route}`).digest('hex').slice(0, 16)}.json`);
 
 /** Reads every DayPicker on a route at the capture clock and at LATER, and whether its keys move the browser's focus. */
-export async function captureDayPickers(browser: Browser, origin: string, route: string, dir: string): Promise<CapturedPickers> {
-	const file = fileFor(dir, route);
+export async function captureDayPickers(browser: Browser, origin: string, route: string, dir: string, openers: readonly { readonly sig: string; readonly nth: number }[] = []): Promise<CapturedPickers> {
+	const file = openers.length ? fileFor(dir, `${route}|${JSON.stringify(openers)}`) : fileFor(dir, route);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as CapturedPickers, () => undefined);
 	if (cached && cached.route === route) return cached;
-	const read = async (time: number, probe: boolean): Promise<RawPicker[]> => {
+	const read = async (time: number, probe: boolean, ks: readonly (number | undefined)[] = []): Promise<RawPicker[]> => {
 		const env = defaultEnv(origin, { freeze: { ...DEFAULT_FREEZE, time } });
 		const { context, page } = await openPage(browser, env, VIEWPORTS[0]!);
 		try {
@@ -86,15 +101,84 @@ export async function captureDayPickers(browser: Browser, origin: string, route:
 				const effects = await effectsOf(page, i, picker.config?.mode);
 				if (effects.length) out[i] = { ...picker, effects };
 			}
+			// Each opener on the page as loaded: a pick changes what its trigger (and so its signature) shows.
+			for (const [i, opener] of openers.entries()) {
+				if (i > 0) {
+					await loadPage(page, new URL(route, origin).href);
+					await settle(page);
+				}
+				out.push(...(await openerPickers(page, { ...opener, ...(ks[i] !== undefined ? { k: ks[i] } : {}) }, time, probe)));
+			}
 			return out;
 		} finally {
 			await context.close().catch(() => {});
 		}
 	};
-	const captured: CapturedPickers = { route, at: DEFAULT_FREEZE.time, pickers: await read(DEFAULT_FREEZE.time, true), later: await read(LATER, false) };
+	const pickers = await read(DEFAULT_FREEZE.time, true);
+	const ks = openers.map((o) => pickers.find((p) => p.opener?.sig === o.sig && p.opener.nth === o.nth)?.opener?.k);
+	const captured: CapturedPickers = { route, at: DEFAULT_FREEZE.time, pickers, later: await read(LATER, false, ks) };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(captured));
 	return captured;
+}
+
+/**
+ * Opens a date picker's trigger on the old page and reads the calendars its layer shows; with `probe`, also picks a day
+ * (two in range mode) and records what the trigger then shows and whether the layer stayed open.
+ */
+async function openerPickers(page: Page, opener: { readonly sig: string; readonly nth: number; readonly k?: number }, time: number, probe: boolean): Promise<RawPicker[]> {
+	// Found by its signature, or (at the second clock, where a trigger showing a date relative to today reads otherwise)
+	// as the k-th element of its tag and data-slot.
+	const k = await page.evaluate(({ sig, nth, k }) => {
+		const sigOf = (el: HTMLElement) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+		const prefix = sig.split('|').slice(0, 2).join('|');
+		const kin = [...document.body.querySelectorAll<HTMLElement>('*')].filter((e) => sigOf(e).startsWith(`${prefix}|`));
+		let n = 0;
+		let el = kin.find((e) => sigOf(e) === sig && n++ === nth);
+		if (!el && k !== undefined) el = kin[k];
+		if (!el) return -1;
+		el.setAttribute('data-mm-opener', '');
+		return kin.indexOf(el);
+	}, opener);
+	if (k < 0) return [];
+	const trigger = page.locator('[data-mm-opener]');
+	try {
+		await trigger.scrollIntoViewIfNeeded().catch(() => {});
+		await trigger.click({ timeout: 2000 });
+		await page.waitForTimeout(500);
+		const before = await trigger.evaluate((e) => e.innerHTML);
+		const all = await page.evaluate(readPickers, [time - 150 * 365 * 86_400_000, time + 60 * 365 * 86_400_000] as const);
+		const own = all.filter((p) => p.inLayer);
+		if (!probe || own.length !== 1 || own[0]!.why) return own.map((p) => ({ ...p, opener: { sig: opener.sig, nth: opener.nth, k, before, picks: [] } }));
+		const picks: { days: Triple[]; html: string; open: boolean }[] = [];
+		const count = own[0]!.config?.mode === 'range' ? 2 : 1;
+		for (let k = 0; k < count; k++) {
+			const day = await page.evaluate((k) => {
+				const root = (window as unknown as { __mmPickerRoots: () => HTMLElement[] }).__mmPickerRoots().find((r) => r.closest('[data-radix-popper-content-wrapper], [data-base-ui-portal]'));
+				const cells = [...(root?.querySelectorAll<HTMLElement>('td[role="gridcell"]:not([data-outside]):not([data-selected]):not([data-disabled])') ?? [])];
+				const cell = cells[Math.min(cells.length - 1, 4 + k * 5)];
+				const button = cell?.querySelector<HTMLButtonElement>('button:not([disabled])');
+				const iso = cell?.getAttribute('data-day');
+				if (!button || !iso) return undefined;
+				button.click();
+				const [y, m, d] = iso.split('-').map(Number) as [number, number, number];
+				return [y, m - 1, d] as [number, number, number];
+			}, k);
+			if (!day) break;
+			await page.waitForTimeout(400);
+			const html = await trigger.evaluate((e) => e.innerHTML);
+			const open = await trigger.evaluate((e) => e.getAttribute('aria-expanded') === 'true' || e.getAttribute('data-state') === 'open');
+			picks.push({ days: [...(picks.at(-1)?.days ?? []), day], html, open });
+			if (!open) break;
+		}
+		return [{ ...own[0]!, opener: { sig: opener.sig, nth: opener.nth, k, before, picks } }];
+	} catch {
+		return [];
+	} finally {
+		await page.keyboard.press('Escape').catch(() => {});
+		await page.waitForTimeout(300);
+		await page.evaluate(() => document.querySelector('[data-mm-opener]')?.removeAttribute('data-mm-opener')).catch(() => {});
+	}
 }
 
 async function movesFocus(page: Page, index: number): Promise<boolean> {
@@ -251,15 +335,18 @@ function readPickers([from, to]: readonly [number, number]): RawPicker[] {
 		const ctx = contextOf(el);
 		if (!ctx) continue;
 		const sig = sigOf(el);
+		// A calendar inside a layer (a date picker's popover) is found again by its place in the layer, as the converter
+		// renders the layer apart from the page.
+		const layer = el.closest('[data-radix-popper-content-wrapper], [data-base-ui-portal]');
 		let nth = 0;
-		for (const e of all) {
+		for (const e of layer ? [...layer.querySelectorAll<HTMLElement>('*')] : all) {
 			if (e === el) break;
 			if (sigOf(e) === sig) nth++;
 		}
 		const p = ctx.dayPickerProps as Props;
 		const months = ctx.months as { date: Date; weeks: { days: { dateLib: Lib }[] }[] }[];
 		const lib = months[0]?.weeks[0]?.days[0]?.dateLib;
-		const fail = (why: string) => out.push({ sig, nth, why });
+		const fail = (why: string) => out.push({ sig, nth, why, ...(layer ? { inLayer: true as const } : {}) });
 		if (!lib) {
 			fail('no days shown');
 			continue;
@@ -403,6 +490,7 @@ function readPickers([from, to]: readonly [number, number]): RawPicker[] {
 		out.push({
 			sig,
 			nth,
+			...(layer ? { inLayer: true as const } : {}),
 			config: {
 				...(jalali ? { cal: 'jalali' as const } : {}),
 				loc,
@@ -792,8 +880,9 @@ function template(root: Element, ui: Readonly<Record<string, string>>, config: D
 }
 
 /** The locale's names the calendar's formats read: the full date pattern's, captions' ("LLLL y"), weekdays' ("cccc", "cccccc"). */
-export function pruneLocale(loc: LocaleTable): LocaleTable {
-	const tokens = `${loc.full} LLLL cccc cccccc`.replace(/'(''|[^'])*'/g, '').match(/([A-Za-z])\1*o?/g) ?? [];
+export function pruneLocale(loc: LocaleTable, keep = ''): LocaleTable {
+	// `keep`: a pattern the page formats with besides DayPicker's own (a date picker's trigger label).
+	const tokens = `${loc.full} LLLL cccc cccccc ${keep.replace(/P{2,3}/g, loc.full)}`.replace(/'(''|[^'])*'/g, '').match(/([A-Za-z])\1*o?/g) ?? [];
 	const months = new Set<string>();
 	const days = new Set<string>();
 	let ord = false;
@@ -861,6 +950,8 @@ export class DayPickerPlan {
 	add(route: string, captured: CapturedPickers, locate: (sig: string, nth: number) => Element | undefined): number {
 		let count = 0;
 		captured.pickers.forEach((raw, i) => {
+			// A calendar in a layer (a date picker's popover) is bound as its layer is rendered (`layer`).
+			if (raw.inLayer) return;
 			const note = (what: string) => this.notes.push(`${route} calendar ${i + 1}: ${what}`);
 			if (raw.why || !raw.config || !raw.ui) {
 				note(`not ported: ${raw.why ?? 'nothing read'}`);
@@ -871,41 +962,10 @@ export class DayPickerPlan {
 				note('not found in the converted page');
 				return;
 			}
-			const read = configOf(raw, captured.later[i], note);
-			const config: DayPickerConfig = { ...read, loc: pruneLocale(read.loc) };
-			const at = Math.floor(captured.at / DAY);
-			const model = dayPickerModel(config, dayPickerView(config, at));
-			const off = differs(root, raw.ui, config, model);
-			if (off) {
-				note(`not ported: the port's render differs from the old page's: ${off}`);
-				return;
-			}
-			const shape = shapeOf(root, raw.ui)!;
-			const learned = extrasOf(shape, model, (el) => emitElement(el, { bind: (x) => (x === el ? { children: '' } : undefined) }));
-			if (learned === 'mixed') {
-				note('not ported: a custom day button whose extra content is not one element per weekday');
-				return;
-			}
-			const behaviour: Partial<DayPickerConfig> = { ...(raw.movesFocus ? { focusDays: true } : {}), ...(raw.remounts?.select ? { remountSelect: true } : {}), ...(raw.remounts?.month ? { remountMonth: true } : {}) };
-			const full: DayPickerConfig = { ...config, ...behaviour, ...(learned ? { extras: learned.table, extraTexts: learned.texts } : {}) };
 			const k = this.n++;
 			const v = `dp${k}`;
-			const m = `dpm${k}`;
-			const c = this.configName(full);
-			// Names the calendar's writes not yet applied (dayPickerEvent): unique on the page and across pages.
-			const id = JSON.stringify(`${route}#${k}`);
-			const attrs = buttonAttributes(shape, full);
-			if (typeof attrs === 'string') {
-				note(`not ported: ${attrs}`);
-				return;
-			}
-			const markup = template(root, raw.ui, full, m, learned?.shell, attrs.withDisabled);
-			if (markup === undefined) {
-				note('not ported: markup the template does not know');
-				return;
-			}
-			// The configuration is an import (CONFIGS_MODULE): Markless inlines a body const into every closure that reads it.
-			const declare = [`let ${v} = state(dayPickerView(${c}));`, `const ${m} = computed(() => dayPickerModel(${c}, ${v}));`];
+			const planned = this.planOne(route, captured, i, root, note, k, v, [`let ${v} = state(dayPickerView(CONFIG));`]);
+			if (!planned) return;
 			for (const [e, effect] of (raw.effects ?? []).entries()) {
 				const button = locate(effect.sig, effect.nth);
 				const paired = captured.later[i]?.effects?.[e];
@@ -920,21 +980,181 @@ export class DayPickerPlan {
 					...(effect.selected ? { s: effect.selected.map((t, k) => (t ? pairWhen(t, paired.selected?.[k] ?? undefined, note, 'a preset selection')! : null)) } : {}),
 					...(follows ? { m: 'selected' as const } : effect.month ? { m: pairWhen(effect.month, paired.month, note, 'a preset month')! } : {}),
 				};
-				this.bindings.set(button, mergeBindings(this.bindings.get(button), { declare, extra: [`onClick={() => (${v} = dayPickerSet(${c}, ${v}, ${JSON.stringify(set)}, ${id}))}`] })!);
+				this.bindings.set(button, mergeBindings(this.bindings.get(button), { declare: planned.declare, extra: [`onClick={() => (${v} = dayPickerSet(${planned.c}, ${v}, ${JSON.stringify(set)}, ${planned.id}))}`] })!);
 			}
-			this.bindings.set(root, {
-				declare,
-				extra: [
-					'data-mm-day-picker=""',
-					...['onClick', 'onFocusIn', 'onFocusOut', 'onKeyDown', 'onChange'].map((on) => `${on}={(event) => { const next = dayPickerEvent(${c}, ${v}, event, ${id}); if (next) ${v} = next; }}`),
-					// Once the page is idle: today's date where the page shows it, written even when it is the same view, so Markless
-					// resumes and draws the calendar then and not on its first use.
-					`onIdle={() => { ${v} = dayPickerWake(${c}, ${v}, ${id}); }}`,
-				],
-				children: markup,
-			});
+			this.bindings.set(root, planned.root);
 			count++;
 		});
 		return count;
 	}
+
+	/** The binding of one calendar's root, rendered from the view `v` (`declare` makes it, CONFIG standing for its configuration). */
+	private planOne(route: string, captured: CapturedPickers, i: number, root: Element, note: (what: string) => void, k: number, v: string, make: readonly string[], closes = false, keep = '', reading?: (c: string) => string): { root: Binding; declare: string[]; c: string; id: string; config: DayPickerConfig } | undefined {
+		const raw = captured.pickers[i]!;
+		const read = configOf(raw, captured.later[i], note);
+		const config: DayPickerConfig = { ...read, loc: pruneLocale(read.loc, keep) };
+		const at = Math.floor(captured.at / DAY);
+		const model = dayPickerModel(config, dayPickerView(config, at));
+		const off = differs(root, raw.ui!, config, model);
+		if (off) {
+			note(`not ported: the port's render differs from the old page's: ${off}`);
+			return undefined;
+		}
+		const shape = shapeOf(root, raw.ui!)!;
+		const learned = extrasOf(shape, model, (el) => emitElement(el, { bind: (x) => (x === el ? { children: '' } : undefined) }));
+		if (learned === 'mixed') {
+			note('not ported: a custom day button whose extra content is not one element per weekday');
+			return undefined;
+		}
+		const behaviour: Partial<DayPickerConfig> = { ...(raw.movesFocus ? { focusDays: true } : {}), ...(raw.remounts?.select ? { remountSelect: true } : {}), ...(raw.remounts?.month ? { remountMonth: true } : {}) };
+		const full: DayPickerConfig = { ...config, ...behaviour, ...(learned ? { extras: learned.table, extraTexts: learned.texts } : {}) };
+		const m = `dpm${k}`;
+		const c = this.configName(full);
+		// Names the calendar's writes not yet applied (dayPickerEvent): unique on the page and across pages.
+		const id = JSON.stringify(`${route}#${k}`);
+		const attrs = buttonAttributes(shape, full);
+		if (typeof attrs === 'string') {
+			note(`not ported: ${attrs}`);
+			return undefined;
+		}
+		const markup = template(root, raw.ui!, full, m, learned?.shell, attrs.withDisabled);
+		if (markup === undefined) {
+			note('not ported: markup the template does not know');
+			return undefined;
+		}
+		// The configuration is an import (CONFIGS_MODULE): Markless inlines a body const into every closure that reads it.
+		// `v` is written; `r` is how the view is read (a shared view starts empty and reads as the configured one until written).
+		const r = reading ? reading(c) : v;
+		const declare = [...make.map((line) => line.replaceAll('CONFIG', c)), `const ${m} = computed(() => dayPickerModel(${c}, ${r}));`];
+		// A date picker that sets its popover closed on select closes its layer when a day is picked.
+		const apply = closes ? `if (next) { const picked = next.s !== ${r}.s; ${v} = next; if (picked && event.type === 'click') dayPickerClose(); }` : `if (next) ${v} = next;`;
+		return {
+			declare,
+			c,
+			id,
+			config: full,
+			root: {
+				declare,
+				extra: [
+					'data-mm-day-picker=""',
+					...['onClick', 'onFocusIn', 'onFocusOut', 'onKeyDown', 'onChange'].map((on) => `${on}={(event) => { const next = dayPickerEvent(${c}, ${r}, event, ${id}); ${on === 'onClick' ? apply : 'if (next) ' + v + ' = next;'} }}`),
+					// Once the page is idle: today's date where the page shows it, written even when it is the same view, so Markless
+					// resumes and draws the calendar then and not on its first use.
+					`onIdle={() => { ${v} = dayPickerWake(${c}, ${r}, ${id}); }}`,
+				],
+				children: markup,
+			},
+		};
+	}
+
+	private readonly shared: string[] = [];
+	private readonly openers = new Map<string, { k: number; c: string; config: DayPickerConfig; opener: LayerOpener; label: ReturnType<typeof labelOf> }>();
+
+	/**
+	 * The calendar in a layer a control opens (a date picker's popover): bound inside the layer, on a view shared at page
+	 * scope with what its opener shows (`opener`). Undefined when the layer holds no captured calendar.
+	 */
+	layer(route: string, captured: CapturedPickers, reveal: { readonly sig?: string; readonly nth?: number }, kept: readonly Element[]): { readonly bind: (el: Element) => Binding | undefined; readonly declare: readonly string[] } | undefined {
+		const i = captured.pickers.findIndex((p) => p.inLayer && p.opener && p.opener.sig === reveal.sig && p.opener.nth === (reveal.nth ?? 0));
+		const raw = captured.pickers[i];
+		if (!raw?.opener) return undefined;
+		const note = (what: string) => this.notes.push(`${route} date picker ${raw.opener!.sig}: ${what}`);
+		if (raw.why || !raw.config || !raw.ui) {
+			note(`not ported: ${raw.why ?? 'nothing read'}`);
+			return undefined;
+		}
+		const inside = kept.flatMap((top) => [...walk(top)].slice(1));
+		const sigOf = (el: Element) => `${el.tagName}|${attr(el, 'data-slot') ?? ''}|${textContent(el).trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+		const root = inside.filter((el) => sigOf(el) === raw.sig)[raw.nth];
+		if (!root) {
+			// A layer's other nodes (focus guards beside the popover) are rendered as layers of their own.
+			const calendars = inside.filter((el) => attr(el, 'data-slot') === 'calendar').map(sigOf);
+			if (calendars.length) note(`not found in its layer (${raw.sig.slice(0, 50)} #${raw.nth}; the layer has ${calendars.map((c) => c.slice(0, 50)).join(', ')})`);
+			return undefined;
+		}
+		const key = `${route}|${raw.opener.sig}#${raw.opener.nth}`;
+		const known = this.openers.get(key);
+		const k = known?.k ?? this.n++;
+		const holder = `dps${k}`;
+		const v = `${holder}.v`;
+		const closes = raw.opener.picks.some((p) => !p.open);
+		// The trigger's label is learned on the whole locale, and its pattern's names are kept in the calendar's.
+		const label = known?.label ?? labelOf(raw.opener, configOf(raw, captured.later[i], () => {}));
+		const planned = this.planOne(route, captured, i, root, note, k, v, [`const ${holder} = dpShared${k}();`], closes, label?.pattern ?? '', (c) => `(${holder}.v ?? dayPickerView(${c}))`);
+		if (!planned) return undefined;
+		if (!known) {
+			this.shared.push(`export const dpShared${k} = shared(() => {\n\tconst view = state<{ v: DayPickerView | null }>({ v: null });\n\treturn view;\n});`);
+			this.openers.set(key, { k, c: planned.c, config: planned.config, opener: raw.opener, label });
+		}
+		return { bind: (el) => (el === root ? planned.root : undefined), declare: planned.declare };
+	}
+
+	/** The module of the views shared between a date picker's layer and its opener, at page scope. */
+	sharedModule(configsPath: string, partsPath: string): string | undefined {
+		if (!this.shared.length) return undefined;
+		const configs = [...new Set(this.shared.join('\n').match(new RegExp(`\\b${CONFIG_PREFIX}[0-9a-f]{10}\\b`, 'g')) ?? [])];
+		// The view starts empty and is read as the configured one until a calendar writes it: a shared() factory takes no import.
+		void configs;
+		void configsPath;
+		return `// Generated by markless-migrate convert: each date picker's calendar view, shared by its popover and its trigger; change the converter, not this file.\nimport { shared, state } from '@markless/core';\nimport type { DayPickerView } from '${partsPath}/day-picker.ts';\n\n${this.shared.join('\n')}\n`;
+	}
+
+	/**
+	 * What a date picker's trigger shows, from the shared view: the old page's pattern (learned from what it showed for the
+	 * days picked on it) where a day is picked, its own children before. Undefined when the pattern is not one of date-fns's
+	 * this knows, or nothing changed.
+	 */
+	opener(route: string, trigger: Element, opener: { readonly sig: string; readonly nth: number }): Binding | undefined {
+		const known = this.openers.get(`${route}|${opener.sig}#${opener.nth}`);
+		if (!known) return undefined;
+		const { k, c } = known;
+		const learned = known.label;
+		if (!learned) {
+			this.notes.push(`${route} date picker ${opener.sig}: its label's pattern is not one this knows`);
+			return undefined;
+		}
+		const holder = `dps${k}`;
+		const label = `dpl${k}`;
+		const binding: Binding = {
+			declare: [`const ${holder} = dpShared${k}();`, `const ${label} = computed(() => dayPickerLabel(${c}, ${holder}.v ?? dayPickerView(${c}), ${JSON.stringify(learned.pattern)}, ${JSON.stringify(learned.join)}));`],
+			children: `${learned.prefix}@if (${label} !== undefined) { <>{${label}}</> } @else { <>${learned.rest}</> }`,
+		};
+		this.bindings.set(trigger, mergeBindings(this.bindings.get(trigger), binding)!);
+		return binding;
+	}
+
+}
+
+const textContent = (el: Element): string => childrenOf(el).map((n) => (isText(n) ? (n as Text).value : isElement(n) ? textContent(n) : '')).join('');
+
+// The date-fns patterns a date picker's trigger is likely written with, tried in turn against what the old page showed.
+const LABEL_PATTERNS = ['PPP', 'PP', 'PPPP', 'LLL dd, y', 'MMM dd, y', 'MMM d, y', 'MMMM d, yyyy', 'MMMM dd, yyyy', 'M/d/yyyy', 'MM/dd/yyyy', 'dd/MM/yyyy', 'd/M/yyyy', 'yyyy-MM-dd', 'd MMM yyyy'];
+const LABEL_JOINS = [' - ', ' – ', ' to '];
+
+/** The pattern (and a range's join) that renders what the trigger showed after each pick, its unchanged leading nodes, and the rest it showed before. */
+export function labelOf(opener: LayerOpener, config: DayPickerConfig): { readonly pattern: string; readonly join: string; readonly prefix: string; readonly rest: string } | undefined {
+	const last = opener.picks.at(-1);
+	if (!last) return undefined;
+	const nodes = (html: string) => childrenOf(parseFragment(html) as unknown as Element);
+	const outer = (n: unknown) => JSON.stringify(n, (k, v) => (k === 'parentNode' || k === 'sourceCodeLocation' ? undefined : v));
+	const before = nodes(opener.before);
+	const after = nodes(last.html);
+	let shared = 0;
+	while (shared < before.length && shared < after.length && outer(before[shared]) === outer(after[shared])) shared++;
+	const fragment = (list: readonly unknown[]) => emitChildren({ nodeName: '#document-fragment', childNodes: list } as never);
+	const text = (html: string) => nodes(html).slice(shared).map((n) => (isText(n) ? (n as Text).value : isElement(n) ? textContent(n) : '')).join('').trim();
+	const day = (t: Triple) => Math.round(Date.UTC(t[0], t[1], t[2]) / 86_400_000);
+	// Each pick shows the day just picked, alone or as one end of a range whose other end may be a day picked before it.
+	const one = (pattern: string, t: Triple) => dayPickerLabel(config, { t: 0, m: 0, s: [day(t)], f: null, lf: null }, pattern);
+	for (const pattern of LABEL_PATTERNS)
+		for (const join of LABEL_JOINS) {
+			const fits = opener.picks.every((p) => {
+				const shown = text(p.html);
+				const parts = shown.split(join);
+				const own = one(pattern, p.days.at(-1)!);
+				return parts.length <= 2 && own !== undefined && parts.includes(own) && parts.every((part) => part.length === own.length || /\D/.test(part));
+			});
+			if (fits) return { pattern, join, prefix: fragment(before.slice(0, shared)), rest: fragment(before.slice(shared)) };
+		}
+	return undefined;
 }

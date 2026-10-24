@@ -1,4 +1,5 @@
 import { closeLayer, layerOf, openLayer, type Layer } from '../layer.ts';
+import { layerKey } from '../reveal.ts';
 
 // Radix Select (@radix-ui/react-select) with its default item-aligned position: a mouse press on the trigger (or Enter,
 // Space, an arrow) opens the listbox over the trigger with the selected option's text where the trigger's value is;
@@ -133,7 +134,7 @@ function close(o: Open): void {
 
 function open(trigger: HTMLElement, down: { x: number; y: number } | null): boolean {
 	if (current) return true;
-	const key = trigger.getAttribute('aria-controls')!;
+	const key = layerKey(trigger);
 	const layer = openLayer(trigger, key, { modal: true, onDismiss: () => o && close(o) });
 	if (!layer) return false;
 	const listbox = layer.content;

@@ -23,8 +23,10 @@ function sliderOf(el: Element): Slider | undefined {
 	const root = el.closest<HTMLElement>(ROOT);
 	const rac = root?.hasAttribute('data-rac') === true;
 	const vertical = root?.getAttribute('data-orientation') === 'vertical';
-	if (!root || (vertical && !rac) || root.hasAttribute('data-disabled') || root.getAttribute('aria-disabled') === 'true') return undefined;
+	if (!root || root.hasAttribute('data-disabled') || root.getAttribute('aria-disabled') === 'true') return undefined;
 	const base = rac || root.querySelector('[data-base-ui-slider-control]') !== null;
+	// Vertical: React Aria's and Radix's; Base UI's is not ported.
+	if (vertical && base && !rac) return undefined;
 	const thumbs = base ? [...root.querySelectorAll<HTMLElement>('[data-slot="slider-thumb"]')] : [...root.querySelectorAll<HTMLElement>('[role="slider"]')];
 	if (!thumbs.length) return undefined;
 	const first = base ? thumbs[0]!.querySelector('input')! : thumbs[0]!;
@@ -95,6 +97,11 @@ function render(s: Slider, values: number[]): void {
 		const thumb = s.thumbs[k]!;
 		thumb.setAttribute('aria-valuenow', String(v));
 		const p = percent(s, v);
+		if (s.vertical) {
+			const half = thumb.getBoundingClientRect().height / 2;
+			thumb.parentElement!.style.setProperty('bottom', `calc(${fmt(p)}% + ${fmt(half - (p / 50) * half)}px)`.replace('+ -', '- '));
+			return;
+		}
 		const half = thumb.getBoundingClientRect().width / 2;
 		const direction = s.rtl ? -1 : 1;
 		const offset = (half - (p / 50) * half * direction) * direction;
@@ -107,6 +114,11 @@ function render(s: Slider, values: number[]): void {
 		const ps = values.map((v) => percent(s, v));
 		const start = ps.length > 1 ? Math.min(...ps) : 0;
 		const end = 100 - Math.max(...ps);
+		if (s.vertical) {
+			range.style.setProperty('bottom', `${fmt(start)}%`);
+			range.style.setProperty('top', `${fmt(end)}%`);
+			return;
+		}
 		range.style.setProperty(s.rtl ? 'right' : 'left', `${fmt(start)}%`);
 		range.style.setProperty(s.rtl ? 'left' : 'right', `${fmt(end)}%`);
 	}
@@ -153,8 +165,8 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 	const big = s.step * 10;
 	const forward = s.rtl ? -1 : 1;
 	const next = {
-		ArrowRight: v + (event.shiftKey ? big : s.step) * forward,
-		ArrowLeft: v - (event.shiftKey ? big : s.step) * forward,
+		ArrowRight: v + (event.shiftKey ? big : s.step) * (s.vertical ? 1 : forward),
+		ArrowLeft: v - (event.shiftKey ? big : s.step) * (s.vertical ? 1 : forward),
 		ArrowUp: v + (event.shiftKey ? big : s.step),
 		ArrowDown: v - (event.shiftKey ? big : s.step),
 		PageUp: v + big,

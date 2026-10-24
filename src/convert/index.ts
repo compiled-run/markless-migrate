@@ -10,7 +10,7 @@ import { parseFragment, serialize } from 'parse5';
 import { cleanDocument, frameworkBuilds, lateHead, type Dropped } from './clean.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, textContent, walk, type Document, type Element } from './dom.ts';
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
-import { BaseTabsPlan, CheckablePlan, RacTablePlan, DisclosurePlan, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
+import { BaseTabsPlan, CheckablePlan, RacTablePlan, DisclosurePlan, radixDisclosurePanel, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
 import { captureCharts, CHART_CSS, ChartPlan, MOTION_FILE, type ChartFacts } from './charts.ts';
 import { captureScenes, type Scene } from './scenes.ts';
 import { ScenePlan } from './scene-plan.ts';
@@ -50,7 +50,9 @@ function withPartImports(source: string, dir: string): string {
 	if (/\bradioKeys\(event/.test(out)) out = out.replace('\n', `\nimport { radioKeys } from '${dir}/toggle.ts';\n`);
 	if (/\bwriteCookies\(/.test(out)) out = out.replace('\n', `\nimport { writeCookies } from '${dir}/switch.ts';\n`);
 	if (/\bplayScene\(event/.test(out)) out = out.replace('\n', `\nimport { playScene } from '${dir}/scene.ts';\n`);
-	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
+	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet', 'dayPickerLabel', 'dayPickerClose'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
+	const sharedPickers = [...new Set(out.match(/\bdpShared\d+(?=\(\))/g) ?? [])];
+	if (sharedPickers.length) out = out.replace('\n', `\nimport { ${sharedPickers.join(', ')} } from '${dir}/../../components/converted/day-pickers.tsrx';\n`);
 	if (dayPicker.length) out = out.replace('\n', `\nimport { computed } from '@markless/core';\nimport { ${dayPicker.join(', ')} } from '${dir}/day-picker.ts';\n`);
 	const configs = [...new Set(out.match(new RegExp(`\\b${CONFIG_PREFIX}[0-9a-f]{10}\\b`, 'g')) ?? [])];
 	if (configs.length) out = out.replace('\n', `\nimport { ${configs.join(', ')} } from '${dir}/${CONFIGS_MODULE.replace(/\.ts$/, '')}.ts';\n`);
@@ -284,7 +286,9 @@ function textOf(node: Element): string {
 
 // What the old page portaled to the end of the body on use (a dialog, a menu, a select), for the page being prepared:
 // rendered by Markless, hidden and in its closed state, marked with the control's key.
-let currentLayers: { key: string; markup: string; shell: string; fill: string; declare?: string[] }[] = [];
+let currentLayers: { key: string; markup: string; shell: string; fill: string; declare?: readonly string[] }[] = [];
+let currentRoute = '';
+let layerPickers: ((route: string, reveal: Reveal, kept: readonly Element[]) => { readonly bind: (el: Element) => Binding | undefined; readonly declare: readonly string[] } | undefined) | undefined;
 // The React Aria calendars the popovers of the route being prepared show (convert's RacCalendarPlan, set per route).
 let racLayer: { readonly plan: RacCalendarPlan; readonly captured: ReadonlyMap<string, CapturedCalendars>; readonly messages: (locale: string) => CalendarMessages | undefined; route: string } | undefined;
 // What the old page's copy controls wrote, by the control's signature and occurrence.
@@ -548,7 +552,9 @@ function hollowOf(kept: readonly Element[]): Element | undefined {
  * A layer as tsrx; its shell (the same with its largest content emptied and marked with LAYER_FILL); and that content as
  * HTML, for a layer served as a file: the shell renders at once on use, the content when the file lands.
  */
-function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (what: string) => void, rename: ReadonlyMap<string, string> = new Map(), kept: Element[] = layerElements(added)): { markup: string; shell: string; fill: string; declare?: string[] } {
+function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (what: string) => void, rename: ReadonlyMap<string, string> = new Map(), kept: Element[] = layerElements(added)): { markup: string; shell: string; fill: string; declare: string[] } {
+	// A calendar in the layer is bound on the view its opener shares (DayPickerPlan.layer): read before ids are renamed.
+	const pickers = layerPickers?.(currentRoute, reveal, kept);
 	const placed = placement(kept);
 	for (const top of kept) renameIds([top, ...walkAll(top)], rename);
 	const key = rename.get(reveal.key) ?? reveal.key;
@@ -577,8 +583,8 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 					dropped,
 					declarations,
 					bind: (x) => {
-						const parts = mergeBindings(racLayer?.plan.bind(x), x === top ? mergeBindings(bindParts(x, templatePorts), extra.length ? { extra } : undefined) : bindParts(x, templatePorts));
-						return shell && x === hollow ? mergeBindings(parts, { children: '', extra: [`data-mm-layer-fill="${LAYER_FILL}"`] }) : parts;
+						const own = mergeBindings(racLayer?.plan.bind(x), mergeBindings(x === top ? mergeBindings(bindParts(x, templatePorts), extra.length ? { extra } : undefined) : bindParts(x, templatePorts), pickers?.bind(x)));
+						return shell && x === hollow ? mergeBindings(own, { children: '', extra: [`data-mm-layer-fill="${LAYER_FILL}"`] }) : own;
 					},
 				}),
 			)
@@ -586,7 +592,7 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 	const markup = emit(false);
 	if (declarations.length) return { markup, shell: '', fill: '', declare: declarations };
 	// The shell goes into a <template>, whose content Markless never resumes: its origin is the token, like the file's.
-	return { markup, shell: withOriginToken(() => emit(true)), fill: hollow ? emitHtmlChildren(hollow) : '' };
+	return { markup, shell: withOriginToken(() => emit(true)), fill: hollow ? emitHtmlChildren(hollow) : '', declare: declarations };
 }
 
 /** A resolver that asks `first`, and `then` for what `first` does not know. */
@@ -647,7 +653,8 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 	for (const reveal of reveals) {
 		const atPath = elementAt(root, reveal.path);
 		const trigger = reveal.sig !== undefined && (!atPath || sigOf(atPath) !== reveal.sig) ? (bySig.get(reveal.sig)?.[reveal.nth ?? 0] ?? atPath) : atPath;
-		const panel = trigger && (isRadixTab(trigger) || isRadixDisclosure(trigger)) ? byId.get(attr(trigger, 'aria-controls') ?? '') : undefined;
+		const controlled = trigger ? byId.get(attr(trigger, 'aria-controls') ?? '') : undefined;
+		const panel = trigger && (isRadixTab(trigger) || isRadixDisclosure(trigger) || (controlled && attr(trigger, 'aria-expanded') !== undefined && radixDisclosurePanel(controlled))) ? controlled : undefined;
 		if (trigger && isBaseTab(trigger)) {
 			const shown = reveal.added.filter((a) => typeof a.into !== 'string').flatMap((a) => childrenOf(parseFragment(a.html) as unknown as Element).filter(isElement)).find((e) => attr(e, 'role') === 'tabpanel');
 			if (shown) basePanels.set(trigger, { attrs: Object.fromEntries(shown.attrs.map((a) => [a.name, a.value])), inner: childrenOf(shown).map((n) => outer(n)).join('') });
@@ -683,12 +690,14 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 				const parent = elementAt(root, added.into);
 				// A disclosure that mounts its content where it opens (Base UI Collapsible and Accordion, a Radix
 				// Collapsible whose content leaves while closed): a layer's trigger (aria-haspopup) is a portal's.
-				const inPlace = trigger && parent && attr(trigger, 'aria-expanded') === 'false' && attr(trigger, 'aria-haspopup') === undefined && !reveal.added.some((a) => a.into === 'body');
+				// Radix NavigationMenu mounts its viewport, with the trigger's content, beside the list: a layer of the trigger's.
+				const menu = trigger !== undefined && attr(trigger, 'data-slot') === 'navigation-menu-trigger';
+				const inPlace = !menu && attr(trigger ?? ({ attrs: [] } as unknown as Element), 'data-slot') !== 'scroll-area' && trigger && parent && attr(trigger, 'aria-expanded') === 'false' && attr(trigger, 'aria-haspopup') === undefined && !reveal.added.some((a) => a.into === 'body');
 				const panel = panelOf(kept, attr(trigger!, 'aria-controls'));
 				if (inPlace) inserted.push({ trigger: trigger!, parent: parent!, before: added.before >= 0 ? (elementChildren(parent!)[added.before] ?? null) : null, markup: kept.map((e) => emitElement(e, { dropped, bind: (x) => bindParts(x, templatePorts) })).join(''), ...panel });
 				// What opening a layer also puts beside its trigger (Base UI's visually hidden Dismiss button): rendered hidden
 				// there, shown with the layer (data-mm-shown-with names the trigger's key).
-				else if (trigger && parent && attr(trigger, 'aria-haspopup') !== undefined) companions.push({ parent, before: added.before >= 0 ? (elementChildren(parent)[added.before] ?? null) : null, kept, key: reveal.key });
+				else if (trigger && parent && (menu || attr(trigger, 'aria-haspopup') !== undefined || attr(trigger, 'data-slot') === 'scroll-area')) companions.push({ parent, before: added.before >= 0 ? (elementChildren(parent)[added.before] ?? null) : null, kept, key: reveal.key });
 				else unplaced.push(`${reveal.key}: content shown inside the page by a control no Markless state drives yet`);
 			}
 		}
@@ -728,7 +737,7 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 	for (const l of pendingLayers) {
 		const { markup, shell, fill, declare } = layerMarkup(l.reveal, l.added, dropped, rename, l.kept);
 		const key = rename.get(l.reveal.key) ?? l.reveal.key;
-		if (markup) currentLayers.push({ key, markup, shell, fill, ...(declare ? { declare } : {}) });
+		if (markup) currentLayers.push({ key, markup, shell, fill, ...(declare.length ? { declare } : {}) });
 		// A trigger that names its layer neither by id nor by aria-controls (a Radix tooltip's) is marked with the key.
 		if (markup && l.trigger && !attr(l.trigger, 'id') && !attr(l.trigger, 'aria-controls') && !triggerKeys.has(l.trigger)) triggerKeys.set(l.trigger, key);
 	}
@@ -754,6 +763,7 @@ function extractStyles(parent: Element, styles: Map<string, string>): void {
 }
 
 function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: string, dropped: Dropped, styles: Map<string, string>, optimizer: Optimizer | undefined, images: ImagePlan): Prepared {
+	currentRoute = capture.route;
 	const builds = frameworkBuilds(capture.server).map((b) => b.path);
 	const ctx = { builds, frameworkScripts: new Set<string>(), origin };
 	const doc = parseDocument(capture.settled.desktop ?? Object.values(capture.settled)[0] ?? capture.server);
@@ -978,8 +988,11 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		// What each react-day-picker calendar was given, on the routes whose settled page shows a month grid.
 		if (options.reveal !== false)
 			for (const ref of captures) {
-				if (!ref || ref.status !== 200 || !Object.values((await ref.load()).settled).some((html) => /<table[^>]*role="grid"[^>]*aria-multiselectable/.test(html))) continue;
-				pickers.set(ref.route, await captureDayPickers(browser, options.old, ref.route, join(state, 'convert', 'day-pickers')));
+				if (!ref || ref.status !== 200) continue;
+				// The controls whose layer shows a calendar (a date picker's trigger): their calendars are read opened.
+				const openers = (revealed.get(ref.route) ?? []).filter((r) => r.sig && r.added.some((a) => a.into === 'body' && /<table[^>]*role="grid"[^>]*aria-multiselectable/.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
+				if (!openers.length && !Object.values((await ref.load()).settled).some((html) => /<table[^>]*role="grid"[^>]*aria-multiselectable/.test(html))) continue;
+				pickers.set(ref.route, await captureDayPickers(browser, options.old, ref.route, join(state, 'convert', 'day-pickers'), openers));
 			}
 		// What each React Aria calendar was given, on the routes whose settled page shows one.
 		if (options.reveal !== false)
@@ -1034,6 +1047,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	lateFontPages.clear();
 	fontPreloadCount = 0;
 	// Each capture (the served HTML and the settled documents, a few MB) is read from the cache only while its page is parsed.
+	// A calendar in a layer (a date picker's popover) is bound as its layer is rendered, in prepare.
+	const dayPickers = new DayPickerPlan();
+	layerPickers = (route, reveal, kept) => {
+		const captured = pickers.get(route);
+		return captured ? dayPickers.layer(route, captured, reveal, kept) : undefined;
+	};
 	for (const ref of captures) {
 		if (ref.status !== 200 && !(ref.route === NOT_FOUND && ref.status === 404)) {
 			unconverted.push({ route: ref.route, reason: `the old site answered ${ref.status} while capturing` });
@@ -1126,11 +1145,17 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	for (const p of prepared.values()) disclosureGroups += disclosures.add(p.root, isRadixDisclosure, (panel) => panelContent.get(panel), multiple);
 	if (disclosureGroups) log(`accordions and collapsibles on Markless state: ${disclosureGroups}`);
 	const insertedDisclosures = new InsertedDisclosurePlan();
-	const dayPickers = new DayPickerPlan();
 	let pickerCount = 0;
 	for (const [route, p] of prepared) {
 		const captured = pickers.get(route);
-		if (captured?.pickers.length) pickerCount += dayPickers.add(route, captured, locator(p.root.parentNode as Element));
+		if (!captured?.pickers.length) continue;
+		const locate = locator(p.root.parentNode as Element);
+		pickerCount += dayPickers.add(route, captured, locate);
+		// A date picker's trigger shows the picked day from the view it shares with the calendar in its layer.
+		for (const raw of captured.pickers) if (raw.opener) {
+			const trigger = locate(raw.opener.sig, raw.opener.nth);
+			if (trigger && dayPickers.opener(route, trigger, raw.opener)) pickerCount++;
+		}
 	}
 	for (const line of dayPickers.notes) log(`  ${line}`);
 	if (pickerCount) {
@@ -1330,11 +1355,11 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			let from = 0;
 			after = '';
 			for (const i of owned) {
-				if (i > from) after += `<BodyAfter route={${lit(route)}} from={${from}} to={${i}} />`;
+				for (let j = from; j < i; j++) after += `<BodyAfter${j} route={${lit(route)}} />`;
 				after += emitElement(bodyParts.after[i]!.byRoute.get(route)!, { declarations, bind: (el) => mergeBindings(bindParts(el, usedPorts), notifyPlan.bind(el)), dropped: noteDropped });
 				from = i + 1;
 			}
-			if (from < bodyParts.after.length) after += `<BodyAfter route={${lit(route)}} from={${from}} />`;
+			for (let j = from; j < bodyParts.after.length; j++) after += `<BodyAfter${j} route={${lit(route)}} />`;
 		}
 		const extras = (ownExtras.get(route) ?? []).map((el) => emitElement(el, { declarations, bind: (x) => notifyPlan.bind(x), dropped: noteDropped })).join('');
 		// A copy control's text rides in the page's HTML as the old page's props did (an attribute: template content must be literal).
@@ -1350,7 +1375,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const imports = new Set<string>(["import type { PageProps } from '@markless/router';"]);
 		for (const v of variants) for (const component of factored.used(v.route)) imports.add(`import ${component.name} from '${relative(dirname(join(app, file)), join(app, component.file)).replace(/^(?!\.)/, './')}';`);
 		for (const v of variants) for (const part of v.parts) imports.add(part.import(partsDir(file)));
-		if (bodyAfter) imports.add(`import BodyAfter from '${relative(dirname(join(app, file)), join(app, 'components', 'converted', 'body-after.tsrx')).replace(/^(?!\.)/, './')}';`);
+		if (bodyAfter) {
+			const ranges = [...new Set(variants.flatMap((v) => [...v.markup.matchAll(/<(BodyAfter\d+) /g)].map((m) => m[1]!)))];
+			imports.add(`import BodyAfter${ranges.length ? `, { ${ranges.join(', ')} }` : ''} from '${relative(dirname(join(app, file)), join(app, 'components', 'converted', 'body-after.tsrx')).replace(/^(?!\.)/, './')}';`);
+		}
 		for (const v of variants) for (const name of v.layers) imports.add(`import ${name} from '${relative(dirname(join(app, file)), join(app, 'components', 'converted', 'layers', `${name.replace(/^Layer/, 'layer-')}.tsrx`)).replace(/^(?!\.)/, './')}';`);
 		const base = variants.find((v) => v.search === '') ?? variants[0]!;
 		const others = variants.filter((v) => v !== base);
@@ -1420,6 +1448,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	await mkdir(join(app, 'components', 'converted'), { recursive: true });
 	await mkdir(join(app, 'components', 'converted', 'layers'), { recursive: true });
 	for (const layer of layers.files) await writeFile(join(app, 'components', 'converted', layer.file), appUrlDeclaration(withPartImports(layer.source, partsDir(join('components', 'converted', layer.file)))));
+	// The calendar views date pickers share between their popover and their trigger, at page scope.
+	const sharedPickers = dayPickers.sharedModule(`../../lib/parts/${CONFIGS_MODULE}`, '../../lib/parts');
+	if (sharedPickers) await writeFile(join(app, 'components', 'converted', 'day-pickers.tsrx'), sharedPickers);
 	await rm(join(app, 'public', '_converted', 'layers'), { recursive: true, force: true });
 	for (const layer of layers.served) {
 		await mkdir(dirname(join(app, 'public', layer.path)), { recursive: true });

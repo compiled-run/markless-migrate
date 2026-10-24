@@ -88,6 +88,9 @@ export class TabsPlan {
  * hidden, its content is an @if arm rendered while open or closing, and panel-motion.ts measures it as it is shown and
  * ends the exit.
  */
+/** A Radix Collapsible's or Accordion's content: its panel by data-slot, with Radix's data-state. */
+export const radixDisclosurePanel = (panel: Element) => /(^|-)(collapsible|accordion)-content$/.test(attr(panel, 'data-slot') ?? '') && attr(panel, 'data-state') !== undefined;
+
 export class DisclosurePlan {
 	private readonly bindings = new Map<Element, Binding>();
 	private n = 0;
@@ -104,9 +107,12 @@ export class DisclosurePlan {
 		}
 		const groups = new Map<Element, { trigger: Element; content: Element; item?: Element; header?: Element }[]>();
 		for (const trigger of walk(root)) {
-			if (!/-trigger$/.test(attr(trigger, 'data-slot') ?? '') || attr(trigger, 'aria-expanded') === undefined || !isRadixDisclosure(trigger)) continue;
+			if (attr(trigger, 'aria-expanded') === undefined) continue;
 			const panel = byId.get(attr(trigger, 'aria-controls') ?? '');
 			if (!panel) continue;
+			// A trigger rendered through its child (asChild) carries the child's data-slot: its panel says it is Radix's.
+			const own = /-trigger$/.test(attr(trigger, 'data-slot') ?? '') && isRadixDisclosure(trigger);
+			if (!own && !(radixDisclosurePanel(panel) && attr(trigger, 'data-state') !== undefined)) continue;
 			let accordion: Element | undefined;
 			let item: Element | undefined;
 			for (let n = trigger.parentNode as Element | null; n && 'tagName' in n; n = n.parentNode as Element | null) {
@@ -323,10 +329,10 @@ export class BaseTabsPlan {
 			const tabs = list.parentNode as Element | null;
 			if (active < 0 || !tabs || !('tagName' in tabs)) continue;
 			const activeId = attr(triggers[active]!, 'id');
+			// A list without panels (shadcn's line, vertical and icon variants) still switches its triggers.
 			const panel = [...walk(tabs)].find((p) => attr(p, 'role') === 'tabpanel' && attr(p, 'aria-labelledby') === activeId);
-			if (!panel) continue;
-			const own = { attrs: Object.fromEntries(panel.attrs.map((a) => [a.name, a.value])), inner: '' };
-			const panels = triggers.map((t, k) => (k === active ? own : revealed(t)));
+			const own = panel && { attrs: Object.fromEntries(panel.attrs.map((a) => [a.name, a.value])), inner: '' };
+			const panels = panel ? triggers.map((t, k) => (k === active ? own : revealed(t))) : [];
 			if (panels.some((p) => !p)) continue;
 			const contents = panels.map((p, k) => (k === active ? undefined : emit(p!.inner)));
 			if (contents.some((c) => c !== undefined && /@(if|switch|for) \(|<[A-Z]\w*[\s/>]/.test(c))) continue;
@@ -334,7 +340,7 @@ export class BaseTabsPlan {
 			const dir = `${name}d`;
 			const vertical = attr(list, 'data-orientation') === 'vertical';
 			const pick = (values: readonly (string | undefined)[]) => values.reduceRight<string>((rest, v, k) => (k === values.length - 1 ? (v === undefined ? 'undefined' : lit(v)) : `${name} === ${k} ? ${v === undefined ? 'undefined' : lit(v)} : ${rest}`), '');
-			const panelId = (k: number) => panels[k]!.attrs['id'];
+			const panelId = (k: number) => panels[k]?.attrs['id'];
 			// React Aria's Tabs: the chosen tab carries data-selected and the panel's id; focus selects (automatic activation).
 			if (attr(triggers[0]!, 'data-rac') !== undefined) {
 				const declare = [`let ${name} = state(${active});`];
@@ -347,7 +353,7 @@ export class BaseTabsPlan {
 					});
 				});
 				const varying = [...new Set(panels.flatMap((p) => Object.keys(p!.attrs)))].filter((a) => new Set(panels.map((p) => p!.attrs[a])).size > 1);
-				this.bindings.set(panel, { declare, omit: varying, extra: varying.map((a) => `${a}={${pick(panels.map((p) => p!.attrs[a]))}}`), wrap: (inner) => (/@(if|switch|for) \(|\bvalues\[|<[A-Z]\w*[\s/>]/.test(inner) ? inner : contents.map((c, k) => `@if (${name} === ${k}) { <>${c ?? inner}</> }`).join('')) });
+				if (panel) this.bindings.set(panel, { declare, omit: varying, extra: varying.map((a) => `${a}={${pick(panels.map((p) => p!.attrs[a]))}}`), wrap: (inner) => (/@(if|switch|for) \(|\bvalues\[|<[A-Z]\w*[\s/>]/.test(inner) ? inner : contents.map((c, k) => `@if (${name} === ${k}) { <>${c ?? inner}</> }`).join('')) });
 				groups++;
 				continue;
 			}
@@ -358,19 +364,23 @@ export class BaseTabsPlan {
 				const choose = `${dir} = ${k} > ${name} ? ${lit(vertical ? 'down' : 'right')} : ${k} < ${name} ? ${lit(vertical ? 'up' : 'left')} : ${dir}; ${name} = ${k};`;
 				this.bindings.set(t, {
 					declare,
-					omit: ['aria-selected', 'tabindex', 'data-active', 'data-composite-item-active', 'aria-controls', 'data-activation-direction'],
+					omit: ['aria-selected', 'tabindex', 'data-active', 'data-composite-item-active', ...(panel ? ['aria-controls'] : []), 'data-activation-direction'],
 					extra: [
 						`aria-selected={${name} === ${k} ? "true" : "false"}`,
 						`tabindex={${name} === ${k} ? "0" : "-1"}`,
 						`data-active={${name} === ${k} ? "" : undefined}`,
 						`data-composite-item-active={${name} === ${k} ? "" : undefined}`,
-						`aria-controls={${name} === ${k} ? ${lit(panelId(k) ?? '')} : undefined}`,
+						...(panel ? [`aria-controls={${name} === ${k} ? ${lit(panelId(k) ?? '')} : undefined}`] : []),
 						direction,
 						`onClick={() => { ${choose} }}`,
 						`onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); ${choose} } else roving(event); }}`,
 					],
 				});
 			});
+			if (!panel) {
+				groups++;
+				continue;
+			}
 			const varying = [...new Set(panels.flatMap((p) => Object.keys(p!.attrs)))].filter((a) => a !== 'data-activation-direction' && new Set(panels.map((p) => p!.attrs[a])).size > 1);
 			this.bindings.set(panel, {
 				declare,

@@ -295,7 +295,10 @@ const pad = (n: number, length: number) => String(Math.abs(n)).padStart(length, 
 
 function format(lib: Lib, n: number, pattern: string): string {
 	const loc = lib.config.loc;
-	const expanded = pattern.replace(/P+/g, (p) => (p.length === 4 ? loc.full : p));
+	// date-fns's P to PPPP: the full date pattern the locale gives, and the long and medium ones made from it.
+	const long = loc.full.replace(/^E+,?\s*/, '');
+	const medium = long.replace('MMMM', 'MMM').replace('do', 'd');
+	const expanded = pattern.replace(/P+/g, (p) => (p.length === 4 ? loc.full : p.length === 3 ? long : p.length === 2 ? medium : p));
 	const [y, m, d] = lib.c.parts(n);
 	const wd = weekday(n);
 	const name = (table: Readonly<Record<string, readonly string[]>>, width: string, context: string, i: number) => table[`${width}:${context}`]?.[i] ?? '';
@@ -342,6 +345,22 @@ function format(lib: Lib, n: number, pattern: string): string {
 function digits(config: DayPickerConfig, text: string): string {
 	const map = config.digits;
 	return map ? text.replace(/\d/g, (digit) => map[Number(digit)] ?? digit) : text;
+}
+
+/**
+ * What a date picker's trigger shows for the calendar's selection, as its page formats it (date-fns `pattern`, a range's
+ * ends joined by `join`); undefined while nothing is picked.
+ */
+export function dayPickerLabel(config: DayPickerConfig, view: DayPickerView, pattern: string, join = ' - '): string | undefined {
+	const lib = new Lib(config);
+	const days = view.s.filter((d): d is number => d !== null);
+	if (!days.length || (config.mode === 'range' && view.r === false)) return undefined;
+	return days.slice(0, 2).map((d) => format(lib, d, pattern)).join(join);
+}
+
+/** Closes the layer a calendar was picked in, as a date picker that sets its popover's open state on select does. */
+export function dayPickerClose(): void {
+	document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 }
 
 // --- Dates the old page gave relative to the day it ran -----------------------------------------------------------

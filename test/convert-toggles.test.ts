@@ -107,7 +107,7 @@ test('an accordion that lets several items be open gives each item its own state
 	}
 });
 
-test('a page that shows notifications renders their region between two ranges of the shared body children', async () => {
+test('a page that shows notifications renders their region between the other shared body children, one component each', async () => {
 	const { bodyAfterModule, splitBody } = await import('../src/convert/document.ts');
 	const pages = ['/a', '/b'].map((route) => {
 		const doc = parseDocument(`<body><main></main><section aria-live="polite" id="_R_${route.slice(1)}_"></section><div data-slot="toast-portal"></div></body>`);
@@ -118,6 +118,42 @@ test('a page that shows notifications renders their region between two ranges of
 	const plain = bodyAfterModule(split, () => undefined, () => {})!;
 	assert.doesNotMatch(plain, /from \?\? 0/);
 	const ranged = bodyAfterModule(split, () => undefined, () => {}, true)!;
-	assert.match(ranged, /@if \(\(from \?\? 0\) <= 0 && 0 < \(to \?\? 2\)\) \{ <><section aria-live="polite" id=\{valueOf\(route, "b0"\)\}/, 'a value read in an arm goes through a module function, not a body constant');
-	assert.match(ranged, /BodyAfter\(\{ route, from, to \}/);
+	assert.doesNotMatch(ranged, /@if/, 'an arm holding an attribute binding cannot be rebuilt when its condition changes');
+	assert.match(ranged, /export function BodyAfter0\(\{ route \}[^@]*@\{\n\tconst values = [^\n]*\n\tvoid values;\n\t<><section aria-live="polite" id=\{values\["b0"\]\}/);
+	assert.match(ranged, /export default function BodyAfter\(\{ route \}[^@]*@\{\n\t<><BodyAfter0 route=\{route\} \/><BodyAfter1 route=\{route\} \/><\/>/);
+});
+
+test('a Base UI tab list without panels (the line and vertical variants) still switches its triggers', async () => {
+	const { BaseTabsPlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-slot="tabs" data-activation-direction="none"><div role="tablist" data-activation-direction="none"><button role="tab" id="base-ui-a" aria-selected="true" tabindex="0" data-active="">A</button><button role="tab" id="base-ui-b" aria-selected="false" tabindex="-1">B</button></div></div></body>');
+	const plan = new BaseTabsPlan();
+	assert.equal(plan.add(body(doc), (el) => /^base-ui-/.test(attr(el, 'id') ?? ''), () => undefined, (h) => h), 1);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /aria-selected=\{btab0 === 1 \? "true" : "false"\}/);
+	assert.doesNotMatch(out, /aria-controls=\{/);
+});
+
+test('a Radix collapsible whose trigger renders its child (asChild, data-slot="button") opens its content on state', async () => {
+	const { DisclosurePlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-slot="collapsible" data-state="closed"><button data-slot="button" aria-controls="c1" aria-expanded="false" data-state="closed">Product details</button><div id="c1" data-slot="collapsible-content" data-state="closed" hidden></div></div></body>');
+	const plan = new DisclosurePlan();
+	assert.equal(plan.add(body(doc), () => false, () => '<p>more</p>'), 1);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<button data-slot="button" aria-controls="c1" aria-expanded=\{acc0 === 0 \? "true" : "false"\}/);
+	assert.match(out, /<div id="c1" data-slot="collapsible-content" data-state=\{acc0 === 0 \? "open" : "closed"\} hidden=\{!\(acc0 === 0 \|\| acc0x === 0\)\}>/);
+});
+
+test('a body child a load-time modal marked hidden (aria-hidden, Base UI inert) is still the shared one, shown in its at-rest look', async () => {
+	const { bodyAfterModule, splitBody } = await import('../src/convert/document.ts');
+	const marks: Record<string, string> = { '/a': '', '/b': ' aria-hidden="true" data-aria-hidden="true"', '/c': ' data-base-ui-inert=""' };
+	const pages = Object.entries(marks).map(([route, mark]) => {
+		const doc = parseDocument(`<body><main></main><section aria-label="Notifications"${mark}><span aria-hidden="true">x</span></section></body>`);
+		const [, region] = [...walk(body(doc))].slice(1) as Element[];
+		return [route, { route, before: [], after: [region!], htmlAttrs: {}, bodyAttrs: {}, head: [] }] as const;
+	});
+	const split = splitBody(new Map(pages));
+	assert.equal(split.after.length, 1);
+	assert.equal(split.extras.size, 0);
+	const module = bodyAfterModule(split, () => undefined, () => {})!;
+	assert.match(module, /<section aria-label="Notifications"><span aria-hidden="true">x<\/span><\/section>/);
 });
