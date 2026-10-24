@@ -185,9 +185,11 @@ async function captureVariant(page: Page, wrapper: Locator, view: readonly [numb
 		const radial = svg.querySelector('.recharts-radial-bar-sector');
 		if (radial) return { mode: 'r' as const, center: [Number(radial.getAttribute('cx')), Number(radial.getAttribute('cy'))] as [number, number] };
 		if (svg.querySelector('.recharts-radar')) {
-			// The radar's centre: where its grid's spokes start, or the middle of its angle axis' outline.
+			// The radar's centre: where its grid's spokes start, or the middle of its axis labels or its angle axis' outline.
 			const spoke = svg.querySelector('.recharts-polar-grid-angle line');
 			if (spoke) return { mode: 'a' as const, center: [Number(spoke.getAttribute('x1')), Number(spoke.getAttribute('y1'))] as [number, number] };
+			const ticks = [...svg.querySelectorAll('.recharts-polar-angle-axis-tick text')].map((t) => [Number(t.getAttribute('x')), Number(t.getAttribute('y'))]);
+			if (ticks.length > 2 && ticks.every((t) => !Number.isNaN(t[0]) && !Number.isNaN(t[1]))) return { mode: 'a' as const, center: [ticks.reduce((t, q) => t + q[0]!, 0) / ticks.length, ticks.reduce((t, q) => t + q[1]!, 0) / ticks.length] as [number, number] };
 			const outline = svg.querySelector('.recharts-polar-angle-axis-line');
 			if (outline?.tagName === 'circle') return { mode: 'a' as const, center: [Number(outline.getAttribute('cx')), Number(outline.getAttribute('cy'))] as [number, number] };
 			const points = [...(outline?.getAttribute('d') ?? '').matchAll(/(-?[\d.]+)[ ,](-?[\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
@@ -259,12 +261,16 @@ async function captureVariant(page: Page, wrapper: Locator, view: readonly [numb
 				}
 				const cx = pts.reduce((s, p) => s + p[0], 0) / (pts.length || 1);
 				const cy = pts.reduce((s, p) => s + p[1], 0) / (pts.length || 1);
-				return pts.sort((p, q) => Math.hypot(p[0] - cx, p[1] - cy) - Math.hypot(q[0] - cx, q[1] - cy)).slice(0, 3);
+				return pts.sort((p, q) => Math.hypot(p[0] - cx, p[1] - cy) - Math.hypot(q[0] - cx, q[1] - cy)).filter((_, k) => k % 4 === 0).slice(0, 12);
 			}),
 		);
 		for (let i = 0; i < inside.length; i++) {
 			let state = -1;
-			for (const [x, y] of inside[i]!) state = Math.max(state, await at(x, y));
+			// A label over the sector's middle can hide it from the pointer: points further out are tried until one answers.
+			for (const [x, y] of inside[i]!) {
+				state = Math.max(state, await at(x, y));
+				if (state >= 0 && samples.filter((s) => s.state === state).length >= 2) break;
+			}
 			if (state >= 0) segments.push([i, i, state]);
 			await page.mouse.move(box.x - 5, box.y - 5);
 		}
@@ -860,13 +866,18 @@ export class ChartPlan {
 		return {
 			w: entry.width,
 			h: entry.height,
-			// recharts keeps a polar chart's tooltip in the whole surface.
-			v: polar ? [0, 0, entry.width, entry.height] : entry.view,
+			v: entry.view,
 			m: variant.mode,
 			...(variant.center ? { c: variant.center } : {}),
 			g: variant.segments.map((s) => s.map(round)),
 			...(variant.span ? { sp: variant.span.map(round) } : {}),
-			p: variant.states.map((s) => (polar ? [null, null] : [s.x, s.y])),
+			p: variant.states.map((s, k) => {
+				// recharts fixes the tooltip on the point's axis and follows the pointer on the other (both for a pie's sector, neither for a polar axis); the keys' reading is the settled one.
+				const key = variant.keys?.find((e) => e[0] === k);
+				const x = key?.[1] ?? s.x;
+				const y = key?.[2] ?? s.y;
+				return polar ? [null, null] : variant.mode === 'x' ? [x, null] : variant.mode === 'y' ? [null, y] : [x, y];
+			}),
 			...(polar ? { q: variant.states.map((_, k) => round(snap(variant, axisOf(variant, k), tree))) } : {}),
 			...(variant.keys ? { k: variant.keys } : {}),
 		};

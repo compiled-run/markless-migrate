@@ -106,9 +106,11 @@ function show(wrapper: HTMLElement, surface: SVGSVGElement | undefined, state: n
 	});
 }
 
-function pick(f: Facts, svg: Element, target: Element, x: number, y: number): number {
+function pick(f: Facts, svg: Element, target: Element, x: number, y: number, client: { clientX: number; clientY: number }): number {
 	if (f.m === 'i') {
-		const sector = target.closest('.recharts-pie-sector');
+		// A label drawn over a sector does not take the pointer from it.
+		const under = target.closest('.recharts-pie-sector') ? target : document.elementsFromPoint(client.clientX, client.clientY).find((e) => svg.contains(e) && e.closest('.recharts-pie-sector'));
+		const sector = under?.closest('.recharts-pie-sector');
 		return sector && svg.contains(sector) ? inside(f.g, [...svg.querySelectorAll('.recharts-pie-sector')].indexOf(sector)) : -1;
 	}
 	if (f.m === 'x' || f.m === 'y') {
@@ -130,7 +132,7 @@ function at(wrapper: HTMLElement, event: PointerEvent): void {
 	if (!surface || !f || !m || !f.p.length) return;
 	const p = new DOMPoint(event.clientX, event.clientY).matrixTransform(m.inverse());
 	const inBox = p.x >= 0 && p.y >= 0 && p.x <= f.w && p.y <= f.h;
-	show(wrapper, surface, inBox && event.target instanceof Element ? pick(f, surface, event.target, p.x, p.y) : -1, { x: p.x, y: p.y });
+	show(wrapper, surface, inBox && event.target instanceof Element ? pick(f, surface, event.target, p.x, p.y, event) : -1, { x: p.x, y: p.y });
 }
 
 export function pointerover(target: Element, event: PointerEvent): boolean {
