@@ -103,7 +103,7 @@ test('the build guard fails on a foreign runtime a page loads or runs, allows on
 	// The server renders the page heads; its static asset table lists every public file by path, as a key.
 	await writeFile(join(dir, 'server', '_ssr', 'heads.mjs'), 'export const HEADS = { "/": { scripts: ["/js/htmx.js", "/js/chart.umd.js"] } }; export const ASSETS = { "/js/download-only.js": { path: "../public/js/download-only.js" } };');
 	// A part that loads DocSearch on intent names its script; the server's copy of that code renders and loads nothing.
-	await writeFile(join(dir, 'public', 'build', 'search.js'), 'const SCRIPT = "https://cdn.jsdelivr.net/npm/@docsearch/js@3"; const img = "https://example.com/logo.png";');
+	await writeFile(join(dir, 'public', 'build', 'search.js'), 'const SCRIPT = "https://cdn.jsdelivr.net/npm/@docsearch/js@3"; const img = "https://example.com/logo.png"; const link = { href: "https://github.com/bigskysoftware/_hyperscript/blob/master/src/_hyperscript.js" }; const sample = `<span>src</span><span>=</span><span style="color:#98c379;">"https://cdn.jsdelivr.net/npm/htmx.org@2.0.11/dist/htmx.min.js" </span>`;');
 	await writeFile(join(dir, 'server', '_ssr', 'search.mjs'), 'const SCRIPT = "https://cdn.example.com/widget.js";');
 	const scan = await scanBuild(dir);
 	assert.deepEqual(scan.remote, [{ url: 'https://cdn.jsdelivr.net/npm/@docsearch/js@3', file: 'public/build/search.js', note: 'DocSearch 3 with its own UI runtime (Preact), loaded when a visitor first goes to search' }]);

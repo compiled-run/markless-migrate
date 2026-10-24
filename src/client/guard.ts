@@ -53,8 +53,9 @@ export interface BuildScan {
 const SCRIPT = /\.(m?js|cjs)$/;
 // Client code: Markless's browser build. The server bundles name the same URLs for rendering, not loading.
 const CLIENT = /(^|\/)public\/build\/|^build\//;
-// A script URL on another origin as client code names it: a .js file, or a package entry on an npm CDN.
-const REMOTE_SCRIPT = /["'`](https:\/\/[^"'`\s\\]+?(?:\.m?js|\/npm\/(?:@[\w.-]+\/)?[\w.-]+@[\w.-]+)(?:\?[^"'`\s\\]*)?)["'`]/g;
+// A script URL on another origin as client code names it, as a value (after =, (, :, a comma, [ or ?), not inside page
+// text the bundle carries (a code sample showing a <script src>) or a link's href: a .js file, or a package entry on an npm CDN.
+const REMOTE_SCRIPT = /(?<=[=(,:[?]\s*)(?<!href["']?\s*[=:]\s*)["'`](https:\/\/[^"'`\s\\]+?(?:\.m?js|\/npm\/(?:@[\w.-]+\/)?[\w.-]+@[\w.-]+)(?:\?[^"'`\s\\]*)?)["'`]/g;
 // The app's own output: Markless's client build and the server; everything else under public/ was copied in.
 const BUNDLE = /(^|\/)(server|functions)\/|(^|\/)public\/build\/|^build\/|(^|\/)markless\//;
 // A built page Markless rendered (its route container or its import map), not a static HTML file copied in.
