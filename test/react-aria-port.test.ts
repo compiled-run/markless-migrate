@@ -48,6 +48,17 @@ const combobox = `
 <div id="cbl" data-rac="" role="listbox"><div data-rac="" role="option" aria-selected="false" id="c1">Next.js</div><div data-rac="" role="option" aria-selected="false" id="c2">SvelteKit</div><div data-rac="" role="option" aria-selected="false" id="c3">Nuxt.js</div></div>
 </div></div>`;
 
+const comboboxEmpty = combobox.replace('</div></div>\n</div></div>', '</div><div role="option" hidden data-mm-empty=""><div data-slot="combobox-empty">No items found.</div></div></div>\n</div></div>');
+
+const chips = `
+<div data-rac=""><div data-slot="combobox-chips" data-rac="" role="group"><div data-rac=""><div data-slot="combobox-chip-list"><div id="grid" data-rac="" role="grid" tabindex="0">
+<div id="k1" data-slot="combobox-chip" data-rac="" role="row" tabindex="0" data-key="Next.js"><div role="gridcell">Next.js<button id="r1" data-rac="" type="button" slot="remove" aria-label="Remove"></button></div></div>
+<div id="k2" data-slot="combobox-chip" data-rac="" role="row" tabindex="0" data-key="Nuxt.js" hidden><div role="gridcell">Nuxt.js<button id="r2" data-rac="" type="button" slot="remove" aria-label="Remove"></button></div></div>
+</div></div></div><input id="mc" aria-label="Frameworks" type="text" role="combobox" aria-expanded="false" data-slot="combobox-chip-input" data-rac="" value=""></div></div>
+<!--layers--><div style="display: contents;" hidden data-mm-layer="mc"><div data-slot="combobox-content" data-rac="" data-trigger="ComboBox" style="position:absolute" data-placement="bottom">
+<div id="ml" data-rac="" role="listbox" aria-multiselectable="true"><div data-rac="" role="option" aria-selected="true" data-selected="true" data-key="Next.js" id="m1o">Next.js</div><div data-rac="" role="option" aria-selected="false" data-key="Nuxt.js" id="m2o">Nuxt.js</div></div>
+</div></div>`;
+
 const tooltip = `
 <button id="tt" data-slot="button" data-rac="" type="button" data-react-aria-pressable="true">Hover</button>
 <!--layers--><div hidden data-mm-layer="tt"><div id="tip" data-slot="tooltip-content" data-rac="" role="tooltip" data-placement="top" style="position:absolute"><p>Add to library</p></div></div>`;
@@ -198,6 +209,40 @@ test('ComboBox: typing shows the options containing the text, ArrowDown and Ente
 	assert.equal(await page.getAttribute('#cb', 'aria-expanded'), 'false');
 	await page.fill('#cb', 'zz');
 	assert.equal(await page.getAttribute('#cb', 'aria-expanded'), 'false', 'no option contains it, so it stays closed');
+	await page.close();
+});
+
+test('ComboBox: with an empty state, typing that matches nothing keeps the popover open on it', async () => {
+	const page = await open(comboboxEmpty);
+	await page.click('#cb');
+	await page.keyboard.type('zz');
+	await page.waitForTimeout(50);
+	assert.equal(await page.getAttribute('#cb', 'aria-expanded'), 'true');
+	assert.equal(await page.getAttribute('#cbl', 'data-empty'), 'true');
+	assert.equal(await page.isVisible('[data-slot="combobox-empty"]'), true);
+	await page.fill('#cb', 'n');
+	await page.waitForTimeout(50);
+	assert.equal(await page.getAttribute('#cbl', 'data-empty'), null);
+	assert.equal(await page.isVisible('[data-slot="combobox-empty"]'), false);
+	await page.close();
+});
+
+test('ComboBox with chips: ArrowDown opens, choosing toggles an option and its chip, the remove button of a chip takes it back', async () => {
+	const page = await open(chips);
+	await page.focus('#mc');
+	await page.keyboard.press('ArrowDown');
+	await page.waitForTimeout(50);
+	assert.equal(await page.getAttribute('#mc', 'aria-expanded'), 'true');
+	await page.click('#m2o');
+	await page.waitForTimeout(50);
+	assert.equal(await page.getAttribute('#m2o', 'aria-selected'), 'true');
+	assert.equal(await page.isVisible('#k2'), true);
+	assert.equal(await page.getAttribute('#mc', 'aria-expanded'), 'true', 'the popover stays open');
+	assert.equal(await page.inputValue('#mc'), '');
+	await page.click('#r1');
+	await page.waitForTimeout(50);
+	assert.equal(await page.isVisible('#k1'), false);
+	assert.equal(await page.getAttribute('#m1o', 'aria-selected'), 'false');
 	await page.close();
 });
 
