@@ -1,4 +1,5 @@
 import { closeLayer, layerOf, openLayer, type Layer } from '../layer.ts';
+import { closestTrigger, layerKey } from '../reveal.ts';
 
 // Radix DropdownMenu (@radix-ui/react-dropdown-menu), modal as by default: pressing the trigger (or Enter, Space or
 // ArrowDown on it) opens the menu with outside pointer events off; the content takes focus (the first item from the
@@ -7,11 +8,13 @@ import { closeLayer, layerOf, openLayer, type Layer } from '../layer.ts';
 // Radix Menubar's triggers are menu buttons too, their menus not modal: with one open, the pointer on another trigger
 // opens that one, and the side arrows in an open menu move to the neighbouring menu of the bar.
 const TRIGGER = '[aria-haspopup="menu"][data-slot$="menu-trigger"], [aria-haspopup="menu"][data-slot="menubar-trigger"][data-state]';
+// A trigger rendered through its child (asChild, render) carries the child's data-slot; its layer names the part.
+const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[aria-haspopup="menu"][data-state]', (slot) => /menu-trigger$/.test(slot));
 const BAR = '[role="menubar"]';
 const barTriggers = (trigger: HTMLElement) => [...(trigger.closest(BAR)?.querySelectorAll<HTMLElement>('[data-slot="menubar-trigger"][data-state]') ?? [])];
 const openOf = (trigger: HTMLElement) => layerOf(document.getElementById(trigger.getAttribute('aria-controls') ?? '') ?? trigger);
 const ITEM = '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]';
-const keyOf = (trigger: HTMLElement) => trigger.getAttribute('aria-controls') || trigger.id;
+const keyOf = (trigger: HTMLElement) => layerKey(trigger);
 
 function setTrigger(trigger: HTMLElement, open: boolean, layer?: Layer): void {
 	// A context menu's trigger area (opened by the context-menu port) is not a menu button.
@@ -47,7 +50,7 @@ function openMenu(trigger: HTMLElement, first: boolean): boolean {
 }
 
 export function pointerdown(target: Element, event: PointerEvent): boolean {
-	const trigger = target.closest<HTMLElement>(TRIGGER);
+	const trigger = triggerOf(target);
 	if (!trigger || event.button !== 0 || event.ctrlKey || trigger.hasAttribute('disabled')) return false;
 	const layer = layerOf(document.getElementById(trigger.getAttribute('aria-controls') ?? '') ?? trigger);
 	if (trigger.getAttribute('aria-expanded') === 'true' && layer) close(layer);
@@ -85,7 +88,7 @@ export function pointerover(target: Element): boolean {
 }
 
 export function keydown(target: Element, event: KeyboardEvent): boolean {
-	const trigger = target.closest<HTMLElement>(TRIGGER);
+	const trigger = triggerOf(target);
 	if (trigger && ['Enter', ' ', 'ArrowDown'].includes(event.key) && trigger.getAttribute('aria-expanded') !== 'true') {
 		event.preventDefault();
 		return openMenu(trigger, true);

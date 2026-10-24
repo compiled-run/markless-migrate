@@ -1,11 +1,13 @@
 import { closeLayer, layerOf, openLayer, type Layer } from '../layer.ts';
-import { layersFor } from '../reveal.ts';
+import { layersFor, closestTrigger, layerKey } from '../reveal.ts';
 
 // Radix ContextMenu: a right press (or a long touch) on the trigger area opens the menu at the pointer, modal, with
 // its content focused; the dropdown-menu port's item rules (arrows, typeahead, choosing closes) apply to it as to any
 // Radix menu. The trigger area carries data-state.
 const TRIGGER = '[data-slot="context-menu-trigger"][data-state]';
-const keyOf = (t: HTMLElement) => t.getAttribute('aria-controls') || t.dataset.mmKey || t.id;
+// A trigger rendered through its child (asChild, render) carries the child's data-slot; its layer names the part.
+const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[data-state][data-mm-key], [data-state][id]', (slot) => /^context-menu-trigger$/.test(slot));
+const keyOf = (t: HTMLElement) => layerKey(t);
 const open = new Map<HTMLElement, Layer>();
 
 function close(trigger: HTMLElement, layer: Layer): void {
@@ -15,7 +17,7 @@ function close(trigger: HTMLElement, layer: Layer): void {
 }
 
 export function contextmenu(target: Element, event: MouseEvent): boolean {
-	const trigger = target.closest<HTMLElement>(TRIGGER);
+	const trigger = triggerOf(target);
 	if (!trigger) return false;
 	event.preventDefault();
 	const was = open.get(trigger);

@@ -177,13 +177,22 @@ export function collectPage({ origin, full, styles = true }: { origin: string; f
 		}
 	});
 
-	const images = [...document.images].map((img) => ({
-		src: local(img.currentSrc || img.src),
-		alt: img.getAttribute('alt'),
-		naturalWidth: img.naturalWidth,
-		naturalHeight: img.naturalHeight,
-		broken: img.complete && img.naturalWidth === 0,
-	}));
+	const preloads = new Set([...document.querySelectorAll('link[rel~="preload"][as="image"]')].flatMap((l) => [l.getAttribute('href') ?? '', l.getAttribute('imagesrcset') ?? ''].filter(Boolean)));
+	const images = [...document.images].map((img) => {
+		const r = img.getBoundingClientRect();
+		const srcset = img.getAttribute('srcset') ?? '';
+		return {
+			src: local(img.currentSrc || img.src),
+			alt: img.getAttribute('alt'),
+			naturalWidth: img.naturalWidth,
+			naturalHeight: img.naturalHeight,
+			broken: img.complete && img.naturalWidth === 0,
+			...(img.getAttribute('loading') ? { loading: img.getAttribute('loading')! } : {}),
+			...(preloads.has(srcset) || preloads.has(img.getAttribute('src') ?? '') ? { preloaded: true } : {}),
+			...(/\s\d+w\s*(,|$)/.test(srcset) ? { widths: true } : {}),
+			...(r.width > 0 && r.height > 0 ? { box: { x: Math.round(r.x + scrollX), y: Math.round(r.y + scrollY), width: Math.round(r.width), height: Math.round(r.height) } } : {}),
+		};
+	});
 	const fonts = [...new Set([...document.fonts].filter((f) => f.status === 'loaded').map((f) => `${f.family}|${f.style}|${f.weight}`))].sort();
 	const embedLines = new Map<string, number>();
 	for (const el of document.querySelectorAll<HTMLElement>('[data-markless-migrate-embed]')) for (const line of el.innerText.split('\n').map(clean).filter(Boolean)) embedLines.set(line, (embedLines.get(line) ?? 0) + 1);
