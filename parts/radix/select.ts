@@ -114,7 +114,7 @@ function choose(o: Open, option: HTMLElement): void {
 		for (const indicator of x.querySelectorAll<HTMLElement>('[data-mm-indicator]')) indicator.hidden = !on;
 	}
 	trigger.removeAttribute('data-placeholder');
-	trigger.dispatchEvent(new CustomEvent('mmchoose', { detail: (textOf(option).textContent ?? '').trim() }));
+	trigger.dispatchEvent(new CustomEvent('mmchoose', { bubbles: true, detail: (textOf(option).textContent ?? '').trim() }));
 	close(o);
 }
 

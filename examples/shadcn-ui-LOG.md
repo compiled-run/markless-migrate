@@ -2468,9 +2468,15 @@ Leading causes (routes):
 
 ## Open work
 
+- Charts: each width the old site shows a chart at is its own SVG (342, 373, 419, 1280, 1336 and 1440 px pages), so
+  the interactive charts' pages are 3-5x the original's HTML. Next: one SVG laid out from the captured data at any width.
+- `/view/new-york-v4/chart-radar-icons` and `chart-radar-radius` are not ported: no page links them, so plan never
+  found them. `.next/prerender-manifest.json` lists them with about 277 other unlinked `/view` pages; reading it in
+  plan would add all of them.
+
 - The search palette's search results (`/api/search`), the remaining endpoints above, and `/og`.
 - Base UI Radio, Switch, Checkbox, Dialog, AlertDialog, Toast; Radix ScrollArea, ToggleGroup, Select, Slider,
-  RadioGroup; vaul; react-resizable-panels; recharts (the charts are SVG from the old page, not interactive).
+  RadioGroup; vaul; react-resizable-panels.
 - Recapture every route's reveals with signatures (only the preview routes have them) and convert all 498 pages
   once bug 1 is fixed; then `check` every route.
 - check: a framework's own route announcer and the regions it moves, in what a step changes (journeys), are the old
