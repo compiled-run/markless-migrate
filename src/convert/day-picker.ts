@@ -1081,7 +1081,7 @@ export class DayPickerPlan {
 		const planned = this.planOne(route, captured, i, root, note, k, v, [`const ${holder} = dpShared${k}();`], closes, label?.pattern ?? '');
 		if (!planned) return undefined;
 		if (!known) {
-			this.shared.push(`export const dpShared${k} = shared(() => state({ v: dayPickerView(${planned.c}) }));`);
+			this.shared.push(`export const dpShared${k} = shared(() => {\n\tconst view = state({ v: dayPickerView(${planned.c}) });\n\treturn view;\n});`);
 			this.openers.set(key, { k, c: planned.c, config: planned.config, opener: raw.opener, label });
 		}
 		return { bind: (el) => (el === root ? planned.root : undefined), declare: planned.declare };
