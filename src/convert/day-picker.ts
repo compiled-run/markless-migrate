@@ -880,8 +880,9 @@ function template(root: Element, ui: Readonly<Record<string, string>>, config: D
 }
 
 /** The locale's names the calendar's formats read: the full date pattern's, captions' ("LLLL y"), weekdays' ("cccc", "cccccc"). */
-export function pruneLocale(loc: LocaleTable): LocaleTable {
-	const tokens = `${loc.full} LLLL cccc cccccc`.replace(/'(''|[^'])*'/g, '').match(/([A-Za-z])\1*o?/g) ?? [];
+export function pruneLocale(loc: LocaleTable, keep = ''): LocaleTable {
+	// `keep`: a pattern the page formats with besides DayPicker's own (a date picker's trigger label).
+	const tokens = `${loc.full} LLLL cccc cccccc ${keep.replace(/P{2,3}/g, loc.full)}`.replace(/'(''|[^'])*'/g, '').match(/([A-Za-z])\1*o?/g) ?? [];
 	const months = new Set<string>();
 	const days = new Set<string>();
 	let ord = false;
@@ -988,10 +989,10 @@ export class DayPickerPlan {
 	}
 
 	/** The binding of one calendar's root, rendered from the view `v` (`declare` makes it, CONFIG standing for its configuration). */
-	private planOne(route: string, captured: CapturedPickers, i: number, root: Element, note: (what: string) => void, k: number, v: string, make: readonly string[], closes = false): { root: Binding; declare: string[]; c: string; id: string; config: DayPickerConfig } | undefined {
+	private planOne(route: string, captured: CapturedPickers, i: number, root: Element, note: (what: string) => void, k: number, v: string, make: readonly string[], closes = false, keep = ''): { root: Binding; declare: string[]; c: string; id: string; config: DayPickerConfig } | undefined {
 		const raw = captured.pickers[i]!;
 		const read = configOf(raw, captured.later[i], note);
-		const config: DayPickerConfig = { ...read, loc: pruneLocale(read.loc) };
+		const config: DayPickerConfig = { ...read, loc: pruneLocale(read.loc, keep) };
 		const at = Math.floor(captured.at / DAY);
 		const model = dayPickerModel(config, dayPickerView(config, at));
 		const off = differs(root, raw.ui!, config, model);
@@ -1045,7 +1046,7 @@ export class DayPickerPlan {
 	}
 
 	private readonly shared: string[] = [];
-	private readonly openers = new Map<string, { k: number; c: string; config: DayPickerConfig; opener: LayerOpener }>();
+	private readonly openers = new Map<string, { k: number; c: string; config: DayPickerConfig; opener: LayerOpener; label: ReturnType<typeof labelOf> }>();
 
 	/**
 	 * The calendar in a layer a control opens (a date picker's popover): bound inside the layer, on a view shared at page
@@ -1064,7 +1065,9 @@ export class DayPickerPlan {
 		const sigOf = (el: Element) => `${el.tagName}|${attr(el, 'data-slot') ?? ''}|${textContent(el).trim().replace(/\s+/g, ' ').slice(0, 60)}`;
 		const root = inside.filter((el) => sigOf(el) === raw.sig)[raw.nth];
 		if (!root) {
-			note('not found in its layer');
+			// A layer's other nodes (focus guards beside the popover) are rendered as layers of their own.
+			const calendars = inside.filter((el) => attr(el, 'data-slot') === 'calendar').map(sigOf);
+			if (calendars.length) note(`not found in its layer (${raw.sig.slice(0, 50)} #${raw.nth}; the layer has ${calendars.map((c) => c.slice(0, 50)).join(', ')})`);
 			return undefined;
 		}
 		const key = `${route}|${raw.opener.sig}#${raw.opener.nth}`;
@@ -1073,11 +1076,13 @@ export class DayPickerPlan {
 		const holder = `dps${k}`;
 		const v = `${holder}.v`;
 		const closes = raw.opener.picks.some((p) => !p.open);
-		const planned = this.planOne(route, captured, i, root, note, k, v, [`const ${holder} = dpShared${k}();`], closes);
+		// The trigger's label is learned on the whole locale, and its pattern's names are kept in the calendar's.
+		const label = known?.label ?? labelOf(raw.opener, configOf(raw, captured.later[i], () => {}));
+		const planned = this.planOne(route, captured, i, root, note, k, v, [`const ${holder} = dpShared${k}();`], closes, label?.pattern ?? '');
 		if (!planned) return undefined;
 		if (!known) {
 			this.shared.push(`export const dpShared${k} = shared(() => state({ v: dayPickerView(${planned.c}) }));`);
-			this.openers.set(key, { k, c: planned.c, config: planned.config, opener: raw.opener });
+			this.openers.set(key, { k, c: planned.c, config: planned.config, opener: raw.opener, label });
 		}
 		return { bind: (el) => (el === root ? planned.root : undefined), declare: planned.declare };
 	}
@@ -1097,18 +1102,20 @@ export class DayPickerPlan {
 	opener(route: string, trigger: Element, opener: { readonly sig: string; readonly nth: number }): Binding | undefined {
 		const known = this.openers.get(`${route}|${opener.sig}#${opener.nth}`);
 		if (!known) return undefined;
-		const { k, c, config } = known;
-		const learned = labelOf(known.opener, config);
+		const { k, c } = known;
+		const learned = known.label;
 		if (!learned) {
 			this.notes.push(`${route} date picker ${opener.sig}: its label's pattern is not one this knows`);
 			return undefined;
 		}
 		const holder = `dps${k}`;
 		const label = `dayPickerLabel(${c}, ${holder}.v, ${JSON.stringify(learned.pattern)}, ${JSON.stringify(learned.join)})`;
-		return {
+		const binding: Binding = {
 			declare: [`const ${holder} = dpShared${k}();`],
 			children: `${learned.prefix}@if (${label} !== undefined) { <>{${label}}</> } @else { <>${learned.rest}</> }`,
 		};
+		this.bindings.set(trigger, mergeBindings(this.bindings.get(trigger), binding)!);
+		return binding;
 	}
 
 }
