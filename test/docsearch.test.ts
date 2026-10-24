@@ -151,3 +151,60 @@ test('before the first paint, a DocSearch 4 button shows ⌘ and its Mac name on
 		await browser.close();
 	}
 });
+
+// A page that carries DocSearch's dialog as the old site first draws it, and a stand-in DocSearch that draws the same
+// dialog when opened and echoes the query it is given.
+const SHELL = '<div class="DocSearch DocSearch-Container" role="button"><div class="DocSearch-Modal"><header class="DocSearch-SearchBar"><form class="DocSearch-Form"><input class="DocSearch-Input" type="search" placeholder="Search docs"></form><button type="reset" class="DocSearch-Cancel">Cancel</button></header><div class="DocSearch-Dropdown"><div class="DocSearch-StartScreen"><p class="DocSearch-Help">No recent searches</p></div></div></div></div>';
+
+test('a press before DocSearch arrives shows its dialog at once, typing goes into it, and DocSearch takes over with the query and focus, with a dialog on screen every frame', async () => {
+	const { DOCSEARCH_SCRIPT, shellScript } = await import('../parts/docsearch.ts');
+	const page = `<!doctype html><html><head><script>${DOCSEARCH_SCRIPT}</script><script type="text/html" data-mm-docsearch-shell>${shellScript(SHELL)}</script></head><body>
+<button type="button" class="DocSearch DocSearch-Button" data-mm-docsearch='${JSON.stringify({ ...CONFIG, src: '/docsearch.js' })}'>Search</button>
+</body></html>`;
+	const server = createServer(async (req, res) => {
+		if (req.url === '/docsearch.js') {
+			await new Promise((resolve) => setTimeout(resolve, 1500));
+			return void res.writeHead(200, { 'content-type': 'text/javascript' }).end(`window.docsearch = (o) => { const b = document.createElement('button'); b.className = 'DocSearch-Button'; b.onclick = () => { const t = document.createElement('div'); t.innerHTML = ${JSON.stringify(SHELL)}; const c = t.firstElementChild; c.setAttribute('data-real', ''); const i = c.querySelector('input'); i.addEventListener('input', () => { window.__query = i.value; }); document.body.append(c); document.body.classList.add('DocSearch--active'); setTimeout(() => i.focus()); }; o.container.append(b); };`);
+		}
+		res.writeHead(200, { 'content-type': 'text/html' }).end(page);
+	});
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	const browser = await chromium.launch();
+	try {
+		const tab = await browser.newPage();
+		await tab.goto(`http://127.0.0.1:${(server.address() as AddressInfo).port}/`);
+		await tab.evaluate(() => {
+			const w = window as unknown as { __frames: number[] };
+			w.__frames = [];
+			const tick = () => {
+				if (document.body.classList.contains('DocSearch--active')) w.__frames.push(document.querySelectorAll('.DocSearch-Modal').length);
+				requestAnimationFrame(tick);
+			};
+			requestAnimationFrame(tick);
+		});
+		await tab.locator('[data-mm-docsearch]').click();
+		assert.ok(await tab.evaluate(() => document.body.classList.contains('DocSearch--active')), 'the dialog is on screen at once');
+		assert.equal(await tab.evaluate(() => (document.activeElement as HTMLElement | null)?.className), 'DocSearch-Input', 'its input has the focus');
+		await tab.keyboard.type('mod');
+		await tab.locator('[data-real] .DocSearch-Input').waitFor({ timeout: 5000 });
+		await tab.waitForTimeout(100);
+		assert.equal(await tab.locator('.DocSearch-Container').count(), 1, 'the shell is gone once DocSearch draws its own');
+		assert.equal(await tab.evaluate(() => (window as unknown as { __query?: string }).__query), 'mod', 'DocSearch got the query typed into the shell');
+		assert.equal(await tab.locator('[data-real] .DocSearch-Input').inputValue(), 'mod');
+		await tab.keyboard.type('el');
+		assert.equal(await tab.locator('[data-real] .DocSearch-Input').inputValue(), 'model', 'typing goes on in DocSearch\'s own input');
+		const frames = await tab.evaluate(() => (window as unknown as { __frames: number[] }).__frames);
+		assert.ok(frames.length > 0 && frames.every((n) => n >= 1), `a dialog in every frame: ${JSON.stringify(frames.slice(0, 40))}`);
+		// Escape on the shell closes it, and a later press opens it again.
+		const again = await browser.newPage();
+		await again.goto(`http://127.0.0.1:${(server.address() as AddressInfo).port}/`);
+		await again.locator('[data-mm-docsearch]').click();
+		await again.keyboard.press('Escape');
+		assert.equal(await again.locator('.DocSearch-Container').count(), 0);
+		assert.ok(!(await again.evaluate(() => document.body.classList.contains('DocSearch--active'))));
+	} finally {
+		await browser.close();
+		server.closeAllConnections();
+		server.close();
+	}
+});

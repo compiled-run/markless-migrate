@@ -93,7 +93,7 @@ function attributeNames(records: readonly Readonly<Record<string, string>>[]): s
 
 const attrExpr = (object: string, name: string) => (/^[A-Za-z_$][\w$]*$/.test(name) ? `${object}.${name}` : `${object}[${lit(name)}]`);
 
-export function documentModule(split: BodySplit, bind: (el: Element) => Binding | undefined, dropped: (what: string) => void, partsDir: string, parts: readonly PartUse[], headScripts: readonly string[] = []): string {
+export function documentModule(split: BodySplit, bind: (el: Element) => Binding | undefined, dropped: (what: string) => void, partsDir: string, parts: readonly PartUse[], headScripts: readonly (string | { readonly name: string; readonly attributes: string })[] = []): string {
 	const table: Record<string, Record<string, string>> = {};
 	const column = { n: 0 };
 	const before = split.before.map((c) => sharedMarkup(c, table, column, bind, dropped));
@@ -129,7 +129,7 @@ export default function Document({ url, children }: { readonly url?: { readonly 
 		<head>
 			@for (const tag of page.tags; key tag.key) {
 ${arms}
-			}${headScripts.map((name) => `\n\t\t\t<script>{${name}}</script>`).join('')}
+			}${headScripts.map((h) => (typeof h === 'string' ? `\n\t\t\t<script>{${h}}</script>` : `\n\t\t\t<script ${h.attributes}>{${h.name}}</script>`)).join('')}
 		</head>
 		<body${bodyNames.map((n) => ` ${n}={${attrExpr('page.body', n)}}`).join('')}>
 			${before.join('\n\t\t\t')}
