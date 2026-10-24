@@ -28,7 +28,8 @@ case "${1:-}" in
 		rm -rf "$APP/.vercel/output"
 		# The pages name the site's own origin where the old ones printed NEXT_PUBLIC_APP_URL (a v0 link's url).
 		(cd "$APP" && NITRO_PRESET=vercel VITE_APP_URL="$NEW_URL" npm run build)
-		(cd "$APP" && vercel deploy --prebuilt --prod --yes --scope "$SCOPE")
+		# Over Vercel's 15,000-file upload limit (one prerendered fallback per page and fragment): send one archive.
+		(cd "$APP" && vercel deploy --prebuilt --prod --archive=tgz --yes --scope "$SCOPE")
 		;;
 	front)
 		FRONT="$DIR/front"
