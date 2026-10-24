@@ -66,3 +66,74 @@ export function watchSystemTheme(options: ThemeOptions): void {
 		if (storedTheme(options) === 'system') apply('system', options);
 	});
 }
+
+/** The site's theme toggle as `lib/site/controls.json` names it: `{ "action": "theme", "name": "Toggle theme", "key": "d" }`. */
+export interface ThemeToggle {
+	/** The toggle's accessible name: its aria-label, or its text. */
+	readonly name: string;
+	/** A key that toggles too, outside text fields and without modifiers (ThemeProvider's D shortcut on ui.shadcn.com). */
+	readonly key?: string;
+	/** `<meta name="theme-color">` per resolved theme, as the site's own hook sets it. */
+	readonly metaColors?: Readonly<Record<string, string>>;
+}
+
+// Runs inline in the head, before any module: so it carries everything it uses, as next-themes' own inline script does.
+function earlyToggle(o: ThemeOptions & ThemeToggle): void {
+	const flip = (event: Event) => {
+		(event as Event & { __mmTheme?: boolean }).__mmTheme = true;
+		let stored: string | null = null;
+		try {
+			stored = localStorage.getItem(o.storageKey);
+		} catch {}
+		const theme = stored || o.defaultTheme;
+		const system = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+		const next = (theme === 'system' && o.enableSystem ? system : theme) === 'dark' ? 'light' : 'dark';
+		try {
+			localStorage.setItem(o.storageKey, next);
+		} catch {}
+		const root = document.documentElement;
+		let hold: HTMLStyleElement | undefined;
+		if (o.disableTransitionOnChange) {
+			hold = document.createElement('style');
+			hold.textContent = '*,*::before,*::after{transition:none!important}';
+			document.head.appendChild(hold);
+		}
+		if (o.attribute === 'class') {
+			root.classList.remove(...o.themes);
+			root.classList.add(next);
+		} else root.setAttribute(o.attribute, next);
+		if (o.enableColorScheme) root.style.colorScheme = next;
+		if (o.metaColors?.[next]) document.querySelector('meta[name="theme-color"]')?.setAttribute('content', o.metaColors[next]!);
+		if (hold) {
+			getComputedStyle(document.body);
+			setTimeout(() => hold!.remove(), 1);
+		}
+	};
+	const isToggle = (target: EventTarget | null) => {
+		const button = target instanceof Element ? target.closest('button') : null;
+		return !!button && (button.getAttribute('aria-label') ?? button.textContent ?? '').trim() === o.name;
+	};
+	document.addEventListener('click', (event) => isToggle(event.target) && flip(event), true);
+	if (o.key)
+		document.addEventListener(
+			'keydown',
+			(event) => {
+				const t = event.target;
+				const editable = t instanceof HTMLElement && (t.isContentEditable || t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement);
+				if (event.key.toLowerCase() !== o.key || event.metaKey || event.ctrlKey || event.altKey || editable) return;
+				event.preventDefault();
+				flip(event);
+			},
+			true,
+		);
+}
+
+/**
+ * The theme toggle answers from the page's first paint: an inline script in the head switches the theme in the click's
+ * own frame, whether or not the page's code has arrived, and marks the event; the site's part then only does what else
+ * its toggle does (`handledEarly`).
+ */
+export const earlyThemeScript = (options: ThemeOptions, toggle: ThemeToggle): string => `(${earlyToggle.toString()})(${JSON.stringify({ ...options, ...toggle, key: toggle.key?.toLowerCase() })});`;
+
+/** The inline handler already switched the theme for this event: switching it again would switch it back. */
+export const handledEarly = (event: Event): boolean => Boolean((event as Event & { __mmTheme?: boolean }).__mmTheme);

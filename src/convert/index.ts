@@ -20,6 +20,7 @@ import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts
 import { stat } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { nextImageWidths, pairImages, planImages, type ImagePlan, type Optimizer } from './images.ts';
+import { nextThemesOptions, themeToggleOf } from './theme.ts';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
 import { nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
@@ -620,7 +621,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		captures = await captureAll(browser, options.old, options.only?.length ? routes : [...routes, NOT_FOUND], join(state, 'convert', 'captures'), { concurrency: options.concurrency ?? 4, log });
 		// Controls the site's own components reveal content with, beside those ARIA marks (lib/site/controls.json).
 		const listed = await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as { selector: string; action: Reveal['action'] | 'toggle' | 'notify' | 'play'; routes?: string }[], () => []);
-		const extra = listed.flatMap((c) => (c.action === 'toggle' || c.action === 'notify' || c.action === 'play' ? [] : [[c.selector, c.action] as const]));
+		const extra = listed.flatMap((c) => (c.action === 'toggle' || c.action === 'notify' || c.action === 'play' || (c.action as string) === 'theme' ? [] : [[c.selector, c.action] as const]));
 		// Controls whose use the demo's own state answers (Send, Replay, Show more): every use recorded frame by frame.
 		for (const c of listed.filter((x) => x.action === 'play'))
 			for (const r of routes.filter((x) => !c.routes || new RegExp(c.routes).test(x))) scenes.set(r, [...(scenes.get(r) ?? []), ...(await captureScenes(browser, options.old, r, join(state, 'convert', 'scenes'), c.selector)).scenes.map((scene) => ({ scene, listed: c.selector }))]);
@@ -929,6 +930,16 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const headScripts = docsearchConfigured() ? ['PLATFORM_KEYS_SCRIPT'] : [];
 	if (headScripts.length) usedPorts.add('docsearch');
 	if (headScripts.length) documentParts.push({ part: 'docsearch', import: (dir) => `import { PLATFORM_KEYS_SCRIPT } from '${dir}/docsearch.ts';` });
+	// A theme toggle the site names switches the theme from the first paint, before the page's code has arrived.
+	const toggle = themeToggleOf(await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as Record<string, unknown>[], () => []));
+	const themeScript = [...prepared.values()].flatMap((p) => p.head).find((t) => t.tag === 'script' && t.text && nextThemesOptions(t.text));
+	const themeOptions = toggle && themeScript?.text ? nextThemesOptions(themeScript.text, toggle.disableTransitionOnChange === true) : undefined;
+	if (toggle && themeOptions) {
+		const { disableTransitionOnChange: _, ...named } = toggle;
+		headScripts.push(`earlyThemeScript(${JSON.stringify(themeOptions)}, ${JSON.stringify(named)})`);
+		documentParts.push({ part: 'next-themes', import: (dir) => `import { earlyThemeScript } from '${dir}/next-themes.ts';` });
+		log(`theme toggle "${toggle.name}" answers from the first paint (next-themes ${themeOptions.attribute}, key ${themeOptions.storageKey})`);
+	}
 	await writeFile(join(app, 'document.tsrx'), appUrlDeclaration(documentModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped, partsDir('document.tsrx'), documentParts, headScripts)));
 	await writeFile(join(app, 'head.ts'), HEAD_HELPER);
 	if (disclosureGroups || insertedGroups) usedPorts.add('panel-motion');
