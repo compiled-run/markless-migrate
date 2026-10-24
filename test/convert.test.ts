@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cleanDocument, frameworkBuilds } from '../src/convert/clean.ts';
-import { body, find, attr, parseDocument } from '../src/convert/dom.ts';
+import { cleanDocument, frameworkBuilds, lateHead } from '../src/convert/clean.ts';
+import { body, find, attr, head, outer, parseDocument } from '../src/convert/dom.ts';
 import { nextPattern } from '../src/convert/endpoints.ts';
 import { factor } from '../src/convert/factor.ts';
 import { bindParts, useResolver } from '../src/convert/parts.ts';
-import { emitElement } from '../src/convert/tsrx.ts';
+import { emitElement, emitHtml } from '../src/convert/tsrx.ts';
 
 const NEXT_PAGE = `<!DOCTYPE html><html><head><link rel="stylesheet" href="/_next/static/a.css" data-precedence="next"><script src="/_next/static/chunks/main.js" async></script></head>
 <body><div id="app"><p>Hi</p><script>console.log("plain")</script></div><script>(self.__next_f=self.__next_f||[]).push([0])</script><script>$RC("B:0","S:0")</script><template id="B:0"></template><next-route-announcer></next-route-announcer></body></html>`;
@@ -23,11 +23,37 @@ test('the old framework\'s runtime leaves the page, and its plain scripts and st
 	assert.ok([...dropped.keys()].some((k) => /server state or streaming runtime/.test(k)));
 });
 
+test('what the old page\'s scripts added to the head after load neither preloads nor blocks the first paint', () => {
+	const served = `<!DOCTYPE html><html><head><link rel="preload" href="/a.woff2" as="font"><link rel="stylesheet" href="/a.css"><link rel="preload" as="image" imagesrcset="/hero.png 1x"></head><body><link rel="stylesheet" href="/streamed.css"></body></html>`;
+	const settled = parseDocument(`<!DOCTYPE html><html><head><link rel="preload" href="/a.woff2" as="font"><link rel="stylesheet" href="/a.css"><link rel="preload" as="image" imagesrcset="/hero.png 1x"><link rel="stylesheet" href="/streamed.css"><link rel="preload" href="/b.woff2" as="font"><link rel="preload" href="/route.css" as="style"><link rel="stylesheet" href="/client.css"><style>[data-toaster]{position:fixed}</style><meta name="theme-color" content="#000"></head><body></body></html>`);
+	const dropped = new Map<string, number>();
+	const late = lateHead(settled, parseDocument(served), dropped);
+	const kept = outer(head(settled));
+	assert.match(kept, /a\.woff2/);
+	assert.match(kept, /hero\.png/);
+	assert.match(kept, /streamed\.css/, 'a stylesheet the server streamed in the body was sent, so it stays');
+	assert.match(kept, /theme-color/);
+	assert.match(kept, /client\.css/, 'a stylesheet the old client linked may style what the port renders, so it stays');
+	assert.doesNotMatch(kept, /b\.woff2|route\.css|data-toaster/);
+	assert.deepEqual(late.map((el) => el.tagName), ['style']);
+	assert.equal([...dropped.values()].reduce((a, b) => a + b, 0), 2);
+});
+
 test('tsrx output escapes braces and at-signs in text and keeps significant whitespace', () => {
 	const doc = parseDocument('<body><p>a {b} @c</p><pre>  x\n  y</pre></body>');
 	const out = emitElement(body(doc));
 	assert.match(out, /a &#123;b&#125; &#64;c/);
 	assert.match(out, /\{"  x\\n  y"\}/);
+});
+
+test('text in an element styled to keep its newlines keeps them, in tsrx and in a layer\'s HTML; elsewhere it collapses', () => {
+	const doc = parseDocument('<body><div class="whitespace-pre-line"><div>1. a\n2. b</div></div><p class="text-sm sm:whitespace-pre-wrap">x\ny</p><p style="white-space: pre-wrap">s\nt</p><p class="whitespace-nowrap">c\nd</p></body>');
+	const out = emitElement(body(doc));
+	assert.match(out, /\{"1\. a\\n2\. b"\}/);
+	assert.match(out, /\{"x\\ny"\}/);
+	assert.match(out, /\{"s\\nt"\}/);
+	assert.match(out, />c d</);
+	assert.match(emitHtml(body(doc)), /1\. a\n2\. b/);
 });
 
 test('a region several pages render alike becomes one component; the current link is an expression of the path', () => {
@@ -64,4 +90,12 @@ test('the step snapshot hides every framework announcer frameworkMarkup() knows'
 	const known = [...frameworkMarkup.toString().matchAll(/selector: '([^']+)'/g)].map((m) => m[1]!);
 	assert.ok(known.length >= 4);
 	for (const selector of known) assert.ok(FRAMEWORK_MARKUP_SELECTOR.split(', ').includes(selector), selector);
+});
+
+test('a region alike on two pages but showing different content on use (View Code) is not shared', () => {
+	const block = `<div data-slot="code"><pre>import { Select } from "@/components/ui/select"${'x'.repeat(2400)}</pre><button>View Code</button></div>`;
+	const roots = new Map(['/a', '/b'].map((route) => [route, body(parseDocument(`<body><div>${block}<main>${route}</main></div></body>`)).childNodes[0] as never]));
+	const code = new Map([...roots].map(([route, root]) => [(root as { childNodes: unknown[] }).childNodes[0], `<pre>full source of ${route}</pre>`]));
+	assert.ok(factor(roots).components.some((c) => c.source.includes('View Code')), 'alike markup alone is shared');
+	assert.ok(!factor(roots, { extra: (el) => code.get(el) }).components.some((c) => c.source.includes('View Code')), 'the block, whose View Code shows each page its own source, is each page\'s');
 });

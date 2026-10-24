@@ -167,6 +167,8 @@ export function DocRootLayout({ children }) {
 						<div className={aside.sidebarViewport}>
 							<DocSidebarDesktop sidebar={sidebar.items} path={path} />
 						</div>
+						{/* The sidebar's items come with the page, so no navigation fetches them: lib/site.ts renders a collapsed category from them. */}
+						<script type="application/json" className="mm-sidebar-items" dangerouslySetInnerHTML={{ __html: JSON.stringify(sidebar.items).replace(/</g, '\\u003c') }} />
 					</aside>
 				)}
 				<main className={clsx(main.docMainContainer, !sidebar && main.docMainContainerEnhanced)}>

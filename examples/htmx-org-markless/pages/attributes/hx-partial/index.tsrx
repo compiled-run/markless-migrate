@@ -10,7 +10,7 @@ export default function Page() @{
 			{" "}
 			<p><code>&lt;hx-partial&gt;</code>{" is a "}<strong>server-sent swap command</strong>{", not a DOM element. It exists only in the HTTP response body. The server wraps content in "}<code>&lt;hx-partial hx-target="..."&gt;</code>{" tags to tell htmx where to swap that content; htmx reads the instructions, performs the swap, and discards the envelope entirely — nothing from the "}<code>&lt;hx-partial&gt;</code>{" tag itself ever appears in the page."}</p>
 			{" "}
-			<p>{"This is similar to "}<a href="https://htmx.org/attributes/hx-swap-oob/"><code>hx-swap-oob</code></a>{" but with key differences: the envelope is always consumed and discarded, targets are resolved relative to the "}<strong>triggering element</strong>{" using the full htmx extended selector vocabulary, and partials execute "}<strong>before</strong>{" the main swap."}</p>
+			<p>{"This is similar to "}<a href="/attributes/hx-swap-oob/"><code>hx-swap-oob</code></a>{" but with key differences: the envelope is always consumed and discarded, targets are resolved relative to the "}<strong>triggering element</strong>{" using the full htmx extended selector vocabulary, and partials execute "}<strong>before</strong>{" the main swap."}</p>
 			{" "}
 			<h2 id="basic-usage">Basic usage</h2>
 			{" "}
@@ -30,7 +30,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="controlling-the-swap-style">Controlling the swap style</h2>
 			{" "}
-			<p>{"The "}<code>hx-swap</code>{" attribute on "}<code>&lt;hx-partial&gt;</code>{" accepts all the same values as "}<a href="https://htmx.org/attributes/hx-swap/"><code>hx-swap</code></a>{" on a normal element. The default is "}<code>innerHTML</code>.</p>
+			<p>{"The "}<code>hx-swap</code>{" attribute on "}<code>&lt;hx-partial&gt;</code>{" accepts all the same values as "}<a href="/attributes/hx-swap/"><code>hx-swap</code></a>{" on a normal element. The default is "}<code>innerHTML</code>.</p>
 			{" "}
 			<pre data-lang="html" style="background-color:#1f2329;color:#abb2bf;" class="language-html "><code class="language-html" data-lang="html"><span>&lt;</span><span style="color:#e06c75;">{"hx-partial "}</span><span style="color:#d19a66;">hx-target</span><span>=</span><span style="color:#98c379;">{"\"#feed\" "}</span><span style="color:#d19a66;">hx-swap</span><span>=</span><span style="color:#98c379;">"beforeend"</span><span>{">\n"}</span><span>{"  <"}</span><span style="color:#e06c75;">li</span><span>&gt;New item&lt;/</span><span style="color:#e06c75;">li</span><span>{">\n"}</span><span>&lt;/</span><span style="color:#e06c75;">hx-partial</span><span>{">\n"}</span></code></pre>
 			{" "}
@@ -40,7 +40,7 @@ export default function Page() @{
 			{" "}
 			<pre data-lang="html" style="background-color:#1f2329;color:#abb2bf;" class="language-html "><code class="language-html" data-lang="html"><span>&lt;</span><span style="color:#e06c75;">{"hx-partial "}</span><span style="color:#d19a66;">hx-target</span><span>=</span><span style="color:#98c379;">"closest tr"</span><span>{">\n"}</span><span>{"  <"}</span><span style="color:#e06c75;">td</span><span>&gt;Updated&lt;/</span><span style="color:#e06c75;">td</span><span>&gt;&lt;</span><span style="color:#e06c75;">td</span><span>&gt;values&lt;/</span><span style="color:#e06c75;">td</span><span>{">\n"}</span><span>&lt;/</span><span style="color:#e06c75;">hx-partial</span><span>{">\n"}</span><span>{"\n"}</span><span>&lt;</span><span style="color:#e06c75;">{"hx-partial "}</span><span style="color:#d19a66;">hx-target</span><span>=</span><span style="color:#98c379;">"find .status"</span><span>{">\n"}</span><span>{"  Active\n"}</span><span>&lt;/</span><span style="color:#e06c75;">hx-partial</span><span>{">\n"}</span></code></pre>
 			{" "}
-			<p>{"See "}<a href="https://htmx.org/attributes/hx-target/"><code>hx-target</code></a>{" for the full list of extended selectors ("}<code>closest</code>{", "}<code>find</code>{", "}<code>next</code>{", "}<code>previous</code>, etc.).</p>
+			<p>{"See "}<a href="/attributes/hx-target/"><code>hx-target</code></a>{" for the full list of extended selectors ("}<code>closest</code>{", "}<code>find</code>{", "}<code>next</code>{", "}<code>previous</code>, etc.).</p>
 			{" "}
 			<h2 id="multiple-partials">Multiple partials</h2>
 			{" "}
@@ -78,7 +78,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="events">Events</h2>
 			{" "}
-			<ul>{" "}<li><a href="https://htmx.org/events/#htmx:partialBeforeSwap"><code>htmx:partialBeforeSwap</code></a>{" — fired before each partial swap; cancellable, allows re-targeting and fragment rewriting"}</li>{" "}<li><a href="https://htmx.org/events/#htmx:partialAfterSwap"><code>htmx:partialAfterSwap</code></a>{" — fired after each partial swap"}</li>{" "}<li><a href="https://htmx.org/events/#htmx:partialErrorNoTarget"><code>htmx:partialErrorNoTarget</code></a>{" — fired on "}<code>document.body</code>{" when no element matches the target selector"}</li>{" "}<li><a href="https://htmx.org/events/#htmx:processTemplate"><code>htmx:processTemplate</code></a>{" — fired for any other "}<code>&lt;hx-*&gt;</code>{" tag type (e.g. "}<code>&lt;hx-toast&gt;</code>), allowing custom handling</li>{" "}</ul>
+			<ul>{" "}<li><a href="/events/#htmx:partialBeforeSwap"><code>htmx:partialBeforeSwap</code></a>{" — fired before each partial swap; cancellable, allows re-targeting and fragment rewriting"}</li>{" "}<li><a href="/events/#htmx:partialAfterSwap"><code>htmx:partialAfterSwap</code></a>{" — fired after each partial swap"}</li>{" "}<li><a href="/events/#htmx:partialErrorNoTarget"><code>htmx:partialErrorNoTarget</code></a>{" — fired on "}<code>document.body</code>{" when no element matches the target selector"}</li>{" "}<li><a href="/events/#htmx:processTemplate"><code>htmx:processTemplate</code></a>{" — fired for any other "}<code>&lt;hx-*&gt;</code>{" tag type (e.g. "}<code>&lt;hx-toast&gt;</code>), allowing custom handling</li>{" "}</ul>
 			{" "}
 			<h2 id="notes">Notes</h2>
 			{" "}

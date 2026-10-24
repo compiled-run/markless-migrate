@@ -24,7 +24,23 @@ export interface LibraryHit {
 	readonly loadedBy: RuntimeHit['loadedBy'];
 }
 
+/** A script a page loads from another origin when it runs (a third-party widget on intent): not in the build, so listed. */
+export interface RemoteScript {
+	readonly url: string;
+	/** The client file that names it. */
+	readonly file: string;
+	/** What it is when known: a widget that brings its own UI runtime is named with it. */
+	readonly note?: string;
+}
+
+// Scripts known to bring a UI runtime of their own, so the listing says so.
+const KNOWN_REMOTE: readonly { readonly test: RegExp; readonly note: string }[] = [
+	{ test: /\/npm\/@docsearch\/js@3\b/, note: 'DocSearch 3 with its own UI runtime (Preact), loaded when a visitor first goes to search' },
+];
+
 export interface BuildScan {
+	/** Scripts the client code loads from another origin at run time: listed, never failed. */
+	readonly remote: RemoteScript[];
 	/** Foreign runtimes a page loads or runs: each fails the build. */
 	readonly hits: RuntimeHit[];
 	/** Foreign runtimes in files no Markless page loads: allowed, listed. */
@@ -35,6 +51,12 @@ export interface BuildScan {
 }
 
 const SCRIPT = /\.(m?js|cjs)$/;
+// Client code: Markless's browser build. The server bundles name the same URLs for rendering, not loading.
+const CLIENT = /(^|\/)public\/build\/|^build\//;
+// A script URL on another origin as client code names it, as a value (after =, (, :, a comma, [ or ?), not inside page
+// text the bundle carries (a code sample showing a <script src>, highlighted or escaped) or a link's href: a .js file, or
+// a package entry on an npm CDN.
+const REMOTE_SCRIPT = /(?<=[=(,:[?]\s*)(?<!href["']?\s*[=:]\s*)(?<!&lt;[^<>&]*)["'`](https:\/\/[^"'`\s\\]+?(?:\.m?js|\/npm\/(?:@[\w.-]+\/)?[\w.-]+@[\w.-]+)(?:\?[^"'`\s\\]*)?)["'`]/g;
 // The app's own output: Markless's client build and the server; everything else under public/ was copied in.
 const BUNDLE = /(^|\/)(server|functions)\/|(^|\/)public\/build\/|^build\/|(^|\/)markless\//;
 // A built page Markless rendered (its route container or its import map), not a static HTML file copied in.
@@ -85,6 +107,7 @@ export async function scanBuild(dir: string): Promise<BuildScan> {
 	const hits: RuntimeHit[] = [];
 	const downloads: RuntimeHit[] = [];
 	const libraries: LibraryHit[] = [];
+	const remote: RemoteScript[] = [];
 	const publicScripts = new Map<string, { rel: string; text: string; runtimes: string[]; libraries: string[] }>();
 	for (const f of files) {
 		const text = await readFile(f.path, 'utf8');
@@ -103,6 +126,15 @@ export async function scanBuild(dir: string): Promise<BuildScan> {
 		}
 		const c = classifyScript(text);
 		const runtimes = c.runtimes.map((r) => RUNTIME_NAMES[r]);
+		// Client code, and a known widget the server writes into the page's head as an inline script (the DocSearch part).
+		if (CLIENT.test(f.rel) || BUNDLE.test(f.rel)) {
+			for (const m of text.matchAll(REMOTE_SCRIPT)) {
+				const url = m[1]!;
+				const note = KNOWN_REMOTE.find((k) => k.test.test(url))?.note;
+				if (remote.some((r) => r.url === url) || (!CLIENT.test(f.rel) && !note)) continue;
+				remote.push({ url, file: f.rel, ...(note ? { note } : {}) });
+			}
+		}
 		if (BUNDLE.test(f.rel)) {
 			scriptPaths(text, own);
 			if (runtimes.length) hits.push({ file: f.rel, runtimes, where: 'bundle', loadedBy: 'page', evidence: 'in the app\'s own bundle' });
@@ -129,7 +161,7 @@ export async function scanBuild(dir: string): Promise<BuildScan> {
 		if (file.runtimes.length) (by ? hits : downloads).push({ file: file.rel, runtimes: file.runtimes, where: 'public file', loadedBy, ...(by ? { evidence: `referenced by ${by}` } : {}) });
 		if (file.libraries.length) libraries.push({ file: file.rel, libraries: file.libraries, where: 'public file', loadedBy });
 	}
-	return { hits, downloads, libraries, files: files.length };
+	return { remote, hits, downloads, libraries, files: files.length };
 }
 
 export function summarizeBuild(dir: string, result: BuildScan): string {
@@ -144,6 +176,7 @@ export function summarizeBuild(dir: string, result: BuildScan): string {
 		const copied = result.downloads.filter((d) => d.loadedBy === 'copied page').length;
 		lines.push(`  Allowed: ${result.downloads.length} file${result.downloads.length === 1 ? '' : 's'} with a foreign runtime that no Markless page loads, served as downloads${copied ? ` (${copied} referenced only by static HTML copied into the output)` : ''}: ${result.downloads.slice(0, 8).map((d) => d.file).join(', ')}${result.downloads.length > 8 ? ', ...' : ''}`);
 	}
+	if (result.remote.length) lines.push(`  Loaded from another origin when a page runs (not in the build, listed): ${result.remote.map((r) => `${r.url}${r.note ? ` (${r.note})` : ''}`).join('; ')}`);
 	if (result.libraries.length) lines.push(`  Kept libraries (JavaScript only; markless-migrate upgrade measures them): ${[...new Set(result.libraries.flatMap((l) => l.libraries))].join(', ')} in ${result.libraries.map((l) => l.file).slice(0, 6).join(', ')}`);
 	return `${lines.join('\n')}\n`;
 }

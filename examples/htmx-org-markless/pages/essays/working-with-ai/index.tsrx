@@ -14,7 +14,7 @@ export default function Page() @{
 			{" "}
 			<p>I am, generally, ambivalent towards AI. There is no doubt it has become a very powerful tool for development in the last year, but it also comes with many dangers, both for us individually (e.g. the slow dulling of our intellects) as well as collectively (e.g. environmental concerns, increasingly expensive personal computing, etc.)</p>
 			{" "}
-			<p>{"In "}<a href="https://htmx.org/essays/code-is-cheap/">“Code is Cheap(er)”</a>, I warn about The Sorcerer’s Apprentice problem, where a developer becomes reliant on AI and is unable to understand and properly address issues that come up in the systems they are building.</p>
+			<p>{"In "}<a href="/essays/code-is-cheap/">“Code is Cheap(er)”</a>, I warn about The Sorcerer’s Apprentice problem, where a developer becomes reliant on AI and is unable to understand and properly address issues that come up in the systems they are building.</p>
 			{" "}
 			<p>{"In this article I want to go through a specific interaction that I had with AI while maintaining "}<a rel="noopener" target="_blank" href="https://hyperscript.org">hyperscript</a>{" to show the strengths and weaknesses of AI in general and to demonstrate The Sorcerer’s Apprentice problem (which I narrowly avoided) in particular."}</p>
 			{" "}

@@ -94,7 +94,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="right-click-view-source-extremism"><a class="zola-anchor" href="#right-click-view-source-extremism" aria-label="Anchor link for: right-click-view-source-extremism">Right-Click-View-Source Extremism</a></h2>
 			{" "}
-			<p>{"Both "}<a href="/">htmx</a>{" and "}<a rel="noopener" target="_blank" href="https://hyperscript.org">hyperscript</a>{" adhere to the "}<a href="https://htmx.org/essays/locality-of-behaviour/">Locality of Behavior</a>{" design principle."}</p>
+			<p>{"Both "}<a href="/">htmx</a>{" and "}<a rel="noopener" target="_blank" href="https://hyperscript.org">hyperscript</a>{" adhere to the "}<a href="/essays/locality-of-behaviour/">Locality of Behavior</a>{" design principle."}</p>
 			{" "}
 			<p>This principle states that:</p>
 			{" "}

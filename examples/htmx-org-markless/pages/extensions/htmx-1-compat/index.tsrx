@@ -40,11 +40,11 @@ export default function Page() @{
 			{" "}
 			<h3 id="obsolete-attributes">Obsolete attributes</h3>
 			{" "}
-			<ul>{" "}<li>{"htmx 2 removed the deprecated "}<a rel="noopener" target="_blank" href="https://htmx.org/attributes/hx-ws/">hx-ws</a>{" and "}<a rel="noopener" target="_blank" href="https://htmx.org/attributes/hx-sse/">hx-sse</a>{" attributes, that this extension restores."}</li>{" "}<li>{"htmx 2 removed the deprecated "}<code>hx-on</code>{" attribute in favor of the wildcard "}<a rel="noopener" target="_blank" href="https://htmx.org/attributes/hx-on/"><code>hx-on*</code>{" attribute"}</a>, that this extension restores.</li>{" "}</ul>
+			<ul>{" "}<li>{"htmx 2 removed the deprecated "}<a rel="noopener" target="_blank" href="/attributes/hx-ws/">hx-ws</a>{" and "}<a rel="noopener" target="_blank" href="/attributes/hx-sse/">hx-sse</a>{" attributes, that this extension restores."}</li>{" "}<li>{"htmx 2 removed the deprecated "}<code>hx-on</code>{" attribute in favor of the wildcard "}<a rel="noopener" target="_blank" href="/attributes/hx-on/"><code>hx-on*</code>{" attribute"}</a>, that this extension restores.</li>{" "}</ul>
 			{" "}
 			<h3 id="default-changes">Default Changes</h3>
 			{" "}
-			<ul>{" "}<li>{"reverts "}<a rel="noopener" target="_blank" href="https://htmx.org/reference/#config">htmx.config.scrollBehavior</a>{" to ‘smooth’."}</li>{" "}<li>{"makes "}<code>DELETE</code>{" requests use a form-encoded body rather than URL parameters (htmx 2 uses URL parameters for "}<code>DELETE</code>{" as default as per "}<a rel="noopener" target="_blank" href="https://www.rfc-editor.org/rfc/rfc9110.html#name-delete">the spec</a>).</li>{" "}<li>allows cross-domain requests by default (htmx 2 now forbids it by default).</li>{" "}</ul>
+			<ul>{" "}<li>{"reverts "}<a rel="noopener" target="_blank" href="/reference/#config">htmx.config.scrollBehavior</a>{" to ‘smooth’."}</li>{" "}<li>{"makes "}<code>DELETE</code>{" requests use a form-encoded body rather than URL parameters (htmx 2 uses URL parameters for "}<code>DELETE</code>{" as default as per "}<a rel="noopener" target="_blank" href="https://www.rfc-editor.org/rfc/rfc9110.html#name-delete">the spec</a>).</li>{" "}<li>allows cross-domain requests by default (htmx 2 now forbids it by default).</li>{" "}</ul>
 			{" "}
 			<h2 id="what-it-does-not-cover">What it does not cover</h2>
 			{" "}

@@ -4,6 +4,7 @@ import { chromium, type Browser } from 'playwright';
 import { serve as serveCanvas, type Variant as CanvasVariant } from '../../fixtures/motion-canvas/server.ts';
 import { serve as serveDisclosure, type Variant as DisclosureVariant } from '../../fixtures/motion-disclosure/server.ts';
 import { serve as serveModal, type Variant as ModalVariant } from '../../fixtures/motion-exit/server.ts';
+import { serve as serveTimer } from '../../fixtures/motion-timer/server.ts';
 import { serve, type Variant } from '../../fixtures/motion/server.ts';
 import { pngBytes } from '../../src/check/artifacts.ts';
 import { renderHtml } from '../../src/check/html.ts';
@@ -51,6 +52,21 @@ describe('motion: the transitions and animations each interaction starts, old vs
 		assert.ok(!pngBytes(strip.old[0]!).equals(pngBytes(strip.new[0]!)), 'the old list is still open at the start, the new one has already jumped shut');
 		assert.ok(pngBytes(strip.old[4]!).equals(pngBytes(strip.new[4]!)), 'both end collapsed');
 		assert.match(renderHtml(report), /class="filmstrip"/);
+	});
+
+	test('a fade a 2 s timer starts after the click is recorded on both sides, however long the click held either page', async () => {
+		const timer = async (busy: number) => {
+			const { origin, server } = await serveTimer(busy);
+			servers.push(server);
+			return origin;
+		};
+		const report = await runCheck({ oldOrigin: await timer(0), newOrigin: await timer(1800), routes: ['/'], browser, viewports: DESKTOP, motion: {} });
+		const route = report.routes[0]!;
+		assert.equal(route.dimensions.motion, 'pass', motion(report).map((f) => `${f.check}: ${f.expected} / ${f.actual}`).join('\n'));
+		const interaction = route.motion!.interactions.find((i) => i.name === 'press Enter on button "Copy code"');
+		assert.ok(interaction, route.motion!.interactions.map((i) => i.name).join('\n'));
+		const fades = ['transition of opacity 0→1 over 250 ms ease', 'transition of opacity 1→0 over 250 ms ease'];
+		for (const side of [interaction.old, interaction.new]) assert.deepEqual(side.map((l) => l.replace(/^.*: /, '')), fades, 'each side records the fade in and, after the timer, the fade out');
 	});
 
 	test('the same animation on both sides is green, and reduced motion agrees', async () => {
@@ -116,6 +132,15 @@ describe('motion: the transitions and animations each interaction starts, old vs
 		assert.equal(red.routes[0]!.dimensions.motion, 'fail');
 		assert.deepEqual(motion(green).map((f) => `${f.check}: ${f.expected} / ${f.actual}`), [], 'a measured panel kept through its exit is green');
 		assert.ok(green.routes[0]!.motion!.interactions.some((i) => i.name === `${open} (step 2 of 3: use 2)` && i.ok && i.old.some((l) => /accordion-up/.test(l))));
+	});
+
+	test('a canvas still drawing is left out of the page and viewport-width screenshots on both sides, where its frames are compared', async () => {
+		const { origin: oldOrigin, server: a } = await serveCanvas('base');
+		const { origin: newOrigin, server: b } = await serveCanvas('late');
+		servers.push(a, b);
+		const report = await runCheck({ oldOrigin, newOrigin, routes: ['/'], browser, viewports: DESKTOP });
+		const visual = report.routes[0]!.failures.filter((f) => f.dimension === 'visual');
+		assert.deepEqual(visual.map((f) => `${f.check}: ${f.actual}`), [], 'the moving square is no pixel difference');
 	});
 
 	test('a canvas animated from load is compared frame by frame: the same drawing started later is green with its start gap reported, the same drawing 30 px lower is red', async () => {

@@ -8,7 +8,7 @@ export default function Page() @{
 		<main class="c content ">
 			<h1><code>hx-ext</code></h1>
 			{" "}
-			<p>{"The "}<code>hx-ext</code>{" attribute enables an htmx "}<a rel="noopener" target="_blank" href="https://htmx.org/extensions">extension</a>{" for an element and all its children."}</p>
+			<p>{"The "}<code>hx-ext</code>{" attribute enables an htmx "}<a rel="noopener" target="_blank" href="/extensions">extension</a>{" for an element and all its children."}</p>
 			{" "}
 			<p>The value can be a single extension name or a comma-separated list of extensions to apply.</p>
 			{" "}

@@ -15,7 +15,7 @@ export default defineConfig({
 		rollupOptions: {
 			input: { [entry]: entries[entry] },
 			preserveEntrySignatures: 'allow-extension',
-			output: { format: 'es', entryFileNames: 'lazy/[name].js', chunkFileNames: 'lazy/[name]-[hash].js' },
+			output: { format: 'es', entryFileNames: 'lazy/[name].js', chunkFileNames: (chunk) => (chunk.name === 'docsearch-ask-ai' ? 'lazy/[name].js' : 'lazy/[name]-[hash].js') },
 		},
 	},
 });

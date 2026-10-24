@@ -16,7 +16,7 @@ export default function Page() @{
 			{" "}
 			<h4 id="new-features">New Features</h4>
 			{" "}
-			<ul>{" "}<li>{"AJAX file upload is "}<a href="https://htmx.org/docs/#files">now supported</a></li>{" "}<li>{"The HTML validation API is "}<a href="https://htmx.org/docs/#validation">now respected</a></li>{" "}</ul>
+			<ul>{" "}<li>{"AJAX file upload is "}<a href="/docs/#files">now supported</a></li>{" "}<li>{"The HTML validation API is "}<a href="/docs/#validation">now respected</a></li>{" "}</ul>
 			{" "}
 			<h4 id="bug-fixes">Bug Fixes</h4>
 			{" "}

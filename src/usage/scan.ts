@@ -10,6 +10,7 @@ import { writeEmbeds } from '../embed/file.ts';
 import { Behaviours, pageBehaviours, scriptBehaviours, type ScriptRef } from './behaviours.ts';
 import { parseHtml } from './html.ts';
 import { obligationsFor } from './obligations.ts';
+import { docsearchConfig, type DocSearchUse } from './docsearch.ts';
 import { analyseScript } from './script.ts';
 import { readThemeConfig, THEME_FEATURES } from './themes.ts';
 import type { Behaviour, BehaviourKind, ScriptFacts, UsageInventory } from './types.ts';
@@ -132,6 +133,7 @@ export async function scanUsage(options: UsageOptions): Promise<UsageInventory> 
 	const max = options.maxScriptBytes ?? 2_000_000;
 	// The site's own external scripts first, so a page script calling a function one of them defines (demo.js's onGet) is read as using it.
 	const globals = new Map<string, string>();
+	let docsearch: DocSearchUse | undefined;
 	const ordered = [...scriptsByKey].sort(([, a], [, b]) => Number(!a.ref.src) - Number(!b.ref.src));
 	for (const [key, { ref, routes }] of ordered) {
 		let text = ref.text;
@@ -147,6 +149,7 @@ export async function scanUsage(options: UsageOptions): Promise<UsageInventory> 
 			continue;
 		}
 		const { runtimes, libraries, parsed: classified } = classifyScript(text);
+		docsearch ??= docsearchConfig(text);
 		const framework = builtBy.get(key);
 		if (framework && !runtimes.length) {
 			scripts.push({ script: name, routes: [...routes].sort(), bytes: Buffer.byteLength(text), runtime: `${framework} build`, effects: 0, parsed: classified });
@@ -185,6 +188,8 @@ export async function scanUsage(options: UsageOptions): Promise<UsageInventory> 
 		return { ...b, details: { ...b.details, settings: Object.assign({}, ...settings.map((s) => s.settings)) }, sites: [...b.sites, ...settings.map((s) => ({ file: s.file, line: s.line }))] };
 	});
 	const obligations = behaviours.flatMap(obligationsFor);
+	// A theme that configures DocSearch in the site's source (Docusaurus' themeConfig.algolia) names it there instead.
+	if (!docsearch) for (const b of behaviours) docsearch ??= b.feature.includes('DocSearch') ? docsearchConfig(JSON.stringify(b.details.settings ?? {})) : undefined;
 	return {
 		version: 1,
 		generatedAt: new Date().toISOString(),
@@ -196,6 +201,7 @@ export async function scanUsage(options: UsageOptions): Promise<UsageInventory> 
 		obligations,
 		scripts: scripts.sort((a, b) => a.script.localeCompare(b.script)),
 		embeds: embedUses.list(),
+		...(docsearch ? { docsearch } : {}),
 		limits,
 	};
 }

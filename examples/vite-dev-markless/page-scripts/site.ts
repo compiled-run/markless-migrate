@@ -17,21 +17,22 @@ export function onPage(setup: (navigated: boolean) => void): void {
 const isEditing = (target: EventTarget | null) =>
 	target instanceof HTMLElement && (target.isContentEditable || target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA');
 
+// The document's inline script opens search from the search buttons, so a click before this module runs is kept; the
+// box and its index load on intent (a pointer or focus on the button, a held shortcut key), so that click fetches nothing.
 const openSearch = () => void import('./search.ts').then((search) => search.openSearch());
-// The search box and its index (145 kB) load when search opens, as VitePress loads its own.
+const warmSearch = () => void import('./search.ts').then((search) => search.preloadIndex());
 const SEARCH_BUTTON = '.VPNavBarSearchButton, button[aria-label="Search"]';
+for (const type of ['pointerover', 'focusin', 'touchstart'])
+	document.addEventListener(type, (event) => (event.target as Element | null)?.closest?.(SEARCH_BUTTON) && warmSearch(), { passive: true });
 // VitePress's useDark stores the appearance it starts with.
 if (localStorage.getItem('vitepress-theme-appearance') === null) localStorage.setItem('vitepress-theme-appearance', 'auto');
 
 window.addEventListener('keydown', (event) => {
+	if (event.key === 'Meta' || event.key === 'Control') warmSearch();
 	if ((event.key === 'k' && (event.ctrlKey || event.metaKey)) || (event.key === '/' && !isEditing(event.target))) {
 		event.preventDefault();
 		openSearch();
 	}
-});
-
-document.addEventListener('click', (event) => {
-	if ((event.target as Element | null)?.closest(SEARCH_BUTTON)) openSearch();
 });
 
 /** VitePress's scrollTo: the target scrolls to the top and takes focus without scrolling again. */

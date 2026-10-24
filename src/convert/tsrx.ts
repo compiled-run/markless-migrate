@@ -25,6 +25,12 @@ export function appUrlDeclaration(source: string): string {
 const escapeText = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\{/g, '&#123;').replace(/\}/g, '&#125;').replace(/@/g, '&#64;');
 // HTML whitespace only: JavaScript's \s also matches the no-break spaces code samples indent with.
 const collapse = (t: string) => t.replace(/[ \t\n\r\f]+/g, ' ');
+const KEEPS_WHITESPACE = /^(?:\S*:)?whitespace-(?:pre|pre-wrap|pre-line|break-spaces)$/;
+/** An element whose text the browser lays out with its newlines and spaces: <pre>, <textarea>, or one styled to keep them. */
+const keepsWhitespace = (el: Element) =>
+	el.tagName === 'pre' ||
+	el.tagName === 'textarea' ||
+	el.attrs.some((a) => (a.name === 'class' && a.value.split(/[ \t\n\r\f]+/).some((c) => KEEPS_WHITESPACE.test(c))) || (a.name === 'style' && /white-space\s*:\s*(?:pre|break-spaces)/.test(a.value)));
 // Text holding a comment opener is a string expression: TSRX reads `//` and `/*` in template text as comments.
 const textOut = (t: string) => {
 	const named = withOrigin(t);
@@ -122,15 +128,16 @@ export function node(n: Node, pre: boolean, options: EmitOptions): string {
 		return `<script${attributes(el, binding, options)}>${text ? `{${lit(text)}}` : ''}</script>`;
 	}
 	if (VOID.has(name)) return `<${name}${attributes(el, binding, options)} />`;
-	const inPre = pre || name === 'pre' || name === 'textarea';
+	const inPre = pre || keepsWhitespace(el);
 	const inner = binding?.children ?? (binding?.inserts?.length ? childrenWith(el, inPre, options, binding.inserts) : children(el, inPre, options));
 	return `<${name}${attributes(el, binding, options)}>${binding?.wrap ? binding.wrap(inner) : inner}${binding?.append ?? ''}</${name}>`;
 }
 
 /** The children of `parent` as tsrx markup, one top-level node per line. */
 export function emitChildren(parent: ParentNode, options: EmitOptions = {}): string {
+	const pre = isElement(parent as Node) && keepsWhitespace(parent as Element);
 	return childrenOf(parent)
-		.map((n) => node(n, false, options))
+		.map((n) => node(n, pre, options))
 		.filter(Boolean)
 		.join('\n');
 }
@@ -154,4 +161,67 @@ export function mergeBindings(a: Binding | undefined, b: Binding | undefined): B
 
 export function emitElement(el: Element, options: EmitOptions = {}): string {
 	return node(el, false, options);
+}
+
+/** Stands for the new app's own origin in markup served as a file, where no APP_URL expression can run. */
+export const APP_URL_TOKEN = '@@MM_APP_URL@@';
+
+const escapeHtml = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const escapeAttribute = (t: string) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+/** Markup emitted with the old origin as APP_URL_TOKEN text rather than an APP_URL expression (for <template> content). */
+export function withOriginToken(emit: () => string): string {
+	const was = origin;
+	origin = undefined;
+	try {
+		const out = emit();
+		return was ? out.split(was).join(APP_URL_TOKEN) : out;
+	} finally {
+		origin = was;
+	}
+}
+
+const named = (t: string) => (origin ? t.split(origin).join(APP_URL_TOKEN) : t);
+
+/**
+ * `el` as HTML, written as emitElement writes it as tsrx: the same attributes (with `extra`, given as `name="value"`, on
+ * the element itself), the same collapsed text, no `<style>`, and the old origin as APP_URL_TOKEN.
+ */
+export function emitHtml(el: Element, options: { readonly extra?: readonly string[]; readonly dropped?: (what: string) => void } = {}): string {
+	return htmlOf(el, options.extra ?? [], options.dropped);
+}
+
+/** The children of `el` as HTML, as emitHtml writes them. */
+export function emitHtmlChildren(el: Element, options: { readonly dropped?: (what: string) => void } = {}): string {
+	const pre = keepsWhitespace(el);
+	return childrenOf(el)
+		.map((child) => htmlOf(child, [], options.dropped, pre))
+		.join('');
+}
+
+function htmlOf(start: Node, startExtra: readonly string[], dropped: ((what: string) => void) | undefined, startPre = false): string {
+	const options = { dropped };
+	const visit = (n: Node, pre: boolean, extra: readonly string[]): string => {
+		if (n.nodeName === '#text') {
+			const t = (n as Text).value;
+			return escapeHtml(named(pre ? t : collapse(t)));
+		}
+		if (!isElement(n)) return '';
+		const name = n.tagName;
+		if (name === 'style') return '';
+		let attrs = '';
+		for (const a of n.attrs) {
+			const attribute = a.prefix === 'xlink' && a.name === 'href' ? 'href' : a.prefix ? `${a.prefix}:${a.name}` : a.name;
+			if (!ATTRIBUTE_NAME.test(a.prefix ? a.name : attribute)) {
+				options.dropped?.(`${attribute} on <${name}>`);
+				continue;
+			}
+			attrs += a.value === '' && BOOLEAN.has(attribute) ? ` ${attribute}` : ` ${attribute}="${escapeAttribute(named(a.value))}"`;
+		}
+		for (const added of extra) attrs += ` ${added}`;
+		if (name === 'script') return `<script${attrs}>${rawText(n)}</script>`;
+		if (VOID.has(name)) return `<${name}${attrs}>`;
+		const inPre = pre || keepsWhitespace(n);
+		return `<${name}${attrs}>${childrenOf(n).map((c) => visit(c, inPre, [])).join('')}</${name}>`;
+	};
+	return visit(start, startPre, startExtra);
 }

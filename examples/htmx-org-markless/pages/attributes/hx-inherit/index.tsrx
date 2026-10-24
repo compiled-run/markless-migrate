@@ -8,7 +8,7 @@ export default function Page() @{
 		<main class="c content ">
 			<h1><code>hx-inherit</code></h1>
 			{" "}
-			<p>{"The default behavior for htmx is to “inherit” many attributes automatically: that is, an attribute such as "}<a href="https://htmx.org/attributes/hx-target/">hx-target</a>{" may be placed on a parent element, and all child elements will inherit that target. Some people do not like this feature and instead prefer to explicitly specify inheritance for attributes."}</p>
+			<p>{"The default behavior for htmx is to “inherit” many attributes automatically: that is, an attribute such as "}<a href="/attributes/hx-target/">hx-target</a>{" may be placed on a parent element, and all child elements will inherit that target. Some people do not like this feature and instead prefer to explicitly specify inheritance for attributes."}</p>
 			{" "}
 			<p>{"To support this mode of development, htmx offers the "}<code>htmx.config.disableInheritance</code>{" setting, which can be set to "}<code>true</code>{" to prevent inheritance from being the default behavior for any of the htmx attributes."}</p>
 			{" "}
@@ -24,7 +24,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="notes">Notes</h2>
 			{" "}
-			<ul>{" "}<li>{"Read more about "}<a href="https://htmx.org/docs/#inheritance">Attribute Inheritance</a></li>{" "}</ul>
+			<ul>{" "}<li>{"Read more about "}<a href="/docs/#inheritance">Attribute Inheritance</a></li>{" "}</ul>
 			{" "}
 		</main>
 		<SiteFooter />

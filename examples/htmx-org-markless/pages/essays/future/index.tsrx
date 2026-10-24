@@ -40,7 +40,7 @@ export default function Page() @{
 			{" "}
 			<h3 id="stability-as-a-feature"><a class="zola-anchor" href="#stability-as-a-feature" aria-label="Anchor link for: stability-as-a-feature">Stability as a Feature</a></h3>
 			{" "}
-			<p>{"We are going to work to ensure that htmx is extremely stable in both API & implementation. This means accepting and documenting the "}<a rel="noopener" target="_blank" href="https://htmx.org/quirks/">quirks</a>{" of the current implementation."}</p>
+			<p>{"We are going to work to ensure that htmx is extremely stable in both API & implementation. This means accepting and documenting the "}<a rel="noopener" target="_blank" href="/quirks/">quirks</a>{" of the current implementation."}</p>
 			{" "}
 			<p>Someone upgrading htmx (even from 1.x to 2.x) should expect things to continue working as before.</p>
 			{" "}
@@ -52,9 +52,9 @@ export default function Page() @{
 			{" "}
 			<p>People shouldn’t feel pressure to upgrade htmx over time unless there are specific bugs that they want fixed, and they should feel comfortable that the htmx that they write in 2025 will look very similar to htmx they write in 2035 and beyond.</p>
 			{" "}
-			<p>{"We will consider new core features when new browser features become available, for example we are "}<a rel="noopener" target="_blank" href="https://htmx.org/examples/move-before/">already using</a>{" the experimental "}<code>moveBefore()</code>{" API on supported browsers."}</p>
+			<p>{"We will consider new core features when new browser features become available, for example we are "}<a rel="noopener" target="_blank" href="/examples/move-before/">already using</a>{" the experimental "}<code>moveBefore()</code>{" API on supported browsers."}</p>
 			{" "}
-			<p>{"However, we expect most new functionality to be explored and delivered via the htmx "}<a rel="noopener" target="_blank" href="https://htmx.org/extensions/">extensions API</a>, and will work to make the extensions API more capable where appropriate.</p>
+			<p>{"However, we expect most new functionality to be explored and delivered via the htmx "}<a rel="noopener" target="_blank" href="/extensions/">extensions API</a>, and will work to make the extensions API more capable where appropriate.</p>
 			{" "}
 			<h3 id="quarterly-releases"><a class="zola-anchor" href="#quarterly-releases" aria-label="Anchor link for: quarterly-releases">Quarterly Releases</a></h3>
 			{" "}
@@ -74,9 +74,9 @@ export default function Page() @{
 			{" "}
 			<p>While htmx gives you a few new tools in your HTML, it has no opinions about other important aspects of building your websites. A flagship feature of htmx is that it does not dictate what backend or database you use.</p>
 			{" "}
-			<p>{"htmx is "}<a rel="noopener" target="_blank" href="https://htmx.org/essays/hypermedia-on-whatever-youd-like/">compatible with lots of backends</a>, and we want to help make hypermedia-driven development work better for all of them.</p>
+			<p>{"htmx is "}<a rel="noopener" target="_blank" href="/essays/hypermedia-on-whatever-youd-like/">compatible with lots of backends</a>, and we want to help make hypermedia-driven development work better for all of them.</p>
 			{" "}
-			<p>{"One part of the hypermedia ecosystem that htmx has already helped improve is template engines. When we "}<a rel="noopener" target="_blank" href="https://htmx.org/essays/template-fragments/">first wrote</a>{" about how “template fragments” make defining partial page replacements much simpler, they were a relatively rare feature in template engines."}</p>
+			<p>{"One part of the hypermedia ecosystem that htmx has already helped improve is template engines. When we "}<a rel="noopener" target="_blank" href="/essays/template-fragments/">first wrote</a>{" about how “template fragments” make defining partial page replacements much simpler, they were a relatively rare feature in template engines."}</p>
 			{" "}
 			<p>{"Not only are fragments much more common now, that essay is "}<a rel="noopener" target="_blank" href="https://github.com/mitsuhiko/minijinja/issues/260">frequently</a>{" "}<a rel="noopener" target="_blank" href="https://github.com/sponsfreixes/jinja2-fragments">cited</a>{" as an inspiration for building the feature."}</p>
 			{" "}
@@ -88,7 +88,7 @@ export default function Page() @{
 			{" "}
 			<p>{"In particular, we are trying to push "}<a rel="noopener" target="_blank" href="https://dl.acm.org/doi/pdf/10.1145/3648188.3675127">the ideas</a>{" of htmx into the HTML standard itself, via the "}<a rel="noopener" target="_blank" href="https://alexanderpetros.com/triptych/">Triptych project</a>. In an ideal world, htmx functionality disappears into the web platform itself.</p>
 			{" "}
-			<p>{"htmx code written "}<em>today</em>{" will continue working forever, of course, but in the very long run perhaps there will be no need to include the library to achieve "}<a rel="noopener" target="_blank" href="https://htmx.org/examples">similar UI patterns</a>{" via hypermedia."}</p>
+			<p>{"htmx code written "}<em>today</em>{" will continue working forever, of course, but in the very long run perhaps there will be no need to include the library to achieve "}<a rel="noopener" target="_blank" href="/examples">similar UI patterns</a>{" via hypermedia."}</p>
 			{" "}
 			<h2 id="intercooler-was-right"><a class="zola-anchor" href="#intercooler-was-right" aria-label="Anchor link for: intercooler-was-right">Intercooler Was Right</a></h2>
 			{" "}

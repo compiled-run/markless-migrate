@@ -12,17 +12,17 @@ export default function Page() @{
 			{" "}
 			<time>November 18, 2023</time>
 			{" "}
-			<p>{"I have written a lot about Hypermedia APIs vs. Data (JSON) APIs, including "}<a href="https://htmx.org/essays/hypermedia-apis-vs-data-apis/">the differences between the two</a>{", what "}<a href="https://htmx.org/essays/how-did-rest-come-to-mean-the-opposite-of-rest/">REST “really” means</a>{" and why "}<a href="https://htmx.org/essays/hateoas/">HATEOAS</a>{" isn’t so bad as long as your API is interacting with a "}<a href="https://htmx.org/essays/hypermedia-clients/">Hypermedia Client</a>.</p>
+			<p>{"I have written a lot about Hypermedia APIs vs. Data (JSON) APIs, including "}<a href="/essays/hypermedia-apis-vs-data-apis/">the differences between the two</a>{", what "}<a href="/essays/how-did-rest-come-to-mean-the-opposite-of-rest/">REST “really” means</a>{" and why "}<a href="/essays/hateoas/">HATEOAS</a>{" isn’t so bad as long as your API is interacting with a "}<a href="/essays/hypermedia-clients/">Hypermedia Client</a>.</p>
 			{" "}
 			<p>Often when I am engaged in discussions with people coming from the “REST is JSON over HTTP” world (that is, the normal world) I have to navigate a lot of language and conceptual issues:</p>
 			{" "}
-			<ul>{" "}<li>No, I am not advocating you return HTML as a general purpose API, hypermedia makes for a bad general purpose API</li>{" "}<li>{"Yes, I am advocating "}<a href="https://htmx.org/essays/two-approaches-to-decoupling/">tightly coupling</a>{" your web application to your hypermedia API"}</li>{" "}<li>{"No, I do not think that we will ever fix how the industry "}<a href="https://htmx.org/essays/how-did-rest-come-to-mean-the-opposite-of-rest/">uses the term REST</a></li>{" "}<li>{"Yes, I am advocating you "}<a href="https://htmx.org/essays/splitting-your-apis/">split your data API and your hypermedia API up</a></li>{" "}</ul>
+			<ul>{" "}<li>No, I am not advocating you return HTML as a general purpose API, hypermedia makes for a bad general purpose API</li>{" "}<li>{"Yes, I am advocating "}<a href="/essays/two-approaches-to-decoupling/">tightly coupling</a>{" your web application to your hypermedia API"}</li>{" "}<li>{"No, I do not think that we will ever fix how the industry "}<a href="/essays/how-did-rest-come-to-mean-the-opposite-of-rest/">uses the term REST</a></li>{" "}<li>{"Yes, I am advocating you "}<a href="/essays/splitting-your-apis/">split your data API and your hypermedia API up</a></li>{" "}</ul>
 			{" "}
 			<p>The last point often strikes people who are used to a single, general purpose JSON API as dumb: why have two APIs when you can have a single API that can satisfy any number of types of clients? I tried to answer that question as best I can in the essay above, but it is certainly a reasonable one to ask.</p>
 			{" "}
 			<p>It seems like (and it is) extra work in some ways when compared to having one general API.</p>
 			{" "}
-			<p>{"At this point in a conversation, someone who agrees broadly with my take on REST, "}<a href="https://htmx.org/essays/hypermedia-driven-applications/">Hypermedia-Driven Applications</a>, etc. will often jump in and say something like</p>
+			<p>{"At this point in a conversation, someone who agrees broadly with my take on REST, "}<a href="/essays/hypermedia-driven-applications/">Hypermedia-Driven Applications</a>, etc. will often jump in and say something like</p>
 			{" "}
 			<blockquote>{" "}<p>{"“Oh, it’s easy, you just use "}<em>content negotiation</em>, it’s baked into HTTP!”</p>{" "}</blockquote>
 			{" "}
@@ -74,7 +74,7 @@ export default function Page() @{
 			{" "}
 			<p>So why don’t I think this is a good approach to splitting your JSON and HTML APIs up?</p>
 			{" "}
-			<p>{"It boils down to the "}<a href="https://htmx.org/essays/hypermedia-apis-vs-data-apis/">differences between JSON APIs and Hypermedia (HTML) APIs</a>{" I hinted at earlier. In particular:"}</p>
+			<p>{"It boils down to the "}<a href="/essays/hypermedia-apis-vs-data-apis/">differences between JSON APIs and Hypermedia (HTML) APIs</a>{" I hinted at earlier. In particular:"}</p>
 			{" "}
 			<ul>{" "}<li>Data APIs should be versioned and should be very stable within a particular version of the API</li>{" "}<li>Data APIs should strive for both regularity and expressiveness due to the arbitrary data needs of consumers</li>{" "}<li>Data APIs typically use some sort of token-based authentication</li>{" "}<li>Data APIs should be rate limited</li>{" "}<li>Hypermedia APIs typically use some sort of session-cookie based authentication</li>{" "}<li>Hypermedia APIs should be driven by the needs of the underlying hypermedia application</li>{" "}</ul>
 			{" "}
@@ -88,13 +88,13 @@ export default function Page() @{
 			{" "}
 			<p>{"To give you a concrete example, consider an end point that renders a detail view of a contact, at, say "}<code>/contacts/:id</code>{" (where "}<code>:id</code>{" is a parameter containing the id of the contact to render). Let’s say that this page has a “related contacts” section of the UI and, further, computing these related contacts is expensive for some reason."}</p>
 			{" "}
-			<p>{"In this situation you might choose to use the "}<a rel="noopener" target="_blank" href="https://htmx.org/examples/lazy-load/">Lazy Loading</a>{" pattern to defer loading the related contacts until after the initial contact detail screen has been rendered. This improves perceived performance of the page for your users."}</p>
+			<p>{"In this situation you might choose to use the "}<a rel="noopener" target="_blank" href="/examples/lazy-load/">Lazy Loading</a>{" pattern to defer loading the related contacts until after the initial contact detail screen has been rendered. This improves perceived performance of the page for your users."}</p>
 			{" "}
 			<p>{"If you did this, you might put the lazy loaded content at the end-point "}<code>/contacts/:id/related</code>.</p>
 			{" "}
 			<p>{"Now, later on, maybe you are able to optimize the computation of related contacts. At this point you might choose to rip the "}<code>/contacts/:id/related</code>{" end-point out and just render the related contacts information in the initial page render."}</p>
 			{" "}
-			<p>{"All of this is fine for your hypermedia API: hypermedia, through "}<a href="https://htmx.org/essays/hateoas/">the uniform interface &amp; HATEOAS</a>{" is "}<em>designed</em>{" to handle these sorts of changes."}</p>
+			<p>{"All of this is fine for your hypermedia API: hypermedia, through "}<a href="/essays/hateoas/">the uniform interface &amp; HATEOAS</a>{" is "}<em>designed</em>{" to handle these sorts of changes."}</p>
 			{" "}
 			<p>However, your JSON API… not so much.</p>
 			{" "}
@@ -102,11 +102,11 @@ export default function Page() @{
 			{" "}
 			<p>{"Taking all of this into account, as well as things like rate-limiting and so on, I think you can make a strong argument that there should be a "}<a rel="noopener" target="_blank" href="https://en.wikipedia.org/wiki/Separation_of_concerns">Separation Of Concerns</a>{" between the JSON API and the hypermedia API."}</p>
 			{" "}
-			<p>{"(Yes, I am aware of the irony that the person who coined the term "}<a href="https://htmx.org/essays/locality-of-behaviour/">Locality of Behaviour</a>{" is making a SoC argument.)"}</p>
+			<p>{"(Yes, I am aware of the irony that the person who coined the term "}<a href="/essays/locality-of-behaviour/">Locality of Behaviour</a>{" is making a SoC argument.)"}</p>
 			{" "}
 			<h2 id="so-what-s-the-alternative"><a class="zola-anchor" href="#so-what-s-the-alternative" aria-label="Anchor link for: so-what-s-the-alternative">So What’s The Alternative?</a></h2>
 			{" "}
-			<p>{"The alternative is, as I advocate in "}<a href="https://htmx.org/essays/splitting-your-apis/">Splitting Your APIs</a>, er, well, splitting your APIs. This means providing different paths (or subdomains, or whatever) for your JSON API and your hypermedia (HTML) API.</p>
+			<p>{"The alternative is, as I advocate in "}<a href="/essays/splitting-your-apis/">Splitting Your APIs</a>, er, well, splitting your APIs. This means providing different paths (or subdomains, or whatever) for your JSON API and your hypermedia (HTML) API.</p>
 			{" "}
 			<p>Going back to our contacts API, we might have the following:</p>
 			{" "}

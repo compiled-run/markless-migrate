@@ -55,7 +55,8 @@ before(async () => {
 		if (path === '/maps/pages.xml') return { status: 200, type: 'application/xml', body: sitemap(base, ['/', '/docs']) };
 		if (path === '/') return { status: 200, body: page('Home', ['/docs', '/blog', 'mailto:hi@example.com', 'https://elsewhere.example/x']) };
 		if (path === '/docs') return { status: 200, body: page('Docs', ['/docs/hidden', '/docs/hidden#part', '/old-docs']) };
-		if (path === '/docs/hidden') return { status: 200, body: page('Hidden') };
+		if (path === '/docs/hidden') return { status: 200, body: `${page('Hidden')}<iframe src="/view/chart-area" loading="lazy"></iframe><iframe src="https://elsewhere.example/embed"></iframe>` };
+		if (path === '/view/chart-area') return { status: 200, body: page('Chart') };
 		if (path === '/old-docs') return { status: 301, location: '/docs/moved' };
 		if (path === '/docs/moved') return { status: 200, body: page('Moved') };
 		if (path === '/blog' && search === '?page=2') return { status: 200, body: page('Blog 2', ['/blog/post-9']) };
@@ -98,11 +99,12 @@ test('a route left out on purpose, by an accepted difference, no longer counts a
 	assert.match(summarize(second), /3 of 10 routes of the old site present, 6 missing, 1 left out on purpose \(accepted\)/);
 });
 
-test('the link crawl finds routes the sitemap does not list: linked pages, pagination, redirect targets and feed items, and nothing off-site', async () => {
+test('the link crawl finds routes the sitemap does not list: linked and embedded pages, pagination, redirect targets and feed items, and nothing off-site', async () => {
 	const planned = await enumerateRoutes(origin(crawly));
 	const by = Object.fromEntries(planned.routes.map((r) => [r.route, r.sources]));
 	assert.deepEqual(by['/docs'], ['crawl', 'sitemap']);
 	assert.deepEqual(by['/docs/hidden'], ['crawl'], 'linked from /docs only');
+	assert.deepEqual(by['/view/chart-area'], ['crawl'], 'a page an iframe embeds is a route');
 	assert.deepEqual(by['/blog?page=2'], ['crawl'], 'a pagination query is kept');
 	assert.deepEqual(by['/blog/post-9'], ['crawl'], 'found by following pagination');
 	assert.deepEqual(by['/docs/moved'], ['redirect']);
@@ -193,7 +195,7 @@ test('template groups: URL pattern by source pattern or parent path, and the pag
 	assert.equal(widgetSignature('<main><button aria-expanded="true" data-slot="accordion-trigger">C</button><p>other text</p><script>"<div role=dialog>"</script></main>'), accordion, 'pages with the same kinds of control, whatever their text, stay one template');
 });
 
-test('above the threshold, every page gets http, rendered and seo, and visual, behaviour and responsiveness run on the template representative, said in the report', async () => {
+test('above the threshold, every page gets http, rendered, seo and behaviour, and visual and responsiveness run on the template representative, said in the report', async () => {
 	const docs = Array.from({ length: 22 }, (_, i) => `/docs/p${String(i + 1).padStart(2, '0')}`);
 	const site = await serve((path) => (docs.includes(path) ? { status: 200, body: page(`Doc ${path}`) } : undefined));
 	const changed = await serve((path) => (docs.includes(path) ? { status: 200, body: page(path === '/docs/p07' ? 'Renamed' : `Doc ${path}`) } : undefined));
@@ -203,13 +205,13 @@ test('above the threshold, every page gets http, rendered and seo, and visual, b
 		const rep = report.routes.find((r) => r.route === '/docs/p01')!;
 		const member = report.routes.find((r) => r.route === '/docs/p02')!;
 		assert.equal(rep.dimensions.visual, 'pass');
-		assert.deepEqual([member.dimensions.http, member.dimensions.rendered, member.dimensions.seo, member.dimensions.visual, member.dimensions.behaviour], ['pass', 'pass', 'pass', 'skipped', 'skipped']);
+		assert.deepEqual([member.dimensions.http, member.dimensions.rendered, member.dimensions.seo, member.dimensions.visual, member.dimensions.behaviour], ['pass', 'pass', 'pass', 'skipped', 'pass']);
 		assert.equal(member.ok, true, 'a dimension its representative carries does not count as not compared');
 		const renamed = report.routes.find((r) => r.route === '/docs/p07')!;
 		assert.deepEqual(renamed.failures.map((f) => f.dimension).filter((d, i, all) => all.indexOf(d) === i).sort(), ['rendered', 'seo']);
 		const text = summarize(report);
-		assert.match(text, /Visual, behaviour, responsiveness and motion ran on one representative per template group \(grouped by URL pattern, page layout and the kinds of control each page renders\): 1 group covering 22 pages\./);
-		assert.match(text, /pass +\/docs\/p02 .*\n {6}visual, behaviour, responsiveness and motion: checked on \/docs\/p01, the representative of its template group \(\/docs\/:page, 22 pages\)/);
+		assert.match(text, /weight and behaviour checks \(every control of every page is used\)\. Visual, responsiveness and motion ran on one representative per template group \(grouped by URL pattern, page layout and the kinds of control each page renders\): 1 group covering 22 pages\./);
+		assert.match(text, /pass +\/docs\/p02 .*\n {6}visual, responsiveness and motion: checked on \/docs\/p01, the representative of its template group \(\/docs\/:page, 22 pages\)/);
 		const every = await runCheck({ oldOrigin: origin(site), newOrigin: origin(site), routes: docs.slice(0, 1), browser, templates: false });
 		assert.equal(every.templates, undefined);
 	} finally {

@@ -26,6 +26,7 @@ import {
 } from './core.jsx';
 import { isReactServerMarkup } from '../source/h.mjs';
 import { drawerMarkup, earlyDrawer } from '../../lib/drawer-markup.js';
+import { APPLE_KEY, CTRL_KEYS, KEYS_ATTRIBUTE } from '../../../../parts/docsearch.ts';
 
 // The docs plugin's global data, read the way useActiveDocContext reads it.
 function docsPlugins() {
@@ -147,12 +148,10 @@ export function NavbarColorModeToggle({ className }) {
 	return <ColorModeToggle className={className} buttonClassName={navbar.style === 'dark' ? styles('Navbar/ColorModeToggle').darkNavbarColorModeToggle : undefined} />;
 }
 
-// DocSearch's button as it renders once the page has started: ⌘ K on Apple platforms, Ctrl K elsewhere. The page
-// writes the keys while it is parsed (lib/site.ts again after an in-place navigation), so they never flash.
-const SEARCH_KEYS = `(function(s){var m=/(Mac|iPhone|iPod|iPad)/i.test(navigator.platform),k=m?"Meta":"Control",b=s.parentNode.parentNode;b.setAttribute("aria-label","Search ("+k+"+k)");b.setAttribute("aria-keyshortcuts",k+"+k");s.insertAdjacentHTML("beforebegin",m?'<kbd class="DocSearch-Button-Key">\u2318</kbd><kbd class="DocSearch-Button-Key">K</kbd>':'<kbd class="DocSearch-Button-Key DocSearch-Button-Key--ctrl">Ctrl</kbd><kbd class="DocSearch-Button-Key">K</kbd>');s.remove()})(document.currentScript)`;
+// DocSearch 4's button once the page has started; the shared head script (parts/docsearch.ts) shows the platform's keys and name before it paints.
 export function SearchBar() {
 	return (
-		<button type="button" className="DocSearch DocSearch-Button" aria-label="Search (Meta+k)" aria-keyshortcuts="Meta+k">
+		<button type="button" className="DocSearch DocSearch-Button" aria-label="Search (Meta+k)" aria-keyshortcuts="Meta+k" {...{ [KEYS_ATTRIBUTE]: JSON.stringify({ label: CTRL_KEYS[4].label, shortcut: CTRL_KEYS[4].shortcut }) }}>
 			<span className="DocSearch-Button-Container">
 				<svg width="20" height="20" className="DocSearch-Search-Icon" viewBox="0 0 24 24" aria-hidden="true">
 					<circle cx="11" cy="11" r="8" stroke="currentColor" fill="none" strokeWidth="1.4"></circle>
@@ -160,9 +159,7 @@ export function SearchBar() {
 				</svg>
 				<span className="DocSearch-Button-Placeholder">Search</span>
 			</span>
-			<span className="DocSearch-Button-Keys">
-				<script>{SEARCH_KEYS}</script>
-			</span>
+			<span className="DocSearch-Button-Keys" dangerouslySetInnerHTML={{ __html: `${APPLE_KEY}${CTRL_KEYS[4].key}<kbd class="DocSearch-Button-Key">K</kbd>` }} />
 		</button>
 	);
 }

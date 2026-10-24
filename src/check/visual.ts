@@ -168,3 +168,25 @@ function diffImage(b: PNG, marked: Uint8Array, masked: (i: number) => boolean): 
 export function visuallyDifferent(diff: VisualDiff): boolean {
 	return Boolean(diff.sizeMismatch) || (diff.differing > 20 && diff.differing / diff.area > 0.0001);
 }
+
+const MIN_REACTION_PIXELS = 24;
+
+/** Where a step changed what the viewport shows: regions of differing pixels between the frames before and after it, outside `exclude` (the used control's own box, whose hover and press look are its own). */
+export function changedRegions(before: Buffer, after: Buffer, exclude: readonly Box[]): Box[] {
+	if (before.equals(after)) return [];
+	const a = PNG.sync.read(before);
+	const b = PNG.sync.read(after);
+	if (a.width !== b.width || a.height !== b.height) return [{ x: 0, y: 0, width: Math.max(a.width, b.width), height: Math.max(a.height, b.height) }];
+	const mask = new Uint8Array(a.width * a.height);
+	for (const box of exclude) markBox(mask, a.width, a.height, { x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) }, NOISE_PADDING);
+	const diff = rawDiff(a, b);
+	const hot = new Uint8Array(a.width * a.height);
+	let count = 0;
+	for (let i = 0; i < hot.length; i++) {
+		if (diff[i * 4 + 3]! === 0 || mask[i]) continue;
+		hot[i] = 1;
+		count++;
+	}
+	if (count < MIN_REACTION_PIXELS) return [];
+	return diffRegions(a.width, a.height, (x, y) => hot[y * a.width + x] === 1);
+}

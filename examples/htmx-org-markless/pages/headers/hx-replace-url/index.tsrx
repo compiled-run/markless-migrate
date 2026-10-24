@@ -8,7 +8,7 @@ export default function Page() @{
 		<main class="c content ">
 			<h1>HX-Replace-Url Response Header</h1>
 			{" "}
-			<p>{"The "}<code>HX-Replace-Url</code>{" header allows you to replace the current URL in the browser "}<a rel="noopener" target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/History_API">location history</a>{". This does not create a new history entry; in effect, it removes the previous current URL from the browser’s history. This is similar to the "}<a href="https://htmx.org/attributes/hx-replace-url/"><code>hx-replace-url</code>{" attribute"}</a>.</p>
+			<p>{"The "}<code>HX-Replace-Url</code>{" header allows you to replace the current URL in the browser "}<a rel="noopener" target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/History_API">location history</a>{". This does not create a new history entry; in effect, it removes the previous current URL from the browser’s history. This is similar to the "}<a href="/attributes/hx-replace-url/"><code>hx-replace-url</code>{" attribute"}</a>.</p>
 			{" "}
 			<p>If present, this header overrides any behavior defined with attributes.</p>
 			{" "}
@@ -18,7 +18,7 @@ export default function Page() @{
 			{" "}
 			<h2 id="notes">Notes</h2>
 			{" "}
-			<p>{"Response headers are not processed on 3xx response codes. see "}<a href="https://htmx.org/docs/#response-headers">Response Headers</a></p>
+			<p>{"Response headers are not processed on 3xx response codes. see "}<a href="/docs/#response-headers">Response Headers</a></p>
 			{" "}
 		</main>
 		<SiteFooter />

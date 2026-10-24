@@ -405,8 +405,14 @@ const data = sidebarIndex as { classes: Record<string, string>; files: Record<st
 const sidebars = new Map<string, SidebarItem[]>();
 const loadingSidebars = new Map<string, Promise<void>>();
 function loadSidebar(key: string | undefined): Promise<void> {
-	const file = key ? data.files[key] : undefined;
-	if (!key || !file || sidebars.has(key)) return Promise.resolve();
+	if (!key || sidebars.has(key)) return Promise.resolve();
+	const inline = document.querySelector('aside.theme-doc-sidebar-container > script.mm-sidebar-items');
+	if (inline && hint(inline.parentElement, 'sidebar') === key) {
+		sidebars.set(key, JSON.parse(inline.textContent ?? '[]') as SidebarItem[]);
+		return Promise.resolve();
+	}
+	const file = data.files[key];
+	if (!file) return Promise.resolve();
 	let loading = loadingSidebars.get(key);
 	if (!loading) {
 		loading = fetch(file)
@@ -545,19 +551,6 @@ function searchKeyDown(event: KeyboardEvent): void {
 	void loadSearch().then((m) => {
 		if (!m.isOpen() && !document.body.classList.contains('DocSearch--active')) m.open();
 	});
-}
-// The search button's shortcut keys for this platform, when an in-place navigation brought a button whose script did not run.
-function searchKeys(): void {
-	const mac = /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform);
-	const key = mac ? 'Meta' : 'Control';
-	for (const keys of document.querySelectorAll('.DocSearch-Button > .DocSearch-Button-Keys')) {
-		if (keys.querySelector('kbd')) continue;
-		keys.querySelector('script')?.remove();
-		const button = keys.parentElement!;
-		button.setAttribute('aria-label', `Search (${key}+k)`);
-		button.setAttribute('aria-keyshortcuts', `${key}+k`);
-		keys.insertAdjacentHTML('beforeend', mac ? '<kbd class="DocSearch-Button-Key">⌘</kbd><kbd class="DocSearch-Button-Key">K</kbd>' : '<kbd class="DocSearch-Button-Key DocSearch-Button-Key--ctrl">Ctrl</kbd><kbd class="DocSearch-Button-Key">K</kbd>');
-	}
 }
 function preloadSearch(event: Event): void {
 	if (!docsearch && event.target instanceof Element && event.target.closest('button.DocSearch-Button')) void loadSearch();
@@ -1340,7 +1333,6 @@ function pageInit(navigation?: Event): void {
 	}
 	parked.clear();
 	keepSearchHolder();
-	searchKeys();
 	initPlaygrounds();
 	readHints(document.body);
 	restoreTabs();
@@ -1366,8 +1358,18 @@ function pageInit(navigation?: Event): void {
 		// React remounts the navbar on a route change: a hover menu chosen from closes under the pointer until it moves.
 		for (const dropdown of document.querySelectorAll('.navbar .dropdown--hoverable:has(> .dropdown__menu:hover)')) {
 			const className = dropdown.className;
+			const menu = dropdown.querySelector<HTMLElement>(':scope > .dropdown__menu');
+			menu?.style.setProperty('transition', 'none');
 			dropdown.classList.remove('dropdown--hoverable');
-			document.addEventListener('pointermove', () => (dropdown.className = className), { once: true });
+			document.addEventListener(
+				'pointermove',
+				() => {
+					dropdown.className = className;
+					menu?.style.removeProperty('transition');
+					if (menu && !menu.getAttribute('style')) menu.removeAttribute('style');
+				},
+				{ once: true },
+			);
 		}
 		const anchored = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1)));
 		document.querySelector(`nav.${cls('Navbar/Layout', 'navbarHideable')}`)?.classList.toggle(cls('Navbar/Layout', 'navbarHidden'), Boolean(anchored));

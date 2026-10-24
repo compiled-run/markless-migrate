@@ -1,7 +1,5 @@
 import { AUTOMATIC_RULES, type AutomaticRule } from '../overrides.ts';
-import { HINTS } from './hints.ts';
-import { NOT_EXERCISED } from './locate.ts';
-import type { AssetRecord, Box, Failure, PageCapture } from './types.ts';
+import type { AssetRecord, Box, Failure, ImageRecord, PageCapture } from './types.ts';
 
 export { AUTOMATIC_RULES, type AutomaticRule };
 
@@ -100,19 +98,67 @@ export function embedCandidate(regions: readonly Box[], old: PageCapture, next: 
 	return candidate('live-embed', `every differing pixel is inside ${hosts.length === 1 ? 'an embed' : 'embeds'} from ${hosts.join(', ')} that both pages load from the same address`);
 }
 
+// An image optimizer's address names its source image in a query; a file's name, less its content hash and a width
+// suffix, names the image its renditions were made from (photo.Bx7c9Kq2.jpg, photo-640w.webp).
+const OPTIMIZERS = new Set(['/_next/image', '/_vercel/image']);
+const HASH = /[.-]([A-Za-z0-9_-]{8}|[a-f0-9]{16,})$/;
+const hashy = (token: string) => /\d/.test(token) || (/[a-z]/.test(token) && /[A-Z]/.test(token));
+export function imageIdentity(src: string): string {
+	const url = URL.parse(src, 'http://x');
+	if (!url) return src;
+	if (OPTIMIZERS.has(url.pathname) && url.searchParams.get('url')) return `${url.pathname}?url=${url.searchParams.get('url')}`;
+	let name = decodeURIComponent(url.pathname.slice(url.pathname.lastIndexOf('/') + 1)).replace(/\.[a-z0-9]+$/i, '');
+	for (let i = 0; i < 2; i++) {
+		const hash = HASH.exec(name);
+		if (hash && hashy(hash[1]!)) name = name.slice(0, hash.index);
+		name = name.replace(/[-_@]\d{2,4}w$/, '');
+	}
+	return `${url.origin}/${name}`;
+}
+
+/** The new page draws the old page's image from another rendition of it (a srcset width), as sharp as its box needs at the screenshot's scale. */
+export function responsiveImageCandidate(old: ImageRecord, next: ImageRecord | undefined): Failure['automatic'] {
+	if (!next || old.broken || next.broken || old.src === next.src || imageIdentity(old.src) !== imageIdentity(next.src)) return undefined;
+	if (!old.naturalHeight || !next.naturalHeight || Math.abs(old.naturalWidth / old.naturalHeight - next.naturalWidth / next.naturalHeight) > 0.01 * (old.naturalWidth / old.naturalHeight)) return undefined;
+	if (!next.box || next.naturalWidth < next.box.width) return undefined;
+	return candidate('responsive-image', `${next.src} is ${old.src} at ${next.naturalWidth}x${next.naturalHeight}, which the srcset gives a ${next.box.width} px wide box; the old page drew a ${old.naturalWidth} px file there`);
+}
+
+/** Pixels that differ only inside images the new page draws from a smaller rendition of the old page's file: the resampling, not the page. */
+export function responsiveRegionsCandidate(regions: readonly Box[], old: PageCapture, next: PageCapture, differing?: number): Failure['automatic'] {
+	if (!regions.length) return undefined;
+	// Paired by the picture and where it is drawn, not by position in the list: a page may add or drop an image elsewhere.
+	const renditions = next.images.flatMap((n) => {
+		const o = n.box && old.images.find((img) => img.box && imageIdentity(img.src) === imageIdentity(n.src) && Math.abs(img.box.x - n.box!.x) <= PAD && Math.abs(img.box.y - n.box!.y) <= PAD);
+		const auto = o && responsiveImageCandidate(o, n);
+		return auto ? [{ box: n.box!, auto }] : [];
+	});
+	if (!renditions.length || !regions.every((r) => renditions.some((x) => inside(r, x.box)))) return undefined;
+	const used = renditions.filter((x) => regions.some((r) => inside(r, x.box)));
+	// Resampling moves a few edge pixels; a different picture moves most of them.
+	if (differing !== undefined && differing > 0.1 * used.reduce((s, x) => s + x.box.width * x.box.height, 0)) return undefined;
+	return candidate('responsive-image', `every differing pixel is inside ${used.length === 1 ? 'an image' : `${used.length} images`} drawn from another width of the same file: ${used.map((x) => x.auto!.reason).join('; ')}`);
+}
+
+/** An image no viewport draws, which the old page fetched anyway and the new page leaves to load when it is drawn. */
+export function unshownLazyCandidate(old: ImageRecord, next: ImageRecord | undefined): Failure['automatic'] {
+	if (!next || old.box || next.box || next.loading !== 'lazy' || next.naturalWidth || imageIdentity(old.src) !== imageIdentity(next.src)) return undefined;
+	return candidate('unshown-lazy-image', `the page does not draw ${next.src} here, and the new page marks it loading="lazy", so it loads when it is drawn; the old page fetched it anyway`);
+}
+
 /** A third-party image both pages load from the same address that came back different: its content is live. */
 export function embedImageCandidate(src: string, old: PageCapture, next: PageCapture): Failure['automatic'] {
 	const has = (p: PageCapture) => (p.embeds ?? []).some((e) => e.tag === 'img' && sameEmbed(e.src, src));
 	return has(old) && has(next) ? candidate('live-embed', `${new URL(src).host} served a different image at the same address to each page, so its content is live`) : undefined;
 }
 
-/** An element the old page would not let a visitor use, which the new page refuses for the same reason (covered, hidden, outside the page); or one check could not drive on the old page at all, tried the same way on the new one. */
-export function unreachableCandidate(kind: string, oldReason: string, onNew: { readonly failed?: string; readonly unreachable?: string } | undefined, completedOnNew = false): Failure['automatic'] {
+/**
+ * An element the old page would not let a visitor use, which the new page refuses for the same reason (covered, hidden, outside the page).
+ * One check could not drive on the old page (not found again, or never settled) is never accepted: what it does was compared nowhere.
+ */
+export function unreachableCandidate(kind: string, oldReason: string, onNew: { readonly failed?: string; readonly unreachable?: string } | undefined): Failure['automatic'] {
 	const old = oldReason.replace(/^it could not be used on the old page: /, '');
-	if (kind === 'missing' || kind === 'timeout') {
-		if (!completedOnNew && onNew?.unreachable !== 'missing' && onNew?.unreachable !== 'timeout') return undefined;
-		return candidate('undrivable-on-old', `check could not drive it on the old page (${kind}: ${old}), so there is no old result to compare with; tried the same way on the new page, ${completedOnNew ? 'where it was used' : `where it could not be driven either (${onNew?.failed ?? onNew?.unreachable})`}; its role, name and address are compared by the rendered check`);
-	}
+	if (kind === 'missing' || kind === 'timeout') return undefined;
 	if (!onNew?.unreachable || onNew.unreachable !== kind) return undefined;
 	return candidate('unreachable-on-both', `neither page lets a visitor use it, for the same reason (${kind}): old ${old}; new ${onNew.failed ?? kind}`);
 }
@@ -155,7 +201,6 @@ export function storageCandidate(missing: readonly string[], extra: readonly str
 	return candidate('framework-storage', `${missing.map((m, i) => `${m.replace(/^[+-] /, '').split(' ').slice(0, 2).join(' ')} (${owners[i]})`).join(', ')}: written only by the old framework's own code, which the new page does not run`);
 }
 
-const journeyDifference = (f: Failure) => !f.check.startsWith(NOT_EXERCISED) && (f.hint === HINTS.behaviour || f.hint === HINTS.keyboard);
 
 const announces = (f: Failure) => /\bannounced:/.test(f.expected) || /\bannounced:/.test(f.actual);
 
@@ -171,7 +216,6 @@ export function grantAutomatic(failures: readonly Failure[], off: readonly Autom
 		const auto = f.automatic;
 		if (f.accepted || !auto || off.includes(auto.rule)) return f;
 		if (auto.rule === 'framework-markup' && (otherTree(f) || otherAnnouncements)) return f;
-		if (auto.rule === 'framework-storage' && open.some((o) => o !== f && o.route === f.route && o.role === f.role && o.automatic?.rule !== 'framework-storage' && journeyDifference(o))) return f;
 		return { ...f, accepted: { reason: auto.reason, by: 'markless-migrate', date, automatic: auto.rule } };
 	});
 }

@@ -1,7 +1,13 @@
 [
 	{"selector": "[data-slot=\"code\"] button", "action": "click"},
+	{"selector": "[data-slot=\"preview\"] button", "action": "notify", "routes": "^/docs/components/[^/]+/(bubble|marker)$"},
 	{"selector": "[class~=\"group/buttons\"] > [data-slot=\"button\"]:first-of-type", "action": "copy"},
 	{"selector": "[data-slot=\"sidebar-trigger\"], [data-slot=\"sidebar-rail\"]", "action": "toggle"},
 	{"selector": "button:has(> svg.lucide-terminal)", "action": "copy"},
-	{"selector": "[data-slot=\"preview\"] button[data-slot=\"button\"]", "action": "notify", "routes": "^/docs/components/[^/]+/(sonner|toast)$"}
+	{"selector": "[data-slot=\"preview\"] button[data-slot=\"button\"]", "action": "notify", "routes": "^/docs/components/[^/]+/(sonner|toast)$"},
+	{"selector": "[data-slot=\"preview\"] form[data-slot=\"questionnaire\"] button[type=\"reset\"]", "action": "notify", "routes": "^/docs/components/[^/]+/questionnaire$"},
+	{"selector": "[data-slot=\"preview\"] button[data-slot=\"button\"]:not([aria-label]):not([aria-pressed]):not([aria-haspopup])", "action": "play", "routes": "^/docs/components/[^/]+/(code-block|trace)$"},
+	{"selector": "[data-slot=\"preview\"] button[data-slot=\"button\"]:not([aria-pressed]):not([aria-haspopup]), [data-slot=\"preview\"] button[data-slot=\"tooltip-trigger\"][aria-label^=\"Reset\"]", "action": "play", "routes": "^/docs/components/[^/]+/message-scroller$"},
+	{"selector": "[data-slot=\"preview\"] [data-slot=\"collapsible-trigger\"]", "action": "play", "routes": "^/docs/components/[^/]+/bubble$"},
+	{"selector": "[data-slot=\"preview\"] button[data-slot=\"button\"]:not([aria-haspopup]):not([aria-expanded])", "action": "open", "routes": "^/docs/components/[^/]+/command$"}
 ]

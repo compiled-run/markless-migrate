@@ -2,6 +2,7 @@
 import { createFocusTrap, type FocusTrap } from 'focus-trap';
 import Mark from 'mark.js/src/vanilla.js';
 import MiniSearch, { type SearchResult } from 'minisearch';
+import { SEARCH_SHELL } from './search-shell.ts';
 
 interface Result {
 	title: string;
@@ -78,6 +79,10 @@ async function excerptMap(page: string): Promise<Map<string, string>> {
 	return map;
 }
 
+export function preloadIndex(): void {
+	void loadIndex();
+}
+
 export function openSearch(): void {
 	if (open) return;
 	open = true;
@@ -96,11 +101,15 @@ export function openSearch(): void {
 	let run = 0;
 	let trap: FocusTrap | undefined;
 
-	const close = h('button', { type: 'button', class: 'search-loading-close' }, [icon('vpi-close')]);
-	const loading = h('div', { class: 'search-loading' }, [h('span', {}, ['Loading search index...']), close]);
-	const shell = h('div', { class: 'shell' }, [loading]);
-	const backdrop = h('div', { class: 'backdrop' });
-	const root = h('div', { role: 'button', 'aria-expanded': 'true', 'aria-haspopup': 'listbox', 'aria-labelledby': 'localsearch-label', class: 'VPLocalSearchBox' }, [backdrop, shell]);
+	// A click before this module arrived drew the same box; it is replaced in place, in one task.
+	const early = document.querySelector<HTMLElement>('.VPLocalSearchBox[data-mm-overflow]');
+	const previousOverflow = early ? (early.getAttribute('data-mm-overflow') ?? '') : document.body.style.overflow;
+	const template = document.createElement('template');
+	template.innerHTML = SEARCH_SHELL;
+	const root = template.content.firstElementChild as HTMLElement;
+	const backdrop = root.querySelector<HTMLElement>(':scope > .backdrop')!;
+	const shell = root.querySelector<HTMLElement>(':scope > .shell')!;
+	const close = shell.querySelector<HTMLElement>('.search-loading-close')!;
 
 	const input = h('input', {
 		'aria-autocomplete': 'both',
@@ -274,8 +283,6 @@ export function openSearch(): void {
 		closeSearch();
 	};
 
-	const previousOverflow = document.body.style.overflow;
-
 	function closeSearch(): void {
 		if (!open) return;
 		open = false;
@@ -325,7 +332,8 @@ export function openSearch(): void {
 		disableMouseOver = false;
 	});
 
-	document.body.append(root);
+	if (early) early.replaceWith(root);
+	else document.body.append(root);
 	history.pushState(null, '', null);
 	window.addEventListener('popstate', onPopstate);
 	window.addEventListener('keydown', onKeydown);

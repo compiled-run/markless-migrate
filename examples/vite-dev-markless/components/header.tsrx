@@ -52,7 +52,7 @@ export default function Header() @{
 				mobileOpen = true; lockBodyScroll(); activateFocusTrap();
 			} else if (name === 'menu' || name === 'close') {
 				mobileOpen = false; navResources = false; navVersion = false; languageMenu = false; unlockBodyScroll(); deactivateFocusTrap();
-} else if (mobileOpen && (event.target as Element).closest('#mobile-menu a')) {
+} else if (mobileOpen && (event.target as Element).closest('#mobile-menu a') && !(location.pathname === '/' && (event.target as Element).closest('#mobile-menu > section > div:first-child > a[href="/"]'))) {
 				mobileOpen = false; navResources = false; navVersion = false; languageMenu = false; unlockBodyScroll(); deactivateFocusTrap();
 			}
 		}}

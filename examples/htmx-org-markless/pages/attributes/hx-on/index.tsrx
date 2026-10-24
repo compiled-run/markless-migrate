@@ -18,7 +18,7 @@ export default function Page() @{
 			{" "}
 			<p>Note that this syntax can be used to capture all htmx events, as well as most other custom events, in addition to the standard DOM events.</p>
 			{" "}
-			<p>{"One gotcha to note is that DOM attributes do not preserve case. This means, unfortunately, an attribute like "}<code>hx-on:htmx:beforeRequest</code>{" "}<strong>will not work</strong>{", because the DOM lowercases the attribute names. Fortunately, htmx supports both camel case event names and also "}<a href="https://htmx.org/docs/#events">kebab-case event names</a>{", so you can use "}<code>hx-on:htmx:before-request</code>{" instead."}</p>
+			<p>{"One gotcha to note is that DOM attributes do not preserve case. This means, unfortunately, an attribute like "}<code>hx-on:htmx:beforeRequest</code>{" "}<strong>will not work</strong>{", because the DOM lowercases the attribute names. Fortunately, htmx supports both camel case event names and also "}<a href="/docs/#events">kebab-case event names</a>{", so you can use "}<code>hx-on:htmx:before-request</code>{" instead."}</p>
 			{" "}
 			<p>{"In order to make writing htmx-based event handlers a little easier, you can use the shorthand double-colon "}<code>hx-on::</code>{" for htmx events, and omit the “htmx” part:"}</p>
 			{" "}

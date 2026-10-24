@@ -52,12 +52,13 @@ test('a name with a colon, which the aria snapshot quotes as YAML, is read back,
 	assert.equal(anchor?.by, 'click link "Anchor link for: tips"', JSON.stringify(elements));
 });
 
-test('a control check cannot drive on the old page is judged the same way on the new page, never red only because the old side was unreachable', () => {
+test('a control check could not drive on the old page is never accepted: what it does was compared nowhere', () => {
 	const old = 'it could not be used on the old page: link "x" could not be used: missing: it is not on the page';
-	assert.equal(unreachableCandidate('missing', old, undefined, true)?.rule, 'undrivable-on-old');
-	assert.equal(unreachableCandidate('timeout', old, { failed: 'timeout', unreachable: 'missing' })?.rule, 'undrivable-on-old');
+	assert.equal(unreachableCandidate('missing', old, undefined), undefined, 'used on the new page, but there is no old result to compare it with');
+	assert.equal(unreachableCandidate('timeout', old, { failed: 'timeout', unreachable: 'missing' }), undefined, 'driven on neither page');
 	assert.equal(unreachableCandidate('missing', old, { failed: 'covered', unreachable: 'occluded' }), undefined, 'the new page refusing it for a reason of its own stays red');
-	assert.equal(unreachableCandidate('occluded', old, undefined, true), undefined, 'a control the old page covers and the new page lets through is a real difference');
+	assert.equal(unreachableCandidate('occluded', old, undefined), undefined, 'a control the old page covers and the new page lets through is a real difference');
+	assert.equal(unreachableCandidate('occluded', old, { failed: 'covered', unreachable: 'occluded' })?.rule, 'unreachable-on-both');
 });
 
 // The embed changes its colour, fetches with a new query and posts its own log events a different number of times every load, as a live video player does.
