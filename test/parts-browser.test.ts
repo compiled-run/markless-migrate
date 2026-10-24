@@ -222,6 +222,7 @@ test('recharts: the pointer picks the point whose range it is in, the tooltip go
 		`<div style="padding:50px"><div class="recharts-wrapper" style="position:relative;width:300px;height:100px" data-mm-chart="1"><svg class="recharts-surface" tabindex="0" width="300" height="100" style="display:block" data-mm-facts='${facts}'></svg><div class="recharts-tooltip-wrapper" style="visibility: hidden; position: absolute; top: 0px; left: 0px;"><div style="width:40px;height:20px">tip</div></div></div></div><button>after</button>`,
 		['recharts'],
 	);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
 	await page.evaluate(() => {
 		(window as unknown as { seen: number[] }).seen = [];
 		document.querySelector('.recharts-wrapper')!.addEventListener('mmchart', (e) => (window as unknown as { seen: number[] }).seen.push((e as CustomEvent<number>).detail));
@@ -279,6 +280,7 @@ test('recharts: an SVG scaled to its container maps the pointer and the tooltip 
 		`<div class="recharts-wrapper" style="position:relative;width:600px;height:200px" data-mm-chart="1"><svg class="recharts-surface" viewBox="0 0 300 100" style="width:100%;height:100%;display:block" data-mm-facts='${facts}'></svg><svg class="recharts-surface" style="display:none" data-mm-facts='{}'></svg><div class="recharts-tooltip-wrapper" style="visibility: hidden; position: absolute; top: 0px; left: 0px;">tip</div></div>`,
 		['recharts'],
 	);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
 	const tip = page.locator('.recharts-tooltip-wrapper');
 	await page.mouse.move(250, 100);
 	assert.match(await tooltipAt(page, /translate\(100px, 40px\)/), /translate\(100px, 40px\)/, 'state 0 at x 125 in the SVG, its translate doubled');
@@ -293,9 +295,22 @@ test('recharts: a radar\'s tooltip follows the pointer\'s radius on the point\'s
 		`<div class="recharts-wrapper" style="position:relative;width:200px;height:200px" data-mm-chart="1"><svg class="recharts-surface" width="200" height="200" style="display:block" data-mm-facts='${facts}'></svg><div class="recharts-tooltip-wrapper" style="visibility: hidden; position: absolute; top: 0px; left: 0px;"><div style="width:40px;height:20px">tip</div></div></div>`,
 		['recharts'],
 	);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
 	const tip = page.locator('.recharts-tooltip-wrapper');
 	await page.mouse.move(120, 40);
 	assert.match(await tooltipAt(page, /translate\(110px, 46\.7\d*px\)/), /translate\(110px, 46\.7\d*px\)/, 'at the pointer\'s radius (63) straight up the axis, past the offset');
+	await page.close();
+});
+
+test('recharts: a pointer already over the chart when it loads gets the tooltip from its first move, with no pointerover', async () => {
+	const facts = JSON.stringify({ w: 300, h: 100, v: [5, 5, 290, 90], m: 'x', g: [[0, 149, 0], [150, 300, 1]], p: [[50, 20], [200, 20]] });
+	const page = await open(
+		`<div class="recharts-wrapper" style="position:relative;width:300px;height:100px" data-mm-chart="1"><svg class="recharts-surface" width="300" height="100" style="display:block" data-mm-facts='${facts}'></svg><div class="recharts-tooltip-wrapper" style="visibility: hidden; position: absolute; top: 0px; left: 0px;">tip</div></div>`,
+		['recharts'],
+	);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
+	await page.evaluate(() => document.querySelector('svg.recharts-surface')!.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 200, clientY: 50 })));
+	assert.match(await tooltipAt(page, /translate\(200px, 20px\)/), /translate\(200px, 20px\)/);
 	await page.close();
 });
 
@@ -305,6 +320,7 @@ test('recharts: a pie\'s sector under the pointer is its point, and the tooltip 
 		`<div class="recharts-wrapper" style="position:relative;width:200px;height:200px" data-mm-chart="1"><svg class="recharts-surface" width="200" height="200" style="display:block" data-mm-facts='${facts}'><g class="recharts-pie-sector"><path d="M100,100 L200,100 A100,100 0 0 0 100,0 Z"></path></g><g class="recharts-pie-sector"><path d="M100,100 L100,0 A100,100 0 1 0 200,100 Z"></path></g></svg><div class="recharts-tooltip-wrapper" style="visibility: hidden; position: absolute; top: 0px; left: 0px;">tip</div></div>`,
 		['recharts'],
 	);
+	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-chart'));
 	const tip = page.locator('.recharts-tooltip-wrapper');
 	await page.mouse.move(160, 40);
 	assert.match(await tooltipAt(page, /translate\(120px, 40px\)/), /translate\(120px, 40px\)/);
