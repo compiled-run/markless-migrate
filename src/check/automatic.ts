@@ -122,8 +122,48 @@ export function responsiveImageCandidate(old: ImageRecord, next: ImageRecord | u
 	return candidate('responsive-image', `${next.src} is ${old.src} at ${next.naturalWidth}x${next.naturalHeight}, which the srcset gives a ${next.box.width} px wide box; the old page drew a ${old.naturalWidth} px file there`);
 }
 
+/** Decoded screenshots of both pages, and where the shot starts on the page (a shot clipped around a state's target). */
+export interface Shots {
+	readonly old: { readonly width: number; readonly height: number; readonly data: Uint8Array };
+	readonly new: { readonly width: number; readonly height: number; readonly data: Uint8Array };
+	readonly x?: number;
+	readonly y?: number;
+}
+
+const BLOCK = 8;
+
+/**
+ * The same picture at another resolution: its 8 px blocks average to nearly the same colour on both shots. Resampling
+ * moves single pixels (most of them, in a grainy photo) but not the blocks; another picture moves the blocks.
+ */
+export function samePicture(shots: Shots, box: Box): boolean {
+	const x0 = Math.max(0, box.x - (shots.x ?? 0));
+	const y0 = Math.max(0, box.y - (shots.y ?? 0));
+	const x1 = Math.min(shots.old.width, shots.new.width, x0 + box.width);
+	const y1 = Math.min(shots.old.height, shots.new.height, y0 + box.height);
+	const diffs: number[] = [];
+	for (let by = y0; by + BLOCK <= y1; by += BLOCK)
+		for (let bx = x0; bx + BLOCK <= x1; bx += BLOCK) {
+			let d = 0;
+			for (let c = 0; c < 3; c++) {
+				let a = 0;
+				let b = 0;
+				for (let y = by; y < by + BLOCK; y++)
+					for (let x = bx; x < bx + BLOCK; x++) {
+						a += shots.old.data[(y * shots.old.width + x) * 4 + c]!;
+						b += shots.new.data[(y * shots.new.width + x) * 4 + c]!;
+					}
+				d = Math.max(d, Math.abs(a - b) / (BLOCK * BLOCK));
+			}
+			diffs.push(d);
+		}
+	if (!diffs.length) return false;
+	diffs.sort((p, q) => p - q);
+	return diffs.reduce((s, d) => s + d, 0) / diffs.length <= 6 && diffs[Math.floor(diffs.length * 0.98)]! <= 24;
+}
+
 /** Pixels that differ only inside images the new page draws from a smaller rendition of the old page's file: the resampling, not the page. */
-export function responsiveRegionsCandidate(regions: readonly Box[], old: PageCapture, next: PageCapture, differing?: number): Failure['automatic'] {
+export function responsiveRegionsCandidate(regions: readonly Box[], old: PageCapture, next: PageCapture, differing?: number, shots?: Shots): Failure['automatic'] {
 	if (!regions.length) return undefined;
 	// Paired by the picture and where it is drawn, not by position in the list: a page may add or drop an image elsewhere.
 	const renditions = next.images.flatMap((n) => {
@@ -135,8 +175,9 @@ export function responsiveRegionsCandidate(regions: readonly Box[], old: PageCap
 	const within = (r: Box, b: Box) => inside(r, { x: b.x - 16, y: b.y - 16, width: b.width + 32, height: b.height + 32 });
 	if (!renditions.length || !regions.every((r) => renditions.some((x) => within(r, x.box)))) return undefined;
 	const used = renditions.filter((x) => regions.some((r) => within(r, x.box)));
-	// Resampling moves a few edge pixels; a different picture moves most of them.
-	if (differing !== undefined && differing > 0.1 * used.reduce((s, x) => s + x.box.width * x.box.height, 0)) return undefined;
+	if (shots) {
+		if (!used.every((x) => samePicture(shots, x.box))) return undefined;
+	} else if (differing !== undefined && differing > 0.1 * used.reduce((s, x) => s + x.box.width * x.box.height, 0)) return undefined;
 	return candidate('responsive-image', `every differing pixel is inside ${used.length === 1 ? 'an image' : `${used.length} images`} drawn from another width of the same file: ${used.map((x) => x.auto!.reason).join('; ')}`);
 }
 

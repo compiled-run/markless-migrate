@@ -175,3 +175,27 @@ test('the checker leaves an image the page does not draw to load lazily, where t
 	assert.equal(unshownLazyCandidate(old, { ...old, naturalWidth: 0, naturalHeight: 0 }), undefined, 'eager and not loaded: broken, not lazy');
 	assert.equal(unshownLazyCandidate(old, { ...old, naturalWidth: 0, naturalHeight: 0, loading: 'lazy', box: { x: 0, y: 0, width: 10, height: 10 } }), undefined, 'drawn and not loaded');
 });
+
+test('the same picture at another resolution keeps its 8 px blocks; another picture does not', async () => {
+	const { samePicture } = await import('../src/check/automatic.ts');
+	const size = 64;
+	const image = (pixel: (x: number, y: number) => [number, number, number]) => {
+		const data = new Uint8Array(size * size * 4);
+		for (let y = 0; y < size; y++)
+			for (let x = 0; x < size; x++) {
+				const [r, g, b] = pixel(x, y);
+				data.set([r, g, b, 255], (y * size + x) * 4);
+			}
+		return { width: size, height: size, data };
+	};
+	let seed = 7;
+	const noise = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31) * 80 - 40;
+	const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+	const base = (x: number, y: number): [number, number, number] => [x * 3, y * 3, 128];
+	const old = image(base);
+	const grain = image((x, y) => base(x, y).map((v) => clamp(v + noise())) as [number, number, number]);
+	const other = image((x, y) => [255 - x * 3, 128, y * 3]);
+	const box = { x: 0, y: 0, width: size, height: size };
+	assert.equal(samePicture({ old, new: grain }, box), true, 'grain re-sampled: most pixels differ, the blocks do not');
+	assert.equal(samePicture({ old, new: other }, box), false);
+});

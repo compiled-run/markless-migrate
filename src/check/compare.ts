@@ -1,4 +1,5 @@
 import { sameContentType } from './assets.ts';
+import { PNG } from 'pngjs';
 import { embedFailures } from './embeds.ts';
 import { loopFailures } from './loops.ts';
 import { imageLoadingFailures } from './image-loading.ts';
@@ -264,7 +265,7 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 			if (diff.sizeMismatch) {
 				failures.push({ route, dimension: 'visual', check: 'page size', viewport, expected: diff.sizeMismatch.expected, actual: `${diff.sizeMismatch.actual}; ${where}`, hint: HINTS.visualSize });
 			} else {
-				const auto = embedCandidate(diff.regions, a, n) ?? responsiveRegionsCandidate(diff.regions, a, n, diff.differing);
+				const auto = embedCandidate(diff.regions, a, n) ?? responsiveRegionsCandidate(diff.regions, a, n, diff.differing, { old: PNG.sync.read(a.screenshot), new: PNG.sync.read(n.screenshot) });
 				const failure: Failure = { route, dimension: 'visual', check: 'screenshot', viewport, expected: 'same pixels outside the noise mask', actual: where, hint: HINTS.visual, ...(auto ? { automatic: auto } : {}) };
 				if (nearest[0]) failureElements.set(failure, { new: nearest[0] });
 				failures.push(failure);
