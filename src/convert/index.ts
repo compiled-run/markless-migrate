@@ -8,7 +8,7 @@ import { captureAllReveals, type Reveal } from './reveal.ts';
 import { captureChoices, type Choice } from './choices.ts';
 import { parseFragment } from 'parse5';
 import { cleanDocument, frameworkBuilds, lateHead, type Dropped } from './clean.ts';
-import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, walk, type Document, type Element } from './dom.ts';
+import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, textContent, walk, type Document, type Element } from './dom.ts';
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
 import { BaseTabsPlan, CheckablePlan, DisclosurePlan, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
 import { captureScenes, type Scene } from './scenes.ts';
@@ -932,8 +932,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	if (headScripts.length) documentParts.push({ part: 'docsearch', import: (dir) => `import { PLATFORM_KEYS_SCRIPT } from '${dir}/docsearch.ts';` });
 	// A theme toggle the site names switches the theme from the first paint, before the page's code has arrived.
 	const toggle = themeToggleOf(await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as Record<string, unknown>[], () => []));
-	const themeScript = [...prepared.values()].flatMap((p) => p.head).find((t) => t.tag === 'script' && t.text && nextThemesOptions(t.text));
-	const themeOptions = toggle && themeScript?.text ? nextThemesOptions(themeScript.text, toggle.disableTransitionOnChange === true) : undefined;
+	// ThemeProvider writes its script at the start of <body>; another site may keep it in <head>.
+	const scripts = [...prepared.values()].flatMap((p) => [...p.head.filter((t) => t.tag === 'script').map((t) => t.text ?? ''), ...p.before.flatMap((el) => [...walk(el)].filter((s) => s.tagName === 'script').map((s) => textContent(s)))]);
+	const themeScript = scripts.find((text) => nextThemesOptions(text));
+	const themeOptions = toggle && themeScript ? nextThemesOptions(themeScript, toggle.disableTransitionOnChange === true) : undefined;
 	if (toggle && themeOptions) {
 		const { disableTransitionOnChange: _, ...named } = toggle;
 		headScripts.push(`earlyThemeScript(${JSON.stringify(themeOptions)}, ${JSON.stringify(named)})`);
