@@ -1,12 +1,8 @@
 import * as rive from '@rive-app/canvas-lite';
 import riveWasm from '@rive-app/canvas-lite/rive.wasm?url';
-import masthead from '../assets/vite/animations/641_x_629_vite_masthead.riv?url';
-import richFeatures from '../assets/vite/animations/563_x_420_rich_features.riv?url';
-import flexiblePlugin from '../assets/vite/animations/640_x_300_flexible_plugin.riv?url';
+import { riveSource, type RiveName } from './rive-sources.ts';
 
-const SOURCES = { masthead, richFeatures, flexiblePlugin };
-export type RiveName = keyof typeof SOURCES;
-export const riveSource = (name: RiveName): string => SOURCES[name];
+export type { RiveName };
 
 export interface RiveOptions {
 	readonly desktopSrc: RiveName;
@@ -44,7 +40,7 @@ export function riveAnimation(options: RiveOptions) {
 		const load = () => {
 			if (disposed || instance) return;
 			const created: typeof instance = new rive.Rive({
-				src: SOURCES[mobile && options.mobileSrc ? options.mobileSrc : options.desktopSrc],
+				src: riveSource(mobile && options.mobileSrc ? options.mobileSrc : options.desktopSrc),
 				canvas,
 				autoplay: false,
 				stateMachines: options.stateMachines ?? 'State Machine 1',

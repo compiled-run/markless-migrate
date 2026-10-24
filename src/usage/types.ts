@@ -105,7 +105,7 @@ export interface UsageInventory {
 	/** Every third-party embed the pages carry, per provider, with what the migration does with it. */
 	readonly embeds?: readonly EmbedUse[];
 	/** The DocSearch (Algolia) search the pages run, read from their scripts or the theme's config: convert gives it to the docsearch part. */
-	readonly docsearch?: { readonly appId: string; readonly apiKey: string; readonly indexName: string };
+	readonly docsearch?: { readonly appId: string; readonly apiKey: string; readonly indexName: string; /** Its dialog as the old site first draws it on a press. */ readonly shell?: string };
 	readonly limits: readonly string[];
 }
 
