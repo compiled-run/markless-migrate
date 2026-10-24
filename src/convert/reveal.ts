@@ -46,6 +46,12 @@ const CONTROLS: readonly (readonly [selector: string, action: RevealAction])[] =
 	['[data-slot="context-menu-trigger"]', 'contextmenu'],
 ];
 
+// A hover trigger rendered through its child (Radix asChild, Base UI render) carries the child's data-slot: Radix's keeps
+// its data-state, Base UI's its generated id. Hovered in a pass of its own, cached apart from the controls above.
+const CHILD_HOVER: readonly (readonly [selector: string, action: RevealAction])[] = [
+	[':is(button, a)[data-state="closed"]:not([aria-expanded]):not([aria-pressed]):not([role]), :is(button, a)[id^="base-ui-"]:not([aria-haspopup]):not([aria-expanded]):not([aria-pressed]):not([role])', 'hover'],
+];
+
 const key = (route: string, extra: readonly (readonly [string, string])[] = []) => createHash('sha256').update(`reveal:${route}${extra.length ? `|${JSON.stringify(extra)}` : ''}`).digest('hex').slice(0, 16);
 
 interface Candidate {
@@ -59,7 +65,7 @@ interface Candidate {
 	readonly visible: boolean;
 }
 
-async function candidates(page: Page, extra: readonly (readonly [string, RevealAction])[]): Promise<Candidate[]> {
+async function candidates(page: Page, extra: readonly (readonly [string, RevealAction])[], controls: readonly (readonly [string, RevealAction])[] = CONTROLS): Promise<Candidate[]> {
 	const listed = new Set(extra.map(([selector]) => selector));
 	const found = await page.evaluate((controls) => {
 		const pathOf = (el: Element): number[] => {
@@ -91,7 +97,7 @@ async function candidates(page: Page, extra: readonly (readonly [string, RevealA
 			}
 		}
 		return out;
-	}, [...CONTROLS, ...extra] as unknown as [string, string][]);
+	}, [...controls, ...extra] as unknown as [string, string][]);
 	return found.map(({ selector, ...c }) => ({ ...c, ...(listed.has(selector) ? { extra: true } : {}) }));
 }
 
@@ -109,8 +115,12 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 	await page.evaluate(() => {
 		const w = window as unknown as { __mmAdded?: { parent: Element; node: Element; next: Element | null }[]; __mmObserver?: MutationObserver };
 		w.__mmAdded = [];
+		(w as unknown as { __mmChanged: Element[] }).__mmChanged = [];
 		w.__mmObserver = new MutationObserver((records) => {
-			for (const r of records) for (const n of r.addedNodes) if (n instanceof Element && r.target instanceof Element) w.__mmAdded!.push({ parent: r.target, node: n, next: n.nextElementSibling });
+			for (const r of records) {
+				if (r.target instanceof Element && (r.addedNodes.length || r.removedNodes.length)) (w as unknown as { __mmChanged: Element[] }).__mmChanged.push(r.target);
+				for (const n of r.addedNodes) if (n instanceof Element && r.target instanceof Element) w.__mmAdded!.push({ parent: r.target, node: n, next: n.nextElementSibling });
+			}
 		});
 		w.__mmObserver.observe(document.body, { childList: true, subtree: true });
 	});
@@ -158,7 +168,10 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 			const w = window as unknown as { __mmObserver?: MutationObserver; __mmChain?: Element[] };
 			w.__mmObserver?.disconnect();
 			const chain = w.__mmChain ?? [];
-			const depth = chain.findIndex((n) => n.isConnected);
+			// The nearest ancestor holding every place the swap changed: the framework may keep the control's own parent and
+			// change its siblings too (shadcn's View Code keeps the button's wrapper for the comment and swaps the figure).
+			const changed = ((w as unknown as { __mmChanged?: Element[] }).__mmChanged ?? []).filter((n) => n.isConnected);
+			const depth = chain.findIndex((n) => n.isConnected && changed.every((c) => n.contains(c)));
 			return depth < 0 ? undefined : { depth: depth + 1, html: chain[depth]!.innerHTML };
 		});
 		return kept ? [{ into: 'replace', before: kept.depth, html: kept.html }] : [];
@@ -232,8 +245,8 @@ export type RevealMemo = Map<string, { readonly html: string; readonly reveal: R
 const REUSE_AFTER = 3;
 
 /** Uses every control on a route that holds content back, on each viewport where it can be used, and records what each showed. */
-export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, memo: RevealMemo = new Map(), viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = []): Promise<RevealCapture> {
-	const file = join(dir, `${key(route, extra)}.json`);
+export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, memo: RevealMemo = new Map(), viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = [], pass: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string } = { controls: CONTROLS, tag: '' }): Promise<RevealCapture> {
+	const file = join(dir, `${key(`${pass.tag}${route}`, extra)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as RevealCapture, () => undefined);
 	if (cached && cached.route === route) return cached;
 	const reveals: Reveal[] = [];
@@ -246,7 +259,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 		hidden = false;
 		let open = await fresh(browser, origin, route, viewport);
 		try {
-			const found = await candidates(open.page, extra);
+			const found = await candidates(open.page, extra, pass.controls);
 			hidden = found.some((c) => !c.visible && !done.has(c.key));
 			for (const candidate of found) {
 				if (!candidate.visible || done.has(candidate.key)) continue;
@@ -289,7 +302,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 }
 
 /** Captures every route's reveals, `concurrency` at a time. */
-export async function captureAllReveals(browser: Browser, origin: string, routes: readonly string[], dir: string, options: { concurrency?: number; log?: (line: string) => void; extra?: readonly (readonly [string, RevealAction])[] } = {}): Promise<RevealCapture[]> {
+export async function captureAllReveals(browser: Browser, origin: string, routes: readonly string[], dir: string, options: { concurrency?: number; log?: (line: string) => void; extra?: readonly (readonly [string, RevealAction])[]; opens?: readonly { readonly selector: string; readonly routes?: string }[] } = {}): Promise<RevealCapture[]> {
 	const memo: RevealMemo = new Map();
 	const out: RevealCapture[] = new Array(routes.length);
 	let next = 0;
@@ -297,11 +310,111 @@ export async function captureAllReveals(browser: Browser, origin: string, routes
 	const worker = async () => {
 		while (next < routes.length) {
 			const index = next++;
-			out[index] = await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, options.extra ?? []).catch((error: Error) => ({ route: routes[index]!, reveals: [], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
+			const failed = (error: Error): RevealCapture => ({ route: routes[index]!, reveals: [], skipped: [`the route: ${error.message.split('\n')[0]}`] });
+			const own = await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, options.extra ?? []).catch(failed);
+			// The site's listed controls (View Code) again on their own, cached apart: their swaps are taken from here.
+			const listed = options.extra?.length ? await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, options.extra, { controls: [], tag: 'listed-v2:' }).catch(failed) : undefined;
+			const relisted = new Set(listed?.reveals.flatMap((r) => [r.key, `${r.sig}#${r.nth}`]) ?? []);
+			const base = listed ? [...own.reveals.filter((r) => !((relisted.has(r.key) || relisted.has(`${r.sig}#${r.nth}`)) && r.added.every((a) => a.into === 'replace' || a.into === 'clipboard'))), ...listed.reveals] : own.reveals;
+			const child = await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, [], { controls: CHILD_HOVER, tag: 'child-hover:' }).catch(failed);
+			// Controls the site lists as opening a layer without ARIA saying so, on the routes it lists them for.
+			const opens = (options.opens ?? []).filter((o) => !o.routes || new RegExp(o.routes).test(routes[index]!)).map((o) => [o.selector, 'click'] as const);
+			const opened = opens.length ? await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, [], { controls: opens, tag: 'open:' }).catch(failed) : undefined;
+			const keys = new Set(base.map((r) => r.key));
+			const more = [...child.reveals, ...(opened?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? [])];
+			out[index] = { route: own.route, reveals: [...base, ...more.filter((r) => !keys.has(r.key))], skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped, ...(opened?.skipped ?? [])] };
 			done++;
 			options.log?.(`revealed ${done}/${routes.length} ${routes[index]} (${out[index]!.reveals.length} controls)`);
 		}
 	};
 	await Promise.all(Array.from({ length: Math.max(1, options.concurrency ?? 4) }, worker));
 	return out;
+}
+
+// React Aria's TooltipTrigger renders no element and marks nothing on its child, a PreviewTrigger's press opens nothing,
+// and a context-menu MenuTrigger's area is a plain pressable: what each shows is found by resting on each React Aria
+// control that opens nothing else, and right-clicking each such area.
+const RAC_HOVER = '[data-rac][data-react-aria-pressable]:not([aria-expanded]):not([aria-haspopup]):not(label):not(input), [data-rac][aria-haspopup="dialog"][aria-expanded="false"][style*="touch-callout"], [role="button"][data-react-aria-pressable][id]:not([data-rac])';
+const RAC_HOVER_MAX = 60;
+
+/** Hovers each React Aria control that may hold a tooltip or preview and records what it showed. Cached by route. */
+export async function captureRacHovers(browser: Browser, origin: string, route: string, dir: string): Promise<readonly Reveal[]> {
+	const file = join(dir, `${createHash('sha256').update(`rac-hover:2:${route}|${RAC_HOVER}`).digest('hex').slice(0, 16)}.json`);
+	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
+	if (cached && cached.route === route) return cached.reveals;
+	const viewport = VIEWPORTS[0]!;
+	let open = await fresh(browser, origin, route, viewport);
+	const reveals: Reveal[] = [];
+	try {
+		const found = await open.page.evaluate(([selector, max]) => {
+			const pathOf = (el: Element): number[] => {
+				const out: number[] = [];
+				for (let node: Element | null = el; node && node !== document.body; node = node.parentElement) out.unshift([...node.parentElement!.children].indexOf(node));
+				return out;
+			};
+			const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+			const counts = new Map<string, number>();
+			const order = new Map<Element, number>();
+			for (const el of document.body.querySelectorAll('*')) {
+				if (el.closest('template')) continue;
+				const sig = sigOf(el);
+				order.set(el, counts.get(sig) ?? 0);
+				counts.set(sig, (counts.get(sig) ?? 0) + 1);
+			}
+			return [...document.body.querySelectorAll(selector as string)]
+				.filter((el) => {
+					const r = el.getBoundingClientRect();
+					return !el.closest('template') && r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+				})
+				.slice(0, max as number)
+				.map((el) => ({ path: pathOf(el), key: el.id || `p:${pathOf(el).join('.')}`, sig: sigOf(el), nth: order.get(el) ?? 0, preview: el.getAttribute('aria-haspopup') === 'dialog', area: !el.hasAttribute('data-rac') }));
+		}, [RAC_HOVER, RAC_HOVER_MAX] as const);
+		// React Aria shows a tooltip on hover only once the pointer has moved on the page (useFocusVisible's modality).
+		const moved = () => open.page.mouse.move(2, 2).then(() => open.page.mouse.move(4, 4)).catch(() => {});
+		await moved();
+		for (const c of found) {
+			await open.page.evaluate(() => {
+				const w = window as unknown as { __mmAdded?: Element[]; __mmObserver?: MutationObserver };
+				w.__mmAdded = [];
+				w.__mmObserver = new MutationObserver((records) => {
+					for (const r of records) for (const n of r.addedNodes) if (n instanceof Element && r.target === document.body) w.__mmAdded!.push(n);
+				});
+				w.__mmObserver.observe(document.body, { childList: true });
+			});
+			const el = (
+				await open.page.evaluateHandle((path) => {
+					let node: Element = document.body;
+					for (const i of path) node = node.children[i]!;
+					return node;
+				}, c.path)
+			).asElement();
+			if (!el) continue;
+			const used = await (c.area ? el.click({ button: 'right', timeout: 2000 }) : el.hover({ timeout: 2000 })).then(() => true, () => false);
+			if (!used) continue;
+			// A PreviewTrigger opens after 600 ms.
+			await quiet(open.page, c.preview ? 900 : 400);
+			const added = await open.page.evaluate(() => {
+				const w = window as unknown as { __mmAdded?: Element[]; __mmObserver?: MutationObserver };
+				w.__mmObserver?.disconnect();
+				const nodes = (w.__mmAdded ?? []).filter((n) => n.isConnected);
+				const shows = '[role="tooltip"], [data-trigger="PreviewTrigger"], [data-trigger="MenuTrigger"]';
+				if (!nodes.some((n) => n.matches(shows) || n.querySelector(shows))) return [];
+				return nodes.map((n) => n.outerHTML);
+			});
+			if (added.length) reveals.push({ key: c.key, path: c.path, sig: c.sig, nth: c.nth, action: c.area ? 'contextmenu' : 'hover', viewport: viewport.name, added: added.map((html) => ({ into: 'body' as const, before: -1, html })) });
+			if (c.area) await open.page.keyboard.press('Escape').catch(() => {});
+			await open.page.mouse.move(1, 1).catch(() => {});
+			if (added.length) await quiet(open.page, 700);
+			if ((await bodyHash(open.page)) !== open.baseline) {
+				await open.context.close().catch(() => {});
+				open = await fresh(browser, origin, route, viewport);
+				await moved();
+			}
+		}
+	} finally {
+		await open.context.close().catch(() => {});
+	}
+	await mkdir(dir, { recursive: true });
+	await writeFile(file, JSON.stringify({ route, reveals }));
+	return reveals;
 }

@@ -41,6 +41,7 @@ export function obligationsFor(b: Behaviour): Obligation[] {
 			for (const scheme of ['light', 'dark'] as const) add(`theme toggle: click ${target} ${clicks} times (one full cycle: ${cycle.join(' → ')} → ${cycle[0]}) with the OS in ${scheme} mode; after every click, <html>'s theme attributes, the stored choice, the toggle's label and the page colours match`, 'scheme-sequence', [{ do: 'load', emulate: { colorScheme: scheme } }, { do: 'click', target, times: clicks }, { do: 'compare', what: ['html attributes', 'localStorage', 'accessible name', 'computed colors'], at: ['after each click'] }]);
 			add(`theme toggle: switch the theme, then navigate in place to another page: the theme equals a fresh load of that page`, 'navigation-equivalence', [{ do: 'click', target }, { do: 'navigate-in-place', to: 'another page' }, { do: 'compare', what: ['html attributes', 'computed colors'] }]);
 			add(`theme toggle: one click, compared as a journey`, 'journey', [{ do: 'click', target }, { do: 'compare', what: ['html attributes', 'localStorage'] }]);
+			add(`theme toggle: clicked right after load on a slow phone (6x CPU), the theme changes in the click's own frame, before the rest of the site's code has loaded`, 'pinned-frames', [{ do: 'load', emulate: { cpuSlowdown: 6 } }, { do: 'click', target }, { do: 'compare', what: ['html attributes'], at: ['next frame'] }]);
 			break;
 		}
 		case 'theme-init': {
@@ -55,6 +56,10 @@ export function obligationsFor(b: Behaviour): Obligation[] {
 			add(`${b.feature}: one frame after the close animation ends, the backdrop and the content are gone (no flash back)`, 'pinned-frames', [{ do: 'click', target }, { do: 'press', target: 'dialog', key: 'Escape' }, { do: 'compare', what: ['opacity', 'visibility', 'box'], at: ['0', '25%', '50%', '75%', 'end', 'end + 1 frame'] }]);
 			add(`${b.feature}: Tab stays inside while open; Escape closes`, 'keyboard', [{ do: 'click', target }, { do: 'press', target: 'dialog', key: 'Tab', times: 3 }]);
 			add(`${b.feature}: open once, compared as a journey`, 'journey', [{ do: 'click', target }]);
+			if (b.kind === 'search' && b.library === 'docusaurus-theme') add(`${b.feature}: point at ${target}, then click it at once: the click fetches no code and the dialog opens as fast as on the old page`, 'journey', [{ do: 'hover', target }, { do: 'click', target }, { do: 'compare', what: ['requests', 'DOM'] }]);
+			if (b.kind === 'search' && b.library === 'docusaurus-theme')
+				for (const platform of ['MacIntel', 'Win32', 'Linux x86_64'])
+					add(`${b.feature} on ${platform}: ${target}'s accessible name, aria-keyshortcuts and shortcut keys at first paint match (⌘ K and Meta+k on Apple platforms, Ctrl K and Control+k elsewhere)`, 'load-state', [{ do: 'load', emulate: { platform } }, { do: 'compare', what: ['accessible name', 'aria-keyshortcuts', 'visible text'], at: ['first paint'] }]);
 			break;
 		case 'disclosure':
 		case 'sidebar':
@@ -65,12 +70,16 @@ export function obligationsFor(b: Behaviour): Obligation[] {
 			add(`${b.feature} on ${target}: the open and close animation, pinned at fixed offsets and one frame after its end`, 'pinned-frames', [{ do: 'click', target }, { do: 'compare', what: ['opacity', 'transform', 'box'], at: ['0', '50%', 'end', 'end + 1 frame'] }]);
 			add(`${b.feature} on ${target}: one use, compared as a journey`, 'journey', [{ do: 'click', target }]);
 			add(`${b.feature} on ${target}: its transitions timed`, 'motion', [{ do: 'click', target }]);
+			if (b.feature === 'hideable navbar') add(`${b.feature}: scroll down until it hides, navigate in place, go Back: it is shown at the restored scroll position, as on the old page`, 'navigation-equivalence', [{ do: 'scroll', target: 'page' }, { do: 'navigate-in-place', to: 'another page' }, { do: 'press', target: 'page', key: 'Alt+ArrowLeft' }, { do: 'compare', what: ['box', 'classes'] }]);
+			if (b.feature === 'docs sidebar category') add(`${b.feature}: follow a docs link to a page with the same sidebar, then expand ${target}: no request the old page does not make`, 'journey', [{ do: 'navigate-in-place', to: 'a page with the same sidebar' }, { do: 'click', target }, { do: 'compare', what: ['requests'] }]);
+			if (b.feature === 'mobile navbar sidebar') add(`${b.feature}: open it, then expand and collapse each dropdown inside it (versions, locales) and use its logo link on the page it names`, 'journey', [{ do: 'click', target }, { do: 'click', target: 'each dropdown in the drawer', times: 2 }, { do: 'click', target: 'the drawer logo' }, { do: 'compare', what: ['DOM', 'URL'] }]);
 			break;
 		case 'tabs':
 		case 'menu':
 			add(`${b.feature} on ${target}: each tab or item by click`, 'journey', [{ do: 'click', target }]);
 			add(`${b.feature} on ${target}: arrow keys, Home, End and Escape`, 'keyboard', [{ do: 'press', target, key: 'ArrowRight' }]);
 			add(`${b.feature} on ${target}: open, then close by Escape and by clicking outside, twice`, 'sequence', [{ do: 'click', target, times: 2 }, { do: 'press', target, key: 'Escape' }]);
+			if (b.feature === 'navbar dropdown' || b.feature === 'navbar flyout') add(`${b.feature} on ${target}: open it by hover, choose an item that navigates and leave the pointer still: whether the menu is open on the next page, and how it closes (at once or by a fade), matches the old page frame by frame`, 'pinned-frames', [{ do: 'hover', target }, { do: 'click', target: 'an item that navigates' }, { do: 'compare', what: ['visibility of the menu', 'opacity of the menu'], at: ['next frame', '100 ms', '300 ms'] }]);
 			break;
 		case 'class-timeline': {
 			const steps = (b.details.steps as { op: string; className: string; delay: string }[] | undefined) ?? [];

@@ -505,3 +505,40 @@ the old site at 81 to 88 ms), and the first Close banner click (24 ms on the por
 
 Deployed to production as `vite-dev-markless-ap0dlcyfe` (https://vite-dev-markless.vercel.app), built from this
 commit's tree with `.markless-local/` linked; the one stray preview deployment was removed.
+
+## Markless with the navigation reland, and search on the first click (2026-10-23)
+
+**Markless build.** The app now links Markless main with #185 (the in-place navigation reland), #186 (prefetch once) and
+#188 (the idle byte budget), packed locally into `.markless-local/`. The earlier link was `ba8e52901`, which carried the
+first #140, since reverted on main.
+
+**Check on this build.** Every control was used side by side with the original, both served locally, on 20 views
+(16 desktop, 4 mobile):
+
+- Controls: 542 of 542 work as on the original.
+- Client navigation from `/guide/`, median of 5, original vs port: 47 vs 40 ms, 14 vs 4, 15 vs 3, 15 vs 3, 9 vs 5.
+
+**Search on the first click.** On a slow phone the port lost early clicks on the search button. Measured with the
+showcase harness's profile (4x CPU, Lighthouse Slow 4G, a click every 100 ms from when the button shows, local
+servers): the earlier port lost 35 clicks and the original loses 38. The port now loses 0: the box shows 25 ms after
+the first click.
+
+How: `page-scripts/search-shell.ts` holds the box's first state, the "Loading search index..." shell, as the
+markup `search.ts` writes.
+
+- The document's inline click script draws that shell in the click's own frame, then imports the search box.
+- `search.ts` builds its box from the same markup and puts it in the shell's place in one task, so nothing flickers.
+- A close or backdrop click on the shell before the code arrives closes it.
+
+After an early click and after a normal one alike, the box opens, finds 16 results for "config", and page scrolling
+comes back after Escape.
+
+**Production URL.** The project also answers at https://mm-vite-dev-new.vercel.app, a project domain, so every
+production deploy gets it. The old hostname still works.
+
+**Search click INP.** Measured after load as the showcase does (4x CPU, Slow 4G): the click took 40 ms on the port
+against 24 ms on the original. The early click script drew the box and locked scrolling inside the click's own task, so
+the click's next paint carried the overlay and a relayout without the scrollbar. It now draws them right after that
+paint, as VitePress opens its box on a later frame. The port measures 24 ms on `/`, as the original does, and on
+`/guide/` both stay under the 16 ms reporting threshold. The box still opens on the first click: 0 clicks lost, against
+the original's 37–38.

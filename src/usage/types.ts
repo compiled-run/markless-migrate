@@ -75,7 +75,7 @@ export interface Obligation {
 export type Mechanism = 'journey' | 'keyboard' | 'motion' | 'css-states' | 'client-guard' | 'storage' | 'sequence' | 'pinned-frames' | 'navigation-equivalence' | 'scheme-sequence' | 'load-state' | 'embed';
 
 export type ObligationStep =
-	| { readonly do: 'load'; readonly emulate?: { readonly colorScheme?: 'light' | 'dark'; readonly storage?: Readonly<Record<string, string>> } }
+	| { readonly do: 'load'; readonly emulate?: { readonly colorScheme?: 'light' | 'dark'; readonly storage?: Readonly<Record<string, string>>; readonly platform?: string; readonly cpuSlowdown?: number } }
 	| { readonly do: 'click' | 'hover' | 'focus' | 'press' | 'type' | 'scroll'; readonly target: string; readonly key?: string; readonly text?: string; readonly times?: number }
 	| { readonly do: 'wait'; readonly ms: number }
 	| { readonly do: 'navigate-in-place'; readonly to: string }
@@ -104,6 +104,8 @@ export interface UsageInventory {
 	readonly scripts: readonly ScriptFacts[];
 	/** Every third-party embed the pages carry, per provider, with what the migration does with it. */
 	readonly embeds?: readonly EmbedUse[];
+	/** The DocSearch (Algolia) search the pages run, read from their scripts or the theme's config: convert gives it to the docsearch part. */
+	readonly docsearch?: { readonly appId: string; readonly apiKey: string; readonly indexName: string };
 	readonly limits: readonly string[];
 }
 

@@ -31,3 +31,23 @@
   top: auto;
   font-size: 0;
 }
+/* The span that asks GitHub for the count wraps the host: it is the span left in .github-stars, where buttons.js leaves
+   its host, so .github-stars span moves it down 4px and the host inside it stays put. Until the count arrives the
+   button shows none, as buttons.js shows none when the API does not answer; the framed button of an example page shows
+   the count read at convert time, as its iframe shows one. */
+#github-stars .ghb-live:not(.ghb-frame) {
+  display: inline;
+  position: relative;
+  top: 4px;
+}
+#github-stars .ghb-live:not(.ghb-frame) .ghb-host {
+  position: static;
+  top: auto;
+}
+.ghb-live:not(.ghb-frame):not([data-counted]) .ghb-count {
+  display: none;
+}
+/* With no count, buttons.js rounds the button on both sides, as the last part of the widget. */
+.ghb-live:not(.ghb-frame):not([data-counted]) .ghb-btn {
+  border-radius: .25em;
+}

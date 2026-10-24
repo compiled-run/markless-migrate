@@ -338,3 +338,28 @@ The six with more:
   the port awaits it, where _hyperscript shows "copied" anyway).
 - `/examples/infinite-scroll/`, `/examples/move-before/`, `/webring/`: a font row on the table cells, a navigation
   row and one rendered row.
+
+## Every demo working, checked like a person (2026-10-24)
+
+A person's pass over the 35 demo and essay routes, on the local build against htmx.org, found six that did not work
+after htmx was taken out: edit-row's Edit buttons, both tabs examples (and a script error on the JavaScript one),
+the essay's "Copy For HN", infinite-scroll's empty id cells at load, and the animations page's colour swap.
+`run --agent claude` fixed each of them in the port, and the run agent's skill now carries the htmx, class-tools and
+_hyperscript patterns these needed (#77). The same pass afterwards: none broken. Every other route either works or
+has nothing the pass can drive (file uploads, the sortable drag, async-auth).
+
+- edit-row: Markless 0.9 drops the event handlers of an `@if` inside an `@for` row after resume; the rows' buttons
+  are one delegated handler on the table body until Markless fixes it (reported).
+- Links keep htmx.org's own addresses (`/extensions/idiomorph`, no slash). htmx.org redirects those to the slashed
+  page; the port's in-place navigation lands on the slashed page too, through the host's slash rule, so nothing in the
+  importer rewrites them.
+- The disclosure note now reads "Unofficial demo copy of htmx.org. htmx and htmx.org © Big Sky Software and
+  contributors, Zero-Clause BSD license.", without the tool's name; its acceptances were re-recorded against it.
+  The seven acceptances that were no longer true (the GitHub star iframe, the 0.4.0 weight, hx-boost's requests)
+  were dropped, and the one for htmx's own script files now names the build guard as its evidence.
+
+Still red in the checker on the suite's routes, none of them the port's doing: the header links, where htmx's boost
+sends its own request and history entry and the router navigates in place; hx-indicator's class-tools toggle, whose
+3 s phase the click lands on differently each time (a person sees the same thing on both); the star count's width
+on click-to-edit as GitHub's live count moves; and on `/` the page-load row for images below the first screen, which
+the port marks up as htmx.org does (no `loading` attribute on either).

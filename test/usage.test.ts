@@ -24,7 +24,7 @@ const HTMX_PAGE = `<!doctype html><html><head><script src="/js/htmx.js"></script
 
 const DOCUSAURUS_THEME_INIT = `!function(){var t=function(){try{return new URLSearchParams(window.location.search).get("docusaurus-theme")}catch(t){}}()||function(){try{return window.localStorage.getItem("theme-189")}catch(t){}}();document.documentElement.setAttribute("data-theme",t||(window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light")),document.documentElement.setAttribute("data-theme-choice",t||"system")}();`;
 const DOCUSAURUS_PAGE = `<!doctype html><html><head><meta name="generator" content="Docusaurus v3.9.2"><script>${DOCUSAURUS_THEME_INIT}</script></head><body><div id="__docusaurus">
-<nav class="navbar"><button class="navbar__toggle clean-btn" aria-label="Toggle navigation bar"></button>
+<nav class="navbar navbarHideable_uAgx"><button class="navbar__toggle clean-btn" aria-label="Toggle navigation bar"></button>
 <div class="toggle_bT41 colorModeToggle_UolE"><button class="clean-btn toggleButton_x9TT" title="system mode"></button></div>
 <button class="DocSearch DocSearch-Button" aria-label="Search (Command+K)"><span>Search</span></button></nav>
 <details class="details_lb9f alert"><summary>More</summary></details></div></body></html>`;
@@ -107,6 +107,14 @@ test('theme features are recognised only on a page that theme drew, and the conf
 	const search = usage.behaviours.find((b) => b.kind === 'search')!;
 	assert.ok(usage.obligations.some((o) => o.behaviour === search.id && /close by Escape, by clicking the backdrop and by its close button/.test(o.text)));
 	assert.ok(usage.behaviours.some((b) => b.kind === 'theme-init' && /data-theme/.test(b.summary)), 'the inline theme-init script is read');
+	const platforms = usage.obligations.filter((o) => o.behaviour === search.id && o.mechanism === 'load-state').map((o) => o.steps[0]);
+	assert.deepEqual(platforms.map((s) => (s?.do === 'load' ? s.emulate?.platform : undefined)), ['MacIntel', 'Win32', 'Linux x86_64'], 'the search shortcut keys are checked per platform');
+	assert.ok(usage.obligations.some((o) => o.behaviour === toggle.id && /in the click's own frame/.test(o.text)), 'the first toggle click must not wait for the site code');
+	assert.ok(usage.obligations.some((o) => o.behaviour === search.id && /fetches no code/.test(o.text)), 'the first search click fetches nothing');
+	const hideable = usage.behaviours.find((b) => b.feature === 'hideable navbar')!;
+	assert.ok(usage.obligations.some((o) => o.behaviour === hideable.id && o.mechanism === 'navigation-equivalence' && /go Back/.test(o.text)));
+	const drawer = usage.behaviours.find((b) => b.feature === 'mobile navbar sidebar')!;
+	assert.ok(usage.obligations.some((o) => o.behaviour === drawer.id && /each dropdown inside it/.test(o.text)));
 });
 
 test('implemented means declared in usage-map.json and found in the new app; checked means every obligation is one this checker performs', async () => {

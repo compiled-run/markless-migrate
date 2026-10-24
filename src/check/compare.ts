@@ -1,7 +1,8 @@
 import { sameContentType } from './assets.ts';
 import { embedFailures } from './embeds.ts';
 import { loopFailures } from './loops.ts';
-import { embedCandidate, embedImageCandidate, markupCandidate, runtimeCandidate, storageOwner } from './automatic.ts';
+import { imageLoadingFailures } from './image-loading.ts';
+import { embedCandidate, embedImageCandidate, markupCandidate, responsiveImageCandidate, responsiveRegionsCandidate, runtimeCandidate, unshownLazyCandidate, storageOwner } from './automatic.ts';
 import { compareA11y } from './a11y.ts';
 import { isClock, maskClocks } from './clock.ts';
 import { HINTS, seoHint } from './hints.ts';
@@ -263,7 +264,7 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 			if (diff.sizeMismatch) {
 				failures.push({ route, dimension: 'visual', check: 'page size', viewport, expected: diff.sizeMismatch.expected, actual: `${diff.sizeMismatch.actual}; ${where}`, hint: HINTS.visualSize });
 			} else {
-				const auto = embedCandidate(diff.regions, a, n);
+				const auto = embedCandidate(diff.regions, a, n) ?? responsiveRegionsCandidate(diff.regions, a, n, diff.differing);
 				const failure: Failure = { route, dimension: 'visual', check: 'screenshot', viewport, expected: 'same pixels outside the noise mask', actual: where, hint: HINTS.visual, ...(auto ? { automatic: auto } : {}) };
 				if (nearest[0]) failureElements.set(failure, { new: nearest[0] });
 				failures.push(failure);
@@ -281,11 +282,13 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 			if (bs.some((b) => !b.images[i] || b.images[i]!.naturalWidth !== img.naturalWidth || b.images[i]!.broken !== img.broken)) return;
 			const expected = img.broken ? 'broken' : `${img.naturalWidth}x${img.naturalHeight}`;
 			const actual = !other ? '(absent)' : other.broken ? 'broken' : `${other.naturalWidth}x${other.naturalHeight}`;
-			const auto = other && other.src === img.src && /^https?:/.test(img.src) ? embedImageCandidate(img.src, a, n) : undefined;
+			const auto = other && other.src === img.src && /^https?:/.test(img.src) ? embedImageCandidate(img.src, a, n) : (responsiveImageCandidate(img, other) ?? unshownLazyCandidate(img, other));
 			if (expected !== actual) failures.push({ route, dimension: 'assets', check: `image #${i + 1} ${img.src}`, viewport, expected, actual, hint: HINTS.image, ...(auto ? { automatic: auto } : {}) });
 		});
 		failures.push(...fontFailures(route, viewport, a, bs, n));
 	}
+
+	failures.push(...imageLoadingFailures(route, next.pages));
 
 	const desktop = Object.keys(oldA.pages)[0]!;
 	const withoutLocale = (seo: Readonly<Record<string, string>>) => Object.fromEntries(Object.entries(seo).filter(([key]) => !LOCALE_KEYS.has(key)));

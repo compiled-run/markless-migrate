@@ -39,8 +39,6 @@ const ALIVE = page(`${WIDGETS}${BEHAVIOUR}`);
 // The same markup, every control drawn and none answering: what a port looks like when its parts never run.
 const DEAD = page(WIDGETS);
 const TRACK = WIDGETS.slice(0, WIDGETS.indexOf('</section>') + '</section>'.length);
-const CAROUSEL = page(`${TRACK}<script>document.getElementById('next').onclick = () => { document.getElementById('track').style.transform = 'translateX(-300px)'; };</script>`);
-const DEAD_CAROUSEL = page(TRACK);
 
 let browser: Browser;
 const servers: Server[] = [];

@@ -20,8 +20,8 @@ const SOURCE_COMMIT = 'fa978b24e75fb03c137bf2cdae4fef0e711cf8a1';
 // Ported by hand with their behaviour in Markless state (see the migration log); their heads still come from here.
 // null keeps the stylesheets the importer writes from the page's own <style> blocks.
 const HAND_PORTED = new Map<string, string[] | null>([
-	['/', ['/css/port-home.css']],
-	['/examples/click-to-edit/', ['/css/port-click-to-edit.css']],
+	['/', null],
+	['/examples/click-to-edit/', ['/css/port/389d7bf9f4.css', '/css/port-click-to-edit.css']],
 	['/examples/active-search/', ['/css/port/389d7bf9f4.css']],
 	['/examples/click-to-load/', ['/css/port/389d7bf9f4.css']],
 	['/examples/infinite-scroll/', ['/css/port/389d7bf9f4.css']],

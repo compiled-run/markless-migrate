@@ -1,8 +1,9 @@
 import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { attr, type Element } from './dom.ts';
+import { attr, childrenOf, type Element } from './dom.ts';
 import type { Binding } from './tsrx.ts';
+import { APPLE_KEY, CTRL_KEYS } from '../../parts/docsearch.ts';
 import type { PartResolver, PartUsage } from './usage.ts';
 
 /** The Markless ports of library behaviour, each written once and used on every site whose markup shows that library. */
@@ -11,7 +12,7 @@ export const PARTS_DIR = fileURLToPath(new URL('../../parts/', import.meta.url))
 /** The framework-agnostic packages the ports run on, at the versions the ported libraries were certified with. */
 export const PART_DEPENDENCIES: Readonly<Record<string, string>> = { '@floating-ui/dom': '1.7.6' };
 
-export type PartEvent = 'click' | 'keydown' | 'pointerover' | 'pointerout' | 'pointerdown' | 'focusin' | 'focusout' | 'contextmenu' | 'input';
+export type PartEvent = 'click' | 'keydown' | 'pointerover' | 'pointerout' | 'pointerdown' | 'focusin' | 'focusout' | 'contextmenu' | 'input' | 'submit';
 
 export interface Port {
 	/** The port's module under `parts/`, without `.ts`. */
@@ -67,9 +68,10 @@ export const PORTS: readonly Port[] = [
 	{ module: 'radix/dropdown-menu', library: 'radix-ui', needs: ['layer', 'popper', 'presence', 'aria-hidden', 'remove-scroll'], exports: ['DropdownMenu.Root', 'DropdownMenu.Trigger', 'DropdownMenu.Content', 'DropdownMenu.Item', 'Menubar.Root', 'Menubar.Menu', 'Menubar.Trigger', 'Menubar.Content', 'Menubar.Item'], events: ['pointerdown', 'click', 'pointerover', 'keydown'], locate: (el) => radix(el) },
 	{ module: 'base-ui/popover', library: '@base-ui/react', exports: ['Popover.Root', 'Popover.Trigger', 'Popover.Popup', 'Popover.Positioner', 'Popover.Portal', 'Popover.Close'], events: ['click'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
 	{ module: 'base-ui/menu', library: '@base-ui/react', exports: ['Menu.Root', 'Menu.Trigger', 'Menu.Popup', 'Menu.Item'], events: ['pointerdown', 'click', 'pointerover', 'keydown'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
-	{ module: 'base-ui/tooltip', library: '@base-ui/react', exports: ['Tooltip.Root', 'Tooltip.Trigger', 'Tooltip.Popup'], events: ['pointerover', 'pointerout', 'focusin', 'focusout'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
+	{ module: 'base-ui/tooltip', library: '@base-ui/react', exports: ['Tooltip.Root', 'Tooltip.Trigger', 'Tooltip.Popup'], events: ['pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
 	{ module: 'radix/select', library: 'radix-ui', needs: ['layer', 'popper', 'presence', 'aria-hidden', 'remove-scroll'], exports: ['Select.Root', 'Select.Trigger', 'Select.Value', 'Select.Content', 'Select.Viewport', 'Select.Item', 'Select.ItemText', 'Select.ItemIndicator', 'Select.Group', 'Select.Label', 'Select.Separator', 'Select.Icon', 'Select.Portal', 'Select.ScrollUpButton', 'Select.ScrollDownButton'], events: ['pointerdown', 'click', 'keydown'], locate: (el) => radix(el) },
 	{ module: 'slider', library: 'radix-ui', exports: ['Slider.Root', 'Slider.Track', 'Slider.Range', 'Slider.Thumb'], events: ['pointerdown', 'keydown'], locate: (el) => radix(el) || attr(el, 'data-slot')?.startsWith('slider') === true },
+	{ module: 'slider', library: 'react-aria-components', exports: ['Slider', 'SliderTrack', 'SliderThumb', 'SliderFill'], events: ['pointerdown', 'keydown'], locate: () => true },
 	{ module: 'slider', library: '@base-ui/react', exports: ['Slider.Root', 'Slider.Control', 'Slider.Track', 'Slider.Indicator', 'Slider.Thumb'], events: ['pointerdown', 'keydown'], locate: (el) => base(el) || el.attrs.some((a) => a.name.startsWith('data-base-ui-slider')) },
 	{ module: 'radix/tooltip', library: 'radix-ui', needs: ['layer', 'popper', 'presence', 'aria-hidden', 'remove-scroll'], exports: ['Tooltip.Root', 'Tooltip.Trigger', 'Tooltip.Content', 'Tooltip.Portal', 'Tooltip.Provider', 'Tooltip.Arrow'], events: ['pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout'], locate: (el) => radix(el) || attr(el, 'data-slot') === 'tooltip-trigger' },
 	{ module: 'resizable', library: 'react-resizable-panels', exports: ['Group', 'Panel', 'Separator', 'PanelGroup', 'PanelResizeHandle'], events: ['keydown', 'pointerdown', 'pointerover', 'pointerout'], locate: (el) => el.attrs.some((a) => a.name === 'data-group' || a.name === 'data-panel' || a.name === 'data-separator') },
@@ -82,12 +84,35 @@ export const PORTS: readonly Port[] = [
 	{ module: 'base-ui/context-menu', library: '@base-ui/react', exports: ['ContextMenu.Root', 'ContextMenu.Trigger', 'ContextMenu.Popup', 'ContextMenu.Positioner', 'ContextMenu.Portal', 'ContextMenu.Item'], events: ['contextmenu', 'click'], locate: (el) => base(el) || attr(el, 'data-slot') === 'context-menu-trigger', needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition', 'base-ui/menu'] },
 	{ module: 'base-ui/dialog', library: '@base-ui/react', exports: ['Dialog.Root', 'Dialog.Trigger', 'Dialog.Popup', 'Dialog.Portal', 'Dialog.Backdrop', 'Dialog.Close', 'AlertDialog.Root', 'AlertDialog.Trigger', 'AlertDialog.Popup', 'AlertDialog.Close', 'Drawer.Root', 'Drawer.Trigger', 'Drawer.Popup', 'Drawer.Close'], events: ['click'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition', 'aria-hidden'] },
 	{ module: 'base-ui/select', library: '@base-ui/react', exports: ['Select.Root', 'Select.Trigger', 'Select.Value', 'Select.Popup', 'Select.Item'], events: ['pointerdown', 'click', 'pointerover', 'keydown'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
+	// shadcn's Carousel drives Embla through useEmblaCarousel: the slots its file writes are the call's (usage.ts).
+	{ module: 'carousel', library: 'embla-carousel-react', exports: ['default', 'useEmblaCarousel'], events: ['click', 'keydown', 'pointerdown'], locate: (el) => attr(el, 'data-slot') === 'carousel' },
 	// input-otp's slots are Markless state (convert's OtpPlan); the part runs the input's handlers and dispatches it.
 	{ module: 'input-otp', library: 'input-otp', exports: ['OTPInput'], events: ['focusin', 'focusout', 'input'], locate: () => true },
+	// recharts' tooltips and active points are Markless state (convert's ChartPlan); the part follows the pointer and keys.
+	{ module: 'recharts', library: 'recharts', exports: ['Tooltip'], events: ['pointerover', 'focusin', 'focusout', 'keydown'], locate: () => false },
 	// Radix Collapsible and Accordion are Markless state (convert's DisclosurePlan); the part measures and ends exits.
 	{ module: 'radix/disclosure-motion', library: 'radix-ui', needs: ['panel-motion'], exports: ['Collapsible.Root', 'Collapsible.CollapsibleTrigger', 'Collapsible.CollapsibleContent', 'Collapsible.Trigger', 'Collapsible.Content', 'Accordion.Root', 'Accordion.Item', 'Accordion.Header', 'Accordion.Trigger', 'Accordion.Content'], events: [], locate: (el) => radix(el) },
+	// react-day-picker calendars are Markless state with handlers on their root (day-picker.ts DayPickerPlan places the
+	// module); the part only prevents the keys DayPicker handles on a day.
+	{ module: 'day-picker', library: 'react-day-picker', exports: ['DayPicker'], events: ['keydown'], locate: () => false },
 	// Base UI Collapsible and Accordion are Markless state (convert's InsertedDisclosurePlan); the part measures and ends exits.
 	{ module: 'panel-motion', library: '@base-ui/react', exports: ['Collapsible.Root', 'Collapsible.Trigger', 'Collapsible.Panel', 'Accordion.Root', 'Accordion.Item', 'Accordion.Header', 'Accordion.Trigger', 'Accordion.Panel'], events: [], locate: base },
+	// DocSearch is found by the button it renders, on sites with or without source; usage.json carries its config, and it runs from the document's head.
+	{ module: 'docsearch', library: '@docsearch/react', exports: ['DocSearch'], events: [], locate: (el) => isDocSearchButton(el) },
+	// A form the old page's script handled does not submit: Markless's own onSubmit is not resumed on every page (LOG, bug 14).
+	{ module: 'form', library: 'markless-migrate', exports: [], events: ['submit'], locate: () => false },
+	// React Aria Components: each part's markup carries data-rac, so the library is known; the parts act on what the
+	// captured overlay holds (its trigger's id is its layer's key).
+	{ module: 'react-aria/select', library: 'react-aria-components', exports: ['Select', 'SelectValue', 'ListBox', 'ListBoxItem', 'ListBoxSection'], events: ['pointerdown', 'click', 'pointerover', 'keydown'], locate: () => true, needs: ['react-aria/overlay', 'react-aria/position', 'react-aria/collection', 'react-aria/interactions'] },
+	{ module: 'react-aria/menu', library: 'react-aria-components', exports: ['Menu', 'MenuItem', 'MenuSection', 'MenuTrigger'], events: ['pointerdown', 'click', 'pointerover', 'keydown', 'contextmenu'], locate: () => true, needs: ['react-aria/overlay', 'react-aria/position', 'react-aria/collection', 'react-aria/interactions'] },
+	{ module: 'react-aria/dialog', library: 'react-aria-components', exports: ['Dialog', 'Modal', 'ModalOverlay', 'Popover'], events: ['click', 'keydown'], locate: () => true, needs: ['react-aria/overlay', 'react-aria/position', 'react-aria/collection', 'react-aria/interactions'] },
+	{ module: 'react-aria/autocomplete', library: 'react-aria-components', exports: ['Autocomplete', 'SearchField'], events: ['input', 'keydown', 'pointerover'], locate: () => true, needs: ['react-aria/collection', 'react-aria/interactions'] },
+	{ module: 'react-aria/combobox', library: 'react-aria-components', exports: ['ComboBox', 'ComboBoxValue', 'ListBox', 'ListBoxItem'], events: ['pointerdown', 'click', 'pointerover', 'input', 'keydown', 'focusout'], locate: () => true, needs: ['react-aria/overlay', 'react-aria/position', 'react-aria/collection', 'react-aria/interactions'] },
+	{ module: 'react-aria/tooltip', library: 'react-aria-components', exports: ['Tooltip', 'TooltipTrigger', 'PreviewTrigger', 'OverlayArrow'], events: ['pointerover', 'pointerout', 'focusin', 'focusout', 'pointerdown'], locate: () => true, needs: ['react-aria/overlay', 'react-aria/position', 'react-aria/interactions'] },
+	{ module: 'react-aria/disclosure', library: 'react-aria-components', exports: ['Disclosure', 'DisclosurePanel', 'DisclosureGroup'], events: ['click'], locate: () => true, needs: ['react-aria/interactions'] },
+	// What a native element does plus React Aria's hover, press and focus states (and the focus-within ones of the
+	// groups around them): Markless state or the browser does the rest.
+	{ module: 'react-aria/interactions', library: 'react-aria-components', exports: ['Button', 'Link', 'Input', 'TextArea', 'Group', 'SearchField', 'Label', 'Checkbox', 'Radio', 'RadioGroup', 'Switch', 'ToggleButton', 'ToggleButtonGroup', 'Tabs', 'TabList', 'Tab', 'TabPanel', 'Breadcrumbs', 'Breadcrumb', 'Keyboard'], events: [], locate: () => true },
 	{ module: 'shadcn/questionnaire', library: '@shadcn/react', exports: ['Questionnaire.Root', 'Questionnaire.Progress', 'Questionnaire.Item', 'Questionnaire.Title', 'Questionnaire.Description', 'Questionnaire.Choices', 'Questionnaire.Choice', 'Questionnaire.ChoiceInput', 'Questionnaire.ChoiceLabel', 'Questionnaire.ChoiceShortcut', 'Questionnaire.Input', 'Questionnaire.Error', 'Questionnaire.Previous', 'Questionnaire.Skip', 'Questionnaire.Next', 'Questionnaire.Submit'], events: ['click', 'keydown', 'input'], locate: (el) => slot(el).startsWith('questionnaire') },
 ];
 
@@ -140,6 +165,7 @@ export function bindMount(el: Element): Binding | undefined {
 const PORT_PROPS: readonly { readonly library: string; readonly export: string; readonly from?: readonly (readonly [string, string])[]; readonly props: readonly string[] }[] = [
 	{ library: 'react-resizable-panels', export: 'Panel', props: ['minSize', 'maxSize'] },
 	{ library: 'radix-ui', export: 'HoverCard.Trigger', from: [['radix-ui', 'HoverCard.Root'], ['shadcn/ui', 'HoverCard']], props: ['openDelay', 'closeDelay'] },
+	{ library: 'embla-carousel-react', export: 'default', props: ['align'] },
 	{ library: '@base-ui/react', export: 'PreviewCard.Trigger', from: [['@base-ui/react', 'PreviewCard.Trigger'], ['shadcn/ui', 'HoverCardTrigger']], props: ['delay', 'closeDelay'] },
 ];
 
@@ -156,9 +182,12 @@ export function portAttributes(el: Element): Binding | undefined {
 		const known = PORT_PROPS.find((p) => p.library === c.library && p.export === c.export);
 		for (const prop of known?.props ?? []) {
 			const value = measured.get(el)?.[prop] ?? (known!.from ?? [[c.library, c.export] as const]).map(([lib, exp]) => resolver?.prop(lib, exp, prop)).find((v) => v !== undefined);
-			if (value !== undefined && /^-?\d+(\.\d+)?%?$/.test(value)) extra.push(`data-mm-${prop.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}=${JSON.stringify(value.replace(/%$/, ''))}`);
+			if (value !== undefined && (/^-?\d+(\.\d+)?%?$/.test(value) || /^(start|center|end)$/.test(value))) extra.push(`data-mm-${prop.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}=${JSON.stringify(value.replace(/%$/, ''))}`);
 		}
 	}
+	// A hover card trigger rendered through its child has no HoverCard part of its own: the delays the old page showed.
+	const own = measured.get(el);
+	if (!extra.length && own?.openDelay !== undefined) extra.push(`data-mm-open-delay=${JSON.stringify(own.openDelay)}`, `data-mm-delay=${JSON.stringify(own.delay ?? own.openDelay)}`, `data-mm-close-delay=${JSON.stringify(own.closeDelay ?? '')}`);
 	return extra.length ? { extra } : undefined;
 }
 
@@ -182,8 +211,39 @@ export function handledBy(test: (el: Element) => boolean): void {
 	handled = test;
 }
 
+const classes = (el: Element) => (attr(el, 'class') ?? '').split(/\s+/);
+export const isDocSearchButton = (el: Element) => el.tagName === 'button' && classes(el).includes('DocSearch-Button');
+const textIn = (el: Element): string => childrenOf(el).map((n) => ('value' in n && n.nodeName === '#text' ? String(n.value) : 'tagName' in n ? textIn(n as Element) : '')).join('');
+const appleKey = (el: Element) => el.tagName === 'kbd' && classes(el).includes('DocSearch-Button-Key') && textIn(el).trim() === '⌘';
+let docsearch: { readonly appId: string; readonly apiKey: string; readonly indexName: string } | undefined;
+/** The old site's DocSearch config from usage.json: its button gets the docsearch part, which loads DocSearch on intent with it. */
+export function useDocSearch(config: typeof docsearch): void {
+	docsearch = config;
+}
+export const docsearchConfigured = () => docsearch !== undefined;
+
+// DocSearch 4's button carries aria-keyshortcuts and draws its keys once mounted; DocSearch 3's draws ⌘ K at once.
+let docsearchVersion: 3 | 4 = 3;
+const emptyKeys = (el: Element) => el.tagName === 'span' && classes(el).includes('DocSearch-Button-Keys') && !childrenOf(el).some((n) => 'tagName' in n);
+
+/** A DocSearch button carries its config for the part; its ⌘ key gets the Ctrl key beside it, shown off Apple platforms. */
+function docsearchBinding(el: Element, uses: PartUse[] | Set<string>): Binding | undefined {
+	if (!docsearch) return undefined;
+	if (appleKey(el)) return { replace: `${APPLE_KEY}${CTRL_KEYS[docsearchVersion].key}` };
+	if (docsearchVersion === 4 && emptyKeys(el)) return { replace: `<span class="DocSearch-Button-Keys">${APPLE_KEY}${CTRL_KEYS[4].key}<kbd class="DocSearch-Button-Key">K</kbd></span>` };
+	if (!isDocSearchButton(el)) return undefined;
+	docsearchVersion = attr(el, 'aria-keyshortcuts') ? 4 : 3;
+	if (uses instanceof Set) uses.add('docsearch');
+	else if (!uses.some((u) => u.part === 'docsearch')) uses.push({ part: 'docsearch', import: () => '' });
+	const { label, shortcut } = CTRL_KEYS[docsearchVersion];
+	const keys = docsearchVersion === 4 ? [`data-mm-docsearch-keys={${JSON.stringify(JSON.stringify({ label, shortcut }))}}`] : [];
+	return { extra: [`data-mm-docsearch={${JSON.stringify(JSON.stringify(docsearch))}}`, ...keys] };
+}
+
 /** Records the ports an element of the old page needs. Behaviour is bound once on the body, so no element gets attributes. */
 export function bindParts(el: Element, uses: PartUse[] | Set<string>): Binding | undefined {
+	const found = docsearchBinding(el, uses);
+	if (found) return found;
 	const s = slot(el);
 	if (!s || !resolver) return undefined;
 	const candidates = narrow(el, resolver.candidates(s));
@@ -202,7 +262,7 @@ export function bindParts(el: Element, uses: PartUse[] | Set<string>): Binding |
 export function bodyHandlers(modules: ReadonlySet<string>, hasSite: boolean): string[] {
 	const events = new Set<PartEvent>(hasSite ? ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout', 'contextmenu', 'input'] : []);
 	for (const port of PORTS) if (modules.has(port.module)) for (const e of port.events) events.add(e);
-	const prop = (e: PartEvent) => `on${{ click: 'Click', keydown: 'KeyDown', pointerover: 'PointerOver', pointerout: 'PointerOut', pointerdown: 'PointerDown', focusin: 'FocusIn', focusout: 'FocusOut', contextmenu: 'ContextMenu', input: 'Input' }[e]}`;
+	const prop = (e: PartEvent) => `on${{ click: 'Click', keydown: 'KeyDown', pointerover: 'PointerOver', pointerout: 'PointerOut', pointerdown: 'PointerDown', focusin: 'FocusIn', focusout: 'FocusOut', contextmenu: 'ContextMenu', input: 'Input', submit: 'Submit' }[e]}`;
 	return [...[...events].map((e) => `${prop(e)}={(event) => behave(event)}`), 'onIdle={() => listen()}'];
 }
 
