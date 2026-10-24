@@ -63,7 +63,7 @@ const render = (tiers: readonly Tier[]) =>
 				el('div', { class: t.gridClass }, [
 					...t.items.map((s) =>
 						el('a', { href: s.url, target: '_blank', rel: 'noopener noreferrer', class: t.linkClass }, [
-							el('img', { src: s.img, alt: s.name, class: t.logoClass }),
+							el('img', { src: s.img, alt: s.name, class: t.logoClass, loading: 'lazy' }),
 							el('span', { class: 'spsr-name ml-5' }, [s.name]),
 						]),
 					),
