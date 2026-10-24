@@ -1,6 +1,6 @@
 name: Debug copy
 
-# Not for merge: why vite.dev's port shows no "Copied" on a runner.
+# Not for merge: the dead-carousel fixture run repeatedly on a runner.
 on:
   pull_request:
     paths:
@@ -12,15 +12,10 @@ permissions:
 jobs:
   debug:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      RELEASE: https://github.com/compiled-run/markless-migrate/releases/download/port-builds-2026-10-23
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
-      - run: |
-          bash deploy/archive/ci-serve.sh static "$RELEASE/vite-old.tar.gz" 4000
-          bash deploy/archive/ci-serve.sh node "$RELEASE/vite-new.tar.gz" 3000
-          node scripts/debug-copy.mjs
+      - run: node scripts/debug-flaky.ts 6
