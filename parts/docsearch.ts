@@ -3,6 +3,7 @@
 // opens it once it has. The button carries its config as data-mm-docsearch='{"appId":…,"apiKey":…,"indexName":…}'.
 // DocSearch renders its own button into a hidden holder after <body>, outside the page Markless renders, and the page's
 // button opens it.
+// TODO(post-launch): rebuild on the Markless-built DocSearch 4 dialog of the Docusaurus port, so no port loads DocSearch's own UI runtime (Preact).
 
 export interface DocSearchConfig {
 	readonly appId: string;
