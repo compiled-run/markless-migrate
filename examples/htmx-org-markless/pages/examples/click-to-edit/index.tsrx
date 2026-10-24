@@ -1,7 +1,7 @@
-import { computed, element, state } from '@markless/core';
+import { computed, state } from '@markless/core';
 import SiteFooter from '../../../components/site-footer.tsrx';
 import SiteHeader from '../../../components/site-header.tsrx';
-import { displayTemplate, fillForm, formTemplate, INITIAL_HTML, JOE, responseEntry, type Contact, type Entry } from '../../../components/click-to-edit.ts';
+import { displayTemplate, formTemplate, INITIAL_HTML, JOE, responseEntry, type Contact, type Entry } from '../../../components/click-to-edit.ts';
 
 export default function ClickToEdit() @{
 	let contact = state<Contact>(JOE);
@@ -9,9 +9,8 @@ export default function ClickToEdit() @{
 	let log = state<Entry[]>([]);
 	let selected = state('init');
 	let showInfo = state(false);
-	const first = element<HTMLInputElement>();
-	const last = element<HTMLInputElement>();
-	const mail = element<HTMLInputElement>();
+	// A request is in flight; htmx drops another from the same element until it is answered.
+	let requesting = state(false);
 	const current = computed(() => {
 		const entries = log;
 		const id = selected;
@@ -91,19 +90,21 @@ export default function ClickToEdit() @{
 					</div>
 					<div id="demo-current-request" class="9 col">
 						{/* demo.js keeps every entry and hides all but the selected one; only the selected one is drawn here. */}
-						<div id={currentId} style={currentId ? '' : 'display: none;'}>
-							<span class="activity response">
-								<div>
-									<b>{currentMethod}</b>{' '}<span>{currentUrl}</span>
-								</div>
-								<div>parameters: <span>{currentParams}</span></div>
-								<div>headers: &#123;&#125;</div>
-								<div>
-									<b>Response</b>
-									<pre class="language-html"><code class="language-html">{currentCode}</code><span>{currentTail}</span></pre>
-								</div>
-							</span>
-						</div>
+						@if (currentId) {
+							<div id={currentId}>
+								<span class="activity response">
+									<div>
+										<b>{currentMethod}</b>{' '}<span>{currentUrl}</span>
+									</div>
+									<div>parameters: <span>{currentParams}</span></div>
+									<div>headers: &#123;&#125;</div>
+									<div>
+										<b>Response</b>
+										<pre class="language-html"><code class="language-html">{currentCode}</code><span>{currentTail}</span></pre>
+									</div>
+								</span>
+							</div>;
+						}
 						<div id="init" style={currentId ? 'display: none;' : ''}>
 							<span class="activity initial">
 								<b>HTML</b>
@@ -115,64 +116,83 @@ export default function ClickToEdit() @{
 			</div>
 			<h2><a class="zola-anchor" href="#demo" aria-label="Anchor link for: demo">🔗</a>Demo</h2>
 			<div id="demo-canvas">
-				{/* htmx swaps one for the other; an @if arm cannot hold the form's value bindings in Markless 0.4.0, so both stay and one is hidden. */}
-				<div style={editing ? 'display: none;' : ''}>
-					<div><label>First Name</label>: {contact.firstName}</div>
-					<div><label>Last Name</label>: {contact.lastName}</div>
-					<div><label>Email Address</label>: {contact.email}</div>
-					<button
-						class="btn primary"
-						onClick={() => {
-							editing = true;
-							log = [responseEntry(log.length + 1, 'GET', '/contact/1/edit', {}, formTemplate(contact)), ...log];
-							selected = `req-${log.length}`;
-							// htmx swaps in a fresh form; the value binding does not reach the fields' values in Markless 0.4.0, so they are set here.
-							fillForm([first, last, mail], contact);
-						}}
-					>
-						{' Click To Edit '}
-					</button>
-				</div>
-				<form
-					style={editing ? '' : 'display: none;'}
-					class={editing ? 'swapped-in' : ''}
-					onAnimationStart={() => first?.focus()}
-					onSubmit={(event) => {
-						event.preventDefault();
-						const data = new FormData(event.target as HTMLFormElement);
-						const next = { firstName: String(data.get('firstName')), lastName: String(data.get('lastName')), email: String(data.get('email')) };
-						contact = next;
-						editing = false;
-						log = [responseEntry(log.length + 1, 'PUT', '/contact/1', next, displayTemplate(next)), ...log];
-						selected = `req-${log.length}`;
-					}}
-				>
-					<div>
-						<label for="firstName">First Name</label>
-						<input el={first} autofocus="" type="text" id="firstName" name="firstName" value={contact.firstName} />
-					</div>
-					<div class="form-group">
-						<label for="lastName">Last Name</label>
-						<input el={last} type="text" id="lastName" name="lastName" value={contact.lastName} />
-					</div>
-					<div class="form-group">
-						<label for="email">Email Address</label>
-						<input el={mail} type="email" id="email" name="email" value={contact.email} />
-					</div>
-					<button class="btn primary" type="submit">Submit</button>
-					{' '}
-					<button
-						class="btn danger"
-						onClick={(event) => {
+				{/* htmx swaps one for the other when demo.js's fake server answers, 80 ms after the request (autoRespondAfter). */}
+				@if (editing) {
+					<form
+						class="swapped-in"
+						onAnimationStart={(event) => (event.target as HTMLFormElement).querySelector<HTMLInputElement>('[autofocus]')?.focus()}
+						onSubmit={(event) => {
 							event.preventDefault();
-							editing = false;
-							log = [responseEntry(log.length + 1, 'GET', '/contact/1', {}, displayTemplate(contact)), ...log];
-							selected = `req-${log.length}`;
+							if (requesting) return;
+							const data = new FormData(event.target as HTMLFormElement);
+							const next = { firstName: String(data.get('firstName')), lastName: String(data.get('lastName')), email: String(data.get('email')) };
+							requesting = true;
+							(event.target as Element).classList.add('htmx-request');
+							setTimeout(() => {
+								requesting = false;
+								contact = next;
+								editing = false;
+								log = [responseEntry(log.length + 1, 'PUT', '/contact/1', next, displayTemplate(next)), ...log];
+								selected = `req-${log.length}`;
+							}, 80);
 						}}
 					>
-						Cancel
-					</button>
-				</form>
+						<div>
+							<label for="firstName">First Name</label>
+							<input autofocus="" type="text" id="firstName" name="firstName" value={contact.firstName} />
+						</div>
+						<div class="form-group">
+							<label for="lastName">Last Name</label>
+							<input type="text" id="lastName" name="lastName" value={contact.lastName} />
+						</div>
+						<div class="form-group">
+							<label for="email">Email Address</label>
+							<input type="email" id="email" name="email" value={contact.email} />
+						</div>
+						<button class="btn primary" type="submit">Submit</button>
+						{' '}
+						<button
+							class="btn danger"
+							onClick={(event) => {
+								event.preventDefault();
+								if (requesting) return;
+								requesting = true;
+								(event.target as Element).closest('button')!.classList.add('htmx-request');
+								setTimeout(() => {
+									requesting = false;
+									editing = false;
+									log = [responseEntry(log.length + 1, 'GET', '/contact/1', {}, displayTemplate(contact)), ...log];
+									selected = `req-${log.length}`;
+								}, 80);
+							}}
+						>
+							Cancel
+						</button>
+					</form>;
+				} @else {
+					<div>
+						<div><label>First Name</label>: {contact.firstName}</div>
+						<div><label>Last Name</label>: {contact.lastName}</div>
+						<div><label>Email Address</label>: {contact.email}</div>
+						<button
+							class="btn primary"
+							onClick={(event) => {
+								if (requesting) return;
+								requesting = true;
+								// htmx marks the element while its request is in flight; the swap replaces it.
+								(event.target as Element).closest('button')!.classList.add('htmx-request');
+								setTimeout(() => {
+									requesting = false;
+									editing = true;
+									log = [responseEntry(log.length + 1, 'GET', '/contact/1/edit', {}, formTemplate(contact)), ...log];
+									selected = `req-${log.length}`;
+								}, 80);
+							}}
+						>
+							{' Click To Edit '}
+						</button>
+					</div>;
+				}
 			</div>
 		</main>
 		<SiteFooter />

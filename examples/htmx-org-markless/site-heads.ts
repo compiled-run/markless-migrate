@@ -9,7 +9,9 @@ export const HEADS: Record<string, Head> = {
 		"canonical": "https://htmx.org/",
 		"alternates": [],
 		"stylesheets": [
-			"/css/port-home.css"
+			"/css/port/722da47d46.css",
+			"/css/port/c07c3a15c4.css",
+			"/css/port/e1a7cfd46a.css"
 		],
 		"scripts": []
 	},
@@ -876,6 +878,7 @@ export const HEADS: Record<string, Head> = {
 		"canonical": "https://htmx.org/examples/click-to-edit/",
 		"alternates": [],
 		"stylesheets": [
+			"/css/port/389d7bf9f4.css",
 			"/css/port-click-to-edit.css"
 		],
 		"scripts": []

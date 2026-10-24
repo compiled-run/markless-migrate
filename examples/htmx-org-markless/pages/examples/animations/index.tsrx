@@ -11,6 +11,7 @@ export default function Animations() @{
 	let submitted = state(false);
 	let slid = state(false);
 	const toggleDemo = element<HTMLElement>();
+	const slideDemo = element<HTMLElement>();
 
 	<div style="display: contents">
 		<SiteHeader starFrame />
@@ -44,7 +45,9 @@ export default function Animations() @{
 			{" "}
 			{/* hx-get="/colors" hx-swap="outerHTML" hx-trigger="every 1s": a second after it is processed htmx asks for the div (it
 			    carries htmx-request), the fake server answers after 80 ms, and htmx puts the answer in its place: a new div with the
-			    old one's class and style plus htmx-added, given its own 20 ms later so .smooth's transition runs, then the next poll. */}
+			    old one's class and style plus htmx-added, given its own 20 ms later so .smooth's transition runs. As htmx's
+			    processPolling does, each element's 1 s timeout re-arms itself while the element is in the page, and the new div
+			    starts its own. */}
 			<div
 				id="color-demo"
 				class="smooth"
@@ -54,30 +57,36 @@ export default function Animations() @{
 				hx-trigger="every 1s"
 				onIdle={() => {
 					const colors = ['blue', 'green', 'orange', 'red'];
-					const poll = () =>
+					const request = (old: HTMLElement) => {
+						old.classList.add('htmx-request');
 						setTimeout(() => {
-							const old = document.getElementById('color-demo');
-							if (!old) return;
-							old.classList.add('htmx-request');
+							if (!old.isConnected) return;
+							const color = colors.shift()!;
+							colors.push(color);
+							const answer = document.createElement('template');
+							answer.innerHTML = `<div id="color-demo" hx-get="/colors" hx-swap="outerHTML" class="smooth" hx-trigger="every 1s" style="color:${color}">\n  Color Swap Demo\n</div>\n`;
+							const fresh = answer.content.firstElementChild as HTMLElement;
+							const settled = { className: fresh.className, style: fresh.getAttribute('style') ?? '' };
+							fresh.className = old.className;
+							fresh.setAttribute('style', old.getAttribute('style') ?? '');
+							fresh.classList.add('htmx-added');
+							old.replaceWith(answer.content);
+							poll(fresh);
 							setTimeout(() => {
-								const color = colors.shift()!;
-								colors.push(color);
-								const answer = document.createElement('template');
-								answer.innerHTML = `<div id="color-demo" hx-get="/colors" hx-swap="outerHTML" class="smooth" hx-trigger="every 1s" style="color:${color}">\n  Color Swap Demo\n</div>\n`;
-								const fresh = answer.content.firstElementChild as HTMLElement;
-								const settled = { className: fresh.className, style: fresh.getAttribute('style') ?? '' };
-								fresh.className = old.className;
-								fresh.setAttribute('style', old.getAttribute('style') ?? '');
-								fresh.classList.add('htmx-added');
-								old.replaceWith(answer.content);
-								poll();
-								setTimeout(() => {
-									fresh.className = settled.className;
-									fresh.setAttribute('style', settled.style);
-								}, 20);
-							}, 80);
+								fresh.className = settled.className;
+								fresh.setAttribute('style', settled.style);
+							}, 20);
+						}, 80);
+					};
+					const poll = (elt: HTMLElement): void => {
+						setTimeout(() => {
+							if (!elt.isConnected) return;
+							request(elt);
+							poll(elt);
 						}, 1000);
-					poll();
+					};
+					const first = document.getElementById('color-demo');
+					if (first) poll(first);
 				}}
 			>
 				{" Color Swap Demo "}
@@ -180,20 +189,23 @@ export default function Animations() @{
 			<h4 id="request-demo"><a class="zola-anchor" href="#request-demo" aria-label="Anchor link for: request-demo">Demo</a></h4>
 			{" "}
 			{" "}
-			{/* hx-post="/name" hx-swap="outerHTML": the form carries htmx-request until the answer, 80 ms later, replaces it. */}
-			<div aria-live="polite">
+			{/* hx-post="/name" hx-swap="outerHTML": the form carries htmx-request until the answer, 80 ms later, replaces it. The
+			    submit is handled on this div, outside the branch, so the page prevents the native submit before any code loads. */}
+			<div
+				aria-live="polite"
+				onSubmit={(event) => {
+					event.preventDefault();
+					const form = event.target as HTMLFormElement;
+					if (form.classList.contains('htmx-request')) return;
+					form.classList.add('htmx-request');
+					setTimeout(() => (submitted = true), 80);
+				}}
+			>
 				{" "}
 				@if (!submitted) {
 					<form
 						hx-post="/name"
 						hx-swap="outerHTML"
-						onSubmit={(event) => {
-							event.preventDefault();
-							const form = event.target as HTMLFormElement;
-							if (form.classList.contains('htmx-request')) return;
-							form.classList.add('htmx-request');
-							setTimeout(() => (submitted = true), 80);
-						}}
 					>
 						{" "}
 						<label>Name:</label>
@@ -239,33 +251,35 @@ export default function Animations() @{
 			{" "}
 			{" "}
 			{/* hx-get with hx-swap="innerHTML transition:true" hx-target="closest div": the answer comes after 80 ms and htmx swaps the
-			    div's content inside a view transition (the old content slides out, the new slides in). */}
-			<div class="slide-it">
+			    div's content inside a view transition (the old content slides out, the new slides in). htmx binds the button's click
+			    when it processes the page and adds htmx-request in the click itself, so the listener is bound here when the page is
+			    idle, on the div, for the button of either content. */}
+			<div
+				class="slide-it"
+				el={slideDemo}
+				onIdle={() =>
+					slideDemo?.addEventListener('click', (event) => {
+						const button = (event.target as Element).closest('button');
+						if (!button || button.classList.contains('htmx-request')) return;
+						button.classList.add('htmx-request');
+						setTimeout(() => {
+							const swap = () => {
+								slid = !slid;
+								// Rendering waits for the promise, so the new content is in place for the transition's second picture.
+								return new Promise<void>((resolve) => setTimeout(resolve));
+							};
+							if (document.startViewTransition) document.startViewTransition(swap);
+							else swap();
+						}, 80);
+					})
+				}
+			>
 				{" "}
 				@if (!slid) {
 					<>
 						<h1>Initial Content</h1>
 						{" "}
-						<button
-							class="btn primary"
-							hx-get="/new-content"
-							hx-swap="innerHTML transition:true"
-							hx-target="closest div"
-							onClick={(event) => {
-								const button = (event.target as Element).closest('button');
-								if (!button || button.classList.contains('htmx-request')) return;
-								button.classList.add('htmx-request');
-								setTimeout(() => {
-									const swap = () => {
-										slid = !slid;
-										// Rendering waits for the promise, so the new content is in place for the transition's second picture.
-										return new Promise<void>((resolve) => setTimeout(resolve));
-									};
-									if (document.startViewTransition) document.startViewTransition(swap);
-									else swap();
-								}, 80);
-							}}
-						>
+						<button class="btn primary" hx-get="/new-content" hx-swap="innerHTML transition:true" hx-target="closest div">
 							{" Swap It! "}
 						</button>
 					</>
@@ -273,26 +287,7 @@ export default function Animations() @{
 					<>
 						<h1>New Content</h1>
 						{" "}
-						<button
-							class="btn danger"
-							hx-get="/original-content"
-							hx-swap="innerHTML transition:true"
-							hx-target="closest div"
-							onClick={(event) => {
-								const button = (event.target as Element).closest('button');
-								if (!button || button.classList.contains('htmx-request')) return;
-								button.classList.add('htmx-request');
-								setTimeout(() => {
-									const swap = () => {
-										slid = !slid;
-										// Rendering waits for the promise, so the new content is in place for the transition's second picture.
-										return new Promise<void>((resolve) => setTimeout(resolve));
-									};
-									if (document.startViewTransition) document.startViewTransition(swap);
-									else swap();
-								}, 80);
-							}}
-						>
+						<button class="btn danger" hx-get="/original-content" hx-swap="innerHTML transition:true" hx-target="closest div">
 							{"Restore It! "}
 						</button>
 					</>
