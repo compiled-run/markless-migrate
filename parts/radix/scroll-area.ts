@@ -20,7 +20,9 @@ function update(root: HTMLElement): void {
 		if (!thumb) continue;
 		const view = vertical ? viewport.clientHeight : viewport.clientWidth;
 		const content = vertical ? viewport.scrollHeight : viewport.scrollWidth;
-		const track = (vertical ? bar.clientHeight : bar.clientWidth) || view;
+		const css = getComputedStyle(bar);
+		const padding = vertical ? parseInt(css.paddingTop) + parseInt(css.paddingBottom) : parseInt(css.paddingLeft) + parseInt(css.paddingRight);
+		const track = ((vertical ? bar.clientHeight : bar.clientWidth) || view) - (padding || 0);
 		const size = Math.max(18, (view / (content || 1)) * track);
 		bar.style.setProperty(vertical ? '--radix-scroll-area-thumb-height' : '--radix-scroll-area-thumb-width', `${size}px`);
 		const scrolled = vertical ? viewport.scrollTop : Math.abs(viewport.scrollLeft);
