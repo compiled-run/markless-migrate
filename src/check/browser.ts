@@ -504,3 +504,6 @@ export async function pushRecording(env: SideEnv): Promise<boolean> {
 		return false;
 	}
 }
+
+/** How check launches Chromium: with scrollbars, as a visitor's browser shows them, so a page that mishandles their width (scroll-lock padding) is seen doing it. */
+export const LAUNCH = { ignoreDefaultArgs: ['--hide-scrollbars'] } as const;

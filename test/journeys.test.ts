@@ -119,6 +119,8 @@ test('a button the new page marks aria-expanded when it opens a menu, where the 
 	const better = [[result({ added: ['- button "Change language" [expanded]:', ...opened], removed: ['- button "Change language":'] })]];
 	assert.deepEqual(compareJourneys('/', [old, old], menu, better, undefined, undefined, improvements), []);
 	assert.match(improvements[0]!, /button "Change language" sets aria-expanded when it opens what it controls/);
+	const focused = [[result({ added: opened, focus: 'button "Change language"' })]];
+	assert.deepEqual(compareJourneys('/', [focused, focused], menu, [[result({ added: ['- button "Change language" [expanded]:', ...opened], removed: ['- button "Change language":'], focus: 'button "Change language" [expanded]' })]]), [], 'focus stays on the same button');
 	// What else the step does is still compared: the menu not opening stays red.
 	assert.equal(compareJourneys('/', [old, old], menu, [[result({ added: ['- button "Change language" [expanded]:'], removed: ['- button "Change language":'] })]]).length, 1);
 	// A state the old page sets differently is a difference, not an improvement.
