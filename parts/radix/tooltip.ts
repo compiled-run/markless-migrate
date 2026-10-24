@@ -1,15 +1,18 @@
 import { closeLayer, openLayer, type Layer } from '../layer.ts';
+import { closestTrigger, layerKey } from '../reveal.ts';
 
 // Radix Tooltip under shadcn's TooltipProvider delayDuration={0}: the pointer entering the trigger or keyboard focus
 // shows the content at once (data-state "delayed-open", "instant-open" when another tooltip closed within Radix's
 // 300 ms skip delay), with aria-describedby naming its hidden role="tooltip" text; leaving, blurring, a press on the
 // trigger or Escape hides it. The content never takes focus.
 const TRIGGER = '[data-slot="tooltip-trigger"][data-state]';
+// A trigger rendered through its child (asChild, render) carries the child's data-slot; its layer names the part.
+const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[data-state][data-mm-key], [data-state][aria-controls], [data-state][id]', (slot) => /^tooltip-trigger$/.test(slot));
 const SKIP_DELAY = 300;
 const shown = new Map<HTMLElement, Layer>();
 let lastClosed = 0;
 
-const keyOf = (t: HTMLElement) => t.getAttribute('aria-controls') || t.dataset.mmKey || t.id;
+const keyOf = (t: HTMLElement) => layerKey(t);
 
 function show(trigger: HTMLElement): boolean {
 	if (shown.has(trigger)) return true;
@@ -37,13 +40,13 @@ function hide(trigger: HTMLElement): void {
 }
 
 export function pointerover(target: Element, event: PointerEvent): boolean {
-	const trigger = target.closest<HTMLElement>(TRIGGER);
+	const trigger = triggerOf(target);
 	if (!trigger || event.pointerType === 'touch') return false;
 	return show(trigger);
 }
 
 export function pointerout(target: Element, event: PointerEvent): boolean {
-	const trigger = target.closest<HTMLElement>(TRIGGER);
+	const trigger = triggerOf(target);
 	if (!trigger || !shown.has(trigger)) return false;
 	const to = event.relatedTarget instanceof Node ? event.relatedTarget : null;
 	if (to && (trigger.contains(to) || shown.get(trigger)!.nodes.some((n) => n.contains(to)))) return true;
@@ -52,19 +55,19 @@ export function pointerout(target: Element, event: PointerEvent): boolean {
 }
 
 export function pointerdown(target: Element): boolean {
-	const trigger = target.closest<HTMLElement>(TRIGGER);
+	const trigger = triggerOf(target);
 	if (!trigger || !shown.has(trigger)) return false;
 	hide(trigger);
 	return false;
 }
 
 export function focusin(target: Element): boolean {
-	const trigger = target.closest<HTMLElement>(TRIGGER);
+	const trigger = triggerOf(target);
 	return trigger && (target as HTMLElement).matches(':focus-visible') ? show(trigger) : false;
 }
 
 export function focusout(target: Element): boolean {
-	const trigger = target.closest<HTMLElement>(TRIGGER);
+	const trigger = triggerOf(target);
 	if (!trigger || !shown.has(trigger)) return false;
 	hide(trigger);
 	return true;

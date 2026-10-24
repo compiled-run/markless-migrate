@@ -1,5 +1,6 @@
-import { attr, walk, type Element } from './dom.ts';
-import { lit, type Binding } from './tsrx.ts';
+import { parseFragment } from 'parse5';
+import { attr, childrenOf, inner as innerOf, isElement, isText, outer as outerOf, walk, type Element, type Node } from './dom.ts';
+import { lit, mergeBindings, type Binding } from './tsrx.ts';
 import type { Notify, Switch, ToggleGroup } from './toggles.ts';
 
 /**
@@ -174,11 +175,22 @@ export class SelectPlan {
 		return this.bindings.get(el);
 	}
 
-	add(root: Element, isBaseSelect: (el: Element) => boolean): number {
+	add(root: Element, isBaseSelect: (el: Element) => boolean, emit?: (html: string) => string): number {
 		let count = 0;
 		for (const trigger of walk(root)) {
 			if (attr(trigger, 'data-slot') !== 'select-trigger' || !isBaseSelect(trigger)) continue;
 			const value = [...walk(trigger)].find((el) => attr(el, 'data-slot') === 'select-value');
+			// A React Aria Select whose trigger renders the chosen text itself (a render function, no SelectValue): its
+			// leading text is the state, the rest of its children stay as they are.
+			const lead = childrenOf(trigger)[0];
+			if (!value && emit && attr(trigger, 'data-rac') !== undefined && lead && isText(lead) && lead.value.trim()) {
+				const name = `sel${this.n++}`;
+				const declare = [`let ${name} = state(${lit(lead.value)});`];
+				const rest = childrenOf(trigger).slice(1).map((n) => (isText(n) ? n.value.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!) : outerOf(n))).join('');
+				this.bindings.set(trigger, { declare, extra: [`onMmchoose={(event) => (${name} = (event as CustomEvent<string>).detail)}`], children: `{${name}}${emit(rest)}` });
+				count++;
+				continue;
+			}
 			if (!value) continue;
 			const name = `sel${this.n++}`;
 			const text = textOf(value);
@@ -226,6 +238,17 @@ export class CheckablePlan {
 				const value = (v: string | undefined) => (v === undefined ? 'undefined' : lit(v));
 				const keys = el.tagName === 'button' || el.tagName === 'input' ? [] : group.kind === 'radio' ? [`onKeyDown={(event) => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); ${choose}; } else radioKeys(event, ${!group.clears}); }}`] : [`onKeyDown={(event) => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); ${choose}; } }}`];
 				const radioRoving = el.tagName === 'button' && group.kind === 'radio' ? [`onKeyDown={(event) => radioKeys(event, ${!group.clears})}`] : [];
+				// React Aria's Checkbox, Switch and Radio: a label around a visually hidden input that holds focus. A click
+				// on the label reaches the input too, and Space on the input clicks it: the input's click is the one use.
+				// Only the descendants that differ are bound, so the focused input is never rendered again.
+				if (el.tagName === 'label' && attr(el, 'data-rac') !== undefined) {
+					const pick = group.kind === 'radio' ? `${name} = ${k}` : choose;
+					this.bindings.set(el, { declare, omit: names, extra: [...names.map((a) => `${a}={${on} ? ${value(c.on.attrs[a])} : ${value(c.off.attrs[a])}}`), `onClick={(event) => { if ((event.target as Element).tagName === 'INPUT') { ${pick}; } }}`] });
+					this.diff(el, c.on.inner, c.off.inner, on, declare, emit);
+					const input = [...walk(el)].find((x) => x.tagName === 'input');
+					if (input) this.bindings.set(input, mergeBindings(this.bindings.get(input), { declare, omit: ['checked'], extra: [`checked={${on}}`] })!);
+					return;
+				}
 				this.bindings.set(el, {
 					declare,
 					omit: names,
@@ -242,6 +265,37 @@ export class CheckablePlan {
 			placed++;
 		}
 		return placed;
+	}
+
+	/**
+	 * Binds what differs between a control's two states on the descendants that differ: an attribute on the element
+	 * that carries it, and an @if arm only where the children themselves differ in shape (a checkbox's check icon).
+	 */
+	private diff(parent: Element, onHtml: string, offHtml: string, on: string, declare: readonly string[], emit: (html: string) => string): void {
+		if (onHtml === offHtml) return;
+		const meaningful = (nodes: readonly Node[]) => nodes.filter((n) => !(isText(n) && !n.value.trim()));
+		const a = meaningful(childrenOf(parseFragment(onHtml) as unknown as Element));
+		const b = meaningful(childrenOf(parseFragment(offHtml) as unknown as Element));
+		const page = meaningful(childrenOf(parent));
+		const alike = a.length === b.length && a.length === page.length && a.every((x, i) => {
+			const y = b[i]!;
+			const z = page[i]!;
+			if (isText(x) || isText(y)) return isText(x) && isText(y) && x.value === y.value;
+			return isElement(x) && isElement(y) && isElement(z) && x.tagName === y.tagName && y.tagName === z.tagName;
+		});
+		if (!alike) {
+			this.bindings.set(parent, mergeBindings(this.bindings.get(parent), { declare, children: `@if (${on}) { <>${emit(onHtml)}</> } @else { <>${emit(offHtml)}</> }` })!);
+			return;
+		}
+		a.forEach((x, i) => {
+			if (!isElement(x)) return;
+			const y = b[i] as Element;
+			const z = page[i] as Element;
+			const value = (v: string | undefined) => (v === undefined ? 'undefined' : lit(v));
+			const names = [...new Set([...x.attrs, ...y.attrs].map((t) => t.name))].filter((n) => attr(x, n) !== attr(y, n) && /^[A-Za-z_][\w.-]*$/.test(n) && n !== 'checked');
+			if (names.length) this.bindings.set(z, mergeBindings(this.bindings.get(z), { declare, omit: names, extra: names.map((n) => `${n}={${on} ? ${value(attr(x, n))} : ${value(attr(y, n))}}`) })!);
+			this.diff(z, innerOf(x), innerOf(y), on, declare, emit);
+		});
 	}
 }
 
@@ -279,11 +333,27 @@ export class BaseTabsPlan {
 			const name = `btab${this.n++}`;
 			const dir = `${name}d`;
 			const vertical = attr(list, 'data-orientation') === 'vertical';
-			const declare = [`let ${name} = state(${active});`, `let ${dir} = state(${lit(attr(list, 'data-activation-direction') ?? 'none')});`];
 			const pick = (values: readonly (string | undefined)[]) => values.reduceRight<string>((rest, v, k) => (k === values.length - 1 ? (v === undefined ? 'undefined' : lit(v)) : `${name} === ${k} ? ${v === undefined ? 'undefined' : lit(v)} : ${rest}`), '');
+			const panelId = (k: number) => panels[k]!.attrs['id'];
+			// React Aria's Tabs: the chosen tab carries data-selected and the panel's id; focus selects (automatic activation).
+			if (attr(triggers[0]!, 'data-rac') !== undefined) {
+				const declare = [`let ${name} = state(${active});`];
+				triggers.forEach((t, k) => {
+					const sel = `${name} === ${k}`;
+					this.bindings.set(t, {
+						declare,
+						omit: ['aria-selected', 'tabindex', 'data-selected', 'aria-controls', 'data-hovered', 'data-pressed', 'data-focused', 'data-focus-visible'],
+						extra: [`aria-selected={${sel} ? "true" : "false"}`, `tabindex={${sel} ? "0" : "-1"}`, `data-selected={${sel} ? "true" : undefined}`, `aria-controls={${sel} ? ${lit(panelId(k) ?? '')} : undefined}`, `onClick={() => { ${name} = ${k}; }}`, `onFocusIn={() => { ${name} = ${k}; }}`, `onKeyDown={(event) => roving(event)}`],
+					});
+				});
+				const varying = [...new Set(panels.flatMap((p) => Object.keys(p!.attrs)))].filter((a) => new Set(panels.map((p) => p!.attrs[a])).size > 1);
+				this.bindings.set(panel, { declare, omit: varying, extra: varying.map((a) => `${a}={${pick(panels.map((p) => p!.attrs[a]))}}`), wrap: (inner) => (/@(if|switch|for) \(|\bvalues\[|<[A-Z]\w*[\s/>]/.test(inner) ? inner : contents.map((c, k) => `@if (${name} === ${k}) { <>${c ?? inner}</> }`).join('')) });
+				groups++;
+				continue;
+			}
+			const declare = [`let ${name} = state(${active});`, `let ${dir} = state(${lit(attr(list, 'data-activation-direction') ?? 'none')});`];
 			const direction = `data-activation-direction={${dir}}`;
 			for (const el of [tabs, list]) if (attr(el, 'data-activation-direction') !== undefined) this.bindings.set(el, { declare, omit: ['data-activation-direction'], extra: [direction] });
-			const panelId = (k: number) => panels[k]!.attrs['id'];
 			triggers.forEach((t, k) => {
 				const choose = `${dir} = ${k} > ${name} ? ${lit(vertical ? 'down' : 'right')} : ${k} < ${name} ? ${lit(vertical ? 'up' : 'left')} : ${dir}; ${name} = ${k};`;
 				this.bindings.set(t, {
@@ -484,6 +554,37 @@ export class SwitchPlan {
 		}
 		return placed;
 	}
+
+	/**
+	 * Binds what differs between a control's two states on the descendants that differ: an attribute on the element
+	 * that carries it, and an @if arm only where the children themselves differ in shape (a checkbox's check icon).
+	 */
+	private diff(parent: Element, onHtml: string, offHtml: string, on: string, declare: readonly string[], emit: (html: string) => string): void {
+		if (onHtml === offHtml) return;
+		const meaningful = (nodes: readonly Node[]) => nodes.filter((n) => !(isText(n) && !n.value.trim()));
+		const a = meaningful(childrenOf(parseFragment(onHtml) as unknown as Element));
+		const b = meaningful(childrenOf(parseFragment(offHtml) as unknown as Element));
+		const page = meaningful(childrenOf(parent));
+		const alike = a.length === b.length && a.length === page.length && a.every((x, i) => {
+			const y = b[i]!;
+			const z = page[i]!;
+			if (isText(x) || isText(y)) return isText(x) && isText(y) && x.value === y.value;
+			return isElement(x) && isElement(y) && isElement(z) && x.tagName === y.tagName && y.tagName === z.tagName;
+		});
+		if (!alike) {
+			this.bindings.set(parent, mergeBindings(this.bindings.get(parent), { declare, children: `@if (${on}) { <>${emit(onHtml)}</> } @else { <>${emit(offHtml)}</> }` })!);
+			return;
+		}
+		a.forEach((x, i) => {
+			if (!isElement(x)) return;
+			const y = b[i] as Element;
+			const z = page[i] as Element;
+			const value = (v: string | undefined) => (v === undefined ? 'undefined' : lit(v));
+			const names = [...new Set([...x.attrs, ...y.attrs].map((t) => t.name))].filter((n) => attr(x, n) !== attr(y, n) && /^[A-Za-z_][\w.-]*$/.test(n) && n !== 'checked');
+			if (names.length) this.bindings.set(z, mergeBindings(this.bindings.get(z), { declare, omit: names, extra: names.map((n) => `${n}={${on} ? ${value(attr(x, n))} : ${value(attr(y, n))}}`) })!);
+			this.diff(z, innerOf(x), innerOf(y), on, declare, emit);
+		});
+	}
 }
 
 /**
@@ -528,5 +629,36 @@ export class NotifyPlan {
 			placed++;
 		}
 		return placed;
+	}
+
+	/**
+	 * Binds what differs between a control's two states on the descendants that differ: an attribute on the element
+	 * that carries it, and an @if arm only where the children themselves differ in shape (a checkbox's check icon).
+	 */
+	private diff(parent: Element, onHtml: string, offHtml: string, on: string, declare: readonly string[], emit: (html: string) => string): void {
+		if (onHtml === offHtml) return;
+		const meaningful = (nodes: readonly Node[]) => nodes.filter((n) => !(isText(n) && !n.value.trim()));
+		const a = meaningful(childrenOf(parseFragment(onHtml) as unknown as Element));
+		const b = meaningful(childrenOf(parseFragment(offHtml) as unknown as Element));
+		const page = meaningful(childrenOf(parent));
+		const alike = a.length === b.length && a.length === page.length && a.every((x, i) => {
+			const y = b[i]!;
+			const z = page[i]!;
+			if (isText(x) || isText(y)) return isText(x) && isText(y) && x.value === y.value;
+			return isElement(x) && isElement(y) && isElement(z) && x.tagName === y.tagName && y.tagName === z.tagName;
+		});
+		if (!alike) {
+			this.bindings.set(parent, mergeBindings(this.bindings.get(parent), { declare, children: `@if (${on}) { <>${emit(onHtml)}</> } @else { <>${emit(offHtml)}</> }` })!);
+			return;
+		}
+		a.forEach((x, i) => {
+			if (!isElement(x)) return;
+			const y = b[i] as Element;
+			const z = page[i] as Element;
+			const value = (v: string | undefined) => (v === undefined ? 'undefined' : lit(v));
+			const names = [...new Set([...x.attrs, ...y.attrs].map((t) => t.name))].filter((n) => attr(x, n) !== attr(y, n) && /^[A-Za-z_][\w.-]*$/.test(n) && n !== 'checked');
+			if (names.length) this.bindings.set(z, mergeBindings(this.bindings.get(z), { declare, omit: names, extra: names.map((n) => `${n}={${on} ? ${value(attr(x, n))} : ${value(attr(y, n))}}`) })!);
+			this.diff(z, innerOf(x), innerOf(y), on, declare, emit);
+		});
 	}
 }

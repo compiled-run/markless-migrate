@@ -12,4 +12,4 @@ cd "$APP"
 [ -f .migrate/usage.json ] || node "$ROOT/src/cli.ts" usage --old "$OLD" --source "$SOURCE"
 node "$ROOT/src/cli.ts" convert --old "$OLD" --source "$SOURCE" ${ONLY:+--only "$ONLY"} ${FALLTHROUGH:+--fallthrough "$FALLTHROUGH"}
 [ -f .migrate/caching.json ] || node "$ROOT/src/cli.ts" cache plan --old "$OLD"
-node "$ROOT/src/cli.ts" cache apply
+node "$ROOT/src/cli.ts" cache apply --prerender

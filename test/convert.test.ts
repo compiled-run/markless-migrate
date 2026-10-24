@@ -91,3 +91,11 @@ test('the step snapshot hides every framework announcer frameworkMarkup() knows'
 	assert.ok(known.length >= 4);
 	for (const selector of known) assert.ok(FRAMEWORK_MARKUP_SELECTOR.split(', ').includes(selector), selector);
 });
+
+test('a region alike on two pages but showing different content on use (View Code) is not shared', () => {
+	const block = `<div data-slot="code"><pre>import { Select } from "@/components/ui/select"${'x'.repeat(2400)}</pre><button>View Code</button></div>`;
+	const roots = new Map(['/a', '/b'].map((route) => [route, body(parseDocument(`<body><div>${block}<main>${route}</main></div></body>`)).childNodes[0] as never]));
+	const code = new Map([...roots].map(([route, root]) => [(root as { childNodes: unknown[] }).childNodes[0], `<pre>full source of ${route}</pre>`]));
+	assert.ok(factor(roots).components.some((c) => c.source.includes('View Code')), 'alike markup alone is shared');
+	assert.ok(!factor(roots, { extra: (el) => code.get(el) }).components.some((c) => c.source.includes('View Code')), 'the block, whose View Code shows each page its own source, is each page\'s');
+});

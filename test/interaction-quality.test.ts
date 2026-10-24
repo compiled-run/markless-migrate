@@ -182,3 +182,9 @@ test("content that morphs from the previous page's look while the router changes
 	assert.ok(nav, JSON.stringify(morphing.map((f) => f.check)));
 	assert.match(nav!.actual, /moves while the page changes: .*background-color/);
 });
+
+test('a page that changes on its own every 3 s (a demo toggling a loading state) is the same page whatever phase each step lands on', async () => {
+	const cycling = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Indicator</title></head><body><main><h1>Indicator</h1><button id="post" type="button">Post It!</button><img id="spin" alt="Loading..." hidden src="data:image/gif;base64,R0lGODlhAQABAAAAACw="><script>setInterval(() => { document.getElementById('spin').hidden = !document.getElementById('spin').hidden; }, 3000);</script></main></body></html>`;
+	const same = await check(cycling, cycling);
+	assert.deepEqual(open(same).filter((f) => f.dimension === 'behaviour' || f.dimension === 'a11y').map((f) => `${f.check}: ${f.actual}`), []);
+});

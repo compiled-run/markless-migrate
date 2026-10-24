@@ -29,6 +29,12 @@ export interface PartResolver {
 	 * the default of the component parameter passed through (`sideOffset = 4`), the most common one across sites.
 	 */
 	prop(library: string, exportName: string, prop: string): string | undefined;
+	/**
+	 * The same, only where the source renders the export with this literal `data-slot`: a library part several wrappers
+	 * render with their own defaults (React Aria's Popover with `offset = 4` as a select's content, `offset = 6` as a
+	 * combobox's).
+	 */
+	slotProp?(library: string, exportName: string, slot: string, prop: string): string | undefined;
 }
 
 interface LibrariesFile {
@@ -76,6 +82,26 @@ export async function usageResolver(usagePath: string, source?: string): Promise
 			counts.set(b.library, (counts.get(b.library) ?? 0) + 1);
 		}
 	}
+	// A library a component drives through a call (Embla's useEmblaCarousel) renders no element of its own: the slots
+	// written literally in a file that calls it, and that no library element renders, are that call's.
+	if (source) {
+		const called = new Map<string, PartUsage[]>();
+		for (const b of usage.behaviours) {
+			if ((b.details as { kind?: string }).kind !== 'function' || b.library === 'script' || b.library === 'embed') continue;
+			for (const site of b.sites) {
+				if (!('file' in site)) continue;
+				let text = '';
+				try {
+					text = readFileSync(join(source, site.file), 'utf8');
+				} catch {}
+				for (const m of text.matchAll(/data-slot="([a-z0-9-]+)"/g)) {
+					const list = called.get(m[1]!) ?? called.set(m[1]!, []).get(m[1]!)!;
+					if (!list.some((u) => u.library === b.library && u.export === b.feature)) list.push({ library: b.library, export: b.feature, file: site.file, line: site.line });
+				}
+			}
+		}
+		for (const [slot, uses] of called) if (!bySlot.has(slot)) bySlot.set(slot, uses);
+	}
 	const modules = new Map<string, Module | undefined>();
 	const defaults = new Map<string, string | undefined>();
 	return {
@@ -103,7 +129,45 @@ export async function usageResolver(usagePath: string, source?: string): Promise
 			defaults.set(key, best);
 			return best;
 		},
+		slotProp(library, exportName, slot, prop) {
+			if (!source) return undefined;
+			const votes = new Map<string, number>();
+			for (const site of sitesOf.get(`${library} ${exportName}`) ?? []) {
+				if (!modules.has(site.file)) {
+					let text: string | undefined;
+					try {
+						text = readFileSync(join(source, site.file), 'utf8');
+					} catch {}
+					modules.set(site.file, text === undefined ? undefined : parseModule(site.file, text));
+				}
+				const mod = modules.get(site.file);
+				const value = mod ? slotSiteProp(mod, site.line, slot, prop) : undefined;
+				if (value !== undefined) votes.set(value, (votes.get(value) ?? 0) + 1);
+			}
+			return [...votes].sort((a, b) => b[1] - a[1])[0]?.[0];
+		},
 	};
+}
+
+/** A prop of the JSX element opened on `line` with this literal data-slot: its literal, or the default of the parameter it passes. */
+function slotSiteProp(mod: Module, line: number, slot: string, prop: string): string | undefined {
+	let found: string | undefined;
+	walk(mod.program, (node: N) => {
+		if (found !== undefined || node.type !== 'JSXOpeningElement' || mod.line(node.start) !== line) return;
+		const attrs = (node.attributes ?? []) as N[];
+		const named = (name: string) => attrs.find((a) => a.type === 'JSXAttribute' && a.name?.name === name);
+		if (named('data-slot')?.value?.value !== slot) return;
+		const value = named(prop)?.value;
+		if (!value) return;
+		if (value.type === 'Literal') found = String(value.value);
+		else if (value.type === 'JSXExpressionContainer') {
+			const e = value.expression;
+			if (e.type === 'Literal') found = String(e.value);
+			else if (e.type === 'UnaryExpression' && e.operator === '-' && e.argument.type === 'Literal') found = `-${e.argument.value}`;
+			else if (e.type === 'Identifier') found = paramDefault(mod, line, e.name);
+		}
+	});
+	return found;
 }
 
 /**

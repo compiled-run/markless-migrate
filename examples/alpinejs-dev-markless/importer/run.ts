@@ -11,6 +11,8 @@ const APP = join(import.meta.dirname, '..');
 const out = (path: string) => join(APP, path);
 
 const docs = loadDocs(out('content/docs'));
+// DocSearch on intent is markless-migrate's shared part (parts/docsearch.ts), copied in as it is.
+write(out('generated/docsearch.ts'), GENERATED + readFileSync(join(APP, '../../parts/docsearch.ts'), 'utf8'));
 
 const slug = (route: string) => route.slice(1).replace(/\//g, '-');
 
