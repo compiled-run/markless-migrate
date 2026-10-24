@@ -1109,9 +1109,9 @@ export class DayPickerPlan {
 			return undefined;
 		}
 		const holder = `dps${k}`;
-		const label = `dayPickerLabel(${c}, ${holder}.v, ${JSON.stringify(learned.pattern)}, ${JSON.stringify(learned.join)})`;
+		const label = `dpl${k}`;
 		const binding: Binding = {
-			declare: [`const ${holder} = dpShared${k}();`],
+			declare: [`const ${holder} = dpShared${k}();`, `const ${label} = computed(() => dayPickerLabel(${c}, ${holder}.v, ${JSON.stringify(learned.pattern)}, ${JSON.stringify(learned.join)}));`],
 			children: `${learned.prefix}@if (${label} !== undefined) { <>{${label}}</> } @else { <>${learned.rest}</> }`,
 		};
 		this.bindings.set(trigger, mergeBindings(this.bindings.get(trigger), binding)!);
