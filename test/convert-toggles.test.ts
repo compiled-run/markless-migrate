@@ -107,7 +107,7 @@ test('an accordion that lets several items be open gives each item its own state
 	}
 });
 
-test('a page that shows notifications renders their region between two ranges of the shared body children', async () => {
+test('a page that shows notifications renders their region between the other shared body children, one component each', async () => {
 	const { bodyAfterModule, splitBody } = await import('../src/convert/document.ts');
 	const pages = ['/a', '/b'].map((route) => {
 		const doc = parseDocument(`<body><main></main><section aria-live="polite" id="_R_${route.slice(1)}_"></section><div data-slot="toast-portal"></div></body>`);
@@ -118,8 +118,9 @@ test('a page that shows notifications renders their region between two ranges of
 	const plain = bodyAfterModule(split, () => undefined, () => {})!;
 	assert.doesNotMatch(plain, /from \?\? 0/);
 	const ranged = bodyAfterModule(split, () => undefined, () => {}, true)!;
-	assert.match(ranged, /@if \(\(from \?\? 0\) <= 0 && 0 < \(to \?\? 2\)\) \{ <><section aria-live="polite" id=\{valueOf\(route, "b0"\)\}/, 'a value read in an arm goes through a module function, not a body constant');
-	assert.match(ranged, /BodyAfter\(\{ route, from, to \}/);
+	assert.doesNotMatch(ranged, /@if/, 'an arm holding an attribute binding cannot be rebuilt when its condition changes');
+	assert.match(ranged, /export function BodyAfter0\(\{ route \}[^@]*@\{\n\tconst values = [^\n]*\n\tvoid values;\n\t<><section aria-live="polite" id=\{values\["b0"\]\}/);
+	assert.match(ranged, /export default function BodyAfter\(\{ route \}[^@]*@\{\n\t<><BodyAfter0 route=\{route\} \/><BodyAfter1 route=\{route\} \/><\/>/);
 });
 
 test('a Base UI tab list without panels (the line and vertical variants) still switches its triggers', async () => {

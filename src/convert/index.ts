@@ -1197,11 +1197,11 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			let from = 0;
 			after = '';
 			for (const i of owned) {
-				if (i > from) after += `<BodyAfter route={${lit(route)}} from={${from}} to={${i}} />`;
+				for (let j = from; j < i; j++) after += `<BodyAfter${j} route={${lit(route)}} />`;
 				after += emitElement(bodyParts.after[i]!.byRoute.get(route)!, { declarations, bind: (el) => mergeBindings(bindParts(el, usedPorts), notifyPlan.bind(el)), dropped: noteDropped });
 				from = i + 1;
 			}
-			if (from < bodyParts.after.length) after += `<BodyAfter route={${lit(route)}} from={${from}} />`;
+			for (let j = from; j < bodyParts.after.length; j++) after += `<BodyAfter${j} route={${lit(route)}} />`;
 		}
 		const extras = (ownExtras.get(route) ?? []).map((el) => emitElement(el, { declarations, bind: (x) => notifyPlan.bind(x), dropped: noteDropped })).join('');
 		// A copy control's text rides in the page's HTML as the old page's props did (an attribute: template content must be literal).
@@ -1217,7 +1217,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const imports = new Set<string>(["import type { PageProps } from '@markless/router';"]);
 		for (const v of variants) for (const component of factored.used(v.route)) imports.add(`import ${component.name} from '${relative(dirname(join(app, file)), join(app, component.file)).replace(/^(?!\.)/, './')}';`);
 		for (const v of variants) for (const part of v.parts) imports.add(part.import(partsDir(file)));
-		if (bodyAfter) imports.add(`import BodyAfter from '${relative(dirname(join(app, file)), join(app, 'components', 'converted', 'body-after.tsrx')).replace(/^(?!\.)/, './')}';`);
+		if (bodyAfter) {
+			const ranges = [...new Set(variants.flatMap((v) => [...v.markup.matchAll(/<(BodyAfter\d+) /g)].map((m) => m[1]!)))];
+			imports.add(`import BodyAfter${ranges.length ? `, { ${ranges.join(', ')} }` : ''} from '${relative(dirname(join(app, file)), join(app, 'components', 'converted', 'body-after.tsrx')).replace(/^(?!\.)/, './')}';`);
+		}
 		for (const v of variants) for (const name of v.layers) imports.add(`import ${name} from '${relative(dirname(join(app, file)), join(app, 'components', 'converted', 'layers', `${name.replace(/^Layer/, 'layer-')}.tsrx`)).replace(/^(?!\.)/, './')}';`);
 		const base = variants.find((v) => v.search === '') ?? variants[0]!;
 		const others = variants.filter((v) => v !== base);
