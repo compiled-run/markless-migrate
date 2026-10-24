@@ -39,8 +39,6 @@ const ALIVE = page(`${WIDGETS}${BEHAVIOUR}`);
 // The same markup, every control drawn and none answering: what a port looks like when its parts never run.
 const DEAD = page(WIDGETS);
 const TRACK = WIDGETS.slice(0, WIDGETS.indexOf('</section>') + '</section>'.length);
-const CAROUSEL = page(`${TRACK}<script>document.getElementById('next').onclick = () => { document.getElementById('track').style.transform = 'translateX(-300px)'; };</script>`);
-const DEAD_CAROUSEL = page(TRACK);
 
 let browser: Browser;
 const servers: Server[] = [];
@@ -67,7 +65,7 @@ function serve(pages: (path: string) => string | undefined): Promise<string> {
 
 async function check(old: (path: string) => string | undefined, next: (path: string) => string | undefined, routes = ['/']): Promise<Report> {
 	const [a, b] = await Promise.all([serve(old), serve(next)]);
-	return runCheck({ oldOrigin: a, newOrigin: b, routes, viewports: [VIEWPORTS[0]!], browser, concurrency: 4, journeys: { budgetMs: 60_000 } });
+	return runCheck({ oldOrigin: a, newOrigin: b, routes, viewports: [VIEWPORTS[0]!], browser, concurrency: 1, journeys: { budgetMs: 60_000 } });
 }
 
 const open = (r: Report) => r.routes.flatMap((x) => x.failures).filter((f) => !f.accepted);
@@ -102,16 +100,20 @@ test('a port whose controls are drawn but never answer is red for every one of t
 });
 
 test('a page of a large site is exercised on its own, though its template group shares its layout and kinds of control', async () => {
-	// Twenty-one pages of one URL pattern, one layout and the same carousel; only the last page's port is dead.
-	const routes = Array.from({ length: 21 }, (_, i) => `/docs/${String(i + 1).padStart(2, '0')}`);
-	const known = (path: string) => routes.includes(path);
-	const report = await check((path) => (known(path) ? CAROUSEL : undefined), (path) => (known(path) ? (path === routes.at(-1) ? DEAD_CAROUSEL : CAROUSEL) : undefined), routes);
+	// Three pages of one URL pattern, one layout and the same carousel, grouped as a large site's are (the threshold lowered to 2); only the last page's port is dead.
+	const routes = ['/docs/01', '/docs/02', '/docs/03'];
+	const plain = (body: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Docs</title></head><body><main><h1>Docs</h1>${body}</main></body></html>`;
+	const alive = plain(`${TRACK}<script>document.getElementById('next').onclick = () => { document.getElementById('track').style.transform = 'translateX(-300px)'; };</script>`);
+	const dead = plain(TRACK);
+	const [a, b] = await Promise.all([serve((path) => (routes.includes(path) ? alive : undefined)), serve((path) => (routes.includes(path) ? (path === routes.at(-1) ? dead : alive) : undefined))]);
+	const report = await runCheck({ oldOrigin: a, newOrigin: b, routes, viewports: [VIEWPORTS[0]!], browser, concurrency: 1, journeys: { budgetMs: 60_000 }, templates: { threshold: 2 } });
 	assert.ok(report.templates?.groups.some((g) => g.members.length === routes.length), 'one template group');
 	const last = report.routes.find((r) => r.route === routes.at(-1))!;
 	assert.notEqual(last.template?.representative, last.route);
 	assert.equal(last.dimensions.behaviour, 'fail');
 	assert.equal(last.dimensions.visual, 'skipped', 'what the representative carries says so');
 	assert.ok(about(last.failures, 'click button "Next slide"').length, JSON.stringify(last.failures.map((f) => f.check)));
+	assert.ok(!last.ok);
 	assert.ok(report.routes.filter((r) => r.route !== routes.at(-1)).every((r) => r.ok), JSON.stringify(report.routes.filter((r) => r.route !== routes.at(-1) && !r.ok).map((r) => [r.route, r.failures.map((f) => [f.check, f.expected, f.actual])])));
 });
 

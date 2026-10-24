@@ -110,7 +110,7 @@ export interface CheckOptions {
 	/** The run checks fewer routes than the plan lists (`total`, null without a plan): the report says so and is never overall green. */
 	readonly partial?: { readonly total: number | null };
 	/** Above TEMPLATE_THRESHOLD pages, visual, responsiveness and motion run on one representative per template group; false runs them on every page. `patterns` are the source's route patterns. */
-	readonly templates?: false | { readonly patterns?: readonly string[] };
+	readonly templates?: false | { readonly patterns?: readonly string[]; /** Above how many pages templates are grouped (default TEMPLATE_THRESHOLD). */ readonly threshold?: number };
 	/** Where OLD's captures and journeys are kept between runs (`.migrate/cache`), reused only while every response the old page loaded is unchanged. */
 	readonly cacheDir?: string;
 	/** The report directory: each route's screenshots, diffs and motion frames are written under its `shots` as soon as the route is checked, and the report keeps only their paths. */
@@ -645,7 +645,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			if (kinds[i] === 'redirect') redirects.add(route);
 		});
 		const allPages = options.routes.filter((route) => !endpoints.has(route) && !redirects.has(route));
-		const groups: TemplateGroup[] = options.templates !== false && allPages.length > TEMPLATE_THRESHOLD ? await groupTemplates(base.old, allPages, options.templates?.patterns) : [];
+		const groups: TemplateGroup[] = options.templates !== false && allPages.length > (options.templates?.threshold ?? TEMPLATE_THRESHOLD) ? await groupTemplates(base.old, allPages, options.templates?.patterns) : [];
 		const groupOf = new Map(groups.filter((g) => g.members.length > 1).flatMap((g) => g.members.map((m) => [m, g] as const)));
 		const light = (route: string) => groupOf.has(route) && groupOf.get(route)!.representative !== route;
 		const withTemplate = (result: RouteResult): RouteResult => {
