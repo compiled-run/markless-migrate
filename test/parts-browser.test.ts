@@ -274,3 +274,19 @@ test('a Radix vertical slider steps up with ArrowUp and follows the pointer from
 	assert.equal(await page.locator('[role="slider"]').getAttribute('aria-valuenow'), '75', 'a press a quarter down the track is 75');
 	await page.close();
 });
+
+test('Radix NavigationMenu: a press opens the trigger\'s content in the viewport rendered beside the list, Escape closes it', async () => {
+	const page = await open(
+		`<nav data-slot="navigation-menu"><ul><li><button id="t1" data-slot="navigation-menu-trigger" data-state="closed" aria-expanded="false" aria-controls="c1">Components</button></li></ul>
+		<div hidden data-mm-shown-with="t1"><div data-slot="navigation-menu-viewport" data-state="open"><div data-slot="navigation-menu-content" id="c1" data-state="open" style="width:300px;height:120px">Alert Dialog</div></div></div></nav>`,
+		['radix/navigation-menu'],
+	);
+	await page.getByText('Components').click();
+	assert.equal(await page.getByText('Components').getAttribute('aria-expanded'), 'true');
+	assert.equal(await page.getByText('Alert Dialog').isVisible(), true);
+	assert.equal(await page.locator('[data-slot="navigation-menu-viewport"]').evaluate((e) => (e as HTMLElement).style.getPropertyValue('--radix-navigation-menu-viewport-width')), '300px');
+	await page.keyboard.press('Escape');
+	assert.equal(await page.getByText('Components').getAttribute('aria-expanded'), 'false');
+	assert.equal(await page.getByText('Alert Dialog').isVisible(), false);
+	await page.close();
+});

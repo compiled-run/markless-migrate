@@ -532,12 +532,14 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 				const parent = elementAt(root, added.into);
 				// A disclosure that mounts its content where it opens (Base UI Collapsible and Accordion, a Radix
 				// Collapsible whose content leaves while closed): a layer's trigger (aria-haspopup) is a portal's.
-				const inPlace = trigger && parent && attr(trigger, 'aria-expanded') === 'false' && attr(trigger, 'aria-haspopup') === undefined && !reveal.added.some((a) => a.into === 'body');
+				// Radix NavigationMenu mounts its viewport, with the trigger's content, beside the list: a layer of the trigger's.
+				const menu = trigger !== undefined && attr(trigger, 'data-slot') === 'navigation-menu-trigger';
+				const inPlace = !menu && trigger && parent && attr(trigger, 'aria-expanded') === 'false' && attr(trigger, 'aria-haspopup') === undefined && !reveal.added.some((a) => a.into === 'body');
 				const panel = panelOf(kept, attr(trigger!, 'aria-controls'));
 				if (inPlace) inserted.push({ trigger: trigger!, parent: parent!, before: added.before >= 0 ? (elementChildren(parent!)[added.before] ?? null) : null, markup: kept.map((e) => emitElement(e, { dropped, bind: (x) => bindParts(x, templatePorts) })).join(''), ...panel });
 				// What opening a layer also puts beside its trigger (Base UI's visually hidden Dismiss button): rendered hidden
 				// there, shown with the layer (data-mm-shown-with names the trigger's key).
-				else if (trigger && parent && attr(trigger, 'aria-haspopup') !== undefined) companions.push({ parent, before: added.before >= 0 ? (elementChildren(parent)[added.before] ?? null) : null, kept, key: reveal.key });
+				else if (trigger && parent && (menu || attr(trigger, 'aria-haspopup') !== undefined)) companions.push({ parent, before: added.before >= 0 ? (elementChildren(parent)[added.before] ?? null) : null, kept, key: reveal.key });
 				else unplaced.push(`${reveal.key}: content shown inside the page by a control no Markless state drives yet`);
 			}
 		}
