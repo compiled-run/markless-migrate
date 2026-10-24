@@ -11,10 +11,11 @@ import { cleanDocument, frameworkBuilds, lateHead, type Dropped } from './clean.
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, textContent, walk, type Document, type Element } from './dom.ts';
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
 import { BaseTabsPlan, CheckablePlan, DisclosurePlan, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
+import { captureCharts, ChartPlan, type ChartFacts } from './charts.ts';
 import { captureScenes, type Scene } from './scenes.ts';
 import { ScenePlan } from './scene-plan.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
-import { captureAccordions, captureHoverDelays, captureAllForms, captureAllSwitches, captureAllToggles, captureNotifications, type AccordionMode, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
+import { captureAccordions, captureCarousels, captureComboboxEmpties, captureHoverDelays, captureAllForms, captureAllSwitches, captureAllToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
 import { bindMount, bindParts, bodyHandlers, candidatesOf, docsearchConfigured, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { stat } from 'node:fs/promises';
@@ -281,6 +282,66 @@ function selectIndicators(top: Element): void {
 	}
 }
 
+/**
+ * Base UI Combobox mounts an item's indicator only while it is selected: every other item of a captured list gets a
+ * hidden copy of a selected one's, so choosing one only switches `hidden`.
+ */
+function comboboxIndicators(top: Element): void {
+	for (const list of [top, ...walkAll(top)]) {
+		if (attr(list, 'data-slot') !== 'combobox-list') continue;
+		const items = walkAll(list).filter((o) => attr(o, 'role') === 'option');
+		const indicatorOf = (o: Element) => elementChildren(o).find((c) => c.tagName === 'span' && attr(c, 'aria-hidden') === 'true');
+		const template = items.map(indicatorOf).find((i) => i !== undefined);
+		if (!template) continue;
+		for (const o of items) {
+			const own = indicatorOf(o);
+			if (own) {
+				own.attrs = [...own.attrs.filter((a) => a.name !== 'data-mm-indicator'), { name: 'data-mm-indicator', value: '' }];
+				continue;
+			}
+			const copy = parseFragment(outer(template)).childNodes[0] as unknown as Element;
+			copy.attrs = [...copy.attrs.filter((a) => a.name !== 'data-selected' && a.name !== 'hidden' && a.name !== 'data-mm-indicator'), { name: 'hidden', value: '' }, { name: 'data-mm-indicator', value: '' }];
+			copy.parentNode = o as never;
+			o.childNodes.push(copy as never);
+		}
+	}
+}
+
+const textNodes = (el: Element) => el.childNodes.filter((n) => n.nodeName === '#text') as unknown as { value: string }[];
+
+/**
+ * Base UI Combobox with several values shows a chip per chosen item, mounted as it is chosen: the chips container gets a
+ * hidden chip for every item of the list its input opens (from the old page's own chip), named by the item's text
+ * (data-mm-chip), so choosing and removing only switch `hidden`.
+ */
+function comboboxChips(doc: Document, reveals: readonly Reveal[]): void {
+	for (const chips of walk(body(doc))) {
+		if (attr(chips, 'data-slot') !== 'combobox-chips') continue;
+		const input = walkAll(chips).find((e) => attr(e, 'role') === 'combobox');
+		const reveal = input && reveals.find((r) => r.key === attr(input, 'id'));
+		const own = elementChildren(chips).filter((c) => attr(c, 'data-slot') === 'combobox-chip');
+		const template = own[0];
+		if (!reveal || !template) continue;
+		const named = (chip: Element) => textNodes(chip).map((t) => t.value).join('').trim();
+		const options = new Set<string>();
+		for (const a of reveal.added) for (const o of walkAll(parseFragment(a.html) as unknown as Element)) if (attr(o, 'role') === 'option') options.add(textOf(o).trim());
+		const shown = new Set(own.map(named));
+		for (const chip of own) chip.attrs = [...chip.attrs.filter((a) => a.name !== 'data-mm-chip'), { name: 'data-mm-chip', value: named(chip) }];
+		let after = own[own.length - 1]!;
+		for (const text of options) {
+			if (shown.has(text)) continue;
+			const copy = parseFragment(outer(template)).childNodes[0] as unknown as Element;
+			const first = textNodes(copy)[0];
+			if (!first) continue;
+			first.value = text;
+			copy.attrs = [...copy.attrs.filter((a) => a.name !== 'data-mm-chip' && a.name !== 'hidden'), { name: 'hidden', value: '' }, { name: 'data-mm-chip', value: text }];
+			copy.parentNode = chips as never;
+			chips.childNodes.splice(chips.childNodes.indexOf(after as never) + 1, 0, copy as never);
+			after = copy;
+		}
+	}
+}
+
 /** A portal's nodes in their closed state: data-state="closed", data-closed for data-open, hidden, and the control's key. */
 /** Replaces every whitespace-separated token of every attribute that `rename` names. */
 function renameIds(els: readonly Element[], rename: ReadonlyMap<string, string>): void {
@@ -361,6 +422,7 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 			if (el.attrs.some((a) => a.name === 'data-open')) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-open'), { name: 'data-closed', value: '' }];
 		}
 		selectIndicators(top);
+		comboboxIndicators(top);
 		top.attrs = [...top.attrs.filter((a) => a.name !== 'hidden'), { name: 'hidden', value: '' }, { name: 'data-mm-layer', value: key }, ...(reveal.viewport !== 'desktop' ? [{ name: 'data-mm-viewport', value: reveal.viewport }] : [])];
 	}
 	const hollow = hollowOf(kept);
@@ -433,6 +495,7 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 		if (id) byId.set(id, el);
 	}
 	const pendingLayers: { reveal: Reveal; added: Reveal['added'][number]; trigger: Element | undefined; kept: Element[] }[] = [];
+	const companions: { parent: Element; before: Element | null; kept: Element[]; key: string }[] = [];
 	for (const reveal of reveals) {
 		const atPath = elementAt(root, reveal.path);
 		const trigger = reveal.sig !== undefined && (!atPath || sigOf(atPath) !== reveal.sig) ? (bySig.get(reveal.sig)?.[reveal.nth ?? 0] ?? atPath) : atPath;
@@ -443,8 +506,10 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 			continue;
 		}
 		if (panel) {
+			// Only what went into this panel: a tab that also switches its page's other lists (shadcn's package manager
+			// choice) fills their panels in the same use.
 			const markup = reveal.added
-				.filter((a) => typeof a.into !== 'string')
+				.filter((a) => typeof a.into !== 'string' && elementAt(root, a.into) === panel)
 				.map((a) => childrenOf(parseFragment(a.html) as unknown as Element).filter(isElement).map((e) => emitElement(e, { dropped, bind: (x) => bindParts(x, templatePorts) })).join(''))
 				.join('');
 			if (markup) panelContent.set(panel, markup);
@@ -458,7 +523,8 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 			} else if (added.into === 'replace') {
 				let container: Element | null = trigger ?? null;
 				for (let depth = added.before; depth > 0 && container; depth--) container = container.parentNode as Element | null;
-				if (container && trigger) {
+				// One swap per control: a control captured twice (two passes, two keys) keeps the first.
+				if (container && trigger && ![...replaced.values()].some((r) => r.trigger === trigger) && !replaced.has(container)) {
 					const after = childrenOf(parseFragment(added.html) as unknown as Element).filter(isElement);
 					const markup = after.map((top) => emitElement(top, { dropped, bind: (x) => (x === top ? mergeBindings(bindParts(x, templatePorts), { extra: ['hidden', `data-mm-after=${JSON.stringify(reveal.key)}`] }) : bindParts(x, templatePorts)) })).join('');
 					replaced.set(container, { key: reveal.key, trigger, markup });
@@ -472,9 +538,25 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 				const inPlace = trigger && parent && attr(trigger, 'aria-expanded') === 'false' && attr(trigger, 'aria-haspopup') === undefined && !reveal.added.some((a) => a.into === 'body');
 				const panel = panelOf(kept, attr(trigger!, 'aria-controls'));
 				if (inPlace) inserted.push({ trigger: trigger!, parent: parent!, before: added.before >= 0 ? (elementChildren(parent!)[added.before] ?? null) : null, markup: kept.map((e) => emitElement(e, { dropped, bind: (x) => bindParts(x, templatePorts) })).join(''), ...panel });
+				// What opening a layer also puts beside its trigger (Base UI's visually hidden Dismiss button): rendered hidden
+				// there, shown with the layer (data-mm-shown-with names the trigger's key).
+				else if (trigger && parent && attr(trigger, 'aria-haspopup') !== undefined) companions.push({ parent, before: added.before >= 0 ? (elementChildren(parent)[added.before] ?? null) : null, kept, key: reveal.key });
 				else unplaced.push(`${reveal.key}: content shown inside the page by a control no Markless state drives yet`);
 			}
 		}
+	}
+	const placedWith = new Set<string>();
+	for (const c of companions) {
+		const at = `${c.key}|${outer(c.kept[0]!)}`;
+		if (placedWith.has(at)) continue;
+		placedWith.add(at);
+		const index = c.before ? c.parent.childNodes.indexOf(c.before as never) : c.parent.childNodes.length;
+		const nodes = c.kept.map((e) => {
+			e.attrs = [...e.attrs.filter((a) => a.name !== 'hidden' && a.name !== 'data-mm-shown-with'), { name: 'hidden', value: '' }, { name: 'data-mm-shown-with', value: c.key }];
+			e.parentNode = c.parent as never;
+			return e;
+		});
+		c.parent.childNodes.splice(index < 0 ? c.parent.childNodes.length : index, 0, ...(nodes as never[]));
 	}
 	// Layers last: their generated ids are renamed from their content, here and wherever the page names them.
 	const rename = new Map<string, string>();
@@ -523,6 +605,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 	const paired = pairImages(doc, capture.images);
 	currentLayers = [];
 	currentClipboard = {};
+	comboboxChips(doc, reveals);
 	const appends = resolveReveals(doc, reveals, (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1));
 	const layers = currentLayers;
 	const clipboard = currentClipboard;
@@ -613,6 +696,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const notified = new Map<string, readonly Notify[]>();
 	const accordionModes = new Map<string, readonly AccordionMode[]>();
 	const hoverDelays = new Map<string, readonly HoverDelay[]>();
+	const carouselFacts = new Map<string, readonly CarouselFacts[]>();
+	const chartFacts = new Map<string, readonly ChartFacts[]>();
 	const scrollerOpenings = new Map<string, readonly ScrollerOpening[]>();
 	const scenes = new Map<string, { scene: Scene; listed: string }[]>();
 	const choices: Record<string, Record<string, Choice>> = {};
@@ -620,8 +705,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		// The old site's not-found page, from a path no route has: the new app's 404 page.
 		captures = await captureAll(browser, options.old, options.only?.length ? routes : [...routes, NOT_FOUND], join(state, 'convert', 'captures'), { concurrency: options.concurrency ?? 4, log });
 		// Controls the site's own components reveal content with, beside those ARIA marks (lib/site/controls.json).
-		const listed = await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as { selector: string; action: Reveal['action'] | 'toggle' | 'notify' | 'play'; routes?: string }[], () => []);
-		const extra = listed.flatMap((c) => (c.action === 'toggle' || c.action === 'notify' || c.action === 'play' || (c.action as string) === 'theme' ? [] : [[c.selector, c.action] as const]));
+		const listed = await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as { selector: string; action: Reveal['action'] | 'toggle' | 'notify' | 'play' | 'open' | 'theme'; routes?: string }[], () => []);
+		const extra = listed.flatMap((c) => (c.action === 'toggle' || c.action === 'notify' || c.action === 'play' || c.action === 'open' || c.action === 'theme' ? [] : [[c.selector, c.action] as const]));
+		// Controls the site lists as opening a layer no ARIA marks (a button whose click sets a dialog's open state).
+		const opens = listed.filter((c) => c.action === 'open').map((c) => ({ selector: c.selector, routes: c.routes }));
 		// Controls whose use the demo's own state answers (Send, Replay, Show more): every use recorded frame by frame.
 		for (const c of listed.filter((x) => x.action === 'play'))
 			for (const r of routes.filter((x) => !c.routes || new RegExp(c.routes).test(x))) scenes.set(r, [...(scenes.get(r) ?? []), ...(await captureScenes(browser, options.old, r, join(state, 'convert', 'scenes'), c.selector)).scenes.map((scene) => ({ scene, listed: c.selector }))]);
@@ -632,10 +719,32 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 		// A control a demo's recorded uses play is the scene's, not a disclosure's: its reveal is not planned.
 		const played = (route: string) => new Set((scenes.get(route) ?? []).flatMap(({ scene }) => scene.edges.map((e) => e.control.replace(/#\d+$/, ''))));
-		if (options.reveal !== false) for (const r of await captureAllReveals(browser, options.old, routes, join(state, 'convert', 'reveals'), { concurrency: options.concurrency ?? 4, log, extra })) revealed.set(r.route, r.reveals.filter((reveal) => !reveal.sig || !played(r.route).has(reveal.sig)));
+		if (options.reveal !== false) for (const r of await captureAllReveals(browser, options.old, routes, join(state, 'convert', 'reveals'), { concurrency: options.concurrency ?? 4, log, extra, opens })) revealed.set(r.route, r.reveals.filter((reveal) => !reveal.sig || !played(r.route).has(reveal.sig)));
+		// What each Base UI combobox shows once nothing matches, into the empty element of the layer it opens.
+		for (const [route, reveals] of revealed) {
+			const empty = /(<div\b[^>]*\bdata-slot="combobox-empty"[^>]*>)(<\/div>)/;
+			const controls = reveals.filter((r) => r.sig && r.added.some((a) => empty.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
+			if (!controls.length) continue;
+			const found = (await captureComboboxEmpties(browser, options.old, route, join(state, 'convert', 'toggles'), controls)).empties;
+			revealed.set(route, reveals.map((r) => {
+				const html = found.find((f) => f.sig === r.sig && f.nth === (r.nth ?? 0))?.html;
+				return html ? { ...r, added: r.added.map((a) => ({ ...a, html: a.html.replace(empty, (_, open: string, close: string) => `${open}${html}${close}`) })) } : r;
+			}));
+		}
 		// Whether each accordion lets several items be open, on the routes where one revealed an item's content.
 		for (const [route, reveals] of revealed) if (reveals.some((r) => r.sig?.includes('|accordion-trigger|'))) accordionModes.set(route, (await captureAccordions(browser, options.old, route, join(state, 'convert', 'toggles'))).accordions);
-		for (const [route, reveals] of revealed) if (reveals.some((r) => r.sig?.includes('|hover-card-trigger|'))) hoverDelays.set(route, (await captureHoverDelays(browser, options.old, route, join(state, 'convert', 'toggles'))).delays);
+		for (const [route, reveals] of revealed) {
+			// Hover cards, among them those whose trigger renders its child (its data-slot is the child's).
+			const others = reveals.filter((r) => r.action === 'hover' && r.sig && !r.sig.includes('|hover-card-trigger|') && r.added.some((a) => /data-slot="hover-card-content"/.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
+			if (others.length || reveals.some((r) => r.sig?.includes('|hover-card-trigger|'))) hoverDelays.set(route, (await captureHoverDelays(browser, options.old, route, join(state, 'convert', 'toggles'), others)).delays);
+		}
+		// Each carousel's alignment and autoplay, on the routes whose settled page has one.
+		for (const ref of captures) {
+			if (ref.status !== 200) continue;
+			const settled = Object.values((await ref.load()).settled);
+			if (settled.some((html) => html.includes('data-slot="carousel"'))) carouselFacts.set(ref.route, (await captureCarousels(browser, options.old, ref.route, join(state, 'convert', 'toggles'))).carousels);
+			if (settled.some((html) => html.includes('recharts-tooltip-wrapper'))) chartFacts.set(ref.route, (await captureCharts(browser, options.old, ref.route, join(state, 'convert', 'toggles'))).charts);
+		}
 		for (const c of captures) if (c && (await c.load()).server.includes('data-slot="message-scroller"')) scrollerOpenings.set(c.route, (await captureScrollers(browser, options.old, c.route, join(state, 'convert', 'toggles'))).scrollers);
 		if (options.reveal !== false) for (const t of await captureAllToggles(browser, options.old, routes, join(state, 'convert', 'toggles'), { concurrency: options.concurrency ?? 4, log })) toggled.set(t.route, t.groups);
 		// Controls the site lists as switching attributes in place (lib/site/controls.json, action "toggle").
@@ -696,7 +805,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	};
 	const appended = new Map<Element, string>();
 	for (const p of prepared.values()) for (const [el, markup] of p.appends) appended.set(el, markup);
-	useMounts(await readFile(join(app, 'lib', 'site', 'mounts.json'), 'utf8').then((t) => JSON.parse(t) as string[], () => []));
+	useMounts([...(await readFile(join(app, 'lib', 'site', 'mounts.json'), 'utf8').then((t) => JSON.parse(t) as string[], () => [])), ...([...carouselFacts.values()].some((f) => f.some((c) => c.autoplay)) ? ['data-mm-autoplay'] : [])]);
 	const tabs = new TabsPlan();
 	let tabGroups = 0;
 	for (const p of prepared.values()) tabGroups += tabs.add(p.root, isRadixTab, (panel) => panelContent.get(panel));
@@ -718,7 +827,19 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (el) ownDelays.set(el, { openDelay: String(delayOf(d.open)), delay: String(delayOf(d.open)), closeDelay: String(delayOf(d.close)) });
 		}
 	}
+	for (const [route, p] of prepared) {
+		const facts = carouselFacts.get(route) ?? [];
+		const locate = facts.length ? locator(p.root.parentNode as Element) : undefined;
+		for (const f of facts) {
+			const el = locate!(f.sig, f.nth);
+			if (!el) continue;
+			ownDelays.set(el, { ...ownDelays.get(el), align: f.align });
+			if (f.autoplay) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-mm-autoplay'), { name: 'data-mm-autoplay', value: String(f.autoplay) }];
+		}
+	}
+	if (carouselFacts.size) log(`carousels measured: ${[...carouselFacts.values()].reduce((n, f) => n + f.length, 0)}`);
 	useMeasuredProps(ownDelays);
+	const measuredOf = (el: Element) => ownDelays.get(el);
 	const openings = new Map<Element, ScrollerOpening['position']>();
 	for (const [route, p] of prepared) {
 		const list = scrollerOpenings.get(route) ?? [];
@@ -787,6 +908,13 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		log(`checkboxes, switches, toggles and radio groups on Markless state: ${checkableGroups}`);
 		templatePorts.add('toggle');
 	}
+	const charts = new ChartPlan();
+	let chartCount = 0;
+	for (const [route, p] of prepared) chartCount += charts.add(p.root, chartFacts.get(route) ?? [], locator(p.root.parentNode as Element), emitHtml);
+	if (chartCount) {
+		log(`recharts tooltips on Markless state: ${chartCount} charts`);
+		templatePorts.add('recharts');
+	}
 	handledBy((el) => checkables.bind(el) !== undefined || baseTabs.bind(el) !== undefined || insertedDisclosures.bind(el) !== undefined);
 	// input-otp fields, used once each on the old page for the caret their site renders and the text that shows their value.
 	const otps = new OtpPlan();
@@ -833,11 +961,49 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		binding = mergeBindings(binding, keyed ? { extra: [`data-mm-key=${JSON.stringify(keyed)}`] } : undefined);
 		binding = mergeBindings(binding, portAttributes(el));
 		binding = mergeBindings(binding, portFor(el) === 'shadcn/message-scroller' ? bindScroller(el) : undefined);
-		const own = mergeBindings(scenePlan.bind(el), mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), baseTabs.bind(el)), disclosures.bind(el)), insertedDisclosures.bind(el)), selects.bind(el)), checkables.bind(el)), switchPlan.bind(el)), mergeBindings(notifyPlan.bind(el), handledForms.has(el) ? formBinding : undefined)), mergeBindings(otps.bind(el), binding)), bindMount(el)));
+		const own = mergeBindings(scenePlan.bind(el), mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), baseTabs.bind(el)), charts.bind(el)), disclosures.bind(el)), insertedDisclosures.bind(el)), selects.bind(el)), checkables.bind(el)), switchPlan.bind(el)), mergeBindings(notifyPlan.bind(el), handledForms.has(el) ? formBinding : undefined)), mergeBindings(otps.bind(el), binding)), bindMount(el)));
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};
 	void appendOf;
-	const factored: Factored = factor(new Map([...prepared].map(([route, p]) => [route, p.root])), { bind: (el) => withAppend(el, bindParts(el, usedPorts)), extra: (el) => appended.get(el) ?? notifyPlan.nameOf(el) ?? scenePlan.nameOf(el) });
+	// What a page gives an element beyond its markup (what a control shows on use, a trigger's layer key, measured
+	// props) is part of its identity: two pages' alike code blocks whose View Code shows different sources are not one.
+	const insertedInto = new Map<Element, string>();
+	const replaceKeys = new Map<Element, string>();
+	for (const [container, r] of replaced) {
+		replaceKeys.set(r.trigger, r.key);
+		for (const child of childrenOf(container)) if (isElement(child)) replaceKeys.set(child, r.key);
+	}
+	for (const i of inserted) insertedInto.set(i.parent, `${insertedInto.get(i.parent) ?? ''}${i.markup}`);
+	// A tab list and its triggers share their state with the panels: what every panel of the list shows is theirs too,
+	// so a list alike on two pages is not shared apart from its panels (each would declare its own state).
+	const groupContent = new Map<Element, string>();
+	for (const p of prepared.values()) {
+		const byId = new Map<string, Element>();
+		for (const el of walk(p.root)) {
+			const id = attr(el, 'id');
+			if (id) byId.set(id, el);
+		}
+		for (const list of walk(p.root)) {
+			if (attr(list, 'role') !== 'tablist') continue;
+			const triggers = [...walk(list)].filter((t) => attr(t, 'role') === 'tab');
+			const panels = triggers.map((t) => byId.get(attr(t, 'aria-controls') ?? '')).filter((x): x is Element => x !== undefined);
+			const content = [...panels.map((x) => panelContent.get(x) ?? ''), ...triggers.map((t) => JSON.stringify(basePanels.get(t) ?? ''))].join('\u0002');
+			if (!content.replace(/[\u0002"]/g, '')) continue;
+			for (const el of [list, ...triggers]) groupContent.set(el, content);
+		}
+		// Any other control whose panel shows captured content (an accordion's or collapsible's trigger) shares it too.
+		for (const el of walk(p.root)) {
+			const panel = byId.get(attr(el, 'aria-controls') ?? '');
+			const content = panel && panelContent.get(panel);
+			if (content && !groupContent.has(el)) groupContent.set(el, content);
+		}
+	}
+	const ownContent = (el: Element): string | undefined => {
+		const panel = basePanels.get(el);
+		const own = [appended.get(el), replaced.get(el)?.markup, replaceKeys.get(el), groupContent.get(el), panelContent.get(el), panel && JSON.stringify(panel), insertedInto.get(el), triggerKeys.get(el), measuredOf(el) && JSON.stringify(measuredOf(el)), notifyPlan.nameOf(el), scenePlan.nameOf(el)].filter((x): x is string => Boolean(x));
+		return own.length ? own.join('\u0001') : undefined;
+	};
+	const factored: Factored = factor(new Map([...prepared].map(([route, p]) => [route, p.root])), { bind: (el) => withAppend(el, bindParts(el, usedPorts)), extra: ownContent });
 	const pathnames = [...new Set(htmlRoutes.map((r) => pathOf(r)))];
 	const folders = folderSet(pathnames);
 	const written = new Map<string, string>();

@@ -1,14 +1,17 @@
 import { closeLayer, openLayer, type Layer } from '../layer.ts';
+import { closestTrigger, layerKey } from '../reveal.ts';
 
 // Radix HoverCard: the pointer resting on the trigger (or focus) opens the content after openDelay; leaving both the
 // trigger and the content closes it after closeDelay (the delays the source gives HoverCard, written by the converter as
 // data-mm-open-delay and data-mm-close-delay; Radix's defaults are 700 and 300 ms). A touch never opens it.
 const TRIGGER = '[data-slot="hover-card-trigger"][data-state]';
+// A trigger rendered through its child (asChild, render) carries the child's data-slot; its layer names the part.
+const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[data-state][data-mm-key], [data-state][aria-controls], [data-state][id]', (slot) => /^hover-card-trigger$/.test(slot));
 const open = new Map<HTMLElement, Layer>();
 const timers = new Map<HTMLElement, number>();
 const listening = new WeakSet<Element>();
 
-const keyOf = (t: HTMLElement) => t.getAttribute('aria-controls') || t.dataset.mmKey || t.id;
+const keyOf = (t: HTMLElement) => layerKey(t);
 const delay = (t: HTMLElement, name: 'mmOpenDelay' | 'mmCloseDelay', fallback: number) => {
 	const v = Number(t.dataset[name]);
 	return Number.isFinite(v) && t.dataset[name] !== undefined ? v : fallback;
@@ -49,7 +52,7 @@ function schedule(trigger: HTMLElement, opening: boolean): void {
 }
 
 export function pointerover(target: Element, event: PointerEvent): boolean {
-	const trigger = target.closest<HTMLElement>(TRIGGER);
+	const trigger = triggerOf(target);
 	if (!trigger || event.pointerType === 'touch') return false;
 	if (event.relatedTarget instanceof Node && trigger.contains(event.relatedTarget)) return true;
 	schedule(trigger, true);
@@ -57,7 +60,7 @@ export function pointerover(target: Element, event: PointerEvent): boolean {
 }
 
 export function pointerout(target: Element, event: PointerEvent): boolean {
-	const trigger = target.closest<HTMLElement>(TRIGGER);
+	const trigger = triggerOf(target);
 	if (!trigger || event.pointerType === 'touch' || (event.relatedTarget instanceof Node && trigger.contains(event.relatedTarget))) return false;
 	const layer = open.get(trigger);
 	if (layer && event.relatedTarget instanceof Node && layer.nodes.some((n) => n.contains(event.relatedTarget as Node))) return true;
@@ -66,14 +69,14 @@ export function pointerout(target: Element, event: PointerEvent): boolean {
 }
 
 export function focusin(target: Element): boolean {
-	const trigger = target.closest<HTMLElement>(TRIGGER);
+	const trigger = triggerOf(target);
 	if (!trigger) return false;
 	schedule(trigger, true);
 	return true;
 }
 
 export function focusout(target: Element): boolean {
-	const trigger = target.closest<HTMLElement>(TRIGGER);
+	const trigger = triggerOf(target);
 	if (!trigger) return false;
 	schedule(trigger, false);
 	return true;

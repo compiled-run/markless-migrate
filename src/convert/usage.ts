@@ -76,6 +76,26 @@ export async function usageResolver(usagePath: string, source?: string): Promise
 			counts.set(b.library, (counts.get(b.library) ?? 0) + 1);
 		}
 	}
+	// A library a component drives through a call (Embla's useEmblaCarousel) renders no element of its own: the slots
+	// written literally in a file that calls it, and that no library element renders, are that call's.
+	if (source) {
+		const called = new Map<string, PartUsage[]>();
+		for (const b of usage.behaviours) {
+			if ((b.details as { kind?: string }).kind !== 'function' || b.library === 'script' || b.library === 'embed') continue;
+			for (const site of b.sites) {
+				if (!('file' in site)) continue;
+				let text = '';
+				try {
+					text = readFileSync(join(source, site.file), 'utf8');
+				} catch {}
+				for (const m of text.matchAll(/data-slot="([a-z0-9-]+)"/g)) {
+					const list = called.get(m[1]!) ?? called.set(m[1]!, []).get(m[1]!)!;
+					if (!list.some((u) => u.library === b.library && u.export === b.feature)) list.push({ library: b.library, export: b.feature, file: site.file, line: site.line });
+				}
+			}
+		}
+		for (const [slot, uses] of called) if (!bySlot.has(slot)) bySlot.set(slot, uses);
+	}
 	const modules = new Map<string, Module | undefined>();
 	const defaults = new Map<string, string | undefined>();
 	return {

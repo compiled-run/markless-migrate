@@ -624,8 +624,8 @@ export interface HoverDelay {
  * Hovers each hover card trigger on the old page and times, in the page, from the pointer entering to the trigger
  * marked open, and from it leaving to the trigger marked closed: each instance's own delays, floored to 10 ms.
  */
-export async function captureHoverDelays(browser: Browser, origin: string, route: string, dir: string): Promise<{ readonly route: string; readonly delays: readonly HoverDelay[] }> {
-	const file = join(dir, `${createHash('sha256').update(`hover-delay:${route}`).digest('hex').slice(0, 16)}.json`);
+export async function captureHoverDelays(browser: Browser, origin: string, route: string, dir: string, others: readonly { readonly sig: string; readonly nth: number }[] = []): Promise<{ readonly route: string; readonly delays: readonly HoverDelay[] }> {
+	const file = join(dir, `${createHash('sha256').update(`hover-delay:v2:${route}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; delays: HoverDelay[] }, () => undefined);
 	if (cached && cached.route === route) return cached;
 	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
@@ -633,13 +633,26 @@ export async function captureHoverDelays(browser: Browser, origin: string, route
 	try {
 		await loadPage(page, new URL(route, origin).href);
 		await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
-		const count = await page.evaluate(() => [...document.querySelectorAll('[data-slot="hover-card-trigger"]')].filter((t) => t.getBoundingClientRect().width > 0).length);
+		// The hover card triggers, and those `others` names: a trigger rendered through its child, found by its signature.
+		const count = await page.evaluate((others) => {
+			const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+			const seen = new Map<string, number>();
+			const marked: Element[] = [];
+			for (const e of document.body.querySelectorAll('*')) {
+				const sig = sigOf(e);
+				const nth = seen.get(sig) ?? 0;
+				seen.set(sig, nth + 1);
+				if ((e.getAttribute('data-slot') === 'hover-card-trigger' || others.some((o) => o.sig === sig && o.nth === nth)) && e.getBoundingClientRect().width > 0) marked.push(e);
+			}
+			marked.forEach((e, i) => e.setAttribute('data-mm-hover-i', String(i)));
+			return marked.length;
+		}, others);
 		for (let i = 0; i < Math.min(count, 24); i++) {
 			await page.mouse.move(1, 1);
 			await page.waitForTimeout(800);
 			const found = await page.evaluate((i) => {
 				const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
-				const t = [...document.querySelectorAll<HTMLElement>('[data-slot="hover-card-trigger"]')].filter((x) => x.getBoundingClientRect().width > 0)[i]!;
+				const t = document.querySelector<HTMLElement>(`[data-mm-hover-i="${i}"]`)!;
 				let nth = 0;
 				for (const e of document.body.querySelectorAll('*')) {
 					if (e === t) break;
@@ -678,6 +691,153 @@ export async function captureHoverDelays(browser: Browser, origin: string, route
 		await context.close().catch(() => {});
 	}
 	const capture = { route, delays };
+	await mkdir(dir, { recursive: true });
+	await writeFile(file, JSON.stringify(capture));
+	return capture;
+}
+
+export interface CarouselFacts {
+	readonly sig: string;
+	readonly nth: number;
+	/** Embla's `align` the snaps were measured with: the one whose first step lands where the old page's did. */
+	readonly align: 'start' | 'center' | 'end';
+	/** Milliseconds between two moves no one asked for (Embla Autoplay's delay), when the carousel moved by itself. */
+	readonly autoplay?: number;
+}
+
+/**
+ * Measures each carousel on the old page: whether it moves by itself (Autoplay) and how often, then presses its Next
+ * button once and reads where the track went, to tell which alignment the source gave Embla (its options are passed
+ * through as a variable, so the source does not say).
+ */
+export async function captureCarousels(browser: Browser, origin: string, route: string, dir: string): Promise<{ readonly route: string; readonly carousels: readonly CarouselFacts[] }> {
+	const file = join(dir, `${createHash('sha256').update(`carousel:${route}`).digest('hex').slice(0, 16)}.json`);
+	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; carousels: CarouselFacts[] }, () => undefined);
+	if (cached && cached.route === route) return cached;
+	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+	const carousels: CarouselFacts[] = [];
+	try {
+		await loadPage(page, new URL(route, origin).href);
+		await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+		const moves = await page.evaluate(async () => {
+			const roots = [...document.querySelectorAll<HTMLElement>('[data-slot="carousel"]')];
+			// A move starts when the track changes after resting at least 300 ms (a settling track's last frames are not starts).
+			const starts = roots.map(() => [] as number[]);
+			const last = roots.map((r) => r.querySelector<HTMLElement>('[data-slot="carousel-content"] > *')?.style.transform ?? '');
+			const changed = roots.map(() => performance.now());
+			const t0 = performance.now();
+			while (performance.now() - t0 < 6000) {
+				await new Promise((r) => setTimeout(r, 25));
+				const at = performance.now();
+				roots.forEach((r, i) => {
+					const now = r.querySelector<HTMLElement>('[data-slot="carousel-content"] > *')?.style.transform ?? '';
+					if (now === last[i]) return;
+					if (at - changed[i]! >= 300) starts[i]!.push(at);
+					changed[i] = at;
+					last[i] = now;
+				});
+			}
+			return starts;
+		});
+		const count = moves.length;
+		for (let i = 0; i < count; i++) {
+			const found = await page.evaluate((i) => {
+				const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+				const root = document.querySelectorAll<HTMLElement>('[data-slot="carousel"]')[i]!;
+				let nth = 0;
+				for (const e of document.body.querySelectorAll('*')) {
+					if (e === root) break;
+					if (sigOf(e) === sigOf(root)) nth++;
+				}
+				return { sig: sigOf(root), nth, visible: root.getBoundingClientRect().width > 0 };
+			}, i);
+			if (!found.visible) continue;
+			const starts = moves[i]!;
+			const autoplay = starts.length >= 2 ? Math.round((starts[starts.length - 1]! - starts[starts.length - 2]!) / 100) * 100 : undefined;
+			const next = page.locator('[data-slot="carousel"]').nth(i).locator('[data-slot="carousel-next"]');
+			let align: CarouselFacts['align'] = 'center';
+			if (!autoplay && (await next.count()) && (await next.isEnabled().catch(() => false))) {
+				await next.scrollIntoViewIfNeeded().catch(() => {});
+				await next.click({ timeout: 2000 }).catch(() => {});
+				await page.waitForTimeout(1500);
+				align = await page.evaluate((i) => {
+					const root = document.querySelectorAll<HTMLElement>('[data-slot="carousel"]')[i]!;
+					const track = root.querySelector<HTMLElement>('[data-slot="carousel-content"] > *')!;
+					const vertical = getComputedStyle(track).flexDirection.startsWith('column');
+					const rtl = getComputedStyle(track).direction === 'rtl';
+					const m = new DOMMatrixReadOnly(getComputedStyle(track).transform === 'none' ? undefined : getComputedStyle(track).transform);
+					const at = vertical ? m.m42 : rtl ? -m.m41 : m.m41;
+					const box = track.getBoundingClientRect();
+					const size = (r: DOMRect) => (vertical ? r.height : r.width);
+					const start = (r: DOMRect) => (vertical ? r.top - box.top : rtl ? box.right - r.right : r.left - box.left);
+					const slides = [...track.children].map((s) => s.getBoundingClientRect());
+					const view = size(box);
+					const content = start(slides[slides.length - 1]!) + size(slides[slides.length - 1]!);
+					const second = slides[1];
+					if (!second) return 'center' as const;
+					const snap = (offset: number) => Math.max(-content + view, Math.min(0, -start(second) + offset));
+					const options = { start: snap(0), center: snap((view - size(second)) / 2), end: snap(view - size(second)) };
+					return (Object.entries(options).sort((a, b) => Math.abs(a[1] - at) - Math.abs(b[1] - at))[0]![0]) as 'start' | 'center' | 'end';
+				}, i);
+			}
+			carousels.push({ sig: found.sig, nth: found.nth, align, ...(autoplay ? { autoplay } : {}) });
+		}
+	} finally {
+		await context.close().catch(() => {});
+	}
+	const capture = { route, carousels };
+	await mkdir(dir, { recursive: true });
+	await writeFile(file, JSON.stringify(capture));
+	return capture;
+}
+
+export interface ComboboxEmpty {
+	readonly sig: string;
+	readonly nth: number;
+	/** What the combobox's empty element holds on the old page once nothing matches (Base UI renders it only then). */
+	readonly html: string;
+}
+
+/** Opens each combobox `controls` names on the old page, types what no item contains, and records the empty element's content. */
+export async function captureComboboxEmpties(browser: Browser, origin: string, route: string, dir: string, controls: readonly { readonly sig: string; readonly nth: number }[]): Promise<{ readonly route: string; readonly empties: readonly ComboboxEmpty[] }> {
+	const file = join(dir, `${createHash('sha256').update(`combobox-empty:${route}`).digest('hex').slice(0, 16)}.json`);
+	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; empties: ComboboxEmpty[] }, () => undefined);
+	if (cached && cached.route === route) return cached;
+	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
+	const empties: ComboboxEmpty[] = [];
+	try {
+		await loadPage(page, new URL(route, origin).href);
+		await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+		for (const control of controls) {
+			const marked = await page.evaluate(({ sig, nth }) => {
+				const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+				let n = 0;
+				for (const e of document.body.querySelectorAll('*')) {
+					if (sigOf(e) !== sig) continue;
+					if (n++ === nth) {
+						e.setAttribute('data-mm-probe', '');
+						return true;
+					}
+				}
+				return false;
+			}, control);
+			if (!marked) continue;
+			await page.click('[data-mm-probe]', { timeout: 2000 }).catch(() => {});
+			await page.waitForTimeout(300);
+			await page.keyboard.type('zqxjzqxj');
+			await page.waitForTimeout(400);
+			const html = await page.evaluate(() => [...document.querySelectorAll('[data-slot="combobox-empty"]')].find((e) => e.getBoundingClientRect().height > 0 && e.innerHTML.trim())?.innerHTML ?? '');
+			for (let i = 0; i < 8; i++) await page.keyboard.press('Backspace');
+			await page.keyboard.press('Escape');
+			await page.keyboard.press('Escape');
+			await page.evaluate(() => document.querySelector('[data-mm-probe]')?.removeAttribute('data-mm-probe'));
+			await page.waitForTimeout(200);
+			if (html) empties.push({ ...control, html });
+		}
+	} finally {
+		await context.close().catch(() => {});
+	}
+	const capture = { route, empties };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(capture));
 	return capture;

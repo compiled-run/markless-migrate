@@ -67,7 +67,7 @@ export const PORTS: readonly Port[] = [
 	{ module: 'radix/dropdown-menu', library: 'radix-ui', needs: ['layer', 'popper', 'presence', 'aria-hidden', 'remove-scroll'], exports: ['DropdownMenu.Root', 'DropdownMenu.Trigger', 'DropdownMenu.Content', 'DropdownMenu.Item', 'Menubar.Root', 'Menubar.Menu', 'Menubar.Trigger', 'Menubar.Content', 'Menubar.Item'], events: ['pointerdown', 'click', 'pointerover', 'keydown'], locate: (el) => radix(el) },
 	{ module: 'base-ui/popover', library: '@base-ui/react', exports: ['Popover.Root', 'Popover.Trigger', 'Popover.Popup', 'Popover.Positioner', 'Popover.Portal', 'Popover.Close'], events: ['click'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
 	{ module: 'base-ui/menu', library: '@base-ui/react', exports: ['Menu.Root', 'Menu.Trigger', 'Menu.Popup', 'Menu.Item'], events: ['pointerdown', 'click', 'pointerover', 'keydown'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
-	{ module: 'base-ui/tooltip', library: '@base-ui/react', exports: ['Tooltip.Root', 'Tooltip.Trigger', 'Tooltip.Popup'], events: ['pointerover', 'pointerout', 'focusin', 'focusout'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
+	{ module: 'base-ui/tooltip', library: '@base-ui/react', exports: ['Tooltip.Root', 'Tooltip.Trigger', 'Tooltip.Popup'], events: ['pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
 	{ module: 'radix/select', library: 'radix-ui', needs: ['layer', 'popper', 'presence', 'aria-hidden', 'remove-scroll'], exports: ['Select.Root', 'Select.Trigger', 'Select.Value', 'Select.Content', 'Select.Viewport', 'Select.Item', 'Select.ItemText', 'Select.ItemIndicator', 'Select.Group', 'Select.Label', 'Select.Separator', 'Select.Icon', 'Select.Portal', 'Select.ScrollUpButton', 'Select.ScrollDownButton'], events: ['pointerdown', 'click', 'keydown'], locate: (el) => radix(el) },
 	{ module: 'slider', library: 'radix-ui', exports: ['Slider.Root', 'Slider.Track', 'Slider.Range', 'Slider.Thumb'], events: ['pointerdown', 'keydown'], locate: (el) => radix(el) || attr(el, 'data-slot')?.startsWith('slider') === true },
 	{ module: 'slider', library: '@base-ui/react', exports: ['Slider.Root', 'Slider.Control', 'Slider.Track', 'Slider.Indicator', 'Slider.Thumb'], events: ['pointerdown', 'keydown'], locate: (el) => base(el) || el.attrs.some((a) => a.name.startsWith('data-base-ui-slider')) },
@@ -82,8 +82,12 @@ export const PORTS: readonly Port[] = [
 	{ module: 'base-ui/context-menu', library: '@base-ui/react', exports: ['ContextMenu.Root', 'ContextMenu.Trigger', 'ContextMenu.Popup', 'ContextMenu.Positioner', 'ContextMenu.Portal', 'ContextMenu.Item'], events: ['contextmenu', 'click'], locate: (el) => base(el) || attr(el, 'data-slot') === 'context-menu-trigger', needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition', 'base-ui/menu'] },
 	{ module: 'base-ui/dialog', library: '@base-ui/react', exports: ['Dialog.Root', 'Dialog.Trigger', 'Dialog.Popup', 'Dialog.Portal', 'Dialog.Backdrop', 'Dialog.Close', 'AlertDialog.Root', 'AlertDialog.Trigger', 'AlertDialog.Popup', 'AlertDialog.Close', 'Drawer.Root', 'Drawer.Trigger', 'Drawer.Popup', 'Drawer.Close'], events: ['click'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition', 'aria-hidden'] },
 	{ module: 'base-ui/select', library: '@base-ui/react', exports: ['Select.Root', 'Select.Trigger', 'Select.Value', 'Select.Popup', 'Select.Item'], events: ['pointerdown', 'click', 'pointerover', 'keydown'], locate: base, needs: ['base-ui/popup', 'base-ui/positioner', 'base-ui/transition'] },
+	// shadcn's Carousel drives Embla through useEmblaCarousel: the slots its file writes are the call's (usage.ts).
+	{ module: 'carousel', library: 'embla-carousel-react', exports: ['default', 'useEmblaCarousel'], events: ['click', 'keydown', 'pointerdown'], locate: (el) => attr(el, 'data-slot') === 'carousel' },
 	// input-otp's slots are Markless state (convert's OtpPlan); the part runs the input's handlers and dispatches it.
 	{ module: 'input-otp', library: 'input-otp', exports: ['OTPInput'], events: ['focusin', 'focusout', 'input'], locate: () => true },
+	// recharts' tooltips and active points are Markless state (convert's ChartPlan); the part follows the pointer and keys.
+	{ module: 'recharts', library: 'recharts', exports: ['Tooltip'], events: ['pointerover', 'focusin', 'focusout', 'keydown'], locate: () => false },
 	// Radix Collapsible and Accordion are Markless state (convert's DisclosurePlan); the part measures and ends exits.
 	{ module: 'radix/disclosure-motion', library: 'radix-ui', needs: ['panel-motion'], exports: ['Collapsible.Root', 'Collapsible.CollapsibleTrigger', 'Collapsible.CollapsibleContent', 'Collapsible.Trigger', 'Collapsible.Content', 'Accordion.Root', 'Accordion.Item', 'Accordion.Header', 'Accordion.Trigger', 'Accordion.Content'], events: [], locate: (el) => radix(el) },
 	// Base UI Collapsible and Accordion are Markless state (convert's InsertedDisclosurePlan); the part measures and ends exits.
@@ -144,6 +148,7 @@ export function bindMount(el: Element): Binding | undefined {
 const PORT_PROPS: readonly { readonly library: string; readonly export: string; readonly from?: readonly (readonly [string, string])[]; readonly props: readonly string[] }[] = [
 	{ library: 'react-resizable-panels', export: 'Panel', props: ['minSize', 'maxSize'] },
 	{ library: 'radix-ui', export: 'HoverCard.Trigger', from: [['radix-ui', 'HoverCard.Root'], ['shadcn/ui', 'HoverCard']], props: ['openDelay', 'closeDelay'] },
+	{ library: 'embla-carousel-react', export: 'default', props: ['align'] },
 	{ library: '@base-ui/react', export: 'PreviewCard.Trigger', from: [['@base-ui/react', 'PreviewCard.Trigger'], ['shadcn/ui', 'HoverCardTrigger']], props: ['delay', 'closeDelay'] },
 ];
 
@@ -160,9 +165,12 @@ export function portAttributes(el: Element): Binding | undefined {
 		const known = PORT_PROPS.find((p) => p.library === c.library && p.export === c.export);
 		for (const prop of known?.props ?? []) {
 			const value = measured.get(el)?.[prop] ?? (known!.from ?? [[c.library, c.export] as const]).map(([lib, exp]) => resolver?.prop(lib, exp, prop)).find((v) => v !== undefined);
-			if (value !== undefined && /^-?\d+(\.\d+)?%?$/.test(value)) extra.push(`data-mm-${prop.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}=${JSON.stringify(value.replace(/%$/, ''))}`);
+			if (value !== undefined && (/^-?\d+(\.\d+)?%?$/.test(value) || /^(start|center|end)$/.test(value))) extra.push(`data-mm-${prop.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}=${JSON.stringify(value.replace(/%$/, ''))}`);
 		}
 	}
+	// A hover card trigger rendered through its child has no HoverCard part of its own: the delays the old page showed.
+	const own = measured.get(el);
+	if (!extra.length && own?.openDelay !== undefined) extra.push(`data-mm-open-delay=${JSON.stringify(own.openDelay)}`, `data-mm-delay=${JSON.stringify(own.delay ?? own.openDelay)}`, `data-mm-close-delay=${JSON.stringify(own.closeDelay ?? '')}`);
 	return extra.length ? { extra } : undefined;
 }
 
