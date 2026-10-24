@@ -48,11 +48,12 @@ export function routeOf(href: string, base: string, origin: string): string | un
 	}
 }
 
-/** Hrefs of `<a>`, `<area>` and the `<link>`s that name another page of the site (next, prev, alternate, canonical). */
+/** Hrefs of `<a>`, `<area>`, the `<link>`s that name another page of the site (next, prev, alternate, canonical), and the pages `<iframe>`s embed. */
 export function pageLinks(html: string): string[] {
 	const out: string[] = [];
 	const body = html.replace(/<script\b[\s\S]*?<\/script>/gi, '').replace(/<!--[\s\S]*?-->/g, '');
 	for (const m of body.matchAll(/<(a|area)\b[^>]*?\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)) out.push(m[2] ?? m[3] ?? m[4] ?? '');
+	for (const m of body.matchAll(/<(iframe|frame)\b[^>]*?\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)) out.push(m[2] ?? m[3] ?? m[4] ?? '');
 	for (const m of body.matchAll(/<link\b[^>]*>/gi)) {
 		const tag = m[0];
 		const rel = /\brel\s*=\s*["']?([^"'>]+)/i.exec(tag)?.[1]?.toLowerCase() ?? '';
