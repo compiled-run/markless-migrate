@@ -40,7 +40,11 @@ export function openLayer(trigger: HTMLElement, key: string, options: { readonly
 	const nodes = layersFor(key);
 	if (!nodes.length) return undefined;
 	const wrapper = nodes.find((n) => n.hasAttribute('data-radix-popper-content-wrapper')) ?? null;
-	const content = (nodes.map((n) => (n.id === key ? n : n.querySelector<HTMLElement>(`[id="${CSS.escape(key)}"]`))).find(Boolean) ?? (wrapper?.firstElementChild as HTMLElement | null) ?? nodes[0]!) as HTMLElement;
+	// The content: the node with the layer's key for an id, else the one the trigger's aria-controls names (a trigger
+	// keyed by its own id), else the wrapper's child.
+	const byId = (id: string) => nodes.map((n) => (n.id === id ? n : n.querySelector<HTMLElement>(`[id="${CSS.escape(id)}"]`))).find(Boolean);
+	const controls = trigger.getAttribute('aria-controls');
+	const content = (byId(key) ?? (controls ? byId(controls) : undefined) ?? (wrapper?.firstElementChild as HTMLElement | null) ?? nodes[0]!) as HTMLElement;
 	stay(content);
 	for (const n of nodes) n.hidden = false;
 	const layer: Layer = { key, trigger, nodes, content, wrapper, modal: options.modal === true, cleanup: [] };
