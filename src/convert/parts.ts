@@ -96,8 +96,8 @@ export const PORTS: readonly Port[] = [
 	{ module: 'day-picker', library: 'react-day-picker', exports: ['DayPicker'], events: ['keydown'], locate: () => false },
 	// Base UI Collapsible and Accordion are Markless state (convert's InsertedDisclosurePlan); the part measures and ends exits.
 	{ module: 'panel-motion', library: '@base-ui/react', exports: ['Collapsible.Root', 'Collapsible.Trigger', 'Collapsible.Panel', 'Accordion.Root', 'Accordion.Item', 'Accordion.Header', 'Accordion.Trigger', 'Accordion.Panel'], events: [], locate: base },
-	// DocSearch is found by the button it renders, on sites with or without source; usage.json carries its config.
-	{ module: 'docsearch', library: '@docsearch/react', exports: ['DocSearch'], events: ['pointerover', 'pointerdown', 'focusin', 'click', 'keydown'], locate: (el) => isDocSearchButton(el) },
+	// DocSearch is found by the button it renders, on sites with or without source; usage.json carries its config, and it runs from the document's head.
+	{ module: 'docsearch', library: '@docsearch/react', exports: ['DocSearch'], events: [], locate: (el) => isDocSearchButton(el) },
 	// A form the old page's script handled does not submit: Markless's own onSubmit is not resumed on every page (LOG, bug 14).
 	{ module: 'form', library: 'markless-migrate', exports: [], events: ['submit'], locate: () => false },
 	// React Aria Components: each part's markup carries data-rac, so the library is known; the parts act on what the

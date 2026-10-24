@@ -1203,10 +1203,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		await writeFile(join(app, component.file), appUrlDeclaration(withPartImports(imports ? component.source.replace('\n', `\n${imports}\n`) : component.source, partsDir(component.file))));
 	}
 	const documentParts: PartUse[] = [];
-	// DocSearch's Ctrl key off Apple platforms is set before the first paint, as DocSearch's own button draws it.
-	const headScripts = docsearchConfigured() ? ['PLATFORM_KEYS_SCRIPT'] : [];
+	// DocSearch's button keys and loading on intent run from the head, before the first paint and the first press.
+	const headScripts = docsearchConfigured() ? ['DOCSEARCH_SCRIPT'] : [];
 	if (headScripts.length) usedPorts.add('docsearch');
-	if (headScripts.length) documentParts.push({ part: 'docsearch', import: (dir) => `import { PLATFORM_KEYS_SCRIPT } from '${dir}/docsearch.ts';` });
+	if (headScripts.length) documentParts.push({ part: 'docsearch', import: (dir) => `import { DOCSEARCH_SCRIPT } from '${dir}/docsearch.ts';` });
 	await writeFile(join(app, 'document.tsrx'), appUrlDeclaration(documentModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped, partsDir('document.tsrx'), documentParts, headScripts)));
 	await writeFile(join(app, 'head.ts'), HEAD_HELPER);
 	if (disclosureGroups || insertedGroups) usedPorts.add('panel-motion');

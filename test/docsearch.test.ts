@@ -1,7 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { stripTypeScriptTypes } from 'node:module';
 import type { AddressInfo } from 'node:net';
 import { test } from 'node:test';
 import { chromium } from 'playwright';
@@ -37,28 +35,23 @@ test('a DocSearch button gets the docsearch part with its config, and its ⌘ ke
 	assert.ok(!plain.has('docsearch'), 'without a config in usage.json the button is copied as it is');
 });
 
-// The part in a page: the document listeners the converted root installs, and a stand-in for @docsearch/js that draws
+// The part in a page: its head script, and a stand-in for @docsearch/js that draws
 // its own button into the container it is given and opens a dialog when that button is clicked.
 async function serve(): Promise<{ origin: string; close: () => void; loads: () => number }> {
-	const part = stripTypeScriptTypes(await readFile(new URL('../parts/docsearch.ts', import.meta.url), 'utf8'));
 	let loads = 0;
-	const page = `<!doctype html><html><head><script>${'${PLATFORM}'}</script></head><body>
+	const page = `<!doctype html><html><head><script>${'${SCRIPT}'}</script></head><body>
 <button type="button" class="DocSearch DocSearch-Button" aria-label="Search (Command+K)" data-mm-docsearch='${JSON.stringify({ ...CONFIG, src: '/docsearch.js' })}'><span>Search</span><kbd class="DocSearch-Button-Key" data-mm-key="apple">⌘</kbd><kbd class="DocSearch-Button-Key" data-mm-key="ctrl">Ctrl</kbd><kbd class="DocSearch-Button-Key">K</kbd></button>
 <input id="field">
-<script type="module">
-import * as part from '/part.js';
-for (const type of ['pointerover', 'pointerdown', 'focusin', 'click', 'keydown']) document.addEventListener(type, (event) => part[type]?.(event.target, event));
-</script></body></html>`;
+</body></html>`;
 	const server = createServer(async (req, res) => {
-		if (req.url === '/part.js') return void res.writeHead(200, { 'content-type': 'text/javascript' }).end(part);
 		if (req.url === '/docsearch.js') {
 			loads++;
 			// DocSearch takes a while to arrive, so a press made meanwhile is waiting for it.
 			await new Promise((resolve) => setTimeout(resolve, 400));
 			return void res.writeHead(200, { 'content-type': 'text/javascript' }).end(`window.docsearch = (o) => { const b = document.createElement('button'); b.className = 'DocSearch-Button'; b.onclick = () => { const d = document.createElement('div'); d.className = 'DocSearch-Modal'; d.textContent = 'search ' + o.indexName; document.body.append(d); }; o.container.append(b); };`);
 		}
-		const platform = (await import('../parts/docsearch.ts')).PLATFORM_KEYS_SCRIPT;
-		res.writeHead(200, { 'content-type': 'text/html' }).end(page.replace('${PLATFORM}', platform));
+		const script = (await import('../parts/docsearch.ts')).DOCSEARCH_SCRIPT;
+		res.writeHead(200, { 'content-type': 'text/html' }).end(page.replace('${SCRIPT}', script));
 	});
 	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
 	return { origin: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, close: () => (server.closeAllConnections(), server.close()), loads: () => loads };
