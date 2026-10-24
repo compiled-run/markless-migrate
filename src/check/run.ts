@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { checkEmbeds, type EmbedCheckOptions } from '../embed/check.ts';
+import { createWriteStream } from 'node:fs';
 import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { availableParallelism } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -33,7 +34,7 @@ import { contractLines } from './network.ts';
 import type { SourceFacts } from './source-facts.ts';
 import { compareStates, type StateInput } from './states.ts';
 import { discoverStates, parseRules, type StyleSource } from './stylesheet.ts';
-import { renderHtml } from './html.ts';
+import { renderHtmlParts } from './html.ts';
 import type { Status } from '../status.ts';
 import { blocker, type BlockList } from './trackers.ts';
 import { matchRoute } from '../source/pattern.ts';
@@ -860,16 +861,41 @@ export async function writeReport(report: Report, dir: string, status?: Status):
 		await (route.journeys?.length ? writeFile(file, journeysJson(route.route, report.old, route.journeys)) : copyFile(route.storedJourneys!.path, file));
 	}
 	const path = join(dir, 'report.json');
-	await writeFile(path, `${JSON.stringify(jsonReport(report, diffs), null, '\t')}\n`);
+	// Written a route at a time: a whole run's report as one string (65 MB of JSON and 80 MB of HTML on a large site) ran the checker out of heap at its very end.
+	await streamTo(path, jsonReportParts(report, diffs));
 	const shots = resolve(dir, SHOTS_DIR);
 	const images = new Map<string, Png>();
-	const html = renderHtml(report, (png) => {
+	await streamTo(join(dir, 'report.html'), renderHtmlParts(report, (png) => {
 		const name = Buffer.isBuffer(png) ? shotName(png) : `${SHOTS_DIR}/${basename(png.path)}`;
 		if (Buffer.isBuffer(png) || resolve(dirname(png.path)) !== shots) images.set(name, png);
 		return name;
-	}, status);
+	}, status));
 	if (images.size) await mkdir(shots, { recursive: true });
 	for (const [name, png] of images) await put(png, join(dir, name));
-	await writeFile(join(dir, 'report.html'), html);
 	return path;
+}
+
+/** report.json in pieces, one route at a time. */
+export function* jsonReportParts(report: Report, diffs: Readonly<Record<string, string[]>> = {}): Generator<string> {
+	const { routes, ...top } = jsonReport(report, diffs);
+	const head = JSON.stringify(top, null, '\t');
+	yield `${head.slice(0, -2)},\n\t"routes": [`;
+	for (const [i, r] of routes.entries()) yield `${i ? ',' : ''}\n\t\t${JSON.stringify(r)}`;
+	yield '\n\t]\n}\n';
+}
+
+/** Writes the pieces to a stream one after another, waiting for each to drain, so no more than a piece is held. */
+export async function writePieces(out: NodeJS.WritableStream, pieces: Iterable<string>): Promise<void> {
+	for (const piece of pieces) if (!out.write(piece)) await new Promise<void>((drained) => out.once('drain', () => drained()));
+}
+
+async function streamTo(file: string, pieces: Iterable<string>): Promise<void> {
+	const out = createWriteStream(file);
+	const done = new Promise<void>((resolveDone, reject) => {
+		out.on('finish', resolveDone);
+		out.on('error', reject);
+	});
+	await writePieces(out, pieces);
+	out.end();
+	await done;
 }
