@@ -261,3 +261,96 @@ deployed: 38 failures to 33, no route green on either. Anonymous (each redirects
 in: 25 to 27. New on 0.9.0: every dashboard page fetches `/dashboard` ahead of any click, a request the old page does
 not make (the router fetching a linked page ahead), and following the "Acme" link at 4x CPU is a full page load where
 the old app navigates in place; one other navigation row on `/dashboard/invoices` turned green.
+
+## Feature audit and fixes (2026-10-23)
+
+Every feature was walked as a person uses it: the original and the port, both production builds served on one
+machine, each with its own copy of the same seeded Postgres 17 database. That is 20 scenarios: sign-in, wrong
+password, sign-out, auth redirects with `callbackUrl`, dashboard cards, chart and latest invoices, sidebar
+navigation, back/forward, search on invoices and customers, pagination, create, edit, delete, form validation, the
+not-found and error pages, the 404s, a slow search, mobile, keyboard sign-in and the logo link. The walk lives in
+`/tmp/port-audit/next-dashboard/witness.mjs`.
+
+On Markless 0.9.0 from npm, 3 of the 20 were broken, all in Markless:
+
+1. After a save, the list showed data from before it. The router reused pages it had fetched ahead of the click for
+   up to 30 seconds. Fixed in compiled-run/markless#187: any write from the page (a submitted form, or a same-origin
+   fetch that is not a read) drops those pages, and a fragment's `Cache-Control` is respected.
+2. Delete reloaded the page and left the row on screen. Inside an `@try`, only one row's form carried the
+   preventDefault mark, so the other rows' submits went out natively. Fixed in compiled-run/markless#183.
+3. The logo link to `/`, which redirects a signed-in visitor to `/dashboard`, fetched the whole `/dashboard`
+   document only to discard it, then loaded it again. Fixed in compiled-run/markless#184: a redirect answered to a
+   fragment request stays a fragment.
+
+Two more Markless changes went in for parity:
+- compiled-run/markless#190: a form's code starts loading when the pointer reaches its submit button. Before, the
+  first press to the validation errors was 25 ms slower than the original at 4x CPU.
+- compiled-run/markless#186, the in-place navigation reland: after a sidebar click, focus stays on the link as in
+  Next, instead of going to the body.
+
+With all five, every scenario works on the port as on the original. The walk's screenshots are byte-identical or 0 px
+apart, except about 9 px of antialiasing on the mobile customers card ("2 invoices": React writes the number and the
+word as two text nodes).
+
+The deployment (https://mm-next-dashboard-new.vercel.app) is built from these PRs packed locally: markless
+`integ/next-dashboard` at 73875ff9d, which is main plus #183, #184, #186, #187 and #190. Only `@markless/*` is
+overridden; every other package comes from this example's `package-lock.json`.
+
+## Comparison method and results (2026-10-23)
+
+Both apps are production builds (`next build` / `next start`, and the Markless Nitro server) on the same machine. Each
+reads its own copy of the same seed, and every run starts with an empty browser cache, signed in, on `/dashboard`.
+`next start` gzips its responses; Markless's Node server does not compress CSS or JS. So the port sits behind a plain
+gzip proxy, as both sit behind Vercel's edge in production. Without it, Lighthouse found the port's mobile LCP 400 ms
+worse, because its CSS and JS travelled uncompressed.
+
+Five runs per measure, median, with the per-run spread where it is wide. Desktop is unthrottled; the 4x column adds
+4x CPU slowdown and 40 ms of latency. Script: `/tmp/port-audit/next-dashboard/measure.mjs`.
+
+| Measure | Original, desktop | Port, desktop | Original, 4x | Port, 4x |
+| --- | --- | --- | --- | --- |
+| JS run at load (bytes V8 executed, inline scripts included) | 213.2 kB | 8.7 kB | 213.1 kB | 8.7 kB |
+| JS on the wire, gzip | 144.8 kB | 127.2 kB | 144.8 kB | 127.2 kB |
+| JS decompressed | 226.9 kB | 253.2 kB | 254.8 kB | 378.4 kB |
+| LCP | 24 ms (20–28) | 32 ms (20–52) | 136 ms | 128 ms |
+| Sidebar clicks with no hover first (Invoices / Customers / Home) | 54 / 39 / 11 ms | 20 / 8 / 10 ms | 160 / 114 / 22 ms | 60 / 18 / 24 ms |
+| Sidebar clicks after the pointer rests on the link | 50 / 31 / 14 ms | 14 / 14 / 12 ms | 160 / 112 / 28 ms | 53 / 30 / 13 ms |
+| First press to validation errors (pointer rests on the button first) | 26 ms | 28 ms | 85 ms | 73 ms |
+| Save to list with the new row | 348 ms (49 or 349) | 50 ms | 137 ms | 128 ms |
+| Search, typing "lee" to the filtered list (300 ms debounce in both) | 782 ms | 481 ms | 544 ms | 543 ms |
+| Slowest single event | 40 ms | 32 ms | 40 ms | 40 ms |
+
+Where the original's 213 kB goes on `/dashboard`, attributed through browser source maps from a build of the same
+source with `productionBrowserSourceMaps`:
+
+| Source | Executed at load |
+| --- | --- |
+| Next.js runtime | 91.0 kB |
+| React (react, react-dom, scheduler) | 72.8 kB |
+| Page data Next sends as inline scripts (RSC payload and bootstrap) | 43.3 kB |
+| Other packages | 3.2 kB |
+| App code | 0.8 kB |
+
+How to read these numbers:
+- Clicks are fast because the port shows pages it fetched ahead of the click: on hover, on press, and at idle for
+  links in view. Next 16 fetches dynamic pages at the click.
+- The port downloads about as much JavaScript as the original but runs 4% of it at load. The rest runs only when
+  something on the page is used.
+
+The fixed checker (markless-migrate#54) against the same two local builds gives 14 of 60 route checks green, the same
+count as before the fixes. No route is red any more on page load, network, focus or the logo link. What remains:
+- 41 routes: og:image and twitter:image. The port copies the hash the deployed Next build wrote; this local Next
+  build writes a different one.
+- 15: Sign Out posts to `/api/auth/logout` where Next posts a server action. Markless has no server actions.
+- About 20: the two databases drift apart, because the checker's own Delete journeys run on each app at different
+  times. This causes the 404 status and `noindex` differences on edit pages of deleted invoices, and the
+  page-count differences.
+- 3 responsiveness rows, each measured with a press that does not rest on the control first:
+  - the Create Invoice button: 73 ms against about 40 at 4x CPU;
+  - the Create Invoice link: 90 against 46 ms;
+  - the customers search: over the 200 ms budget on both, because of the 300 ms debounce both apps share.
+
+Known issue on the live demos: each Vercel function instance runs its own in-memory seeded database (PGlite), and
+requests spread across instances. A write is often not visible on the next request, on the original as well as the
+port. In one test, a new invoice showed on 1 of 6 reloads of the port and on 4 of 6 of the original. One hosted
+Postgres shared by both projects removes this. It needs someone to accept the Vercel Marketplace terms.
