@@ -102,3 +102,52 @@ test('DocSearch loads on the first intent, a press made while it loads opens it,
 		site.close();
 	}
 });
+
+test('a DocSearch 4 button, which says aria-keyshortcuts and draws its keys once mounted, gets both keys and its own name off Apple platforms', () => {
+	const doc = parseDocument('<body><header><button type="button" class="DocSearch DocSearch-Button" aria-label="Search (Meta+k)" aria-keyshortcuts="Meta+k"><span class="DocSearch-Button-Container"><span class="DocSearch-Button-Placeholder">Search</span></span><span class="DocSearch-Button-Keys"></span></button></header></body>');
+	const uses = new Set<string>();
+	useDocSearch(CONFIG);
+	try {
+		const out = emitElement(body(doc), { bind: (el) => bindParts(el, uses) });
+		assert.match(out, /data-mm-docsearch-keys=\{"\{\\"label\\":\\"Search \(Control\+k\)\\",\\"shortcut\\":\\"Control\+k\\"\}"\}/);
+		assert.match(out, /<span class="DocSearch-Button-Keys"><kbd class="DocSearch-Button-Key" data-mm-key="apple">⌘<\/kbd><kbd class="DocSearch-Button-Key DocSearch-Button-Key--ctrl" data-mm-key="ctrl">Ctrl<\/kbd><kbd class="DocSearch-Button-Key">K<\/kbd><\/span>/);
+	} finally {
+		useDocSearch(undefined);
+	}
+});
+
+test('before the first paint, a DocSearch 4 button shows ⌘ and its Mac name on Apple platforms, and Ctrl with "Search (Control+k)" elsewhere', async () => {
+	const { DOCSEARCH_SCRIPT, APPLE_KEY, CTRL_KEYS } = await import('../parts/docsearch.ts');
+	const keys = JSON.stringify({ label: CTRL_KEYS[4].label, shortcut: CTRL_KEYS[4].shortcut });
+	const html = `<!doctype html><html><head><script>${DOCSEARCH_SCRIPT}</script></head><body><button type="button" class="DocSearch DocSearch-Button" aria-label="Search (Meta+k)" aria-keyshortcuts="Meta+k" data-mm-docsearch-keys='${keys}'><span class="DocSearch-Button-Keys">${APPLE_KEY}${CTRL_KEYS[4].key}<kbd class="DocSearch-Button-Key">K</kbd></span></button></body></html>`;
+	const browser = await chromium.launch();
+	try {
+		for (const [platform, shown, label, shortcut] of [['MacIntel', 'apple', 'Search (Meta+k)', 'Meta+k'], ['Win32', 'ctrl', 'Search (Control+k)', 'Control+k'], ['Linux x86_64', 'ctrl', 'Search (Control+k)', 'Control+k']] as const) {
+			const context = await browser.newContext();
+			await context.addInitScript((p) => Object.defineProperty(navigator, 'platform', { get: () => p }), platform);
+			const page = await context.newPage();
+			await page.setContent(html);
+			const visible = await page.evaluate(() => [...document.querySelectorAll('[data-mm-key]')].filter((k) => getComputedStyle(k).display !== 'none').map((k) => `${k.getAttribute('data-mm-key')}:${k.textContent}`));
+			assert.deepEqual(visible, [shown === 'apple' ? 'apple:⌘' : 'ctrl:Ctrl'], platform);
+			assert.equal(await page.locator('button').getAttribute('aria-label'), label, platform);
+			assert.equal(await page.locator('button').getAttribute('aria-keyshortcuts'), shortcut, platform);
+			// An in-place navigation that keeps the button writes the server's name again; it is relabelled.
+			await page.evaluate(() => {
+				const b = document.querySelector('button')!;
+				b.setAttribute('aria-label', 'Search (Meta+k)');
+				b.setAttribute('aria-keyshortcuts', 'Meta+k');
+			});
+			await page.waitForFunction((l) => document.querySelector('button')!.getAttribute('aria-label') === l, label);
+			assert.equal(await page.locator('button').getAttribute('aria-keyshortcuts'), shortcut, `${platform} after a morph`);
+			// An in-place navigation replaces the head: the keys stay one per platform.
+			await page.evaluate(() => document.head.replaceChildren());
+			await page.waitForTimeout(50);
+			const after = await page.evaluate(() => [...document.querySelectorAll('[data-mm-key]')].filter((k) => getComputedStyle(k).display !== 'none').map((k) => k.getAttribute('data-mm-key')));
+			assert.deepEqual(after, [shown], `${platform} after the head is replaced`);
+			if (shown === 'ctrl') assert.equal(await page.locator('[data-mm-key="ctrl"]').evaluate((k) => Math.round((parseFloat(getComputedStyle(k).marginInlineEnd) / parseFloat(getComputedStyle(k).fontSize)) * 10) / 10), 0.4, 'the visible Ctrl key keeps the first key\'s 0.4em gap');
+			await context.close();
+		}
+	} finally {
+		await browser.close();
+	}
+});

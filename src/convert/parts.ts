@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { attr, childrenOf, type Element } from './dom.ts';
 import type { Binding } from './tsrx.ts';
+import { APPLE_KEY, CTRL_KEYS } from '../../parts/docsearch.ts';
 import type { PartResolver, PartUsage } from './usage.ts';
 
 /** The Markless ports of library behaviour, each written once and used on every site whose markup shows that library. */
@@ -214,9 +215,6 @@ const classes = (el: Element) => (attr(el, 'class') ?? '').split(/\s+/);
 export const isDocSearchButton = (el: Element) => el.tagName === 'button' && classes(el).includes('DocSearch-Button');
 const textIn = (el: Element): string => childrenOf(el).map((n) => ('value' in n && n.nodeName === '#text' ? String(n.value) : 'tagName' in n ? textIn(n as Element) : '')).join('');
 const appleKey = (el: Element) => el.tagName === 'kbd' && classes(el).includes('DocSearch-Button-Key') && textIn(el).trim() === '⌘';
-// DocSearch's Ctrl key, as its button draws it off Apple platforms.
-const CTRL_KEY = '<kbd class="DocSearch-Button-Key" data-mm-key="ctrl"><svg width="15" height="15" class="DocSearch-Control-Key-Icon"><path d="M4.505 4.496h2M5.505 5.496v5M8.216 4.496l.055 5.993M10 7.5c.333.333.5.667.5 1v2M12.326 4.5v5.996M8.384 4.496c1.674 0 2.116 0 2.116 1.5s-.442 1.5-2.116 1.5M3.205 9.303c-.09.448-.277 1.21-1.241 1.203C1 10.5.5 9.513.5 8V7c0-1.57.5-2.5 1.464-2.494.964.006 1.134.598 1.24 1.342M12.553 10.5h1.953" stroke-width="1.2" stroke="currentColor" fill="none" stroke-linecap="square"></path></svg></kbd>';
-
 let docsearch: { readonly appId: string; readonly apiKey: string; readonly indexName: string } | undefined;
 /** The old site's DocSearch config from usage.json: its button gets the docsearch part, which loads DocSearch on intent with it. */
 export function useDocSearch(config: typeof docsearch): void {
@@ -224,14 +222,22 @@ export function useDocSearch(config: typeof docsearch): void {
 }
 export const docsearchConfigured = () => docsearch !== undefined;
 
+// DocSearch 4's button carries aria-keyshortcuts and draws its keys once mounted; DocSearch 3's draws ⌘ K at once.
+let docsearchVersion: 3 | 4 = 3;
+const emptyKeys = (el: Element) => el.tagName === 'span' && classes(el).includes('DocSearch-Button-Keys') && !childrenOf(el).some((n) => 'tagName' in n);
+
 /** A DocSearch button carries its config for the part; its ⌘ key gets the Ctrl key beside it, shown off Apple platforms. */
 function docsearchBinding(el: Element, uses: PartUse[] | Set<string>): Binding | undefined {
 	if (!docsearch) return undefined;
-	if (appleKey(el)) return { replace: `<kbd class="DocSearch-Button-Key" data-mm-key="apple">⌘</kbd>${CTRL_KEY}` };
+	if (appleKey(el)) return { replace: `${APPLE_KEY}${CTRL_KEYS[docsearchVersion].key}` };
+	if (docsearchVersion === 4 && emptyKeys(el)) return { replace: `<span class="DocSearch-Button-Keys">${APPLE_KEY}${CTRL_KEYS[4].key}<kbd class="DocSearch-Button-Key">K</kbd></span>` };
 	if (!isDocSearchButton(el)) return undefined;
+	docsearchVersion = attr(el, 'aria-keyshortcuts') ? 4 : 3;
 	if (uses instanceof Set) uses.add('docsearch');
 	else if (!uses.some((u) => u.part === 'docsearch')) uses.push({ part: 'docsearch', import: () => '' });
-	return { extra: [`data-mm-docsearch={${JSON.stringify(JSON.stringify(docsearch))}}`] };
+	const { label, shortcut } = CTRL_KEYS[docsearchVersion];
+	const keys = docsearchVersion === 4 ? [`data-mm-docsearch-keys={${JSON.stringify(JSON.stringify({ label, shortcut }))}}`] : [];
+	return { extra: [`data-mm-docsearch={${JSON.stringify(JSON.stringify(docsearch))}}`, ...keys] };
 }
 
 /** Records the ports an element of the old page needs. Behaviour is bound once on the body, so no element gets attributes. */
