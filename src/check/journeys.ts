@@ -74,6 +74,8 @@ export interface Reaction {
 	readonly scrolled?: boolean;
 	/** Milliseconds from the step to the page's first change. */
 	readonly answeredMs?: number;
+	/** Transitions and animations that started while the step ran (`link "Badge" background-color`). */
+	readonly transitions?: readonly string[];
 	/** Layout shifts while the step ran: their summed score and the largest sideways and vertical jump of any element, in px. */
 	readonly shift?: { readonly score: number; readonly x: number; readonly y: number };
 }
@@ -620,10 +622,11 @@ function liveRegions() {
 
 // Runs in the page before a step: records which attributes change, and where every scrolling container and the window stand.
 function watchReaction(): void {
-	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number } };
+	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; stop: () => void };
 	const g = globalThis as { __markless_migrate_reaction__?: Watch };
 	g.__markless_migrate_reaction__?.observer.disconnect();
 	g.__markless_migrate_reaction__?.shifts?.disconnect();
+	g.__markless_migrate_reaction__?.stop();
 	const changed = new Map<Element, Map<string, string | null>>();
 	const timing = { started: performance.now(), first: undefined as number | undefined, input: undefined as number | undefined };
 	// Timed from the input the page received, not from when the checker asked for it: how fast the checker's own clicks land is no page's.
@@ -632,6 +635,13 @@ function watchReaction(): void {
 	};
 	for (const type of ['pointerdown', 'mousedown', 'keydown', 'click', 'input']) addEventListener(type, input, { capture: true, once: true });
 	const shift = { score: 0, x: 0, y: 0 };
+	// Transitions and animations that start while the step runs: a router that reuses the previous page's nodes makes them morph.
+	const runs: { el: Element; what: string }[] = [];
+	const ran = (event: Event) => {
+		if (runs.length < 200 && event.target instanceof Element) runs.push({ el: event.target, what: event instanceof TransitionEvent ? event.propertyName : `animation ${(event as AnimationEvent).animationName}` });
+	};
+	addEventListener('transitionrun', ran, { capture: true });
+	addEventListener('animationstart', ran, { capture: true });
 	const observer = new MutationObserver((records) => {
 		if (timing.first === undefined && timing.input !== undefined && records.some((r) => !(r.target instanceof Element && r.attributeName?.startsWith('data-markless-migrate')))) timing.first = performance.now();
 		for (const r of records) {
@@ -666,20 +676,21 @@ function watchReaction(): void {
 			if (/(auto|scroll)/.test(`${s.overflowX} ${s.overflowY}`)) scrolls.set(el, `${Math.round(el.scrollLeft)},${Math.round(el.scrollTop)}`);
 		}
 	}
-	g.__markless_migrate_reaction__ = { observer, changed, scrolls, window: `${Math.round(scrollX)},${Math.round(scrollY)}`, shifts, shift, get started() { return timing.input ?? timing.started; }, get first() { return timing.first; } };
+	g.__markless_migrate_reaction__ = { observer, changed, scrolls, window: `${Math.round(scrollX)},${Math.round(scrollY)}`, shifts, shift, runs, stop: () => { removeEventListener('transitionrun', ran, { capture: true }); removeEventListener('animationstart', ran, { capture: true }); }, get started() { return timing.input ?? timing.started; }, get first() { return timing.first; } };
 }
 
 // Runs in the page after a step: what changed in the page's widgets, named by role and label as a visitor's tools name them.
-function readReaction(): { changes: string[]; scrolled: boolean; boxes: Record<string, { x: number; y: number; width: number; height: number }>; answeredMs?: number; shift: { score: number; x: number; y: number } } {
-	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number } };
+function readReaction(): { changes: string[]; scrolled: boolean; boxes: Record<string, { x: number; y: number; width: number; height: number }>; answeredMs?: number; shift: { score: number; x: number; y: number }; transitions: string[] } {
+	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; stop: () => void };
 	const g = globalThis as { __markless_migrate_reaction__?: Watch };
 	const watch = g.__markless_migrate_reaction__;
-	if (!watch) return { changes: [], scrolled: false, boxes: {}, shift: { score: 0, x: 0, y: 0 } };
+	if (!watch) return { changes: [], scrolled: false, boxes: {}, shift: { score: 0, x: 0, y: 0 }, transitions: [] };
 	for (const entry of (watch.shifts?.takeRecords() ?? []) as (PerformanceEntry & { value: number; sources?: { previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }[] })[]) {
 		watch.shift.score += entry.value;
 		for (const source of entry.sources ?? []) if (source.currentRect.width * source.currentRect.height >= innerWidth * innerHeight * 0.25) watch.shift.x = Math.max(watch.shift.x, Math.abs(source.currentRect.x - source.previousRect.x));
 	}
 	watch.shifts?.disconnect();
+	watch.stop();
 	watch.observer.disconnect();
 	delete g.__markless_migrate_reaction__;
 	const STATES = ['aria-valuenow', 'aria-valuetext', 'aria-expanded', 'aria-selected', 'aria-checked', 'aria-pressed', 'aria-current', 'open'];
@@ -738,7 +749,11 @@ function readReaction(): { changes: string[]; scrolled: boolean; boxes: Record<s
 		}
 	}
 	for (const [el, was] of watch.scrolls) if (el.isConnected && `${Math.round(el.scrollLeft)},${Math.round(el.scrollTop)}` !== was) anchored(el, 'scrolled');
-	return { changes: [...out].sort(), scrolled: `${Math.round(scrollX)},${Math.round(scrollY)}` !== watch.window, boxes, ...(watch.first !== undefined ? { answeredMs: Math.round(watch.first - watch.started) } : {}), shift: { score: Math.round(watch.shift.score * 1000) / 1000, x: Math.round(watch.shift.x), y: Math.round(watch.shift.y) } };
+	const transitions = [...new Set(watch.runs.filter((r) => r.el.isConnected).map((r) => {
+		const at = anchorOf(r.el);
+		return `${at === r.el || !at ? (at ? describe(at) : r.el.localName) : `${r.el.localName} in ${describe(at)}`} ${r.what}`;
+	}))].sort();
+	return { transitions, changes: [...out].sort(), scrolled: `${Math.round(scrollX)},${Math.round(scrollY)}` !== watch.window, boxes, ...(watch.first !== undefined ? { answeredMs: Math.round(watch.first - watch.started) } : {}), shift: { score: Math.round(watch.shift.score * 1000) / 1000, x: Math.round(watch.shift.x), y: Math.round(watch.shift.y) } };
 }
 
 type TimerWindow = { __markless_migrate_timer_mark__?: () => number; __markless_migrate_timers_after__?: (mark: number) => number; __markless_migrate_hold_timers__?: (on: boolean) => void };
@@ -1159,6 +1174,11 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		const state = stateChange(stateBefore, await readState(page, signedIn));
 		const stayed = !documentLoaded && new URL(page.url()).pathname === startPath;
 		let reaction: Reaction | undefined;
+		if (frameBefore && !documentLoaded && !stayed) {
+			// A router that swapped the page in place: what morphed on the way is compared, the rest is the new page's own.
+			const read = await page.evaluate(readReaction).catch(() => undefined);
+			if (read) reaction = { regions: [], changes: [], ...(read.transitions.length ? { transitions: read.transitions } : {}) };
+		}
 		if (frameBefore && stayed) {
 			const read = await page.evaluate(readReaction).catch(() => undefined);
 			const frameAfter = await page.screenshot({ timeout: 10_000 }).catch(() => undefined);
@@ -1166,7 +1186,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 			// What the page changes on its own (an autoplaying carousel, a ticking counter) is no step's answer.
 			// Where those widgets sit now is left out too: what moves on its own changes different pixels every second.
 			const own = read ? read.changes.filter((c) => ambient.changes.includes(c)).flatMap((c) => (read.boxes[c] ? [read.boxes[c]!] : [])) : [];
-			if (read && frameAfter) reaction = { regions: read.scrolled ? [] : changedRegions(frameBefore, frameAfter, [boxBefore, boxAfter, ...ambient.regions, ...own].filter((b): b is Box => Boolean(b))), changes: read.changes.filter((c) => !ambient.changes.includes(c)), ...(read.scrolled ? { scrolled: true } : {}), ...(read.answeredMs !== undefined ? { answeredMs: read.answeredMs } : {}), ...(read.shift.score || read.shift.x || read.shift.y ? { shift: read.shift } : {}) };
+			if (read && frameAfter) reaction = { regions: read.scrolled ? [] : changedRegions(frameBefore, frameAfter, [boxBefore, boxAfter, ...ambient.regions, ...own].filter((b): b is Box => Boolean(b))), changes: read.changes.filter((c) => !ambient.changes.includes(c)), ...(read.scrolled ? { scrolled: true } : {}), ...(read.answeredMs !== undefined ? { answeredMs: read.answeredMs } : {}), ...(read.shift.score || read.shift.x || read.shift.y ? { shift: read.shift } : {}), ...(read.transitions.length ? { transitions: read.transitions } : {}) };
 		}
 		const done: StepResult = {
 			url: redirected && here(page.url()) === landing ? 'the page the route redirected to' : here(page.url()),
@@ -1790,6 +1810,12 @@ const SHIFT_SCORE = 0.02;
 const SLOWER_MS = 100;
 const SLOWER_RATIO = 1.5;
 
+/** What starts moving on the new page while its router swaps the page in place, that no old run moved: content morphing from the previous page's look. */
+export function morphs(olds: readonly StepResult[], next: StepResult): string[] {
+	const seen = new Set(olds.flatMap((o) => o.reaction?.transitions ?? []));
+	return (next.reaction?.transitions ?? []).filter((t) => !seen.has(t));
+}
+
 /** The new page shifts its layout during a step where every old run held still, or by more: a jump a visitor sees (scroll-lock padding released at the wrong moment). */
 export function extraShift(olds: readonly StepResult[], next: StepResult): string | undefined {
 	if (!next.reaction || olds.some((o) => !o.reaction)) return undefined;
@@ -1837,6 +1863,7 @@ function format(result: StepResult, parts: readonly string[], missing?: { change
 	const shifted = result.reaction?.shift;
 	if (parts.includes('shift')) out.push(`layout: ${shifted ? `a large part of the page moves ${shifted.x} px sideways and ${shifted.y} px up or down (layout shift ${shifted.score})` : 'nothing moves'}`);
 	if (parts.includes('answer time')) out.push(`first change ${result.reaction?.answeredMs ?? '?'} ms after the step`);
+	if (parts.includes('morph')) out.push(`moves while the page changes: ${result.reaction?.transitions?.slice(0, 8).join(' | ') || '(nothing)'}`);
 	return out.join('; ');
 }
 
@@ -2004,6 +2031,7 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			if (jumped) parts.push('shift');
 			const slower = navigated || reloaded ? undefined : slowerAnswer(oldSteps as StepResult[], n);
 			if (slower) parts.push('answer time');
+			if (navigated && !n.loaded && morphs(oldSteps as StepResult[], n).length) parts.push('morph');
 			if (parts.length) {
 				const failure: Failure = { route, dimension, check, expected: where('old', format(a!, parts, missing, true)), actual: where('new', format(n, parts, missing)), hint, ...(automatic && parts.length === 1 && parts[0] === 'storage' ? { automatic } : {}) };
 				if (parts.length === 1 && parts[0] === 'answer time') timedOnly.set(failure, { journey: j, step: k });
