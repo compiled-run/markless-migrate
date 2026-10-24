@@ -57,8 +57,8 @@ export default function Home() @{
 			</div>
 			<div class="alert" style="border-radius: 8px">{" "}<b>NEWS:</b> htmx 4.0 <a href="https://four.htmx.org/announcements/2026-08-28-htmx-4.0.0-is-released">has been released</a>! It is not currently marked as <code>latest</code> in NPM so that people using the 2.x line are not accidentally upgraded. We will mark it <code>latest</code> at some point in 2027. More details at <a href="https://four.htmx.org">https://four.htmx.org</a>{" "}</div>
 			<h2>introduction</h2>
-			<p>htmx gives you access to <a href="https://htmx.org/docs/#ajax">AJAX</a>, <a href="https://htmx.org/docs/#css_transitions">CSS Transitions</a>, <a href="https://htmx.org/docs/#websockets-and-sse">WebSockets</a> and <a href="https://htmx.org/docs/#websockets-and-sse">Server Sent Events</a> directly in HTML, using <a href="https://htmx.org/reference/#attributes">attributes</a>, so you can build <a href="https://htmx.org/examples/">modern user interfaces</a> with the <a rel="noopener" target="_blank" href="https://en.wikipedia.org/wiki/HATEOAS">simplicity</a> and <a rel="noopener" target="_blank" href="https://www.ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm">power</a> of hypertext</p>
-			<p>htmx is small (<a rel="noopener" target="_blank" href="https://cdn.jsdelivr.net/npm/htmx.org/dist/">~16k min.gz’d</a>), <a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/htmx/blob/master/package.json">dependency-free</a>, <a rel="noopener" target="_blank" href="https://htmx.org/extensions">extendable</a> &amp; has <strong>reduced</strong> code base sizes by <a href="https://htmx.org/essays/a-real-world-react-to-htmx-port/">67% when compared with react</a></p>
+			<p>htmx gives you access to <a href="/docs/#ajax">AJAX</a>, <a href="/docs/#css_transitions">CSS Transitions</a>, <a href="/docs/#websockets-and-sse">WebSockets</a> and <a href="/docs/#websockets-and-sse">Server Sent Events</a> directly in HTML, using <a href="/reference/#attributes">attributes</a>, so you can build <a href="/examples/">modern user interfaces</a> with the <a rel="noopener" target="_blank" href="https://en.wikipedia.org/wiki/HATEOAS">simplicity</a> and <a rel="noopener" target="_blank" href="https://www.ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm">power</a> of hypertext</p>
+			<p>htmx is small (<a rel="noopener" target="_blank" href="https://cdn.jsdelivr.net/npm/htmx.org/dist/">~16k min.gz’d</a>), <a rel="noopener" target="_blank" href="https://github.com/bigskysoftware/htmx/blob/master/package.json">dependency-free</a>, <a rel="noopener" target="_blank" href="/extensions">extendable</a> &amp; has <strong>reduced</strong> code base sizes by <a href="/essays/a-real-world-react-to-htmx-port/">67% when compared with react</a></p>
 			<h2>motivation</h2>
 			<ul>
 				<li>Why should only <a rel="noopener" target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/HTML/Element/a"><code>&lt;a&gt;</code></a> &amp; <a rel="noopener" target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form"><code>&lt;form&gt;</code></a> be able to make HTTP requests?</li>
@@ -69,15 +69,15 @@ export default function Home() @{
 			<p>By removing these constraints, htmx completes HTML as a <a rel="noopener" target="_blank" href="https://en.wikipedia.org/wiki/Hypertext">hypertext</a></p>
 			<h2>quick start</h2>
 			<pre data-lang="html" style="background-color:#1f2329;color:#abb2bf;" class="language-html "><code class="language-html" data-lang="html"><span>{"  <"}</span><span style="color:#e06c75;">script </span><span style="color:#d19a66;">src</span><span>=</span><span style="color:#98c379;">{"\"https://cdn.jsdelivr.net/npm/htmx.org@2.0.11/dist/htmx.min.js\" \n"}</span><span>{"          "}</span><span style="color:#d19a66;">integrity</span><span>=</span><span style="color:#98c379;">{"\"sha384-2OatzQy1H+Zd/IIrjr1TcuDGqLXeHhbooAyJY1KdQMKnr4LZ22k31GBLdYKHmVjg\"\n"}</span><span>{"          "}</span><span style="color:#d19a66;">crossorigin</span><span>=</span><span style="color:#98c379;">"anonymous"</span><span>&gt;&lt;/</span><span style="color:#e06c75;">script</span><span>{">\n"}</span><span>{"  "}</span><span style="font-style:italic;color:#848da1;">{"<!-- have a button POST a click via AJAX -->\n"}</span><span>{"  <"}</span><span style="color:#e06c75;">button </span><span style="color:#d19a66;">hx-post</span><span>=</span><span style="color:#98c379;">"/clicked" </span><span style="color:#d19a66;">hx-swap</span><span>=</span><span style="color:#98c379;">"outerHTML"</span><span>{">\n"}</span><span>{"    Click Me\n"}</span><span>{"  </"}</span><span style="color:#e06c75;">button</span><span>{">\n"}</span></code></pre>
-			<p>The <a href="https://htmx.org/attributes/hx-post/"><code>hx-post</code></a> and <a href="https://htmx.org/attributes/hx-swap/"><code>hx-swap</code></a> attributes on this button tell htmx:</p>
+			<p>The <a href="/attributes/hx-post/"><code>hx-post</code></a> and <a href="/attributes/hx-swap/"><code>hx-swap</code></a> attributes on this button tell htmx:</p>
 			<blockquote>
 				<p>“When a user clicks on this button, issue an AJAX request to /clicked, and replace the entire button with the HTML response”</p>
 			</blockquote>
 			<p>htmx is the successor to <a rel="noopener" target="_blank" href="http://intercoolerjs.org">intercooler.js</a></p>
-			<p>Read the <a href="https://htmx.org/docs/#introduction">docs introduction</a> for a more in-depth… introduction.</p>
+			<p>Read the <a href="/docs/#introduction">docs introduction</a> for a more in-depth… introduction.</p>
 			<p>Note that htmx 2.x has dropped IE support. If you require IE support you can use the <a rel="noopener" target="_blank" href="https://v1.htmx.org">1.x</a> code-line, which will be supported in perpetuity.</p>
 			<h2><a name="book"></a>book</h2>
-			<p>We are happy to announce the release of <a rel="noopener" target="_blank" href="https://hypermedia.systems">Hypermedia Systems</a>, a book on how to build <a href="https://htmx.org/essays/hypermedia-driven-applications/">Hypermedia-Driven Applications</a> using htmx &amp; more:</p>
+			<p>We are happy to announce the release of <a rel="noopener" target="_blank" href="https://hypermedia.systems">Hypermedia Systems</a>, a book on how to build <a href="/essays/hypermedia-driven-applications/">Hypermedia-Driven Applications</a> using htmx &amp; more:</p>
 			<div style="text-align: center;padding: 24px">
 				{" "}
 				<a href="https://www.amazon.com/dp/B0C9S88QV6/ref=sr_1_1?crid=1P0I3GXQK32TN">
@@ -85,7 +85,7 @@ export default function Home() @{
 				</a>
 				{" "}
 			</div>
-			<h2>sponsors <GitHubSponsorButton embed="host-github-com-sponsors-bigskysoftware-button" style="border: 1px solid gray; border-radius: 12px; float:right" /></h2>
+			<h2>sponsors <GitHubSponsorButton embed="host-github-com-sponsors-bigskysoftware-button" title="Sponsor htmx" style="border: 1px solid gray; border-radius: 12px; float:right" /></h2>
 			<p>htmx development can be supported via <a rel="noopener" target="_blank" href="https://github.com/sponsors/bigskysoftware?o=esb">GitHub Sponsors</a></p>
 			<p>Thank you to all our generous <a href="https://github.com/sponsors/bigskysoftware?o=esb">supporters</a>, including:</p>
 			<div style="overflow-x: auto">

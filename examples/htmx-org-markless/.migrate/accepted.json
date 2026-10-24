@@ -7,80 +7,9 @@
 			"match": {
 				"expected": "200 application/javascript"
 			},
-			"reason": "htmx.org's own runtime (htmx.js, class-tools.js, preload.js, _hyperscript.js, and demo.js on the demo page): every old page loads it; the Markless port replaces what it did (boosted links aside, see below) and has none of it to serve. Unswitched routes still get these files from the old origin through the front door.",
-			"by": "Claude Code (converting agent), for owner review",
-			"date": "2026-10-17"
-		},
-		{
-			"route": "**",
-			"dimension": "behaviour",
-			"check": "click link **",
-			"match": {
-				"expected": "/^requests: GET \\/[\\w-]*\\/(, GET \\/[\\w-]*\\/)*(; kept in the browser: \\+ sessionStorage htmx-history-cache)?$/"
-			},
-			"reason": "hx-boost and preload=\"mouseover\": htmx turns a nav-link click into an XHR GET of the next page and a body swap (fetched again on hover), and keeps its history cache in sessionStorage. The port navigates normally to the same URL and page, and loads htmx only on pages whose content uses it. Kept as recorded on 2026-10-17 now that every page is ported: the alternative is loading htmx and hyperscript on every page for boosted links (about 70 kB more run at load per page).",
-			"by": "Claude Code (converting agent), for owner review",
-			"date": "2026-10-18"
-		},
-		{
-			"route": "**",
-			"dimension": "a11y",
-			"check": "press Enter on link **",
-			"match": {
-				"expected": "/^requests: GET \\/[\\w-]*\\/(, GET \\/[\\w-]*\\/)*(; kept in the browser: \\+ sessionStorage htmx-history-cache)?$/"
-			},
-			"reason": "Same as the click: hx-boost fetches the next page by XHR; the port navigates normally to the same URL and page.",
-			"by": "Claude Code (converting agent), for owner review",
-			"date": "2026-10-17"
-		},
-		{
-			"route": "/docs/",
-			"dimension": "weight",
-			"check": "JavaScript downloaded",
-			"reason": "Markless 0.4.0 modulepreloads the page's whole template as client render data: 1.34 MB uncompressed for the 170 kB documentation page in this check (the mirror and the local server do not compress). Compressed as served (htmx.org against the deployed front door): 70.6 -> 178.4 kB. JavaScript that runs at load drops from 97 kB to 18 kB. Nothing in the port avoids the render data; it is the framework's.",
-			"by": "Claude Code (converting agent), for owner review",
-			"date": "2026-10-17"
-		},
-		{
-			"route": "/examples/click-to-edit/",
-			"dimension": "visual",
-			"check": "screenshot",
-			"match": {
-				"actual": "/^\\d{1,4} pixels \\([\\d.]+%\\) differ in x=8[89]\\d\\.\\.(9[0-4]\\d|12[0-7]\\d), y=1\\d\\.\\.(4\\d|7[3-9]\\d),/"
-			},
-			"reason": "The GitHub star button is a live third-party widget (buttons.github.io). On this page sinon's fake XMLHttpRequest pushes buttons.js into its iframe fallback, and the star count inside that iframe loads (or not) live from api.github.com; the port renders the same iframe, inside the span buttons.js would leave, because Markless resume finds elements by DOM position and an element swapped for another breaks it. The region may extend to the attribution badge at the bottom right.",
-			"by": "Claude Code (converting agent), for owner review",
-			"date": "2026-10-17"
-		},
-		{
-			"route": "/examples/click-to-edit/",
-			"dimension": "visual",
-			"check": "screenshot in *",
-			"match": {
-				"actual": "/^\\d{1,3} pixels differ( around the state target)?$/"
-			},
-			"reason": "The GitHub star button is a live third-party widget (buttons.github.io). On this page sinon's fake XMLHttpRequest pushes buttons.js into its iframe fallback, and the star count inside that iframe loads (or not) live from api.github.com; the port renders the same iframe, inside the span buttons.js would leave, because Markless resume finds elements by DOM position and an element swapped for another breaks it. Only differences under 1,000 pixels match this entry.",
-			"by": "Claude Code (converting agent), for owner review",
-			"date": "2026-10-17"
-		},
-		{
-			"route": "/examples/click-to-edit/",
-			"dimension": "a11y",
-			"check": "focus order (Tab)*",
-			"match": {
-				"expected": "/→ 8\\. Iframe/"
-			},
-			"reason": "The GitHub star button is a live third-party widget (buttons.github.io). On this page sinon's fake XMLHttpRequest pushes buttons.js into its iframe fallback, and the star count inside that iframe loads (or not) live from api.github.com; the port renders the same iframe, inside the span buttons.js would leave, because Markless resume finds elements by DOM position and an element swapped for another breaks it.",
-			"by": "Claude Code (converting agent), for owner review",
-			"date": "2026-10-17"
-		},
-		{
-			"route": "/examples/click-to-edit/",
-			"dimension": "network",
-			"check": "response fields the page shows from browser GET api.github.com/**",
-			"reason": "The GitHub star button is a live third-party widget (buttons.github.io). On this page sinon's fake XMLHttpRequest pushes buttons.js into its iframe fallback, and the star count inside that iframe loads (or not) live from api.github.com; the port renders the same iframe, inside the span buttons.js would leave, because Markless resume finds elements by DOM position and an element swapped for another breaks it.",
-			"by": "Claude Code (converting agent), for owner review",
-			"date": "2026-10-17"
+			"reason": "htmx.org's own runtime files (htmx.js, class-tools.js, preload.js, _hyperscript.js, demo.js): every old page loads them; the port loads none, by the rule that no foreign framework code ships in a port. Evidence: guard build is green (no page loads or runs another framework's runtime); the files stay served at their addresses as downloads, as htmx.org serves them. Visible only as the absence of these script requests.",
+			"by": "thejackshelton (owner decision, relayed 2026-10-23)",
+			"date": "2026-10-23"
 		},
 		{
 			"route": "**",
@@ -88,11 +17,11 @@
 			"check": "accessibility tree",
 			"match": {
 				"expected": "(absent)",
-				"actual": "/^\\s*- (paragraph:|text: Unofficial demo copy of|text: \", moved to\"|text: with markless-migrate\\..*|text: \\.|link \"(htmx\\.org|Markless|Zero-Clause BSD license)\":|\\/url: https:\\/\\/(htmx\\.org|markless\\.dev|github\\.com\\/bigskysoftware\\/htmx\\/blob\\/master\\/LICENSE))$/"
+				"actual": "/^\\s*- (paragraph:|text: Unofficial demo copy of|text: \\..*|link \"(htmx\\.org|Zero\\-Clause\\ BSD\\ license)\":|\\/url: (OLD|https:\\/\\/htmx\\.org|https:\\/\\/github\\.com\\/[^ ]*\\/LICENSE[^ ]*))$/"
 			},
-			"reason": "Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares.",
-			"by": "Claude Code (converting agent), for owner review",
-			"date": "2026-10-17"
+			"reason": "Intended: a small fixed note that this is an unofficial demo copy of htmx.org, with its copyright and licence (owner decision, 2026-10-23: an honest disclosure on a copy of someone else's site, without naming the tool), as a small fixed badge so it changes no layout the check compares.",
+			"by": "thejackshelton (owner decision, relayed 2026-10-23)",
+			"date": "2026-10-23"
 		},
 		{
 			"route": "**",
@@ -102,20 +31,20 @@
 				"expected": "(absent)",
 				"actual": "/^Unofficial demo copy of /"
 			},
-			"reason": "Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares.",
-			"by": "Claude Code (converting agent), for owner review",
-			"date": "2026-10-17"
+			"reason": "Intended: a small fixed note that this is an unofficial demo copy of htmx.org, with its copyright and licence (owner decision, 2026-10-23: an honest disclosure on a copy of someone else's site, without naming the tool), as a small fixed badge so it changes no layout the check compares.",
+			"by": "thejackshelton (owner decision, relayed 2026-10-23)",
+			"date": "2026-10-23"
 		},
 		{
 			"route": "**",
 			"dimension": "visual",
 			"check": "screenshot",
 			"match": {
-				"actual": "/first near link \"(htmx\\.org|Markless|Zero-Clause BSD license)\"|differ in x=(9[01]\\d\\.\\.12[67]\\d, y=7[0-4]\\d\\.\\.79\\d|[1-4]\\d\\.\\.3[89]\\d, y=(7[5-9]|8[0-2])\\d\\.\\.8[3-7]\\d),/"
+				"actual": "/first near link \"(htmx\\.org|Zero-Clause BSD license)\"|differ in x=(9[01]\\d\\.\\.12[67]\\d, y=7[0-4]\\d\\.\\.79\\d|[1-4]\\d\\.\\.3[89]\\d, y=(7[5-9]|8[0-2])\\d\\.\\.8[3-7]\\d),/"
 			},
-			"reason": "Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. Matches only a difference that starts at the badge's own link or covers just the badge's box (desktop and mobile).",
-			"by": "Claude Code (converting agent), for owner review",
-			"date": "2026-10-17"
+			"reason": "Intended: a small fixed note that this is an unofficial demo copy of htmx.org, with its copyright and licence (owner decision, 2026-10-23: an honest disclosure on a copy of someone else's site, without naming the tool), as a small fixed badge so it changes no layout the check compares. Matches only a difference that starts at the badge's own link or covers just the badge's box (desktop and mobile).",
+			"by": "thejackshelton (owner decision, relayed 2026-10-23)",
+			"date": "2026-10-23"
 		},
 		{
 			"route": "**",
@@ -124,20 +53,20 @@
 			"match": {
 				"actual": "/^(\\d{1,4}|1[0-9]\\d{3}) pixels differ( around the state target)?$/"
 			},
-			"reason": "Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels).",
-			"by": "Claude Code (converting agent), for owner review",
-			"date": "2026-10-17"
+			"reason": "Intended: a small fixed note that this is an unofficial demo copy of htmx.org, with its copyright and licence (owner decision, 2026-10-23: an honest disclosure on a copy of someone else's site, without naming the tool), as a small fixed badge so it changes no layout the check compares. Matches only differences up to the badge's own area (356 x 54 = 19,224 pixels).",
+			"by": "thejackshelton (owner decision, relayed 2026-10-23)",
+			"date": "2026-10-23"
 		},
 		{
 			"route": "**",
 			"dimension": "a11y",
 			"check": "focus order (Tab)*",
 			"match": {
-				"actual": "/link \"htmx\\.org\" → \\d+\\. link \"Markless\" → \\d+\\. link \"Zero-Clause BSD license\"/"
+				"actual": "/link \"htmx\\.org\" → \\d+\\. link \"Zero\\-Clause\\ BSD\\ license\"/"
 			},
-			"reason": "Intended: the licence attribution this public demo copy must carry (htmx.org, Zero-Clause BSD), as a small fixed badge so it changes no layout the check compares. Its three links are the last tab stops.",
-			"by": "Claude Code (converting agent), for owner review",
-			"date": "2026-10-17"
+			"reason": "Intended: a small fixed note that this is an unofficial demo copy of htmx.org, with its copyright and licence (owner decision, 2026-10-23: an honest disclosure on a copy of someone else's site, without naming the tool), as a small fixed badge so it changes no layout the check compares. Its three links are the last tab stops.",
+			"by": "thejackshelton (owner decision, relayed 2026-10-23)",
+			"date": "2026-10-23"
 		},
 		{
 			"route": "/examples/click-to-edit/",
@@ -146,9 +75,9 @@
 			"match": {
 				"actual": "/^(1\\d{4}|2[0-4]\\d{3}) pixels differ$/"
 			},
-			"reason": "Intended attribution badge (19,224 pixels in dark mode, where its white box contrasts most) plus the live GitHub star iframe on this page (see the GitHub entries); bounded at 24,999 pixels.",
-			"by": "Claude Code (converting agent), for owner review",
-			"date": "2026-10-17"
+			"reason": "Intended disclosure note (19,224 pixels in dark mode, where its white box contrasts most) plus the live GitHub star iframe on this page (see the GitHub entries); bounded at 24,999 pixels.",
+			"by": "thejackshelton (owner decision, relayed 2026-10-23)",
+			"date": "2026-10-23"
 		}
 	]
 }
