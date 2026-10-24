@@ -3,6 +3,7 @@ export interface DocSearchUse {
 	readonly appId: string;
 	readonly apiKey: string;
 	readonly indexName: string;
+	readonly shell?: string;
 }
 
 const value = (name: string) => new RegExp(`["']?${name}["']?\\s*:\\s*["'\`]([^"'\`]+)["'\`]`);
@@ -22,4 +23,36 @@ export function docsearchConfig(text: string): DocSearchUse | undefined {
 		if (indexName && appId && apiKey && /^[A-Z0-9]{6,}$/.test(appId) && /^[a-f0-9]{16,}$/i.test(apiKey)) return { appId, apiKey, indexName };
 	}
 	return undefined;
+}
+
+/**
+ * DocSearch's dialog as the old site first draws it when its search button is pressed (the overlay, the focused input,
+ * the empty start screen): the docsearch part shows this markup on a press made before DocSearch's script is in.
+ */
+export async function captureDocSearchShell(origin: string, routes: readonly string[], headers: Readonly<Record<string, string>> = {}): Promise<string | undefined> {
+	const { chromium } = await import('playwright');
+	const browser = await chromium.launch();
+	try {
+		const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, extraHTTPHeaders: { ...headers } });
+		for (const route of routes.slice(0, 5)) {
+			await page.goto(new URL(route, origin).href, { waitUntil: 'networkidle', timeout: 30_000 }).catch(() => undefined);
+			const button = page.locator('.DocSearch-Button').filter({ visible: true }).first();
+			if (!(await button.count())) continue;
+			await button.click({ timeout: 5000 }).catch(() => undefined);
+			const html = await page
+				.locator('.DocSearch-Container')
+				.first()
+				.evaluate((el) => {
+					const copy = el.cloneNode(true) as HTMLElement;
+					copy.querySelector<HTMLElement>('.DocSearch-Modal')?.style.removeProperty('--docsearch-vh');
+					if (copy.querySelector<HTMLElement>('.DocSearch-Modal')?.getAttribute('style') === '') copy.querySelector('.DocSearch-Modal')!.removeAttribute('style');
+					return copy.outerHTML;
+				}, undefined, { timeout: 8000 })
+				.catch(() => undefined);
+			if (html) return html;
+		}
+		return undefined;
+	} finally {
+		await browser.close();
+	}
 }

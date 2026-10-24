@@ -343,3 +343,15 @@ the same label and keys (⌘ K, and Ctrl K with "Search (Ctrl+K)"), the dialog o
 same results for "model". `guard build` lists DocSearch 3 as loaded from jsDelivr on the first intent, with its own
 UI runtime (Preact), as alpinejs.dev itself loads it (at page load there). TODO after launch: the part moves onto the
 Markless-built DocSearch 4 dialog of the Docusaurus port, so no port loads DocSearch's own UI runtime.
+
+## The search dialog on a press made before DocSearch arrives (2026-10-24)
+
+On a slow phone the port shows its search button about 1.2 s before DocSearch's script arrives (alpinejs.dev shows it
+only once DocSearch has loaded), so a press there waited for the download. The docsearch part now shows DocSearch's
+dialog as alpinejs.dev first draws it (overlay, focused input, "No recent searches"; captured from the original by
+markless-migrate's `captureDocSearchShell` into `content/docsearch-shell.html`) on such a press; the visitor types into
+it, and when DocSearch arrives it draws its own dialog in the same place and the query, caret and focus move to it.
+Measured with the showcase's click.mjs (4x CPU, slow 4G, 3 runs, local build against alpinejs.dev): search works
+from the first click at 1.84–1.91 s with 0 clicks lost, against alpinejs.dev's 2.70–2.80 s and 0. At the handover a
+dialog is on screen in every frame, at the same place. The home page's own copy of the disclosure note now has the
+same text as the other pages (it still named the tool).
