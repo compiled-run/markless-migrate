@@ -146,6 +146,12 @@ test('before the first paint, a DocSearch 4 button shows ⌘ and its Mac name on
 			});
 			await page.waitForFunction((l) => document.querySelector('button')!.getAttribute('aria-label') === l, label);
 			assert.equal(await page.locator('button').getAttribute('aria-keyshortcuts'), shortcut, `${platform} after a morph`);
+			// An in-place navigation replaces the head: the keys stay one per platform.
+			await page.evaluate(() => document.head.replaceChildren());
+			await page.waitForTimeout(50);
+			const after = await page.evaluate(() => [...document.querySelectorAll('[data-mm-key]')].filter((k) => getComputedStyle(k).display !== 'none').map((k) => k.getAttribute('data-mm-key')));
+			assert.deepEqual(after, [shown], `${platform} after the head is replaced`);
+			if (shown === 'ctrl') assert.equal(await page.locator('[data-mm-key="ctrl"]').evaluate((k) => Math.round((parseFloat(getComputedStyle(k).marginInlineEnd) / parseFloat(getComputedStyle(k).fontSize)) * 10) / 10), 0.4, 'the visible Ctrl key keeps the first key\'s 0.4em gap');
 			await context.close();
 		}
 	} finally {
