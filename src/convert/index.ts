@@ -46,7 +46,9 @@ function withPartImports(source: string, dir: string): string {
 	if (/\bradioKeys\(event/.test(out)) out = out.replace('\n', `\nimport { radioKeys } from '${dir}/toggle.ts';\n`);
 	if (/\bwriteCookies\(/.test(out)) out = out.replace('\n', `\nimport { writeCookies } from '${dir}/switch.ts';\n`);
 	if (/\bplayScene\(event/.test(out)) out = out.replace('\n', `\nimport { playScene } from '${dir}/scene.ts';\n`);
-	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
+	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet', 'dayPickerLabel', 'dayPickerClose'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
+	const sharedPickers = [...new Set(out.match(/\bdpShared\d+(?=\(\))/g) ?? [])];
+	if (sharedPickers.length) out = out.replace('\n', `\nimport { ${sharedPickers.join(', ')} } from '${dir}/../../components/converted/day-pickers.tsrx';\n`);
 	if (dayPicker.length) out = out.replace('\n', `\nimport { computed } from '@markless/core';\nimport { ${dayPicker.join(', ')} } from '${dir}/day-picker.ts';\n`);
 	const configs = [...new Set(out.match(new RegExp(`\\b${CONFIG_PREFIX}[0-9a-f]{10}\\b`, 'g')) ?? [])];
 	if (configs.length) out = out.replace('\n', `\nimport { ${configs.join(', ')} } from '${dir}/${CONFIGS_MODULE.replace(/\.ts$/, '')}.ts';\n`);
@@ -251,7 +253,9 @@ function textOf(node: Element): string {
 
 // What the old page portaled to the end of the body on use (a dialog, a menu, a select), for the page being prepared:
 // rendered by Markless, hidden and in its closed state, marked with the control's key.
-let currentLayers: { key: string; markup: string; shell: string; fill: string }[] = [];
+let currentLayers: { key: string; markup: string; shell: string; fill: string; declare?: readonly string[] }[] = [];
+let currentRoute = '';
+let layerPickers: ((route: string, reveal: Reveal, kept: readonly Element[]) => { readonly bind: (el: Element) => Binding | undefined; readonly declare: readonly string[] } | undefined) | undefined;
 // What the old page's copy controls wrote, by the control's signature and occurrence.
 let currentClipboard: Record<string, string> = {};
 // Containers a control replaces its content in (View Code): the content it then shows, rendered hidden beside.
@@ -415,7 +419,10 @@ function hollowOf(kept: readonly Element[]): Element | undefined {
  * A layer as tsrx; its shell (the same with its largest content emptied and marked with LAYER_FILL); and that content as
  * HTML, for a layer served as a file: the shell renders at once on use, the content when the file lands.
  */
-function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (what: string) => void, rename: ReadonlyMap<string, string> = new Map(), kept: Element[] = layerElements(added)): { markup: string; shell: string; fill: string } {
+function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (what: string) => void, rename: ReadonlyMap<string, string> = new Map(), kept: Element[] = layerElements(added)): { markup: string; shell: string; fill: string; declare: string[] } {
+	// A calendar in the layer is bound on the view its opener shares (DayPickerPlan.layer): read before ids are renamed.
+	const pickers = layerPickers?.(currentRoute, reveal, kept);
+	const declare: string[] = [];
 	const placed = placement(kept);
 	for (const top of kept) renameIds([top, ...walkAll(top)], rename);
 	const key = rename.get(reveal.key) ?? reveal.key;
@@ -435,15 +442,17 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 			.map((top) =>
 				emitElement(top, {
 					dropped,
+					declarations: declare,
 					bind: (x) => {
-						const own = x === top ? mergeBindings(bindParts(x, templatePorts), extra.length ? { extra } : undefined) : bindParts(x, templatePorts);
+						const own = mergeBindings(x === top ? mergeBindings(bindParts(x, templatePorts), extra.length ? { extra } : undefined) : bindParts(x, templatePorts), pickers?.bind(x));
 						return shell && x === hollow ? mergeBindings(own, { children: '', extra: [`data-mm-layer-fill="${LAYER_FILL}"`] }) : own;
 					},
 				}),
 			)
 			.join('');
 	// The shell goes into a <template>, whose content Markless never resumes: its origin is the token, like the file's.
-	return { markup: emit(false), shell: withOriginToken(() => emit(true)), fill: hollow ? emitHtmlChildren(hollow) : '' };
+	const markup = emit(false);
+	return { markup, shell: withOriginToken(() => emit(true)), fill: hollow && !declare.length ? emitHtmlChildren(hollow) : '', declare };
 }
 
 /** A resolver that asks `first`, and `then` for what `first` does not know. */
@@ -577,9 +586,9 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 	}
 	renameIds([...walk(root)], rename);
 	for (const l of pendingLayers) {
-		const { markup, shell, fill } = layerMarkup(l.reveal, l.added, dropped, rename, l.kept);
+		const { markup, shell, fill, declare } = layerMarkup(l.reveal, l.added, dropped, rename, l.kept);
 		const key = rename.get(l.reveal.key) ?? l.reveal.key;
-		if (markup) currentLayers.push({ key, markup, shell, fill });
+		if (markup) currentLayers.push({ key, markup, shell, fill, ...(declare.length ? { declare } : {}) });
 		// A trigger that names its layer neither by id nor by aria-controls (a Radix tooltip's) is marked with the key.
 		if (markup && l.trigger && !attr(l.trigger, 'id') && !attr(l.trigger, 'aria-controls') && !triggerKeys.has(l.trigger)) triggerKeys.set(l.trigger, key);
 	}
@@ -605,6 +614,7 @@ function extractStyles(parent: Element, styles: Map<string, string>): void {
 }
 
 function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: string, dropped: Dropped, styles: Map<string, string>, optimizer: Optimizer | undefined, images: ImagePlan): Prepared {
+	currentRoute = capture.route;
 	const builds = frameworkBuilds(capture.server).map((b) => b.path);
 	const ctx = { builds, frameworkScripts: new Set<string>(), origin };
 	const doc = parseDocument(capture.settled.desktop ?? Object.values(capture.settled)[0] ?? capture.server);
@@ -756,8 +766,11 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		// What each react-day-picker calendar was given, on the routes whose settled page shows a month grid.
 		if (options.reveal !== false)
 			for (const ref of captures) {
-				if (!ref || ref.status !== 200 || !Object.values((await ref.load()).settled).some((html) => /<table[^>]*role="grid"[^>]*aria-multiselectable/.test(html))) continue;
-				pickers.set(ref.route, await captureDayPickers(browser, options.old, ref.route, join(state, 'convert', 'day-pickers')));
+				if (!ref || ref.status !== 200) continue;
+				// The controls whose layer shows a calendar (a date picker's trigger): their calendars are read opened.
+				const openers = (revealed.get(ref.route) ?? []).filter((r) => r.sig && r.added.some((a) => a.into === 'body' && /<table[^>]*role="grid"[^>]*aria-multiselectable/.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
+				if (!openers.length && !Object.values((await ref.load()).settled).some((html) => /<table[^>]*role="grid"[^>]*aria-multiselectable/.test(html))) continue;
+				pickers.set(ref.route, await captureDayPickers(browser, options.old, ref.route, join(state, 'convert', 'day-pickers'), openers));
 			}
 		if (options.reveal !== false) for (const t of await captureAllToggles(browser, options.old, routes, join(state, 'convert', 'toggles'), { concurrency: options.concurrency ?? 4, log })) toggled.set(t.route, t.groups);
 		// Controls the site lists as switching attributes in place (lib/site/controls.json, action "toggle").
@@ -796,6 +809,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const optimizer: Optimizer | undefined = nextConfig ? { path: '/_next/image', widths: nextImageWidths(readFileSync(nextConfig, 'utf8')) } : undefined;
 	const images: ImagePlan = { lazy: 0, eager: 0, responsive: 0, preloadsDropped: 0, someScreens: 0 };
 	// Each capture (the served HTML and the settled documents, a few MB) is read from the cache only while its page is parsed.
+	// A calendar in a layer (a date picker's popover) is bound as its layer is rendered, in prepare.
+	const dayPickers = new DayPickerPlan();
+	layerPickers = (route, reveal, kept) => {
+		const captured = pickers.get(route);
+		return captured ? dayPickers.layer(route, captured, reveal, kept) : undefined;
+	};
 	for (const ref of captures) {
 		if (ref.status !== 200 && !(ref.route === NOT_FOUND && ref.status === 404)) {
 			unconverted.push({ route: ref.route, reason: `the old site answered ${ref.status} while capturing` });
@@ -879,11 +898,17 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	for (const p of prepared.values()) disclosureGroups += disclosures.add(p.root, isRadixDisclosure, (panel) => panelContent.get(panel), multiple);
 	if (disclosureGroups) log(`accordions and collapsibles on Markless state: ${disclosureGroups}`);
 	const insertedDisclosures = new InsertedDisclosurePlan();
-	const dayPickers = new DayPickerPlan();
 	let pickerCount = 0;
 	for (const [route, p] of prepared) {
 		const captured = pickers.get(route);
-		if (captured?.pickers.length) pickerCount += dayPickers.add(route, captured, locator(p.root.parentNode as Element));
+		if (!captured?.pickers.length) continue;
+		const locate = locator(p.root.parentNode as Element);
+		pickerCount += dayPickers.add(route, captured, locate);
+		// A date picker's trigger shows the picked day from the view it shares with the calendar in its layer.
+		for (const raw of captured.pickers) if (raw.opener) {
+			const trigger = locate(raw.opener.sig, raw.opener.nth);
+			if (trigger && dayPickers.opener(route, trigger, raw.opener)) pickerCount++;
+		}
 	}
 	for (const line of dayPickers.notes) log(`  ${line}`);
 	if (pickerCount) {
@@ -1128,7 +1153,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	if (pickerCount) await writeFile(join(app, 'lib', 'parts', CONFIGS_MODULE), dayPickers.configsModule());
 	await mkdir(join(app, 'components', 'converted'), { recursive: true });
 	await mkdir(join(app, 'components', 'converted', 'layers'), { recursive: true });
-	for (const layer of layers.files) await writeFile(join(app, 'components', 'converted', layer.file), appUrlDeclaration(layer.source));
+	for (const layer of layers.files) await writeFile(join(app, 'components', 'converted', layer.file), appUrlDeclaration(withPartImports(layer.source, partsDir(`components/converted/${layer.file}`))));
+	// The calendar views date pickers share between their popover and their trigger, at page scope.
+	const sharedPickers = dayPickers.sharedModule(`../../lib/parts/${CONFIGS_MODULE}`, '../../lib/parts');
+	if (sharedPickers) await writeFile(join(app, 'components', 'converted', 'day-pickers.tsrx'), sharedPickers);
 	await rm(join(app, 'public', '_converted', 'layers'), { recursive: true, force: true });
 	for (const layer of layers.served) {
 		await mkdir(dirname(join(app, 'public', layer.path)), { recursive: true });

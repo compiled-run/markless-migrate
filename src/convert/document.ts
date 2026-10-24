@@ -165,7 +165,7 @@ export const SERVED_LAYER_BYTES = 16_384;
 /** Where a served layer's shell takes its content: the shell's mark, given the file's path once it is known. */
 export const LAYER_FILL = '@@MM_LAYER_FILL@@';
 
-export function layerTable(layers: ReadonlyMap<string, readonly { readonly key: string; readonly markup: string; readonly shell: string; readonly fill: string }[]>): LayerTable {
+export function layerTable(layers: ReadonlyMap<string, readonly { readonly key: string; readonly markup: string; readonly shell: string; readonly fill: string; readonly declare?: readonly string[] }[]>): LayerTable {
 	const ids = new Map<string, number>();
 	const files: { file: string; source: string }[] = [];
 	const served: { path: string; html: string }[] = [];
@@ -175,8 +175,9 @@ export function layerTable(layers: ReadonlyMap<string, readonly { readonly key: 
 			const n = ids.size;
 			ids.set(markup, n);
 			const layer = layerOf.get(markup);
-			let body = `\t<>${markup}</>\n`;
-			if (markup.length >= SERVED_LAYER_BYTES && layer?.fill) {
+			// A layer that holds state (a date picker's calendar) declares it in its component; it is never served as a file.
+			let body = `${(layer?.declare ?? []).map((line) => `\t${line}\n`).join('')}\t<>${markup}</>\n`;
+			if (markup.length >= SERVED_LAYER_BYTES && layer?.fill && !layer.declare?.length) {
 				const path = `/_converted/layers/${createHash('sha256').update(layer.fill).digest('hex').slice(0, 16)}.html`;
 				served.push({ path, html: layer.fill });
 				const keys = [...new Set([...layer.shell.matchAll(/ data-mm-layer="([^"]*)"/g)].map((m) => m[1]!))];

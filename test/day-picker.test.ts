@@ -155,3 +155,14 @@ test("a dropdown's selected attribute stays on the first month React rendered; a
 	assert.equal(marked(dropdown), '0');
 	assert.equal(marked({ ...dropdown, remountMonth: true }), undefined);
 });
+
+test('a date picker trigger\'s label: the date-fns pattern that renders what the old page showed after each pick, its unchanged icon kept', async () => {
+	const { labelOf } = await import('../src/convert/day-picker.ts');
+	const months = { 'abbreviated:formatting': ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], 'abbreviated:standalone': ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], 'wide:formatting': ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'] };
+	const ord = Array.from({ length: 31 }, (_, i) => `${i + 1}${i + 1 === 1 || i + 1 === 21 || i + 1 === 31 ? 'st' : i + 1 === 2 || i + 1 === 22 ? 'nd' : i + 1 === 3 || i + 1 === 23 ? 'rd' : 'th'}`);
+	const config = { loc: { ws: 0, fwcd: 1, full: 'EEEE, MMMM do, y', months, days: {}, ord }, n: 1, interactive: true, caption: 'label', cls: {} } as never;
+	const single = labelOf({ sig: 's', nth: 0, k: 0, before: '<span>Pick a date</span>', picks: [{ days: [[2026, 0, 5]], html: 'January 5th, 2026', open: true }] }, config);
+	assert.deepEqual(single && { pattern: single.pattern, prefix: single.prefix, rest: single.rest }, { pattern: 'PPP', prefix: '', rest: '<span>Pick a date</span>' });
+	const range = labelOf({ sig: 'r', nth: 0, k: 0, before: '<svg></svg>Jan 20, 2026 - Feb 09, 2026', picks: [{ days: [[2026, 0, 5]], html: '<svg></svg>Jan 05, 2026', open: true }, { days: [[2026, 0, 5], [2026, 0, 10]], html: '<svg></svg>Jan 05, 2026 - Jan 10, 2026', open: true }] }, { ...(config as object), mode: 'range' } as never);
+	assert.deepEqual(range && { pattern: range.pattern, join: range.join, prefix: range.prefix }, { pattern: 'LLL dd, y', join: ' - ', prefix: '<svg></svg>' });
+});
