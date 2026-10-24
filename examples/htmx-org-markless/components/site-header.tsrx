@@ -1,9 +1,10 @@
-import { state } from '@markless/core';
-import GitHubStar from './github-star.tsrx';
+import { element, state } from '@markless/core';
+import { GitHubButton } from '../lib/embeds/github-button/github-button.tsrx';
 
 /** `starFrame`: an example page, whose demo's fake XMLHttpRequest (sinon) sends buttons.js to its iframe fallback. */
-export default function SiteHeader({ starFrame }: { readonly starFrame?: boolean }) @{
+export default function SiteHeader({ starFrame = false }: { readonly starFrame?: boolean }) @{
 	let open = state(false);
+	const frame = element<HTMLElement>();
 
 	<header class="top-nav">
 		<div class="c">
@@ -47,7 +48,27 @@ export default function SiteHeader({ starFrame }: { readonly starFrame?: boolean
 						</div>
 						<div>
 							<div class="github-stars" id="github-stars">
-								<GitHubStar framed={starFrame === true} />
+								@if (starFrame) {
+									{/* Stands in for the iframe buttons.js writes there, with its box and inline style; buttons.js sizes the frame to
+									    its button, rounded up to a device pixel, so the width is measured here as it measured it (the count is live). */}
+									<span
+										el={frame}
+										class="ghb-frame"
+										data-markless-embed="github-button-bigskysoftware-htmx-star"
+										style="width: 102px; height: 20px; border-width: medium; border-style: none; border-color: currentcolor; border-image: none; color-scheme: light;"
+										onIdle={() => {
+											const widget = frame?.querySelector('.ghb-widget');
+											if (!frame || !widget) return;
+											const ratio = window.devicePixelRatio;
+											const width = widget.getBoundingClientRect().width;
+											frame.style.width = `${ratio > 1 ? Math.ceil(width * ratio) / ratio : Math.ceil(width)}px`;
+										}}
+									>
+										<GitHubButton embed="github-button-bigskysoftware-htmx-star" />
+									</span>;
+								} @else {
+									<GitHubButton embed="github-button-bigskysoftware-htmx-star" />;
+								}
 							</div>
 						</div>
 					</nav>

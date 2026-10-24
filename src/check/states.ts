@@ -1,4 +1,5 @@
 import type { Browser, BrowserContext, CDPSession, Page } from 'playwright';
+import { PNG } from 'pngjs';
 import { defaultEnv, openPage, type SideEnv } from './browser.ts';
 import { settle } from './capture.ts';
 import { readPage } from './collect.ts';
@@ -384,7 +385,7 @@ export async function compareStates(input: StateInput): Promise<StateOutput> {
 				const pageWide = state.kind === 'media' || state.kind === 'width' || state.kind === 'container';
 				if (!pageWide && !changedBoxes.length && !differing.length) continue;
 				const clip = pageWide ? undefined : union([...changedBoxes, ...targets.map((i) => o1.base[i]!.box)]);
-				const images = pageWide ? await Promise.all([drawnImages(o1.page), drawnImages(o2.page), drawnImages(n.page)]) : undefined;
+				const images = await Promise.all([drawnImages(o1.page), drawnImages(o2.page), drawnImages(n.page)]);
 				const [shot1, shot2, shotN] = await Promise.all([screenshot(o1.page, clip), screenshot(o2.page, clip), screenshot(n.page, clip)]);
 				const shift = (b: Box): Box => (clip ? { ...b, x: b.x - Math.max(0, clip.x - CLIP_PADDING), y: b.y - Math.max(0, clip.y - CLIP_PADDING) } : b);
 				const noisyBoxes = s1.flatMap((el, i) => (textNoise.has(i) || s2[p12.get(i) ?? -1]?.text !== el.text ? [shift(blockAround(s1, el))] : []));
@@ -393,7 +394,9 @@ export async function compareStates(input: StateInput): Promise<StateOutput> {
 				const diff = identicalShots(shot1, shotN) ?? compareWithNoise(shot1, shotN, [shot2], noisyBoxes);
 				const different = visuallyDifferent(diff);
 				if (different) {
-					const auto = images && !diff.sizeMismatch ? responsiveRegionsCandidate(diff.regions, { images: images[0] } as unknown as PageCapture, { images: images[2] } as unknown as PageCapture, diff.differing) : undefined;
+					// Boxes into the shot's coordinates: a state's shot may be clipped around its target.
+					const inShot = (list: ImageRecord[]) => list.map((img) => (img.box ? { ...img, box: shift(img.box) } : img));
+					const auto = !diff.sizeMismatch ? responsiveRegionsCandidate(diff.regions, { images: inShot(images[0]) } as unknown as PageCapture, { images: inShot(images[2]) } as unknown as PageCapture, diff.differing, { old: PNG.sync.read(shot1), new: PNG.sync.read(shotN) }) : undefined;
 					out.failures.push({
 						route,
 						dimension: 'visual',

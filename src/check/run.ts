@@ -339,7 +339,7 @@ async function checkJourneys(browser: Browser, run: Run, route: string, viewport
 	const mainFailures = await retime(browser, { old: run.old, new: front }, route, viewport, journeys, compareJourneys(route, olds, journeys, [...next, ...newRisky], owner, doorErrors, improvements));
 	const darkFailures = dark.length ? compareJourneys(route, darkOlds, inDarkMode(dark), darkNext, owner, doorErrors, improvements) : [];
 	const compared = withFailures(result, [...result.failures, ...mainFailures, ...darkFailures, ...arrivedFailures, ...unexercised], { journeys, coverage, writes: [...(result.writes ?? []), ...writes] });
-	return improvements.length ? { ...compared, improvements } : compared;
+	return improvements.length ? { ...compared, improvements: [...(compared.improvements ?? []), ...improvements] } : compared;
 }
 
 // Which pixels a step changed varies a little from run to run; a third run is for steps whose other results differ.
