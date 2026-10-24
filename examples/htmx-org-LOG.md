@@ -350,11 +350,9 @@ has nothing the pass can drive (file uploads, the sortable drag, async-auth).
 
 - edit-row: Markless 0.9 drops the event handlers of an `@if` inside an `@for` row after resume; the rows' buttons
   are one delegated handler on the table body until Markless fixes it (reported).
-- Links: htmx.org answers a page address without its slash with a redirect to the slashed one. The port's in-place
-  navigation never asks the server, so the importer now writes each internal link with the address the redirect
-  lands on (`/extensions/idiomorph/`). The cost: on `/docs/` the accessibility tree shows those 51 link addresses
-  with the slash where htmx.org's markup has none. A fix in the Markless router (following the host's
-  trailing-slash rule on in-place navigation) would let the importer go back to the original addresses.
+- Links keep htmx.org's own addresses (`/extensions/idiomorph`, no slash). htmx.org redirects those to the slashed
+  page; the port's in-place navigation lands on the slashed page too, through the host's slash rule, so nothing in the
+  importer rewrites them.
 - The disclosure note now reads "Unofficial demo copy of htmx.org. htmx and htmx.org © Big Sky Software and
   contributors, Zero-Clause BSD license.", without the tool's name; its acceptances were re-recorded against it.
   The seven acceptances that were no longer true (the GitHub star iframe, the 0.4.0 weight, hx-boost's requests)
