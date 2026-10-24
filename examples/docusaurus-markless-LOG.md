@@ -496,3 +496,27 @@ version-aware in #78:
 (#74) loads `@docsearch/js@3` from a CDN. That would change the dialog to version 3's, drop Ask AI, and bring back the
 Preact runtime this port removed. After the launch, the shared part is to be rebuilt from lib/docsearch.ts and replace
 #74's CDN load for every port.
+
+### The checker's last reds from #65: the sidebar's requests and search's first click (2026-10-24)
+
+- **Sidebar.** #65 fetched each docs sidebar's items as JSON when a page needed them. That made 25 behaviour and a11y
+  reds: following a docs link, or expanding a category, made a request the original never makes, sometimes three in
+  one journey. Each docs page now carries its own sidebar's items inline, as `<script type="application/json"
+  class="mm-sidebar-items">` in the aside, and lib/site.ts reads them from there. No navigation and no expand makes a
+  request. The page grows by about 2 kB gzip.
+- **Search's first click.** It fetched the dialog's code: /lazy/docsearch.js and the Ask AI chunk, 362 kB. That took
+  85 ms against the original's 43 on desktop, and 114 against 64 at 4x CPU on mobile.
+  - A head script now loads docsearch.js once the page is idle, or sooner on the first pointer, focus or touch on the
+    button, or a held Ctrl/⌘. It also preloads the Ask AI chunk, which now has a stable name
+    (lazy/docsearch-ask-ai.js) and runs when the dialog opens.
+  - The click fetches nothing, and both of the checker's first-interaction checks pass.
+  - The idle download after load is now 207 kB, 97 kB of it this code. The port's total is 371 kB against the
+    original's 383 kB at load, and the code run at load is unchanged.
+
+The checker on `/`, `/docs` and `/docs/installation` now shows only:
+- the dark-mode background after Back, which is identical locally in every frame (both pages have `transition: all`
+  on `<html>`);
+- controls not exercised within the journey budget, or occluded on both sides.
+
+The witness agrees: every control works like the original, apart from the YouTube player's extra `aria-hidden`.
+Navigation, desktop, original vs port: 51/22/14/14 vs 36/10/8/8 ms.

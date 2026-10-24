@@ -405,8 +405,14 @@ const data = sidebarIndex as { classes: Record<string, string>; files: Record<st
 const sidebars = new Map<string, SidebarItem[]>();
 const loadingSidebars = new Map<string, Promise<void>>();
 function loadSidebar(key: string | undefined): Promise<void> {
-	const file = key ? data.files[key] : undefined;
-	if (!key || !file || sidebars.has(key)) return Promise.resolve();
+	if (!key || sidebars.has(key)) return Promise.resolve();
+	const inline = document.querySelector('aside.theme-doc-sidebar-container > script.mm-sidebar-items');
+	if (inline && hint(inline.parentElement, 'sidebar') === key) {
+		sidebars.set(key, JSON.parse(inline.textContent ?? '[]') as SidebarItem[]);
+		return Promise.resolve();
+	}
+	const file = data.files[key];
+	if (!file) return Promise.resolve();
 	let loading = loadingSidebars.get(key);
 	if (!loading) {
 		loading = fetch(file)
