@@ -141,3 +141,18 @@ test('a Radix collapsible whose trigger renders its child (asChild, data-slot="b
 	assert.match(out, /<button data-slot="button" aria-controls="c1" aria-expanded=\{acc0 === 0 \? "true" : "false"\}/);
 	assert.match(out, /<div id="c1" data-slot="collapsible-content" data-state=\{acc0 === 0 \? "open" : "closed"\} hidden=\{!\(acc0 === 0 \|\| acc0x === 0\)\}>/);
 });
+
+test('a body child a load-time modal marked hidden (aria-hidden, Base UI inert) is still the shared one, shown in its at-rest look', async () => {
+	const { bodyAfterModule, splitBody } = await import('../src/convert/document.ts');
+	const marks: Record<string, string> = { '/a': '', '/b': ' aria-hidden="true" data-aria-hidden="true"', '/c': ' data-base-ui-inert=""' };
+	const pages = Object.entries(marks).map(([route, mark]) => {
+		const doc = parseDocument(`<body><main></main><section aria-label="Notifications"${mark}><span aria-hidden="true">x</span></section></body>`);
+		const [, region] = [...walk(body(doc))].slice(1) as Element[];
+		return [route, { route, before: [], after: [region!], htmlAttrs: {}, bodyAttrs: {}, head: [] }] as const;
+	});
+	const split = splitBody(new Map(pages));
+	assert.equal(split.after.length, 1);
+	assert.equal(split.extras.size, 0);
+	const module = bodyAfterModule(split, () => undefined, () => {})!;
+	assert.match(module, /<section aria-label="Notifications"><span aria-hidden="true">x<\/span><\/section>/);
+});

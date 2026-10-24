@@ -31,7 +31,13 @@ export interface BodySplit {
 	readonly extras: ReadonlyMap<string, readonly Element[]>;
 }
 
-const keyOf = (el: Element) => outer(el).replace(GENERATED_ALL, '@id');
+// A modal open at load marks the body's other children hidden (aria-hidden, Base UI's inert): the same child, in its at-rest look.
+const MODAL_MARKS = / (?:aria-hidden|data-aria-hidden|data-base-ui-inert|inert)(?:="[^"]*")?(?=[\s/>])/g;
+const keyOf = (el: Element) => {
+	const html = outer(el).replace(GENERATED_ALL, '@id');
+	const open = html.indexOf('>') + 1;
+	return html.slice(0, open).replace(MODAL_MARKS, '') + html.slice(open);
+};
 
 function common(pages: readonly PreparedBody[], side: 'before' | 'after'): Common[] {
 	const first = pages[0];
