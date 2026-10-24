@@ -1,4 +1,4 @@
-import { layersFor } from '../reveal.ts';
+import { layersFor, showCompanions } from '../reveal.ts';
 import { place, type BaseOptions } from './positioner.ts';
 import { enter, exit } from './transition.ts';
 
@@ -56,6 +56,7 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	}
 	enter(popup, around);
 	setTrigger(trigger, true);
+	showCompanions(key, true);
 	open.push(p);
 	const onKey = (event: KeyboardEvent) => {
 		if (event.key !== 'Escape' || top() !== p) return;
@@ -83,6 +84,7 @@ export function closePopup(p: Popup, returnFocus = true, keep = false): void {
 	open.splice(at, 1);
 	for (const c of p.cleanup) c();
 	setTrigger(p.trigger, false);
+	showCompanions(p.key, false);
 	// FloatingFocusManager returns focus as the popup unmounts, after its exit; a Select's popup stays mounted.
 	const refocus = () => {
 		const at = document.activeElement;

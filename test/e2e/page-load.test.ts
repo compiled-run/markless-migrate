@@ -35,8 +35,9 @@ describe('page load: Lighthouse mobile metrics, old vs new, a median of several 
 		assert.equal(route.dimensions.rendered, 'skipped', 'with --only load every other dimension is skipped, not passed');
 		assert.ok(route.failures.every((f) => f.dimension === 'load'));
 		const load = route.load!;
-		assert.equal(load.old.runs.length, 4);
-		assert.equal(load.new.runs.length, 4);
+		// --load-runs 4, and as many again when a metric is worse than its floor but not yet beyond the noise between runs.
+		assert.ok([4, 8].includes(load.old.runs.length), String(load.old.runs.length));
+		assert.equal(load.new.runs.length, load.old.runs.length);
 		const lcp = route.failures.find((f) => f.check === 'page load: Largest Contentful Paint (Lighthouse, mobile)');
 		assert.ok(lcp, route.failures.map((f) => f.check).join('\n'));
 		assert.ok(route.failures.some((f) => f.check === 'page load: First Contentful Paint (Lighthouse, mobile)'));
@@ -48,7 +49,7 @@ describe('page load: Lighthouse mobile metrics, old vs new, a median of several 
 		assert.ok(load.new.detail?.filmstrip?.length, 'a red route keeps the filmstrip of its median run');
 		const summary = summarize(report);
 		assert.match(summary, /FAIL +\/ +\[load\] +only page load compared \(--only load\)/);
-		assert.match(summary, /page load, PageSpeed-equivalent \(lab; Lighthouse mobile, median of 4[^)]*\): .*LCP .* \(worse\)/);
+		assert.match(summary, new RegExp(`page load, PageSpeed-equivalent \\(lab; Lighthouse mobile, median of ${load.old.runs.length}[^)]*\\): .*LCP .* \\(worse\\)`));
 		assert.match(renderHtml(report, () => 'x.png'), /Page load filmstrip/);
 	});
 

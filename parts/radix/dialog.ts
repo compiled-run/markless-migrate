@@ -1,5 +1,5 @@
 import { installDialog } from './dialog-engine.ts';
-import { layersFor } from '../reveal.ts';
+import { layersFor, closestTrigger, layerKey } from '../reveal.ts';
 
 // Radix Dialog and AlertDialog, delegated: the trigger's aria-controls names the content captured from the old page. The
 // content (and overlay) are mounted from their templates, then dialog-engine.ts (the shared port's engine, which does
@@ -7,6 +7,9 @@ import { layersFor } from '../reveal.ts';
 // their data-state. Closed and its exit animation over, a dialog leaves the page as Radix unmounts it.
 
 const TRIGGER = '[aria-haspopup="dialog"][aria-controls][data-slot$="dialog-trigger"], [aria-haspopup="dialog"][aria-controls][data-slot="sheet-trigger"], [aria-haspopup="dialog"][aria-controls][data-slot="drawer-trigger"]';
+// A trigger rendered through its child (asChild, render) carries the child's data-slot; its layer names the part.
+// A plain button a page opens its dialog from (open state set on click, no ARIA) has the layer under its key.
+const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[aria-haspopup="dialog"][aria-controls], [data-mm-key]:not([aria-haspopup]):not([data-state])', (slot) => /(dialog|sheet|drawer)-trigger$/.test(slot));
 const CLOSE = '[data-slot$="dialog-close"], [data-slot="sheet-close"], [data-slot$="dialog-cancel"], [data-slot$="dialog-action"]';
 
 interface Open {
@@ -20,6 +23,7 @@ const opened = new Map<string, Open>();
 const installed = new Set<string>();
 
 function setTrigger(trigger: HTMLElement, open: boolean): void {
+	if (!trigger.hasAttribute('aria-haspopup')) return;
 	trigger.setAttribute('aria-expanded', String(open));
 	trigger.setAttribute('data-state', open ? 'open' : 'closed');
 }
@@ -34,7 +38,7 @@ function close(key: string): void {
 }
 
 function open(trigger: HTMLElement): boolean {
-	const key = trigger.getAttribute('aria-controls')!;
+	const key = layerKey(trigger);
 	if (opened.has(key)) return true;
 	const nodes = layersFor(key);
 	if (!nodes.length) return false;
@@ -57,7 +61,7 @@ function open(trigger: HTMLElement): boolean {
 }
 
 export function click(target: Element): boolean {
-	const trigger = target.closest<HTMLElement>(TRIGGER);
+	const trigger = triggerOf(target);
 	if (trigger) return open(trigger);
 	const closer = target.closest<HTMLElement>(CLOSE);
 	if (!closer) return false;
@@ -71,7 +75,7 @@ export function click(target: Element): boolean {
 
 /** Opens or closes the dialog a trigger controls, for a page's own shortcut (a command menu on ⌘K). */
 export function toggle(trigger: HTMLElement): void {
-	const key = trigger.getAttribute('aria-controls');
+	const key = layerKey(trigger);
 	if (!key) return;
 	if (opened.has(key)) close(key);
 	else open(trigger);
