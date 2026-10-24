@@ -88,6 +88,9 @@ export class TabsPlan {
  * hidden, its content is an @if arm rendered while open or closing, and panel-motion.ts measures it as it is shown and
  * ends the exit.
  */
+/** A Radix Collapsible's or Accordion's content: its panel by data-slot, with Radix's data-state. */
+export const radixDisclosurePanel = (panel: Element) => /(^|-)(collapsible|accordion)-content$/.test(attr(panel, 'data-slot') ?? '') && attr(panel, 'data-state') !== undefined;
+
 export class DisclosurePlan {
 	private readonly bindings = new Map<Element, Binding>();
 	private n = 0;
@@ -104,9 +107,12 @@ export class DisclosurePlan {
 		}
 		const groups = new Map<Element, { trigger: Element; content: Element; item?: Element; header?: Element }[]>();
 		for (const trigger of walk(root)) {
-			if (!/-trigger$/.test(attr(trigger, 'data-slot') ?? '') || attr(trigger, 'aria-expanded') === undefined || !isRadixDisclosure(trigger)) continue;
+			if (attr(trigger, 'aria-expanded') === undefined) continue;
 			const panel = byId.get(attr(trigger, 'aria-controls') ?? '');
 			if (!panel) continue;
+			// A trigger rendered through its child (asChild) carries the child's data-slot: its panel says it is Radix's.
+			const own = /-trigger$/.test(attr(trigger, 'data-slot') ?? '') && isRadixDisclosure(trigger);
+			if (!own && !(radixDisclosurePanel(panel) && attr(trigger, 'data-state') !== undefined)) continue;
 			let accordion: Element | undefined;
 			let item: Element | undefined;
 			for (let n = trigger.parentNode as Element | null; n && 'tagName' in n; n = n.parentNode as Element | null) {

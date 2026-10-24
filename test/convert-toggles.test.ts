@@ -131,3 +131,13 @@ test('a Base UI tab list without panels (the line and vertical variants) still s
 	assert.match(out, /aria-selected=\{btab0 === 1 \? "true" : "false"\}/);
 	assert.doesNotMatch(out, /aria-controls=\{/);
 });
+
+test('a Radix collapsible whose trigger renders its child (asChild, data-slot="button") opens its content on state', async () => {
+	const { DisclosurePlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-slot="collapsible" data-state="closed"><button data-slot="button" aria-controls="c1" aria-expanded="false" data-state="closed">Product details</button><div id="c1" data-slot="collapsible-content" data-state="closed" hidden></div></div></body>');
+	const plan = new DisclosurePlan();
+	assert.equal(plan.add(body(doc), () => false, () => '<p>more</p>'), 1);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<button data-slot="button" aria-controls="c1" aria-expanded=\{acc0 === 0 \? "true" : "false"\}/);
+	assert.match(out, /<div id="c1" data-slot="collapsible-content" data-state=\{acc0 === 0 \? "open" : "closed"\} hidden=\{!\(acc0 === 0 \|\| acc0x === 0\)\}>/);
+});

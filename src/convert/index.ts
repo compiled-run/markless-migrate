@@ -10,7 +10,7 @@ import { parseFragment } from 'parse5';
 import { cleanDocument, frameworkBuilds, lateHead, type Dropped } from './clean.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, textContent, walk, type Document, type Element } from './dom.ts';
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
-import { BaseTabsPlan, CheckablePlan, DisclosurePlan, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
+import { BaseTabsPlan, CheckablePlan, DisclosurePlan, radixDisclosurePanel, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
 import { captureCharts, CHART_CSS, ChartPlan, MOTION_FILE, type ChartFacts } from './charts.ts';
 import { captureScenes, type Scene } from './scenes.ts';
 import { ScenePlan } from './scene-plan.ts';
@@ -584,7 +584,8 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 	for (const reveal of reveals) {
 		const atPath = elementAt(root, reveal.path);
 		const trigger = reveal.sig !== undefined && (!atPath || sigOf(atPath) !== reveal.sig) ? (bySig.get(reveal.sig)?.[reveal.nth ?? 0] ?? atPath) : atPath;
-		const panel = trigger && (isRadixTab(trigger) || isRadixDisclosure(trigger)) ? byId.get(attr(trigger, 'aria-controls') ?? '') : undefined;
+		const controlled = trigger ? byId.get(attr(trigger, 'aria-controls') ?? '') : undefined;
+		const panel = trigger && (isRadixTab(trigger) || isRadixDisclosure(trigger) || (controlled && attr(trigger, 'aria-expanded') !== undefined && radixDisclosurePanel(controlled))) ? controlled : undefined;
 		if (trigger && isBaseTab(trigger)) {
 			const shown = reveal.added.filter((a) => typeof a.into !== 'string').flatMap((a) => childrenOf(parseFragment(a.html) as unknown as Element).filter(isElement)).find((e) => attr(e, 'role') === 'tabpanel');
 			if (shown) basePanels.set(trigger, { attrs: Object.fromEntries(shown.attrs.map((a) => [a.name, a.value])), inner: childrenOf(shown).map((n) => outer(n)).join('') });
