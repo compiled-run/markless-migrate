@@ -184,9 +184,11 @@ const viewCode: Part = {
 // components/docs-toc.tsx's useActiveItem: an IntersectionObserver per page over its headings, starting with no item
 // active. A page shown in place (or by Back) keeps the list where both pages have one, so the list is synced again then.
 const observers = new Map<Element, IntersectionObserver>();
+const observedLinks = new WeakSet<Element>();
 function syncToc(list: Element): void {
 	observers.get(list)?.disconnect();
 	const links = [...list.querySelectorAll<HTMLAnchorElement>(':scope > a[data-depth][href^="#"]')];
+	for (const link of links) observedLinks.add(link);
 	for (const link of links) link.setAttribute('data-active', 'false');
 	const observer = new IntersectionObserver(
 		(entries) => {
@@ -218,7 +220,8 @@ const docsToc: Part = {
 	mount(el) {
 		const list = el.parentElement;
 		if (!list || !(el instanceof HTMLAnchorElement) || !el.getAttribute('href')?.startsWith('#')) return;
-		if (!observers.has(list)) syncToc(list);
+		// A link the list's observer has not seen is a page shown in place or by Back: the list follows that page now.
+		if (!observers.has(list) || !observedLinks.has(el)) syncToc(list);
 	},
 };
 
