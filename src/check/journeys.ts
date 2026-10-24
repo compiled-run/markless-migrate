@@ -1937,13 +1937,17 @@ function answered(r: StepResult, missing: { changes: string[]; regions: Box[] },
 	return `answers with: ${[changes, view].filter(Boolean).join('; ')}`;
 }
 
+// A step that swaps most of the page lists thousands of lines; the first ones show what happened, and a run's report stays a size it can write.
+const LISTED = 80;
+const listed = (lines: readonly string[]) => `${lines.slice(0, LISTED).join(' | ')}${lines.length > LISTED ? ` | … and ${lines.length - LISTED} more lines` : ''}`;
+
 function format(result: StepResult, parts: readonly string[], missing?: { changes: string[]; regions: Box[] }, old = false): string {
 	const out: string[] = [];
 	if (parts.includes('failed') && result.failed) out.push(result.failed);
 	if (parts.includes('url')) out.push(`URL ${result.url}`);
-	if (parts.includes('added')) out.push(`appears: ${result.added.join(' | ') || '(nothing)'}`);
-	if (parts.includes('removed')) out.push(`disappears: ${result.removed.join(' | ') || '(nothing)'}`);
-	if (parts.includes('moved')) out.push(`moves: ${result.moved?.join(' | ') || '(nothing)'}`);
+	if (parts.includes('added')) out.push(`appears: ${listed(result.added) || '(nothing)'}`);
+	if (parts.includes('removed')) out.push(`disappears: ${listed(result.removed) || '(nothing)'}`);
+	if (parts.includes('moved')) out.push(`moves: ${listed(result.moved ?? []) || '(nothing)'}`);
 	if (parts.includes('requests')) out.push(`requests: ${result.requests.join(', ') || '(none)'}`);
 	if (parts.includes('errors')) out.push(`console errors: ${result.errors.join(' | ') || '(none)'}`);
 	if (parts.includes('announcements')) out.push(`announced: ${result.announcements.join(' | ') || '(nothing)'}`);

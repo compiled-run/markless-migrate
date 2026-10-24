@@ -797,7 +797,7 @@ export class ChartPlan {
 			if (isElement(parent) && /width:\s*0/.test(attr(parent, 'style') ?? '')) fluid(parent, 'width:100%;height:100%;container-type:inline-size');
 			if (attr(wrapper, 'style')) fluid(wrapper, attr(wrapper, 'style')!.replace(/width:\s*[\d.]+px/, 'width: 100%').replace(/height:\s*[\d.]+px/, 'height: 100%'));
 			for (const name of ['width', 'height']) wrapper.attrs = wrapper.attrs.filter((a) => a.name !== name);
-			const extra = ['data-mm-chart="1"', `onMmchart={(event) => (${name} = (event as CustomEvent<number>).detail)}`];
+			const extra = ['data-mm-chart="1"', `onMmchart={(event) => (${name} = (event as CustomEvent<number>).detail)}`, 'onVisible={() => mount("data-mm-chart")}'];
 			if (!linked) {
 				linked = true;
 				const link = { nodeName: 'link', tagName: 'link', attrs: [{ name: 'rel', value: 'stylesheet' }, { name: 'href', value: MOTION_FILE }], namespaceURI: wrapper.namespaceURI, childNodes: [], parentNode: parent } as unknown as Tree;

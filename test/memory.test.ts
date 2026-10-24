@@ -27,3 +27,16 @@ test('a check holds the same memory however many routes it has done: screenshots
 		await rm(dir, { recursive: true, force: true });
 	}
 });
+
+test("writing a large run's report holds about one route at a time, not the whole report as text", async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'mm-report-memory-'));
+	try {
+		const { stdout } = await run(process.execPath, ['--expose-gc', join(HERE, 'report-memory-run.ts'), '100', dir], { maxBuffer: 1 << 20 });
+		const r = JSON.parse(stdout.trim().split('\n').at(-1)!) as { json: number; html: number; report: number; extra: number };
+		assert.ok(r.json > 30_000_000 && r.html > 30_000_000, `a large report: ${r.json} B of JSON, ${r.html} B of HTML`);
+		// Before the reports were streamed, writing this one held 96 MB more (its JSON as one string, then its HTML).
+		assert.ok(r.extra < r.json / 10, `writing the report held ${Math.round(r.extra / 1e6)} MB more, at most a tenth of its ${Math.round(r.json / 1e6)} MB of JSON`);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
