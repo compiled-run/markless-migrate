@@ -145,7 +145,8 @@ const mime = (value: string | undefined) => (value ?? '').split(';')[0]!.trim().
 // up to 0.5, from `/_markless/fragment/<path>` (the router's FRAGMENT_PATH_PREFIX) from 0.7.
 export function frameworkTransport(request: Pick<Request, 'headers' | 'method'>, url: URL): boolean {
 	const headers = request.headers();
-	return url.pathname.startsWith('/_next/') || url.pathname.startsWith('/_markless/fragment/') || url.searchParams.has('_rsc') || Boolean(headers.rsc || headers['next-router-state-tree'] || headers['next-action'] || headers['x-markless-fragment']) || (request.method() === 'GET' && url.searchParams.has('_data'));
+	// htmx's own fetches (hx-boost swapping a page in, its history restore) carry HX-Request: the mechanism, not what the page shows.
+	return url.pathname.startsWith('/_next/') || url.pathname.startsWith('/_markless/fragment/') || url.searchParams.has('_rsc') || Boolean(headers.rsc || headers['next-router-state-tree'] || headers['next-action'] || headers['x-markless-fragment'] || (request.method() === 'GET' && headers['hx-request'] === 'true')) || (request.method() === 'GET' && url.searchParams.has('_data'));
 }
 
 /** Requests that make up the page's network contract: API calls anywhere, and documents from other origins. */
@@ -504,3 +505,6 @@ export async function pushRecording(env: SideEnv): Promise<boolean> {
 		return false;
 	}
 }
+
+/** How check launches Chromium: with scrollbars, as a visitor's browser shows them, so a page that mishandles their width (scroll-lock padding) is seen doing it. */
+export const LAUNCH = { ignoreDefaultArgs: ['--hide-scrollbars'] } as const;

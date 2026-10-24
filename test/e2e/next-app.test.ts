@@ -342,7 +342,10 @@ const MUTATIONS: Mutation[] = [
 		],
 		red: ['behaviour'],
 		expect: (report) => {
-			const [f, ...rest] = failure(report, 'behaviour');
+			// The same journey run again after arriving from another page in place finds the same defect, at its step 2.
+			const arrived = failure(report, 'behaviour').filter((f) => /, after arriving from /.test(f.check));
+			for (const a of arrived) assert.match(a.actual, /requests: POST \/api\/message /);
+			const [f, ...rest] = failure(report, 'behaviour').filter((f) => !arrived.includes(f));
 			assert.equal(rest.length, 0, JSON.stringify(rest, null, 1));
 			assert.match(f!.check, /^fill textbox "Your name", textbox "Message" and submit with button "Send message"$/);
 			assert.match(f!.expected, /requests: POST \/api\/contact \{lang: string, message: string, name: string\}/);
