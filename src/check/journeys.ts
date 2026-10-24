@@ -642,26 +642,41 @@ function readReaction(): { changes: string[]; scrolled: boolean; boxes: Record<s
 }
 
 const AMBIENT_MS = 1_000;
-const ambientSeen = new Map<string, Promise<{ changes: readonly string[]; regions: readonly Box[] }>>();
+const ambientSeen = new Map<string, Promise<{ changes: readonly string[]; regions: readonly Box[]; unsettled?: boolean }>>();
 
 // Measured on a route's first session on each side and reused by its later sessions, so a journey does not wait a second for it.
 function ambientOnce(origin: string, route: string, page: Page): Promise<{ changes: readonly string[]; regions: readonly Box[] }> {
 	const key = `${origin} ${route} ${page.viewportSize()?.width ?? 0}`;
 	let found = ambientSeen.get(key);
-	if (!found) ambientSeen.set(key, (found = ambientMotion(page)));
+	if (!found) {
+		ambientSeen.set(key, (found = ambientMotion(page)));
+		// A measurement that saw most of the view change is a page still settling, not motion of its own: the next session measures again.
+		void found.then((a) => {
+			if (a.unsettled) ambientSeen.delete(key);
+		});
+	}
 	return found;
 }
 
 /** What the settled page changes on its own while nothing is used: the widgets and regions of the view that move without a step. */
-async function ambientMotion(page: Page): Promise<{ changes: readonly string[]; regions: readonly Box[] }> {
+async function ambientMotion(page: Page): Promise<{ changes: readonly string[]; regions: readonly Box[]; unsettled?: boolean }> {
 	const before = await page.screenshot({ timeout: 10_000 }).catch(() => undefined);
 	if (!before) return { changes: [], regions: [] };
 	await page.evaluate(watchReaction).catch(() => {});
-	await sleep(AMBIENT_MS);
+	await sleep(AMBIENT_MS / 2);
+	const mid = await page.screenshot({ timeout: 10_000 }).catch(() => undefined);
+	await sleep(AMBIENT_MS / 2);
 	const read = await page.evaluate(readReaction).catch(() => undefined);
 	const after = await page.screenshot({ timeout: 10_000 }).catch(() => undefined);
 	const moving = Object.values(read?.boxes ?? {});
-	return { changes: read?.changes ?? [], regions: [...moving, ...(after && !read?.scrolled ? changedRegions(before, after, []) : [])] };
+	// Pixels count as moving on their own only where both halves of the window saw them change: a page still painting in the first half
+	// (a busy machine) would otherwise mask its whole view from every later step of the route.
+	const first = mid && !read?.scrolled ? changedRegions(before, mid, []) : [];
+	const second = mid && after && !read?.scrolled ? changedRegions(mid, after, []) : [];
+	const both = first.filter((box) => second.some((other) => near(box, other)));
+	const viewport = page.viewportSize();
+	const huge = viewport ? both.some((box) => box.width * box.height > viewport.width * viewport.height * 0.4) : false;
+	return { changes: read?.changes ?? [], regions: [...moving, ...(huge ? [] : both)], ...(huge ? { unsettled: true } : {}) };
 }
 
 async function focusLabel(page: Page): Promise<string> {

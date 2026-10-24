@@ -1,0 +1,79 @@
+import { imageIdentity } from './automatic.ts';
+import { VIEWPORTS, type Failure, type ImageRecord, type PageCapture } from './types.ts';
+
+export const IMAGE_LOADING_HINT =
+	'An image is fetched with the page only when a first screen shows it. Give an image no first screen shows (below the fold on a phone and a desktop, or not drawn at all, as a dark-mode twin) loading="lazy" and drop any <link rel="preload" as="image"> for it; never lazy-load one a first screen shows. Give a first-screen image whose file is much wider than its box a srcset of widths with sizes (convert writes them for next/image from its own optimizer), so a phone downloads the width its box needs. Every request that starts before the largest paint shares the phone\'s bandwidth with it, so Lighthouse counts it toward LCP.';
+
+// Icons, logos and spacers cost a request but no bandwidth worth a finding.
+const MIN_BYTES = 10_000;
+// A 2x phone screen is what PageSpeed Insights' Moto G Power (1.75x) and most phones need at most.
+const PHONE_DPR = 2;
+
+interface Seen {
+	readonly viewport: string;
+	readonly height: number;
+	readonly img: ImageRecord;
+}
+
+const firstScreen = (s: Seen) => !!s.img.box && s.img.box.y < s.height && s.img.box.y + s.img.box.height > 0;
+
+/**
+ * How the new page loads its images, from where each was drawn at every viewport once the page settled: an image no first
+ * screen shows that still loads with the page (eager, or preloaded in the head), a first-screen image held back by
+ * loading="lazy", and a first-screen image whose one file is more than twice as wide as a 2x phone needs for its box.
+ */
+type Finding = { readonly key: string; readonly kind: string; readonly failure: Failure };
+
+function findings(route: string, pages: Readonly<Record<string, PageCapture>>): Finding[] {
+	const views = Object.values(pages);
+	const first = views[0];
+	if (!first) return [];
+	const failures: Finding[] = [];
+	// What crosses the wire: an SVG is text the server compresses to about a quarter.
+	const bytes = new Map(views.flatMap((p) => p.assets.map((a) => [a.url, /svg/.test(a.contentType ?? '') ? a.bytes / 4 : a.bytes] as const)));
+	// The same image in each viewport: the nth of its picture and alt text, since a viewport may add or drop others.
+	const keyed = views.map((p) => {
+		const count = new Map<string, number>();
+		return new Map(p.images.map((img) => {
+			const key = `${imageIdentity(img.src)}|${img.alt}`;
+			const n = count.get(key) ?? 0;
+			count.set(key, n + 1);
+			return [`${key}#${n}`, img] as const;
+		}));
+	});
+	// A file another image draws in a first screen is fetched with the page anyway.
+	const firstScreenFiles = new Set(views.flatMap((p) => { const h = VIEWPORTS.find((x) => x.name === p.viewport)?.height ?? 800; return p.images.filter((i) => i.box && i.box.y < h && i.box.y + i.box.height > 0).map((i) => i.src); }));
+	[...keyed[0]!].forEach(([key, img]) => {
+		const seen: Seen[] = views.flatMap((p, v) => (keyed[v]!.has(key) ? [{ viewport: p.viewport, height: VIEWPORTS.find((x) => x.name === p.viewport)?.height ?? 800, img: keyed[v]!.get(key)! }] : []));
+		if (seen.length !== views.length || img.broken || img.src.startsWith('data:') || (bytes.get(img.src) ?? 0) < MIN_BYTES) return;
+		const shown = seen.filter(firstScreen);
+		const check = `image loading: ${img.src}`;
+		if (!shown.length && (img.loading !== 'lazy' || img.preloaded) && !firstScreenFiles.has(img.src))
+			failures.push({ key, kind: 'eager', failure: { route, dimension: 'load', check, expected: 'loaded when it is about to be seen (loading="lazy", no head preload): no first screen shows it', actual: `${img.preloaded ? 'preloaded in the head' : 'loaded with the page'}; ${seen.map((s) => `${s.viewport} ${s.img.box ? `drawn at y=${s.img.box.y}, below the first ${s.height} px` : 'not drawn'}`).join(', ')}`, hint: IMAGE_LOADING_HINT } });
+		// A lazy image some viewport does not draw is fetched early where it shows by a preload scoped to that width.
+		if (shown.length && img.loading === 'lazy' && !(img.preloaded && seen.some((s) => !s.img.box)))
+			failures.push({ key, kind: 'lazy', failure: { route, dimension: 'load', check, expected: 'fetched with the page: a first screen shows it', actual: `loading="lazy" while ${shown.map((s) => s.viewport).join(' and ')} show${shown.length === 1 ? 's' : ''} it at y=${shown[0]!.img.box!.y}`, hint: IMAGE_LOADING_HINT } });
+		const phone = shown.find((s) => VIEWPORTS.find((v) => v.name === s.viewport)?.isMobile);
+		if (phone && !img.widths && phone.img.naturalWidth > 2 * PHONE_DPR * phone.img.box!.width)
+			failures.push({ key, kind: 'oversized', failure: { route, dimension: 'load', check, viewport: phone.viewport, expected: `a srcset of widths with sizes: its ${phone.img.box!.width} px box needs at most ${PHONE_DPR * phone.img.box!.width} px on a 2x phone`, actual: `one ${phone.img.naturalWidth}x${phone.img.naturalHeight} file for every device`, hint: IMAGE_LOADING_HINT } });
+	});
+	return failures;
+}
+
+/**
+ * The new page's image loading against the old page's: what the port loads worse than the original is red; what it
+ * shares with the original (the same image loaded the same way) is an improvement it could make, listed and not red.
+ */
+export function imageLoading(route: string, oldPages: Readonly<Record<string, PageCapture>>, newPages: Readonly<Record<string, PageCapture>>): { failures: Failure[]; improvements: string[] } {
+	const shared = new Set(findings(route, oldPages).map((f) => `${f.key}|${f.kind}`));
+	const failures: Failure[] = [];
+	const improvements: string[] = [];
+	for (const f of findings(route, newPages)) {
+		if (shared.has(`${f.key}|${f.kind}`)) improvements.push(`${f.failure.check}: ${f.failure.actual}, as on the old page; ${f.failure.expected}`);
+		else failures.push(f.failure);
+	}
+	return { failures, improvements };
+}
+
+/** The new page's image loading findings alone, every one red. */
+export const imageLoadingFailures = (route: string, pages: Readonly<Record<string, PageCapture>>): Failure[] => findings(route, pages).map((f) => f.failure);

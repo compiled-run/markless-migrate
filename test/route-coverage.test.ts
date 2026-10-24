@@ -55,7 +55,8 @@ before(async () => {
 		if (path === '/maps/pages.xml') return { status: 200, type: 'application/xml', body: sitemap(base, ['/', '/docs']) };
 		if (path === '/') return { status: 200, body: page('Home', ['/docs', '/blog', 'mailto:hi@example.com', 'https://elsewhere.example/x']) };
 		if (path === '/docs') return { status: 200, body: page('Docs', ['/docs/hidden', '/docs/hidden#part', '/old-docs']) };
-		if (path === '/docs/hidden') return { status: 200, body: page('Hidden') };
+		if (path === '/docs/hidden') return { status: 200, body: `${page('Hidden')}<iframe src="/view/chart-area" loading="lazy"></iframe><iframe src="https://elsewhere.example/embed"></iframe>` };
+		if (path === '/view/chart-area') return { status: 200, body: page('Chart') };
 		if (path === '/old-docs') return { status: 301, location: '/docs/moved' };
 		if (path === '/docs/moved') return { status: 200, body: page('Moved') };
 		if (path === '/blog' && search === '?page=2') return { status: 200, body: page('Blog 2', ['/blog/post-9']) };
@@ -98,11 +99,12 @@ test('a route left out on purpose, by an accepted difference, no longer counts a
 	assert.match(summarize(second), /3 of 10 routes of the old site present, 6 missing, 1 left out on purpose \(accepted\)/);
 });
 
-test('the link crawl finds routes the sitemap does not list: linked pages, pagination, redirect targets and feed items, and nothing off-site', async () => {
+test('the link crawl finds routes the sitemap does not list: linked and embedded pages, pagination, redirect targets and feed items, and nothing off-site', async () => {
 	const planned = await enumerateRoutes(origin(crawly));
 	const by = Object.fromEntries(planned.routes.map((r) => [r.route, r.sources]));
 	assert.deepEqual(by['/docs'], ['crawl', 'sitemap']);
 	assert.deepEqual(by['/docs/hidden'], ['crawl'], 'linked from /docs only');
+	assert.deepEqual(by['/view/chart-area'], ['crawl'], 'a page an iframe embeds is a route');
 	assert.deepEqual(by['/blog?page=2'], ['crawl'], 'a pagination query is kept');
 	assert.deepEqual(by['/blog/post-9'], ['crawl'], 'found by following pagination');
 	assert.deepEqual(by['/docs/moved'], ['redirect']);

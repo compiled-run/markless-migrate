@@ -7,4 +7,3 @@ h1, h2, h3, h4, .font-title { font-family: 'Karla', system-ui, -apple-system, /*
 /* The router wraps every page in one container; it takes no box, so the page lays out straight under <body> as on alpinejs.dev. */
 [data-async-container] { display: contents; }
 /* The search button's Ctrl key, shown off Apple platforms by DOCSEARCH_ON_INTENT. */
-.DocSearch-Button-Key.docsearch-key-ctrl { display: none; }

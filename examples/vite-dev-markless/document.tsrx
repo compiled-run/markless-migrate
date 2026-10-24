@@ -13,6 +13,10 @@ interface Head {
 }
 const heads = docsHeads as Readonly<Record<string, Head>>;
 
+// The web fonts every page of a layout draws in its first screen, which only style.css names: fetched with it, not after it.
+const HOME_FONTS = ['/assets/APK-Protocol-Medium.C7Mq9oGh.woff2', '/assets/inter-roman-latin.Di8DUHzh.woff2', '/assets/KHTekaMono-Regular.CiZ9ZkmZ.woff2'];
+const DOCS_FONTS = ['/assets/APK-Protocol-Medium.C7Mq9oGh.woff2', '/assets/APK-Protocol-Semi-Bold.CC2BASA5.woff2', '/assets/inter-roman-latin.Di8DUHzh.woff2', '/assets/KHTekaMono-Regular.CiZ9ZkmZ.woff2'];
+
 export default function Document({ url, children }: { readonly url?: { readonly pathname: string }; readonly children?: Children }) @{
 	const path = url?.pathname ?? '/';
 	const docs = heads[path] ?? heads[path.replace(/\/$/, '')] ?? (path === '/' ? undefined : heads['/404']);
@@ -34,12 +38,13 @@ export default function Document({ url, children }: { readonly url?: { readonly 
 				</>;
 			}
 			<link rel="preload stylesheet" href="/assets/style.B3BAO59d.css" as="style" />
-			@if (!docs) {
-				<>
-					<link rel="preconnect" href="https://fonts.googleapis.com" />
-					<link rel="preload" href={bannerBackground} as="image" />
-				</>;
+			@for (const font of docs ? DOCS_FONTS : HOME_FONTS; key font) {
+				<link rel="preload" href={font} as="font" type="font/woff2" crossorigin="" />;
 			}
+			@if (!docs) {
+				<link rel="preconnect" href="https://fonts.googleapis.com" />;
+			}
+			<link rel="preload" href={bannerBackground} as="image" media="(min-width: 768px)" />
 			<script>{'if(localStorage.getItem("banner-dismissed-viteconf-2026")==="true")document.documentElement.classList.add("banner-dismissed");'}</script>
 			@if (docs) {
 				<>

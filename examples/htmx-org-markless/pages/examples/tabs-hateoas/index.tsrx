@@ -89,7 +89,27 @@ export default function TabsHateoas() @{
 			    80 ms with the whole tab list, the chosen tab selected and autofocus on it, and its text (the button carries
 			    htmx-request until then); htmx then focuses the autofocus button. */}
 			<div id="tabs">
-				<div class="tab-list" role="tablist">
+				<div
+					class="tab-list"
+					role="tablist"
+					onClick={(event) => {
+						// One handler for the three tabs; the tab's number from the button's place in the list, read now: the
+						// answer arrives after the handler has returned.
+						const button = (event.target as Element).closest('button');
+						if (!button) return;
+						const buttons = Array.from(button.parentElement!.querySelectorAll('button'));
+						const tab = buttons.indexOf(button) + 1;
+						requesting = tab;
+						setTimeout(() => {
+							log = [tabEntry(log.length + 1, tab), ...log];
+							selected = `req-${log.length}`;
+							current = tab;
+							swapped = true;
+							if (requesting === tab) requesting = 0;
+							buttons[tab - 1]?.focus();
+						}, 80);
+					}}
+				>
 					@for (const n of [1, 2, 3]; key n) {
 						{/* The whitespace between the old markup's inline-block buttons. */}
 						{" "}
@@ -99,18 +119,6 @@ export default function TabsHateoas() @{
 							aria-selected={n === current ? 'true' : 'false'}
 							autofocus={swapped && n === current ? '' : undefined}
 							aria-controls="tab-content"
-							onClick={(event) => {
-								const button = (event.target as Element).closest('button');
-								requesting = n;
-								setTimeout(() => {
-									log = [tabEntry(log.length + 1, n), ...log];
-									selected = `req-${log.length}`;
-									current = n;
-									swapped = true;
-									if (requesting === n) requesting = 0;
-									button?.focus();
-								}, 80);
-							}}
 						>
 							{`Tab ${n}`}
 						</button>

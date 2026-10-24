@@ -1,5 +1,5 @@
 import { AUTOMATIC_RULES, type AutomaticRule } from '../overrides.ts';
-import type { AssetRecord, Box, Failure, PageCapture } from './types.ts';
+import type { AssetRecord, Box, Failure, ImageRecord, PageCapture } from './types.ts';
 
 export { AUTOMATIC_RULES, type AutomaticRule };
 
@@ -94,6 +94,97 @@ export function embedCandidate(regions: readonly Box[], old: PageCapture, next: 
 	if (!regions.every((r) => shared.some((e) => inside(r, e.box)))) return undefined;
 	const hosts = [...new Set(shared.filter((e) => regions.some((r) => inside(r, e.box))).map((e) => new URL(e.src).host))];
 	return candidate('live-embed', `every differing pixel is inside ${hosts.length === 1 ? 'an embed' : 'embeds'} from ${hosts.join(', ')} that both pages load from the same address`);
+}
+
+// An image optimizer's address names its source image in a query; a file's name, less its content hash and a width
+// suffix, names the image its renditions were made from (photo.Bx7c9Kq2.jpg, photo-640w.webp).
+const OPTIMIZERS = new Set(['/_next/image', '/_vercel/image']);
+const HASH = /[.-]([A-Za-z0-9_-]{8}|[a-f0-9]{16,})$/;
+const hashy = (token: string) => /\d/.test(token) || (/[a-z]/.test(token) && /[A-Z]/.test(token));
+export function imageIdentity(src: string): string {
+	const url = URL.parse(src, 'http://x');
+	if (!url) return src;
+	if (OPTIMIZERS.has(url.pathname) && url.searchParams.get('url')) return `${url.pathname}?url=${url.searchParams.get('url')}`;
+	let name = decodeURIComponent(url.pathname.slice(url.pathname.lastIndexOf('/') + 1)).replace(/\.[a-z0-9]+$/i, '');
+	for (let i = 0; i < 2; i++) {
+		const hash = HASH.exec(name);
+		if (hash && hashy(hash[1]!)) name = name.slice(0, hash.index);
+		name = name.replace(/[-_@]\d{2,4}w$/, '');
+	}
+	return `${url.origin}/${name}`;
+}
+
+/** The new page draws the old page's image from another rendition of it (a srcset width), as sharp as its box needs at the screenshot's scale. */
+export function responsiveImageCandidate(old: ImageRecord, next: ImageRecord | undefined): Failure['automatic'] {
+	if (!next || old.broken || next.broken || old.src === next.src || imageIdentity(old.src) !== imageIdentity(next.src)) return undefined;
+	if (!old.naturalHeight || !next.naturalHeight || Math.abs(old.naturalWidth / old.naturalHeight - next.naturalWidth / next.naturalHeight) > 0.01 * (old.naturalWidth / old.naturalHeight)) return undefined;
+	if (!next.box || next.naturalWidth < next.box.width) return undefined;
+	return candidate('responsive-image', `${next.src} is ${old.src} at ${next.naturalWidth}x${next.naturalHeight}, which the srcset gives a ${next.box.width} px wide box; the old page drew a ${old.naturalWidth} px file there`);
+}
+
+/** Decoded screenshots of both pages, and where the shot starts on the page (a shot clipped around a state's target). */
+export interface Shots {
+	readonly old: { readonly width: number; readonly height: number; readonly data: Uint8Array };
+	readonly new: { readonly width: number; readonly height: number; readonly data: Uint8Array };
+	readonly x?: number;
+	readonly y?: number;
+}
+
+const BLOCK = 8;
+
+/**
+ * The same picture at another resolution: its 8 px blocks average to nearly the same colour on both shots. Resampling
+ * moves single pixels (most of them, in a grainy photo) but not the blocks; another picture moves the blocks.
+ */
+export function samePicture(shots: Shots, box: Box): boolean {
+	const x0 = Math.max(0, box.x - (shots.x ?? 0));
+	const y0 = Math.max(0, box.y - (shots.y ?? 0));
+	const x1 = Math.min(shots.old.width, shots.new.width, x0 + box.width);
+	const y1 = Math.min(shots.old.height, shots.new.height, y0 + box.height);
+	const diffs: number[] = [];
+	for (let by = y0; by + BLOCK <= y1; by += BLOCK)
+		for (let bx = x0; bx + BLOCK <= x1; bx += BLOCK) {
+			let d = 0;
+			for (let c = 0; c < 3; c++) {
+				let a = 0;
+				let b = 0;
+				for (let y = by; y < by + BLOCK; y++)
+					for (let x = bx; x < bx + BLOCK; x++) {
+						a += shots.old.data[(y * shots.old.width + x) * 4 + c]!;
+						b += shots.new.data[(y * shots.new.width + x) * 4 + c]!;
+					}
+				d = Math.max(d, Math.abs(a - b) / (BLOCK * BLOCK));
+			}
+			diffs.push(d);
+		}
+	if (!diffs.length) return false;
+	diffs.sort((p, q) => p - q);
+	return diffs.reduce((s, d) => s + d, 0) / diffs.length <= 6 && diffs[Math.floor(diffs.length * 0.98)]! <= 24;
+}
+
+/** Pixels that differ only inside images the new page draws from a smaller rendition of the old page's file: the resampling, not the page. */
+export function responsiveRegionsCandidate(regions: readonly Box[], old: PageCapture, next: PageCapture, differing?: number, shots?: Shots): Failure['automatic'] {
+	if (!regions.length) return undefined;
+	// Paired by the picture and where it is drawn, not by position in the list: a page may add or drop an image elsewhere.
+	const renditions = next.images.flatMap((n) => {
+		const o = n.box && old.images.find((img) => img.box && imageIdentity(img.src) === imageIdentity(n.src) && Math.abs(img.box.x - n.box!.x) <= PAD && Math.abs(img.box.y - n.box!.y) <= PAD);
+		const auto = o && responsiveImageCandidate(o, n);
+		return auto ? [{ box: n.box!, auto }] : [];
+	});
+	// Diff regions are whole 16 px cells, so one may reach a cell past the image's edge.
+	const within = (r: Box, b: Box) => inside(r, { x: b.x - 16, y: b.y - 16, width: b.width + 32, height: b.height + 32 });
+	if (!renditions.length || !regions.every((r) => renditions.some((x) => within(r, x.box)))) return undefined;
+	const used = renditions.filter((x) => regions.some((r) => within(r, x.box)));
+	if (shots) {
+		if (!used.every((x) => samePicture(shots, x.box))) return undefined;
+	} else if (differing !== undefined && differing > 0.1 * used.reduce((s, x) => s + x.box.width * x.box.height, 0)) return undefined;
+	return candidate('responsive-image', `every differing pixel is inside ${used.length === 1 ? 'an image' : `${used.length} images`} drawn from another width of the same file: ${used.map((x) => x.auto!.reason).join('; ')}`);
+}
+
+/** An image no viewport draws, which the old page fetched anyway and the new page leaves to load when it is drawn. */
+export function unshownLazyCandidate(old: ImageRecord, next: ImageRecord | undefined): Failure['automatic'] {
+	if (!next || old.box || next.box || next.loading !== 'lazy' || next.naturalWidth || imageIdentity(old.src) !== imageIdentity(next.src)) return undefined;
+	return candidate('unshown-lazy-image', `the page does not draw ${next.src} here, and the new page marks it loading="lazy", so it loads when it is drawn; the old page fetched it anyway`);
 }
 
 /** A third-party image both pages load from the same address that came back different: its content is live. */

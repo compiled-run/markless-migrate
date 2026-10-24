@@ -5,7 +5,7 @@ import viteFooterBackground from '../assets/vite/footer-background.jpg';
 export default function TopBanner() @{
 	<div class="top-banner hidden md:block relative w-full overflow-hidden" data-theme="dark" data-v-56d116fe="">
 		<a href="https://viteconf.org/" target="_blank" rel="noopener noreferrer" class="group block relative w-full no-underline text-white">
-			<img src={viteFooterBackground} alt="" aria-hidden="true" class="absolute inset-0 w-full h-full object-cover object-bottom brightness-60" loading="eager" />
+			<img src={viteFooterBackground} alt="" aria-hidden="true" class="absolute inset-0 w-full h-full object-cover object-bottom brightness-60" loading="lazy" />
 			<div class="relative z-10 w-full h-10 flex px-4">
 				<div class="flex items-center gap-2 w-full max-w-360 mx-auto px-4">
 					<img src={viteMono} alt="Vite icon" class="w-5 h-5 -translate-y-px shrink-0 hidden sm:block drop-shadow-md/70" />

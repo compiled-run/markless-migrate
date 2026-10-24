@@ -45,8 +45,10 @@ test("the load browser sends an app's bypass token to that app's origin alone", 
 		const deadline = Date.now() + 15_000;
 		while (Date.now() < deadline && !(seen.some((s) => s.path === '/app.js') && seen.some((s) => s.host === 'third'))) await new Promise((done) => setTimeout(done, 50));
 		socket.close();
+		// Chromium may also ask the app for /favicon.ico, on its own schedule: an app request like the others.
 		const fromApp = seen.filter((s) => s.host === 'app');
-		assert.deepEqual(fromApp.map((s) => [s.path, s.headers['x-bypass']]), [['/', 'secret'], ['/app.js', 'secret']]);
+		assert.deepEqual(fromApp.filter((s) => s.path !== '/favicon.ico').map((s) => [s.path, s.headers['x-bypass']]), [['/', 'secret'], ['/app.js', 'secret']]);
+		assert.ok(fromApp.every((s) => s.headers['x-bypass'] === 'secret'), 'every request to the app carries its token');
 		const fromThird = seen.filter((s) => s.host === 'third');
 		assert.equal(fromThird.length, 1, 'the third-party image was loaded');
 		assert.equal(fromThird[0]!.headers['x-bypass'], undefined);

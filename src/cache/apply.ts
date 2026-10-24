@@ -113,10 +113,16 @@ const CACHING_KEYS = ['isr', 'prerender', 'cache', 'swr', 'static'];
 
 interface NitroLike {
 	options: { routeRules: Record<string, Record<string, any>> };
+	hooks?: { hook(name: 'prerender:init', run: (renderer: { options: { serverAssets: { baseName: string }[] } }) => void): void };
 }
 
 /** Puts each route's caching into Nitro's options, in place of any caching the app set for that path; a proxied path is left alone. */
 export function applyRules(nitro: NitroLike): void {
+	// Nitro's prerenderer copies the app's config with each server asset listed twice, and mounting one twice stops it.
+	nitro.hooks?.hook('prerender:init', (renderer) => {
+		const seen = new Set<string>();
+		renderer.options.serverAssets = renderer.options.serverAssets.filter((a) => !seen.has(a.baseName) && Boolean(seen.add(a.baseName)));
+	});
 	const rules = nitro.options.routeRules;
 	const proxied = (path: string) => Boolean(rules[path]?.proxy);
 	for (const [path, rule] of Object.entries(routeRules)) {
