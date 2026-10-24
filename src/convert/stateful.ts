@@ -1,5 +1,5 @@
 import { parseFragment } from 'parse5';
-import { attr, childrenOf, inner as innerOf, isElement, isText, walk, type Element, type Node } from './dom.ts';
+import { attr, childrenOf, inner as innerOf, isElement, isText, outer as outerOf, walk, type Element, type Node } from './dom.ts';
 import { lit, mergeBindings, type Binding } from './tsrx.ts';
 import type { Notify, Switch, ToggleGroup } from './toggles.ts';
 
@@ -175,11 +175,22 @@ export class SelectPlan {
 		return this.bindings.get(el);
 	}
 
-	add(root: Element, isBaseSelect: (el: Element) => boolean): number {
+	add(root: Element, isBaseSelect: (el: Element) => boolean, emit?: (html: string) => string): number {
 		let count = 0;
 		for (const trigger of walk(root)) {
 			if (attr(trigger, 'data-slot') !== 'select-trigger' || !isBaseSelect(trigger)) continue;
 			const value = [...walk(trigger)].find((el) => attr(el, 'data-slot') === 'select-value');
+			// A React Aria Select whose trigger renders the chosen text itself (a render function, no SelectValue): its
+			// leading text is the state, the rest of its children stay as they are.
+			const lead = childrenOf(trigger)[0];
+			if (!value && emit && attr(trigger, 'data-rac') !== undefined && lead && isText(lead) && lead.value.trim()) {
+				const name = `sel${this.n++}`;
+				const declare = [`let ${name} = state(${lit(lead.value)});`];
+				const rest = childrenOf(trigger).slice(1).map((n) => (isText(n) ? n.value.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!) : outerOf(n))).join('');
+				this.bindings.set(trigger, { declare, extra: [`onMmchoose={(event) => (${name} = (event as CustomEvent<string>).detail)}`], children: `{${name}}${emit(rest)}` });
+				count++;
+				continue;
+			}
 			if (!value) continue;
 			const name = `sel${this.n++}`;
 			const text = textOf(value);

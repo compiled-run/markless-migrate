@@ -1014,7 +1014,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	const selects = new SelectPlan();
 	const racSelect = (el: Element) => attr(el, 'aria-haspopup') === 'listbox' && candidatesOf(el).some((c) => c.library === 'react-aria-components');
-	for (const p of prepared.values()) selects.add(p.root, (el) => portFor(el) === 'base-ui/select' || portFor(el) === 'radix/select' || racSelect(el));
+	const emitTrigger = (html: string) => emitChildren(parseFragment(html) as unknown as Element, { bind: (el) => bindParts(el, templatePorts) });
+	for (const p of prepared.values()) selects.add(p.root, (el) => portFor(el) === 'base-ui/select' || portFor(el) === 'radix/select' || racSelect(el), emitTrigger);
 	// A demo's recorded uses never take over an element another plan puts on Markless state (a disclosure, a tab, a toggle).
 	const scenePlan = new ScenePlan((el) => [tabs, baseTabs, disclosures, insertedDisclosures, selects, checkables, switchPlan, notifyPlan, otps].some((plan) => plan.bind(el) !== undefined));
 	let sceneCount = 0;
