@@ -22,6 +22,7 @@ import { stat } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { nextImageWidths, pairImages, planImages, type ImagePlan, type Optimizer } from './images.ts';
 import { nextThemesOptions, themeToggleOf } from './theme.ts';
+import { applyLateFonts } from './fonts.ts';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
 import { nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
@@ -250,6 +251,8 @@ function textOf(node: Element): string {
 let currentLayers: { key: string; markup: string; shell: string; fill: string }[] = [];
 // What the old page's copy controls wrote, by the control's signature and occurrence.
 let currentClipboard: Record<string, string> = {};
+// Routes with a block that waits for the load event to render (its web font is fetched after the load).
+const lateFontPages = new Set<string>();
 // Containers a control replaces its content in (View Code): the content it then shows, rendered hidden beside.
 const replaced = new Map<Element, { key: string; trigger: Element; markup: string }>();
 const replacedParts = new Map<Element, Binding>();
@@ -619,6 +622,7 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 		extractStyles(holder, styles);
 		return attr(childrenOf(holder)[0] as Element, 'href')!;
 	});
+	if (applyLateFonts(doc, (capture.lateFonts ?? []).map((f) => f.id))) lateFontPages.add(capture.route);
 	const plan = planImages(doc, paired, optimizer, dropped);
 	for (const k of Object.keys(plan) as (keyof ImagePlan)[]) images[k] += plan[k];
 	extractStyles(head(doc), styles);
@@ -782,6 +786,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const nextConfig = options.source ? ['next.config.mjs', 'next.config.js', 'next.config.ts', 'next.config.cjs'].map((f) => join(options.source!, f)).find((f) => existsSync(f)) : undefined;
 	const optimizer: Optimizer | undefined = nextConfig ? { path: '/_next/image', widths: nextImageWidths(readFileSync(nextConfig, 'utf8')) } : undefined;
 	const images: ImagePlan = { lazy: 0, eager: 0, responsive: 0, preloadsDropped: 0, someScreens: 0 };
+	lateFontPages.clear();
 	// Each capture (the served HTML and the settled documents, a few MB) is read from the cache only while its page is parsed.
 	for (const ref of captures) {
 		if (ref.status !== 200 && !(ref.route === NOT_FOUND && ref.status === 404)) {
@@ -1096,6 +1101,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const headScripts = docsearchConfigured() ? ['PLATFORM_KEYS_SCRIPT'] : [];
 	if (headScripts.length) usedPorts.add('docsearch');
 	if (headScripts.length) documentParts.push({ part: 'docsearch', import: (dir) => `import { PLATFORM_KEYS_SCRIPT } from '${dir}/docsearch.ts';` });
+	if (lateFontPages.size) {
+		headScripts.push('LATE_FONTS_SCRIPT');
+		documentParts.push({ part: 'late-fonts', import: (dir) => `import { LATE_FONTS_SCRIPT } from '${dir}/late-fonts.ts';` });
+		usedPorts.add('late-fonts');
+		log(`late fonts: on ${lateFontPages.size} pages, a web font only text below every first screen uses is fetched after the load`);
+	}
 	// A theme toggle the site names switches the theme from the first paint, before the page's code has arrived.
 	const toggle = themeToggleOf(await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as Record<string, unknown>[], () => []));
 	// ThemeProvider writes its script at the start of <body>; another site may keep it in <head>.

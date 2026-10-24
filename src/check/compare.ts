@@ -2,7 +2,7 @@ import { sameContentType } from './assets.ts';
 import { PNG } from 'pngjs';
 import { embedFailures } from './embeds.ts';
 import { loopFailures } from './loops.ts';
-import { imageLoadingFailures } from './image-loading.ts';
+import { imageLoading } from './image-loading.ts';
 import { embedCandidate, embedImageCandidate, markupCandidate, responsiveImageCandidate, responsiveRegionsCandidate, runtimeCandidate, unshownLazyCandidate, storageOwner } from './automatic.ts';
 import { compareA11y } from './a11y.ts';
 import { isClock, maskClocks } from './clock.ts';
@@ -289,7 +289,8 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 		failures.push(...fontFailures(route, viewport, a, bs, n));
 	}
 
-	failures.push(...imageLoadingFailures(route, next.pages));
+	const images = imageLoading(route, oldA.pages, next.pages);
+	failures.push(...images.failures);
 
 	const desktop = Object.keys(oldA.pages)[0]!;
 	const withoutLocale = (seo: Readonly<Record<string, string>>) => Object.fromEntries(Object.entries(seo).filter(([key]) => !LOCALE_KEYS.has(key)));
@@ -354,7 +355,7 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 		}
 	}
 
-	return withFailures({ route, ok: true, dimensions: {} as RouteResult['dimensions'], failures: [], weight: { old: { downloaded: wa.downloaded, source: wa.source, executed: wa.executed }, new: { downloaded: wn.downloaded, source: wn.source, executed: wn.executed } }, visualDiffs, shots, ...(network ? { network } : {}) }, failures);
+	return withFailures({ route, ok: true, dimensions: {} as RouteResult['dimensions'], failures: [], weight: { old: { downloaded: wa.downloaded, source: wa.source, executed: wa.executed }, new: { downloaded: wn.downloaded, source: wn.source, executed: wn.executed } }, visualDiffs, shots, ...(network ? { network } : {}), ...(images.improvements.length ? { improvements: images.improvements } : {}) }, failures);
 }
 
 export function withFailures(result: RouteResult, failures: readonly Failure[], extra: Partial<Pick<RouteResult, 'shots' | 'states' | 'journeys' | 'coverage' | 'noise' | 'writes' | 'responsiveness' | 'motion' | 'filmstrips' | 'navigation' | 'load'>> = {}): RouteResult {

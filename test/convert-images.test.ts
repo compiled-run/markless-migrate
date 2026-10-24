@@ -199,3 +199,18 @@ test('the same picture at another resolution keeps its 8 px blocks; another pict
 	assert.equal(samePicture({ old, new: grain }, box), true, 'grain re-sampled: most pixels differ, the blocks do not');
 	assert.equal(samePicture({ old, new: other }, box), false);
 });
+
+test('check: image loading the port shares with the original is an improvement, not red; what it loads worse is red', async () => {
+	const { imageLoading } = await import('../src/check/image-loading.ts');
+	const assets = [{ url: '/a.png', bytes: 60_000 }];
+	const img = { src: '/a.png', alt: 'a', naturalWidth: 800, naturalHeight: 600, broken: false };
+	const below = { desktop: { viewport: 'desktop', images: [{ ...img, box: { x: 0, y: 2400, width: 400, height: 300 } }], assets }, mobile: { viewport: 'mobile', images: [{ ...img, box: { x: 0, y: 3100, width: 390, height: 290 } }], assets } } as unknown as Parameters<typeof imageLoading>[1];
+	const lazy = { desktop: { viewport: 'desktop', images: [{ ...img, loading: 'lazy', box: { x: 0, y: 2400, width: 400, height: 300 } }], assets }, mobile: { viewport: 'mobile', images: [{ ...img, loading: 'lazy', box: { x: 0, y: 3100, width: 390, height: 290 } }], assets } } as unknown as Parameters<typeof imageLoading>[1];
+	const same = imageLoading('/', below, below);
+	assert.deepEqual(same.failures, []);
+	assert.equal(same.improvements.length, 1);
+	assert.match(same.improvements[0]!, /as on the old page/);
+	const worse = imageLoading('/', lazy, below);
+	assert.equal(worse.failures.length, 1, 'the original loads it lazily and the port does not');
+	assert.deepEqual(imageLoading('/', below, lazy), { failures: [], improvements: [] });
+});
