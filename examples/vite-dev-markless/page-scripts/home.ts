@@ -9,7 +9,7 @@ onPage(() => {
 	if (!canvases.length) return;
 	// The runtime and its wasm start once the page has loaded, in a task of their own: a .riv decodes its embedded
 	// images, which would otherwise hold the load event back and run the file's parsing in the load event's task.
-	// They also wait for the frame that paints the web-font text, so 500 kB of animation never shares a phone's bandwidth with the largest paint.
+	// They also wait for the web fonts, so 500 kB of animation never shares a phone's bandwidth with the largest paint.
 	const start = () => {
 		for (const canvas of canvases) {
 			if (!canvas.isConnected) continue;
@@ -24,7 +24,8 @@ onPage(() => {
 			})(canvas);
 		}
 	};
-	const afterPaint = () => void document.fonts.ready.then(() => requestAnimationFrame(() => requestAnimationFrame(start)));
+	// A timeout, not an animation frame: frames may be held (a background tab, a checker's frozen loops) and the animation would never start.
+	const afterPaint = () => void document.fonts.ready.then(() => setTimeout(start));
 	if (document.readyState === 'complete') afterPaint();
 	else window.addEventListener('load', () => setTimeout(afterPaint), { once: true });
 	const sponsors = document.querySelector('.wrapper--ticks.py-14[data-v-755ff878]');
