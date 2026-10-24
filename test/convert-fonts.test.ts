@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import { chromium } from 'playwright';
 import { LATE_FONT, LATE_FONTS_SCRIPT } from '../parts/late-fonts.ts';
 import { attr, parseDocument, walk } from '../src/convert/dom.ts';
-import { applyLateFonts, LATE_CANDIDATE, lateFontsInFirstScreen, markLateFontCandidates } from '../src/convert/fonts.ts';
+import { applyLateFonts, fontPreloads, LATE_CANDIDATE, lateFontsInFirstScreen, markLateFontCandidates, MAX_FONT_PRELOADS } from '../src/convert/fonts.ts';
 
 const PAGE = (head = '', mark = '') => `<!doctype html><html><head>${head}<style>
 @font-face{font-family:Latin;src:url(/latin.woff2) format("woff2");unicode-range:U+0000-00FF,U+2014}
@@ -35,6 +35,7 @@ test('a web font only text below every first screen draws is found, and its bloc
 			[['Latin', true], ['Arabic', false]],
 			'the Latin face draws the first screen; Arabic draws only the section below it',
 		);
+		assert.equal(faces[0]!.url, `${origin}/latin.woff2`, 'the first-screen face, with the file it was fetched from');
 		await page.setViewportSize({ width: 390, height: 844 });
 		assert.deepEqual(await page.evaluate(lateFontsInFirstScreen, LATE_CANDIDATE), [faces[0]!.id], "at a phone's width only the Latin face's block is in the first screen");
 		const html = await page.evaluate(() => document.documentElement.outerHTML);
@@ -61,4 +62,10 @@ test('a web font only text below every first screen draws is found, and its bloc
 		await browser.close();
 		server.close();
 	}
+});
+
+test('first-screen fonts only a stylesheet names are preloaded: same-origin woff2, at most four with the page\'s own', () => {
+	const o = 'https://site.example';
+	assert.deepEqual(fontPreloads([`${o}/a.woff2`, `${o}/a.woff2`, 'https://fonts.gstatic.com/b.woff2', `${o}/c.ttf`, `${o}/d.woff2`], o, 0), [{ href: '/a.woff2' }, { href: '/d.woff2' }]);
+	assert.equal(fontPreloads([`${o}/a.woff2`, `${o}/b.woff2`], o, MAX_FONT_PRELOADS - 1).length, 1);
 });

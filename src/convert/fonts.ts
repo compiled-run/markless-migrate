@@ -9,7 +9,7 @@ export const LATE_CANDIDATE = 'data-mm-lf';
  * draws, and whether any of that text is in the first screen. The blocks are marked `data-mm-lf` with the face's id
  * before the document is kept; `lateFontsInFirstScreen` then checks them at a phone's width.
  */
-export function markLateFontCandidates(attribute: string): { id: string; key: string; family: string; firstScreen: boolean }[] {
+export function markLateFontCandidates(attribute: string): { id: string; key: string; family: string; firstScreen: boolean; url: string }[] {
 	type Face = { key: string; family: string; ranges: [number, number][]; urls: string[] };
 	const faces: Face[] = [];
 	const parseRanges = (value: string): [number, number][] =>
@@ -41,7 +41,7 @@ export function markLateFontCandidates(attribute: string): { id: string; key: st
 	const fetched = new Set(performance.getEntriesByType('resource').map((e) => e.name));
 	const preloaded = new Set([...document.querySelectorAll('link[rel~="preload"][as="font"]')].map((l) => (l as HTMLLinkElement).href));
 	const late = faces.filter((f) => f.urls.some((u) => fetched.has(u)) && !f.urls.some((u) => preloaded.has(u)));
-	const out: { id: string; key: string; family: string; firstScreen: boolean }[] = [];
+	const out: { id: string; key: string; family: string; firstScreen: boolean; url: string }[] = [];
 	const families = (el: Element) =>
 		getComputedStyle(el)
 			.fontFamily.split(',')
@@ -84,7 +84,7 @@ export function markLateFontCandidates(attribute: string): { id: string; key: st
 			if (block.getBoundingClientRect().top + scrollY < innerHeight) firstScreen = true;
 			block.setAttribute(attribute, `${block.getAttribute(attribute) ?? ''} ${id}`.trim());
 		}
-		out.push({ id, key: face.key, family: face.family, firstScreen });
+		out.push({ id, key: face.key, family: face.family, firstScreen, url: face.urls.find((u) => fetched.has(u))! });
 	}
 	return out;
 }
@@ -114,3 +114,18 @@ export function applyLateFonts(doc: Document, late: readonly string[]): number {
 	return n;
 }
 
+
+/** At most this many fonts are preloaded on a page: each one is a request the first paint waits for. */
+export const MAX_FONT_PRELOADS = 4;
+
+/**
+ * Preload links for the web fonts the page's first screen draws that only its stylesheet names, so they are fetched
+ * with the stylesheet rather than after it: same-origin woff2 files, at most `MAX_FONT_PRELOADS` with any the page already preloads.
+ */
+export function fontPreloads(urls: readonly string[], origin: string, already: number): { href: string }[] {
+	const own = urls.flatMap((u) => {
+		const url = URL.parse(u);
+		return url && url.origin === new URL(origin).origin && url.pathname.endsWith('.woff2') ? [url.pathname] : [];
+	});
+	return [...new Set(own)].slice(0, Math.max(0, MAX_FONT_PRELOADS - already)).map((href) => ({ href }));
+}

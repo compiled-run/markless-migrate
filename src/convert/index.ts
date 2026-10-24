@@ -22,7 +22,7 @@ import { stat } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { nextImageWidths, pairImages, planImages, type ImagePlan, type Optimizer } from './images.ts';
 import { nextThemesOptions, themeToggleOf } from './theme.ts';
-import { applyLateFonts } from './fonts.ts';
+import { applyLateFonts, fontPreloads } from './fonts.ts';
 import { match } from 'path-to-regexp';
 import { readSource } from '../plan/inventory.ts';
 import { nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
@@ -253,6 +253,7 @@ let currentLayers: { key: string; markup: string; shell: string; fill: string }[
 let currentClipboard: Record<string, string> = {};
 // Routes with a block that waits for the load event to render (its web font is fetched after the load).
 const lateFontPages = new Set<string>();
+let fontPreloadCount = 0;
 // Containers a control replaces its content in (View Code): the content it then shows, rendered hidden beside.
 const replaced = new Map<Element, { key: string; trigger: Element; markup: string }>();
 const replacedParts = new Map<Element, Binding>();
@@ -641,6 +642,13 @@ function prepare(capture: CapturedPage, reveals: readonly Reveal[], origin: stri
 		const self = selfReferences(attrs, origin);
 		tags.push({ tag, attrs, ...(text !== undefined ? { text } : {}), ...(self ? { self } : {}) });
 	}
+	// The first screen's web fonts are fetched with the stylesheet, not after it: preloaded right after the charset.
+	const preloaded = tags.filter((t) => t.tag === 'link' && /\bpreload\b/.test(t.attrs.rel ?? '') && t.attrs.as === 'font').length;
+	const fonts = fontPreloads(capture.firstScreenFonts ?? [], origin, preloaded).map((f): HeadTag => ({ tag: 'link', attrs: { rel: 'preload', href: f.href, as: 'font', type: 'font/woff2', crossorigin: '' } }));
+	if (fonts.length) {
+		tags.splice(tags.findIndex((t) => t.tag === 'meta' && t.attrs.charset !== undefined) + 1, 0, ...fonts);
+		fontPreloadCount += fonts.length;
+	}
 	const kids = elementChildren(body(doc));
 	const root = kids.reduce((a, b) => (outer(b).length > outer(a).length ? b : a));
 	const at = kids.indexOf(root);
@@ -787,6 +795,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const optimizer: Optimizer | undefined = nextConfig ? { path: '/_next/image', widths: nextImageWidths(readFileSync(nextConfig, 'utf8')) } : undefined;
 	const images: ImagePlan = { lazy: 0, eager: 0, responsive: 0, preloadsDropped: 0, someScreens: 0 };
 	lateFontPages.clear();
+	fontPreloadCount = 0;
 	// Each capture (the served HTML and the settled documents, a few MB) is read from the cache only while its page is parsed.
 	for (const ref of captures) {
 		if (ref.status !== 200 && !(ref.route === NOT_FOUND && ref.status === 404)) {
@@ -1101,6 +1110,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const headScripts = docsearchConfigured() ? ['PLATFORM_KEYS_SCRIPT'] : [];
 	if (headScripts.length) usedPorts.add('docsearch');
 	if (headScripts.length) documentParts.push({ part: 'docsearch', import: (dir) => `import { PLATFORM_KEYS_SCRIPT } from '${dir}/docsearch.ts';` });
+	if (fontPreloadCount) log(`font preloads: ${fontPreloadCount} first-screen web fonts that only a stylesheet named are preloaded`);
 	if (lateFontPages.size) {
 		headScripts.push('LATE_FONTS_SCRIPT');
 		documentParts.push({ part: 'late-fonts', import: (dir) => `import { LATE_FONTS_SCRIPT } from '${dir}/late-fonts.ts';` });
