@@ -329,7 +329,13 @@ async function checkJourneys(browser: Browser, run: Run, route: string, viewport
 	const darkOld: SideEnv = { ...run.old, colorScheme: 'dark' };
 	const [darkOlds, darkNext] = dark.length ? await Promise.all([Promise.all([replayAll(browser, darkOld, route, viewport, dark), replayAll(browser, darkOld, route, viewport, dark)]), replayAll(browser, { ...front, colorScheme: 'dark' }, route, viewport, dark)]) : [[], []];
 	const improvements: string[] = [];
-	const arrivedFailures = explored.arrival ? await profiled(route, 'arrival journeys', () => checkArrived(browser, run, route, viewport, plain, explored.arrival!, owner, improvements)) : [];
+	// A page to arrive from that does not load is no reason to drop the route's own result: those journeys are reported as not compared, and the route stays red.
+	const arrivedFailures = explored.arrival
+		? await profiled(route, 'arrival journeys', () => checkArrived(browser, run, route, viewport, plain, explored.arrival!, owner, improvements)).catch((error: unknown): Failure[] => {
+				if (run.old.scope?.closed) throw error;
+				return [{ route, dimension: 'behaviour', check: `journeys after arriving from ${explored.arrival!.entry} by ${describeTarget(explored.arrival!.link)}`, expected: 'the route\'s journeys compared after arriving in place', actual: `not compared: ${(error as Error).message.split('\n')[0]}`, hint: HINTS.coverage }];
+			})
+		: [];
 	const mainFailures = await retime(browser, { old: run.old, new: front }, route, viewport, journeys, compareJourneys(route, olds, journeys, [...next, ...newRisky], owner, doorErrors, improvements));
 	const darkFailures = dark.length ? compareJourneys(route, darkOlds, inDarkMode(dark), darkNext, owner, doorErrors, improvements) : [];
 	const compared = withFailures(result, [...result.failures, ...mainFailures, ...darkFailures, ...arrivedFailures, ...unexercised], { journeys, coverage, writes: [...(result.writes ?? []), ...writes] });
@@ -382,7 +388,9 @@ async function retime(browser: Browser, sides: { readonly old: SideEnv; readonly
 			const next = (await replay(browser, sides.new, route, viewport, journeys[journey]!).catch(() => []))[step]?.reaction?.answeredMs;
 			times.push({ old, next });
 		}
-		if (times.some((t) => t.old === undefined || t.next === undefined || t.next - t.old <= 100 || t.next <= t.old * 1.5)) dropped.add(failure);
+		// Timed again only where both sides answered: a step that could not be timed again keeps its failure, unconfirmed.
+		if (times.some((t) => t.old === undefined || t.next === undefined)) notes.set(failure, '; it could not be timed again one side at a time');
+		else if (times.some((t) => t.next! - t.old! <= 100 || t.next! <= t.old! * 1.5)) dropped.add(failure);
 		else notes.set(failure, `; timed again one side at a time: old ${times.map((t) => t.old).join(' and ')} ms, new ${times.map((t) => t.next).join(' and ')} ms`);
 	}
 	return failures.filter((f) => !dropped.has(f)).map((f) => (notes.has(f) ? { ...f, actual: `${f.actual}${notes.get(f)}` } : f));

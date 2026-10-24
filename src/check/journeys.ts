@@ -1555,8 +1555,9 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			if (known.has(id)) continue;
 			known.add(id);
 			const layout = parent ? parent.layout : isLayout(raw);
-			// Layout controls are spread over the routes that share them (each has one owner), so they are not sampled.
-			const group = layout ? undefined : raw.group;
+			// Layout controls are spread over the routes that share them (each has one owner), so they are not sampled; the items of a long
+			// list one of them opens (a search palette's 450 options) still are, since the list answers them all through one handler.
+			const group = layout && !raw.group?.includes('|list ') ? undefined : raw.group;
 			const seen = group ? (sampled.get(group) ?? 0) : 0;
 			if (group) sampled.set(group, seen + 1);
 			const repeat = Boolean(group?.startsWith('repeat|')) && seen >= SAMPLES;
@@ -1633,8 +1634,8 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			.slice(0, ARRIVAL_ENTRIES);
 		const first = itemsFor(track(found, [], undefined), 1);
 		formSteps = await forms(start.page, host, found);
-		// A page with many controls gets the time its journeys take (after alike controls are sampled), so the default budget does not leave its own controls unused.
-		if (options.budgetMs === undefined) budget = Math.min(MAX_ADAPTIVE_BUDGET_MS, Math.max(DEFAULT_JOURNEY_BUDGET_MS, (first.primary.length + first.keyboard.length + formSteps.length) * BUDGET_PER_CONTROL_MS));
+		// A page with many controls gets the time they take, so the default budget does not leave its own controls unused; exploring ends sooner when its journeys run out.
+		if (options.budgetMs === undefined) budget = Math.min(MAX_ADAPTIVE_BUDGET_MS, Math.max(DEFAULT_JOURNEY_BUDGET_MS, found.length * BUDGET_PER_CONTROL_MS));
 		wave = [...first.primary, ...batches(1), ...formSteps.map((step): Item => ({ journey: { name: describeStep(step), steps: [step] }, depth: 1, expand: false }))];
 		later.push(...first.keyboard);
 		// A contents list of this page's sections: the page is scrolled to each section in turn, and what marks the current one is compared.
