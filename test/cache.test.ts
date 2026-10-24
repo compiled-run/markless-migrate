@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -26,8 +27,8 @@ test('Cache-Control, CDN status headers and content-hashed names are read as the
 	assert.equal(cdnFacts(new Headers({ 'cf-cache-status': 'DYNAMIC' }))?.status, 'dynamic');
 	assert.deepEqual(cdnFacts(new Headers({ 'cache-status': '"Netlify Edge"; hit' })), { vendor: 'netlify', status: 'hit', raw: '"Netlify Edge"; hit' });
 	assert.equal(cdnFacts(new Headers({ 'cache-status': '"Netlify Edge"; fwd=miss' }))?.status, 'miss');
-	for (const hashed of ['/assets/app.CdD1aHkZ.js', '/build/chunk-L4A9asp4.js', '/static/main.3f2a9c01.css', '/assets/style.BxYzAbCd.css']) assert.equal(isContentHashed(hashed), true, hashed);
-	for (const plain of ['/logo-without-border.svg', '/og-image.jpg', '/js/carousel.js', '/img/Carousel-Frames.png', '/build/bundle-graph.json']) assert.equal(isContentHashed(plain), false, plain);
+	for (const hashed of ['/assets/app.CdD1aHkZ.js', '/build/chunk-L4A9asp4.js', '/static/main.3f2a9c01.css', '/assets/style.BxYzAbCd.css', '/_converted/layers/3d5bbe6acaa7b123.html', '/_converted/styles/088c433398e7.css']) assert.equal(isContentHashed(hashed), true, hashed);
+	for (const plain of ['/logo-without-border.svg', '/og-image.jpg', '/js/carousel.js', '/img/Carousel-Frames.png', '/build/bundle-graph.json', '/deadbeef.html', '/2026-10-24.html']) assert.equal(isContentHashed(plain), false, plain);
 });
 
 test('a page the same on every request, with no source reading the request, is prerendered, and the reason says so', () => {
@@ -126,6 +127,52 @@ test('the generated plugin replaces the caching an app set for a path, keeps its
 	assert.deepEqual(config.nitro.routeRules['/_markless/fragment/'], { isr: { expiration: false, allowQuery: [] } });
 	assert.deepEqual(config.nitro.routeRules['/old/'], { proxy: { to: 'https://old.example/old/' } });
 	assert.deepEqual(config.nitro.vercel.config.routes, [{ src: '/x', dest: '/y' }], 'the app\'s own Vercel routes are left as they are');
+});
+
+test('with --prerender every cached page and its fragment URL are built ahead, so the first click after a deploy runs no function', () => {
+	const fixed = classify({ evidence: evidence({}, {}, '/docs/') });
+	const revalidated = classify({ evidence: evidence({ bodyHash: 'a' }, { bodyHash: 'b' }, '/news/') });
+	assert.deepEqual([fixed.class, revalidated.class], ['prerender', 'isr']);
+	const rules = cacheRules([fixed, revalidated], { fragmentPath: '/_markless/fragment', prerender: true }).routeRules;
+	assert.deepEqual(rules['/docs/'], { prerender: true, isr: { expiration: false, allowQuery: [] } });
+	assert.deepEqual(rules['/_markless/fragment/docs/'], { prerender: true, isr: { expiration: false, allowQuery: [] } });
+	assert.deepEqual(rules['/news/'], { prerender: true, isr: { expiration: 60, allowQuery: [] } });
+	assert.deepEqual(rules['/_markless/fragment/news/'], { prerender: true, isr: { expiration: 60, allowQuery: [] } });
+	assert.deepEqual(cacheRules([revalidated], { fragmentPath: '/_markless/fragment' }).routeRules['/news/'], { isr: { expiration: 60, allowQuery: [] } }, 'no --prerender: rendered on first request');
+});
+
+test('on Vercel a prerendered page that revalidates becomes its ISR function\'s fallback, so the CDN serves the build\'s copy and still refreshes it', async () => {
+	const fixed = classify({ evidence: evidence({}, {}, '/docs/') });
+	const revalidated = classify({ evidence: evidence({ bodyHash: 'a' }, { bodyHash: 'b' }, '/news/a') });
+	const dir = await mkdtemp(join(tmpdir(), 'mm-cache-'));
+	const file = join(dir, 'migrate-cache.ts');
+	await writeFile(file, cacheModule(cacheRules([fixed, revalidated], { fragmentPath: '/_markless/fragment', prerender: true }), [fixed, revalidated]));
+	const { applyRules } = (await import(file)) as { applyRules: (nitro: Record<string, any>) => void };
+	const out = join(dir, '.vercel', 'output');
+	const files: Record<string, string> = {
+		'static/docs/index.html': 'docs page',
+		'static/_markless/fragment/docs/index.html': 'docs fragment',
+		'static/news/a/index.html': 'news page',
+		'static/_markless/fragment/news/a/index.html': 'news fragment',
+		'functions/news/a-isr.prerender-config.json': JSON.stringify({ expiration: 60, allowQuery: ['__isr_route'] }),
+		'functions/_markless/fragment/news/a-isr.prerender-config.json': JSON.stringify({ expiration: 60, allowQuery: ['__isr_route'] }),
+	};
+	for (const [path, body] of Object.entries(files)) {
+		await mkdir(join(out, path, '..'), { recursive: true });
+		await writeFile(join(out, path), body);
+	}
+	const hooks: Record<string, (nitro: unknown) => Promise<void> | void> = {};
+	const nitro = { options: { routeRules: {}, preset: 'vercel', output: { dir: out, publicDir: join(out, 'static'), serverDir: join(out, 'functions', '__server.func') } }, hooks: { hook: (name: string, run: (nitro: unknown) => void) => (hooks[name] = run) } };
+	applyRules(nitro);
+	await hooks.compiled!(nitro);
+	assert.equal(existsSync(join(out, 'static/docs/index.html')), true, 'a page kept until the next deploy stays a static file');
+	assert.equal(existsSync(join(out, 'static/_markless/fragment/docs/index.html')), true);
+	for (const route of ['news/a', '_markless/fragment/news/a']) {
+		assert.equal(existsSync(join(out, 'static', route, 'index.html')), false, `${route}: a static file would shadow the ISR function`);
+		const config = JSON.parse(await readFile(join(out, 'functions', `${route}-isr.prerender-config.json`), 'utf8'));
+		assert.deepEqual(config, { expiration: 60, allowQuery: ['__isr_route'], fallback: 'a-isr.prerender-fallback.html' });
+		assert.equal(await readFile(join(out, 'functions', `${route}-isr.prerender-fallback.html`), 'utf8'), route.startsWith('_markless') ? 'news fragment' : 'news page');
+	}
 });
 
 test('the generated plugin lists each server asset once for Nitro\'s prerenderer, which copies the app\'s config with them twice', async () => {

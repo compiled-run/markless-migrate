@@ -20,7 +20,7 @@ export interface RulesOptions {
 	readonly passQuery?: boolean;
 	/** Same-origin content-hashed files outside the build directories Markless and Nitro already mark immutable. */
 	readonly hashedAssets?: readonly string[];
-	/** Write static pages to files at build time as well as keeping an ISR function for them. */
+	/** Render each cached page and its fragment URL at build time; one that revalidates becomes its ISR function's fallback on Vercel. */
 	readonly prerender?: boolean;
 }
 
@@ -52,8 +52,7 @@ export function cacheRules(routes: readonly RouteCaching[], options: RulesOption
 			set({ isr: false, headers: { 'cache-control': cdnCacheControl(expiration) } });
 			continue;
 		}
-		routeRules[path] = { ...(r.class === 'prerender' && options.prerender && r.html && !keys.length ? { prerender: true } : {}), isr: { expiration, allowQuery: [...keys], ...(keys.length ? { passQuery: true } : {}) } };
-		if (fragment) routeRules[fragment] = { isr: { expiration, allowQuery: [...keys], ...(keys.length ? { passQuery: true } : {}) } };
+		set({ ...(options.prerender && r.html && !keys.length ? { prerender: true } : {}), isr: { expiration, allowQuery: [...keys], ...(keys.length ? { passQuery: true } : {}) } });
 	}
 	for (const asset of options.hashedAssets ?? []) routeRules[asset] = { headers: { 'cache-control': IMMUTABLE } };
 	return { routeRules };
