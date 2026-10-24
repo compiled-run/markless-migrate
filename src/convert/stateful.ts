@@ -222,11 +222,11 @@ export class CheckablePlan {
 		return this.bindings.get(el);
 	}
 
-	add(root: Element, groups: readonly ToggleGroup[], locate: (sig: string, nth: number) => Element | undefined, emit: (html: string) => string): number {
+	add(root: Element, groups: readonly ToggleGroup[], locate: (sig: string, nth: number) => Element | undefined, emit: (html: string) => string, skip: (el: Element) => boolean = () => false): number {
 		let placed = 0;
 		for (const group of groups) {
 			const els = group.controls.map((c) => locate(c.sig, c.nth));
-			if (els.some((el) => !el || this.bindings.has(el))) continue;
+			if (els.some((el) => !el || this.bindings.has(el) || skip(el))) continue;
 			const name = `${group.kind === 'radio' ? 'rg' : 'tg'}${this.n++}`;
 			const initial = group.controls.findIndex((c) => c.initial);
 			const declare = [group.kind === 'radio' ? `let ${name} = state(${initial});` : `let ${name} = state(${group.controls[0]!.initial});`];
@@ -660,5 +660,83 @@ export class NotifyPlan {
 			if (names.length) this.bindings.set(z, mergeBindings(this.bindings.get(z), { declare, omit: names, extra: names.map((n) => `${n}={${on} ? ${value(attr(x, n))} : ${value(attr(y, n))}}`) })!);
 			this.diff(z, innerOf(x), innerOf(y), on, declare, emit);
 		});
+	}
+}
+
+/**
+ * React Aria's Table with checkbox selection (selectionMode multiple, useTableSelectionCheckbox): which rows are chosen
+ * is one state() per table; each row binds aria-selected and data-selected (its cells data-selected), its checkbox's
+ * label data-selected and the indicator each toggle capture showed when checked, and the select-all checkbox
+ * data-selected when every row is chosen and data-indeterminate when only some are. A press on a row or its checkbox
+ * toggles it (selectionBehavior "toggle"), the select-all checkbox chooses every row or none, Space toggles the
+ * focused row.
+ */
+export class RacTablePlan {
+	private readonly bindings = new Map<Element, Binding>();
+	private readonly claimed = new Set<Element>();
+	private n = 0;
+
+	bind(el: Element): Binding | undefined {
+		return this.bindings.get(el);
+	}
+
+	/** The checkboxes this plan binds, which the checkable plan leaves alone. */
+	claims(el: Element): boolean {
+		return this.claimed.has(el);
+	}
+
+	add(root: Element, groups: readonly ToggleGroup[], locate: (sig: string, nth: number) => Element | undefined, emit: (html: string) => string): number {
+		const captured = new Map<Element, ToggleGroup['controls'][number]>();
+		for (const g of groups) for (const c of g.controls) {
+			const el = locate(c.sig, c.nth);
+			if (el) captured.set(el, c);
+		}
+		let placed = 0;
+		for (const table of walk(root)) {
+			if (table.tagName !== 'table' || attr(table, 'role') !== 'grid' || attr(table, 'aria-multiselectable') !== 'true' || attr(table, 'data-rac') === undefined) continue;
+			const selection = (scope: Element) => [...walk(scope)].find((e) => e.tagName === 'label' && attr(e, 'slot') === 'selection');
+			const thead = [...walk(table)].find((e) => e.tagName === 'thead');
+			const tbody = [...walk(table)].find((e) => e.tagName === 'tbody');
+			const all = thead && selection(thead);
+			const rows = tbody ? [...walk(tbody)].filter((e) => e.tagName === 'tr' && attr(e, 'role') === 'row') : [];
+			const boxes = rows.map((r) => selection(r));
+			if (!rows.length || boxes.some((b) => !b)) continue;
+			const states = boxes.map((b) => captured.get(b!));
+			if (states.some((s) => !s)) continue;
+			const name = `tbl${this.n++}`;
+			const initial = rows.map((r) => attr(r, 'aria-selected') === 'true');
+			const declare = [`let ${name} = state(${JSON.stringify(initial)});`];
+			const t = (expr: string) => `{${expr} ? "true" : undefined}`;
+			const toggle = (i: number) => `${name} = ${name}.map((on, k) => (k === ${i} ? !on : on));`;
+			rows.forEach((row, i) => {
+				const on = `${name}[${i}]`;
+				// A press on the row or its checkbox; the checkbox input's own click (the label forwards it) is the one counted.
+				this.bindings.set(row, { declare, omit: ['aria-selected', 'data-selected'], extra: [`aria-selected={${on} ? "true" : "false"}`, `data-selected=${t(on)}`, `onClick={(event) => { const at = event.target as Element; if (at.closest('label') && at.tagName !== 'INPUT') return; ${toggle(i)} }}`, `onKeyDown={(event) => { if (event.key === ' ') { event.preventDefault(); ${toggle(i)} } }}`] });
+				for (const cell of [...walk(row)].filter((e) => e !== row && (attr(e, 'role') === 'gridcell' || attr(e, 'role') === 'rowheader'))) this.bindings.set(cell, { declare, omit: ['data-selected'], extra: [`data-selected=${t(on)}`] });
+				const box = boxes[i]!;
+				const c = states[i]!;
+				this.claimed.add(box);
+				this.bindings.set(box, { declare, omit: ['data-selected'], extra: [`data-selected=${t(on)}`] });
+				const indicator = [...walk(box)].find((e) => /-indicator$/.test(attr(e, 'data-slot') ?? ''));
+				const iconOf = (inner: string) => /data-slot="[^"]*-indicator"[^>]*>(.*?)<\/span>/s.exec(inner)?.[1] ?? '';
+				if (indicator) this.bindings.set(indicator, { declare, children: `@if (${on}) { <>${emit(iconOf(c.on.inner))}</> }` });
+				const input = [...walk(box)].find((e) => e.tagName === 'input');
+				if (input) this.bindings.set(input, { declare, omit: ['checked'], extra: [`checked={${on}}`] });
+			});
+			if (all) {
+				const c = captured.get(all) ?? states[0]!;
+				this.claimed.add(all);
+				const every = `${name}.every(Boolean)`;
+				const some = `${name}.some(Boolean)`;
+				this.bindings.set(all, { declare, omit: ['data-selected', 'data-indeterminate'], extra: [`data-selected=${t(every)}`, `data-indeterminate=${t(`${some} && !${every}`)}`, `onClick={(event) => { if ((event.target as Element).tagName !== 'INPUT') return; const to = !${every}; ${name} = ${name}.map(() => to); }}`] });
+				const indicator = [...walk(all)].find((e) => /-indicator$/.test(attr(e, 'data-slot') ?? ''));
+				const iconOf = (inner: string) => /data-slot="[^"]*-indicator"[^>]*>(.*?)<\/span>/s.exec(inner)?.[1] ?? '';
+				if (indicator) this.bindings.set(indicator, { declare, children: `@if (${some}) { <>${emit(iconOf(c.on.inner))}</> }` });
+				const input = [...walk(all)].find((e) => e.tagName === 'input');
+				if (input) this.bindings.set(input, { declare, omit: ['checked'], extra: [`checked={${every}}`] });
+			}
+			placed++;
+		}
+		return placed;
 	}
 }
