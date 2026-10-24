@@ -19,7 +19,7 @@ import { HINTS } from './hints.ts';
 import { locateFailures, NOT_EXERCISED } from './locate.ts';
 import { mapRules } from './sourcemap.ts';
 import { negotiationFailures } from './i18n.ts';
-import { compareJourneys, describeTarget, MAX_ARRIVED, type Journey, type Step, DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, inDarkMode, themed, replayAll, replayDestructive, survey, type ElementCoverage, type Exploration, type ExploreOptions, type RecordedJourney, type Run as RunResults } from './journeys.ts';
+import { compareJourneys, describeTarget, MAX_ARRIVED, replay, timedOnly, type Journey, type Step, DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, inDarkMode, themed, replayAll, replayDestructive, survey, type ElementCoverage, type Exploration, type ExploreOptions, type RecordedJourney, type Run as RunResults } from './journeys.ts';
 import { storageOwner, unreachableCandidate, type StorageOwner } from './automatic.ts';
 import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
 import { checkMotion, motionRules, type MotionOptions } from './motion.ts';
@@ -325,8 +325,9 @@ async function checkJourneys(browser: Browser, run: Run, route: string, viewport
 	const [darkOlds, darkNext] = dark.length ? await Promise.all([Promise.all([replayAll(browser, darkOld, route, viewport, dark), replayAll(browser, darkOld, route, viewport, dark)]), replayAll(browser, { ...front, colorScheme: 'dark' }, route, viewport, dark)]) : [[], []];
 	const improvements: string[] = [];
 	const arrivedFailures = explored.arrival ? await checkArrived(browser, run, route, viewport, plain, explored.arrival, owner, improvements) : [];
+	const mainFailures = await retime(browser, { old: run.old, new: front }, route, viewport, journeys, compareJourneys(route, olds, journeys, [...next, ...newRisky], owner, doorErrors, improvements));
 	const darkFailures = dark.length ? compareJourneys(route, darkOlds, inDarkMode(dark), darkNext, owner, doorErrors, improvements) : [];
-	const compared = withFailures(result, [...result.failures, ...compareJourneys(route, olds, journeys, [...next, ...newRisky], owner, doorErrors, improvements), ...darkFailures, ...arrivedFailures, ...unexercised], { journeys, coverage, writes: [...(result.writes ?? []), ...writes] });
+	const compared = withFailures(result, [...result.failures, ...mainFailures, ...darkFailures, ...arrivedFailures, ...unexercised], { journeys, coverage, writes: [...(result.writes ?? []), ...writes] });
 	return improvements.length ? { ...compared, improvements } : compared;
 }
 
@@ -344,7 +345,33 @@ async function checkArrived(browser: Browser, run: Run, route: string, viewport:
 	const journeys: Journey[] = plain.filter((j) => !j.cycle && !j.destructive).slice(0, MAX_ARRIVED).map((j) => ({ name: `${j.name}, ${how}`, steps: [arrive, ...j.steps], start: arrival.entry, ...(j.patience ? { patience: j.patience } : {}) }));
 	if (!journeys.length) return [];
 	const [a, b, next] = await Promise.all([replayAll(browser, run.old, route, viewport, journeys), replayAll(browser, run.old, route, viewport, journeys), replayAll(browser, run.new, route, viewport, journeys)]);
-	return compareJourneys(route, [a, b], journeys, next, owner, undefined, improvements);
+	return retime(browser, { old: run.old, new: run.new }, route, viewport, journeys, compareJourneys(route, [a, b], journeys, next, owner, undefined, improvements));
+}
+
+const RETIMED = 10;
+const RETIMES = 2;
+
+/**
+ * A step answered more slowly on the new page is timed again one side at a time (old, then new, twice), since a busy machine
+ * slows whichever side it happens to: it stands only when the new page is slower every time.
+ */
+async function retime(browser: Browser, sides: { readonly old: SideEnv; readonly new: SideEnv }, route: string, viewport: Viewport, journeys: readonly Journey[], failures: Failure[]): Promise<Failure[]> {
+	const slow = failures.filter((f) => timedOnly.has(f)).slice(0, RETIMED);
+	if (!slow.length) return failures;
+	const dropped = new Set<Failure>();
+	const notes = new Map<Failure, string>();
+	for (const failure of slow) {
+		const { journey, step } = timedOnly.get(failure)!;
+		const times: { old?: number; next?: number }[] = [];
+		for (let i = 0; i < RETIMES; i++) {
+			const old = (await replay(browser, sides.old, route, viewport, journeys[journey]!).catch(() => []))[step]?.reaction?.answeredMs;
+			const next = (await replay(browser, sides.new, route, viewport, journeys[journey]!).catch(() => []))[step]?.reaction?.answeredMs;
+			times.push({ old, next });
+		}
+		if (times.some((t) => t.old === undefined || t.next === undefined || t.next - t.old <= 100 || t.next <= t.old * 1.5)) dropped.add(failure);
+		else notes.set(failure, `; timed again one side at a time: old ${times.map((t) => t.old).join(' and ')} ms, new ${times.map((t) => t.next).join(' and ')} ms`);
+	}
+	return failures.filter((f) => !dropped.has(f)).map((f) => (notes.has(f) ? { ...f, actual: `${f.actual}${notes.get(f)}` } : f));
 }
 
 /** What OLD's journeys recorded: the exploration and every replay of it. */

@@ -1779,6 +1779,9 @@ export function missingReaction(olds: readonly StepResult[], next: StepResult): 
 	return { changes, regions };
 }
 
+/** Failures that are a slower answer alone, with the journey and step to time again one side at a time before they stand. */
+export const timedOnly = new WeakMap<Failure, { readonly journey: number; readonly step: number }>();
+
 const SHIFT_PX = 4;
 const SHIFT_SCORE = 0.02;
 // Measured on a 2-core runner: identical pages differ by up to about 90 ms from input to first change.
@@ -2000,7 +2003,9 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			const slower = navigated || reloaded ? undefined : slowerAnswer(oldSteps as StepResult[], n);
 			if (slower) parts.push('answer time');
 			if (parts.length) {
-				failures.push({ route, dimension, check, expected: where('old', format(a!, parts, missing, true)), actual: where('new', format(n, parts, missing)), hint, ...(automatic && parts.length === 1 && parts[0] === 'storage' ? { automatic } : {}) });
+				const failure: Failure = { route, dimension, check, expected: where('old', format(a!, parts, missing, true)), actual: where('new', format(n, parts, missing)), hint, ...(automatic && parts.length === 1 && parts[0] === 'storage' ? { automatic } : {}) };
+				if (parts.length === 1 && parts[0] === 'answer time') timedOnly.set(failure, { journey: j, step: k });
+				failures.push(failure);
 				break;
 			}
 		}

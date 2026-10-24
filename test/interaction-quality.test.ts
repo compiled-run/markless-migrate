@@ -97,17 +97,24 @@ async function check(old: string | ((path: string) => string | undefined), next:
 
 const open = (r: Report) => r.routes.flatMap((x) => x.failures).filter((f) => !f.accepted && f.dimension !== 'motion');
 
-test('check runs Chromium with scrollbars, as a visitor sees the page', async () => {
+// macOS draws overlay scrollbars that take no width when the system says so (a trackpad and no mouse): there no visitor sees a scroll-lock shift either.
+async function scrollbarWidth(): Promise<number> {
 	const page = await browser.newPage();
 	try {
 		await page.setContent('<div style="height: 3000px">x</div>');
-		assert.ok((await page.evaluate(() => innerWidth - document.documentElement.clientWidth)) > 0);
+		return await page.evaluate(() => innerWidth - document.documentElement.clientWidth);
 	} finally {
 		await page.close();
 	}
+}
+
+test('check runs Chromium with scrollbars, as a visitor sees the page', async (t) => {
+	if (process.platform === 'darwin' && (await scrollbarWidth()) === 0) return t.skip('this Mac draws overlay scrollbars');
+	assert.ok((await scrollbarWidth()) > 0);
 });
 
-test('a dialog whose close shifts the page sideways is red; the same dialog on both sides is green', async () => {
+test('a dialog whose close shifts the page sideways is red; the same dialog on both sides is green', async (t) => {
+	if (process.platform === 'darwin' && (await scrollbarWidth()) === 0) return t.skip('this Mac draws overlay scrollbars');
 	const same = await check(dialog(false), dialog(false));
 	assert.deepEqual(open(same).map((f) => `${f.check}: ${f.actual}`), []);
 	const early = open(await check(dialog(false), dialog(true)));
