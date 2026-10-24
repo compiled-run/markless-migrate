@@ -1,0 +1,29 @@
+{
+	"routes": [
+		"/",
+		"/docs/cli",
+		"/docs/installation",
+		"/docs/theming",
+		"/docs/components/radix/dialog",
+		"/docs/components/base/dialog",
+		"/docs/components/aria/dialog",
+		"/docs/components/radix/sheet",
+		"/docs/components/radix/popover",
+		"/docs/components/base/popover",
+		"/docs/components/radix/dropdown-menu",
+		"/docs/components/base/dropdown-menu",
+		"/docs/components/radix/select",
+		"/docs/components/base/select",
+		"/docs/components/aria/select",
+		"/docs/components/radix/tabs",
+		"/docs/components/base/tabs",
+		"/docs/components/radix/accordion",
+		"/docs/components/radix/carousel",
+		"/docs/components/radix/slider",
+		"/docs/components/radix/tooltip",
+		"/docs/components/radix/calendar",
+		"/charts/area",
+		"/charts/bar",
+		"/charts/tooltip"
+	]
+}
