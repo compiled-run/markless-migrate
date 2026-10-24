@@ -151,6 +151,8 @@ export function openOverlay(trigger: HTMLElement, key: string, options: OpenOpti
 	open.push(o);
 	if (nodes.some((n) => n.matches('[data-mm-layer-fill]') || n.querySelector('[data-mm-layer-fill]'))) void loadLayers().then(ready);
 	else ready();
+	// Its own onReady may have closed it (a ComboBox with nothing matching).
+	if (!open.includes(o)) return o;
 	const onKey = (event: KeyboardEvent) => {
 		if (event.key !== 'Escape' || top() !== o) return;
 		event.preventDefault();
