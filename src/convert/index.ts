@@ -934,9 +934,33 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		for (const child of childrenOf(container)) if (isElement(child)) replaceKeys.set(child, r.key);
 	}
 	for (const i of inserted) insertedInto.set(i.parent, `${insertedInto.get(i.parent) ?? ''}${i.markup}`);
+	// A tab list and its triggers share their state with the panels: what every panel of the list shows is theirs too,
+	// so a list alike on two pages is not shared apart from its panels (each would declare its own state).
+	const groupContent = new Map<Element, string>();
+	for (const p of prepared.values()) {
+		const byId = new Map<string, Element>();
+		for (const el of walk(p.root)) {
+			const id = attr(el, 'id');
+			if (id) byId.set(id, el);
+		}
+		for (const list of walk(p.root)) {
+			if (attr(list, 'role') !== 'tablist') continue;
+			const triggers = [...walk(list)].filter((t) => attr(t, 'role') === 'tab');
+			const panels = triggers.map((t) => byId.get(attr(t, 'aria-controls') ?? '')).filter((x): x is Element => x !== undefined);
+			const content = [...panels.map((x) => panelContent.get(x) ?? ''), ...triggers.map((t) => JSON.stringify(basePanels.get(t) ?? ''))].join('\u0002');
+			if (!content.replace(/[\u0002"]/g, '')) continue;
+			for (const el of [list, ...triggers]) groupContent.set(el, content);
+		}
+		// Any other control whose panel shows captured content (an accordion's or collapsible's trigger) shares it too.
+		for (const el of walk(p.root)) {
+			const panel = byId.get(attr(el, 'aria-controls') ?? '');
+			const content = panel && panelContent.get(panel);
+			if (content && !groupContent.has(el)) groupContent.set(el, content);
+		}
+	}
 	const ownContent = (el: Element): string | undefined => {
 		const panel = basePanels.get(el);
-		const own = [appended.get(el), replaced.get(el)?.markup, replaceKeys.get(el), panelContent.get(el), panel && JSON.stringify(panel), insertedInto.get(el), triggerKeys.get(el), measuredOf(el) && JSON.stringify(measuredOf(el)), notifyPlan.nameOf(el)].filter((x): x is string => Boolean(x));
+		const own = [appended.get(el), replaced.get(el)?.markup, replaceKeys.get(el), groupContent.get(el), panelContent.get(el), panel && JSON.stringify(panel), insertedInto.get(el), triggerKeys.get(el), measuredOf(el) && JSON.stringify(measuredOf(el)), notifyPlan.nameOf(el)].filter((x): x is string => Boolean(x));
 		return own.length ? own.join('\u0001') : undefined;
 	};
 	const factored: Factored = factor(new Map([...prepared].map(([route, p]) => [route, p.root])), { bind: (el) => withAppend(el, bindParts(el, usedPorts)), extra: ownContent });
