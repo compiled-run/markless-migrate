@@ -346,3 +346,18 @@ test('recharts: a pie\'s sector under the pointer is its point, and the tooltip 
 	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(30px, 120px\)/);
 	await page.close();
 });
+
+test('Radix ScrollArea: the scrollbar rendered beside the content shows on hover, its thumb sized and moved with the scroll', async () => {
+	const rows = Array.from({ length: 40 }, (_, i) => `<div style="height:20px">row ${i}</div>`).join('');
+	const page = await open(
+		`<div data-slot="scroll-area" style="position:relative;width:200px;height:200px"><div data-slot="scroll-area-viewport" style="overflow:hidden scroll;height:100%">${rows}</div><div hidden data-mm-shown-with="p:1"><div data-slot="scroll-area-scrollbar" data-orientation="vertical" data-state="hidden" style="position:absolute;top:0;right:0;bottom:0;width:10px"><div data-slot="scroll-area-thumb" style="height:var(--radix-scroll-area-thumb-height)"></div></div></div></div>`,
+		['radix/scroll-area'],
+	);
+	await page.mouse.move(100, 100);
+	assert.equal(await page.locator('[data-slot="scroll-area-scrollbar"]').getAttribute('data-state'), 'visible');
+	assert.equal(await page.locator('[data-slot="scroll-area-scrollbar"]').evaluate((e) => (e as HTMLElement).style.getPropertyValue('--radix-scroll-area-thumb-height')), '50px', '200 of 800 px in view on a 200 px track');
+	await page.mouse.wheel(0, 300);
+	await page.waitForTimeout(200);
+	assert.match(await page.locator('[data-slot="scroll-area-thumb"]').evaluate((e) => (e as HTMLElement).style.transform), /translate3d\(0px, 75px, 0px\)/);
+	await page.close();
+});

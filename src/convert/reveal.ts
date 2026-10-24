@@ -52,6 +52,9 @@ const CHILD_HOVER: readonly (readonly [selector: string, action: RevealAction])[
 	[':is(button, a)[data-state="closed"]:not([aria-expanded]):not([aria-pressed]):not([role]), :is(button, a)[id^="base-ui-"]:not([aria-haspopup]):not([aria-expanded]):not([aria-pressed]):not([role])', 'hover'],
 ];
 
+// Radix ScrollArea (type "hover") mounts its scrollbars when the pointer enters it: hovered in a pass of its own.
+const SCROLL_HOVER: readonly (readonly [selector: string, action: RevealAction])[] = [['[data-slot="scroll-area"]:not([data-base-ui-scroll-area-root])', 'hover']];
+
 const key = (route: string, extra: readonly (readonly [string, string])[] = []) => createHash('sha256').update(`reveal:${route}${extra.length ? `|${JSON.stringify(extra)}` : ''}`).digest('hex').slice(0, 16);
 
 interface Candidate {
@@ -328,8 +331,9 @@ export async function captureAllReveals(browser: Browser, origin: string, routes
 			// Controls the site lists as opening a layer without ARIA saying so, on the routes it lists them for.
 			const opens = (options.opens ?? []).filter((o) => !o.routes || new RegExp(o.routes).test(routes[index]!)).map((o) => [o.selector, 'click'] as const);
 			const opened = opens.length ? await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, [], { controls: opens, tag: 'open:' }).catch(failed) : undefined;
+			const scroll = await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, [], { controls: SCROLL_HOVER, tag: 'scroll-area:' }).catch(failed);
 			const keys = new Set(base.map((r) => r.key));
-			const more = [...child.reveals, ...(opened?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? [])];
+			const more = [...child.reveals, ...(opened?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? []), ...scroll.reveals];
 			out[index] = { route: own.route, reveals: [...base, ...more.filter((r) => !keys.has(r.key))], skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped, ...(opened?.skipped ?? [])] };
 			done++;
 			options.log?.(`revealed ${done}/${routes.length} ${routes[index]} (${out[index]!.reveals.length} controls)`);

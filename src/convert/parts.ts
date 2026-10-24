@@ -92,6 +92,8 @@ export const PORTS: readonly Port[] = [
 	{ module: 'recharts', library: 'recharts', exports: ['Tooltip'], events: ['pointerover', 'focusin', 'focusout', 'keydown'], locate: () => false },
 	// Radix NavigationMenu: each trigger's viewport and content are rendered beside the list (convert's companions).
 	{ module: 'radix/navigation-menu', library: 'radix-ui', needs: [], exports: ['NavigationMenu.Root', 'NavigationMenu.List', 'NavigationMenu.Item', 'NavigationMenu.Trigger', 'NavigationMenu.Content', 'NavigationMenu.Link', 'NavigationMenu.Viewport', 'NavigationMenu.Indicator'], events: ['click', 'pointerover', 'pointerout', 'keydown'], locate: (el) => radix(el) },
+	// Radix ScrollArea: the scrollbars it mounts on hover are rendered hidden in the area (convert's companions).
+	{ module: 'radix/scroll-area', library: 'radix-ui', needs: [], exports: ['ScrollArea.Root', 'ScrollArea.Viewport', 'ScrollArea.Scrollbar', 'ScrollArea.ScrollAreaScrollbar', 'ScrollArea.Thumb', 'ScrollArea.ScrollAreaThumb', 'ScrollArea.Corner'], events: ['pointerover'], locate: (el) => radix(el) || attr(el, 'data-slot') === 'scroll-area' },
 	// Radix Collapsible and Accordion are Markless state (convert's DisclosurePlan); the part measures and ends exits.
 	{ module: 'radix/disclosure-motion', library: 'radix-ui', needs: ['panel-motion'], exports: ['Collapsible.Root', 'Collapsible.CollapsibleTrigger', 'Collapsible.CollapsibleContent', 'Collapsible.Trigger', 'Collapsible.Content', 'Accordion.Root', 'Accordion.Item', 'Accordion.Header', 'Accordion.Trigger', 'Accordion.Content'], events: [], locate: (el) => radix(el) },
 	// react-day-picker calendars are Markless state with handlers on their root (day-picker.ts DayPickerPlan places the
