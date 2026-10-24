@@ -302,7 +302,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 }
 
 /** Captures every route's reveals, `concurrency` at a time. */
-export async function captureAllReveals(browser: Browser, origin: string, routes: readonly string[], dir: string, options: { concurrency?: number; log?: (line: string) => void; extra?: readonly (readonly [string, RevealAction])[] } = {}): Promise<RevealCapture[]> {
+export async function captureAllReveals(browser: Browser, origin: string, routes: readonly string[], dir: string, options: { concurrency?: number; log?: (line: string) => void; extra?: readonly (readonly [string, RevealAction])[]; opens?: readonly { readonly selector: string; readonly routes?: string }[] } = {}): Promise<RevealCapture[]> {
 	const memo: RevealMemo = new Map();
 	const out: RevealCapture[] = new Array(routes.length);
 	let next = 0;
@@ -317,8 +317,12 @@ export async function captureAllReveals(browser: Browser, origin: string, routes
 			const relisted = new Set(listed?.reveals.flatMap((r) => [r.key, `${r.sig}#${r.nth}`]) ?? []);
 			const base = listed ? [...own.reveals.filter((r) => !((relisted.has(r.key) || relisted.has(`${r.sig}#${r.nth}`)) && r.added.every((a) => a.into === 'replace' || a.into === 'clipboard'))), ...listed.reveals] : own.reveals;
 			const child = await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, [], { controls: CHILD_HOVER, tag: 'child-hover:' }).catch(failed);
+			// Controls the site lists as opening a layer without ARIA saying so, on the routes it lists them for.
+			const opens = (options.opens ?? []).filter((o) => !o.routes || new RegExp(o.routes).test(routes[index]!)).map((o) => [o.selector, 'click'] as const);
+			const opened = opens.length ? await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, [], { controls: opens, tag: 'open:' }).catch(failed) : undefined;
 			const keys = new Set(base.map((r) => r.key));
-			out[index] = { route: own.route, reveals: [...base, ...child.reveals.filter((r) => !keys.has(r.key))], skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped] };
+			const more = [...child.reveals, ...(opened?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? [])];
+			out[index] = { route: own.route, reveals: [...base, ...more.filter((r) => !keys.has(r.key))], skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped, ...(opened?.skipped ?? [])] };
 			done++;
 			options.log?.(`revealed ${done}/${routes.length} ${routes[index]} (${out[index]!.reveals.length} controls)`);
 		}

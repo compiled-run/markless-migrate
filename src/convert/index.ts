@@ -699,8 +699,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		// The old site's not-found page, from a path no route has: the new app's 404 page.
 		captures = await captureAll(browser, options.old, options.only?.length ? routes : [...routes, NOT_FOUND], join(state, 'convert', 'captures'), { concurrency: options.concurrency ?? 4, log });
 		// Controls the site's own components reveal content with, beside those ARIA marks (lib/site/controls.json).
-		const listed = await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as { selector: string; action: Reveal['action'] | 'toggle' | 'notify' | 'play'; routes?: string }[], () => []);
-		const extra = listed.flatMap((c) => (c.action === 'toggle' || c.action === 'notify' || c.action === 'play' ? [] : [[c.selector, c.action] as const]));
+		const listed = await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as { selector: string; action: Reveal['action'] | 'toggle' | 'notify' | 'play' | 'open'; routes?: string }[], () => []);
+		const extra = listed.flatMap((c) => (c.action === 'toggle' || c.action === 'notify' || c.action === 'play' || c.action === 'open' ? [] : [[c.selector, c.action] as const]));
+		// Controls the site lists as opening a layer no ARIA marks (a button whose click sets a dialog's open state).
+		const opens = listed.filter((c) => c.action === 'open').map((c) => ({ selector: c.selector, routes: c.routes }));
 		// Controls whose use the demo's own state answers (Send, Replay, Show more): every use recorded frame by frame.
 		for (const c of listed.filter((x) => x.action === 'play'))
 			for (const r of routes.filter((x) => !c.routes || new RegExp(c.routes).test(x))) scenes.set(r, [...(scenes.get(r) ?? []), ...(await captureScenes(browser, options.old, r, join(state, 'convert', 'scenes'), c.selector)).scenes.map((scene) => ({ scene, listed: c.selector }))]);
@@ -711,7 +713,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 		// A control a demo's recorded uses play is the scene's, not a disclosure's: its reveal is not planned.
 		const played = (route: string) => new Set((scenes.get(route) ?? []).flatMap(({ scene }) => scene.edges.map((e) => e.control.replace(/#\d+$/, ''))));
-		if (options.reveal !== false) for (const r of await captureAllReveals(browser, options.old, routes, join(state, 'convert', 'reveals'), { concurrency: options.concurrency ?? 4, log, extra })) revealed.set(r.route, r.reveals.filter((reveal) => !reveal.sig || !played(r.route).has(reveal.sig)));
+		if (options.reveal !== false) for (const r of await captureAllReveals(browser, options.old, routes, join(state, 'convert', 'reveals'), { concurrency: options.concurrency ?? 4, log, extra, opens })) revealed.set(r.route, r.reveals.filter((reveal) => !reveal.sig || !played(r.route).has(reveal.sig)));
 		// What each Base UI combobox shows once nothing matches, into the empty element of the layer it opens.
 		for (const [route, reveals] of revealed) {
 			const empty = /(<div\b[^>]*\bdata-slot="combobox-empty"[^>]*>)(<\/div>)/;

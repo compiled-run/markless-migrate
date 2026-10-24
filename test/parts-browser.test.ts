@@ -244,3 +244,16 @@ test('Base UI dialog locks scroll as @base-ui/utils does: a stable gutter on <ht
 	assert.deepEqual(await page.evaluate(() => [document.documentElement.style.scrollbarGutter, document.body.style.overflowY]), ['', '']);
 	await page.close();
 });
+
+test('a plain button a page opens its dialog from (no ARIA) opens the dialog captured under its key', async () => {
+	const page = await open(
+		`<main style="padding-top:300px"><button data-slot="button" data-mm-key="p:1.2" type="button">Open Menu</button></main>${dialogLayer('p:1.2').replace('role="alertdialog"', 'role="dialog"').replace(/alert-dialog/g, 'dialog').replace(/ id="p:1.2"/, '')}`,
+		['radix/dialog'],
+	);
+	await page.getByText('Open Menu').click();
+	assert.equal(await page.locator('[role="dialog"]').getAttribute('data-state'), 'open');
+	assert.equal(await page.getByText('Open Menu').getAttribute('aria-expanded'), null, 'the button gets no ARIA it did not have');
+	await page.keyboard.press('Escape');
+	assert.equal(await page.locator('[role="dialog"]').getAttribute('data-state'), 'closed');
+	await page.close();
+});

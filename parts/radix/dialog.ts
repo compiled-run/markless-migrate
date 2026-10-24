@@ -8,7 +8,8 @@ import { layersFor, closestTrigger, layerKey } from '../reveal.ts';
 
 const TRIGGER = '[aria-haspopup="dialog"][aria-controls][data-slot$="dialog-trigger"], [aria-haspopup="dialog"][aria-controls][data-slot="sheet-trigger"], [aria-haspopup="dialog"][aria-controls][data-slot="drawer-trigger"]';
 // A trigger rendered through its child (asChild, render) carries the child's data-slot; its layer names the part.
-const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[aria-haspopup="dialog"][aria-controls]', (slot) => /(dialog|sheet|drawer)-trigger$/.test(slot));
+// A plain button a page opens its dialog from (open state set on click, no ARIA) has the layer under its key.
+const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[aria-haspopup="dialog"][aria-controls], [data-mm-key]:not([aria-haspopup]):not([data-state])', (slot) => /(dialog|sheet|drawer)-trigger$/.test(slot));
 const CLOSE = '[data-slot$="dialog-close"], [data-slot="sheet-close"], [data-slot$="dialog-cancel"], [data-slot$="dialog-action"]';
 
 interface Open {
@@ -22,6 +23,7 @@ const opened = new Map<string, Open>();
 const installed = new Set<string>();
 
 function setTrigger(trigger: HTMLElement, open: boolean): void {
+	if (!trigger.hasAttribute('aria-haspopup')) return;
 	trigger.setAttribute('aria-expanded', String(open));
 	trigger.setAttribute('data-state', open ? 'open' : 'closed');
 }
