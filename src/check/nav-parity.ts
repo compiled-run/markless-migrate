@@ -776,6 +776,7 @@ function side(browser: Browser, env: SideEnv, viewport: Viewport, opened: () => 
 const shotLabel = (check: string) => (check.endsWith(': screenshot') ? `navigation: ${check.slice(0, -': screenshot'.length)}` : check.endsWith(': layout during the swap') ? `navigation: ${check.slice(0, -': layout during the swap'.length)}, a frame during the swap` : undefined);
 
 /** What a failure says once the way it was reached is set aside: the same difference on the old app reached the same way is the old app's own. */
+const OLD_RETRIES = 2;
 const sameKey = (f: Failure) => `${f.route} ${f.check.replace(' (through a link the checker added: no page links here)', '').replace(/clicking [^:]*?(?= again:|:)/, 'clicking')}`;
 
 // An old framework's own runtime markers (data-has-hydrated, data-rh) are never a difference: a port leaves them out (residue.ts).
@@ -817,6 +818,12 @@ export async function checkNavigation(browser: Browser, env: SideEnv, routes: re
 		for (const { o, theirs } of checked) {
 			if (!theirs?.pair.inPlace || theirs.pair.swappedByPage) continue;
 			const own = new Set(theirs.failures.map(sameKey));
+			// What depends on when a frame is painted (a layout flash mid-swap) shows on the old app in some recordings and not others:
+			// a difference it did not show is recorded there again, up to twice more, before it counts as the port's.
+			for (let again = 0; again < OLD_RETRIES && o.failures.some((f) => !own.has(sameKey(f))); again++) {
+				const more = await old.pair(o.job).catch(() => undefined);
+				if (more?.pair.inPlace && !more.pair.swappedByPage) for (const f of more.failures) own.add(sameKey(f));
+			}
 			for (const f of o.failures) if (own.has(sameKey(f))) sameOnOld.add(`${o.job.from}|${o.job.to}|${o.job.variant}|${sameKey(f)}`);
 			const mine = o.reached && markedAttributes(o.reached);
 			const theirsShown = theirs.reached && markedAttributes(theirs.reached);

@@ -515,16 +515,16 @@ function storageChange(before: readonly string[], after: readonly string[]): str
 	return [...added.map((k) => `+ ${k}`), ...removed.map((k) => `- ${k}`)];
 }
 
-// Runs in the page: what a theme, a mode or a preference is kept as, `subject\tvalue`; a colour is read once a transition on <html> or <body> has ended (at most 1 s).
-async function pageState(): Promise<string[]> {
+// Runs in the page: whether a colour transition on <html> or <body> is still running.
+function colourMoving(): boolean {
+	return [document.documentElement, document.body].flatMap((el) => el?.getAnimations() ?? []).some((a) => a instanceof CSSTransition && /^(background|color|color-scheme|all)/.test(a.transitionProperty) && a.playState === 'running');
+}
+
+// Runs in the page: what a theme, a mode or a preference is kept as, `subject\tvalue`.
+function pageState(): string[] {
 	const root = document.documentElement;
 	const body = document.body as HTMLElement | null;
 	const own = [root, body].filter((el): el is HTMLElement => Boolean(el));
-	// A colour is read once its transition has ended: one that starts a frame later (`transition: all` on <html> after a theme class) is waited for too, at most 2 s.
-	await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
-	const until = performance.now() + 2_000;
-	// Frames, not timeouts: a step holds the page's 1 to 3 s timeouts while it is read.
-	while (performance.now() < until && own.flatMap((el) => el.getAnimations()).some((a) => a instanceof CSSTransition && /^(background|color|color-scheme|all)/.test(a.transitionProperty) && a.playState === 'running')) await new Promise((done) => requestAnimationFrame(done));
 	const out: string[] = [];
 	const clip = (v: string) => (v.length > 120 ? `${v.slice(0, 120)}…` : v);
 	for (const el of own) {
@@ -551,7 +551,12 @@ async function pageState(): Promise<string[]> {
 	return out;
 }
 
+// Waiting is done from here, never by a loop in the page: a capture that holds the page's own loops would hold that loop too, and the read would never end.
 async function readState(page: Page, signedIn: ReadonlySet<string>): Promise<string[]> {
+	// A colour is read once its transition has ended, one that starts a frame late (`transition: all` on <html> after a theme class) too, at most 2 s.
+	const until = Date.now() + 2_000;
+	await sleep(50);
+	while (Date.now() < until && (await page.evaluate(colourMoving).catch(() => false))) await sleep(50);
 	const inPage = await page.evaluate(pageState).catch(() => [] as string[]);
 	const cookies = (await page.context().cookies(page.url()).catch(() => [])).filter((c) => !signedIn.has(c.name)).map((c) => `cookie ${c.name}\t${c.value.length > 120 ? `${c.value.slice(0, 120)}…` : c.value}`);
 	return [...inPage, ...cookies];
@@ -827,24 +832,27 @@ async function ambientMotion(page: Page, hosts: readonly string[]): Promise<{ ch
 	return { changes: read?.changes ?? [], regions: [...moving, ...(huge ? [] : both)], lines, ...(huge ? { unsettled: true } : {}) };
 }
 
-/** Runs in the page: resolves once no node has been added, removed or retexted for 200 ms (at most 3 s), by frames since a step holds 1 to 3 s timeouts. */
-function domQuiet(): Promise<void> {
-	return new Promise((done) => {
-		let last = performance.now();
-		const started = last;
-		const observer = new MutationObserver((records) => {
-			if (records.some((r) => r.type !== 'attributes')) last = performance.now();
+// Runs in the page: starts recording when a node was last added, removed or retexted; returns how long ago that was, in ms.
+function domStill(): number {
+	const g = globalThis as { __markless_migrate_dom_changed__?: number; __markless_migrate_dom_watch__?: MutationObserver };
+	if (!g.__markless_migrate_dom_watch__) {
+		g.__markless_migrate_dom_changed__ = performance.now();
+		g.__markless_migrate_dom_watch__ = new MutationObserver((records) => {
+			if (records.some((r) => r.type !== 'attributes')) g.__markless_migrate_dom_changed__ = performance.now();
 		});
-		observer.observe(document, { subtree: true, childList: true, characterData: true });
-		const tick = () => {
-			const now = performance.now();
-			if (now - last >= 200 || now - started >= 3_000) {
-				observer.disconnect();
-				done();
-			} else requestAnimationFrame(tick);
-		};
-		requestAnimationFrame(tick);
-	});
+		g.__markless_migrate_dom_watch__.observe(document, { subtree: true, childList: true, characterData: true });
+	}
+	return performance.now() - (g.__markless_migrate_dom_changed__ ?? 0);
+}
+
+/** Waits until no node has been added, removed or retexted for 200 ms (at most 3 s), polling from here. */
+async function domQuiet(page: Page): Promise<void> {
+	const until = Date.now() + 3_000;
+	while (Date.now() < until) {
+		const still = await page.evaluate(domStill).catch(() => Infinity);
+		if (still >= 200) return;
+		await sleep(50);
+	}
 }
 
 async function focusLabel(page: Page): Promise<string> {
@@ -1217,7 +1225,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		}
 		await quiet(page, inflight, navigations);
 		// A router swapping the page in place renders after its fetch has finished: the page is read once its DOM has held still.
-		if (!documentLoaded && new URL(page.url()).pathname !== startPath) await page.evaluate(domQuiet).catch(() => {});
+		if (!documentLoaded && new URL(page.url()).pathname !== startPath) await domQuiet(page);
 		log.holdAll = false;
 		accepting = false;
 		const after = await snapshot(page, hosts);
