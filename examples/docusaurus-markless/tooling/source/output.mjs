@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { toTsrx } from './h.mjs';
-import { PLATFORM_KEYS_SCRIPT } from '../../../../parts/docsearch.ts';
+import { DOCSEARCH_SCRIPT } from '../../../../parts/docsearch.ts';
 // The dialog's code loads once the page is idle, or sooner on the first pointer, focus or touch on the search button or a
 // held Ctrl/⌘, from the head, so it does not wait for lib/site.ts; Ask AI's chunk is fetched then and runs when the dialog opens.
 const SEARCH_INTENT_SCRIPT = `(function(){var done=false,go=function(){if(done)return;done=true;import("/lazy/docsearch.js")};var on=function(e){var t=e.target;if(t&&t.closest&&t.closest("button.DocSearch-Button"))go()};["pointerover","focusin","touchstart"].forEach(function(n){addEventListener(n,on,{passive:true,capture:true})});addEventListener("keydown",function(e){if(e.key==="Meta"||e.key==="Control")go()},{capture:true});addEventListener("load",function(){(window.requestIdleCallback||setTimeout)(function(){var l=document.createElement("link");l.rel="modulepreload";l.href="/lazy/docsearch-ask-ai.js";document.head.append(l);go()},{timeout:3000})})})();`;
@@ -184,7 +184,7 @@ ${indent(`			<meta charset="UTF-8" />
 ${slotLines}
 ${staticLines}			<link rel="stylesheet" href="/assets/css/${stylesheetName}" />
 			<link rel="stylesheet" href="/mm-site.css" />
-			<script>{${JSON.stringify(PLATFORM_KEYS_SCRIPT)}}</script>
+			<script>{${JSON.stringify(DOCSEARCH_SCRIPT)}}</script>
 			<script>{${JSON.stringify(SEARCH_INTENT_SCRIPT)}}</script>
 `)}				</>
 			}
