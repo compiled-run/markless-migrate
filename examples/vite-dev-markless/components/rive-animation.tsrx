@@ -1,4 +1,4 @@
-import type { RiveName } from './rive.ts';
+import type { RiveName } from './rive-sources.ts';
 
 export default function RiveAnimation({
 	desktopSrc,

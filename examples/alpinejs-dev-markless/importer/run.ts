@@ -13,6 +13,9 @@ const out = (path: string) => join(APP, path);
 const docs = loadDocs(out('content/docs'));
 // DocSearch on intent is markless-migrate's shared part (parts/docsearch.ts), copied in as it is.
 write(out('generated/docsearch.ts'), GENERATED + readFileSync(join(APP, '../../parts/docsearch.ts'), 'utf8'));
+// DocSearch's dialog as alpinejs.dev first draws it on a press (content/docsearch-shell.html, captured by markless-migrate's
+// captureDocSearchShell), shown by the part on a press made before DocSearch's script is in.
+write(out('generated/docsearch-shell.ts'), `${GENERATED}export default ${JSON.stringify(readFileSync(join(APP, 'content/docsearch-shell.html'), 'utf8').trim())};\n`);
 
 const slug = (route: string) => route.slice(1).replace(/\//g, '-');
 

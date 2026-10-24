@@ -9,7 +9,7 @@ import { journeysFile, journeysJson, RouteArtifacts, SHOTS_DIR, shotName, type P
 import type { AutomaticRule } from './automatic.ts';
 import { accessFailures, ANONYMOUS, saysDenied, compareLogin, loginRoutes, saveState, signIn, type AuthConfig, type RoleSpec } from './auth.ts';
 import { BlockedError, blockedResult, detectChallenge, probeWall } from './blocked.ts';
-import { adoptAnswers, DEFINITE, defaultEnv, isLoopback, pushRecording, resetSharedAnswers, shareAnswers, storedAnswers, tagHeaders, type StoredAnswer, type SideEnv, type StorageState, type WallHit } from './browser.ts';
+import { adoptAnswers, LAUNCH, DEFINITE, defaultEnv, isLoopback, pushRecording, resetSharedAnswers, shareAnswers, storedAnswers, tagHeaders, type StoredAnswer, type SideEnv, type StorageState, type WallHit } from './browser.ts';
 import { captureHttp, captureRoute, mime, pageLoads, thirdPartyLoads } from './capture.ts';
 import { OldCache } from './cache.ts';
 import { readRecording, recordable, slug, writeRecording } from './data.ts';
@@ -19,7 +19,7 @@ import { HINTS } from './hints.ts';
 import { locateFailures, NOT_EXERCISED } from './locate.ts';
 import { mapRules } from './sourcemap.ts';
 import { negotiationFailures } from './i18n.ts';
-import { compareJourneys, DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, inDarkMode, themed, replayAll, replayDestructive, survey, type ElementCoverage, type Exploration, type ExploreOptions, type RecordedJourney, type Run as RunResults } from './journeys.ts';
+import { compareJourneys, describeTarget, MAX_ARRIVED, replay, timedOnly, type Journey, type Step, DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, inDarkMode, themed, replayAll, replayDestructive, survey, type ElementCoverage, type Exploration, type ExploreOptions, type RecordedJourney, type Run as RunResults } from './journeys.ts';
 import { storageOwner, unreachableCandidate, type StorageOwner } from './automatic.ts';
 import { checkResponsiveness, summarizeResponsiveness, type ResponsivenessOptions } from './responsiveness.ts';
 import { checkMotion, motionRules, type MotionOptions } from './motion.ts';
@@ -229,7 +229,7 @@ const oldCaptures = new WeakMap<RouteResult, RouteCapture>();
 export async function checkRoute(browser: Browser, run: Run, route: string, viewports: readonly Viewport[] = VIEWPORTS, locales: readonly string[] = []): Promise<RouteResult> {
 	const oldOrigin = run.old.origin;
 	const newOrigin = run.new.origin;
-	const { olds, next, loads } = await loadBoth(browser, run, route, viewports);
+	const { olds, next, loads } = await profiled(route, 'load both sides', () => loadBoth(browser, run, route, viewports));
 	const broken = brokenOld(route, olds);
 	if (broken) return broken;
 	const oldA = olds[0]!;
@@ -243,7 +243,7 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 	const loadWrites = (Object.values(oldA.pages)[0]?.writes ?? []).map((w) => ({ ...w, during: 'page load' }));
 	const result = withFailures(compared, [...compared.failures, ...negotiationFailures(route, languages, [negotiatedA, negotiatedB], negotiatedNew)], { noise, writes: loadWrites });
 	const owner = storageOwner(olds.flatMap((o) => Object.values(o.pages)), Object.values(next.pages));
-	const explored = await statesAndJourneys(run, result, (input) => checkStates(browser, run, route, viewports, olds, input), (input) => checkJourneys(browser, run, route, viewports[0]!, input, owner, loads));
+	const explored = await statesAndJourneys(run, result, (input) => profiled(route, 'forced states', () => checkStates(browser, run, route, viewports, olds, input)), (input) => profiled(route, 'journeys', () => checkJourneys(browser, run, route, viewports[0]!, input, owner, loads)));
 	const moved = run.motion && explored.journeys?.length ? await checkMoves(browser, run, route, viewports[0]!, explored, oldA.pages[viewports[0]!.name]?.stylesheets ?? []) : explored;
 	const timed = run.responsiveness && moved.journeys?.length ? await checkTimings(browser, run, route, moved) : moved;
 	// The page captures already list each side's embeds: a route with none on either side has nothing for the embed step.
@@ -297,14 +297,19 @@ export async function checkLight(browser: Browser, run: Run, route: string, view
 async function checkJourneys(browser: Browser, run: Run, route: string, viewport: Viewport, result: RouteResult, owner?: StorageOwner, loads: readonly string[] = []): Promise<RouteResult> {
 	const key = { route, viewport, budgetMs: run.journeys?.budgetMs, maxJourneys: run.journeys?.maxJourneys, owners: run.owners, switched: run.switched };
 	const cached = loads.length ? await run.oldCache?.read<OldJourneys>('journeys', run.old, key) : undefined;
-	const explored = cached?.explored ?? (await explore(browser, run.old, route, viewport, { ...run.journeys, serves: (path) => isSwitched([route, ...(run.switched ?? [])], path) }));
+	const explored = cached?.explored ?? (await profiled(route, 'explore old', () => explore(browser, run.old, route, viewport, { ...run.journeys, serves: (path) => isSwitched([route, ...(run.switched ?? [])], path) })));
 	const plain = explored.journeys;
 	const recorded = plain.map((j) => j.expected);
 	const door = { old: run.old.origin, serves: (path: string) => isSwitched([route, ...(run.switched ?? [])], path), ...(run.old.storageState ? { storageState: run.old.storageState } : {}), ...(run.old.signIn ? { signIn: run.old.signIn } : {}) };
 	const front: SideEnv = { ...run.new, frontDoor: door };
-	const [again, next] = await Promise.all([cached ? cached.runs[1]! : replayAll(browser, run.old, route, viewport, plain), replayAll(browser, front, route, viewport, plain)]);
+	const [again, next] = await profiled(route, `replay ${plain.length} journeys old and new`, () => Promise.all([cached ? cached.runs[1]! : replayAll(browser, run.old, route, viewport, plain), replayAll(browser, front, route, viewport, plain)]));
 	const runs = cached?.runs ?? [recorded, again];
-	if (!cached && JSON.stringify(recorded, unframed) !== JSON.stringify(again, unframed)) runs.push(await replayAll(browser, run.old, route, viewport, plain));
+	// A third old run, for the journeys whose two old runs differed: the others agree, and their second run stands for the third.
+	const differing = plain.flatMap((_, j) => (JSON.stringify(recorded[j], unframed) !== JSON.stringify(again[j], unframed) ? [j] : []));
+	if (!cached && differing.length) {
+		const third = await profiled(route, `third old replay of ${differing.length} journeys`, () => replayAll(browser, run.old, route, viewport, differing.map((j) => plain[j]!)));
+		runs.push(plain.map((_, j) => (differing.includes(j) ? third[differing.indexOf(j)]! : again[j]!)));
+	}
 	const risky = explored.deferred.map((d) => d.journey);
 	const [oldRisky, newRisky] = risky.length ? await Promise.all([cached ? cached.oldRisky : replayDestructive(browser, run.old, route, viewport, risky), replayDestructive(browser, front, route, viewport, risky)]) : [[], []];
 	// Sent, a delete cannot be done twice; held back, it can, and a second run shows what varies.
@@ -314,7 +319,7 @@ async function checkJourneys(browser: Browser, run: Run, route: string, viewport
 	const journeys: RecordedJourney[] = [...plain, ...risky.map((j, i) => ({ ...j, expected: oldRisky[i]! }))];
 	const olds = runs.map((r, k) => [...r, ...(k === 0 ? oldRisky : oldRiskyAgain)]);
 	const elements = explored.elements.map((e) => destructiveCoverage(e, explored.deferred, oldRisky));
-	const reachable = await unreachableOnBoth(browser, front, route, viewport, elements);
+	const reachable = await profiled(route, 'unreachable on new', () => unreachableOnBoth(browser, front, route, viewport, elements));
 	const writes = journeys.flatMap((j) => j.expected.flatMap((step) => (step.writes ?? []).map((w) => ({ ...w, during: j.name }))));
 	const coverage: Coverage = { total: elements.length, exercised: elements.filter((e) => e.by).length, elements, skipped: explored.skipped, ...(explored.sequencesSkipped ? { sequencesSkipped: explored.sequencesSkipped } : {}) };
 	const unexercised = elements.filter((e) => !e.by && !e.shared).map((e) => notExercised(route, e.element, e.reason ?? 'no journey used it', reachable.get(e.signature)));
@@ -324,13 +329,83 @@ async function checkJourneys(browser: Browser, run: Run, route: string, viewport
 	const darkOld: SideEnv = { ...run.old, colorScheme: 'dark' };
 	const [darkOlds, darkNext] = dark.length ? await Promise.all([Promise.all([replayAll(browser, darkOld, route, viewport, dark), replayAll(browser, darkOld, route, viewport, dark)]), replayAll(browser, { ...front, colorScheme: 'dark' }, route, viewport, dark)]) : [[], []];
 	const improvements: string[] = [];
+	// A page to arrive from that does not load is no reason to drop the route's own result: those journeys are reported as not compared, and the route stays red.
+	const arrivedFailures = explored.arrival
+		? await profiled(route, 'arrival journeys', () => checkArrived(browser, run, route, viewport, plain, explored.arrival!, owner, improvements)).catch((error: unknown): Failure[] => {
+				if (run.old.scope?.closed) throw error;
+				return [{ route, dimension: 'behaviour', check: `journeys after arriving from ${explored.arrival!.entry} by ${describeTarget(explored.arrival!.link)}`, expected: 'the route\'s journeys compared after arriving in place', actual: `not compared: ${(error as Error).message.split('\n')[0]}`, hint: HINTS.coverage }];
+			})
+		: [];
+	const mainFailures = await retime(browser, { old: run.old, new: front }, route, viewport, journeys, compareJourneys(route, olds, journeys, [...next, ...newRisky], owner, doorErrors, improvements));
 	const darkFailures = dark.length ? compareJourneys(route, darkOlds, inDarkMode(dark), darkNext, owner, doorErrors, improvements) : [];
-	const compared = withFailures(result, [...result.failures, ...compareJourneys(route, olds, journeys, [...next, ...newRisky], owner, doorErrors, improvements), ...darkFailures, ...unexercised], { journeys, coverage, writes: [...(result.writes ?? []), ...writes] });
+	const compared = withFailures(result, [...result.failures, ...mainFailures, ...darkFailures, ...arrivedFailures, ...unexercised], { journeys, coverage, writes: [...(result.writes ?? []), ...writes] });
 	return improvements.length ? { ...compared, improvements: [...(compared.improvements ?? []), ...improvements] } : compared;
 }
 
 // Which pixels a step changed varies a little from run to run; a third run is for steps whose other results differ.
-const unframed = (key: string, value: unknown) => (key === 'regions' ? undefined : value);
+const unframed = (key: string, value: unknown) => (key === 'regions' || key === 'answeredMs' || key === 'shift' ? undefined : value);
+
+/**
+ * The route's journeys again, arriving the way a visitor does from another page: that page loads, its link to the route is
+ * followed (the router swaps the page in place), then the journey's steps run. Twice on old and once on new, compared alike;
+ * a part that only works on a fresh load (one whose script runs once, at load) is red here.
+ */
+async function checkArrived(browser: Browser, run: Run, route: string, viewport: Viewport, plain: readonly RecordedJourney[], arrival: NonNullable<Exploration['arrival']>, owner: StorageOwner | undefined, improvements: string[]): Promise<Failure[]> {
+	const arrive: Step = { action: 'click', target: arrival.link };
+	const how = `after arriving from ${arrival.entry} by ${describeTarget(arrival.link)}`;
+	// One journey per kind of control is enough to show the parts are wired after the swap: the same control under another nth repeats it.
+	const kinds = new Set<string>();
+	const distinct = plain.filter((j) => {
+		const first = j.steps[0]!;
+		const key = `${j.steps.length}|${first.action}|${first.target.role}|${first.target.name}`;
+		if (j.cycle || j.destructive || kinds.has(key)) return false;
+		kinds.add(key);
+		return true;
+	});
+	const journeys: Journey[] = distinct.slice(0, MAX_ARRIVED).map((j) => ({ name: `${j.name}, ${how}`, steps: [arrive, ...j.steps], start: arrival.entry, ...(j.patience ? { patience: j.patience } : {}) }));
+	if (!journeys.length) return [];
+	const [a, b, next] = await Promise.all([replayAll(browser, run.old, route, viewport, journeys), replayAll(browser, run.old, route, viewport, journeys), replayAll(browser, run.new, route, viewport, journeys)]);
+	return retime(browser, { old: run.old, new: run.new }, route, viewport, journeys, compareJourneys(route, [a, b], journeys, next, owner, undefined, improvements));
+}
+
+const RETIMED = 10;
+const RETIMES = 2;
+
+/**
+ * A step answered more slowly on the new page is timed again one side at a time (old, then new, twice), since a busy machine
+ * slows whichever side it happens to: it stands only when the new page is slower every time.
+ */
+async function retime(browser: Browser, sides: { readonly old: SideEnv; readonly new: SideEnv }, route: string, viewport: Viewport, journeys: readonly Journey[], failures: Failure[]): Promise<Failure[]> {
+	const slow = failures.filter((f) => timedOnly.has(f)).slice(0, RETIMED);
+	if (!slow.length) return failures;
+	const dropped = new Set<Failure>();
+	const notes = new Map<Failure, string>();
+	for (const failure of slow) {
+		const { journey, step } = timedOnly.get(failure)!;
+		const times: { old?: number; next?: number }[] = [];
+		for (let i = 0; i < RETIMES; i++) {
+			const old = (await replay(browser, sides.old, route, viewport, journeys[journey]!).catch(() => []))[step]?.reaction?.answeredMs;
+			const next = (await replay(browser, sides.new, route, viewport, journeys[journey]!).catch(() => []))[step]?.reaction?.answeredMs;
+			times.push({ old, next });
+		}
+		// Timed again only where both sides answered: a step that could not be timed again keeps its failure, unconfirmed.
+		if (times.some((t) => t.old === undefined || t.next === undefined)) notes.set(failure, '; it could not be timed again one side at a time');
+		else if (times.some((t) => t.next! - t.old! <= 100 || t.next! <= t.old! * 1.5)) dropped.add(failure);
+		else notes.set(failure, `; timed again one side at a time: old ${times.map((t) => t.old).join(' and ')} ms, new ${times.map((t) => t.next).join(' and ')} ms`);
+	}
+	return failures.filter((f) => !dropped.has(f)).map((f) => (notes.has(f) ? { ...f, actual: `${f.actual}${notes.get(f)}` } : f));
+}
+
+// MARKLESS_MIGRATE_PROFILE=1 prints how long each part of a route's check took, on stderr.
+async function profiled<T>(route: string, part: string, work: () => Promise<T>): Promise<T> {
+	if (!process.env.MARKLESS_MIGRATE_PROFILE) return work();
+	const started = Date.now();
+	try {
+		return await work();
+	} finally {
+		process.stderr.write(`[profile] ${route} ${part}: ${((Date.now() - started) / 1000).toFixed(1)} s\n`);
+	}
+}
 
 /** What OLD's journeys recorded: the exploration and every replay of it. */
 interface OldJourneys {
@@ -616,7 +691,7 @@ async function layoutOwners(browser: Browser, run: Run, routes: readonly string[
 export async function runCheck(options: CheckOptions): Promise<Report> {
 	const startedAt = new Date().toISOString();
 	resetSharedAnswers();
-	const browser = options.browser ?? (await chromium.launch());
+	const browser = options.browser ?? (await chromium.launch({ ...LAUNCH, ignoreDefaultArgs: [...LAUNCH.ignoreDefaultArgs] }));
 	const freeze: FreezeOptions | false = options.freeze === false ? false : { ...DEFAULT_FREEZE, ...options.freeze };
 	const bypass = { ...(options.headers ? { headers: options.headers } : {}), ...(options.cookies?.length ? { cookies: options.cookies } : {}), ...(options.userAgent ? { userAgent: options.userAgent } : {}) };
 	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [], ...bypass };

@@ -23,6 +23,13 @@ export const CTRL_KEYS = {
 	4: { label: 'Search (Control+k)', shortcut: 'Control+k', key: '<kbd class="DocSearch-Button-Key DocSearch-Button-Key--ctrl" data-mm-key="ctrl">Ctrl</kbd>' },
 } as const;
 export const APPLE_KEY = '<kbd class="DocSearch-Button-Key" data-mm-key="apple">⌘</kbd>';
+/** A <script type="text/html"> holding DocSearch's dialog as it first draws it, captured from the old site by plan. */
+export const SHELL_ATTRIBUTE = 'data-mm-docsearch-shell';
+
+/** The shell's markup as page text: a script element's content may not close the element. */
+export function shellScript(html: string): string {
+	return html.replace(/<\/(script)/gi, '<\\/$1');
+}
 
 /**
  * Runs in the page before the first paint, once: must stay self-contained. The button shows the visitor's platform key
@@ -67,6 +74,65 @@ export function docsearchOnIntent(): void {
 	let state = 'idle';
 	let pending = false;
 	let holder: Element | null = null;
+	// DocSearch's dialog as it first draws it, shown on a press made before its script is in: the visitor sees and types
+	// into the same dialog at once, and DocSearch takes over with the query and the focus when it arrives.
+	let shell: HTMLElement | null = null;
+	// Drawn after <body>, outside the page Markless renders; DocSearch's styles key off the classes, not the place.
+	const layer = document.createElement('div');
+	const closeShell = () => {
+		if (!shell) return;
+		layer.replaceChildren();
+		layer.remove();
+		shell = null;
+		pending = false;
+		document.body.classList.remove('DocSearch--active');
+	};
+	const showShell = () => {
+		const source = document.querySelector('script[data-mm-docsearch-shell]');
+		if (shell || !source?.textContent) return;
+		const made = document.createRange().createContextualFragment(source.textContent).firstElementChild as HTMLElement | null;
+		if (!made) return;
+		made.querySelector<HTMLElement>('.DocSearch-Modal')?.style.setProperty('--docsearch-vh', `${window.innerHeight * 0.01}px`);
+		layer.replaceChildren(made);
+		document.documentElement.append(layer);
+		document.body.classList.add('DocSearch--active');
+		shell = made;
+		made.querySelector<HTMLInputElement>('.DocSearch-Input')?.focus();
+		made.addEventListener('click', (event) => {
+			const target = event.target as Element;
+			if (target === made || target.closest('.DocSearch-Cancel')) closeShell();
+		});
+		made.addEventListener('keydown', (event) => {
+			if (event.key === 'Escape') closeShell();
+		});
+		made.querySelector('form')?.addEventListener('submit', (event) => event.preventDefault());
+	};
+	// DocSearch draws its own dialog beside the shell; the query, caret and focus move to it, then the shell goes.
+	const handOver = () => {
+		const from = shell;
+		if (!from) return;
+		const query = from.querySelector<HTMLInputElement>('.DocSearch-Input')?.value ?? '';
+		const take = () => {
+			const into = [...document.querySelectorAll<HTMLElement>('.DocSearch-Container')].find((el) => el !== from);
+			const input = into?.querySelector<HTMLInputElement>('.DocSearch-Input');
+			if (!into || !input) return false;
+			if (query) {
+				Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, query);
+				input.dispatchEvent(new Event('input', { bubbles: true }));
+			}
+			input.focus();
+			input.setSelectionRange(query.length, query.length);
+			layer.replaceChildren();
+			layer.remove();
+			if (shell === from) shell = null;
+			return true;
+		};
+		if (take()) return;
+		const watch = new MutationObserver(() => {
+			if (take()) watch.disconnect();
+		});
+		watch.observe(document.body, { childList: true, subtree: true });
+	};
 	const open = () => (holder?.querySelector('.DocSearch-Button') as HTMLElement | null)?.click();
 	const load = () => {
 		if (state !== 'idle') return;
@@ -91,6 +157,7 @@ export function docsearchOnIntent(): void {
 			if (pending) {
 				pending = false;
 				open();
+				handOver();
 			}
 		};
 		script.onerror = () => {
@@ -103,6 +170,7 @@ export function docsearchOnIntent(): void {
 		if (state === 'ready') open();
 		else {
 			pending = true;
+			showShell();
 			load();
 		}
 	};

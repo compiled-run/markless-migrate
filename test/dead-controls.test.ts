@@ -139,3 +139,13 @@ test('a copy button that writes to the clipboard answers alike on both sides, on
 	const dead = await check(() => copy(true), () => copy(false));
 	assert.ok(about(open(dead), 'click button "Copy code"').length, JSON.stringify(open(dead).map((f) => f.check)));
 });
+
+test('alike controls that each reveal their own content are all used: the one revealing the wrong source is red', async () => {
+	const demos = (wrong: boolean) => page(['Button', 'Dialog', 'Select', 'Tabs'].map((name, i) => `<section aria-label="${name} demo"><button type="button" data-slot="view-code" onclick="this.nextElementSibling.hidden = false">View Code</button><pre hidden>${wrong && i === 3 ? 'import { Accordion } from "ui"' : `import { ${name} } from "ui"`}</pre></section>`).join(''));
+	const same = await check(() => demos(false), () => demos(false));
+	assert.deepEqual(open(same).map((f) => `${f.dimension}: ${f.check}: ${f.actual}`), []);
+	const wrong = open(await check(() => demos(false), () => demos(true)));
+	const revealed = wrong.find((f) => /View Code/.test(f.check) && /import \{ Tabs \}/.test(f.expected));
+	assert.ok(revealed, JSON.stringify(wrong.map((f) => [f.check, f.expected.slice(0, 80)])));
+	assert.match(revealed!.actual, /Accordion/);
+});

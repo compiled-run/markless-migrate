@@ -119,9 +119,19 @@ test('a button the new page marks aria-expanded when it opens a menu, where the 
 	const better = [[result({ added: ['- button "Change language" [expanded]:', ...opened], removed: ['- button "Change language":'] })]];
 	assert.deepEqual(compareJourneys('/', [old, old], menu, better, undefined, undefined, improvements), []);
 	assert.match(improvements[0]!, /button "Change language" sets aria-expanded when it opens what it controls/);
+	const focused = [[result({ added: opened, focus: 'button "Change language"' })]];
+	assert.deepEqual(compareJourneys('/', [focused, focused], menu, [[result({ added: ['- button "Change language" [expanded]:', ...opened], removed: ['- button "Change language":'], focus: 'button "Change language" [expanded]' })]]), [], 'focus stays on the same button');
 	// What else the step does is still compared: the menu not opening stays red.
 	assert.equal(compareJourneys('/', [old, old], menu, [[result({ added: ['- button "Change language" [expanded]:'], removed: ['- button "Change language":'] })]]).length, 1);
 	// A state the old page sets differently is a difference, not an improvement.
 	const toggles = [[result({ added: ['- button "Change language" [pressed]:', ...opened], removed: ['- button "Change language":'] })]];
 	assert.equal(compareJourneys('/', [toggles, toggles], menu, better).length, 1);
+});
+
+test('a step answered more slowly on the new page is red only when neither side asked the server first', async () => {
+	const { slowerAnswer } = await import('../src/check/journeys.ts');
+	const at = (ms: number, requests: string[] = []) => result({ requests, reaction: { regions: [], changes: [], answeredMs: ms } });
+	assert.match(slowerAnswer([at(40), at(60)], at(400)) ?? '', /old page changes 60 ms after the step; the new page 400 ms/);
+	assert.equal(slowerAnswer([at(40), at(60)], at(140)), undefined, 'within 100 ms');
+	assert.equal(slowerAnswer([at(40, ['POST /api/contact']), at(60, ['POST /api/contact'])], at(3000, ['POST /api/contact'])), undefined, 'the server answered first');
 });

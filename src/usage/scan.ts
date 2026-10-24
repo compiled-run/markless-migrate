@@ -10,7 +10,7 @@ import { writeEmbeds } from '../embed/file.ts';
 import { Behaviours, pageBehaviours, scriptBehaviours, type ScriptRef } from './behaviours.ts';
 import { parseHtml } from './html.ts';
 import { obligationsFor } from './obligations.ts';
-import { docsearchConfig, type DocSearchUse } from './docsearch.ts';
+import { captureDocSearchShell, docsearchConfig, type DocSearchUse } from './docsearch.ts';
 import { analyseScript } from './script.ts';
 import { readThemeConfig, THEME_FEATURES } from './themes.ts';
 import type { Behaviour, BehaviourKind, ScriptFacts, UsageInventory } from './types.ts';
@@ -190,6 +190,8 @@ export async function scanUsage(options: UsageOptions): Promise<UsageInventory> 
 	const obligations = behaviours.flatMap(obligationsFor);
 	// A theme that configures DocSearch in the site's source (Docusaurus' themeConfig.algolia) names it there instead.
 	if (!docsearch) for (const b of behaviours) docsearch ??= b.feature.includes('DocSearch') ? docsearchConfig(JSON.stringify(b.details.settings ?? {})) : undefined;
+	const shell = docsearch && options.origin && !options.built ? await captureDocSearchShell(options.origin, options.routes, options.headers ?? {}).catch(() => undefined) : undefined;
+	if (docsearch && shell) docsearch = { ...docsearch, shell };
 	return {
 		version: 1,
 		generatedAt: new Date().toISOString(),
