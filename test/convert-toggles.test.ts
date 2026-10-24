@@ -121,3 +121,13 @@ test('a page that shows notifications renders their region between two ranges of
 	assert.match(ranged, /@if \(\(from \?\? 0\) <= 0 && 0 < \(to \?\? 2\)\) \{ <><section aria-live="polite" id=\{valueOf\(route, "b0"\)\}/, 'a value read in an arm goes through a module function, not a body constant');
 	assert.match(ranged, /BodyAfter\(\{ route, from, to \}/);
 });
+
+test('a Base UI tab list without panels (the line and vertical variants) still switches its triggers', async () => {
+	const { BaseTabsPlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-slot="tabs" data-activation-direction="none"><div role="tablist" data-activation-direction="none"><button role="tab" id="base-ui-a" aria-selected="true" tabindex="0" data-active="">A</button><button role="tab" id="base-ui-b" aria-selected="false" tabindex="-1">B</button></div></div></body>');
+	const plan = new BaseTabsPlan();
+	assert.equal(plan.add(body(doc), (el) => /^base-ui-/.test(attr(el, 'id') ?? ''), () => undefined, (h) => h), 1);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /aria-selected=\{btab0 === 1 \? "true" : "false"\}/);
+	assert.doesNotMatch(out, /aria-controls=\{/);
+});

@@ -269,10 +269,10 @@ export class BaseTabsPlan {
 			const tabs = list.parentNode as Element | null;
 			if (active < 0 || !tabs || !('tagName' in tabs)) continue;
 			const activeId = attr(triggers[active]!, 'id');
+			// A list without panels (shadcn's line, vertical and icon variants) still switches its triggers.
 			const panel = [...walk(tabs)].find((p) => attr(p, 'role') === 'tabpanel' && attr(p, 'aria-labelledby') === activeId);
-			if (!panel) continue;
-			const own = { attrs: Object.fromEntries(panel.attrs.map((a) => [a.name, a.value])), inner: '' };
-			const panels = triggers.map((t, k) => (k === active ? own : revealed(t)));
+			const own = panel && { attrs: Object.fromEntries(panel.attrs.map((a) => [a.name, a.value])), inner: '' };
+			const panels = panel ? triggers.map((t, k) => (k === active ? own : revealed(t))) : [];
 			if (panels.some((p) => !p)) continue;
 			const contents = panels.map((p, k) => (k === active ? undefined : emit(p!.inner)));
 			if (contents.some((c) => c !== undefined && /@(if|switch|for) \(|<[A-Z]\w*[\s/>]/.test(c))) continue;
@@ -283,24 +283,28 @@ export class BaseTabsPlan {
 			const pick = (values: readonly (string | undefined)[]) => values.reduceRight<string>((rest, v, k) => (k === values.length - 1 ? (v === undefined ? 'undefined' : lit(v)) : `${name} === ${k} ? ${v === undefined ? 'undefined' : lit(v)} : ${rest}`), '');
 			const direction = `data-activation-direction={${dir}}`;
 			for (const el of [tabs, list]) if (attr(el, 'data-activation-direction') !== undefined) this.bindings.set(el, { declare, omit: ['data-activation-direction'], extra: [direction] });
-			const panelId = (k: number) => panels[k]!.attrs['id'];
+			const panelId = (k: number) => panels[k]?.attrs['id'];
 			triggers.forEach((t, k) => {
 				const choose = `${dir} = ${k} > ${name} ? ${lit(vertical ? 'down' : 'right')} : ${k} < ${name} ? ${lit(vertical ? 'up' : 'left')} : ${dir}; ${name} = ${k};`;
 				this.bindings.set(t, {
 					declare,
-					omit: ['aria-selected', 'tabindex', 'data-active', 'data-composite-item-active', 'aria-controls', 'data-activation-direction'],
+					omit: ['aria-selected', 'tabindex', 'data-active', 'data-composite-item-active', ...(panel ? ['aria-controls'] : []), 'data-activation-direction'],
 					extra: [
 						`aria-selected={${name} === ${k} ? "true" : "false"}`,
 						`tabindex={${name} === ${k} ? "0" : "-1"}`,
 						`data-active={${name} === ${k} ? "" : undefined}`,
 						`data-composite-item-active={${name} === ${k} ? "" : undefined}`,
-						`aria-controls={${name} === ${k} ? ${lit(panelId(k) ?? '')} : undefined}`,
+						...(panel ? [`aria-controls={${name} === ${k} ? ${lit(panelId(k) ?? '')} : undefined}`] : []),
 						direction,
 						`onClick={() => { ${choose} }}`,
 						`onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); ${choose} } else roving(event); }}`,
 					],
 				});
 			});
+			if (!panel) {
+				groups++;
+				continue;
+			}
 			const varying = [...new Set(panels.flatMap((p) => Object.keys(p!.attrs)))].filter((a) => a !== 'data-activation-direction' && new Set(panels.map((p) => p!.attrs[a])).size > 1);
 			this.bindings.set(panel, {
 				declare,
