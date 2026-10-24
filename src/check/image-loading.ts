@@ -1,3 +1,4 @@
+import { imageIdentity } from './automatic.ts';
 import { VIEWPORTS, type Failure, type ImageRecord, type PageCapture } from './types.ts';
 
 export const IMAGE_LOADING_HINT =
@@ -24,12 +25,22 @@ const firstScreen = (s: Seen) => !!s.img.box && s.img.box.y < s.height && s.img.
 export function imageLoadingFailures(route: string, pages: Readonly<Record<string, PageCapture>>): Failure[] {
 	const views = Object.values(pages);
 	const first = views[0];
-	if (!first || views.some((p) => p.images.length !== first.images.length)) return [];
+	if (!first) return [];
 	const failures: Failure[] = [];
 	const bytes = new Map(views.flatMap((p) => p.assets.map((a) => [a.url, a.bytes] as const)));
-	first.images.forEach((img, i) => {
-		const seen: Seen[] = views.map((p) => ({ viewport: p.viewport, height: VIEWPORTS.find((v) => v.name === p.viewport)?.height ?? 800, img: p.images[i]! }));
-		if (seen.some((s) => s.img.alt !== img.alt) || img.broken || img.src.startsWith('data:') || (bytes.get(img.src) ?? 0) < MIN_BYTES) return;
+	// The same image in each viewport: the nth of its picture and alt text, since a viewport may add or drop others.
+	const keyed = views.map((p) => {
+		const count = new Map<string, number>();
+		return new Map(p.images.map((img) => {
+			const key = `${imageIdentity(img.src)}|${img.alt}`;
+			const n = count.get(key) ?? 0;
+			count.set(key, n + 1);
+			return [`${key}#${n}`, img] as const;
+		}));
+	});
+	[...keyed[0]!].forEach(([key, img]) => {
+		const seen: Seen[] = views.flatMap((p, v) => (keyed[v]!.has(key) ? [{ viewport: p.viewport, height: VIEWPORTS.find((x) => x.name === p.viewport)?.height ?? 800, img: keyed[v]!.get(key)! }] : []));
+		if (seen.length !== views.length || img.broken || img.src.startsWith('data:') || (bytes.get(img.src) ?? 0) < MIN_BYTES) return;
 		const shown = seen.filter(firstScreen);
 		const check = `image loading: ${img.src}`;
 		if (!shown.length && (img.loading !== 'lazy' || img.preloaded))
