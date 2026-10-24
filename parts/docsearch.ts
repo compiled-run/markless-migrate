@@ -134,9 +134,10 @@ export function platformKeys(): void {
 		}
 	};
 	label();
+	// A button an in-place navigation brings in, or one it keeps and rewrites (a morph sets the server's name again).
 	new MutationObserver((records) => {
-		if (records.some((r) => r.addedNodes.length)) label();
-	}).observe(document.documentElement, { childList: true, subtree: true });
+		if (records.some((r) => r.addedNodes.length || r.type === 'attributes')) label();
+	}).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-label', 'aria-keyshortcuts'] });
 }
 
 /** The head script that runs platformKeys before the first paint. */

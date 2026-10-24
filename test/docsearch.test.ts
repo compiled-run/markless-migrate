@@ -138,6 +138,14 @@ test('before the first paint, a DocSearch 4 button shows ⌘ and its Mac name on
 			assert.deepEqual(visible, [shown === 'apple' ? 'apple:⌘' : 'ctrl:Ctrl'], platform);
 			assert.equal(await page.locator('button').getAttribute('aria-label'), label, platform);
 			assert.equal(await page.locator('button').getAttribute('aria-keyshortcuts'), shortcut, platform);
+			// An in-place navigation that keeps the button writes the server's name again; it is relabelled.
+			await page.evaluate(() => {
+				const b = document.querySelector('button')!;
+				b.setAttribute('aria-label', 'Search (Meta+k)');
+				b.setAttribute('aria-keyshortcuts', 'Meta+k');
+			});
+			await page.waitForFunction((l) => document.querySelector('button')!.getAttribute('aria-label') === l, label);
+			assert.equal(await page.locator('button').getAttribute('aria-keyshortcuts'), shortcut, `${platform} after a morph`);
 			await context.close();
 		}
 	} finally {
