@@ -226,6 +226,7 @@ test('recharts: the pointer picks the point whose range it is in, the tooltip go
 	assert.match(await tip.evaluate((e) => (e as HTMLElement).style.transform), /translate\(150px, 50px\)/, 'flipped above the pointer where it would leave the view box');
 	await page.mouse.move(5, 5);
 	assert.equal(await tip.evaluate((e) => (e as HTMLElement).style.visibility), 'hidden');
+	assert.equal(await tip.evaluate((e) => (e as HTMLElement).style.transform), '', 'hidden, it drops its place, so it comes in from the corner next time as recharts\' does');
 	await page.locator('svg.recharts-surface').focus();
 	await page.keyboard.press('ArrowRight');
 	assert.deepEqual((await page.evaluate(() => (window as unknown as { seen: number[] }).seen)).slice(-3), [-1, 0, 1], 'focus shows the first point, the arrow the next');

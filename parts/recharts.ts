@@ -75,7 +75,10 @@ function show(wrapper: HTMLElement, surface: SVGSVGElement | undefined, state: n
 	if (!now || now.surface !== surface || now.state !== shown) wrapper.dispatchEvent(new CustomEvent('mmchart', { detail: shown }));
 	if (surface) active.set(wrapper, { surface, state: shown, key: place && 'key' in place ? place.key : (now?.key ?? -1) });
 	if (shown < 0 || !place || !f || !surface) {
+		// recharts drops the hidden tooltip's transform, so it comes in from the corner the next time it shows.
 		tip.style.visibility = 'hidden';
+		tip.style.removeProperty('transform');
+		tip.style.removeProperty('transition');
 		return;
 	}
 	// The tooltip's content is the chart's state, written when this event is done; it is measured then.
@@ -101,7 +104,7 @@ function show(wrapper: HTMLElement, surface: SVGSVGElement | undefined, state: n
 		const at = new DOMPoint(x, y).matrixTransform(m);
 		const box = wrapper.getBoundingClientRect();
 		tip.style.visibility = 'visible';
-		tip.style.transition = 'transform 400ms';
+		if (!matchMedia('(prefers-reduced-motion: reduce)').matches) tip.style.transition = 'transform 400ms';
 		tip.style.transform = `translate(${at.x - box.left}px, ${at.y - box.top}px)`;
 	});
 }
