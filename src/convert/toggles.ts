@@ -42,9 +42,11 @@ export interface ToggleCapture {
 }
 
 // Controls that switch state in place, outside menus and listboxes (those are portaled layers, captured as reveals).
-const SELECTOR = '[role="checkbox"], [role="switch"], [role="radio"], button[aria-pressed]';
+// React Aria's Checkbox, Switch and Radio are a label around a visually hidden input: the label is the control.
+const SELECTOR = '[role="checkbox"], [role="switch"], [role="radio"], button[aria-pressed], label[data-rac]:has(input[type="checkbox"]), label[data-rac]:has(input[type="radio"])';
 
-const key = (route: string) => createHash('sha256').update(`toggles:${route}`).digest('hex').slice(0, 16);
+// The selector is part of the key: controls it did not find before are captured again.
+const key = (route: string) => createHash('sha256').update(`toggles:${route}|${SELECTOR}`).digest('hex').slice(0, 16);
 
 interface Found {
 	readonly id: number;
@@ -74,11 +76,13 @@ async function find(page: Page): Promise<Found[]> {
 		const out = [];
 		for (const el of document.body.querySelectorAll(selector)) {
 			if (el.closest('template, [role="menu"], [role="listbox"], [cmdk-root], [data-mm-layer]')) continue;
+			if (el.matches('input') && el.closest('label[data-rac]')) continue;
 			if (el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true' || el.hasAttribute('data-disabled')) continue;
 			const rect = el.getBoundingClientRect();
 			const style = getComputedStyle(el);
 			const visible = rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.pointerEvents !== 'none';
-			const role = el.getAttribute('role') ?? 'pressed';
+			const input = el.matches('label[data-rac]') ? el.querySelector('input') : null;
+			const role = input ? (input.getAttribute('role') ?? input.type) : (el.getAttribute('role') ?? 'pressed');
 			let group: number | undefined;
 			if (role === 'radio') {
 				const holder = el.closest('[role="radiogroup"]') ?? el.closest('[role="group"]') ?? el.parentElement!;
@@ -97,15 +101,17 @@ async function stateOf(page: Page, id: number): Promise<ToggleState & { on: bool
 		const el = (window as unknown as { __mmToggles: Element[] }).__mmToggles[id]!;
 		// A style attribute as the CSSOM writes it: React's server markup and its later writes spell it differently.
 		const value = (n: Element, a: Attr) => (a.name === 'style' && n instanceof HTMLElement ? n.style.cssText : a.value);
-		const attrs = Object.fromEntries([...el.attributes].map((a) => [a.name, value(el, a)]));
-		const on = el.getAttribute('aria-checked') === 'true' || el.getAttribute('aria-pressed') === 'true';
+		// React Aria's hover, press and focus states follow the pointer and focus, not the control's state (its port writes them).
+		const kept = (n: Element, a: Attr) => !(/^data-(hovered|pressed|focused|focus-visible|focus-visible-within)$/.test(a.name) && (n.hasAttribute('data-rac') || n.hasAttribute('data-react-aria-pressable')));
+		const attrs = Object.fromEntries([...el.attributes].filter((a) => kept(el, a)).map((a) => [a.name, value(el, a)]));
+		const on = el.getAttribute('aria-checked') === 'true' || el.getAttribute('aria-pressed') === 'true' || (el.matches('label[data-rac]') && el.hasAttribute('data-selected'));
 		// Children with their attributes in name order: a library that re-sets an attribute moves it to the end.
 		const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 		const canon = (n: Node): string => {
 			if (n.nodeType === Node.TEXT_NODE) return esc(n.textContent ?? '');
 			if (!(n instanceof Element)) return '';
 			const tag = n.tagName.toLowerCase();
-			const list = [...n.attributes].sort((a, b) => (a.name < b.name ? -1 : 1)).map((a) => ` ${a.name}="${value(n, a).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"`).join('');
+			const list = [...n.attributes].filter((a) => kept(n, a)).sort((a, b) => (a.name < b.name ? -1 : 1)).map((a) => ` ${a.name}="${value(n, a).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"`).join('');
 			return /^(area|base|br|col|embed|hr|img|input|link|meta|source|track|wbr)$/.test(tag) ? `<${tag}${list}>` : `<${tag}${list}>${[...n.childNodes].map(canon).join('')}</${tag}>`;
 		};
 		return { attrs, inner: [...el.childNodes].map(canon).join(''), on };

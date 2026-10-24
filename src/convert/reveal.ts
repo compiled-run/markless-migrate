@@ -330,3 +330,91 @@ export async function captureAllReveals(browser: Browser, origin: string, routes
 	await Promise.all(Array.from({ length: Math.max(1, options.concurrency ?? 4) }, worker));
 	return out;
 }
+
+// React Aria's TooltipTrigger renders no element and marks nothing on its child, a PreviewTrigger's press opens nothing,
+// and a context-menu MenuTrigger's area is a plain pressable: what each shows is found by resting on each React Aria
+// control that opens nothing else, and right-clicking each such area.
+const RAC_HOVER = '[data-rac][data-react-aria-pressable]:not([aria-expanded]):not([aria-haspopup]):not(label):not(input), [data-rac][aria-haspopup="dialog"][aria-expanded="false"][style*="touch-callout"], [role="button"][data-react-aria-pressable][id]:not([data-rac])';
+const RAC_HOVER_MAX = 60;
+
+/** Hovers each React Aria control that may hold a tooltip or preview and records what it showed. Cached by route. */
+export async function captureRacHovers(browser: Browser, origin: string, route: string, dir: string): Promise<readonly Reveal[]> {
+	const file = join(dir, `${createHash('sha256').update(`rac-hover:2:${route}|${RAC_HOVER}`).digest('hex').slice(0, 16)}.json`);
+	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
+	if (cached && cached.route === route) return cached.reveals;
+	const viewport = VIEWPORTS[0]!;
+	let open = await fresh(browser, origin, route, viewport);
+	const reveals: Reveal[] = [];
+	try {
+		const found = await open.page.evaluate(([selector, max]) => {
+			const pathOf = (el: Element): number[] => {
+				const out: number[] = [];
+				for (let node: Element | null = el; node && node !== document.body; node = node.parentElement) out.unshift([...node.parentElement!.children].indexOf(node));
+				return out;
+			};
+			const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+			const counts = new Map<string, number>();
+			const order = new Map<Element, number>();
+			for (const el of document.body.querySelectorAll('*')) {
+				if (el.closest('template')) continue;
+				const sig = sigOf(el);
+				order.set(el, counts.get(sig) ?? 0);
+				counts.set(sig, (counts.get(sig) ?? 0) + 1);
+			}
+			return [...document.body.querySelectorAll(selector as string)]
+				.filter((el) => {
+					const r = el.getBoundingClientRect();
+					return !el.closest('template') && r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+				})
+				.slice(0, max as number)
+				.map((el) => ({ path: pathOf(el), key: el.id || `p:${pathOf(el).join('.')}`, sig: sigOf(el), nth: order.get(el) ?? 0, preview: el.getAttribute('aria-haspopup') === 'dialog', area: !el.hasAttribute('data-rac') }));
+		}, [RAC_HOVER, RAC_HOVER_MAX] as const);
+		// React Aria shows a tooltip on hover only once the pointer has moved on the page (useFocusVisible's modality).
+		const moved = () => open.page.mouse.move(2, 2).then(() => open.page.mouse.move(4, 4)).catch(() => {});
+		await moved();
+		for (const c of found) {
+			await open.page.evaluate(() => {
+				const w = window as unknown as { __mmAdded?: Element[]; __mmObserver?: MutationObserver };
+				w.__mmAdded = [];
+				w.__mmObserver = new MutationObserver((records) => {
+					for (const r of records) for (const n of r.addedNodes) if (n instanceof Element && r.target === document.body) w.__mmAdded!.push(n);
+				});
+				w.__mmObserver.observe(document.body, { childList: true });
+			});
+			const el = (
+				await open.page.evaluateHandle((path) => {
+					let node: Element = document.body;
+					for (const i of path) node = node.children[i]!;
+					return node;
+				}, c.path)
+			).asElement();
+			if (!el) continue;
+			const used = await (c.area ? el.click({ button: 'right', timeout: 2000 }) : el.hover({ timeout: 2000 })).then(() => true, () => false);
+			if (!used) continue;
+			// A PreviewTrigger opens after 600 ms.
+			await quiet(open.page, c.preview ? 900 : 400);
+			const added = await open.page.evaluate(() => {
+				const w = window as unknown as { __mmAdded?: Element[]; __mmObserver?: MutationObserver };
+				w.__mmObserver?.disconnect();
+				const nodes = (w.__mmAdded ?? []).filter((n) => n.isConnected);
+				const shows = '[role="tooltip"], [data-trigger="PreviewTrigger"], [data-trigger="MenuTrigger"]';
+				if (!nodes.some((n) => n.matches(shows) || n.querySelector(shows))) return [];
+				return nodes.map((n) => n.outerHTML);
+			});
+			if (added.length) reveals.push({ key: c.key, path: c.path, sig: c.sig, nth: c.nth, action: c.area ? 'contextmenu' : 'hover', viewport: viewport.name, added: added.map((html) => ({ into: 'body' as const, before: -1, html })) });
+			if (c.area) await open.page.keyboard.press('Escape').catch(() => {});
+			await open.page.mouse.move(1, 1).catch(() => {});
+			if (added.length) await quiet(open.page, 700);
+			if ((await bodyHash(open.page)) !== open.baseline) {
+				await open.context.close().catch(() => {});
+				open = await fresh(browser, origin, route, viewport);
+				await moved();
+			}
+		}
+	} finally {
+		await open.context.close().catch(() => {});
+	}
+	await mkdir(dir, { recursive: true });
+	await writeFile(file, JSON.stringify({ route, reveals }));
+	return reveals;
+}

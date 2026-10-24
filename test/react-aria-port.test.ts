@@ -1,0 +1,172 @@
+// The React Aria ports on markup captured from react-aria-components 1.20 as shadcn/ui renders it: a Select, a Menu, a
+// modal Dialog and a DisclosureGroup, used with the mouse and the keyboard as React Aria answers them.
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { after, before, test } from 'node:test';
+import { chromium, type Browser, type Page } from 'playwright';
+import ts from 'typescript';
+
+const ROOT = join(import.meta.dirname, '..');
+let browser: Browser;
+
+before(async () => {
+	browser = await chromium.launch();
+});
+after(() => browser.close());
+
+const select = `
+<div data-slot="select" data-rac=""><button id="t1" data-slot="select-trigger" data-rac="" type="button" data-react-aria-pressable="true" aria-haspopup="listbox" aria-expanded="false"><span data-slot="select-value" data-rac="" data-placeholder="true">Select a fruit</span></button></div>
+<!--layers--><div style="display: contents;" hidden data-mm-layer="t1"><div data-slot="select-content" data-rac="" data-trigger="Select" style="position:absolute" role="dialog" tabindex="-1" data-placement="bottom">
+<div id="lb" data-slot="select-list" data-rac="" role="listbox" tabindex="0" style="overflow:visible">
+<div data-slot="select-item" data-rac="" role="option" aria-selected="false" tabindex="-1" data-key="apple" id="o1"><span>Apple</span><span></span></div>
+<div data-slot="select-item" data-rac="" role="option" aria-selected="false" tabindex="-1" data-key="banana" id="o2"><span>Banana</span><span></span></div>
+<div data-slot="select-item" data-rac="" role="option" aria-selected="false" tabindex="-1" data-key="blueberry" id="o3"><span>Blueberry</span><span></span></div>
+</div></div></div>`;
+
+const menu = `
+<button id="m1" data-slot="button" data-rac="" type="button" data-react-aria-pressable="true" aria-haspopup="true" aria-expanded="false">Open</button>
+<!--layers--><div style="display: contents;" hidden data-mm-layer="m1"><div data-slot="dropdown-menu-content" data-rac="" data-trigger="MenuTrigger" style="position:absolute" role="dialog" tabindex="-1" data-placement="bottom">
+<div id="menu" data-rac="" role="menu" tabindex="0">
+<div data-rac="" role="menuitem" tabindex="-1" id="i1">Profile</div><div data-rac="" role="menuitem" tabindex="-1" id="i2">Billing</div><div data-rac="" role="menuitem" tabindex="-1" id="i3">Settings</div>
+</div></div></div>`;
+
+const dialog = `
+<button id="d1" data-slot="button" data-rac="" type="button" data-react-aria-pressable="true" aria-expanded="false">Open Dialog</button>
+<!--layers--><div data-slot="dialog-overlay" data-rac="" hidden data-mm-layer="d1"><div data-slot="dialog-content" data-rac=""><div style="clip-path: inset(50%); position:absolute"><button aria-label="Dismiss" tabindex="-1"></button></div>
+<section id="dlg" data-slot="dialog" data-rac="" role="dialog" tabindex="-1"><input id="name" data-rac="" value="Pedro"><button id="close" data-rac="" slot="close" type="button">Cancel</button></section></div></div>`;
+
+const accordion = `
+<div data-slot="accordion" data-rac="">
+<div data-slot="accordion-item" data-rac="" data-expanded="true"><h3><button id="a1" data-rac="" type="button" aria-expanded="true" aria-controls="p1" slot="trigger">One</button></h3><div id="p1" data-rac="" role="group" aria-hidden="false" style="--disclosure-panel-width: auto; --disclosure-panel-height: auto;"><div>First</div></div></div>
+<div data-slot="accordion-item" data-rac=""><h3><button id="a2" data-rac="" type="button" aria-expanded="false" aria-controls="p2" slot="trigger">Two</button></h3><div id="p2" data-rac="" role="group" aria-hidden="true" hidden="until-found" style="--disclosure-panel-width: 0px; --disclosure-panel-height: 0px;"><div>Second</div></div></div>
+</div>`;
+
+const PARTS = ['react-aria/select', 'react-aria/menu', 'react-aria/dialog', 'react-aria/disclosure'];
+
+async function open(html: string): Promise<Page> {
+	const page = await browser.newPage();
+	await page.route('http://app.test/**', async (route) => {
+		const path = new URL(route.request().url()).pathname;
+		if (path.startsWith('/parts/')) {
+			const text = await readFile(join(ROOT, path), 'utf8');
+			return route.fulfill({ contentType: 'text/javascript', body: ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, verbatimModuleSyntax: false } }).outputText });
+		}
+		// The page in its root, the overlays Markless renders after it, and Tailwind's preflight rule for [hidden].
+		const [page, layers = ''] = html.split('<!--layers-->');
+		return route.fulfill({ contentType: 'text/html', body: `<!doctype html><style>[hidden]:where(:not([hidden='until-found'])){display:none!important}</style><body style="margin:0;padding:40px"><div data-slot="layout">${page}</div>${layers}</body>` });
+	});
+	await page.goto('http://app.test/');
+	await page.evaluate(async (parts) => {
+		const loaded = await Promise.all(parts.map((p) => import(`/parts/${p}.ts`)));
+		const seen = new WeakSet<Event>();
+		for (const type of ['click', 'keydown', 'pointerover', 'pointerdown', 'input']) {
+			document.addEventListener(type, (event) => {
+				if (seen.has(event) || !(event.target instanceof Element)) return;
+				seen.add(event);
+				for (const part of loaded) if (part[type]?.(event.target, event)) return;
+			});
+		}
+	}, PARTS);
+	return page;
+}
+
+const active = (page: Page) => page.evaluate(() => document.activeElement?.id ?? document.activeElement?.tagName);
+const attrs = (page: Page, id: string, names: string[]) => page.evaluate(([id, names]) => Object.fromEntries((names as string[]).map((n) => [n, document.getElementById(id as string)!.getAttribute(n)])), [id, names] as const);
+
+test('Select: a press opens the listbox focused, hover focuses an option, releasing on it chooses and closes', async () => {
+	const page = await open(select);
+	await page.evaluate(() => document.getElementById('t1')!.addEventListener('mmchoose', (e) => ((window as { chosen?: string }).chosen = (e as CustomEvent<string>).detail)));
+	await page.click('#t1');
+	await page.waitForTimeout(50);
+	assert.equal(await active(page), 'lb');
+	assert.deepEqual(await attrs(page, 't1', ['aria-expanded', 'data-pressed', 'aria-controls']), { 'aria-expanded': 'true', 'data-pressed': 'true', 'aria-controls': 'lb' });
+	assert.equal(await page.evaluate(() => document.querySelector('[data-slot="layout"]')!.hasAttribute('inert')), true);
+	await page.hover('#o2');
+	assert.equal(await active(page), 'o2');
+	assert.deepEqual(await attrs(page, 'o2', ['tabindex', 'data-focused']), { tabindex: '0', 'data-focused': 'true' });
+	await page.click('#o2');
+	await page.waitForTimeout(50);
+	assert.equal(await page.evaluate(() => (window as { chosen?: string }).chosen), 'Banana');
+	assert.deepEqual(await attrs(page, 'o2', ['aria-selected', 'data-selected']), { 'aria-selected': 'true', 'data-selected': 'true' });
+	assert.equal(await active(page), 't1');
+	assert.deepEqual(await attrs(page, 't1', ['aria-expanded', 'data-pressed']), { 'aria-expanded': 'false', 'data-pressed': null });
+	assert.equal(await page.evaluate(() => document.querySelector('[data-slot="select-value"]')!.hasAttribute('data-placeholder')), false);
+	await page.close();
+});
+
+test('Select: the keyboard opens on the selected option, moves without wrapping, pages to the end and types ahead', async () => {
+	const page = await open(select);
+	await page.focus('#t1');
+	await page.keyboard.press('ArrowDown');
+	assert.equal(await active(page), 'o1');
+	assert.equal(await page.getAttribute('#o1', 'data-focus-visible'), 'true');
+	await page.keyboard.press('ArrowUp');
+	assert.equal(await active(page), 'o1');
+	await page.keyboard.press('PageDown');
+	assert.equal(await active(page), 'o3');
+	await page.keyboard.press('b');
+	assert.equal(await active(page), 'o3', 'typeahead starts from the focused option');
+	await page.keyboard.press('a');
+	assert.equal(await active(page), 'o2');
+	await page.waitForTimeout(1100);
+	await page.keyboard.press('Enter');
+	assert.equal(await page.getAttribute('#o2', 'aria-selected'), 'true');
+	await page.keyboard.press('Enter');
+	assert.equal(await active(page), 'o2', 'reopening focuses the selected option');
+	await page.keyboard.press('Escape');
+	await page.waitForTimeout(50);
+	assert.equal(await active(page), 't1');
+	assert.equal(await page.getAttribute('#t1', 'aria-expanded'), 'false');
+	await page.close();
+});
+
+test('Menu: Enter opens on the first item, the arrows wrap, Escape closes and focus returns', async () => {
+	const page = await open(menu);
+	await page.focus('#m1');
+	await page.keyboard.press('Enter');
+	assert.equal(await active(page), 'i1');
+	await page.keyboard.press('ArrowUp');
+	assert.equal(await active(page), 'i3');
+	await page.keyboard.press('ArrowDown');
+	assert.equal(await active(page), 'i1');
+	await page.keyboard.press('Escape');
+	await page.waitForTimeout(50);
+	assert.equal(await active(page), 'm1');
+	assert.equal(await page.isHidden('[data-mm-layer="m1"]'), true);
+	await page.click('#m1');
+	assert.equal(await active(page), 'menu', 'a press focuses the menu itself');
+	await page.click('#i2');
+	await page.waitForTimeout(50);
+	assert.equal(await page.getAttribute('#m1', 'aria-expanded'), 'false');
+	await page.close();
+});
+
+test('Dialog: a press opens it focused, Tab stays inside, its close button closes it', async () => {
+	const page = await open(dialog);
+	await page.click('#d1');
+	assert.equal(await active(page), 'dlg');
+	await page.keyboard.press('Tab');
+	assert.equal(await active(page), 'name');
+	await page.keyboard.press('Tab');
+	assert.equal(await active(page), 'close');
+	await page.keyboard.press('Tab');
+	assert.equal(await active(page), 'name');
+	await page.click('#close');
+	await page.waitForTimeout(50);
+	assert.equal(await active(page), 'd1');
+	assert.equal(await page.getAttribute('#d1', 'aria-expanded'), 'false');
+	await page.close();
+});
+
+test('Disclosure: expanding one collapses the other in its group', async () => {
+	const page = await open(accordion);
+	await page.click('#a2');
+	await page.waitForTimeout(50);
+	assert.deepEqual(await attrs(page, 'p2', ['hidden', 'aria-hidden']), { hidden: null, 'aria-hidden': 'false' });
+	assert.deepEqual(await attrs(page, 'p1', ['hidden', 'aria-hidden']), { hidden: 'until-found', 'aria-hidden': 'true' });
+	assert.equal(await page.getAttribute('#a1', 'aria-expanded'), 'false');
+	assert.equal(await page.evaluate(() => document.getElementById('a2')!.closest('[data-slot="accordion-item"]')!.getAttribute('data-expanded')), 'true');
+	assert.equal(await page.evaluate(() => document.getElementById('p2')!.style.getPropertyValue('--disclosure-panel-height')), 'auto');
+	await page.close();
+});

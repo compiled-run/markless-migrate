@@ -29,6 +29,12 @@ export interface PartResolver {
 	 * the default of the component parameter passed through (`sideOffset = 4`), the most common one across sites.
 	 */
 	prop(library: string, exportName: string, prop: string): string | undefined;
+	/**
+	 * The same, only where the source renders the export with this literal `data-slot`: a library part several wrappers
+	 * render with their own defaults (React Aria's Popover with `offset = 4` as a select's content, `offset = 6` as a
+	 * combobox's).
+	 */
+	slotProp?(library: string, exportName: string, slot: string, prop: string): string | undefined;
 }
 
 interface LibrariesFile {
@@ -123,7 +129,45 @@ export async function usageResolver(usagePath: string, source?: string): Promise
 			defaults.set(key, best);
 			return best;
 		},
+		slotProp(library, exportName, slot, prop) {
+			if (!source) return undefined;
+			const votes = new Map<string, number>();
+			for (const site of sitesOf.get(`${library} ${exportName}`) ?? []) {
+				if (!modules.has(site.file)) {
+					let text: string | undefined;
+					try {
+						text = readFileSync(join(source, site.file), 'utf8');
+					} catch {}
+					modules.set(site.file, text === undefined ? undefined : parseModule(site.file, text));
+				}
+				const mod = modules.get(site.file);
+				const value = mod ? slotSiteProp(mod, site.line, slot, prop) : undefined;
+				if (value !== undefined) votes.set(value, (votes.get(value) ?? 0) + 1);
+			}
+			return [...votes].sort((a, b) => b[1] - a[1])[0]?.[0];
+		},
 	};
+}
+
+/** A prop of the JSX element opened on `line` with this literal data-slot: its literal, or the default of the parameter it passes. */
+function slotSiteProp(mod: Module, line: number, slot: string, prop: string): string | undefined {
+	let found: string | undefined;
+	walk(mod.program, (node: N) => {
+		if (found !== undefined || node.type !== 'JSXOpeningElement' || mod.line(node.start) !== line) return;
+		const attrs = (node.attributes ?? []) as N[];
+		const named = (name: string) => attrs.find((a) => a.type === 'JSXAttribute' && a.name?.name === name);
+		if (named('data-slot')?.value?.value !== slot) return;
+		const value = named(prop)?.value;
+		if (!value) return;
+		if (value.type === 'Literal') found = String(value.value);
+		else if (value.type === 'JSXExpressionContainer') {
+			const e = value.expression;
+			if (e.type === 'Literal') found = String(e.value);
+			else if (e.type === 'UnaryExpression' && e.operator === '-' && e.argument.type === 'Literal') found = `-${e.argument.value}`;
+			else if (e.type === 'Identifier') found = paramDefault(mod, line, e.name);
+		}
+	});
+	return found;
 }
 
 /**

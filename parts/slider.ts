@@ -2,11 +2,14 @@
 // it; on a focused thumb the arrows step, Page Up and Page Down (and Shift with an arrow) step ten times, Home and End
 // go to the ends. Each library's own markup is updated as it renders it: Radix's thumb wrapper `left: calc(P% + offset)`
 // (getThumbInBoundsOffset) and range `left`/`right`; Base UI's `--position` on the thumb, `--start-position` on the
-// indicator (thumbs aligned to the control's edges) and the range input's value.
+// indicator (thumbs aligned to the control's edges) and the range input's value; React Aria's thumb `left: P%`, the range
+// shadcn renders from its values (`inset-inline-start`, `width`), and each thumb's range input value and aria-valuetext.
 
 interface Slider {
 	readonly root: HTMLElement;
 	readonly base: boolean;
+	readonly rac: boolean;
+	readonly vertical: boolean;
 	readonly thumbs: HTMLElement[];
 	readonly min: number;
 	readonly max: number;
@@ -18,8 +21,10 @@ const ROOT = '[data-slot="slider"]';
 
 function sliderOf(el: Element): Slider | undefined {
 	const root = el.closest<HTMLElement>(ROOT);
-	if (!root || root.getAttribute('data-orientation') === 'vertical' || root.hasAttribute('data-disabled') || root.getAttribute('aria-disabled') === 'true') return undefined;
-	const base = root.querySelector('[data-base-ui-slider-control]') !== null;
+	const rac = root?.hasAttribute('data-rac') === true;
+	const vertical = root?.getAttribute('data-orientation') === 'vertical';
+	if (!root || (vertical && !rac) || root.hasAttribute('data-disabled') || root.getAttribute('aria-disabled') === 'true') return undefined;
+	const base = rac || root.querySelector('[data-base-ui-slider-control]') !== null;
 	const thumbs = base ? [...root.querySelectorAll<HTMLElement>('[data-slot="slider-thumb"]')] : [...root.querySelectorAll<HTMLElement>('[role="slider"]')];
 	if (!thumbs.length) return undefined;
 	const first = base ? thumbs[0]!.querySelector('input')! : thumbs[0]!;
@@ -27,10 +32,10 @@ function sliderOf(el: Element): Slider | undefined {
 	const max = Number((base ? first.getAttribute('max') : first.getAttribute('aria-valuemax')) ?? 100);
 	const step = Number((base ? first.getAttribute('step') : root.dataset.mmStep) ?? 1) || 1;
 	const rtl = (root.getAttribute('dir') ?? getComputedStyle(root).direction) === 'rtl';
-	return { root, base, thumbs, min, max, step, rtl };
+	return { root, base, rac, vertical, thumbs, min, max, step, rtl };
 }
 
-const input = (s: Slider, i: number) => (s.base ? s.thumbs[i]!.querySelector('input')! : s.thumbs[i]!);
+const input = (s: Slider, i: number) => (s.base ? s.thumbs[i]!.querySelector('input')! : s.thumbs[i]!) as HTMLInputElement;
 const valueAt = (s: Slider, i: number) => Number(s.base ? input(s, i).value : s.thumbs[i]!.getAttribute('aria-valuenow'));
 const percent = (s: Slider, v: number) => ((v - s.min) / (s.max - s.min)) * 100;
 const decimals = (n: number) => (String(n).split('.')[1] ?? '').length;
@@ -46,6 +51,24 @@ function set(s: Slider, i: number, v: number): void {
 
 function render(s: Slider, values: number[]): void {
 	const fmt = (n: number) => `${Number(n.toFixed(4))}`;
+	if (s.rac) {
+		const ps = values.map((v) => percent(s, v));
+		values.forEach((v, k) => {
+			const el = input(s, k);
+			el.value = String(v);
+			el.setAttribute('aria-valuetext', String(v));
+			// useSliderThumb: `top` from the top for a vertical slider, `left` (mirrored in RTL) otherwise.
+			if (s.vertical) s.thumbs[k]!.style.setProperty('top', `${fmt(100 - ps[k]!)}%`);
+			else s.thumbs[k]!.style.setProperty('left', `${fmt(s.rtl ? 100 - ps[k]! : ps[k]!)}%`);
+		});
+		const range = s.root.querySelector<HTMLElement>('[data-slot="slider-range"]');
+		if (range) {
+			const start = ps.length > 1 ? Math.min(...ps) : 0;
+			range.style.setProperty(s.vertical ? 'bottom' : 'inset-inline-start', `${fmt(start)}%`);
+			range.style.setProperty(s.vertical ? 'height' : 'width', `${fmt(Math.max(...ps) - start)}%`);
+		}
+		return;
+	}
 	if (s.base) {
 		const control = s.root.querySelector<HTMLElement>('[data-base-ui-slider-control]')!;
 		const width = control.getBoundingClientRect().width || 1;
@@ -89,8 +112,9 @@ function render(s: Slider, values: number[]): void {
 	}
 }
 
-function fromPointer(s: Slider, x: number): number {
-	const track = (s.root.querySelector<HTMLElement>('[data-base-ui-slider-control]') ?? s.root).getBoundingClientRect();
+function fromPointer(s: Slider, x: number, y = 0): number {
+	const track = (s.root.querySelector<HTMLElement>('[data-base-ui-slider-control]') ?? (s.rac ? s.root.querySelector<HTMLElement>('[data-slot="slider-track"]') : null) ?? s.root).getBoundingClientRect();
+	if (s.vertical) return s.min + Math.min(1, Math.max(0, (track.bottom - y) / (track.height || 1))) * (s.max - s.min);
 	let frac = (x - track.left) / (track.width || 1);
 	if (s.rtl) frac = 1 - frac;
 	return s.min + Math.min(1, Math.max(0, frac)) * (s.max - s.min);
@@ -100,7 +124,7 @@ export function pointerdown(target: Element, event: PointerEvent): boolean {
 	if (event.button !== 0) return false;
 	const s = sliderOf(target);
 	if (!s) return false;
-	const v = fromPointer(s, event.clientX);
+	const v = fromPointer(s, event.clientX, event.clientY);
 	const values = s.thumbs.map((_, k) => valueAt(s, k));
 	let i = 0;
 	for (let k = 1; k < values.length; k++) if (Math.abs(values[k]! - v) < Math.abs(values[i]! - v)) i = k;
@@ -108,7 +132,7 @@ export function pointerdown(target: Element, event: PointerEvent): boolean {
 	event.preventDefault();
 	input(s, i).focus({ preventScroll: true });
 	s.root.setPointerCapture?.(event.pointerId);
-	const move = (e: PointerEvent) => set(s, i, fromPointer(s, e.clientX));
+	const move = (e: PointerEvent) => set(s, i, fromPointer(s, e.clientX, e.clientY));
 	const up = () => {
 		s.root.removeEventListener('pointermove', move);
 		s.root.removeEventListener('pointerup', up);
