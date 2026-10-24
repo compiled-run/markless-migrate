@@ -65,6 +65,38 @@ and dark", "dialog: close by Escape, the backdrop and the close button, during a
   old page's own script sized it 101 px is red). An intended addition (a licence badge) goes in
   \`.migrate/guard-allow.json\` with its reason, never silently.
 
+## htmx, class-tools and _hyperscript
+
+These put behaviour in attributes; \`usage.json\` lists each use with its trigger, target and swap. Port each one as
+Markless state and a handler that does what the attribute did, with the same requests and the same visible steps:
+
+- A request (\`hx-get\`, \`hx-post\`, \`hx-put\`, \`hx-patch\`, \`hx-delete\`) sends the same method, URL and parameters
+  (and the \`HX-*\` headers when the server reads them), then swaps the answer as \`hx-swap\` says: \`innerHTML\` and
+  \`outerHTML\` replace the target's content or the target, \`beforeend\` and \`afterend\` add after it, \`delete\` removes
+  it, \`none\` keeps it; \`hx-select\` takes part of the answer. Render the answer from state (the rows, the selected
+  tab), not as HTML pasted into the page.
+- While a request is out htmx puts \`htmx-request\` on the element (or on \`hx-indicator\`'s target), which shows
+  indicators; \`hx-disabled-elt\` disables. \`htmx-swapping\` (for \`swap:1s\`), \`htmx-settling\` and \`htmx-added\` drive
+  the old CSS fades: set and clear them at the same moments so the same transitions run.
+- Triggers: \`click\` (buttons, links), \`change\` (inputs, selects), \`submit\` (forms), \`keyup changed delay:500ms\` (after
+  the value changes, debounced), \`load\`, \`revealed\` and \`intersect\` (the element comes into view: \`onVisible\`),
+  \`every 2s\` (an interval), \`from:<selector>\`, \`once\`, \`throttle\`. \`hx-confirm\` asks with \`confirm()\` first;
+  \`hx-prompt\` asks with \`prompt()\` and sends the answer.
+- Tabs that each \`hx-get\` their panel into one target are one state (the selected tab) and one request per click,
+  moving \`aria-selected\` and the selected class as the answer does.
+- htmx.org's demo pages answer from a fake server in the page (sinon, with \`demo.js\`'s \`onGet\`/\`onPost\` routes)
+  and list every request under "Server Requests": implement those routes as a plain module the page calls, with
+  the same delays, and add the same entries to the log.
+- Random demo data (ids from \`Math.random\`) is drawn when the page starts, as the old page draws it: no empty
+  cells at load.
+- class-tools \`classes="add a:1s, remove b:2s, toggle c:3s"\` is a timeline of class changes on that element.
+- _hyperscript (\`_="on click ... then ..."\`, \`<script type="text/hyperscript">\`) is a handler that runs the same
+  commands in order (\`put\`, \`add\`, \`remove\`, \`toggle\`, \`wait\`, \`call\`, \`send\`). A command that fails, such as
+  a clipboard write the browser refuses, does not stop the next one from showing: never make a visible step wait
+  on it.
+- Markless 0.9: an \`@if\` inside an \`@for\` row loses its event handlers after resume. Until that is fixed, put
+  one handler on the rows' container and act on \`event.target.closest(...)\`.
+
 ## The loop
 
 1. Run the old app and note its origin (for example \`http://localhost:3000\`).
@@ -92,6 +124,10 @@ and dark", "dialog: close by Escape, the backdrop and the close button, during a
 ## Rules
 
 - Never edit the old app to make a check pass; the old app is the reference.
+- A check can pass a control that does nothing. Before you finish a route, use every interactive part of it
+  yourself in a browser, on both apps: click each button, tab and link of a demo, type into each field, scroll a
+  list that loads more, and compare what appears, the request log and the focus. A control that does nothing on
+  the new app is broken even when the check is green; fix it, or list it in the final report.
 - Caching is the tool's: \`cache apply\` writes each route's caching from \`.migrate/caching.json\` into the app
   before every build. Do not write \`isr\`, \`swr\`, \`prerender\` or \`cache-control\` rules yourself. A page
   whose server code reads cookies, request headers or \`storage()\` is never cached on the CDN, so read
@@ -223,6 +259,11 @@ back, every usage site) and what to do with it:
   nothing more. Never render React, Vue, Svelte or any other UI framework inside the Markless app, and never
   load a framework-bound library in the browser to "bridge" it. The route's check proves the port at every
   place it is used.
+- A ported callback fires when the library fires it. Read how the library calls each callback prop the app
+  passes: synchronously in the event, or queued (AG Grid runs every grid-option event such as \`onRowClicked\`
+  in one \`setTimeout(0)\` batch, so the row highlights first and the app's state change paints in a later
+  frame). Dispatch it the same way inside the port. Never add a wait in the app's own handler to recreate
+  the order; a library's timing belongs in its port.
 
 ## Embeds
 

@@ -112,7 +112,23 @@ function video(root: HTMLElement, start: number): void {
 	mask.addEventListener('click', toggle);
 	play.addEventListener('click', toggle);
 	fullscreen?.addEventListener('click', () => (document.fullscreenElement === root ? void document.exitFullscreen() : void root.requestFullscreen()));
-	document.addEventListener('fullscreenchange', () => fullscreen?.setAttribute('aria-label', document.fullscreenElement === root ? 'Exit fullscreen' : 'Enter fullscreen'));
+	// VideoIframe.vue: in fullscreen the player shows the site header (scoped as its child) and the exit icon.
+	const icon = fullscreen?.querySelector('svg');
+	const enterIcon = icon?.innerHTML ?? '';
+	const exitIcon =
+		'<g><path d="M8 3v3a2 2 0 0 1-2 2H3"></path><path d="M21 8h-3a2 2 0 0 1-2-2V3"></path><path d="M3 16h3a2 2 0 0 1 2 2v3"></path><path d="M16 21v-3a2 2 0 0 1 2-2h3"></path></g>';
+	document.addEventListener('fullscreenchange', () => {
+		const on = document.fullscreenElement === root;
+		fullscreen?.setAttribute('aria-label', on ? 'Exit fullscreen' : 'Enter fullscreen');
+		if (icon) icon.innerHTML = on ? exitIcon : enterIcon;
+		root.querySelector(':scope > .video-iframe-header')?.remove();
+		const header = document.querySelector('[data-v-5773249e].relative.w-full.z-50:has(> template[data-mobile-menu])');
+		if (!on || !header) return;
+		const copy = header.cloneNode(true) as HTMLElement;
+		copy.classList.add('video-iframe-header');
+		copy.setAttribute('data-v-dac1a97d', '');
+		root.prepend(copy);
+	});
 	render();
 }
 
