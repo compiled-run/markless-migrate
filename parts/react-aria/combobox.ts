@@ -10,7 +10,8 @@ import { closeOverlay, openOverlay, overlayFor, overlayOf, type Overlay } from '
 const INPUT = 'input[data-rac][role="combobox"]';
 const BUTTON = 'button[data-rac][aria-haspopup="listbox"]';
 
-const groupOf = (el: Element) => el.closest('[role="group"]');
+// The nearest element holding both the button and the input (the button may sit in a role="group" addon of its own).
+const groupOf = (el: Element) => el.closest('[data-rac]:has(input[role="combobox"])');
 const inputOf = (el: Element) => (el.matches(INPUT) ? (el as HTMLInputElement) : (groupOf(el)?.querySelector<HTMLInputElement>(INPUT) ?? null));
 const buttonOf = (input: Element) => groupOf(input)?.querySelector<HTMLElement>(BUTTON) ?? null;
 const isComboButton = (el: Element) => el.matches(BUTTON) && !!groupOf(el)?.querySelector(INPUT);

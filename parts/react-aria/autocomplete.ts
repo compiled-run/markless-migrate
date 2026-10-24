@@ -53,7 +53,8 @@ export function input(target: Element): boolean {
 		if (query === '') wrapper.setAttribute('data-empty', 'true');
 		else wrapper.removeAttribute('data-empty');
 	}
-	focusItem(field, collection, undefined);
+	// useAutocomplete focuses the first item that matches what was typed (disableAutoFocusFirst is not set).
+	focusItem(field, collection, query ? shown(collection)[0] : undefined);
 	return true;
 }
 

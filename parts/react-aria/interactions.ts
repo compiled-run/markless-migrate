@@ -19,14 +19,21 @@ const MODIFIER = /^(Meta|Control|Shift|Alt|CapsLock)$/;
 if (typeof document !== 'undefined') {
 	document.addEventListener('keydown', (e) => {
 		interacted = true;
-		if (!e.metaKey && !(e.altKey && !e.ctrlKey) && !e.ctrlKey && !MODIFIER.test(e.key)) modality = 'keyboard';
+		if (e.metaKey || (e.altKey && !e.ctrlKey) || e.ctrlKey || MODIFIER.test(e.key)) return;
+		const was = modality;
+		modality = 'keyboard';
+		// useFocusRing follows the modality: what has focus shows its ring once the keyboard is used.
+		const active = document.activeElement;
+		if (was === 'pointer' && active instanceof Element && active !== document.body) refocus(active);
 	}, true);
 	const press = () => {
 		interacted = true;
 		modality = 'pointer';
 	};
 	for (const type of ['pointerdown', 'pointerup', 'mousedown', 'mouseup']) document.addEventListener(type, press, true);
+	// A hover comes from moving the pointer: the pointermove that follows pointerover would say so a moment later.
 	for (const type of ['pointermove', 'mousemove']) document.addEventListener(type, () => (modality = 'pointer'), true);
+	document.addEventListener('pointerover', (e) => e.pointerType !== 'touch' && (modality = 'pointer'), true);
 	document.addEventListener('focus', (e) => {
 		if (e.target !== window && e.target !== document && !interacted) modality = 'virtual';
 		interacted = false;
@@ -59,7 +66,7 @@ const WITHIN: readonly (readonly [selector: string, focused: string | null, visi
 	['[data-rac]:has(> [role="tablist"])', 'data-focused', 'data-focus-visible'],
 	['[data-rac]:has(> button[aria-haspopup="listbox"]):not([role="group"])', 'data-focused', 'data-focus-visible'],
 	['[data-rac]:not(input):not([role="group"]):has(input[role="combobox"])', 'data-focused', null],
-	['[data-rac][role="group"]:not(section):not([aria-labelledby])', 'data-focus-within', 'data-focus-visible'],
+	['[data-rac][role="group"]:not(section):not([aria-labelledby]):not(:has(input[type="range"], input[type="checkbox"]))', 'data-focus-within', 'data-focus-visible'],
 	['[data-rac]:has(> * > button[slot="trigger"]), [data-rac]:has(> button[slot="trigger"])', null, 'data-focus-visible-within'],
 ];
 function within(target: Element, related: EventTarget | null, on: boolean): void {
@@ -72,6 +79,12 @@ function within(target: Element, related: EventTarget | null, on: boolean): void
 			if (on && keyboardModality()) el.setAttribute(visible, 'true');
 			else el.removeAttribute(visible);
 		}
+}
+
+function refocus(target: Element): void {
+	const el = stateful(target);
+	if (el) markFocused(el, true);
+	within(target, null, true);
 }
 
 function focusin(target: Element): boolean {
