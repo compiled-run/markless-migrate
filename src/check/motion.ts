@@ -180,10 +180,12 @@ export function armMotion(pause: boolean): void {
 		const t = a.effect?.getComputedTiming().endTime;
 		return typeof t === 'number' && Number.isFinite(t) ? t : undefined;
 	};
+	const seenAt = new Map<Animation, number>();
 	const add = (a: Animation) => {
 		if (known.has(a)) return;
 		known.add(a);
 		found.push(a);
+		seenAt.set(a, performance.now());
 		if (typeof CSSTransition !== 'undefined' && a instanceof CSSTransition) {
 			const effect = a.effect as KeyframeEffect | null;
 			const target = effect?.target;
@@ -243,7 +245,8 @@ export function armMotion(pause: boolean): void {
 		records() {
 			const out: PageRecord[] = [];
 			// Transitions of one property on one element are one motion: a colour inherited from an ancestor's transition starts the child's again each time it ends or is retargeted, as many times as frames happened to allow.
-			const chained = new Map<Element, Map<string, number>>();
+			// Only a transition that starts again before the one before it would have ended: a fade out a timer starts later is motion of its own.
+			const chained = new Map<Element, Map<string, { at: number; until: number }>>();
 			for (const a of found) {
 				const effect = a.effect as KeyframeEffect | null;
 				if (!effect) continue;
@@ -264,14 +267,17 @@ export function armMotion(pause: boolean): void {
 				const shortened = rule !== undefined && rule.duration > duration + 1;
 				if (transition && effect.target) {
 					const k = `${effect.pseudoElement ?? ''}|${(a as CSSTransition).transitionProperty}`;
-					const byKey = chained.get(effect.target) ?? new Map<string, number>();
+					const byKey = chained.get(effect.target) ?? new Map<string, { at: number; until: number }>();
 					chained.set(effect.target, byKey);
-					const at = byKey.get(k);
-					if (at !== undefined) {
-						if (last !== undefined && last !== null) out[at] = { ...out[at]!, to: String(last) };
+					const started = seenAt.get(a) ?? 0;
+					const until = started + Number(effect.getTiming().delay ?? 0) + duration;
+					const prev = byKey.get(k);
+					if (prev !== undefined && started <= prev.until + 50) {
+						if (last !== undefined && last !== null) out[prev.at] = { ...out[prev.at]!, to: String(last) };
+						prev.until = Math.max(prev.until, until);
 						continue;
 					}
-					byKey.set(k, out.length);
+					byKey.set(k, { at: out.length, until });
 				}
 				out.push({
 					kind: transition ? 'transition' : css ? 'animation' : 'web animation',
