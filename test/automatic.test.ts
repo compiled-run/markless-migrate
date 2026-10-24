@@ -46,6 +46,8 @@ test("a script carrying a UI framework's runtime is recognised; app code is not"
 	assert.equal(frameworkRuntime('self.__next_f=self.__next_f||[];Symbol.for("react.element")'), 'Next.js');
 	assert.equal(frameworkRuntime('const app=createApp();window.__VUE_PROD_DEVTOOLS__=false'), 'Vue');
 	assert.equal(frameworkRuntime('document.addEventListener("htmx:configRequest",a);on("htmx:afterSwap",b)'), 'htmx');
+	assert.equal(frameworkRuntime('(globalThis.rspackChunkwebsite||=[]).push([[98889],{42192(o){}}]);'), 'webpack');
+	assert.equal(frameworkRuntime('(self.webpackChunkapp=self.webpackChunkapp||[]).push([[1],{}]);'), 'webpack');
 	assert.equal(frameworkRuntime('document.querySelector("#menu").addEventListener("click", open)'), undefined);
 	assert.equal(frameworkRuntime('// mentions htmx:configRequest only'), undefined, 'htmx needs both of its events');
 });

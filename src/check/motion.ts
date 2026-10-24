@@ -144,7 +144,7 @@ interface PageSample {
 type MotionWindow = Window & { __mmMotionRecorder?: { records(): PageRecord[]; hits(selectors: string[]): number[]; span(): number; ends(): { end: number; what: string; id?: number }[]; sample(): PageSample[]; clip(): Box | null; seek(t: number): void; release(): void; busy(): boolean; stop(): void } };
 
 // Runs in the page: records every transition and animation that starts from now on, and holds finite ones at their start when `pause` is set so frames can be taken at fixed offsets.
-function armMotion(pause: boolean): void {
+export function armMotion(pause: boolean): void {
 	// A property a script writes on six frames or more is animated by it; fewer is set-up (a height set before a transition, then cleared). The caret blink a screenshot hides is not motion.
 	const SCRIPT_FRAMES = 6;
 	const w = window as unknown as MotionWindow;
@@ -180,10 +180,12 @@ function armMotion(pause: boolean): void {
 		const t = a.effect?.getComputedTiming().endTime;
 		return typeof t === 'number' && Number.isFinite(t) ? t : undefined;
 	};
+	const seenAt = new Map<Animation, number>();
 	const add = (a: Animation) => {
 		if (known.has(a)) return;
 		known.add(a);
 		found.push(a);
+		seenAt.set(a, performance.now());
 		if (typeof CSSTransition !== 'undefined' && a instanceof CSSTransition) {
 			const effect = a.effect as KeyframeEffect | null;
 			const target = effect?.target;
@@ -242,6 +244,9 @@ function armMotion(pause: boolean): void {
 	w.__mmMotionRecorder = {
 		records() {
 			const out: PageRecord[] = [];
+			// Transitions of one property on one element are one motion: a colour inherited from an ancestor's transition starts the child's again each time it ends or is retargeted, as many times as frames happened to allow.
+			// Only a transition that starts again before the one before it would have ended: a fade out a timer starts later is motion of its own.
+			const chained = new Map<Element, Map<string, { at: number; until: number }>>();
 			for (const a of found) {
 				const effect = a.effect as KeyframeEffect | null;
 				if (!effect) continue;
@@ -260,6 +265,20 @@ function armMotion(pause: boolean): void {
 				const easing = effect.getTiming().easing ?? 'linear';
 				const rule = rules.get(a);
 				const shortened = rule !== undefined && rule.duration > duration + 1;
+				if (transition && effect.target) {
+					const k = `${effect.pseudoElement ?? ''}|${(a as CSSTransition).transitionProperty}`;
+					const byKey = chained.get(effect.target) ?? new Map<string, { at: number; until: number }>();
+					chained.set(effect.target, byKey);
+					const started = seenAt.get(a) ?? 0;
+					const until = started + Number(effect.getTiming().delay ?? 0) + duration;
+					const prev = byKey.get(k);
+					if (prev !== undefined && started <= prev.until + 50) {
+						if (last !== undefined && last !== null) out[prev.at] = { ...out[prev.at]!, to: String(last) };
+						prev.until = Math.max(prev.until, until);
+						continue;
+					}
+					byKey.set(k, { at: out.length, until });
+				}
 				out.push({
 					kind: transition ? 'transition' : css ? 'animation' : 'web animation',
 					name: transition ? (a as CSSTransition).transitionProperty : css ? (a as CSSAnimation).animationName : a.id,

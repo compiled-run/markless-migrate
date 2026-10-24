@@ -14,6 +14,8 @@ const RUNTIMES: readonly [string, readonly RegExp[]][] = [
 	['Preact', [/__PREACT_DEVTOOLS__/]],
 	['htmx', [/htmx:configRequest/, /htmx:afterSwap/]],
 	['Alpine.js', [/\bAlpine\b/, /x-data/, /x-init/]],
+	// A lazy chunk of a webpack or Rspack build: the old bundler's module loader, whatever framework the build is for.
+	['webpack', [/\b(?:self|globalThis|window)\.(?:webpack|rspack)Chunk[\w$]*/]],
 ];
 
 export function frameworkRuntime(code: string): string | undefined {

@@ -1,4 +1,4 @@
-# Migration log: docusaurus.io (home and two docs pages) to Markless
+# Migration log: docusaurus.io to Markless
 
 The docusaurus.io website (`facebook/docusaurus`, `website/`), its home page, `/docs` (Introduction) and
 `/docs/installation`, ported to Markless 0.4.0 (the published packages) by Claude Code and checked against the
@@ -209,6 +209,190 @@ sets the flag after load. Nothing in the port read them: no rule in the copied s
 selects on the flag or on `data-rh`. Upstream, no theme stylesheet reads the flag either; Docusaurus's own blog uses
 it to tell a visual-regression tool the page has finished starting up. The checker now fails a port that serves one of these markers.
 
+## Every route (2026-10-18)
+
+The port now serves every route the old site serves, not three: all 288 sitemap routes, plus the routes the sitemap
+leaves out (the dogfooding test docs, blog and pages under `/tests`, the debug panel under `/__docusaurus/debug`), the
+not-found page, the feeds, `sitemap.xml`, `robots.txt`, the client redirects and the static files. The old site is built
+with one locale (English) and only the current docs version, so there are no other locales or versions to port.
+
+| | Old site | New app |
+| --- | --- | --- |
+| Sitemap routes | 288 | 288, each with the old `<title>` and first `<h1>` |
+| Page routes in all (Docusaurus's own route list) | 484 | 484 |
+| Routes `plan` lists (sitemap, crawl, feeds, hreflang, source, endpoints) | 575 | coverage: 491 of 491 the old site answers present |
+
+### How the pages are made
+
+Nothing is written by hand. `tooling/import.mjs` loads the old site as `docusaurus build --locale en` does
+(`loadContext` and `loadPlugins` from `@docusaurus/core`, with the build's `BUILD_FAST`, `NODE_ENV` and
+`DOCUSAURUS_CURRENT_LOCALE`), so it gets the same route list, sidebars, blog posts, front matter and plugin data the
+build gets. Each route is then rendered by the template for its theme component:
+
+| Template (theme component) | Routes | Made from |
+| --- | --- | --- |
+| `@theme/DocItem`, `DocCategoryGeneratedIndexPage`, `DocTagsListPage`, `DocTagDocListPage` (`tooling/templates/docs.jsx`) | docs, generated category pages (`/docs/category/*` built from the sidebars' `link: {type: 'generated-index'}`), doc tags | the docs plugin's MDX (compiled by the plugin's own loaders) and sidebars |
+| `@theme/BlogPostPage`, `BlogListPage`, `BlogTagsListPage`, `BlogTagsPostsPage`, `BlogArchivePage`, `Blog/Pages/BlogAuthors*` and the changelog's (`tooling/templates/blog.jsx`) | posts, pagination, tags, authors, archive, changelog | blog posts and their front matter |
+| `@theme/MDXPage`, `@theme/SearchPage`, `@theme/NotFound`, the site's own `src/pages/*.tsx` (`tooling/templates/pages.jsx`) | MDX pages, `/search`, the 404 page, home, showcase, versions, community pages | the pages plugin's files; the site's own React pages run unmodified against the ported theme |
+| the debug plugin's own theme components | `/__docusaurus/debug*` | the plugin's compiled theme, run unmodified against the ported theme, with the config, global data and metadata as the client gets them |
+
+The theme (theme-classic, theme-common, search, live code blocks, mermaid, ideal image) is ported in `tooling/theme/`
+and renders static markup. The site's own components run from its sources unless a port exists in `tooling/ports/`
+(where they need browser behaviour). Plugins' `postBuild` hooks write the sitemap, feeds and client redirects from the
+rendered pages, as the build does. Assets get the old build's names (xxhash64 of the content).
+
+What the old pages do in the browser is in `lib/`: `site.ts` (colour mode, tabs, sidebar and drawer, collapsibles,
+TOC highlight, progress bar, zoom, ideal images, version preferences), `search.ts` and `search-page.ts` (DocSearch and
+`/search`), `playground.ts` (the live code editor and preview, with no React: its runtime loads only on pages that have
+a playground), `showcase.ts`, `color-generator.ts`, `image-zoom.ts` and `json-view.ts`.
+
+### Bugs fixed
+
+- `<details>` ("Alternative installation commands" on `/docs/installation`): the theme cancels the browser's toggle and
+  animates; `open` comes off only after the close animation. The content now shows.
+- Console errors from journeys into unported pages, and links into unported pages: every page exists now; the crawl
+  of every same-site link on the new app finds no address that fails there but not on the old site.
+- The search footer: "See all N results" with DocSearch's hit count (and Docusaurus's own `{count}` placeholder when
+  there is no count).
+
+### Interactive elements, compared side by side
+
+`tooling/interactions.mjs` runs each interactive element on both sites (local old build vs the new app) and compares
+the transitions and animations each step starts (property, duration, easing) and the DOM the step leaves.
+
+| Element | Result |
+| --- | --- |
+| Sidebar categories (expand, collapse, caret, auto-collapse of siblings, nested categories, toggling during an animation) | fixed: height animated with the theme's duration rule and `ease-in-out`, caret rotation, link fades |
+| Sidebar across navigations | fixed: the sidebar keeps its open categories and scroll as Docusaurus's does; the active link's colour fade runs by script with the stylesheet's own timing (the browser drops hover on the re-inserted sidebar) |
+| Collapse / expand the whole sidebar | fixed: width transition first, then the sidebar hides |
+| Navbar mobile drawer (open, secondary menu, back, close, backdrop, categories, versions dropdown) | fixed: slide transitions run, the drawer is kept across navigations so a link click slides it out |
+| `<details>` | fixed |
+| Tabs (click, keyboard, groupId sync, localStorage, queryString) | same |
+| Code blocks (copy, word wrap) | same |
+| Colour mode toggle (three states, storage, code colours, themed images) | same |
+| Navbar dropdowns (hover, click, Enter, Space; version and locale) | same; version links keep `?query#hash` and save the preferred version as the theme does |
+| Search modal (open, type, results, footer, Escape) | same; result counts come from live Algolia |
+| `/search` page | same |
+| TOC highlight | fixed: ported from `useTOCHighlight` |
+| Mobile TOC ("On this page") | same |
+| Back to top, hideable navbar, announcement bar | same |
+| Pagination, blog sidebar | same |
+| Live code editor | ported: editing, highlighting, preview, reset, errors, dark mode |
+| Showcase filters, colour generator, image zoom, ideal images, changelog authors, debug JSON trees | ported and compared, same |
+| Progress bar on slow navigations | fixed: theme-classic's nprogress module (`nprogress` itself) |
+| Mermaid diagrams, showcase checkboxes | still different: element ids come from React's `useId`, which depends on React's whole component tree |
+| DocSearch input | still different: DocSearch's vanilla build sets `autofocus` on the input, the React build does not |
+
+### Markless findings (0.5.0)
+
+- Namespaced attributes (`xlink:href`, `xml:space`, `xmlns:xlink`) are dropped from markup. The importer writes a
+  script as the element's first child that sets them while the page is parsed.
+- A `<style>` element inside page markup is taken as the component's scoped CSS. An SVG's own `<style>` is written as a
+  script that puts it in place.
+- A page file whose name has an apostrophe cannot be bundled, and a request path is matched without decoding. Such
+  pages (`beginner's guide`, folders with spaces, `æøå`) are written under `_` names and served at their own address
+  by a route rule (`lib/route-aliases.json`).
+- Nitro answers `/api/**` itself with a plain-text 404; a route rule sends those paths to the not-found page.
+- The build needs about 32 GB of heap for 484 pages (`NODE_OPTIONS=--max-old-space-size=32768`).
+- `onIdle` alone boots the page late on a busy machine (the scheduler's background priority has no deadline); the root
+  boots on `onVisible` as well.
+
+## Markless 0.8.0 (2026-10-21)
+
+Rebuilt on Markless 0.8.0 with the toolchain `create-markless` 0.8.0 writes (vite-plus 1.3.0, nitro 3.0.260903-beta). It
+is checked on the published 0.8.0 packages and deployed on Markless main packed locally (`fbb80634`, which keeps the
+theme script across in-place navigations) until 0.9.0 is on npm. markless-migrate
+is rebased on main (the corrected `cache apply` and `cache check`).
+
+### The new parser
+
+0.8.0 parses TSRX with `@tsrx/yuku` 0.8.0, which reads two things in the imported markup differently, so the importer writes
+them another way:
+
+| What the parser does now | Where it hit | The importer writes |
+| --- | --- | --- |
+| `//` after a tag, and `/*` anywhere, start a comment among template children | code tokens such as `//thisweekinreact.com` (the YAML sample on `/blog/releases/3.5`): the comment ran to the end of the one-line page and the file stopped parsing | a `/` before `/` or `*` in text as `&#47;` |
+| a code block renders one node | `document.tsrx`'s `@if` branches (several head tags each) and the static HTML pages (text and elements side by side) | each branch and each static page body in a fragment |
+
+### Workarounds removed
+
+| Workaround (a Markless bug this port found) | Now |
+| --- | --- |
+| page files written under `_` names (`beginner_s_guide`, `folder_with_space`, `___`) and served at their own address by route rules, since a page name with an apostrophe did not bundle and a request path was matched undecoded | each page file is named as its address (`beginner's guide.tsrx`, `folder with space/doc 1.tsrx`, `æøå.tsrx`); `lib/route-aliases.json` keeps only the two static HTML files' own addresses |
+| a script as the first child of every element with `xlink:href`, `xml:space` or `xmlns:xlink`, which Markless dropped | the attributes are in the markup |
+| a box-less `<span>` around a page that is only text | the text itself |
+
+The sidebar compares the current address with its links, which are written decoded (`/tests/docs/tests/ascii/æøå`); with
+the real names it now decodes `location.pathname` first, as Docusaurus does.
+
+### What else changed
+
+- DocSearch's dialog (with Ask AI) and the live code editor's runtime are built as modules of their own
+  (`lazy.config.ts`, into `public/lazy/`) and imported by URL when first needed: DocSearch when the pointer, focus or a touch
+  reaches its button or on Ctrl/Cmd+K and `/`, as theme-search-algolia does; the editor only on a page with a playground.
+  Bundled with the app, Markless module-preloaded both on every page (128 kB and 64 kB compressed), which put
+  `/blog/releases/3.3` over its JavaScript budget.
+- The sidebar kept across navigations moves its page hints with it (`hints is not defined` on every docs page's link clicks,
+  since the hints moved into their own module).
+- `<noscript>` content stays text after an in-place navigation (a Markless bug, below).
+- Links to the old site's static HTML files (`/pure-html`, `/dogfooding/javadoc`) load the document, as on the old site: they
+  are not pages of its app.
+- The agent runs (`run --agent claude` on `/`, `/tests/docs/tests/ascii/æøå` and `/docs/advanced/routing`): a click before
+  the theme's listeners exist is handled through the root's `onClick` as the old listeners would; ideal images are timed as
+  `@slorber/react-ideal-image` does; Mermaid diagrams carry React's `useId` ids (worked out per layout) and their tooltip
+  element in `<body>`, and switch to their dark drawing on a colour mode change.
+- Deploy: the catch-all `/$1.html` rewrite `deploy/docusaurus/build.ts` put after the filesystem step ran ahead of Nitro's
+  ISR routes and sent every page to the uncached function (`cache check`: every page MISS, MISS). Each static HTML file now
+  gets its own route.
+
+### Checker fixes
+
+- Motion (`/`, the theme toggle): the search button's `⌘` and `K` keys take their colour from the button, whose colour
+  transition starts theirs again each time theirs ends, so one interaction recorded a different number of `color`
+  transitions on each side, and the extra ones read as motion only the new page has. Transitions of one property on one
+  element in one interaction are now one motion (`test/checker-noise.test.ts`).
+- CSS: Mermaid draws shapes through rough.js, which puts a straight edge's cubic control points at random places on the
+  line. A computed `d` now compares by the shape it draws (`src/check/svg-path.ts`, `test/svg-path.test.ts`).
+
+### Layout flicker on in-place navigation (Markless b58d7000)
+
+On Markless `fbb80634` an in-place navigation painted the next page while it was still being inserted: the table of
+contents and footer were missing for one frame on desktop and two on mobile (`/docs/installation` -> `/docs/configuration`),
+and the sidebar column was 4147 px tall instead of 7809 px. The router inserted a long page 800 elements per frame and this
+app's container is `<body>`, so everything went through it. Markless #84 keeps the leaving page on screen until the next
+one is complete. The port is deployed on Markless main packed locally at `b58d7000`, which contains it; nothing in the
+app changed. markless-migrate's swap-frames check now fails a frame whose layout is neither page's (#32).
+
+## Markless 0.9.0 (2026-10-22)
+
+The app is on Markless 0.9.0 from npm (core, router, analyzer, typescript-plugin) instead of the main build packed
+locally at `b58d7000`; the overrides that pinned every Markless package to those packs are gone. Nothing else in the
+app changed: the importer reran as part of the build and rewrote only the debug content page (the build data it
+prints). The build guard is green (3453 script and HTML files; prismjs kept, loaded by the live editor).
+
+Production before this was `mm-docusaurus-cjf6kw6ij` (the `b58d7000` build of 2026-10-21 22:52, the commit above);
+the embeds deploy of 2026-10-22 06:56 had been rolled back to it. It is now `mm-docusaurus-220a2bz9c`.
+
+### Check against the deployments, before and after
+
+`check --route / --route /docs --route /docs/installation --concurrency 2 --timeout 1800 --no-psi`, old
+https://mm-docusaurus-old.vercel.app, new https://mm-docusaurus-new.vercel.app, on the `b58d7000` deployment and then
+on 0.9.0 once deployed (run twice: the first ran while the machine's load average was over 20, and 39 controls were
+not exercised or timed out):
+
+| | `b58d7000` | 0.9.0 |
+| --- | --- | --- |
+| Routes green | 0 of 3 | 0 of 3 |
+| Failures, not counting "not exercised" | 17 (3, 8, 6) | 10 (3, 4, 3) |
+| "Not exercised" | 9 | 10 |
+
+Gone on 0.9.0: the extra motion when the Internationalization category expands after Guides, the colour-mode button's
+`⌘` key moving, the `<html>` class changing during the in-place swap from `/` to `/docs/installation`, and `/docs`'s
+lab First Contentful Paint. New: one click on an unnamed avatar block on `/` whose lazy images load in a different
+order on each side. Red on both: going back to `/` after an in-place navigation restores it with the navbar 32 px up
+and the other colour mode's background, the Deployment category's extra motion after Guides, and the in-place
+navigation from "best Docusaurus sites" at 4x CPU.
+
 ## Embeds: the intro video and the star button as Markless components (2026-10-22)
 
 `run --agent claude --only embeds` on `/`: the react-lite-youtube-embed facade keeps its markup and gets Markless
@@ -221,3 +405,118 @@ the data was read (accepted automatically), and Enter on it leads where the old 
 does not: the old frame's middle is empty space in its 160x30 box, the component's is its count link. PageSpeed
 Insights (mobile, median of 5), this port without and with the change: 407 -> 316 kB, FCP 1.82 -> 1.36 s, LCP 2.52 ->
 2.06 s, score 94 -> 97. https://mm-embeds-evidence.vercel.app.
+
+## Every control used like a person would, side by side (2026-10-23)
+
+The checker had passed dead controls on another port, so every control on 25 views of 22 routes was used on the
+original and on this port side by side. That covered 19 desktop views (10 with a Linux platform) and 6 mobile views,
+both sites served on the Mac: the original's `docusaurus build` output and this app's Vercel build. Each control was
+clicked, hovered or typed into, and what a person could see change was compared: the URL, `<html>`'s attributes, the
+text, ARIA state, menu and dialog layers, scroll, frames and the clipboard. The harness is
+/tmp/port-audit/chrome-witness/witness.mjs.
+
+| | before | after |
+| --- | --- | --- |
+| Controls that work as on the original | 779 of 792 | 759 of 766 |
+| Real defects | 6 (below) | 0 |
+
+The 7 left after are noise in the harness: the code-blocks page's live `Clock` example ticks every second, and the
+YouTube player adds one `aria-hidden` element the original's player does not. The video plays on both sides.
+
+What was wrong, and where it is fixed:
+
+- **Mobile drawer: Versions and Languages never opened.** The chevron turned but the list never appeared:
+  `mobileDropdown()` left out the list of a dropdown that starts collapsed, so there was nothing to open. Fixed in
+  lib/site.ts, now lib/drawer-markup.js.
+- **Mobile drawer: the logo closed it on the page it names.** The original leaves it open there.
+- **Search button keys.** The button said "⌘ K" and "Search (Meta+k)" on every platform. On Windows and Linux the
+  original says "Ctrl K" and "Search (Control+k)". Fixed on docusaurus-all-routes by #65; this branch had the same fix
+  and kept #65's.
+- **Back hid the navbar.** Going Back to `/` restored a scroll that lib/site.ts read as the reader scrolling down, so
+  the hideable navbar slid away. `useHideableNavbar` shows it on every location change and hides it for a `#hash`, and
+  so does lib/site.ts now.
+- **A navbar menu stayed open after choosing an item.** With the router keeping the navbar's nodes across a swap
+  (#185), the menu stayed open under the pointer. React remounts the navbar there, so the menu now closes until the
+  pointer moves.
+- **The colour toggle and the drawer waited for lib/site.ts.** On an emulated slow phone (6x CPU, Slow 4G), a tap right
+  after load took effect after 3.6 to 3.9 s for the toggle and 1.4 s for the drawer. Both now answer in the tap's own
+  frame through inline scripts the theme template writes:
+  - The toggle script sets the colour mode, its stored choice and the toggle's name. It reads the storage namespace
+    from Docusaurus's own `loadContext`.
+  - The drawer script is the source of `drawerMarkup()` (lib/drawer-markup.js), the same function lib/site.ts calls,
+    so there is one drawer builder.
+  - Each script adds about 1 kB gzip to a page. lib/site.ts adopts what they did when it starts.
+
+| slow phone, tap right after load | original | port before | port now |
+| --- | --- | --- | --- |
+| colour toggle | 194–206 ms | 3,554–3,926 ms | 109–126 ms |
+| mobile drawer opens | 224–261 ms | 2,379–2,397 ms | 154–175 ms |
+
+Tapped as soon as the control is painted, the original drops the drawer tap (React has not hydrated yet), while the port
+opens the drawer about 0.1 s later.
+
+Speed, measured locally:
+
+- **Client navigation**, desktop, median of 5, original vs port: Docs 43 vs 36 ms, Installation 21 vs 9, Docs again
+  14 vs 6, Installation again 14 vs 6. On 0.9.0 the last link was a tie.
+- **"best Docusaurus sites"** (`/docs` to `/showcase?tags=favorite`), 4x CPU, mobile: 96 vs 81 ms; it was 140 ms. The
+  page's `pageInit` read `window.innerWidth` while every showcase card was still in the page, which forced a layout of
+  all of them. The filter now runs first.
+- **Idle download** after landing on `/docs`: 160 kB, 69 kB of it the 530 kB `/showcase` page, which the original never
+  downloads. With Markless #188 the idle tier stops at 256 KiB and leaves that page to a hover: 103 kB now.
+
+Checker reds that were the checker, not the port:
+
+- **First-interaction "Close" at 4x CPU** (184 vs 64 ms in CI). Tapped 2.5 s or more after load, both sides take
+  32 ms. The port fires `load` earlier, so a tap at a fixed time after load lands inside the same 2 s hero-logo
+  animation the original has already finished.
+- **About 30 controls "not exercised"**: they ran past the 120 s journey budget.
+
+Built on Markless main with #185 (the in-place navigation reland), #186 (prefetch once) and #188 (the idle byte budget),
+packed locally into `.markless-local/` until a release carries them.
+
+What is generic now: markless-migrate#70 adds these lessons to the migrator's Docusaurus theme features and obligations
+(src/usage), so every Docusaurus migration's agent and checker get them. The importer (tooling/) and the theme runtime
+(lib/site.ts, lib/drawer-markup.js) still live in this example. The owner approved extracting them into a reusable
+Docusaurus theme-classic kit after the launch.
+
+### DocSearch: the shared platform keys, the port's own dialog (2026-10-23)
+
+**Keys.** The search button's platform keys now come from markless-migrate's shared DocSearch part, made
+version-aware in #78:
+
+- The importer writes DocSearch 4's button with `data-mm-docsearch-keys` and the ⌘, Ctrl and K keys from
+  `CTRL_KEYS[4]` and `APPLE_KEY`.
+- `document.tsrx` runs `PLATFORM_KEYS_SCRIPT` in the head, before the first paint.
+- #65's own copy (the inline SEARCH_KEYS script and `searchKeys()` in lib/site.ts) is gone.
+- lib/page-hints.ts now leaves the part's attributes on the page, because the head script reads them after boot.
+- The part relabels a button that an in-place navigation keeps and rewrites.
+
+**Dialog.** It stays this port's Markless implementation (lib/docsearch.ts, DocSearch 4 with Ask AI). The shared part
+(#74) loads `@docsearch/js@3` from a CDN. That would change the dialog to version 3's, drop Ask AI, and bring back the
+Preact runtime this port removed. After the launch, the shared part is to be rebuilt from lib/docsearch.ts and replace
+#74's CDN load for every port.
+
+### The checker's last reds from #65: the sidebar's requests and search's first click (2026-10-24)
+
+- **Sidebar.** #65 fetched each docs sidebar's items as JSON when a page needed them. That made 25 behaviour and a11y
+  reds: following a docs link, or expanding a category, made a request the original never makes, sometimes three in
+  one journey. Each docs page now carries its own sidebar's items inline, as `<script type="application/json"
+  class="mm-sidebar-items">` in the aside, and lib/site.ts reads them from there. No navigation and no expand makes a
+  request. The page grows by about 2 kB gzip.
+- **Search's first click.** It fetched the dialog's code: /lazy/docsearch.js and the Ask AI chunk, 362 kB. That took
+  85 ms against the original's 43 on desktop, and 114 against 64 at 4x CPU on mobile.
+  - A head script now loads docsearch.js once the page is idle, or sooner on the first pointer, focus or touch on the
+    button, or a held Ctrl/⌘. It also preloads the Ask AI chunk, which now has a stable name
+    (lazy/docsearch-ask-ai.js) and runs when the dialog opens.
+  - The click fetches nothing, and both of the checker's first-interaction checks pass.
+  - The idle download after load is now 207 kB, 97 kB of it this code. The port's total is 371 kB against the
+    original's 383 kB at load, and the code run at load is unchanged.
+
+The checker on `/`, `/docs` and `/docs/installation` now shows only:
+- the dark-mode background after Back, which is identical locally in every frame (both pages have `transition: all`
+  on `<html>`);
+- controls not exercised within the journey budget, or occluded on both sides.
+
+The witness agrees: every control works like the original, apart from the YouTube player's extra `aria-hidden`.
+Navigation, desktop, original vs port: 51/22/14/14 vs 36/10/8/8 ms.
