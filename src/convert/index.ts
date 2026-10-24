@@ -4,21 +4,23 @@ import { dirname, join, relative } from 'node:path';
 import { chromium } from 'playwright';
 import { copyAssets, copyStaticDir, resourcePaths } from './assets.ts';
 import { captureAll, type CapturedPage, type CapturedRef } from './capture.ts';
-import { captureAllReveals, captureRacHovers, type Reveal } from './reveal.ts';
+import { captureAllReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, type Reveal } from './reveal.ts';
 import { captureChoices, type Choice } from './choices.ts';
-import { parseFragment } from 'parse5';
+import { parseFragment, serialize } from 'parse5';
 import { cleanDocument, frameworkBuilds, lateHead, type Dropped } from './clean.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, textContent, walk, type Document, type Element } from './dom.ts';
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
-import { BaseTabsPlan, CheckablePlan, DisclosurePlan, radixDisclosurePanel, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
+import { BaseTabsPlan, CheckablePlan, RacTablePlan, DisclosurePlan, radixDisclosurePanel, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
 import { captureCharts, CHART_CSS, ChartPlan, MOTION_FILE, type ChartFacts } from './charts.ts';
 import { captureScenes, type Scene } from './scenes.ts';
 import { ScenePlan } from './scene-plan.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
-import { captureAccordions, captureCarousels, captureComboboxEmpties, captureHoverDelays, captureAllForms, captureAllSwitches, captureAllToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
+import { captureAccordions, captureCarousels, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureAllForms, captureAllSwitches, captureAllToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
 import { bindMount, bindParts, bodyHandlers, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { captureDayPickers, CONFIG_PREFIX, CONFIGS_MODULE, DayPickerPlan, type CapturedPickers } from './day-picker.ts';
+import { captureRacCalendars, RAC_CONFIG_PREFIX, RAC_CONFIGS_MODULE, racCalendarMessages, RacCalendarPlan, type CapturedCalendars } from './rac-calendar.ts';
+import type { CalendarMessages } from '../../parts/react-aria/calendar.ts';
 import { stat } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { nextImageWidths, pairImages, planImages, type ImagePlan, type Optimizer } from './images.ts';
@@ -54,6 +56,10 @@ function withPartImports(source: string, dir: string): string {
 	if (dayPicker.length) out = out.replace('\n', `\nimport { computed } from '@markless/core';\nimport { ${dayPicker.join(', ')} } from '${dir}/day-picker.ts';\n`);
 	const configs = [...new Set(out.match(new RegExp(`\\b${CONFIG_PREFIX}[0-9a-f]{10}\\b`, 'g')) ?? [])];
 	if (configs.length) out = out.replace('\n', `\nimport { ${configs.join(', ')} } from '${dir}/${CONFIGS_MODULE.replace(/\.ts$/, '')}.ts';\n`);
+	const racCalendar = ['racCalendarView', 'racCalendarModel', 'racCalendarEvent', 'racCalendarWake', 'racDateLabel'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
+	if (racCalendar.length) out = out.replace('\n', `\n${dayPicker.length ? '' : "import { computed } from '@markless/core';\n"}import { ${racCalendar.join(', ')} } from '${dir}/react-aria/calendar.ts';\n`);
+	const racConfigs = [...new Set(out.match(new RegExp(`\\b${RAC_CONFIG_PREFIX}[0-9a-f]{10}\\b`, 'g')) ?? [])];
+	if (racConfigs.length) out = out.replace('\n', `\nimport { ${racConfigs.join(', ')} } from '${dir}/${RAC_CONFIGS_MODULE.replace(/\.ts$/, '')}.ts';\n`);
 	return out;
 }
 
@@ -283,6 +289,8 @@ function textOf(node: Element): string {
 let currentLayers: { key: string; markup: string; shell: string; fill: string; declare?: readonly string[] }[] = [];
 let currentRoute = '';
 let layerPickers: ((route: string, reveal: Reveal, kept: readonly Element[]) => { readonly bind: (el: Element) => Binding | undefined; readonly declare: readonly string[] } | undefined) | undefined;
+// The React Aria calendars the popovers of the route being prepared show (convert's RacCalendarPlan, set per route).
+let racLayer: { readonly plan: RacCalendarPlan; readonly captured: ReadonlyMap<string, CapturedCalendars>; readonly messages: (locale: string) => CalendarMessages | undefined; route: string } | undefined;
 // What the old page's copy controls wrote, by the control's signature and occurrence.
 let currentClipboard: Record<string, string> = {};
 // Routes with a block that waits for the load event to render (its web font is fetched after the load).
@@ -421,6 +429,61 @@ function racIndicators(top: Element): void {
 }
 
 /** A portal's nodes in their closed state: data-state="closed", data-closed for data-open, hidden, and the control's key. */
+/** A React Aria listbox's markup with what it renders when empty appended, hidden and marked data-mm-empty. */
+function withEmptyState(html: string, empty: string): string {
+	const frag = parseFragment(html) as unknown as Element;
+	const listbox = [...walk(frag)].find((e) => (attr(e, 'role') === 'listbox' || attr(e, 'role') === 'menu') && attr(e, 'data-rac') !== undefined);
+	if (!listbox) return html;
+	appendEmptyState(listbox, empty);
+	return serialize(frag as never);
+}
+
+/** Appends what a React Aria collection renders when empty, hidden and marked data-mm-empty. */
+function appendEmptyState(collection: Element, empty: string): void {
+	if (childrenOf(collection).some((c) => isElement(c) && attr(c, 'data-mm-empty') !== undefined)) return;
+	for (const node of childrenOf(parseFragment(empty) as unknown as Element).filter(isElement)) {
+		node.attrs = [...node.attrs.filter((a) => a.name !== 'hidden'), { name: 'hidden', value: '' }, { name: 'data-mm-empty', value: '' }];
+		node.parentNode = collection as never;
+		collection.childNodes.push(node as never);
+	}
+}
+
+/**
+ * A multiple-selection React Aria ComboBox's chips (a TagGroup of what is chosen): one per option, in the options'
+ * order, those not chosen hidden, so choosing shows a chip rather than inserting one. New chips copy the first.
+ */
+function racChips(page: Element, reveal: Reveal): void {
+	const html = reveal.added.find((a) => a.html.includes('data-trigger="ComboBox"') && a.html.includes('aria-multiselectable="true"'))?.html;
+	const input = html && locator(page)(reveal.sig!, reveal.nth ?? 0);
+	if (!input || input.tagName !== 'input') return;
+	const options = [...walk(parseFragment(html) as unknown as Element)].filter((e) => attr(e, 'role') === 'option' && attr(e, 'data-key') !== undefined).map((o) => ({ key: attr(o, 'data-key')!, text: textOf(o).trim() }));
+	let scope = input.parentNode as Element | undefined;
+	let grid: Element | undefined;
+	for (; scope && isElement(scope as never) && !grid; scope = scope.parentNode as Element | undefined) grid = [...walk(scope)].find((e) => attr(e, 'role') === 'grid' && attr(e, 'data-rac') !== undefined);
+	if (!grid || !options.length) return;
+	const chips = elementChildren(grid).filter((e) => attr(e, 'role') === 'row');
+	const model = chips[0];
+	if (!model || chips.some((c) => !options.some((o) => o.key === attr(c, 'data-key')))) return;
+	const modelKey = attr(model, 'data-key')!;
+	const modelText = options.find((o) => o.key === modelKey)!.text;
+	const rows = options.map((o, i) => {
+		const own = chips.find((c) => attr(c, 'data-key') === o.key);
+		if (own) return own;
+		const copy = childrenOf(parseFragment(outer(model)) as unknown as Element).find(isElement)!;
+		for (const el of [copy, ...walkAll(copy)]) {
+			el.attrs = el.attrs.map((a) => (a.name === 'data-key' ? { ...a, value: o.key } : a.name === 'id' || a.name === 'aria-labelledby' ? { ...a, value: a.value.split(/(\s+)/).map((t) => (t.trim() ? `${t}-${i}` : t)).join('') } : a));
+			for (const c of childrenOf(el)) if (c.nodeName === '#text' && (c as unknown as { value: string }).value.trim() === modelText) (c as unknown as { value: string }).value = (c as unknown as { value: string }).value.replace(modelText, o.text);
+		}
+		copy.attrs = [...copy.attrs, { name: 'hidden', value: '' }];
+		return copy;
+	});
+	const others = childrenOf(grid).filter((c) => !(isElement(c) && attr(c, 'role') === 'row'));
+	grid.childNodes = [...others, ...rows].map((n) => ((n as { parentNode: unknown }).parentNode = grid, n)) as never;
+}
+
+// What each page's React Aria Autocomplete collections show once nothing matches, by the input's signature.
+const racPageEmpties = new Map<string, readonly ComboboxEmpty[]>();
+
 /** Replaces every whitespace-separated token of every attribute that `rename` names. */
 function renameIds(els: readonly Element[], rename: ReadonlyMap<string, string>): void {
 	if (!rename.size) return;
@@ -492,7 +555,6 @@ function hollowOf(kept: readonly Element[]): Element | undefined {
 function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (what: string) => void, rename: ReadonlyMap<string, string> = new Map(), kept: Element[] = layerElements(added)): { markup: string; shell: string; fill: string; declare: string[] } {
 	// A calendar in the layer is bound on the view its opener shares (DayPickerPlan.layer): read before ids are renamed.
 	const pickers = layerPickers?.(currentRoute, reveal, kept);
-	const declare: string[] = [];
 	const placed = placement(kept);
 	for (const top of kept) renameIds([top, ...walkAll(top)], rename);
 	const key = rename.get(reveal.key) ?? reveal.key;
@@ -501,29 +563,36 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 		for (const el of [top, ...walkAll(top)]) {
 			for (const a of el.attrs) if (a.name === 'data-state' && a.value === 'open') a.value = 'closed';
 			if (el.attrs.some((a) => a.name === 'data-open')) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-open'), { name: 'data-closed', value: '' }];
+			// React Aria's interaction states as the capture left them: the interactions part writes them as they happen.
+			if (el.attrs.some((a) => a.name === 'data-rac' || a.name === 'data-react-aria-pressable')) el.attrs = el.attrs.filter((a) => !/^data-(focused|focus-visible|hovered|pressed|focus-within|focus-visible-within)$/.test(a.name));
 		}
 		selectIndicators(top);
 		comboboxIndicators(top);
 		racIndicators(top);
 		top.attrs = [...top.attrs.filter((a) => a.name !== 'hidden'), { name: 'hidden', value: '' }, { name: 'data-mm-layer', value: key }, ...(reveal.viewport !== 'desktop' ? [{ name: 'data-mm-viewport', value: reveal.viewport }] : [])];
 	}
+	// A calendar the popover shows is Markless state of the layer's own component, which is then never a served file.
+	const captured = racLayer && reveal.sig ? racLayer.captured.get(racLayer.route) : undefined;
+	if (racLayer && captured && reveal.sig && racLayer.plan.addLayer(racLayer.route, captured, racLayer.messages, { sig: reveal.sig, nth: reveal.nth ?? 0 }, kept)) templatePorts.add('react-aria/calendar');
+	const declarations: string[] = [];
 	const hollow = hollowOf(kept);
 	const emit = (shell: boolean) =>
 		kept
 			.map((top) =>
 				emitElement(top, {
 					dropped,
-					declarations: declare,
+					declarations,
 					bind: (x) => {
-						const own = mergeBindings(x === top ? mergeBindings(bindParts(x, templatePorts), extra.length ? { extra } : undefined) : bindParts(x, templatePorts), pickers?.bind(x));
+						const own = mergeBindings(racLayer?.plan.bind(x), mergeBindings(x === top ? mergeBindings(bindParts(x, templatePorts), extra.length ? { extra } : undefined) : bindParts(x, templatePorts), pickers?.bind(x)));
 						return shell && x === hollow ? mergeBindings(own, { children: '', extra: [`data-mm-layer-fill="${LAYER_FILL}"`] }) : own;
 					},
 				}),
 			)
 			.join('');
-	// The shell goes into a <template>, whose content Markless never resumes: its origin is the token, like the file's.
 	const markup = emit(false);
-	return { markup, shell: withOriginToken(() => emit(true)), fill: hollow && !declare.length ? emitHtmlChildren(hollow) : '', declare };
+	if (declarations.length) return { markup, shell: '', fill: '', declare: declarations };
+	// The shell goes into a <template>, whose content Markless never resumes: its origin is the token, like the file's.
+	return { markup, shell: withOriginToken(() => emit(true)), fill: hollow ? emitHtmlChildren(hollow) : '', declare: declarations };
 }
 
 /** A resolver that asks `first`, and `then` for what `first` does not know. */
@@ -647,6 +716,13 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 		c.parent.childNodes.splice(index < 0 ? c.parent.childNodes.length : index, 0, ...(nodes as never[]));
 	}
 	// Layers last: their generated ids are renamed from their content, here and wherever the page names them.
+	// Two triggers the old page gave one id (shadcn's React Aria date pickers): each later one takes the id its key names, or both would open one layer.
+	for (const l of pendingLayers) {
+		const id = l.trigger && attr(l.trigger, 'id');
+		if (!id || id === l.reveal.key || !l.reveal.key.startsWith(`${id}-`) || !/^\d+$/.test(l.reveal.key.slice(id.length + 1))) continue;
+		l.trigger!.attrs = l.trigger!.attrs.map((a) => (a.name === 'id' ? { ...a, value: l.reveal.key } : a));
+		for (const top of l.kept) for (const el of [top, ...walkAll(top)]) el.attrs = el.attrs.map((a) => (/^aria-(labelledby|describedby)$/.test(a.name) ? { ...a, value: a.value.split(/(\s+)/).map((t) => (t === id ? l.reveal.key : t)).join('') } : a));
+	}
 	const rename = new Map<string, string>();
 	const taken = new Set<string>();
 	// Two alike layers on one page (the same tooltip on two buttons) keep distinct ids.
@@ -799,6 +875,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const scrollerOpenings = new Map<string, readonly ScrollerOpening[]>();
 	const scenes = new Map<string, { scene: Scene; listed: string }[]>();
 	const pickers = new Map<string, CapturedPickers>();
+	const racCalendarsRead = new Map<string, CapturedCalendars>();
 	const choices: Record<string, Record<string, Choice>> = {};
 	try {
 		// The old site's not-found page, from a path no route has: the new app's 404 page.
@@ -826,7 +903,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				for (let c = queue.shift(); c; c = queue.shift()) {
 					if (!(await c.load()).server.includes('data-react-aria-pressable')) continue;
 					const route = c.route;
-					const hovers = await captureRacHovers(browser, options.old, route, join(state, 'convert', 'reveals'));
+					const hovers = [...(await captureRacHovers(browser, options.old, route, join(state, 'convert', 'reveals'))), ...((await c.load()).server.includes('role="combobox"') ? await captureRacComboInputs(browser, options.old, route, join(state, 'convert', 'reveals')) : [])];
 					const own = revealed.get(route) ?? [];
 					const added = hovers.filter((h) => !own.some((r) => r.key === h.key));
 					if (added.length) revealed.set(route, [...own, ...added]);
@@ -834,6 +911,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			};
 			await Promise.all(Array.from({ length: Math.max(1, options.concurrency ?? 4) }, worker));
 		}
+		// React Aria submenus, on the routes where a revealed menu has an item that opens one.
+		if (options.reveal !== false)
+			for (const [route, reveals] of [...revealed]) {
+				const submenus = await captureRacSubmenus(browser, options.old, route, join(state, 'convert', 'reveals'), reveals);
+				if (submenus.length) revealed.set(route, [...reveals, ...submenus.filter((s) => !reveals.some((r) => r.key === s.key))]);
+			}
 		// What each Base UI combobox shows once nothing matches, into the empty element of the layer it opens.
 		for (const [route, reveals] of revealed) {
 			const empty = /(<div\b[^>]*\bdata-slot="combobox-empty"[^>]*>)(<\/div>)/;
@@ -845,6 +928,41 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				return html ? { ...r, added: r.added.map((a) => ({ ...a, html: a.html.replace(empty, (_, open: string, close: string) => `${open}${html}${close}`) })) } : r;
 			}));
 		}
+		// What each React Aria collection an input filters shows once nothing matches: a ComboBox's listbox and an
+		// Autocomplete's in a layer, hidden at the end of the layer's collection; an Autocomplete's in the page, likewise there.
+		if (options.reveal !== false)
+			for (const c of captures) {
+				if (!c || c.status !== 200) continue;
+				const route = c.route;
+				const reveals = revealed.get(route) ?? [];
+				const reachOf = (r: Reveal): EmptyReach | undefined => (!r.sig ? undefined : r.added.some((a) => a.html.includes('data-trigger="ComboBox"')) ? 'beside' : r.added.some((a) => /<input\b(?=[^>]*\bdata-rac\b)(?=[^>]*aria-autocomplete="list")(?![^>]*role="combobox")/.test(a.html)) ? 'opens' : undefined);
+				const fromLayers = reveals.flatMap((r) => (reachOf(r) ? [{ sig: r.sig!, nth: r.nth ?? 0, reach: reachOf(r)! }] : []));
+				const settled = (await c.load()).settled.desktop ?? Object.values((await c.load()).settled)[0] ?? '';
+				const inPage: { sig: string; nth: number; reach: EmptyReach }[] = [];
+				if (settled.includes('aria-autocomplete="list"')) {
+					const counts = new Map<string, number>();
+					const visit = (el: Element) => {
+						for (const child of childrenOf(el)) {
+							if (!isElement(child) || child.tagName === 'template') continue;
+							const sig = sigOf(child);
+							const n = counts.get(sig) ?? 0;
+							counts.set(sig, n + 1);
+							if (child.tagName === 'input' && attr(child, 'data-rac') !== undefined && attr(child, 'aria-autocomplete') === 'list' && attr(child, 'role') !== 'combobox' && attr(child, 'aria-controls')) inPage.push({ sig, nth: n, reach: 'self' });
+							visit(child);
+						}
+					};
+					visit(body(parseDocument(settled)));
+				}
+				if (!fromLayers.length && !inPage.length) continue;
+				const found = (await captureRacEmpties(browser, options.old, route, join(state, 'convert', 'toggles'), [...fromLayers, ...inPage])).empties;
+				if (!found.length) continue;
+				const own = (f: ComboboxEmpty) => inPage.some((x) => x.sig === f.sig && x.nth === f.nth);
+				racPageEmpties.set(route, found.filter(own));
+				revealed.set(route, reveals.map((r) => {
+					const html = reachOf(r) && found.find((f) => !own(f) && f.sig === r.sig && f.nth === (r.nth ?? 0))?.html;
+					return html ? { ...r, added: r.added.map((a) => (/role="(listbox|menu)"/.test(a.html) ? { ...a, html: withEmptyState(a.html, html) } : a)) } : r;
+				}));
+			}
 		// Whether each accordion lets several items be open, on the routes where one revealed an item's content.
 		for (const [route, reveals] of revealed) if (reveals.some((r) => r.sig?.includes('|accordion-trigger|'))) accordionModes.set(route, (await captureAccordions(browser, options.old, route, join(state, 'convert', 'toggles'))).accordions);
 		// React Aria's accordion panels are in the page while collapsed, so expanding one reveals nothing: its server HTML says it is there.
@@ -875,6 +993,14 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				const openers = (revealed.get(ref.route) ?? []).filter((r) => r.sig && r.added.some((a) => a.into === 'body' && /<table[^>]*role="grid"[^>]*aria-multiselectable/.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
 				if (!openers.length && !Object.values((await ref.load()).settled).some((html) => /<table[^>]*role="grid"[^>]*aria-multiselectable/.test(html))) continue;
 				pickers.set(ref.route, await captureDayPickers(browser, options.old, ref.route, join(state, 'convert', 'day-pickers'), openers));
+			}
+		// What each React Aria calendar was given, on the routes whose settled page shows one.
+		if (options.reveal !== false)
+			for (const ref of captures) {
+				const calendar = (html: string) => /role="application"[^>]*data-rac=|data-rac=[^>]*role="application"/.test(html);
+				const opening = (revealed.get(ref?.route ?? '') ?? []).filter((r) => r.sig && r.added.some((a) => calendar(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0, path: r.path }));
+				if (!ref || ref.status !== 200 || (!opening.length && !Object.values((await ref.load()).settled).some(calendar))) continue;
+				racCalendarsRead.set(ref.route, await captureRacCalendars(browser, options.old, ref.route, join(state, 'convert', 'rac-calendars'), opening));
 			}
 		if (options.reveal !== false) for (const t of await captureAllToggles(browser, options.old, routes, join(state, 'convert', 'toggles'), { concurrency: options.concurrency ?? 4, log })) toggled.set(t.route, t.groups);
 		// Controls the site lists as switching attributes in place (lib/site/controls.json, action "toggle").
@@ -908,6 +1034,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const dropped: Dropped = new Map();
 	const styles = new Map<string, string>();
 	const unconverted: { route: string; reason: string }[] = [];
+	// React Aria calendars on Markless state, with React Aria's messages for each locale from the old source; the layers
+	// prepare() writes bind the ones their popovers show.
+	const racCalendars = new RacCalendarPlan();
+	const racMessages = new Map<string, CalendarMessages | undefined>();
+	for (const captured of racCalendarsRead.values()) for (const c of captured.calendars) if (c.locale && !racMessages.has(c.locale)) racMessages.set(c.locale, await racCalendarMessages(options.source, c.locale));
+	racLayer = { plan: racCalendars, captured: racCalendarsRead, messages: (locale) => racMessages.get(locale), route: '' };
 	const prepared = new Map<string, Prepared>();
 	const nextConfig = options.source ? ['next.config.mjs', 'next.config.js', 'next.config.ts', 'next.config.cjs'].map((f) => join(options.source!, f)).find((f) => existsSync(f)) : undefined;
 	const optimizer: Optimizer | undefined = nextConfig ? { path: '/_next/image', widths: nextImageWidths(readFileSync(nextConfig, 'utf8')) } : undefined;
@@ -926,7 +1058,16 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			unconverted.push({ route: ref.route, reason: `the old site answered ${ref.status} while capturing` });
 			continue;
 		}
+		racLayer.route = ref.route;
 		prepared.set(ref.route, prepare(await ref.load(), revealed.get(ref.route) ?? [], options.old, dropped, styles, optimizer, images));
+		for (const e of racPageEmpties.get(ref.route) ?? []) {
+			const p = prepared.get(ref.route)!;
+			const input = locator(p.root.parentNode as Element)(e.sig, e.nth);
+			const id = input && attr(input, 'aria-controls');
+			const collection = id ? [...walk(p.root.parentNode as Element)].find((x) => attr(x, 'id') === id) : undefined;
+			if (collection) appendEmptyState(collection, e.html);
+		}
+		for (const r of revealed.get(ref.route) ?? []) if (r.sig) racChips(prepared.get(ref.route)!.root.parentNode as Element, r);
 	}
 	if (images.lazy + images.eager + images.responsive + images.someScreens) log(`images: ${images.lazy} lazy (in no first screen), ${images.eager} eager (in a first screen), ${images.responsive} given a width per device, ${images.preloadsDropped} head preloads dropped, ${images.someScreens} drawn only in one range of widths (lazy, preloaded there)`);
 
@@ -1058,7 +1199,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const checkables = new CheckablePlan();
 	let checkableGroups = 0;
 	const emitHtml = (html: string) => emitChildren(parseFragment(html) as unknown as Element, { dropped: (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1) });
-	for (const [route, p] of prepared) checkableGroups += checkables.add(p.root, toggled.get(route) ?? [], locator(p.root.parentNode as Element), emitHtml);
+	// React Aria tables whose checkboxes choose rows: the rows, the checkboxes and select-all are one state.
+	const racTables = new RacTablePlan();
+	let racTableCount = 0;
+	for (const [route, p] of prepared) racTableCount += racTables.add(p.root, toggled.get(route) ?? [], locator(p.root.parentNode as Element), emitHtml);
+	if (racTableCount) log(`React Aria tables with row selection on Markless state: ${racTableCount}`);
+	for (const [route, p] of prepared) checkableGroups += checkables.add(p.root, toggled.get(route) ?? [], locator(p.root.parentNode as Element), emitHtml, (el) => racTables.claims(el));
 	if (checkableGroups) {
 		log(`checkboxes, switches, toggles and radio groups on Markless state: ${checkableGroups}`);
 		templatePorts.add('toggle');
@@ -1071,7 +1217,17 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		styles.set(MOTION_FILE, CHART_CSS);
 		templatePorts.add('recharts');
 	}
-	handledBy((el) => checkables.bind(el) !== undefined || baseTabs.bind(el) !== undefined || insertedDisclosures.bind(el) !== undefined || dayPickers.handles(el));
+	let racCalendarCount = 0;
+	for (const [route, p] of prepared) {
+		const captured = racCalendarsRead.get(route);
+		if (captured?.calendars.length) racCalendarCount += racCalendars.add(route, captured, (locale) => racMessages.get(locale), locator(p.root.parentNode as Element), emitHtml);
+	}
+	for (const line of racCalendars.notes) log(`  ${line}`);
+	if (racCalendarCount) {
+		log(`React Aria calendars on Markless state: ${racCalendarCount}`);
+		templatePorts.add('react-aria/calendar');
+	}
+	handledBy((el) => checkables.bind(el) !== undefined || baseTabs.bind(el) !== undefined || insertedDisclosures.bind(el) !== undefined || dayPickers.handles(el) || racCalendars.within(el) || racTables.bind(el) !== undefined);
 	// input-otp fields, used once each on the old page for the caret their site renders and the text that shows their value.
 	const otps = new OtpPlan();
 	const otpRoutes = [...prepared].filter(([, p]) => [...walk(p.root)].some((el) => attr(el, 'data-input-otp-container') !== undefined));
@@ -1088,7 +1244,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const selects = new SelectPlan();
 	const racSelect = (el: Element) => attr(el, 'aria-haspopup') === 'listbox' && candidatesOf(el).some((c) => c.library === 'react-aria-components');
 	const emitTrigger = (html: string) => emitChildren(parseFragment(html) as unknown as Element, { bind: (el) => bindParts(el, templatePorts) });
-	for (const p of prepared.values()) selects.add(p.root, (el) => portFor(el) === 'base-ui/select' || portFor(el) === 'radix/select' || racSelect(el), emitTrigger);
+	for (const p of prepared.values()) selects.add(p.root, (el) => portFor(el) === 'base-ui/select' || portFor(el) === 'radix/select' || (racSelect(el) && !racCalendars.within(el)), emitTrigger);
 	// A demo's recorded uses never take over an element another plan puts on Markless state (a disclosure, a tab, a toggle).
 	const scenePlan = new ScenePlan((el) => [tabs, baseTabs, disclosures, insertedDisclosures, selects, checkables, switchPlan, notifyPlan, otps].some((plan) => plan.bind(el) !== undefined));
 	let sceneCount = 0;
@@ -1122,6 +1278,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		binding = mergeBindings(binding, multipleAccordions.has(el) && attr(el, 'data-rac') !== undefined ? { extra: ['data-mm-multiple=""'] } : undefined);
 		binding = mergeBindings(binding, portFor(el) === 'shadcn/message-scroller' ? bindScroller(el) : undefined);
 		binding = mergeBindings(dayPickers.bind(el), binding);
+		binding = mergeBindings(racCalendars.bind(el), binding);
+		binding = mergeBindings(racTables.bind(el), binding);
 		const own = mergeBindings(scenePlan.bind(el), mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), baseTabs.bind(el)), charts.bind(el)), disclosures.bind(el)), insertedDisclosures.bind(el)), selects.bind(el)), checkables.bind(el)), switchPlan.bind(el)), mergeBindings(notifyPlan.bind(el), handledForms.has(el) ? formBinding : undefined)), mergeBindings(otps.bind(el), binding)), bindMount(el)));
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};
@@ -1286,9 +1444,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	await writeParts(app, usedPorts, choices);
 	if (shell) await writeFile(join(app, 'lib', 'parts', 'docsearch-shell.ts'), `// Generated by markless-migrate convert: DocSearch's dialog as the old site first draws it on a press (captured by plan).\nexport default ${JSON.stringify(shell)};\n`);
 	if (pickerCount) await writeFile(join(app, 'lib', 'parts', CONFIGS_MODULE), dayPickers.configsModule());
+	if (racCalendars.placed) await writeFile(join(app, 'lib', 'parts', RAC_CONFIGS_MODULE), racCalendars.configsModule());
 	await mkdir(join(app, 'components', 'converted'), { recursive: true });
 	await mkdir(join(app, 'components', 'converted', 'layers'), { recursive: true });
-	for (const layer of layers.files) await writeFile(join(app, 'components', 'converted', layer.file), appUrlDeclaration(withPartImports(layer.source, partsDir(`components/converted/${layer.file}`))));
+	for (const layer of layers.files) await writeFile(join(app, 'components', 'converted', layer.file), appUrlDeclaration(withPartImports(layer.source, partsDir(join('components', 'converted', layer.file)))));
 	// The calendar views date pickers share between their popover and their trigger, at page scope.
 	const sharedPickers = dayPickers.sharedModule(`../../lib/parts/${CONFIGS_MODULE}`, '../../lib/parts');
 	if (sharedPickers) await writeFile(join(app, 'components', 'converted', 'day-pickers.tsrx'), sharedPickers);

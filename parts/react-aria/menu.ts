@@ -9,6 +9,9 @@ import { closeOverlay, openOverlay, overlayFor, overlayOf, type Overlay } from '
 // menu, except a checkbox item, which toggles in place; a radio item becomes the group's one checked item.
 const TRIGGER = '[data-rac][aria-haspopup="true"]:not([role^="menuitem"]), [data-rac][aria-haspopup="menu"]:not([role^="menuitem"])';
 const ITEM = '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]';
+// A SubmenuTrigger's item, and a context menu's pressable area (MenuTrigger with trigger="contextMenu").
+const SUB = '[role^="menuitem"][aria-haspopup="menu"]';
+const ours = (o: Overlay) => o.trigger.matches(`${TRIGGER}, ${SUB}, ${AREA}`);
 
 const menuOf = (o: Overlay) => o.content.querySelector<HTMLElement>('[role="menu"]');
 const disabled = (el: Element) => el.getAttribute('aria-disabled') === 'true' || el.hasAttribute('data-disabled');
@@ -37,8 +40,40 @@ function run(item: HTMLElement, by: 'keyboard-enter' | 'keyboard-space' | 'point
 }
 
 function close(o: Overlay, keepFocus = false): void {
+	for (const sub of o.content.querySelectorAll<HTMLElement>(`${SUB}[aria-expanded="true"]`)) {
+		const open = overlayFor(sub);
+		if (open) close(open, true);
+	}
 	holdPressed(o.trigger, false);
+	if (o.trigger.matches(SUB)) o.trigger.removeAttribute('data-open');
 	closeOverlay(o, keepFocus);
+}
+
+/** Running an item closes every menu up from it (state.closeAll). */
+function closeAll(o: Overlay): void {
+	let at: Overlay | undefined = o;
+	const chain: Overlay[] = [];
+	while (at) {
+		chain.push(at);
+		at = at.trigger.matches(SUB) ? overlayOf(at.trigger) : undefined;
+	}
+	for (const x of chain) close(x, x !== chain[chain.length - 1]);
+}
+
+// useSubmenuTrigger: a hover opens the submenu after 200 ms; a key or a keyboard press opens it on its first item.
+const opening = new WeakMap<Element, ReturnType<typeof setTimeout>>();
+function openSub(item: HTMLElement, strategy: 'first' | null): void {
+	clearTimeout(opening.get(item));
+	if (overlayFor(item) || disabled(item)) return;
+	const o = openOverlay(item, item.id, { modal: false, dismissable: false, placement: 'end top', offset: 0, crossOffset: -3, onDismiss: (x) => close(x), onReady: (x) => ready(x, strategy) });
+	if (o) item.setAttribute('data-open', 'true');
+}
+function closeSubsOf(menu: Element, except?: Element): void {
+	for (const sub of menu.querySelectorAll<HTMLElement>(`${SUB}[aria-expanded="true"]`)) {
+		if (sub === except || sub.closest('[role="menu"]') !== menu) continue;
+		const open = overlayFor(sub);
+		if (open) close(open, true);
+	}
 }
 
 function openMenu(trigger: HTMLElement, strategy: 'first' | 'last' | null, at?: { x: number; y: number }): boolean {
@@ -59,8 +94,9 @@ function ready(o: Overlay, strategy: 'first' | 'last' | null): void {
 	else menu.focus({ preventScroll: true });
 	const onUp = (event: PointerEvent) => {
 		const item = (event.target as Element | null)?.closest?.<HTMLElement>(ITEM);
-		if (!item || !menu.contains(item) || disabled(item) || item.hasAttribute('aria-haspopup')) return;
-		if (run(item, 'pointer')) close(o);
+		if (!item || !menu.contains(item) || disabled(item)) return;
+		if (item.matches(SUB)) return openSub(item, null);
+		if (run(item, 'pointer')) closeAll(o);
 	};
 	document.addEventListener('pointerup', onUp, true);
 	o.cleanup.push(() => document.removeEventListener('pointerup', onUp, true));
@@ -105,9 +141,19 @@ export function contextmenu(target: Element, event: MouseEvent): boolean {
 export function pointerover(target: Element): boolean {
 	const item = target.closest<HTMLElement>(ITEM);
 	const o = item && overlayOf(item);
-	if (!item || !o || !o.trigger.matches(TRIGGER) || disabled(item)) return false;
+	if (!item || !o || !ours(o) || disabled(item)) return false;
 	const menu = menuOf(o);
-	if (menu && !keyboardModality() && document.activeElement !== item) focusItem(menu, item);
+	if (menu && !keyboardModality() && document.activeElement !== item) {
+		focusItem(menu, item);
+		// Focus moving to another item of the parent menu closes its open submenu.
+		closeSubsOf(menu, item);
+	}
+	if (item.matches(SUB) && !overlayFor(item) && !opening.has(item)) {
+		opening.set(item, setTimeout(() => {
+			opening.delete(item);
+			if (item.matches(':hover')) openSub(item, null);
+		}, 200));
+	}
 	return true;
 }
 
@@ -122,10 +168,33 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 		return false;
 	}
 	const o = overlayOf(target);
-	if (!o || !o.trigger.matches(TRIGGER)) return false;
+	if (!o || !ours(o)) return false;
 	const menu = menuOf(o);
 	if (!menu || !menu.contains(target)) return false;
 	const item = target.closest<HTMLElement>(ITEM) ?? undefined;
+	const rtl = getComputedStyle(menu).direction === 'rtl';
+	const inward = rtl ? 'ArrowLeft' : 'ArrowRight';
+	const outward = rtl ? 'ArrowRight' : 'ArrowLeft';
+	if (item?.matches(SUB) && (event.key === inward || event.key === 'Enter' || event.key === ' ')) {
+		event.preventDefault();
+		openSub(item, 'first');
+		const sub = overlayFor(item);
+		const subMenu = sub && menuOf(sub);
+		if (subMenu) focusItem(subMenu, itemsOf(subMenu)[0]);
+		return true;
+	}
+	// Hovering opened the submenu of the focused item: the outward arrow closes it, focus staying on the item.
+	const openSubOf = item?.matches(SUB) ? overlayFor(item) : undefined;
+	if (event.key === outward && openSubOf) {
+		event.preventDefault();
+		close(openSubOf);
+		return true;
+	}
+	if (event.key === outward && o.trigger.matches(SUB)) {
+		event.preventDefault();
+		close(o);
+		return true;
+	}
 	if (event.key === 'Tab') {
 		event.preventDefault();
 		return true;
@@ -141,7 +210,7 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 	}
 	if (item && !disabled(item) && (event.key === 'Enter' || (event.key === ' ' && !typing(menu)))) {
 		event.preventDefault();
-		if (run(item, event.key === 'Enter' ? 'keyboard-enter' : 'keyboard-space')) close(o);
+		if (run(item, event.key === 'Enter' ? 'keyboard-enter' : 'keyboard-space')) closeAll(o);
 		return true;
 	}
 	if (!event.ctrlKey && !event.metaKey && !event.altKey) {

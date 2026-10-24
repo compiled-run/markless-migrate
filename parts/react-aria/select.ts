@@ -30,7 +30,7 @@ function choose(trigger: HTMLElement, listbox: Element, option: HTMLElement): vo
 	const key = option.getAttribute('data-key');
 	if (native && key !== null) native.value = key;
 	// The trigger's value is Markless state (convert's SelectPlan); its handler for this event sets it.
-	trigger.dispatchEvent(new CustomEvent('mmchoose', { detail: (option.firstElementChild ?? option).textContent ?? '' }));
+	trigger.dispatchEvent(new CustomEvent('mmchoose', { detail: (option.firstElementChild ?? option).textContent ?? '', bubbles: true }));
 }
 
 // The Select itself is marked open (data-open) while its listbox is, and focused (useSelectState's isFocused) though

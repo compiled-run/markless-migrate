@@ -7,7 +7,7 @@ const disabled = (el: Element) => el.getAttribute('aria-disabled') === 'true' ||
 
 /** The collection's items in order; `all` keeps the disabled ones. */
 export function itemsOf(collection: Element, all = false): HTMLElement[] {
-	return [...collection.querySelectorAll<HTMLElement>(ITEM)].filter((el) => el.closest('[role="listbox"], [role="menu"]') === collection && (all || !disabled(el)));
+	return [...collection.querySelectorAll<HTMLElement>(ITEM)].filter((el) => !el.hasAttribute('data-mm-empty') && el.closest('[role="listbox"], [role="menu"]') === collection && (all || !disabled(el)));
 }
 
 export const textOf = (item: Element) => (item.getAttribute('data-text-value') ?? item.textContent ?? '').trim();
