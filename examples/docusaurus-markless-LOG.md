@@ -479,3 +479,20 @@ What is generic now: markless-migrate#70 adds these lessons to the migrator's Do
 (src/usage), so every Docusaurus migration's agent and checker get them. The importer (tooling/) and the theme runtime
 (lib/site.ts, lib/drawer-markup.js) still live in this example. The owner approved extracting them into a reusable
 Docusaurus theme-classic kit after the launch.
+
+### DocSearch: the shared platform keys, the port's own dialog (2026-10-23)
+
+**Keys.** The search button's platform keys now come from markless-migrate's shared DocSearch part, made
+version-aware in #78:
+
+- The importer writes DocSearch 4's button with `data-mm-docsearch-keys` and the ⌘, Ctrl and K keys from
+  `CTRL_KEYS[4]` and `APPLE_KEY`.
+- `document.tsrx` runs `PLATFORM_KEYS_SCRIPT` in the head, before the first paint.
+- #65's own copy (the inline SEARCH_KEYS script and `searchKeys()` in lib/site.ts) is gone.
+- lib/page-hints.ts now leaves the part's attributes on the page, because the head script reads them after boot.
+- The part relabels a button that an in-place navigation keeps and rewrites.
+
+**Dialog.** It stays this port's Markless implementation (lib/docsearch.ts, DocSearch 4 with Ask AI). The shared part
+(#74) loads `@docsearch/js@3` from a CDN. That would change the dialog to version 3's, drop Ask AI, and bring back the
+Preact runtime this port removed. After the launch, the shared part is to be rebuilt from lib/docsearch.ts and replace
+#74's CDN load for every port.

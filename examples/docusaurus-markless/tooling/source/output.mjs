@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { toTsrx } from './h.mjs';
+import { PLATFORM_KEYS_SCRIPT } from '../../../../parts/docsearch.ts';
 import { parseDocument, parseHtml } from './html.mjs';
 import { emitted } from './assets.mjs';
 import { idealFiles } from './ideal-image.mjs';
@@ -180,6 +181,7 @@ ${indent(`			<meta charset="UTF-8" />
 ${slotLines}
 ${staticLines}			<link rel="stylesheet" href="/assets/css/${stylesheetName}" />
 			<link rel="stylesheet" href="/mm-site.css" />
+			<script>{${JSON.stringify(PLATFORM_KEYS_SCRIPT)}}</script>
 `)}				</>
 			}
 ${plainHeads.map((nodes, i) => `			@if (plain === ${i}) {\n				<>\n${toTsrx(nodes, 5)}				</>\n			}\n`).join('')}		</head>
