@@ -53,8 +53,10 @@ export interface BuildScan {
 const SCRIPT = /\.(m?js|cjs)$/;
 // Client code: Markless's browser build. The server bundles name the same URLs for rendering, not loading.
 const CLIENT = /(^|\/)public\/build\/|^build\//;
-// A script URL on another origin as client code names it: a .js file, or a package entry on an npm CDN.
-const REMOTE_SCRIPT = /["'`](https:\/\/[^"'`\s\\]+?(?:\.m?js|\/npm\/(?:@[\w.-]+\/)?[\w.-]+@[\w.-]+)(?:\?[^"'`\s\\]*)?)["'`]/g;
+// A script URL on another origin as client code names it, as a value (after =, (, :, a comma, [ or ?), not inside page
+// text the bundle carries (a code sample showing a <script src>, highlighted or escaped) or a link's href: a .js file, or
+// a package entry on an npm CDN.
+const REMOTE_SCRIPT = /(?<=[=(,:[?]\s*)(?<!href["']?\s*[=:]\s*)(?<!&lt;[^<>&]*)["'`](https:\/\/[^"'`\s\\]+?(?:\.m?js|\/npm\/(?:@[\w.-]+\/)?[\w.-]+@[\w.-]+)(?:\?[^"'`\s\\]*)?)["'`]/g;
 // The app's own output: Markless's client build and the server; everything else under public/ was copied in.
 const BUNDLE = /(^|\/)(server|functions)\/|(^|\/)public\/build\/|^build\/|(^|\/)markless\//;
 // A built page Markless rendered (its route container or its import map), not a static HTML file copied in.
@@ -124,11 +126,12 @@ export async function scanBuild(dir: string): Promise<BuildScan> {
 		}
 		const c = classifyScript(text);
 		const runtimes = c.runtimes.map((r) => RUNTIME_NAMES[r]);
-		if (CLIENT.test(f.rel)) {
+		// Client code, and a known widget the server writes into the page's head as an inline script (the DocSearch part).
+		if (CLIENT.test(f.rel) || BUNDLE.test(f.rel)) {
 			for (const m of text.matchAll(REMOTE_SCRIPT)) {
 				const url = m[1]!;
-				if (remote.some((r) => r.url === url)) continue;
 				const note = KNOWN_REMOTE.find((k) => k.test.test(url))?.note;
+				if (remote.some((r) => r.url === url) || (!CLIENT.test(f.rel) && !note)) continue;
 				remote.push({ url, file: f.rel, ...(note ? { note } : {}) });
 			}
 		}

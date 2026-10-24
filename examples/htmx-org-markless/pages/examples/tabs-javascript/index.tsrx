@@ -95,6 +95,22 @@ export default function TabsJavascript() @{
 				hx-target="#tab-contents"
 				role="tablist"
 				hx-on:htmx-after-on-load={"console.log(event)\n                               let currentTab = document.querySelector('[aria-selected=true]');\n                                          currentTab.setAttribute('aria-selected', 'false')\n                                          currentTab.classList.remove('selected')\n                                          let newTab = event.target\n                                          newTab.setAttribute('aria-selected', 'true')\n                                          newTab.classList.add('selected')"}
+				onClick={(event) => {
+					// One handler for the three tabs; the tab's number from its hx-get, read now: the answer arrives after the handler has returned.
+					const button = (event.target as Element).closest('button');
+					if (!button) return;
+					const tab = Number(button.getAttribute('hx-get')!.slice(4));
+					requesting = tab;
+					classed = classed | (1 << (tab - 1));
+					setTimeout(() => {
+						// demo.js logs the answer before htmx swaps it in.
+						log = [getEntry(log.length + 1, `/tab${tab}`, tabResponse(tab)), ...log];
+						selected = `req-${log.length}`;
+						shown = tab;
+						current = tab;
+						if (requesting === tab) requesting = 0;
+					}, RESPONSE_DELAY);
+				}}
 			>
 				@for (const n of [1, 2, 3]; key n) {
 					{/* The whitespace between the old markup's inline-block buttons. */}
@@ -105,18 +121,6 @@ export default function TabsJavascript() @{
 						aria-selected={n === current ? 'true' : 'false'}
 						hx-get={`/tab${n}`}
 						class={!(classed & (1 << (n - 1))) ? undefined : n === current && n === requesting ? 'selected htmx-request' : n === current ? 'selected' : n === requesting ? 'htmx-request' : ''}
-						onClick={() => {
-							requesting = n;
-							classed = classed | (1 << (n - 1));
-							setTimeout(() => {
-								// demo.js logs the answer before htmx swaps it in.
-								log = [getEntry(log.length + 1, `/tab${n}`, tabResponse(n)), ...log];
-								selected = `req-${log.length}`;
-								shown = n;
-								current = n;
-								if (requesting === n) requesting = 0;
-							}, RESPONSE_DELAY);
-						}}
 					>
 						{`Tab ${n}`}
 					</button>

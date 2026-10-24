@@ -215,6 +215,27 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   is copied as it is. It used to be collapsed as in normal flow, so a chat bubble's numbered reply
   (`whitespace-pre-wrap`) ran onto one line: 114 px tall on the port against 159 px on the old page, and the
   transcript around it opened 45 px short.
+- react-day-picker (9.8) calendars on Markless state (`DayPickerPlan`, `src/convert/day-picker.ts`; engine and part
+  `parts/day-picker.ts`). `convert` reads each DayPicker from its React context on the old page (props, merged
+  classNames, the date-fns locale's names and full date pattern, numerals, a Jalali DateLib) at the capture clock and
+  at a second clock a year, four months and five days later, so a date that follows today (`useState(new Date())`,
+  `disabled={(date) => date > new Date()}`, booked dates in the current year) is written relative to today; a function
+  matcher is evaluated over 210 years into day spans. The port's first render on the capture clock is checked against
+  the old page's markup before a calendar is ported (all 22 on `/docs/components/{radix,base}/calendar` pass). The page
+  declares a `state()` view and a `computed()` model from the imported configuration (`lib/parts/day-picker-configs.ts`);
+  the template is the old markup per part, with no branch and no handler in a row (months written once each, weeks and
+  days keyed by place, a day's button always in its cell and hidden where DayPicker renders none), and the root's
+  click, focusin, focusout, keydown and change run DayPicker's handlers: single, multiple and range selection, nav
+  bounds and the month and year dropdowns, the keyboard grid (arrows, Page Up/Down, Shift, Home/End, RTL) skipping
+  disabled days, and the focus target and last-focused rules. Also measured on the old page and followed: whether a
+  day button focuses itself (shadcn's Radix CalendarDayButton does; the Base UI one never gets its ref), whether the
+  demo's wrapper mounts the calendar again when the selection or month changes (shadcn passes new `components` on each
+  render: the focus leaves the calendar and the next Tab starts at it), and buttons beside a calendar that set it (the
+  Presets row: today plus N days, and that day's month). A dropdown's `selected` attribute stays where the server
+  wrote it, as React's does. Compared step by step with the old page (navigation, clicks, eight keys, Enter, a second
+  day, Tab away, both dropdowns): all 22 calendars match at every step, and so do their accessibility trees, after
+  the first render, where the old page still shows the day it was built as today until something renders again.
+  The cells are keyed by place, so a focused day button stays in the page as the month changes (framework bugs, 17).
 
 ## Markless framework bugs found
 
@@ -288,6 +309,24 @@ parse (quotes and backticks in arm text).
     preview too. The same binding on the questionnaire page's forms is served as `m:on="submit:N!p"`, and a minimal
     app with that form nested under handlers resumes it. Not reduced further yet. The converter backs every handled
     form with a delegated `submit` part (`parts/form.ts`) that prevents it.
+15. Reported by the calendar port: a component-body `const` read by a `state()` initializer was missing from the
+    client code. Not reproduced on Markless main 329ca30d (2026-10-24), built and clicked in Chromium. These shapes
+    all serve the initial value, update on a click and log no error: `state(step * 10)` with `const step = 2`; an
+    object passed to an imported initializer, `state(init(cfg))`, also read by a `computed()` and a click handler;
+    one body const built from others with spread (`{ ...{ by: 3 }, loc, cls }`); a 20 KB literal whose strings hold
+    quotes, backticks, `</script>`, `\u2028` and Persian digits; and an `onIdle` handler writing the state, as the
+    converter emits. A function inside the const is refused at build time (MARKLESS_CAPTURE_UNSUPPORTED_VALUE), not
+    dropped. The converter still imports the calendar configurations from `lib/parts/day-picker-configs.ts`. Reopen
+    with the page if a real one shows it.
+16. Reported by the calendar port: a handler of a second event in the same frame (focusin, then click) read state
+    from before the first handler's write. Not reproduced on the same main: a root with `onFocusIn` writing a
+    state object and `onClick` reading it saw the focusin's write on every click, both for a real mouse click and
+    for `focus()` then `click()` in one task. `parts/day-picker.ts` keeps its own record of a calendar's last write
+    (`latest`/`write`) as a guard. Reopen with the page if a real one shows it.
+17. Not a Markless bug: when the calendar's cells change month, focus stays on the day button. The port keys cells
+    by place, so the same button stays in the page; React mounts new day nodes and focus leaves them. In a list keyed
+    by identity, Markless replaces the node and focus drops to the body, as React's does. The witness shows the
+    port's focus matching the original at every step, so the keying stays as it is.
 
 ## Build memory on Markless 0.9.0 (2026-10-22)
 
