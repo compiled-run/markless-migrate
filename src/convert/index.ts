@@ -6,7 +6,7 @@ import { copyAssets, copyStaticDir, resourcePaths } from './assets.ts';
 import { captureAll, type CapturedPage, type CapturedRef } from './capture.ts';
 import { atRest } from './at-rest.ts';
 import { captureAllReveals, captureBaseSubmenus, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
-import { captureChoices, type Choice } from './choices.ts';
+import { captureChoices, copyBinding, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
 import { cleanDocument, frameworkBuilds, lateHead, type Dropped } from './clean.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, textContent, walk, type Document, type Element } from './dom.ts';
@@ -302,6 +302,8 @@ let racLayer: { readonly plan: RacCalendarPlan; readonly captured: ReadonlyMap<s
 // What choosing each option of a control's layer did (Base UI Select's hidden input value, the text its trigger showed),
 // by page and layer key, and option text.
 let optionValues: Record<string, Record<string, Choice>> = {};
+// What choosing each option of a control's layer did (where it went, what it copied), by layer key and option text.
+let layerChoices: Record<string, Record<string, Choice>> = {};
 // What the old page's copy controls wrote, by the control's signature and occurrence.
 let currentClipboard: Record<string, string> = {};
 // Routes with a block that waits for the load event to render (its web font is fetched after the load).
@@ -570,6 +572,8 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 	if (racLayer && captured && reveal.sig && racLayer.plan.addLayer(racLayer.route, captured, racLayer.messages, { sig: reveal.sig, nth: reveal.nth ?? 0 }, kept)) templatePorts.add('react-aria/calendar');
 	const declarations: string[] = [];
 	const hollow = hollowOf(kept);
+	const copies = layerChoices[reveal.key];
+	const copying = kept.some((top) => [top, ...walkAll(top)].some((x) => copyBinding(x, copies)));
 	const emit = (shell: boolean) =>
 		kept
 			.map((top) =>
@@ -577,14 +581,15 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 					dropped,
 					declarations,
 					bind: (x) => {
-						const own = mergeBindings(racLayer?.plan.bind(x), mergeBindings(x === top ? mergeBindings(bindParts(x, templatePorts), extra.length ? { extra } : undefined) : bindParts(x, templatePorts), pickers?.bind(x)));
+						const own = mergeBindings(mergeBindings(racLayer?.plan.bind(x), mergeBindings(x === top ? mergeBindings(bindParts(x, templatePorts), extra.length ? { extra } : undefined) : bindParts(x, templatePorts), pickers?.bind(x))), copyBinding(x, copies));
 						return shell && x === hollow ? mergeBindings(own, { children: '', extra: [`data-mm-layer-fill="${LAYER_FILL}"`] }) : own;
 					},
 				}),
 			)
 			.join('');
 	const markup = emit(false);
-	if (declarations.length) return { markup, shell: '', fill: '', declare: declarations };
+	// A layer with handlers of its own is a component, never a served file (whose content is HTML).
+	if (declarations.length || copying) return { markup, shell: '', fill: '', declare: declarations };
 	// The shell goes into a <template>, whose content Markless never resumes: its origin is the token, like the file's.
 	return { markup, shell: withOriginToken(() => emit(true)), fill: hollow ? emitHtmlChildren(hollow) : '', declare: declarations };
 }
@@ -875,6 +880,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const racCalendarsRead = new Map<string, CapturedCalendars>();
 	const choices: Record<string, Record<string, Choice>> = {};
 	optionValues = {};
+	layerChoices = choices;
 	try {
 		// The old site's not-found page, from a path no route has: the new app's 404 page.
 		captures = await captureAll(browser, options.old, options.only?.length ? routes : [...routes, NOT_FOUND], join(state, 'convert', 'captures'), { concurrency: options.concurrency ?? 4, log });
