@@ -4,6 +4,7 @@ import { dirname, join, relative } from 'node:path';
 import { chromium } from 'playwright';
 import { copyAssets, copyStaticDir, resourcePaths } from './assets.ts';
 import { captureAll, type CapturedPage, type CapturedRef } from './capture.ts';
+import { atRest } from './at-rest.ts';
 import { captureAllReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, type Reveal } from './reveal.ts';
 import { captureChoices, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
@@ -560,12 +561,7 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 	const key = rename.get(reveal.key) ?? reveal.key;
 	const extra = placed ? placed.trim().split(/\s+(?=data-)/) : [];
 	for (const top of kept) {
-		for (const el of [top, ...walkAll(top)]) {
-			for (const a of el.attrs) if (a.name === 'data-state' && a.value === 'open') a.value = 'closed';
-			if (el.attrs.some((a) => a.name === 'data-open')) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-open'), { name: 'data-closed', value: '' }];
-			// React Aria's interaction states as the capture left them: the interactions part writes them as they happen.
-			if (el.attrs.some((a) => a.name === 'data-rac' || a.name === 'data-react-aria-pressable')) el.attrs = el.attrs.filter((a) => !/^data-(focused|focus-visible|hovered|pressed|focus-within|focus-visible-within)$/.test(a.name));
-		}
+		for (const el of [top, ...walkAll(top)]) atRest(el);
 		selectIndicators(top);
 		comboboxIndicators(top);
 		racIndicators(top);

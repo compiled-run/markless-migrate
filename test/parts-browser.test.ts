@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser, type Page } from 'playwright';
 import ts from 'typescript';
+import { atRest } from '../src/convert/at-rest.ts';
+import { body as bodyOf, outer, parseDocument, walk } from '../src/convert/dom.ts';
 
 // The ports run as the app runs them: parts/index.ts delegating every event to a registry of ports, in a real browser.
 const PARTS = join(import.meta.dirname, '..', 'parts');
@@ -20,12 +22,14 @@ after(async () => {
 	await browser.close();
 });
 
-async function open(body: string, ports: readonly string[]): Promise<Page> {
+// `deliver`: also hand every event to the parts from the body's or the window's capture phase, as a Markless page delegates
+// them, before the event reaches the document listener.
+async function open(body: string, ports: readonly string[], deliver?: 'body' | 'window'): Promise<Page> {
 	const page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
 	const registry = `${ports.map((p, i) => `import * as p${i} from './${p}.ts';`).join('\n')}\nexport const PARTS = [${ports.map((_, i) => `p${i}`).join(', ')}];`;
 	await page.route('http://parts.test/**', async (route) => {
 		const path = new URL(route.request().url()).pathname;
-		if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js"}}</script><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif}</style></head><body>${body}<script>window.pointerLog = []; for (const type of ['pointerover', 'pointermove']) document.addEventListener(type, (e) => { const t = e.target; window.pointerLog.push(type + '@' + Math.round(e.clientX) + ',' + Math.round(e.clientY) + ':' + (t.tagName || '') + '.' + (t.getAttribute && t.getAttribute('class') || '')); }, true);</script><script type="module">import { listen } from '/parts/index.ts'; import { mount } from '/parts/index.ts'; listen(); window.mountParts = mount; window.ready = true;</script></body></html>` });
+		if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js"}}</script><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif}</style></head><body>${body}<script>window.pointerLog = []; for (const type of ['pointerover', 'pointermove']) document.addEventListener(type, (e) => { const t = e.target; window.pointerLog.push(type + '@' + Math.round(e.clientX) + ',' + Math.round(e.clientY) + ':' + (t.tagName || '') + '.' + (t.getAttribute && t.getAttribute('class') || '')); }, true);</script><script type="module">import { behave, listen, mount } from '/parts/index.ts'; listen(); ${deliver ? `for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout']) ${deliver === 'body' ? 'document.body' : 'window'}.addEventListener(type, behave, true);` : ''} window.mountParts = mount; window.ready = true;</script></body></html>` });
 		if (path === '/floating.js') return route.fulfill({ contentType: 'text/javascript', body: FLOATING_STUB });
 		const text = path === '/parts/registry.ts' ? registry : await readFile(join(PARTS, path.replace(/^\/parts\//, '')), 'utf8');
 		return route.fulfill({ contentType: 'text/javascript', body: ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText });
@@ -386,5 +390,130 @@ test('Radix ScrollArea: the scrollbar rendered beside the content shows on hover
 	await page.mouse.wheel(0, 300);
 	await page.waitForTimeout(200);
 	assert.match(await page.locator('[data-slot="scroll-area-thumb"]').evaluate((e) => (e as HTMLElement).style.transform), /translate3d\(0px, 75px, 0px\)/);
+	await page.close();
+});
+
+// Radix Select as shadcn renders it (item-aligned), the content Markless renders at the end of the body.
+const FRUITS = ['Apple', 'Banana', 'Blueberry', 'Grapes', 'Pineapple'];
+const HIDDEN = '<style>[hidden]{display:none!important}</style>';
+const radixSelect = (layerAttrs: (i: number) => string = () => '') =>
+	`${HIDDEN}<main style="padding:200px"><button type="button" role="combobox" aria-controls="fruit" aria-expanded="false" data-state="closed" data-placeholder="" data-slot="select-trigger"><span data-slot="select-value" style="pointer-events:none">Select a fruit</span></button></main>
+	<div style="display:flex;flex-direction:column;position:fixed" hidden data-mm-layer="fruit"><div role="listbox" id="fruit" data-state="closed" data-slot="select-content" tabindex="-1" style="display:flex;flex-direction:column;outline:none"><div data-radix-select-viewport role="presentation" style="position:relative;flex:1;overflow:hidden auto"><div role="group">${FRUITS.map((f, i) => `<div role="option" aria-labelledby="fruit-${i}" aria-selected="false" data-state="unchecked" tabindex="-1" data-slot="select-item"${layerAttrs(i)}><span data-mm-indicator hidden></span><span id="fruit-${i}">${f}</span></div>`).join('')}</div></div></div></div>`;
+
+// Base UI Select (alignItemWithTrigger): its portal with the backdrop, the positioner, the popup and the listbox.
+const baseSelect = `${HIDDEN}<main style="padding:200px"><button type="button" id="base" role="combobox" aria-expanded="false" aria-haspopup="listbox" data-slot="select-trigger"><span data-slot="select-value">Select a fruit</span></button></main>
+	<div data-base-ui-portal hidden data-mm-layer="base"><div role="presentation" data-base-ui-inert style="position:fixed;inset:0"></div><div data-side="none" data-align="center" role="presentation" style="position:fixed" data-closed><div data-side="none" tabindex="-1" role="presentation" data-slot="select-content" data-closed><div role="listbox" style="position:relative">${FRUITS.map((f) => `<div role="option" aria-selected="false" tabindex="-1" data-slot="select-item"><div>${f}</div></div>`).join('')}</div></div></div></div>`;
+
+// What a select's own key handling queued (its focus moves run on a timer) has run.
+const settled = (page: Page) => page.evaluate(() => new Promise<void>((done) => setTimeout(() => setTimeout(done))));
+async function selectState(page: Page): Promise<string> {
+	await settled(page);
+	return page.evaluate(() => {
+		const trigger = document.querySelector('[data-slot="select-trigger"]')!;
+		const at = document.activeElement;
+		const focus = at === trigger ? 'trigger' : at?.getAttribute('role') === 'option' ? at.textContent!.trim() : at?.tagName.toLowerCase();
+		const highlighted = [...document.querySelectorAll('[role="option"][data-highlighted]')].map((o) => o.textContent!.trim());
+		return `${trigger.getAttribute('aria-expanded')} focus=${focus} highlighted=${highlighted.join('|') || '-'} value=${trigger.querySelector('[data-slot="select-value"]')!.textContent}`;
+	});
+}
+
+for (const deliver of ['body', 'window'] as const) {
+	test(`Radix Select, events delivered at the ${deliver}'s capture: the key that opens it is not also a move inside it`, async () => {
+		const page = await open(radixSelect(), ['radix/select'], deliver);
+		await page.evaluate(() => document.querySelector('[data-slot="select-trigger"]')!.addEventListener('mmchoose', (e) => (document.querySelector('[data-slot="select-value"]')!.textContent = (e as CustomEvent<string>).detail)));
+		await page.locator('[data-slot="select-trigger"]').focus();
+		const steps: [string, string][] = [
+			['ArrowDown', 'true focus=Apple highlighted=Apple value=Select a fruit'],
+			['ArrowDown', 'true focus=Banana highlighted=Banana value=Select a fruit'],
+			['ArrowDown', 'true focus=Blueberry highlighted=Blueberry value=Select a fruit'],
+			['Enter', 'false focus=trigger highlighted=- value=Blueberry'],
+			['ArrowDown', 'true focus=Blueberry highlighted=Blueberry value=Blueberry'],
+			['ArrowDown', 'true focus=Grapes highlighted=Grapes value=Blueberry'],
+			['Escape', 'false focus=trigger highlighted=- value=Blueberry'],
+			['ArrowUp', 'true focus=Blueberry highlighted=Blueberry value=Blueberry'],
+		];
+		for (const [key, expected] of steps) {
+			await page.keyboard.press(key);
+			assert.equal(await selectState(page), expected, `after ${key}`);
+		}
+		await page.close();
+	});
+}
+
+test('Radix Select with no value opens focused on the first enabled option, from Space, Enter or a press', async () => {
+	const page = await open(radixSelect((i) => (i === 0 ? ' data-disabled=""' : '')), ['radix/select'], 'body');
+	const trigger = page.locator('[data-slot="select-trigger"]');
+	await trigger.focus();
+	for (const [key, expected] of [
+		['Space', 'true focus=Banana highlighted=Banana value=Select a fruit'],
+		['ArrowDown', 'true focus=Blueberry highlighted=Blueberry value=Select a fruit'],
+		['Escape', 'false focus=trigger highlighted=- value=Select a fruit'],
+		['Enter', 'true focus=Banana highlighted=Banana value=Select a fruit'],
+		['Escape', 'false focus=trigger highlighted=- value=Select a fruit'],
+	]) {
+		await page.keyboard.press(key!);
+		assert.equal(await selectState(page), expected, `after ${key}`);
+	}
+	await trigger.click();
+	assert.equal(await selectState(page), 'true focus=Banana highlighted=Banana value=Select a fruit', 'after a press');
+	await page.close();
+});
+
+test('a select layer captured with options highlighted is converted at rest: only the option the pointer is on is highlighted', async () => {
+	// The capture left Banana and Grapes highlighted (the pointer and focus as they were when it was recorded).
+	const doc = parseDocument(`<body>${radixSelect((i) => (i === 1 || i === 3 ? ' data-highlighted=""' : ''))}</body>`);
+	for (const el of walk(bodyOf(doc))) if (el.attrs.some((a) => a.name === 'data-mm-layer')) for (const x of [el, ...walk(el)]) atRest(x);
+	const page = await open(outer(bodyOf(doc)).replace(/^<body>|<\/body>$/g, ''), ['radix/select'], 'body');
+	assert.equal(await page.locator('[data-highlighted]').count(), 0);
+	await page.locator('[data-slot="select-trigger"]').click();
+	await page.locator('[role="option"]', { hasText: 'Blueberry' }).hover();
+	assert.equal(await selectState(page), 'true focus=Blueberry highlighted=Blueberry value=Select a fruit');
+	await page.close();
+});
+
+test('a press outside a Radix or Base UI select closes it with focus back on its trigger, as each library does', async () => {
+	for (const [markup, port] of [
+		[radixSelect(), 'radix/select'],
+		[baseSelect, 'base-ui/select'],
+	] as const) {
+		const page = await open(markup, [port], 'body');
+		await page.locator('[data-slot="select-trigger"]').click();
+		await page.locator('[role="option"]', { hasText: 'Banana' }).hover();
+		assert.match(await selectState(page), /^true focus=Banana/, port);
+		await page.mouse.click(5, 790);
+		assert.match(await selectState(page), /^false focus=trigger/, port);
+		await page.close();
+	}
+});
+
+test('a Radix dropdown menu closed by a press outside returns focus to its trigger, as its modal FocusScope does', async () => {
+	const page = await open(
+		`<main style="padding:200px"><button type="button" id="menu" aria-haspopup="menu" aria-expanded="false" data-state="closed" data-slot="dropdown-menu-trigger">Open</button></main>
+		<div data-mm-layer="menu" hidden data-radix-popper-content-wrapper style="position:fixed"><div data-slot="dropdown-menu-content" role="menu" id="menu-content" aria-labelledby="menu" data-state="closed" tabindex="-1"><div role="menuitem" tabindex="-1">Profile</div></div></div>`,
+		['radix/dropdown-menu'],
+		'body',
+	);
+	await page.getByText('Open').click();
+	assert.equal(await page.getByText('Open').getAttribute('aria-expanded'), 'true');
+	// Radix, too, listens for a press outside from a timer after opening.
+	await settled(page);
+	await page.mouse.click(5, 790);
+	await settled(page);
+	assert.equal(await page.getByText('Open').getAttribute('aria-expanded'), 'false');
+	assert.equal(await page.evaluate(() => document.activeElement?.id), 'menu');
+	await page.close();
+});
+
+test('a React Aria select opened by a press delivered before the document stays open: that press is not one outside it', async () => {
+	const page = await open(
+		`${HIDDEN}<div data-slot="select" data-rac=""><button id="t1" data-slot="select-trigger" data-rac="" type="button" data-react-aria-pressable="true" aria-haspopup="listbox" aria-expanded="false"><span data-slot="select-value" data-rac="" data-placeholder="true">Select a fruit</span></button></div>
+		<div style="display: contents;" hidden data-mm-layer="t1"><div data-slot="select-content" data-rac="" data-trigger="Select" style="position:absolute" role="dialog" tabindex="-1" data-placement="bottom"><div id="lb" data-slot="select-list" data-rac="" role="listbox" tabindex="0">${FRUITS.map((f, i) => `<div data-slot="select-item" data-rac="" role="option" aria-selected="false" tabindex="-1" id="o${i}"><span>${f}</span></div>`).join('')}</div></div></div>`,
+		['react-aria/select'],
+		'window',
+	);
+	const box = (await page.locator('#t1').boundingBox())!;
+	await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+	await settled(page);
+	assert.equal(await page.locator('#t1').getAttribute('aria-expanded'), 'true');
 	await page.close();
 });

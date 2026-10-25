@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { chromium } from 'playwright';
 import ts from 'typescript';
-import { body, find, parseDocument } from '../src/convert/dom.ts';
+import { atRest } from '../src/convert/at-rest.ts';
+import { body, find, outer, parseDocument, walk } from '../src/convert/dom.ts';
 import { LAYER_FILL, layerTable, SERVED_LAYER_BYTES } from '../src/convert/document.ts';
 import { APP_URL_TOKEN, emitElement, emitHtml, useOrigin } from '../src/convert/tsrx.ts';
 
@@ -86,4 +87,19 @@ test('a used layer shows its shell at once and its content when the file lands, 
 	} finally {
 		await browser.close();
 	}
+});
+
+test('a layer captured open loses the interaction state the server never renders, and keeps the state it does', () => {
+	const doc = parseDocument(`<body><div role="dialog" data-state="open" data-mm-layer="k">
+	<div role="option" data-state="checked" aria-selected="true" data-highlighted="">Apple</div><div role="menuitem" data-highlighted="" data-disabled="">Cut</div>
+	<button data-slot="tooltip-trigger" data-state="instant-open" aria-describedby="tip">Copy</button><button data-state="delayed-open" aria-describedby="tip2">Paste</button><button aria-describedby="hint">Plain</button>
+	<pre><span data-highlighted-line="">x</span><mark data-highlighted-chars="">y</mark></pre><div data-selected="" aria-selected="true" cmdk-item="">First</div></div></body>`);
+	for (const el of walk(body(doc))) atRest(el);
+	assert.equal(
+		outer(find(body(doc), (e) => e.tagName === 'div')!),
+		`<div role="dialog" data-state="closed" data-mm-layer="k">
+	<div role="option" data-state="checked" aria-selected="true">Apple</div><div role="menuitem" data-disabled="">Cut</div>
+	<button data-slot="tooltip-trigger" data-state="closed">Copy</button><button data-state="closed">Paste</button><button aria-describedby="hint">Plain</button>
+	<pre><span data-highlighted-line="">x</span><mark data-highlighted-chars="">y</mark></pre><div data-selected="" aria-selected="true" cmdk-item="">First</div></div>`,
+	);
 });

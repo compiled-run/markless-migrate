@@ -171,11 +171,13 @@ export function openOverlay(trigger: HTMLElement, key: string, options: OpenOpti
 		o.onDismiss(o, 'outside');
 	};
 	document.addEventListener('keydown', onKey, true);
-	if (options.dismissable !== false) {
+	// After the press that opened it, which would otherwise count as one outside if delivered before the document.
+	const timer = options.dismissable === false ? undefined : setTimeout(() => {
 		document.addEventListener('pointerdown', onDown, true);
 		document.addEventListener('pointerup', onUp, true);
-	}
+	});
 	o.cleanup.push(() => {
+		clearTimeout(timer);
 		document.removeEventListener('keydown', onKey, true);
 		document.removeEventListener('pointerdown', onDown, true);
 		document.removeEventListener('pointerup', onUp, true);

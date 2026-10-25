@@ -22,6 +22,7 @@ export interface Layer {
 
 const open: Layer[] = [];
 let bodyPointerEvents = '';
+let pressedOutside: Layer | undefined;
 
 export const isOpen = (key: string) => open.some((l) => l.key === key);
 export const top = () => open[open.length - 1];
@@ -84,7 +85,12 @@ export function openLayer(trigger: HTMLElement, key: string, options: { readonly
 	const onDown = (event: PointerEvent) => {
 		const target = event.target as Node | null;
 		if (!target || top() !== layer || layer.nodes.some((n) => n.contains(target)) || trigger.contains(target)) return;
-		options.onDismiss(layer, 'outside');
+		pressedOutside = layer;
+		try {
+			options.onDismiss(layer, 'outside');
+		} finally {
+			pressedOutside = undefined;
+		}
 	};
 	const timer = setTimeout(() => document.addEventListener('pointerdown', onDown, true), 0);
 	document.addEventListener('keydown', onKey, true);
@@ -106,6 +112,12 @@ export function closeLayer(layer: Layer, keepFocus = false): void {
 	showCompanions(layer.key, false);
 	if (layer.modal && !open.some((l) => l.modal)) document.body.style.pointerEvents = bodyPointerEvents;
 	if (!keepFocus) layer.trigger.focus({ preventScroll: true });
+	// The press's own mousedown then blurs to the body; Radix's FocusScope returns focus to the trigger after it.
+	if (!keepFocus && layer.modal && pressedOutside === layer) {
+		setTimeout(() => {
+			if (!document.activeElement || document.activeElement === document.body) layer.trigger.focus({ preventScroll: true });
+		});
+	}
 	leave(
 		layer.content,
 		() => layer.content.setAttribute('data-state', 'closed'),
