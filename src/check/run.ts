@@ -373,7 +373,7 @@ async function checkArrived(browser: Browser, run: Run, route: string, viewport:
 	const distinct = plain.filter((j) => {
 		const first = j.steps[0]!;
 		const key = `${j.steps.length}|${first.action}|${first.target.role}|${first.target.name}`;
-		if (j.cycle || j.destructive || kinds.has(key)) return false;
+		if (j.cycle || j.destructive || j.pattern || kinds.has(key)) return false;
 		kinds.add(key);
 		return true;
 	});

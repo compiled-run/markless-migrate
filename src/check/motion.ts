@@ -760,7 +760,7 @@ export function motionDismissals(journeys: readonly RecordedJourney[]): MotionJo
 	const alike = new Set<string>();
 	for (const j of journeys) {
 		const last = j.expected.at(-1);
-		if (j.destructive || !last || j.expected.length < j.steps.length || last.failed || last.navigated || last.writes?.some((w) => !w.sent) || !last.added.some((line) => LAYER.test(line))) continue;
+		if (j.destructive || j.pattern || !last || j.expected.length < j.steps.length || last.failed || last.navigated || last.writes?.some((w) => !w.sent) || !last.added.some((line) => LAYER.test(line))) continue;
 		const key = j.steps.map((s) => `${activation(s)}|${s.target.role}|${s.target.name.replace(/\d+/g, '#')}`).join(' > ');
 		if (alike.has(key)) continue;
 		alike.add(key);
@@ -791,7 +791,8 @@ export function motionJourneys(journeys: readonly RecordedJourney[]): { take: Re
 	const skipped: string[] = [];
 	const names = new Set<string>();
 	for (const j of journeys) {
-		if (j.destructive || names.has(j.name)) continue;
+		// A keyboard pattern journey compares where focus and the highlight go; what its steps animate is the same pop-up its pointer journeys record.
+		if (j.destructive || j.pattern || names.has(j.name)) continue;
 		names.add(j.name);
 		const last = j.expected.at(-1);
 		if (!last || j.expected.length < j.steps.length || last.failed) skipped.push(`${j.name}: it could not be used on the old page`);
