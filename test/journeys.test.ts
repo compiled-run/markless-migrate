@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { pageAsset } from '../src/check/browser.ts';
-import { compareJourneys, consoleErrorText, describeStep, labelled, localUrl, locate, movedLines, pagePath, type Journey, type StepResult } from '../src/check/journeys.ts';
+import { compareJourneys, consoleErrorText, describeStep, labelled, localUrl, locate, movedLines, pagePath, stepDiff, type Journey, type StepResult } from '../src/check/journeys.ts';
 
 const result = (over: Partial<StepResult>): StepResult => ({ url: '/', added: [], removed: [], requests: [], errors: [], announcements: [], focus: 'body', navigated: false, ...over });
 const pour = { role: 'button', name: 'Pour a cup', nth: 0 };
@@ -174,4 +174,12 @@ test('a control named with a relative time is found whatever the clock has moved
 	} finally {
 		await browser.close();
 	}
+});
+
+test("a relative time's reading is no step's doing: the same items reading other ages is no change, an item gone still is", () => {
+	const before = ['- link "A story"', '- time: 8 hours ago', '- link "Another"', '- time: 8 hours ago', '- text: "bulbar 36 seconds ago | link"'];
+	// One item left the list and another came in; the clock moved an age and a reading inside a line on with it.
+	const after = ['- link "A story"', '- time: 9 hours ago', '- link "Newcomer"', '- time: 8 hours ago', '- text: "bulbar 37 seconds ago | link"'];
+	assert.deepEqual(stepDiff(before, after), { added: ['- link "Newcomer"'], removed: ['- link "Another"'] });
+	assert.deepEqual(stepDiff(before, before.slice(0, 2)), { added: [], removed: ['- time: <time ago>', '- link "Another"', '- text: "bulbar <time ago> | link"'] }, 'a line that leaves with its item is still gone');
 });
