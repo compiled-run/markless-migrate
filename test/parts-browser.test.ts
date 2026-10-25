@@ -56,12 +56,12 @@ const settle = (page: Page) => page.waitForTimeout(1200);
 
 // shadcn's Carousel markup with its Tailwind classes as inline styles: a 300 px viewport, the track pulled 16 px left
 // (-ml-4) and each slide padded 16 px (pl-4), so a slide is 316 px and Embla's snaps are 0, -316, -632, -948, -1264.
-function carousel(options: { basis?: string; align?: string; vertical?: boolean; autoplay?: number } = {}): string {
+function carousel(options: { basis?: string; align?: string; vertical?: boolean; autoplay?: number; hover?: string; rac?: boolean } = {}): string {
 	const slides = Array.from({ length: 5 }, (_, i) => `<div role="group" aria-roledescription="slide" data-slot="carousel-item" style="min-width:0;flex:0 0 ${options.basis ?? '100%'};${options.vertical ? 'padding-top:16px;height:100px' : 'padding-left:16px'}"><div style="height:${options.vertical ? '84px' : '200px'};border:1px solid">${i + 1}</div></div>`).join('');
-	return `<div style="padding:80px"><div role="region" aria-roledescription="carousel" data-slot="carousel" style="position:relative;width:300px"${options.align ? ` data-mm-align="${options.align}"` : ''}${options.autoplay ? ` data-mm-autoplay="${options.autoplay}"` : ''}>
+	return `<div style="padding:80px"><div role="region" aria-roledescription="carousel" data-slot="carousel" style="position:relative;width:300px"${options.align ? ` data-mm-align="${options.align}"` : ''}${options.autoplay ? ` data-mm-autoplay="${options.autoplay}"` : ''}${options.hover ? ` data-mm-autoplay-hover="${options.hover}"` : ''}>
 	<div data-slot="carousel-content" style="overflow:hidden;${options.vertical ? 'height:200px' : ''}"><div style="display:flex;${options.vertical ? 'flex-direction:column;margin-top:-16px;height:216px' : 'margin-left:-16px'};transform:translate3d(0px, 0px, 0px)">${slides}</div></div>
-	<button data-slot="carousel-previous" disabled style="position:absolute;left:-48px;top:0">Previous slide</button>
-	<button data-slot="carousel-next" style="position:absolute;right:-48px;top:0">Next slide</button></div></div>`;
+	<button data-slot="carousel-previous" disabled${options.rac ? ' data-rac="" data-disabled="true"' : ''} style="position:absolute;left:-48px;top:0">Previous slide</button>
+	<button data-slot="carousel-next"${options.rac ? ' data-rac="" tabindex="0"' : ''} style="position:absolute;right:-48px;top:0">Next slide</button></div></div>`;
 }
 
 test('carousel: Next and Previous move the track to Embla snaps and disable at the ends; the arrow keys step', async () => {
@@ -125,13 +125,39 @@ test('carousel: align start with three slides in view trims the snaps to the scr
 	await vertical.close();
 });
 
-test('carousel: with Autoplay it steps on its own every delay', async () => {
+test('carousel: with Autoplay it steps on its own every delay from the load, scrolled into view or not', async () => {
 	const page = await open(carousel({ autoplay: 400 }), ['carousel']);
-	await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-autoplay'));
 	await page.waitForTimeout(1500);
 	assert.ok(x(await transformOf(page)) <= -316, await transformOf(page));
 	await page.close();
 });
+
+test('carousel: Autoplay the old page stopped under the pointer stops on hover for good; one it paused plays again on leave', async () => {
+	for (const hover of ['stop', 'pause']) {
+		const page = await open(carousel({ autoplay: 300, hover }), ['carousel']);
+		await page.evaluate(() => (window as unknown as { mountParts: (a: string) => void }).mountParts('data-mm-autoplay'));
+		const box = (await page.locator('[data-slot="carousel-content"]').boundingBox())!;
+		await page.mouse.move(box.x + 20, box.y + 20);
+		await page.waitForTimeout(900);
+		assert.equal(x(await transformOf(page)), 0, `${hover}: no step while the pointer is over it`);
+		await page.mouse.move(1, 1);
+		await page.waitForTimeout(900);
+		assert.equal(x(await transformOf(page)) < 0, hover === 'pause', `${hover}: ${await transformOf(page)} after the pointer left`);
+		await page.close();
+	}
+});
+
+
+test('carousel: a React Aria Previous and Next switch data-disabled and their tab stop with disabled', async () => {
+	const page = await open(carousel({ rac: true }), ['carousel']);
+	const attrs = (slot: string) => page.locator(`[data-slot="carousel-${slot}"]`).evaluate((b) => [(b as HTMLButtonElement).disabled, b.getAttribute('data-disabled'), b.getAttribute('tabindex')]);
+	await page.locator('[data-slot="carousel-next"]').click();
+	assert.deepEqual(await attrs('previous'), [false, null, '0']);
+	await page.locator('[data-slot="carousel-previous"]').click();
+	assert.deepEqual(await attrs('previous'), [true, 'true', null]);
+	await page.close();
+});
+
 
 // A Radix trigger rendered through asChild carries the child Button's data-slot ("button"); its layer's content names
 // which part it is.

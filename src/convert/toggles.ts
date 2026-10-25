@@ -6,6 +6,7 @@ import { defaultEnv, openPage } from '../check/browser.ts';
 import { finishAnimations } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
+import { attr, elementChildren, setAttr, walk, type Element as Tree } from './dom.ts';
 
 /** A control as the old page showed it in one state: its attributes and its children's markup. */
 export interface ToggleState {
@@ -704,6 +705,44 @@ export async function captureHoverDelays(browser: Browser, origin: string, route
 	return capture;
 }
 
+// Whether a carousel moves over a delay and a half, after a move already under way has settled.
+async function movesWithin(page: Page, i: number, delay: number): Promise<boolean> {
+	const read = () => page.evaluate((i) => document.querySelectorAll('[data-slot="carousel"]')[i]?.querySelector<HTMLElement>('[data-slot="carousel-content"] > *')?.style.transform ?? '', i);
+	await page.waitForTimeout(700);
+	const before = await read();
+	await page.waitForTimeout(delay * 1.5);
+	return (await read()) !== before;
+}
+
+/** What the pointer over an autoplaying carousel does to its autoplay: the page's own mouseenter and mouseleave handlers decide. */
+async function hoverEffect(page: Page, i: number, delay: number): Promise<CarouselFacts['hover']> {
+	const root = page.locator('[data-slot="carousel"]').nth(i);
+	await root.scrollIntoViewIfNeeded().catch(() => {});
+	const box = await root.boundingBox();
+	if (!box) return undefined;
+	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+	const moved = await movesWithin(page, i, delay);
+	await page.mouse.move(0, 0);
+	if (moved) return undefined;
+	return (await movesWithin(page, i, delay)) ? 'pause' : 'stop';
+}
+
+// An autoplaying carousel was captured wherever Autoplay had taken it: served as Embla shows it at load, on its first snap.
+export function restCarousel(root: Tree): void {
+	const els = [...walk(root)];
+	const track = els.find((e) => attr(e, 'data-slot') === 'carousel-content');
+	const first = track && elementChildren(track)[0];
+	const style = first && attr(first, 'style');
+	if (first && style !== undefined) setAttr(first, 'style', style.replace(/transform:\s*translate3d\([^)]*\)/, 'transform: translate3d(0px, 0px, 0px)'));
+	for (const button of els.filter((e) => /^carousel-(previous|next)$/.test(attr(e, 'data-slot') ?? ''))) {
+		const off = attr(button, 'data-slot') === 'carousel-previous';
+		const rac = attr(button, 'data-rac') !== undefined;
+		button.attrs = button.attrs.filter((a) => a.name !== 'disabled' && !(rac && (a.name === 'data-disabled' || a.name === 'tabindex')));
+		if (off) button.attrs.push({ name: 'disabled', value: '' }, ...(rac ? [{ name: 'data-disabled', value: 'true' }] : []));
+		else if (rac) button.attrs.push({ name: 'tabindex', value: '0' });
+	}
+}
+
 export interface CarouselFacts {
 	readonly sig: string;
 	readonly nth: number;
@@ -711,6 +750,8 @@ export interface CarouselFacts {
 	readonly align: 'start' | 'center' | 'end';
 	/** Milliseconds between two moves no one asked for (Embla Autoplay's delay), when the carousel moved by itself. */
 	readonly autoplay?: number;
+	/** What the pointer over an autoplaying carousel does: `stop` it for good, or `pause` it until the pointer leaves. */
+	readonly hover?: 'stop' | 'pause';
 }
 
 /**
@@ -719,7 +760,7 @@ export interface CarouselFacts {
  * through as a variable, so the source does not say).
  */
 export async function captureCarousels(browser: Browser, origin: string, route: string, dir: string): Promise<{ readonly route: string; readonly carousels: readonly CarouselFacts[] }> {
-	const file = join(dir, `${createHash('sha256').update(`carousel:${route}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`carousel:2:${route}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; carousels: CarouselFacts[] }, () => undefined);
 	if (cached && cached.route === route) return cached;
 	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
@@ -788,7 +829,8 @@ export async function captureCarousels(browser: Browser, origin: string, route: 
 					return (Object.entries(options).sort((a, b) => Math.abs(a[1] - at) - Math.abs(b[1] - at))[0]![0]) as 'start' | 'center' | 'end';
 				}, i);
 			}
-			carousels.push({ sig: found.sig, nth: found.nth, align, ...(autoplay ? { autoplay } : {}) });
+			const hover = autoplay ? await hoverEffect(page, i, autoplay) : undefined;
+			carousels.push({ sig: found.sig, nth: found.nth, align, ...(autoplay ? { autoplay } : {}), ...(hover ? { hover } : {}) });
 		}
 	} finally {
 		await context.close().catch(() => {});

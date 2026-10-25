@@ -14,6 +14,8 @@ export interface Part {
 	readonly submit?: (target: Element, event: SubmitEvent) => boolean;
 	/** Starts what a part does to an element for as long as the page shows it (a scroll position kept, a size watched). */
 	readonly mount?: (el: Element) => void;
+	/** Runs once the page is idle: what the old page's code did on load wherever the page was scrolled (an Autoplay timer). */
+	readonly idle?: () => void;
 }
 
 type Kind = keyof Part;
@@ -59,6 +61,7 @@ export function listen(): void {
 	if (listening) return;
 	listening = true;
 	for (const type of EVENTS) document.addEventListener(type, behave);
+	for (const part of PARTS) part.idle?.();
 }
 
 /** Runs every part's mount for the elements carrying `attribute`, once each; the converter calls it when they become visible. */
