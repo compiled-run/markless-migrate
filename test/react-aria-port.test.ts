@@ -36,6 +36,11 @@ const dialog = `
 <!--layers--><div data-slot="dialog-overlay" data-rac="" hidden data-mm-layer="d1"><div data-slot="dialog-content" data-rac=""><div style="clip-path: inset(50%); position:absolute"><button aria-label="Dismiss" tabindex="-1"></button></div>
 <section id="dlg" data-slot="dialog" data-rac="" role="dialog" tabindex="-1"><input id="name" data-rac="" value="Pedro"><button id="close" data-rac="" slot="close" type="button">Cancel</button></section></div></div>`;
 
+const alertDialog = `
+<button id="d1" data-slot="button" data-rac="" type="button" data-react-aria-pressable="true" aria-expanded="false">Show Dialog</button>
+<!--layers--><div data-slot="alert-dialog-overlay" data-rac="" hidden data-mm-layer="d1" style="position:fixed;inset:0"><div data-slot="alert-dialog-content" data-rac="" style="position:absolute;left:300px;top:200px">
+<section id="dlg" data-slot="alert-dialog" data-rac="" role="alertdialog" tabindex="-1"><p>Are you absolutely sure?</p><button id="cancel" data-rac="" slot="close" type="button">Cancel</button><button id="go" data-rac="" type="button">Continue</button></section></div></div>`;
+
 const accordion = `
 <div data-slot="accordion" data-rac="">
 <div data-slot="accordion-item" data-rac="" data-expanded="true"><h3><button id="a1" data-rac="" type="button" aria-expanded="true" aria-controls="p1" slot="trigger">One</button></h3><div id="p1" data-rac="" role="group" aria-hidden="false" style="--disclosure-panel-width: auto; --disclosure-panel-height: auto;"><div>First</div></div></div>
@@ -177,6 +182,22 @@ test('Dialog: a press opens it focused, Tab stays inside, its close button close
 	await page.waitForTimeout(50);
 	assert.equal(await active(page), 'd1');
 	assert.equal(await page.getAttribute('#d1', 'aria-expanded'), 'false');
+	await page.close();
+});
+
+test('Dialog: a press outside an alert dialog leaves focus in it, as FocusScope contain restores it', async () => {
+	const page = await open(alertDialog);
+	await page.click('#d1');
+	assert.equal(await active(page), 'dlg');
+	await page.mouse.click(20, 400);
+	await page.waitForTimeout(100);
+	assert.equal(await active(page), 'dlg');
+	assert.equal(await page.isVisible('#dlg'), true);
+	await page.keyboard.press('Tab');
+	assert.equal(await active(page), 'cancel');
+	await page.mouse.click(20, 400);
+	await page.waitForTimeout(100);
+	assert.equal(await active(page), 'cancel');
 	await page.close();
 });
 
