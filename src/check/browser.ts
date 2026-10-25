@@ -185,6 +185,11 @@ export function pageAsset(method: string, resourceType: string): boolean {
 	return method === 'GET' && ['script', 'stylesheet', 'font', 'image'].includes(resourceType);
 }
 
+/** A data call a page makes itself: a journey answers it from what the page's load read, never from a new fetch. */
+export function pageData(method: string, resourceType: string): boolean {
+	return method === 'GET' && ['fetch', 'xhr'].includes(resourceType);
+}
+
 // Each other-origin asset is fetched once per run, in a request context of its own (one tied to a closed journey page never settles): journeys open many pages at once and must not burst a CDN.
 const assets = new Map<string, Promise<{ status: number; headers: Record<string, string>; body: Buffer } | undefined>>();
 let fetcher: Promise<APIRequestContext> | undefined;
@@ -412,6 +417,11 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 				return route.fulfill({ status: hit.status, headers: { 'content-type': hit.contentType, 'access-control-allow-origin': '*' }, body: hit.body ?? '' });
 			}
 			if (!options.sameOriginOnly) return options.shareThirdParty && sharedThirdParty(request.method(), request.resourceType()) ? fulfillAsset(route, true) : route.continue();
+			// The page's own data from another origin (a single-page app's API) answers it as it answered the page's load: from the run's one copy, never a new fetch.
+			if (pageData(request.method(), request.resourceType()) && assets.has(url.href) && !insideEmbed(request, ownOrigin)) {
+				await timed?.network.delay();
+				return fulfillAsset(route);
+			}
 			if (!pageAsset(request.method(), request.resourceType())) return route.abort();
 			await timed?.network.delay();
 			return fulfillAsset(route);
