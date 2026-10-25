@@ -1,16 +1,19 @@
 import { closeLayer, layerOf, openLayer, type Layer } from '../layer.ts';
-import { layerKey } from '../reveal.ts';
+import { layerKey, layersFor, layersPending, loadLayers } from '../reveal.ts';
 
 // Radix Select (@radix-ui/react-select) with its default item-aligned position: a mouse press on the trigger (or Enter,
 // Space, an arrow) opens the listbox over the trigger with the selected option's text where the trigger's value is;
 // arrows, Home, End and typing move focus between options, a pointer over an option focuses it; choosing one (a
 // mouse release, Enter, Space) marks it checked, shows its indicator, writes its text into the trigger's value
-// (mmchoose, the converter's state) and closes. Escape, a press outside, blur and resize close too.
+// (mmchoose, the converter's state) and closes. Escape, a press outside, blur and resize close too. In a form, Radix
+// renders a hidden native <select> beside the trigger (BubbleSelect): choosing sets it and fires its change, and a
+// change made there (autofill, a form restored) chooses the option with the same text.
 
 const TRIGGER = 'button[role="combobox"][aria-controls][data-slot="select-trigger"][data-state]';
 const OPTION = '[role="option"]';
 const CONTENT_MARGIN = 10;
 const OPEN_KEYS = [' ', 'Enter', 'ArrowUp', 'ArrowDown'];
+const NATIVE = 'select[aria-hidden="true"]';
 
 interface Open {
 	readonly layer: Layer;
@@ -108,17 +111,53 @@ function focusFirst(o: Open, candidates: readonly (HTMLElement | undefined)[]): 
 	}
 }
 
-function choose(o: Open, option: HTMLElement): void {
-	const trigger = o.layer.trigger;
-	for (const x of options(o)) {
+const optionText = (option: HTMLElement) => (textOf(option).textContent ?? '').trim();
+function nativeOf(trigger: HTMLElement): HTMLSelectElement | undefined {
+	for (let at = trigger.nextElementSibling; at && !at.matches(TRIGGER); at = at.nextElementSibling) if (at.matches(NATIVE)) return at as HTMLSelectElement;
+	return undefined;
+}
+const placeholders = new WeakMap<HTMLElement, string>();
+
+function mark(trigger: HTMLElement, items: readonly HTMLElement[], option: HTMLElement | undefined): void {
+	for (const x of items) {
 		const on = x === option;
 		x.setAttribute('data-state', on ? 'checked' : 'unchecked');
 		// The converter renders every option's indicator, hidden but on the selected one (Radix mounts only that one).
 		for (const indicator of x.querySelectorAll<HTMLElement>('[data-mm-indicator]')) indicator.hidden = !on;
 	}
-	trigger.removeAttribute('data-placeholder');
-	trigger.dispatchEvent(new CustomEvent('mmchoose', { bubbles: true, detail: (textOf(option).textContent ?? '').trim() }));
+	const value = trigger.querySelector('[data-slot="select-value"]');
+	if (trigger.hasAttribute('data-placeholder') && value && !placeholders.has(trigger)) placeholders.set(trigger, value.textContent ?? '');
+	trigger.toggleAttribute('data-placeholder', !option);
+	const text = option ? optionText(option) : placeholders.get(trigger);
+	if (text !== undefined) trigger.dispatchEvent(new CustomEvent('mmchoose', { bubbles: true, detail: text }));
+}
+
+function choose(o: Open, option: HTMLElement): void {
+	const trigger = o.layer.trigger;
+	mark(trigger, options(o), option);
+	const native = nativeOf(trigger);
+	const match = native && [...native.options].find((x) => x.text.trim() === optionText(option));
+	if (native && match && native.value !== match.value) {
+		native.value = match.value;
+		native.dispatchEvent(new Event('change', { bubbles: true }));
+	}
 	close(o);
+}
+
+// A change on the hidden native select: the option of the trigger's listbox with the chosen text, or none for "".
+export function input(target: Element): boolean {
+	if (!(target instanceof HTMLSelectElement) || !target.matches(NATIVE)) return false;
+	const trigger = [...(target.parentElement?.children ?? [])].find((el): el is HTMLElement => el.matches(TRIGGER) && nativeOf(el as HTMLElement) === target);
+	if (!trigger) return false;
+	const apply = () => {
+		const items = layersFor(layerKey(trigger)).flatMap((n) => [...n.querySelectorAll<HTMLElement>(OPTION)]);
+		const chosen = target.selectedOptions[0];
+		const option = chosen && chosen.value !== '' ? items.find((x) => optionText(x) === chosen.text.trim()) : undefined;
+		if (option || !chosen || chosen.value === '') mark(trigger, items, option);
+		return Boolean(items.length);
+	};
+	if (!apply() && layersPending()) void loadLayers().then(apply);
+	return true;
 }
 
 function close(o: Open): void {
