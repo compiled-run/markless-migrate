@@ -42,3 +42,15 @@ test('new text outside the landmarks is still a region failure', async () => {
 		await browser.close();
 	}
 });
+
+test('a line of text axe reports in pieces on the new page, because a hidden element sits inside it, is the same text', async () => {
+	const browser = await chromium.launch();
+	try {
+		const old = await capture(browser, '<div class="Comment__meta"><a href="/user/a">bellerocky</a> <time>12 years ago</time> | on: <a href="/story/1">React v0.11</a></div>');
+		const next = await capture(browser, '<div class="Comment__meta"><span><a href="/user/a">bellerocky</a> <time>12 years ago</time><span hidden> | <a href="">parent</a></span><span> | on: <a href="/story/1">React v0.11</a></span></span></div>');
+		assert.ok((next.violations.region?.count ?? 0) > (old.violations.region?.count ?? 0), 'the fixture reproduces the split report');
+		assert.deepEqual(compareA11y('/', 'desktop', old, [], next).filter((f) => f.check.startsWith('axe region')), []);
+	} finally {
+		await browser.close();
+	}
+});
