@@ -2,7 +2,8 @@
 // (align, trimSnaps, axis, direction), with Embla's scroll body (duration 25, friction 0.68, 60 steps a second);
 // Previous and Next step and get `disabled` at the ends, the arrow keys step, and a drag on the viewport follows the
 // pointer and settles on a snap as Embla's DragHandler picks it. With Embla Autoplay (the converter writes its delay as
-// data-mm-autoplay) it steps on its own, back to the first snap after the last, until a drag on it (stopOnInteraction).
+// data-mm-autoplay) it steps on its own, back to the first snap after the last, until a drag on it (stopOnInteraction)
+// or, where the old page's pointer stopped it, the pointer over it.
 
 interface Carousel {
 	readonly root: HTMLElement;
@@ -106,8 +107,21 @@ function paint(c: Carousel, at = c.location): void {
 function buttons(c: Carousel): void {
 	const prev = c.root.querySelector<HTMLButtonElement>('[data-slot="carousel-previous"]');
 	const next = c.root.querySelector<HTMLButtonElement>('[data-slot="carousel-next"]');
-	if (prev) prev.disabled = c.index <= 0;
-	if (next) next.disabled = c.index >= c.snaps.length - 1;
+	if (prev) disable(prev, c.index <= 0);
+	if (next) disable(next, c.index >= c.snaps.length - 1);
+}
+
+// React Aria's Button (data-rac) marks a disabled button data-disabled and takes it out of the tab order with tabIndex.
+function disable(button: HTMLButtonElement, off: boolean): void {
+	button.disabled = off;
+	if (!button.hasAttribute('data-rac')) return;
+	if (off) {
+		button.setAttribute('data-disabled', 'true');
+		button.removeAttribute('tabindex');
+	} else {
+		button.removeAttribute('data-disabled');
+		button.setAttribute('tabindex', '0');
+	}
 }
 
 // Embla's ScrollBody.seek at Embla's fixed 60 updates a second, each frame painted between the last two updates as
@@ -161,18 +175,55 @@ function stop(c: Carousel): void {
 	playing.delete(c.root);
 }
 
+function play(c: Carousel, delay: number): void {
+	const tick = () => {
+		if (!c.root.isConnected) return;
+		measure(c);
+		scrollTo(c, c.index >= c.snaps.length - 1 ? 0 : c.index + 1);
+		playing.set(c.root, window.setTimeout(tick, delay));
+	};
+	clearTimeout(playing.get(c.root));
+	playing.set(c.root, window.setTimeout(tick, delay));
+}
+
+const started = new WeakSet<HTMLElement>();
+
 export function mount(el: Element): void {
-	if (!(el instanceof HTMLElement) || !el.matches(ROOT)) return;
+	if (!(el instanceof HTMLElement) || !el.matches(ROOT) || started.has(el)) return;
 	const delay = Number(el.dataset.mmAutoplay);
 	const c = carouselOf(el);
 	if (!c || !(delay > 0)) return;
-	const tick = () => {
-		if (!el.isConnected) return;
-		measure(c);
-		scrollTo(c, c.index >= c.snaps.length - 1 ? 0 : c.index + 1);
-		playing.set(el, window.setTimeout(tick, delay));
-	};
-	playing.set(el, window.setTimeout(tick, delay));
+	started.add(el);
+	play(c, delay);
+}
+
+// Autoplay plays from Embla's init (playOnInit), wherever the carousel is, not only once scrolled into view.
+export function idle(): void {
+	for (const el of document.querySelectorAll(`${ROOT}[data-mm-autoplay]`)) mount(el);
+}
+
+// The page's mouseenter and mouseleave on the carousel (data-mm-autoplay-hover): `stop` stops Autoplay, `pause` plays it
+// again when the pointer leaves.
+const paused = new WeakSet<HTMLElement>();
+const crossing = (root: HTMLElement, event: PointerEvent) => !(event.relatedTarget instanceof Node && root.contains(event.relatedTarget));
+
+export function pointerover(target: Element, event: PointerEvent): boolean {
+	const root = target.closest<HTMLElement>(`${ROOT}[data-mm-autoplay-hover]`);
+	if (!root || !crossing(root, event) || !playing.has(root)) return false;
+	const c = carouselOf(root);
+	if (!c) return false;
+	stop(c);
+	if (root.dataset.mmAutoplayHover === 'pause') paused.add(root);
+	return false;
+}
+
+export function pointerout(target: Element, event: PointerEvent): boolean {
+	const root = target.closest<HTMLElement>(`${ROOT}[data-mm-autoplay-hover]`);
+	if (!root || !crossing(root, event) || !paused.has(root)) return false;
+	paused.delete(root);
+	const c = carouselOf(root);
+	if (c) play(c, Number(root.dataset.mmAutoplay));
+	return false;
 }
 
 export function click(target: Element): boolean {

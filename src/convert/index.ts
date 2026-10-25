@@ -16,7 +16,7 @@ import { captureCharts, CHART_CSS, ChartPlan, MOTION_FILE, type ChartFacts } fro
 import { captureScenes, type Scene } from './scenes.ts';
 import { ScenePlan } from './scene-plan.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
-import { captureAccordions, captureCarousels, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureAllForms, captureAllSwitches, captureAllToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
+import { captureAccordions, captureCarousels, restCarousel, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureAllForms, captureAllSwitches, captureAllToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
 import { bindMount, bindParts, bodyHandlers, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { captureDayPickers, CONFIG_PREFIX, CONFIGS_MODULE, DayPickerPlan, type CapturedPickers } from './day-picker.ts';
@@ -1109,7 +1109,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			const el = locate!(f.sig, f.nth);
 			if (!el) continue;
 			ownDelays.set(el, { ...ownDelays.get(el), align: f.align });
-			if (f.autoplay) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-mm-autoplay'), { name: 'data-mm-autoplay', value: String(f.autoplay) }];
+			if (f.autoplay) {
+				el.attrs = [...el.attrs.filter((a) => a.name !== 'data-mm-autoplay' && a.name !== 'data-mm-autoplay-hover'), { name: 'data-mm-autoplay', value: String(f.autoplay) }, ...(f.hover ? [{ name: 'data-mm-autoplay-hover', value: f.hover }] : [])];
+				restCarousel(el);
+			}
 		}
 	}
 	if (carouselFacts.size) log(`carousels measured: ${[...carouselFacts.values()].reduce((n, f) => n + f.length, 0)}`);
