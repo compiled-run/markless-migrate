@@ -336,7 +336,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 }
 
 /** Captures every route's reveals, `concurrency` at a time. */
-export async function captureAllReveals(browser: Browser, origin: string, routes: readonly string[], dir: string, options: { concurrency?: number; log?: (line: string) => void; extra?: readonly (readonly [string, RevealAction])[]; opens?: readonly { readonly selector: string; readonly routes?: string }[] } = {}): Promise<RevealCapture[]> {
+export async function captureAllReveals(browser: Browser, origin: string, routes: readonly string[], dir: string, options: { concurrency?: number; log?: (line: string) => void; extra?: readonly (readonly [selector: string, action: RevealAction, routes?: string])[]; opens?: readonly { readonly selector: string; readonly routes?: string }[] } = {}): Promise<RevealCapture[]> {
 	const memo: RevealMemo = new Map();
 	const out: RevealCapture[] = new Array(routes.length);
 	let next = 0;
@@ -345,9 +345,11 @@ export async function captureAllReveals(browser: Browser, origin: string, routes
 		while (next < routes.length) {
 			const index = next++;
 			const failed = (error: Error): RevealCapture => ({ route: routes[index]!, reveals: [], skipped: [`the route: ${error.message.split('\n')[0]}`] });
-			const own = await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, options.extra ?? []).catch(failed);
+			// A listed control with routes is the site's on those routes only.
+			const extra = (options.extra ?? []).filter(([, , only]) => !only || new RegExp(only).test(routes[index]!)).map(([selector, action]) => [selector, action] as const);
+			const own = await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, extra).catch(failed);
 			// The site's listed controls (View Code) again on their own, cached apart: their swaps are taken from here.
-			const listed = options.extra?.length ? await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, options.extra, { controls: [], tag: 'listed-v2:' }).catch(failed) : undefined;
+			const listed = extra.length ? await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, extra, { controls: [], tag: 'listed-v2:' }).catch(failed) : undefined;
 			const relisted = new Set(listed?.reveals.flatMap((r) => [r.key, `${r.sig}#${r.nth}`]) ?? []);
 			const base = listed ? [...own.reveals.filter((r) => !((relisted.has(r.key) || relisted.has(`${r.sig}#${r.nth}`)) && r.added.every((a) => a.into === 'replace' || a.into === 'clipboard'))), ...listed.reveals] : own.reveals;
 			const child = await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, [], { controls: CHILD_HOVER, tag: 'child-hover:' }).catch(failed);

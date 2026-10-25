@@ -9,6 +9,7 @@ import { body as bodyOf, outer, parseDocument, walk } from '../src/convert/dom.t
 
 // The ports run as the app runs them: parts/index.ts delegating every event to a registry of ports, in a real browser.
 const PARTS = join(import.meta.dirname, '..', 'parts');
+const SITE = join(import.meta.dirname, '..', 'examples', 'shadcn-ui-markless', 'lib', 'site', 'parts.ts');
 // Placement is not under test here; the ports only need @floating-ui/dom's functions to exist.
 const FLOATING_STUB = `export const computePosition = async () => ({ x: 0, y: 0, placement: 'bottom', middlewareData: {} });
 export const autoUpdate = () => () => {};
@@ -26,12 +27,16 @@ after(async () => {
 // them, before the event reaches the document listener.
 async function open(body: string, ports: readonly string[], deliver?: 'body' | 'window'): Promise<Page> {
 	const page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
-	const registry = `${ports.map((p, i) => `import * as p${i} from './${p}.ts';`).join('\n')}\nexport const PARTS = [${ports.map((_, i) => `p${i}`).join(', ')}];`;
+	// `site`: the shadcn-ui port's own site parts (lib/site/parts.ts), which import the ports as the app's lib/parts.
+	const registry = `${ports.map((p, i) => (p === 'site' ? `import { SITE_PARTS as p${i} } from './site.ts';` : `import * as p${i} from './${p}.ts';`)).join('\n')}\nexport const PARTS = [${ports.map((p, i) => (p === 'site' ? `...p${i}` : `p${i}`)).join(', ')}];`;
 	await page.route('http://parts.test/**', async (route) => {
 		const path = new URL(route.request().url()).pathname;
-		if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js"}}</script><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif}</style></head><body>${body}<script>window.pointerLog = []; for (const type of ['pointerover', 'pointermove']) document.addEventListener(type, (e) => { const t = e.target; window.pointerLog.push(type + '@' + Math.round(e.clientX) + ',' + Math.round(e.clientY) + ':' + (t.tagName || '') + '.' + (t.getAttribute && t.getAttribute('class') || '')); }, true);</script><script type="module">import { behave, listen, mount } from '/parts/index.ts'; listen(); ${deliver ? `for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout']) ${deliver === 'body' ? 'document.body' : 'window'}.addEventListener(type, behave, true);` : ''} window.mountParts = mount; window.ready = true;</script></body></html>` });
+		if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js","@markless/router":"/router.js"}}</script><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif}</style></head><body>${body}<script>window.pointerLog = []; for (const type of ['pointerover', 'pointermove']) document.addEventListener(type, (e) => { const t = e.target; window.pointerLog.push(type + '@' + Math.round(e.clientX) + ',' + Math.round(e.clientY) + ':' + (t.tagName || '') + '.' + (t.getAttribute && t.getAttribute('class') || '')); }, true);</script><script type="module">import { behave, listen, mount } from '/parts/index.ts'; listen(); ${deliver ? `for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout']) ${deliver === 'body' ? 'document.body' : 'window'}.addEventListener(type, behave, true);` : ''} window.mountParts = mount; window.ready = true;</script></body></html>` });
 		if (path === '/floating.js') return route.fulfill({ contentType: 'text/javascript', body: FLOATING_STUB });
-		const text = path === '/parts/registry.ts' ? registry : await readFile(join(PARTS, path.replace(/^\/parts\//, '')), 'utf8');
+		if (path === '/router.js') return route.fulfill({ contentType: 'text/javascript', body: 'export const navigate = async (href) => { window.navigated = href; };' });
+		// What choosing each option did on the old page, which convert writes beside the ports.
+		if (path === '/parts/choices.ts') return route.fulfill({ contentType: 'text/javascript', body: 'export const CHOICES = {};' });
+		const text = path === '/parts/registry.ts' ? registry : path === '/parts/site.ts' ? (await readFile(SITE, 'utf8')).replaceAll("'../parts/", "'./") : await readFile(join(PARTS, path.replace(/^\/parts\//, '')), 'utf8');
 		return route.fulfill({ contentType: 'text/javascript', body: ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText });
 	});
 	await page.goto('http://parts.test/');
@@ -298,6 +303,39 @@ test('a plain button a page opens its dialog from (no ARIA) opens the dialog cap
 	assert.equal(await page.getByText('Open Menu').getAttribute('aria-expanded'), null, 'the button gets no ARIA it did not have');
 	await page.keyboard.press('Escape');
 	assert.equal(await page.locator('[role="dialog"]').getAttribute('data-state'), 'closed');
+	await page.close();
+});
+
+test('shadcn-ui site: a code block\'s copy button writes what it copied on the old page and shows Copied with the check for 2 s', async () => {
+	const icon = '<svg class="lucide lucide-copy"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>';
+	const button = `<button data-slot="code-block-copy-button" type="button" aria-label="Copy">${icon}</button>`;
+	const page = await open(`<div data-slot="code-block">${button}</div><div data-slot="code-block">${button}</div><template data-mm-clipboard="button|code-block-copy-button|#1" data-mm-text="second block"></template>`, ['site']);
+	await page.evaluate(() => {
+		const w = window as unknown as { written: string[] };
+		w.written = [];
+		Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (t: string) => (w.written.push(t), Promise.resolve()) } });
+	});
+	const second = page.locator('[data-slot="code-block-copy-button"]').nth(1);
+	await second.click();
+	await page.waitForTimeout(100);
+	const look = () => second.evaluate((b) => [b.getAttribute('aria-label'), b.getAttribute('data-copied'), b.querySelector('svg')!.getAttribute('class'), b.querySelector('rect')!.getAttribute('display')]);
+	assert.deepEqual(await page.evaluate(() => (window as unknown as { written: string[] }).written), ['second block']);
+	assert.deepEqual(await look(), ['Copied', 'true', 'lucide lucide-check', 'none']);
+	await page.waitForTimeout(2100);
+	assert.deepEqual(await look(), ['Copy', null, 'lucide lucide-copy', null]);
+	await page.close();
+});
+
+test('shadcn-ui site: an input group\'s Copy button shows tabler\'s check for 2 s once it has copied', async () => {
+	const icon = '<svg width="24" height="24"><path d="M7 7m0 2.667"></path><path d="M4.012 16.737"></path></svg>';
+	const page = await open(`<button data-slot="button" type="button" aria-label="Copy" title="Copy">${icon}</button><template data-mm-clipboard="button|button|#0" data-mm-text="https://x.com/shadcn"></template>`, ['site']);
+	await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.resolve() } }));
+	await page.locator('button').click();
+	await page.waitForTimeout(100);
+	const look = () => page.locator('button svg').evaluate((svg) => [svg.getAttribute('class'), [...svg.querySelectorAll('path')].map((p) => `${p.getAttribute('d')}${p.getAttribute('display') ? ' hidden' : ''}`)]);
+	assert.deepEqual(await look(), ['tabler-icon tabler-icon-check ', ['M5 12l5 5l10 -10', 'M4.012 16.737 hidden']]);
+	await page.waitForTimeout(2100);
+	assert.deepEqual(await look(), [null, ['M7 7m0 2.667', 'M4.012 16.737']]);
 	await page.close();
 });
 
