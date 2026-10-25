@@ -22,6 +22,8 @@ function buffers(value: unknown, seen = new Set<unknown>()): number {
 
 const gc = (globalThis as { gc?: () => void }).gc!;
 const held = () => {
+	// V8 frees a dead ArrayBuffer's memory on a background thread after the GC; the second GC waits for that first.
+	gc();
 	gc();
 	const m = process.memoryUsage();
 	return m.heapUsed + m.arrayBuffers;
