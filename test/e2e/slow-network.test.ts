@@ -42,9 +42,16 @@ for (const name of NETWORK_BROWSERS) {
 	});
 }
 
-test('in Chromium the first painted frame is where FCP says the page painted', async () => {
-	const run = await networkRun(`${origin}/`, LINK, 'chromium', { timeoutMs: 30_000 });
-	assert.ok(Math.abs(run.firstFrame! - run.fcp!) < 400, `first painted frame at ${run.firstFrame} ms, FCP at ${run.fcp} ms`);
+test('in Chromium the first painted frame is where FCP says the page painted, also when a stylesheet holds the paint back', async () => {
+	const blocked = await serve(48_000, 0, true, 64_000);
+	try {
+		const run = await networkRun(`${blocked.origin}/`, LINK, 'chromium', { timeoutMs: 30_000 });
+		const sheet = run.requests.find((r) => r.url.endsWith('/blocking.css'))!;
+		assert.ok(run.fcp! >= sheet.end, `FCP at ${run.fcp} ms, the stylesheet arrived at ${sheet.end} ms`);
+		assert.ok(Math.abs(run.firstFrame! - run.fcp!) < 400, `first painted frame at ${run.firstFrame} ms, FCP at ${run.fcp} ms`);
+	} finally {
+		blocked.server.close();
+	}
 });
 
 test('a control that never answers is an error, not a time', async () => {

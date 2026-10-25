@@ -139,7 +139,7 @@ export function blankFrame(png: Buffer): boolean {
 
 const FRAME_EVERY_MS = 100;
 
-/** Epoch ms of the first screenshot with anything painted, taken every 100 ms until one is or `stop` says so. */
+/** Epoch ms when the first screenshot with anything painted came back, taken every 100 ms until one is or `stop` says so. */
 async function firstPaintedFrame(page: Page, stop: () => boolean): Promise<number | undefined> {
 	while (!stop()) {
 		const at = Date.now();
@@ -149,7 +149,8 @@ async function firstPaintedFrame(page: Page, stop: () => boolean): Promise<numbe
 		const png = await page.screenshot({ scale: 'css', type: 'png', timeout: 5000 }).catch(() => undefined);
 		if (before === undefined) delete process.env.PW_TEST_SCREENSHOT_NO_FONTS_READY;
 		else process.env.PW_TEST_SCREENSHOT_NO_FONTS_READY = before;
-		if (png && !blankFrame(png)) return at;
+		// Chromium holds a capture until the page can paint, so the frame is as late as the capture's return.
+		if (png && !blankFrame(png)) return Date.now();
 		await new Promise((r) => setTimeout(r, Math.max(0, FRAME_EVERY_MS - (Date.now() - at))));
 	}
 	return undefined;
