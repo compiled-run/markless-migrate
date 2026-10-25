@@ -4,51 +4,89 @@
 // the keyboard. Its listeners are the document's own, in the capture phase: every React Aria part imports this module,
 // and the part that owns a gesture still gets it.
 
-// useFocusVisible: focus is visible unless the last interaction was a pointer's; focus no key or pointer led to (a
-// script's) is "virtual", and visible.
-let modality: 'keyboard' | 'pointer' | 'virtual' = 'virtual';
-let interacted = false;
+// useFocusVisible: focus is visible unless the last interaction was a pointer's (null before any, as for React Aria). A
+// focus no key, pointer or focus() call led to (a screen reader's) is "virtual", and visible.
+type Modality = 'keyboard' | 'pointer' | 'virtual';
+let modality: Modality | null = null;
+let eventBeforeFocus = false;
+let blurredWindow = false;
 export const keyboardModality = () => modality !== 'pointer';
-/** Whether the last interaction was a pointer's, moving included: a hover that follows from moving the mouse. */
 export const pointerModality = () => modality === 'pointer';
-export function setModality(next: 'keyboard' | 'pointer' | 'virtual'): void {
+export function setModality(next: Modality): void {
 	modality = next;
+	changed(next, null);
 }
 
-const MODIFIER = /^(Meta|Control|Shift|Alt|CapsLock)$/;
 const NON_TEXT = /^(checkbox|radio|range|color|file|image|button|submit|reset)$/;
-const textInput = (el: Element) => (el instanceof HTMLInputElement && !NON_TEXT.test(el.type)) || el instanceof HTMLTextAreaElement || (el instanceof HTMLElement && el.isContentEditable);
-if (typeof document !== 'undefined') {
-	document.addEventListener('keydown', (e) => {
-		interacted = true;
-		if (e.metaKey || (e.altKey && !e.ctrlKey) || e.ctrlKey || MODIFIER.test(e.key)) return;
-		const was = modality;
-		modality = 'keyboard';
-		// useFocusRing follows the modality: what has focus shows its ring once the keyboard is used.
-		const active = document.activeElement;
-		// isKeyboardFocusEvent: typing in a text field leaves its ring as it was; only Tab and Escape show it.
-		if (was === 'pointer' && active instanceof Element && active !== document.body && !(textInput(active) && e.key !== 'Tab' && e.key !== 'Escape')) refocus(active);
-	}, true);
-	const press = () => {
-		interacted = true;
-		modality = 'pointer';
-	};
-	for (const type of ['pointerdown', 'pointerup', 'mousedown', 'mouseup']) document.addEventListener(type, press, true);
-	// A hover comes from moving the pointer: the pointermove that follows pointerover would say so a moment later.
-	for (const type of ['pointermove', 'mousemove']) document.addEventListener(type, () => (modality = 'pointer'), true);
-	document.addEventListener('pointerover', (e) => e.pointerType !== 'touch' && (modality = 'pointer'), true);
-	document.addEventListener('focus', (e) => {
-		if (e.target !== window && e.target !== document && !interacted) modality = 'virtual';
-		interacted = false;
-	}, true);
+const textInput = (el: Element | null) => (el instanceof HTMLInputElement && !NON_TEXT.test(el.type)) || el instanceof HTMLTextAreaElement || (el instanceof HTMLElement && el.isContentEditable);
+// isKeyboardFocusEvent: in a text field only Tab and Escape change whether its focus shows.
+const showsFocus = (next: Modality, e: Event | null) => !(textInput(document.activeElement) && next === 'keyboard' && e instanceof KeyboardEvent && e.key !== 'Tab' && e.key !== 'Escape');
+function changed(next: Modality, e: Event | null): void {
+	if (!showsFocus(next, e)) return;
+	const active = document.activeElement;
+	if (active instanceof Element && active !== document.body) refocus(active);
 }
 
-const RAC = '[data-rac], [data-react-aria-pressable]';
+const isMac = () => typeof navigator !== 'undefined' && /^Mac/i.test((navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform || navigator.platform);
+const isAndroid = () => typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+const validKey = (e: KeyboardEvent) => !(e.metaKey || (!isMac() && e.altKey) || e.ctrlKey || e.key === 'Control' || e.key === 'Shift' || e.key === 'Meta');
+const virtualClick = (e: MouseEvent) => {
+	const type = (e as PointerEvent).pointerType;
+	if (type === '' && e.isTrusted) return true;
+	if (isAndroid() && type) return e.type === 'click' && e.buttons === 1;
+	return e.detail === 0 && !type;
+};
+if (typeof document !== 'undefined') {
+	const key = (e: KeyboardEvent) => {
+		eventBeforeFocus = true;
+		if (!validKey(e)) return;
+		modality = 'keyboard';
+		changed('keyboard', e);
+	};
+	document.addEventListener('keydown', key, true);
+	document.addEventListener('keyup', key, true);
+	const pointer = (e: PointerEvent) => {
+		modality = 'pointer';
+		if (e.type !== 'pointerdown') return;
+		eventBeforeFocus = true;
+		changed('pointer', e);
+	};
+	for (const type of ['pointerdown', 'pointermove', 'pointerup'] as const) document.addEventListener(type, pointer, true);
+	document.addEventListener('click', (e) => {
+		if (!virtualClick(e)) return;
+		eventBeforeFocus = true;
+		modality = 'virtual';
+	}, true);
+	window.addEventListener('focus', (e) => {
+		if (e.target === window || e.target === document || !e.isTrusted) return;
+		if (!eventBeforeFocus && !blurredWindow) {
+			modality = 'virtual';
+			changed('virtual', e);
+		}
+		eventBeforeFocus = false;
+		blurredWindow = false;
+	}, true);
+	window.addEventListener('blur', () => {
+		eventBeforeFocus = false;
+		blurredWindow = true;
+	});
+	// React Aria wraps focus() so that a script moving focus keeps the modality.
+	const focus = HTMLElement.prototype.focus;
+	Reflect.defineProperty(HTMLElement.prototype, 'focus', {
+		configurable: true,
+		writable: true,
+		value: function (this: HTMLElement, ...args: Parameters<HTMLElement['focus']>) {
+			eventBeforeFocus = true;
+			focus.apply(this, args);
+		},
+	});
+}
+
 /** The element React Aria marks for a focused node: the node, or the label of a checkbox, radio or switch it sits in. */
 function stateful(el: Element): HTMLElement | null {
 	// A visually hidden input stands in for the element around it: a checkbox's label, a slider's thumb.
 	if (el.matches('input:not([data-rac])')) return el.closest<HTMLElement>('label[data-rac], [data-rac]');
-	return el.matches(RAC) ? (el as HTMLElement) : null;
+	return el.matches('[data-rac]') ? (el as HTMLElement) : null;
 }
 
 function markFocused(el: HTMLElement, on: boolean): void {
@@ -104,11 +142,13 @@ function focusout(target: Element, related: EventTarget | null): boolean {
 	return false;
 }
 
-const HOVERABLE = '[data-react-aria-pressable], label[data-rac], input[data-rac], textarea[data-rac], [role="option"][data-rac], [role="menuitem"][data-rac], [role="menuitemcheckbox"][data-rac], [role="menuitemradio"][data-rac], [role="tab"][data-rac], [role="row"][data-rac]';
+// Only React Aria Components write these states: a bare usePress element (a context menu's trigger area) has no data-rac.
+const HOVERABLE = '[data-react-aria-pressable][data-rac], label[data-rac], input[data-rac], textarea[data-rac], [role="option"][data-rac], [role="menuitem"][data-rac], [role="menuitemcheckbox"][data-rac], [role="menuitemradio"][data-rac], [role="tab"][data-rac], [role="row"][data-rac]';
 function pointerover(target: Element, event: PointerEvent): boolean {
 	if (event.pointerType === 'touch') return false;
 	const el = target.closest<HTMLElement>(HOVERABLE);
-	if (el && !el.hasAttribute('data-disabled') && el.getAttribute('aria-disabled') !== 'true' && !el.hasAttribute('disabled')) el.setAttribute('data-hovered', 'true');
+	// TextArea passes useHover its DOM props, so `disabled` does not turn its hover off.
+	if (el && (el instanceof HTMLTextAreaElement || (!el.hasAttribute('data-disabled') && el.getAttribute('aria-disabled') !== 'true' && !el.hasAttribute('disabled')))) el.setAttribute('data-hovered', 'true');
 	return false;
 }
 function pointerout(target: Element, event: PointerEvent): boolean {
@@ -120,7 +160,7 @@ function pointerout(target: Element, event: PointerEvent): boolean {
 /** Elements held pressed by their overlay being open (a DialogTrigger's, MenuTrigger's or Select's trigger). */
 const heldPressed = new WeakSet<Element>();
 function pointerdown(target: Element, event: PointerEvent): boolean {
-	const el = target.closest<HTMLElement>('[data-react-aria-pressable], label[data-rac]');
+	const el = target.closest<HTMLElement>('[data-react-aria-pressable][data-rac], label[data-rac]');
 	if (!el || event.button !== 0 || el.hasAttribute('disabled') || el.hasAttribute('data-disabled')) return false;
 	el.setAttribute('data-pressed', 'true');
 	const release = () => {
