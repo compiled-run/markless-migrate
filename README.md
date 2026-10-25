@@ -262,8 +262,8 @@ changed undone and infinite animations paused at time 0, and requests to known a
 tag-manager, session-replay and client-side experiment hosts are blocked (`src/check/trackers.ts`;
 `--block` adds a host, `--allow` lets one load). `--no-freeze` turns freezing off. With `--server-clock`, a
 server started with the request recorder (below) renders each page load check makes at that same instant
-(`Date` and `Date.now` read the frozen time while it handles that load; its other requests keep the real
-clock), so a server-rendered "posted 3 hours ago" reads the clock the page reads. It is off by default:
+(`Date` and `Date.now` read the frozen time while it handles that load; its other requests, and every write
+the load sends such as a POST, keep the real clock, so a session or cache entry a write stores does not expire at once), so a server-rendered "posted 3 hours ago" reads the clock the page reads. It is off by default:
 a cookie or token the server issues then expires by the frozen clock, so pair it with a `--time` near now.
 Otherwise the server's own clock cannot be frozen from the browser, so the repeated old loads below still catch it, and the report
 lists every element that still varied and why. With `--source`, the old app's code is scanned for

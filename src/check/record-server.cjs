@@ -217,6 +217,8 @@ for (const Server of [http.Server, https.Server]) {
 		}
 		const tag = parseTag(req.headers[HEADER]);
 		if (!tag) return emit.call(this, event, ...args);
+		// A write stamped with the frozen time is stale to the real clock at once (an LRU entry, a session's user).
+		if (tag.time && req.method !== 'GET' && req.method !== 'HEAD') delete tag.time;
 		const fresh = tag.fresh ? freshCookie() : '';
 		if (fresh) req.headers.cookie = req.headers.cookie ? `${req.headers.cookie}; ${fresh}` : fresh;
 		// Date is swapped only once a load asks for the frozen clock, so a server checked without --server-clock keeps its own.
