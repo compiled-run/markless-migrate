@@ -1,5 +1,6 @@
 import type { Browser, Page } from 'playwright';
 import { openPage, type SideEnv } from './browser.ts';
+import { pageRouting, shownUrl } from './hash-routes.ts';
 import { markHandlers } from './handlers.ts';
 import { loadPage } from './infrastructure.ts';
 import { quiet, type RecordedJourney } from './journeys.ts';
@@ -154,7 +155,15 @@ async function settle(side: Side): Promise<void> {
 	await quiet(side.page, side.inflight);
 }
 
-const read = (page: Page) => page.evaluate(() => (globalThis as ProbeWindow).__markless_migrate_probe__?.read() ?? { control: 'not read' }).catch((error: Error) => ({ control: `not read: ${error.message.split('\n')[0]}` }) as Reading);
+const read = (page: Page) =>
+	page
+		.evaluate(() => (globalThis as ProbeWindow).__markless_migrate_probe__?.read() ?? { control: 'not read' })
+		.then((reading) => (pageRouting(page) && 'url' in reading ? { ...reading, url: here(page) } : reading))
+		.catch((error: Error) => ({ control: `not read: ${error.message.split('\n')[0]}` }) as Reading);
+const here = (page: Page) => {
+	const at = new URL(shownUrl(page));
+	return at.pathname + at.search;
+};
 
 /** Marks the control the probe drives; one still marked is kept unless `again`, as a step may have renamed it (a combobox showing its choice). */
 async function mark(page: Page, control: ProbeControl, again = false): Promise<boolean> {
@@ -255,7 +264,7 @@ async function runSequence(side: Side, origin: string, route: string, control: P
 		const reading = await read(page);
 		out.push(failed ? { ...reading, step: `could not ${describeOp(op)}: ${failed}` } : reading);
 		if (parts.length) for (const file of await page.evaluate(matchParts, parts).catch(() => [] as string[])) found.add(file);
-		if (new URL(page.url()).pathname !== new URL(route, origin).pathname) break;
+		if (new URL(shownUrl(page)).pathname !== new URL(route, origin).pathname) break;
 	}
 	return out;
 }
@@ -489,7 +498,7 @@ async function discover(side: Side, origin: string, route: string, controls: rea
 		const before = await read(page);
 		const clicked = await page.locator(MARK).first().click({ timeout: 1_500 }).then(() => true, () => false);
 		await settle(side);
-		if (new URL(page.url()).pathname !== new URL(route, origin).pathname) {
+		if (new URL(shownUrl(page)).pathname !== new URL(route, origin).pathname) {
 			await fresh();
 			continue;
 		}

@@ -72,6 +72,15 @@ test('a hash-routed old app is loaded at /#<route> and compared with the port at
 	for (const route of report.routes) assert.equal(route.ok, true, `${route.route}: ${route.failures.map((f) => `${f.dimension} ${f.check}: ${f.expected} -> ${f.actual}`).join('; ')}`);
 });
 
+test("the widget probes read a hash-routed old page's address as its route", async () => {
+	const old = await oldApp();
+	const next = await newApp();
+	servers.push(old, next);
+	const report = await runCheck({ ...quick, oldOrigin: origin(old), newOrigin: origin(next), routes: ['/about'], browser, oldRouting: 'hash', only: 'probes', probes: {} });
+	const route = report.routes[0]!;
+	assert.equal(route.ok, true, route.failures.map((f) => `${f.check}: ${f.expected} -> ${f.actual}`).join('; '));
+});
+
 test('a hash-routed old app still shows a port that renders another page as red', async () => {
 	const report = await check(await newApp({ heading: (path) => (path === '/about' ? 'About them' : PAGES[path]!) }), ['/about']);
 	const route = report.routes[0]!;
