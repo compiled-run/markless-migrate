@@ -15,7 +15,7 @@ function highlight(p: Popup, item: HTMLElement | undefined): void {
 	item.focus({ preventScroll: true });
 }
 function openMenu(trigger: HTMLElement, first: boolean): boolean {
-	const p = openPopup(trigger, { popupSelector: '[role="menu"]', onDismiss: (x) => closePopup(x) });
+	const p = openPopup(trigger, { popupSelector: '[role="menu"]', tabOut: true, onDismiss: (x) => closePopup(x) });
 	if (!p) return false;
 	if (first) highlight(p, items(p)[0]);
 	else p.popup.focus({ preventScroll: true });
