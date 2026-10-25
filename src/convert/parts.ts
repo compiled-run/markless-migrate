@@ -93,7 +93,7 @@ export const PORTS: readonly Port[] = [
 	// recharts' tooltips and active points are Markless state (convert's ChartPlan); the part follows the pointer and keys.
 	{ module: 'recharts', library: 'recharts', exports: ['Tooltip'], events: ['pointerover', 'focusin', 'focusout', 'keydown'], locate: () => false },
 	// Radix NavigationMenu: each trigger's viewport and content are rendered beside the list (convert's companions).
-	{ module: 'radix/navigation-menu', library: 'radix-ui', needs: [], exports: ['NavigationMenu.Root', 'NavigationMenu.List', 'NavigationMenu.Item', 'NavigationMenu.Trigger', 'NavigationMenu.Content', 'NavigationMenu.Link', 'NavigationMenu.Viewport', 'NavigationMenu.Indicator'], events: ['click', 'pointerover', 'pointerout', 'keydown'], locate: (el) => radix(el) },
+	{ module: 'radix/navigation-menu', library: 'radix-ui', needs: [], exports: ['NavigationMenu.Root', 'NavigationMenu.List', 'NavigationMenu.Item', 'NavigationMenu.Trigger', 'NavigationMenu.Content', 'NavigationMenu.Link', 'NavigationMenu.Viewport', 'NavigationMenu.Indicator'], events: ['click', 'pointerover', 'pointerout', 'keydown', 'focusin'], locate: (el) => radix(el) },
 	// Radix ScrollArea: the scrollbars it mounts on hover are rendered hidden in the area (convert's companions).
 	{ module: 'radix/scroll-area', library: 'radix-ui', needs: [], exports: ['ScrollArea.Root', 'ScrollArea.Viewport', 'ScrollArea.Scrollbar', 'ScrollArea.ScrollAreaScrollbar', 'ScrollArea.Thumb', 'ScrollArea.ScrollAreaThumb', 'ScrollArea.Corner'], events: ['pointerover'], locate: (el) => radix(el) || attr(el, 'data-slot') === 'scroll-area' },
 	// Radix Collapsible and Accordion are Markless state (convert's DisclosurePlan); the part measures and ends exits.

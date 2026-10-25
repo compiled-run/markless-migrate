@@ -369,6 +369,53 @@ test('Radix NavigationMenu: a press opens the trigger\'s content in the viewport
 	await page.close();
 });
 
+// Radix NavigationMenu as convert renders it: each trigger's focus proxy and its viewport with the content beside the
+// list, shown with the trigger (data-mm-shown-with its id); the content inside the viewport has no data-state.
+const PROXY = 'aria-hidden="true" tabindex="0" style="position:absolute;width:1px;height:1px;overflow:hidden" hidden';
+const navigationMenu = `<nav data-slot="navigation-menu" data-orientation="horizontal" dir="ltr" data-viewport="true"><div style="position:relative"><ul data-slot="navigation-menu-list" style="display:flex;gap:8px;list-style:none">
+	<li><button id="t1" data-slot="navigation-menu-trigger" data-state="closed" aria-expanded="false" aria-controls="c1">Getting started</button><span ${PROXY} data-mm-shown-with="t1"></span></li>
+	<li><button id="t2" data-slot="navigation-menu-trigger" data-state="closed" aria-expanded="false" aria-controls="c2">Components</button><span ${PROXY} data-mm-shown-with="t2"></span></li>
+	<li><a data-slot="navigation-menu-link" href="#docs">Docs</a></li></ul></div>
+	<div><div hidden data-mm-shown-with="t1" data-slot="navigation-menu-viewport" data-state="open"><div data-slot="navigation-menu-content" id="c1" aria-labelledby="t1"><a data-slot="navigation-menu-link" href="#intro">Introduction</a> <a data-slot="navigation-menu-link" href="#install">Installation</a></div></div>
+	<div hidden data-mm-shown-with="t2" data-slot="navigation-menu-viewport" data-state="open"><div data-slot="navigation-menu-content" id="c2" aria-labelledby="t2"><a data-slot="navigation-menu-link" href="#alert">Alert Dialog</a></div></div></div></nav><button id="after">After</button>`;
+const focused = (page: Page) => page.evaluate(() => document.activeElement?.textContent?.trim());
+async function hold(page: Page, key: string): Promise<void> {
+	await page.keyboard.down(key);
+	await page.waitForTimeout(40);
+	await page.keyboard.up(key);
+	await settled(page);
+}
+
+test('Radix NavigationMenu from the keyboard: ArrowDown on an open trigger enters its content, Tab goes through the content via the focus proxy and on to the next trigger, the arrows rove the list', async () => {
+	const page = await open(navigationMenu, ['radix/navigation-menu']);
+	await page.locator('#t1').focus();
+	await hold(page, 'ArrowRight');
+	assert.equal(await focused(page), 'Components');
+	await hold(page, 'End');
+	assert.equal(await focused(page), 'Docs');
+	await hold(page, 'ArrowRight');
+	assert.equal(await focused(page), 'Docs');
+	await hold(page, 'Home');
+	assert.equal(await focused(page), 'Getting started');
+	await hold(page, 'Enter');
+	assert.equal(await page.locator('#t1').getAttribute('aria-expanded'), 'true');
+	assert.equal(await page.locator('#c1').getAttribute('data-state'), null);
+	await hold(page, 'ArrowDown');
+	assert.equal(await focused(page), 'Introduction');
+	await hold(page, 'ArrowRight');
+	assert.equal(await focused(page), 'Installation');
+	await hold(page, 'Tab');
+	assert.equal(await focused(page), 'Components');
+	assert.equal(await page.locator('#t1').getAttribute('aria-expanded'), 'true');
+	await page.keyboard.press('Shift+Tab');
+	await settled(page);
+	assert.equal(await focused(page), 'Installation');
+	await page.locator('#t1').focus();
+	await hold(page, 'Tab');
+	assert.equal(await focused(page), 'Introduction');
+	await page.close();
+});
+
 test('a Base UI dialog a page opens from a plain button opens under the button\'s key', async () => {
 	const page = await open(
 		`<main><button data-slot="button" data-mm-key="p:3.1" type="button">Open Menu</button></main>
