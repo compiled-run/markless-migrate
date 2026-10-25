@@ -76,6 +76,7 @@ function close(c: Combo): void {
 	const at = combos.indexOf(c);
 	if (at >= 0) combos.splice(at, 1);
 	else if (!c.overlay) return;
+	focusOption(c, undefined);
 	c.input.setAttribute('aria-expanded', 'false');
 	rootOf(c.input)?.removeAttribute('data-open');
 	c.input.removeAttribute('aria-controls');

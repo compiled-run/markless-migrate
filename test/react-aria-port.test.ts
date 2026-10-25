@@ -296,6 +296,7 @@ test('ComboBox: while open, everything but its input and popover is hidden from 
 	await page.keyboard.press('Escape');
 	await page.waitForTimeout(50);
 	assert.deepEqual(await hidden(), []);
+	assert.equal(await page.evaluate(() => document.querySelectorAll('[role="option"][data-focused]').length), 0, 'closing drops the focused option');
 	await page.close();
 });
 
