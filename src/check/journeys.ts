@@ -706,6 +706,14 @@ export function movedLines(before: readonly string[], after: readonly string[]):
 	return y.filter((_, j) => !kept.has(j)).slice(0, MOVED_MAX);
 }
 
+const RELATIVE_READING = /\b(?:\d+|an?) (?:second|minute|hour|day|week|month|year)s? ago\b/g;
+
+/** What a step added and removed. A relative time reads what each app's own timers moved its clock to, so its reading is masked first; a line that leaves with its item is still gone. */
+export function stepDiff(before: readonly string[], after: readonly string[]): { added: string[]; removed: string[] } {
+	const mask = (lines: readonly string[]) => lines.map((line) => line.replace(RELATIVE_READING, '<time ago>'));
+	return multisetDiff(mask(before), mask(after));
+}
+
 function multisetDiff(before: readonly string[], after: readonly string[]): { added: string[]; removed: string[] } {
 	const counts = new Map<string, number>();
 	for (const line of before) counts.set(line, (counts.get(line) ?? 0) + 1);
@@ -1452,7 +1460,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		const liveAfter = await page.evaluate(liveRegions).catch(() => [] as string[]);
 		// Lines the page changes on its own while nothing is used (a demo toggling a class on a timer) are no step's doing.
 		const own = (lines: string[]) => (documentLoaded || !ambient.lines.length ? lines : lines.filter((l) => !ambient.lines.includes(l)));
-		const diff = multisetDiff(before, after);
+		const diff = stepDiff(before, after);
 		const added = own(diff.added);
 		const removed = own(diff.removed);
 		const moved = documentLoaded && !reload ? [] : movedLines(before, after);
