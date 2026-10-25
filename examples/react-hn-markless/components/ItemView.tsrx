@@ -20,6 +20,7 @@ export default function ItemView({ id, path }: { id: string; path: string }) @{
 	const rows = computed(() => threadRows(thread, now));
 	const polls = computed(() => pollRows(thread));
 	const linksHere = computed(() => header.meta.itemHref === here);
+	const titleHere = computed(() => header.title.href === here);
 
 	<div
 		class={header.className}
@@ -43,7 +44,7 @@ export default function ItemView({ id, path }: { id: string; path: string }) @{
 		</div>
 		<div class="Item__content" hidden={!header.ready}>
 			<div class="Item__title" style={header.title.style}>
-				<a href={header.title.href} hidden={header.title.dead}>{header.title.linkText}</a>{header.title.deadText}<span hidden={!header.title.external}> <span class="Item__host">({header.title.host})</span></span>
+				<a href={header.title.href} hidden={header.title.dead} onClick={(event) => { if (titleHere) event.preventDefault(); }}>{header.title.linkText}</a>{header.title.deadText}<span hidden={!header.title.external}> <span class="Item__host">({header.title.host})</span></span>
 			</div>
 			<div class="Item__meta">
 				<span hidden={header.meta.job}><span class="Item__score">{header.meta.scoreValue} point{header.meta.scorePlural}</span> <span class="Item__by">by <a href={header.meta.userHref}>{header.meta.by}</a></span> </span>

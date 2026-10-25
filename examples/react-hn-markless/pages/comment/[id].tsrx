@@ -3,7 +3,7 @@ import App from '../../components/App.tsrx';
 import Permalinked from '../../components/Permalinked.tsrx';
 
 export default function CommentPage({ url, params }: PageProps<{ id: string }>) @{
-	<App path={url.pathname}>
+	<App path={url.pathname} search={url.search}>
 		<Permalinked id={params.id} />
 	</App>
 }

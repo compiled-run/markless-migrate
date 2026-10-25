@@ -1,12 +1,15 @@
-import { state, type Children } from '@markless/core';
+import { computed, state, type Children } from '@markless/core';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, VERSION, type Settings } from '../lib/hn.ts';
 import { navClass } from '../lib/nav.ts';
 import { saveOnUnload } from '../lib/cache.ts';
 
-export default function App({ path, children }: { path: string; children?: Children }) @{
+export default function App({ path, search, children }: { path: string; search: string; children?: Children }) @{
 	let showSettings = state(false);
+	let here = state(path + search);
+	const onPage = computed(() => ({ news: here === '/news', newest: here === '/newest', newcomments: here === '/newcomments', show: here === '/show', ask: here === '/ask', jobs: here === '/jobs', read: here === '/read' }));
 	let settings = state<Settings>({ ...DEFAULT_SETTINGS });
 
+	// hashHistory does not push the address it is already on, so a link to this page does nothing.
 	<div id="app">
 	<div
 		class="App"
@@ -23,14 +26,14 @@ export default function App({ path, children }: { path: string; children?: Child
 	>
 		<div class="App__wrap">
 			<div class="App__header">
-				<a href="/news" class="App__homelinkicon"><img src="/img/logo.png" width="16" height="16" alt="" /></a>{' '}
-				<a href="/news" class={navClass(path, '/news', 'App__homelink')}>React HN</a>{' '}
-				<a href="/newest" class={navClass(path, '/newest')}>new</a>{' | '}
-				<a href="/newcomments" class={navClass(path, '/newcomments')}>comments</a> {' | '}
-				<a href="/show" class={navClass(path, '/show')}>show</a>{' | '}
-				<a href="/ask" class={navClass(path, '/ask')}>ask</a>{' | '}
-				<a href="/jobs" class={navClass(path, '/jobs')}>jobs</a>{' | '}
-				<a href="/read" class={navClass(path, '/read')}>read</a>
+				<a href="/news" onClick={(event) => { if (onPage.news) event.preventDefault(); }} class="App__homelinkicon"><img src="/img/logo.png" width="16" height="16" alt="" /></a>{' '}
+				<a href="/news" onClick={(event) => { if (onPage.news) event.preventDefault(); }} class={navClass(path, '/news', 'App__homelink')}>React HN</a>{' '}
+				<a href="/newest" onClick={(event) => { if (onPage.newest) event.preventDefault(); }} class={navClass(path, '/newest')}>new</a>{' | '}
+				<a href="/newcomments" onClick={(event) => { if (onPage.newcomments) event.preventDefault(); }} class={navClass(path, '/newcomments')}>comments</a> {' | '}
+				<a href="/show" onClick={(event) => { if (onPage.show) event.preventDefault(); }} class={navClass(path, '/show')}>show</a>{' | '}
+				<a href="/ask" onClick={(event) => { if (onPage.ask) event.preventDefault(); }} class={navClass(path, '/ask')}>ask</a>{' | '}
+				<a href="/jobs" onClick={(event) => { if (onPage.jobs) event.preventDefault(); }} class={navClass(path, '/jobs')}>jobs</a>{' | '}
+				<a href="/read" onClick={(event) => { if (onPage.read) event.preventDefault(); }} class={navClass(path, '/read')}>read</a>
 				<a
 					class="App__settings"
 					tabindex="0"

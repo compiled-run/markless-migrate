@@ -7,7 +7,7 @@ import { fetchUser } from '../../lib/rest.ts';
 export default function UserPage({ url, params }: PageProps<{ id: string }>) @{
 	const user = computed(async () => fetchUser(params.id));
 
-	<App path={url.pathname}>
+	<App path={url.pathname} search={url.search}>
 		@try {
 			<UserProfile user={user} />
 		} @pending {

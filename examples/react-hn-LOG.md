@@ -71,6 +71,20 @@ old app showed. The data then arrives in the browser over one Firebase socket, a
   `sessionStorage`, saved on unload) are module state in `lib/cache.ts`, so going back to a list shows it at once.
 - The old stylesheet is served byte for byte from `public/app.css` (the old build's own CSS).
 
+Three React 15 behaviours show in what a visitor or a screen reader meets, so the port copies them by hand:
+
+- React 15 gives every element with a click handler a no-op `onclick` (for old Mobile Safari). Chrome then exposes the
+  old settings anchor, which has no `href`, as a link when Tab reaches it. The app's `attach` sets the same no-op on it.
+- React 15 writes a controlled input's value back to its `value` attribute, and the settings table's rows are named
+  from it ("title font size: 42"). The settings form's `onInput` writes the attribute too, and saves on every keystroke
+  as React's `onChange` did (the DOM `change` event only fires when the field loses focus).
+- reactfire turns a `null` value into a record with no `id`, which the old comment renders as still loading, never as
+  its error branch. The port shows a `null` comment as loading.
+
+A link to the page already shown (the header's "show" on `/show`, a story's own "N comments" link) does nothing in
+the old app, because `hashHistory` does not push the address it is already on. The port's links prevent their default
+there, so the router does not swap the page for itself.
+
 Where the old app had a bug that shows, the port keeps it (the check compares behaviour, and a reader expects what
 they had): a thread holding a dead comment that has replies never ends its first load in the old store (it waits for
 replies it never renders), so on such a thread the first visit is only recorded when the page is left, and comments
@@ -183,6 +197,7 @@ These are not crashes: the compiler or a diagnostic refuses the shape, or the AP
 | `storage()` keys are compile-time strings | `MARKLESS_STORAGE_KEY_STATIC` | per-story visit records (`localStorage[storyId]`) are read and written from the listeners |
 | A `@for` at the top of a component needs an element of its own | `MARKLESS_CHILD_REPEAT_WITHOUT_ELEMENT` | `CommentList` wraps its rows in a `<div>` |
 | An arm or code block renders one node | `MARKLESS_PARSE_ERROR` (TSRX2011) | fragments |
+| A `preventDefault()` guard must be a truthy read of graph state or an event field compared with a literal (it runs before the handler loads); a prop or a state compared with a string is refused too | `MARKLESS_SYNC_POLICY_UNEXTRACTABLE` for `if (location.pathname === href)`, `if (path === '/show')` and `if (here === '/show')` | the page address is seeded into `state()` and the guard reads a boolean `computed` (`App.tsrx` `onPage.show`, `ItemView.tsrx` `linksHere`) |
 | Every `.tsrx` under `pages/` is a page | a component file there became a route | components live in `components/` |
 | No "after this write is on screen" hook for focus | focus set in a handler ran before the arm existed on the first (waking) click | the settings panel focuses itself from its own `onVisible` |
 
