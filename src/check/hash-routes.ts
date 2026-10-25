@@ -7,6 +7,8 @@ export function routePath(url: string, routing: OldRouting | undefined): string 
 	const at = new URL(url);
 	if (!at.hash.startsWith('#/')) return url;
 	const inner = new URL(at.hash.slice(1), at.origin);
+	// history 2 and 3 (React Router 2 and 3) key each entry's state in the hash's query: `/#/jobs?_k=uvja5u`.
+	if (/^[a-z0-9]{4,10}$/.test(inner.searchParams.get('_k') ?? '')) inner.searchParams.delete('_k');
 	return `${at.origin}${inner.pathname}${inner.search}${inner.hash}`;
 }
 
@@ -25,11 +27,6 @@ export function routeLinks(aria: string, routing: OldRouting | undefined): strin
 		const path = quoted !== undefined ? (JSON.parse(`"${quoted}"`) as string) : bare!;
 		return `${label}${YAML_QUOTED.test(path) ? JSON.stringify(path) : path}`;
 	});
-}
-
-/** Runs before the old page's own scripts: a route loaded at its path moves into the hash, where the app's router reads it. */
-export function enterHashRoute(): void {
-	if (location.pathname !== '/' && !location.hash.startsWith('#/')) history.replaceState(history.state, '', `/#${location.pathname}${location.search}${location.hash}`);
 }
 
 const routings = new WeakMap<object, OldRouting>();

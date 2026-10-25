@@ -204,8 +204,11 @@ export function unreachableCandidate(kind: string, oldReason: string, onNew: { r
 	return candidate('unreachable-on-both', `neither page lets a visitor use it, for the same reason (${kind}): old ${old}; new ${onNew.failed ?? kind}`);
 }
 
-/** Keys a framework's runtime writes for itself, never the app: htmx's history cache. */
-const FRAMEWORK_KEYS: readonly { readonly framework: string; readonly key: RegExp }[] = [{ framework: 'htmx', key: /^(sessionStorage|localStorage) htmx-(history-cache|current-path-for-history)$/ }];
+/** Keys a framework's runtime writes for itself, never the app: htmx's history cache, and the entry state of history 2 and 3, React Router's. */
+const FRAMEWORK_KEYS: readonly { readonly framework: string; readonly key: RegExp }[] = [
+	{ framework: 'htmx', key: /^(sessionStorage|localStorage) htmx-(history-cache|current-path-for-history)$/ },
+	{ framework: 'React', key: /^sessionStorage @@History\/./ },
+];
 
 /** The server framework whose own sealed format a cookie value is in: Laravel encrypts every cookie it sets as base64 JSON with iv, value and mac. */
 export function sealedBy(value: string): string | undefined {

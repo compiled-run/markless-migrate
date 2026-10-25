@@ -6,15 +6,19 @@ import { chromium, type Browser } from 'playwright';
 import { runCheck } from '../src/check/run.ts';
 import { hashRouted } from '../src/source/routes/config.ts';
 import { routeLinks, routePath } from '../src/check/hash-routes.ts';
+import { storageOwner } from '../src/check/automatic.ts';
+import type { PageCapture } from '../src/check/types.ts';
 
 const PAGES: Record<string, string> = { '/': 'Front page', '/about': 'About us', '/item/7': 'Item seven' };
 
 // A static host with a hash router, as react-hn on GitHub Pages: every route is `/#/<path>`, any other path is a 404.
-const OLD_SHELL = `<!doctype html><html><head><meta charset="utf-8"><title>Shop</title></head><body><div id="app"></div><script src="app.3f9a1c2b.js"></script></body></html>`;
+const OLD_SHELL = `<!doctype html><html><head><meta charset="utf-8"><title>Shop</title><link rel="stylesheet" href="app.3f9a1c2b.css"></head><body><div id="app"></div><script src="app.3f9a1c2b.js"></script></body></html>`;
+const CSS = 'h1 { color: rgb(20, 90, 50); }';
 const OLD_APP = `
 const pages = ${JSON.stringify(PAGES)};
 function draw() {
-	const path = location.hash.replace(/^#/, '') || '/';
+	const path = location.hash.replace(/^#/, '').replace(/[?&]_k=[a-z0-9]+$/, '') || '/';
+	if (!/_k=/.test(location.hash)) { history.replaceState(null, '', '#' + path + '?_k=' + Math.random().toString(36).slice(2, 8)); sessionStorage.setItem('@@History/' + location.hash.split('_k=')[1], 'null'); }
 	document.getElementById('app').innerHTML = '<nav><a href="#/">Home</a> <a href="#/about">About</a> <a href="#/item/7">Seven</a></nav><main><h1>' + (pages[path] || 'Not found') + '</h1></main>';
 }
 addEventListener('hashchange', draw);
@@ -25,6 +29,7 @@ function oldApp(): Promise<Server> {
 		const path = new URL(req.url ?? '/', 'http://x').pathname;
 		if (path === '/') res.writeHead(200, { 'content-type': 'text/html' }).end(OLD_SHELL);
 		else if (path === '/app.3f9a1c2b.js') res.writeHead(200, { 'content-type': 'text/javascript' }).end(OLD_APP);
+		else if (path === '/app.3f9a1c2b.css') res.writeHead(200, { 'content-type': 'text/css' }).end(CSS);
 		else res.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
 	});
 	return new Promise((done) => server.listen(0, '127.0.0.1', () => done(server)));
@@ -37,7 +42,8 @@ function newApp(options: { heading?: (path: string) => string; legacy?: boolean 
 		const title = PAGES[path];
 		if (!title) return void res.writeHead(404, { 'content-type': 'text/html' }).end('<!doctype html><title>Shop</title><h1>Not found</h1>');
 		const redirect = options.legacy === false ? '' : `<script>if(location.hash.indexOf('#/')===0)location.replace(location.hash.slice(1))</script>`;
-		res.writeHead(200, { 'content-type': 'text/html' }).end(`<!doctype html><html><head><meta charset="utf-8">${redirect}<title>Shop</title></head><body><div id="app"><nav><a href="/">Home</a> <a href="/about">About</a> <a href="/item/7">Seven</a></nav><main><h1>${options.heading?.(path) ?? title}</h1></main></div></body></html>`);
+		if (path === '/app.css') return void res.writeHead(200, { 'content-type': 'text/css' }).end(CSS);
+		res.writeHead(200, { 'content-type': 'text/html' }).end(`<!doctype html><html><head><meta charset="utf-8">${redirect}<title>Shop</title><link rel="stylesheet" href="/app.css"></head><body><div id="app"><nav><a href="/">Home</a> <a href="/about">About</a> <a href="/item/7">Seven</a></nav><main><h1>${options.heading?.(path) ?? title}</h1></main></div></body></html>`);
 	});
 	return new Promise((done) => server.listen(0, '127.0.0.1', () => done(server)));
 }
@@ -94,6 +100,8 @@ test('the address a hash-routed page shows is read as its route', () => {
 	assert.equal(routePath('http://old.test/', 'hash'), 'http://old.test/');
 	assert.equal(routePath('http://old.test/#section', 'hash'), 'http://old.test/#section');
 	assert.equal(routePath('http://old.test/#/item/7', undefined), 'http://old.test/#/item/7');
+	assert.equal(routePath('http://old.test/#/jobs?_k=uvja5u', 'hash'), 'http://old.test/jobs');
+	assert.equal(routePath('http://old.test/#/news?page=2&_k=k3w9qz', 'hash'), 'http://old.test/news?page=2');
 });
 
 test('the source names the hash routers of React Router, Vue Router and Angular', () => {
@@ -105,4 +113,11 @@ test('the source names the hash routers of React Router, Vue Router and Angular'
 	assert.equal(hashRouted(`RouterModule.forRoot(routes, { useHash: true })`), true);
 	assert.equal(hashRouted(`createRouter({ history: createWebHistory(), routes })`), false);
 	assert.equal(hashRouted(`const id = location.hash.slice(1)`), false);
+});
+
+test("history's own entry state (React Router 2 and 3) in sessionStorage is the old framework's", () => {
+	const page = (runtime?: string) => ({ assets: runtime ? [{ url: '/vendor.js', type: 'script', status: 200, contentType: 'text/javascript', runtime }] : [] }) as unknown as PageCapture;
+	assert.equal(storageOwner([page('React')], [page()])('+ sessionStorage @@History/s/uvja5u'), 'React');
+	assert.equal(storageOwner([page('React')], [page('React')])('+ sessionStorage @@History/s/uvja5u'), undefined);
+	assert.equal(storageOwner([page('React')], [page()])('+ sessionStorage itemCache'), undefined);
 });
