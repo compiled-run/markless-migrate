@@ -111,5 +111,5 @@ export function probesLine(p: NonNullable<RouteResult['probes']>): string {
 	const alike = p.controls.filter((c) => c.state.startsWith('alike')).length;
 	const shared = p.controls.filter((c) => c.state.startsWith('probed on ')).length;
 	const not = p.controls.length - driven - alike - shared;
-	return `widget probes: ${driven} control${driven === 1 ? '' : 's'} driven${alike ? ` (${alike} alike stood for by one of their kind)` : ''}${shared ? `, ${shared} in a shared layout driven on another route` : ''}${not ? `, ${not} not driven` : ''}, ${Math.round(p.ms / 1000)} s`;
+	return `widget probes: ${driven} control${driven === 1 ? '' : 's'} driven${alike ? ` (${alike} alike stood for by one of their kind)` : ''}${shared ? `, ${shared} driven on another route that renders the same widget` : ''}${not ? `, ${not} not driven` : ''}, ${Math.round(p.ms / 1000)} s`;
 }

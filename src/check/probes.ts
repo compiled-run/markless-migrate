@@ -363,8 +363,14 @@ export interface ProbeOptions {
 	readonly maxControls?: number;
 	/** Control pairs (an old and a new page each) probed at once. */
 	readonly concurrency?: number;
-	/** Shared across the routes of a run: a control of a shared header, nav, sidebar or footer is probed on the first route that has it, keyed by its kind and name. */
-	readonly layout?: Map<string, string>;
+	/** Shared across the routes of a run: a widget is probed on the first route that renders it, keyed by its class, kind, name and its widget's print on both pages; the routes rendering the same widget take that result. */
+	readonly shared?: Map<string, SharedProbe>;
+}
+
+/** A widget one route probes for every route that renders it the same way. */
+export interface SharedProbe {
+	readonly route: string;
+	readonly result: Promise<{ readonly state: string; readonly failures: readonly Failure[] }>;
 }
 
 export interface ProbeResult {
@@ -397,20 +403,34 @@ export function notifiers(journeys: readonly RecordedJourney[] | undefined): str
 export async function checkProbes(browser: Browser, sides: { readonly old: SideEnv; readonly new: SideEnv }, route: string, viewport: Viewport, journeys?: readonly RecordedJourney[], options: ProbeOptions = {}): Promise<ProbeResult> {
 	const started = Date.now();
 	const parts = await partSelectors();
-	const scan = await openSide(browser, sides.old, viewport);
+	const notify = notifiers(journeys);
+	const scanNew = options.shared ? openSide(browser, sides.new, viewport).then(async (side) => {
+		await loadPage(side.page, new URL(route, sides.new.origin).href);
+		await settle(side);
+		await side.page.evaluate(installProbe);
+		return side;
+	}) : undefined;
 	let found: ProbeControl[];
+	const prints = new Map<string, { old?: string; new?: string }>();
+	const scan = await openSide(browser, sides.old, viewport);
 	try {
 		await loadPage(scan.page, new URL(route, sides.old.origin).href);
 		await settle(scan);
 		await markHandlers(scan.page);
-		const notify = notifiers(journeys);
 		const opened = await discover(scan, sides.old.origin, route, await scan.page.evaluate(probeControls, { notify }));
 		await loadPage(scan.page, new URL(route, sides.old.origin).href);
 		await settle(scan);
 		await markHandlers(scan.page);
 		found = await scan.page.evaluate(probeControls, { notify, found: opened });
+		if (scanNew) {
+			const keys = found.map(controlKey);
+			await scan.page.evaluate(installProbe);
+			for (const c of await scan.page.evaluate(probeControls, { notify, prints: keys })) prints.set(controlKey(c), { old: c.print });
+			const side = await scanNew.catch(() => undefined);
+			for (const c of side ? await side.page.evaluate(probeControls, { notify, prints: keys }).catch(() => [] as ProbeControl[]) : []) prints.set(controlKey(c), { ...prints.get(controlKey(c)), new: c.print });
+		}
 	} finally {
-		await scan.close();
+		await Promise.all([scan.close(), scanNew?.then((side) => side.close(), () => {})]);
 	}
 	const probing = Date.now();
 	const controls: { control: string; cls: ProbeClass; state: string; ms?: number }[] = [];
@@ -418,21 +438,23 @@ export async function checkProbes(browser: Browser, sides: { readonly old: SideE
 	const kinds = new Map<string, number>();
 	const max = options.maxControls ?? DEFAULT_MAX;
 	const probed = new Set<string>();
+	const owned = new Map<string, (result: { state: string; failures: readonly Failure[] }) => void>();
+	const borrowed: { control: ProbeControl; cls: ProbeClass; from: SharedProbe }[] = [];
 	for (const control of found) {
 		for (const cls of control.classes as ProbeClass[]) {
 			const kind = `${cls}|${control.kind}`;
 			const seen = kinds.get(kind) ?? 0;
 			kinds.set(kind, seen + 1);
 			const named = describeControl(control);
-			const shared = LAYOUT.has(control.region) ? `${kind}|${control.name}` : undefined;
-			const owner = shared ? options.layout?.get(shared) : undefined;
-			if (owner && owner !== route) {
-				controls.push({ control: named, cls, state: `probed on ${owner}, which shares this layout` });
-				continue;
-			}
-			if (shared) options.layout?.set(shared, route);
+			const print = prints.get(controlKey(control));
+			const widget = print?.old && print.new ? `${kind}|${control.role}|${control.name}|${print.old}|${print.new}` : undefined;
+			const owner = widget ? options.shared?.get(widget) : undefined;
 			if (seen >= SAMPLES) {
 				controls.push({ control: named, cls, state: 'alike: the first of its kind was probed' });
+				continue;
+			}
+			if (owner && owner.route !== route) {
+				borrowed.push({ control, cls, from: owner });
 				continue;
 			}
 			if (!probed.has(controlKey(control)) && probed.size >= max) {
@@ -440,49 +462,85 @@ export async function checkProbes(browser: Browser, sides: { readonly old: SideE
 				continue;
 			}
 			probed.add(controlKey(control));
+			if (widget && options.shared && !owner) {
+				let resolve!: (result: { state: string; failures: readonly Failure[] }) => void;
+				options.shared.set(widget, { route, result: new Promise((done) => (resolve = done)) });
+				owned.set(`${controlKey(control)}|${cls}`, resolve);
+			}
 			for (const sequence of sequencesFor(cls, control)) work.push({ control, sequence });
 		}
 	}
 	const pairs = Math.max(1, options.concurrency ?? 2);
 	const budget = options.budgetMs ?? Math.min(MAX_BUDGET_MS, Math.max(MIN_BUDGET_MS, (probed.size * PER_CONTROL_MS) / pairs));
 	const failures: Failure[] = [];
+	const failuresOf = new Map<string, Failure[]>();
 	const state = new Map<string, { control: string; cls: ProbeClass; state: string; ms: number }>();
-	const queue = [...work];
-	const worker = async () => {
-		const sides2 = { old: await openSide(browser, sides.old, viewport), new: await openSide(browser, sides.new, viewport) };
-		try {
-			for (let item = queue.shift(); item; item = queue.shift()) {
-				const id = `${controlKey(item.control)}|${item.sequence.cls}`;
-				const entry = state.get(id) ?? { control: describeControl(item.control), cls: item.sequence.cls, state: 'probed', ms: 0 };
-				state.set(id, entry);
-				if (Date.now() - probing > budget) {
-					entry.state = `left out: the probes' ${Math.round(budget / 1000)} s budget ran out`;
-					continue;
+	const drive = async (items: readonly { control: ProbeControl; sequence: Sequence }[]) => {
+		if (!items.length) return;
+		const queue = [...items];
+		const worker = async () => {
+			const sides2 = { old: await openSide(browser, sides.old, viewport), new: await openSide(browser, sides.new, viewport) };
+			try {
+				for (let item = queue.shift(); item; item = queue.shift()) {
+					const id = `${controlKey(item.control)}|${item.sequence.cls}`;
+					const entry = state.get(id) ?? { control: describeControl(item.control), cls: item.sequence.cls, state: 'probed', ms: 0 };
+					state.set(id, entry);
+					if (Date.now() - probing > budget) {
+						entry.state = `left out: the probes' ${Math.round(budget / 1000)} s budget ran out`;
+						continue;
+					}
+					const files = new Set<string>();
+					const began = Date.now();
+					const [old, next] = await Promise.all([runSequence(sides2.old, sides.old.origin, route, item.control, item.sequence, [], new Set()), runSequence(sides2.new, sides.new.origin, route, item.control, item.sequence, parts, files)]);
+					// A control the new page lacks is the journeys' and the rendered check's finding; the probe has nothing to drive there.
+					if (old[0]?.control !== 'not on the page' && next[0]?.control === 'not on the page') {
+						entry.state = 'not on the new page: the journeys and the rendered check compare whether it is there';
+						continue;
+					}
+					let steps = compareRuns(old, next);
+					if (steps.some((d) => d.length)) {
+						const again = await runSequence(sides2.old, sides.old.origin, route, item.control, item.sequence, [], new Set());
+						steps = compareRuns(old, next, again);
+					}
+					entry.ms += Date.now() - began;
+					if (old[0]?.control === 'not on the page') entry.state = 'not found again on the old page';
+					const k = steps.findIndex((d) => d.length);
+					if (k < 0) continue;
+					const failure = probeFailure(route, item.control, item.sequence, k, steps, old, next, [...files]);
+					failures.push(failure);
+					failuresOf.set(id, [...(failuresOf.get(id) ?? []), failure]);
 				}
-				const files = new Set<string>();
-				const began = Date.now();
-				const [old, next] = await Promise.all([runSequence(sides2.old, sides.old.origin, route, item.control, item.sequence, [], new Set()), runSequence(sides2.new, sides.new.origin, route, item.control, item.sequence, parts, files)]);
-				// A control the new page lacks is the journeys' and the rendered check's finding; the probe has nothing to drive there.
-				if (old[0]?.control !== 'not on the page' && next[0]?.control === 'not on the page') {
-					entry.state = 'not on the new page: the journeys and the rendered check compare whether it is there';
-					continue;
-				}
-				let steps = compareRuns(old, next);
-				if (steps.some((d) => d.length)) {
-					const again = await runSequence(sides2.old, sides.old.origin, route, item.control, item.sequence, [], new Set());
-					steps = compareRuns(old, next, again);
-				}
-				entry.ms += Date.now() - began;
-				if (old[0]?.control === 'not on the page') entry.state = 'not found again on the old page';
-				const k = steps.findIndex((d) => d.length);
-				if (k < 0) continue;
-				failures.push(probeFailure(route, item.control, item.sequence, k, steps, old, next, [...files]));
+			} finally {
+				await Promise.all([sides2.old.close(), sides2.new.close()]);
 			}
-		} finally {
-			await Promise.all([sides2.old.close(), sides2.new.close()]);
-		}
+		};
+		await Promise.all(Array.from({ length: Math.max(1, Math.min(pairs, items.length)) }, worker));
 	};
-	await Promise.all(Array.from({ length: Math.max(1, Math.min(pairs, work.length)) }, worker));
+	// What this route drove is handed to the routes waiting on it before it waits on any other route, so no two routes wait on each other.
+	const handOver = (why?: string) => {
+		for (const [id, resolve] of owned) resolve({ state: why ?? state.get(id)?.state ?? 'probed', failures: why ? [] : (failuresOf.get(id) ?? []) });
+		owned.clear();
+	};
+	let stopped = true;
+	try {
+		await drive(work);
+		stopped = false;
+	} finally {
+		handOver(stopped ? `left out: the probes of ${route} stopped before driving it` : undefined);
+	}
+	// A widget the route it was first seen on could not drive is driven here.
+	const orphans: { control: ProbeControl; sequence: Sequence }[] = [];
+	for (const { control, cls, from } of borrowed) {
+		const { state: done, failures: theirs } = await from.result;
+		const named = describeControl(control);
+		if (done.startsWith('left out') || done.startsWith('not found')) {
+			for (const sequence of sequencesFor(cls, control)) orphans.push({ control, sequence });
+			continue;
+		}
+		controls.push({ control: named, cls, state: done === 'probed' ? `probed on ${from.route}, which renders the same widget` : `${done} (on ${from.route}, which renders the same widget)` });
+		for (const f of theirs) failures.push({ ...f, route, actual: `${f.actual} (driven on ${from.route}, which renders the same widget)` });
+	}
+	await drive(orphans);
 	for (const e of state.values()) {
 		controls.push({ control: e.control, cls: e.cls, state: e.state, ...(e.ms ? { ms: e.ms } : {}) });
 		if (e.state.startsWith('left out') || e.state.startsWith('not found')) failures.push(unprobed(route, e.control, e.cls, e.state));
