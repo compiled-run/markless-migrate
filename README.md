@@ -283,8 +283,9 @@ is red in `rendered` (`embed #1 <iframe>`). What a page's own code fetches from 
 the API it reads, such as the GitHub star button and api.github.com) is fetched once per run and every
 load, old and new, gets that answer, so a rate limit that starts part way through a run cannot make one
 side differ; an old side from the cache hands the new side the answers it read. Journeys and the timed loads fetch
-nothing new from other origins, but a data call the page's load already made (a single-page app reading its own API on
-another host) gets that same answer there too, so the journeys explore the app and not its error screen.
+nothing new from other origins, but a data call the page's load already made, or one to a host the old source's API clients
+name (with `--source`), gets the run's one copy of that answer there too: a single-page app reading its own API on another
+host is explored as the app, not as its error screen.
 A text line that differed between old loads may vary only in the characters that varied there, and
 only within the same kind of character (digits stay digits); everything else must match.
 

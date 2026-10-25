@@ -44,6 +44,8 @@ export interface SideEnv {
 	readonly reducedMotion?: 'reduce' | 'no-preference';
 	/** The OS colour scheme the page sees (light unless set). */
 	readonly colorScheme?: 'light' | 'dark';
+	/** Hosts the old app's source reads its data from (its API clients): a journey's GETs there are answered from the run's one copy. */
+	readonly dataHosts?: ReadonlySet<string>;
 }
 
 // On an asset or a fetch only a challenge header proves a wall; a CDN's server header on an ordinary 403 does not.
@@ -417,8 +419,8 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 				return route.fulfill({ status: hit.status, headers: { 'content-type': hit.contentType, 'access-control-allow-origin': '*' }, body: hit.body ?? '' });
 			}
 			if (!options.sameOriginOnly) return options.shareThirdParty && sharedThirdParty(request.method(), request.resourceType()) ? fulfillAsset(route, true) : route.continue();
-			// The page's own data from another origin (a single-page app's API) answers it as it answered the page's load: from the run's one copy, never a new fetch.
-			if (pageData(request.method(), request.resourceType()) && assets.has(url.href) && !insideEmbed(request, ownOrigin)) {
+			// The page's own data from another origin (a single-page app's API) answers it as it answers the page's load: from the run's one copy.
+			if (pageData(request.method(), request.resourceType()) && (assets.has(url.href) || env.dataHosts?.has(url.host)) && !insideEmbed(request, ownOrigin)) {
 				await timed?.network.delay();
 				return fulfillAsset(route);
 			}

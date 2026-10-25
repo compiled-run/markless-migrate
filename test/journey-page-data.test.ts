@@ -57,3 +57,20 @@ fetch('${api}/posts').then((r) => r.json()).then((posts) => {
 	const behaviour = route.failures.filter((f) => !f.accepted && (f.dimension === 'behaviour' || f.dimension === 'a11y'));
 	assert.deepEqual(behaviour.map((f) => [f.check, f.actual]), []);
 });
+
+test('with the old source scanned, a data call to a host its API client names is answered in journeys even when this page did not load it', async () => {
+	const { clientHosts } = await import('../src/check/run.ts');
+	assert.deepEqual([...clientHosts([{ kind: 'rest', file: 'src/utils/mockTodos.ts', line: 53, queries: ['https://jsonplaceholder.typicode.com/posts'] }, { kind: 'rest', file: 'a.ts', line: 1, queries: ['/api/me'], base: 'https://api.example.com/v1' }])].sort(), ['api.example.com', 'jsonplaceholder.typicode.com']);
+	// An app whose start page links to a page that reads the posts: the journey follows the link, the start page loaded nothing from the API.
+	const api = await serve((path) => (path === '/posts' ? { type: 'application/json', body: '["First post"]' } : undefined));
+	const page = (body: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Posts</title></head><body><main>${body}</main></body></html>`;
+	const reader = `<h1>Posts</h1><div id="out"></div><script>fetch('${api}/posts').then((r) => r.json()).then((p) => { document.getElementById('out').textContent = p.join(', '); }, () => { document.getElementById('out').textContent = 'Failed to fetch'; });</script>`;
+	const old = await serve((p) => (p === '/' ? { type: 'text/html', body: page('<h1>Home</h1><a href="/posts">Posts</a>') } : p === '/posts' ? { type: 'text/html', body: page(reader) } : undefined));
+	const next = await serve((p) => (p === '/' ? { type: 'text/html', body: page('<h1>Home</h1><a href="/posts">Posts</a>') } : p === '/posts' ? { type: 'text/html', body: page('<h1>Posts</h1><div id="out">First post</div>') } : undefined));
+	const source = { routes: [], authGuards: [], nondeterminism: [], clients: [{ kind: 'rest', file: 'src/posts.ts', line: 3, queries: [`${api}/posts`] }], writes: [], components: [] } as never;
+	const report: Report = await runCheck({ oldOrigin: old, newOrigin: next, routes: ['/'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1, journeys: { budgetMs: 60_000 }, source });
+	const route = report.routes[0]!;
+	const followed = route.journeys?.find((j) => j.name === 'click link "Posts"');
+	assert.ok(followed, JSON.stringify(route.journeys?.map((j) => j.name)));
+	assert.ok(!JSON.stringify(followed.expected).includes('Failed to fetch'), JSON.stringify(followed.expected));
+});
