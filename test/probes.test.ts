@@ -11,6 +11,8 @@ import { VIEWPORTS } from '../src/check/types.ts';
 const modality = (keys: string) => `<button id="a">Save</button> <button>Next</button><script>let kb = false; const mark = () => { for (const e of document.querySelectorAll('[data-focus-visible]')) e.removeAttribute('data-focus-visible'); const a = document.activeElement; if (kb && a && a !== document.body) a.setAttribute('data-focus-visible', 'true'); }; addEventListener('keydown', (e) => { if (${keys}) kb = true; mark(); }, true); addEventListener('pointerdown', () => { kb = false; mark(); }, true); addEventListener('focusin', mark, true);</script>`;
 // A dialog that takes focus and gives it back to its opener on Escape or a click outside; `drop` loses it on the click outside. `bare`: its trigger says nothing of what it opens, as React Aria's does not.
 const dialog = (drop: boolean, bare = false) => `<button id="o"${bare ? '' : ' aria-haspopup="dialog" aria-expanded="false"'}>Settings</button><div id="d" role="dialog" aria-label="Settings" hidden><button id="x">Close</button></div><script>const close = (back) => { d.hidden = true; o.setAttribute('aria-expanded', 'false'); if (back) o.focus(); else document.activeElement?.blur(); }; o.onclick = () => { d.hidden = false; o.setAttribute('aria-expanded', 'true'); x.focus(); }; x.onclick = () => close(true); addEventListener('keydown', (e) => { if (e.key === 'Escape' && !d.hidden) close(true); }); addEventListener('click', (e) => { if (!d.hidden && !d.contains(e.target) && e.target !== o) close(${drop ? 'false' : 'true'}); });</script>`;
+// A card shown while the pointer rests on its trigger; `never` never shows it.
+const hoverCard = (never: boolean) => `<p><a id="h" href="#profile" data-state="closed">@ada</a></p><div id="c" role="tooltip" hidden>Ada Lovelace</div><script>let t; h.addEventListener('pointerenter', () => { t = setTimeout(() => { ${never ? '' : "c.hidden = false; h.dataset.state = 'open';"} }, 300); }); h.addEventListener('pointerleave', () => { clearTimeout(t); c.hidden = true; h.dataset.state = 'closed'; });</script>`;
 
 // A menu whose items the pointer highlights; `sticky` keeps the highlight when the pointer leaves and when the menu closes.
 const menu = (sticky: boolean) => `<button id="m" aria-haspopup="menu" aria-expanded="false">Actions</button><div id="l" role="menu" hidden><div role="menuitem" tabindex="-1">One</div><div role="menuitem" tabindex="-1">Two</div><div role="menuitem" tabindex="-1">Three</div></div><script>const its = [...l.children]; const clear = () => { for (const i of its) i.removeAttribute('data-highlighted'); }; const close = () => { l.hidden = true; m.setAttribute('aria-expanded', 'false'); ${sticky ? '' : 'clear();'} m.focus(); }; m.onclick = () => { if (!l.hidden) return close(); l.hidden = false; m.setAttribute('aria-expanded', 'true'); l.firstElementChild.focus(); }; for (const i of its) { i.addEventListener('pointerenter', () => { clear(); i.setAttribute('data-highlighted', ''); }); ${sticky ? '' : "i.addEventListener('pointerleave', () => i.removeAttribute('data-highlighted'));"} i.onclick = close; } addEventListener('keydown', (e) => { if (e.key === 'Escape' && !l.hidden) close(); }); addEventListener('click', (e) => { if (!l.hidden && !l.contains(e.target) && e.target !== m) close(); });</script>`;
@@ -18,6 +20,7 @@ const menu = (sticky: boolean) => `<button id="m" aria-haspopup="menu" aria-expa
 const PAIRS: Record<string, { old: string; bad: string }> = {
 	modality: { old: modality('true'), bad: modality("e.key === 'Tab'") },
 	popup: { old: dialog(false), bad: dialog(true) },
+	hover: { old: hoverCard(false), bad: hoverCard(true) },
 	menu: { old: menu(false), bad: menu(true) },
 	discovered: { old: dialog(false, true), bad: dialog(true, true) },
 };
@@ -54,6 +57,7 @@ const EXPECT: Record<string, { check: RegExp; detail: RegExp }> = {
 	popup: { check: /^popup probe of button "Settings": open by pointer.* \(step 5 of 12: click outside it and what it opened\)$/, detail: /focus: the control/ },
 	menu: { check: /^popup probe of button "Actions": open by pointer.* \(step 4 of 12: move the pointer away\)$/, detail: /open: menu \(3 items, highlighted: One,/ },
 	discovered: { check: /^popup probe of button "Settings": open by pointer.* \(step 5 of 12: click outside it and what it opened\)$/, detail: /focus: the control/ },
+	hover: { check: /^hover probe of link "@ada": pointer resting on it.* \(step 1 of 4: point at it\)$/, detail: /open: tooltip "Ada Lovelace"/ },
 };
 
 for (const cls of Object.keys(PAIRS)) {

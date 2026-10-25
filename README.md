@@ -373,6 +373,7 @@ behind is hidden or inert, and the offsets a drag moves.
 | --- | --- | --- |
 | `modality` | every focusable control | a click, then Escape, Tab and Shift+Tab (in a text field: a click, typing, then the same keys); Tab to it, Escape, the pointer moving, Tab, Shift+Tab |
 | `popup` | a button that says it opens something (`aria-haspopup`, or `aria-expanded` with `aria-controls`), a combobox | open by a click, a click outside, open again, Escape, open again, its close button, Escape |
+| `hover` | a button, tab, toggle or link that listens for the pointer passing over it (a link only when it also carries `data-state`, `aria-describedby`, `aria-haspopup` or `aria-expanded`: Next's links listen to prefetch) | point at it, move away, point again, click, move away; Tab to it, Escape, Tab. Each step waits out timeouts due within a second, so a hover card's open delay is seen |
 
 A step that differs is red (`a11y` for focus rings and tab stops, `behaviour` otherwise) with the
 control, the class, the sequence, the step and what each side showed there, and the converter parts

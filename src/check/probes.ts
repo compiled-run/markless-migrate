@@ -1,5 +1,6 @@
 import type { Browser, Page } from 'playwright';
 import { openPage, type SideEnv } from './browser.ts';
+import { markHandlers } from './handlers.ts';
 import { loadPage } from './infrastructure.ts';
 import { quiet, type RecordedJourney } from './journeys.ts';
 import { installProbe, probeControls, type ProbeControl } from './probe-page.ts';
@@ -11,10 +12,10 @@ import type { Dimension, Failure, Viewport } from './types.ts';
  * the old and the new page side by side, and what a visitor meets is read after every step: where focus is and whether its ring
  * shows, the state attributes of the control and its widget, what is open, the toasts, tab stops and page lock.
  */
-export type ProbeClass = 'modality' | 'popup';
+export type ProbeClass = 'modality' | 'popup' | 'hover';
 
 export type Op =
-	| { readonly op: 'click' | 'tab in' | 'leave' | 'outside' | 'close' }
+	| { readonly op: 'click' | 'tab in' | 'hover' | 'leave' | 'outside' | 'close' }
 	/** The n-th item of the list that is open: pointed at or clicked. */
 	| { readonly op: 'item'; readonly n: number; readonly how: 'hover' | 'click' }
 	/** The first letter of the n-th item whose first letter is new, pressed as typeahead. */
@@ -54,6 +55,12 @@ export function sequencesFor(cls: ProbeClass, control: Pick<ProbeControl, 'role'
 					? s('open by pointer and type the first letter of each item', [{ op: 'click' }, ...letters(5), key('Escape')])
 					: s('open by pointer, Tab through it, Escape', [{ op: 'click' }, key('Tab'), key('Tab'), key('Shift+Tab'), key('Escape')]),
 			];
+		case 'hover':
+			// Each step settles once the timeouts due within a second have fired, so an open delay up to a second needs no wait of its own.
+			return [
+				s('pointer resting on it, leaving and coming back', [{ op: 'hover' }, { op: 'leave' }, { op: 'hover' }, ...(control.role === 'link' ? [] : [{ op: 'click' } as Op]), { op: 'leave' }]),
+				s('focus by Tab resting on it, then Escape and Tab', [{ op: 'tab in' }, key('Escape'), key('Tab')]),
+			];
 	}
 }
 
@@ -67,6 +74,8 @@ export function describeOp(op: Op): string {
 			return `type the first letter of item ${op.n + 1} (by distinct first letter) of what is open`;
 		case 'tab in':
 			return 'Tab to it from the control before it';
+		case 'hover':
+			return 'point at it';
 		case 'leave':
 			return 'move the pointer away';
 		case 'outside':
@@ -80,11 +89,12 @@ export function describeOp(op: Op): string {
 	}
 }
 
-const DIMENSION: Record<ProbeClass, Dimension> = { modality: 'a11y', popup: 'behaviour' };
+const DIMENSION: Record<ProbeClass, Dimension> = { modality: 'a11y', popup: 'behaviour', hover: 'behaviour' };
 
 export const PROBE_HINTS: Record<ProbeClass, string> = {
 	modality: 'Whether the focus ring shows follows how the visitor last moved: a key press (Tab, an arrow, Escape) shows it, a pointer press hides it, and typing into a text field or moving the mouse leaves it as it was. Track the modality on the document the way the old library does (keydown before pointerdown), not per control, and set the same marker (data-focus-visible or :focus-visible) on the element that has focus.',
 	popup: 'What this control opens must answer as on the old page: the item the pointer is on is highlighted and the highlight goes when the pointer leaves or the list closes, so a reopened list starts fresh; a typed letter moves to the item it starts; Tab inside a non-modal popover moves on as the old one does, a modal one keeps focus in. Opening and closing by the pointer must leave focus where the old page leaves it: on open, in the pop-up or its first item as the old library chooses; after Escape or the close button, back on the control; after a click outside, where the old page put it (the control for a modal, the clicked spot for a non-modal). Lock scrolling and hide the rest of the page only while the old page does.',
+	hover: 'The pointer resting on this control (or focus reaching it) shows something on the old page, or marks it hovered: open it after the same delay, keep it while the pointer is on it, close it when the pointer leaves, and set the same hover markers (data-hovered, data-state).',
 };
 
 const STEP_TIMEOUT = 2_500;
@@ -94,7 +104,7 @@ const AIM = '[data-markless-migrate-aim]';
 type ProbeWindow = { __markless_migrate_probe__?: { read(): Reading; outside(): { x: number; y: number } | null; aim(what: string): boolean; letter(n: number): string } };
 // Keys are held as a person holds them: Radix moves a radio group's focus in a timeout and checks the radio only while the key is still down.
 const HOLD_MS = 60;
-const ON_CONTROL = new Set<Op['op']>(['click', 'tab in']);
+const ON_CONTROL = new Set<Op['op']>(['click', 'tab in', 'hover']);
 const DESTRUCTIVE = /\b(log ?out|sign ?out|delete|remove|destroy|unsubscribe|deactivate)\b/i;
 
 const controlKey = (c: Pick<ProbeControl, 'role' | 'name' | 'nth'>) => `${c.role}|${c.name.replace(/\s+/g, '')}|${c.nth}`;
@@ -165,6 +175,8 @@ async function perform(side: Side, control: ProbeControl, op: Op): Promise<void>
 			else await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 			return page.keyboard.press('Tab', { delay: HOLD_MS });
 		}
+		case 'hover':
+			return target.hover({ timeout: STEP_TIMEOUT });
 		case 'leave': {
 			const p = await away();
 			return page.mouse.move(p.x, p.y, { steps: 4 });
@@ -316,9 +328,11 @@ export async function checkProbes(browser: Browser, sides: { readonly old: SideE
 	try {
 		await loadPage(scan.page, new URL(route, sides.old.origin).href);
 		await settle(scan);
+		await markHandlers(scan.page);
 		const opened = await discover(scan, sides.old.origin, route, await scan.page.evaluate(probeControls, {}));
 		await loadPage(scan.page, new URL(route, sides.old.origin).href);
 		await settle(scan);
+		await markHandlers(scan.page);
 		found = await scan.page.evaluate(probeControls, { found: opened });
 	} finally {
 		await scan.close();
