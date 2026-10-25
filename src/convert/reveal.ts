@@ -8,6 +8,13 @@ import { loadPage } from '../check/infrastructure.ts';
 import { COMMAND_EMPTY, keepCommandEmpty, keptCommandEmpty } from './capture.ts';
 import { VIEWPORTS, type Viewport } from '../check/types.ts';
 import { markTextValues } from './rac-text.ts';
+import { INSTANCE_PROPS, INSTANCE_PROPS_VERSION, markedInstanceProps, markInstanceProps } from './instance-props.ts';
+
+// What the old page's React tree knows of the content a gesture added, written on it before it is read.
+async function markAdded(page: Page): Promise<void> {
+	await page.evaluate(markTextValues);
+	await page.evaluate(markInstanceProps, { specs: INSTANCE_PROPS, added: true }).catch(() => {});
+}
 
 /** How a control shows what it holds back. */
 /** `copy`: a click whose effect kept is what it writes to the clipboard. */
@@ -39,6 +46,8 @@ export interface RevealCapture {
 	readonly reveals: readonly Reveal[];
 	readonly skipped: readonly string[];
 	readonly commandEmpty?: number;
+	/** INSTANCE_PROPS_VERSION when each instance's props were written on what it added (instance-props.ts). */
+	readonly instanceProps?: number;
 }
 
 // Controls ARIA marks as holding content back, and the gesture that shows it.
@@ -197,7 +206,7 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 		});
 		return kept ? [{ into: 'replace', before: kept.depth, html: kept.html }] : [];
 	}
-	await page.evaluate(markTextValues);
+	await markAdded(page);
 	return page.evaluate(() => {
 		const w = window as unknown as { __mmAdded?: { parent: Element; node: Element; next: Element | null }[]; __mmObserver?: MutationObserver };
 		w.__mmObserver?.disconnect();
@@ -287,7 +296,7 @@ const REUSE_AFTER = 3;
 export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, memo: RevealMemo = new Map(), viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = [], pass: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string } = { controls: CONTROLS, tag: '' }): Promise<RevealCapture> {
 	const file = join(dir, `${key(`${pass.tag}${route}`, extra)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as RevealCapture, () => undefined);
-	if (cached && cached.route === route && keptCommandEmpty(cached.reveals.flatMap((r) => r.added.map((a) => a.html)), cached.commandEmpty)) return cached;
+	if (cached && cached.route === route && keptCommandEmpty(cached.reveals.flatMap((r) => r.added.map((a) => a.html)), cached.commandEmpty) && markedInstanceProps(cached.reveals.flatMap((r) => r.added.map((a) => a.html)), cached.instanceProps)) return cached;
 	const reveals: Reveal[] = [];
 	const skipped: string[] = [];
 	const done = new Set<string>();
@@ -334,7 +343,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 			await open.context.close().catch(() => {});
 		}
 	}
-	const capture: RevealCapture = { route, reveals, skipped, commandEmpty: COMMAND_EMPTY };
+	const capture: RevealCapture = { route, reveals, skipped, commandEmpty: COMMAND_EMPTY, instanceProps: INSTANCE_PROPS_VERSION };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(capture));
 	return capture;
@@ -435,7 +444,7 @@ export async function captureRacHovers(browser: Browser, origin: string, route: 
 			if (!used) continue;
 			// A PreviewTrigger opens after 600 ms.
 			await quiet(open.page, c.preview ? 900 : 400);
-			await open.page.evaluate(markTextValues);
+			await markAdded(open.page);
 			const added = await open.page.evaluate(() => {
 				const w = window as unknown as { __mmAdded?: Element[]; __mmObserver?: MutationObserver };
 				w.__mmObserver?.disconnect();
@@ -507,7 +516,7 @@ export async function captureRacSubmenus(browser: Browser, origin: string, route
 				const hovered = await item.hover({ timeout: 2000 }).then(() => true, () => false);
 				if (!hovered) continue;
 				await quiet(page, 500);
-				await page.evaluate(markTextValues);
+				await markAdded(page);
 				const added = await page.evaluate(() => {
 					const w = window as unknown as { __mmAdded?: globalThis.Element[]; __mmObserver?: MutationObserver };
 					w.__mmObserver?.disconnect();
@@ -680,7 +689,7 @@ export async function captureRacComboInputs(browser: Browser, origin: string, ro
 				await page.keyboard.press('ArrowDown');
 				await page.waitForSelector('[data-trigger="ComboBox"] [role="option"]', { timeout: 8000 }).catch(() => {});
 				await quiet(page, 300);
-				await page.evaluate(markTextValues);
+				await markAdded(page);
 				const added = await page.evaluate(() => {
 					const w = window as unknown as { __mmAdded?: globalThis.Element[]; __mmObserver?: MutationObserver };
 					w.__mmObserver?.disconnect();
