@@ -187,6 +187,25 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   focus must match after every step. The one exception is two demos whose own React state takes over at a known
   step. Reset shows the old page's toast (`notify`). Before: Next, Previous, Skip, Submit and the shortcuts did
   nothing on all 26 questionnaire demos. After: 13 of 14 base demos work in the local witness.
+- TanStack Table on Markless state (`src/convert/tanstack-table.ts`, `parts/tanstack-table.ts`). The data table demos
+  (Radix, Base UI and React Aria, each with its right-to-left copy) run on @tanstack/table-core 9, the engine
+  @tanstack/react-table wraps, so sorting, filtering, selection and pagination are table-core's own. `convert` reads
+  each table's data, columns, registered features and state from the old page's useTable instance. It uses every
+  control once and records what it did to the table's state: a sort button's next direction from each direction, a
+  filter input's column, a select-all box's effect from none, some and all of the page's rows selected, a column
+  menu's items. It then puts the table in a dozen states and records the markup of each. Every attribute, text or
+  child that changed binds the table quantity it followed (row selected, a column's direction, page selection, a
+  count). The body is one keyed `@for` over the view's rows from one row template, with the "No results." row in
+  `@empty`. A hidden column's header leaves as on the old page. Its cells are hidden instead, and so is a row's check
+  icon while unchecked: Markless cannot build a keyed row holding a branch when the row comes back after a filter
+  is cleared (`MARKLESS_KEYED_REPEAT_ROW_MINT_UNSUPPORTED`). Text reads a `computed()` per count, because a composite
+  read in text never updates (`MARKLESS_TEMPLATE_EXPRESSION_STATIC`). The table's state is a `shared()` state, so
+  the column menu, a layer of its own component, reads it too. React Aria's right-to-left demo gives its Table no
+  `selectedKeys`, so the rows show React Aria's own selection and only tell the table: `convert` sees the rows not
+  follow the table's state there and reaches each selection by using the rows from a fresh load. Before: sorting, the filter, the column toggles, row
+  selection and select-all, the selected count and the page buttons did nothing on all six tables. After: every step
+  of a 22-step journey matches the old page on each of the three routes in the local witness: row order, cell text,
+  checked states, `aria-sort`, the count and the page buttons.
 - Ported route handlers carry the old build's `NEXT_PUBLIC_*` values inlined, as `next build` does. A value naming
   the old origin becomes the new app's (`import.meta.env.VITE_APP_URL`). `/init/v0` had answered 500 on the live
   port (`Failed to parse URL from undefined/r/...`); it is now byte for byte the old answer. Nitro's tracer no longer

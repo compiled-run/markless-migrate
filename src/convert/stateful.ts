@@ -805,7 +805,7 @@ export class RacTablePlan {
 		return this.claimed.has(el);
 	}
 
-	add(root: Element, groups: readonly ToggleGroup[], locate: (sig: string, nth: number) => Element | undefined, emit: (html: string) => string): number {
+	add(root: Element, groups: readonly ToggleGroup[], locate: (sig: string, nth: number) => Element | undefined, emit: (html: string) => string, skip: (table: Element) => boolean = () => false): number {
 		const captured = new Map<Element, ToggleGroup['controls'][number]>();
 		for (const g of groups) for (const c of g.controls) {
 			const el = locate(c.sig, c.nth);
@@ -813,7 +813,7 @@ export class RacTablePlan {
 		}
 		let placed = 0;
 		for (const table of walk(root)) {
-			if (table.tagName !== 'table' || attr(table, 'role') !== 'grid' || attr(table, 'aria-multiselectable') !== 'true' || attr(table, 'data-rac') === undefined) continue;
+			if (table.tagName !== 'table' || attr(table, 'role') !== 'grid' || attr(table, 'aria-multiselectable') !== 'true' || attr(table, 'data-rac') === undefined || skip(table)) continue;
 			const selection = (scope: Element) => [...walk(scope)].find((e) => e.tagName === 'label' && attr(e, 'slot') === 'selection');
 			const thead = [...walk(table)].find((e) => e.tagName === 'thead');
 			const tbody = [...walk(table)].find((e) => e.tagName === 'tbody');
