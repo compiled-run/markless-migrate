@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { tagHeaders, type SideEnv } from './browser.ts';
 import { captureHttp, mime, routeFile } from './capture.ts';
-import { UNKNOWN_PATH } from './endpoints.ts';
+import { answeredThenRedirected, UNKNOWN_PATH, type Landing } from './endpoints.ts';
+import { movedInBrowser } from './compare.ts';
 import { HINTS } from './hints.ts';
 import { request } from './http.ts';
 import type { Failure, HttpCapture, RouteCoverage } from './types.ts';
@@ -69,7 +70,7 @@ async function pool<T>(items: readonly T[], task: (item: T) => Promise<void>): P
  * answers a path no app has with that same route (its catch-all redirects there), which the new app then rightly copies. An HTML
  * page counts as ported only when the new app's Markless code renders it; one without Markless's route marker is served by the old app.
  */
-export async function checkCoverage(old: SideEnv, next: SideEnv, routes: readonly string[], role?: string): Promise<RouteCoverage> {
+export async function checkCoverage(old: SideEnv, next: SideEnv, routes: readonly string[], role?: string, land?: Landing): Promise<RouteCoverage> {
 	const failures: Failure[] = [];
 	const notOnOld: string[] = [];
 	const unreachable: string[] = [];
@@ -97,7 +98,8 @@ export async function checkCoverage(old: SideEnv, next: SideEnv, routes: readonl
 			return;
 		}
 		const tag = (f: Failure): Failure => (role ? { ...f, role } : f);
-		if (!samePresence(a, b)) {
+		const moved = land && answeredThenRedirected(a, b) ? await land(route) : undefined;
+		if (!samePresence(a, b) && !(moved && movedInBrowser([a], b, [moved]))) {
 			failures.push(tag(missingRoute(route, a, describeHttp(b))));
 			return;
 		}

@@ -12,7 +12,7 @@ import { accessFailures, ANONYMOUS, saysDenied, compareLogin, loginRoutes, saveS
 import { BlockedError, blockedResult, detectChallenge, probeWall } from './blocked.ts';
 import type { ClientFact } from './source-facts.ts';
 import { adoptAnswers, LAUNCH, DEFINITE, defaultEnv, isLoopback, pushRecording, resetSharedAnswers, shareAnswers, storedAnswers, tagHeaders, type StoredAnswer, type SideEnv, type StorageState, type WallHit } from './browser.ts';
-import { captureHttp, captureRoute, mime, pageLoads, thirdPartyLoads } from './capture.ts';
+import { captureHttp, captureRoute, landing, mime, pageLoads, thirdPartyLoads } from './capture.ts';
 import { OldCache } from './cache.ts';
 import { everyRecording, readRecording, recordable, slug, writeRecording } from './data.ts';
 import { checkEndpoint, checkRedirect, isPage } from './endpoints.ts';
@@ -797,7 +797,8 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				}
 				continue;
 			}
-			if (options.coverage) coverages.push(await checkCoverage(roleRun.old, roleRun.new, options.coverage, role));
+			const oldLanding = (env: SideEnv) => (route: string) => landing(browser, env, route, (options.viewports ?? VIEWPORTS)[0]!);
+			if (options.coverage) coverages.push(await checkCoverage(roleRun.old, roleRun.new, options.coverage, role, oldLanding(roleRun.old)));
 			const data = options.data && role && role !== ANONYMOUS ? { ...options.data, dir: join(options.data.dir, slug(role)) } : options.data;
 			const shared = data?.mode === 'replay' ? everyRecording(data.dir).then((responses) => ({ set: randomUUID(), responses })) : undefined;
 			const pages = allPages;
@@ -832,7 +833,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			const compared = navigated ? applyNavigation(shareLayout(checked), navigated) : shareLayout(checked);
 			routes.push(...(artifacts ? await Promise.all(compared.map((r) => artifacts.keep(r))) : compared));
 			for (const route of endpoints) routes.push(asRole(await checkEndpoint(roleRun, route).catch(unreachable(route)), role));
-			for (const route of redirects) routes.push(asRole(await checkRedirect(roleRun, route).catch(unreachable(route)), role));
+			for (const route of redirects) routes.push(asRole(await checkRedirect(roleRun, route, oldLanding(roleRun.old)).catch(unreachable(route)), role));
 		}
 		if ((options.load && options.only !== 'embeds') || options.only === 'load') {
 			const anonymous = (r: RouteResult) => !r.role || r.role === ANONYMOUS;
