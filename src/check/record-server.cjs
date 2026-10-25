@@ -50,6 +50,26 @@ function lookup(sets, method, url, body) {
 	return undefined;
 }
 
+// A load check tags renders at the time its page is frozen at, so a server-rendered "3 hours ago" reads the same clock as the page.
+const RealDate = Date;
+const frozenNow = () => {
+	const time = Number(store.getStore()?.time);
+	return Number.isFinite(time) ? time : undefined;
+};
+class RecorderDate extends RealDate {
+	constructor(...args) {
+		if (args.length) super(...args);
+		else super(frozenNow() ?? RealDate.now());
+	}
+	static now() {
+		return frozenNow() ?? RealDate.now();
+	}
+	// Dates Node itself makes (fs.Stats.mtime) are still Dates to the app's instanceof checks.
+	static [Symbol.hasInstance](value) {
+		return value instanceof RealDate;
+	}
+}
+
 const realFetch = globalThis.fetch;
 // Node 16 has no fetch; giving the app one would change what it does.
 if (realFetch) globalThis.fetch = async function recordedFetch(input, init) {
@@ -197,6 +217,8 @@ for (const Server of [http.Server, https.Server]) {
 		if (!tag) return emit.call(this, event, ...args);
 		const fresh = tag.fresh ? freshCookie() : '';
 		if (fresh) req.headers.cookie = req.headers.cookie ? `${req.headers.cookie}; ${fresh}` : fresh;
+		// Date is swapped only once a load asks for the frozen clock, so a server checked without --server-clock keeps its own.
+		if (tag.time && globalThis.Date !== RecorderDate) globalThis.Date = RecorderDate;
 		return store.run(tag, () => emit.call(this, event, ...args));
 	};
 }

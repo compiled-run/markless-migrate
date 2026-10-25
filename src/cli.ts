@@ -96,7 +96,7 @@ const USAGE = `markless-migrate ${VERSION}
           endpoints and how each is answered, and the library parts no port implements yet.
 ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--json] [--open]
           [--source <path>] [--data record|replay] [--live-window <seconds>] [--staging] [--block <host>]... [--allow <host>]...
-          [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
+          [--no-freeze] [--time <iso>] [--server-clock] [--seed <n>] [--timezone <tz>] [--locale <tag>]
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
           [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--timeout <seconds>]
@@ -744,6 +744,7 @@ async function main(argv: string[]): Promise<number> {
 					block: { type: 'string', multiple: true },
 					allow: { type: 'string', multiple: true },
 					'no-freeze': { type: 'boolean' },
+					'server-clock': { type: 'boolean' },
 					time: { type: 'string' },
 					seed: { type: 'string' },
 					timezone: { type: 'string' },
@@ -846,6 +847,7 @@ async function main(argv: string[]): Promise<number> {
 				routes: routes ?? [],
 				locales: inventory?.locales,
 				freeze,
+				...(values['server-clock'] ? { serverClock: true } : {}),
 				block: { add: values.block ?? [], allow: values.allow ?? [] },
 				...(values.staging ? { staging: { old: true, new: true } } : {}),
 				...(source ? { source } : {}),

@@ -260,8 +260,12 @@ timeout or animation frame that schedules itself again: a fading demo box, a tic
 carousel) are held at their start for screenshots and styles on both sides, with what each loop
 changed undone and infinite animations paused at time 0, and requests to known ad, analytics,
 tag-manager, session-replay and client-side experiment hosts are blocked (`src/check/trackers.ts`;
-`--block` adds a host, `--allow` lets one load). `--no-freeze` turns freezing off. The server's own
-clock cannot be frozen from the browser, so the repeated old loads below still catch it, and the report
+`--block` adds a host, `--allow` lets one load). `--no-freeze` turns freezing off. With `--server-clock`, a
+server started with the request recorder (below) renders each page load check makes at that same instant
+(`Date` and `Date.now` read the frozen time while it handles that load; its other requests keep the real
+clock), so a server-rendered "posted 3 hours ago" reads the clock the page reads. It is off by default:
+a cookie or token the server issues then expires by the frozen clock, so pair it with a `--time` near now.
+Otherwise the server's own clock cannot be frozen from the browser, so the repeated old loads below still catch it, and the report
 lists every element that still varied and why. With `--source`, the old app's code is scanned for
 sources of variation, each reported as pinned, blocked or left to the noise baseline.
 
@@ -466,7 +470,7 @@ when the wall allows a known agent.
 `markless-migrate recorder` prints the `NODE_OPTIONS` that load the request recorder into a Node server
 (Next.js, Nuxt, Remix, Express, Nitro...), on any Node from 16 (it loads with `--require`, which older Node
 accepts in `NODE_OPTIONS` where it refuses `--import`, and gives a server without `fetch` none). Start both apps with it. While `check` loads a page, the
-recorder files every request the server makes for it: `fetch` with method, URL, body and response,
+recorder renders it at the page's frozen time (with `--server-clock`) and files every request the server makes for it: `fetch` with method, URL, body and response,
 and `node:http`/`node:https` (axios, got, node-fetch, most SDKs) with method, URL, request body and status (not the response, which is the app's to read). Requests from
 other runtimes (Python, Ruby, PHP, Go, edge workers) are not recorded; for those, only browser requests
 are compared. The recorder answers the checker on the app's own origin under `/__markless-migrate/`,
