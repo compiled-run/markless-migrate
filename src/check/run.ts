@@ -334,7 +334,8 @@ async function checkJourneys(browser: Browser, run: Run, route: string, viewport
 	const plain = explored.journeys;
 	const recorded = plain.map((j) => j.expected);
 	const door = { old: run.old.origin, serves: (path: string) => isSwitched([route, ...(run.switched ?? [])], path), ...(run.old.storageState ? { storageState: run.old.storageState } : {}), ...(run.old.signIn ? { signIn: run.old.signIn } : {}) };
-	const front: SideEnv = { ...run.new, frontDoor: door };
+	// A hash-routed old server only ever serves its shell, so no request of its pages can be handed to the new app.
+	const front: SideEnv = run.old.routing === 'hash' ? run.new : { ...run.new, frontDoor: door };
 	const [again, next] = await profiled(route, `replay ${plain.length} journeys old and new`, () => Promise.all([cached ? cached.runs[1]! : replayAll(browser, run.old, route, viewport, plain), replayAll(browser, front, route, viewport, plain)]));
 	const runs = cached?.runs ?? [recorded, again];
 	// A third old run, for the journeys whose two old runs differed: the others agree, and their second run stands for the third.

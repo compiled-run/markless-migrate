@@ -18,7 +18,7 @@ const OLD_APP = `
 const pages = ${JSON.stringify(PAGES)};
 function draw() {
 	const path = location.hash.replace(/^#/, '').replace(/[?&]_k=[a-z0-9]+$/, '') || '/';
-	if (!/_k=/.test(location.hash)) { history.replaceState(null, '', '#' + path + '?_k=' + Math.random().toString(36).slice(2, 8)); sessionStorage.setItem('@@History/' + location.hash.split('_k=')[1], 'null'); }
+	if (!/_k=/.test(location.hash)) { history.replaceState(null, '', '#' + path + '?_k=' + Math.random().toString(36).slice(2, 8)); }
 	document.getElementById('app').innerHTML = '<nav><a href="#/">Home</a> <a href="#/about">About</a> <a href="#/item/7">Seven</a></nav><main><h1>' + (pages[path] || 'Not found') + '</h1></main>';
 }
 addEventListener('hashchange', draw);
