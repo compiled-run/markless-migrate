@@ -234,10 +234,12 @@ const docsToc: Part = {
 	},
 };
 
-// components/command-menu.tsx: Command's filter (the value and keywords containing the search), each item's keywords
-// as CommandMenuItem passes them, and runCommand closing the dialog before the item's action; ⌘K and / toggle it.
+// components/command-menu.tsx: the docs search palette's Command filter (the value and keywords containing the search),
+// each item's keywords as CommandMenuItem passes them, and runCommand closing the dialog before the item's action; ⌘K
+// and / toggle it. The demos' Commands keep cmdk's command-score.
 const groupOf = (item: HTMLElement) => item.closest('[cmdk-group]')?.querySelector('[cmdk-group-heading]')?.textContent ?? '';
 configure({
+	applies: (root) => root.querySelector('[cmdk-input]')?.getAttribute('placeholder') === 'Search documentation...',
 	filter: (value, search, keywords) => (`${value} ${keywords.join(' ')}`.toLowerCase().includes(search.toLowerCase()) ? 1 : 0),
 	keywords: (item) => {
 		const value = item.getAttribute('data-value') ?? '';

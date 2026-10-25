@@ -1,65 +1,258 @@
 import { CHOICES } from './choices.ts';
 import { navigate } from '@markless/router';
 
-// cmdk 1.1: typing in [cmdk-input] scores every [cmdk-item] by its value and keywords; an item scoring 0 leaves the list (hidden here),
-// a group with none left is hidden, and [cmdk-empty] shows when nothing is left; the first item left is selected
-// (aria-selected, data-selected). Arrows, Home, End move the selection; moving the pointer over an item selects it;
-// Enter or a click chooses it. What choosing does is the old page's (captured: where it went or what it copied).
+// cmdk 1.1: typing in [cmdk-input] scores every [cmdk-item] by its value and keywords (command-score unless the site
+// passes its own filter); an item scoring 0 leaves the list (hidden here), a group with none left is hidden, separators
+// leave while there is a search, and [cmdk-empty] (rendered hidden by the converter) shows when nothing is left. The items
+// left are sorted by score and moved after the rest of their group, and the groups by their best item, as cmdk appends
+// them; here the move is CSS order on a column. The first item left is selected (aria-selected, data-selected). Arrows,
+// Home, End and Alt with an arrow move the selection; moving the pointer over an item selects it; Enter or a click
+// chooses it, and what choosing does is the old page's (captured: where it went or what it copied). The input and list
+// carry aria-activedescendant as cmdk computes it. A command in a layer starts again each time its layer opens.
 
 export type Filter = (value: string, search: string, keywords: readonly string[]) => number;
 
-let filter: Filter = (value, search) => (value.toLowerCase().includes(search.toLowerCase()) ? 1 : 0);
-let keywordsOf: (item: HTMLElement) => readonly string[] = () => [];
-let onChoose: (item: HTMLElement) => void = () => {};
+// cmdk/src/command-score.ts, unchanged (MIT, Paco Coursey).
+const SCORE_CONTINUE_MATCH = 1,
+	SCORE_SPACE_WORD_JUMP = 0.9,
+	SCORE_NON_SPACE_WORD_JUMP = 0.8,
+	SCORE_CHARACTER_JUMP = 0.17,
+	SCORE_TRANSPOSITION = 0.1,
+	PENALTY_SKIPPED = 0.999,
+	PENALTY_CASE_MISMATCH = 0.9999,
+	PENALTY_NOT_COMPLETE = 0.99;
+const IS_GAP_REGEXP = /[\\/_+.#"@[({&]/,
+	COUNT_GAPS_REGEXP = /[\\/_+.#"@[({&]/g,
+	IS_SPACE_REGEXP = /[\s-]/,
+	COUNT_SPACE_REGEXP = /[\s-]/g;
 
-/** The site's own Command props: its filter, each item's keywords, and what runs before an item's action (runCommand closing the dialog). */
-export function configure(options: { readonly filter?: Filter; readonly keywords?: (item: HTMLElement) => readonly string[]; readonly beforeChoose?: (item: HTMLElement) => void }): void {
-	if (options.filter) filter = options.filter;
-	if (options.keywords) keywordsOf = options.keywords;
-	if (options.beforeChoose) onChoose = options.beforeChoose;
+function commandScoreInner(string: string, abbreviation: string, lowerString: string, lowerAbbreviation: string, stringIndex: number, abbreviationIndex: number, memoized: Record<string, number>): number {
+	if (abbreviationIndex === abbreviation.length) return stringIndex === string.length ? SCORE_CONTINUE_MATCH : PENALTY_NOT_COMPLETE;
+	const memoizeKey = `${stringIndex},${abbreviationIndex}`;
+	if (memoized[memoizeKey] !== undefined) return memoized[memoizeKey]!;
+	const abbreviationChar = lowerAbbreviation.charAt(abbreviationIndex);
+	let index = lowerString.indexOf(abbreviationChar, stringIndex);
+	let highScore = 0;
+	while (index >= 0) {
+		let score = commandScoreInner(string, abbreviation, lowerString, lowerAbbreviation, index + 1, abbreviationIndex + 1, memoized);
+		if (score > highScore) {
+			if (index === stringIndex) score *= SCORE_CONTINUE_MATCH;
+			else if (IS_GAP_REGEXP.test(string.charAt(index - 1))) {
+				score *= SCORE_NON_SPACE_WORD_JUMP;
+				const wordBreaks = string.slice(stringIndex, index - 1).match(COUNT_GAPS_REGEXP);
+				if (wordBreaks && stringIndex > 0) score *= Math.pow(PENALTY_SKIPPED, wordBreaks.length);
+			} else if (IS_SPACE_REGEXP.test(string.charAt(index - 1))) {
+				score *= SCORE_SPACE_WORD_JUMP;
+				const spaceBreaks = string.slice(stringIndex, index - 1).match(COUNT_SPACE_REGEXP);
+				if (spaceBreaks && stringIndex > 0) score *= Math.pow(PENALTY_SKIPPED, spaceBreaks.length);
+			} else {
+				score *= SCORE_CHARACTER_JUMP;
+				if (stringIndex > 0) score *= Math.pow(PENALTY_SKIPPED, index - stringIndex);
+			}
+			if (string.charAt(index) !== abbreviation.charAt(abbreviationIndex)) score *= PENALTY_CASE_MISMATCH;
+		}
+		if (
+			(score < SCORE_TRANSPOSITION && lowerString.charAt(index - 1) === lowerAbbreviation.charAt(abbreviationIndex + 1)) ||
+			(lowerAbbreviation.charAt(abbreviationIndex + 1) === lowerAbbreviation.charAt(abbreviationIndex) && lowerString.charAt(index - 1) !== lowerAbbreviation.charAt(abbreviationIndex))
+		) {
+			const transposedScore = commandScoreInner(string, abbreviation, lowerString, lowerAbbreviation, index + 1, abbreviationIndex + 2, memoized);
+			if (transposedScore * SCORE_TRANSPOSITION > score) score = transposedScore * SCORE_TRANSPOSITION;
+		}
+		if (score > highScore) highScore = score;
+		index = lowerString.indexOf(abbreviationChar, index + 1);
+	}
+	memoized[memoizeKey] = highScore;
+	return highScore;
 }
 
+const formatInput = (string: string) => string.toLowerCase().replace(COUNT_SPACE_REGEXP, ' ');
 
+/** cmdk's defaultFilter: command-score of the value with its keywords after it. */
+export function commandScore(value: string, search: string, keywords: readonly string[] = []): number {
+	const string = keywords.length > 0 ? `${value} ${keywords.join(' ')}` : value;
+	return commandScoreInner(string, search, formatInput(string), formatInput(search), 0, 0, {});
+}
+
+export interface CommandProps {
+	/** The Command these props are the site's for; the others keep cmdk's defaults. */
+	readonly applies: (root: HTMLElement) => boolean;
+	readonly filter?: Filter;
+	readonly keywords?: (item: HTMLElement) => readonly string[];
+	readonly beforeChoose?: (item: HTMLElement) => void;
+}
+
+const configured: CommandProps[] = [];
+const propsOf = (el: Element): Partial<CommandProps> => {
+	const root = rootOf(el);
+	return (root && configured.find((c) => c.applies(root))) ?? {};
+};
+const filterOf = (el: Element): Filter => propsOf(el).filter ?? commandScore;
+const keywordsOf = (item: HTMLElement): readonly string[] => propsOf(item).keywords?.(item) ?? [];
+
+/** A site's own Command props: its filter, each item's keywords, and what runs before an item's action (runCommand closing the dialog). */
+export function configure(options: CommandProps): void {
+	configured.push(options);
+}
+
+const ITEM = '[cmdk-item]';
+const GROUP = '[cmdk-group]';
 const rootOf = (el: Element) => el.closest<HTMLElement>('[cmdk-root]');
-const items = (root: Element) => [...root.querySelectorAll<HTMLElement>('[cmdk-item]')].filter((i) => !i.hidden && i.getAttribute('aria-disabled') !== 'true');
+const listOf = (root: Element) => root.querySelector<HTMLElement>('[cmdk-list-sizer]') ?? root.querySelector<HTMLElement>('[cmdk-list]') ?? root;
+const enabled = (i: Element) => i.getAttribute('aria-disabled') !== 'true';
 
-function select(root: Element, item: HTMLElement | undefined): void {
-	for (const i of root.querySelectorAll('[cmdk-item][aria-selected="true"]')) {
+// What React renders and cmdk moves, per container (the list, a group's items): the children in the order the DOM holds
+// them, the filtered-out items left out.
+interface Command {
+	readonly original: Map<HTMLElement, HTMLElement[]>;
+	readonly order: Map<HTMLElement, HTMLElement[]>;
+	search: string;
+}
+const commands = new WeakMap<HTMLElement, Command>();
+
+function containerOf(el: HTMLElement): HTMLElement {
+	return el.parentElement!;
+}
+
+function commandOf(root: HTMLElement): Command {
+	let c = commands.get(root);
+	if (!c) {
+		const original = new Map<HTMLElement, HTMLElement[]>();
+		for (const el of [...root.querySelectorAll<HTMLElement>(`${ITEM}, ${GROUP}`)]) {
+			const parent = containerOf(el);
+			if (!original.has(parent)) original.set(parent, [...parent.children] as HTMLElement[]);
+		}
+		c = { original, order: new Map([...original].map(([k, v]) => [k, [...v]])), search: '' };
+		commands.set(root, c);
+	}
+	return c;
+}
+
+const isItem = (el: Element) => el.hasAttribute('cmdk-item');
+
+/** The items in the order the page shows them: the containers' current orders, walked from the list down. */
+function shownOrder(root: HTMLElement): HTMLElement[] {
+	const c = commandOf(root);
+	const out: HTMLElement[] = [];
+	const walk = (el: HTMLElement) => {
+		const kids = c.order.get(el) ?? ([...el.children] as HTMLElement[]);
+		for (const kid of kids) {
+			if (isItem(kid)) {
+				if (!kid.hidden) out.push(kid);
+			} else walk(kid);
+		}
+	};
+	walk(listOf(root));
+	return out;
+}
+
+const items = (root: HTMLElement) => shownOrder(root).filter(enabled);
+const selected = (root: Element) => root.querySelector<HTMLElement>(`${ITEM}[aria-selected="true"]`) ?? undefined;
+
+function setDescendant(root: Element, item: HTMLElement | undefined): void {
+	for (const el of [root.querySelector('[cmdk-input]'), root.querySelector('[cmdk-list]')]) {
+		if (!el) continue;
+		if (item?.id) el.setAttribute('aria-activedescendant', item.id);
+		else el.removeAttribute('aria-activedescendant');
+	}
+}
+
+// Store.setState('value'): selecting from a key or the pointer names the new item; a selection the search made names the
+// one selected before it, if the search kept it (cmdk reads it before React has rendered the new one).
+function select(root: HTMLElement, item: HTMLElement | undefined, by: 'key' | 'pointer' | 'search' = 'key'): void {
+	const was = selected(root);
+	if (was === item) return;
+	for (const i of root.querySelectorAll(`${ITEM}[aria-selected="true"]`)) {
 		i.setAttribute('aria-selected', 'false');
 		i.setAttribute('data-selected', 'false');
 	}
+	setDescendant(root, by !== 'search' ? item : was && !was.hidden ? was : undefined);
 	if (!item) return;
 	item.setAttribute('aria-selected', 'true');
 	item.setAttribute('data-selected', 'true');
-	if (item.parentElement?.firstElementChild === item) item.closest('[cmdk-group]')?.querySelector('[cmdk-group-heading]')?.scrollIntoView({ block: 'nearest' });
+	// scrollSelectedIntoView, which a pointer's selection skips.
+	if (by === 'pointer') return;
+	if (commandOf(root).order.get(containerOf(item))?.find((k) => !k.hidden) === item) item.closest(GROUP)?.querySelector('[cmdk-group-heading]')?.scrollIntoView({ block: 'nearest' });
 	item.scrollIntoView({ block: 'nearest' });
 }
 
-function search(root: HTMLElement, text: string): void {
-	// cmdk unmounts an item that scores 0; here it is hidden, which takes it out of the list and the accessibility tree alike.
-	const list = root.querySelector('[cmdk-list]') ?? root;
-	let count = 0;
-	for (const item of list.querySelectorAll<HTMLElement>('[cmdk-item]')) {
-		const keep = !text || filter(item.getAttribute('data-value') ?? '', text, keywordsOf(item)) > 0;
-		item.hidden = !keep;
-		if (keep) count++;
+// React's placement: an item filtered back in goes before the next item after it in source order that stayed mounted.
+function place(c: Command, container: HTMLElement, was: (el: HTMLElement) => boolean, now: (el: HTMLElement) => boolean): void {
+	const source = c.original.get(container)!;
+	const before = c.order.get(container)!;
+	const stayed = before.filter((el) => was(el) && now(el));
+	const next = [...stayed];
+	for (const [i, el] of source.entries()) {
+		if (was(el) || !now(el)) continue;
+		const after = source.slice(i + 1).find((s) => stayed.includes(s));
+		if (after) next.splice(next.indexOf(after), 0, el);
+		else next.push(el);
 	}
-	for (const group of list.querySelectorAll<HTMLElement>('[cmdk-group]')) {
-		const any = group.querySelector('[cmdk-item]:not([hidden])');
-		if (any) group.removeAttribute('hidden');
+	c.order.set(container, [...next, ...source.filter((el) => !now(el))]);
+}
+
+function paintOrder(c: Command): void {
+	for (const [container, order] of c.order) {
+		const source = c.original.get(container)!;
+		const moved = order.some((el, i) => el !== source[i]);
+		if (moved) {
+			container.style.setProperty('display', 'flex');
+			container.style.setProperty('flex-direction', 'column');
+		} else {
+			container.style.removeProperty('display');
+			container.style.removeProperty('flex-direction');
+		}
+		order.forEach((el, i) => (moved ? el.style.setProperty('order', String(i)) : el.style.removeProperty('order')));
+	}
+}
+
+function search(root: HTMLElement, text: string): void {
+	const c = commandOf(root);
+	const list = listOf(root);
+	const scores = new Map<HTMLElement, number>();
+	const filter = filterOf(root);
+	for (const item of list.querySelectorAll<HTMLElement>(ITEM)) scores.set(item, text ? filter(item.getAttribute('data-value') ?? '', text, keywordsOf(item)) : 1);
+	const mounted = new Set([...scores.keys()].filter((i) => !i.hidden));
+	// cmdk unmounts an item that scores 0; here it is hidden, which takes it out of the list and the accessibility tree alike.
+	for (const [item, score] of scores) item.hidden = !(score > 0);
+	for (const separator of list.querySelectorAll<HTMLElement>('[cmdk-separator]')) separator.hidden = Boolean(text);
+	for (const group of list.querySelectorAll<HTMLElement>(GROUP)) {
+		if (group.querySelector(`${ITEM}:not([hidden])`)) group.removeAttribute('hidden');
 		else group.setAttribute('hidden', '');
 	}
+	for (const container of c.order.keys()) place(c, container, (el) => !isItem(el) || mounted.has(el), (el) => !isItem(el) || !el.hidden);
+	if (text) {
+		// Command's sort: the enabled items left, by score (a stable sort of the order they are in), appended to their group's
+		// items; then the groups left, by their best item.
+		const sorted = shownOrder(root)
+			.filter(enabled)
+			.sort((a, b) => scores.get(b)! - scores.get(a)!);
+		for (const item of sorted) {
+			const order = c.order.get(containerOf(item))!;
+			order.splice(order.indexOf(item), 1);
+			order.push(item);
+		}
+		const groups = [...list.querySelectorAll<HTMLElement>(GROUP)].filter((g) => !g.hidden);
+		const best = (g: HTMLElement) => Math.max(0, ...[...g.querySelectorAll<HTMLElement>(ITEM)].map((i) => (i.hidden ? 0 : scores.get(i)!)));
+		for (const group of groups.sort((a, b) => best(b) - best(a))) {
+			const order = c.order.get(containerOf(group));
+			if (!order) continue;
+			order.splice(order.indexOf(group), 1);
+			order.push(group);
+		}
+	}
+	c.search = text;
+	paintOrder(c);
 	const empty = root.querySelector<HTMLElement>('[cmdk-empty]');
-	if (empty) empty.hidden = count > 0;
-	select(root, items(root)[0]);
+	if (empty) empty.hidden = [...scores.values()].some((s) => s > 0);
+	select(root, items(root)[0], 'search');
 }
 
 function choose(item: HTMLElement): void {
 	const root = rootOf(item);
-	if (root) select(root, item);
+	if (root) select(root, item, 'pointer');
 	const key = item.getAttribute('data-value') ?? (item.textContent ?? '').trim();
 	const choice = Object.values(CHOICES).find((c) => key in c)?.[key];
-	onChoose(item);
+	propsOf(item).beforeChoose?.(item);
 	if (choice?.copied !== undefined) void navigator.clipboard?.writeText(choice.copied).catch(() => {});
 	else if (choice?.href) void navigate(choice.href);
 }
@@ -71,19 +264,36 @@ export function input(target: Element): boolean {
 	return true;
 }
 
+// Alt with an arrow: the first enabled item of the next (or previous) group holding one, else the next item.
+function groupStep(root: HTMLElement, now: HTMLElement | undefined, direction: 1 | -1): HTMLElement | undefined {
+	const c = commandOf(root);
+	const shown = items(root);
+	let group = now?.closest<HTMLElement>(GROUP) ?? null;
+	while (group) {
+		const siblings = (c.order.get(containerOf(group)) ?? []).filter((el) => el.matches(GROUP));
+		group = siblings[siblings.indexOf(group) + direction] ?? null;
+		const first = group && shown.find((i) => group!.contains(i));
+		if (first) return first;
+	}
+	return shown[(now ? shown.indexOf(now) : -1) + direction];
+}
+
 export function keydown(target: Element, event: KeyboardEvent): boolean {
 	const root = rootOf(target);
-	if (!root || event.isComposing) return false;
+	if (!root || event.isComposing || event.keyCode === 229 || event.defaultPrevented) return false;
 	const list = items(root);
-	const at = list.findIndex((i) => i.getAttribute('aria-selected') === 'true');
+	const now = selected(root);
+	const at = now ? list.indexOf(now) : -1;
 	let to: HTMLElement | undefined;
-	if (event.key === 'ArrowDown' || (event.ctrlKey && (event.key === 'n' || event.key === 'j'))) to = event.metaKey ? list[list.length - 1] : list[at + 1];
-	else if (event.key === 'ArrowUp' || (event.ctrlKey && (event.key === 'p' || event.key === 'k'))) to = event.metaKey ? list[0] : list[at - 1];
+	const down = event.key === 'ArrowDown' || (event.ctrlKey && (event.key === 'n' || event.key === 'j'));
+	const up = event.key === 'ArrowUp' || (event.ctrlKey && (event.key === 'p' || event.key === 'k'));
+	if (down) to = event.metaKey ? list[list.length - 1] : event.altKey ? groupStep(root, now, 1) : list[at + 1];
+	else if (up) to = event.metaKey ? list[0] : event.altKey ? groupStep(root, now, -1) : list[at - 1];
 	else if (event.key === 'Home') to = list[0];
 	else if (event.key === 'End') to = list[list.length - 1];
 	else if (event.key === 'Enter') {
 		event.preventDefault();
-		if (list[at]) choose(list[at]!);
+		if (now) choose(now);
 		return true;
 	} else return false;
 	event.preventDefault();
@@ -92,16 +302,40 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 }
 
 export function pointerover(target: Element): boolean {
-	const item = target.closest<HTMLElement>('[cmdk-item]');
+	const item = target.closest<HTMLElement>(ITEM);
 	const root = item && rootOf(item);
-	if (!item || !root || item.getAttribute('aria-disabled') === 'true') return false;
-	select(root, item);
+	if (!item || !root || !enabled(item)) return false;
+	select(root, item, 'pointer');
 	return true;
 }
 
 export function click(target: Element): boolean {
-	const item = target.closest<HTMLElement>('[cmdk-item]');
-	if (!item || item.getAttribute('aria-disabled') === 'true') return false;
+	const item = target.closest<HTMLElement>(ITEM);
+	if (!item || !enabled(item)) return false;
 	choose(item);
 	return true;
+}
+
+// A Command inside a layer is unmounted when its layer closes (focus leaves it): it opens again with no search, its first
+// item selected and nothing active.
+export function focusout(target: Element, event: FocusEvent): boolean {
+	const root = rootOf(target);
+	const layer = root?.closest('[data-mm-layer]');
+	if (!root || !layer || (event.relatedTarget instanceof Node && layer.contains(event.relatedTarget))) return false;
+	const field = root.querySelector<HTMLInputElement>('[cmdk-input]');
+	if (field) field.value = '';
+	const c = commandOf(root);
+	for (const [container, order] of c.original) c.order.set(container, [...order]);
+	search(root, '');
+	const first = shownOrder(root).find(enabled);
+	for (const i of root.querySelectorAll(`${ITEM}[aria-selected="true"]`)) {
+		i.setAttribute('aria-selected', 'false');
+		i.setAttribute('data-selected', 'false');
+	}
+	first?.setAttribute('aria-selected', 'true');
+	first?.setAttribute('data-selected', 'true');
+	setDescendant(root, undefined);
+	const scroller = root.querySelector<HTMLElement>('[cmdk-list]');
+	if (scroller) scroller.scrollTop = 0;
+	return false;
 }
