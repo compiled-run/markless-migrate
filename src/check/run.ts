@@ -617,12 +617,15 @@ export async function withDeadline(route: string, run: Run, ms: number, work: (r
 		clearTimeout(timer);
 	}
 	// A route whose pages were all answered right up to the deadline is not a network failure: it took longer to check than --timeout allows.
-	const stalled = scope.stalled(Math.min(30_000, ms / 2));
-	const lastAnswer = scope.answered ? Date.now() - scope.answered : undefined;
+	const window = Math.min(30_000, ms / 2);
+	const stalled = scope.stalled(window);
+	const answers = [scope.sinceAnswer(run.old.origin), scope.sinceAnswer(run.new.origin)];
+	const lastAnswer = answers.every((a) => a !== undefined) ? Math.max(...(answers as number[])) : undefined;
+	const failedLately = scope.failed > 0 && Date.now() - scope.failed < window;
 	await scope.close();
 	await Promise.race([task.catch(() => {}), new Promise((done) => setTimeout(done, 10_000))]);
-	if (!stalled && lastAnswer !== undefined && lastAnswer < Math.min(30_000, ms / 2)) {
-		const actual = `it ran out of time: it did not finish within ${Math.round(ms / 1000)} s (--timeout), and both apps were still answering (the last answer came ${(lastAnswer / 1000).toFixed(1)} s before it stopped, and no request was waiting)`;
+	if (!stalled && !failedLately && lastAnswer !== undefined && lastAnswer < window) {
+		const actual = `it ran out of time: it did not finish within ${Math.round(ms / 1000)} s (--timeout), and both apps were still answering (each answered within ${(lastAnswer / 1000).toFixed(1)} s of it stopping; no request was waiting or had failed)`;
 		return partialResult(route, [{ route, dimension: 'http', check: 'the check of this route', expected: 'the check runs to the end', actual, hint: HINTS.checkOutOfTime }], []);
 	}
 	return partialResult(route, [], [], undefined, { cause: 'check timeout', message: `the check of ${route} did not finish within ${Math.round(ms / 1000)} s (--timeout), so it was stopped: ${stalled ? `${stalled.url} had waited ${Math.round((Date.now() - stalled.at) / 1000)} s for an answer` : 'a server that stops answering part way through does this'}` });
