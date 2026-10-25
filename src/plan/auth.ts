@@ -44,21 +44,24 @@ export function proposeAuth(guards: readonly AuthGuard[], routes: readonly Sourc
 }
 
 /** The login form's fields as the page labels them, so the starter's steps fit the real page. */
-export async function readLoginForm(browser: Browser, url: string, open?: (browser: Browser) => Promise<BrowserContext>): Promise<{ user?: Target; password?: Target; submit?: Target } | undefined> {
+export async function readLoginForm(browser: Browser, url: string, open?: (browser: Browser) => Promise<BrowserContext>): Promise<{ user?: Target; password?: Target; submit?: Target; passwordless?: boolean } | undefined> {
 	const page = open ? await (await open(browser)).newPage() : await browser.newPage();
 	try {
 		const response = await page.goto(url, { waitUntil: 'load', timeout: 15_000 });
 		if (!response?.ok()) return undefined;
 		return await page.evaluate(() => {
+			const fields = 'input:not([type="hidden"]):not([type="password"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"])';
 			const password = document.querySelector<HTMLInputElement>('input[type="password"]');
-			const form = password?.form;
-			if (!password || !form) return undefined;
+			// A sign-in that asks only for a name (a demo's "Username" and "Login"): the one form on the page with a field and a submit button.
+			const form = password?.form ?? [...document.forms].find((f) => f.querySelector(fields) && f.querySelector('button:not([type="button"]), input[type="submit"]'));
+			if (!form) return undefined;
 			const name = (el: HTMLInputElement | HTMLButtonElement) => (el.labels?.[0]?.textContent ?? '').replace(/\s+/g, ' ').trim() || el.getAttribute('aria-label') || '';
-			const inputs = [...form.querySelectorAll<HTMLInputElement>('input:not([type="hidden"]):not([type="password"]):not([type="checkbox"]):not([type="submit"])')];
-			const user = inputs.find((i) => i.compareDocumentPosition(password) & Node.DOCUMENT_POSITION_FOLLOWING);
+			const inputs = [...form.querySelectorAll<HTMLInputElement>(fields)];
+			const user = password ? inputs.find((i) => i.compareDocumentPosition(password) & Node.DOCUMENT_POSITION_FOLLOWING) : inputs[0];
 			const submit = form.querySelector<HTMLButtonElement>('button:not([type="button"]), input[type="submit"]');
 			const target = (el: HTMLInputElement | undefined) => (el ? (name(el) ? { label: name(el) } : el.placeholder ? { placeholder: el.placeholder } : { label: el.name }) : undefined);
 			const button = submit ? (submit.textContent ?? '').trim() || (submit as unknown as HTMLInputElement).value : '';
+			if (!password) return { user: target(user), submit: button ? { role: 'button', name: button } : undefined, passwordless: true };
 			return { user: target(user), password: target(password), submit: button ? { role: 'button', name: button } : undefined };
 		});
 	} catch {
@@ -68,13 +71,18 @@ export async function readLoginForm(browser: Browser, url: string, open?: (brows
 	}
 }
 
+const fieldVariable = (t: Target) => (typeof t === 'string' ? t : (Object.values(t)[0] ?? 'USER')).toString().toUpperCase().replace(/\W+/g, '_').replace(/^_|_$/g, '') || 'USER';
+
 export function withLoginForm(proposed: ProposedAuth, form: Awaited<ReturnType<typeof readLoginForm>>): ProposedAuth {
 	if (!form) return proposed;
 	const roles = Object.fromEntries(
 		Object.entries(proposed.roles).map(([role, spec]) => [
 			role,
 			{
-				login: (spec.login ?? []).map((step) => {
+				login: (spec.login ?? []).flatMap((step): LoginStep | LoginStep[] => {
+					if ('fill' in step && /_PASSWORD\}$/.test(step.value) && form.passwordless) return [];
+					// The variable is named after the field the page asks for: a "Username" box gets ${ROLE_USERNAME}, not ${ROLE_EMAIL}.
+					if ('fill' in step && /_EMAIL\}$/.test(step.value) && form.user && form.passwordless && !/mail/i.test(JSON.stringify(form.user))) return [{ ...step, fill: form.user, value: step.value.replace(/_EMAIL\}$/, `_${fieldVariable(form.user)}}`) }];
 					if ('fill' in step && /_EMAIL\}$/.test(step.value) && form.user) return { ...step, fill: form.user };
 					if ('fill' in step && /_PASSWORD\}$/.test(step.value) && form.password) return { ...step, fill: form.password };
 					if ('click' in step && form.submit) return { click: form.submit };
