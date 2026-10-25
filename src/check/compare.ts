@@ -221,9 +221,20 @@ export function noiseReport(olds: readonly RouteCapture[], frozen: boolean, sour
 	return { noisy: [...found].map(([element, e]) => ({ viewport: e.viewports.join(', '), element, why: e.why })), blocked };
 }
 
+/** Every old load answered the route itself and its page then moved to one address in the browser, where the new server's redirects end. */
+function movedInBrowser(olds: readonly HttpCapture[], next: HttpCapture, landings: readonly string[]): boolean {
+	const answered = (c: HttpCapture) => c.chain.length === 1 && c.status >= 200 && c.status < 300;
+	const target = landings[0];
+	if (!target || !olds.every(answered) || landings.some((l) => l !== target) || target === olds[0]!.chain[0]!.url) return false;
+	const last = next.chain.at(-1)!;
+	return next.chain.length > 1 && next.chain.slice(0, -1).every((hop) => hop.status >= 300 && hop.status < 400) && last.url === target && last.status === olds[0]!.status && next.contentType === olds[0]!.contentType;
+}
+
 /** Status, redirect chain and content type; what varied between OLD loads may vary. */
-export function httpFailures(route: string, olds: readonly HttpCapture[], next: HttpCapture): Failure[] {
+export function httpFailures(route: string, olds: readonly HttpCapture[], next: HttpCapture, landed?: { readonly olds: readonly string[] }): Failure[] {
 	const failures: Failure[] = [];
+	// A single-page app moves to its address in the browser as it loads (a router writing its default search); a server-rendered port redirects there: the same answer.
+	if (landed && movedInBrowser(olds, next, landed.olds)) return failures;
 	const oldA = olds[0]!;
 	const others = olds.length > 1 ? olds.slice(1) : [oldA];
 	const chain = (c: HttpCapture) => Object.fromEntries(c.chain.map((hop, i) => [`hop ${i + 1}`, `${hop.status} ${hop.url}`]));
@@ -244,7 +255,7 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 	const visualDiffs: { viewport: string; png: Buffer }[] = [];
 	const shots: Shot[] = [];
 
-	failures.push(...httpFailures(route, olds.map((o) => o.http), next.http));
+	failures.push(...httpFailures(route, olds.map((o) => o.http), next.http, { olds: olds.flatMap((o) => Object.values(o.pages).map((p) => p.finalUrl)) }));
 	failures.push(...residueFailures(route, Object.values(next.pages)[0]));
 
 	for (const [viewport, a] of Object.entries(oldA.pages)) {
