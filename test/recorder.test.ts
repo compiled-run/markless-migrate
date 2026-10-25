@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { startCms, type Cms } from '../fixtures/cms/server.ts';
-import { defaultEnv, pushRecording, RECORDER_HEADER, serverRecords, writeReason, requestLine } from '../src/check/browser.ts';
+import { defaultEnv, pushRecording, RECORDER_HEADER, recorderTag, serverRecords, writeReason, requestLine } from '../src/check/browser.ts';
 import { recorderEnv } from '../src/check/recorder.ts';
 import { writesAllowed } from '../src/check/run.ts';
 import { writeHandler } from '../src/check/source-facts.ts';
@@ -110,6 +110,37 @@ test('a node:http request whose headers are arrays, as node-fetch sets them, sti
 		const [post] = (await serverRecords(defaultEnv(at), 'array-header'))!;
 		assert.equal(post!.requestType, 'application/json');
 		assert.equal(post!.requestBody, '{"operationName":"Feed","query":"query Feed { feed { id } }"}');
+	} finally {
+		app.kill();
+	}
+});
+
+// A server that prints the time it renders at, as "posted 3 hours ago" pages do.
+const CLOCK_APP = `
+const http = require('node:http');
+http.createServer((req, res) => { const now = Date.now(); const date = new Date().toISOString(); setTimeout(() => res.end(JSON.stringify({ now, date, later: Date.now(), parsed: new Date('2020-01-01T00:00:00Z').toISOString(), nodeDate: require('node:fs').statSync('.').mtime instanceof Date })), 40); }).listen(0, '127.0.0.1', function () { console.log('http://127.0.0.1:' + this.address().port); });
+`;
+
+test('with --server-clock a page load check tags reads the frozen clock on the server too; other requests and dates the code names keep theirs', async () => {
+	const app = spawn(process.execPath, ['-e', CLOCK_APP], { env: { ...process.env, ...recorderEnv('') }, stdio: ['ignore', 'pipe', 'inherit'] });
+	try {
+		const at = await new Promise<string>((resolve) => app.stdout!.once('data', (chunk) => resolve(String(chunk).trim())));
+		const before = await (await fetch(at, { headers: { [RECORDER_HEADER]: recorderTag(defaultEnv(at), 'plain') } })).json();
+		assert.ok(Math.abs(before.now - Date.now()) < 60_000, 'a load without --server-clock reads the real clock');
+		const env = defaultEnv(at, { serverClock: true });
+		const tag = recorderTag(env, 'clock');
+		assert.equal(recorderTag(defaultEnv(at), 'x').includes('time='), false, 'off unless asked for: sessions the server issues would expire by the frozen clock');
+		assert.match(tag, new RegExp(`time=${env.freeze && env.freeze.time}`));
+		const frozen = await (await fetch(at, { headers: { [RECORDER_HEADER]: tag } })).json();
+		const time = env.freeze ? env.freeze.time : 0;
+		assert.ok(frozen.now >= time && frozen.now - time < 1000, 'the render starts at the frozen instant');
+		assert.ok(Math.abs(Date.parse(frozen.date) - frozen.now) < 50);
+		assert.ok(frozen.later - frozen.now >= 30, 'and the clock runs on from there: a server timing its own work (a streaming deadline) still sees time pass');
+		assert.equal(frozen.parsed, '2020-01-01T00:00:00.000Z');
+		assert.equal(frozen.nodeDate, true, "a Date Node makes is still instanceof Date");
+		const real = await (await fetch(at)).json();
+		assert.ok(Math.abs(real.now - Date.now()) < 60_000, 'a request check did not tag keeps the real clock');
+		assert.equal(recorderTag(defaultEnv(at, { freeze: false, serverClock: true }), 'x').includes('time='), false, '--no-freeze leaves the server clock alone');
 	} finally {
 		app.kill();
 	}

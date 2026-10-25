@@ -27,6 +27,8 @@ export interface SideEnv {
 	readonly replay?: { readonly set: string; readonly responses: readonly NetworkRecord[]; readonly shared?: { readonly set: string; readonly responses: readonly NetworkRecord[] }; readonly live?: LiveRecording };
 	/** Asks the server recorder to render each page on demand instead of from the server's page cache (data is being recorded or replayed). */
 	readonly renderFresh?: boolean;
+	/** Asks the server recorder to render each page load at the page's frozen time (`--server-clock`). */
+	readonly serverClock?: boolean;
 	/** The signed-in role's cookies and storage, from its login script or storage state file. */
 	readonly storageState?: StorageState;
 	/** Sent only to this app's own origin, for example a bot-protection bypass token. */
@@ -97,9 +99,9 @@ export function contextOptions(viewport: Viewport, freeze: FreezeOptions | false
 	};
 }
 
-/** The header that tags a request with its page load, so the server recorder files what the server fetched under it. */
+/** The header that tags a request with its page load, so the server recorder files what the server fetched under it and renders it at the page's frozen time. */
 export function recorderTag(env: SideEnv, load: string): string {
-	return `load=${load}${env.replay ? `; data=${[env.replay.set, env.replay.shared?.set].filter(Boolean).join(',')}` : ''}${env.renderFresh ? '; fresh=1' : ''}`;
+	return `load=${load}${env.replay ? `; data=${[env.replay.set, env.replay.shared?.set].filter(Boolean).join(',')}` : ''}${env.renderFresh ? '; fresh=1' : ''}${env.serverClock && env.freeze ? `; time=${env.freeze.time}` : ''}`;
 }
 
 /** Headers for the checker's own requests to an app, so replayed data reaches those renders too. */
