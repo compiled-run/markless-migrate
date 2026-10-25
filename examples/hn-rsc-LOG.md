@@ -15,8 +15,8 @@ item; the 680-comment item ran out of time). The rendered text of every page is 
 line (1,076 lines on the 290-comment item), and three kinds of difference are accepted (23 entries, below). What
 keeps the routes red is real: Lighthouse mobile load times, the first use of a comment toggle and some in-place
 navigations at 4x CPU, and a set of in-place navigations that did nothing in the checker's runs (below). Ten Markless
-defects were found and reduced to repros. Six markless-migrate problems were found: five fixed in five PRs (four
-merged, one open), one left to another worker's PR that does the same (#147).
+defects were found and reduced to repros. Six markless-migrate problems were found: five fixed in five PRs, all
+merged, one left to another worker's PR that does the same (#147).
 
 ## Deployed
 
@@ -141,7 +141,7 @@ Each was fixed with a red-first test, in its own PR, separate from the port.
    2400 s with "an infrastructure failure (not the app's) ... a server that stops answering part way through does
    this", while both apps had answered every request. Fixed: with no request waiting and an answer just before the
    deadline the route is red, "ran out of time"; a request that really stalled is still an infrastructure failure,
-   and now named. compiled-run/markless-migrate#186.
+   and now named. compiled-run/markless-migrate#186, merged.
 
 Not fixed, noted:
 
