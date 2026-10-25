@@ -16,6 +16,8 @@ const hoverCard = (never: boolean) => `<p><a id="h" href="#profile" data-state="
 
 // A menu whose items the pointer highlights; `sticky` keeps the highlight when the pointer leaves and when the menu closes.
 const menu = (sticky: boolean) => `<button id="m" aria-haspopup="menu" aria-expanded="false">Actions</button><div id="l" role="menu" hidden><div role="menuitem" tabindex="-1">One</div><div role="menuitem" tabindex="-1">Two</div><div role="menuitem" tabindex="-1">Three</div></div><script>const its = [...l.children]; const clear = () => { for (const i of its) i.removeAttribute('data-highlighted'); }; const close = () => { l.hidden = true; m.setAttribute('aria-expanded', 'false'); ${sticky ? '' : 'clear();'} m.focus(); }; m.onclick = () => { if (!l.hidden) return close(); l.hidden = false; m.setAttribute('aria-expanded', 'true'); l.firstElementChild.focus(); }; for (const i of its) { i.addEventListener('pointerenter', () => { clear(); i.setAttribute('data-highlighted', ''); }); ${sticky ? '' : "i.addEventListener('pointerleave', () => i.removeAttribute('data-highlighted'));"} i.onclick = close; } addEventListener('keydown', (e) => { if (e.key === 'Escape' && !l.hidden) close(); }); addEventListener('click', (e) => { if (!l.hidden && !l.contains(e.target) && e.target !== m) close(); });</script>`;
+// A listbox inside a form whose hidden input follows the chosen option; `stale` leaves the input as it was.
+const fruit = (stale: boolean) => `<form><button type="button" id="f" aria-haspopup="listbox" aria-expanded="false">Fruit</button><input type="hidden" name="fruit" id="v" value=""><div id="o" role="listbox" hidden><div role="option" tabindex="-1">Apple</div><div role="option" tabindex="-1">Banana</div></div></form><script>const close = () => { o.hidden = true; f.setAttribute('aria-expanded', 'false'); f.focus(); }; f.onclick = () => { if (!o.hidden) return close(); o.hidden = false; f.setAttribute('aria-expanded', 'true'); o.firstElementChild.focus(); }; for (const i of o.children) i.onclick = () => { f.textContent = i.textContent; ${stale ? '' : 'v.value = i.textContent;'} close(); }; addEventListener('keydown', (e) => { if (e.key === 'Escape' && !o.hidden) close(); }); addEventListener('click', (e) => { if (!o.hidden && !o.contains(e.target) && e.target !== f) close(); });</script>`;
 
 const PAIRS: Record<string, { old: string; bad: string }> = {
 	modality: { old: modality('true'), bad: modality("e.key === 'Tab'") },
@@ -23,6 +25,7 @@ const PAIRS: Record<string, { old: string; bad: string }> = {
 	hover: { old: hoverCard(false), bad: hoverCard(true) },
 	menu: { old: menu(false), bad: menu(true) },
 	discovered: { old: dialog(false, true), bad: dialog(true, true) },
+	form: { old: fruit(false), bad: fruit(true) },
 };
 
 function serve(pages: Record<string, string>): Promise<{ server: Server; origin: string }> {
@@ -51,11 +54,12 @@ after(async () => {
 	for (const s of servers) s.close();
 });
 
-const CLASS: Record<string, string> = { menu: 'popup', discovered: 'popup' };
+const CLASS: Record<string, string> = { menu: 'popup', discovered: 'popup', form: 'popup' };
 const EXPECT: Record<string, { check: RegExp; detail: RegExp }> = {
 	modality: { check: /^modality probe of button "Save": focus ring after a click, then Escape and Tab \(step 2 of 4: press Escape\)$/, detail: /focus ring/ },
 	popup: { check: /^popup probe of button "Settings": open by pointer.* \(step 5 of 12: click outside it and what it opened\)$/, detail: /focus: the control/ },
 	menu: { check: /^popup probe of button "Actions": open by pointer.* \(step 4 of 12: move the pointer away\)$/, detail: /open: menu \(3 items, highlighted: One,/ },
+	form: { check: /^popup probe of button "Fruit": open by pointer.* \(step 7 of 12: click item 1 of what is open\)$/, detail: /form: fruit=Apple/ },
 	discovered: { check: /^popup probe of button "Settings": open by pointer.* \(step 5 of 12: click outside it and what it opened\)$/, detail: /focus: the control/ },
 	hover: { check: /^hover probe of link "@ada": pointer resting on it.* \(step 1 of 4: point at it\)$/, detail: /open: tooltip "Ada Lovelace"/ },
 };

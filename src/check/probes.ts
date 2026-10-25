@@ -52,7 +52,7 @@ export function sequencesFor(cls: ProbeClass, control: Pick<ProbeControl, 'role'
 				s('open by pointer, point along its items and away, close by a click outside, reopen, choose by pointer, reopen, close by Escape and its close button', [{ op: 'click' }, item(0, 'hover'), item(1, 'hover'), { op: 'leave' }, { op: 'outside' }, { op: 'click' }, item(0, 'click'), { op: 'click' }, key('Escape'), { op: 'click' }, { op: 'close' }, key('Escape')]),
 				// A list (menu, listbox) is typed into; anything else it opens (a dialog, a popover) is tabbed through.
 				/^(menu|listbox|true|combobox)$/.test(control.popup ?? (control.role === 'combobox' ? 'combobox' : ''))
-					? s('open by pointer and type the first letter of each item', [{ op: 'click' }, ...letters(5), key('Escape')])
+					? s('open by pointer, move with ArrowDown, type the first letter of each item, close, reopen and Tab', [{ op: 'click' }, key('ArrowDown'), key('ArrowDown'), ...letters(4), key('Escape'), { op: 'click' }, key('Tab')])
 					: s('open by pointer, Tab through it, Escape', [{ op: 'click' }, key('Tab'), key('Tab'), key('Shift+Tab'), key('Escape')]),
 			];
 		case 'hover':
@@ -93,7 +93,7 @@ const DIMENSION: Record<ProbeClass, Dimension> = { modality: 'a11y', popup: 'beh
 
 export const PROBE_HINTS: Record<ProbeClass, string> = {
 	modality: 'Whether the focus ring shows follows how the visitor last moved: a key press (Tab, an arrow, Escape) shows it, a pointer press hides it, and typing into a text field or moving the mouse leaves it as it was. Track the modality on the document the way the old library does (keydown before pointerdown), not per control, and set the same marker (data-focus-visible or :focus-visible) on the element that has focus.',
-	popup: 'What this control opens must answer as on the old page: the item the pointer is on is highlighted and the highlight goes when the pointer leaves or the list closes, so a reopened list starts fresh; a typed letter moves to the item it starts; Tab inside a non-modal popover moves on as the old one does, a modal one keeps focus in. Opening and closing by the pointer must leave focus where the old page leaves it: on open, in the pop-up or its first item as the old library chooses; after Escape or the close button, back on the control; after a click outside, where the old page put it (the control for a modal, the clicked spot for a non-modal). Lock scrolling and hide the rest of the page only while the old page does.',
+	popup: 'What this control opens must answer as on the old page: the item the pointer is on is highlighted and the highlight goes when the pointer leaves or the list closes, so a reopened list starts fresh; a list opened by the pointer takes focus so ArrowDown moves in it, and Tab closes it; a typed letter moves to the item it starts; a hidden form input follows the chosen value; a reopened overlay is visible and its content rendered once; Tab inside a non-modal popover moves on as the old one does, a modal one keeps focus in. Opening and closing by the pointer must leave focus where the old page leaves it: on open, in the pop-up or its first item as the old library chooses; after Escape or the close button, back on the control; after a click outside, where the old page put it (the control for a modal, the clicked spot for a non-modal). Lock scrolling and hide the rest of the page only while the old page does.',
 	hover: 'The pointer resting on this control (or focus reaching it) shows something on the old page, or marks it hovered: open it after the same delay, keep it while the pointer is on it, close it when the pointer leaves, and set the same hover markers (data-hovered, data-state).',
 };
 
@@ -156,7 +156,7 @@ async function perform(side: Side, control: ProbeControl, op: Op): Promise<void>
 	const away = async () => (await page.evaluate(() => (globalThis as ProbeWindow).__markless_migrate_probe__?.outside() ?? null).catch(() => null)) ?? { x: 2, y: 2 };
 	switch (op.op) {
 		case 'click':
-			return target.click({ timeout: STEP_TIMEOUT });
+			return target.click({ timeout: STEP_TIMEOUT }).catch(() => target.click({ timeout: STEP_TIMEOUT, force: true }));
 		case 'item': {
 			const found = await aim(`item ${op.n}`);
 			if (!found) throw new Error(`nothing open has an item ${op.n + 1}`);
@@ -239,7 +239,7 @@ const near = (a: string, b: string, tolerance: number) => {
 	return a.replace(/-?\d+(\.\d+)?/g, '#') === b.replace(/-?\d+(\.\d+)?/g, '#') && na.length === nb.length && na.every((n, i) => Math.abs(Number(n) - Number(nb[i])) <= Math.max(tolerance, Math.abs(Number(n)) * 0.02));
 };
 // Fields that read a library's own markup, which a port may write another way at load; focus, tab stops and what is open are the visitor's.
-const MARKUP = new Set(['control', 'widget', 'widget text', 'hovered', 'moved']);
+const MARKUP = new Set(['control', 'widget', 'widget text', 'around', 'hovered', 'moved', 'form']);
 const skeleton = (line: string) => line.replace(/\d+/g, '#');
 const TOLERANCE: Record<string, number> = { moved: 2, scroll: 40 };
 const same = (field: string, a: string, b: string) => a === b || (TOLERANCE[field] !== undefined && near(a, b, TOLERANCE[field]!));
@@ -287,7 +287,8 @@ export function compareRuns(old: Run, next: Run, again?: Run): FieldDiff[][] {
 			if (MARKUP.has(field) && !same(field, ob, nb) && same(field, ov, ob) === same(field, nv, nb)) continue;
 			diffs.push({ field, old: ov, new: nv });
 		}
-		if (n.step && n.step !== o.step) diffs.unshift({ field: 'step', old: 'done', new: String(n.step) });
+		// A step only one side reports trouble with (a click Playwright found unsteady) is a difference only when what a visitor meets differs too.
+		if (n.step && n.step !== o.step && diffs.length) diffs.unshift({ field: 'step', old: 'done', new: String(n.step) });
 		out.push(diffs);
 	}
 	return out;
@@ -315,8 +316,8 @@ const SAMPLES = 1;
 const LAYOUT = new Set(['header', 'banner', 'nav', 'navigation', 'aside', 'complementary', 'footer', 'contentinfo']);
 const DEFAULT_MAX = 40;
 const MIN_BUDGET_MS = 60_000;
-// A popup control's two sequences, with the old side's second run, take about 25 s one pair at a time.
-const PER_CONTROL_MS = 25_000;
+// A popup control's two sequences, with the old side's second run, take about 30 s one pair at a time.
+const PER_CONTROL_MS = 30_000;
 const MAX_BUDGET_MS = 600_000;
 
 /** Probes the route's controls, class by class, old against new; the old side runs twice where the first runs differ. */
@@ -337,6 +338,7 @@ export async function checkProbes(browser: Browser, sides: { readonly old: SideE
 	} finally {
 		await scan.close();
 	}
+	const probing = Date.now();
 	const controls: { control: string; cls: ProbeClass; state: string; ms?: number }[] = [];
 	const work: { control: ProbeControl; sequence: Sequence }[] = [];
 	const kinds = new Map<string, number>();
@@ -379,7 +381,7 @@ export async function checkProbes(browser: Browser, sides: { readonly old: SideE
 				const id = `${controlKey(item.control)}|${item.sequence.cls}`;
 				const entry = state.get(id) ?? { control: describeControl(item.control), cls: item.sequence.cls, state: 'probed', ms: 0 };
 				state.set(id, entry);
-				if (Date.now() - started > budget) {
+				if (Date.now() - probing > budget) {
 					entry.state = `left out: the probes' ${Math.round(budget / 1000)} s budget ran out`;
 					continue;
 				}

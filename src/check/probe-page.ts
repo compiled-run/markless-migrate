@@ -80,7 +80,9 @@ export function installProbe(): void {
 			const active = items.filter((i) => i === document.activeElement || i.hasAttribute('data-highlighted') || i.hasAttribute('data-focused') || i.id === document.activeElement?.getAttribute('aria-activedescendant')).map((i) => text(i, 20));
 			const chosen = items.filter((i) => i.getAttribute('aria-selected') === 'true' || i.getAttribute('aria-checked') === 'true').map((i) => text(i, 20));
 			const state = p.getAttribute('data-state');
-			return `${roleOf(p)}${items.length ? ` (${items.length} items, highlighted: ${active.join('|') || 'none'}, chosen: ${chosen.join('|') || 'none'})` : ` "${text(p, 30)}"`}${state ? ` state=${state}` : ''}`;
+			// Its line count: a port that renders a layer's content twice (a date picker's month) shows it twice as long.
+			const rows = (p instanceof HTMLElement ? p.innerText : '').split('\n').filter((l) => l.trim()).length;
+			return `${roleOf(p)}${items.length ? ` (${items.length} items, highlighted: ${active.join('|') || 'none'}, chosen: ${chosen.join('|') || 'none'})` : ` "${text(p, 30)}"`}, ${rows} lines${state ? ` state=${state}` : ''}`;
 		}).sort();
 	};
 	const toasts = () => {
@@ -144,6 +146,9 @@ export function installProbe(): void {
 			const html = getComputedStyle(document.documentElement);
 			out['page lock'] = `scroll ${body.overflow === 'hidden' || html.overflow === 'hidden' ? 'locked' : 'free'}; ${behind(el)}`;
 			out.moved = geometry(scope);
+			// What the form would send: a hidden input that follows the visible value (a select's, a combobox's) is the submission.
+			const form = el.closest('form');
+			if (form) out.form = [...new FormData(form)].map(([k, v]) => `${k}=${typeof v === 'string' ? v.slice(0, 40) : '(file)'}`);
 			out.scroll = String(Math.round(scrollY / 40) * 40);
 			return out;
 		},

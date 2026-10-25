@@ -367,12 +367,14 @@ and `data-focus-visible`), the state attributes of the control and of its widget
 `aria-selected`, `aria-valuenow`, `data-state`, `data-highlighted`, `data-pressed`, `data-hovered`,
 `data-separator`...), what is open (with its highlighted and chosen items), the toasts shown (with
 `data-front` and `data-expanded`), the widget's tab stops, whether scrolling is locked and the page
-behind is hidden or inert, and the offsets a drag moves.
+behind is hidden or inert, the offsets a drag moves, what the control's form would send (a hidden
+input that follows a select's visible value), and how many lines each open pop-up shows (a layer
+whose content is rendered twice shows twice as many).
 
 | Class | Which controls | Sequence |
 | --- | --- | --- |
 | `modality` | every focusable control | a click, then Escape, Tab and Shift+Tab (in a text field: a click, typing, then the same keys); Tab to it, Escape, the pointer moving, Tab, Shift+Tab |
-| `popup` | a button that says it opens something (`aria-haspopup`, or `aria-expanded` with `aria-controls`), a combobox | open by a click, a click outside, open again, Escape, open again, its close button, Escape |
+| `popup` | a button that says it opens something (`aria-haspopup`, or `aria-expanded` with `aria-controls`), a combobox, and a button whose click on the old page opened something (React Aria's dialog trigger says nothing) | open by a click, point at its first two items and away, a click outside, open again, choose its first item by pointer, open again, Escape, open again, its close button, Escape; then a list (menu, listbox) is opened by a click, moved in with ArrowDown twice, typed into with the first letter of each item, closed, opened again and left with Tab, and anything else (a dialog, a popover) is tabbed through both ways |
 | `hover` | a button, tab, toggle or link that listens for the pointer passing over it (a link only when it also carries `data-state`, `aria-describedby`, `aria-haspopup` or `aria-expanded`: Next's links listen to prefetch) | point at it, move away, point again, click, move away; Tab to it, Escape, Tab. Each step waits out timeouts due within a second, so a hover card's open delay is seen |
 
 A step that differs is red (`a11y` for focus rings and tab stops, `behaviour` otherwise) with the
@@ -383,8 +385,8 @@ it on one side only; when the first old and new runs differ, the old side runs a
 between its two runs is noise there (a line may then vary only in its digits); offsets a drag leaves
 agree within 2 px or 2%, scroll positions within 40 px, and fractional values (a panel at 65.7%) are
 read to the whole unit. A control in a shared header, nav, sidebar or footer is probed on the first
-route of the run that has it. Up to 40 controls a route are probed, within max(60 s, 25 s a control
-divided by the pairs probed at once, 2), at most 10 minutes; one left out, and one check could not
+route of the run that has it. Up to 40 controls a route are probed, within max(60 s, 30 s a control
+divided by the pairs probed at once, 2), at most 10 minutes, counted from the end of discovery; one left out, and one check could not
 find again on the old page, is red as `not exercised`; the controls an alike one stood for are listed in the report (`widget probes: 13
 controls driven (205 alike stood for by one of their kind)`). The probes take about a minute a route
 on a docs page with a dozen kinds of widget.
