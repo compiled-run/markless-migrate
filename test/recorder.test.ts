@@ -74,6 +74,30 @@ test('a server on an old Node loads the recorder from NODE_OPTIONS and still has
 	}
 });
 
+// A server that posts a GraphQL query to an API with node:http, as isomorphic-unfetch and Apollo's HttpLink do on Node 16.
+const HTTP_POST_APP = `
+const http = require('node:http');
+http.createServer((req, res) => {
+	const out = http.request(process.env.CMS_URL + '/graphql', { method: 'POST', headers: { 'content-type': 'application/json' } }, (r) => { r.resume(); r.on('end', () => res.end('ok')); });
+	out.write('{"operationName":"Feed",');
+	out.end('"query":"query Feed { feed { id } }"}');
+}).listen(0, '127.0.0.1', function () { console.log('http://127.0.0.1:' + this.address().port); });
+`;
+
+test('a POST a server sends with node:http is filed with its body, as fetch\'s are', async () => {
+	const app = spawn(process.execPath, ['-e', HTTP_POST_APP], { env: { ...process.env, CMS_URL: cms.origin, ...recorderEnv('') }, stdio: ['ignore', 'pipe', 'inherit'] });
+	try {
+		const at = await new Promise<string>((resolve) => app.stdout!.once('data', (chunk) => resolve(String(chunk).trim())));
+		await (await fetch(at, { headers: { [RECORDER_HEADER]: 'load=http-post' } })).text();
+		const [post] = (await serverRecords(defaultEnv(at), 'http-post'))!;
+		assert.equal(post!.method, 'POST');
+		assert.equal(post!.requestType, 'application/json');
+		assert.equal(post!.requestBody, '{"operationName":"Feed","query":"query Feed { feed { id } }"}');
+	} finally {
+		app.kill();
+	}
+});
+
 test('pushed recordings are served instead of the network for loads that ask for them', async () => {
 	const env = { ...defaultEnv(origin), replay: { set: 's1', responses: [{ side: 'server' as const, method: 'GET', url: 'http://elsewhere.test/walks/news?fields=title', status: 200, contentType: 'application/json', body: '{"items":[{"title":"Recorded headline"}]}' }] } };
 	assert.equal(await pushRecording(env), true);

@@ -83,7 +83,7 @@ if (realFetch) globalThis.fetch = async function recordedFetch(input, init) {
 	return response;
 };
 
-// node:http(s) clients (axios, got, SDKs): method, URL and status only.
+// node:http(s) clients (axios, got, SDKs, node-fetch): method, URL, request body and status; the response is the app's to read.
 for (const mod of [http, https]) {
 	const protocol = mod === https ? 'https:' : 'http:';
 	for (const name of ['request', 'get']) {
@@ -96,6 +96,27 @@ for (const mod of [http, https]) {
 			const url = options instanceof URL ? options.href : `${options.protocol ?? protocol}//${options.hostname ?? options.host ?? 'localhost'}${options.port ? `:${options.port}` : ''}${options.path ?? '/'}`;
 			const record = { side: 'server', method: (req.method ?? 'GET').toUpperCase(), url, status: 0, contentType: '' };
 			loadFor(tag.load).records.push(record);
+			const chunks = [];
+			let size = 0;
+			const keep = (chunk, encoding) => {
+				if (chunk == null || typeof chunk === 'function' || size > MAX_BODY) return;
+				const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), typeof encoding === 'string' ? encoding : 'utf8');
+				chunks.push(buffer);
+				size += buffer.length;
+			};
+			const write = req.write;
+			req.write = function (chunk, encoding, ...rest) {
+				keep(chunk, encoding);
+				return write.call(this, chunk, encoding, ...rest);
+			};
+			const end = req.end;
+			req.end = function (chunk, encoding, ...rest) {
+				keep(chunk, encoding);
+				const requestType = mime(req.getHeader('content-type'));
+				if (requestType) record.requestType = requestType;
+				if (size && textual(requestType)) record.requestBody = Buffer.concat(chunks).toString('utf8').slice(0, MAX_BODY);
+				return end.call(this, chunk, encoding, ...rest);
+			};
 			req.once('response', (res) => {
 				record.status = res.statusCode ?? 0;
 				record.contentType = mime(res.headers['content-type']);
