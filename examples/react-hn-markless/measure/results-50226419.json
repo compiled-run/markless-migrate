@@ -1,0 +1,566 @@
+{
+	"old": {
+		"journeys": {
+			"open a story": {
+				"http": 5,
+				"httpPeak": 4,
+				"listens": 197,
+				"listenPeak": 1,
+				"unlistens": 0,
+				"frames": 396,
+				"bytes": 107308,
+				"firstCommentMs": 303,
+				"allCommentsMs": 358,
+				"comments": 187
+			},
+			"collapse and expand a subtree": {
+				"http": 0,
+				"listens": 0,
+				"unlistens": 0,
+				"frames": 0,
+				"httpPeak": 4,
+				"listenPeak": 1
+			},
+			"receive the live updates while reading": {
+				"http": 0,
+				"listens": 1,
+				"unlistens": 0,
+				"frames": 6,
+				"httpPeak": 4,
+				"listenPeak": 1,
+				"updates": 4,
+				"newMarked": 1
+			},
+			"come back and see new since last visit": {
+				"http": 5,
+				"listens": 198,
+				"unlistens": 0,
+				"frames": 398,
+				"httpPeak": 4,
+				"listenPeak": 1,
+				"newMarked": 0,
+				"header": ""
+			}
+		},
+		"grow": {
+			"updates": 124,
+			"samples": [
+				{
+					"t": 0,
+					"heapKb": 5029,
+					"nodes": 2419
+				},
+				{
+					"t": 10000,
+					"heapKb": 5215,
+					"nodes": 2458
+				},
+				{
+					"t": 20037,
+					"heapKb": 5257,
+					"nodes": 2493
+				},
+				{
+					"t": 30016,
+					"heapKb": 5317,
+					"nodes": 2538
+				},
+				{
+					"t": 40032,
+					"heapKb": 5346,
+					"nodes": 2573
+				},
+				{
+					"t": 50020,
+					"heapKb": 5357,
+					"nodes": 2608
+				},
+				{
+					"t": 60034,
+					"heapKb": 5389,
+					"nodes": 2642
+				},
+				{
+					"t": 70018,
+					"heapKb": 5424,
+					"nodes": 2689
+				},
+				{
+					"t": 80032,
+					"heapKb": 5464,
+					"nodes": 2724
+				},
+				{
+					"t": 90028,
+					"heapKb": 5532,
+					"nodes": 2771
+				},
+				{
+					"t": 100012,
+					"heapKb": 5581,
+					"nodes": 2806
+				},
+				{
+					"t": 110033,
+					"heapKb": 5628,
+					"nodes": 2841
+				},
+				{
+					"t": 122546,
+					"heapKb": 5704,
+					"nodes": 2887
+				}
+			]
+		},
+		"edit": {
+			"updates": 150,
+			"samples": [
+				{
+					"t": 0,
+					"heapKb": 5066,
+					"nodes": 2419
+				},
+				{
+					"t": 10015,
+					"heapKb": 5107,
+					"nodes": 2419
+				},
+				{
+					"t": 20024,
+					"heapKb": 5142,
+					"nodes": 2419
+				},
+				{
+					"t": 30021,
+					"heapKb": 5167,
+					"nodes": 2419
+				},
+				{
+					"t": 40040,
+					"heapKb": 5201,
+					"nodes": 2419
+				},
+				{
+					"t": 50008,
+					"heapKb": 5204,
+					"nodes": 2419
+				},
+				{
+					"t": 60013,
+					"heapKb": 5217,
+					"nodes": 2419
+				},
+				{
+					"t": 70049,
+					"heapKb": 5219,
+					"nodes": 2419
+				},
+				{
+					"t": 80038,
+					"heapKb": 5232,
+					"nodes": 2419
+				},
+				{
+					"t": 90042,
+					"heapKb": 5255,
+					"nodes": 2419
+				},
+				{
+					"t": 100006,
+					"heapKb": 5294,
+					"nodes": 2419
+				},
+				{
+					"t": 110025,
+					"heapKb": 5300,
+					"nodes": 2419
+				},
+				{
+					"t": 122504,
+					"heapKb": 5316,
+					"nodes": 2419
+				}
+			]
+		},
+		"churn": [
+			{
+				"round": 0,
+				"heapKb": 4210,
+				"nodes": 354,
+				"listening": 0
+			},
+			{
+				"round": 1,
+				"heapKb": 4924,
+				"nodes": 354,
+				"listens": 259
+			},
+			{
+				"round": 2,
+				"heapKb": 5149,
+				"nodes": 354,
+				"listens": 487
+			},
+			{
+				"round": 3,
+				"heapKb": 5430,
+				"nodes": 354,
+				"listens": 715
+			},
+			{
+				"round": 4,
+				"heapKb": 5580,
+				"nodes": 354,
+				"listens": 943
+			},
+			{
+				"round": 5,
+				"heapKb": 5686,
+				"nodes": 354,
+				"listens": 1171
+			},
+			{
+				"round": 6,
+				"heapKb": 5803,
+				"nodes": 354,
+				"listens": 1399
+			},
+			{
+				"round": 7,
+				"heapKb": 5901,
+				"nodes": 354,
+				"listens": 1627
+			},
+			{
+				"round": 8,
+				"heapKb": 5991,
+				"nodes": 354,
+				"listens": 1855
+			},
+			{
+				"round": 9,
+				"heapKb": 6081,
+				"nodes": 354,
+				"listens": 2083
+			},
+			{
+				"round": 10,
+				"heapKb": 6175,
+				"nodes": 354,
+				"listens": 2311
+			},
+			{
+				"round": 11,
+				"heapKb": 6264,
+				"nodes": 354,
+				"listens": 2539
+			},
+			{
+				"round": 12,
+				"heapKb": 6338,
+				"nodes": 354,
+				"listens": 2767
+			},
+			{
+				"round": 13,
+				"heapKb": 6400,
+				"nodes": 354,
+				"listens": 2995
+			},
+			{
+				"round": 14,
+				"heapKb": 6486,
+				"nodes": 354,
+				"listens": 3223
+			},
+			{
+				"round": 15,
+				"heapKb": 6558,
+				"nodes": 354,
+				"listens": 3451
+			}
+		]
+	},
+	"new": {
+		"journeys": {
+			"open a story": {
+				"http": 28,
+				"httpPeak": 13,
+				"listens": 197,
+				"listenPeak": 1,
+				"unlistens": 0,
+				"frames": 395,
+				"bytes": 107263,
+				"firstCommentMs": 150,
+				"allCommentsMs": 168,
+				"comments": 187
+			},
+			"collapse and expand a subtree": {
+				"http": 0,
+				"listens": 0,
+				"unlistens": 0,
+				"frames": 0,
+				"httpPeak": 13,
+				"listenPeak": 1
+			},
+			"receive the live updates while reading": {
+				"http": 0,
+				"listens": 1,
+				"unlistens": 0,
+				"frames": 6,
+				"httpPeak": 13,
+				"listenPeak": 1,
+				"updates": 4,
+				"newMarked": 1
+			},
+			"come back and see new since last visit": {
+				"http": 28,
+				"listens": 198,
+				"unlistens": 0,
+				"frames": 397,
+				"httpPeak": 13,
+				"listenPeak": 1,
+				"newMarked": 0,
+				"header": "0 new"
+			}
+		},
+		"grow": {
+			"updates": 124,
+			"samples": [
+				{
+					"t": 0,
+					"heapKb": 4234,
+					"nodes": 4437
+				},
+				{
+					"t": 10002,
+					"heapKb": 4340,
+					"nodes": 4503
+				},
+				{
+					"t": 20021,
+					"heapKb": 4378,
+					"nodes": 4569
+				},
+				{
+					"t": 30021,
+					"heapKb": 4404,
+					"nodes": 4657
+				},
+				{
+					"t": 40016,
+					"heapKb": 4360,
+					"nodes": 4723
+				},
+				{
+					"t": 50004,
+					"heapKb": 4376,
+					"nodes": 4789
+				},
+				{
+					"t": 60016,
+					"heapKb": 4379,
+					"nodes": 4855
+				},
+				{
+					"t": 70009,
+					"heapKb": 4380,
+					"nodes": 4943
+				},
+				{
+					"t": 80011,
+					"heapKb": 4384,
+					"nodes": 5009
+				},
+				{
+					"t": 90039,
+					"heapKb": 4426,
+					"nodes": 5097
+				},
+				{
+					"t": 100021,
+					"heapKb": 4428,
+					"nodes": 5163
+				},
+				{
+					"t": 110014,
+					"heapKb": 4455,
+					"nodes": 5229
+				},
+				{
+					"t": 122519,
+					"heapKb": 4482,
+					"nodes": 5317
+				}
+			]
+		},
+		"edit": {
+			"updates": 150,
+			"samples": [
+				{
+					"t": 0,
+					"heapKb": 4241,
+					"nodes": 4437
+				},
+				{
+					"t": 10014,
+					"heapKb": 4330,
+					"nodes": 4437
+				},
+				{
+					"t": 20042,
+					"heapKb": 4351,
+					"nodes": 4437
+				},
+				{
+					"t": 30006,
+					"heapKb": 4341,
+					"nodes": 4437
+				},
+				{
+					"t": 40000,
+					"heapKb": 4341,
+					"nodes": 4437
+				},
+				{
+					"t": 50000,
+					"heapKb": 4326,
+					"nodes": 4437
+				},
+				{
+					"t": 60010,
+					"heapKb": 4353,
+					"nodes": 4437
+				},
+				{
+					"t": 70009,
+					"heapKb": 4362,
+					"nodes": 4437
+				},
+				{
+					"t": 80045,
+					"heapKb": 4378,
+					"nodes": 4437
+				},
+				{
+					"t": 90043,
+					"heapKb": 4402,
+					"nodes": 4437
+				},
+				{
+					"t": 100046,
+					"heapKb": 4411,
+					"nodes": 4437
+				},
+				{
+					"t": 110042,
+					"heapKb": 4412,
+					"nodes": 4437
+				},
+				{
+					"t": 122534,
+					"heapKb": 4415,
+					"nodes": 4437
+				}
+			]
+		},
+		"churn": [
+			{
+				"round": 0,
+				"heapKb": 3809,
+				"nodes": 649,
+				"listening": 0
+			},
+			{
+				"round": 1,
+				"heapKb": 5742,
+				"nodes": 651,
+				"listens": 227
+			},
+			{
+				"round": 2,
+				"heapKb": 6662,
+				"nodes": 651,
+				"listens": 423
+			},
+			{
+				"round": 3,
+				"heapKb": 7453,
+				"nodes": 651,
+				"listens": 619
+			},
+			{
+				"round": 4,
+				"heapKb": 8330,
+				"nodes": 651,
+				"listens": 815
+			},
+			{
+				"round": 5,
+				"heapKb": 9150,
+				"nodes": 651,
+				"listens": 1011
+			},
+			{
+				"round": 6,
+				"heapKb": 9803,
+				"nodes": 651,
+				"listens": 1207
+			},
+			{
+				"round": 7,
+				"heapKb": 10541,
+				"nodes": 651,
+				"listens": 1403
+			},
+			{
+				"round": 8,
+				"heapKb": 11287,
+				"nodes": 651,
+				"listens": 1599
+			},
+			{
+				"round": 9,
+				"heapKb": 12133,
+				"nodes": 651,
+				"listens": 1795
+			},
+			{
+				"round": 10,
+				"heapKb": 12846,
+				"nodes": 651,
+				"listens": 1991
+			},
+			{
+				"round": 11,
+				"heapKb": 13544,
+				"nodes": 651,
+				"listens": 2187
+			},
+			{
+				"round": 12,
+				"heapKb": 14222,
+				"nodes": 651,
+				"listens": 2383
+			},
+			{
+				"round": 13,
+				"heapKb": 14914,
+				"nodes": 651,
+				"listens": 2579
+			},
+			{
+				"round": 14,
+				"heapKb": 15593,
+				"nodes": 651,
+				"listens": 2775
+			},
+			{
+				"round": 15,
+				"heapKb": 16311,
+				"nodes": 651,
+				"listens": 2971
+			}
+		]
+	}
+}

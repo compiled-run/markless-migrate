@@ -7,6 +7,7 @@ export default function App({ path, children }: { path: string; children?: Child
 	let showSettings = state(false);
 	let settings = state<Settings>({ ...DEFAULT_SETTINGS });
 
+	<div id="app">
 	<div
 		class="App"
 		attach={() => saveOnUnload()}
@@ -27,6 +28,7 @@ export default function App({ path, children }: { path: string; children?: Child
 				<a href="/read" class={navClass(path, '/read')}>read</a>
 				<a
 					class="App__settings"
+					role="link"
 					tabindex="0"
 					onClick={(event) => {
 						event.preventDefault();
@@ -105,5 +107,6 @@ export default function App({ path, children }: { path: string; children?: Child
 				<a href="https://github.com/insin/react-hn">insin/react-hn</a>
 			</div>
 		</div>
+	</div>
 	</div>
 }

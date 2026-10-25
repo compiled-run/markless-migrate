@@ -39,10 +39,16 @@ import {
 
 type Stop = () => void;
 
-/** Coalesces writes that arrive in one burst of socket messages into one state write. */
+/** Coalesces writes that arrive in one burst of socket messages into one state write; the first write, what the caches already hold, is made at once so it paints with the page. */
 function coalesce<T>(write: (value: T) => void): (value: T) => void {
 	let pending: { value: T } | undefined;
+	let started = false;
 	return (value) => {
+		if (!started) {
+			started = true;
+			write(value);
+			return;
+		}
 		const first = !pending;
 		pending = { value };
 		if (first)
@@ -422,9 +428,7 @@ export function followPermalink(
 		const comment = items[id];
 		if (!comment) return;
 		document.title = pageTitle(
-			comment.deleted
-				? 'Deleted comment'
-				: `Comment by ${comment.by}`,
+			comment.deleted ? 'Deleted comment' : `Comment by ${comment.by}`,
 		);
 	};
 	const listens = new Listens((at, value) => {

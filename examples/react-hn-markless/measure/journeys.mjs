@@ -14,13 +14,52 @@ const { values } = parseArgs({
 		story: { type: 'string' },
 		'live-minutes': { type: 'string' },
 		out: { type: 'string' },
-		hash: { type: 'boolean' },
+		synthetic: { type: 'string' },
 	},
 });
 const sides = { old: values.old, new: values.new };
 const story = values.story;
 const liveMs = Number(values['live-minutes'] ?? 2) * 60_000;
 const wait = (ms) => new Promise((done) => setTimeout(done, ms));
+
+/** A steady stream on top of the recording: a new reply every tick under an existing comment, and the story's counts bumped. */
+function synthetic(db, storyId, ticks) {
+	const story = `v0/item/${storyId}`;
+	const comments = Object.keys(db.snapshot).filter(
+		(p) => p !== story && db.snapshot[p]?.type === 'comment',
+	);
+	const kids = Object.fromEntries(
+		comments.map((p) => [p, Object.values(db.snapshot[p]?.kids ?? {})]),
+	);
+	const root = db.snapshot[story];
+	let descendants = root?.descendants ?? 0;
+	let score = root?.score ?? 0;
+	const updates = [];
+	for (let i = 0; i < ticks; i++) {
+		const parent = comments[(i * 7) % comments.length];
+		const id = 90_000_000 + i;
+		updates.push({
+			path: `v0/item/${id}`,
+			data: {
+				by: `reader${i % 13}`,
+				id,
+				parent: Number(parent.split('/').at(-1)),
+				text: `Live reply number ${i}`,
+				time: 1792900000 + i * 2,
+				type: 'comment',
+			},
+		});
+		kids[parent] = [...kids[parent], id];
+		updates.push({
+			path: `${parent}/kids`,
+			data: Object.fromEntries(kids[parent].map((k, j) => [String(j), k])),
+		});
+		descendants++;
+		if (i % 5 === 0) score++;
+		updates.push({ path: story, data: { ...root, descendants, score } });
+	}
+	return { ...db, updates: [...db.updates, ...updates] };
+}
 
 const recording = async (route) =>
 	JSON.parse(
@@ -59,15 +98,19 @@ async function open(browser, side, live) {
 			if (/"s":"ok"/.test(String(message))) pendingListens = Math.max(0, pendingListens - 1);
 			return send(message);
 		};
-		socket.onMessage((message) => {
+		const handle = socket.onMessage.bind(socket);
+		let inner;
+		socket.onMessage = (handler) => (inner = handler);
+		db.serve(socket);
+		handle((message) => {
 			const text = String(message);
 			if (/"a":"q"/.test(text)) {
 				stats.listens++;
 				pendingListens++;
 				stats.listenPeak = Math.max(stats.listenPeak, pendingListens);
 			} else if (/"a":"n"/.test(text)) stats.unlistens++;
+			inner?.(message);
 		});
-		db.serve(socket);
 	});
 	context.on('request', (request) => {
 		if (!/^https?:/.test(request.url())) return;
@@ -90,7 +133,7 @@ const quiet = async (page) => {
 /** The four journeys: open a story, fold and unfold a subtree, take a live update while reading, come back and see what is new. */
 async function journeys(browser, side) {
 	const out = {};
-	const live = await recording(`/story/${story}`);
+	const live = (await recording(`/story/${story}`)).live;
 	{
 		const { context, page, stats } = await open(browser, side, live);
 		const started = Date.now();
@@ -179,32 +222,46 @@ function diff(now, before) {
 	};
 }
 
-/** A live session: the story open for `liveMs`, the recorded updates sent across it, memory read after a collection every 10 s. */
-async function memory(browser, side) {
-	const live = await recording(`/story/${story}`);
-	const { context, page, databases } = await open(browser, side, live);
-	const cdp = await context.newCDPSession(page);
-	await cdp.send('HeapProfiler.enable');
-	await page.goto(url(side, `/story/${story}`));
-	await page
+/** Heap after a collection, and element count. */
+async function reading(cdp, page) {
+	await cdp.send('HeapProfiler.collectGarbage');
+	const { usedSize } = await cdp.send('Runtime.getHeapUsage');
+	return {
+		heapKb: Math.round(usedSize / 1024),
+		nodes: await page.evaluate(() => document.getElementsByTagName('*').length),
+	};
+}
+
+const loadedThread = (page) =>
+	page
 		.waitForFunction(
-			() => document.querySelectorAll('.Comment--loading').length === 0,
+			() =>
+				document.querySelectorAll('.Comment__user').length > 0 &&
+				document.querySelectorAll('.Comment--loading').length === 0,
 			undefined,
 			{ timeout: 30_000 },
 		)
 		.catch(() => {});
-	await quiet(page);
-	const updates = databases.reduce((n, db) => n + db.recorded.updates.length, 0);
-	const every = updates ? Math.max(1000, Math.floor(liveMs / updates)) : liveMs;
-	const samples = [];
-	const sample = async (t) => {
-		await cdp.send('HeapProfiler.collectGarbage');
-		const { usedSize } = await cdp.send('Runtime.getHeapUsage');
-		const nodes = await page.evaluate(() => document.getElementsByTagName('*').length);
-		samples.push({ t, heapKb: Math.round(usedSize / 1024), nodes });
+
+/** A live session on one story for `liveMs`, the updates sent evenly across it: `grow` adds replies, `edit` only changes what is already there. */
+async function session(browser, side, kind) {
+	const recorded = (await recording(`/story/${story}`)).live;
+	const ticks = Number(values.synthetic ?? 40);
+	const live = {
+		firebase: recorded.firebase.map((db) =>
+			kind === 'grow' ? synthetic(db, story, ticks) : edits(db, story, ticks * 3),
+		),
 	};
+	const { context, page, databases } = await open(browser, side, live);
+	const cdp = await context.newCDPSession(page);
+	await cdp.send('HeapProfiler.enable');
+	await page.goto(url(side, `/story/${story}`));
+	await loadedThread(page);
+	await quiet(page);
+	const updates = databases.reduce((n, db) => n + db.pending, 0);
+	const every = updates ? Math.max(250, Math.floor(liveMs / updates)) : liveMs;
+	const samples = [{ t: 0, ...(await reading(cdp, page)) }];
 	const started = Date.now();
-	await sample(0);
 	let nextUpdate = every;
 	let nextSample = 10_000;
 	while (Date.now() - started < liveMs) {
@@ -214,14 +271,74 @@ async function memory(browser, side) {
 			nextUpdate += every;
 		}
 		if (t >= nextSample) {
-			await sample(t);
+			samples.push({ t, ...(await reading(cdp, page)) });
 			nextSample += 10_000;
 		}
-		await wait(250);
+		await wait(50);
 	}
-	await sample(Date.now() - started);
+	await quiet(page);
+	samples.push({ t: Date.now() - started, ...(await reading(cdp, page)) });
 	await context.close();
 	return { updates, samples };
+}
+
+/** Edits only: comment texts and the story's score change, nothing is added. */
+function edits(db, storyId, count) {
+	const story = `v0/item/${storyId}`;
+	const comments = Object.keys(db.snapshot).filter(
+		(p) => p !== story && db.snapshot[p]?.type === 'comment',
+	);
+	const updates = [];
+	for (let i = 0; i < count; i++) {
+		const path = comments[(i * 11) % comments.length];
+		updates.push({
+			path,
+			data: { ...db.snapshot[path], text: `${db.snapshot[path].text ?? ''} (edit ${i})` },
+		});
+		if (i % 4 === 0)
+			updates.push({
+				path: story,
+				data: { ...db.snapshot[story], score: (db.snapshot[story].score ?? 0) + i },
+			});
+	}
+	return { ...db, updates };
+}
+
+/** In-place navigations back and forth between the list and the story, heap read after each round: a region whose listeners outlive it grows it. */
+async function churn(browser, side, rounds = 15) {
+	const story = (await recording(`/story/${values.story}`)).live;
+	const list = (await recording('/news')).live;
+	const merged = {
+		firebase: [
+			{
+				...story.firebase[0],
+				snapshot: { ...list.firebase[0].snapshot, ...story.firebase[0].snapshot },
+				updates: [],
+			},
+		],
+	};
+	const { context, page, databases } = await open(browser, side, merged);
+	const cdp = await context.newCDPSession(page);
+	await cdp.send('HeapProfiler.enable');
+	await page.goto(url(side, '/news'));
+	await page.waitForSelector('.ListItem:not(.ListItem--loading)');
+	await quiet(page);
+	const samples = [{ round: 0, ...(await reading(cdp, page)), listening: 0 }];
+	for (let round = 1; round <= rounds; round++) {
+		await page.click(`.Item__meta a[href$="/${values.story}"]`);
+		await loadedThread(page);
+		await wait(500);
+		await page.goBack();
+		await page.waitForSelector('.ListItem:not(.ListItem--loading)');
+		await wait(2500);
+		samples.push({
+			round,
+			...(await reading(cdp, page)),
+			listens: databases[0].listened.length,
+		});
+	}
+	await context.close();
+	return samples;
 }
 
 const browser = await chromium.launch();
@@ -230,7 +347,9 @@ try {
 	for (const side of ['old', 'new'])
 		results[side] = {
 			journeys: await journeys(browser, side),
-			memory: await memory(browser, side),
+			grow: await session(browser, side, 'grow'),
+			edit: await session(browser, side, 'edit'),
+			churn: await churn(browser, side),
 		};
 } finally {
 	await browser.close();
