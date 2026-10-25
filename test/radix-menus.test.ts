@@ -215,10 +215,13 @@ test('Radix DropdownMenu.Sub from the keyboard: ArrowRight or Enter opens it on 
 	await press(page, 'ArrowRight');
 	assert.equal(await subOpen(page), true);
 	assert.equal(await active(page), 'Email');
+	// The modal menu hid everything beside it from assistive technology; not its submenu.
+	assert.equal(await page.locator('[data-mm-layer="sub"]').getAttribute('aria-hidden'), null);
 	await press(page, 'ArrowDown');
 	assert.deepEqual(await highlighted(page), ['Message']);
 	await press(page, 'ArrowLeft');
 	assert.equal(await subOpen(page), false);
+	assert.equal(await page.locator('[data-mm-layer="sub"]').getAttribute('aria-hidden'), 'true');
 	assert.equal(await active(page), 'Invite users');
 	await press(page, 'Enter');
 	assert.equal(await active(page), 'Email');
@@ -244,5 +247,20 @@ test('Radix DropdownMenu.Sub: the pointer leaving the sub-trigger off the menu, 
 	await settled(page);
 	assert.equal(await subOpen(page), true);
 	assert.equal(await active(page), 'Invite users');
+	await page.close();
+});
+
+test('Radix DropdownMenu.Sub: a press outside the menu and its open submenu closes both, focus back on the trigger', async () => {
+	const page = await open(withSub, ['radix/dropdown-menu']);
+	await page.getByText('Open').click();
+	await settled(page);
+	await hoverItem(page, 'Invite users');
+	await page.waitForTimeout(150);
+	assert.equal(await subOpen(page), true);
+	await page.mouse.click(5, 790);
+	await settled(page);
+	assert.equal(await subOpen(page), false);
+	assert.equal(await page.getByText('Open').getAttribute('aria-expanded'), 'false');
+	assert.equal(await page.evaluate(() => document.activeElement?.id), 'menu');
 	await page.close();
 });

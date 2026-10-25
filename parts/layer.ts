@@ -62,7 +62,15 @@ export function openLayer(trigger: HTMLElement, key: string, options: { readonly
 		for (const n of nodes) n.style.pointerEvents = 'auto';
 		layer.cleanup.push(hideOthers(nodes));
 		layer.cleanup.push(lockScroll(nodes));
-	} else if (open.some((l) => l.modal)) for (const n of nodes) n.style.pointerEvents = 'auto';
+	} else if (open.some((l) => l.modal)) {
+		// A layer over a modal one is outside what it hid: Radix portals it after hideOthers ran, or nests it inside.
+		for (const n of nodes) {
+			n.style.pointerEvents = 'auto';
+			if (n.getAttribute('data-aria-hidden') !== 'true' || n.getAttribute('aria-hidden') !== 'true') continue;
+			n.removeAttribute('aria-hidden');
+			layer.cleanup.push(() => n.getAttribute('data-aria-hidden') === 'true' && n.setAttribute('aria-hidden', 'true'));
+		}
+	}
 	open.push(layer);
 	const onKey = (event: KeyboardEvent) => {
 		if (top() !== layer) return;
@@ -112,8 +120,9 @@ export function closeLayer(layer: Layer, keepFocus = false): void {
 	showCompanions(layer.key, false);
 	if (layer.modal && !open.some((l) => l.modal)) document.body.style.pointerEvents = bodyPointerEvents;
 	if (!keepFocus) layer.trigger.focus({ preventScroll: true });
-	// The press's own mousedown then blurs to the body; Radix's FocusScope returns focus to the trigger after it.
-	if (!keepFocus && layer.modal && pressedOutside === layer) {
+	// The press's own mousedown then blurs to the body; Radix's FocusScope returns focus to the trigger after it (the
+	// press may have dismissed a layer above this one, a submenu, that closed it).
+	if (!keepFocus && layer.modal && pressedOutside) {
 		setTimeout(() => {
 			if (!document.activeElement || document.activeElement === document.body) layer.trigger.focus({ preventScroll: true });
 		});
