@@ -15,6 +15,7 @@ import type { Viewport } from './types.ts';
 import { request } from './http.ts';
 import type { Scope } from './infrastructure.ts';
 import { FIREBASE_SOCKET, restAnswer, serveDatabases, type FakeDatabase, type LiveRecording, type SocketLog } from './live-data.ts';
+import { setRouting, shellRoute, type OldRouting } from './hash-routes.ts';
 
 /** How the checker treats one app: what it freezes and blocks, whether writes are sent, and which recorded data it serves. */
 export interface SideEnv {
@@ -49,6 +50,8 @@ export interface SideEnv {
 	readonly colorScheme?: 'light' | 'dark';
 	/** Hosts the old app's source reads its data from (its API clients): a journey's GETs there are answered from the run's one copy. */
 	readonly dataHosts?: ReadonlySet<string>;
+	/** A hash-routed old app: each route loads from the shell at `/` with the route moved into the hash, and the addresses its pages show are read as routes. */
+	readonly routing?: OldRouting;
 }
 
 // On an asset or a fetch only a challenge header proves a wall; a CDN's server header on an ordinary 403 does not.
@@ -421,6 +424,8 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 				return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } });
 			}
 		}
+		// The document must load at `/`, or the preload scanner fetches the shell's relative files under the route's path.
+		if (same && topLevelLoad(request) && shellRoute(url.pathname, env.routing)) return route.fulfill({ status: 302, headers: { location: `/#${url.pathname}${url.search}` } });
 		const door302 = door && topLevelLoad(request) ? frontDoorTarget(url, env.origin, door) : undefined;
 		if (door302) return route.fulfill({ status: 302, headers: { location: door302 } });
 		const timed = options.timed;
@@ -492,6 +497,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 		socket.on('framesent', (frame) => frames.push({ sent: true, text: String(frame.payload), at: Date.now() - opened }));
 		socket.on('framereceived', (frame) => frames.push({ sent: false, text: String(frame.payload), at: Date.now() - opened }));
 	});
+	setRouting(page, env.routing);
 	return { context, page, log, own: ownOrigin };
 }
 

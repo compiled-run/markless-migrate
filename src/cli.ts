@@ -95,7 +95,7 @@ const USAGE = `markless-migrate ${VERSION}
           Writes .migrate/convert/report.json: what was left out and why, the shared components, the
           endpoints and how each is answered, and the library parts no port implements yet.
 ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--json] [--open]
-          [--source <path>] [--data record|replay] [--live-window <seconds>] [--staging] [--block <host>]... [--allow <host>]...
+          [--source <path>] [--old-hash-routes] [--data record|replay] [--live-window <seconds>] [--staging] [--block <host>]... [--allow <host>]...
           [--no-freeze] [--time <iso>] [--server-clock] [--seed <n>] [--timezone <tz>] [--locale <tag>]
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
@@ -110,6 +110,10 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           (Markless's route marker names its page file); one without it is "served by the old app",
           listed apart, and, like a missing route, not ported: status is not done and switch refuses it.
           --only coverage measures just that, for every route.
+          A hash-routed old app (its router keeps the route after #, as React Router's hashHistory) is
+          loaded at /#<route> and compared with the new app at <route>; plan --source records it, and
+          --old-hash-routes says so without a plan. Each such route is also opened on the new app by its
+          old address /#<route>, which must land on <route>, so links saved from the old app keep working.
           The old side's loads and journeys are reused from .migrate/cache while every response the old
           page loaded is unchanged (ETag, Last-Modified or content hash); --no-cache loads them again.
           Each route's result is written to .migrate/check-progress as it finishes; --resume takes the
@@ -739,6 +743,7 @@ async function main(argv: string[]): Promise<number> {
 					json: { type: 'boolean' },
 					open: { type: 'boolean' },
 					source: { type: 'string' },
+					'old-hash-routes': { type: 'boolean' },
 					data: { type: 'string' },
 					'live-window': { type: 'string' },
 					staging: { type: 'boolean' },
@@ -852,6 +857,7 @@ async function main(argv: string[]): Promise<number> {
 				block: { add: values.block ?? [], allow: values.allow ?? [] },
 				...(values.staging ? { staging: { old: true, new: true } } : {}),
 				...(source ? { source } : {}),
+				...(values['old-hash-routes'] || inventory?.source?.routing === 'hash' || source?.routing === 'hash' ? { oldRouting: 'hash' as const } : {}),
 				...(values.data ? { data: { mode: values.data as 'record' | 'replay', dir: join(cwd, STATE_DIR, DATA_DIR), ...(values['live-window'] ? { liveWindowMs: Number(values['live-window']) * 1000 } : {}) } } : {}),
 				...bypass,
 				...(values['user-agent'] ? { userAgent: values['user-agent'] } : {}),

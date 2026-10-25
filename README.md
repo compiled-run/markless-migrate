@@ -25,7 +25,7 @@ Status: early. `plan`, `check`, `cli`, `status`, `switch`, `proxy`, `config`, `s
 ```bash
 markless-migrate plan --old http://localhost:3000 [--source ../old-app] [--built ../old-app/dist] [--auth .migrate/auth.json] [--limit 100] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>] [--no-caching]
 markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [--route /about]... [--open]
-    [--source ../old-app] [--data record|replay] [--live-window <seconds>] [--staging] [--block <host>]... [--allow <host>]...
+    [--source ../old-app] [--old-hash-routes] [--data record|replay] [--live-window <seconds>] [--staging] [--block <host>]... [--allow <host>]...
     [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
     [--auth .migrate/auth.json] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
     [--all] [--allow-unchecked] [--new-source ../markless-app] [--concurrency 4] [--changed]
@@ -425,6 +425,14 @@ HTML. Any `--route` whose old response is not HTML is compared the same way.
 page (a "More" link on an empty list, `/news/18` linking to `/news/19` forever) ends where a page shows
 what an earlier page of the same route shows apart from its numbers and links on to the next one: that
 page is listed, its links are not followed, and plan says so.
+
+A hash-routed old app (its router keeps the route after `#`: React Router's `hashHistory`, `createHashRouter` or
+`<HashRouter>`, Vue Router's hash history, Angular's `useHash`) has one page on the server and its routes at
+`/#/<route>`. `plan --source` records it (`source.routing: "hash"` in the inventory) and `check` then loads each old
+route at `/#<route>`, served by the old app's shell at `/`, and compares it with the new app at `<route>`: the
+addresses the old pages show and their links (`#/item/7`) are read as the routes they name (`/item/7`).
+`--old-hash-routes` says the same without a plan. Each such route is also opened on the new app by its old address,
+which must land on the route (`http` `old hash link`), so every link saved from the old app keeps working.
 
 With `--source` (old) and `--new-source` (the Markless app), each failure about an element carries a
 `where` line, for example `old app/[lang]/tip.tsx:10 renders paragraph "Barista’s tip:"; new

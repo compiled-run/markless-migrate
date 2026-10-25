@@ -116,5 +116,6 @@ export async function scanSource(dir: string): Promise<SourceFacts> {
 		components,
 		limits: [...new Set(ctx.limits)].sort(),
 		...(redirects.length ? { redirects } : {}),
+		...(code.hash ? { routing: 'hash' as const } : {}),
 	};
 }

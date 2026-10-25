@@ -1,4 +1,5 @@
 import { sessionDatabases, updateCount } from './live-data.ts';
+import { linkUrl, pageRouting, routeLinks, routePath, shownUrl } from './hash-routes.ts';
 import { FRAMEWORK_MARKUP_SELECTOR } from './automatic.ts';
 import type { Browser, BrowserContext, Locator, Page, Request } from 'playwright';
 import { frameworkTransport, openPage, requestLine, type OpenOptions, type SideEnv, databaseFramesReceived } from './browser.ts';
@@ -309,7 +310,7 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 					add(base);
 					continue;
 				}
-				const url = new URL(info.href, page.url());
+				const url = linkUrl(info.href, page.url(), page);
 				if (url.origin !== origin) {
 					add({ ...base, covered: 'it leaves the app: its address is compared by the rendered check' });
 					continue;
@@ -321,7 +322,7 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 				// A link goes where its address says, by the app's router (whose click handler is the same for every link): its address
 				// is compared by the rendered check, and a few links of each region (to another page, or within this one) are followed.
 				if (!base.group) {
-					const here = new URL(page.url());
+					const here = new URL(shownUrl(page));
 					add({ ...base, group: `link|${info.region}|${url.pathname === here.pathname ? 'here' : 'page'}` });
 					continue;
 				}
@@ -971,7 +972,7 @@ async function snapshot(page: Page, origins: readonly string[]): Promise<string[
 		for (const el of hosts) el.setAttribute('aria-hidden', 'true');
 		return hosts.length;
 	}, FRAMEWORK_MARKUP_SELECTOR).catch(() => 0);
-	let text = await page.locator('body').ariaSnapshot({ timeout: 5_000 }).catch(() => '');
+	let text = routeLinks(await page.locator('body').ariaSnapshot({ timeout: 5_000 }).catch(() => ''), pageRouting(page));
 	if (hidden) await page.evaluate((selector) => { for (const el of document.querySelectorAll(selector)) el.removeAttribute('aria-hidden'); }, FRAMEWORK_MARKUP_SELECTOR).catch(() => {});
 	for (const origin of origins) text = text.split(origin).join('').split(`=${new URL(origin).hostname}&`).join('={host}&');
 	return text.split('\n').map((line) => line.trim());
@@ -1307,7 +1308,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 	const oldHost = env.frontDoor ? new URL(env.frontDoor.old).origin : undefined;
 	const hosts = oldHost && oldHost !== host ? [host, oldHost] : [host];
 	const onOld = (url: string) => oldHost !== undefined && hosts.length > 1 && new URL(url).origin === oldHost;
-	const here = (url: string) => (onOld(url) ? localUrl(url, oldHost!) : localUrl(url, origin));
+	const here = (url: string) => (onOld(url) ? localUrl(url, oldHost!) : localUrl(routePath(url, env.routing), origin));
 	let dialogs: string[] = [];
 	let accepting = false;
 	page.on('dialog', (dialog) => {
@@ -1352,7 +1353,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 	const landing = here(page.url());
 	const redirected = landing !== localUrl(new URL(route, origin).href, origin);
 	const observe = async (act: () => Promise<void>, what: string, step: Step | undefined, destructive: boolean, reload: boolean): Promise<StepResult> => {
-		const startPath = new URL(page.url()).pathname;
+		const startPath = new URL(shownUrl(page)).pathname;
 		const href = step?.target.role === 'link' ? await locate(page, step.target).getAttribute('href', { timeout: STEP_TIMEOUT }).catch(() => null) : null;
 		const used = step && !reload && step.action !== 'scroll' && step.action !== 'live' ? await stepTarget(page, step) : undefined;
 		// The control is brought into view first, so the frames before and after the step show what it answers with, not a scroll.
@@ -1389,7 +1390,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		}
 		await quiet(page, inflight, navigations);
 		// A router swapping the page in place renders after its fetch has finished: the page is read once its DOM has held still.
-		if (!documentLoaded && new URL(page.url()).pathname !== startPath) await domQuiet(page);
+		if (!documentLoaded && new URL(shownUrl(page)).pathname !== startPath) await domQuiet(page);
 		log.holdAll = false;
 		accepting = false;
 		const widget = step && (step.action === 'key' || step.action === 'outside') ? await (await stepTarget(page, step)).evaluate(widgetState, undefined, { timeout: QUICK }).catch(() => ['the widget is gone']) : undefined;
@@ -1404,7 +1405,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		const writes = log.writes.slice(writesBefore);
 		const writeOf = new Map(writes.map((w) => [w.request, w.line]));
 		const state = stateChange(stateBefore, await readState(page, signedIn));
-		const stayed = !documentLoaded && new URL(page.url()).pathname === startPath;
+		const stayed = !documentLoaded && new URL(shownUrl(page)).pathname === startPath;
 		let reaction: Reaction | undefined;
 		if (frameBefore && !documentLoaded && !stayed) {
 			// A router that swapped the page in place: what morphed on the way is compared, the rest is the new page's own.
@@ -1422,7 +1423,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		}
 		const done: StepResult = {
 			url: redirected && here(page.url()) === landing ? 'the page the route redirected to' : here(page.url()),
-			navigated: reload ? new URL(page.url()).pathname !== startPath : documentLoaded || new URL(page.url()).pathname !== startPath || (href !== null && new URL(href, page.url()).href === page.url()),
+			navigated: reload ? new URL(shownUrl(page)).pathname !== startPath : documentLoaded || new URL(shownUrl(page)).pathname !== startPath || (href !== null && linkUrl(href, page.url(), page).href === shownUrl(page)),
 			...(reload ? { reloaded: true } : {}),
 			...(documentLoaded ? { loaded: true } : {}),
 			added,
@@ -1856,7 +1857,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		// Another page the new app serves, else this page again by a link to it (an in-place navigation), else any page of the app.
 		const rank = (c: Candidate) => {
 			if (c.target.role !== 'link' || !c.href || c.covered || c.destructive || /^javascript:/i.test(c.href)) return 0;
-			const to = new URL(c.href, here);
+			const to = linkUrl(c.href, here.href, start.page);
 			if (to.origin !== host) return 0;
 			if (to.pathname === here.pathname) return to.hash ? 0 : 2;
 			return options.serves?.(to.pathname) ? 3 : 1;
@@ -1865,7 +1866,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		navLink = links.sort((a, b) => b.rank - a.rank)[0]?.c.target;
 		entries = [...new Set(found.flatMap((c) => {
 			if (c.target.role !== 'link' || !c.href || c.covered || c.destructive || /^javascript:/i.test(c.href)) return [];
-			const to = new URL(c.href, here);
+			const to = linkUrl(c.href, here.href, start.page);
 			return to.origin === host && to.pathname !== here.pathname ? [to.pathname + to.search] : [];
 		}))]
 			// A sibling page first (the same component under another library links straight back), then the rest in page order.
@@ -1911,10 +1912,10 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		if (!back) continue;
 		try {
 			const here = new URL(route, origin);
-			const link = (await candidates(back.page, host)).find((c) => c.target.role === 'link' && c.href && !c.destructive && new URL(c.href, back.page.url()).pathname === here.pathname && !new URL(c.href, back.page.url()).hash)?.target;
+			const link = (await candidates(back.page, host)).find((c) => c.target.role === 'link' && c.href && !c.destructive && linkUrl(c.href, back.page.url(), back.page).pathname === here.pathname && !linkUrl(c.href, back.page.url(), back.page).hash)?.target;
 			if (!link) continue;
 			const went = await back.run({ action: 'click', target: link });
-			if (!went.failed && !went.loaded && new URL(back.page.url()).pathname === here.pathname) arrival = { entry, link };
+			if (!went.failed && !went.loaded && new URL(shownUrl(back.page)).pathname === here.pathname) arrival = { entry, link };
 		} finally {
 			await back.close();
 		}
@@ -1944,7 +1945,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			}
 			const last = expected.at(-1)!;
 			const done = expected.length === item.journey.steps.length && !last.failed;
-			const stayed = done && new URL(page.url()).pathname === new URL(route, origin).pathname && !last.navigated;
+			const stayed = done && new URL(shownUrl(page)).pathname === new URL(route, origin).pathname && !last.navigated;
 			// The control just used, renamed by its use ("currently light mode"), is the same control, not one it revealed.
 			const renamed = item.expand && stayed ? await retarget(page, item.journey.steps.at(-1)!.target) : undefined;
 			const revealed = item.expand && stayed ? (await candidates(page, host)).filter((c) => !renamed || !sameTarget(c.target, renamed)) : [];

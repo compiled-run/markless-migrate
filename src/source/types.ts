@@ -85,6 +85,8 @@ export interface SourceFacts {
 	limits: string[];
 	/** Redirects the app declares in its config. */
 	redirects?: Redirect[];
+	/** `hash` when the app's router keeps the route after `#`, so each route is reached at `/#<route>`. */
+	routing?: 'hash';
 }
 
 export interface Redirect {
