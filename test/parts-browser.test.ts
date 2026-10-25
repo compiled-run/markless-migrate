@@ -934,6 +934,27 @@ test('a select layer captured with options highlighted is converted at rest: onl
 	await page.close();
 });
 
+test('a Radix select layer captured open is converted at rest with no option aria-selected: the chosen one becomes so as it takes focus, as SelectItem sets isSelected && isFocused', async () => {
+	// Captured open, the chosen Banana was focused: aria-selected true.
+	const captured = radixSelect().replace('aria-labelledby="fruit-1" aria-selected="false" data-state="unchecked"', 'aria-labelledby="fruit-1" aria-selected="true" data-state="checked"');
+	const doc = parseDocument(`<body>${captured}</body>`);
+	for (const el of walk(bodyOf(doc))) if (el.attrs.some((a) => a.name === 'data-mm-layer')) for (const x of [el, ...walk(el)]) atRest(x);
+	const page = await open(outer(bodyOf(doc)).replace(/^<body>|<\/body>$/g, ''), ['radix/select'], 'body');
+	const banana = page.locator('[role="option"]', { hasText: 'Banana' });
+	assert.deepEqual([await banana.getAttribute('aria-selected'), await banana.getAttribute('data-state')], ['false', 'checked']);
+	await page.evaluate(() => {
+		const option = [...document.querySelectorAll('[role="option"]')].find((o) => o.textContent === 'Banana')!;
+		(window as any).changes = [];
+		new MutationObserver((records) => { for (const r of records) (window as any).changes.push(`${r.oldValue}>${option.getAttribute('aria-selected')}`); }).observe(option, { attributes: true, attributeFilter: ['aria-selected'], attributeOldValue: true });
+	});
+	await page.locator('[data-slot="select-trigger"]').focus();
+	await page.keyboard.press('Enter');
+	await settled(page);
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Banana');
+	assert.deepEqual(await page.evaluate(() => (window as any).changes), ['false>true']);
+	await page.close();
+});
+
 test('a press outside a Radix or Base UI select closes it with focus back on its trigger, as each library does', async () => {
 	for (const [markup, port] of [
 		[radixSelect(), 'radix/select'],

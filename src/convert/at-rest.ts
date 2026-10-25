@@ -7,6 +7,8 @@ export function atRest(el: Element): void {
 	for (const a of el.attrs) if (a.name === 'data-state' && (a.value === 'open' || a.value === 'instant-open' || a.value === 'delayed-open')) a.value = 'closed';
 	// Radix's and Base UI's highlighted item: where focus or the pointer was as captured, set by the parts as it moves.
 	el.attrs = el.attrs.filter((a) => a.name !== 'data-highlighted');
+	// A Radix SelectItem is aria-selected only while it is both chosen and focused (captured open, it was).
+	if (el.attrs.some((a) => a.name === 'role' && a.value === 'option') && el.attrs.some((a) => a.name === 'data-state')) for (const a of el.attrs) if (a.name === 'aria-selected') a.value = 'false';
 	if (el.attrs.some((a) => a.name === 'data-open')) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-open'), { name: 'data-closed', value: '' }];
 	// React Aria's interaction states as the capture left them: the interactions part writes them as they happen.
 	if (el.attrs.some((a) => a.name === 'data-rac' || a.name === 'data-react-aria-pressable')) el.attrs = el.attrs.filter((a) => !/^data-(focused|focus-visible|hovered|pressed|focus-within|focus-visible-within)$/.test(a.name));
