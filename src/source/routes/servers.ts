@@ -42,18 +42,46 @@ function makesApp(mod: Module, init: N | undefined): boolean {
 	return !!imported && SERVER_PACKAGES.test(imported.source);
 }
 
-function roleOf(handlers: N[], mod: Module): string | null {
+// A guard's string arguments: a path is where it sends a visitor it turns away (ensureLoggedIn('/login')), anything else the role.
+function stringArgs(handlers: N[], mod: Module): string[] {
+	const out: string[] = [];
 	for (const h of handlers) {
 		const n = unwrap(h);
 		if (n?.type === 'CallExpression') for (const a of n.arguments as N[]) {
 			const v = str(a, mod) ?? (unwrap(a)?.type === 'ArrayExpression' ? str(unwrap(a)!.elements[0], mod) : undefined);
-			if (v) return v;
+			if (v) out.push(v);
 		}
 	}
-	return null;
+	return out;
 }
 
-const guardNames = (handlers: N[]) => handlers.map((h) => memberName(unwrap(h)?.type === 'CallExpression' ? unwrap(h)!.callee : h)).filter((n): n is string => !!n && AUTH_NAME.test(n));
+const roleOf = (handlers: N[], mod: Module): string | null => stringArgs(handlers, mod).find((v) => !v.startsWith('/')) ?? null;
+const redirectOf = (handlers: N[], mod: Module) => {
+	const to = stringArgs(handlers, mod).find((v) => v.startsWith('/'));
+	return to ? { redirectTo: to } : {};
+};
+
+const SESSION_PACKAGES = /^(express-session|cookie-session|koa-session|@fastify\/(session|secure-session))$/;
+const SIGN_IN_OPTIONS = /^(successRedirect|successReturnToOrRedirect)$/;
+
+// Middleware that loads the session (express-session, passport.initialize and passport.session) and Passport's sign-in
+// handler (authenticate with a success redirect) let every visitor through, so they are not guards.
+function turnsAway(handler: N, mod: Module): boolean {
+	const n = unwrap(handler);
+	const call = n?.type === 'CallExpression' ? n : undefined;
+	const name = memberName(call ? call.callee : n);
+	if (!name || !AUTH_NAME.test(name)) return false;
+	const root = name.split('.')[0]!;
+	if (SESSION_PACKAGES.test(mod.imports.get(root)?.source ?? '')) return false;
+	if (/(^|\.)passport\.(initialize|session)$/.test(name)) return false;
+	if (call && /(^|\.)authenticate$/.test(name)) {
+		const options = (call.arguments as N[]).map(unwrap).find((a) => a?.type === 'ObjectExpression');
+		if (options?.properties.some((p: N) => SIGN_IN_OPTIONS.test(p.key?.name ?? p.key?.value ?? ''))) return false;
+	}
+	return true;
+}
+
+const guardNames = (handlers: N[], mod: Module) => handlers.filter((h) => turnsAway(h, mod)).map((h) => memberName(unwrap(h)?.type === 'CallExpression' ? unwrap(h)!.callee : h)!);
 
 /** Express, Hono, Koa Router and Fastify routes, mounts and middleware guards. */
 export async function serverRoutes(ctx: Context): Promise<ServerFound> {
@@ -120,7 +148,7 @@ export async function serverRoutes(ctx: Context): Promise<ServerFound> {
 	}
 	const resolveMount = (keys: string[]) => keys.map((key) => (key.startsWith('@') ? exportsApp.get(key.slice(1)) : key)).find(Boolean);
 	const mountedApps = new Set(regs.filter((r) => r.kind === 'mount').map((r) => resolveMount(r.mounted!)));
-	type Active = { names: string[]; role: string | null; file: string; line: number; scope?: string };
+	type Active = { names: string[]; role: string | null; file: string; line: number; scope?: string; redirectTo?: string };
 	const visit = (app: string, prefix: string, inherited: Active[], depth: number) => {
 		if (depth > 10) return;
 		const mine = regs.filter((r) => r.app === app).sort((a, b) => a.order - b.order);
@@ -128,24 +156,25 @@ export async function serverRoutes(ctx: Context): Promise<ServerFound> {
 		for (const r of mine) {
 			const path = colonPath(joinPath(prefix, r.path));
 			if (r.kind === 'use') {
-				const names = guardNames(r.handlers);
+				const names = guardNames(r.handlers, r.mod);
 				if (r.mounted && !resolveMount(r.mounted) && !names.length) continue;
-				if (names.length) active.push({ names, role: roleOf(r.handlers, r.mod), file: r.mod.file, line: r.line, ...(r.path ? { scope: path } : {}) });
+				if (names.length) active.push({ names, role: roleOf(r.handlers, r.mod), file: r.mod.file, line: r.line, ...redirectOf(r.handlers, r.mod), ...(r.path ? { scope: path } : {}) });
 				continue;
 			}
 			const applicable = active.filter((g) => !g.scope || covers(g.scope, path, true));
 			if (r.kind === 'mount') {
 				const child = resolveMount(r.mounted!);
-				if (child) visit(child, path, [...applicable, ...(guardNames(r.handlers).length ? [{ names: guardNames(r.handlers), role: roleOf(r.handlers, r.mod), file: r.mod.file, line: r.line }] : [])], depth + 1);
+				const own = guardNames(r.handlers, r.mod);
+				if (child) visit(child, path, [...applicable, ...(own.length ? [{ names: own, role: roleOf(r.handlers, r.mod), file: r.mod.file, line: r.line, ...redirectOf(r.handlers, r.mod) }] : [])], depth + 1);
 				continue;
 			}
 			const handler = functionOf(r.handlers.at(-1), r.mod);
 			const renders = handler ? callsIn(handler).some((c) => /\.(render|html|sendFile)$/.test(c.name)) : false;
 			out.routes.push({ path, file: r.mod.file, line: r.line, dynamic: isDynamic(path), kind: renders ? 'page' : 'endpoint', methods: [r.method!] });
 			if (r.method !== 'GET' && r.method !== 'HEAD' && r.method !== 'OPTIONS') out.writes.push({ method: r.method === 'ALL' ? '*' : r.method!, path, handler: { file: r.mod.file, line: handler ? r.mod.line(handler.start) : r.line }, via: 'route' });
-			const own = guardNames(r.handlers);
-			for (const g of own.length ? [...applicable, { names: own, role: roleOf(r.handlers, r.mod), file: r.mod.file, line: r.line }] : applicable) {
-				out.guards.push({ role: g.role, file: g.file, line: g.line, routes: [path], how: g.names.join(', ') });
+			const own = guardNames(r.handlers, r.mod);
+			for (const g of own.length ? [...applicable, { names: own, role: roleOf(r.handlers, r.mod), file: r.mod.file, line: r.line, ...redirectOf(r.handlers, r.mod) }] : applicable) {
+				out.guards.push({ role: g.role, file: g.file, line: g.line, routes: [path], how: g.names.join(', '), ...(g.redirectTo ? { redirectTo: g.redirectTo } : {}) });
 			}
 		}
 	};

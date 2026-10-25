@@ -397,6 +397,27 @@ const EXPECTED: Record<string, ReturnType<typeof view>> = {
 		order: [],
 		limits: [],
 	},
+	'express-passport': {
+		framework: 'express',
+		routes: [
+			'page / GET server/server.ts:29',
+			'page /account GET auth=signed-in server/server.ts:28',
+			'endpoint /login POST server/server.ts:23',
+			'endpoint /logout GET server/server.ts:24',
+		],
+		nondeterminism: [],
+		writes: [
+			'POST /login route server/server.ts:23',
+		],
+		clients: [],
+		// Sessions and Passport set up on every request and Passport's sign-in handler turn no one away; only the route's own guard does.
+		guards: [
+			'signed-in ensureLoggedIn routes=/account login=/login server/server.ts:28',
+		],
+		components: [],
+		order: [],
+		limits: [],
+	},
 	'hono': {
 		framework: 'hono',
 		routes: [

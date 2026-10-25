@@ -69,8 +69,11 @@ export async function scanSource(dir: string): Promise<SourceFacts> {
 	const code = await codeRoutes(ctx);
 	routes.push(...code.routes);
 	guards.push(...code.guards);
+	// A server module's guards are the middleware in its route chains, which its reader has read already.
+	const serverFiles = new Set<string>();
 	for (const reader of [serverRoutes, railsRoutes, laravelRoutes, djangoRoutes, wordpressRoutes]) {
 		const found = await reader(ctx);
+		if (reader === serverRoutes) for (const r of found.routes) serverFiles.add(r.file);
 		routes.push(...found.routes);
 		writes.push(...found.writes);
 		guards.push(...found.guards);
@@ -79,7 +82,7 @@ export async function scanSource(dir: string): Promise<SourceFacts> {
 	const sites = await scanWrites(ctx, merged);
 	const clients = await scanClients(ctx);
 	writes.push(...sites.writes, ...clients.writes);
-	guards.push(...(await scanAuth(ctx, merged)));
+	guards.push(...(await scanAuth(ctx, merged, serverFiles)));
 	const nondeterminism = await scanNondeterminism(ctx, framework);
 	const components = await scanComponents(ctx, merged);
 	const redirects = await scanRedirects(ctx);
