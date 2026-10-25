@@ -63,6 +63,12 @@ const tooltip = `
 <button id="tt" data-slot="button" data-rac="" type="button" data-react-aria-pressable="true">Hover</button>
 <!--layers--><div hidden data-mm-layer="tt"><div id="tip" data-slot="tooltip-content" data-rac="" role="tooltip" data-placement="top" style="position:absolute"><p>Add to library</p></div></div>`;
 
+const autofocus = `
+<div data-slot="command-input-wrapper" data-rac="" data-mm-autofocus=""><input id="f1" data-rac="" type="search"></div>
+<div style="height:3000px"></div>
+<div data-slot="command-input-wrapper" data-rac="" data-mm-autofocus=""><input id="f2" data-rac="" type="search"></div>
+<!--layers--><div hidden data-mm-layer="x"><div data-slot="command-input-wrapper" data-rac="" data-mm-autofocus=""><input id="f3" data-rac="" type="search"></div></div>`;
+
 const PARTS = ['react-aria/select', 'react-aria/menu', 'react-aria/dialog', 'react-aria/disclosure', 'react-aria/combobox', 'react-aria/tooltip'];
 
 async function open(html: string): Promise<Page> {
@@ -243,6 +249,13 @@ test('ComboBox with chips: ArrowDown opens, choosing toggles an option and its c
 	await page.waitForTimeout(50);
 	assert.equal(await page.isVisible('#k1'), false);
 	assert.equal(await page.getAttribute('#m1o', 'aria-selected'), 'false');
+	await page.close();
+});
+
+test('autoFocus: the last part the page renders with it takes focus once the page is live, without scrolling to it', async () => {
+	const page = await open(autofocus);
+	assert.equal(await active(page), 'f2');
+	assert.equal(await page.evaluate(() => window.scrollY), 0);
 	await page.close();
 });
 

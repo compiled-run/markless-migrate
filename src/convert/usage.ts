@@ -72,7 +72,7 @@ export async function usageResolver(usagePath: string, source?: string): Promise
 		const fileSites = b.sites.filter((s): s is { file: string; line: number } => 'file' in s);
 		const key = `${b.library} ${b.feature}`;
 		sitesOf.set(key, [...(sitesOf.get(key) ?? []), ...fileSites]);
-		for (const [name, value] of Object.entries(props)) if (Array.isArray(value) && value.length === 1 && (typeof value[0] === 'string' || typeof value[0] === 'number')) literalProps.set(`${key} ${name}`, String(value[0]));
+		for (const [name, value] of Object.entries(props)) if (Array.isArray(value) && value.length === 1 && (typeof value[0] === 'string' || typeof value[0] === 'number' || typeof value[0] === 'boolean')) literalProps.set(`${key} ${name}`, String(value[0]));
 		const slots = Array.isArray(props['data-slot']) ? (props['data-slot'] as unknown[]).filter((v): v is string => typeof v === 'string') : [];
 		for (const slot of slots) {
 			const list = bySlot.get(slot) ?? bySlot.set(slot, []).get(slot)!;
@@ -104,6 +104,7 @@ export async function usageResolver(usagePath: string, source?: string): Promise
 	}
 	const modules = new Map<string, Module | undefined>();
 	const defaults = new Map<string, string | undefined>();
+	const slotProps = new Map<string, string | undefined>();
 	return {
 		name: `the semantic usage inventory (${usagePath.split('/').slice(-2).join('/')})`,
 		candidates: (slot) => bySlot.get(slot) ?? [],
@@ -131,6 +132,8 @@ export async function usageResolver(usagePath: string, source?: string): Promise
 		},
 		slotProp(library, exportName, slot, prop) {
 			if (!source) return undefined;
+			const key = `${library} ${exportName} ${slot} ${prop}`;
+			if (slotProps.has(key)) return slotProps.get(key);
 			const votes = new Map<string, number>();
 			for (const site of sitesOf.get(`${library} ${exportName}`) ?? []) {
 				if (!modules.has(site.file)) {
@@ -144,7 +147,9 @@ export async function usageResolver(usagePath: string, source?: string): Promise
 				const value = mod ? slotSiteProp(mod, site.line, slot, prop) : undefined;
 				if (value !== undefined) votes.set(value, (votes.get(value) ?? 0) + 1);
 			}
-			return [...votes].sort((a, b) => b[1] - a[1])[0]?.[0];
+			const best = [...votes].sort((a, b) => b[1] - a[1])[0]?.[0];
+			slotProps.set(key, best);
+			return best;
 		},
 	};
 }
@@ -157,7 +162,10 @@ function slotSiteProp(mod: Module, line: number, slot: string, prop: string): st
 		const attrs = (node.attributes ?? []) as N[];
 		const named = (name: string) => attrs.find((a) => a.type === 'JSXAttribute' && a.name?.name === name);
 		if (named('data-slot')?.value?.value !== slot) return;
-		const value = named(prop)?.value;
+		const written = named(prop);
+		const value = written?.value;
+		// A boolean prop written bare (`autoFocus`).
+		if (written && !value) found = 'true';
 		if (!value) return;
 		if (value.type === 'Literal') found = String(value.value);
 		else if (value.type === 'JSXExpressionContainer') {
