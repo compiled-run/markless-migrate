@@ -1,6 +1,7 @@
+import { sessionDatabases, updateCount } from './live-data.ts';
 import { FRAMEWORK_MARKUP_SELECTOR } from './automatic.ts';
 import type { Browser, BrowserContext, Locator, Page, Request } from 'playwright';
-import { frameworkTransport, openPage, requestLine, type OpenOptions, type SideEnv } from './browser.ts';
+import { frameworkTransport, openPage, requestLine, type OpenOptions, type SideEnv, databaseFramesReceived } from './browser.ts';
 import { clockLine } from './clock.ts';
 import { markHandlers } from './handlers.ts';
 import { originInQuery } from './capture.ts';
@@ -35,7 +36,9 @@ export type Step =
 	| { readonly action: 'select'; readonly target: Target; readonly value: string }
 	| { readonly action: 'submit'; readonly target: Target; readonly fields: readonly { readonly target: Target; readonly value: string; readonly check?: boolean }[] }
 	| { readonly action: 'scroll'; readonly target: Target }
-	| { readonly action: 'hover'; readonly target: Target; readonly at: number };
+	| { readonly action: 'hover'; readonly target: Target; readonly at: number }
+	/** The next `updates` updates the old page heard from its realtime database, sent to every socket of the page session. */
+	| { readonly action: 'live'; readonly target: Target; readonly updates: number; /** Kept for the next load only, as if the page were closed while the database changed. */ readonly away?: boolean };
 
 export interface StepResult {
 	readonly url: string;
@@ -200,6 +203,8 @@ export function describeStep(step: Step): string {
 			return `scroll to ${describeTarget(step.target)}`;
 		case 'hover':
 			return `point at ${Math.round(step.at * 100)}% across ${describeTarget(step.target)}`;
+		case 'live':
+			return step.away ? `the database takes ${step.updates} update${step.updates === 1 ? '' : 's'} while the page is not listening` : `receive ${step.updates} live update${step.updates === 1 ? '' : 's'} from the database`;
 	}
 }
 
@@ -408,6 +413,18 @@ function hoverSurfaces(): { tag: string; scope: string; index: number }[] {
 
 /** A section of the page found by its id (the target of a contents list's link). */
 export const SECTION = 'section';
+/** The target of a step that no control performs: the database sends it. */
+export const LIVE = 'database';
+const MAX_LIVE_STEPS = 6;
+const LIVE_DELIVERY_MS = 5_000;
+
+/** The recorded updates in at most MAX_LIVE_STEPS steps, each sending the next few in order. */
+export function liveSteps(count: number): Step[] {
+	const per = Math.ceil(count / MAX_LIVE_STEPS);
+	const steps: Step[] = [];
+	for (let sent = 0; sent < count; sent += per) steps.push({ action: 'live', target: { role: LIVE, name: '', nth: 0 }, updates: Math.min(per, count - sent) });
+	return steps;
+}
 
 /** Runs in the page: the ids of the sections a contents list links to (in-page links in a nav or aside), in page order, at most 12. */
 function contentsSections(): string[] {
@@ -1186,6 +1203,15 @@ async function stepTarget(page: Page, step: Step): Promise<Locator> {
 }
 
 async function perform(page: Page, step: Step, patience = QUICK): Promise<void> {
+	if (step.action === 'live') {
+		const databases = sessionDatabases(page.context());
+		for (let i = 0; i < step.updates; i++) if (!databases.some((db) => db.next(step.away))) throw new Error('the recording has no more updates');
+		// The pushed frames reach the page asynchronously; the step's effect is read once they are all there.
+		const sent = databases.reduce((n, db) => n + db.frames, 0);
+		const until = Date.now() + LIVE_DELIVERY_MS;
+		while (databaseFramesReceived(page) < sent && Date.now() < until) await sleep(10);
+		return;
+	}
 	const target = await stepTarget(page, step);
 	await target
 		.evaluate((el, used) => {
@@ -1309,7 +1335,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 	const observe = async (act: () => Promise<void>, what: string, step: Step | undefined, destructive: boolean, reload: boolean): Promise<StepResult> => {
 		const startPath = new URL(page.url()).pathname;
 		const href = step?.target.role === 'link' ? await locate(page, step.target).getAttribute('href', { timeout: STEP_TIMEOUT }).catch(() => null) : null;
-		const used = step && !reload && step.action !== 'scroll' ? await stepTarget(page, step) : undefined;
+		const used = step && !reload && step.action !== 'scroll' && step.action !== 'live' ? await stepTarget(page, step) : undefined;
 		// The control is brought into view first, so the frames before and after the step show what it answers with, not a scroll.
 		if (used && (await used.evaluate((el) => { const r = el.getBoundingClientRect(); return r.bottom < 0 || r.right < 0 || r.top > innerHeight || r.left > innerWidth; }, undefined, { timeout: QUICK }).catch(() => false))) {
 			await used.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' }), undefined, { timeout: QUICK }).catch(() => {});
@@ -1846,6 +1872,12 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		if (sections.length >= 2) {
 			const steps = sections.map((id): Step => ({ action: 'scroll', target: { role: SECTION, name: id, nth: 0 } }));
 			wave.push({ journey: { name: `scroll through the ${sections.length} sections the page's contents list names`, steps }, depth: 1, expand: false });
+		}
+		const live = liveSteps(updateCount(env.replay?.live));
+		if (live.length) {
+			const count = updateCount(env.replay?.live);
+			wave.push({ journey: { name: `receive the ${count} updates the old page heard from its database while it was open, then reload`, steps: live, cycle: ['reload'] }, depth: 1, expand: false });
+			wave.push({ journey: { name: `come back after the ${count} updates arrived while the page was not listening`, steps: [{ action: 'live', target: { role: LIVE, name: '', nth: 0 }, updates: count, away: true }], cycle: ['reload'] }, depth: 1, expand: false });
 		}
 	} finally {
 		await start.close();

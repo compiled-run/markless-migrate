@@ -25,7 +25,7 @@ Status: early. `plan`, `check`, `cli`, `status`, `switch`, `proxy`, `config`, `s
 ```bash
 markless-migrate plan --old http://localhost:3000 [--source ../old-app] [--built ../old-app/dist] [--auth .migrate/auth.json] [--limit 100] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>] [--no-caching]
 markless-migrate check --old http://localhost:3000 --new http://localhost:5173 [--route /about]... [--open]
-    [--source ../old-app] [--data record|replay] [--staging] [--block <host>]... [--allow <host>]...
+    [--source ../old-app] [--data record|replay] [--live-window <seconds>] [--staging] [--block <host>]... [--allow <host>]...
     [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
     [--auth .migrate/auth.json] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
     [--all] [--allow-unchecked] [--new-source ../markless-app] [--concurrency 4] [--changed]
@@ -250,7 +250,8 @@ same pipeline: `check --old <pre-upgrade build> --new <upgraded build> --all` mu
 
 Every page loads frozen: `Date` and `Date.now` start at a fixed instant and move only when a timer
 fires (to the time it was due), `performance.timeOrigin` is that instant, `Math.random`,
-`crypto.getRandomValues` and `crypto.randomUUID` are seeded, the timezone and locale are fixed
+`crypto.getRandomValues` and `crypto.randomUUID` are seeded (all but the names Playwright gives the sockets it routes,
+which would otherwise be the same in two pages open at once and cross their traffic), the timezone and locale are fixed
 (UTC and en-US unless `--timezone`/`--locale`), a capture first waits (at most 3 s) for what the page
 load started to settle (a timeout due within that time, such as a loading bar's fade or a demo's fake
 server answering after 2 s, and transitions running; a loop does not hold it up), then finishes or cancels CSS animations and transitions (the reduced-motion check
@@ -483,6 +484,18 @@ fetches is seen: a Next.js build answers a prerendered or revalidated page (`x-n
 `STALE`) and a cached `fetch` without running them, so the recorder adds the build's own draft-mode
 cookie (from `.next/prerender-manifest.json` in the server's working directory) to each tagged request.
 The old app's page loads are then as slow as an uncached render.
+
+Live data from a Firebase Realtime Database (`*.firebaseio.com`, `*.firebasedatabase.app`), which a page reads over a
+WebSocket rather than by request, is recorded and replayed too. While recording, every frame of the old page's
+database sockets is kept: the first value the server sent for each path the page listened to is the snapshot, and
+every value it pushed after that is an update, in order. `--live-window <seconds>` keeps a page of each such route open
+that long while recording, so the updates of a busy page (new comments on a story) are heard too. On replay a fake
+database answers every socket of both apps from the snapshot (the handshake, each listen with its value, ok to the
+rest; writes change nothing), REST reads of the same database (`<path>.json`) get the same values in the browser and,
+through the recorder, on the server, and a journey `receive the N updates the old page heard ..., then reload` sends
+the recorded updates in at most six steps to whatever each page is listening to, compares each step like any other,
+and reloads the page with the updated data still served: how a page shows a live update while it is open, and what it
+remembers about it on the next visit, are compared old against new.
 
 Writes are classified before they are sent: form posts, non-GET requests, Next.js server actions,
 and any request a handler the source scan marks as writing. They are sent only when both origins are

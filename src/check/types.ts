@@ -1,3 +1,4 @@
+import type { SocketLog } from './live-data.ts';
 import type { Png } from './artifacts.ts';
 import type { RuntimeMarker } from './residue.ts';
 import type { AutomaticRule } from '../overrides.ts';
@@ -142,6 +143,8 @@ export interface PageCapture {
 	readonly weight: Weight;
 	readonly a11y?: A11yCapture;
 	readonly network?: NetworkCapture;
+	/** Frames of the page's realtime database sockets (Firebase), recorded so a replay can serve the same data and updates. */
+	readonly sockets?: readonly SocketLog[];
 	/** Requests to tracker hosts that were blocked, by host. */
 	readonly blocked?: Readonly<Record<string, number>>;
 	/** Writes the page made while loading, sent or held back. */

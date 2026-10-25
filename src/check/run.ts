@@ -15,6 +15,7 @@ import { adoptAnswers, LAUNCH, DEFINITE, defaultEnv, isLoopback, pushRecording, 
 import { captureHttp, captureRoute, landing, mime, pageLoads, thirdPartyLoads } from './capture.ts';
 import { OldCache } from './cache.ts';
 import { everyRecording, readRecording, recordable, slug, writeRecording } from './data.ts';
+import { mergeRecordings, recordLive, restRecords } from './live-record.ts';
 import { checkEndpoint, checkRedirect, isPage } from './endpoints.ts';
 import { DEFAULT_FREEZE, pinnedBy, pinnedSummary, type FreezeOptions } from './freeze.ts';
 import { HINTS } from './hints.ts';
@@ -65,7 +66,7 @@ export interface CheckOptions {
 	/** What scanning the old app's source found. */
 	readonly source?: SourceFacts;
 	/** Record OLD's responses per route into dir, or serve them to both apps from there. */
-	readonly data?: { readonly mode: 'record' | 'replay'; readonly dir: string };
+	readonly data?: { readonly mode: 'record' | 'replay'; readonly dir: string; /** While recording, how long a page of each route that spoke to a realtime database stays open to hear its updates. */ readonly liveWindowMs?: number };
 	/** Roles to sign in as; every route is checked once per role and once anonymous. */
 	readonly auth?: AuthConfig;
 	/** Where each role's signed-in storage state is written, per side. */
@@ -226,7 +227,8 @@ async function loadBoth(browser: Browser, run: Run, route: string, viewports: re
 	if (loadsDiffer(oldA, oldB)) olds.push(await captureRoute(browser, run.old.origin, route, viewports, run.old));
 	const loads = [...new Set(olds.flatMap((o) => Object.values(o.pages).flatMap((p) => pageLoads.get(p) ?? [])))];
 	const answers = await storedAnswers([...new Set(olds.flatMap((o) => Object.values(o.pages).flatMap((p) => thirdPartyLoads.get(p) ?? [])))]);
-	await run.oldCache?.write('captures', run.old, key, loads, { olds, loads, answers });
+	// A page that heard a live database is that moment's data: it is loaded afresh each run unless the data is replayed.
+	if (!olds.some((o) => Object.values(o.pages).some((p) => p.sockets?.length))) await run.oldCache?.write('captures', run.old, key, loads, { olds, loads, answers });
 	return { olds, next, loads };
 }
 
@@ -570,15 +572,28 @@ async function replayRoute(run: Run, dir: string, route: string, shared: Promise
 	if (!recording) {
 		return { run, failures: [{ route, dimension: 'network', check: 'recorded data', expected: `a recording in ${dir}`, actual: 'none for this route', hint: HINTS.dataMissing }] };
 	}
-	const replay = { set: randomUUID(), responses: recording.responses, shared: await shared };
+	const replay = { set: randomUUID(), responses: [...recording.responses, ...restRecords(recording.live)], shared: await shared, ...(recording.live ? { live: recording.live } : {}) };
 	const next: Run = { ...run, old: { ...run.old, replay }, new: { ...run.new, replay } };
 	const failures: Failure[] = [];
-	if (recording.responses.some((r) => r.side === 'server')) {
+	if (replay.responses.some((r) => r.side === 'server')) {
+		// The database's REST answers are offered to a server that reads them; one that does not run the recorder only fails a recording of its own requests.
+		const recordedServer = recording.responses.some((r) => r.side === 'server');
 		for (const [label, env] of [['old', next.old], ['new', next.new]] as const) {
-			if (!(await pushRecording(env))) failures.push({ route, dimension: 'network', check: `recorded server responses on ${label.toUpperCase()}`, expected: 'served by the request recorder in the server', actual: 'the server does not run the request recorder, so it fetched live data', hint: HINTS.networkRecorder });
+			if (!(await pushRecording(env)) && recordedServer) failures.push({ route, dimension: 'network', check: `recorded server responses on ${label.toUpperCase()}`, expected: 'served by the request recorder in the server', actual: 'the server does not run the request recorder, so it fetched live data', hint: HINTS.networkRecorder });
 		}
 	}
 	return { run: next, failures };
+}
+
+/** The navigation check moves between the checked routes, so on replay it is served every route's recording at once. */
+async function navigationRun(run: Run, data: CheckOptions['data'], routes: readonly string[]): Promise<Run> {
+	if (data?.mode !== 'replay') return run;
+	const recordings = (await Promise.all(routes.map((route) => readRecording(data.dir, route)))).filter((r) => r !== undefined);
+	const merged = mergeRecordings(recordings);
+	const replay = { set: randomUUID(), responses: [...merged.responses, ...restRecords(merged.live)], ...(merged.live ? { live: merged.live } : {}) };
+	const next: Run = { ...run, old: { ...run.old, replay }, new: { ...run.new, replay } };
+	if (replay.responses.some((r) => r.side === 'server')) await Promise.all([pushRecording(next.old), pushRecording(next.new)]);
+	return next;
 }
 
 /** A route that was not compared in full: only `compared` dimensions carry a verdict, the rest are skipped. */
@@ -828,8 +843,10 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				oldCaptures.delete(done);
 				forgetFailures(done.failures);
 				if (data?.mode === 'record' && old) {
-					const records = Object.values(old.pages)[0]?.network?.records ?? [];
-					await writeRecording(data.dir, { route, recordedFrom: options.oldOrigin, at: startedAt, responses: recordable(records) });
+					const first = Object.values(old.pages)[0];
+					const records = first?.network?.records ?? [];
+					const live = await recordLive(browser, run.old, route, first?.sockets ?? [], data.liveWindowMs ?? 0, (options.viewports ?? VIEWPORTS)[0]!);
+					await writeRecording(data.dir, { route, recordedFrom: options.oldOrigin, at: startedAt, responses: recordable(records), ...(live ? { live } : {}) });
 				}
 				const result = withTemplate(done);
 				const checkedAs = asRole(failures.length ? withFailures(result, [...failures, ...result.failures]) : result, role);
@@ -838,7 +855,8 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				options.onRoute?.(kept);
 				return kept;
 			});
-			const navigated = options.navigation ? await checkNavigation(browser, roleRun.new, pages, { concurrency: options.concurrency ?? DEFAULT_CONCURRENCY, old: roleRun.old, ...options.navigation }) : undefined;
+			const navRun = options.navigation ? await navigationRun(roleRun, data, pages) : undefined;
+			const navigated = navRun ? await checkNavigation(browser, navRun.new, pages, { concurrency: options.concurrency ?? DEFAULT_CONCURRENCY, old: navRun.old, ...options.navigation }) : undefined;
 			if (navigated) navigation.push(navigated);
 			const compared = navigated ? applyNavigation(shareLayout(checked), navigated) : shareLayout(checked);
 			routes.push(...(artifacts ? await Promise.all(compared.map((r) => artifacts.keep(r))) : compared));
