@@ -221,6 +221,24 @@ test('Radix Tooltip: keyboard focus opens it instant-open; the pointer opens it 
 	await fresh.close();
 });
 
+test('the site\'s D theme shortcut, a document listener on the old page, runs with the part that claims the key: in an open menu "d" moves the typeahead and switches the theme', async () => {
+	const page = await open(
+		`<main style="padding:200px"><button type="button" id="menu" aria-haspopup="menu" aria-expanded="false" data-state="closed" data-slot="dropdown-menu-trigger">Open</button></main>
+		<div data-mm-layer="menu" hidden data-radix-popper-content-wrapper style="position:fixed"><div data-slot="dropdown-menu-content" role="menu" id="menu-content" aria-labelledby="menu" data-state="closed" tabindex="-1">${['Edit', 'Share', 'Delete'].map((t) => `<div role="menuitem" tabindex="-1">${t}</div>`).join('')}</div></div>`,
+		['site', 'radix/dropdown-menu'],
+		'body',
+	);
+	const dark = () => page.evaluate(() => document.documentElement.classList.contains('dark'));
+	const before = await dark();
+	await page.locator('#menu').focus();
+	await page.keyboard.press('Enter');
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Edit');
+	await page.keyboard.press('d');
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Delete');
+	assert.equal(await dark(), !before);
+	await page.close();
+});
+
 // Base UI Combobox as the converter renders it: the list a portal keyed by the input's id, every item's indicator and
 // every chip already there, hidden.
 const comboboxLayer = (key: string, multi: boolean) => `<div data-mm-layer="${key}" hidden data-base-ui-portal><div data-slot="positioner"><div data-slot="combobox-content" data-closed><div role="status" data-slot="combobox-empty" class="empty">No items found.</div><div role="listbox" id="${key}-list" data-slot="combobox-list"${multi ? ' aria-multiselectable="true"' : ''}>${['Next.js', 'SvelteKit', 'Nuxt.js']

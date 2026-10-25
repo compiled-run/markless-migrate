@@ -12,6 +12,11 @@ export interface Part {
 	readonly contextmenu?: (target: Element, event: MouseEvent) => boolean;
 	readonly input?: (target: Element, event: Event) => boolean;
 	readonly submit?: (target: Element, event: SubmitEvent) => boolean;
+	/**
+	 * A key the old page listened for on the document (a shortcut). It runs for every keydown, after and whatever the
+	 * part that claims the key, as a document listener runs after the handlers of the element the key was pressed in.
+	 */
+	readonly shortcut?: (target: Element, event: KeyboardEvent) => void;
 	/** Starts what a part does to an element for as long as the page shows it (a scroll position kept, a size watched). */
 	readonly mount?: (el: Element) => void;
 	/** Runs once the page is idle: what the old page's code did on load wherever the page was scrolled (an Autoplay timer). */
@@ -37,7 +42,9 @@ export function behave(event: Event): void {
 		const control = target.closest('[data-mm-replace]');
 		if (control) swap(control);
 	}
-	if (run(kind, target, event)) return;
+	const claimed = run(kind, target, event);
+	if (kind === 'keydown') for (const part of PARTS) part.shortcut?.(target, event as KeyboardEvent);
+	if (claimed) return;
 	// A use no part answered may need a served layer not mounted yet: a crossing fetches it, a press is answered once it is in.
 	if (kind === 'pointerout' || kind === 'focusout' || !layersPending()) return;
 	const loaded = loadLayers();
