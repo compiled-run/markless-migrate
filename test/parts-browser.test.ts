@@ -1245,21 +1245,34 @@ const commit = (view) => {
 document.querySelectorAll('button[data-k]').forEach((b) => b.addEventListener('click', () => sonnerAdd(T, SPECS[Number(b.dataset.k)], commit)));`;
 	return `<style>${SONNER_CSS}</style><div style="padding-top:300px">${toasts.map((t, k) => `<button data-k="${k}">${t.label}</button>`).join('')}</div><section aria-label="Notifications alt+T" data-mm-toaster="tst0"></section><script type="module">${script}</script>`;
 }
-const toastState = (page: Page) => page.evaluate(() => [...document.querySelectorAll('section > ol')].map((ol) => `${ol.getAttribute('data-y-position')}-${ol.getAttribute('data-x-position')}:` + [...ol.querySelectorAll('li')].map((li) => `${li.textContent}[i=${li.getAttribute('data-index')} front=${li.getAttribute('data-front')} exp=${li.getAttribute('data-expanded')} removed=${li.getAttribute('data-removed')} offset=${li.style.getPropertyValue('--offset')} z=${li.style.getPropertyValue('--z-index')}]`).join(' ')));
+const readToasts = () => [...document.querySelectorAll('section > ol')].map((ol) => `${ol.getAttribute('data-y-position')}-${ol.getAttribute('data-x-position')}:` + [...ol.querySelectorAll('li')].map((li) => `${li.textContent}[i=${li.getAttribute('data-index')} front=${li.getAttribute('data-front')} exp=${li.getAttribute('data-expanded')} removed=${li.getAttribute('data-removed')} offset=${li.style.getPropertyValue('--offset')} z=${li.style.getPropertyValue('--z-index')}]`).join(' '));
+const toastState = (page: Page) => page.evaluate(readToasts);
+// Each distinct toast state from now until the toaster renders no list, with when it began (timers can only run late).
+const recordToasts = (page: Page) => page.evaluate((read) => new Promise<{ state: string; at: number }[]>((resolve) => {
+	const now = () => (0, eval)(`(${read})`)().join(' ');
+	const seen: { state: string; at: number }[] = [];
+	new MutationObserver(() => {
+		const state = now();
+		if (state === seen.at(-1)?.state) return;
+		seen.push({ state, at: performance.now() });
+		if (!state) resolve(seen);
+	}).observe(document.querySelector('section')!, { subtree: true, childList: true, attributes: true, characterData: true });
+}), readToasts.toString());
+// The phases of a recorded life: each first state that shows other text or another removed flag, with when it began.
+const phasesOf = (states: readonly { state: string; at: number }[]) => states.map((s) => ({ state: s.state.replace(/\[.*?removed=(\w+).*?\]/g, '[removed=$1]'), at: s.at })).filter((s, k, all) => k === 0 || s.state !== all[k - 1]!.state);
+const untilToasts = (page: Page, expected: string) => page.waitForFunction(([read, want]) => (0, eval)(`(${read})`)().join(' ') === want, [readToasts.toString(), expected]);
 
 test('sonner: each use adds a toast at the front of the stack, hovering expands it with each toast lifted by the heights before it', async () => {
 	const page = await open(sonnerPage([{ label: 'A' }, { label: 'B' }]), ['sonner']);
 	await page.getByRole('button', { name: 'A' }).click();
-	await page.waitForTimeout(100);
-	assert.deepEqual(await toastState(page), ['top-center:A[i=0 front=true exp=false removed=false offset=0px z=1]']);
-	assert.equal(await page.locator('section li').getAttribute('data-mounted'), 'true');
+	await untilToasts(page, 'top-center:A[i=0 front=true exp=false removed=false offset=0px z=1]');
+	await page.waitForFunction(() => document.querySelector('section li')?.getAttribute('data-mounted') === 'true');
 	await page.getByRole('button', { name: 'B' }).click();
 	await page.getByRole('button', { name: 'A' }).click();
-	await page.waitForTimeout(100);
-	assert.deepEqual(await toastState(page), ['top-center:A[i=0 front=true exp=false removed=false offset=0px z=3] B[i=1 front=false exp=false removed=false offset=64px z=2] A[i=2 front=false exp=false removed=false offset=128px z=1]']);
+	await untilToasts(page, 'top-center:A[i=0 front=true exp=false removed=false offset=0px z=3] B[i=1 front=false exp=false removed=false offset=64px z=2] A[i=2 front=false exp=false removed=false offset=128px z=1]');
 	const box = (await page.locator('section li').first().boundingBox())!;
 	await page.mouse.move(box.x + 10, box.y + 10);
-	await page.waitForTimeout(100);
+	await page.waitForFunction(() => document.querySelector('section li')?.getAttribute('data-expanded') === 'true');
 	assert.match((await toastState(page))[0]!, /^top-center:A\[i=0 front=true exp=true/);
 	assert.match((await page.locator('section ol').getAttribute('style')) ?? '', /^--front-toast-height: 50px; --width: 356px;/);
 	await page.close();
@@ -1267,40 +1280,39 @@ test('sonner: each use adds a toast at the front of the stack, hovering expands 
 
 test('sonner: a toast for a position no toast uses yet gets its own list after the toaster\'s, and leaves 200 ms after its lifetime', async () => {
 	const page = await open(sonnerPage([{ label: 'L', position: 'top-left', duration: 400 }]), ['sonner']);
+	const seen = recordToasts(page);
 	await page.getByRole('button', { name: 'L' }).click();
-	await page.waitForTimeout(100);
-	assert.deepEqual(await toastState(page), ['top-center:', 'top-left:L[i=0 front=true exp=false removed=false offset=0px z=1]']);
-	await page.waitForTimeout(400);
-	assert.deepEqual(await toastState(page), ['top-center:', 'top-left:L[i=0 front=true exp=false removed=true offset=0px z=1]']);
-	await page.waitForTimeout(300);
-	assert.deepEqual(await toastState(page), [], 'with no toast left the toaster renders no list');
+	const states = await seen;
+	assert.ok(states.some((s) => s.state === 'top-center: top-left:L[i=0 front=true exp=false removed=false offset=0px z=1]'));
+	const phases = phasesOf(states);
+	assert.deepEqual(phases.map((s) => s.state), ['top-center: top-left:L[removed=false]', 'top-center: top-left:L[removed=true]', ''], 'with no toast left the toaster renders no list');
+	const [lived, left] = [phases[1]!.at - phases[0]!.at, phases[2]!.at - phases[1]!.at];
+	assert.ok(lived >= 380 && left >= 190, `lived ${lived} ms, then left ${left} ms after`);
 	await page.close();
 });
 
 test('sonner: a promise toast shows its loading markup, then its result, and its lifetime starts with the result', async () => {
 	const page = await open(sonnerPage([{ label: 'P', duration: 300, phases: [{ at: 0, type: 'loading', inner: '<div data-title="">Loading...</div>' }, { at: 500, type: 'success', inner: '<div data-title="">Done</div>' }] }]), ['sonner']);
+	const seen = recordToasts(page);
 	await page.getByRole('button', { name: 'P' }).click();
-	await page.waitForTimeout(400);
-	assert.match((await toastState(page))[0]!, /Loading\.\.\.\[i=0 front=true exp=false removed=false/, 'a loading toast has no timer');
-	await page.waitForTimeout(250);
-	assert.match((await toastState(page))[0]!, /Done\[i=0 front=true exp=false removed=false/);
-	await page.waitForTimeout(400);
-	assert.deepEqual(await toastState(page), []);
+	const phases = phasesOf(await seen);
+	assert.deepEqual(phases.map((s) => s.state), ['top-center:Loading...[removed=false]', 'top-center:Done[removed=false]', 'top-center:Done[removed=true]', '']);
+	assert.ok(phases[1]!.at - phases[0]!.at >= 480, 'a loading toast has no timer');
+	assert.ok(phases[2]!.at - phases[1]!.at >= 280, 'its lifetime starts with the result');
 	await page.close();
 });
 
 test('sonner: a toast\'s action button dismisses it through its list\'s handlers, and a held press on the list pauses every timer', async () => {
-	const page = await open(sonnerPage([{ label: 'A', duration: 300, phases: [{ at: 0, type: '', inner: '<div data-title="" style="height:50px">A</div><button data-button="" data-action="">Undo</button>' }] }]), ['sonner']);
+	const page = await open(sonnerPage([{ label: 'A', duration: 1000, phases: [{ at: 0, type: '', inner: '<div data-title="" style="height:50px">A</div><button data-button="" data-action="">Undo</button>' }] }]), ['sonner']);
 	await page.getByRole('button', { name: 'A' }).click();
-	await page.waitForTimeout(100);
+	await page.waitForFunction(() => document.querySelector('section li')?.getAttribute('data-mounted') === 'true');
 	const box = (await page.locator('section li').boundingBox())!;
 	await page.mouse.move(box.x + 10, box.y + 10);
 	await page.mouse.down();
-	await page.waitForTimeout(500);
+	await page.waitForTimeout(1500);
 	assert.match((await toastState(page))[0]!, /removed=false/, 'pressed and hovered, the timer waits');
 	await page.mouse.up();
 	await page.getByRole('button', { name: 'Undo' }).click();
-	await page.waitForTimeout(50);
-	assert.match((await toastState(page))[0]!, /removed=true/);
+	await page.waitForFunction(() => document.querySelector('section li')?.getAttribute('data-removed') === 'true');
 	await page.close();
 });
