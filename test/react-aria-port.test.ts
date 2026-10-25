@@ -445,3 +445,58 @@ test('Tooltip: a hover after the pointer moved shows it and describes the trigge
 	assert.equal(await page.isVisible('#tip'), false);
 	await page.close();
 });
+
+const fields = `
+<input id="f1" data-rac="" type="text" value=""><button id="b1" data-rac="" type="button" data-react-aria-pressable="true">One</button><button id="b2" data-rac="" type="button" data-react-aria-pressable="true">Two</button>
+<div id="area" role="button" tabindex="0" data-react-aria-pressable="true">Right click here</div>
+<textarea id="ta" data-rac="" disabled data-disabled="true"></textarea><input id="di" data-rac="" disabled data-disabled="true" value="">`;
+
+test('Focus ring: typing in a text field leaves it hidden, Escape then shows it', async () => {
+	const page = await open(fields);
+	await page.click('#f1');
+	assert.equal(await page.getAttribute('#f1', 'data-focus-visible'), null);
+	await page.keyboard.type('a');
+	assert.equal(await page.getAttribute('#f1', 'data-focus-visible'), null);
+	await page.keyboard.press('Escape');
+	assert.equal(await page.getAttribute('#f1', 'data-focus-visible'), 'true');
+	await page.mouse.down();
+	assert.equal(await page.getAttribute('#f1', 'data-focus-visible'), null, 'a press hides it again');
+	await page.close();
+});
+
+test('Focus ring: focus() from the page keeps the modality, a mouse that only moves over the page does not change it', async () => {
+	const page = await open(fields);
+	const focus = (id: string) => page.evaluate((id) => document.getElementById(id)!.focus(), id);
+	await page.click('#b1');
+	await focus('b2');
+	assert.deepEqual(await attrs(page, 'b2', ['data-focused', 'data-focus-visible']), { 'data-focused': 'true', 'data-focus-visible': null });
+	await page.keyboard.press('Shift');
+	await focus('b1');
+	assert.equal(await page.getAttribute('#b1', 'data-focus-visible'), null, 'a modifier key alone is no keyboard use');
+	await page.keyboard.press('ArrowLeft');
+	assert.equal(await page.getAttribute('#b1', 'data-focus-visible'), 'true');
+	// The browser's own hover updates after layout: boundary and mouse events without a pointermove.
+	await page.evaluate(() => {
+		const b = document.getElementById('b2')!;
+		b.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }));
+		b.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+	});
+	await focus('b2');
+	assert.equal(await page.getAttribute('#b2', 'data-focus-visible'), 'true');
+	await page.click('#b1');
+	await page.focus('#b2');
+	assert.equal(await page.getAttribute('#b2', 'data-focus-visible'), 'true', 'focus that no event or focus() call of the page led to is virtual');
+	await page.close();
+});
+
+test('Interaction states: a pressable without data-rac gets none, a disabled TextArea is still hovered', async () => {
+	const page = await open(fields);
+	await page.hover('#area');
+	await page.click('#area');
+	assert.deepEqual(await attrs(page, 'area', ['data-hovered', 'data-focused', 'data-pressed']), { 'data-hovered': null, 'data-focused': null, 'data-pressed': null });
+	await page.hover('#ta', { force: true });
+	assert.equal(await page.getAttribute('#ta', 'data-hovered'), 'true');
+	await page.hover('#di', { force: true });
+	assert.equal(await page.getAttribute('#di', 'data-hovered'), null);
+	await page.close();
+});
