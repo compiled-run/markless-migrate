@@ -23,9 +23,50 @@ export interface CapturedPage {
 	readonly lateFonts?: readonly { readonly id: string; readonly key: string }[];
 	/** The web fonts a first screen draws that the page does not preload: the file each was fetched from. */
 	readonly firstScreenFonts?: readonly string[];
+	/** COMMAND_EMPTY when the commands' empty states were kept. */
+	readonly commandEmpty?: number;
 }
 
 const key = (route: string) => createHash('sha256').update(route).digest('hex').slice(0, 16);
+
+/** Captures (and reveals) taken before commands' empty states were kept are taken again where they hold a cmdk input. */
+export const COMMAND_EMPTY = 1;
+export const keptCommandEmpty = (htmls: readonly string[], marked: number | undefined) => marked === COMMAND_EMPTY || !htmls.some((h) => h.includes('cmdk-input'));
+
+/**
+ * cmdk renders [cmdk-empty] only while a search leaves nothing: each command (in `added` content only, when given) is
+ * searched for text no item holds, its empty state kept, the search cleared, and the empty state put back, hidden, where
+ * cmdk rendered it, so the port can show it.
+ */
+export async function keepCommandEmpty(page: Page, added?: string): Promise<void> {
+	await page
+		.evaluate(async (added) => {
+			const frame = () => new Promise((done) => requestAnimationFrame(() => setTimeout(done, 0)));
+			const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+			const type = (input: HTMLInputElement, text: string) => {
+				setValue.call(input, text);
+				input.dispatchEvent(new Event('input', { bubbles: true }));
+			};
+			const scopes = added ? ((window as unknown as Record<string, { node: Element }[] | undefined>)[added] ?? []).map((a) => a.node) : [document.body];
+			for (const root of scopes.flatMap((s) => [...s.querySelectorAll('[cmdk-root]')])) {
+				const input = root.querySelector<HTMLInputElement>('input[cmdk-input]');
+				if (!root.isConnected || root.querySelector('[cmdk-empty]') || !input || input.value) continue;
+				type(input, '\uE000\uE001');
+				let empty: Element | null = null;
+				for (let i = 0; i < 10 && !(empty = root.querySelector('[cmdk-empty]')); i++) await frame();
+				const parent = empty?.parentElement;
+				const next = empty?.nextElementSibling;
+				const kept = empty?.cloneNode(true) as HTMLElement | undefined;
+				type(input, '');
+				for (let i = 0; i < 10 && root.querySelector('[cmdk-empty]'); i++) await frame();
+				await frame();
+				if (!kept || !parent?.isConnected || root.querySelector('[cmdk-empty]')) continue;
+				kept.hidden = true;
+				parent.insertBefore(kept, next?.parentElement === parent ? next : parent.firstElementChild);
+			}
+		}, added)
+		.catch(() => {});
+}
 
 /**
  * Loads a route the way `check` loads it (the same frozen environment, the same settling) and keeps the document the
@@ -35,7 +76,7 @@ const key = (route: string) => createHash('sha256').update(route).digest('hex').
 export async function capturePage(browser: Browser, origin: string, route: string, dir: string, viewports: readonly Viewport[] = VIEWPORTS): Promise<CapturedPage> {
 	const file = join(dir, `${key(route)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as CapturedPage, () => undefined);
-	if (cached && cached.route === route) return cached;
+	if (cached && cached.route === route && keptCommandEmpty(Object.values(cached.settled), cached.commandEmpty)) return cached;
 	let server = '';
 	let status = 0;
 	const settled: Record<string, string> = {};
@@ -53,6 +94,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 			}
 			await settle(page);
 			await finishAnimations(page);
+			await keepCommandEmpty(page);
 			const faces = viewport === viewports[0] ? await page.evaluate(markLateFontCandidates, LATE_CANDIDATE).catch(() => []) : [];
 			settled[viewport.name] = await page.evaluate(() => `<!DOCTYPE html>${document.documentElement.outerHTML}`);
 			images[viewport.name] = await page.evaluate(readImages);
@@ -72,7 +114,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 			await context.close().catch(() => {});
 		}
 	}
-	const captured: CapturedPage = { route, status, server, settled, images, ...(lateFonts.length ? { lateFonts } : {}), ...(firstScreenFonts.length ? { firstScreenFonts } : {}) };
+	const captured: CapturedPage = { route, status, server, settled, images, commandEmpty: COMMAND_EMPTY, ...(lateFonts.length ? { lateFonts } : {}), ...(firstScreenFonts.length ? { firstScreenFonts } : {}) };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(captured));
 	return captured;

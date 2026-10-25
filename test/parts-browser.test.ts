@@ -260,6 +260,86 @@ test('combobox: a query nothing matches marks the popup empty; with several valu
 	await page.close();
 });
 
+// shadcn's Command demo as cmdk renders it once mounted: the first item selected, Calculator disabled, the empty state
+// rendered hidden by the converter.
+const commandItem = (id: string, value: string, disabled = false, selected = false) =>
+	`<div id="${id}" cmdk-item="" role="option" aria-disabled="${disabled}" aria-selected="${selected}" data-disabled="${disabled}" data-selected="${selected}" data-value="${value}">${value}</div>`;
+const COMMAND = `<div cmdk-root="" tabindex="-1"><input cmdk-input="" role="combobox" aria-controls="list" type="text" value=""><div cmdk-list="" role="listbox" id="list" style="height:200px;overflow:auto"><div cmdk-list-sizer=""><div cmdk-empty="" role="presentation" hidden>No results found.</div>
+	<div cmdk-group="" role="presentation" data-value="Suggestions"><div cmdk-group-heading="">Suggestions</div><div cmdk-group-items="" role="group">${commandItem('cal', 'Calendar', false, true)}${commandItem('emo', 'Search Emoji')}${commandItem('calc', 'Calculator', true)}</div></div>
+	<div cmdk-separator="" role="separator"></div>
+	<div cmdk-group="" role="presentation" data-value="Settings"><div cmdk-group-heading="">Settings</div><div cmdk-group-items="" role="group">${commandItem('pro', 'Profile⌘P')}${commandItem('bil', 'Billing⌘B')}${commandItem('set', 'Settings⌘S')}</div></div></div></div></div>`;
+
+async function commandState(page: Page) {
+	return page.evaluate(() => {
+		const input = document.querySelector('[cmdk-input]')!;
+		const shown = [...document.querySelectorAll<HTMLElement>('[cmdk-item]')].filter((i) => i.offsetParent !== null).sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+		const ad = input.getAttribute('aria-activedescendant');
+		return {
+			order: shown.map((i) => i.id).join(','),
+			selected: [...document.querySelectorAll('[cmdk-item][aria-selected="true"]')].map((i) => i.id).join(','),
+			ad: ad === document.querySelector('[cmdk-list]')!.getAttribute('aria-activedescendant') ? ad : 'list differs',
+			empty: (document.querySelector('[cmdk-empty]') as HTMLElement).offsetParent !== null,
+			separator: (document.querySelector('[cmdk-separator]') as HTMLElement).hidden,
+		};
+	});
+}
+
+test('cmdk: command-score filters and sorts the items left after the disabled ones, groups by their best item; nothing left shows the empty state', async () => {
+	const page = await open(COMMAND, ['cmdk']);
+	await page.locator('[cmdk-input]').focus();
+	await page.keyboard.type('se');
+	assert.deepEqual(await commandState(page), { order: 'emo,set', selected: 'emo', ad: null, empty: false, separator: true });
+	await page.keyboard.press('Backspace');
+	await page.keyboard.press('Backspace');
+	await page.keyboard.type('c');
+	assert.deepEqual(await commandState(page), { order: 'calc,cal,emo', selected: 'cal', ad: 'emo', empty: false, separator: true }, 'Calculator, disabled, is not moved; Profile has no c');
+	await page.keyboard.type('xq');
+	assert.deepEqual(await commandState(page), { order: '', selected: '', ad: null, empty: true, separator: true });
+	await page.close();
+});
+
+test('cmdk: aria-activedescendant names an item a key or the pointer selected; a search that moves the selection leaves the one before it', async () => {
+	const page = await open(COMMAND, ['cmdk']);
+	await page.locator('[cmdk-input]').focus();
+	await page.keyboard.press('ArrowDown');
+	await page.keyboard.press('ArrowDown');
+	assert.deepEqual(await commandState(page), { order: 'cal,emo,calc,pro,bil,set', selected: 'pro', ad: 'pro', empty: false, separator: false }, 'ArrowDown skips the disabled item');
+	await page.keyboard.type('i');
+	assert.deepEqual(await commandState(page), { order: 'emo,pro,bil,set', selected: 'emo', ad: 'pro', empty: false, separator: true });
+	await page.keyboard.press('Backspace');
+	assert.deepEqual(await commandState(page), { order: 'cal,emo,calc,pro,bil,set', selected: 'cal', ad: 'emo', empty: false, separator: false }, 'cleared, React puts the items back in source order');
+	await page.keyboard.press('Alt+ArrowDown');
+	assert.equal((await commandState(page)).selected, 'pro', 'Alt with an arrow goes to the next group');
+	await page.close();
+});
+
+test('cmdk: a command in a layer opens again with no search, its first item selected and nothing active', async () => {
+	const page = await open(`<button id="trigger">Search</button><div data-mm-layer="k">${COMMAND}</div>`, ['cmdk']);
+	await page.locator('[cmdk-input]').focus();
+	await page.keyboard.type('bil');
+	await page.keyboard.press('ArrowDown');
+	await page.locator('#trigger').focus();
+	assert.equal(await page.locator('[cmdk-input]').inputValue(), '');
+	assert.deepEqual(await commandState(page), { order: 'cal,emo,calc,pro,bil,set', selected: 'cal', ad: null, empty: false, separator: false });
+	await page.close();
+});
+
+test('cmdk: a site\'s own filter is its own Command\'s; every other Command keeps command-score', async () => {
+	const page = await open(`<div id="site">${COMMAND}</div><div id="demo">${COMMAND}</div>`, ['cmdk']);
+	await page.evaluate(async () => {
+		const { configure } = await import('/parts/cmdk.ts' as string);
+		configure({ applies: (root: HTMLElement) => root.parentElement!.id === 'site', filter: (value: string, search: string) => (value.toLowerCase().includes(search.toLowerCase()) ? 1 : 0) });
+	});
+	const shown = (id: string) => page.locator(`#${id} [cmdk-item]:not([hidden])`).evaluateAll((els) => els.map((e) => e.id).join(','));
+	for (const id of ['site', 'demo']) {
+		await page.locator(`#${id} [cmdk-input]`).focus();
+		await page.keyboard.type('sg');
+	}
+	assert.equal(await shown('site'), '', 'no value holds "sg"');
+	assert.equal(await shown('demo'), 'set', 'Settings holds s then g');
+	await page.close();
+});
+
 test('a Radix trigger with its own id has its layer under the id, while aria-controls names the content', async () => {
 	const page = await open(
 		`<main style="padding-top:300px"><button data-slot="popover-trigger" id="date-picker-simple" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="content-1" data-state="closed">Pick a date</button></main>

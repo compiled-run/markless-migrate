@@ -5,6 +5,7 @@ import type { Browser, Page } from 'playwright';
 import { defaultEnv, openPage } from '../check/browser.ts';
 import { finishAnimations } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
+import { COMMAND_EMPTY, keepCommandEmpty, keptCommandEmpty } from './capture.ts';
 import { VIEWPORTS, type Viewport } from '../check/types.ts';
 import { markTextValues } from './rac-text.ts';
 
@@ -37,6 +38,7 @@ export interface RevealCapture {
 	readonly route: string;
 	readonly reveals: readonly Reveal[];
 	readonly skipped: readonly string[];
+	readonly commandEmpty?: number;
 }
 
 // Controls ARIA marks as holding content back, and the gesture that shows it.
@@ -171,6 +173,7 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 		return `could not ${candidate.action}: ${(error as Error).message.split('\n')[0]}`;
 	}
 	await quiet(page, candidate.action === 'hover' ? 900 : candidate.extra ? 1500 : 300);
+	if (candidate.action === 'click') await keepCommandEmpty(page, '__mmAdded');
 	// A control that also opens on hover (Radix NavigationMenu) can be opened by the pointer arriving and closed by the
 	// press itself: one still collapsed is pressed again without the pointer.
 	if (candidate.action === 'click' && (await el.evaluate((e) => e.isConnected && e.getAttribute('aria-expanded') === 'false').catch(() => false)) && (await page.evaluate(() => (window as unknown as { __mmAdded?: unknown[] }).__mmAdded?.length ?? 0)) === 0) {
@@ -284,7 +287,7 @@ const REUSE_AFTER = 3;
 export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, memo: RevealMemo = new Map(), viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = [], pass: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string } = { controls: CONTROLS, tag: '' }): Promise<RevealCapture> {
 	const file = join(dir, `${key(`${pass.tag}${route}`, extra)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as RevealCapture, () => undefined);
-	if (cached && cached.route === route) return cached;
+	if (cached && cached.route === route && keptCommandEmpty(cached.reveals.flatMap((r) => r.added.map((a) => a.html)), cached.commandEmpty)) return cached;
 	const reveals: Reveal[] = [];
 	const skipped: string[] = [];
 	const done = new Set<string>();
@@ -331,7 +334,7 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 			await open.context.close().catch(() => {});
 		}
 	}
-	const capture: RevealCapture = { route, reveals, skipped };
+	const capture: RevealCapture = { route, reveals, skipped, commandEmpty: COMMAND_EMPTY };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(capture));
 	return capture;
