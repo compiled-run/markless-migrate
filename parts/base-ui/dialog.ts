@@ -1,12 +1,12 @@
 import { hideOthers } from '../aria-hidden.ts';
 import { closePopup, openPopup, popupOf, type Popup } from './popup.ts';
 import { enter, exit } from './transition.ts';
-import { closestTrigger, layerKey } from '../reveal.ts';
+import { closestTrigger, layerKey, layersFor } from '../reveal.ts';
 
-// Base UI Dialog, AlertDialog and Drawer (modal): a press on the trigger opens the popup with its backdrop, focus moves
-// to the first tabbable element inside and Tab stays inside, the page behind is hidden from assistive technology and
-// does not scroll; Escape, a Close part and (not for an alert dialog) a press on the backdrop close it, focus back on
-// the trigger.
+// Base UI Dialog, AlertDialog and Drawer: a press on the trigger opens the popup with its backdrop, focus moves to the
+// first tabbable element inside (a drawer's popup itself); a modal one keeps Tab inside, hides the page behind from
+// assistive technology and stops it scrolling; Escape, a Close part and (not for an alert dialog) a press on the
+// backdrop close it, focus back on the trigger.
 const TRIGGER = '[data-base-ui-click-trigger][aria-haspopup="dialog"]';
 // A plain button a page opens its dialog from (open state set on click, no ARIA) has the layer under its key.
 const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[data-mm-key]:not([aria-haspopup]):not([data-state])', (slot) => /(dialog|sheet|drawer)-trigger$/.test(slot));
@@ -14,6 +14,8 @@ const CLOSE = '[data-slot$="dialog-close"], [data-slot="sheet-close"], [data-slo
 const TABBABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]';
 
 const undo = new WeakMap<Popup, () => void>();
+// Popover.Trigger renders Dialog.Trigger's markup; a popover's portal holds its Positioner, which carries data-side.
+const opensPopover = (key: string) => layersFor(key).some((n) => n.hasAttribute('data-base-ui-portal') && n.querySelector(':scope > [data-side]'));
 
 const tabbables = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>(TABBABLE)].filter((el) => !el.closest('[hidden], [inert]') && !el.hasAttribute('data-base-ui-focus-guard') && el.getClientRects().length > 0);
 
@@ -47,12 +49,14 @@ function open(trigger: HTMLElement): boolean {
 	const p = openPopup(trigger, { popupSelector: '[role="dialog"], [role="alertdialog"]', onDismiss: (x) => close(x), outsidePress: false, anchored: false, key: trigger.id || layerKey(trigger) });
 	if (!p) return false;
 	const alert = p.popup.getAttribute('role') === 'alertdialog';
+	// DialogPortal renders its InternalBackdrop only for modal={true}: the page behind is then inert and does not scroll.
+	const modal = Boolean(p.portal.querySelector(':scope > [role="presentation"][data-base-ui-inert]:not([data-slot])'));
 	const overlay = p.portal.querySelector<HTMLElement>('[data-slot$="overlay"], [data-slot$="backdrop"]');
 	if (overlay) enter(overlay);
-	const shown = hideOthers([p.portal]);
-	const unlock = lockScroll();
+	const shown = modal ? hideOthers([p.portal]) : () => {};
+	const unlock = modal ? lockScroll() : () => {};
 	const onKey = (event: KeyboardEvent) => {
-		if (event.key !== 'Tab') return;
+		if (event.key !== 'Tab' || !modal) return;
 		const list = tabbables(p.popup);
 		if (!list.length) {
 			event.preventDefault();
@@ -85,13 +89,15 @@ function open(trigger: HTMLElement): boolean {
 		shown();
 		unlock();
 	});
-	(tabbables(p.popup)[0] ?? p.popup).focus({ preventScroll: true });
+	// DrawerPopup's initialFocus is the popup itself; DialogPopup's is its first tabbable element.
+	(p.popup.hasAttribute('data-swipe-direction') ? p.popup : (tabbables(p.popup)[0] ?? p.popup)).focus({ preventScroll: true });
 	return true;
 }
 
 export function click(target: Element): boolean {
 	const trigger = triggerOf(target);
 	if (trigger) {
+		if (trigger.matches(TRIGGER) && opensPopover(trigger.id || layerKey(trigger))) return false;
 		const p = [...document.querySelectorAll('[data-base-ui-portal]')].map((n) => popupOf(n)).find((x) => x?.trigger === trigger);
 		if (p) return true;
 		return open(trigger);
