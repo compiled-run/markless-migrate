@@ -7,7 +7,7 @@ import { finishAnimations, settle } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS, type Viewport } from '../check/types.ts';
 import { MEASURE_WIDTHS, readImages, readImageWidths, type ImageFacts } from './images.ts';
-import { LATE_CANDIDATE, lateFontsInFirstScreen, markLateFontCandidates } from './fonts.ts';
+import { fontPreloadsInFirstScreen, LATE_CANDIDATE, lateFontsInFirstScreen, markLateFontCandidates } from './fonts.ts';
 import { INSTANCE_PROPS, INSTANCE_PROPS_VERSION, markedInstanceProps, markInstanceProps } from './instance-props.ts';
 
 /** One route of the old site as a visitor's browser holds it once the page has settled, beside what its server sent. */
@@ -24,6 +24,8 @@ export interface CapturedPage {
 	readonly lateFonts?: readonly { readonly id: string; readonly key: string }[];
 	/** The web fonts a first screen draws that the page does not preload: the file each was fetched from. */
 	readonly firstScreenFonts?: readonly string[];
+	/** The font files the page preloads that no first screen draws. */
+	readonly offscreenFontPreloads?: readonly string[];
 	/** COMMAND_EMPTY when the commands' empty states were kept. */
 	readonly commandEmpty?: number;
 	/** INSTANCE_PROPS_VERSION when each instance's props were written on its elements (instance-props.ts). */
@@ -32,8 +34,8 @@ export interface CapturedPage {
 	readonly fonts?: number;
 }
 
-/** The version of the font facts a capture records: lateFonts and firstScreenFonts. */
-export const FONT_FACTS = 1;
+/** The version of the font facts a capture records: lateFonts, firstScreenFonts and offscreenFontPreloads. */
+export const FONT_FACTS = 2;
 
 const key = (route: string) => createHash('sha256').update(route).digest('hex').slice(0, 16);
 
@@ -91,6 +93,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 	const images: Record<string, ImageFacts> = {};
 	let lateFonts: { id: string; key: string }[] = [];
 	let firstScreenFonts: string[] = [];
+	let offscreenFontPreloads: string[] = [];
 	for (const viewport of viewports) {
 		const env = defaultEnv(origin);
 		const { context, page } = await openPage(browser, env, viewport);
@@ -111,10 +114,14 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 				// A phone's first screen, by the same page at a phone's width: a face either first screen draws is not late.
 				const phone = viewports.find((v) => v.isMobile);
 				let shownOnPhone: string[] = [];
-				if (phone && faces.length) {
+				const preloads = await page.evaluate(fontPreloadsInFirstScreen).catch(() => ({ preloaded: [], drawn: [] }));
+				const drawn = new Set(preloads.drawn);
+				if (phone && (faces.length || preloads.preloaded.length)) {
 					await page.setViewportSize({ width: phone.width, height: phone.height });
-					shownOnPhone = await page.evaluate(lateFontsInFirstScreen, LATE_CANDIDATE);
+					if (faces.length) shownOnPhone = await page.evaluate(lateFontsInFirstScreen, LATE_CANDIDATE);
+					if (preloads.preloaded.length) for (const u of (await page.evaluate(fontPreloadsInFirstScreen).catch(() => preloads)).drawn) drawn.add(u);
 				}
+				offscreenFontPreloads = preloads.preloaded.filter((u) => !drawn.has(u));
 				lateFonts = faces.filter((f) => !f.firstScreen && !shownOnPhone.includes(f.id)).map((f) => ({ id: f.id, key: f.key }));
 				firstScreenFonts = faces.filter((f) => f.firstScreen || shownOnPhone.includes(f.id)).map((f) => f.url);
 				images[viewport.name] = await withWidths(page, images[viewport.name]!, viewport);
@@ -123,7 +130,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 			await context.close().catch(() => {});
 		}
 	}
-	const captured: CapturedPage = { route, status, server, settled, images, commandEmpty: COMMAND_EMPTY, instanceProps: INSTANCE_PROPS_VERSION, fonts: FONT_FACTS, ...(lateFonts.length ? { lateFonts } : {}), ...(firstScreenFonts.length ? { firstScreenFonts } : {}) };
+	const captured: CapturedPage = { route, status, server, settled, images, commandEmpty: COMMAND_EMPTY, instanceProps: INSTANCE_PROPS_VERSION, fonts: FONT_FACTS, ...(lateFonts.length ? { lateFonts } : {}), ...(firstScreenFonts.length ? { firstScreenFonts } : {}), ...(offscreenFontPreloads.length ? { offscreenFontPreloads } : {}) };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(captured));
 	return captured;

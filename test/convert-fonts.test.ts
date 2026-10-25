@@ -9,7 +9,7 @@ import { chromium } from 'playwright';
 import { LATE_FONT, LATE_FONTS_SCRIPT } from '../parts/late-fonts.ts';
 import { capturePage } from '../src/convert/capture.ts';
 import { attr, parseDocument, walk } from '../src/convert/dom.ts';
-import { applyLateFonts, fontPreloads, LATE_CANDIDATE, lateFontsInFirstScreen, markLateFontCandidates, MAX_FONT_PRELOADS } from '../src/convert/fonts.ts';
+import { applyLateFonts, fontPreloads, fontPreloadsInFirstScreen, withoutOffscreenFontPreloads, LATE_CANDIDATE, lateFontsInFirstScreen, markLateFontCandidates, MAX_FONT_PRELOADS } from '../src/convert/fonts.ts';
 
 const PAGE = (head = '', mark = '') => `<!doctype html><html><head>${head}<style>
 @font-face{font-family:Latin;src:url(/latin.woff2) format("woff2");unicode-range:U+0000-00FF,U+2014}
@@ -105,4 +105,46 @@ test('a capture cached before its page\'s font facts were recorded is taken agai
 		server.close();
 		await rm(dir, { recursive: true, force: true });
 	}
+});
+
+test('a font the page preloads that no first screen draws is found, so its preload can go', async () => {
+	const page = `<!doctype html><html><head>
+<link rel="preload" href="/latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/mono.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/hebrew-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="https://cdn.example/other.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+@font-face{font-family:Latin;src:url(/latin.woff2) format("woff2");unicode-range:U+0000-00FF}
+@font-face{font-family:Mono;src:url(/mono.woff2) format("woff2");unicode-range:U+0000-00FF}
+@font-face{font-family:Hebrew;src:url(/hebrew-latin.woff2) format("woff2");unicode-range:U+0000-00FF}
+body{font-family:Latin,sans-serif;margin:0}
+code{font-family:Mono,monospace}
+.he{font-family:Hebrew,Latin}
+</style></head><body><h1>Install</h1><p class="he" hidden>shalom</p><div style="height:3000px"></div><pre><code>npx shadcn add tabs</code></pre></body></html>`;
+	const server = createServer((req, res) => {
+		if (req.url === '/') return void res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(page);
+		res.writeHead(200, { 'content-type': 'font/woff2' }).end(Buffer.alloc(64));
+	});
+	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	const browser = await chromium.launch();
+	try {
+		const tab = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+		await tab.goto(origin, { waitUntil: 'load' });
+		const desktop = await tab.evaluate(fontPreloadsInFirstScreen);
+		assert.deepEqual(desktop.preloaded, [`${origin}/latin.woff2`, `${origin}/mono.woff2`, `${origin}/hebrew-latin.woff2`], 'the preloads a face of the page names; a file no face names is not judged');
+		assert.deepEqual(desktop.drawn, [`${origin}/latin.woff2`], 'the heading draws Latin; the code is below the first screen and the Hebrew line is hidden');
+		await tab.setViewportSize({ width: 390, height: 844 });
+		assert.deepEqual((await tab.evaluate(fontPreloadsInFirstScreen)).drawn, [`${origin}/latin.woff2`]);
+	} finally {
+		await browser.close();
+		server.close();
+	}
+});
+
+test("a font preload no first screen needs is dropped from the page's head; the others stay", () => {
+	const o = 'https://site.example';
+	const link = (href: string) => ({ tag: 'link' as const, attrs: { rel: 'preload', href, as: 'font', crossorigin: '' } });
+	const tags = [{ tag: 'meta' as const, attrs: { charset: 'utf-8' } }, link('/latin.woff2'), link('/mono.woff2'), { tag: 'link' as const, attrs: { rel: 'stylesheet', href: '/mono.woff2' } }, link('https://cdn.example/x.woff2')];
+	assert.deepEqual(withoutOffscreenFontPreloads(tags, [`${o}/mono.woff2`, 'https://cdn.example/x.woff2'], o), [tags[0], tags[1], tags[3]]);
 });
