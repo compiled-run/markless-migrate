@@ -15,7 +15,7 @@ export interface Accept {
 	/** The role the failure was seen as; absent matches every role. */
 	readonly role?: string;
 	readonly dimension: FailureDimension | '*';
-	/** The failure's check, as a glob. */
+	/** The failure's check, as a glob whose `*` matches any text: check names hold addresses (`after arriving from / by link`). */
 	readonly check: string;
 	readonly viewport?: string;
 	/** Exact strings, or `/regex/flags`; `element` matches a failure about that role and accessible name. */
@@ -52,6 +52,10 @@ export async function writeAccepted(path: string, accepted: readonly Accept[]): 
 	await writeFile(path, `${JSON.stringify({ accepted }, null, '\t')}\n`);
 }
 
+function textGlob(pattern: string): RegExp {
+	return new RegExp(`^${pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*+/g, '.*')}$`, 's');
+}
+
 function glob(pattern: string): RegExp {
 	const body = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*');
 	return new RegExp(`^${body}$`);
@@ -77,7 +81,7 @@ export function matches(accept: Accept, failure: Failure, origins: Origins = { o
 	if (!routeMatches(accept.route, failure.route)) return false;
 	if (accept.role && accept.role !== (failure.role ?? 'anonymous')) return false;
 	if (accept.dimension !== '*' && accept.dimension !== failure.dimension) return false;
-	if (!glob(accept.check).test(failure.check)) return false;
+	if (!textGlob(accept.check).test(failure.check)) return false;
 	if (accept.viewport && accept.viewport !== failure.viewport) return false;
 	const m = accept.match;
 	if (m?.expected !== undefined && !text(m.expected, scrub(failure.expected))) return false;
@@ -128,7 +132,9 @@ export function applyAccepted(report: Report, accepted: readonly Accept[], off: 
 		return { ...login, failures, ok: failures.every((f) => f.accepted) };
 	});
 	const coverage = report.coverage ? settleCoverage(report.coverage, report.coverage.failures.map(mark)) : undefined;
-	const exercised = (a: Accept) => (a.dimension === 'coverage' ? Boolean(report.coverage) : report.routes.some((r) => routeMatches(a.route, r.route) && (!a.role || a.role === (r.role ?? 'anonymous'))));
+	// A run limited to some routes cannot tell that an entry whose glob reaches other routes matches nothing anywhere.
+	const judged = (a: Accept) => !report.partial || !/\*/.test(a.route);
+	const exercised = (a: Accept) => judged(a) && (a.dimension === 'coverage' ? Boolean(report.coverage) : report.routes.some((r) => routeMatches(a.route, r.route) && (!a.role || a.role === (r.role ?? 'anonymous'))));
 	const stale = accepted.filter((a) => !used.has(a) && exercised(a));
 	const all = [...routes.flatMap((r) => r.failures), ...(logins ?? []).flatMap((l) => l.failures), ...(coverage?.failures ?? [])];
 	const checkedOk = routes.every((r) => r.ok) && (logins ?? []).every((l) => l.ok) && !coverage?.missing.length && !coverage?.servedByOld?.length && !coverage?.unreachable.length;
