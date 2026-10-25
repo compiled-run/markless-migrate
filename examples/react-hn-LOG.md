@@ -92,15 +92,41 @@ that arrive while reading are not marked new. `lib/thread.ts` `loaded()` counts 
 
 ## Iterations
 
-TODO
+Every run: `check --data replay --old-hash-routes --time 2026-10-25T03:30:00Z` on 17 routes, on GitHub (`.github/workflows/check.yml`, 6 shards), the old app built at the pinned commit with Node 10, the port built from source, both served the recordings in `deploy/react-hn/data/`.
+
+| # | Run | Green | What the check caught, and what changed |
+| --- | --- | --- | --- |
+| 1 | 40157939851 | 0/17 | Before the migrator could compare a hash-routed app with live data at all: every old route loaded `/` (fixed by PR #125), and both apps read the live database, so nothing matched (fixed by PR #126). |
+| 2 | 40159938421 | 0/17 | Settings anchor exposed differently, axe `region` counts, score text split, list live-update steps read before their frames arrived (PR #126 follow-up). |
+| 3 | 40167629108 | 0/17 | The port's journeys started on the old host's front door (PR #125 fix); widget probes read `/#/` addresses (PR #125 fix). |
+| 4 | 40188207584 | 0/17 | 40 computed-style failures per thread from pairing a flat row with the old nested comment (PR #197); axe region (PR #200); null comments shown as errors, settings saved on `change`, links to the page already shown (port fixes). |
+| 5 | 40200339126 | 1/17 | Firebase SDK storage flag (PR #206); region text split in pieces (PR #208); relative times in control names and step lines (PRs #214, #216). |
+| 6 | 40206875322 | 3/17 | `/read`, `/news?page=2`, `/user/patio11` green. What is left is listed under Results. |
 
 ## Results
 
-TODO
+3 of 17 routes green on the last run (40206875322): `/read`, `/news?page=2`, `/user/patio11`. Every route renders the same page, the same comment tree and the same live updates as the old app; what keeps the other 14 red:
+
+| What | Routes | Kind |
+| --- | --- | --- |
+| JavaScript downloaded is higher (the router prefetches other routes' modules and render data once idle) | the 5 item and comment routes | accepted difference (below) |
+| `/nope` answers 404, the old app 200 | `/nope` | accepted difference (below) |
+| First click on a thread control (`[–]`, the highlight slider's button) takes 85 to 490 ms on the 4x CPU runner against 7 to 100 ms old: the handler's code is fetched on first use; the second click is 9 ms | threads | framework finding (Markless loads handlers lazily), not fixable in the port |
+| Opening settings and then following a header link: the new page shows 2 views in between for about 100 ms | list pages | open: not reproduced locally (both apps make one change); likely the in-place swap on a slow runner |
+| The "receive the N updates" journey on `/newcomments` shows one story title the old page had not resolved yet | `/newcomments` | open: the port's ancestry lookup answers from its cache sooner than the old `ItemStore` |
+| The rendered font of `| on:` is "Verdana" against "Verdana + Verdana" (the old text is two text nodes) | `/comment/8054455` | accepted difference (below) |
+| A few live-update steps differ by one comment count (`3 comments` against `2`) | `/`, `/jobs`, `/newest` | open: the order two coalesced pushes land in |
 
 ## Accepted differences
 
-TODO
+Listed here for the owner to accept (no `accepted.json` was written):
+
+| What | Where | Why it cannot be removed |
+| --- | --- | --- |
+| JavaScript downloaded is higher | item, story, poll, job, comment routes | Markless prefetches the other routes' modules and render data once the page is idle. JavaScript run at load is 15 to 60% lower on every route (see Measurements). |
+| `/nope` is a 404 | unknown routes | The old app is a static page that answers 200 for everything and shows "Not found" in the browser; the port's server says 404. |
+| Rendered font of a meta line is one text run instead of two | `/comment/:id` | React 15 splits `{' | on: '}` into separate text nodes; the same glyphs render. |
+| The page title is set by the region's `attach`, after the first paint | every live page | the old app set it from `componentDidMount`; same final title. |
 
 ## Measurements
 
@@ -204,13 +230,18 @@ These are not crashes: the compiler or a diagnostic refuses the shape, or the AP
 
 ## markless-migrate improvements made
 
-Each started from a red run of the check on `main` against this port, and each is its own PR with tests that fail
-without the change.
+Each started from a red run of the check on this port, each is its own PR with a test that failed without it, and all are merged.
 
 | PR | What the check could not do | What it does now |
 | --- | --- | --- |
-| [#125](https://github.com/compiled-run/markless-migrate/pull/125) `check/hash-routes` | compare an old app whose routes live after `#` (`/#/story/1`): it loaded `/story/1` on the old server, got the old app's home page, and compared that | `--old-hash-routes` (also detected from the source): the old side is opened at `/#<route>`, its URLs are read back as routes (with react-router's `?_k=` key and its `@@History` session entries treated as the router's own), and every old `/#/...` link must land on its route in the new app |
-| [#126](https://github.com/compiled-run/markless-migrate/pull/126) `check/firebase-live` | record or replay anything that arrives over a websocket: both apps read the live database during the check, so they saw different data and nothing pushed while the page was open was compared | `--data record --live-window <s>` records what the old page heard from its Firebase database (snapshot plus the timed updates); replay serves both apps the same snapshot from a fake database over the same socket protocol, then journeys push the same recorded updates to both ("receive the N updates ... then reload", "come back after the N updates arrived while the page was not listening") and compare what each page shows. Also fixes Playwright's routed-socket ids colliding under the frozen `crypto` |
+| [#125](https://github.com/compiled-run/markless-migrate/pull/125) | compare an old app whose routes live after `#` | `--old-hash-routes` (or detected from the source): old routes load at `/#<route>`, addresses and links are read as routes, react-router's `_k` key and `@@History` storage are the old framework's, old `/#/` links must land on the port; no front door; probes read routes |
+| [#126](https://github.com/compiled-run/markless-migrate/pull/126) | record or replay a websocket database | `--live-window` records what the old page heard from Firebase; replay serves both apps one fake database and journeys push the same recorded updates ("receive the N updates", "come back after the N updates") |
+| [#197](https://github.com/compiled-run/markless-migrate/pull/197) | pair a flat row with the old nested element in the same box | of two same-box candidates the one styled the same pairs first |
+| [#200, #208](https://github.com/compiled-run/markless-migrate/pull/200) | axe `region` counted elements, which depends on where hidden elements sit | compares the words outside the landmarks |
+| [#206](https://github.com/compiled-run/markless-migrate/pull/206) | the Firebase SDK's own `previous_websocket_failure` flag read as app storage | owned by the SDK when only the old page loads it, also inside a React bundle |
+| [#214](https://github.com/compiled-run/markless-migrate/pull/214) | a control named "... 20 minutes ago" lost once the clock read 21 | relative times in a target name match any relative time |
+| [#216](https://github.com/compiled-run/markless-migrate/pull/216) | a step reporting an age that only moved | relative-time readings masked before a step's lines are diffed |
+| [#218](https://github.com/compiled-run/markless-migrate/pull/218) | the live step's frame wait counted 0 (routed sockets are not page websockets) | frames counted in the page |
 
 ## Deployed
 
