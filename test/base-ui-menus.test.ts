@@ -45,7 +45,7 @@ async function press(page: Page, key: string): Promise<void> {
 const state = (page: Page) =>
 	page.evaluate(() => {
 		const at = document.activeElement;
-		const focus = !at || at === document.body ? 'body' : at.matches('[role="menu"], [role="listbox"]') ? 'popup' : (at.getAttribute('data-slot')?.endsWith('trigger') ? `trigger:${at.textContent?.trim()}` : at.textContent?.trim() || at.tagName.toLowerCase());
+		const focus = !at || at === document.body ? 'body' : at.matches('[role="menu"], [role="listbox"]') ? 'popup' : (at.getAttribute('data-slot')?.endsWith('trigger') && !at.closest('[role="menu"]') ? `trigger:${at.textContent?.trim()}` : at.textContent?.trim() || at.tagName.toLowerCase());
 		const highlighted = [...document.querySelectorAll('[data-highlighted]')].map((e) => e.textContent?.trim()).join('|') || '-';
 		const trigger = document.querySelector('[data-slot$="-trigger"]')!;
 		return `${trigger.getAttribute('aria-expanded')} focus=${focus} highlighted=${highlighted}`;
@@ -121,4 +121,158 @@ test('Tab in an open Base UI menu or select closes it and focuses what follows i
 		assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('data-slot')), slot, port);
 		await page.close();
 	}
+});
+
+test('Base UI menu keys: opening skips disabled items, the arrows loop over every item, End reaches a disabled last one, ArrowUp opens at the last', async () => {
+	const page = await open(menu(['Disabled first', 'Profile', 'Billing', 'Settings', 'API'], ['Disabled first', 'API']), ['base-ui/menu']);
+	await page.locator('#dd').focus();
+	const steps: [string, string][] = [
+		['Enter', 'true focus=Profile highlighted=Profile'],
+		['ArrowDown', 'true focus=Billing highlighted=Billing'],
+		['End', 'true focus=API highlighted=API'],
+		['ArrowDown', 'true focus=Disabled first highlighted=Disabled first'],
+		['ArrowUp', 'true focus=API highlighted=API'],
+		['Home', 'true focus=Disabled first highlighted=Disabled first'],
+		['Escape', 'false focus=trigger:Open highlighted=-'],
+		['ArrowUp', 'true focus=Settings highlighted=Settings'],
+		['Escape', 'false focus=trigger:Open highlighted=-'],
+		[' ', 'true focus=Profile highlighted=Profile'],
+	];
+	for (const [key, expected] of steps) {
+		await press(page, key);
+		assert.equal(await state(page), expected, `after ${key}`);
+	}
+	await page.close();
+});
+
+test('Base UI menu typeahead: a letter moves to the next item starting with it, the same letter again cycles, a word matches as typed', async () => {
+	const page = await open(menu(['Profile', 'Billing', 'Settings', 'Support', 'Sign out']), ['base-ui/menu']);
+	await page.locator('#dd').focus();
+	await press(page, 'Enter');
+	for (const [key, expected] of [
+		['s', 'Settings'],
+		['s', 'Support'],
+		['s', 'Sign out'],
+		['s', 'Settings'],
+	] as const) {
+		await press(page, key);
+		assert.equal(await state(page), `true focus=${expected} highlighted=${expected}`, `after ${key}`);
+	}
+	await page.waitForTimeout(600);
+	await press(page, 'b');
+	assert.equal(await state(page), 'true focus=Billing highlighted=Billing');
+	await page.waitForTimeout(600);
+	for (const key of ['s', 'i']) await press(page, key);
+	assert.equal(await state(page), 'true focus=Sign out highlighted=Sign out');
+	// Space continues a typing session rather than choosing the item.
+	await page.waitForTimeout(600);
+	for (const key of ['s', 'i', 'g', 'n', ' ']) await press(page, key);
+	assert.equal(await state(page), 'true focus=Sign out highlighted=Sign out');
+	await page.close();
+});
+
+test('a Base UI menu opened by a press focuses its popup with nothing highlighted, each time; ArrowDown then highlights the first item', async () => {
+	const page = await open(menu(['Profile', 'Billing', 'Settings']), ['base-ui/menu']);
+	await page.locator('#dd').click();
+	assert.equal(await state(page), 'true focus=popup highlighted=-');
+	await page.getByText('Billing').hover();
+	assert.equal(await state(page), 'true focus=Billing highlighted=Billing');
+	await page.getByText('Billing').click();
+	await settled(page);
+	assert.equal(await state(page), 'false focus=trigger:Open highlighted=-');
+	await page.locator('#dd').click();
+	assert.equal(await state(page), 'true focus=popup highlighted=-');
+	await press(page, 'ArrowDown');
+	assert.equal(await state(page), 'true focus=Profile highlighted=Profile');
+	await page.close();
+});
+
+test('the pointer leaving a Base UI menu item for the menu around it unhighlights it and focuses the menu', async () => {
+	const page = await open(menu(['Profile', 'Billing']).replace('data-slot="dropdown-menu-content"', 'data-slot="dropdown-menu-content" style="padding:20px"'), ['base-ui/menu']);
+	await page.locator('#dd').click();
+	await page.getByText('Profile').hover();
+	assert.equal(await state(page), 'true focus=Profile highlighted=Profile');
+	const box = (await page.locator('[role="menu"]').boundingBox())!;
+	await page.mouse.move(box.x + 5, box.y + 5, { steps: 3 });
+	await settled(page);
+	assert.equal(await state(page), 'true focus=popup highlighted=-');
+	await page.close();
+});
+
+test("a Base UI submenu's trigger is an item of its menu: the arrows move past it and a press on it does not close the menu", async () => {
+	const page = await open(menu(['Team', 'Invite users', 'New Team']).replace('data-slot="dropdown-menu-item">Invite users', 'data-slot="dropdown-menu-sub-trigger" aria-haspopup="menu" aria-expanded="false">Invite users'), ['base-ui/menu']);
+	await page.locator('#dd').focus();
+	for (const [key, expected] of [
+		['Enter', 'true focus=Team highlighted=Team'],
+		['ArrowDown', 'true focus=Invite users highlighted=Invite users'],
+		['ArrowDown', 'true focus=New Team highlighted=New Team'],
+	] as const) {
+		await press(page, key);
+		assert.equal(await state(page), expected, `after ${key}`);
+	}
+	await page.getByText('Invite users').click();
+	await settled(page);
+	assert.match(await state(page), /^true /);
+	await page.close();
+});
+
+test('a Base UI menu that opens under a still pointer highlights nothing until the pointer moves, as Base UI highlights on mousemove', async () => {
+	const page = await open(menu(['Profile', 'Billing']).replace('style="position:absolute;left:0;top:0"', 'style="position:absolute;left:0;top:0;width:300px"'), ['base-ui/menu']);
+	await page.evaluate(() => {
+		const t = document.getElementById('dd')!;
+		Object.assign(t.style, { position: 'fixed', left: '0', top: '0', width: '300px', height: '40px', zIndex: '1' });
+	});
+	await page.mouse.move(150, 20);
+	await page.mouse.down();
+	await page.mouse.up();
+	// The menu's first item now lies under the pointer.
+	await page.evaluate(() => (document.getElementById('dd')!.style.pointerEvents = 'none'));
+	await page.waitForTimeout(100);
+	assert.equal(await state(page), 'true focus=popup highlighted=-');
+	await page.mouse.move(152, 22);
+	await settled(page);
+	assert.equal(await state(page), 'true focus=Profile highlighted=Profile');
+	await page.close();
+});
+
+test('the keys scroll the Base UI menu item they move to into view, as useListNavigation does for keyboard moves', async () => {
+	const page = await open(menu(Array.from({ length: 30 }, (_, i) => `Item ${i + 1}`)), ['base-ui/menu']);
+	await page.locator('#dd').focus();
+	await press(page, 'Enter');
+	const at = await page.evaluate(() => scrollY);
+	await press(page, 'ArrowUp');
+	assert.equal(await state(page), 'true focus=Item 30 highlighted=Item 30');
+	assert.ok((await page.evaluate(() => scrollY)) > at, 'the page scrolled the last item into view');
+	await page.close();
+});
+
+test('the side arrows in an open Base UI menubar menu open the next menu focused, with nothing highlighted', async () => {
+	const bar = (id: string, text: string) => `<button type="button" role="menuitem" id="${id}" aria-haspopup="menu" aria-expanded="false" data-slot="menubar-trigger">${text}</button>`;
+	const layer = (id: string, items: readonly string[]) => `<div data-base-ui-portal hidden data-mm-layer="${id}"><div role="presentation" style="position:absolute;left:0;top:0" data-closed><div tabindex="-1" role="menu" aria-labelledby="${id}" data-slot="menubar-content" data-closed>${items.map((t) => `<div role="menuitem" tabindex="-1" data-slot="menubar-item">${t}</div>`).join('')}</div></div></div>`;
+	const page = await open(`<main style="padding:100px"><div role="menubar" data-slot="menubar">${bar('m1', 'File')}${bar('m2', 'Edit')}</div></main>${layer('m1', ['New Tab', 'Print'])}${layer('m2', ['Undo', 'Redo'])}`, ['base-ui/menu']);
+	await page.locator('#m1').focus();
+	await press(page, 'ArrowDown');
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'New Tab');
+	await press(page, 'ArrowRight');
+	assert.deepEqual(await page.evaluate(() => [document.getElementById('m2')!.getAttribute('aria-expanded'), document.activeElement?.getAttribute('aria-labelledby'), document.querySelectorAll('[data-highlighted]').length]), ['true', 'm2', 0]);
+	await page.close();
+});
+
+test('the arrows, Home and End rove focus and the Tab stop between closed Base UI menubar triggers, looping, as its CompositeRoot does', async () => {
+	const bar = (id: string, text: string, i: number) => `<button type="button" role="menuitem" id="${id}" tabindex="${i ? -1 : 0}" aria-haspopup="menu" aria-expanded="false" data-slot="menubar-trigger">${text}</button>`;
+	const page = await open(`<main style="padding:100px"><div role="menubar" data-slot="menubar">${['File', 'Edit', 'View'].map((t, i) => bar(`m${i}`, t, i)).join('')}</div></main>`, ['base-ui/menu']);
+	await page.locator('#m0').focus();
+	const at = () => page.evaluate(() => `${document.activeElement?.textContent} ${[...document.querySelectorAll('[data-slot="menubar-trigger"]')].map((t) => (t as HTMLElement).tabIndex).join(',')}`);
+	for (const [key, expected] of [
+		['ArrowRight', 'Edit -1,0,-1'],
+		['ArrowRight', 'View -1,-1,0'],
+		['ArrowRight', 'File 0,-1,-1'],
+		['ArrowLeft', 'View -1,-1,0'],
+		['Home', 'File 0,-1,-1'],
+		['End', 'View -1,-1,0'],
+	] as const) {
+		await press(page, key);
+		assert.equal(await at(), expected, `after ${key}`);
+	}
+	await page.close();
 });
