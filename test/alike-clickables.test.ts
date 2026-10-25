@@ -47,10 +47,12 @@ test('clickable elements alike in name and kind (a comment thread\'s "[-]") are 
 	assert.ok(journeys.filter((j) => /^click clickable "\[-\]"/.test(j.name) && !j.name.includes("more alike")).length <= 3, journeys.map((j) => j.name).join('\n'));
 });
 
-test('alike clickables that each leave the page are still each used: the rest of the turn starts again from the page', async () => {
+test('alike clickables that each leave the page are still covered: the turn starts again from the page, and two that left stand for the rest', async () => {
 	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 	const { elements } = await explore(browser, defaultEnv(origin), '/stories', VIEWPORTS[0]!);
 	const hides = elements.filter((e) => /^clickable "hide"/.test(e.element));
 	assert.equal(hides.length, 8);
-	assert.deepEqual(hides.filter((e) => !e.journeys?.length && !e.by).map((e) => `${e.element}: ${e.reason}`), [], 'every hide is used by a journey');
+	assert.deepEqual(hides.filter((e) => !e.journeys?.length && !e.by).map((e) => `${e.element}: ${e.reason}`), [], 'every hide is used by a journey or stands with two that were');
+	const alike = hides.filter((e) => /^alike: .* each left the page$/.test(e.by ?? ''));
+	assert.ok(alike.length > 0 && alike.length <= 5, `once two have left the page the rest stand with them: ${hides.map((e) => `${e.element}: ${e.by}`).join('; ')}`);
 });

@@ -1487,6 +1487,8 @@ interface Item {
 	readonly of?: Tracked;
 	/** Alike controls this journey uses one after another, after the steps that reveal them: each counts as exercised by its own step. */
 	readonly batch?: readonly Tracked[];
+	/** The members of `batch` that already left the page in an earlier turn of it. */
+	readonly left?: readonly Tracked[];
 	/** The widget whose WAI-ARIA keyboard journey this is. */
 	readonly keys?: KeyedWidget;
 }
@@ -1919,16 +1921,19 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			next.push(...keyItems(r.widgets, item.journey.steps, depth + 1));
 			sequences.push(...r.sequences.filter((s) => (s.rank ?? 0) < URGENT));
 			const batch = item.batch ?? [];
-			// A member that left the page (a signed-out "hide" sending the visitor to log in) ends the turn: the rest start again from the page.
+			// A member that left the page (a signed-out "hide" sending the visitor to log in) ends the turn: the rest start again from the
+			// page, and once two of them have left it the same way, those two stand for the rest, as the first few of a grid do.
 			const left = batch.findIndex((t, k) => r.expected[t.prefix.length + k]?.navigated);
+			const leavers = left === -1 ? (item.left ?? []) : [...(item.left ?? []), batch[left]!];
 			const again: Tracked[] = [];
 			for (const [k, t] of batch.entries()) {
 				const step = r.expected[t.prefix.length + k];
 				if (step && !step.failed && (left === -1 || k <= left)) t.by = item.journey.name;
+				else if (left !== -1 && k > left && leavers.length >= SAMPLES) t.by = `alike: ${leavers.map((x) => describeTarget(x.candidate.target)).join(' and ')} each left the page`;
 				else if (left !== -1 && k > left) again.push(t);
 				else t.reason = `it could not be used on the old page: ${step?.failed ?? 'the journey stopped before it'}`;
 			}
-			if (again.length) next.push(alikeTurn(again, depth));
+			if (again.length) next.push({ ...alikeTurn(again, depth), left: leavers });
 			if (item.element) {
 				if (r.done) item.element.by = item.journey.name;
 				else {
