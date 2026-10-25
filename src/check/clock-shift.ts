@@ -63,6 +63,9 @@ export function clockDifferences(oldAt: readonly string[], oldAgain: readonly st
 	return baked.length ? { followed: minus(after, newMoved), baked } : { followed: [], baked: [] };
 }
 
+// A server reading a saved session 40 days on expires it in its store, signing the role out for the rest of the run.
+const movedEnv = (env: SideEnv, moved: FreezeOptions): SideEnv => ({ ...env, freeze: moved, ...(env.storageState || env.frontDoor?.storageState ? { serverClock: false } : {}) });
+
 const when = (f: FreezeOptions) => `${new Date(f.time).toISOString().replace('T', ' ').slice(0, 16)} ${f.timezone}`;
 
 /**
@@ -74,9 +77,9 @@ export async function checkClock(browser: Browser, sides: { readonly old: SideEn
 	const freeze = sides.old.freeze;
 	if (!freeze) return [];
 	const moved: FreezeOptions = { ...freeze, time: freeze.time + CLOCK_SHIFT_MS, timezone: SHIFTED_ZONE };
-	const [oldAt, oldMoved] = await Promise.all([readText(browser, sides.old, route, viewport), readText(browser, { ...sides.old, freeze: moved }, route, viewport)]);
+	const [oldAt, oldMoved] = await Promise.all([readText(browser, sides.old, route, viewport), readText(browser, movedEnv(sides.old, moved), route, viewport)]);
 	if (!minus(oldAt, oldMoved).length && !minus(oldMoved, oldAt).length) return [];
-	const [oldAgain, newMoved] = await Promise.all([readText(browser, sides.old, route, viewport), readText(browser, { ...sides.new, freeze: moved }, route, viewport)]);
+	const [oldAgain, newMoved] = await Promise.all([readText(browser, sides.old, route, viewport), readText(browser, movedEnv(sides.new, moved), route, viewport)]);
 	const { followed, baked } = clockDifferences(oldAt, oldAgain, oldMoved, newMoved);
 	if (!baked.length) return [];
 	const list = (xs: readonly string[]) => xs.slice(0, 6).map((x) => `"${x}"`).join(', ') + (xs.length > 6 ? ` and ${xs.length - 6} more` : '');

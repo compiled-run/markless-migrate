@@ -61,3 +61,21 @@ test('only text the old page changes with the clock counts, and text that differ
 	// A server's own time, or a tip it rotates: different on every load, so a new page showing one of its values is no frozen clock.
 	assert.deepEqual(clockDifferences(['Rendered at 10:00:01'], ['Rendered at 10:00:03'], ['Rendered at 10:00:02'], ['Rendered at 10:00:01']), { followed: [], baked: [] });
 });
+
+test('with --server-clock, the moved look never sends a signed-in session to the server at the moved time, where a store would expire it', async () => {
+	const tags: string[] = [];
+	const server = createServer((req, res) => {
+		tags.push(`${req.headers.cookie ?? ''} ${req.headers['x-markless-migrate'] ?? ''}`);
+		res.writeHead(200, { 'content-type': 'text/html' }).end(`<!doctype html><html lang="en"><title>Clock</title><main>${PAGES['/live']}</main></html>`);
+	});
+	await new Promise<void>((done) => server.listen(0, '127.0.0.1', () => done()));
+	servers.push(server);
+	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	const session = { cookies: [{ name: 'sid', value: 'signed-in', domain: '127.0.0.1', path: '/', expires: -1, httpOnly: true, secure: false, sameSite: 'Lax' as const }], origins: [] };
+	const env = defaultEnv(origin, { serverClock: true, storageState: session });
+	await checkClock(browser, { old: env, new: env }, '/', VIEWPORTS[0]!);
+	const base = env.freeze ? env.freeze.time : 0;
+	const moved = tags.filter((t) => t.includes('sid=signed-in') && /time=(\d+)/.test(t) && Number(/time=(\d+)/.exec(t)![1]) !== base);
+	assert.ok(tags.some((t) => t.includes('sid=signed-in')), 'the session is sent');
+	assert.deepEqual(moved, []);
+});
