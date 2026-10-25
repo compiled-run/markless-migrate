@@ -112,3 +112,19 @@ test('client-side navigation fetches are framework transport: Next RSC, Remix _d
 	assert.equal(frameworkTransport(request({}), new URL(`${OLD}/notes?_data=routes%2Fnotes`)), true);
 	assert.equal(frameworkTransport(request({ accept: 'application/json' }), new URL(`${NEW}/api/hours`)), false);
 });
+
+test('a single-page app\'s browser fetch that the new server makes while it renders the page has moved to the server, not gone; fetched more often, or not at all, it still fails', () => {
+	// The old app is files on a static host (no recorder); the new one renders on its server with the recorder.
+	const posts = (side: 'browser' | 'server'): NetworkRecord => ({ side, method: 'GET', url: 'https://jsonplaceholder.typicode.com/posts', status: 200, contentType: 'application/json', body: '[{"id":1,"title":"sunt aut facere"}]' });
+	const spa = (records: NetworkRecord[]): NetworkCapture => ({ records, server: false, shown: 'sunt aut facere' });
+	const olds = [spa([posts('browser')]), spa([posts('browser')])];
+	assert.deepEqual(compareNetwork('/', olds, capture([posts('server')], 'sunt aut facere'), OLD, NEW), []);
+	const twice = compareNetwork('/', olds, capture([posts('server'), posts('server')], 'sunt aut facere'), OLD, NEW);
+	assert.deepEqual(twice.map((f) => [f.check, f.actual]), [['server request GET jsonplaceholder.typicode.com/posts', '2 times']]);
+	const gone = compareNetwork('/', olds, capture([], 'sunt aut facere'), OLD, NEW);
+	assert.deepEqual(gone.map((f) => [f.check, f.expected]), [['browser request missing', 'browser GET jsonplaceholder.typicode.com/posts']]);
+	const lost = compareNetwork('/', olds, capture([posts('server')], ''), OLD, NEW);
+	assert.match(lost.map((f) => f.check).join('|'), /response fields the page shows/, 'what the page showed from it is still compared');
+	const noRecorder = compareNetwork('/', olds, { ...capture([posts('server')], 'sunt aut facere'), server: false }, OLD, NEW);
+	assert.deepEqual(noRecorder.map((f) => f.check), ['browser request missing'], 'without the recorder on the new server nothing shows it moved');
+});

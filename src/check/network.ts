@@ -207,6 +207,29 @@ export function compareNetwork(route: string, olds: readonly (NetworkCapture | u
 	}
 	const contracts = oldCaptures.map((o) => contract(o, oldOrigin, sides));
 	const actual = contract(next, newOrigin, sides);
+	// A single-page app fetches in the browser what a server-rendered port fetches while it renders: the same request, moved.
+	if (oldCaptures.every((o) => !o.server) && next.server) {
+		const rendered = contract(next, newOrigin, new Set<Side>(['server']));
+		const moved = new Map<string, string>();
+		for (const c of contracts) {
+			for (const key of c.counts.keys()) {
+				const there = `server ${key.slice('browser '.length)}`;
+				if (key.startsWith('browser ') && !actual.counts.has(key) && rendered.counts.has(there)) moved.set(key, there);
+			}
+		}
+		for (const [key, there] of moved) {
+			for (const c of contracts) {
+				for (const map of [c.counts, c.fields, c.hosts] as Map<string, unknown>[]) {
+					if (!map.has(key)) continue;
+					map.set(there, map.get(key));
+					map.delete(key);
+				}
+			}
+			actual.counts.set(there, rendered.counts.get(there)!);
+			actual.fields.set(there, rendered.fields.get(there)!);
+			actual.hosts.set(there, rendered.hosts.get(there)!);
+		}
+	}
 	const keys = new Set(contracts.flatMap((c) => [...c.counts.keys()]));
 	const missing: { key: string; expected: number; got: number }[] = [];
 	const unexpected: { key: string; got: number }[] = [];
