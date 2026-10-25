@@ -127,11 +127,10 @@ const modeSwitcher: Part = {
 		if (!handledEarly(event)) toggleTheme();
 		return true;
 	},
-	keydown(target, event) {
-		if ((event.key !== 'd' && event.key !== 'D') || event.metaKey || event.ctrlKey || event.altKey || isEditable(target)) return false;
+	shortcut(target, event) {
+		if ((event.key !== 'd' && event.key !== 'D') || event.metaKey || event.ctrlKey || event.altKey || isEditable(target)) return;
 		event.preventDefault();
 		if (!handledEarly(event)) toggleTheme();
-		return true;
 	},
 };
 
