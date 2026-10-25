@@ -132,7 +132,9 @@ export function applyAccepted(report: Report, accepted: readonly Accept[], off: 
 		return { ...login, failures, ok: failures.every((f) => f.accepted) };
 	});
 	const coverage = report.coverage ? settleCoverage(report.coverage, report.coverage.failures.map(mark)) : undefined;
-	const exercised = (a: Accept) => (a.dimension === 'coverage' ? Boolean(report.coverage) : report.routes.some((r) => routeMatches(a.route, r.route) && (!a.role || a.role === (r.role ?? 'anonymous'))));
+	// A run limited to some routes cannot tell that an entry whose glob reaches other routes matches nothing anywhere.
+	const judged = (a: Accept) => !report.partial || !/\*/.test(a.route);
+	const exercised = (a: Accept) => judged(a) && (a.dimension === 'coverage' ? Boolean(report.coverage) : report.routes.some((r) => routeMatches(a.route, r.route) && (!a.role || a.role === (r.role ?? 'anonymous'))));
 	const stale = accepted.filter((a) => !used.has(a) && exercised(a));
 	const all = [...routes.flatMap((r) => r.failures), ...(logins ?? []).flatMap((l) => l.failures), ...(coverage?.failures ?? [])];
 	const checkedOk = routes.every((r) => r.ok) && (logins ?? []).every((l) => l.ok) && !coverage?.missing.length && !coverage?.servedByOld?.length && !coverage?.unreachable.length;

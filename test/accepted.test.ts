@@ -97,3 +97,11 @@ test('a check glob matches across slashes: check names hold addresses, unlike ro
 	assert.ok(!matches(accept('press Enter*'), arrived));
 	assert.ok(!matches({ ...accept('*'), route: '/dashboard/*' }, { ...arrived, route: '/dashboard/invoices/3' }), 'a route glob still stops at /');
 });
+
+test('in a run limited to some routes, an accept whose route glob reaches other routes is not called stale for matching nothing here', () => {
+	const partial = { ...report([route([failure({ route: '/expensive' })])]), partial: { checked: 1, total: 21 } };
+	const spread = accept({ route: '**', dimension: '*', check: '**button "Create"**' });
+	const exact = accept({ route: '/expensive', dimension: 'seo', check: 'title' });
+	assert.deepEqual(applyAccepted(partial, [spread, exact]).staleAccepts?.map((a) => a.route), ['/expensive'], 'an entry for this route alone is still judged');
+	assert.deepEqual(applyAccepted(report([route([failure({ route: '/expensive' })])]), [spread]).staleAccepts?.map((a) => a.route), ['**'], 'a full run judges every entry');
+});
