@@ -17,10 +17,13 @@ export interface Popup {
 	readonly pressable: boolean;
 	/** performance.now() when it opened. */
 	readonly openedAt: number;
+	/** Closes it as its part does (the part's onDismiss). */
+	readonly dismiss: (reason: Dismissal) => void;
 	stop?: () => void;
 	cleanup: (() => void)[];
 }
 
+export type Dismissal = 'escape' | 'outside' | 'tab' | 'item';
 const open: Popup[] = [];
 let pressedOutside: Popup | undefined;
 let tabbedOut: Popup | undefined;
@@ -186,7 +189,7 @@ function tabbableAfter(trigger: HTMLElement, portal: HTMLElement): HTMLElement |
 
 /** Mounts a trigger's captured portal; `popupSelector` picks the popup inside it. */
 // pressable: data-pressed on the trigger while open (pressableTriggerOpenStateMapping); lockScroll: modal; tabOut: Tab leaves.
-export function openPopup(trigger: HTMLElement, options: { readonly popupSelector: string; readonly positionMethod?: 'absolute' | 'fixed'; readonly sideOffset?: number; readonly onDismiss: (p: Popup) => void; readonly outsidePress?: boolean; readonly anchored?: boolean; readonly key?: string; readonly anchor?: Element | { getBoundingClientRect(): DOMRect }; readonly pressable?: boolean; readonly lockScroll?: boolean; readonly tabOut?: boolean }): Popup | undefined {
+export function openPopup(trigger: HTMLElement, options: { readonly popupSelector: string; readonly positionMethod?: 'absolute' | 'fixed'; readonly sideOffset?: number; readonly onDismiss: (p: Popup, reason: Dismissal, event?: Event) => void; readonly outsidePress?: boolean; readonly anchored?: boolean; readonly key?: string; readonly anchor?: Element | { getBoundingClientRect(): DOMRect }; readonly pressable?: boolean; readonly lockScroll?: boolean; readonly tabOut?: boolean }): Popup | undefined {
 	// A context menu's trigger area has no id: its layer key, and the point it opens at.
 	const key = options.key || trigger.id;
 	if (!key || isOpen(key)) return undefined;
@@ -204,13 +207,15 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	const around: HTMLElement[] = positioner ? [positioner] : [];
 	for (let n = popup.parentElement; n && n !== positioner && n !== portal; n = n.parentElement) if (n.hasAttribute('data-open') || n.hasAttribute('data-closed')) around.push(n);
 	const pressable = options.pressable ?? (options.anchored !== false && (popup.matches('[role="menu"], [role="listbox"], [role="dialog"], nav') || Boolean(popup.querySelector('[role="listbox"]'))));
-	const p: Popup = { key, trigger, portal, positioner, popup, backdrop, around, pressable, openedAt: performance.now(), cleanup: [] };
+	const p: Popup = { key, trigger, portal, positioner, popup, backdrop, around, pressable, openedAt: performance.now(), dismiss: (reason) => options.onDismiss(p, reason), cleanup: [] };
 	// A dialog's or drawer's viewport fills the window: only a popup with a positioner is placed off its trigger.
 	if (positioner && options.anchored !== false && positioner.getAttribute('data-side') !== 'none') {
 		for (const prop of ['left', 'top', 'transform', 'height', 'max-height', 'margin-top', 'margin-bottom']) positioner.style.removeProperty(prop);
 		const opts: BaseOptions = { side: popup.getAttribute('data-side') ?? 'bottom', align: popup.getAttribute('data-align') ?? 'center', sideOffset: Number(portal.dataset.mmSideOffset ?? options.sideOffset ?? 0), alignOffset: Number(portal.dataset.mmAlignOffset ?? 0), positionMethod: options.positionMethod ?? 'absolute' };
 		p.stop = place(options.anchor ?? trigger, positioner, popup, opts);
 	}
+	// activeIndex starts null: no item is highlighted as a list opens (one closed by its own part may keep the mark).
+	for (const el of popup.querySelectorAll('[data-highlighted]')) el.removeAttribute('data-highlighted');
 	enter(popup, around);
 	setTrigger(trigger, true, pressable);
 	showCompanions(key, true);
@@ -223,14 +228,14 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 			if (!event.shiftKey && inside.length && document.activeElement !== inside[inside.length - 1]) return;
 			event.preventDefault();
 			if (event.shiftKey) {
-				options.onDismiss(p);
+				options.onDismiss(p, 'tab');
 				trigger.focus({ preventScroll: true });
 				return;
 			}
 			const next = tabbableAfter(trigger, portal);
 			tabbedOut = p;
 			try {
-				options.onDismiss(p);
+				options.onDismiss(p, 'tab');
 			} finally {
 				tabbedOut = undefined;
 			}
@@ -239,14 +244,14 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 		}
 		if (event.key !== 'Escape') return;
 		event.preventDefault();
-		options.onDismiss(p);
+		options.onDismiss(p, 'escape');
 	};
 	const onDown = (event: PointerEvent) => {
 		const target = event.target as Node | null;
 		if (!target || top() !== p || popup.contains(target) || trigger.contains(target)) return;
 		pressedOutside = p;
 		try {
-			options.onDismiss(p);
+			options.onDismiss(p, 'outside', event);
 		} finally {
 			pressedOutside = undefined;
 		}

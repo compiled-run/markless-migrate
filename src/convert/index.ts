@@ -5,7 +5,7 @@ import { chromium } from 'playwright';
 import { copyAssets, copyStaticDir, resourcePaths } from './assets.ts';
 import { captureAll, type CapturedPage, type CapturedRef } from './capture.ts';
 import { atRest } from './at-rest.ts';
-import { captureAllReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
+import { captureAllReveals, captureBaseSubmenus, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
 import { captureChoices, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
 import { cleanDocument, frameworkBuilds, lateHead, type Dropped } from './clean.ts';
@@ -913,6 +913,14 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				const same = (a: Reveal, b: Reveal) => a.key === b.key && a.action === b.action && a.viewport === b.viewport && a.path.join('.') === b.path.join('.');
 				const all = [...reveals.map((r) => radix.find((m) => same(m, r)) ?? r), ...[...submenus, ...radix].filter((s) => !reveals.some((r) => same(r, s) || r.key === s.key))];
 				if (all.length !== reveals.length || radix.length) revealed.set(route, all);
+			}
+		// Base UI submenus: the menus they open from come back with their triggers keyed, in place of the menus' own reveals.
+		if (options.reveal !== false)
+			for (const [route, reveals] of [...revealed]) {
+				const base = await captureBaseSubmenus(browser, options.old, route, join(state, 'convert', 'reveals'), reveals);
+				if (!base.length) continue;
+				const same = (a: Reveal, b: Reveal) => a.key === b.key && a.action === b.action && a.viewport === b.viewport && a.path.join('.') === b.path.join('.');
+				revealed.set(route, [...reveals.map((r) => base.find((m) => same(m, r)) ?? r), ...base.filter((s) => !reveals.some((r) => same(r, s) || r.key === s.key))]);
 			}
 		// What each Base UI combobox shows once nothing matches, into the empty element of the layer it opens.
 		for (const [route, reveals] of revealed) {
