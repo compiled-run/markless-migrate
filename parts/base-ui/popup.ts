@@ -106,6 +106,8 @@ export function closePopup(p: Popup, returnFocus = true, keep = false): void {
 	}
 	exit(p.popup, p.around, () => {
 		p.stop?.();
+		// Opened again before this exit ended: it stays mounted.
+		if (open.some((o) => o.portal === p.portal)) return;
 		if (returnFocus && !keep) refocus();
 		// Base UI's Select keeps its popup mounted once opened, hidden; other popups leave, here hidden with their portal.
 		if (keep) (p.positioner ?? p.popup).hidden = true;

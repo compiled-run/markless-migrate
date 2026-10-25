@@ -6,6 +6,7 @@ export function enter(popup: HTMLElement, others: readonly (HTMLElement | null)[
 		if (!el) continue;
 		el.setAttribute('data-open', '');
 		el.removeAttribute('data-closed');
+		el.removeAttribute('data-ending-style');
 		el.setAttribute('data-starting-style', '');
 	}
 	requestAnimationFrame(() => {
