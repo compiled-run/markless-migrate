@@ -87,3 +87,13 @@ test('a hand-written accept without date or by is read, applied and shown; one w
 	await writeFile(path, JSON.stringify([{ route: '/a', dimension: 'colour', check: 'x', reason: 'x' }]));
 	await assert.rejects(readAccepted(path), /"dimension" must be one of http/);
 });
+
+test('a check glob matches across slashes: check names hold addresses, unlike routes', () => {
+	const arrived = failure({ route: '/expensive', dimension: 'a11y', check: 'press ArrowRight on slider, after arriving from / by link "Home" (step 2)' });
+	const accept = (check: string): Accept => ({ route: '**', dimension: '*', check, reason: 'r', by: 'b', date: 'd' });
+	assert.ok(matches(accept('*'), arrived), '* matches any check');
+	assert.ok(matches(accept('press ArrowRight on slider*'), arrived));
+	assert.ok(matches(accept('*after arriving from / by link*'), arrived));
+	assert.ok(!matches(accept('press Enter*'), arrived));
+	assert.ok(!matches({ ...accept('*'), route: '/dashboard/*' }, { ...arrived, route: '/dashboard/invoices/3' }), 'a route glob still stops at /');
+});
