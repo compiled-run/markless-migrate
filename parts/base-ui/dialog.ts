@@ -17,7 +17,7 @@ const undo = new WeakMap<Popup, () => void>();
 // Popover.Trigger renders Dialog.Trigger's markup; a popover's portal holds its Positioner (role=presentation, data-side).
 const opensPopover = (key: string) => layersFor(key).some((n) => n.hasAttribute('data-base-ui-portal') && n.querySelector(':scope > [role="presentation"][data-side]'));
 
-// Chrome makes a scroll container with nothing focusable inside a Tab stop, so it is one of the trap's ends too.
+// Chrome makes a scroll container with nothing focusable inside a Tab stop, so it can be where Tab leaves the popup.
 const scroller = (el: HTMLElement) => {
 	const { overflowX, overflowY } = getComputedStyle(el);
 	return /auto|scroll/.test(overflowX + overflowY) && (el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth) && !el.querySelector(TABBABLE);
@@ -58,15 +58,15 @@ function open(trigger: HTMLElement): boolean {
 			p.popup.focus({ preventScroll: true });
 			return;
 		}
-		const first = list[0]!;
-		const last = list[list.length - 1]!;
+		// The guards act only where Tab would leave the popup, and wrap to the tabbable content's ends, never a scroller.
+		const content = tabbables(p.popup, false);
 		const at = document.activeElement;
-		if (event.shiftKey && (at === first || !p.popup.contains(at))) {
+		if (event.shiftKey && (at === list[0] || at === p.popup || !p.popup.contains(at))) {
 			event.preventDefault();
-			last.focus();
-		} else if (!event.shiftKey && (at === last || !p.popup.contains(at))) {
+			(content[content.length - 1] ?? list[list.length - 1]!).focus();
+		} else if (!event.shiftKey && (at === list[list.length - 1] || !p.popup.contains(at))) {
 			event.preventDefault();
-			first.focus();
+			(content[0] ?? list[0]!).focus();
 		}
 	};
 	// A press on the backdrop closes a dialog; an alert dialog closes only through its own buttons or Escape.

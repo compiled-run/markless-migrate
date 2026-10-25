@@ -124,14 +124,21 @@ test('Base UI Popover: Tab past its last control closes it with focus after the 
 	await page.close();
 });
 
-test('Base UI Dialog: a scroll container with nothing focusable in it is a Tab stop, so the trap wraps past it as Chrome does', async () => {
+test('Base UI Dialog: a scroll container with nothing focusable in it is a Tab stop inside the trap, but its guards wrap to the tabbable content\'s ends', async () => {
 	const page = await open(
 		`<main><button type="button" data-slot="sheet-trigger" data-base-ui-click-trigger aria-haspopup="dialog" aria-expanded="false" id="sh">Open</button></main>
-		<div data-base-ui-portal hidden data-mm-layer="sh">${INTERNAL_BACKDROP}<div role="dialog" tabindex="-1" data-slot="sheet-content" style="position:relative;z-index:1"><button type="button">First</button><div id="scroller" style="height:50px;overflow-y:auto"><p style="height:400px">Lorem ipsum</p></div></div></div>`,
+		<div data-base-ui-portal hidden data-mm-layer="sh">${INTERNAL_BACKDROP}<div role="dialog" tabindex="-1" data-slot="sheet-content" style="position:relative;z-index:1"><div id="scroller" style="height:50px;overflow-y:auto"><p style="height:400px">Lorem ipsum</p></div><button type="button">First</button><button type="button">Last</button></div></div>`,
 		['base-ui/dialog'],
 	);
 	await page.getByText('Open').click();
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'First');
 	await page.keyboard.press('Shift+Tab');
-	assert.equal(await page.evaluate(() => document.activeElement?.id), 'scroller');
+	assert.equal(await page.evaluate(() => document.activeElement?.id), 'scroller', 'Shift+Tab from the first control reaches the scroller before it');
+	await page.getByText('Last').focus();
+	await page.keyboard.press('Tab');
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'First', 'Tab from the last wraps to the first control, not the scroller');
+	await page.keyboard.press('Shift+Tab');
+	await page.keyboard.press('Shift+Tab');
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Last', 'Shift+Tab from the scroller wraps to the last control');
 	await page.close();
 });
