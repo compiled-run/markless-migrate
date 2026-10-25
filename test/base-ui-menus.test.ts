@@ -24,7 +24,7 @@ async function open(body: string, ports: readonly string[], choices: Record<stri
 	const registry = `${ports.map((p, i) => `import * as p${i} from './${p}.ts';`).join('\n')}\nexport const PARTS = [${ports.map((_, i) => `p${i}`).join(', ')}];`;
 	await page.route('http://parts.test/**', async (route) => {
 		const path = new URL(route.request().url()).pathname;
-		if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js"}}</script><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif}[hidden]{display:none!important}[role=menuitem],[role=option]{height:30px}</style></head><body>${body}<script type="module">import { behave, listen } from '/parts/index.ts'; listen(); for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout']) document.body.addEventListener(type, behave, true); window.ready = true;</script></body></html>` });
+		if (path === '/') return route.fulfill({ contentType: 'text/html; charset=utf-8', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js"}}</script><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif}[hidden]{display:none!important}[role=menuitem],[role=option]{height:30px}</style></head><body>${body}<script type="module">import { behave, listen } from '/parts/index.ts'; listen(); for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout']) document.body.addEventListener(type, behave, true); window.ready = true;</script></body></html>` });
 		if (path === '/floating.js') return route.fulfill({ contentType: 'text/javascript', body: FLOATING_STUB });
 		if (path === '/parts/choices.ts') return route.fulfill({ contentType: 'text/javascript', body: `export const CHOICES = ${JSON.stringify(choices)};` });
 		const text = path === '/parts/registry.ts' ? registry : await readFile(join(PARTS, path.replace(/^\/parts\//, '')), 'utf8');
@@ -300,6 +300,20 @@ test('Base UI select keys: ArrowUp opens at the last enabled option, the arrows 
 		await press(page, key);
 		assert.equal((await state(page)).replace(/ highlighted=.*\|/, ' highlighted='), expected, `after ${key}`);
 	}
+	await page.close();
+});
+
+test("choosing a Base UI select option shows the label convert recorded for it, not the option's own text, as Select.Value shows the Root's items' label", async () => {
+	const months = select.replace(/data-slot="select-item"><div>(\w+)</g, (_, f: string) => (f === 'Banana' ? 'data-slot="select-item" data-mm-value="02" data-mm-text="02"><div>٠٢<' : `data-slot="select-item"><div>${f}<`));
+	const page = await open(months, ['base-ui/select']);
+	await withValue(page);
+	await page.locator('#base').click();
+	await page.locator('[role="option"]', { hasText: '٠٢' }).click();
+	await settled(page);
+	assert.equal(await selectState(page), '02 input=02');
+	// Reopened, the chosen option is the one selected.
+	await press(page, 'Enter');
+	assert.equal(await page.locator('[role="option"][aria-selected="true"]').textContent(), '٠٢');
 	await page.close();
 });
 

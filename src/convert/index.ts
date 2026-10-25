@@ -297,8 +297,9 @@ let currentRoute = '';
 let layerPickers: ((route: string, reveal: Reveal, kept: readonly Element[]) => { readonly bind: (el: Element) => Binding | undefined; readonly declare: readonly string[] } | undefined) | undefined;
 // The React Aria calendars the popovers of the route being prepared show (convert's RacCalendarPlan, set per route).
 let racLayer: { readonly plan: RacCalendarPlan; readonly captured: ReadonlyMap<string, CapturedCalendars>; readonly messages: (locale: string) => CalendarMessages | undefined; route: string } | undefined;
-// The value each option of a control's layer gave its hidden form input (Base UI Select's), by layer key and option text.
-let optionValues: Record<string, Record<string, string>> = {};
+// What choosing each option of a control's layer did (Base UI Select's hidden input value, the text its trigger showed),
+// by page and layer key, and option text.
+let optionValues: Record<string, Record<string, Choice>> = {};
 // What the old page's copy controls wrote, by the control's signature and occurrence.
 let currentClipboard: Record<string, string> = {};
 // Routes with a block that waits for the load event to render (its web font is fetched after the load).
@@ -552,8 +553,10 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 	for (const top of kept) {
 		for (const el of [top, ...walkAll(top)]) {
 			atRest(el);
-			const value = values && attr(el, 'role') === 'option' ? values[textContent(el).trim()] : undefined;
-			if (value !== undefined) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-mm-value'), { name: 'data-mm-value', value }];
+			const text = attr(el, 'role') === 'option' ? textContent(el).trim() : undefined;
+			const chosen = values && text !== undefined ? values[text] : undefined;
+			if (chosen?.value !== undefined) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-mm-value'), { name: 'data-mm-value', value: chosen.value }];
+			if (chosen?.shown !== undefined && chosen.shown !== text) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-mm-text'), { name: 'data-mm-text', value: chosen.shown }];
 		}
 		selectIndicators(top);
 		comboboxIndicators(top);
@@ -1031,8 +1034,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				seenKeys.add(reveal.key);
 				const found = await captureChoices(browser, options.old, route, reveal, join(state, 'convert', 'choices'), log);
 				if (first && Object.values(found).some((c) => c.href || c.copied !== undefined)) choices[reveal.key] = found;
-				const chosen = Object.entries(found).filter(([, c]) => c.value !== undefined);
-				if (chosen.length) optionValues[`${route}|${reveal.key}`] = Object.fromEntries(chosen.map(([k, c]) => [k, c.value!]));
+				const chosen = Object.entries(found).filter(([, c]) => c.value !== undefined || c.shown !== undefined);
+				if (chosen.length) optionValues[`${route}|${reveal.key}`] = Object.fromEntries(chosen);
 			}
 	} finally {
 		await browser.close();
