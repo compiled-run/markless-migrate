@@ -10,7 +10,12 @@ export default function App({ path, children }: { path: string; children?: Child
 	<div id="app">
 	<div
 		class="App"
-		attach={() => saveOnUnload()}
+		attach={(app) => {
+			// React 15 gives every clickable element a no-op onclick, which makes Chrome expose this anchor as a link.
+			const settingsLink = app.querySelector<HTMLElement>('.App__settings');
+			if (settingsLink) settingsLink.onclick = () => {};
+			return saveOnUnload();
+		}}
 		onVisible={() => {}}
 		onClick={(event) => {
 			if (showSettings && !(event.target as Element).closest(".App__settings, .Settings")) showSettings = false;

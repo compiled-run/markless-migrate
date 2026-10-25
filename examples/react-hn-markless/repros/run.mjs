@@ -301,4 +301,9 @@ for (const r of results)
 	console.log(
 		`${r.ok ? 'works' : 'BUG  '}  ${r.mode.padEnd(10)} ${r.name.padEnd(30)} expected: ${r.expected}\n${' '.repeat(48)}actual:   ${r.actual}`,
 	);
-writeFileSync(join(here, 'results.json'), `${JSON.stringify(results, null, '\t')}\n`);
+// A run of some repros replaces their rows and keeps the others'.
+const file = join(here, 'results.json');
+const earlier = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : [];
+const ran = new Set(results.map((r) => r.name));
+const merged = [...earlier.filter((r) => !ran.has(r.name)), ...results].sort((a, b) => a.name.localeCompare(b.name) || a.mode.localeCompare(b.mode));
+writeFileSync(file, `${JSON.stringify(merged, null, '\t')}\n`);

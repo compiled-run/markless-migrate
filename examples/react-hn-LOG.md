@@ -160,9 +160,10 @@ app symptom, but their minimal repros do not reproduce them, so treat them as un
 | 9 | `09-row-branch` | `@for` rows whose body is an `@if` / `@else`, rows added in the browser | 3 rows | no rows at all, no error |
 | 10 | `10-first-click-propagation` | `event.stopPropagation()` in a button's handler, a click handler on its ancestor | `inner 1 outer 0` | the first (waking) click also runs the ancestor's handler; later clicks are right |
 | 11 | `11-row-attach` | an `attach` on an element in a row the browser adds | the row's HTML set by its attach | the attach never runs |
-| 12 | `12-navigation-leak` | a page with a handler and an `attach`, navigated in place 5 times (a link to the same route with another query) | the number of window `load` listeners stays the same | prod: 0 -> 5, one more per in-place navigation: the inline resumer re-run for the swapped-in page calls `addEventListener('load', ..., { once: true })` after the window has loaded, so it never fires, and its closure keeps the page container and its `__marklessCensus` (every node of the page) alive. On react-hn: +830 kB of heap per story visited, unbounded (see the memory measurements) |
+| 12 | `12-navigation-leak` | a page with a handler and an `attach`, navigated in place 5 times (a link to the same route with another query) | the number of window `load` listeners stays the same | dev and prod: 0 -> 5, one more per in-place navigation: the inline resumer re-run for the swapped-in page calls `addEventListener('load', ..., { once: true })` after the window has loaded, so it never fires, and its closure keeps the page container and its `__marklessCensus` (every node of the page) alive. On react-hn: +830 kB of heap per story visited, unbounded (see the memory measurements) |
 | 13 | (in the app) | the router's built-in `#/` handling on `/` | `/#/story/1` lands on the story | the router renders the story but keeps the hash URL, and the next hash change throws `TypeError: Cannot read properties of undefined (reading 'startsWith')`; the port's own one-line redirect in the head avoids it |
 | 14 | (in the app) | the dev server after a compile error is fixed | the fixed file is served | the old compile error kept being served (`MARKLESS_CHILD_REPEAT_WITHOUT_ELEMENT`, after the `@for` got its element) until a restart; also, stopping `vp dev` leaves its `vite` child running on the port |
+| 15 | (deployed app) | the user page: a page-level `computed(async)` in `@try`, whose arm holds an element with `attach` and `onVisible` | no error | on the Vercel deployment, 2 of 6 fresh loads of `/user/patio11` threw `MARKLESS_STREAM_ARM_TEMPLATE_MISSING: boundary:0` (the page still showed the profile). The served HTML is the same on every load, so it is a timing race in the browser: the stream executor's queued `__mArm("boundary:0")` commit finds its `<template>` already gone. Not seen on the local production server (0 of 6), and a minimal repro of the same shape did not throw in 10 local loads, so there is no repro folder |
 
 
 ## Markless gaps (diagnosed limits, with the authored workaround)
@@ -198,4 +199,13 @@ without the change.
 
 ## Deployed
 
-TODO
+`deploy/react-hn/deploy.sh` with `old` or `new` (Vercel, prebuilt):
+
+| Side | URL | What it is |
+| --- | --- | --- |
+| Old | https://mm-react-hn-old.vercel.app/#/news | the old app's own `dist/` from the pinned commit, as static files |
+| New | https://mm-react-hn-new.vercel.app/news | `examples/react-hn-markless` with the Vercel preset |
+
+Both read the live Hacker News database from the browser, so they show the same data only as far as HN does not change
+between two loads. There is no front door that sends some routes to each side: the old app's routes live after `#`, which
+never reaches a server, so the old site cannot hand a route to the new one.
