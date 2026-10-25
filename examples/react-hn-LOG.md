@@ -34,7 +34,7 @@ cd dist && python3 -m http.server 4201
 ```bash
 # old app on :4201 (above); new app on :4311
 cd examples/react-hn-markless && npm ci && npm run build
-NODE_OPTIONS="--import=file://$PWD/../../src/check/record-server.mjs" PORT=4311 HOST=127.0.0.1 node .output/server/index.mjs
+NODE_OPTIONS="--require $PWD/../../src/check/record-server.cjs" PORT=4311 HOST=127.0.0.1 node .output/server/index.mjs
 ```
 
 ## How the port is built, and why

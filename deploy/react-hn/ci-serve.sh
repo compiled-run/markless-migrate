@@ -26,7 +26,7 @@ case "${1:-}" in
 		;;
 	new)
 		(cd "$APP" && npm ci --no-audit --no-fund && npm run build) > "$RUNNER_TEMP/new-build.log" 2>&1 || { tail -n 60 "$RUNNER_TEMP/new-build.log"; exit 1; }
-		(cd "$APP" && NODE_OPTIONS="--import=file://$(cd "$ROOT" && pwd)/src/check/record-server.mjs" PORT=3000 HOST=127.0.0.1 nohup node .output/server/index.mjs > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
+		(cd "$APP" && NODE_OPTIONS="--require $(cd "$ROOT" && pwd)/src/check/record-server.cjs" PORT=3000 HOST=127.0.0.1 nohup node .output/server/index.mjs > "$RUNNER_TEMP/new-serve.log" 2>&1 &)
 		wait_for http://127.0.0.1:3000/
 		;;
 	*) echo "usage: $0 old | new source" >&2; exit 1 ;;
