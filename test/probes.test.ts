@@ -32,6 +32,9 @@ const fruit = (stale: boolean) => `<form><button type="button" id="f" aria-haspo
 // A switch whose label's click toggles it and focuses it; `native` focuses the hidden native input instead, as the port did.
 const labelled = (native: boolean) => `<label id="lbl" for="n">Wi-Fi</label><input id="n" type="checkbox" aria-hidden="true" tabindex="-1" style="position:absolute;opacity:0;width:1px;height:1px"><button id="sw" role="switch" aria-checked="false" aria-labelledby="lbl"></button><script>const flip = () => sw.setAttribute('aria-checked', String(sw.getAttribute('aria-checked') !== 'true')); sw.onclick = flip; lbl.addEventListener('click', (e) => { e.preventDefault(); flip(); ${native ? 'n.focus();' : 'sw.focus();'} });</script>`;
 
+// The same dialog trigger in a left-to-right and a right-to-left section; `drop` loses focus on a click outside only in the right-to-left one.
+const directions = (drop: boolean) => ['ltr', 'rtl'].map((dir) => `<section dir="${dir}"><button id="${dir}-o" aria-haspopup="dialog" aria-expanded="false">${dir === 'rtl' ? 'الإعدادات' : 'Settings'}</button><div id="${dir}-d" role="dialog" aria-label="${dir}" hidden><button>Close</button></div></section><script>(() => { const o = document.getElementById('${dir}-o'); const d = document.getElementById('${dir}-d'); const close = (back) => { d.hidden = true; o.setAttribute('aria-expanded', 'false'); if (back) o.focus(); else document.activeElement?.blur(); }; o.onclick = () => { d.hidden = false; o.setAttribute('aria-expanded', 'true'); d.querySelector('button').focus(); }; d.querySelector('button').onclick = () => close(true); addEventListener('keydown', (e) => { if (e.key === 'Escape' && !d.hidden) close(true); }); addEventListener('click', (e) => { if (!d.hidden && !d.contains(e.target) && e.target !== o) close(${drop ? `'${dir}' !== 'rtl'` : 'true'}); }); })();</script>`).join('');
+
 const PAIRS: Record<string, { old: string; bad: string }> = {
 	modality: { old: modality('true'), bad: modality("e.key === 'Tab'") },
 	popup: { old: dialog(false), bad: dialog(true) },
@@ -43,6 +46,7 @@ const PAIRS: Record<string, { old: string; bad: string }> = {
 	'context menu': { old: contextMenu(false), bad: contextMenu(true) },
 	toggle: { old: checkbox(false), bad: checkbox(true) },
 	discovered: { old: dialog(false, true), bad: dialog(true, true) },
+	rtl: { old: directions(false), bad: directions(true) },
 	form: { old: fruit(false), bad: fruit(true) },
 	label: { old: labelled(false), bad: labelled(true) },
 };
@@ -51,7 +55,7 @@ function serve(pages: Record<string, string>): Promise<{ server: Server; origin:
 	const server = createServer((req, res) => {
 		const page = pages[new URL(req.url ?? '/', 'http://x').pathname];
 		if (page === undefined) return void res.writeHead(404).end();
-		res.writeHead(200, { 'content-type': 'text/html' }).end(`<!doctype html><html lang="en"><title>Probe</title><main><h1>Probe</h1>${page}</main></html>`);
+		res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(`<!doctype html><html lang="en"><title>Probe</title><main><h1>Probe</h1>${page}</main></html>`);
 	});
 	return new Promise((done) => server.listen(0, '127.0.0.1', () => done({ server, origin: `http://127.0.0.1:${(server.address() as AddressInfo).port}` })));
 }
@@ -75,7 +79,7 @@ after(async () => {
 
 const notified = (name: string): RecordedJourney[] => [{ name: `click button "${name}"`, steps: [{ action: 'click', target: { role: 'button', name, nth: 0 } }], expected: [{ url: '/', added: [], removed: [], requests: [], errors: [], announcements: ['list: Saved 1'], focus: 'body', navigated: false }] }];
 
-const CLASS: Record<string, string> = { menu: 'popup', discovered: 'popup', form: 'popup', label: 'toggle' };
+const CLASS: Record<string, string> = { menu: 'popup', discovered: 'popup', form: 'popup', label: 'toggle', rtl: 'popup' };
 const EXPECT: Record<string, { check: RegExp; detail: RegExp }> = {
 	modality: { check: /^modality probe of button "Save": focus ring after a click, then Escape and Tab \(step 2 of 4: press Escape\)$/, detail: /focus ring/ },
 	popup: { check: /^popup probe of button "Settings": open by pointer.* \(step 5 of 12: click outside it and what it opened\)$/, detail: /focus: the control/ },
@@ -84,6 +88,7 @@ const EXPECT: Record<string, { check: RegExp; detail: RegExp }> = {
 	toggle: { check: /^toggle probe of checkbox "Accept terms": Tab to it.* \(step 2 of 6: press Enter\)$/, detail: /aria-checked=false/ },
 	form: { check: /^popup probe of button "Fruit": open by pointer.* \(step 7 of 12: click item 1 of what is open\)$/, detail: /form: fruit=Apple/ },
 	label: { check: /^toggle probe of switch "Wi-Fi": a click on its label, then Space and Tab \(step 1 of 3: click its label\)$/, detail: /focus: the control/ },
+	rtl: { check: /^popup probe of button "الإعدادات": open by pointer.* \(step 5 of 12: click outside it and what it opened\)$/, detail: /focus: the control/ },
 	discovered: { check: /^popup probe of button "Settings": open by pointer.* \(step 5 of 12: click outside it and what it opened\)$/, detail: /focus: the control/ },
 	hover: { check: /^hover probe of link "@ada": pointer resting on it.* \(step 1 of 4: point at it\)$/, detail: /open: tooltip "Ada Lovelace"/ },
 	drag: { check: /^drag probe of slider "Volume": dragged by the pointer both ways \(step 1 of 3: drag it 40 px right\)$/, detail: /aria-valuenow=60/ },

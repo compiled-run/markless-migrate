@@ -264,7 +264,9 @@ export function probeControls({ notify, mark, found = {} }: { readonly notify: r
 		const region = main ? 'main' : landmark ? (landmark.getAttribute('role') ?? landmark.localName) : '';
 		const slot = e.getAttribute('data-slot');
 		const popup = (e.getAttribute('aria-haspopup') ?? '').toLowerCase();
-		out.push({ role, name: label, nth, kind: `${region}|${slot ?? `${e.localName}[${role}]`}`, classes, region, ...(popup && popup !== 'false' ? { popup } : {}) });
+		// Right to left is its own kind: a library flips placement, arrows and outside clicks there, and a port can get that one wrong alone.
+		const dir = e.closest('[dir]')?.getAttribute('dir') === 'rtl' ? '|rtl' : '';
+		out.push({ role, name: label, nth, kind: `${region}|${slot ?? `${e.localName}[${role}]`}${dir}`, classes, region, ...(popup && popup !== 'false' ? { popup } : {}) });
 	};
 	if (mark !== undefined) for (const o of document.querySelectorAll('[data-markless-migrate-probe]')) o.removeAttribute('data-markless-migrate-probe');
 	// A right-click target says so only through its handler: React's and Vue's props, or the element's own property.
