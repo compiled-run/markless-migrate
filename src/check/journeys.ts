@@ -306,7 +306,7 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 	let unnamed = 0;
 	for (const c of await page.evaluate(clickables).catch(() => [])) {
 		const target = { role: CLICKABLE, name: c.name, nth: c.name ? c.nth : unnamed++, ...(c.name ? {} : { structure: c.structure }) };
-		const base = { target, region: c.region, importance: importance(c), ...(c.focusable ? { focusable: true } : {}) };
+		const base = { target, region: c.region, importance: importance(c), ...(c.name ? { kind: `${c.region || 'page'}|${CLICKABLE}|${c.name}|${c.structure.tag}` } : {}), ...(c.focusable ? { focusable: true } : {}) };
 		add(c.name && DESTRUCTIVE.test(c.name) ? { ...base, destructive: true } : base);
 	}
 	// Three or more parts of one kind with one name in one region (each demo's "Copy" and "View Code") are alike: a few of them stand for the rest.
@@ -1549,7 +1549,8 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		const out: Item[] = [];
 		for (const [key, members] of batched) {
 			batched.delete(key);
-			const usable = members.filter((t) => !t.shared && !t.by && !t.reason && primaryStep(t.candidate));
+			// Last on the page first: using one (a thread's "[-]" renaming itself and hiding the replies after it) cannot move or hide those still to come.
+			const usable = members.filter((t) => !t.shared && !t.by && !t.reason && primaryStep(t.candidate)).sort((a, b) => b.candidate.target.nth - a.candidate.target.nth);
 			if (!usable.length) continue;
 			const steps = [...usable[0]!.prefix, ...usable.map((t) => primaryStep(t.candidate)!)];
 			out.push({ journey: { name: `${describeStep(primaryStep(usable[0]!.candidate)!).replace(/ #\d+$/, '')} and ${usable.length - 1} more alike, each in turn (${usable.map((t) => `#${t.candidate.target.nth + 1}`).join(', ')})`, steps }, depth, expand: false, batch: usable });
