@@ -61,6 +61,7 @@ jobs:
           - suite: proxy
           - suite: radix-dialog-port
           - suite: responsiveness
+          - suite: slow-network
           - { suite: next-app, shard: 1/6 }
           - { suite: next-app, shard: 2/6 }
           - { suite: next-app, shard: 3/6 }

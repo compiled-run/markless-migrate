@@ -27,6 +27,16 @@ test('check without origins is a usage error', () => {
 	assert.match(result.stderr, /--old <origin> and --new <origin>/);
 });
 
+test('network needs page URLs, a known profile and browser, and one --control for all pages or one each', () => {
+	assert.match(run('network').stderr, /network needs the URLs of the pages to load/);
+	const profile = run('network', 'https://a.example/', '--profile', 'edge');
+	assert.equal(profile.status, 2);
+	assert.match(profile.stderr, /unknown --profile edge: one of regular-2g, regular-3g, slow-4g/);
+	assert.match(run('network', 'https://a.example/', '--browser', 'opera').stderr, /unknown --browser opera: one of chromium, firefox, webkit/);
+	assert.match(run('network', 'https://a.example/', 'https://b.example/', 'https://c.example/', '--control', 'x', '--control', 'y').stderr, /one selector for all pages, or one per page/);
+	assert.match(run().stdout, /^  network <url>\.\.\. /m);
+});
+
 test('an unknown command is a usage error', () => {
 	assert.equal(run('frobnicate').status, 2);
 });
