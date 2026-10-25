@@ -15,6 +15,8 @@ export interface Popup {
 	/** The positioner and what lies between it and the popup carrying the open state (Select.Popup around its list). */
 	readonly around: readonly HTMLElement[];
 	readonly pressable: boolean;
+	/** performance.now() when it opened. */
+	readonly openedAt: number;
 	stop?: () => void;
 	cleanup: (() => void)[];
 }
@@ -202,7 +204,7 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	const around: HTMLElement[] = positioner ? [positioner] : [];
 	for (let n = popup.parentElement; n && n !== positioner && n !== portal; n = n.parentElement) if (n.hasAttribute('data-open') || n.hasAttribute('data-closed')) around.push(n);
 	const pressable = options.pressable ?? (options.anchored !== false && (popup.matches('[role="menu"], [role="listbox"], [role="dialog"], nav') || Boolean(popup.querySelector('[role="listbox"]'))));
-	const p: Popup = { key, trigger, portal, positioner, popup, backdrop, around, pressable, cleanup: [] };
+	const p: Popup = { key, trigger, portal, positioner, popup, backdrop, around, pressable, openedAt: performance.now(), cleanup: [] };
 	// A dialog's or drawer's viewport fills the window: only a popup with a positioner is placed off its trigger.
 	if (positioner && options.anchored !== false && positioner.getAttribute('data-side') !== 'none') {
 		for (const prop of ['left', 'top', 'transform', 'height', 'max-height', 'margin-top', 'margin-bottom']) positioner.style.removeProperty(prop);
@@ -287,4 +289,68 @@ export function closePopup(p: Popup, returnFocus = true, keep = false): void {
 		if (keep) (p.positioner ?? p.popup).hidden = true;
 		else p.portal.hidden = true;
 	});
+}
+
+/** One list's useTypeahead session (floating-ui's, as Base UI ships it, reset after TYPEAHEAD_RESET_MS). */
+export interface Typing {
+	text: string;
+	prev: number | null;
+	match: number | null;
+	typing: boolean;
+	timer?: ReturnType<typeof setTimeout>;
+}
+export const newTyping = (): Typing => ({ text: '', prev: null, match: null, typing: false });
+export function endTyping(t: Typing): void {
+	clearTimeout(t.timer);
+	Object.assign(t, newTyping());
+}
+const visible = (el: Element) => el.getClientRects().length > 0;
+
+/** useTypeahead's keydown in an open list: the index typed to, or undefined. `skip` is Select's disabledIndices. */
+export function typeahead(t: Typing, event: KeyboardEvent, items: readonly HTMLElement[], active: number, skip: (i: number) => boolean = () => false, selected: number | null = null): number | undefined {
+	const labels = items.map((i) => i.textContent ?? '');
+	const available = (i: number) => visible(items[i]!) && !skip(i);
+	const matching = (text: string, start = 0) => {
+		const lower = text.toLowerCase();
+		for (let offset = 0; offset < labels.length; offset++) {
+			const i = (((start % labels.length) + labels.length) % labels.length + offset) % labels.length;
+			if (labels[i]!.toLowerCase().startsWith(lower) && available(i)) return i;
+		}
+		return -1;
+	};
+	if (t.text.length > 0 && event.key === ' ') {
+		event.preventDefault();
+		t.typing = true;
+	}
+	if (t.text.length > 0 && t.text[0] !== ' ' && matching(t.text) === -1 && event.key !== ' ') t.typing = false;
+	if (!labels.length || event.key.length !== 1 || event.ctrlKey || event.metaKey || event.altKey) return undefined;
+	if (event.key !== ' ') {
+		event.preventDefault();
+		t.typing = true;
+	}
+	const isNew = t.text === '';
+	const current = selected ?? (active >= 0 ? active : -1);
+	if (isNew) t.prev = current;
+	const rapid = labels.every((text, i) => (text && available(i) ? text[0]?.toLowerCase() !== text[1]?.toLowerCase() : true));
+	if (rapid && t.text === event.key) {
+		t.text = '';
+		t.prev = t.match;
+	}
+	t.text += event.key;
+	clearTimeout(t.timer);
+	t.timer = setTimeout(() => {
+		t.text = '';
+		t.prev = t.match;
+		t.typing = false;
+	}, 500);
+	const index = matching(t.text, ((isNew ? current : t.prev) ?? 0) + 1);
+	if (index !== -1) {
+		t.match = index;
+		return index;
+	}
+	if (event.key !== ' ') {
+		t.text = '';
+		t.typing = false;
+	}
+	return undefined;
 }
