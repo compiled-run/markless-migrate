@@ -129,3 +129,74 @@ export function fontPreloads(urls: readonly string[], origin: string, already: n
 	});
 	return [...new Set(own)].slice(0, Math.max(0, MAX_FONT_PRELOADS - already)).map((href) => ({ href }));
 }
+
+/**
+ * Runs in the page: the font files it preloads that a face of its stylesheets names, and those of them the first screen
+ * draws, by the font matching a browser does (the first family in an element's list with a face whose range has the
+ * character). A preload the first screen does not draw takes bandwidth the stylesheets and scripts need.
+ */
+export function fontPreloadsInFirstScreen(): { preloaded: string[]; drawn: string[] } {
+	type Face = { family: string; ranges: [number, number][]; urls: string[] };
+	const faces: Face[] = [];
+	const parseRanges = (value: string): [number, number][] =>
+		value
+			.split(',')
+			.map((part) => part.trim().replace(/^U\+/i, ''))
+			.filter(Boolean)
+			.map((part) => {
+				if (part.includes('?')) return [parseInt(part.replace(/\?/g, '0'), 16), parseInt(part.replace(/\?/g, 'F'), 16)];
+				const [a, b] = part.split('-');
+				return [parseInt(a!, 16), parseInt(b ?? a!, 16)];
+			});
+	const visit = (rules: CSSRuleList) => {
+		for (const rule of rules) {
+			if (rule instanceof CSSFontFaceRule) {
+				const family = rule.style.getPropertyValue('font-family').replace(/^["']|["']$/g, '').trim();
+				const range = rule.style.getPropertyValue('unicode-range');
+				const urls = [...rule.style.getPropertyValue('src').matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/g)].map((m) => new URL(m[1]!, rule.parentStyleSheet?.href ?? location.href).href);
+				faces.push({ family, ranges: range ? parseRanges(range) : [[0, 0x10ffff]], urls });
+			} else if ('cssRules' in rule && (rule as CSSGroupingRule).cssRules) visit((rule as CSSGroupingRule).cssRules);
+		}
+	};
+	for (const sheet of document.styleSheets) {
+		try {
+			visit(sheet.cssRules);
+		} catch {}
+	}
+	const named = new Set(faces.flatMap((f) => f.urls));
+	const preloaded = [...new Set([...document.querySelectorAll<HTMLLinkElement>('link[rel~="preload"][as="font"]')].map((l) => l.href))].filter((u) => named.has(u));
+	const byFamily = new Map<string, Face[]>();
+	for (const f of faces) byFamily.set(f.family.toLowerCase(), [...(byFamily.get(f.family.toLowerCase()) ?? []), f]);
+	const drawn = new Set<string>();
+	const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+	for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+		const parent = node.parentElement;
+		const text = node.textContent ?? '';
+		if (!parent || !text.trim() || !parent.checkVisibility({ visibilityProperty: true, opacityProperty: true })) continue;
+		const range = document.createRange();
+		range.selectNodeContents(node);
+		if (![...range.getClientRects()].some((r) => r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth)) continue;
+		const families = getComputedStyle(parent)
+			.fontFamily.split(',')
+			.map((f) => f.trim().replace(/^["']|["']$/g, '').toLowerCase());
+		for (const ch of new Set(text.replace(/\s/g, ''))) {
+			const cp = ch.codePointAt(0)!;
+			for (const family of families) {
+				const own = byFamily.get(family);
+				// A family no face names is the system's, and draws the character.
+				if (!own) break;
+				const covering = own.filter((f) => f.ranges.some(([a, b]) => cp >= a && cp <= b));
+				if (!covering.length) continue;
+				for (const f of covering) for (const u of f.urls) drawn.add(u);
+				break;
+			}
+		}
+	}
+	return { preloaded, drawn: preloaded.filter((u) => drawn.has(u)) };
+}
+
+/** The head without the font preloads whose files (absolute URLs) no first screen of the page draws. */
+export function withoutOffscreenFontPreloads<T extends { readonly tag: string; readonly attrs: Readonly<Record<string, string | undefined>> }>(tags: readonly T[], offscreen: readonly string[], origin: string): T[] {
+	const gone = new Set(offscreen);
+	return tags.filter((t) => !(t.tag === 'link' && /\bpreload\b/.test(t.attrs.rel ?? '') && t.attrs.as === 'font' && t.attrs.href && gone.has(new URL(t.attrs.href, origin).href)));
+}
