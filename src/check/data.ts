@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { NetworkRecord } from './network.ts';
 
@@ -48,4 +48,18 @@ export async function readRecording(dir: string, route: string): Promise<Recordi
 	} catch {
 		return undefined;
 	}
+}
+
+/** Every route's recorded responses, newest recording first and each request once: what a journey's other pages (the page it arrives from) are answered with. */
+export async function everyRecording(dir: string): Promise<NetworkRecord[]> {
+	const files = await readdir(dir).catch(() => [] as string[]);
+	const recordings: Recording[] = [];
+	for (const file of files) {
+		if (!file.endsWith('.json')) continue;
+		try {
+			recordings.push(JSON.parse(await readFile(join(dir, file), 'utf8')) as Recording);
+		} catch {}
+	}
+	recordings.sort((a, b) => b.at.localeCompare(a.at));
+	return recordable(recordings.flatMap((r) => r.responses));
 }

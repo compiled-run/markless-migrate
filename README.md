@@ -467,7 +467,9 @@ to loopback callers only, or to callers sending `MARKLESS_MIGRATE_TOKEN` when it
 `.migrate/data/<route>.json`. `--data replay` serves those responses to both apps: in the browser
 for requests to other origins, and on the server through the recorder, so both render the same data
 even when they are pointed at different backends. A request is answered from the recording by its
-exact URL, or else by the same path and query on any host; the app's own API routes still run.
+exact URL, or else by the same path and query on any host; the app's own API routes still run. A
+request the route's own recording lacks is answered from the other routes' recordings (newest first), so
+the other pages a journey passes through, such as the page it arrives from, show recorded data too.
 With `--data`, every page is rendered on demand rather than from the server's page cache, so what it
 fetches is seen: a Next.js build answers a prerendered or revalidated page (`x-nextjs-cache: HIT` or
 `STALE`) and a cached `fetch` without running them, so the recorder adds the build's own draft-mode
