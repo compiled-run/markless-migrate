@@ -160,6 +160,9 @@ Not fixed, noted:
 | 4 | replay, 6 routes, fixes 3-5 | 0 of 6 | with both clocks pinned to the recording's moment, every in-place navigation on the new app did nothing; fix 5 was dropped (closed as a duplicate anyway) |
 | 5 | replay, 6 routes, fixes 3-4, `--time` = the run's start | 0 of 6 | the final run below; 23 differences accepted afterwards |
 
+Claude Code converted every page itself. The migrator's own `run` with an agent was not tried: the machine-wide
+queue was full with other workers' checks for most of the session, and each check run here already waited for a slot.
+
 Each check run waited from 20 minutes to an hour for a slot in the machine-wide queue (other workers' checks and
 builds), and the 290-comment route alone takes about 25 minutes.
 
