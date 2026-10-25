@@ -15,7 +15,7 @@ import { adoptAnswers, LAUNCH, DEFINITE, defaultEnv, isLoopback, pushRecording, 
 import { captureHttp, captureRoute, mime, pageLoads, thirdPartyLoads } from './capture.ts';
 import { OldCache } from './cache.ts';
 import { everyRecording, readRecording, recordable, slug, writeRecording } from './data.ts';
-import { recordLive, restRecords } from './live-record.ts';
+import { mergeRecordings, recordLive, restRecords } from './live-record.ts';
 import { checkEndpoint, checkRedirect, isPage } from './endpoints.ts';
 import { DEFAULT_FREEZE, pinnedBy, pinnedSummary, type FreezeOptions } from './freeze.ts';
 import { HINTS } from './hints.ts';
@@ -585,6 +585,17 @@ async function replayRoute(run: Run, dir: string, route: string, shared: Promise
 	return { run: next, failures };
 }
 
+/** The navigation check moves between the checked routes, so on replay it is served every route's recording at once. */
+async function navigationRun(run: Run, data: CheckOptions['data'], routes: readonly string[]): Promise<Run> {
+	if (data?.mode !== 'replay') return run;
+	const recordings = (await Promise.all(routes.map((route) => readRecording(data.dir, route)))).filter((r) => r !== undefined);
+	const merged = mergeRecordings(recordings);
+	const replay = { set: randomUUID(), responses: [...merged.responses, ...restRecords(merged.live)], ...(merged.live ? { live: merged.live } : {}) };
+	const next: Run = { ...run, old: { ...run.old, replay }, new: { ...run.new, replay } };
+	if (replay.responses.some((r) => r.side === 'server')) await Promise.all([pushRecording(next.old), pushRecording(next.new)]);
+	return next;
+}
+
 /** A route that was not compared in full: only `compared` dimensions carry a verdict, the rest are skipped. */
 function partialResult(route: string, failures: readonly Failure[], compared: readonly Dimension[], blocked?: Blocked, infrastructure?: Infrastructure): RouteResult {
 	const failed = new Set(failures.map((f) => f.dimension));
@@ -833,7 +844,8 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				options.onRoute?.(kept);
 				return kept;
 			});
-			const navigated = options.navigation ? await checkNavigation(browser, roleRun.new, pages, { concurrency: options.concurrency ?? DEFAULT_CONCURRENCY, old: roleRun.old, ...options.navigation }) : undefined;
+			const navRun = options.navigation ? await navigationRun(roleRun, data, pages) : undefined;
+			const navigated = navRun ? await checkNavigation(browser, navRun.new, pages, { concurrency: options.concurrency ?? DEFAULT_CONCURRENCY, old: navRun.old, ...options.navigation }) : undefined;
 			if (navigated) navigation.push(navigated);
 			const compared = navigated ? applyNavigation(shareLayout(checked), navigated) : shareLayout(checked);
 			routes.push(...(artifacts ? await Promise.all(compared.map((r) => artifacts.keep(r))) : compared));

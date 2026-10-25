@@ -8,6 +8,7 @@ import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { dataFile } from '../src/check/data.ts';
 import { applyUpdate, recordDatabases, valueAt, type LiveRecording } from '../src/check/live-data.ts';
+import { mergeRecordings } from '../src/check/live-record.ts';
 import { runCheck } from '../src/check/run.ts';
 import { freezePage, DEFAULT_FREEZE } from '../src/check/freeze.ts';
 
@@ -180,4 +181,13 @@ test("two frozen pages open at once each get their own routed socket, though the
 	const [a, b] = await Promise.all([one('a'), one('b')]);
 	assert.deepEqual([a.shown, b.shown], ['for a', 'for b']);
 	assert.equal(a.seeded, b.seeded);
+});
+
+test("the navigation check is served every checked route's recording at once, a path two routes recorded at the first one's value", () => {
+	const at = new Date(0).toISOString();
+	const merged = mergeRecordings([
+		{ route: '/news', recordedFrom: 'http://old', at, responses: [], live: { firebase: [{ host: 'hn.firebaseio.com', snapshot: { 'v0/topstories': [1, 2], 'v0/item/1': { id: 1, score: 3 } }, updates: [{ path: 'v0/item/1', data: { id: 1, score: 4 } }] }] } },
+		{ route: '/item/1', recordedFrom: 'http://old', at, responses: [], live: { firebase: [{ host: 'hn.firebaseio.com', snapshot: { 'v0/item/1': { id: 1, score: 5 }, 'v0/item/9': { id: 9 } }, updates: [] }] } },
+	]);
+	assert.deepEqual(merged.live, { firebase: [{ host: 'hn.firebaseio.com', snapshot: { 'v0/topstories': [1, 2], 'v0/item/1': { id: 1, score: 3 }, 'v0/item/9': { id: 9 } }, updates: [] }] });
 });
