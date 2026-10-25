@@ -146,6 +146,20 @@ test('with --server-clock a page load check tags reads the frozen clock on the s
 	}
 });
 
+test('with --server-clock a write a journey sends runs on the real clock, so what it stores does not expire the moment the next untagged request reads it', async () => {
+	const app = spawn(process.execPath, ['-e', CLOCK_APP], { env: { ...process.env, ...recorderEnv('') }, stdio: ['ignore', 'pipe', 'inherit'] });
+	try {
+		const at = await new Promise<string>((resolve) => app.stdout!.once('data', (chunk) => resolve(String(chunk).trim())));
+		const tag = recorderTag(defaultEnv(at, { serverClock: true }), 'write');
+		const posted = await (await fetch(at, { method: 'POST', headers: { [RECORDER_HEADER]: tag }, body: '{}' })).json();
+		assert.ok(Math.abs(posted.now - Date.now()) < 60_000, 'a POST tagged with the frozen time reads the real clock');
+		const read = await (await fetch(at, { headers: { [RECORDER_HEADER]: tag } })).json();
+		assert.ok(Math.abs(read.now - Date.now()) > 60_000, 'a GET with the same tag still renders at the frozen time');
+	} finally {
+		app.kill();
+	}
+});
+
 test('pushed recordings are served instead of the network for loads that ask for them', async () => {
 	const env = { ...defaultEnv(origin), replay: { set: 's1', responses: [{ side: 'server' as const, method: 'GET', url: 'http://elsewhere.test/walks/news?fields=title', status: 200, contentType: 'application/json', body: '{"items":[{"title":"Recorded headline"}]}' }] } };
 	assert.equal(await pushRecording(env), true);
