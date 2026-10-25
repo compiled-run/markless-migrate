@@ -157,3 +157,23 @@ test('a body child a load-time modal marked hidden (aria-hidden, Base UI inert) 
 	const module = bodyAfterModule(split, () => undefined, () => {})!;
 	assert.match(module, /<section aria-label="Notifications"><span aria-hidden="true">x<\/span><\/section>/);
 });
+
+test('a Radix Collapsible\'s root, around its trigger and content, binds data-state with them', async () => {
+	const { DisclosurePlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><li data-slot="sidebar-menu-item"><div data-slot="collapsible" data-state="closed"><button data-slot="collapsible-trigger" aria-controls="c1" aria-expanded="false" data-state="closed">More</button><div id="c1" data-slot="collapsible-content" data-state="closed" hidden></div></div></li></body>');
+	const plan = new DisclosurePlan();
+	assert.equal(plan.add(body(doc), () => true, () => '<p>more</p>'), 1);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<div data-slot="collapsible" data-state=\{acc0 === 0 \? "open" : "closed"\}>/);
+	assert.match(out, /<li data-slot="sidebar-menu-item">/, 'an item around it that is no Accordion\'s keeps its markup');
+});
+
+test('a Radix Collapsible whose content mounts on opening binds its root\'s data-state with its trigger\'s', async () => {
+	const { InsertedDisclosurePlan } = await import('../src/convert/stateful.ts');
+	const doc = parseDocument('<body><div data-slot="trace-collapsible" data-state="closed"><button data-slot="trace-collapsible-trigger" aria-expanded="false" data-state="closed">Ran</button></div></body>');
+	const trigger = find(body(doc), (el) => el.tagName === 'button')!;
+	const plan = new InsertedDisclosurePlan();
+	plan.add([{ trigger, parent: trigger.parentNode as Element, before: null, markup: '<div data-slot="trace-collapsible-content">out</div>' }]);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<div data-slot="trace-collapsible" data-state=\{ins0 \? "open" : "closed"\}>/);
+});

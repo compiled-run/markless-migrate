@@ -125,10 +125,18 @@ export class DisclosurePlan {
 			}
 			const parent = trigger.parentNode as Element | null;
 			const header = parent && /^h[1-6]$/.test(parent.tagName ?? '') ? parent : undefined;
+			// A Collapsible's root (the nearest element around both its trigger and content) carries data-state too.
+			if (!accordion) item = undefined;
+			if (!accordion)
+				for (let n = parent; n && 'tagName' in n; n = n.parentNode as Element | null)
+					if ([...walk(n)].includes(panel)) {
+						if (attr(n, 'data-state') !== undefined) item = n;
+						break;
+					}
 			// Each item of an accordion that lets several be open is its own group.
 			const key = accordion && !multiple(accordion) ? accordion : trigger;
 			const list = groups.get(key) ?? groups.set(key, []).get(key)!;
-			list.push({ trigger, content: panel, ...(accordion && item ? { item } : {}), ...(header ? { header } : {}) });
+			list.push({ trigger, content: panel, ...(item ? { item } : {}), ...(header ? { header } : {}) });
 		}
 		for (const [, items] of groups) {
 			const n = this.n++;
@@ -493,6 +501,13 @@ export class InsertedDisclosurePlan {
 				if (attr(trigger, 'data-state') !== undefined) {
 					extra.push(`data-state={${open} ? "open" : "closed"}`);
 					omit.push('data-state');
+					// A Radix Collapsible's root around its trigger writes the same data-state.
+					if (!base)
+						for (let n = trigger.parentNode as Element | null; n && 'tagName' in n; n = n.parentNode as Element | null)
+							if (attr(n, 'data-state') !== undefined) {
+								if (attr(n, 'data-state') === attr(trigger, 'data-state') && !this.bindings.has(n)) this.bindings.set(n, { declare, omit: ['data-state'], extra: [`data-state={${open} ? "open" : "closed"}`] });
+								break;
+							}
 				}
 				if (base) {
 					extra.push(`data-panel-open={${open} ? "" : undefined}`);
