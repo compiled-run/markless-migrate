@@ -328,6 +328,20 @@ test('Base UI select typeahead: open, a letter highlights the next enabled optio
 	await page.close();
 });
 
+test("a closed Base UI select's backdrop goes inert at once and away once the list's exit ends, as InternalBackdrop unmounts with the list", async () => {
+	const page = await open(select, ['base-ui/select']);
+	const backdrop = () => page.evaluate(() => { const b = document.querySelector<HTMLElement>('[data-base-ui-inert]')!; return `${b.hidden ? 'hidden' : 'shown'}${b.hasAttribute('inert') ? ' inert' : ''}`; });
+	await page.locator('#base').focus();
+	await press(page, 'Enter');
+	assert.equal(await backdrop(), 'shown');
+	await press(page, 'Escape');
+	await page.waitForTimeout(100);
+	assert.equal(await backdrop(), 'hidden inert');
+	await press(page, 'Enter');
+	assert.equal(await backdrop(), 'shown');
+	await page.close();
+});
+
 test('the pointer leaving a Base UI select option for no other unhighlights it and focuses the select popup', async () => {
 	const page = await open(select, ['base-ui/select']);
 	await page.locator('#base').click();

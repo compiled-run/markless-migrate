@@ -203,6 +203,10 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	if (positioner === popup) positioner = null;
 	const backdrop = portal.querySelector<HTMLElement>(':scope > [role="presentation"][data-base-ui-inert]');
 	portal.hidden = false;
+	if (backdrop) {
+		backdrop.hidden = false;
+		backdrop.removeAttribute('inert');
+	}
 	for (const el of portal.querySelectorAll<HTMLElement>('[hidden]')) if (el.contains(popup)) el.hidden = false;
 	const around: HTMLElement[] = positioner ? [positioner] : [];
 	for (let n = popup.parentElement; n && n !== positioner && n !== portal; n = n.parentElement) if (n.hasAttribute('data-open') || n.hasAttribute('data-closed')) around.push(n);
@@ -273,6 +277,8 @@ export function closePopup(p: Popup, returnFocus = true, keep = false): void {
 	for (const c of p.cleanup) c();
 	setTrigger(p.trigger, false, p.pressable);
 	if (tabbedOut === p) returnFocus = false;
+	// InternalBackdrop: inert once the popup closes, unmounted with it.
+	p.backdrop?.setAttribute('inert', '');
 	showCompanions(p.key, false);
 	// FloatingFocusManager returns focus as the popup unmounts, after its exit; a Select's popup stays mounted.
 	const refocus = () => {
@@ -291,8 +297,10 @@ export function closePopup(p: Popup, returnFocus = true, keep = false): void {
 		if (open.some((o) => o.portal === p.portal)) return;
 		if (returnFocus && !keep) refocus();
 		// Base UI's Select keeps its popup mounted once opened, hidden; other popups leave, here hidden with their portal.
-		if (keep) (p.positioner ?? p.popup).hidden = true;
-		else p.portal.hidden = true;
+		if (keep) {
+			(p.positioner ?? p.popup).hidden = true;
+			if (p.backdrop) p.backdrop.hidden = true;
+		} else p.portal.hidden = true;
 	});
 }
 

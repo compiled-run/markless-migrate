@@ -142,3 +142,13 @@ test('Base UI Dialog: a scroll container with nothing focusable in it is a Tab s
 	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Last', 'Shift+Tab from the scroller wraps to the last control');
 	await page.close();
 });
+
+test('Base UI Popover with nothing tabbable in it: opened, its popup takes focus, and Tab closes it with focus after the trigger', async () => {
+	const page = await open(popover.replace('<input aria-label="Width"><button type="button">Save</button>', '<p>I used AI to translate this text.</p>'), ['base-ui/popover']);
+	await page.locator('#pop').focus();
+	await press(page, 'Enter');
+	assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('data-slot')), 'popover-content');
+	await press(page, 'Tab');
+	assert.deepEqual([await page.evaluate(() => document.activeElement?.textContent), await page.locator('#pop').getAttribute('aria-expanded')], ['After', 'false']);
+	await page.close();
+});
