@@ -211,9 +211,12 @@ export interface ProbeControl {
 }
 
 /**
- * Runs in the page: the controls of each probe class, in page order. `found` the classes discovery gave controls by their key.
+ * Runs in the page: the controls of each probe class, in page order. `hover` holds the elements the handler scan saw listening
+ * for the pointer moving over them (handlers.ts),
+ * `found` the classes discovery gave controls by their key.
  */
 export function probeControls({ mark, found = {} }: { readonly mark?: string; readonly found?: Readonly<Record<string, readonly string[]>> }): ProbeControl[] {
+	const hover = (globalThis as { __markless_migrate_hover__?: WeakSet<Element> }).__markless_migrate_hover__;
 	const shown = (e: Element) => {
 		const r = e.getBoundingClientRect();
 		return r.width >= 1 && r.height >= 1 && e.checkVisibility({ opacityProperty: true, visibilityProperty: true });
@@ -258,6 +261,8 @@ export function probeControls({ mark, found = {} }: { readonly mark?: string; re
 		const opener = role === 'button' && ((popup && popup !== 'false') || (e.hasAttribute('aria-expanded') && e.hasAttribute('aria-controls')));
 		if (focusable && /^(button|link|textbox|searchbox|combobox|checkbox|switch|tab|radio|slider|spinbutton)$/.test(role)) classes.push('modality');
 		if (opener || role === 'combobox') classes.push('popup');
+		// A link listens for hover to prefetch its page (Next's Link does): it is a hover target only when it says it shows something.
+		if (hover?.has(e) && /^(button|link|checkbox|switch|tab|radio)$/.test(role) && (role !== 'link' || e.hasAttribute('data-state') || e.hasAttribute('aria-describedby') || e.hasAttribute('aria-haspopup') || e.hasAttribute('aria-expanded'))) classes.push('hover');
 		add(e, role, classes);
 	}
 	return out;
