@@ -10,7 +10,7 @@ import { scanForInventory, summarizeSource, unionRoutes, type RouteUnionEntry, t
 import { request } from '../check/http.ts';
 import { defaultEnv } from '../check/browser.ts';
 import { discoverEndpoints } from '../check/endpoints.ts';
-import { DEFAULT_CRAWL_BOUND, enumerateRoutes, routesToPort, type PlannedRoute, type RouteSource } from './enumerate.ts';
+import { DEFAULT_CRAWL_BOUND, enumerateRoutes, routesToPort, type Enumeration, type PlannedRoute, type RouteSource } from './enumerate.ts';
 import { routeTargets, type Samples } from './routes.ts';
 import { ANONYMOUS, signIn, type AuthConfig } from '../check/auth.ts';
 import type { StorageState } from '../check/browser.ts';
@@ -42,7 +42,7 @@ export interface Inventory {
 	/** Every route of the old site, from every source plan read (sitemaps, the link crawl, the source, robots.txt, feeds, fixed non-page paths): what check checks and the coverage dimension counts. */
 	readonly allRoutes?: readonly PlannedRoute[];
 	/** How far the link crawl went: pages fetched, its bound, and whether it stopped at the bound. */
-	readonly crawl?: { readonly fetched: number; readonly bound: number; readonly truncated: boolean; readonly sitemaps: readonly string[] };
+	readonly crawl?: { readonly fetched: number; readonly bound: number; readonly truncated: boolean; readonly sitemaps: readonly string[]; readonly repeats?: Enumeration['repeats'] };
 }
 
 /** Every route the migration must port: the full route list, or for an older inventory the routes plan visited. */
@@ -344,7 +344,7 @@ export async function plan(options: PlanOptions): Promise<Inventory> {
 			const roles = [...byRole].filter(([, seen]) => seen.has(r.route)).map(([name]) => name);
 			return roles.length ? { ...r, roles: anonymous.has(r.route) ? [ANONYMOUS, ...roles] : roles } : r;
 		}).sort((a, b) => a.route.localeCompare(b.route)),
-		crawl: { fetched: enumeration.fetched, bound: enumeration.bound, truncated: enumeration.truncated, sitemaps: enumeration.sitemaps },
+		crawl: { fetched: enumeration.fetched, bound: enumeration.bound, truncated: enumeration.truncated, sitemaps: enumeration.sitemaps, ...(enumeration.repeats.length ? { repeats: enumeration.repeats } : {}) },
 	};
 }
 
@@ -366,6 +366,7 @@ export function summarizeInventory(inventory: Inventory): string {
 		const signedOnly = port.filter((r) => r.roles && !r.roles.includes(ANONYMOUS));
 		if (signedOnly.length) lines.push(`  ${signedOnly.length} of them reached only signed in (${[...new Set(signedOnly.flatMap((r) => r.roles!))].join(', ')})`);
 		if (inventory.crawl) lines.push(`  link crawl fetched ${inventory.crawl.fetched} pages${inventory.crawl.truncated ? `, and STOPPED at its bound of ${inventory.crawl.bound}: raise --crawl-limit, routes linked only from the pages left unfetched are not listed` : ', and every link was followed'}${inventory.crawl.sitemaps.length ? `; sitemaps read: ${inventory.crawl.sitemaps.join(', ')}` : '; no sitemap found'}`);
+		for (const r of inventory.crawl?.repeats ?? []) lines.push(`  ${r.route} shows what ${r.sameAs} shows apart from its numbers, and links on to ${r.next}: pagination past its last page, not followed further`);
 	}
 	lines.push(`${inventory.routes.length} routes inventoried in the browser (SEO, assets, locales) on ${inventory.origin}${inventory.truncated ? ` (stopped at the limit of ${inventory.limit}; check still checks every route above)` : ''}`);
 	for (const r of inventory.routes) {

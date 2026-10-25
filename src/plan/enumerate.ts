@@ -24,6 +24,8 @@ export interface Enumeration {
 	/** The crawl stopped at the bound with routes still unfetched: their links were not followed. */
 	readonly truncated: boolean;
 	readonly sitemaps: readonly string[];
+	/** Pages whose links were not followed: each repeats an earlier page of its route apart from its numbers and links on to the next one (pagination that runs on past its last page). */
+	readonly repeats: readonly { readonly route: string; readonly sameAs: string; readonly next: string }[];
 }
 
 export const DEFAULT_CRAWL_BOUND = 10_000;
@@ -31,6 +33,16 @@ const CONCURRENCY = 8;
 const MAX_BODY = 4 * 1024 * 1024;
 const PAGINATION = /^(page|p|pg|paged|offset|start|cursor|after|before)$/i;
 const NOT_LINKS = /^(javascript|mailto|tel|data|blob|about|sms|ftp):/i;
+
+const shapeOf = (route: string) => route.replace(/\d+/g, '#');
+// What a page shows apart from its numbers: scripts, styles and tags dropped, digits folded.
+const contentOf = (html: string) =>
+	html
+		.replace(/<(script|style|template)\b[\s\S]*?<\/\1>/gi, '')
+		.replace(/<[^>]*>/g, ' ')
+		.replace(/\d+/g, '#')
+		.replace(/\s+/g, ' ')
+		.trim();
 
 const decode = (value: string) => value.replace(/&amp;/g, '&').replace(/&#x2F;/gi, '/').replace(/&#47;/g, '/').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
 
@@ -182,6 +194,8 @@ export async function enumerateRoutes(origin: string, options: EnumerateOptions 
 	for (const route of sitemaps.routes) note(route, 'sitemap');
 	let fetched = 0;
 	let next = 0;
+	const pages = new Map<string, string>();
+	const repeats: { route: string; sameAs: string; next: string }[] = [];
 	const visit = async (route: string) => {
 		const url = new URL(route, origin).href;
 		const got = await fetchText(url, headers);
@@ -201,10 +215,17 @@ export async function enumerateRoutes(origin: string, options: EnumerateOptions 
 		if (!/html/.test(got.contentType)) return;
 		const base = /<base\b[^>]*\bhref\s*=\s*["']([^"']+)["']/i.exec(got.body)?.[1];
 		const from = base ? new URL(decode(base), url).href : url;
-		for (const href of pageLinks(got.body)) {
-			const target = routeOf(href, from, origin);
-			if (target) note(target, 'crawl');
+		const targets = pageLinks(got.body).flatMap((href) => routeOf(href, from, origin) ?? []);
+		const shape = shapeOf(route);
+		const key = `${shape} ${contentOf(got.body)}`;
+		const sameAs = pages.get(key);
+		const onward = targets.find((t) => t !== route && !found.has(t) && shapeOf(t) === shape);
+		if (sameAs && onward) {
+			repeats.push({ route, sameAs, next: onward });
+			return;
 		}
+		if (!sameAs) pages.set(key, route);
+		for (const target of targets) note(target, 'crawl');
 		for (const m of got.body.matchAll(/<link\b[^>]*\bhreflang\s*=[^>]*>/gi)) {
 			const href = /\bhref\s*=\s*["']([^"']+)["']/i.exec(m[0])?.[1];
 			const target = href && routeOf(href, from, origin);
@@ -224,7 +245,7 @@ export async function enumerateRoutes(origin: string, options: EnumerateOptions 
 		const fact = facts.get(route);
 		return { route, sources: [...sources].sort(), ...(fact ? { status: fact.status, contentType: fact.contentType, ...(fact.redirectsTo ? { redirectsTo: fact.redirectsTo } : {}) } : {}) };
 	});
-	return { routes: routes.sort((a, b) => a.route.localeCompare(b.route)), fetched, bound, truncated: next < queue.length, sitemaps: sitemaps.sitemaps };
+	return { routes: routes.sort((a, b) => a.route.localeCompare(b.route)), fetched, bound, truncated: next < queue.length, sitemaps: sitemaps.sitemaps, repeats: repeats.sort((a, b) => a.route.localeCompare(b.route)) };
 }
 
 /** The routes a migration must port: every planned route the old app answers without an error (or has not been fetched yet). */
