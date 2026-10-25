@@ -1,0 +1,245 @@
+name: Convert
+
+# `markless-migrate convert` of a port split by route across runners, and optionally its build. Each runner builds and
+# serves the old site itself (deploy/<site>/ci-serve.sh old). prepare runs plan and usage (the app's scripts/convert.sh
+# with PLAN_ONLY) and deals the pages into shards; each capture runner takes its shard's captures (CAPTURE_ONLY with
+# ONLY); emit puts every shard's captures together and runs the whole convert from them; build builds the converted
+# app on Markless at a ref, as a .output archive check.yml's `build` input takes.
+on:
+  workflow_dispatch:
+    inputs:
+      site:
+        description: The deploy/<site> folder whose ci-serve.sh serves the old site
+        required: true
+        default: shadcn-ui
+      app:
+        description: The port's folder, with a scripts/convert.sh that honours ONLY, PLAN_ONLY and CAPTURE_ONLY
+        required: true
+        default: examples/shadcn-ui-markless
+      shards:
+        description: Runners to split the pages across
+        required: true
+        default: '24'
+      concurrency:
+        description: Pages captured at once on each runner (4 cores, the old site's server beside the browser)
+        required: false
+        default: '3'
+      routes:
+        description: A file in the repository of routes to convert, one a line (default every page plan finds)
+        required: false
+        default: ''
+      build:
+        description: Also build the converted app
+        type: boolean
+        default: true
+      markless:
+        description: The compiled-run/markless ref the build packs @markless/* from (the app's scripts/link-markless.sh)
+        required: false
+        default: main
+      release:
+        description: A release tag to attach the build archive to (check.yml's build input takes its URL)
+        required: false
+        default: ''
+  # A change to the workflow converts and builds a few ui.shadcn.com pages the same way, on two runners.
+  pull_request:
+    paths:
+      - .github/workflows/convert.yml
+      - scripts/convert-shards.ts
+      - deploy/shadcn-ui/ci-serve.sh
+      - deploy/shadcn-ui/convert-routes-subset.txt
+
+permissions:
+  contents: write
+
+env:
+  SITE: ${{ inputs.site || 'shadcn-ui' }}
+  APP: ${{ inputs.app || 'examples/shadcn-ui-markless' }}
+  ROUTES: ${{ github.event_name == 'pull_request' && 'deploy/shadcn-ui/convert-routes-subset.txt' || inputs.routes }}
+
+concurrency:
+  group: convert-${{ inputs.site || 'shadcn-ui' }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    outputs:
+      matrix: ${{ steps.split.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      # The old site's own build scripts call bun (ui.shadcn.com's registry:build).
+      - uses: oven-sh/setup-bun@v2
+      - name: Serve the old site
+        run: bash "deploy/$SITE/ci-serve.sh" old
+      - name: Plan
+        run: PLAN_ONLY=1 bash "$APP/scripts/convert.sh"
+      - id: split
+        env:
+          SHARDS: ${{ inputs.shards || '2' }}
+        run: |
+          set -euo pipefail
+          if [ -n "$ROUTES" ]; then
+            node -e 'const fs=require("fs");const [inv,file]=process.argv.slice(1);const keep=new Set(fs.readFileSync(file,"utf8").split("\n").map(s=>s.trim()).filter(Boolean));const i=JSON.parse(fs.readFileSync(inv,"utf8"));i.routes=i.routes.filter(r=>keep.has(r.route));if(i.allRoutes)i.allRoutes=i.allRoutes.filter(r=>keep.has(r.route));fs.writeFileSync(inv+".only",JSON.stringify(i))' "$APP/.migrate/inventory.json" "$ROUTES"
+            inventory="$APP/.migrate/inventory.json.only"
+          else
+            inventory="$APP/.migrate/inventory.json"
+          fi
+          out="$RUNNER_TEMP/inputs"
+          echo "matrix=$(node scripts/convert-shards.ts split "$inventory" "$SHARDS" "$out/shards")" >> "$GITHUB_OUTPUT"
+          cat "$out"/shards/shard-*.txt > "$out/shards/all.txt"
+          mkdir -p "$out/state" && cp "$APP"/.migrate/*.json "$out/state/"
+          echo "$(wc -l < "$out/shards/all.txt") pages in $(ls "$out"/shards/shard-*.txt | wc -l) shards" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: convert-inputs
+          path: ${{ runner.temp }}/inputs
+          retention-days: 7
+
+  capture:
+    needs: prepare
+    runs-on: ubuntu-latest
+    # GitHub stops a job at 6 h: the old site's build takes about 6 minutes, the shard the rest.
+    timeout-minutes: 345
+    strategy:
+      fail-fast: false
+      # The org runs 60 jobs at once: a convert leaves room for every other repository's CI.
+      max-parallel: 20
+      matrix:
+        shard: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/download-artifact@v4
+        with:
+          name: convert-inputs
+          path: ${{ runner.temp }}/inputs
+      - name: Serve the old site
+        run: bash "deploy/$SITE/ci-serve.sh" old
+      - name: Capture
+        env:
+          SHARD: ${{ matrix.shard }}
+          CONCURRENCY: ${{ inputs.concurrency || '3' }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$APP/.migrate" && cp "$RUNNER_TEMP"/inputs/state/*.json "$APP/.migrate/"
+          /usr/bin/time -v env CAPTURE_ONLY=1 ONLY="$RUNNER_TEMP/inputs/shards/shard-$SHARD.txt" bash "$APP/scripts/convert.sh" > "$RUNNER_TEMP/capture.txt" 2>&1 || { tail -n 80 "$RUNNER_TEMP/capture.txt"; exit 1; }
+          tail -n 25 "$RUNNER_TEMP/capture.txt"
+          echo "shard $SHARD: $(grep -c . "$RUNNER_TEMP/inputs/shards/shard-$SHARD.txt") pages, $(grep 'Elapsed (wall clock)' "$RUNNER_TEMP/capture.txt" | awk '{print $NF}'), peak RSS $(($(grep 'Maximum resident set size' "$RUNNER_TEMP/capture.txt" | awk '{print $NF}') / 1024)) MB" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: captures-${{ matrix.shard }}
+          path: ${{ env.APP }}/.migrate/convert
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capture-log-${{ matrix.shard }}
+          path: |
+            ${{ runner.temp }}/capture.txt
+            ${{ runner.temp }}/old-build.log
+            ${{ runner.temp }}/old-serve.log
+          if-no-files-found: warn
+          retention-days: 7
+
+  emit:
+    needs: [prepare, capture]
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/download-artifact@v4
+        with:
+          name: convert-inputs
+          path: ${{ runner.temp }}/inputs
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: captures-*
+          merge-multiple: true
+          path: ${{ env.APP }}/.migrate/convert
+      - name: Serve the old site
+        run: bash "deploy/$SITE/ci-serve.sh" old
+      - name: Convert
+        run: |
+          set -euo pipefail
+          cp "$RUNNER_TEMP"/inputs/state/*.json "$APP/.migrate/"
+          only=""
+          [ -z "$ROUTES" ] || only="$RUNNER_TEMP/inputs/shards/all.txt"
+          /usr/bin/time -v env ONLY="$only" bash "$APP/scripts/convert.sh" > "$RUNNER_TEMP/convert.txt" 2>&1 || { tail -n 80 "$RUNNER_TEMP/convert.txt"; exit 1; }
+          tail -n 40 "$RUNNER_TEMP/convert.txt"
+          echo "emit: $(grep 'Elapsed (wall clock)' "$RUNNER_TEMP/convert.txt" | awk '{print $NF}'), peak RSS $(($(grep 'Maximum resident set size' "$RUNNER_TEMP/convert.txt" | awk '{print $NF}') / 1024)) MB" >> "$GITHUB_STEP_SUMMARY"
+      - name: Pack the converted app
+        run: tar -czf "$RUNNER_TEMP/app.tar.gz" --exclude=node_modules --exclude=.migrate/convert -C "$APP" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: converted-app
+          path: |
+            ${{ runner.temp }}/app.tar.gz
+            ${{ env.APP }}/.migrate/convert/report.json
+            ${{ runner.temp }}/convert.txt
+          retention-days: 14
+
+  build:
+    needs: emit
+    if: github.event_name == 'pull_request' || inputs.build
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: compiled-run/markless
+          ref: ${{ inputs.markless || 'main' }}
+          path: markless
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@v4
+        with:
+          name: converted-app
+          path: ${{ runner.temp }}/converted
+      - name: Link Markless
+        run: |
+          set -euo pipefail
+          tar -xzf "$(find "$RUNNER_TEMP/converted" -name app.tar.gz | head -n 1)" -C "$APP"
+          MARKLESS="$GITHUB_WORKSPACE/markless" bash "$APP/scripts/link-markless.sh" > "$RUNNER_TEMP/link.txt" 2>&1 || { tail -n 60 "$RUNNER_TEMP/link.txt"; exit 1; }
+      - name: Build
+        run: |
+          set -uo pipefail
+          cd "$APP"
+          status=0
+          /usr/bin/time -v npm run build > "$RUNNER_TEMP/build.txt" 2>&1 || status=$?
+          tail -n 40 "$RUNNER_TEMP/build.txt"
+          peak=$(grep 'Maximum resident set size' "$RUNNER_TEMP/build.txt" | awk '{print $NF}')
+          echo "build: exit $status, $(grep 'Elapsed (wall clock)' "$RUNNER_TEMP/build.txt" | awk '{print $NF}') wall, peak RSS of one process $((peak / 1024)) MB" >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+      - name: Pack the build
+        run: tar -czf "$RUNNER_TEMP/${{ env.SITE }}-markless-output.tar.gz" -C "$APP" .output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build
+          path: |
+            ${{ runner.temp }}/${{ env.SITE }}-markless-output.tar.gz
+            ${{ runner.temp }}/build.txt
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Attach to a release
+        if: github.event_name == 'workflow_dispatch' && inputs.release != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release }}
+        run: |
+          gh release view "$TAG" > /dev/null 2>&1 || gh release create "$TAG" --prerelease --title "$SITE: converted and built by the convert workflow ($GITHUB_SHA)" --notes "Run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          gh release upload "$TAG" "$RUNNER_TEMP/${{ env.SITE }}-markless-output.tar.gz" --clobber

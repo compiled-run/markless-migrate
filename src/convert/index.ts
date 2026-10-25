@@ -130,6 +130,8 @@ export interface ConvertOptions {
 	readonly resolver?: PartResolver;
 	/** Use every control that holds content back on the old pages, to carry that content (default on). */
 	readonly reveal?: boolean;
+	/** Take every capture of the old pages into .migrate/convert and stop there: no page is written. */
+	readonly captureOnly?: boolean;
 }
 
 export interface HeadTag {
@@ -1157,6 +1159,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	} finally {
 		await browser.close();
 	}
+	if (options.captureOnly) return { routes: [], dropped: {}, shared: [], assets: { copied: 0, missing: [] }, styles: 0, unconverted: [], endpoints: [], unported: [] };
 	const usagePath = join(state, 'usage.json');
 	const librariesPath = join(state, 'libraries.json');
 	const hasUsage = await stat(usagePath).then(() => true, () => false);

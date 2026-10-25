@@ -1,0 +1,6 @@
+/
+/docs
+/docs/components/radix/accordion
+/docs/components/base/tabs
+/docs/components/aria/select
+/blocks
