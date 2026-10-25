@@ -1,5 +1,5 @@
 import { hideOthers } from '../aria-hidden.ts';
-import { closePopup, openPopup, popupOf, type Popup } from './popup.ts';
+import { acquireScrollLock, closePopup, openPopup, popupOf, type Popup } from './popup.ts';
 import { enter, exit } from './transition.ts';
 import { closestTrigger, layerKey, layersFor } from '../reveal.ts';
 
@@ -17,32 +17,18 @@ const undo = new WeakMap<Popup, () => void>();
 // Popover.Trigger renders Dialog.Trigger's markup; a popover's portal holds its Positioner (role=presentation, data-side).
 const opensPopover = (key: string) => layersFor(key).some((n) => n.hasAttribute('data-base-ui-portal') && n.querySelector(':scope > [role="presentation"][data-side]'));
 
-const tabbables = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>(TABBABLE)].filter((el) => !el.closest('[hidden], [inert]') && !el.hasAttribute('data-base-ui-focus-guard') && el.getClientRects().length > 0);
+// Chrome makes a scroll container with nothing focusable inside a Tab stop, so it is one of the trap's ends too.
+const scroller = (el: HTMLElement) => {
+	const { overflowX, overflowY } = getComputedStyle(el);
+	return /auto|scroll/.test(overflowX + overflowY) && (el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth) && !el.querySelector(TABBABLE);
+};
+const tabbables = (root: HTMLElement, scrollers = true) => [...root.querySelectorAll<HTMLElement>(scrollers ? '*' : TABBABLE)].filter((el) => (el.matches(TABBABLE) || scroller(el)) && !el.closest('[hidden], [inert]') && !el.hasAttribute('data-base-ui-focus-guard') && el.getClientRects().length > 0);
 
 function close(p: Popup): void {
 	undo.get(p)?.();
 	const overlay = p.portal.querySelector<HTMLElement>('[data-slot$="overlay"], [data-slot$="backdrop"]');
 	if (overlay) exit(overlay, [], () => {});
 	closePopup(p);
-}
-
-// @base-ui/utils useScrollLock where the browser keeps a stable scrollbar gutter: <html> keeps the gutter (scrollbar-gutter:
-// stable, both edges if the page asked for them) and the element that scrolls the page stops scrolling, so nothing moves.
-function lockScroll(): () => void {
-	const html = document.documentElement;
-	const body = document.body;
-	const scrolls = (el: Element) => !['visible', 'clip'].includes(getComputedStyle(el).overflowY) || !['visible', 'clip'].includes(getComputedStyle(el).overflowX);
-	const locked = scrolls(html) ? html : body;
-	const gutter = getComputedStyle(html).scrollbarGutter.includes('both-edges') ? 'stable both-edges' : 'stable';
-	const before = { gutter: html.style.scrollbarGutter, overflowY: locked.style.overflowY, overflowX: locked.style.overflowX };
-	html.style.scrollbarGutter = gutter;
-	locked.style.overflowY = 'hidden';
-	locked.style.overflowX = 'hidden';
-	return () => {
-		html.style.scrollbarGutter = before.gutter;
-		locked.style.overflowY = before.overflowY;
-		locked.style.overflowX = before.overflowX;
-	};
 }
 
 function open(trigger: HTMLElement): boolean {
@@ -54,7 +40,7 @@ function open(trigger: HTMLElement): boolean {
 	const overlay = p.portal.querySelector<HTMLElement>('[data-slot$="overlay"], [data-slot$="backdrop"]');
 	if (overlay) enter(overlay);
 	const shown = modal ? hideOthers([p.portal]) : () => {};
-	const unlock = modal ? lockScroll() : () => {};
+	const unlock = modal ? acquireScrollLock() : () => {};
 	const onKey = (event: KeyboardEvent) => {
 		if (event.key !== 'Tab') return;
 		const list = tabbables(p.popup);
@@ -64,7 +50,7 @@ function open(trigger: HTMLElement): boolean {
 			if (!at || !p.popup.contains(at) || (event.shiftKey ? at !== list[0] && at !== p.popup : list.length && at !== list[list.length - 1])) return;
 			event.preventDefault();
 			if (event.shiftKey) trigger.focus();
-			else (tabbables(document.body).find((el) => !p.portal.contains(el) && Boolean(trigger.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)) ?? trigger).focus();
+			else (tabbables(document.body, false).find((el) => !p.portal.contains(el) && Boolean(trigger.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)) ?? trigger).focus();
 			return;
 		}
 		if (!list.length) {
@@ -99,7 +85,7 @@ function open(trigger: HTMLElement): boolean {
 		unlock();
 	});
 	// DrawerPopup's initialFocus is the popup itself; DialogPopup's is its first tabbable element.
-	(p.popup.hasAttribute('data-swipe-direction') ? p.popup : (tabbables(p.popup)[0] ?? p.popup)).focus({ preventScroll: true });
+	(p.popup.hasAttribute('data-swipe-direction') ? p.popup : (tabbables(p.popup, false)[0] ?? p.popup)).focus({ preventScroll: true });
 	return true;
 }
 

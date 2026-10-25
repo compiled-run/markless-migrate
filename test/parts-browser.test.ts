@@ -306,16 +306,19 @@ test('recharts: the pointer picks the point whose range it is in, the tooltip go
 	await page.close();
 });
 
-test('Base UI dialog locks scroll as @base-ui/utils does: a stable gutter on <html>, the body not scrolling, both put back on close', async () => {
+test('Base UI dialog locks scroll as @base-ui/utils useScrollLock does: the body stops scrolling (a stable gutter on <html> where scrollbars take room), put back on close', async () => {
 	const page = await open(
 		`<main style="height:3000px"><button data-slot="dialog-trigger" data-base-ui-click-trigger aria-haspopup="dialog" aria-expanded="false" id="dlg" type="button">Open Dialog</button></main>
 		<div data-mm-layer="dlg" hidden data-base-ui-portal><div role="presentation" data-base-ui-inert aria-hidden="true" style="position:fixed;inset:0"></div><div data-slot="dialog-overlay"></div><div role="dialog" data-slot="dialog-content" data-closed tabindex="-1" style="position:relative;z-index:1"><button data-slot="dialog-close">Close</button></div></div>`,
 		['base-ui/dialog'],
 	);
+	const bar = await page.evaluate(() => innerWidth - document.documentElement.clientWidth);
 	await page.getByText('Open Dialog').click();
-	assert.deepEqual(await page.evaluate(() => [document.documentElement.style.scrollbarGutter, document.body.style.overflowY, document.documentElement.style.paddingRight]), ['stable', 'hidden', '']);
+	await page.waitForFunction(() => document.body.style.overflowY === 'hidden');
+	assert.deepEqual(await page.evaluate(() => [document.documentElement.style.scrollbarGutter, document.documentElement.style.paddingRight]), [bar > 0 ? 'stable' : '', '']);
 	await page.getByText('Close').click();
-	assert.deepEqual(await page.evaluate(() => [document.documentElement.style.scrollbarGutter, document.body.style.overflowY]), ['', '']);
+	await page.waitForFunction(() => document.body.style.overflowY === '');
+	assert.equal(await page.evaluate(() => document.documentElement.style.scrollbarGutter), '');
 	await page.close();
 });
 
