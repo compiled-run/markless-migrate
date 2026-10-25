@@ -95,7 +95,7 @@ const USAGE = `markless-migrate ${VERSION}
           Writes .migrate/convert/report.json: what was left out and why, the shared components, the
           endpoints and how each is answered, and the library parts no port implements yet.
 ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--json] [--open]
-          [--source <path>] [--data record|replay] [--staging] [--block <host>]... [--allow <host>]...
+          [--source <path>] [--data record|replay] [--live-window <seconds>] [--staging] [--block <host>]... [--allow <host>]...
           [--no-freeze] [--time <iso>] [--seed <n>] [--timezone <tz>] [--locale <tag>]
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
@@ -738,6 +738,7 @@ async function main(argv: string[]): Promise<number> {
 					open: { type: 'boolean' },
 					source: { type: 'string' },
 					data: { type: 'string' },
+					'live-window': { type: 'string' },
 					staging: { type: 'boolean' },
 					block: { type: 'string', multiple: true },
 					allow: { type: 'string', multiple: true },
@@ -847,7 +848,7 @@ async function main(argv: string[]): Promise<number> {
 				block: { add: values.block ?? [], allow: values.allow ?? [] },
 				...(values.staging ? { staging: { old: true, new: true } } : {}),
 				...(source ? { source } : {}),
-				...(values.data ? { data: { mode: values.data as 'record' | 'replay', dir: join(cwd, STATE_DIR, DATA_DIR) } } : {}),
+				...(values.data ? { data: { mode: values.data as 'record' | 'replay', dir: join(cwd, STATE_DIR, DATA_DIR), ...(values['live-window'] ? { liveWindowMs: Number(values['live-window']) * 1000 } : {}) } } : {}),
 				...bypass,
 				...(values['user-agent'] ? { userAgent: values['user-agent'] } : {}),
 				...(auth ? { auth, authStateDir: join(cwd, STATE_DIR, 'auth') } : {}),

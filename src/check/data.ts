@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { NetworkRecord } from './network.ts';
+import type { LiveRecording } from './live-data.ts';
 
 export const DATA_DIR = 'data';
 
@@ -10,6 +11,8 @@ export interface Recording {
 	readonly recordedFrom: string;
 	readonly at: string;
 	readonly responses: readonly NetworkRecord[];
+	/** What the old page heard on its realtime database sockets, served to both apps on replay. */
+	readonly live?: LiveRecording;
 }
 
 export function slug(route: string): string {

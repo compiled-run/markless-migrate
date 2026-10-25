@@ -14,6 +14,7 @@ import { registerStructure } from './structure.ts';
 import type { Viewport } from './types.ts';
 import { request } from './http.ts';
 import type { Scope } from './infrastructure.ts';
+import { FIREBASE_SOCKET, restAnswer, serveDatabases, type FakeDatabase, type LiveRecording, type SocketLog } from './live-data.ts';
 
 /** How the checker treats one app: what it freezes and blocks, whether writes are sent, and which recorded data it serves. */
 export interface SideEnv {
@@ -23,7 +24,7 @@ export interface SideEnv {
 	readonly sendWrites: boolean;
 	readonly writeFacts: readonly WriteFact[];
 	/** Recorded responses to serve instead of the network, and the id the app's server knows them by. */
-	readonly replay?: { readonly set: string; readonly responses: readonly NetworkRecord[]; readonly shared?: { readonly set: string; readonly responses: readonly NetworkRecord[] } };
+	readonly replay?: { readonly set: string; readonly responses: readonly NetworkRecord[]; readonly shared?: { readonly set: string; readonly responses: readonly NetworkRecord[] }; readonly live?: LiveRecording };
 	/** Asks the server recorder to render each page on demand instead of from the server's page cache (data is being recorded or replayed). */
 	readonly renderFresh?: boolean;
 	/** The signed-in role's cookies and storage, from its login script or storage state file. */
@@ -133,6 +134,8 @@ export interface PageLog {
 	readonly records: NetworkRecord[];
 	readonly writes: WriteRecord[];
 	readonly blocked: Map<string, number>;
+	/** The page's realtime database sockets, frame by frame. */
+	readonly sockets: SocketLog[];
 	/** While set, with writes held back, every page load and fetch to the app is held back too: a control that ends the session or deletes may do it with a GET. */
 	holdAll?: boolean;
 	/** Waits for response bodies still being read. */
@@ -353,6 +356,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 		records: [],
 		writes: [],
 		blocked: new Map(),
+		sockets: [],
 		settled: async () => {
 			while (pending.size) await Promise.all([...pending]);
 		},
@@ -375,6 +379,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 		});
 	}
 	const recorded = [...(env.replay?.responses ?? []), ...(env.replay?.shared?.responses ?? [])].filter((r) => r.side === 'browser');
+	const databases: readonly FakeDatabase[] = env.replay?.live ? await serveDatabases(context, env.replay.live) : [];
 	const door = env.frontDoor;
 	const ownOrigin = (url: URL) => sameApp(url, env.origin) || (door !== undefined && sameApp(url, door.old));
 	await context.route('**/*', async (route: Route) => {
@@ -411,6 +416,13 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 		if (door302) return route.fulfill({ status: 302, headers: { location: door302 } });
 		const timed = options.timed;
 		if (!same) {
+			const rest = request.method() === 'GET' ? restAnswer(databases, url.href) : undefined;
+			if (rest) {
+				handled.add(request);
+				await timed?.network.delay();
+				log.records.push({ side: 'browser', method: 'GET', url: url.href, requestType: '', status: rest.status, contentType: 'application/json', body: rest.body, replayed: true });
+				return route.fulfill({ status: rest.status, headers: { 'content-type': rest.contentType, 'access-control-allow-origin': '*' }, body: rest.body });
+			}
 			const hit = findRecorded(recorded, 'browser', request.method(), url, body);
 			if (hit) {
 				handled.add(request);
@@ -461,6 +473,14 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 	context.on('requestfinished', finish);
 	context.on('requestfailed', finish);
 	const page = await context.newPage();
+	page.on('websocket', (socket) => {
+		if (!FIREBASE_SOCKET.test(socket.url()) || stopped) return;
+		const opened = Date.now();
+		const frames: { sent: boolean; text: string; at: number }[] = [];
+		log.sockets.push({ url: socket.url(), frames });
+		socket.on('framesent', (frame) => frames.push({ sent: true, text: String(frame.payload), at: Date.now() - opened }));
+		socket.on('framereceived', (frame) => frames.push({ sent: false, text: String(frame.payload), at: Date.now() - opened }));
+	});
 	return { context, page, log, own: ownOrigin };
 }
 
