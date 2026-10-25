@@ -303,7 +303,8 @@ const SAMPLES = 1;
 const LAYOUT = new Set(['header', 'banner', 'nav', 'navigation', 'aside', 'complementary', 'footer', 'contentinfo']);
 const DEFAULT_MAX = 40;
 const MIN_BUDGET_MS = 60_000;
-const PER_CONTROL_MS = 15_000;
+// A popup control's two sequences, with the old side's second run, take about 25 s one pair at a time.
+const PER_CONTROL_MS = 25_000;
 const MAX_BUDGET_MS = 600_000;
 
 /** Probes the route's controls, class by class, old against new; the old side runs twice where the first runs differ. */
@@ -352,7 +353,8 @@ export async function checkProbes(browser: Browser, sides: { readonly old: SideE
 			for (const sequence of sequencesFor(cls, control)) work.push({ control, sequence });
 		}
 	}
-	const budget = options.budgetMs ?? Math.min(MAX_BUDGET_MS, Math.max(MIN_BUDGET_MS, probed.size * PER_CONTROL_MS));
+	const pairs = Math.max(1, options.concurrency ?? 2);
+	const budget = options.budgetMs ?? Math.min(MAX_BUDGET_MS, Math.max(MIN_BUDGET_MS, (probed.size * PER_CONTROL_MS) / pairs));
 	const failures: Failure[] = [];
 	const state = new Map<string, { control: string; cls: ProbeClass; state: string; ms: number }>();
 	const queue = [...work];
@@ -390,7 +392,7 @@ export async function checkProbes(browser: Browser, sides: { readonly old: SideE
 			await Promise.all([sides2.old.close(), sides2.new.close()]);
 		}
 	};
-	await Promise.all(Array.from({ length: Math.max(1, Math.min(options.concurrency ?? 2, work.length)) }, worker));
+	await Promise.all(Array.from({ length: Math.max(1, Math.min(pairs, work.length)) }, worker));
 	for (const e of state.values()) {
 		controls.push({ control: e.control, cls: e.cls, state: e.state, ...(e.ms ? { ms: e.ms } : {}) });
 		if (e.state.startsWith('left out') || e.state.startsWith('not found')) failures.push(unprobed(route, e.control, e.cls, e.state));

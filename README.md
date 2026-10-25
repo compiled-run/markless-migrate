@@ -382,9 +382,9 @@ it on one side only; when the first old and new runs differ, the old side runs a
 between its two runs is noise there (a line may then vary only in its digits); offsets a drag leaves
 agree within 2 px or 2%, scroll positions within 40 px, and fractional values (a panel at 65.7%) are
 read to the whole unit. A control in a shared header, nav, sidebar or footer is probed on the first
-route of the run that has it. Up to 40 controls a route are probed, within max(60 s, 15 s a control)
-(at most 10 minutes); one left out, and one check could not find again on the old page, is red as
-`not exercised`; the controls an alike one stood for are listed in the report (`widget probes: 13
+route of the run that has it. Up to 40 controls a route are probed, within max(60 s, 25 s a control
+divided by the pairs probed at once, 2), at most 10 minutes; one left out, and one check could not
+find again on the old page, is red as `not exercised`; the controls an alike one stood for are listed in the report (`widget probes: 13
 controls driven (205 alike stood for by one of their kind)`). The probes take about a minute a route
 on a docs page with a dozen kinds of widget.
 
