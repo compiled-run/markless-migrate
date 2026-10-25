@@ -25,7 +25,8 @@ interface Open {
 
 let current: Open | undefined;
 const options = (o: Open) => [...o.listbox.querySelectorAll<HTMLElement>(OPTION)].filter((x) => !x.hasAttribute('data-disabled'));
-const selectedOf = (o: Open) => options(o).find((x) => x.getAttribute('data-state') === 'checked');
+// Radix's selectedItem: the checked option, else the first enabled one.
+const selectedOf = (o: Open) => options(o).find((x) => x.getAttribute('data-state') === 'checked') ?? options(o)[0];
 const textOf = (option: HTMLElement) => option.querySelector<HTMLElement>(`[id="${CSS.escape(option.getAttribute('aria-labelledby') ?? '')}"]`) ?? option;
 
 function setTrigger(trigger: HTMLElement, open: boolean): void {
@@ -38,7 +39,7 @@ function setTrigger(trigger: HTMLElement, open: boolean): void {
 function place(o: Open, trigger: HTMLElement): void {
 	const { wrapper, listbox: content, viewport } = o;
 	const valueNode = trigger.querySelector<HTMLElement>('[data-slot="select-value"]');
-	const selected = selectedOf(o) ?? options(o)[0];
+	const selected = selectedOf(o);
 	if (!valueNode || !selected) return;
 	for (const prop of ['left', 'right', 'top', 'bottom', 'height', 'min-width', 'min-height', 'max-height', 'margin']) wrapper.style.removeProperty(prop);
 	const itemText = textOf(selected);
@@ -97,7 +98,8 @@ function focusFirst(o: Open, candidates: readonly (HTMLElement | undefined)[]): 
 	const items = options(o);
 	const was = document.activeElement;
 	for (const c of candidates) {
-		if (!c || c === was) return;
+		if (!c) continue;
+		if (c === was) return;
 		c.scrollIntoView({ block: 'nearest' });
 		if (c === items[0]) o.viewport.scrollTop = 0;
 		if (c === items[items.length - 1]) o.viewport.scrollTop = o.viewport.scrollHeight;
@@ -215,7 +217,8 @@ function open(trigger: HTMLElement, down: { x: number; y: number } | null): bool
 	document.addEventListener('pointermove', onMove);
 	listbox.addEventListener('pointerout', onLeave);
 	document.addEventListener('pointerup', onUp, true);
-	document.addEventListener('keydown', onKey);
+	// On the content, as Radix's onKeyDown: the key that opened it, pressed on the trigger, never reaches it.
+	listbox.addEventListener('keydown', onKey);
 	window.addEventListener('blur', onWindow);
 	window.addEventListener('resize', onWindow);
 	o.done.push(() => {
@@ -224,7 +227,7 @@ function open(trigger: HTMLElement, down: { x: number; y: number } | null): bool
 		document.removeEventListener('pointermove', onMove);
 		listbox.removeEventListener('pointerout', onLeave);
 		document.removeEventListener('pointerup', onUp, true);
-		document.removeEventListener('keydown', onKey);
+		listbox.removeEventListener('keydown', onKey);
 		window.removeEventListener('blur', onWindow);
 		window.removeEventListener('resize', onWindow);
 	});

@@ -19,6 +19,7 @@ export interface Popup {
 }
 
 const open: Popup[] = [];
+let pressedOutside: Popup | undefined;
 export const popupOf = (el: Element) => open.find((p) => p.portal.contains(el));
 export const top = () => open[open.length - 1];
 export const isOpen = (key: string) => open.some((p) => p.key === key);
@@ -68,7 +69,12 @@ export function openPopup(trigger: HTMLElement, options: { readonly popupSelecto
 	const onDown = (event: PointerEvent) => {
 		const target = event.target as Node | null;
 		if (!target || top() !== p || popup.contains(target) || trigger.contains(target)) return;
-		options.onDismiss(p);
+		pressedOutside = p;
+		try {
+			options.onDismiss(p);
+		} finally {
+			pressedOutside = undefined;
+		}
 	};
 	const timer = options.outsidePress === false ? undefined : setTimeout(() => document.addEventListener('pointerdown', onDown, true), 0);
 	document.addEventListener('keydown', onKey, true);
@@ -93,7 +99,11 @@ export function closePopup(p: Popup, returnFocus = true, keep = false): void {
 		if (open.some((o) => o.portal === p.portal)) return;
 		if (!at || at === document.body || p.portal.contains(at)) p.trigger.focus({ preventScroll: true });
 	};
-	if (returnFocus && keep) p.trigger.focus({ preventScroll: true });
+	if (returnFocus && keep) {
+		p.trigger.focus({ preventScroll: true });
+		// The outside press's own mousedown then blurs to the body: focus comes back after it.
+		if (pressedOutside === p) setTimeout(refocus);
+	}
 	exit(p.popup, p.around, () => {
 		p.stop?.();
 		if (returnFocus && !keep) refocus();
