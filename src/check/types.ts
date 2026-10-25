@@ -261,7 +261,7 @@ export interface RouteResult {
 	readonly newFiles?: readonly string[];
 	/** The old app serves the route and the new one answers 404 or 410. */
 	readonly notPorted?: boolean;
-	/** Only this was compared (`check --only load`: page load; `--only embeds`: the embed step; `--only probes`: the widget probes); every other dimension is skipped, not passed. */
+	/** Only this was compared (`check --only load`: page load; `--only embeds`: the embed step; `--only probes`: the widget probes and the moved clock); every other dimension is skipped, not passed. */
 	readonly only?: 'load' | 'embeds' | 'probes';
 	/** Each control the widget probes drove, alike controls they let one of their kind stand for, and why any was not driven; how long they took. */
 	readonly probes?: { readonly controls: readonly { readonly control: string; readonly cls: string; readonly state: string; readonly ms?: number }[]; readonly ms: number };

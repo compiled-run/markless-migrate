@@ -162,7 +162,9 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           pointed along, closed by a click outside, Escape and its close button, reopened, chosen from and
           typed into; the pointer resting on it; sliders, handles and carousels dragged; a button that shows
           a toast used three times; a composite tabbed into and arrowed through; a right-click menu opened,
-          closed and reopened; a checkbox, switch or toggle button pressed with Enter and Space.
+          closed and reopened; a checkbox, switch or toggle button pressed with Enter and Space. The route
+          is loaded again with the clock moved 40 days into Pacific/Auckland: text the old page changes with
+          the clock must change on new.
           --no-probes leaves them out; --only probes runs them alone.
           Navigation: one page per page shape (layout and scripts, at most --nav-destinations, 40) is
           reached by clicking a real link on --nav-entries (2) other pages, other layouts first, and once

@@ -404,7 +404,13 @@ find again on the old page, is red as `not exercised`; the controls an alike one
 controls driven (205 alike stood for by one of their kind)`). The probes take about a minute a route
 on a docs page with a dozen kinds of widget.
 
-`--no-probes` leaves them out; `--only probes` runs them alone (a partial run).
+The route is also loaded with the frozen clock moved 40 days and 7 hours on, in `Pacific/Auckland`:
+text the old page changes with the clock (a date, a relative time, a chart axis) must change on the new
+page too, and a new page still showing what the old page shows at the usual frozen instant is red in
+`rendered` (`new still shows "January 17, 2026", what the old page shows at 2026-01-15 12:00 UTC, the
+instant check freezes the clock to`): the converter wrote check's clock into the page.
+
+`--no-probes` leaves both out; `--only probes` runs them alone (a partial run).
 
 ### Which routes, and where a failure comes from
 
