@@ -37,7 +37,8 @@ test('an unknown command is a usage error', async () => {
 });
 
 test('recorder prints the NODE_OPTIONS that loads the request recorder', async () => {
-	const result = await run('recorder');
+	// Options already set (CI's watchdog sets its own) are kept in front of it; this reads the line with none.
+	const result = await spawnNode([CLI, 'recorder'], { env: { ...process.env, NODE_OPTIONS: '' }, timeoutMs: 60_000 });
 	assert.equal(result.status, 0);
 	const line = /export NODE_OPTIONS=(.*)/.exec(result.stdout)![1]!;
 	assert.match(line, /^'--require=".*\/src\/check\/record-server\.cjs"'$/, 'single-quoted, so the quoted path inside stays one shell word');
