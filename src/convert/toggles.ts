@@ -632,7 +632,7 @@ export interface HoverDelay {
  * marked open, and from it leaving to the trigger marked closed: each instance's own delays, floored to 10 ms.
  */
 export async function captureHoverDelays(browser: Browser, origin: string, route: string, dir: string, others: readonly { readonly sig: string; readonly nth: number }[] = []): Promise<{ readonly route: string; readonly delays: readonly HoverDelay[] }> {
-	const file = join(dir, `${createHash('sha256').update(`hover-delay:v2:${route}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`hover-delay:v3:${route}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; delays: HoverDelay[] }, () => undefined);
 	if (cached && cached.route === route) return cached;
 	const { context, page } = await openPage(browser, defaultEnv(origin), VIEWPORTS[0]!);
@@ -665,7 +665,8 @@ export async function captureHoverDelays(browser: Browser, origin: string, route
 					if (e === t) break;
 					if (sigOf(e) === sigOf(t)) nth++;
 				}
-				const opened = () => t.getAttribute('data-state') === 'open' || t.hasAttribute('data-popup-open');
+				// Radix's data-state, Base UI's data-popup-open, React Aria's PreviewTrigger's aria-expanded.
+				const opened = () => t.getAttribute('data-state') === 'open' || t.hasAttribute('data-popup-open') || (t.hasAttribute('data-rac') && t.getAttribute('aria-expanded') === 'true');
 				const w = window as unknown as { __mmTimes: number[] };
 				w.__mmTimes = [];
 				t.addEventListener('pointerenter', () => w.__mmTimes.length === 0 && w.__mmTimes.push(performance.now()), { once: true });

@@ -107,6 +107,12 @@ const autofocus = `
 <div data-slot="command-input-wrapper" data-rac="" data-mm-autofocus=""><input id="f2" data-rac="" type="search"></div>
 <!--layers--><div hidden data-mm-layer="x"><div data-slot="command-input-wrapper" data-rac="" data-mm-autofocus=""><input id="f3" data-rac="" type="search"></div></div>`;
 
+const preview = `
+<button id="hc" data-slot="button" data-rac="" type="button" data-react-aria-pressable="true" aria-haspopup="dialog" aria-expanded="false" data-mm-delay="10" data-mm-close-delay="100">Hover Here</button>
+<button id="hd" data-slot="button" data-rac="" type="button" data-react-aria-pressable="true" aria-haspopup="dialog" aria-expanded="false">Default</button>
+<!--layers--><span data-focus-scope-start="true" hidden data-mm-layer="hc"></span><div style="display: contents;" hidden data-mm-layer="hc"><div id="card" data-slot="hover-card-content" data-rac="" role="dialog" tabindex="-1" data-trigger="PreviewTrigger" style="position:absolute" data-placement="bottom"><p>@nextjs</p></div></div><span data-focus-scope-end="true" hidden data-mm-layer="hc"></span>
+<span data-focus-scope-start="true" hidden data-mm-layer="hd"></span><div style="display: contents;" hidden data-mm-layer="hd"><div id="card2" data-slot="hover-card-content" data-rac="" role="dialog" tabindex="-1" data-trigger="PreviewTrigger" style="position:absolute" data-placement="bottom"><p>Default</p></div></div><span data-focus-scope-end="true" hidden data-mm-layer="hd"></span>`;
+
 const PARTS = ['react-aria/select', 'react-aria/menu', 'react-aria/dialog', 'react-aria/disclosure', 'react-aria/combobox', 'react-aria/tooltip'];
 
 async function open(html: string, parts: readonly string[] = PARTS): Promise<Page> {
@@ -498,5 +504,25 @@ test('Interaction states: a pressable without data-rac gets none, a disabled Tex
 	assert.equal(await page.getAttribute('#ta', 'data-hovered'), 'true');
 	await page.hover('#di', { force: true });
 	assert.equal(await page.getAttribute('#di', 'data-hovered'), null);
+	await page.close();
+});
+
+test('PreviewTrigger: a hover opens the card after the trigger\'s own delay, leaving closes it after its close delay; the default waits 600 ms', async () => {
+	const page = await open(preview);
+	await page.mouse.move(2, 2);
+	await page.hover('#hc');
+	await page.waitForTimeout(80);
+	assert.equal(await page.isVisible('#card'), true);
+	assert.equal(await page.getAttribute('#hc', 'aria-expanded'), 'true');
+	await page.mouse.move(600, 600);
+	await page.waitForTimeout(40);
+	assert.equal(await page.isVisible('#card'), true, 'the close delay has not passed');
+	await page.waitForTimeout(700);
+	assert.equal(await page.isVisible('#card'), false);
+	await page.hover('#hd');
+	await page.waitForTimeout(300);
+	assert.equal(await page.isVisible('#card2'), false);
+	await page.waitForTimeout(400);
+	assert.equal(await page.isVisible('#card2'), true);
 	await page.close();
 });

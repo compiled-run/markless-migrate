@@ -17,6 +17,12 @@ export function setModality(next: Modality): void {
 	changed(next, null);
 }
 
+const visibleListeners = new Set<(visible: boolean) => void>();
+/** useFocusVisibleListener: called with whether focus is visible each time the modality changes. */
+export function onFocusVisibleChange(fn: (visible: boolean) => void): void {
+	visibleListeners.add(fn);
+}
+
 const NON_TEXT = /^(checkbox|radio|range|color|file|image|button|submit|reset)$/;
 const textInput = (el: Element | null) => (el instanceof HTMLInputElement && !NON_TEXT.test(el.type)) || el instanceof HTMLTextAreaElement || (el instanceof HTMLElement && el.isContentEditable);
 // isKeyboardFocusEvent: in a text field only Tab and Escape change whether its focus shows.
@@ -25,6 +31,7 @@ function changed(next: Modality, e: Event | null): void {
 	if (!showsFocus(next, e)) return;
 	const active = document.activeElement;
 	if (active instanceof Element && active !== document.body) refocus(active);
+	for (const fn of visibleListeners) fn(keyboardModality());
 }
 
 const isMac = () => typeof navigator !== 'undefined' && /^Mac/i.test((navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform || navigator.platform);
