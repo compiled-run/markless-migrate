@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawnNode } from './spawn-node.ts';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -17,7 +17,7 @@ test('nothing the agent reads during a migration asks the person a question or w
 		['skill', skillBody()],
 		['run prompt', buildPrompt({ old: 'http://o', new: 'http://n', cli: 'markless-migrate' }, '/', 'summary', 1)],
 		['check hints', Object.values(HINTS).join('\n')],
-		['cli help', spawnSync(process.execPath, [CLI, '--help'], { encoding: 'utf8' }).stdout],
+		['cli help', (await spawnNode([CLI, '--help'], { timeoutMs: 60_000 })).stdout],
 	];
 	for (const dir of ['src/mcp', 'src/library', 'src/run', 'src/switch']) for (const name of await readdir(join(root, dir))) if (name.endsWith('.ts')) texts.push([`${dir}/${name}`, await readFile(join(root, dir, name), 'utf8')]);
 	for (const [where, text] of texts) {

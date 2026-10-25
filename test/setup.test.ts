@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawnNode } from './spawn-node.ts';
 import { chmod, mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -15,7 +15,7 @@ async function sandbox() {
 	const bin = join(home, 'bin');
 	await mkdir(bin);
 	const env = { HOME: home, PATH: bin, XDG_CONFIG_HOME: '', CLAUDE_CONFIG_DIR: '', CODEX_HOME: '', GEMINI_CLI_HOME: '', COPILOT_HOME: '', OPENCODE_CONFIG_DIR: '' };
-	const run = (...args: string[]) => spawnSync(process.execPath, [CLI, 'setup', ...args], { encoding: 'utf8', env, input: '' });
+	const run = (...args: string[]) => spawnNode([CLI, 'setup', ...args], { env, timeoutMs: 60_000 });
 	const fakeBinary = async (name: string) => {
 		await writeFile(join(bin, name), '#!/bin/sh\n');
 		await chmod(join(bin, name), 0o755);
@@ -38,7 +38,7 @@ test('detects agents by config directory or by binary on PATH', async () => {
 
 test('with no agent found, setup says so and writes nothing', async () => {
 	const { home, run } = await sandbox();
-	const result = run('--yes');
+	const result = await run('--yes');
 	assert.equal(result.status, 1);
 	assert.match(result.stdout, /No supported agent found/);
 	assert.deepEqual((await readdir(home)).sort(), ['bin']);
@@ -47,12 +47,12 @@ test('with no agent found, setup says so and writes nothing', async () => {
 test('setup applies without asking, says exactly what changed and how to undo it; --dry-run writes nothing', async () => {
 	const { home, run } = await sandbox();
 	await mkdir(join(home, '.claude'));
-	const preview = run('--dry-run');
+	const preview = await run('--dry-run');
 	assert.equal(preview.status, 0);
 	assert.match(preview.stdout, /Would change \(nothing written\):/);
 	assert.match(preview.stdout, /create +~\/\.claude\.json +\(mcp server: add mcpServers\.markless-migrate\)/);
 	assert.deepEqual(await readdir(join(home, '.claude')), []);
-	const result = run();
+	const result = await run();
 	assert.equal(result.status, 0, result.stdout + result.stderr);
 	assert.match(result.stdout, /Changed:\n/);
 	assert.match(result.stdout, /wrote ~\/\.claude\.json \(new file\)/);
@@ -68,10 +68,10 @@ test('setup --undo puts every file back as it was before setup first changed it,
 	await mkdir(join(home, '.claude'));
 	const settings = join(home, '.gemini', 'settings.json');
 	await writeFile(settings, '{"a":1}');
-	assert.equal(run('--agent', 'gemini-cli').status, 0);
-	assert.equal(run('--agent', 'gemini-cli', '--agent', 'claude-code').status, 0, 'a second setup adds files to the same undo');
+	assert.equal((await run('--agent', 'gemini-cli')).status, 0);
+	assert.equal((await run('--agent', 'gemini-cli', '--agent', 'claude-code')).status, 0, 'a second setup adds files to the same undo');
 	await writeFile(join(home, '.claude.json'), '{"mine":true}');
-	const undo = run('--undo');
+	const undo = await run('--undo');
 	assert.equal(undo.status, 1, 'one file was kept, which undo reports');
 	assert.match(undo.stdout, /restored +~\/\.gemini\/settings\.json/);
 	assert.match(undo.stdout, /removed +~\/\.gemini\/skills\/markless-migrate\/SKILL\.md/);
@@ -79,7 +79,7 @@ test('setup --undo puts every file back as it was before setup first changed it,
 	assert.equal(await readFile(settings, 'utf8'), '{"a":1}');
 	assert.equal(await readFile(join(home, '.claude.json'), 'utf8'), '{"mine":true}');
 	await assert.rejects(readFile(join(home, '.claude', 'skills', 'markless-migrate', 'SKILL.md')));
-	assert.match(run('--undo').stdout, /Nothing to undo/);
+	assert.match((await run('--undo')).stdout, /Nothing to undo/);
 });
 
 test('setup registers the MCP server and installs the skill for all six agents, keeping existing settings', async () => {
@@ -88,7 +88,7 @@ test('setup registers the MCP server and installs the skill for all six agents, 
 	await fakeBinary('copilot');
 	await writeFile(join(home, '.claude.json'), JSON.stringify({ theme: 'dark', mcpServers: { other: { command: 'x' } } }));
 	await writeFile(join(home, '.codex', 'config.toml'), 'model = "gpt-5"\n\n[mcp_servers.other]\ncommand = "x"\n');
-	const result = run('--yes');
+	const result = await run('--yes');
 	assert.equal(result.status, 0, result.stdout + result.stderr);
 
 	const claude = await json(join(home, '.claude.json'));
@@ -115,7 +115,7 @@ test('setup registers the MCP server and installs the skill for all six agents, 
 		assert.match(skill, /^---\nname: markless-migrate\n/);
 	}
 
-	const again = run('--yes');
+	const again = await run('--yes');
 	assert.equal(again.status, 0);
 	assert.match(again.stdout, /Everything is already set up/);
 	assert.doesNotMatch(again.stdout, /create|update /);
@@ -125,10 +125,10 @@ test('a second setup after the user edits a config keeps the first backup and sa
 	const { home, run } = await sandbox();
 	await mkdir(join(home, '.gemini'));
 	await writeFile(join(home, '.gemini', 'settings.json'), '{"a":1}');
-	assert.equal(run('--yes').status, 0);
+	assert.equal((await run('--yes')).status, 0);
 	const settings = join(home, '.gemini', 'settings.json');
 	await writeFile(settings, JSON.stringify({ a: 2 }));
-	assert.equal(run('--yes').status, 0);
+	assert.equal((await run('--yes')).status, 0);
 	assert.equal(await readFile(`${settings}.markless-migrate.bak`, 'utf8'), '{"a":1}');
 	const extra = (await readdir(join(home, '.gemini'))).filter((f) => /settings\.json\.markless-migrate\.bak\.[a-f0-9]{12}$/.test(f));
 	assert.equal(extra.length, 1);
@@ -143,7 +143,7 @@ test('malformed config, a hand-written server entry or a foreign SKILL.md block 
 	await writeFile(join(home, '.codex', 'config.toml'), '[mcp_servers.markless-migrate]\ncommand = "mine"\n');
 	await mkdir(join(home, '.claude', 'skills', 'markless-migrate'), { recursive: true });
 	await writeFile(join(home, '.claude', 'skills', 'markless-migrate', 'SKILL.md'), 'my own notes\n');
-	const result = run('--yes');
+	const result = await run('--yes');
 	assert.equal(result.status, 1);
 	assert.match(result.stdout, /blocked +~\/\.cursor\/mcp\.json .*not plain JSON/);
 	assert.match(result.stdout, /blocked +~\/\.codex\/config\.toml .*not written by this tool/);
@@ -155,9 +155,9 @@ test('malformed config, a hand-written server entry or a foreign SKILL.md block 
 
 test('--agent selects agents explicitly, even ones not detected, and rejects unknown ids', async () => {
 	const { home, run } = await sandbox();
-	assert.equal(run('--agent', 'codex', '--yes').status, 0);
+	assert.equal((await run('--agent', 'codex', '--yes')).status, 0);
 	assert.match(await readFile(join(home, '.codex', 'config.toml'), 'utf8'), /mcp_servers\.markless-migrate/);
-	const bad = run('--agent', 'notepad', '--yes');
+	const bad = await run('--agent', 'notepad', '--yes');
 	assert.equal(bad.status, 1);
 	assert.match(bad.stderr, /unknown agent "notepad"/);
 });
@@ -184,7 +184,7 @@ test('setup --agent vscode writes the VS Code mcp.json with a stdio server under
 	const dir = process.platform === 'darwin' ? join(home, 'Library', 'Application Support', 'Code', 'User') : join(home, '.config', 'Code', 'User');
 	await mkdir(dir, { recursive: true });
 	await writeFile(join(dir, 'mcp.json'), JSON.stringify({ servers: { other: { command: 'x' } }, inputs: [] }));
-	assert.equal(run('--agent', 'vscode', '--yes').status, 0);
+	assert.equal((await run('--agent', 'vscode', '--yes')).status, 0);
 	const config = await json(join(dir, 'mcp.json'));
 	assert.deepEqual(config.servers.other, { command: 'x' });
 	assert.deepEqual(config.inputs, []);

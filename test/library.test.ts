@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawnNode } from './spawn-node.ts';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -246,10 +246,10 @@ test('plan --source writes libraries.json and parity reads it from the CLI', asy
 	const file = await scanLibraries(react, { newApp: app });
 	await writeLibraries(file, join(app, '.migrate'));
 	assert.equal((await readLibraries(join(app, '.migrate')))?.libraries.length, file.libraries.length);
-	const run = spawnSync(process.execPath, [CLI, 'parity', 'recharts'], { cwd: app, encoding: 'utf8' });
+	const run = await spawnNode([CLI, 'parity', 'recharts'], { cwd: app, timeoutMs: 60_000 });
 	assert.equal(run.status, 0, run.stderr);
 	assert.match(run.stdout, /recharts: 4 exports to port, 4 usage sites\./);
-	const missing = spawnSync(process.execPath, [CLI, 'parity', 'nope'], { cwd: app, encoding: 'utf8' });
+	const missing = await spawnNode([CLI, 'parity', 'nope'], { cwd: app, timeoutMs: 60_000 });
 	assert.equal(missing.status, 2);
 	assert.match(missing.stderr, /no library named nope/);
 });

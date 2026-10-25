@@ -42,7 +42,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       # The slowest unit test takes about 6 minutes on a runner; one stuck past 10 fails by name instead of holding the shard until it is cancelled.
-      - run: node --test --test-timeout=600000 --test-shard=${{ matrix.shard }}/4 test/*.test.ts
+      # A shard takes at most 15 minutes; one still running at 20 prints what each Node process under it is stuck on, then fails.
+      - run: bash scripts/ci-watchdog.sh node --test --test-timeout=600000 --test-shard=${{ matrix.shard }}/4 test/*.test.ts
 
   e2e:
     name: E2E ${{ matrix.suite }}${{ matrix.shard && format(' ({0})', matrix.shard) || '' }}

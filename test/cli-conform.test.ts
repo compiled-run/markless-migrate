@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawnNode } from './spawn-node.ts';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -71,12 +71,12 @@ test('markless-migrate cli runs .migrate/cli.json, writes the report and exits 1
 	await mkdir(join(dir, '.migrate'), { recursive: true });
 	const c = config('http://127.0.0.1:9', true);
 	await writeFile(join(dir, '.migrate/cli.json'), JSON.stringify({ ...c, old: { command: ['node', join(fixtures, 'greet-old.mjs')] }, new: { ...c.new, command: ['node', join(fixtures, 'greet-new.mjs')] } }));
-	const red = spawnSync(process.execPath, [CLI, 'cli', '--case', 'unknown command'], { cwd: dir, encoding: 'utf8' });
+	const red = await spawnNode([CLI, 'cli', '--case', 'unknown command'], { cwd: dir, timeoutMs: 120_000 });
 	assert.equal(red.status, 1, red.stderr);
 	assert.match(red.stdout, /CLI conformance: 0 of 1 cases the same\n {2}DIFFERS {2}unknown command/);
 	assert.match(red.stdout, /exit code: expected 2\n {6}actual 1/);
 	const report = JSON.parse(await readFile(join(dir, '.migrate/cli-report.json'), 'utf8'));
 	assert.equal(report.cases[0].failures[0].check, 'exit code');
-	const green = spawnSync(process.execPath, [CLI, 'cli', '--case', 'version'], { cwd: dir, encoding: 'utf8' });
+	const green = await spawnNode([CLI, 'cli', '--case', 'version'], { cwd: dir, timeoutMs: 120_000 });
 	assert.equal(green.status, 0, green.stdout + green.stderr);
 });

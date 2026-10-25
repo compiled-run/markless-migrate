@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawnNode } from './spawn-node.ts';
 import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -122,12 +122,12 @@ test('each driver runs its CLI headless with tool approval for the markless-migr
 
 test('run validates its arguments before starting anything', async () => {
 	const cwd = await mkdtemp(join(tmpdir(), 'mm-run-cli-'));
-	const cli = (...args: string[]) => spawnSync(process.execPath, [CLI, 'run', ...args], { encoding: 'utf8', cwd, env: { ...process.env, PATH: join(cwd, 'nothing') } });
-	assert.match(cli().stderr, /run needs --agent <id>/);
-	assert.match(cli('--agent', 'codex').stderr, /run needs --old <origin> and --new <origin>/);
-	assert.match(cli('--agent', 'codex', '--old', 'http://a', '--new', 'http://b', '--attempts', '0').stderr, /--attempts must be/);
-	assert.match(cli('--agent', 'notepad', '--old', 'http://a', '--new', 'http://b').stderr, /unknown agent "notepad"/);
-	const missing = cli('--agent', 'codex', '--old', 'http://a', '--new', 'http://b', '--route', '/');
+	const cli = (...args: string[]) => spawnNode([CLI, 'run', ...args], { cwd, env: { ...process.env, PATH: join(cwd, 'nothing') }, timeoutMs: 60_000 });
+	assert.match((await cli()).stderr, /run needs --agent <id>/);
+	assert.match((await cli('--agent', 'codex')).stderr, /run needs --old <origin> and --new <origin>/);
+	assert.match((await cli('--agent', 'codex', '--old', 'http://a', '--new', 'http://b', '--attempts', '0')).stderr, /--attempts must be/);
+	assert.match((await cli('--agent', 'notepad', '--old', 'http://a', '--new', 'http://b')).stderr, /unknown agent "notepad"/);
+	const missing = await cli('--agent', 'codex', '--old', 'http://a', '--new', 'http://b', '--route', '/');
 	assert.equal(missing.status, 2);
 	assert.match(missing.stderr, /codex is not on PATH/);
 });
