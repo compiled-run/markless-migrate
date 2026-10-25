@@ -41,7 +41,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-      - run: node --test --test-shard=${{ matrix.shard }}/4 test/*.test.ts
+      # The slowest unit test takes about 6 minutes on a runner; one stuck past 10 fails by name instead of holding the shard until it is cancelled.
+      - run: node --test --test-timeout=600000 --test-shard=${{ matrix.shard }}/4 test/*.test.ts
 
   e2e:
     name: E2E ${{ matrix.suite }}${{ matrix.shard && format(' ({0})', matrix.shard) || '' }}
