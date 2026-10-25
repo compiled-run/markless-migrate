@@ -34,6 +34,18 @@ export interface ToggleGroup {
 		readonly on: ToggleState;
 		readonly off: ToggleState;
 	}[];
+	/**
+	 * Elements outside the controls whose markup follows the group's state (a caption naming the chosen value), by
+	 * signature and occurrence at load, with their markup in each state: `on`/`off` for a toggle, a radio's index, or
+	 * `-1` for a cleared group.
+	 */
+	readonly dependents?: readonly Dependent[];
+}
+
+export interface Dependent {
+	readonly sig: string;
+	readonly nth: number;
+	readonly states: Readonly<Record<string, ToggleState>>;
 }
 
 export interface ToggleCapture {
@@ -47,7 +59,7 @@ export interface ToggleCapture {
 const SELECTOR = '[role="checkbox"], [role="switch"], [role="radio"], button[aria-pressed], label[data-rac]:has(input[type="checkbox"]), label[data-rac]:has(input[type="radio"])';
 
 // The selector is part of the key: controls it did not find before are captured again.
-const key = (route: string) => createHash('sha256').update(`toggles:${route}|${SELECTOR}`).digest('hex').slice(0, 16);
+const key = (route: string) => createHash('sha256').update(`toggles:${route}|${SELECTOR}|dependents`).digest('hex').slice(0, 16);
 
 interface Found {
 	readonly id: number;
@@ -119,6 +131,67 @@ async function stateOf(page: Page, id: number): Promise<ToggleState & { on: bool
 	}, id);
 }
 
+/**
+ * Every element's own attributes and text (not its descendants'), aligned to the elements the page had when this was
+ * first called: what using a control changed elsewhere is where two of these differ.
+ */
+async function snapshot(page: Page): Promise<string[]> {
+	return page.evaluate(() => {
+		const w = window as unknown as { __mmAll?: Element[] };
+		w.__mmAll ??= [...document.body.querySelectorAll('*')].filter((el) => !el.closest('template, [data-mm-layer]'));
+		// Focus, hover and press follow the pointer and keyboard, not a control's state.
+		const transient = /^(tabindex|data-(hovered|pressed|focused|focus-visible|focus-visible-within|focus-within|highlighted))$/;
+		return w.__mmAll.map((el) => (el.isConnected ? `${[...el.attributes].filter((a) => !transient.test(a.name)).map((a) => `${a.name}=${a.value}`).sort().join(' ')}|${[...el.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent).join('')}` : '∅'));
+	});
+}
+
+/**
+ * The elements outside the controls that differ from `base` in some state and are as they were once the group is back
+ * in its first state (a clock or a carousel changing on its own is not): the innermost of each, by signature at load.
+ */
+async function dependentsOf(page: Page, controls: readonly number[], base: readonly string[], states: readonly (readonly string[])[], restored: readonly string[]): Promise<{ index: number; sig: string; nth: number }[]> {
+	const changed = [...base.keys()].filter((i) => base[i] !== '∅' && restored[i] === base[i] && states.some((s) => s[i] !== base[i] && s[i] !== '∅'));
+	if (!changed.length) return [];
+	return page.evaluate(
+		({ changed, controls }) => {
+			const w = window as unknown as { __mmAll: Element[]; __mmToggles: Element[] };
+			const own = controls.map((id) => w.__mmToggles[id]!);
+			const sigOf = (el: Element) => `${el.tagName.toLowerCase()}|${el.getAttribute('data-slot') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)}`;
+			const counts = new Map<string, number>();
+			const order = new Map<Element, number>();
+			for (const el of document.body.querySelectorAll('*')) {
+				if (el.closest('template')) continue;
+				const sig = sigOf(el);
+				order.set(el, counts.get(sig) ?? 0);
+				counts.set(sig, (counts.get(sig) ?? 0) + 1);
+			}
+			const els = changed.map((i) => w.__mmAll[i]!).filter((el) => !own.some((c) => c.contains(el) || el.contains(c)));
+			return els.filter((el) => !els.some((o) => o !== el && el.contains(o))).map((el) => ({ index: w.__mmAll.indexOf(el), sig: sigOf(el), nth: order.get(el) ?? 0 }));
+		},
+		{ changed, controls },
+	);
+}
+
+/** The dependents' markup as the page shows them now. */
+async function dependentMarkup(page: Page, indexes: readonly number[]): Promise<ToggleState[]> {
+	return page.evaluate((indexes) => {
+		const w = window as unknown as { __mmAll: Element[] };
+		const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+		const value = (n: Element, a: Attr) => (a.name === 'style' && n instanceof HTMLElement ? n.style.cssText : a.value);
+		const canon = (n: Node): string => {
+			if (n.nodeType === Node.TEXT_NODE) return esc(n.textContent ?? '');
+			if (!(n instanceof Element)) return '';
+			const tag = n.tagName.toLowerCase();
+			const list = [...n.attributes].sort((a, b) => (a.name < b.name ? -1 : 1)).map((a) => ` ${a.name}="${value(n, a).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"`).join('');
+			return /^(area|base|br|col|embed|hr|img|input|link|meta|source|track|wbr)$/.test(tag) ? `<${tag}${list}>` : `<${tag}${list}>${[...n.childNodes].map(canon).join('')}</${tag}>`;
+		};
+		return indexes.map((i) => {
+			const el = w.__mmAll[i]!;
+			return { attrs: Object.fromEntries([...el.attributes].map((a) => [a.name, value(el, a)])), inner: [...el.childNodes].map(canon).join('') };
+		});
+	}, indexes);
+}
+
 async function use(page: Page, id: number): Promise<string | undefined> {
 	const handle = await page.evaluateHandle((id) => (window as unknown as { __mmToggles: Element[] }).__mmToggles[id]!, id);
 	const el = handle.asElement();
@@ -155,12 +228,14 @@ export async function captureToggles(browser: Browser, origin: string, route: st
 				continue;
 			}
 			const first = await stateOf(page, c.id);
+			const base = await snapshot(page);
 			const failed = await use(page, c.id);
 			if (failed) {
 				skipped.push(`${c.sig}#${c.nth}: ${failed}`);
 				continue;
 			}
 			const second = await stateOf(page, c.id);
+			const used = await snapshot(page);
 			await use(page, c.id);
 			const back = await stateOf(page, c.id);
 			if (same(first, second) || !same(first, back)) {
@@ -168,7 +243,16 @@ export async function captureToggles(browser: Browser, origin: string, route: st
 				continue;
 			}
 			const [on, off] = first.on ? [first, second] : [second, first];
-			groups.push({ kind: 'toggle', controls: [{ sig: c.sig, nth: c.nth, role: c.role, initial: first.on, on: { attrs: on.attrs, inner: on.inner }, off: { attrs: off.attrs, inner: off.inner } }] });
+			const found = await dependentsOf(page, [c.id], base, [used], await snapshot(page));
+			let dependents: Dependent[] | undefined;
+			if (found.length) {
+				const now = await dependentMarkup(page, found.map((d) => d.index));
+				await use(page, c.id);
+				const other = await dependentMarkup(page, found.map((d) => d.index));
+				await use(page, c.id);
+				dependents = found.map((d, k) => ({ sig: d.sig, nth: d.nth, states: { [first.on ? 'on' : 'off']: now[k]!, [first.on ? 'off' : 'on']: other[k]! } }));
+			}
+			groups.push({ kind: 'toggle', controls: [{ sig: c.sig, nth: c.nth, role: c.role, initial: first.on, on: { attrs: on.attrs, inner: on.inner }, off: { attrs: off.attrs, inner: off.inner } }], ...(dependents ? { dependents } : {}) });
 		}
 		const radios = new Map<number, Found[]>();
 		for (const r of found.filter((f) => f.role === 'radio')) (radios.get(r.group!) ?? radios.set(r.group!, []).get(r.group!)!).push(r);
@@ -181,6 +265,8 @@ export async function captureToggles(browser: Browser, origin: string, route: st
 			const on = new Map<number, ToggleState>();
 			const off = new Map<number, ToggleState>();
 			initial.forEach((s, i) => (s.on ? on : off).set(i, s));
+			const base = await snapshot(page);
+			const snaps: string[][] = [];
 			let failed: string | undefined;
 			for (let i = 0; i < members.length && !failed; i++) {
 				failed = await use(page, members[i]!.id);
@@ -189,18 +275,38 @@ export async function captureToggles(browser: Browser, origin: string, route: st
 					if (s.on && !on.has(k)) on.set(k, s);
 					if (!s.on && !off.has(k)) off.set(k, s);
 				});
+				snaps.push(await snapshot(page));
 			}
 			// Choosing the chosen one again: a radio group keeps it, a single-choice toggle group clears.
 			const last = members.length - 1;
 			await use(page, members[last]!.id);
 			const clears = !(await stateOf(page, members[last]!.id)).on;
+			if (clears) snaps.push(await snapshot(page));
 			const chosen = initial.findIndex((s) => s.on);
 			if (chosen >= 0) await use(page, members[chosen]!.id);
 			if (failed || members.some((_, k) => !on.has(k) || !off.has(k))) {
 				skipped.push(`${members[0]!.sig}#${members[0]!.nth}: ${failed ?? 'a radio never showed both states'}`);
 				continue;
 			}
-			groups.push({ kind: 'radio', ...(clears ? { clears } : {}), controls: members.map((m, k) => ({ sig: m.sig, nth: m.nth, role: m.role, initial: initial[k]!.on, on: on.get(k)!, off: off.get(k)! })) });
+			const found = await dependentsOf(page, members.map((m) => m.id), base, snaps, await snapshot(page));
+			let dependents: Dependent[] | undefined;
+			if (found.length) {
+				const states = found.map(() => ({}) as Record<string, ToggleState>);
+				const record = async (state: string) => (await dependentMarkup(page, found.map((d) => d.index))).forEach((m, k) => (states[k]![state] = m));
+				for (let i = 0; i < members.length; i++) {
+					await use(page, members[i]!.id);
+					// Choosing the chosen one of a group that clears clears it: once more chooses it.
+					if (!(await stateOf(page, members[i]!.id)).on) await use(page, members[i]!.id);
+					await record(String(i));
+				}
+				if (clears) {
+					await use(page, members[last]!.id);
+					await record('-1');
+				}
+				if (chosen >= 0) await use(page, members[chosen]!.id);
+				dependents = found.map((d, k) => ({ sig: d.sig, nth: d.nth, states: states[k]! }));
+			}
+			groups.push({ kind: 'radio', ...(clears ? { clears } : {}), controls: members.map((m, k) => ({ sig: m.sig, nth: m.nth, role: m.role, initial: initial[k]!.on, on: on.get(k)!, off: off.get(k)! })), ...(dependents ? { dependents } : {}) });
 		}
 	} finally {
 		await context.close().catch(() => {});
