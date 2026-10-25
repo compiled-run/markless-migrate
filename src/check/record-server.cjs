@@ -31,7 +31,8 @@ function loadFor(id) {
 }
 
 const textual = (type) => /json|text|xml|javascript|graphql|x-www-form-urlencoded/.test(type);
-const mime = (value) => (value ?? '').split(';')[0].trim().toLowerCase();
+// A header node:http hands back may be an array of values (node-fetch 2 sets them so).
+const mime = (value) => String((Array.isArray(value) ? value[0] : value) ?? '').split(';')[0].trim().toLowerCase();
 
 function queryKey(url) {
 	const u = new URL(url);
@@ -106,15 +107,20 @@ for (const mod of [http, https]) {
 			};
 			const write = req.write;
 			req.write = function (chunk, encoding, ...rest) {
-				keep(chunk, encoding);
+				try {
+					keep(chunk, encoding);
+				} catch {}
 				return write.call(this, chunk, encoding, ...rest);
 			};
 			const end = req.end;
 			req.end = function (chunk, encoding, ...rest) {
-				keep(chunk, encoding);
-				const requestType = mime(req.getHeader('content-type'));
-				if (requestType) record.requestType = requestType;
-				if (size && textual(requestType)) record.requestBody = Buffer.concat(chunks).toString('utf8').slice(0, MAX_BODY);
+				// Filing the body must never cost the app its request.
+				try {
+					keep(chunk, encoding);
+					const requestType = mime(req.getHeader('content-type'));
+					if (requestType) record.requestType = requestType;
+					if (size && textual(requestType)) record.requestBody = Buffer.concat(chunks).toString('utf8').slice(0, MAX_BODY);
+				} catch {}
 				return end.call(this, chunk, encoding, ...rest);
 			};
 			req.once('response', (res) => {

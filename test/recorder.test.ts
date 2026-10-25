@@ -98,6 +98,23 @@ test('a POST a server sends with node:http is filed with its body, as fetch\'s a
 	}
 });
 
+// node-fetch 2 (isomorphic-unfetch on Node 16) sets each header as an array of values.
+const ARRAY_HEADER_APP = HTTP_POST_APP.replace("headers: { 'content-type': 'application/json' }", "headers: { 'content-type': ['application/json'] }");
+
+test('a node:http request whose headers are arrays, as node-fetch sets them, still goes out and is filed', async () => {
+	const app = spawn(process.execPath, ['-e', ARRAY_HEADER_APP], { env: { ...process.env, CMS_URL: cms.origin, ...recorderEnv('') }, stdio: ['ignore', 'pipe', 'pipe'] });
+	try {
+		const at = await new Promise<string>((resolve) => app.stdout!.once('data', (chunk) => resolve(String(chunk).trim())));
+		const answer = await fetch(at, { headers: { [RECORDER_HEADER]: 'load=array-header' }, signal: AbortSignal.timeout(5000) }).then((r) => r.text(), (error: Error) => `failed: ${error.message}`);
+		assert.equal(answer, 'ok', 'the recorder must never break the request it files');
+		const [post] = (await serverRecords(defaultEnv(at), 'array-header'))!;
+		assert.equal(post!.requestType, 'application/json');
+		assert.equal(post!.requestBody, '{"operationName":"Feed","query":"query Feed { feed { id } }"}');
+	} finally {
+		app.kill();
+	}
+});
+
 test('pushed recordings are served instead of the network for loads that ask for them', async () => {
 	const env = { ...defaultEnv(origin), replay: { set: 's1', responses: [{ side: 'server' as const, method: 'GET', url: 'http://elsewhere.test/walks/news?fields=title', status: 200, contentType: 'application/json', body: '{"items":[{"title":"Recorded headline"}]}' }] } };
 	assert.equal(await pushRecording(env), true);
