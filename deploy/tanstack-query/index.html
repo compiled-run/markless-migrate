@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TanStack Query kitchen sink: a migration to Markless</title>
+<style>
+body { font: 16px/1.5 system-ui, sans-serif; max-width: 42rem; margin: 3rem auto; padding: 0 1rem; color: #1b2a33; }
+a { color: #0a5c8a; }
+li { margin: 0.5rem 0; }
+code { font-size: 0.95em; }
+</style>
+</head>
+<body>
+<h1>TanStack Query kitchen sink: a migration to Markless</h1>
+<p>TanStack Router's <code>kitchen-sink-react-query-file-based</code> example (React, TanStack Router, TanStack Query),
+ported to Markless 0.9.0 with <code>@markless/migrate</code> and Claude Code, and checked route by route against the
+original: invoices and users behind a delayed mock API, mutations that invalidate and refetch, search params,
+prefetch on hover, and clicks faster than the network.</p>
+<ul>
+<li><a href="https://mm-tanstack-query-old.vercel.app/">The old app</a> (React 19, TanStack Router 1.170, TanStack Query 5.104)</li>
+<li><a href="https://mm-tanstack-query-new.vercel.app/">The new app</a> (Markless 0.9.0)</li>
+<li><a href="/_migrate/report.html">The check report</a>: every route, old against new</li>
+</ul>
+<p>The old app keeps its data in the browser tab; the port keeps one store per tab on its server, in the memory of the
+function instance that answers. On Vercel a later request can reach another instance, which starts that tab over.</p>
+</body>
+</html>
