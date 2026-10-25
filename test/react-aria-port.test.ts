@@ -526,3 +526,13 @@ test('PreviewTrigger: a hover opens the card after the trigger\'s own delay, lea
 	assert.equal(await page.isVisible('#card2'), true);
 	await page.close();
 });
+
+test('Menu: typeahead skips an item whose children were not one string (its textValue is empty)', async () => {
+	const page = await open(menu.replace('id="i3">Settings</div>', 'id="i3" data-mm-text-value="">Settings<kbd>⌘S</kbd></div><div data-rac="" role="menuitem" tabindex="-1" id="i4" data-mm-text-value="Support">Support</div>'));
+	await page.focus('#m1');
+	await page.keyboard.press('Enter');
+	assert.equal(await active(page), 'i1');
+	await page.keyboard.press('s');
+	assert.equal(await active(page), 'i4');
+	await page.close();
+});
