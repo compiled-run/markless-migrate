@@ -9,6 +9,8 @@ import { closeOverlay, openOverlay, overlayFor, overlayOf, top, type Overlay } f
 const TRIGGER = '[data-rac][aria-expanded]:not([aria-haspopup]):not([role])';
 // A Modal's trigger React Aria leaves unmarked (no aria-expanded, never held pressed): its layer must be a modal's.
 const PLAIN = 'button[data-rac]:not([aria-expanded]):not([aria-haspopup]):not([role])';
+// React Aria's DismissButton, known by its markup: its label is localized ("تجاهل" in ar-AE).
+const DISMISS = 'button[tabindex="-1"]:is([aria-label], [aria-labelledby])[style*="width: 1px"][style*="height: 1px"]:empty';
 const TABBABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 const hasOverlay = (trigger: HTMLElement) => trigger.id !== '' && layersFor(trigger.id).some((n) => n.matches('[data-trigger], [data-slot$="-overlay"]') || n.querySelector('[data-trigger="DialogTrigger"], [data-slot$="-overlay"]'));
@@ -28,7 +30,7 @@ function close(o: Overlay): void {
 function openDialog(trigger: HTMLElement): boolean {
 	const nodes = layersFor(trigger.id);
 	const surface = nodes.map((n) => (n.matches('[data-trigger], [data-slot$="-overlay"]') ? n : n.querySelector<HTMLElement>('[data-trigger], [data-slot$="-overlay"]'))).find(Boolean);
-	const dismissable = !!surface?.querySelector('button[aria-label="Dismiss"][tabindex="-1"]');
+	const dismissable = !!surface?.querySelector(DISMISS);
 	const marked = trigger.matches(TRIGGER);
 	// The dialog takes focus, unless a search field in it does (a command palette's input, autoFocus in the source).
 	const onReady = (x: Overlay) => (dialogOf(x).querySelector<HTMLElement>('input[data-rac][aria-autocomplete="list"]') ?? dialogOf(x)).focus({ preventScroll: true });

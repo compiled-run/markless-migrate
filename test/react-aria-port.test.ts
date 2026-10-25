@@ -66,8 +66,13 @@ const submenu = `
 
 const dialog = `
 <button id="d1" data-slot="button" data-rac="" type="button" data-react-aria-pressable="true" aria-expanded="false">Open Dialog</button>
-<!--layers--><div data-slot="dialog-overlay" data-rac="" hidden data-mm-layer="d1"><div data-slot="dialog-content" data-rac=""><div style="clip-path: inset(50%); position:absolute"><button aria-label="Dismiss" tabindex="-1"></button></div>
+<!--layers--><div data-slot="dialog-overlay" data-rac="" hidden data-mm-layer="d1"><div data-slot="dialog-content" data-rac=""><div style="clip-path: inset(50%); position:absolute"><button aria-label="Dismiss" tabindex="-1" style="width: 1px; height: 1px;"></button></div>
 <section id="dlg" data-slot="dialog" data-rac="" role="dialog" tabindex="-1"><input id="name" data-rac="" value="Pedro"><button id="close" data-rac="" slot="close" type="button">Cancel</button></section></div></div>`;
+
+// A Popover in a right-to-left locale: its DismissButtons carry React Aria's localized label (ar-AE).
+const rtlPopover = `
+<div dir="rtl"><button id="p1" data-slot="button" data-rac="" type="button" data-react-aria-pressable="true" aria-expanded="false">يسار</button></div>
+<!--layers--><div style="display: contents;" hidden data-mm-layer="p1" data-mm-placement="left"><div id="pop" data-slot="popover-content" dir="rtl" data-rac="" data-trigger="DialogTrigger" style="position:absolute" role="dialog" tabindex="-1" data-placement="left"><div style="clip-path: inset(50%); position:absolute; width:1px; height:1px; overflow:hidden"><button aria-label="تجاهل" tabindex="-1" style="width: 1px; height: 1px;"></button></div><h3>الأبعاد</h3><div style="clip-path: inset(50%); position:absolute; width:1px; height:1px; overflow:hidden"><button aria-label="تجاهل" tabindex="-1" style="width: 1px; height: 1px;"></button></div></div></div>`;
 
 const alertDialog = `
 <button id="d1" data-slot="button" data-rac="" type="button" data-react-aria-pressable="true" aria-expanded="false">Show Dialog</button>
@@ -313,6 +318,17 @@ test('Dialog: a press opens it focused, Tab stays inside, its close button close
 	await page.waitForTimeout(50);
 	assert.equal(await active(page), 'd1');
 	assert.equal(await page.getAttribute('#d1', 'aria-expanded'), 'false');
+	await page.close();
+});
+
+test('Popover: a press outside closes it in any locale, its DismissButton labelled in that locale', async () => {
+	const page = await open(rtlPopover);
+	await page.click('#p1');
+	assert.equal(await active(page), 'pop');
+	await page.mouse.click(5, 400);
+	await page.waitForTimeout(100);
+	assert.equal(await page.isVisible('#pop'), false);
+	assert.equal(await active(page), 'p1');
 	await page.close();
 });
 
