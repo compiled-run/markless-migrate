@@ -3,7 +3,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
-import { sealedBy, storageCandidate, storageOwner } from '../src/check/automatic.ts';
+import { scriptLibraries, sealedBy, storageCandidate, storageOwner } from '../src/check/automatic.ts';
 import { runCheck } from '../src/check/run.ts';
 import { VIEWPORTS, type PageCapture } from '../src/check/types.ts';
 
@@ -76,4 +76,16 @@ test('ownership needs the evidence: the runtime on the old page and not the new 
 	assert.equal(sealedBy(sealed('v')), 'Laravel');
 	assert.equal(sealedBy('plain'), undefined);
 	assert.equal(storageCandidate(['cookie a'], ['cookie b'], () => 'Laravel'), undefined, 'a key only the new page keeps is never the old framework');
+});
+
+test("the Firebase Realtime Database SDK's own connection flag is its storage, beside the UI framework the same bundle carries", () => {
+	const page = (over: Partial<PageCapture>) => ({ assets: [], ...over }) as unknown as PageCapture;
+	// react-hn's vendor bundle: React and Firebase 3 in one file, so the bundle's runtime is React's.
+	const sdk = 'this.f("Websocket connecting to "+this.Ne),Yb.set("previous_websocket_failure",!0);Please use https://<YOUR FIREBASE>.firebaseio.com';
+	assert.deepEqual(scriptLibraries(sdk), ['Firebase']);
+	assert.deepEqual(scriptLibraries('localStorage.setItem("previous_websocket_failure", "1")'), []);
+	const vendor = page({ assets: [{ url: '/vendor.js', type: 'script', status: 200, contentType: '', bytes: 1, fingerprinted: false, runtime: 'React', libraries: ['Firebase'] }] });
+	assert.equal(storageOwner([vendor], [page({})])('+ localStorage firebase:previous_websocket_failure'), 'Firebase');
+	assert.equal(storageOwner([vendor], [vendor])('+ localStorage firebase:previous_websocket_failure'), undefined, 'a port that runs the SDK too writes it itself');
+	assert.equal(storageOwner([page({})], [page({})])('+ localStorage firebase:previous_websocket_failure'), undefined, 'no SDK on the old page, no evidence');
 });

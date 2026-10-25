@@ -83,6 +83,8 @@ export interface AssetRecord {
 	readonly fingerprinted: boolean;
 	/** For a script: the UI framework whose runtime its code carries. */
 	readonly runtime?: string;
+	/** For a script: the libraries with storage of their own that its code carries, beside any UI framework. */
+	readonly libraries?: readonly string[];
 }
 
 export interface ImageRecord {
