@@ -10,6 +10,7 @@ import {
 	rmSync,
 	writeFileSync,
 } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -26,6 +27,13 @@ const repros = readdirSync(here).filter(
 );
 
 const wait = (ms) => new Promise((done) => setTimeout(done, ms));
+const freePort = () =>
+	new Promise((done) => {
+		const server = createServer().listen(0, '127.0.0.1', () => {
+			const { port } = server.address();
+			server.close(() => done(port));
+		});
+	});
 const text = (page, selector) =>
 	page
 		.locator(selector)
@@ -87,7 +95,7 @@ const CHECKS = {
 		const focused = await page.evaluate(() => document.activeElement?.className ?? '');
 		return {
 			expected: '.panel shown and focused',
-			actual: `${(await page.locator('.panel').count()) ? '.panel shown' : 'no .panel'}, focus on "${focused}", errors: ${log.errors.join(' | ') || 'none'}`,
+			actual: `${(await page.locator('.panel').count()) ? '.panel shown' : 'no .panel'}${focused === 'panel' ? ' and focused' : `, focus on "${focused}"`}${log.errors.length ? `, errors: ${log.errors.join(' | ')}` : ''}`,
 		};
 	},
 	'08-async-in-browser-computed': async (page, log) => {
@@ -96,7 +104,7 @@ const CHECKS = {
 		await wait(500);
 		return {
 			expected: '3',
-			actual: `${(await text(page, '.probe'))?.trim()}, errors: ${log.errors.join(' | ') || 'none'}`,
+			actual: `${(await text(page, '.probe'))?.trim()}${log.errors.length ? `, errors: ${log.errors.join(' | ')}` : ''}`,
 		};
 	},
 	'09-row-branch': async (page) => {
@@ -167,6 +175,26 @@ function scaffold(name) {
 	writeFileSync(join(scratch, 'pages', `${name}.tsrx`), page);
 }
 
+function run(command, cmdArgs, timeoutMs) {
+	return new Promise((done) => {
+		const child = spawn(command, cmdArgs, { cwd: scratch, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+		let output = '';
+		let timedOut = false;
+		child.stdout.on('data', (d) => (output += d));
+		child.stderr.on('data', (d) => (output += d));
+		const timer = setTimeout(() => {
+			timedOut = true;
+			try {
+				process.kill(-child.pid, 'SIGKILL');
+			} catch {}
+		}, timeoutMs);
+		child.on('close', (status) => {
+			clearTimeout(timer);
+			done({ status: timedOut ? null : status, output, timedOut });
+		});
+	});
+}
+
 async function serve(command, cmdArgs, port) {
 	const child = spawn(command, cmdArgs, {
 		cwd: scratch,
@@ -232,7 +260,7 @@ async function drive(origin, server, mode, names) {
 			};
 			const result = await CHECKS[name](page, log).catch((e) => ({
 				expected: '?',
-				actual: `check failed: ${e.message.split('\n')[0]}`,
+				actual: `check failed: ${e.message.split('\n')[0]}; served: ${log.served.replace(/\s+/g, ' ').slice(0, 160)}; server: ${server.lines.join('').split('\n').filter(Boolean).slice(-3).join(' / ').slice(0, 300)}`,
 			}));
 			rows.push({ mode, name, ...result, ok: result.expected === result.actual });
 			await page.close();
@@ -245,10 +273,10 @@ async function drive(origin, server, mode, names) {
 
 install();
 const results = [];
-for (const [n, name] of repros.entries()) {
+for (const name of repros) {
 	scaffold(name);
-	const devPort = 4561 + n * 2;
-	const dev = await serve('npx', ['vp', 'dev', '--port', String(devPort), '--strictPort'], devPort);
+	const devPort = await freePort();
+	const dev = await serve('npx', ['vp', 'dev', '--host', '127.0.0.1', '--port', String(devPort), '--strictPort'], devPort);
 	try {
 		results.push(...(await drive(`http://127.0.0.1:${devPort}`, dev, 'dev', [name])));
 	} finally {
@@ -261,7 +289,7 @@ for (const [n, name] of repros.entries()) {
 		results.push({ mode: 'production', name, expected: 'builds', actual: built.timedOut ? `the production build did not finish in 180 s (last output: ${last})` : built.output.split('\n').filter((l) => /MARKLESS_|Error/.test(l)).slice(0, 3).join(' | '), ok: false });
 		continue;
 	}
-	const prodPort = devPort + 1;
+	const prodPort = await freePort();
 	const prod = await serve('node', ['.output/server/index.mjs'], prodPort);
 	try {
 		results.push(...(await drive(`http://127.0.0.1:${prodPort}`, prod, 'production', [name])));

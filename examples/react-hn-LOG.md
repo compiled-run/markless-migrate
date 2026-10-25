@@ -143,23 +143,24 @@ without editing the framework.
 ## Markless 0.9.0 bugs found (minimal repros in `react-hn-markless/repros/`)
 
 Each repro is one page (and the components it uses). `node repros/run.mjs` builds a scratch app with the published
-0.9.0 packages, drives every repro in the dev server and in a production build, and writes `repros/results.json`.
-"Dev" and "prod" below say where it was seen.
+0.9.0 packages, drives every repro in the dev server and in a production build, and writes `repros/results.json` (the run behind
+this table). "Dev" and "prod" say where it was seen. Bugs 3, 7 and 8 were seen in the app and are kept with their
+app symptom, but their minimal repros do not reproduce them, so treat them as unconfirmed.
 
 | # | Repro | What the author writes | Expected | Actual |
 | --- | --- | --- | --- | --- |
-| 1 | `01-literal-prop` | `<Label label="apples" />`, the component shows `{label} {count}` and bumps `count` from an `attach` | `apples 3` after the bump | ` 3`: once the browser updates the text, a literal (string or number) prop reads as `undefined`; a prop from `params` or state works |
+| 1 | `01-literal-prop` | `<Label label="apples" />`, the component shows `{label} {count}` and bumps `count` from an `attach` | `apples 3` after the bump | `3` (dev and prod): once the browser updates the text, a literal (string or number) prop reads as `undefined`; a prop from `params` or state works |
 | 2 | `02-component-async-twice` | a component-level `computed(async () => slowValue(id))` inside `@try` | the server awaits it and streams the arm, as a page-level one does | the server runs the fetch, discards it and sends only `@pending`; the browser runs the fetch again (two fetches, no server-rendered value) |
-| 3 | `03-async-prop-graph-node` | `@try { <Child item={item} /> }` with `item` an async `computed` | no error | the content renders, with `pageerror: Markless DOM update expected graph node computed:item.` |
-| 4 | `04-mutual-recursion` | `Outer.tsrx` renders `Inner.tsrx`, which renders `Outer.tsrx` (a comment and its replies in two files) | renders and answers clicks | the dev server never answers the browser's request for the component module (the page stays inert, no error); see the results for the production build |
-| 5 | `05-recursive-async` | a recursive component (one file) whose body awaits its own item in `@try` | 4 nested bodies, the toggle works | `Unknown async symbol c1:symbol:8` page errors; replies never render; handlers are dead |
+| 3 | `03-async-prop-graph-node` | `@try { <Child item={item} /> }` with `item` an async `computed` | no error | seen in the app (`pageerror: Markless DOM update expected graph node computed:item.` on the story page); the minimal repro does not reproduce it, in dev or prod, so it needs more of the app's shape than this |
+| 4 | `04-mutual-recursion` | `Outer.tsrx` renders `Inner.tsrx`, which renders `Outer.tsrx` (a comment and its replies in two files) | renders, builds, answers clicks | dev: renders the 3 levels, but the first click does nothing (`open` stays); prod: the production build never finishes (killed after 180 s at `transforming...`) |
+| 5 | `05-recursive-async` | a recursive component (one file) whose body awaits its own item in `@try` | 4 nested bodies, the toggle works | dev and prod: no body and no toggle render at all, with no error (in the app it also threw `Unknown async symbol c1:symbol:8`) |
 | 6 | `06-attach-prop` | an `attach` closure that reads the component's `id` prop | `attach read id /06-attach-prop` | the prop reads `undefined` in the browser; seeding `let x = state(id)` and reading that works |
-| 7 | `07-arm-attach` | an `attach` on an element inside an `@if` arm the browser opens | the arm renders and its attach runs | `Unknown async symbol` page error and the arm does not render at all (the settings panel) |
-| 8 | `08-async-in-browser-computed` | a browser-side `computed` that reads an async value the server resolved, then a click | `3` | `TypeError: Cannot convert undefined or null to object`: the server's async value is not there after resume |
+| 7 | `07-arm-attach` | an `attach` on an element inside an `@if` arm the browser opens | the arm renders and its attach runs | seen in the app (the settings panel: `Unknown async symbol` page error and the arm does not render); the minimal repro works in dev and prod, so the trigger is the arm sitting in a page with async regions |
+| 8 | `08-async-in-browser-computed` | a browser-side `computed` that reads an async value the server resolved, then a click | `3` | seen in the app (`TypeError: Cannot convert undefined or null to object` after resume); the minimal repro works in dev and prod |
 | 9 | `09-row-branch` | `@for` rows whose body is an `@if` / `@else`, rows added in the browser | 3 rows | no rows at all, no error |
 | 10 | `10-first-click-propagation` | `event.stopPropagation()` in a button's handler, a click handler on its ancestor | `inner 1 outer 0` | the first (waking) click also runs the ancestor's handler; later clicks are right |
 | 11 | `11-row-attach` | an `attach` on an element in a row the browser adds | the row's HTML set by its attach | the attach never runs |
-| 12 | `12-navigation-leak` | any page, navigated in place (a link to the same route with another query) | the number of window `load` listeners stays the same | one more per in-place navigation: the inline resumer re-run for the swapped-in page calls `addEventListener('load', ..., { once: true })` after the window has loaded, so it never fires, and its closure keeps the page container and its `__marklessCensus` (every node of the page) alive. On react-hn: +830 kB of heap per story visited, unbounded (see the memory measurements) |
+| 12 | `12-navigation-leak` | a page with a handler and an `attach`, navigated in place 5 times (a link to the same route with another query) | the number of window `load` listeners stays the same | prod: 0 -> 5, one more per in-place navigation: the inline resumer re-run for the swapped-in page calls `addEventListener('load', ..., { once: true })` after the window has loaded, so it never fires, and its closure keeps the page container and its `__marklessCensus` (every node of the page) alive. On react-hn: +830 kB of heap per story visited, unbounded (see the memory measurements) |
 | 13 | (in the app) | the router's built-in `#/` handling on `/` | `/#/story/1` lands on the story | the router renders the story but keeps the hash URL, and the next hash change throws `TypeError: Cannot read properties of undefined (reading 'startsWith')`; the port's own one-line redirect in the head avoids it |
 | 14 | (in the app) | the dev server after a compile error is fixed | the fixed file is served | the old compile error kept being served (`MARKLESS_CHILD_REPEAT_WITHOUT_ELEMENT`, after the `@for` got its element) until a restart; also, stopping `vp dev` leaves its `vite` child running on the port |
 
@@ -187,7 +188,13 @@ These are not crashes: the compiler or a diagnostic refuses the shape, or the AP
 
 ## markless-migrate improvements made
 
-TODO
+Each started from a red run of the check on `main` against this port, and each is its own PR with tests that fail
+without the change.
+
+| PR | What the check could not do | What it does now |
+| --- | --- | --- |
+| [#125](https://github.com/compiled-run/markless-migrate/pull/125) `check/hash-routes` | compare an old app whose routes live after `#` (`/#/story/1`): it loaded `/story/1` on the old server, got the old app's home page, and compared that | `--old-hash-routes` (also detected from the source): the old side is opened at `/#<route>`, its URLs are read back as routes (with react-router's `?_k=` key and its `@@History` session entries treated as the router's own), and every old `/#/...` link must land on its route in the new app |
+| [#126](https://github.com/compiled-run/markless-migrate/pull/126) `check/firebase-live` | record or replay anything that arrives over a websocket: both apps read the live database during the check, so they saw different data and nothing pushed while the page was open was compared | `--data record --live-window <s>` records what the old page heard from its Firebase database (snapshot plus the timed updates); replay serves both apps the same snapshot from a fake database over the same socket protocol, then journeys push the same recorded updates to both ("receive the N updates ... then reload", "come back after the N updates arrived while the page was not listening") and compare what each page shows. Also fixes Playwright's routed-socket ids colliding under the frozen `crypto` |
 
 ## Deployed
 
