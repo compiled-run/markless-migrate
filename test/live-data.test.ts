@@ -64,7 +64,7 @@ const ws = new WebSocket('wss://markless-migrate-test.firebaseio.com/.ws?v=5');
 let r = 0, items = {};
 const draw = () => {
 	const ids = Object.keys(items).map(Number).sort((a, b) => a - b);
-	const seen = Number(localStorage.seen || 0);
+	const seen = FORGET ? 0 : Number(localStorage.seen || 0);
 	document.querySelector('ul').innerHTML = ids.map((id) => '<li' + (seen && id > seen ? ' class="new"' : '') + '>' + items[id] + (seen && id > seen ? ' (new)' : '') + '</li>').join('');
 	if (ids.length) localStorage.seen = localStorage.seen || String(ids.at(-1));
 };
@@ -79,8 +79,8 @@ ws.onmessage = (event) => {
 	draw();
 };`;
 
-function app(options: { live?: boolean; title?: string } = {}): Promise<Server> {
-	const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${options.title ?? 'Live list'}</title></head><body><main><h1>Live list</h1><ul></ul></main><script>const LIVE = ${options.live !== false};${CLIENT}</script></body></html>`;
+function app(options: { live?: boolean; forget?: boolean } = {}): Promise<Server> {
+	const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Live list</title></head><body><main><h1>Live list</h1><ul></ul></main><script>const LIVE = ${options.live !== false}, FORGET = ${options.forget === true};${CLIENT}</script></body></html>`;
 	const server = createServer((req, res) => {
 		if (new URL(req.url ?? '/', 'http://x').pathname === '/') res.writeHead(200, { 'content-type': 'text/html' }).end(page);
 		else res.writeHead(404).end();
@@ -127,7 +127,8 @@ test('both apps are served the recorded snapshot and sent the same updates, then
 	const report = await replay(await app());
 	const route = report.routes[0]!;
 	assert.equal(route.ok, true, failures(route));
-	assert.ok(route.journeys?.some((j) => /receive the 2 updates/.test(j.name)), JSON.stringify(route.journeys?.map((j) => j.name)));
+	const names = route.journeys?.map((j) => j.name) ?? [];
+	assert.ok(names.some((name) => /receive the 2 updates/.test(name)) && names.some((name) => /come back after the 2 updates/.test(name)), JSON.stringify(names));
 });
 
 test('a port that shows only the first value it is sent is red at the live update step', async () => {
@@ -135,4 +136,11 @@ test('a port that shows only the first value it is sent is red at the live updat
 	const route = report.routes[0]!;
 	assert.equal(route.ok, false);
 	assert.ok(route.failures.some((f) => f.dimension === 'behaviour' && /receive 1 live update/.test(f.check)), failures(route));
+});
+
+test('a port that forgets the last visit is red when the page comes back after updates it did not hear', async () => {
+	const report = await replay(await app({ forget: true }));
+	const route = report.routes[0]!;
+	assert.equal(route.ok, false);
+	assert.ok(route.failures.some((f) => /come back after the 2 updates/.test(f.check) && /reload/.test(f.check)), failures(route));
 });

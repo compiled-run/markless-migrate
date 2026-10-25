@@ -225,12 +225,13 @@ export class FakeDatabase {
 		});
 	}
 
-	/** Sends the next recorded update to every socket listening at or around its path; false when none is left. */
-	next(): boolean {
+	/** Sends the next recorded update to every socket listening at or around its path, or with `away` only keeps it for the next load; false when none is left. */
+	next(away = false): boolean {
 		const update = this.recorded.updates[this.sent];
 		if (!update) return false;
 		this.sent++;
 		applyUpdate(this.state, update);
+		if (away) return true;
 		const key = trim(update.path);
 		for (const { socket, path } of this.listeners) {
 			if (path === key || key.startsWith(`${path}/`)) socket.send(JSON.stringify({ t: 'd', d: { b: { p: key, d: update.data }, a: update.merge ? 'm' : 'd' } }));

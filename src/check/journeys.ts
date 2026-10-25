@@ -38,7 +38,7 @@ export type Step =
 	| { readonly action: 'scroll'; readonly target: Target }
 	| { readonly action: 'hover'; readonly target: Target; readonly at: number }
 	/** The next `updates` updates the old page heard from its realtime database, sent to every socket of the page session. */
-	| { readonly action: 'live'; readonly target: Target; readonly updates: number };
+	| { readonly action: 'live'; readonly target: Target; readonly updates: number; /** Kept for the next load only, as if the page were closed while the database changed. */ readonly away?: boolean };
 
 export interface StepResult {
 	readonly url: string;
@@ -191,7 +191,7 @@ export function describeStep(step: Step): string {
 		case 'hover':
 			return `point at ${Math.round(step.at * 100)}% across ${describeTarget(step.target)}`;
 		case 'live':
-			return `receive ${step.updates} live update${step.updates === 1 ? '' : 's'} from the database`;
+			return step.away ? `the database takes ${step.updates} update${step.updates === 1 ? '' : 's'} while the page is not listening` : `receive ${step.updates} live update${step.updates === 1 ? '' : 's'} from the database`;
 	}
 }
 
@@ -1151,7 +1151,7 @@ async function stepTarget(page: Page, step: Step): Promise<Locator> {
 async function perform(page: Page, step: Step, patience = QUICK): Promise<void> {
 	if (step.action === 'live') {
 		const databases = sessionDatabases(page.context());
-		for (let i = 0; i < step.updates; i++) if (!databases.some((db) => db.next())) throw new Error('the recording has no more updates');
+		for (let i = 0; i < step.updates; i++) if (!databases.some((db) => db.next(step.away))) throw new Error('the recording has no more updates');
 		return;
 	}
 	const target = await stepTarget(page, step);
@@ -1810,7 +1810,11 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			wave.push({ journey: { name: `scroll through the ${sections.length} sections the page's contents list names`, steps }, depth: 1, expand: false });
 		}
 		const live = liveSteps(updateCount(env.replay?.live));
-		if (live.length) wave.push({ journey: { name: `receive the ${updateCount(env.replay?.live)} updates the old page heard from its database while it was open, then reload`, steps: live, cycle: ['reload'] }, depth: 1, expand: false });
+		if (live.length) {
+			const count = updateCount(env.replay?.live);
+			wave.push({ journey: { name: `receive the ${count} updates the old page heard from its database while it was open, then reload`, steps: live, cycle: ['reload'] }, depth: 1, expand: false });
+			wave.push({ journey: { name: `come back after the ${count} updates arrived while the page was not listening`, steps: [{ action: 'live', target: { role: LIVE, name: '', nth: 0 }, updates: count, away: true }], cycle: ['reload'] }, depth: 1, expand: false });
+		}
 	} finally {
 		await start.close();
 	}
