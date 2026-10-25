@@ -1671,6 +1671,11 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	const sampled = new Map<string, number>();
 	const batched = new Map<string, Tracked[]>();
 	/** Items that use each control of an alike group in turn, in one session, for the groups `track` gathered since the last call. */
+	const alikeTurn = (usable: Tracked[], depth: number): Item => {
+		const steps = [...usable[0]!.prefix, ...usable.map((t) => primaryStep(t.candidate)!)];
+		const name = usable.length === 1 ? describeStep(primaryStep(usable[0]!.candidate)!) : `${describeStep(primaryStep(usable[0]!.candidate)!).replace(/ #\d+$/, '')} and ${usable.length - 1} more alike, each in turn (${usable.map((t) => `#${t.candidate.target.nth + 1}`).join(', ')})`;
+		return { journey: { name, steps }, depth, expand: false, batch: usable };
+	};
 	const batches = (depth: number): Item[] => {
 		const out: Item[] = [];
 		for (const [key, members] of batched) {
@@ -1678,8 +1683,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			// Last on the page first: using one (a thread's "[-]" renaming itself and hiding the replies after it) cannot move or hide those still to come.
 			const usable = members.filter((t) => !t.shared && !t.by && !t.reason && primaryStep(t.candidate)).sort((a, b) => b.candidate.target.nth - a.candidate.target.nth);
 			if (!usable.length) continue;
-			const steps = [...usable[0]!.prefix, ...usable.map((t) => primaryStep(t.candidate)!)];
-			out.push({ journey: { name: `${describeStep(primaryStep(usable[0]!.candidate)!).replace(/ #\d+$/, '')} and ${usable.length - 1} more alike, each in turn (${usable.map((t) => `#${t.candidate.target.nth + 1}`).join(', ')})`, steps }, depth, expand: false, batch: usable });
+			out.push(alikeTurn(usable, depth));
 		}
 		return out;
 	};
@@ -1914,11 +1918,17 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			item.keys?.journeys.push(item.journey.name);
 			next.push(...keyItems(r.widgets, item.journey.steps, depth + 1));
 			sequences.push(...r.sequences.filter((s) => (s.rank ?? 0) < URGENT));
-			for (const [k, t] of (item.batch ?? []).entries()) {
+			const batch = item.batch ?? [];
+			// A member that left the page (a signed-out "hide" sending the visitor to log in) ends the turn: the rest start again from the page.
+			const left = batch.findIndex((t, k) => r.expected[t.prefix.length + k]?.navigated);
+			const again: Tracked[] = [];
+			for (const [k, t] of batch.entries()) {
 				const step = r.expected[t.prefix.length + k];
-				if (step && !step.failed) t.by = item.journey.name;
+				if (step && !step.failed && (left === -1 || k <= left)) t.by = item.journey.name;
+				else if (left !== -1 && k > left) again.push(t);
 				else t.reason = `it could not be used on the old page: ${step?.failed ?? 'the journey stopped before it'}`;
 			}
+			if (again.length) next.push(alikeTurn(again, depth));
 			if (item.element) {
 				if (r.done) item.element.by = item.journey.name;
 				else {
