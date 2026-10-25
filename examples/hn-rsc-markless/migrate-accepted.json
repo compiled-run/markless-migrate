@@ -1,0 +1,302 @@
+{
+	"accepted": [
+		{
+			"route": "/",
+			"dimension": "a11y",
+			"check": "focus order (Tab), first difference at stop *",
+			"viewport": "desktop",
+			"match": {
+				"expected": "/link \"\\d+comments?\"/",
+				"actual": "/link \"\\d+ comments?\"/"
+			},
+			"reason": "React writes '196', ' ', 'comments' as separate text nodes between <!-- --> markers and Chrome names that link '196comments'; Markless writes one text node, so the name is '196 comments', as the link reads on screen. Markless has no way to emit split text nodes.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-25",
+			"id": "6cdc2040e2"
+		},
+		{
+			"route": "/news/1",
+			"dimension": "a11y",
+			"check": "focus order (Tab), first difference at stop *",
+			"viewport": "desktop",
+			"match": {
+				"expected": "/link \"\\d+comments?\"/",
+				"actual": "/link \"\\d+ comments?\"/"
+			},
+			"reason": "React writes '196', ' ', 'comments' as separate text nodes between <!-- --> markers and Chrome names that link '196comments'; Markless writes one text node, so the name is '196 comments', as the link reads on screen. Markless has no way to emit split text nodes.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-25",
+			"id": "b0f20f4b2e"
+		},
+		{
+			"route": "/news/2",
+			"dimension": "a11y",
+			"check": "focus order (Tab), first difference at stop *",
+			"viewport": "desktop",
+			"match": {
+				"expected": "/link \"\\d+comments?\"/",
+				"actual": "/link \"\\d+ comments?\"/"
+			},
+			"reason": "React writes '196', ' ', 'comments' as separate text nodes between <!-- --> markers and Chrome names that link '196comments'; Markless writes one text node, so the name is '196 comments', as the link reads on screen. Markless has no way to emit split text nodes.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-25",
+			"id": "da0b65f2de"
+		},
+		{
+			"route": "/item/50224916",
+			"dimension": "a11y",
+			"check": "focus order (Tab), first difference at stop *",
+			"viewport": "desktop",
+			"match": {
+				"expected": "/link \"\\d+comments?\"/",
+				"actual": "/link \"\\d+ comments?\"/"
+			},
+			"reason": "React writes '196', ' ', 'comments' as separate text nodes between <!-- --> markers and Chrome names that link '196comments'; Markless writes one text node, so the name is '196 comments', as the link reads on screen. Markless has no way to emit split text nodes.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-25",
+			"id": "face776e4c"
+		},
+		{
+			"route": "/item/50227356",
+			"dimension": "a11y",
+			"check": "focus order (Tab), first difference at stop *",
+			"viewport": "desktop",
+			"match": {
+				"expected": "/link \"\\d+comments?\"/",
+				"actual": "/link \"\\d+ comments?\"/"
+			},
+			"reason": "React writes '196', ' ', 'comments' as separate text nodes between <!-- --> markers and Chrome names that link '196comments'; Markless writes one text node, so the name is '196 comments', as the link reads on screen. Markless has no way to emit split text nodes.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-25",
+			"id": "7df0b57267"
+		},
+		{
+			"route": "/",
+			"dimension": "visual",
+			"check": "screenshot",
+			"viewport": "desktop",
+			"match": {
+				"actual": "/^\\d+ pixels( \\(0\\.0[0-4]%\\))? differ/"
+			},
+			"reason": "Sub-pixel anti-aliasing on story meta lines only (0.01-0.04% of pixels): React splits each line into several text nodes, Markless writes one, so Chrome positions the glyphs a fraction of a pixel apart. Same text, same boxes.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-25",
+			"id": "15a01f524b"
+		},
+		{
+			"route": "/",
+			"dimension": "visual",
+			"check": "screenshot",
+			"viewport": "mobile",
+			"match": {
+				"actual": "/^\\d+ pixels( \\(0\\.0[0-4]%\\))? differ/"
+			},
+			"reason": "Sub-pixel anti-aliasing on story meta lines only (0.01-0.04% of pixels): React splits each line into several text nodes, Markless writes one, so Chrome positions the glyphs a fraction of a pixel apart. Same text, same boxes.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-25",
+			"id": "cbaaf5b2e0"
+		},
+		{
+			"route": "/",
+			"dimension": "visual",
+			"check": "screenshot in viewport width 750px",
+			"viewport": "desktop",
+			"match": {
+				"actual": "/^\\d+ pixels( \\(0\\.0[0-4]%\\))? differ/"
+			},
+			"reason": "Sub-pixel anti-aliasing on story meta lines only (0.01-0.04% of pixels): React splits each line into several text nodes, Markless writes one, so Chrome positions the glyphs a fraction of a pixel apart. Same text, same boxes.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-25",
+			"id": "6a4796b467"
+		},
+		{
+			"route": "/",
+			"dimension": "visual",
+			"check": "screenshot in viewport width 751px",
+			"viewport": "desktop",
+			"match": {
+				"actual": "/^\\d+ pixels( \\(0\\.0[0-4]%\\))? differ/"
+			},
+			"reason": "Sub-pixel anti-aliasing on story meta lines only (0.01-0.04% of pixels): React splits each line into several text nodes, Markless writes one, so Chrome positions the glyphs a fraction of a pixel apart. Same text, same boxes.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-25",
+			"id": "5ed028f5f0"
+		},
+		{
+			"route": "/news/1",
+			"dimension": "visual",
+			"check": "screenshot",
+			"viewport": "desktop",
+			"match": {
+				"actual": "/^\\d+ pixels( \\(0\\.0[0-4]%\\))? differ/"
+			},
+			"reason": "Sub-pixel anti-aliasing on story meta lines only (0.01-0.04% of pixels): React splits each line into several text nodes, Markless writes one, so Chrome positions the glyphs a fraction of a pixel apart. Same text, same boxes.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-25",
+			"id": "f1d8527fd0"
+		},
+		{
+			"route": "/news/1",
+			"dimension": "visual",
+			"check": "screenshot",
+			"viewport": "mobile",
+			"match": {
+				"actual": "/^\\d+ pixels( \\(0\\.0[0-4]%\\))? differ/"
+			},
+			"reason": "Sub-pixel anti-aliasing on story meta lines only (0.01-0.04% of pixels): React splits each line into several text nodes, Markless writes one, so Chrome positions the glyphs a fraction of a pixel apart. Same text, same boxes.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-25",
+			"id": "e6075b523a"
+		},
+		{
+			"route": "/news/1",
+			"dimension": "visual",
+			"check": "screenshot in viewport width 750px",
+			"viewport": "desktop",
+			"match": {
+				"actual": "/^\\d+ pixels( \\(0\\.0[0-4]%\\))? differ/"
+			},
+			"reason": "Sub-pixel anti-aliasing on story meta lines only (0.01-0.04% of pixels): React splits each line into several text nodes, Markless writes one, so Chrome positions the glyphs a fraction of a pixel apart. Same text, same boxes.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-25",
+			"id": "edc26b340f"
+		},
+		{
+			"route": "/news/1",
+			"dimension": "visual",
+			"check": "screenshot in viewport width 751px",
+			"viewport": "desktop",
+			"match": {
+				"actual": "/^\\d+ pixels( \\(0\\.0[0-4]%\\))? differ/"
+			},
+			"reason": "Sub-pixel anti-aliasing on story meta lines only (0.01-0.04% of pixels): React splits each line into several text nodes, Markless writes one, so Chrome positions the glyphs a fraction of a pixel apart. Same text, same boxes.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-25",
+			"id": "e4a4eaf587"
+		},
+		{
+			"route": "/news/2",
+			"dimension": "visual",
+			"check": "screenshot",
+			"viewport": "desktop",
+			"match": {
+				"actual": "/^\\d+ pixels( \\(0\\.0[0-4]%\\))? differ/"
+			},
+			"reason": "Sub-pixel anti-aliasing on story meta lines only (0.01-0.04% of pixels): React splits each line into several text nodes, Markless writes one, so Chrome positions the glyphs a fraction of a pixel apart. Same text, same boxes.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-25",
+			"id": "105fc76b1b"
+		},
+		{
+			"route": "/news/2",
+			"dimension": "visual",
+			"check": "screenshot",
+			"viewport": "mobile",
+			"match": {
+				"actual": "/^\\d+ pixels( \\(0\\.0[0-4]%\\))? differ/"
+			},
+			"reason": "Sub-pixel anti-aliasing on story meta lines only (0.01-0.04% of pixels): React splits each line into several text nodes, Markless writes one, so Chrome positions the glyphs a fraction of a pixel apart. Same text, same boxes.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-25",
+			"id": "ce4dbb7227"
+		},
+		{
+			"route": "/news/2",
+			"dimension": "visual",
+			"check": "screenshot in viewport width 750px",
+			"viewport": "desktop",
+			"match": {
+				"actual": "/^\\d+ pixels( \\(0\\.0[0-4]%\\))? differ/"
+			},
+			"reason": "Sub-pixel anti-aliasing on story meta lines only (0.01-0.04% of pixels): React splits each line into several text nodes, Markless writes one, so Chrome positions the glyphs a fraction of a pixel apart. Same text, same boxes.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-25",
+			"id": "a676165927"
+		},
+		{
+			"route": "/news/2",
+			"dimension": "visual",
+			"check": "screenshot in viewport width 751px",
+			"viewport": "desktop",
+			"match": {
+				"actual": "/^\\d+ pixels( \\(0\\.0[0-4]%\\))? differ/"
+			},
+			"reason": "Sub-pixel anti-aliasing on story meta lines only (0.01-0.04% of pixels): React splits each line into several text nodes, Markless writes one, so Chrome positions the glyphs a fraction of a pixel apart. Same text, same boxes.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-25",
+			"id": "d541520f40"
+		},
+		{
+			"route": "/",
+			"dimension": "weight",
+			"check": "JavaScript downloaded",
+			"match": {
+				"actual": "/bytes; new-only scripts: \\/build\\/chunk-/"
+			},
+			"reason": "Downloaded bytes are higher because Markless modulepreloads its router and resume runtime (about 120 kB, 81 kB and 68 kB chunks); JavaScript run at load falls from 138-254 kB to 8-19 kB on these routes.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-25",
+			"id": "5765c5319c"
+		},
+		{
+			"route": "/news/1",
+			"dimension": "weight",
+			"check": "JavaScript downloaded",
+			"match": {
+				"actual": "/bytes; new-only scripts: \\/build\\/chunk-/"
+			},
+			"reason": "Downloaded bytes are higher because Markless modulepreloads its router and resume runtime (about 120 kB, 81 kB and 68 kB chunks); JavaScript run at load falls from 138-254 kB to 8-19 kB on these routes.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-25",
+			"id": "5d27014e91"
+		},
+		{
+			"route": "/news/2",
+			"dimension": "weight",
+			"check": "JavaScript downloaded",
+			"match": {
+				"actual": "/bytes; new-only scripts: \\/build\\/chunk-/"
+			},
+			"reason": "Downloaded bytes are higher because Markless modulepreloads its router and resume runtime (about 120 kB, 81 kB and 68 kB chunks); JavaScript run at load falls from 138-254 kB to 8-19 kB on these routes.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-25",
+			"id": "d128314254"
+		},
+		{
+			"route": "/news/18",
+			"dimension": "weight",
+			"check": "JavaScript downloaded",
+			"match": {
+				"actual": "/bytes; new-only scripts: \\/build\\/chunk-/"
+			},
+			"reason": "Downloaded bytes are higher because Markless modulepreloads its router and resume runtime (about 120 kB, 81 kB and 68 kB chunks); JavaScript run at load falls from 138-254 kB to 8-19 kB on these routes.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-25",
+			"id": "042cc559c5"
+		},
+		{
+			"route": "/item/50224916",
+			"dimension": "weight",
+			"check": "JavaScript downloaded",
+			"match": {
+				"actual": "/bytes; new-only scripts: \\/build\\/chunk-/"
+			},
+			"reason": "Downloaded bytes are higher because Markless modulepreloads its router and resume runtime (about 120 kB, 81 kB and 68 kB chunks); JavaScript run at load falls from 138-254 kB to 8-19 kB on these routes.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-25",
+			"id": "3329559ab9"
+		},
+		{
+			"route": "/item/50227356",
+			"dimension": "weight",
+			"check": "JavaScript downloaded",
+			"match": {
+				"actual": "/bytes; new-only scripts: \\/build\\/chunk-/"
+			},
+			"reason": "Downloaded bytes are higher because Markless modulepreloads its router and resume runtime (about 120 kB, 81 kB and 68 kB chunks); JavaScript run at load falls from 138-254 kB to 8-19 kB on these routes.",
+			"by": "Claude Code (converting agent), per the owner's brief",
+			"date": "2026-10-25",
+			"id": "46911b09b6"
+		}
+	]
+}
