@@ -498,6 +498,41 @@ test('Radix ScrollArea: the scrollbar rendered beside the content shows on hover
 	await page.close();
 });
 
+test('a press on a Radix roving group itself leaves focus on the group; Tab into it moves on to its checked item', async () => {
+	const page = await open(
+		`<main style="padding:40px"><button id="before">Before</button><div role="radiogroup" tabindex="0" id="g" style="padding:20px;outline:none"><button role="radio" aria-checked="false" tabindex="-1">A</button><button role="radio" aria-checked="true" tabindex="-1">B</button></div></main>`,
+		['radix/roving'],
+	);
+	const box = (await page.locator('#g').boundingBox())!;
+	await page.mouse.click(box.x + 4, box.y + 4);
+	assert.equal(await focusOf(page), 'div[radiogroup]:AB');
+	await page.locator('#before').focus();
+	await page.keyboard.press('Tab');
+	assert.equal(await focusOf(page), 'button[radio]:B');
+	await page.close();
+});
+
+test('React Aria tabs keep React Aria\'s keys: Left/Right also step a vertical list, Up/Down only a vertical one, disabled tabs are skipped', async () => {
+	const tabs = (orientation: string, p: string) => `<div role="tablist" aria-orientation="${orientation}" data-rac="" data-slot="tabs-list"><div role="tab" data-rac="" tabindex="0" id="${p}a">${p}A</div><div role="tab" data-rac="" tabindex="-1">${p}B</div><div role="tab" data-rac="" tabindex="-1" aria-disabled="true" data-disabled="true">${p}C</div></div>`;
+	const page = await open(`${tabs('vertical', 'V')}${tabs('horizontal', 'H')}`, ['radix/roving']);
+	await page.evaluate(async () => {
+		const { roving } = await import('/parts/radix/roving.ts' as string);
+		for (const list of document.querySelectorAll('[role="tablist"]')) list.addEventListener('keydown', (e) => roving(e as KeyboardEvent));
+	});
+	await page.locator('#Va').focus();
+	const keys: [string, string][] = [['ArrowRight', 'VB'], ['ArrowRight', 'VA'], ['ArrowLeft', 'VB'], ['ArrowDown', 'VA'], ['ArrowUp', 'VB'], ['End', 'VB'], ['Home', 'VA']];
+	for (const [key, to] of keys) {
+		await page.keyboard.press(key);
+		assert.equal(await focusOf(page), `div[tab]:${to}`, key);
+	}
+	await page.locator('#Ha').focus();
+	await page.keyboard.press('ArrowDown');
+	assert.equal(await focusOf(page), 'div[tab]:HA', 'Up/Down do nothing in a horizontal list');
+	await page.keyboard.press('ArrowLeft');
+	assert.equal(await focusOf(page), 'div[tab]:HB', 'ArrowLeft wraps past the disabled last tab');
+	await page.close();
+});
+
 // Radix Select as shadcn renders it (item-aligned), the content Markless renders at the end of the body.
 const FRUITS = ['Apple', 'Banana', 'Blueberry', 'Grapes', 'Pineapple'];
 const HIDDEN = '<style>[hidden]{display:none!important}</style>';
