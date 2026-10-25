@@ -34,9 +34,9 @@ export function layerIds(key: string, kept: readonly Element[]): Map<string, str
  * Layers captured on separate loads share React's client ids (its counter starts over on each load), so a layer
  * names another's id only along the menus it was captured with: the layer holding its key (an element with that id
  * or data-mm-key: the menu a submenu opens from) and the layers keyed by ids it holds. A layer with no trigger in the
- * page and no such menu names any layer's id, the first to hold it.
+ * page and no such menu names any layer's id, the first to hold it. `of(key)` names what the layer put beside its trigger.
  */
-export function layerNames(layers: readonly (CapturedLayer & { readonly inPage: boolean })[]): { page: Map<string, string>; each: Map<string, string>[] } {
+export function layerNames(layers: readonly (CapturedLayer & { readonly inPage: boolean })[]): { page: Map<string, string>; each: Map<string, string>[]; of: (key: string) => ReadonlyMap<string, string> } {
 	const own = new Map<string, Map<string, string>>();
 	const taken = new Set<string>();
 	for (const l of layers) {
@@ -69,5 +69,5 @@ export function layerNames(layers: readonly (CapturedLayer & { readonly inPage: 
 		const loose = !l.inPage && !up.length ? [page] : [];
 		return new Map([...loose.flatMap((m) => [...m]), ...keys, ...down.flatMap((k) => [...own.get(k)!]), ...up.reverse().flatMap((k) => [...own.get(k)!]), ...own.get(l.key)!]);
 	});
-	return { page, each };
+	return { page, each, of: (key) => each[layers.findIndex((l) => l.key === key)] ?? page };
 }
