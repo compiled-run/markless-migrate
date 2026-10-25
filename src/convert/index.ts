@@ -23,6 +23,7 @@ import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpeni
 import { captureAccordions, captureCarousels, restCarousel, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureAllForms, captureAllSwitches, captureAllToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
 import { bindMount, bindParts, bodyHandlers, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
+import { captureTables, CELLS_PREFIX, mayHoldTable, SHARED_MODULE as TABLES_SHARED, SPEC_PREFIX, SPECS_MODULE as TABLE_SPECS, TablePlan, type CapturedTable } from './tanstack-table.ts';
 import { captureDayPickers, CONFIG_PREFIX, CONFIGS_MODULE, DayPickerPlan, type CapturedPickers } from './day-picker.ts';
 import { captureRacCalendars, RAC_CONFIG_PREFIX, RAC_CONFIGS_MODULE, racCalendarMessages, RacCalendarPlan, type CapturedCalendars } from './rac-calendar.ts';
 import type { CalendarMessages } from '../../parts/react-aria/calendar.ts';
@@ -68,6 +69,12 @@ function withPartImports(source: string, dir: string): string {
 	if (racCalendar.length) out = out.replace('\n', `\n${dayPicker.length ? '' : "import { computed } from '@markless/core';\n"}import { ${racCalendar.join(', ')} } from '${dir}/react-aria/calendar.ts';\n`);
 	const racConfigs = [...new Set(out.match(new RegExp(`\\b${RAC_CONFIG_PREFIX}[0-9a-f]{10}\\b`, 'g')) ?? [])];
 	if (racConfigs.length) out = out.replace('\n', `\nimport { ${racConfigs.join(', ')} } from '${dir}/${RAC_CONFIGS_MODULE.replace(/\.ts$/, '')}.ts';\n`);
+	const table = ['ttView', 'ttAct'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
+	if (table.length) out = out.replace('\n', `\n${/import \{[^}]*\bcomputed\b[^}]*\} from '@markless\/core'/.test(out) ? '' : "import { computed } from '@markless/core';\n"}import { ${table.join(', ')} } from '${dir}/tanstack-table.ts';\n`);
+	const tableData = [...new Set(out.match(new RegExp(`\\b(?:${SPEC_PREFIX}|${CELLS_PREFIX})[0-9a-f]{10}\\b`, 'g')) ?? [])];
+	if (tableData.length) out = out.replace('\n', `\nimport { ${tableData.join(', ')} } from '${dir}/${TABLE_SPECS}';\n`);
+	const sharedTables = [...new Set(out.match(/\bttShared\d+(?=\(\))/g) ?? [])];
+	if (sharedTables.length) out = out.replace('\n', `\nimport { ${sharedTables.join(', ')} } from '${dir}/../../components/converted/${TABLES_SHARED}';\n`);
 	return out;
 }
 
@@ -297,6 +304,8 @@ function textOf(node: Element): string {
 let currentLayers: { key: string; markup: string; shell: string; fill: string; declare?: readonly string[] }[] = [];
 let currentRoute = '';
 let layerPickers: ((route: string, reveal: Reveal, kept: readonly Element[]) => { readonly bind: (el: Element) => Binding | undefined; readonly declare: readonly string[] } | undefined) | undefined;
+// The TanStack tables whose visibility menus are layers (convert's TablePlan): their items bind the table's shared state.
+let layerTables: TablePlan | undefined;
 // The React Aria calendars the popovers of the route being prepared show (convert's RacCalendarPlan, set per route).
 let racLayer: { readonly plan: RacCalendarPlan; readonly captured: ReadonlyMap<string, CapturedCalendars>; readonly messages: (locale: string) => CalendarMessages | undefined; route: string } | undefined;
 // What choosing each option of a control's layer did (Base UI Select's hidden input value, the text its trigger showed),
@@ -549,6 +558,7 @@ function hollowOf(kept: readonly Element[]): Element | undefined {
 function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (what: string) => void, rename: ReadonlyMap<string, string> = new Map(), kept: Element[] = layerElements(added)): { markup: string; shell: string; fill: string; declare: string[] } {
 	// A calendar in the layer is bound on the view its opener shares (DayPickerPlan.layer): read before ids are renamed.
 	const pickers = layerPickers?.(currentRoute, reveal, kept);
+	const tableMenu = layerTables?.layer(currentRoute, reveal, kept);
 	const placed = placement(kept);
 	for (const top of kept) renameIds([top, ...walkAll(top)], rename);
 	const key = rename.get(reveal.key) ?? reveal.key;
@@ -581,7 +591,7 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 					dropped,
 					declarations,
 					bind: (x) => {
-						const own = mergeBindings(mergeBindings(racLayer?.plan.bind(x), mergeBindings(x === top ? mergeBindings(bindParts(x, templatePorts), extra.length ? { extra } : undefined) : bindParts(x, templatePorts), pickers?.bind(x))), copyBinding(x, copies));
+						const own = mergeBindings(mergeBindings(racLayer?.plan.bind(x), mergeBindings(x === top ? mergeBindings(bindParts(x, templatePorts), extra.length ? { extra } : undefined) : bindParts(x, templatePorts), pickers?.bind(x))), mergeBindings(tableMenu?.bind(x), copyBinding(x, copies)));
 						return shell && x === hollow ? mergeBindings(own, { children: '', extra: [`data-mm-layer-fill="${LAYER_FILL}"`] }) : own;
 					},
 				}),
@@ -878,6 +888,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const scenes = new Map<string, { scene: Scene; listed: string }[]>();
 	const pickers = new Map<string, CapturedPickers>();
 	const racCalendarsRead = new Map<string, CapturedCalendars>();
+	const tablesRead = new Map<string, readonly CapturedTable[]>();
 	const choices: Record<string, Record<string, Choice>> = {};
 	optionValues = {};
 	layerChoices = choices;
@@ -1025,6 +1036,20 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 				if (!ref || ref.status !== 200 || (!opening.length && !Object.values((await ref.load()).settled).some(calendar))) continue;
 				racCalendarsRead.set(ref.route, await captureRacCalendars(browser, options.old, ref.route, join(state, 'convert', 'rac-calendars'), opening));
 			}
+		// What each TanStack table was given and showed in each state, on the routes whose settled page has a table, when the
+		// usage inventory finds a TanStack table library (or there is none).
+		const usesTables = await readFile(join(state, 'usage.json'), 'utf8').then((text) => /"library":\s*"@tanstack\/(react|vue|solid|svelte)-table"/.test(text), () => true);
+		if (options.reveal !== false && usesTables) {
+			const queue: string[] = [];
+			for (const ref of captures) if (ref && ref.status === 200 && Object.values((await ref.load()).settled).some(mayHoldTable)) queue.push(ref.route);
+			await Promise.all(Array.from({ length: Math.min(options.concurrency ?? 4, queue.length) }, async () => {
+				for (let route = queue.shift(); route !== undefined; route = queue.shift()) {
+					const captured = await captureTables(browser, options.old, route, join(state, 'convert', 'tables'), log);
+					for (const why of captured.skipped) log(`  table on ${route} not read: ${why}`);
+					if (captured.tables.length) tablesRead.set(route, captured.tables);
+				}
+			}));
+		}
 		if (options.reveal !== false) for (const t of await captureAllToggles(browser, options.old, routes, join(state, 'convert', 'toggles'), { concurrency: options.concurrency ?? 4, log })) toggled.set(t.route, t.groups);
 		// Controls the site lists as switching attributes in place (lib/site/controls.json, action "toggle").
 		const switchSelectors = listed.filter((c) => c.action === 'toggle').map((c) => c.selector);
@@ -1082,6 +1107,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const captured = pickers.get(route);
 		return captured ? dayPickers.layer(route, captured, reveal, kept) : undefined;
 	};
+	const tables = new TablePlan();
+	for (const [route, captured] of tablesRead) tables.expect(route, captured);
+	layerTables = tables;
 	for (const ref of captures) {
 		if (ref.status !== 200 && !(ref.route === NOT_FOUND && ref.status === 404)) {
 			unconverted.push({ route: ref.route, reason: `the old site answered ${ref.status} while capturing` });
@@ -1256,12 +1284,19 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const checkables = new CheckablePlan();
 	let checkableGroups = 0;
 	const emitHtml = (html: string) => emitChildren(parseFragment(html) as unknown as Element, { dropped: (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1) });
+	// TanStack tables: their state, rows and controls are one table-core state; their checkboxes are no toggles
+	// of their own, and a React Aria table among them is no row selection of its own.
+	let tableCount = 0;
+	for (const [route, p] of prepared) tableCount += tables.add(route, locator(p.root.parentNode as Element));
+	for (const line of tables.notes) log(`  ${line}`);
+	if (tableCount) log(`TanStack tables on Markless state: ${tableCount}`);
+	if (tables.focusesControls) templatePorts.add('toggle');
 	// React Aria tables whose checkboxes choose rows: the rows, the checkboxes and select-all are one state.
 	const racTables = new RacTablePlan();
 	let racTableCount = 0;
-	for (const [route, p] of prepared) racTableCount += racTables.add(p.root, toggled.get(route) ?? [], locator(p.root.parentNode as Element), emitHtml);
+	for (const [route, p] of prepared) racTableCount += racTables.add(p.root, toggled.get(route) ?? [], locator(p.root.parentNode as Element), emitHtml, (el) => tables.claims(el));
 	if (racTableCount) log(`React Aria tables with row selection on Markless state: ${racTableCount}`);
-	for (const [route, p] of prepared) checkableGroups += checkables.add(p.root, toggled.get(route) ?? [], locator(p.root.parentNode as Element), emitHtml, (el) => racTables.claims(el));
+	for (const [route, p] of prepared) checkableGroups += checkables.add(p.root, toggled.get(route) ?? [], locator(p.root.parentNode as Element), emitHtml, (el) => racTables.claims(el) || tables.claims(el));
 	if (checkableGroups) {
 		log(`checkboxes, switches, toggles and radio groups on Markless state: ${checkableGroups}`);
 		templatePorts.add('toggle');
@@ -1284,7 +1319,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		log(`React Aria calendars on Markless state: ${racCalendarCount}`);
 		templatePorts.add('react-aria/calendar');
 	}
-	handledBy((el) => checkables.bind(el) !== undefined || baseTabs.bind(el) !== undefined || insertedDisclosures.bind(el) !== undefined || dayPickers.handles(el) || racCalendars.within(el) || racTables.bind(el) !== undefined);
+	handledBy((el) => checkables.bind(el) !== undefined || baseTabs.bind(el) !== undefined || insertedDisclosures.bind(el) !== undefined || dayPickers.handles(el) || racCalendars.within(el) || racTables.bind(el) !== undefined || tables.claims(el));
 	// input-otp fields, used once each on the old page for the caret their site renders and the text that shows their value.
 	const otps = new OtpPlan();
 	const otpRoutes = [...prepared].filter(([, p]) => [...walk(p.root)].some((el) => attr(el, 'data-input-otp-container') !== undefined));
@@ -1337,10 +1372,14 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		binding = mergeBindings(dayPickers.bind(el), binding);
 		binding = mergeBindings(racCalendars.bind(el), binding);
 		binding = mergeBindings(racTables.bind(el), binding);
+		binding = mergeBindings(tables.bind(el), binding);
 		const own = mergeBindings(scenePlan.bind(el), mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(mergeBindings(tabs.bind(el), baseTabs.bind(el)), charts.bind(el)), disclosures.bind(el)), insertedDisclosures.bind(el)), selects.bind(el)), checkables.bind(el)), switchPlan.bind(el)), mergeBindings(notifyPlan.bind(el), handledForms.has(el) ? formBinding : undefined)), mergeBindings(otps.bind(el), binding)), bindMount(el)));
 		return markup ? mergeBindings(own, { append: markup }) : own;
 	};
 	void appendOf;
+	// A table's rows and hideable cells are emitted by its plan, with every plan's bindings, as their page is.
+	tables.emitter = (el, declarations) => emitElement(el, { declarations, bind: (x) => withAppend(x, bindParts(x, usedPorts)), dropped: (what) => dropped.set(`${what}: not writable as an attribute`, (dropped.get(`${what}: not writable as an attribute`) ?? 0) + 1) });
+	tables.emitHtml = emitHtml;
 	// What a page gives an element beyond its markup (what a control shows on use, a trigger's layer key, measured
 	// props) is part of its identity: two pages' alike code blocks whose View Code shows different sources are not one.
 	const insertedInto = new Map<Element, string>();
@@ -1376,7 +1415,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	}
 	const ownContent = (el: Element): string | undefined => {
 		const panel = basePanels.get(el);
-		const own = [appended.get(el), replaced.get(el)?.markup, replaceKeys.get(el), groupContent.get(el), panelContent.get(el), panel && JSON.stringify(panel), insertedInto.get(el), triggerKeys.get(el), measuredOf(el) && JSON.stringify(measuredOf(el)), notifyPlan.nameOf(el), scenePlan.nameOf(el), charts.bind(el)?.declare?.[0]].filter((x): x is string => Boolean(x));
+		const own = [appended.get(el), replaced.get(el)?.markup, replaceKeys.get(el), groupContent.get(el), panelContent.get(el), panel && JSON.stringify(panel), insertedInto.get(el), triggerKeys.get(el), measuredOf(el) && JSON.stringify(measuredOf(el)), notifyPlan.nameOf(el), scenePlan.nameOf(el), tables.nameOf(el), charts.bind(el)?.declare?.[0]].filter((x): x is string => Boolean(x));
 		return own.length ? own.join('\u0001') : undefined;
 	};
 	const factored: Factored = factor(new Map([...prepared].map(([route, p]) => [route, p.root])), { bind: (el) => withAppend(el, bindParts(el, usedPorts)), extra: ownContent });
@@ -1510,7 +1549,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	await writeFile(join(app, 'document.tsrx'), appUrlDeclaration(documentModule(bodyParts, (el) => bindParts(el, usedPorts), noteDropped, partsDir('document.tsrx'), documentParts, headScripts)));
 	await writeFile(join(app, 'head.ts'), HEAD_HELPER);
 	if (disclosureGroups || insertedGroups) usedPorts.add('panel-motion');
-	await writeParts(app, usedPorts, choices);
+	await writeParts(app, usedPorts, choices, tables.used ? ['tanstack-table'] : []);
+	const tableSpecs = tables.specsModule();
+	if (tableSpecs) await writeFile(join(app, 'lib', 'parts', TABLE_SPECS), tableSpecs);
 	if (shell) await writeFile(join(app, 'lib', 'parts', 'docsearch-shell.ts'), `// Generated by markless-migrate convert: DocSearch's dialog as the old site first draws it on a press (captured by plan).\nexport default ${JSON.stringify(shell)};\n`);
 	if (pickerCount) await writeFile(join(app, 'lib', 'parts', CONFIGS_MODULE), dayPickers.configsModule());
 	if (racCalendars.placed) await writeFile(join(app, 'lib', 'parts', RAC_CONFIGS_MODULE), racCalendars.configsModule());
@@ -1520,6 +1561,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	// The calendar views date pickers share between their popover and their trigger, at page scope.
 	const sharedPickers = dayPickers.sharedModule(`../../lib/parts/${CONFIGS_MODULE}`, '../../lib/parts');
 	if (sharedPickers) await writeFile(join(app, 'components', 'converted', 'day-pickers.tsrx'), sharedPickers);
+	const sharedTables = tables.sharedModule('../../lib/parts');
+	if (sharedTables) await writeFile(join(app, 'components', 'converted', TABLES_SHARED), sharedTables);
 	await rm(join(app, 'public', '_converted', 'layers'), { recursive: true, force: true });
 	for (const layer of layers.served) {
 		await mkdir(dirname(join(app, 'public', layer.path)), { recursive: true });
