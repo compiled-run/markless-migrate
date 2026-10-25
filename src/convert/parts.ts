@@ -95,6 +95,8 @@ export const PORTS: readonly Port[] = [
 	{ module: 'carousel', library: 'embla-carousel-react', exports: ['default', 'useEmblaCarousel'], events: ['click', 'keydown', 'pointerdown'], locate: (el) => attr(el, 'data-slot') === 'carousel' },
 	// input-otp's slots are Markless state (convert's OtpPlan); the part runs the input's handlers and dispatches it.
 	{ module: 'input-otp', library: 'input-otp', exports: ['OTPInput'], events: ['focusin', 'focusout', 'input'], locate: () => true },
+	// sonner's toasts are Markless state (convert's NotifyPlan); the part runs the Toaster's and each Toast's logic.
+	{ module: 'sonner', library: 'sonner', exports: ['Toaster', 'toast'], events: [], locate: () => false },
 	// recharts' tooltips and active points are Markless state (convert's ChartPlan); the part follows the pointer and keys.
 	{ module: 'recharts', library: 'recharts', exports: ['Tooltip'], events: ['pointerover', 'focusin', 'focusout', 'keydown'], locate: () => false },
 	// Radix NavigationMenu: each trigger's viewport and content are rendered beside the list (convert's companions).

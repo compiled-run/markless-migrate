@@ -1210,3 +1210,97 @@ test('Base UI Checkbox: its hidden input, focused by a click on its label, hands
 	assert.equal(await page.evaluate(() => (window as unknown as { submitted?: number }).submitted), 1);
 	await page.close();
 });
+
+// sonner's CSS rules the stack relies on (sonner injects them).
+const SONNER_CSS = '[data-sonner-toaster]{position:fixed;width:var(--width);list-style:none;padding:0;margin:0}[data-sonner-toaster][data-y-position=top]{top:24px}[data-sonner-toaster][data-x-position=center]{left:50%}[data-sonner-toaster][data-x-position=left]{left:24px}[data-sonner-toast]{position:absolute;box-sizing:border-box;width:var(--width)}[data-sonner-toast][data-y-position=top]{top:0}';
+function sonnerPage(toasts: readonly { label: string; position?: string; duration?: number; phases?: { at: number; type: string; inner: string }[] }[]): string {
+	const T = { id: 'tst0', position: 'top-center', gap: 14, visibleToasts: 3, expand: false, hotkey: ['altKey', 'KeyT'], style: '--width: 356px; --gap: 14px;' };
+	const specs = toasts.map((t, k) => ({ view: k, ...(t.position ? { position: t.position } : {}), duration: t.duration ?? 4000, dismissible: true, promise: Boolean(t.phases), style: '', phases: (t.phases ?? [{ at: 0, type: '', inner: '' }]).map((p) => ({ at: p.at, ...(p.type ? { type: p.type } : {}), attrs: { tabindex: '0', 'data-sonner-toast': '' } })) }));
+	const inner = toasts.map((t) => (t.phases ?? [{ inner: `<div data-title="" style="height:50px">${t.label}</div>` }]).map((p) => p.inner));
+	// A keyed renderer of the toaster's lists and their toasts standing in for Markless's @for over its state, as convert's
+	// NotifyPlan renders it, the lists' handlers taking the toasts' events.
+	const script = `import { sonnerAdd, sonnerList } from '/parts/sonner.ts';
+const T = ${JSON.stringify(T)}, SPECS = ${JSON.stringify(specs)}, INNER = ${JSON.stringify(inner)};
+const section = document.querySelector('section');
+const commit = (view) => {
+	const lists = new Map([...section.children].map((ol) => [ol.dataset.key, ol]));
+	view.lists.forEach((list, i) => {
+		let ol = lists.get(list.position);
+		if (!ol) { ol = document.createElement('ol'); ol.dataset.key = list.position; ol.setAttribute('data-sonner-toaster', 'true'); for (const e of ['mouseenter', 'mousemove', 'mouseleave', 'pointerdown', 'pointerup', 'pointermove', 'click', 'focusin', 'focusout']) ol.addEventListener(e, (event) => sonnerList(T, list.position, event, commit)); }
+		ol.setAttribute('data-y-position', list.y); ol.setAttribute('data-x-position', list.x); ol.setAttribute('style', list.style);
+		if (section.children[i] !== ol) section.insertBefore(ol, section.children[i] ?? null);
+		const items = new Map([...ol.children].map((li) => [li.dataset.id, li]));
+		list.items.forEach((item, j) => {
+			let li = items.get(String(item.id));
+			if (!li) { li = document.createElement('li'); li.dataset.id = String(item.id); }
+			for (const [n, v] of Object.entries(item.a)) if (v === undefined) li.removeAttribute(n); else li.setAttribute(n, v);
+			const [k, p] = item.view.split('.').map(Number);
+			if (li.dataset.view !== item.view) { li.dataset.view = item.view; li.innerHTML = INNER[k][p]; }
+			if (ol.children[j] !== li) ol.insertBefore(li, ol.children[j] ?? null);
+		});
+		for (const extra of [...ol.children].slice(list.items.length)) extra.remove();
+	});
+	for (const extra of [...section.children].slice(view.lists.length)) extra.remove();
+};
+document.querySelectorAll('button[data-k]').forEach((b) => b.addEventListener('click', () => sonnerAdd(T, SPECS[Number(b.dataset.k)], commit)));`;
+	return `<style>${SONNER_CSS}</style><div style="padding-top:300px">${toasts.map((t, k) => `<button data-k="${k}">${t.label}</button>`).join('')}</div><section aria-label="Notifications alt+T" data-mm-toaster="tst0"></section><script type="module">${script}</script>`;
+}
+const toastState = (page: Page) => page.evaluate(() => [...document.querySelectorAll('section > ol')].map((ol) => `${ol.getAttribute('data-y-position')}-${ol.getAttribute('data-x-position')}:` + [...ol.querySelectorAll('li')].map((li) => `${li.textContent}[i=${li.getAttribute('data-index')} front=${li.getAttribute('data-front')} exp=${li.getAttribute('data-expanded')} removed=${li.getAttribute('data-removed')} offset=${li.style.getPropertyValue('--offset')} z=${li.style.getPropertyValue('--z-index')}]`).join(' ')));
+
+test('sonner: each use adds a toast at the front of the stack, hovering expands it with each toast lifted by the heights before it', async () => {
+	const page = await open(sonnerPage([{ label: 'A' }, { label: 'B' }]), ['sonner']);
+	await page.getByRole('button', { name: 'A' }).click();
+	await page.waitForTimeout(100);
+	assert.deepEqual(await toastState(page), ['top-center:A[i=0 front=true exp=false removed=false offset=0px z=1]']);
+	assert.equal(await page.locator('section li').getAttribute('data-mounted'), 'true');
+	await page.getByRole('button', { name: 'B' }).click();
+	await page.getByRole('button', { name: 'A' }).click();
+	await page.waitForTimeout(100);
+	assert.deepEqual(await toastState(page), ['top-center:A[i=0 front=true exp=false removed=false offset=0px z=3] B[i=1 front=false exp=false removed=false offset=64px z=2] A[i=2 front=false exp=false removed=false offset=128px z=1]']);
+	const box = (await page.locator('section li').first().boundingBox())!;
+	await page.mouse.move(box.x + 10, box.y + 10);
+	await page.waitForTimeout(100);
+	assert.match((await toastState(page))[0]!, /^top-center:A\[i=0 front=true exp=true/);
+	assert.match((await page.locator('section ol').getAttribute('style')) ?? '', /^--front-toast-height: 50px; --width: 356px;/);
+	await page.close();
+});
+
+test('sonner: a toast for a position no toast uses yet gets its own list after the toaster\'s, and leaves 200 ms after its lifetime', async () => {
+	const page = await open(sonnerPage([{ label: 'L', position: 'top-left', duration: 400 }]), ['sonner']);
+	await page.getByRole('button', { name: 'L' }).click();
+	await page.waitForTimeout(100);
+	assert.deepEqual(await toastState(page), ['top-center:', 'top-left:L[i=0 front=true exp=false removed=false offset=0px z=1]']);
+	await page.waitForTimeout(400);
+	assert.deepEqual(await toastState(page), ['top-center:', 'top-left:L[i=0 front=true exp=false removed=true offset=0px z=1]']);
+	await page.waitForTimeout(300);
+	assert.deepEqual(await toastState(page), [], 'with no toast left the toaster renders no list');
+	await page.close();
+});
+
+test('sonner: a promise toast shows its loading markup, then its result, and its lifetime starts with the result', async () => {
+	const page = await open(sonnerPage([{ label: 'P', duration: 300, phases: [{ at: 0, type: 'loading', inner: '<div data-title="">Loading...</div>' }, { at: 500, type: 'success', inner: '<div data-title="">Done</div>' }] }]), ['sonner']);
+	await page.getByRole('button', { name: 'P' }).click();
+	await page.waitForTimeout(400);
+	assert.match((await toastState(page))[0]!, /Loading\.\.\.\[i=0 front=true exp=false removed=false/, 'a loading toast has no timer');
+	await page.waitForTimeout(250);
+	assert.match((await toastState(page))[0]!, /Done\[i=0 front=true exp=false removed=false/);
+	await page.waitForTimeout(400);
+	assert.deepEqual(await toastState(page), []);
+	await page.close();
+});
+
+test('sonner: a toast\'s action button dismisses it through its list\'s handlers, and a held press on the list pauses every timer', async () => {
+	const page = await open(sonnerPage([{ label: 'A', duration: 300, phases: [{ at: 0, type: '', inner: '<div data-title="" style="height:50px">A</div><button data-button="" data-action="">Undo</button>' }] }]), ['sonner']);
+	await page.getByRole('button', { name: 'A' }).click();
+	await page.waitForTimeout(100);
+	const box = (await page.locator('section li').boundingBox())!;
+	await page.mouse.move(box.x + 10, box.y + 10);
+	await page.mouse.down();
+	await page.waitForTimeout(500);
+	assert.match((await toastState(page))[0]!, /removed=false/, 'pressed and hovered, the timer waits');
+	await page.mouse.up();
+	await page.getByRole('button', { name: 'Undo' }).click();
+	await page.waitForTimeout(50);
+	assert.match((await toastState(page))[0]!, /removed=true/);
+	await page.close();
+});

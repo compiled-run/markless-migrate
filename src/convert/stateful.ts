@@ -1,7 +1,8 @@
 import { parseFragment } from 'parse5';
 import { attr, childrenOf, inner as innerOf, isElement, isText, outer as outerOf, walk, type Element, type Node } from './dom.ts';
 import { lit, mergeBindings, type Binding } from './tsrx.ts';
-import type { Notify, Switch, ToggleGroup } from './toggles.ts';
+import type { Notify, SonnerToast, Switch, ToggleGroup } from './toggles.ts';
+import { SONNER_STATE } from '../../parts/sonner.ts';
 
 /**
  * Radix Tabs on Markless state: each tab list becomes one state() in the component that renders it, holding the active
@@ -662,12 +663,28 @@ export class NotifyPlan {
 		return this.regions.has(el);
 	}
 
-	add(notifications: readonly Notify[], locate: (sig: string, nth: number) => Element | undefined, emit: (html: string) => string): number {
+	/** Whether a sonner toast was placed: parts/sonner.ts runs it. */
+	sonner = false;
+	private readonly toasterRegions = new Set<Element>();
+
+	/** Whether the element is (not merely holds) a region a sonner Toaster renders its toasts in. */
+	rendersToasts(el: Element): boolean {
+		return this.toasterRegions.has(el);
+	}
+
+
+	add(notifications: readonly Notify[], locate: (sig: string, nth: number) => Element | undefined, emit: (html: string, bind?: (el: Element) => Binding | undefined) => string): number {
 		let placed = 0;
+		const toasters = new Map<Element, { control: Element; toast: SonnerToast }[]>();
 		for (const note of notifications) {
 			const control = locate(note.sig, note.nth);
 			const region = locate(note.into.sig, note.into.nth);
 			if (!control || !region || this.bindings.has(control)) continue;
+			if (note.sonner) {
+				(toasters.get(region) ?? toasters.set(region, []).get(region)!).push({ control, toast: note.sonner });
+				placed++;
+				continue;
+			}
 			const markup = emit(note.html);
 			if (/@(if|switch|for) \(|<[A-Z]\w*[\s/>]/.test(markup)) continue;
 			const name = `nt${this.n++}`;
@@ -679,7 +696,59 @@ export class NotifyPlan {
 			this.bindings.set(region, { declare: [...(own?.declare ?? []), ...declare], inserts: [...(own?.inserts ?? []), { before: null, markup: `@if (${name}) { <>${markup}</> }` }] });
 			placed++;
 		}
+		for (const [region, toasts] of toasters) this.sonnerToaster(region, toasts, emit);
 		return placed;
+	}
+
+	/**
+	 * A sonner Toaster on Markless state (parts/sonner.ts): its section renders a list per position in use and a toast per
+	 * entry of one state(), each toast showing the markup its control's use showed then, in an arm per toast and phase.
+	 */
+	private sonnerToaster(region: Element, all: readonly { control: Element; toast: SonnerToast }[], emit: (html: string, bind?: (el: Element) => Binding | undefined) => string): void {
+		// Only elements can be hidden while another phase shows: a toast showing bare text is left unported.
+		const toasts = all.filter(({ toast }) => toast.phases.every((p) => !childrenOf(parseFragment(p.inner) as unknown as Element).some((n) => isText(n) && n.value.trim())));
+		if (!toasts.length) return;
+		const name = `tst${this.n++}`;
+		const first = toasts[0]!.toast.toaster;
+		const declare = [`let ${name} = state(SONNER_EMPTY);`];
+		const commit = `(v) => (${name} = v)`;
+		const style = (attrs: readonly (readonly [string, string])[]) => attrs.find(([n]) => n === 'style')?.[1] ?? '';
+		// The declarations sonner's Toaster and Toast write first in a style, which parts/sonner.ts writes itself.
+		const rest = (css: string, own: readonly string[]) => css.split(';').map((d) => d.trim()).filter((d) => d && !own.includes(d.split(':')[0]!.trim())).map((d) => `${d};`).join(' ');
+		const props = { id: name, position: first.position, gap: first.gap, visibleToasts: first.visibleToasts, expand: first.expand, hotkey: first.hotkey, style: rest(style(first.ol), ['--front-toast-height']) };
+		const T = JSON.stringify(props);
+		// Every toast's attributes in the order sonner writes them: one a toast lacks goes after the one before it in another.
+		const names: string[] = [];
+		for (const { toast } of toasts)
+			for (const phase of toast.phases)
+				phase.attrs.forEach(([n], k) => {
+					if (n === 'style' || names.includes(n)) return;
+					const before = phase.attrs.slice(0, k).map(([m]) => m).reverse().find((m) => names.includes(m));
+					names.splice(before === undefined ? 0 : names.indexOf(before) + 1, 0, n);
+				});
+		for (const n of SONNER_STATE) if (!names.includes(n)) names.push(n);
+		const arms: string[] = [];
+		toasts.forEach(({ control, toast }, k) => {
+			const spec = { view: k, ...(toast.position ? { position: toast.position } : {}), duration: toast.duration, dismissible: toast.dismissible, promise: toast.promise, style: rest(style(toast.phases[0]!.attrs), ['--index', '--toasts-before', '--z-index', '--offset', '--initial-height']), phases: toast.phases.map((p) => ({ at: p.at, ...(p.type !== undefined ? { type: p.type } : {}), attrs: Object.fromEntries(p.attrs.filter(([n]) => n !== 'style' && !SONNER_STATE.has(n))) })) };
+			toast.phases.forEach((p, i) => {
+				// What each toast shows is all in its row, but for its view hidden: Markless rebuilds a row holding an arm
+				// whenever the rows move (a new toast goes first), and a rebuilt toast loses its transitions.
+				const view = lit(`${k}.${i}`);
+				arms.push(emit(p.inner, (el) => (el.parentNode && !('tagName' in el.parentNode) ? { omit: ['style'], extra: [`style={item.view === ${view} ? ${attr(el, 'style') === undefined ? 'undefined' : lit(attr(el, 'style')!)} : "display: none"}`] } : undefined)));
+			});
+			this.names.set(control, `${name}:${k}`);
+			this.bindings.set(control, { declare, extra: [`onClick={() => sonnerAdd(${T}, ${JSON.stringify(spec)}, ${commit})}`] });
+		});
+		const on = (events: readonly string[], call: string) => events.map((e) => `on${e}={(event) => ${call}}`);
+		const li = names.map((n) => `${n}={item.a[${lit(n)}]}`);
+		const ol = first.ol.map(([n, v]) => (n === 'data-y-position' ? `${n}={list.y}` : n === 'data-x-position' ? `${n}={list.x}` : n === 'style' ? 'style={list.style}' : `${n}=${lit(v)}`));
+		// A list's handlers take its toasts' events too (parts/sonner.ts finds the toast they happened in).
+		const markup = `@for (const list of ${name}.lists; key list.position) { <ol ${ol.join(' ')} ${on(['MouseEnter', 'MouseMove', 'MouseLeave', 'DragEnd', 'PointerDown', 'PointerUp', 'PointerMove', 'Click', 'FocusIn', 'FocusOut'], `sonnerList(${T}, list.position, event, ${commit})`).join(' ')}>@for (const item of list.items; key item.id) { <li ${li.join(' ')} style={item.a.style}>${arms.join('')}</li> }</ol> }`;
+		this.regions.add(region);
+		this.toasterRegions.add(region);
+		const own = this.bindings.get(region);
+		this.bindings.set(region, { ...own, declare: [...(own?.declare ?? []), ...declare], extra: [...(own?.extra ?? []), `data-mm-toaster=${lit(name)}`], children: markup });
+		this.sonner = true;
 	}
 
 	/**
