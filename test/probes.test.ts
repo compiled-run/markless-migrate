@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { defaultEnv } from '../src/check/browser.ts';
+import type { RecordedJourney } from '../src/check/journeys.ts';
 import { checkProbes, compareRuns, type Reading } from '../src/check/probes.ts';
 import { VIEWPORTS } from '../src/check/types.ts';
 
@@ -15,6 +16,8 @@ const dialog = (drop: boolean, bare = false) => `<button id="o"${bare ? '' : ' a
 const hoverCard = (never: boolean) => `<p><a id="h" href="#profile" data-state="closed">@ada</a></p><div id="c" role="tooltip" hidden>Ada Lovelace</div><script>let t; h.addEventListener('pointerenter', () => { t = setTimeout(() => { ${never ? '' : "c.hidden = false; h.dataset.state = 'open';"} }, 300); }); h.addEventListener('pointerleave', () => { clearTimeout(t); c.hidden = true; h.dataset.state = 'closed'; });</script>`;
 // A slider the pointer drags; `stuck` answers keys only.
 const slider = (stuck: boolean) => `<div id="s" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" style="position:relative;width:400px;height:20px;background:#ddd;margin:40px"><span id="k" style="position:absolute;left:50%;width:16px;height:20px;background:#333"></span></div><script>const set = (v) => { v = Math.max(0, Math.min(100, Math.round(v))); s.setAttribute('aria-valuenow', String(v)); k.style.left = v + '%'; }; s.addEventListener('keydown', (e) => { if (e.key === 'ArrowRight') set(+s.getAttribute('aria-valuenow') + 1); }); ${stuck ? '' : "s.addEventListener('pointerdown', (e) => { s.setPointerCapture(e.pointerId); const move = (m) => set(((m.clientX - s.getBoundingClientRect().left) / 400) * 100); s.addEventListener('pointermove', move); s.addEventListener('pointerup', () => s.removeEventListener('pointermove', move), { once: true }); });"}</script>`;
+// A button whose toasts stack, newest in front; `replace` shows only the last one.
+const toasts = (replace: boolean) => `<button id="n">Notify</button><ol aria-live="polite" id="l"></ol><script>let i = 0; n.onclick = () => { i++; ${replace ? "l.textContent = '';" : ''} for (const t of l.children) t.setAttribute('data-front', 'false'); const li = document.createElement('li'); li.setAttribute('role', 'status'); li.setAttribute('data-sonner-toast', ''); li.setAttribute('data-front', 'true'); li.textContent = 'Saved ' + i; l.prepend(li); };</script>`;
 
 // A menu whose items the pointer highlights; `sticky` keeps the highlight when the pointer leaves and when the menu closes.
 const menu = (sticky: boolean) => `<button id="m" aria-haspopup="menu" aria-expanded="false">Actions</button><div id="l" role="menu" hidden><div role="menuitem" tabindex="-1">One</div><div role="menuitem" tabindex="-1">Two</div><div role="menuitem" tabindex="-1">Three</div></div><script>const its = [...l.children]; const clear = () => { for (const i of its) i.removeAttribute('data-highlighted'); }; const close = () => { l.hidden = true; m.setAttribute('aria-expanded', 'false'); ${sticky ? '' : 'clear();'} m.focus(); }; m.onclick = () => { if (!l.hidden) return close(); l.hidden = false; m.setAttribute('aria-expanded', 'true'); l.firstElementChild.focus(); }; for (const i of its) { i.addEventListener('pointerenter', () => { clear(); i.setAttribute('data-highlighted', ''); }); ${sticky ? '' : "i.addEventListener('pointerleave', () => i.removeAttribute('data-highlighted'));"} i.onclick = close; } addEventListener('keydown', (e) => { if (e.key === 'Escape' && !l.hidden) close(); }); addEventListener('click', (e) => { if (!l.hidden && !l.contains(e.target) && e.target !== m) close(); });</script>`;
@@ -26,6 +29,7 @@ const PAIRS: Record<string, { old: string; bad: string }> = {
 	popup: { old: dialog(false), bad: dialog(true) },
 	hover: { old: hoverCard(false), bad: hoverCard(true) },
 	drag: { old: slider(false), bad: slider(true) },
+	repeat: { old: toasts(false), bad: toasts(true) },
 	menu: { old: menu(false), bad: menu(true) },
 	discovered: { old: dialog(false, true), bad: dialog(true, true) },
 	form: { old: fruit(false), bad: fruit(true) },
@@ -57,6 +61,8 @@ after(async () => {
 	for (const s of servers) s.close();
 });
 
+const notified = (name: string): RecordedJourney[] => [{ name: `click button "${name}"`, steps: [{ action: 'click', target: { role: 'button', name, nth: 0 } }], expected: [{ url: '/', added: [], removed: [], requests: [], errors: [], announcements: ['list: Saved 1'], focus: 'body', navigated: false }] }];
+
 const CLASS: Record<string, string> = { menu: 'popup', discovered: 'popup', form: 'popup' };
 const EXPECT: Record<string, { check: RegExp; detail: RegExp }> = {
 	modality: { check: /^modality probe of button "Save": focus ring after a click, then Escape and Tab \(step 2 of 4: press Escape\)$/, detail: /focus ring/ },
@@ -66,12 +72,14 @@ const EXPECT: Record<string, { check: RegExp; detail: RegExp }> = {
 	discovered: { check: /^popup probe of button "Settings": open by pointer.* \(step 5 of 12: click outside it and what it opened\)$/, detail: /focus: the control/ },
 	hover: { check: /^hover probe of link "@ada": pointer resting on it.* \(step 1 of 4: point at it\)$/, detail: /open: tooltip "Ada Lovelace"/ },
 	drag: { check: /^drag probe of slider "Volume": dragged by the pointer both ways \(step 1 of 3: drag it 40 px right\)$/, detail: /aria-valuenow=60/ },
+	repeat: { check: /^repeat probe of button "Notify": used three times in a row.* \(step 2 of 5: click it\)$/, detail: /toasts: 2 shown/ },
 };
 
 for (const cls of Object.keys(PAIRS)) {
 	test(`the ${cls} probe is red on a port that differs, naming the control, the step and both sides, and green on the same page`, async () => {
 		const route = `/${cls.replace(' ', '-')}`;
-		const [result, same] = await Promise.all([checkProbes(browser, { old: defaultEnv(old), new: defaultEnv(bad) }, route, VIEWPORTS[0]!), checkProbes(browser, { old: defaultEnv(old), new: defaultEnv(old) }, route, VIEWPORTS[0]!)]);
+		const journeys = cls === 'repeat' ? notified('Notify') : undefined;
+		const [result, same] = await Promise.all([checkProbes(browser, { old: defaultEnv(old), new: defaultEnv(bad) }, route, VIEWPORTS[0]!, journeys), checkProbes(browser, { old: defaultEnv(old), new: defaultEnv(old) }, route, VIEWPORTS[0]!, journeys)]);
 		const mine = result.failures.filter((f) => f.check.startsWith(`${CLASS[cls] ?? cls} probe`));
 		assert.ok(mine.some((f) => EXPECT[cls]!.check.test(f.check)), `${cls}: ${JSON.stringify(result.failures, null, 1)}`);
 		const f = mine.find((x) => EXPECT[cls]!.check.test(x.check))!;
