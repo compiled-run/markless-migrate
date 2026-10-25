@@ -344,6 +344,62 @@ test('a Radix vertical slider steps up with ArrowUp and follows the pointer from
 	await page.close();
 });
 
+test('a React Aria range slider: each thumb is bounded by its neighbour and the slider\'s ends, Page Up steps a tenth of the range', async () => {
+	const thumb = (left: number, min: number, max: number, value: number, k: number) =>
+		`<div data-slot="slider-thumb" style="position:absolute;left:${left}%;width:12px;height:12px" data-rac=""><div><input tabindex="0" id="t-${k}" type="range" min="${min}" max="${max}" step="5" aria-valuetext="${value}" value="${value}"></div></div>`;
+	const page = await open(
+		`<div style="padding:50px;width:300px"><div data-slot="slider" data-rac="" role="group" data-orientation="horizontal" style="position:relative;width:200px;height:12px"><div data-slot="slider-track" data-rac="" style="position:relative;height:4px"><div data-slot="slider-range" style="position:absolute;inset-inline-start:25%;width:25%;height:100%"></div></div>${thumb(25, 0, 50, 25, 0)}${thumb(50, 25, 100, 50, 1)}</div></div>`,
+		['slider'],
+	);
+	const values = () => page.locator('input').evaluateAll((els) => els.map((e) => `${(e as HTMLInputElement).value} ${e.getAttribute('min')}-${e.getAttribute('max')}`).join(' | '));
+	await page.locator('#t-0').focus();
+	await page.keyboard.press('PageUp');
+	assert.equal(await values(), '35 0-50 | 50 35-100', 'Page Up is (max - min) / 10 = 10, not step x 10; the neighbour\'s min follows');
+	await page.locator('#t-1').focus();
+	await page.keyboard.press('ArrowRight');
+	assert.equal(await values(), '35 0-55 | 55 35-100', 'the upper thumb moves up to the slider\'s max, not the lower thumb\'s');
+	await page.keyboard.press('End');
+	assert.equal(await values(), '35 0-100 | 100 35-100');
+	await page.close();
+});
+
+test('a Radix range slider steps by its step, a thumb passes its neighbour and focus follows the value, Home and End set the first and last value', async () => {
+	const thumb = (left: number, value: number, label: string) =>
+		`<span style="position:absolute;left:calc(${left}% + 0px)"><span role="slider" aria-label="${label}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${value}" tabindex="0" data-slot="slider-thumb" style="display:block;width:16px;height:16px"></span></span>`;
+	const page = await open(
+		`<div style="padding:50px"><span data-slot="slider" data-orientation="horizontal" data-mm-step="5" style="position:relative;display:block;width:200px;height:20px"><span data-slot="slider-track"><span data-slot="slider-range" style="position:absolute;left:25%;right:70%"></span></span>${thumb(25, 25, 'Minimum')}${thumb(30, 30, 'Maximum')}</span></div>`,
+		['slider'],
+	);
+	const state = () => page.evaluate(() => [[...document.querySelectorAll('[role="slider"]')].map((t) => t.getAttribute('aria-valuenow')).join(','), document.activeElement?.getAttribute('aria-label')]);
+	await page.locator('[aria-label="Minimum"]').focus();
+	await page.keyboard.press('ArrowRight');
+	assert.deepEqual(await state(), ['30,30', 'Minimum']);
+	await page.keyboard.press('ArrowRight');
+	assert.deepEqual(await state(), ['30,35', 'Maximum'], 'the values are sorted and focus moves to the thumb holding the moved value');
+	await page.keyboard.press('Home');
+	assert.deepEqual(await state(), ['0,35', 'Minimum'], 'Home sets the first value');
+	await page.keyboard.press('End');
+	assert.deepEqual(await state(), ['0,100', 'Maximum']);
+	await page.close();
+});
+
+test('a Base UI vertical slider steps up with ArrowUp and follows the pointer from the bottom, its thumbs inset by half their height', async () => {
+	const page = await open(
+		`<div style="padding:50px"><div data-orientation="vertical" role="group" data-slot="slider" style="height:216px;width:16px"><div data-orientation="vertical" data-base-ui-slider-control="" style="position:relative;height:216px;width:16px"><div data-slot="slider-track" style="position:relative;height:100%"><div data-base-ui-slider-indicator="" style="position:absolute;--start-position:50%;bottom:0px;height:var(--start-position)" data-slot="slider-range"></div></div><div data-orientation="vertical" data-index="0" style="--position:50%;position:absolute;bottom:var(--position);left:50%;translate:-50% 50%;width:16px;height:16px" data-slot="slider-thumb"><input aria-orientation="vertical" aria-valuenow="50" max="100" min="0" step="1" type="range" value="50" style="position:fixed;top:0;left:0;width:1px;height:1px;opacity:0"></div></div></div></div>`,
+		['slider'],
+	);
+	const state = () => page.evaluate(() => [document.querySelector('input')!.value, (document.querySelector('[data-slot="slider-thumb"]') as HTMLElement).style.getPropertyValue('--position')]);
+	await page.locator('input').focus();
+	await page.keyboard.press('ArrowUp');
+	assert.deepEqual(await state(), ['51', '50.9259%'], '(8 + 0.51 x 200) / 216');
+	const box = (await page.locator('[data-base-ui-slider-control]').boundingBox())!;
+	await page.mouse.move(box.x + 8, box.y + 8 + 200 * 0.25);
+	await page.mouse.down();
+	await page.mouse.up();
+	assert.deepEqual(await state(), ['75', '73.1481%'], 'a quarter of the 200 px travel down from the top is 75');
+	await page.close();
+});
+
 test('react-resizable-panels: a press on a separator focuses it; once released it is inactive until the pointer moves again', async () => {
 	const page = await open(
 		`<div style="padding:50px"><div data-group="" style="display:flex;width:400px;height:100px"><div data-panel="" style="flex:50 1 0px"></div><div role="separator" tabindex="0" aria-valuenow="50" data-separator="inactive" style="width:8px;flex:0 0 auto"></div><div data-panel="" style="flex:50 1 0px"></div></div><button>after</button></div>`,
