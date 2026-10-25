@@ -1,0 +1,2095 @@
+{
+	"route": "/story/50226419",
+	"recordedFrom": "http://localhost:4201",
+	"at": "2026-10-25T03:11:23.610Z",
+	"responses": [],
+	"live": {
+		"firebase": [
+			{
+				"host": "hacker-news.firebaseio.com",
+				"snapshot": {
+					"v0/item/50226419": {
+						"by": "gnabgib",
+						"descendants": 187,
+						"id": 50226419,
+						"kids": {
+							"0": 50227130,
+							"1": 50226952,
+							"2": 50227625,
+							"3": 50226815,
+							"4": 50226719,
+							"5": 50227692,
+							"6": 50226610,
+							"7": 50227349,
+							"8": 50227822,
+							"9": 50226752,
+							"10": 50226744,
+							"11": 50227005,
+							"12": 50227414,
+							"13": 50227192,
+							"14": 50227411,
+							"15": 50226988,
+							"16": 50226941,
+							"17": 50226912,
+							"18": 50227773,
+							"19": 50227630,
+							"20": 50227335,
+							"21": 50226850,
+							"22": 50227153,
+							"23": 50227087,
+							"24": 50227718,
+							"25": 50226724,
+							"26": 50227039,
+							"27": 50227367,
+							"28": 50227283,
+							"29": 50227056,
+							"30": 50227182,
+							"31": 50226892,
+							"32": 50227614
+						},
+						"score": 208,
+						"time": 1792883514,
+						"title": "America has lost 200k of jobs in media, film and the arts. How much is AI?",
+						"type": "story",
+						"url": "https://www.apricitas.io/p/ai-and-the-fall-of-the-creative-class"
+					},
+					"v0/item/50227130": {
+						"by": "jparishy",
+						"id": 50227130,
+						"kids": {
+							"0": 50227276,
+							"1": 50227759,
+							"2": 50227801,
+							"3": 50227245,
+							"4": 50227717,
+							"5": 50227178,
+							"6": 50227287
+						},
+						"parent": 50226419,
+						"text": "I liked this article. I appreciate that it didn&#x27;t try to say it is or isn&#x27;t AI.<p>To me, the entertainment industry suffers from a lot of the same problems in most other industries that chase &quot;efficiency&quot;, in terms of resources used and profit made. Economies and industries and labor are interdependent and more &quot;alive&quot; than balance sheets and bank accounts.<p>For the film industry, when you start moving things away from LA to &quot;save money&quot;, it has knock on effects that happen over long periods of time. Multiple Quarterly Earnings Reports long, if you will. Local businesses that depend on the film industry close due to less work, so then there is less expertise available. Less expertise means it can command high prices. Suddenly it&#x27;s too expensive to film in LA altogether. So the rest of the jobs leave too.<p>This pattern seems super common, not just in the film industry.<p>It is a narrative that interweaves with AI, too. AI is supposedly an efficiency boom. In the macroeconomy, who is the &quot;efficiency&quot; we are chasing for, who benefits? Who is getting the money that was &quot;saved&quot;? Regular people do not have more more money or time. The &quot;efficiency&quot; is for people who are already very rich, to get richer. Is that worth the price we&#x27;re paying? I know my answer. The article gets close to it by mentioning the consolidation in Hollywood, but I do not see how we fix this without enforcing our antitrust laws. It is embarrassing what we let rich people do in the name of stock price go up.",
+						"time": 1792889936,
+						"type": "comment"
+					},
+					"v0/item/50226952": {
+						"by": "sjdh76",
+						"id": 50226952,
+						"kids": {
+							"0": 50227120,
+							"1": 50227247,
+							"2": 50227695,
+							"3": 50227052
+						},
+						"parent": 50226419,
+						"text": "Before AI showed up the UN released a report on the Attention Economy. It said Supply of content had vastly outstripped Demand. It decoupled because entertainment&#x2F;media was being used to push other products. The telcos, amazon, google&#x2F;fb and many others were all subsidizing content to push some other product. Exploding info chasing finite non growing eyeballs and time.",
+						"time": 1792888173,
+						"type": "comment"
+					},
+					"v0/item/50227625": {
+						"by": "Animats",
+						"id": 50227625,
+						"parent": 50226419,
+						"text": "The real job losses are probably in commercial art. If you&#x27;re making an illustration for an ad, that&#x27;s almost certainly automated now. Looking at when the decline started, it&#x27;s about when Stable Diffusion got going.<p>Some of this stuff is pre-AI, Photoshop smart tools stuff. Especially clothing ads. Nobody has a live model pose with each item color any more. Or even each item. (I used to know actress&#x2F;model&#x2F;waitress types in LA who did that. Grind job: &quot;OK, the blue sweater is next, and hurry it up, we have 50 to do before lunch&quot;. But it paid OK.)",
+						"time": 1792894594,
+						"type": "comment"
+					},
+					"v0/item/50226815": {
+						"by": "999900000999",
+						"id": 50226815,
+						"kids": {
+							"0": 50227059,
+							"1": 50226946,
+							"2": 50226853,
+							"3": 50227791,
+							"4": 50227386,
+							"5": 50227126,
+							"6": 50227050,
+							"7": 50227369,
+							"8": 50226852
+						},
+						"parent": 50226419,
+						"text": "No one has any money and entertainment is the first thing you cut.<p>Every streaming service feels more and more user hostile. If I want to watch South Park it’s a 15$ a month subscription just for that .<p>Paramount Plus has nothing else.<p>I want to watch Lanterns, another 30$ a month.<p>Maybe King of The Hill , 20$ a month. The Reboot has this weird lazy animation style.",
+						"time": 1792886925,
+						"type": "comment"
+					},
+					"v0/item/50226719": {
+						"by": "OgsyedIE",
+						"id": 50226719,
+						"kids": {
+							"0": 50226959
+						},
+						"parent": 50226419,
+						"text": "&quot;You&#x27;re going to begin to see demand destruction based on the pricing environment.&quot; - Bob Jordan, CEO of Southwest Airlines, April 23rd",
+						"time": 1792886003,
+						"type": "comment"
+					},
+					"v0/item/50227692": {
+						"by": "alberth",
+						"id": 50227692,
+						"parent": 50226419,
+						"text": "&gt; The streaming era has proven an extremely difficult transition, with traditional films and TV shows losing watch time to user-generated and increasingly AI-assisted or AI-generated content flows.<p>Isn’t this the wrong conclusion.<p>It’s that streaming as the monetization vehicle no longer creates an opportunity for movie maker to make huge returns.<p>Once, a blockbuster movie could make $1 billions.<p>Today, the movie maker only gets a sliver of the $12&#x2F;mo subscription fee.",
+						"time": 1792895196,
+						"type": "comment"
+					},
+					"v0/item/50226610": {
+						"by": "commiepatrol",
+						"id": 50226610,
+						"kids": {
+							"0": 50227249,
+							"1": 50227664,
+							"2": 50226635,
+							"3": 50226650,
+							"4": 50226753
+						},
+						"parent": 50226419,
+						"text": "Have you seen media, arts and film that America produces recently? It&#x27;s garbage.",
+						"time": 1792885093,
+						"type": "comment"
+					},
+					"v0/item/50227349": {
+						"by": "bananamogul",
+						"id": 50227349,
+						"parent": 50226419,
+						"text": "Not factored in is the fact that there is just so much media now.<p>I think we could stop all content creation today and everyone would still have enough to last through their grandchildren&#x27;s lifetimes.<p>And unlike a lot of things, media doesn&#x27;t expire.  I still regularly find albums, movies, and books from decades ago I enjoy today.<p>Media of all forms is just worth less now due to oversupply.",
+						"time": 1792891976,
+						"type": "comment"
+					},
+					"v0/item/50227822": {
+						"by": "rapatel0",
+						"id": 50227822,
+						"parent": 50226419,
+						"text": "Most of the jobloss seems to be due to the  movie industry. The movie industry has been a flop machine over the last decade out side a handful of successes. That probably has more to do with jobloss than anything ai related.",
+						"time": 1792896708,
+						"type": "comment"
+					},
+					"v0/item/50226752": {
+						"by": "wewewedxfgdf",
+						"id": 50226752,
+						"kids": {
+							"0": 50227082,
+							"1": 50227175
+						},
+						"parent": 50226419,
+						"text": "Interest rates and inflation have vastly more impact than AI.",
+						"time": 1792886351,
+						"type": "comment"
+					},
+					"v0/item/50226744": {
+						"by": "jalev",
+						"id": 50226744,
+						"kids": {
+							"0": 50227185,
+							"1": 50226777,
+							"2": 50227036
+						},
+						"parent": 50226419,
+						"text": "Some of these graphs don&#x27;t support the hypothesis. The movie one for example shows that employment is just slightly below what it was just after the financial crisis of 2008, and shows record job loss after the covid bump which we all know resulted in massive hiring sprees in a lot of sectors followed by massive layoffs. Is the movie and movie production sector really experiencing an apocalyptic downturn where the line will reach zero, or just returning to its median?<p>Apparently the amount of movies actually being produced has barely recovered to post 2008 levels.<p><a href=\"https:&#x2F;&#x2F;www.statista.com&#x2F;statistics&#x2F;187122&#x2F;movie-releases-in-north-america-since-2001&#x2F;\" rel=\"nofollow\">https:&#x2F;&#x2F;www.statista.com&#x2F;statistics&#x2F;187122&#x2F;movie-releases-in...</a>",
+						"time": 1792886215,
+						"type": "comment"
+					},
+					"v0/item/50227005": {
+						"by": "Lerc",
+						"id": 50227005,
+						"parent": 50226419,
+						"text": "Before I dive into a relatively long article here, can someone tell me if it does, in fact, say how much is AI?",
+						"time": 1792888653,
+						"type": "comment"
+					},
+					"v0/item/50227414": {
+						"by": "robswc",
+						"id": 50227414,
+						"kids": {
+							"0": 50227738
+						},
+						"parent": 50226419,
+						"text": "Honestly I think it&#x27;s because everything sucks these days.  I know there is a lot of survivorship bias going on but _something_ has changed.  I have recently been on a 1980-2010&#x27;s movie binge.  It seemed like movies before were raw and real.  Now everything feels like it&#x27;s plastic and made in a lab, dumbed down to the lowest common denominator.<p>Don&#x27;t even get me started on shows.  There are a ton of great ones but now they have 2-4, sometimes even 5 year gaps!  The &quot;increased&quot; quality doesn&#x27;t warrant it!  I know people say &quot;well now they&#x27;re movie-grade&quot; but I really could not care less.  I don&#x27;t need every episode of every show to be blockbuster quality.  Just make it not suck!  I would love to go to the movies and buy all the subscription services but it&#x27;s simply not worth it! &#x2F;rant",
+						"time": 1792892482,
+						"type": "comment"
+					},
+					"v0/item/50227192": {
+						"by": "geraneum",
+						"id": 50227192,
+						"parent": 50226419,
+						"text": "How does one consider, depression, inflation, interest rates and investments, purchasing power, and other impactful economic downturns for such analysis? During this window a consequential war in Europe, another one in Iran leading to an energy crisis, has happened as well which could accelerate the existing trends in one way or the other. I think any serious comparison should control for these factors.",
+						"time": 1792890677,
+						"type": "comment"
+					},
+					"v0/item/50227411": {
+						"by": "ortusdux",
+						"id": 50227411,
+						"parent": 50226419,
+						"text": "It&#x27;s purely anecdotal, but the word I&#x27;ve heard from the industry is that the number of sfx and animation jobs had stayed the same, but the bids are coming in much much lower.  The example was $500k jobs were now coming in around $50k.",
+						"time": 1792892476,
+						"type": "comment"
+					},
+					"v0/item/50226988": {
+						"by": "tracerbulletx",
+						"id": 50226988,
+						"parent": 50226419,
+						"text": "Very little. It&#x27;s that America&#x27;s tax incentives are not competitive. They fly crews to make game shows from LA to london because its cheaper to shoot a show there. There&#x27;s strong momentum to change that at the moment, there&#x27;s a bill that might actually get passed that will make the tax environment competitive again in the states that stack theirs on it.",
+						"time": 1792888484,
+						"type": "comment"
+					},
+					"v0/item/50226941": {
+						"by": "beedeebeedee",
+						"id": 50226941,
+						"kids": {
+							"0": 50227125
+						},
+						"parent": 50226419,
+						"text": "The only thing I’ve been watching lately are Soviet films on youtube. Mosfilms and Gorky films have their full catalogs on there. Sergei Bondarchuk’s films are deeply moving. Seventeen Moments from Spring is incredible as well- the Soviet answer to James Bond. For some reason it feels deeply refreshing to watch these films instead of what the US has been producing.",
+						"time": 1792888078,
+						"type": "comment"
+					},
+					"v0/item/50226912": {
+						"by": "arjie",
+						"id": 50226912,
+						"kids": {
+							"0": 50226943,
+							"1": 50227196,
+							"2": 50227103
+						},
+						"parent": 50226419,
+						"text": "Based on the rise of short form video content, this seems like amateurs are just outcompeting professionals for eyeballs.",
+						"time": 1792887883,
+						"type": "comment"
+					},
+					"v0/item/50227773": {
+						"by": "Animats",
+						"id": 50227773,
+						"parent": 50226419,
+						"text": "Over on the entertainment side, video is getting really good. Yes, there&#x27;s a huge amount of AI slop, but the good stuff is quite good.<p>- Kono Express. [1] Disney laid off an character animator from the Star Wars factory. The animator decided to see what was possible with the best modern tools. He&#x27;s using both AI tools and Unreal Engine. There are six episodes now, and each one is a bit better than the last, as he gets a handle on the technology. The first episode looks like generic sci-fi stuff, at good quality but not yet perfect. By episode three, he has this nailed. It keeps getting better. Episode six [2] is a delight. He&#x27;s now almost up to current Hollywood quality. One person, turning out half an hour of content every few weeks. Who needs Disney any more?<p>- Asian vertical dramas. 17,000 episodes per day. Apparently 55% of China&#x27;s AI capacity is cranking these out. Search for &quot;asian drama creation tools&quot;. Amusingly, Google and Bing have completely different tool lists. These are all software as a service products, with accounts and token charges. Currently, visuals are quite good, with some notable errors. Complex patterns on clothing don&#x27;t stay consistent, for example. Continuity errors remain common.\nAutomatically generated audio is currently terrible, at least in the English translations.\nPlots are so cliche that it&#x27;s clear people are re-using the same prompts. &quot;Heiress girl returns from countryside&quot; is very popular. Here&#x27;s a recent drama, about startup working hours.[3] The plot is silly but the visuals are OK.<p>- There&#x27;s starting to be a thing for turning out movies based on old SF novels. So far, these seem unauthorized by the original author, but that will change. In time, every good book will have its movie.<p>The good stuff in this space is getting to be better than the Marvel Overexpanded Universe.<p>[1] <a href=\"https:&#x2F;&#x2F;www.youtube.com&#x2F;watch?v=ikm5lP0zsi0\" rel=\"nofollow\">https:&#x2F;&#x2F;www.youtube.com&#x2F;watch?v=ikm5lP0zsi0</a><p>[2] <a href=\"https:&#x2F;&#x2F;www.youtube.com&#x2F;watch?v=XklUIGp6jH0\" rel=\"nofollow\">https:&#x2F;&#x2F;www.youtube.com&#x2F;watch?v=XklUIGp6jH0</a><p>[3] <a href=\"https:&#x2F;&#x2F;www.youtube.com&#x2F;watch?v=J7b9xNEkhlc\" rel=\"nofollow\">https:&#x2F;&#x2F;www.youtube.com&#x2F;watch?v=J7b9xNEkhlc</a>",
+						"time": 1792896187,
+						"type": "comment"
+					},
+					"v0/item/50227630": {
+						"by": "kazinator",
+						"id": 50227630,
+						"parent": 50226419,
+						"text": "&gt; <i>Media firms are decidedly coy about their AI use, both to protect against public backlash and, more financially important, to preserve the legal basis for their copyrights</i><p>Lying preserves the legal basis for copyright?",
+						"time": 1792894627,
+						"type": "comment"
+					},
+					"v0/item/50227335": {
+						"by": "adverbly",
+						"id": 50227335,
+						"parent": 50226419,
+						"text": "How much of this is globalization?<p>International media is much better than it used to be.",
+						"time": 1792891838,
+						"type": "comment"
+					},
+					"v0/item/50226850": {
+						"by": "dodger-dog",
+						"id": 50226850,
+						"kids": {
+							"0": 50226942,
+							"1": 50227152
+						},
+						"parent": 50226419,
+						"text": "How much is TikTok?",
+						"time": 1792887299,
+						"type": "comment"
+					},
+					"v0/item/50227153": {
+						"deleted": true,
+						"id": 50227153,
+						"parent": 50226419,
+						"time": 1792890168,
+						"type": "comment"
+					},
+					"v0/item/50227087": {
+						"by": "tayo42",
+						"id": 50227087,
+						"parent": 50226419,
+						"text": "The outsource comment was interesting. Gaming didn&#x27;t come up in this article but seems similarly hit. I was recently surprised to see how much game dev work is done outside the US for American companies.<p>Also thought the graphs around covid were interesting, there wasn&#x27;t a spike up or anything it&#x27;s just been consistently down.<p>The article said we&#x27;re not in a recession. I thought we were lol",
+						"time": 1792889560,
+						"type": "comment"
+					},
+					"v0/item/50227718": {
+						"by": "MadrasThorn",
+						"id": 50227718,
+						"parent": 50226419,
+						"text": "Well trump did fire most of them",
+						"time": 1792895531,
+						"type": "comment"
+					},
+					"v0/item/50226724": {
+						"by": "ViktorRay",
+						"id": 50226724,
+						"kids": {
+							"0": 50226894,
+							"1": 50227206
+						},
+						"parent": 50226419,
+						"text": "I think some of it may be demand side.<p>Many people spend hours browsing Tik Tok rather than watching film or television.<p>Even long form YouTube videos are highly popular. Many folks spend time watching those rather than movies or tv. I believe Tom Hanks was speaking about this many years ago.<p>That being said….<p>I remember growing up and my teachers would always emphasize the importance of reading. I’m sure it would be a great thing for humanity if everyone spent their free time reading books rather than on film or television. In such a scenario would people complain about job loss then? This could be a fruitful idea for a science fiction short story come to think of it.",
+						"time": 1792886044,
+						"type": "comment"
+					},
+					"v0/item/50227039": {
+						"by": "redwood",
+						"id": 50227039,
+						"parent": 50226419,
+						"text": "I find it odd that this article ignores live theater when that is the natural parallel to &quot;live shows&quot; or &quot;tours&quot; for film and television.<p>Also how much is the end of ZIRP and how much is jobs moving abroad? I&#x27;d love to see the article go a bit deeper",
+						"time": 1792888998,
+						"type": "comment"
+					},
+					"v0/item/50227367": {
+						"by": "jmyeet",
+						"id": 50227367,
+						"kids": {
+							"0": 50227874
+						},
+						"parent": 50226419,
+						"text": "I wish the article had split TV and movies because there are different factors at play.<p>Movies just don&#x27;t make economic sense unless they&#x27;re blockbusters and that&#x27;s mainly because of the decline in movie theaters for various reasons but also the death of physical media sales. DVD sales in the 1990s were a bit of a Golden Age. Matt Damon talked about this [1].<p>Up until the 2000s the TV economic model was:<p>1. Produce a full season of TV, typically ~22 episodes, and air those on network TV. Sell ads;<p>2. Sell physical media. Unlike movies, this wasn&#x27;t as big of a factor until serialized TV came about but it was a factor; and<p>3. Syndication. Basic cable channels and foreign distributors would pay to air TV shows.<p>Premium cable (eg HBO) was an exception. It still had foreign distribution but cable subscriptions replaced ad revenue.<p>In all of these cases, actors, writers, etc would get residuals or back end participation. For what became TV shows, there was a whole ecosystem of pilots. Scripts would be bought. Some would get greenlit for pilots. Some of those would get a half or full season order.<p>A TV season meant basically a full year of work for those involved. All the pilot activity meant more work. Residuals allowed actors and writers to survive between jobs. There are still people getting significant residuals from Friends from over 30 years ago.<p>All of that died with streaming. Netflix streaming first began as a means of monetizing old seasons of TV and older movies. It was additional revenue. But as Netflix grew, all the studios saw dollar signs and launched &quot;me too&quot; streaming services, most of which were doomed from the start. Streamers began to cannibalize the syndication and physical media revenue.<p>Netflix in particular made the decision relatively early that they needed original content to survive. By having a worldwide customer base, they didn&#x27;t care about physical media and didn&#x27;t have to pay for syndication. Also because of some unfortunate contracts in the late 2000s, there was little to no residuals for streaming so that too was more saved money.<p>And the cost-cutting continued. Smaller seasons (8-13 episodes) with smaller writing rooms meant fewer people employed, particularly when it might be 2-3 years between seasons. Suddenly you needed 2 jobs a year to survive where once it was 1. That&#x27;s a huge difference because you&#x27;re lucky to get 1 job. And you got no residuals on top of that.<p>This coincided with more general Hollywood cost-cutting to move productions out of LA to Canada (particularly Toronto but also Vancouver), Atlanta and elsewhere.<p>Hollywood was an ecosystem. Short term profit-seeking has basically destroyed it but also, so has the high cost of housing. LA used to be somewhere you could live cheaply and this enabled people to chase their dream. Many didn&#x27;t make it but this was the entry to the funnel. Some did.<p>Now there are fewer jobs and those are increasingly dominated by second and third generation nepo babies.<p>Why do you think there&#x27;s so much recycled IP now? Relaunches of 1990s and 2000s properties. The people involved are out of work. That&#x27;s why. And it&#x27;s easier to greenlight something with a track record. Also, notice how many podcasts there are of people who used to be in shows? The Office is particularly egregious for this. I swear half the cast have podcasts now. Why? Because they&#x27;re out of work too.<p>I cannot overstate how much expensive housing has strangled Hollywood. Expensive housing is an input into everything you produce and do. Yet people see it as their retirement. What retirement? If your $200k house is now $1M, so is every other house. You still only own one housing unit&#x27;s worth of wealth. So you need to multiple houses, to be a landlord or Airbnb host. And we wonder why the housing supply sucks.<p>[1]: <a href=\"https:&#x2F;&#x2F;streamable.com&#x2F;pedvjq\" rel=\"nofollow\">https:&#x2F;&#x2F;streamable.com&#x2F;pedvjq</a>",
+						"time": 1792892104,
+						"type": "comment"
+					},
+					"v0/item/50227283": {
+						"by": "j45",
+						"id": 50227283,
+						"parent": 50226419,
+						"text": "AI is a definite possibility, part of it makes me wonder how much it&#x27;s about the new skills needed for film&#x2F;media are tied to technology or AI.<p>Technology has almost always been adopted in Hollywood.<p>Media grew to become social media, and skills of social media became relevant and new positions.",
+						"time": 1792891407,
+						"type": "comment"
+					},
+					"v0/item/50227056": {
+						"by": "gnarlouse",
+						"id": 50227056,
+						"parent": 50226419,
+						"text": "Honestly: our media and film is largely pretty terrible. The arts may be worth a lament.",
+						"time": 1792889268,
+						"type": "comment"
+					},
+					"v0/item/50227182": {
+						"by": "jmspamerton",
+						"dead": true,
+						"id": 50227182,
+						"parent": 50226419,
+						"text": "[dead]",
+						"time": 1792890571,
+						"type": "comment"
+					},
+					"v0/item/50226892": {
+						"by": "ihsw",
+						"dead": true,
+						"id": 50226892,
+						"parent": 50226419,
+						"text": "[dead]",
+						"time": 1792887685,
+						"type": "comment"
+					},
+					"v0/item/50227614": {
+						"by": "wetpaws",
+						"dead": true,
+						"id": 50227614,
+						"parent": 50226419,
+						"text": "[dead]",
+						"time": 1792894534,
+						"type": "comment"
+					},
+					"v0/item/50227276": {
+						"by": "derektank",
+						"id": 50227276,
+						"kids": {
+							"0": 50227315,
+							"1": 50227879,
+							"2": 50227470,
+							"3": 50227380,
+							"4": 50227409,
+							"5": 50227311,
+							"6": 50227418
+						},
+						"parent": 50227130,
+						"text": "&gt;Regular people do not have more more money or time<p>Of course they do. Median real weekly wages[1] have been rising for decades all while the average number of hours worked per worker have fallen[2].<p>[1] <a href=\"https:&#x2F;&#x2F;fred.stlouisfed.org&#x2F;series&#x2F;les1252881600Q\" rel=\"nofollow\">https:&#x2F;&#x2F;fred.stlouisfed.org&#x2F;series&#x2F;les1252881600Q</a><p>[2] <a href=\"https:&#x2F;&#x2F;fred.stlouisfed.org&#x2F;series&#x2F;avhwpeusa065nrug\" rel=\"nofollow\">https:&#x2F;&#x2F;fred.stlouisfed.org&#x2F;series&#x2F;avhwpeusa065nrug</a>",
+						"time": 1792891380,
+						"type": "comment"
+					},
+					"v0/item/50227759": {
+						"by": "groundzeros2015",
+						"id": 50227759,
+						"parent": 50227130,
+						"text": "Modern technology makes distribution free, so then you need to compete on brand and quality.<p>Outsourcing seems extremely short-sighted in this environment. You&#x27;re devaluing your brand, and giving expertise and training to another place that can make their own products.<p>I also wonder how much can be attributed to weakened intellectual property protection. Comments in this thread say they don&#x27;t pay for anything because they can watch it all for free.",
+						"time": 1792895995,
+						"type": "comment"
+					},
+					"v0/item/50227801": {
+						"by": "nradov",
+						"id": 50227801,
+						"kids": {
+							"0": 50227896,
+							"1": 50227826
+						},
+						"parent": 50227130,
+						"text": "The legacy media industry had a huge amount of fat and inefficiency, lots of people sitting around pretending to work. Joe Rogan produces a top podcast that pulls a larger audience than the vast majority of TV shows, and does everything with about 5 employees. Regardless of what you think of him personally or the podcast content, that is amazing efficiency. And he started it before LLMs were even a thing.",
+						"time": 1792896483,
+						"type": "comment"
+					},
+					"v0/item/50227245": {
+						"by": "segmondy",
+						"id": 50227245,
+						"kids": {
+							"0": 50227298,
+							"1": 50227277,
+							"2": 50227384,
+							"3": 50227302
+						},
+						"parent": 50227130,
+						"text": "Why?  AI is taking jobs.  getty images just filed bankruptcy, stackoverflow went from heavy use to almost no use.  AI is taking jobs, tipping toeing around it isn&#x27;t the best thing.  It needs to be said, and then what next needs to be figured out because first we talk about 200k jobs, then we will next talk about 2 million and then 20million",
+						"time": 1792891114,
+						"type": "comment"
+					},
+					"v0/item/50227717": {
+						"by": "derekdahmer",
+						"id": 50227717,
+						"parent": 50227130,
+						"text": "To use your example of the movie industry, everyone gets the benefits of the effiency gains.<p>There&#x27;s twice as many scripted shows today and twice as many movies released despite the average person spending half the time they did 30 years ago watching TV and movies.  For less than the price of a 1990s cable tv subscription we can access almost any movie, instantly streamed to our HDR TVs at home, on demand. The digital VFX we expect of a low tier direct to streaming show are better than the some of the best 90s movies (practical effects excluded).<p>There are hundreds of thousands of people across the world using the 4k camera in their pocket they bought for a few hundred dollars to make hyper specific media and distributing it free on YouTube.  They are editing it in cheap or free video editors on their computer or built in to their phone.<p>It&#x27;s easy to shit on modern media.  With democratization comes slop.  There&#x27;s garbage now just like there was before.  But we are absolutely benefitting off the efficency gains of the last few decades.",
+						"time": 1792895531,
+						"type": "comment"
+					},
+					"v0/item/50227178": {
+						"by": "BLKNSLVR",
+						"id": 50227178,
+						"parent": 50227130,
+						"text": "Offshoring of manufacturing to China is the analogy that springs to mind for me.",
+						"time": 1792890497,
+						"type": "comment"
+					},
+					"v0/item/50227287": {
+						"by": "j45",
+						"id": 50227287,
+						"kids": {
+							"0": 50227429
+						},
+						"parent": 50227130,
+						"text": "Efficiency could mean creating more with the same labour, not creating the same amount with less labour.",
+						"time": 1792891444,
+						"type": "comment"
+					},
+					"v0/item/50227120": {
+						"by": "Gigachad",
+						"id": 50227120,
+						"kids": {
+							"0": 50227382,
+							"1": 50227210,
+							"2": 50227187,
+							"3": 50227189
+						},
+						"parent": 50226952,
+						"text": "I&#x27;m looking at gaming these days and there&#x27;s such an endless selection of excellent games I&#x27;d love to play. But there are far more great games than I have time to play. So when I see stuff like using AI to make games faster, I can only think what is the point, The market won&#x27;t buy or play more games so something else has to give.",
+						"time": 1792889872,
+						"type": "comment"
+					},
+					"v0/item/50227247": {
+						"by": "jubilee33",
+						"id": 50227247,
+						"parent": 50226952,
+						"text": "Creative content will become more personal and less profitable, art being some sort of commercial enterprise is a relative new phenomenon, we will survive without it. Most artists will have to generate income by performance or physical creation, just like it has been for the whole time before it was commoditized to feed the &quot;attention economy&quot;<p>What a gross and completly apt terminology for the commoditization of art from the bureaucrats by the way.",
+						"time": 1792891142,
+						"type": "comment"
+					},
+					"v0/item/50227695": {
+						"by": "999900000999",
+						"id": 50227695,
+						"kids": {
+							"0": 50227750
+						},
+						"parent": 50226952,
+						"text": "It&#x27;s also very easy to make high quality content. You can record a professional album with 5000$ in gear. Live instruments and all.<p>You can make your album accessible to every human on earth for free.<p>So my Instagram is full of very very high quality music, much of it I&#x27;ll only listen to once.<p>Music from all over the world.<p>Its great.<p>Yet sad. So much music I&#x27;ll never get to. I have to spend 40 to 50 hours a week generating income. If only I did better on that Meta interview way back.<p>I&#x27;d be retired now, free to indulge in endless entertainment.",
+						"time": 1792895261,
+						"type": "comment"
+					},
+					"v0/item/50227052": {
+						"by": "echelon",
+						"id": 50227052,
+						"kids": {
+							"0": 50227094,
+							"1": 50227112,
+							"2": 50227191,
+							"3": 50227122,
+							"4": 50227431
+						},
+						"parent": 50226952,
+						"text": "There is infinite demand for content (to the limit that human attention can absorb it).<p>Most content sucks ass. What may appear to be bountiful content is actually a lot of okay and meh content. Very little of it fits to your actual taste preference. It&#x27;s a whole lot of mediocre. We as humans do not know what plentiful content looks like. We&#x27;ve never lived in it.<p>Most movies suck. You doomscroll and are dissatisfied.  You refresh your media recommendations and sigh. You are excited to see a new fantasy or sci-fi film that scratches that itch, yet often left disappointed.<p>We are still in a desert. Anyone who says otherwise is settling for the status quo that our childen will call primitive and beastly.<p>Jobs are disappearing because cheap&#x2F;free ad subsidized content attracts more eyeball hours than produced and prestige content. It&#x27;s the optimal pareto frontier of content and does the most bang for buck, most in aggregate eyeball hours.<p>When the tools enable more creation at scale by tasteful creators, we&#x27;ll start to get closer to content abundance. We&#x27;re not there yet.",
+						"time": 1792889205,
+						"type": "comment"
+					},
+					"v0/item/50227059": {
+						"by": "kaseijin",
+						"id": 50227059,
+						"parent": 50226815,
+						"text": "I just don&#x27;t pay for it. If there&#x27;s something I really wanna watch I might buy one month of the service binge it then cancel.<p>The streaming model has imho mostly killed old style television formats with the new way of hyping up a show in the first couple episodes by tossing money and talent, then leave people to hang with unsatisfying conclusions once you&#x27;ve got that sub money. It&#x27;s all about convincing people to sign up and stay signed up with promises for new content. The quality of the content doesn&#x27;t matter as long as there&#x27;s a lot of it and it&#x27;s enough to keep people from unsubscribing.<p>With traditional TV your value was directly determined by how many people were watching so you could sell addspace. And despite there being less choice and harder for independent players to get time, in some ways it was weirdly more democratic because if a show sucked or an episode sucked people would just change the channel or watch something else. With streaming they still do that but it&#x27;s all in the same price scheme so doesn&#x27;t hurt their bottom line. They&#x27;re incentivised to just crank out as much crap as possible to keep subs up. Won&#x27;t last.",
+						"time": 1792889290,
+						"type": "comment"
+					},
+					"v0/item/50226946": {
+						"by": "ajkjk",
+						"id": 50226946,
+						"kids": {
+							"0": 50227102,
+							"1": 50227022,
+							"2": 50227119,
+							"3": 50227067
+						},
+						"parent": 50226815,
+						"text": "and the content strangely sucks most of the time. like no one can write, edit, direct, or act anymore. Not always but strangely often.",
+						"time": 1792888129,
+						"type": "comment"
+					},
+					"v0/item/50226853": {
+						"by": "_heimdall",
+						"id": 50226853,
+						"parent": 50226815,
+						"text": "I believe its called South America now.",
+						"time": 1792887333,
+						"type": "comment"
+					},
+					"v0/item/50227791": {
+						"by": "AnodicElegy",
+						"id": 50227791,
+						"parent": 50226815,
+						"text": "For South Park, I just wait for a full season to be out and watch it over a month, then cancel. $15 for a season isn&#x27;t too bad.",
+						"time": 1792896390,
+						"type": "comment"
+					},
+					"v0/item/50227386": {
+						"by": "robswc",
+						"id": 50227386,
+						"kids": {
+							"0": 50227672
+						},
+						"parent": 50226815,
+						"text": "&gt; Paramount Plus has nothing else.<p>This is funny, because every damn time I find something I want to watch its on paramount+.<p>There has to be a paradox&#x2F;law named after this at this point.  &quot;The thing you&#x27;re trying to watch will always be on the service you don&#x27;t have.&quot;",
+						"time": 1792892258,
+						"type": "comment"
+					},
+					"v0/item/50227126": {
+						"by": "so-gala-massey",
+						"id": 50227126,
+						"parent": 50226815,
+						"text": "Maybe this is an unpopular opinion, but I stopped watching broadcast&#x2F;cable TV 20 years ago. I had Netflix until they switched to their own content and started raising rates, so I dropped it. I now rent DVDs from a place about 15 minutes from me. I also have Kanopy for free. Here’s the opinion: stop watching. That’s the only way to send a message. Read a book. Rent a dvd. Or play a game. Or draw. Or visit friends and play board games. Or learn to play an instrument. Or find a game store near you and go to game nights. Or bowl. Find something else to do than drool at a screen watching content product that doesn’t give a shit about. Right now I’m doing advent of code from 2019 in LISP. Haven’t programmed lisp since college and I’m having a blast. Get a hobby. Screw the media machine.",
+						"time": 1792889910,
+						"type": "comment"
+					},
+					"v0/item/50227050": {
+						"by": "senordevnyc",
+						"id": 50227050,
+						"kids": {
+							"0": 50227078
+						},
+						"parent": 50226815,
+						"text": "Without even looking at the data, I bet both of your hypotheses here are wrong.<p>I bet the median American has more real disposable income than four years ago.<p>I bet the median American spends more in real terms on entertainment (and streaming specifically) than four years ago.<p>Almost without fail, the data in almost any area of modern life seems to be way less negative than people’s vibes about it are.",
+						"time": 1792889139,
+						"type": "comment"
+					},
+					"v0/item/50227369": {
+						"by": "rr808",
+						"id": 50227369,
+						"parent": 50226815,
+						"text": "If only there was a service where you paid a fixed price for a bundle and you had a set top box that had all these channels together in one package. Of course you&#x27;d have a lot of channels you never looked at but overall it would be more efficient.",
+						"time": 1792892127,
+						"type": "comment"
+					},
+					"v0/item/50226852": {
+						"by": "qurren",
+						"id": 50226852,
+						"kids": {
+							"0": 50226962,
+							"1": 50227679,
+							"2": 50226953
+						},
+						"parent": 50226815,
+						"text": "Also, nobody has any <i>time</i> for entertainment. Office workers all working 80 hours a week fearing stack ranking, PIPs, layoffs, needing to scramble to get a new H1B job or risk getting kicked out of the country and having to uproot kids. Service workers are working 120 hours a week across 3 jobs. Single people are working 100+ hours a week studying and interviewing and not getting jobs.",
+						"time": 1792887315,
+						"type": "comment"
+					},
+					"v0/item/50226959": {
+						"by": "combobyte",
+						"id": 50226959,
+						"kids": {
+							"0": 50227070
+						},
+						"parent": 50226719,
+						"text": "&quot;We&#x27;ve finally gone too far on pricing&quot; is a wild thing to hear a CEO say out loud in 2026.",
+						"time": 1792888217,
+						"type": "comment"
+					},
+					"v0/item/50227249": {
+						"by": "sickcodebruh",
+						"id": 50227249,
+						"parent": 50226610,
+						"text": "Media, arts, film, and America: things that are not monolithic and cannot be evaluated with blanket statements.<p>A side-effect of the democratization of content creation and the explosion of ways to consume content is that there’s more low-quality things to consume. Low-quality content will always be produced in greater abundance than high-quality so there’s more garbage to dig through, but there are still gems out there.<p>Personally, after years of infrequent movie attendance, this is the first month that I can remember in my adult life that my wife and I saw two movies in the theater and given the opportunity there’s a third we’d still like to see!",
+						"time": 1792891169,
+						"type": "comment"
+					},
+					"v0/item/50227664": {
+						"by": "biophysboy",
+						"id": 50227664,
+						"parent": 50226610,
+						"text": "Let’s go back to the good ol days when half of movies were about cowboys.",
+						"time": 1792894914,
+						"type": "comment"
+					},
+					"v0/item/50226635": {
+						"by": "cute_boi",
+						"id": 50226635,
+						"kids": {
+							"0": 50227088,
+							"1": 50226649,
+							"2": 50226673
+						},
+						"parent": 50226610,
+						"text": "I can&#x27;t watch youtube due to all these garbage. Youtube should allow me to blanket ban on publisher who use full AI for full video.",
+						"time": 1792885314,
+						"type": "comment"
+					},
+					"v0/item/50226650": {
+						"by": "wellthisisgreat",
+						"id": 50226650,
+						"kids": {
+							"0": 50226732,
+							"1": 50227032
+						},
+						"parent": 50226610,
+						"text": "There is some resurgence in quality here and there but then there is Avengers, MCU, Star Wars and idk how you can balance that with any amount of quality indie products",
+						"time": 1792885400,
+						"type": "comment"
+					},
+					"v0/item/50226753": {
+						"by": "add-sub-mul-div",
+						"id": 50226753,
+						"kids": {
+							"0": 50227172,
+							"1": 50226919,
+							"2": 50227229
+						},
+						"parent": 50226610,
+						"text": "Vague takes like this scream Facebook boomer. There&#x27;s lots of great media and lots of bad media. It&#x27;s the nature of trying to monetize creativity.",
+						"time": 1792886358,
+						"type": "comment"
+					},
+					"v0/item/50227082": {
+						"by": "mkotlikov",
+						"id": 50227082,
+						"parent": 50226752,
+						"text": "This 100%. All the layoffs started before AI. High interest rates means businesses can&#x27;t afford to take risks.  Our entire economy is based on easy money from cheap debt. The tech layoffs are about being able to pay for AI whether that&#x27;s paying for data centers or tokens.<p>I expect AI use to cause an increase in output, not a decrease in employment. At least right now. In TV and Film it would translate to more content that was too expensive to film before. If your business is making movies and then suddenly the market is flooded with fast and cheap movies, then you&#x27;re going to make more fast and cheap movies too!",
+						"time": 1792889467,
+						"type": "comment"
+					},
+					"v0/item/50227175": {
+						"by": "jeffbee",
+						"id": 50227175,
+						"parent": 50226752,
+						"text": "That doesn&#x27;t explain anything in this article. All the time series go back to 1990 when interest rates were significantly higher any way you look at them.",
+						"time": 1792890478,
+						"type": "comment"
+					},
+					"v0/item/50227185": {
+						"by": "talon8635",
+						"id": 50227185,
+						"parent": 50226744,
+						"text": "Why should we expect the economy of 2026 (not 2020) be comparable to 2008? Am I missing something? Economy was awful i  2008 and we are currently in boom time markets, so boomy for so long that people have been saying it must be a bubble for years now.",
+						"time": 1792890613,
+						"type": "comment"
+					},
+					"v0/item/50226777": {
+						"by": "vasco",
+						"id": 50226777,
+						"kids": {
+							"0": 50227100,
+							"1": 50227240
+						},
+						"parent": 50226744,
+						"text": "Yeah but the total hours of content produced are way up. Most video content that needs to be produced and is consumed nowadays isn&#x27;t movies.",
+						"time": 1792886570,
+						"type": "comment"
+					},
+					"v0/item/50227036": {
+						"by": "alephnerd",
+						"id": 50227036,
+						"parent": 50226744,
+						"text": "&gt; record job loss after the covid bump which we all know resulted in massive hiring sprees in a lot of sectors followed by massive layoffs. Is the movie and movie production sector really experiencing an apocalyptic downturn where the line will reach zero, or just returning to its median?<p>The 2023 Hollywood Strike strike, the COVID lockdowns shutting down theaters, and the aggressive film production (UK, Poland, Ireland, Norway, Italy, Spain, Colombia) and VFX (Ireland, India, Colombia) subsidizes right as American states like California, Georgia, NY, and others began cutting them meant much of the American film and television industry got obliterated earlier this decade.<p>The reality is revenue is roughly consistent, but production costs one you remove subsidies (like what most of the US and Canada did) become exhorbitant in low margin industries like entertainment.<p>It&#x27;s now cheaper to produce an &quot;American&quot; movie or TV show in Ireland, using British actors affecting an American accent (thank Hugh Laurie, Idris Elba, and Dominic West for that), with post and VFX done in India than it is in the US.<p>This is something that has been reported on in the space for a decade now, but not much can be done.<p>This article is also another example of why HNers should stick to their own lane, as most lack context or visibility into other industries.",
+						"time": 1792888977,
+						"type": "comment"
+					},
+					"v0/item/50227738": {
+						"by": "tokioyoyo",
+						"id": 50227738,
+						"parent": 50227414,
+						"text": "There’s a very specific South Park episode that relates to this comment - “ You&#x27;re Getting Old&quot; (Season 15, Episode 7).",
+						"time": 1792895759,
+						"type": "comment"
+					},
+					"v0/item/50227125": {
+						"by": "redwood",
+						"id": 50227125,
+						"kids": {
+							"0": 50227221
+						},
+						"parent": 50226941,
+						"text": "When art offers one of the only limited pressure valves for totalitarianism out gets embued with deeper meaning I suppose?",
+						"time": 1792889903,
+						"type": "comment"
+					},
+					"v0/item/50226943": {
+						"by": "geophph",
+						"id": 50226943,
+						"kids": {
+							"0": 50227027
+						},
+						"parent": 50226912,
+						"text": "Not even short form. I found myself watching an hour and a half long YT video of a dude jet skiing from WA state to Alaska and can’t even hype myself up to watch a feature film.",
+						"time": 1792888100,
+						"type": "comment"
+					},
+					"v0/item/50227196": {
+						"by": "talon8635",
+						"id": 50227196,
+						"parent": 50226912,
+						"text": "While true, it’s almost like saying crack dealers are outcompeting Michelin chefs for appetites.<p>They are totally different content, and one inarguably more addictive and shallow than the other<p>But you’re right.",
+						"time": 1792890721,
+						"type": "comment"
+					},
+					"v0/item/50227103": {
+						"deleted": true,
+						"id": 50227103,
+						"parent": 50226912,
+						"time": 1792889750,
+						"type": "comment"
+					},
+					"v0/item/50226942": {
+						"by": "dylan604",
+						"id": 50226942,
+						"kids": {
+							"0": 50227016
+						},
+						"parent": 50226850,
+						"text": "More than you can afford if you have any scruples",
+						"time": 1792888086,
+						"type": "comment"
+					},
+					"v0/item/50227152": {
+						"by": "SoftTalker",
+						"id": 50227152,
+						"parent": 50226850,
+						"text": "How much is your soul?",
+						"time": 1792890161,
+						"type": "comment"
+					},
+					"v0/item/50226894": {
+						"by": "dodger-dog",
+						"id": 50226894,
+						"kids": {
+							"0": 50226950
+						},
+						"parent": 50226724,
+						"text": "This is my thinking. TikTok is very entertaining. I can’t do hours, but 30 minutes to an hour is great. Compare it to an unswipable hours long sporting event, 30 minutes looking for the right movie you quit 30 minutes in or have to pause till another day because something comes up, or tv shows with unresolved endings that leave you feeling like you are in a toxic relationship-hating the commitment but afraid of the sense of loss.",
+						"time": 1792887694,
+						"type": "comment"
+					},
+					"v0/item/50227206": {
+						"by": "SoftTalker",
+						"id": 50227206,
+						"parent": 50226724,
+						"text": "Something I realized recently was that when I watch videos in any form (feature film, documentary, dramatic or comedy series, or short) I have this nagging feeling I&#x27;m wasting time. I think it&#x27;s because watching is such a passive activity.<p>When I read, I don&#x27;t get that feeling. Even here on HN where it is mostly wasting time.<p>I think this is why so much media has viewer comments. It&#x27;s something to engage with and lose awareness of the passing time.",
+						"time": 1792890793,
+						"type": "comment"
+					},
+					"v0/item/50227874": {
+						"by": "Marsymars",
+						"id": 50227874,
+						"parent": 50227367,
+						"text": "&gt; This coincided with more general Hollywood cost-cutting to move productions out of LA to Canada (particularly Toronto but also Vancouver), Atlanta and elsewhere.<p>&gt; I cannot overstate how much expensive housing has strangled Hollywood.<p>I hardly know anything about the tv&#x2F;movie industry, but this is a bit of funny juxtaposition when Toronto and Vancouver also have famously unaffordable housing.",
+						"time": 1792897343,
+						"type": "comment"
+					},
+					"v0/item/50227315": {
+						"by": "darth_avocado",
+						"id": 50227315,
+						"kids": {
+							"0": 50227481,
+							"1": 50227458,
+							"2": 50227361
+						},
+						"parent": 50227276,
+						"text": "Meanwhile household basics increased faster than wages. In other words people don’t have more money.<p><a href=\"https:&#x2F;&#x2F;www.unitedforalice.org&#x2F;essentials-index\" rel=\"nofollow\">https:&#x2F;&#x2F;www.unitedforalice.org&#x2F;essentials-index</a>",
+						"time": 1792891687,
+						"type": "comment"
+					},
+					"v0/item/50227879": {
+						"by": "omgwtfbyobbq",
+						"id": 50227879,
+						"parent": 50227276,
+						"text": "The CPI has gone up far faster than real wages.<p><a href=\"https:&#x2F;&#x2F;fred.stlouisfed.org&#x2F;series&#x2F;CPIAUCSL\" rel=\"nofollow\">https:&#x2F;&#x2F;fred.stlouisfed.org&#x2F;series&#x2F;CPIAUCSL</a><p>People are earning about 12% more and working about 5% less since 1980, but everything costs roughly 3x what it did in 1980 relative to wages, and that&#x27;s where most people are pinched.",
+						"time": 1792897373,
+						"type": "comment"
+					},
+					"v0/item/50227470": {
+						"by": "constant_flux",
+						"id": 50227470,
+						"parent": 50227276,
+						"text": "I don&#x27;t find either of these charts dispositive by themselves. The cost of healthcare, education, housing, transportation, and insurance have easily outpaced any growth in wages. Another facet of this debate is that cheaper goods aren&#x27;t necessarily of equal or better quality.<p>&gt; Of course they do.<p>That level of certainty is not justified.",
+						"time": 1792893151,
+						"type": "comment"
+					},
+					"v0/item/50227380": {
+						"by": "jparishy",
+						"id": 50227380,
+						"kids": {
+							"0": 50227531,
+							"1": 50227483
+						},
+						"parent": 50227276,
+						"text": "Upvote for bringing data, since I did not. That said, that quote was in reference to AI, so referred to the past 3-4 years. And of course, our money today is not worth as much as it was 20+ years ago. Also many important goods and services increased in price at a higher rate than inflation or wage increases. It might be interesting to look at such industries for a history of consolidation or PE-involvement.",
+						"time": 1792892222,
+						"type": "comment"
+					},
+					"v0/item/50227409": {
+						"by": "rectang",
+						"id": 50227409,
+						"kids": {
+							"0": 50227748
+						},
+						"parent": 50227276,
+						"text": "&gt; <i>the average number of hours worked per worker have fallen</i><p>Hooray for just-in-time scheduling where workers have to be available full time but  rarely get scheduled full time.  It’s an innovation that has been great for capital and terrible for labor.",
+						"time": 1792892455,
+						"type": "comment"
+					},
+					"v0/item/50227311": {
+						"by": "stonogo",
+						"id": 50227311,
+						"kids": {
+							"0": 50227459,
+							"1": 50227325
+						},
+						"parent": 50227276,
+						"text": "Nicely sliced.  Weekly wages <i>for full time workers</i> have been rising for decades while <i>fewer workers work full time</i>. I don&#x27;t think this data backs your assertion.",
+						"time": 1792891647,
+						"type": "comment"
+					},
+					"v0/item/50227418": {
+						"by": "scotty79",
+						"id": 50227418,
+						"parent": 50227276,
+						"text": "25% increase in half a century? We ahd like 3 technological revolutions since then and economy grew massively.<p>Compare that to how much wealth appreciated, like a price of gold or real estate.<p>Median real wages increased by the narrowest possible meaning of this word.<p>Trickle down economy is literally a trickle.",
+						"time": 1792892589,
+						"type": "comment"
+					},
+					"v0/item/50227896": {
+						"by": "jasomill",
+						"id": 50227896,
+						"parent": 50227801,
+						"text": "While I suspect you&#x27;re not wrong about either inefficiency in large, well-funded media organziations or the efficiency of Rogan&#x27;s operation, comparing his podcast to anything but a substantially similar TV show is hardly a fair comparison. Even a relatively low-budget scripted TV series is going to require a cast, writers, props, sets, costumes, hair and makeup, lighting, camera work, craft services, transportation, significantly more editing and postproduction, the list goes on, plus directors and producers and administrative personnel to manage all of this.",
+						"time": 1792897599,
+						"type": "comment"
+					},
+					"v0/item/50227826": {
+						"by": "arusahni",
+						"id": 50227826,
+						"parent": 50227801,
+						"text": "That&#x27;s not necessarily an apples-to-apples comparison. The inputs for an unscripted podcast are vastly different from a scripted TV show. They&#x27;re different mediums for expression, and each carries different costs.",
+						"time": 1792896741,
+						"type": "comment"
+					},
+					"v0/item/50227298": {
+						"by": "blltprfmnk",
+						"id": 50227298,
+						"kids": {
+							"0": 50227503,
+							"1": 50227347,
+							"2": 50227516,
+							"3": 50227451
+						},
+						"parent": 50227245,
+						"text": "Economists keep saying over and over that so far AI has had minimal impact on the economy. That may change in time, but we aren’t seeing massive losses as a result of AI, despite some C suites using that as an excuse to lay off after over hiring.<p><a href=\"https:&#x2F;&#x2F;siepr.stanford.edu&#x2F;publications&#x2F;policy-brief&#x2F;what-really-happening-jobs-separating-ai-hype-reality\" rel=\"nofollow\">https:&#x2F;&#x2F;siepr.stanford.edu&#x2F;publications&#x2F;policy-brief&#x2F;what-re...</a>",
+						"time": 1792891573,
+						"type": "comment"
+					},
+					"v0/item/50227277": {
+						"deleted": true,
+						"id": 50227277,
+						"parent": 50227245,
+						"time": 1792891388,
+						"type": "comment"
+					},
+					"v0/item/50227384": {
+						"by": "echelon",
+						"id": 50227384,
+						"kids": {
+							"0": 50227575,
+							"1": 50227528,
+							"2": 50227730
+						},
+						"parent": 50227245,
+						"text": "I live in Atlanta (&quot;y&#x27;allywood&quot;), a formerly big LA film outsourcing location. They shot much of Marvel and Netflix stuff here pre-2023. The unit below me has been rented to Winona Ryder and Dave Bautista.<p>Beyond that, my hobby is film and I know tons of people in the industry. I&#x27;ve made indie films with them.<p>All the jobs have gone to Europe. It&#x27;s simply cheaper to film there now. Amazon and Netflix built infrastructure and taught local crews how during the pandemic content wars.<p>Looking at my Gen Z wife, all the eyeballs have gone to TikTok.<p>There&#x27;s the answer.",
+						"time": 1792892252,
+						"type": "comment"
+					},
+					"v0/item/50227302": {
+						"by": "icantevenhold",
+						"id": 50227302,
+						"parent": 50227245,
+						"text": "Maybe a lot of people worked at stackoverflow idk;\nbut I have been organising electronic “underground” music nights for 15+ years and basically stopped now because there just wasn’t a big enough audience anymore.<p>Anyway what I’m trying to say is that I think COVID and its aftermath is a much bigger factor here than AI, especially when it comes to “live &#x2F; performing” art",
+						"time": 1792891593,
+						"type": "comment"
+					},
+					"v0/item/50227429": {
+						"by": "jparishy",
+						"id": 50227429,
+						"parent": 50227287,
+						"text": "Yes, it definitely can. That&#x27;s sort of why I kept putting it in scarequotes. I am not skeptic of AI, fwiw. Mostly just our current crop of corpo&#x2F;gov leadership and their views on what healthy economy looks like.",
+						"time": 1792892696,
+						"type": "comment"
+					},
+					"v0/item/50227382": {
+						"by": "xpct",
+						"id": 50227382,
+						"kids": {
+							"0": 50227683
+						},
+						"parent": 50227120,
+						"text": "I feel completely the opposite. Mind, I play games a fair bit, but I generally don&#x27;t feel that excited about most, and I&#x27;d say a lot of them have very repetitive tropes. I&#x27;m generally in the market for 30h+ spent on a game, so that filters out a lot of the more trendy stuff.",
+						"time": 1792892247,
+						"type": "comment"
+					},
+					"v0/item/50227210": {
+						"by": "skydhash",
+						"id": 50227210,
+						"kids": {
+							"0": 50227371
+						},
+						"parent": 50227120,
+						"text": "Same thing here. I gave up on gaming all together because my library grew too much. As a kid, I didn’t even own a console, I had to borrow gameboy or go to my friend house and even then it was just an handful of cartridges. Even now, I plan to just focus on small sample of programming languages and ecosystems, and learn them inside out. There’s just too much stuff out there.",
+						"time": 1792890845,
+						"type": "comment"
+					},
+					"v0/item/50227187": {
+						"by": "honeycrispy",
+						"id": 50227187,
+						"parent": 50227120,
+						"text": "I started building a game on a custom engine a few years ago and I used to think about selling it, but nowadays the market is so oversaturated I tend to think of it as nothing more than a coding exercise.",
+						"time": 1792890626,
+						"type": "comment"
+					},
+					"v0/item/50227189": {
+						"by": "stopsayingsorry",
+						"id": 50227189,
+						"kids": {
+							"0": 50227204,
+							"1": 50227273
+						},
+						"parent": 50227120,
+						"text": "&quot;there&#x27;s such an endless selection of excellent games&quot;<p>If you have 0 standards.",
+						"time": 1792890633,
+						"type": "comment"
+					},
+					"v0/item/50227750": {
+						"by": "nradov",
+						"id": 50227750,
+						"kids": {
+							"0": 50227899
+						},
+						"parent": 50227695,
+						"text": "I guess preferences vary, but the idea of spending my retirement consuming &quot;content&quot; seems like a type of hell.",
+						"time": 1792895862,
+						"type": "comment"
+					},
+					"v0/item/50227094": {
+						"by": "Avicebron",
+						"id": 50227094,
+						"kids": {
+							"0": 50227202
+						},
+						"parent": 50227052,
+						"text": "&gt; There is infinite demand for content (to the limit that human attention can absorb it).<p>That limit is called time, which people struggling to get by rarely have. And the &quot;most bang for buck, most in aggregate eyeball hours&quot; is an extraordinarily mono-dimensional take on media and film.",
+						"time": 1792889591,
+						"type": "comment"
+					},
+					"v0/item/50227112": {
+						"by": "giovannibonetti",
+						"id": 50227112,
+						"parent": 50227052,
+						"text": "&gt; When the tools enable more creation at scale by tasteful creators, we&#x27;ll start to get closer to content abundance. We&#x27;re not there yet.<p>This reminds me of the comparison between Japanese manga and American comics&#x2F;graphic novels. Some people say the former offer a much wider variety of content and ideas because it is often started by a single (often quirky) author, whereas the latter is usually designed by a committee, which ends up favoring more bland ideas. Anime usually starts of as manga, and that&#x27;s why anime is so creative as well.<p>Perhaps AI will help single authors create more work by themselves, and we&#x27;ll have a renaissance of comic books and other forms of (mostly digital) entertainment in the west. And we&#x27;ll spend less time watching those TV shows on streaming platforms that follow the same few recipes.",
+						"time": 1792889813,
+						"type": "comment"
+					},
+					"v0/item/50227191": {
+						"by": "dualvariable",
+						"id": 50227191,
+						"kids": {
+							"0": 50227227
+						},
+						"parent": 50227052,
+						"text": "&gt; We are still in a desert.<p>It isn&#x27;t exactly a desert?  It is more like a full buffet, but nothing but cheap, mass-produced sugar literally everywhere.  All the 2-star donuts and chocolate cupcakes you can eat, and nothing but that.",
+						"time": 1792890677,
+						"type": "comment"
+					},
+					"v0/item/50227122": {
+						"by": "PaulHoule",
+						"id": 50227122,
+						"kids": {
+							"0": 50227319
+						},
+						"parent": 50227052,
+						"text": "I would look to the culture industry in Japan as an alternative to the gatekeeping-industrial complex we call Hollywood.<p>Hollywood&#x27;s cost structure makes it impossible to try anything new.  I&#x27;d contrast that to Japan where creators can write a &quot;web novel&quot;,  get a contract for a light novel,  have a manga made,  and then an anime,  and maybe even some video games.  And these all reinforce each other:  last year I discovered an atrociously drawn anime that had got me curious about the source material -- that blew me away and I bought all of the printed materials that have come out so far and expect to buy all the rest.<p>Not least, Japan still gets new 4-panel comics like <i>Bocci the Rock</i> and <i>The Demon Girl Next Door</i>,  something almost unthinkable of in the Land of the Nepo Baby where we haven&#x27;t had a new one since <i>Dilbert.</i>",
+						"time": 1792889885,
+						"type": "comment"
+					},
+					"v0/item/50227431": {
+						"by": "xp84",
+						"id": 50227431,
+						"parent": 50227052,
+						"text": "&gt; Most movies suck<p>Most new ones do, but they&#x27;ve been making like a dozen great ones each year for for like 80 years.<p>Honestly TV (including the back catalogs) are where most of the truly good video content is.<p>&gt; cheap&#x2F;free ad subsidized content attracts more eyeball hours than produced and prestige content<p>This part I really agree with. It&#x27;s the reason shitty Netflix reality shows are among the most popular &#x27;watercooler discussion&#x27; shows today.",
+						"time": 1792892709,
+						"type": "comment"
+					},
+					"v0/item/50227102": {
+						"by": "999900000999",
+						"id": 50227102,
+						"parent": 50226946,
+						"text": "Every thing is safe.<p>If certain ultra conservative countries don’t like LGBT representation they don’t get to be in your major movie.<p>At this point I don’t know the difference between Chat GPT writing the next marvel movie or Disney hiring someone. Either way the story needs to be crystal clear. You never watch something that makes you think.",
+						"time": 1792889708,
+						"type": "comment"
+					},
+					"v0/item/50227022": {
+						"by": "LPisGood",
+						"id": 50227022,
+						"kids": {
+							"0": 50227596,
+							"1": 50227083,
+							"2": 50227064
+						},
+						"parent": 50226946,
+						"text": "I feel like this comment contrasted with the incredible movie releases this since ~May is just not holding water.",
+						"time": 1792888802,
+						"type": "comment"
+					},
+					"v0/item/50227119": {
+						"by": "SoftTalker",
+						"id": 50227119,
+						"parent": 50226946,
+						"text": "Well it&#x27;s shot on a phone, lit with bad LED lighting and edited on a laptop. It all shows in the final product.",
+						"time": 1792889868,
+						"type": "comment"
+					},
+					"v0/item/50227067": {
+						"by": "MiroslavPokorny",
+						"id": 50227067,
+						"parent": 50226946,
+						"text": "It feels like all media, from tv shows to movies are all following a certain formula, with a goal to drive a certain social perspective about people and society.",
+						"time": 1792889349,
+						"type": "comment"
+					},
+					"v0/item/50227672": {
+						"by": "Terr_",
+						"id": 50227672,
+						"parent": 50227386,
+						"text": "That is a real reason I can&#x27;t summon the interest to subscribe to any of them: Whatever I pick, I&#x27;ll be dissatisfied, so I put it off for another day...",
+						"time": 1792895010,
+						"type": "comment"
+					},
+					"v0/item/50227078": {
+						"by": "WarmWash",
+						"id": 50227078,
+						"parent": 50227050,
+						"text": "I think we are still in a hangover from the financial cocaine the governments were handing out during the pandemic (and even long after it was a problem).",
+						"time": 1792889445,
+						"type": "comment"
+					},
+					"v0/item/50226962": {
+						"by": "cjpearson",
+						"id": 50226962,
+						"kids": {
+							"0": 50227031
+						},
+						"parent": 50226852,
+						"text": "While this may be true for some people, overall this is not backed up by the data.<p>The average amount of time spent doing &quot;Relaxing and leisure&quot; activities (mostly TV) has increased 6% in the last twenty years. There was a small decrease after the post-COVID peak, but working time has also decreased in this time frame.<p><a href=\"https:&#x2F;&#x2F;www.bls.gov&#x2F;tus&#x2F;tables.htm\" rel=\"nofollow\">https:&#x2F;&#x2F;www.bls.gov&#x2F;tus&#x2F;tables.htm</a>",
+						"time": 1792888234,
+						"type": "comment"
+					},
+					"v0/item/50227679": {
+						"by": "tokioyoyo",
+						"id": 50227679,
+						"parent": 50226852,
+						"text": "Not true. If you look at any “cheap entertainment” dashboard, you’ll see usage has been going up.<p>My hypothesis is, YT, Reels and TT are eating everyone’s lunch, as people spend more time on those. And for people who don’t watch much, there’s Spotify. Basically attention span degradation across all age groups.",
+						"time": 1792895097,
+						"type": "comment"
+					},
+					"v0/item/50226953": {
+						"by": "_heimdall",
+						"id": 50226953,
+						"parent": 50226852,
+						"text": "Interesting, I have seen people be stretched thin and more stretched but I haven&#x27;t seen people working 80-120 hour weeks. Different circles maybe?<p>I do feel for anyone trying to find a new H1B sponsor. I&#x27;ve lived and worker as a foreigner before, its stressful for sure. It is also a tough spot for a country to be in, if your domestic labor is struggling to find or keep jobs itsnhard to justify continuing protections for foreign labor.",
+						"time": 1792888195,
+						"type": "comment"
+					},
+					"v0/item/50227070": {
+						"by": "redwood",
+						"id": 50227070,
+						"kids": {
+							"0": 50227139,
+							"1": 50227140
+						},
+						"parent": 50226959,
+						"text": "It&#x27;s not that the prices are up to milk the consumer. Look at Southwest&#x27;s thin profit margin. Costs are up",
+						"time": 1792889370,
+						"type": "comment"
+					},
+					"v0/item/50227088": {
+						"by": "WarmWash",
+						"id": 50227088,
+						"kids": {
+							"0": 50227135
+						},
+						"parent": 50226635,
+						"text": "Ironically I find that YouTube has the absolute best content. It&#x27;s the only one with authentic people making quality stuff for exactly your niche.<p>That doesn&#x27;t mean there isn&#x27;t trash, and I suppose if tv series are your jam it&#x27;s likely sub-par, but for me it&#x27;s unmatched by light years.",
+						"time": 1792889561,
+						"type": "comment"
+					},
+					"v0/item/50226649": {
+						"by": "0c3ca83",
+						"id": 50226649,
+						"kids": {
+							"0": 50227038
+						},
+						"parent": 50226635,
+						"text": "They can&#x27;t, as far as organizational politics goes. Tech is all in on AI.",
+						"time": 1792885389,
+						"type": "comment"
+					},
+					"v0/item/50226673": {
+						"by": "loloquwowndueo",
+						"id": 50226673,
+						"kids": {
+							"0": 50226864
+						},
+						"parent": 50226635,
+						"text": "I just stopped using YouTube for entertainment years ago. Try it!<p>(I still jump in for the occasional video tutorial etc but it’s always targeted - go for one thing, swoop in, close it when I’m done.",
+						"time": 1792885587,
+						"type": "comment"
+					},
+					"v0/item/50226732": {
+						"by": "Arubis",
+						"id": 50226732,
+						"parent": 50226650,
+						"text": "This might be (unintentionally?) part of the reason for the original subject: how many jobs does the Avengers IP pipeline support? How about for a single artifact output by it--one TV show, for example?<p>And how many people work on a well-loved indie artifact of about the same market position?<p>Gonna guess the latter supports way fewer jobs. (This isn&#x27;t meant as a judgment in taste or moralizing--my own entertainment tastes run indie towards pretentious, so economically I&#x27;m part of the problem.)",
+						"time": 1792886123,
+						"type": "comment"
+					},
+					"v0/item/50227032": {
+						"by": "drivers99",
+						"id": 50227032,
+						"kids": {
+							"0": 50227155
+						},
+						"parent": 50226650,
+						"text": "The last Avengers movie was 7.5 years ago. The last Star Wars episode was 7 years ago. (The Mandalorian one is the only standalone one since then.) Avengers are included in the MCU btw. There have only been about 1 to 3 MCU movies per year for the last few years. (2022: 3; 2023: 3; 2024: 1; 2025: 3; 2026: 2). There are tons of other, really good movies to watch. Not just indies either: Did you happen to see Project Hail Mary this year? The Odyssey? I missed Spider-man: Brand New Day (the MCU movie that came out this year so far), but it has 90% on Rotten Tomatoes, so I don&#x27;t think that drags down the average in terms of quality either.",
+						"time": 1792888934,
+						"type": "comment"
+					},
+					"v0/item/50227172": {
+						"by": "talon8635",
+						"id": 50227172,
+						"parent": 50226753,
+						"text": "What does this mean “to monetize creativity”?<p>Are you suggesting creatives just give their work away for free?",
+						"time": 1792890418,
+						"type": "comment"
+					},
+					"v0/item/50226919": {
+						"by": "46283737292",
+						"id": 50226919,
+						"kids": {
+							"0": 50227090,
+							"1": 50227177
+						},
+						"parent": 50226753,
+						"text": "In contrast, thought-terminating clichés like &quot;facebook boomer&quot; show critical thinking on your part.",
+						"time": 1792887936,
+						"type": "comment"
+					},
+					"v0/item/50227229": {
+						"by": "TacticalCoder",
+						"id": 50227229,
+						"parent": 50226753,
+						"text": "Apparently you need a 10 K+ karma account to say the following (which <i>another</i> account, a new one and not mine btw, posted). Some I&#x27;m just reusing the other dude&#x27;s words:<p><i>In contrast, thought-terminating clichés like &quot;facebook boomer&quot; show critical thinking on your part.</i><p>I fully agree with that: calling someone a &quot;facebook boomer&quot; is just plain pathetic.<p>(btw the boomers are my parents&#x27; generation: don&#x27;t go thinking I take it personally. I&#x27;m a GenX&#x27;er and GenX&#x27;er are badass, which is why I don&#x27;t give a flying fuck saying what I think).<p>Something something about the pot and calling some kettle black etc.",
+						"time": 1792891014,
+						"type": "comment"
+					},
+					"v0/item/50227100": {
+						"by": "redwood",
+						"id": 50227100,
+						"parent": 50226777,
+						"text": "That&#x27;s part of the point. If anyone can create cheap garbage, flood it on socials, and get people to click see what goes viral the old attention economy is just totally disrupted",
+						"time": 1792889693,
+						"type": "comment"
+					},
+					"v0/item/50227240": {
+						"by": "Alex13192",
+						"dead": true,
+						"id": 50227240,
+						"parent": 50226777,
+						"text": "[flagged]",
+						"time": 1792891072,
+						"type": "comment"
+					},
+					"v0/item/50227221": {
+						"by": "SoftTalker",
+						"id": 50227221,
+						"kids": {
+							"0": 50227862
+						},
+						"parent": 50227125,
+						"text": "All art in the Soviet Union was state-manipulated propaganda. At least all of it that was in public venues such as theatre and television.",
+						"time": 1792890925,
+						"type": "comment"
+					},
+					"v0/item/50227027": {
+						"by": "buzzerbetrayed",
+						"id": 50227027,
+						"parent": 50226943,
+						"text": "The other night I watched a team of 4 dudes row from America to Europe. In a row boat. No sails. Makes me think of the Tom Hanks quote:<p>&gt; What actually happened is cooler than what could happen<p>It’s hard to think of a fictional story that beats actually rowing across the world.",
+						"time": 1792888879,
+						"type": "comment"
+					},
+					"v0/item/50227016": {
+						"by": "dodger-dog",
+						"id": 50227016,
+						"kids": {
+							"0": 50227205
+						},
+						"parent": 50226942,
+						"text": "Scruples likely has something to do with it, but not in the way you suggest. My feed is full of dancing and singing. Seeing a dance trend go viral and with 48 hours people all over the world are posting their rendition of it is remarkable.",
+						"time": 1792888727,
+						"type": "comment"
+					},
+					"v0/item/50226950": {
+						"by": "forgotusername6",
+						"id": 50226950,
+						"parent": 50226894,
+						"text": "Habitual use of shorter and shorter form content trains you to expect gratification faster and faster. There is most certainly a better reward for delaying gratification. A really good movie can leave you on a complete high or completely devastated. I&#x27;m pretty certain tiktok cannot. It&#x27;s cheap quick entertainment but if you get used to that fast shallow enjoyment you can&#x27;t hold on long enough for the good stuff.",
+						"time": 1792888164,
+						"type": "comment"
+					},
+					"v0/item/50227481": {
+						"by": "chorsestudios",
+						"id": 50227481,
+						"parent": 50227315,
+						"text": "They do have more money, less spending power.",
+						"time": 1792893222,
+						"type": "comment"
+					},
+					"v0/item/50227458": {
+						"by": "manlymuppet",
+						"id": 50227458,
+						"kids": {
+							"0": 50227888,
+							"1": 50227529,
+							"2": 50227540,
+							"3": 50227740,
+							"4": 50227810
+						},
+						"parent": 50227315,
+						"text": "This is research from a labor advocacy group, with the explicit aim of the organization to advocate for this sort of thing. This doesn&#x27;t mean the research is is automatically invalid, but it is bias worth mentioning.<p>Looking at an article from the CATO institute, over the last 30 years wages have climbed 169 percent, while food prices 111 percent.<p>But an even better measure is PCE, or personal consumption index. Rather than CPI, or any other &quot;household basics&quot; measure, which subjectively categorize goods and then tracks those, PCE measures the total dollar amount spent by the entire U.S. consumer sector on goods and services. This is what is used by the FRED database referenced in the reply above.<p><a href=\"https:&#x2F;&#x2F;www.cato.org&#x2F;commentary&#x2F;why-dire-pronouncements-about-food-affordability-are-overcooked\" rel=\"nofollow\">https:&#x2F;&#x2F;www.cato.org&#x2F;commentary&#x2F;why-dire-pronouncements-abou...</a>",
+						"time": 1792893014,
+						"type": "comment"
+					},
+					"v0/item/50227361": {
+						"by": "derektank",
+						"id": 50227361,
+						"kids": {
+							"0": 50227433
+						},
+						"parent": 50227315,
+						"text": "The term “real” means the values are adjusted for inflation",
+						"time": 1792892063,
+						"type": "comment"
+					},
+					"v0/item/50227531": {
+						"by": "derektank",
+						"id": 50227531,
+						"kids": {
+							"0": 50227634
+						},
+						"parent": 50227380,
+						"text": "For what it&#x27;s worth, I thought the rest of your comment was a very accurate description of how labor and capital are reallocated within an industry. The question is simply whether it&#x27;s a bad thing that Hollywood studios have decamped for Atlanta and Toronto. For the people working in LA that don&#x27;t want to move, I&#x27;m sure the answer is yes. But on net, I think it&#x27;s probably meant more and better work for more people in general.",
+						"time": 1792893718,
+						"type": "comment"
+					},
+					"v0/item/50227483": {
+						"by": "manlymuppet",
+						"id": 50227483,
+						"kids": {
+							"0": 50227504
+						},
+						"parent": 50227380,
+						"text": "The data by the Fed linked above is inflation adjusted.",
+						"time": 1792893232,
+						"type": "comment"
+					},
+					"v0/item/50227748": {
+						"by": "matt_heimer",
+						"id": 50227748,
+						"kids": {
+							"0": 50227770
+						},
+						"parent": 50227409,
+						"text": "Yep, keep everyone part-time so they don&#x27;t get benefits.",
+						"time": 1792895836,
+						"type": "comment"
+					},
+					"v0/item/50227459": {
+						"by": "derektank",
+						"id": 50227459,
+						"parent": 50227311,
+						"text": "The number of full time workers as a percent of the total employees has gone from roughly 84% (rounding up) in 1979 to roughly 82% (rounding down) today. There was a spike in people working part time in the wake of the GFC, but we&#x27;ve returned to trend.<p>Also, I chose weekly wages because annual wages are complicated by time off, which was the other item in question.",
+						"time": 1792893018,
+						"type": "comment"
+					},
+					"v0/item/50227325": {
+						"by": "manlymuppet",
+						"id": 50227325,
+						"parent": 50227311,
+						"text": "Something like 80% of workers are full time.",
+						"time": 1792891770,
+						"type": "comment"
+					},
+					"v0/item/50227503": {
+						"by": "shruggedatlas",
+						"id": 50227503,
+						"parent": 50227298,
+						"text": "This is my first time seeing this publication. It was insightful -- thank you for sharing.",
+						"time": 1792893377,
+						"type": "comment"
+					},
+					"v0/item/50227347": {
+						"by": "esafak",
+						"id": 50227347,
+						"kids": {
+							"0": 50227484
+						},
+						"parent": 50227298,
+						"text": "Change comes slowly, then all at once.",
+						"time": 1792891968,
+						"type": "comment"
+					},
+					"v0/item/50227516": {
+						"by": "georgemcbay",
+						"id": 50227516,
+						"parent": 50227298,
+						"text": "&gt; Economists keep saying over and over that so far AI has had minimal impact on the economy.<p>Economists (including but not limited to Alan Greenspan, Robert Rubin, Larry Summers and Arthur Levitt) also spent a decade arguing against Brooksley Born&#x27;s 1998 warnings that unregulated over-the-counter derivatives would inevitably lead to a financial crisis.<p>Economists can be spectacularly wrong and short-sighted (and blinded by prior assumptions of how things work) until suddenly the thing that should have been obvious the whole time is no longer ignorable.",
+						"time": 1792893509,
+						"type": "comment"
+					},
+					"v0/item/50227451": {
+						"by": "rylando",
+						"id": 50227451,
+						"parent": 50227298,
+						"text": "Breaking news, frog in pot says water isn’t too hot yet",
+						"time": 1792892941,
+						"type": "comment"
+					},
+					"v0/item/50227575": {
+						"by": "otterley",
+						"id": 50227575,
+						"parent": 50227384,
+						"text": "That’s really good insight! The graph only includes US employment. To see global employment instead would be enlightening.",
+						"time": 1792894149,
+						"type": "comment"
+					},
+					"v0/item/50227528": {
+						"by": "someguydave",
+						"id": 50227528,
+						"parent": 50227384,
+						"text": "yes and also movies have gotten worse (more poorly written)",
+						"time": 1792893700,
+						"type": "comment"
+					},
+					"v0/item/50227730": {
+						"by": "nradov",
+						"id": 50227730,
+						"parent": 50227384,
+						"text": "It&#x27;s crazy how California and the LA area local governments killed their &quot;golden goose&quot; by driving out the film industry. I guess progressives can&#x27;t stop themselves from doing that, but it&#x27;s always sad to see.",
+						"time": 1792895630,
+						"type": "comment"
+					},
+					"v0/item/50227683": {
+						"by": "Gigachad",
+						"id": 50227683,
+						"parent": 50227382,
+						"text": "That sounds more like you are burned out on gaming in general. I don’t think infinite AI slop games would help here.",
+						"time": 1792895143,
+						"type": "comment"
+					},
+					"v0/item/50227371": {
+						"by": "hparadiz",
+						"id": 50227371,
+						"parent": 50227210,
+						"text": "Same thing with books but no one says to stop writing.",
+						"time": 1792892151,
+						"type": "comment"
+					},
+					"v0/item/50227204": {
+						"by": "satvikpendem",
+						"id": 50227204,
+						"kids": {
+							"0": 50227469,
+							"1": 50227218
+						},
+						"parent": 50227189,
+						"text": "There are more games at any standard than one&#x27;s lifetime to play them in.",
+						"time": 1792890779,
+						"type": "comment"
+					},
+					"v0/item/50227273": {
+						"by": "wvenable",
+						"id": 50227273,
+						"kids": {
+							"0": 50227351,
+							"1": 50227331
+						},
+						"parent": 50227189,
+						"text": "There are roughly 50-70 new games released on Steam <i>every day</i>.  I think there&#x27;s pretty good review metrics available that you can assume 2-5% of those could be categorized as &quot;Excellent&quot;.  So that&#x27;s around 1–3 excellent new games per day on just one platform.<p>Even if we&#x27;re over-estimating &quot;excellent&quot; by a lot, that&#x27;s still more games that anyone can reasonably play.",
+						"time": 1792891365,
+						"type": "comment"
+					},
+					"v0/item/50227899": {
+						"by": "999900000999",
+						"id": 50227899,
+						"parent": 50227750,
+						"text": "Just this summer I went to concerts in 3 different countries.<p>I also want to make games and music. Open source everything after 5 years. Honest games you buy once and self host forever.",
+						"time": 1792897666,
+						"type": "comment"
+					},
+					"v0/item/50227202": {
+						"by": "echelon",
+						"id": 50227202,
+						"parent": 50227094,
+						"text": "&gt; which people struggling to get by rarely have<p>The hate for technological advances is so strong that we&#x27;re wanting... \nEntertainment austerity for poor people?<p>Oh my God.<p>This community needs more hope.<p>&gt; extraordinarily mono-dimensional take on media and film.<p>You&#x27;re telling this to someone who is Meisner-trained, who acts and performs, who has directed, shot lots of films, and who is heavily involved in the arts. A24 is my jam, and even that&#x27;s not enough to sate me.<p>I sincerely hope this isn&#x27;t a performance.<p>I want better. Both as a consumer and creator in the arts.",
+						"time": 1792890766,
+						"type": "comment"
+					},
+					"v0/item/50227227": {
+						"by": "stopsayingsorry",
+						"id": 50227227,
+						"parent": 50227191,
+						"text": "A barn full of fodder for cattle would be a more fitting analogy.",
+						"time": 1792890970,
+						"type": "comment"
+					},
+					"v0/item/50227319": {
+						"deleted": true,
+						"id": 50227319,
+						"parent": 50227122,
+						"time": 1792891707,
+						"type": "comment"
+					},
+					"v0/item/50227596": {
+						"by": "kaseijin",
+						"id": 50227596,
+						"parent": 50227022,
+						"text": "Hollywood movie industry is starting to come around and fix the problem which more &quot;bad writing&quot; than anything but it takes awhile and they&#x27;ve still got a lot of stinkers still in the pipe. But that&#x27;s always true.<p>The industry goes through slumps and renaissance periods as the creative juices wax and wain. Game industry is falling into the same trends.<p>Even during creative slumps there&#x27;s always someone out there not following the trends making something good",
+						"time": 1792894362,
+						"type": "comment"
+					},
+					"v0/item/50227083": {
+						"by": "atentaten",
+						"id": 50227083,
+						"kids": {
+							"0": 50227829,
+							"1": 50227536
+						},
+						"parent": 50227022,
+						"text": "Which of these movies would you say are good? I haven&#x27;t been following up with releases but would like to watch something worthwhile.",
+						"time": 1792889474,
+						"type": "comment"
+					},
+					"v0/item/50227064": {
+						"by": "tayo42",
+						"id": 50227064,
+						"parent": 50227022,
+						"text": "It felt like there were years where good movies like stopped being made. Or just contrasted with years filled with good movies.<p>What came out this year that you think you&#x27;ll watch again in 10 years?",
+						"time": 1792889323,
+						"type": "comment"
+					},
+					"v0/item/50227031": {
+						"by": "senordevnyc",
+						"id": 50227031,
+						"parent": 50226962,
+						"text": "How dare you bring facts and data to a fight based on vibes!",
+						"time": 1792888908,
+						"type": "comment"
+					},
+					"v0/item/50227139": {
+						"by": "OgsyedIE",
+						"id": 50227139,
+						"parent": 50227070,
+						"text": "Costs aren&#x27;t just up on the shocks of this year. The daily production of all diesel and jet fuel per capita has been declining month on month since 2008.<p>The per capita part is very important to explaining the figure, don&#x27;t ignore it, but if you break oil (and related products like kerogen, bitumen and NGL) into light, medium and heavy we hit peak medium oil in 2008.",
+						"time": 1792890004,
+						"type": "comment"
+					},
+					"v0/item/50227140": {
+						"by": "SoftTalker",
+						"id": 50227140,
+						"parent": 50227070,
+						"text": "Jet fuel has more than doubled in cost just this year. That wasn&#x27;t in anyone&#x27;s plans.",
+						"time": 1792890019,
+						"type": "comment"
+					},
+					"v0/item/50227135": {
+						"by": "Gigachad",
+						"id": 50227135,
+						"kids": {
+							"0": 50227154
+						},
+						"parent": 50227088,
+						"text": "It&#x27;s got good content but also a massive amount of slop. You don&#x27;t see much straight up AI generated video, but it&#x27;s incredibly common to see youtubers just sitting there reading a ChatGPT script.",
+						"time": 1792889971,
+						"type": "comment"
+					},
+					"v0/item/50227038": {
+						"by": "ion_trapper",
+						"id": 50227038,
+						"parent": 50226649,
+						"text": "Being all in on AI doesnt mean they have to be all in on bottom of the barrel slop videos. Youtube actually does a great job of not serving you slop if it gets to know you well enough. And it does notify you if it detects the video is AI generated. I would hope tech companies are awake to the fact that people’s feeds being deluged by the absolute uncanniest and disturbing visuals you’ve ever seen is feeding into anti-AI sentiment, and they probably shouldn’t be further enabling that.",
+						"time": 1792888997,
+						"type": "comment"
+					},
+					"v0/item/50226864": {
+						"by": "bubblemoth",
+						"id": 50226864,
+						"kids": {
+							"0": 50226932,
+							"1": 50227030,
+							"2": 50227720,
+							"3": 50227257
+						},
+						"parent": 50226673,
+						"text": "Where do you find entertainment now?",
+						"time": 1792887397,
+						"type": "comment"
+					},
+					"v0/item/50227155": {
+						"by": "Carrok",
+						"id": 50227155,
+						"parent": 50227032,
+						"text": "“Only” 1 to 3 MCU movies a year? This is an absurd amount of junk.",
+						"time": 1792890205,
+						"type": "comment"
+					},
+					"v0/item/50227090": {
+						"by": "martinky24",
+						"id": 50227090,
+						"parent": 50226919,
+						"text": "Tell me more, 5 hour old account",
+						"time": 1792889574,
+						"type": "comment"
+					},
+					"v0/item/50227177": {
+						"by": "Stitch4223",
+						"id": 50227177,
+						"parent": 50226919,
+						"text": "Please don’t sign up with burner accounts for one snarky reply: take responsibility for your words. You could also respond with something nice that inspires the author and other readers.<p>Provide food for critical thinking instead of accusing people of not being critical thinkers.<p>For example, tell us what new media from the US is actually great today. What do the arts offer that is next level and worth watching? Is there a rise in arts in other counties that we are missing? What could Facebook boomers need that leads to more and higher quality arts and movies?",
+						"time": 1792890496,
+						"type": "comment"
+					},
+					"v0/item/50227862": {
+						"by": "beedeebeedee",
+						"id": 50227862,
+						"parent": 50227221,
+						"text": "That is true to an extent, but Soviet films are not all the same. Great artists like Bondarchuk were able to still tell compelling stories despite the political constraints of his time. Even Seventeen Moments of Spring, which was commissioned to influence the Soviet public to have a more positive view of the KGB, managed to tell a meaningful and very human story. Tarkovsky’s Sci-Fi films are also great and can hardly be said to be state propaganda even if they were considered acceptable enough to be made public. Many Soviet films are heavy handed and wooden propaganda movies (like the ones by Ozerov), but not all.",
+						"time": 1792897211,
+						"type": "comment"
+					},
+					"v0/item/50227205": {
+						"by": "Carrok",
+						"id": 50227205,
+						"kids": {
+							"0": 50227297
+						},
+						"parent": 50227016,
+						"text": "Remarkable in what way? Sounds completely unremarkable to me.<p>Oh wow, someone did a dance, and then someone copied it, and then someone copied it, and then someone copied it, and then..",
+						"time": 1792890781,
+						"type": "comment"
+					},
+					"v0/item/50227888": {
+						"by": "darth_avocado",
+						"id": 50227888,
+						"parent": 50227458,
+						"text": "1. PCE tracks spending by and on behalf of households, including employer-paid health insurance and government-funded medical programs like Medicare. Arguably this does not reflect out-of-pocket costs or the immediate cash-flow reality experienced by a regular household.<p>2. Shelter accounts for roughly 34% of the CPI, whereas it makes up only about 16% to 17% of the PCE which underplays the pressures of housing people face. Housing arguably is one of the most basic necessity and people will spend on it. For majority of the people in the country housing as a % of income is the biggest expense, so weighing it at 16% sounds almost ridiculous.<p>3. PCE also famously isn’t based on household surveys like CPI which means it doesn’t accurately represent the actual inflation either.<p>4. PCE also doesn’t accurately represent lifestyle downgrades even though it tracks them. PCE will capture if you swap chicken for beef (like people are doing right now) but the conclusion you’ll come to is that people have the same amount of spending power as before.",
+						"time": 1792897507,
+						"type": "comment"
+					},
+					"v0/item/50227529": {
+						"by": "vlovich123",
+						"id": 50227529,
+						"kids": {
+							"0": 50227756
+						},
+						"parent": 50227458,
+						"text": "I feel like people complain about “food” but it’s a stand-in and that the cumulative increase in rent, transportation and food probably rose faster than wages. So Cato reply “but food hasn’t grown as fast as wages” is a myopic retort (admittedly one they acknowledge) that tries to fight the narrow factual argument ignoring the broader one where the emotional narrative probably remains true.",
+						"time": 1792893702,
+						"type": "comment"
+					},
+					"v0/item/50227540": {
+						"by": "jparishy",
+						"id": 50227540,
+						"parent": 50227458,
+						"text": "Hey thanks for posting this perspective w&#x2F; the link. Fun rabbit hole to go down stuck in a hotel tonight. I wonder if you think something explanatory is missing in _all_ of these different indices, in the &quot;where there&#x27;s smoke, there&#x27;s fire&quot; sense of economic anxiety on display today",
+						"time": 1792893808,
+						"type": "comment"
+					},
+					"v0/item/50227740": {
+						"by": "openasocket",
+						"id": 50227740,
+						"kids": {
+							"0": 50227912
+						},
+						"parent": 50227458,
+						"text": "I’m not necessarily disputing your point, but it’s very odd to downplay one source for potential bias, and then follow up with a study from the CATO Institute. Like, the CATO institute is openly a libertarian think tank founded by one of the Koch brothers.<p>I also think it’s unfair to look at just food prices. Housing and healthcare have bloomed massively.",
+						"time": 1792895773,
+						"type": "comment"
+					},
+					"v0/item/50227810": {
+						"by": "rpcope1",
+						"id": 50227810,
+						"parent": 50227458,
+						"text": "&gt; calls a labor advocacy group biased<p>&gt; Links the fucking CATO institute<p>Pot, meet kettle",
+						"time": 1792896566,
+						"type": "comment"
+					},
+					"v0/item/50227433": {
+						"by": "smallmancontrov",
+						"id": 50227433,
+						"kids": {
+							"0": 50227478
+						},
+						"parent": 50227361,
+						"text": "...which is notorious for using a dogshit basket and basket-update methodology to make the number look good.",
+						"time": 1792892722,
+						"type": "comment"
+					},
+					"v0/item/50227634": {
+						"by": "jparishy",
+						"id": 50227634,
+						"kids": {
+							"0": 50227747
+						},
+						"parent": 50227531,
+						"text": "I really appreciate your perspective. Mine is definitely malleable on these topics; they&#x27;re complicated and I&#x27;m not an economist.<p>re: regular people and their money, I will say, something about the bigger picture just <i>feels</i> off. I look at the graphs you linked to, and do not see it reflected in the people around me. I don&#x27;t mean to be dismissive of the data, more that I feel like I am missing something, or it is, if that makes sense?",
+						"time": 1792894658,
+						"type": "comment"
+					},
+					"v0/item/50227504": {
+						"by": "jparishy",
+						"id": 50227504,
+						"parent": 50227483,
+						"text": "I realized after, yeah, thanks for calling out though.",
+						"time": 1792893390,
+						"type": "comment"
+					},
+					"v0/item/50227770": {
+						"by": "groundzeros2015",
+						"id": 50227770,
+						"kids": {
+							"0": 50227913
+						},
+						"parent": 50227748,
+						"text": "which is in unintended but predictable side effect of requiring those benefits for full-time employees.",
+						"time": 1792896104,
+						"type": "comment"
+					},
+					"v0/item/50227484": {
+						"by": "card_zero",
+						"id": 50227484,
+						"kids": {
+							"0": 50227825,
+							"1": 50227785
+						},
+						"parent": 50227347,
+						"text": "So for instance like if AI becomes slowly less relevant, then is discarded all at once. Change will be surprising! That much is likely.",
+						"time": 1792893236,
+						"type": "comment"
+					},
+					"v0/item/50227469": {
+						"by": "stopsayingsorry",
+						"id": 50227469,
+						"kids": {
+							"0": 50227765,
+							"1": 50227583
+						},
+						"parent": 50227204,
+						"text": "Nonsense.<p>Even if you take an old established media, like literature, you can trivially read all the classics by the time you are 30.<p>Saying that about gaming industry, which is barely 50 year old, is a joke.<p>One can only say that when they no idea what &quot;high standards&quot; actually means.",
+						"time": 1792893145,
+						"type": "comment"
+					},
+					"v0/item/50227218": {
+						"by": "echelon",
+						"id": 50227218,
+						"kids": {
+							"0": 50227270,
+							"1": 50227291,
+							"2": 50227561,
+							"3": 50227312
+						},
+						"parent": 50227204,
+						"text": "Nothing meets my standards. Nothing.<p>No film, no music, no game.<p>There&#x27;s good, but there is no truly magnificent to the level I burst into tears and see the face of God.<p>Come on people. Your standards are too low.",
+						"time": 1792890909,
+						"type": "comment"
+					},
+					"v0/item/50227351": {
+						"by": "stopsayingsorry",
+						"id": 50227351,
+						"parent": 50227273,
+						"text": "&gt;There are roughly 50-70 new games released on Steam every day.<p>Ever bothered to actually go through the &quot;all new releases&quot; list on steam and actually check each new release? You should try it.<p>99% of &quot;stuff&quot; there is worthless trash, think 0 effort assetflip, which is never going to make $100 steam tax back. 1% is barely passable, as in &quot;not a blatant insult to consumer&quot;.\n Unique stuff worth playing is extremely rare, if you&#x27;re not 7 years old and you played more than a couple of games in your life of course.",
+						"time": 1792891989,
+						"type": "comment"
+					},
+					"v0/item/50227331": {
+						"by": "skeptic_ai",
+						"id": 50227331,
+						"parent": 50227273,
+						"text": "What’s excellent released today? Nothing interesting the whole week: <a href=\"https:&#x2F;&#x2F;steamdb.info&#x2F;upcoming&#x2F;?lastweek=&amp;sort=rating_desc\" rel=\"nofollow\">https:&#x2F;&#x2F;steamdb.info&#x2F;upcoming&#x2F;?lastweek=&amp;sort=rating_desc</a>",
+						"time": 1792891814,
+						"type": "comment"
+					},
+					"v0/item/50227829": {
+						"by": "Marsymars",
+						"id": 50227829,
+						"parent": 50227083,
+						"text": "Depends on what you like. I quite enjoyed Project Hail Mary, The Invite, and Tony. I&#x27;m excited for Wildwood and Ray Gunn.",
+						"time": 1792896783,
+						"type": "comment"
+					},
+					"v0/item/50227536": {
+						"by": "DangitBobby",
+						"id": 50227536,
+						"parent": 50227083,
+						"text": "You Can See Everything is definitely worth watching.",
+						"time": 1792893756,
+						"type": "comment"
+					},
+					"v0/item/50227154": {
+						"by": "rockskon",
+						"id": 50227154,
+						"parent": 50227135,
+						"text": "&quot;In this video I&#x27;m going to...&quot;<p>&quot;Let me tell you why!&quot;<p>&quot;Is not X, it&#x27;s Y!&quot;<p>and so on.  It&#x27;s so tiresome.  I can&#x27;t stand AI scripts.  It makes the entire video feel like a waste of my time.",
+						"time": 1792890192,
+						"type": "comment"
+					},
+					"v0/item/50226932": {
+						"by": "dylan604",
+						"id": 50226932,
+						"parent": 50226864,
+						"text": "I just listen to one of many of the voices in my head and see what they have to suggest. Things get interesting",
+						"time": 1792888028,
+						"type": "comment"
+					},
+					"v0/item/50227030": {
+						"by": "Dove",
+						"id": 50227030,
+						"parent": 50226864,
+						"text": "I&#x27;m not who you&#x27;re replying to, but I tuned out big movies and TV long ago, and just recently, YouTube became a hostile enough environment for me to start limiting it.  When I do go there, it&#x27;s to watch specific channels I already know.  Clickbait titles and slop suggestions just aren&#x27;t worth the psycholigical hassle when I want to relax.<p>I had been replacing it with podcasts, but they are so ad-infested now that it&#x27;s been pushing me more and more to audiobooks.  I also watch a fair bit of content on smaller special interest platforms, like CrunchyRoll for Anime or Pepperbox for guns. They&#x27;re easy to sub and unsub depending on what I&#x27;m interested in.  I often rent old movies. And more and more... I read.<p>I had used Prime&#x27;s videos for a while when they had something I liked, but the ads have gotten so bad that I now go out of my way not to emotionally invest in anything they produce.  The experience has left me skeptical of other platform exclusive shows and I generally just go do something else with my time.  I used to be a big fan of both Star Wars and Star Trek, but at some point they both started producing Platform Content and in response, I haven&#x27;t watched anything from either for about a decade now.",
+						"time": 1792888899,
+						"type": "comment"
+					},
+					"v0/item/50227720": {
+						"by": "malnourish",
+						"id": 50227720,
+						"parent": 50226864,
+						"text": "I read",
+						"time": 1792895574,
+						"type": "comment"
+					},
+					"v0/item/50227257": {
+						"by": "loloquwowndueo",
+						"id": 50227257,
+						"parent": 50226864,
+						"text": "You’re being sarcastic, right?",
+						"time": 1792891215,
+						"type": "comment"
+					},
+					"v0/item/50227297": {
+						"by": "dylan604",
+						"id": 50227297,
+						"parent": 50227205,
+						"text": "It&#x27;s remarkable in how hive mind works I guess. It&#x27;s mindless pablum to the nth degree. The thing I find remarkable is how it shows how easy it is to influence someone. The psychology PhDs that the Chinese hired earned their money to be sure. TikTok has to be the most well funded psychology study ever implemented to the point that the users don&#x27;t even know they are test subjects",
+						"time": 1792891573,
+						"type": "comment"
+					},
+					"v0/item/50227756": {
+						"by": "pj_mukh",
+						"id": 50227756,
+						"kids": {
+							"0": 50227884
+						},
+						"parent": 50227529,
+						"text": "Also we can probably simplify this bucket even more and just talk about the elephant in the room which is rent&#x2F;mortgage.<p>It’s 30 to 50% of most peoples paycheck, it’s really the piece that matters and the one that is most complicated to solve.",
+						"time": 1792895962,
+						"type": "comment"
+					},
+					"v0/item/50227912": {
+						"by": "manlymuppet",
+						"id": 50227912,
+						"parent": 50227740,
+						"text": "Of course you’re right. Food isn’t the whole picture, and no think tank is perfect.<p>We should evaluate research by the research itself, rather than by the author’s subjectivity credibility alone. The is the point I was trying to make by providing alternative research and adding a little bit of nuance to the reply, but perhaps I should’ve been more forthright in addressing my own bias as well.",
+						"time": 1792897769,
+						"type": "comment"
+					},
+					"v0/item/50227478": {
+						"by": "Avicebron",
+						"id": 50227478,
+						"parent": 50227433,
+						"text": "Yup. The St. Louis Fed is a joke. Inflation of owners&#x27; equivalent rent alone blows the whole argument up..",
+						"time": 1792893212,
+						"type": "comment"
+					},
+					"v0/item/50227747": {
+						"by": "rectang",
+						"id": 50227747,
+						"parent": 50227634,
+						"text": "Since the 1980s, the wealthy have done fantastic while the rest have not done nearly as well.  The argument from CATO and others is that we should be content with the majority of households taking home a shrinking share of an increasing pie so long as their absolute purchasing power isn’t decreasing, but that argument feels wrong in part because it’s human nature to measure status relative to others rather than in absolute terms.<p>Furthermore, wealth applies more pressure against certain costs like housing[1] than against others like food or durable goods. Cheap toasters only go so far in making people feel like they aren’t falling behind.<p>[1] <a href=\"https:&#x2F;&#x2F;www.jchs.harvard.edu&#x2F;blog&#x2F;home-prices-surge-five-times-median-income-nearing-historic-highs\" rel=\"nofollow\">https:&#x2F;&#x2F;www.jchs.harvard.edu&#x2F;blog&#x2F;home-prices-surge-five-tim...</a>",
+						"time": 1792895827,
+						"type": "comment"
+					},
+					"v0/item/50227913": {
+						"by": "kraken_cult",
+						"id": 50227913,
+						"parent": 50227770,
+						"text": "<i>shakes fist at sky</i> &quot;if only we didn&#x27;t have to pay those pesky benefits then we wouldn&#x27;t be forced to make the roles abusive contractor&#x2F;part-time roles...Wild people even try to take this stance.",
+						"time": 1792897771,
+						"type": "comment"
+					},
+					"v0/item/50227825": {
+						"by": "adrianN",
+						"id": 50227825,
+						"parent": 50227484,
+						"text": "I&#x27;m still patiently waiting for this whole &quot;Internet&quot; thing to become less relevant too. It surely is just a fad with no economic benefits.",
+						"time": 1792896730,
+						"type": "comment"
+					},
+					"v0/item/50227785": {
+						"by": "groundzeros2015",
+						"id": 50227785,
+						"parent": 50227484,
+						"text": "I&#x27;m a pretty big AI skeptic, but can&#x27;t get behind this comment.<p>It is changing the economy. It is changing how work is done. We are not going back, even if the emphasis in the workplace and role it performs matures.",
+						"time": 1792896314,
+						"type": "comment"
+					},
+					"v0/item/50227765": {
+						"by": "Marsymars",
+						"id": 50227765,
+						"parent": 50227469,
+						"text": "Hey, I actually have &quot;played all the classics&quot; for some definition of the term.<p>Some time ago I started playing all the games that to me felt worthwhile to play in roughly chronological order.<p>I think the project is overall quite different than &quot;reading all the classics&quot; though - a lot of old games have aged pretty poorly so I can either skip them or abandon after giving them a fair shot.<p>I&#x27;m currently roughly in the 2000-2010 era of games. (It&#x27;s not pure chronological, because I tend to sort play order by console, then by series, then by year.)",
+						"time": 1792896083,
+						"type": "comment"
+					},
+					"v0/item/50227583": {
+						"by": "otterley",
+						"id": 50227583,
+						"parent": 50227469,
+						"text": "I bet you’re popular at parties.",
+						"time": 1792894222,
+						"type": "comment"
+					},
+					"v0/item/50227270": {
+						"by": "stopsayingsorry",
+						"id": 50227270,
+						"parent": 50227218,
+						"text": "The solution to that is not to continue to seek consumption, but starting creation. Your consumption phase is done.<p>Producing things of value takes a lot of time and effort, you would be too busy to waste time lamenting about things outside of your control.",
+						"time": 1792891347,
+						"type": "comment"
+					},
+					"v0/item/50227291": {
+						"by": "azan_",
+						"id": 50227291,
+						"parent": 50227218,
+						"text": "Listen to Bach, if that doesn’t work then your standards are not high but completely wrong.",
+						"time": 1792891511,
+						"type": "comment"
+					},
+					"v0/item/50227561": {
+						"by": "card_zero",
+						"id": 50227561,
+						"kids": {
+							"0": 50227589
+						},
+						"parent": 50227218,
+						"text": "Everybody is maliciously taking you seriously :D<p><i>Hang in there! It gets better!</i>",
+						"time": 1792894039,
+						"type": "comment"
+					},
+					"v0/item/50227312": {
+						"by": "ofjcihen",
+						"id": 50227312,
+						"parent": 50227218,
+						"text": "Honestly sounds like you’re just depressed. I don’t even mean that in a mean way.",
+						"time": 1792891668,
+						"type": "comment"
+					},
+					"v0/item/50227884": {
+						"by": "infinite_spin",
+						"id": 50227884,
+						"parent": 50227756,
+						"text": "a friend showed me their budget recently, and about 45 hours of their wages go to rent each month (for a single room in a house with roommates). That seems very high to me, and their rent is considered &quot;low&quot; in their area (a small suburb)",
+						"time": 1792897466,
+						"type": "comment"
+					},
+					"v0/item/50227589": {
+						"by": "whoanoway",
+						"dead": true,
+						"id": 50227589,
+						"parent": 50227561,
+						"text": "[dead]",
+						"time": 1792894276,
+						"type": "comment"
+					},
+					"v0/item/50227930": {
+						"by": "steele",
+						"id": 50227930,
+						"parent": 50227276,
+						"text": "Boomers gonna boom",
+						"time": 1792897968,
+						"type": "comment"
+					}
+				},
+				"updates": [
+					{
+						"path": "v0/item/50226419",
+						"data": {
+							"by": "gnabgib",
+							"descendants": 187,
+							"id": 50226419,
+							"kids": {
+								"0": 50227130,
+								"1": 50226952,
+								"2": 50227625,
+								"3": 50226815,
+								"4": 50226719,
+								"5": 50226610,
+								"6": 50227692,
+								"7": 50227349,
+								"8": 50227822,
+								"9": 50226752,
+								"10": 50226744,
+								"11": 50227005,
+								"12": 50227414,
+								"13": 50227192,
+								"14": 50227411,
+								"15": 50226988,
+								"16": 50226941,
+								"17": 50226912,
+								"18": 50227773,
+								"19": 50227630,
+								"20": 50227335,
+								"21": 50226850,
+								"22": 50227153,
+								"23": 50227087,
+								"24": 50227718,
+								"25": 50226724,
+								"26": 50227039,
+								"27": 50227367,
+								"28": 50227283,
+								"29": 50227056,
+								"30": 50227182,
+								"31": 50226892,
+								"32": 50227614
+							},
+							"score": 208,
+							"time": 1792883514,
+							"title": "America has lost 200k of jobs in media, film and the arts. How much is AI?",
+							"type": "story",
+							"url": "https://www.apricitas.io/p/ai-and-the-fall-of-the-creative-class"
+						},
+						"at": 12542
+					},
+					{
+						"path": "v0/item/50227315",
+						"data": {
+							"by": "darth_avocado",
+							"id": 50227315,
+							"kids": {
+								"0": 50227481,
+								"1": 50227361,
+								"2": 50227458
+							},
+							"parent": 50227276,
+							"text": "Meanwhile household basics increased faster than wages. In other words people don’t have more money.<p><a href=\"https:&#x2F;&#x2F;www.unitedforalice.org&#x2F;essentials-index\" rel=\"nofollow\">https:&#x2F;&#x2F;www.unitedforalice.org&#x2F;essentials-index</a>",
+							"time": 1792891687,
+							"type": "comment"
+						},
+						"at": 45258
+					},
+					{
+						"path": "v0/item/50227276",
+						"data": {
+							"by": "derektank",
+							"id": 50227276,
+							"kids": {
+								"0": 50227315,
+								"1": 50227879,
+								"2": 50227470,
+								"3": 50227930,
+								"4": 50227380,
+								"5": 50227409,
+								"6": 50227311,
+								"7": 50227418
+							},
+							"parent": 50227130,
+							"text": "&gt;Regular people do not have more more money or time<p>Of course they do. Median real weekly wages[1] have been rising for decades all while the average number of hours worked per worker have fallen[2].<p>[1] <a href=\"https:&#x2F;&#x2F;fred.stlouisfed.org&#x2F;series&#x2F;les1252881600Q\" rel=\"nofollow\">https:&#x2F;&#x2F;fred.stlouisfed.org&#x2F;series&#x2F;les1252881600Q</a><p>[2] <a href=\"https:&#x2F;&#x2F;fred.stlouisfed.org&#x2F;series&#x2F;avhwpeusa065nrug\" rel=\"nofollow\">https:&#x2F;&#x2F;fred.stlouisfed.org&#x2F;series&#x2F;avhwpeusa065nrug</a>",
+							"time": 1792891380,
+							"type": "comment"
+						},
+						"at": 108852
+					},
+					{
+						"path": "v0/item/50226419",
+						"data": {
+							"by": "gnabgib",
+							"descendants": 188,
+							"id": 50226419,
+							"kids": {
+								"0": 50227130,
+								"1": 50226952,
+								"2": 50227625,
+								"3": 50226815,
+								"4": 50226719,
+								"5": 50226610,
+								"6": 50227692,
+								"7": 50227349,
+								"8": 50227822,
+								"9": 50226752,
+								"10": 50226744,
+								"11": 50227005,
+								"12": 50227414,
+								"13": 50227192,
+								"14": 50227411,
+								"15": 50226988,
+								"16": 50226941,
+								"17": 50226912,
+								"18": 50227773,
+								"19": 50227630,
+								"20": 50227335,
+								"21": 50226850,
+								"22": 50227153,
+								"23": 50227087,
+								"24": 50227718,
+								"25": 50226724,
+								"26": 50227039,
+								"27": 50227367,
+								"28": 50227283,
+								"29": 50227056,
+								"30": 50227182,
+								"31": 50226892,
+								"32": 50227614
+							},
+							"score": 208,
+							"time": 1792883514,
+							"title": "America has lost 200k of jobs in media, film and the arts. How much is AI?",
+							"type": "story",
+							"url": "https://www.apricitas.io/p/ai-and-the-fall-of-the-creative-class"
+						},
+						"at": 108988
+					}
+				]
+			}
+		]
+	}
+}

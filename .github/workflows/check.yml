@@ -130,6 +130,7 @@ jobs:
           path: |
             ${{ env.APP }}/.migrate/report.json
             ${{ env.APP }}/.migrate/check-progress
+            ${{ env.APP }}/.migrate/journeys
             ${{ runner.temp }}/check.txt
             ${{ runner.temp }}/new-serve.log
             ${{ runner.temp }}/old-serve.log

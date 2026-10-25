@@ -1,0 +1,72 @@
+{
+	"route": "/comment/8054455",
+	"recordedFrom": "http://localhost:4201",
+	"at": "2026-10-25T03:11:23.660Z",
+	"responses": [],
+	"live": {
+		"firebase": [
+			{
+				"host": "hacker-news.firebaseio.com",
+				"snapshot": {
+					"v0/item/8054455": {
+						"by": "bellerocky",
+						"id": 8054455,
+						"kids": {
+							"0": 8054488,
+							"1": 8062367
+						},
+						"parent": 8050144,
+						"text": "Inline JSX is such a stupid idea, and react.js doubles down on stupid. Why do this? The documentation never explains why it is good to add some invalid JavaScript syntax to a library. I want my templates in the same file as my JavaScript logic, inline no less, peppered throughout variable declarations and function calls all over the place, like I want to stub my toe. I do not want to stub my toe and I don&#x27;t want to use JSX. Notice the complete lack of support in Webstorm.",
+						"time": 1405705569,
+						"type": "comment"
+					},
+					"v0/item/8050144": {
+						"by": "sophiebits",
+						"descendants": 104,
+						"id": 8050144,
+						"kids": {
+							"0": 8051787,
+							"1": 8050649,
+							"2": 8050242,
+							"3": 8052816,
+							"4": 8051461,
+							"5": 8051094,
+							"6": 8053458,
+							"7": 8053083,
+							"8": 8052620,
+							"9": 8050440,
+							"10": 8050387,
+							"11": 8050797,
+							"12": 8054455,
+							"13": 8053067,
+							"14": 8051308,
+							"15": 8051345
+						},
+						"score": 208,
+						"time": 1405630620,
+						"title": "React v0.11",
+						"type": "story",
+						"url": "http://facebook.github.io/react/blog/2014/07/17/react-v0.11.html"
+					},
+					"v0/item/8054488": {
+						"by": "fiatjaf",
+						"id": 8054488,
+						"parent": 8054455,
+						"text": "I agree. It is ugly.\nIt must be because of HTML reuse or something.<p>But you should try writing React templates in pure Coffeescript[1], perhaps reusing your HTML through a tiny tool[2] I wrote for it.<p>[1]: <a href=\"http://blog.vjeux.com/2013/javascript/react-coffeescript.html\" rel=\"nofollow\">http:&#x2F;&#x2F;blog.vjeux.com&#x2F;2013&#x2F;javascript&#x2F;react-coffeescript.htm...</a><p>[2]: <a href=\"http://html2react.alhur.es/\" rel=\"nofollow\">http:&#x2F;&#x2F;html2react.alhur.es&#x2F;</a>",
+						"time": 1405705911,
+						"type": "comment"
+					},
+					"v0/item/8062367": {
+						"by": "bellerocky",
+						"id": 8062367,
+						"parent": 8054455,
+						"text": "I should mention that I have changed my mind about JSX after actually giving it a try.",
+						"time": 1405913113,
+						"type": "comment"
+					}
+				},
+				"updates": []
+			}
+		]
+	}
+}

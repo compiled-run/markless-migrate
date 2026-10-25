@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.vite/
+.markless/
+.output/
+*.log
+.DS_Store
+.vercel
+.env*
