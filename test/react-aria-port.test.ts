@@ -325,6 +325,8 @@ test('Popover: a press outside closes it in any locale, its DismissButton labell
 	const page = await open(rtlPopover);
 	await page.click('#p1');
 	assert.equal(await active(page), 'pop');
+	// The overlay listens for outside presses from a timer after opening; this one runs after it.
+	await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
 	await page.mouse.click(5, 400);
 	await page.waitForTimeout(100);
 	assert.equal(await page.isVisible('#pop'), false);
