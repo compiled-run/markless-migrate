@@ -1030,6 +1030,18 @@ const RACE_GAP_MS = 60;
 const TYPE_DELAY_MS = 150;
 const STALE_LINES = 20;
 
+/** Waits for the DOM and the address to hold still together, at most a few seconds. */
+async function settledAddress(page: Page): Promise<void> {
+	const until = Date.now() + 3_000;
+	let url = page.url();
+	for (;;) {
+		await domQuiet(page);
+		await sleep(150);
+		if (page.url() === url || Date.now() > until) return;
+		url = page.url();
+	}
+}
+
 // A <meta http-equiv="refresh"> that sends the visitor to another address within a few seconds.
 function scheduledRefresh(): { delay: number } | null {
 	const meta = document.querySelector('meta[http-equiv="refresh" i]');
@@ -1422,6 +1434,8 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		await quiet(page, inflight, navigations);
 		// A router swapping the page in place renders after its fetch has finished: the page is read once its DOM has held still.
 		if (!documentLoaded && new URL(shownUrl(page)).pathname !== startPath) await domQuiet(page);
+		// A race can end with the page swapped before the address follows: both have to hold still before it is read.
+		else if (step?.action === 'race') await settledAddress(page);
 		log.holdAll = false;
 		accepting = false;
 		const widget = step && (step.action === 'key' || step.action === 'outside') ? await (await stepTarget(page, step)).evaluate(widgetState, undefined, { timeout: QUICK }).catch(() => ['the widget is gone']) : undefined;
