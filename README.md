@@ -382,6 +382,7 @@ whose content is rendered twice shows twice as many).
 | `hover` | a button, tab, toggle or link that listens for the pointer passing over it (a link only when it also carries `data-state`, `aria-describedby`, `aria-haspopup` or `aria-expanded`: Next's links listen to prefetch) | point at it, move away, point again, click, move away; Tab to it, Escape, Tab. Each step waits out timeouts due within a second, so a hover card's open delay is seen |
 | `drag` | a slider, a focusable separator (a resize handle), a carousel (`aria-roledescription="carousel"`) | dragged by the pointer one way and back |
 | `repeat` | a button whose click showed a toast or announced something in a journey or a probe | three clicks in a row, then the pointer on the toasts and away |
+| `tab stops` | a tablist, radiogroup, toolbar, menubar, grid, tree, or a group of toggle buttons | Tab in, each arrow, Space, Tab out and Shift+Tab back |
 
 A step that differs is red (`a11y` for focus rings and tab stops, `behaviour` otherwise) with the
 control, the class, the sequence, the step and what each side showed there, and the converter parts

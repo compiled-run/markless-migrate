@@ -238,6 +238,8 @@ export function probeControls({ notify, mark, found = {} }: { readonly notify: r
 		const own = e instanceof HTMLInputElement || e instanceof HTMLTextAreaElement ? (e.labels?.[0]?.textContent ?? e.placeholder ?? '') : (e.textContent ?? '');
 		return (label || own || e.getAttribute('title') || '').replace(/\s+/g, ' ').trim();
 	};
+	const COMPOSITE = '[role="tablist"], [role="radiogroup"], [role="toolbar"], [role="menubar"], [role="grid"], [role="treegrid"], [role="tree"], [role="group"]';
+	const ITEMS = '[role="tab"], [role="radio"], input[type="radio"], [aria-pressed], [role="checkbox"], [role="menuitem"], [role="gridcell"], [role="row"], [role="treeitem"], button';
 	const out: ProbeControl[] = [];
 	const seen = new Map<string, number>();
 	const add = (e: Element, role: string, classes: string[]) => {
@@ -275,6 +277,9 @@ export function probeControls({ notify, mark, found = {} }: { readonly notify: r
 		if (hover?.has(e) && /^(button|link|checkbox|switch|tab|radio)$/.test(role) && (role !== 'link' || e.hasAttribute('data-state') || e.hasAttribute('aria-describedby') || e.hasAttribute('aria-haspopup') || e.hasAttribute('aria-expanded'))) classes.push('hover');
 		if (role === 'slider' || (role === 'separator' && focusable) || carousel) classes.push('drag');
 		if (role === 'button' && notify.includes(accessibleName(e))) classes.push('repeat');
+		if (/^(tablist|radiogroup|toolbar|menubar|grid|treegrid|tree)$/.test(role) || (role === 'group' && e.querySelectorAll(ITEMS).length >= 2 && [...e.querySelectorAll('[aria-pressed], [role="radio"], [role="checkbox"]')].length >= 2)) {
+			if (!e.parentElement?.closest(COMPOSITE) || /^(tablist|radiogroup|toolbar|menubar)$/.test(role)) classes.push('tab stops');
+		}
 		add(e, role, classes);
 	}
 	return out;
