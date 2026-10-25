@@ -398,7 +398,8 @@ function mountContent(dialog: Dialog): void {
 	trap(dialog);
 	addScope(dialog);
 	const before = document.activeElement;
-	if (!content.contains(before)) {
+	// vaul's Drawer.Content prevents the open autofocus (its autoFocus prop, false by default, as shadcn renders it).
+	if (!content.contains(before) && !content.hasAttribute('data-vaul-drawer')) {
 		if (dialog.alert) dialog.cancel?.focus({ preventScroll: true });
 		else {
 			focusFirst(tabbables(content).filter((el) => el.tagName !== 'A'));
