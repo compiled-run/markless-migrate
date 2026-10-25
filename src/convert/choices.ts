@@ -6,7 +6,9 @@ import { defaultEnv, openPage } from '../check/browser.ts';
 import { finishAnimations } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS } from '../check/types.ts';
+import { attr, textContent, type Element as Tree } from './dom.ts';
 import type { Reveal } from './reveal.ts';
+import { lit, type Binding } from './tsrx.ts';
 
 /**
  * What choosing an option inside revealed content did on the old page: where the page went, what it copied, or, for a
@@ -95,4 +97,14 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(out));
 	return out;
+}
+
+/**
+ * A menu item whose choosing copied text on the old page (a data table row's "Copy payment ID"): its click writes the same
+ * text, as the old page's handler did, a refusal (no clipboard permission) left to surface as it did there.
+ */
+export function copyBinding(el: Tree, choices: Readonly<Record<string, Choice>> | undefined): Binding | undefined {
+	if (!choices || !/^menuitem/.test(attr(el, 'role') ?? '')) return undefined;
+	const copied = choices[textContent(el).trim()]?.copied;
+	return copied === undefined ? undefined : { extra: [`onClick={() => { void navigator.clipboard.writeText(${lit(copied)}); }}`] };
 }
