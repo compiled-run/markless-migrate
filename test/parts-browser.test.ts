@@ -517,3 +517,36 @@ test('a React Aria select opened by a press delivered before the document stays 
 	assert.equal(await page.locator('#t1').getAttribute('aria-expanded'), 'true');
 	await page.close();
 });
+
+test("Radix Select in a form: its hidden native select's change chooses the option with that text, and choosing sets it and fires its change, as Radix's BubbleSelect", async () => {
+	const native = `<select aria-hidden="true" tabindex="-1" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)"><option value=""></option>${FRUITS.map((f) => `<option value="${f.toLowerCase()}">${f}</option>`).join('')}</select>`;
+	const markup = radixSelect().replace('<main style="padding:200px">', '<main style="padding:200px"><form>').replace('</button></main>', `</button>${native}</form></main>`);
+	const page = await open(markup, ['radix/select'], 'body');
+	await page.evaluate(() => {
+		const value = document.querySelector('[data-slot="select-value"]')!;
+		document.querySelector('[data-slot="select-trigger"]')!.addEventListener('mmchoose', (e) => (value.textContent = (e as CustomEvent<string>).detail));
+		(window as any).changes = [];
+		document.querySelector('form')!.addEventListener('change', (e) => (window as any).changes.push((e.target as HTMLSelectElement).value));
+	});
+	const hidden = page.locator('select[aria-hidden="true"]');
+	await hidden.selectOption('banana', { force: true });
+	assert.equal(await selectState(page), 'false focus=body highlighted=- value=Banana');
+	assert.equal(await page.locator('[data-slot="select-trigger"]').getAttribute('data-placeholder'), null);
+	assert.equal(await page.locator('[role="option"][data-state="checked"]').textContent(), 'Banana');
+	await page.locator('[data-slot="select-trigger"]').focus();
+	await page.evaluate(() => ((window as any).changes = []));
+	for (const [key, expected] of [
+		['Enter', 'true focus=Banana highlighted=Banana value=Banana'],
+		['ArrowDown', 'true focus=Blueberry highlighted=Blueberry value=Banana'],
+		['Enter', 'false focus=trigger highlighted=- value=Blueberry'],
+	]) {
+		await page.keyboard.press(key!);
+		assert.equal(await selectState(page), expected, `after ${key}`);
+	}
+	assert.equal(await hidden.inputValue(), 'blueberry');
+	assert.deepEqual(await page.evaluate(() => (window as any).changes), ['blueberry']);
+	await hidden.selectOption('', { force: true });
+	assert.equal(await selectState(page), 'false focus=trigger highlighted=- value=Select a fruit');
+	assert.equal(await page.locator('[data-slot="select-trigger"]').getAttribute('data-placeholder'), '');
+	await page.close();
+});
