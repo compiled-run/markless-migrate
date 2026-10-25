@@ -50,8 +50,7 @@ function syncShown(trigger: HTMLElement, listbox: Element): void {
 	if (!value || value.hasAttribute('data-placeholder') || listbox.getAttribute('aria-multiselectable') === 'true') return;
 	const shown = (value.textContent ?? '').trim();
 	const current = selected(listbox);
-	if (current && optionText(current) === shown) return;
-	const matching = itemsOf(listbox, true).filter((o) => optionText(o) === shown);
+	const matching = current && optionText(current) === shown ? [current] : itemsOf(listbox, true).filter((o) => optionText(o) === shown);
 	if (matching.length === 1) mark(trigger, listbox, matching[0]!);
 }
 

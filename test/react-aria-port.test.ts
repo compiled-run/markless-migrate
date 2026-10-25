@@ -184,6 +184,10 @@ test('Select: the option it opens on is the one its SelectValue shows, though th
 	assert.equal(await active(page), 'o2');
 	assert.deepEqual(await page.evaluate(() => ['o1', 'o2', 'o3'].map((id) => document.getElementById(id)!.getAttribute('aria-selected'))), ['false', 'true', 'false']);
 	assert.equal(await page.evaluate(() => document.querySelector('select')!.value), 'banana');
+	await page.keyboard.press('Escape');
+	await page.evaluate(() => (document.querySelector('select')!.value = ''));
+	await page.keyboard.press('Enter');
+	assert.equal(await page.evaluate(() => document.querySelector('select')!.value), 'banana', 'the hidden select follows though the selection already did');
 	await page.close();
 });
 
