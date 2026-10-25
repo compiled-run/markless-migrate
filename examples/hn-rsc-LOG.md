@@ -206,10 +206,11 @@ Time to first byte and streaming order (`deploy/hn-rsc/stream.mjs`):
 | 290-comment item | 8 ms, all at once (252 kB) | 381 ms, all at once | first byte 14 ms with the skeleton, story and comments 485-635 ms, end 639 ms (2.1 MB) |
 | 680-comment item | | 1,505 ms, all at once (630 kB) | first byte 13 ms, story and comments 923-1,459 ms (7.0 MB) |
 
-On Vercel (one region, warm): old `/news/1` 132 ms to first byte (served from the ISR cache); new 114 ms first byte,
-stories at 172 ms. 290-comment item: old 61 ms, everything by 85 ms; new 144 ms first byte, comments at 830 ms
-(rendered on every request). The port sends the old app's `cache-control: s-maxage=10, stale-while-revalidate` on
-its pages, so Vercel's CDN can cache them the same way.
+On Vercel (warm, five runs, median): before the port sent a cache header, new `/news/1` was 114 ms to first byte
+with the stories at 172 ms (old 132 ms, from its ISR cache), and the 290-comment item 144 ms with the comments at
+830 ms (old 61 ms), rendered on every request. The port now sends the old app's `cache-control: s-maxage=10,
+stale-while-revalidate`, and Vercel's CDN caches it the same way (`x-vercel-cache: HIT`): new `/news/1` 54 ms, all
+by 55 ms (old 67 / 80 ms); the 290-comment item 119 ms, all by 157 ms (old 59 / 75 ms), 2.35 MB against 294 kB.
 
 From the final check (uncompressed):
 
