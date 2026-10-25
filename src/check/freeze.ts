@@ -136,14 +136,17 @@ export function freezePage({ time, seed, clock = 'still' }: { time: number; seed
 	const random = stream(seed);
 	const bytes = stream(seed ^ 0x9e3779b9);
 	Math.random = random;
+	const proto = Object.getPrototypeOf(crypto) as Crypto;
+	const native = proto.getRandomValues;
 	const fill = <T extends ArrayBufferView | null>(array: T): T => {
+		// Playwright's routed WebSocket names each socket from these bytes: seeded, two pages' sockets share a name and their routes cross.
+		if (array && /\bgenerateId\b/.test(new Error().stack ?? '')) return native.call(crypto, array as unknown as Uint8Array) as unknown as T;
 		if (array) {
 			const view = new Uint8Array(array.buffer, array.byteOffset, array.byteLength);
 			for (let i = 0; i < view.length; i++) view[i] = Math.floor(bytes() * 256);
 		}
 		return array;
 	};
-	const proto = Object.getPrototypeOf(crypto) as Crypto;
 	Object.defineProperty(proto, 'getRandomValues', { value: fill, writable: true, configurable: true });
 	// randomUUID exists only in secure contexts; adding it elsewhere would change what the page feature-detects.
 	if (typeof proto.randomUUID === 'function') Object.defineProperty(proto, 'randomUUID', {

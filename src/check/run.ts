@@ -576,8 +576,10 @@ async function replayRoute(run: Run, dir: string, route: string, shared: Promise
 	const next: Run = { ...run, old: { ...run.old, replay }, new: { ...run.new, replay } };
 	const failures: Failure[] = [];
 	if (replay.responses.some((r) => r.side === 'server')) {
+		// The database's REST answers are offered to a server that reads them; one that does not run the recorder only fails a recording of its own requests.
+		const recordedServer = recording.responses.some((r) => r.side === 'server');
 		for (const [label, env] of [['old', next.old], ['new', next.new]] as const) {
-			if (!(await pushRecording(env))) failures.push({ route, dimension: 'network', check: `recorded server responses on ${label.toUpperCase()}`, expected: 'served by the request recorder in the server', actual: 'the server does not run the request recorder, so it fetched live data', hint: HINTS.networkRecorder });
+			if (!(await pushRecording(env)) && recordedServer) failures.push({ route, dimension: 'network', check: `recorded server responses on ${label.toUpperCase()}`, expected: 'served by the request recorder in the server', actual: 'the server does not run the request recorder, so it fetched live data', hint: HINTS.networkRecorder });
 		}
 	}
 	return { run: next, failures };

@@ -9,6 +9,7 @@ import { chromium, type Browser } from 'playwright';
 import { dataFile } from '../src/check/data.ts';
 import { applyUpdate, recordDatabases, valueAt, type LiveRecording } from '../src/check/live-data.ts';
 import { runCheck } from '../src/check/run.ts';
+import { freezePage, DEFAULT_FREEZE } from '../src/check/freeze.ts';
 
 const push = (path: string, d: unknown, a = 'd') => JSON.stringify({ t: 'd', d: { b: { p: path, d }, a } });
 const listen = (r: number, path: string) => JSON.stringify({ t: 'd', d: { r, a: 'q', b: { p: `/${path}`, h: '' } } });
@@ -158,4 +159,25 @@ test('a port that forgets the last visit is red when the page comes back after u
 	const route = report.routes[0]!;
 	assert.equal(route.ok, false);
 	assert.ok(route.failures.some((f) => /come back after the 2 updates/.test(f.check) && /reload/.test(f.check)), failures(route));
+});
+
+test("two frozen pages open at once each get their own routed socket, though their seeded randomness is the same", async () => {
+	const server = createServer((req, res) => res.writeHead(200, { 'content-type': 'text/html' }).end(`<!doctype html><p></p><script>const ws = new WebSocket('wss://db.firebaseio.com/.ws?v=5'); ws.onopen = () => ws.send('hi'); ws.onmessage = (e) => document.querySelector('p').textContent = e.data;</script>`));
+	await new Promise((done) => server.listen(0, '127.0.0.1', () => done(null)));
+	servers.push(server);
+	const one = async (name: string) => {
+		const context = await browser.newContext();
+		await context.addInitScript(freezePage, { time: DEFAULT_FREEZE.time, seed: DEFAULT_FREEZE.seed });
+		await context.routeWebSocket(/firebaseio\.com/, (ws) => ws.onMessage(() => ws.send(`for ${name}`)));
+		const page = await context.newPage();
+		await page.goto(origin(server));
+		await page.waitForFunction(() => document.querySelector('p')?.textContent !== '', undefined, { timeout: 5000 }).catch(() => {});
+		const shown = await page.textContent('p');
+		const seeded = await page.evaluate(() => Math.random());
+		await context.close();
+		return { shown, seeded };
+	};
+	const [a, b] = await Promise.all([one('a'), one('b')]);
+	assert.deepEqual([a.shown, b.shown], ['for a', 'for b']);
+	assert.equal(a.seeded, b.seeded);
 });
