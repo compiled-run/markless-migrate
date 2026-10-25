@@ -12,10 +12,10 @@ import type { Dimension, Failure, Viewport } from './types.ts';
  * the old and the new page side by side, and what a visitor meets is read after every step: where focus is and whether its ring
  * shows, the state attributes of the control and its widget, what is open, the toasts, tab stops and page lock.
  */
-export type ProbeClass = 'modality' | 'popup' | 'hover' | 'drag' | 'repeat' | 'tab stops';
+export type ProbeClass = 'modality' | 'popup' | 'hover' | 'drag' | 'repeat' | 'tab stops' | 'context menu' | 'toggle';
 
 export type Op =
-	| { readonly op: 'click' | 'tab in' | 'hover' | 'leave' | 'outside' | 'close' | 'point at toasts' }
+	| { readonly op: 'click' | 'right click' | 'click label' | 'tab in' | 'hover' | 'leave' | 'outside' | 'close' | 'point at toasts' }
 	/** The n-th item of the list that is open: pointed at or clicked. */
 	| { readonly op: 'item'; readonly n: number; readonly how: 'hover' | 'click' }
 	/** The first letter of the n-th item whose first letter is new, pressed as typeahead. */
@@ -56,6 +56,10 @@ export function sequencesFor(cls: ProbeClass, control: Pick<ProbeControl, 'role'
 					? s('open by pointer, move with ArrowDown, type the first letter of each item, close, reopen and Tab', [{ op: 'click' }, key('ArrowDown'), key('ArrowDown'), ...letters(4), key('Escape'), { op: 'click' }, key('Tab')])
 					: s('open by pointer, Tab through it, Escape', [{ op: 'click' }, key('Tab'), key('Tab'), key('Shift+Tab'), key('Escape')]),
 			];
+		case 'context menu':
+			return [s('open by right click, point at an item and away, Escape, reopen, close by a click outside, reopen, choose by pointer, reopen and type the first letters of its items', [{ op: 'right click' }, item(1, 'hover'), { op: 'leave' }, key('Escape'), { op: 'right click' }, { op: 'outside' }, { op: 'right click' }, item(0, 'click'), { op: 'right click' }, ...letters(3), key('Escape')])];
+		case 'toggle':
+			return [s('Tab to it, Enter, Space, a click, Enter again, then Tab', [{ op: 'tab in' }, key('Enter'), key('Space'), { op: 'click' }, key('Enter'), key('Tab')]), s('a click on its label, then Space and Tab', [{ op: 'click label' }, key('Space'), key('Tab')])];
 		case 'hover':
 			// Each step settles once the timeouts due within a second have fired, so an open delay up to a second needs no wait of its own.
 			return [
@@ -79,6 +83,10 @@ export function describeOp(op: Op): string {
 	switch (op.op) {
 		case 'click':
 			return 'click it';
+		case 'right click':
+			return 'right-click it';
+		case 'click label':
+			return 'click its label';
 		case 'item':
 			return `${op.how === 'hover' ? 'point at' : 'click'} item ${op.n + 1} of what is open`;
 		case 'typeahead':
@@ -104,10 +112,12 @@ export function describeOp(op: Op): string {
 	}
 }
 
-const DIMENSION: Record<ProbeClass, Dimension> = { modality: 'a11y', popup: 'behaviour', hover: 'behaviour', drag: 'behaviour', repeat: 'behaviour', 'tab stops': 'a11y' };
+const DIMENSION: Record<ProbeClass, Dimension> = { modality: 'a11y', popup: 'behaviour', hover: 'behaviour', drag: 'behaviour', repeat: 'behaviour', 'tab stops': 'a11y', 'context menu': 'behaviour', toggle: 'a11y' };
 
 export const PROBE_HINTS: Record<ProbeClass, string> = {
 	modality: 'Whether the focus ring shows follows how the visitor last moved: a key press (Tab, an arrow, Escape) shows it, a pointer press hides it, and typing into a text field or moving the mouse leaves it as it was. Track the modality on the document the way the old library does (keydown before pointerdown), not per control, and set the same marker (data-focus-visible or :focus-visible) on the element that has focus.',
+	'context menu': 'A right click opens this menu on the old page: open it at the pointer, highlight the item the pointer is on and drop the highlight when it leaves, open again with nothing highlighted, close it on Escape or a click outside, and move to the item a typed letter starts (no site shortcut may take that key while the menu is open).',
+	toggle: 'Each key turns this control on or off exactly as on the old page: Space toggles a checkbox or switch, Enter does only what the old one does (a Radix checkbox ignores it, a toggle button presses), a click toggles it once, and focus stays on it; a click on its label toggles it and focuses the control the old page focuses, not a hidden native input.',
 	popup: 'What this control opens must answer as on the old page: the item the pointer is on is highlighted and the highlight goes when the pointer leaves or the list closes, so a reopened list starts fresh; a list opened by the pointer takes focus so ArrowDown moves in it, and Tab closes it; a typed letter moves to the item it starts; a hidden form input follows the chosen value; a reopened overlay is visible and its content rendered once; Tab inside a non-modal popover moves on as the old one does, a modal one keeps focus in. Opening and closing by the pointer must leave focus where the old page leaves it: on open, in the pop-up or its first item as the old library chooses; after Escape or the close button, back on the control; after a click outside, where the old page put it (the control for a modal, the clicked spot for a non-modal). Lock scrolling and hide the rest of the page only while the old page does.',
 	hover: 'The pointer resting on this control (or focus reaching it) shows something on the old page, or marks it hovered: open it after the same delay, keep it while the pointer is on it, close it when the pointer leaves, and set the same hover markers (data-hovered, data-state).',
 	drag: 'A pointer drag moves this control on the old page: follow the pointer (pointerdown, pointermove, pointerup), move the value, panel or slide by the same amount, take focus as the old one does, and leave the same state attributes after release.',
@@ -122,7 +132,7 @@ const AIM = '[data-markless-migrate-aim]';
 type ProbeWindow = { __markless_migrate_probe__?: { read(): Reading; outside(): { x: number; y: number } | null; aim(what: string): boolean; letter(n: number): string } };
 // Keys are held as a person holds them: Radix moves a radio group's focus in a timeout and checks the radio only while the key is still down.
 const HOLD_MS = 60;
-const ON_CONTROL = new Set<Op['op']>(['click', 'tab in', 'hover', 'drag']);
+const ON_CONTROL = new Set<Op['op']>(['click', 'right click', 'click label', 'tab in', 'hover', 'drag']);
 const DESTRUCTIVE = /\b(log ?out|sign ?out|delete|remove|destroy|unsubscribe|deactivate)\b/i;
 
 const controlKey = (c: Pick<ProbeControl, 'role' | 'name' | 'nth'>) => `${c.role}|${c.name.replace(/\s+/g, '')}|${c.nth}`;
@@ -175,6 +185,13 @@ async function perform(side: Side, control: ProbeControl, op: Op): Promise<void>
 	switch (op.op) {
 		case 'click':
 			return target.click({ timeout: STEP_TIMEOUT }).catch(() => target.click({ timeout: STEP_TIMEOUT, force: true }));
+		case 'right click':
+			return target.click({ button: 'right', timeout: STEP_TIMEOUT });
+		case 'click label': {
+			const label = await aim('label');
+			if (!label) throw new Error('it has no label');
+			return label.click({ timeout: STEP_TIMEOUT });
+		}
 		case 'item': {
 			const found = await aim(`item ${op.n}`);
 			if (!found) throw new Error(`nothing open has an item ${op.n + 1}`);
@@ -476,7 +493,7 @@ async function discover(side: Side, origin: string, route: string, controls: rea
 	const page = side.page;
 	const out: Record<string, string[]> = {};
 	const names = new Set<string>();
-	const candidates = controls.filter((c) => c.role === 'button' && !c.classes.some((k) => k === 'popup' || k === 'repeat') && !LAYOUT.has(c.region) && !DESTRUCTIVE.test(c.name) && !names.has(c.name) && names.add(c.name)).slice(0, DISCOVER_MAX);
+	const candidates = controls.filter((c) => c.role === 'button' && !c.classes.some((k) => k === 'popup' || k === 'toggle' || k === 'repeat') && !LAYOUT.has(c.region) && !DESTRUCTIVE.test(c.name) && !names.has(c.name) && names.add(c.name)).slice(0, DISCOVER_MAX);
 	if (!candidates.length) return out;
 	const fresh = async () => {
 		await loadPage(page, new URL(route, origin).href);
