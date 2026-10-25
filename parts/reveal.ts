@@ -7,6 +7,8 @@
 const LAYER_SOURCE = 'template[data-mm-layer-src]';
 const fetched = new Map<string, Promise<string>>();
 const markup = new Map<string, string>();
+// The served layers used so far: a shell the page renders itself is there before, and is filled only once used.
+const used = new Set<string>();
 
 function request(src: string): Promise<string> {
 	let pending = fetched.get(src);
@@ -49,6 +51,7 @@ function mountServed(template: HTMLTemplateElement): void {
 	// A layer of several nodes (React Aria's focus scope markers and underlay beside its popover) has only its largest
 	// served: the page already holds the rest under the same key, so the shell is looked for by its source.
 	const src = template.dataset.mmLayerSrc!;
+	used.add(src);
 	if (!document.querySelector(`[data-mm-served="${CSS.escape(src)}"]`)) {
 		const shell = withOrigin(template.content.cloneNode(true) as DocumentFragment, template.dataset.mmAppUrl ?? '');
 		for (const node of shell.children) node.setAttribute('data-mm-served', src);
@@ -68,7 +71,7 @@ function afterPage(nodes: DocumentFragment, into: Element = document.body): void
 export function loadLayers(): Promise<void> {
 	const pending: Promise<unknown>[] = [];
 	for (const template of document.querySelectorAll<HTMLTemplateElement>(LAYER_SOURCE))
-		pending.push(request(template.dataset.mmLayerSrc!).then(() => template.isConnected && fill(template), () => {}));
+		pending.push(request(template.dataset.mmLayerSrc!).then(() => template.isConnected && used.has(template.dataset.mmLayerSrc!) && fill(template), () => {}));
 	return Promise.all(pending).then(() => {});
 }
 

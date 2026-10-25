@@ -387,6 +387,45 @@ test('cmdk: a command in a layer opens again with no search, its first item sele
 	await page.close();
 });
 
+test('cmdk: items the page renders during a search are filtered and sorted by it; with nothing selected, or the selected item gone, the first is', async () => {
+	const page = await open(COMMAND, ['cmdk']);
+	await page.locator('[cmdk-input]').focus();
+	await page.keyboard.type('zz');
+	assert.deepEqual(await commandState(page), { order: '', selected: '', ad: null, empty: true, separator: true });
+	await page.evaluate(() => {
+		const group = document.createElement('div');
+		group.setAttribute('cmdk-group', '');
+		group.innerHTML = '<div cmdk-group-heading="">Results</div><div cmdk-group-items="" role="group"></div>';
+		group.lastElementChild!.innerHTML = ['zz one', 'other', 'zz two'].map((v, i) => `<div id="r${i}" cmdk-item="" role="option" aria-disabled="false" aria-selected="false" data-value="${v}">${v}</div>`).join('');
+		document.querySelector('[cmdk-list-sizer]')!.append(group);
+	});
+	await page.waitForFunction(() => document.querySelector('#r1')!.hasAttribute('hidden'));
+	assert.deepEqual(await commandState(page), { order: 'r0,r2', selected: 'r0', ad: null, empty: false, separator: true });
+	await page.keyboard.press('ArrowDown');
+	await page.evaluate(() => document.querySelector('#r0')!.remove());
+	await page.waitForFunction(() => document.querySelector('#r2')!.getAttribute('aria-selected') === 'true');
+	assert.equal((await commandState(page)).order, 'r2', 'an item leaving keeps the selection where it is');
+	await page.evaluate(() => document.querySelector('#r2')!.remove());
+	await page.waitForFunction(() => !document.querySelector('[cmdk-item][aria-selected="true"]:not([hidden])'));
+	assert.deepEqual(await commandState(page), { order: '', selected: '', ad: null, empty: true, separator: true }, 'cmdk reads the active item after the selected one left');
+	await page.keyboard.press('Backspace');
+	await page.keyboard.press('Backspace');
+	assert.deepEqual(await commandState(page), { order: 'cal,emo,calc,pro,bil,set,r1', selected: 'cal', ad: null, empty: false, separator: false });
+	await page.close();
+});
+
+test('cmdk: choosing an item the page renders goes to its data-mm-href, by Enter and by a click', async () => {
+	const page = await open(COMMAND.replace('data-value="Search Emoji"', 'data-value="Search Emoji" data-mm-href="/docs/emoji"').replace('data-value="Profile⌘P"', 'data-value="Profile⌘P" data-mm-href="/docs/profile"'), ['cmdk']);
+	await page.locator('[cmdk-input]').focus();
+	await page.keyboard.press('ArrowDown');
+	await page.keyboard.press('Enter');
+	const went = () => page.evaluate(() => (window as unknown as { navigated?: string }).navigated);
+	assert.equal(await went(), '/docs/emoji');
+	await page.locator('#pro').click();
+	assert.equal(await went(), '/docs/profile');
+	await page.close();
+});
+
 test('cmdk: a site\'s own filter is its own Command\'s; every other Command keeps command-score', async () => {
 	const page = await open(`<div id="site">${COMMAND}</div><div id="demo">${COMMAND}</div>`, ['cmdk']);
 	await page.evaluate(async () => {

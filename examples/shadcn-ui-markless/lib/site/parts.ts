@@ -249,6 +249,7 @@ configure({
 		if (group === 'Pages') return ['nav', 'navigation', text.toLowerCase()];
 		if (group === 'Styles') return ['style', 'preset', text];
 		if (group === 'Blocks') return ['block', value, text];
+		if (group === 'Search Results') return [text];
 		if (value.startsWith('bg-') || /^\w+-\d+$/.test(value)) return ['color', value];
 		// a docs page: a component page is drawn with the dashed circle and takes "component"
 		return item.querySelector('.rounded-full.border-dashed') ? ['component'] : [];

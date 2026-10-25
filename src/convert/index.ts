@@ -37,6 +37,7 @@ import { readSource } from '../plan/inventory.ts';
 import { nextPattern, writeRouting, type EndpointPort } from './endpoints.ts';
 import { bodyAfterModule, documentModule, extrasModule, HEAD_HELPER, LAYER_FILL, layerTable, splitBody } from './document.ts';
 import { captureOtps, OtpPlan } from './otp.ts';
+import { componentImport, componentName, readSiteComponents, siteComponentOf, type SiteComponent } from './site-components.ts';
 import { appUrlDeclaration, emitChildren, emitElement, emitHtmlChildren, withOriginToken, lit, mergeBindings, useOrigin, type Binding } from './tsrx.ts';
 
 // Markless wires no handler written in document.tsrx, so each page's root carries the delegating handlers.
@@ -301,7 +302,8 @@ function textOf(node: Element): string {
 
 // What the old page portaled to the end of the body on use (a dialog, a menu, a select), for the page being prepared:
 // rendered by Markless, hidden and in its closed state, marked with the control's key.
-let currentLayers: { key: string; markup: string; shell: string; fill: string; declare?: readonly string[] }[] = [];
+let currentLayers: { key: string; markup: string; shell: string; fill: string; declare?: readonly string[]; imports?: readonly string[] }[] = [];
+let siteComponents: readonly SiteComponent[] = [];
 let currentRoute = '';
 let layerPickers: ((route: string, reveal: Reveal, kept: readonly Element[]) => { readonly bind: (el: Element) => Binding | undefined; readonly declare: readonly string[] } | undefined) | undefined;
 // The TanStack tables whose visibility menus are layers (convert's TablePlan): their items bind the table's shared state.
@@ -555,7 +557,7 @@ function hollowOf(kept: readonly Element[]): Element | undefined {
  * A layer as tsrx; its shell (the same with its largest content emptied and marked with LAYER_FILL); and that content as
  * HTML, for a layer served as a file: the shell renders at once on use, the content when the file lands.
  */
-function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (what: string) => void, rename: ReadonlyMap<string, string> = new Map(), kept: Element[] = layerElements(added)): { markup: string; shell: string; fill: string; declare: string[] } {
+function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (what: string) => void, rename: ReadonlyMap<string, string> = new Map(), kept: Element[] = layerElements(added)): { markup: string; shell: string; fill: string; declare: string[]; site?: SiteComponent } {
 	// A calendar in the layer is bound on the view its opener shares (DayPickerPlan.layer): read before ids are renamed.
 	const pickers = layerPickers?.(currentRoute, reveal, kept);
 	const tableMenu = layerTables?.layer(currentRoute, reveal, kept);
@@ -598,6 +600,27 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 			)
 			.join('');
 	const markup = emit(false);
+	const sited = kept.flatMap((top) => [top, ...walkAll(top)]).flatMap((el) => {
+		const site = siteComponentOf(el, siteComponents);
+		return site ? [{ el, site }] : [];
+	})[0];
+	if (sited) {
+		if (declarations.length || copying || !hollow || !walkAll(sited.el).includes(hollow)) throw new Error(`${currentRoute}: ${sited.site.component} stands in for an element of a layer that does not hold the layer's largest content, or holds state`);
+		// Markless renders this shell, so the component in it runs: the page holds it, and the file only the content.
+		const shell = kept
+			.map((top) =>
+				emitElement(top, {
+					dropped,
+					bind: (x) => {
+						if (x === sited.el) return { replace: `<${componentName(sited.site)} fill="${LAYER_FILL}" />` };
+						const own = x === top ? mergeBindings(bindParts(x, templatePorts), { extra: [...extra, `data-mm-served="${LAYER_FILL}"`] }) : bindParts(x, templatePorts);
+						return mergeBindings(racLayer?.plan.bind(x), mergeBindings(own, pickers?.bind(x)));
+					},
+				}),
+			)
+			.join('');
+		return { markup, shell, fill: emitHtmlChildren(hollow), declare: declarations, site: sited.site };
+	}
 	// A layer with handlers of its own is a component, never a served file (whose content is HTML).
 	if (declarations.length || copying) return { markup, shell: '', fill: '', declare: declarations };
 	// The shell goes into a <template>, whose content Markless never resumes: its origin is the token, like the file's.
@@ -744,9 +767,9 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 	renameIds([...walk(root)], names.page);
 	for (const [i, l] of pendingLayers.entries()) {
 		const rename = names.each[i]!;
-		const { markup, shell, fill, declare } = layerMarkup(l.reveal, l.added, dropped, rename, l.kept);
+		const { markup, shell, fill, declare, site } = layerMarkup(l.reveal, l.added, dropped, rename, l.kept);
 		const key = rename.get(l.reveal.key) ?? l.reveal.key;
-		if (markup) currentLayers.push({ key, markup, shell, fill, ...(declare.length ? { declare } : {}) });
+		if (markup) currentLayers.push({ key, markup, shell, fill, ...(declare.length ? { declare } : {}), ...(site ? { imports: [componentImport(site, '../../..')] } : {}) });
 		// A trigger that names its layer neither by id nor by aria-controls (a Radix tooltip's) is marked with the key.
 		if (markup && l.trigger && !attr(l.trigger, 'id') && !attr(l.trigger, 'aria-controls') && !triggerKeys.has(l.trigger)) triggerKeys.set(l.trigger, key);
 	}
@@ -872,6 +895,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const inventory = { routes: [...new Map([...planned.routes.map((r) => [r.route, { route: r.route, status: r.status, contentType: types.get(r.route)?.contentType }] as const), ...(planned.allRoutes ?? []).filter((r) => r.status !== undefined).map((r) => [r.route, { route: r.route, status: r.status!, contentType: r.contentType }] as const)]).values()] };
 	const htmlRoutes = inventory.routes.filter((r) => r.status === 200 && (r.contentType ?? 'text/html').includes('html')).map((r) => r.route);
 	const routes = options.only?.length ? htmlRoutes.filter((r) => options.only!.includes(r)) : htmlRoutes;
+	siteComponents = await readSiteComponents(app);
 	const browser = await chromium.launch();
 	let captures: CapturedRef[];
 	const revealed = new Map<string, readonly Reveal[]>();
