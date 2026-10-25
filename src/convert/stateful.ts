@@ -250,11 +250,22 @@ export class CheckablePlan {
 				const el = els[k]!;
 				const on = group.kind === 'radio' ? `${name} === ${k}` : name;
 				const choose = group.kind === 'radio' ? (group.clears ? `${name} = ${name} === ${k} ? -1 : ${k}` : `${name} = ${k}`) : `${name} = !${name}`;
-				const names = [...new Set([...Object.keys(c.on.attrs), ...Object.keys(c.off.attrs)])].filter((a) => c.on.attrs[a] !== c.off.attrs[a] && /^[A-Za-z_][\w.-]*$/.test(a));
+				// The tab stop follows focus (a roving group's part moves it), not the control's state.
+				const names = [...new Set([...Object.keys(c.on.attrs), ...Object.keys(c.off.attrs)])].filter((a) => c.on.attrs[a] !== c.off.attrs[a] && a !== 'tabindex' && /^[A-Za-z_][\w.-]*$/.test(a));
 				const value = (v: string | undefined) => (v === undefined ? 'undefined' : lit(v));
-				const keys = el.tagName === 'button' || el.tagName === 'input' ? [] : group.kind === 'radio' ? [`onKeyDown={(event) => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); ${choose}; } else radioKeys(event, ${!group.clears}); }}`] : [`onKeyDown={(event) => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); ${choose}; } }}`];
+				// Base UI's checkables (useButton, RadioRoot, CheckboxRoot): a radio chooses on Space as it goes down, a checkbox or
+				// switch on Space as it comes up, a switch on Enter too; Enter on a checkbox submits its form instead.
+				const role = attr(el, 'role');
+				const keys =
+					el.tagName === 'button' || el.tagName === 'input'
+						? []
+						: group.kind === 'radio'
+							? [`onKeyDown={(event) => { if (event.key === ' ') { event.preventDefault(); ${choose}; } else if (event.key === 'Enter') event.preventDefault(); else radioKeys(event, ${!group.clears}); }}`]
+							: role === 'checkbox' || role === 'switch'
+								? [`onKeyDown={(event) => { if (event.key === ' ') event.preventDefault(); else if (event.key === 'Enter') { event.preventDefault(); ${role === 'switch' ? `${choose};` : 'submitForm(event);'} } }}`, `onKeyUp={(event) => { if (event.key === ' ') { ${choose}; } }}`]
+								: [`onKeyDown={(event) => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); ${choose}; } }}`];
 				// React Aria's ToggleButtonGroup and Radix's RovingFocusGroup items move focus in toggle.ts's keydown.
-				const radioRoving = el.tagName === 'button' && group.kind === 'radio' && attr(el, 'data-rac') === undefined && attr(el, 'data-radix-collection-item') === undefined ? [`onKeyDown={(event) => radioKeys(event, ${!group.clears})}`] : [];
+				const radioRoving = el.tagName === 'button' && group.kind === 'radio' && attr(el, 'role') === 'radio' && attr(el, 'data-rac') === undefined && attr(el, 'data-radix-collection-item') === undefined ? [`onKeyDown={(event) => radioKeys(event, ${!group.clears})}`] : [];
 				// React Aria's Checkbox, Switch and Radio: a label around a visually hidden input that holds focus. A click
 				// on the label reaches the input too, and Space on the input clicks it: the input's click is the one use.
 				// Only the descendants that differ are bound, so the focused input is never rendered again.
@@ -276,7 +287,8 @@ export class CheckablePlan {
 				const siblings = parent && 'childNodes' in parent ? parent.childNodes.filter((x): x is Element => 'tagName' in x) : [];
 				const input = siblings[siblings.indexOf(el) + 1];
 				if (input && input.tagName === 'input' && attr(input, 'aria-hidden') === 'true' && /^(checkbox|radio)$/.test(attr(input, 'type') ?? '')) {
-					this.bindings.set(input, { declare, omit: ['checked'], extra: [`checked={${on}}`, `onClick={() => { ${group.kind === 'radio' ? `${name} = ${k}` : choose}; }}`] });
+					// Its label's click focuses the input: Base UI hands focus on to the control.
+					this.bindings.set(input, { declare, omit: ['checked'], extra: [`checked={${on}}`, `onClick={() => { ${group.kind === 'radio' ? `${name} = ${k}` : choose}; }}`, `onFocus={(event) => focusControl(event)}`] });
 				}
 			});
 			for (const d of group.dependents ?? []) {
