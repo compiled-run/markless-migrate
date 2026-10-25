@@ -524,6 +524,74 @@ export async function captureRacSubmenus(browser: Browser, origin: string, route
 }
 
 /**
+ * Radix submenus (DropdownMenu.Sub, ContextMenu.Sub, Menubar.Sub): a sub-trigger mounts its content only when the
+ * pointer rests on it, inside a menu no control in the page shows. Each menu a reveal opened is opened again, each
+ * sub-trigger in it hovered, and the content it mounted recorded as a reveal keyed by the sub-trigger's id (one level
+ * deep). Cached by route.
+ */
+export async function captureRadixSubmenus(browser: Browser, origin: string, route: string, dir: string, reveals: readonly Reveal[]): Promise<readonly Reveal[]> {
+	const menus = reveals.filter((r) => (r.action === 'click' || r.action === 'contextmenu') && r.added.some((a) => a.html.includes('data-radix-menu-content') && /aria-haspopup="menu"/.test(a.html)));
+	if (!menus.length) return [];
+	const file = join(dir, `${createHash('sha256').update(`radix-submenus:1:${route}|${JSON.stringify(menus.map((m) => [m.sig, m.nth, m.path, m.action]))}`).digest('hex').slice(0, 16)}.json`);
+	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
+	if (cached && cached.route === route) return cached.reveals;
+	const out: Reveal[] = [];
+	const viewport = VIEWPORTS[0]!;
+	const SUB_TRIGGER = '[data-radix-menu-content] [role^="menuitem"][aria-haspopup="menu"][id]:not([data-disabled])';
+	for (const menu of menus) {
+		const { context, page } = await fresh(browser, origin, route, viewport);
+		try {
+			const opened = () => page.locator('[data-radix-menu-content]').count().then((n) => n > 0);
+			const open = async () => {
+				const el = (
+					await page.evaluateHandle((path) => {
+						let node: globalThis.Element | undefined = document.body;
+						for (const i of path) node = node?.children[i];
+						return node ?? null;
+					}, menu.path)
+				).asElement();
+				if (!el) return false;
+				await el.click({ timeout: 2000, button: menu.action === 'contextmenu' ? 'right' : 'left' });
+				await quiet(page, 400);
+				return opened();
+			};
+			if (!(await open())) continue;
+			const ids = await page.evaluate((selector) => [...document.querySelectorAll(selector)].map((e) => e.id), SUB_TRIGGER);
+			for (const id of [...new Set(ids)]) {
+				if (!(await opened()) && !(await open())) break;
+				await page.evaluate(() => {
+					const w = window as unknown as { __mmAdded?: globalThis.Element[]; __mmObserver?: MutationObserver };
+					w.__mmAdded = [];
+					w.__mmObserver = new MutationObserver((records) => {
+						for (const r of records) for (const n of r.addedNodes) if (n instanceof globalThis.Element) w.__mmAdded!.push(n);
+					});
+					w.__mmObserver.observe(document.body, { childList: true });
+				});
+				const hovered = await page.locator(`[id="${id}"]`).hover({ timeout: 2000 }).then(() => true, () => false);
+				// Radix opens a submenu 100 ms after the pointer moves onto its trigger.
+				if (hovered) await quiet(page, 500);
+				const added = await page.evaluate(() => {
+					const w = window as unknown as { __mmAdded?: globalThis.Element[]; __mmObserver?: MutationObserver };
+					w.__mmObserver?.disconnect();
+					return (w.__mmAdded ?? []).filter((n) => n.isConnected && (n.matches('[data-radix-menu-content]') || n.querySelector('[data-radix-menu-content]'))).map((n) => n.outerHTML);
+				});
+				if (added.length) out.push({ key: id, path: [-1], action: 'hover', viewport: viewport.name, added: added.map((html) => ({ into: 'body' as const, before: -1, html })) });
+				// Escape closes the whole menu (a submenu's Escape closes its root): it is opened again for the next one.
+				await page.keyboard.press('Escape').catch(() => {});
+				await quiet(page, 300);
+			}
+		} catch {
+			// a menu that cannot be opened again keeps its submenus closed
+		} finally {
+			await context.close().catch(() => {});
+		}
+	}
+	await mkdir(dir, { recursive: true });
+	await writeFile(file, JSON.stringify({ route, reveals: out }));
+	return out;
+}
+
+/**
  * React Aria ComboBoxes whose button cannot be clicked (none, for a multiple-selection one whose chips are a TagGroup;
  * hidden, while a clear button shows): their popover opens on ArrowDown or typing, which no click shows. Each such
  * input is focused on a fresh page, ArrowDown pressed and what it showed recorded as a reveal keyed by the button's id,

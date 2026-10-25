@@ -5,7 +5,7 @@ import { chromium } from 'playwright';
 import { copyAssets, copyStaticDir, resourcePaths } from './assets.ts';
 import { captureAll, type CapturedPage, type CapturedRef } from './capture.ts';
 import { atRest } from './at-rest.ts';
-import { captureAllReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, type Reveal } from './reveal.ts';
+import { captureAllReveals, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
 import { captureChoices, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
 import { cleanDocument, frameworkBuilds, lateHead, type Dropped } from './clean.ts';
@@ -907,10 +907,10 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			};
 			await Promise.all(Array.from({ length: Math.max(1, options.concurrency ?? 4) }, worker));
 		}
-		// React Aria submenus, on the routes where a revealed menu has an item that opens one.
+		// React Aria and Radix submenus, on the routes where a revealed menu has an item that opens one.
 		if (options.reveal !== false)
 			for (const [route, reveals] of [...revealed]) {
-				const submenus = await captureRacSubmenus(browser, options.old, route, join(state, 'convert', 'reveals'), reveals);
+				const submenus = [...(await captureRacSubmenus(browser, options.old, route, join(state, 'convert', 'reveals'), reveals)), ...(await captureRadixSubmenus(browser, options.old, route, join(state, 'convert', 'reveals'), reveals))];
 				if (submenus.length) revealed.set(route, [...reveals, ...submenus.filter((s) => !reveals.some((r) => r.key === s.key))]);
 			}
 		// What each Base UI combobox shows once nothing matches, into the empty element of the layer it opens.
