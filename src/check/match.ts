@@ -23,13 +23,22 @@ function keyed(elements: readonly ElementSnapshot[], indices: readonly number[],
 
 const sameBox = (x: ElementSnapshot, y: ElementSnapshot) => Math.abs(x.box.x - y.box.x) <= 2 && Math.abs(x.box.width - y.box.width) <= 2 && Math.abs(x.box.height - y.box.height) <= 2;
 
+const sameStyle = (x: ElementSnapshot, y: ElementSnapshot) => {
+	const keys = Object.keys(x.style);
+	return keys.length === Object.keys(y.style).length && keys.every((k) => x.style[k] === y.style[k]);
+};
+
+// Of two elements in one box (a row and its only child), the one styled the same is the counterpart.
+const score = (x: ElementSnapshot, y: ElementSnapshot) => (sameBox(x, y) ? (sameStyle(x, y) ? 2 : 1) : 0);
+
 // In order, but skipping what has no counterpart: elements whose boxes match (x, width and height; content above may move y) pair first, the rest by position among themselves.
 function pairInGroup(a: readonly ElementSnapshot[], b: readonly ElementSnapshot[], groupA: readonly number[], groupB: readonly number[]): [number, number][] {
 	const cols = groupB.length + 1;
 	const table = new Uint32Array((groupA.length + 1) * cols);
 	for (let i = groupA.length - 1; i >= 0; i--) {
 		for (let j = groupB.length - 1; j >= 0; j--) {
-			const hit = sameBox(a[groupA[i]!]!, b[groupB[j]!]!) ? table[(i + 1) * cols + j + 1]! + 1 : 0;
+			const s = score(a[groupA[i]!]!, b[groupB[j]!]!);
+			const hit = s ? table[(i + 1) * cols + j + 1]! + s : 0;
 			table[i * cols + j] = Math.max(hit, table[(i + 1) * cols + j]!, table[i * cols + j + 1]!);
 		}
 	}
@@ -39,7 +48,8 @@ function pairInGroup(a: readonly ElementSnapshot[], b: readonly ElementSnapshot[
 	let i = 0;
 	let j = 0;
 	while (i < groupA.length && j < groupB.length) {
-		if (sameBox(a[groupA[i]!]!, b[groupB[j]!]!) && table[i * cols + j] === table[(i + 1) * cols + j + 1]! + 1) {
+		const s = score(a[groupA[i]!]!, b[groupB[j]!]!);
+		if (s && table[i * cols + j] === table[(i + 1) * cols + j + 1]! + s) {
 			out.push([groupA[i]!, groupB[j]!]);
 			leftB.delete(groupB[j]!);
 			i++;

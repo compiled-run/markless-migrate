@@ -81,6 +81,16 @@ test('within a landmark path, a wrapper with no counterpart is skipped by box, a
 	]);
 });
 
+test('of two elements in the same box, the one styled the same pairs: a flat row and its content against a nested comment', () => {
+	const box = (height: number) => ({ x: 64, y: 0, width: 1152, height });
+	const padded = { 'padding-left': '16.6666px' };
+	const bare = { 'padding-left': '0px' };
+	// Old nests replies inside the comment, so it is taller than its content; new renders one row per comment, as tall as its content.
+	const old = [el({ path: 'div', box: box(400), style: bare }), el({ path: 'div', box: box(85), style: padded })];
+	const flat = [el({ path: 'div', box: box(85), style: bare }), el({ path: 'div', box: box(85), style: padded })];
+	assert.equal(matchElements(old, flat).get(1), 1);
+});
+
 function png(width: number, height: number, paint?: (x: number, y: number) => boolean): Buffer {
 	const image = new PNG({ width, height });
 	for (let i = 0; i < width * height; i++) {
