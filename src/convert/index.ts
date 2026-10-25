@@ -11,6 +11,7 @@ import { parseFragment, serialize } from 'parse5';
 import { cleanDocument, frameworkBuilds, lateHead, type Dropped } from './clean.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, textContent, walk, type Document, type Element } from './dom.ts';
 import { factor, type Factored } from './factor.ts';
+import { besideTrigger } from './beside-trigger.ts';
 import { layerNames } from './layer-ids.ts';
 import { BaseTabsPlan, CheckablePlan, RacTablePlan, DisclosurePlan, radixDisclosurePanel, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
 import { captureCharts, CHART_CSS, ChartPlan, MOTION_FILE, type ChartFacts } from './charts.ts';
@@ -679,7 +680,7 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 					replaced.set(container, { key: reveal.key, trigger, markup });
 				}
 			} else {
-				const kept = childrenOf(parseFragment(added.html) as unknown as Element).filter((n): n is Element => isElement(n) && !n.attrs.some((a) => FOCUS_GUARD.test(a.name)));
+				const kept = besideTrigger(added.html);
 				if (!kept.length) continue;
 				const parent = elementAt(root, added.into);
 				// A disclosure that mounts its content where it opens (Base UI Collapsible and Accordion, a Radix
@@ -696,20 +697,6 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 			}
 		}
 	}
-	const placedWith = new Set<string>();
-	for (const c of companions) {
-		const at = `${c.key}|${outer(c.kept[0]!)}`;
-		if (placedWith.has(at)) continue;
-		placedWith.add(at);
-		const index = c.before ? c.parent.childNodes.indexOf(c.before as never) : c.parent.childNodes.length;
-		const nodes = c.kept.map((e) => {
-			e.attrs = [...e.attrs.filter((a) => a.name !== 'hidden' && a.name !== 'data-mm-shown-with'), { name: 'hidden', value: '' }, { name: 'data-mm-shown-with', value: c.key }];
-			e.parentNode = c.parent as never;
-			return e;
-		});
-		c.parent.childNodes.splice(index < 0 ? c.parent.childNodes.length : index, 0, ...(nodes as never[]));
-	}
-	// Layers last: their generated ids are renamed from their content, here and wherever the page names them.
 	// Two triggers the old page gave one id (shadcn's React Aria date pickers): each later one takes the id its key names, or both would open one layer.
 	for (const l of pendingLayers) {
 		const id = l.trigger && attr(l.trigger, 'id');
@@ -718,6 +705,22 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 		for (const top of l.kept) for (const el of [top, ...walkAll(top)]) el.attrs = el.attrs.map((a) => (/^aria-(labelledby|describedby)$/.test(a.name) ? { ...a, value: a.value.split(/(\s+)/).map((t) => (t === id ? l.reveal.key : t)).join('') } : a));
 	}
 	const names = layerNames(pendingLayers.map((l) => ({ key: l.reveal.key, kept: l.kept, inPage: l.trigger !== undefined })));
+	const placedWith = new Set<string>();
+	for (const c of companions) {
+		const at = `${c.key}|${outer(c.kept[0]!)}`;
+		if (placedWith.has(at)) continue;
+		placedWith.add(at);
+		const index = c.before ? c.parent.childNodes.indexOf(c.before as never) : c.parent.childNodes.length;
+		const rename = names.of(c.key);
+		const nodes = c.kept.map((e) => {
+			renameIds([...walk(e)], rename);
+			e.attrs = [...e.attrs.filter((a) => a.name !== 'hidden' && a.name !== 'data-mm-shown-with'), { name: 'hidden', value: '' }, { name: 'data-mm-shown-with', value: c.key }];
+			e.parentNode = c.parent as never;
+			return e;
+		});
+		c.parent.childNodes.splice(index < 0 ? c.parent.childNodes.length : index, 0, ...(nodes as never[]));
+	}
+	// Layers last: their generated ids are renamed from their content, here and wherever the page names them.
 	renameIds([...walk(root)], names.page);
 	for (const [i, l] of pendingLayers.entries()) {
 		const rename = names.each[i]!;

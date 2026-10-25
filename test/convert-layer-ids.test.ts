@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { parseFragment } from 'parse5';
 import { isElement, type Element } from '../src/convert/dom.ts';
+import { besideTrigger } from '../src/convert/beside-trigger.ts';
 import { layerNames } from '../src/convert/layer-ids.ts';
 
 const layer = (key: string, html: string, inPage = true) => ({ key, inPage, kept: (parseFragment(html).childNodes as Element[]).filter(isElement) });
@@ -34,4 +35,14 @@ test('the same layer captured twice (two parts of one reveal, two viewports) kee
 	const { each } = layerNames([a, b]);
 	assert.equal(each[0]!.get('radix-_r_1_'), each[1]!.get('radix-_r_1_'));
 	assert.equal(each[0]!.get('radix-_R_k_'), each[1]!.get('radix-_R_k_'));
+});
+
+test("what Floating UI puts beside an open trigger keeps its aria-owns span, named after that trigger's own portal", () => {
+	const beside = besideTrigger('<span data-type="outside" aria-hidden="true" tabindex="0" data-base-ui-focus-guard=""></span><span aria-owns="_r_0_"></span><span data-type="outside" aria-hidden="true" tabindex="0" data-base-ui-focus-guard=""></span>');
+	assert.deepEqual(beside.map((e) => e.attrs.map((a) => a.name).join(',')), ['aria-owns']);
+	const first = layer('base-ui-_R_a_', '<div id="_r_0_" data-base-ui-portal=""><div id="base-ui-_R_a_-list" role="listbox"></div></div>');
+	const second = layer('base-ui-_R_b_', '<div id="_r_0_" data-base-ui-portal=""><div id="base-ui-_R_b_-list" role="listbox"></div></div>');
+	const names = layerNames([first, second]);
+	assert.equal(names.of('base-ui-_R_b_').get('_r_0_'), names.each[1]!.get('_r_0_'));
+	assert.notEqual(names.of('base-ui-_R_b_').get('_r_0_'), names.of('base-ui-_R_a_').get('_r_0_'));
 });
