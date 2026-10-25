@@ -35,7 +35,7 @@ export interface Port {
 
 const slot = (el: Element) => attr(el, 'data-slot') ?? '';
 
-// A layer's generated ids are renamed from its content (index.ts layerIds): which library generated one is still read
+// A layer's generated ids are renamed from its content (layer-ids.ts layerIds): which library generated one is still read
 // from the id it had.
 const generated = new WeakMap<Element, string>();
 export function renamedFrom(el: Element, id: string): void {
