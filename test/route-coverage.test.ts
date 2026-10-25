@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawnNode } from './spawn-node.ts';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -119,15 +119,8 @@ test('the link crawl finds routes the sitemap does not list: linked and embedded
 	assert.equal(bounded.truncated, true, 'a crawl stopped at its bound says so');
 });
 
-function cli(args: readonly string[], cwd: string): Promise<{ status: number; stdout: string; stderr: string }> {
-	return new Promise((done) => {
-		const child = spawn(process.execPath, [CLI, ...args], { cwd });
-		const r = { stdout: '', stderr: '' };
-		child.stdout.on('data', (c) => (r.stdout += c));
-		child.stderr.on('data', (c) => (r.stderr += c));
-		child.on('exit', (code) => done({ status: code ?? -1, ...r }));
-	});
-}
+// The slowest of these checks takes about a minute on CI.
+const cli = (args: readonly string[], cwd: string) => spawnNode([CLI, ...args], { cwd, timeoutMs: 300_000 });
 
 async function planned(): Promise<string> {
 	const cwd = await mkdtemp(join(tmpdir(), 'mm-coverage-'));

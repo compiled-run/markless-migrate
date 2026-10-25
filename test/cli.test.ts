@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
+import { spawnNode } from './spawn-node.ts';
 
 const CLI = new URL('../src/cli.ts', import.meta.url).pathname;
-const run = (...args: string[]) => spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8' });
+const run = (...args: string[]) => {
+	const result = spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8', timeout: 60_000, killSignal: 'SIGKILL' });
+	if (result.error) throw new Error(`markless-migrate ${args.join(' ')}: ${result.error.message}; its last output:\n${`${result.stdout}${result.stderr}`.trim().split('\n').slice(-20).join('\n')}`);
+	return result;
+};
 
 test('prints usage with every command', () => {
 	const result = run();
@@ -50,7 +55,6 @@ test('check --all with a route nothing gives a sample is not "all green": it cou
 	const { mkdtemp, mkdir, writeFile } = await import('node:fs/promises');
 	const { tmpdir } = await import('node:os');
 	const { join } = await import('node:path');
-	const { spawn } = await import('node:child_process');
 	const servers = await Promise.all([0, 1].map(() => new Promise<import('node:http').Server>((done) => {
 		const server = createServer((req, res) => (req.url === '/robots.txt' ? res.writeHead(200, { 'content-type': 'text/plain' }).end('User-agent: *\nAllow: /\n') : res.writeHead(404, { 'content-type': 'text/plain' }).end('no')));
 		server.listen(0, '127.0.0.1', () => done(server));
@@ -59,13 +63,8 @@ test('check --all with a route nothing gives a sample is not "all green": it cou
 	const cwd = await mkdtemp(join(tmpdir(), 'mm-unchecked-'));
 	await mkdir(join(cwd, '.migrate'));
 	await writeFile(join(cwd, '.migrate', 'inventory.json'), JSON.stringify({ routes: [], routeUnion: [{ route: '/news/:slug', knownBy: ['source'], crawled: [], dynamic: true, kind: 'page', file: 'app/news/[slug]/page.tsx', line: 4 }] }));
-	const check = (...extra: string[]) => new Promise<{ status: number; stdout: string; stderr: string }>((done) => {
-		const child = spawn(process.execPath, [CLI, 'check', '--old', old!, '--new', next!, '--all', '--no-load', ...extra], { cwd });
-		const r = { stdout: '', stderr: '' };
-		child.stdout.on('data', (c) => (r.stdout += c));
-		child.stderr.on('data', (c) => (r.stderr += c));
-		child.on('exit', (code) => done({ status: code ?? -1, ...r }));
-	});
+	// On CI each run takes at most 4 s; a route stalled past 60 s ends the check with what it waited on, and the process is killed at 120 s.
+	const check = (...extra: string[]) => spawnNode([CLI, 'check', '--old', old!, '--new', next!, '--all', '--no-load', '--timeout', '60', ...extra], { cwd, timeoutMs: 120_000 });
 	try {
 		const strict = await check();
 		assert.equal(strict.status, 1, strict.stdout + strict.stderr);
@@ -90,7 +89,11 @@ test("a package manager the tool starts is not watched: its registry traffic is 
 	await writeFile(join(dir, 'tool.mjs'), script);
 	const log = join(dir, 'log.jsonl');
 	const shim = new URL('../src/check/cli/network.mjs', import.meta.url).pathname;
-	for (const file of ['node_modules/npm/bin/npm-cli.mjs', 'tool.mjs']) execFileSync(process.execPath, ['--import', shim, join(dir, file)], { env: { ...process.env, MARKLESS_MIGRATE_CLI_LOG: log, MARKLESS_MIGRATE_CLI_NETWORK: 'live' } });
+	for (const file of ['node_modules/npm/bin/npm-cli.mjs', 'tool.mjs']) execFileSync(process.execPath, ['--import', shim, join(dir, file)], { env: { ...process.env, MARKLESS_MIGRATE_CLI_LOG: log, MARKLESS_MIGRATE_CLI_NETWORK: 'live' }, timeout: 60_000, killSignal: 'SIGKILL' });
 	const lines = (await readFile(log, 'utf8')).trim().split('\n');
 	assert.equal(lines.length, 1, 'only the tool itself is logged');
+});
+
+test('a command a test starts that does not exit in time is killed, and the test fails naming it and its last output', async () => {
+	await assert.rejects(spawnNode(['-e', 'console.log("waiting on the server"); setInterval(() => {}, 1000)'], { timeoutMs: 1_000 }), /^Error: node -e .* did not exit within 1 s and was killed; its last output:\nwaiting on the server$/);
 });
