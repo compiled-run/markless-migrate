@@ -72,6 +72,8 @@ export interface StepResult {
 	readonly loaded?: boolean;
 	/** After a keyboard pattern step: the widget's value, whether it is expanded, and its active, highlighted, selected and expanded items (patterns.ts widgetState). */
 	readonly widget?: readonly string[];
+	/** The step fetched the next page from the app's server through its framework (a router fragment, an RSC payload): what that page reads is that route's own check. */
+	readonly paged?: boolean;
 	/** How the page answered where a visitor sees it, when the step stayed on the page: the viewport regions whose pixels changed outside the used control's own box, and what changed in its widgets (a value, a selection, a moved or scrolled track). */
 	readonly reaction?: Reaction;
 }
@@ -545,6 +547,18 @@ function keyboardSteps(c: Candidate): Step[] {
 	if (t.role === CLICKABLE && c.focusable) return keys('Enter', 'Space');
 	return [];
 }
+
+/** The page a framework fetch is for: Markless's /_markless/fragment/<path>, or the page URL itself without Next's _rsc. */
+export function pagePath(url: URL): string {
+	const path = url.pathname.startsWith('/_markless/fragment/') ? url.pathname.slice('/_markless/fragment'.length) : url.pathname;
+	const search = new URLSearchParams(url.search);
+	search.delete('_rsc');
+	const query = search.toString();
+	return `${path}${query ? `?${query}` : ''}`;
+}
+
+/** A request line that only reads: a GET or HEAD, or a GraphQL query (not a mutation). */
+export const readLine = (line: string) => /^(GET|HEAD) /.test(line) || /^POST \S+ \{"query":"(query\b|\{)/.test(line);
 
 // App requests only: framework transport (React Server Component payloads, server-action posts, /_next/ data) and plain page loads are left to the URL.
 function appRequest(request: Request, origins: readonly string[]): string | undefined {
@@ -1302,9 +1316,13 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 	let requests: Request[] = [];
 	let errors: string[] = [];
 	const pending = new Set<Request>();
+	// Pages the framework fetched from the server (a router fragment, an RSC payload), prefetched ahead of a click included.
+	const fetchedPages = new Set<string>();
 	page.on('request', (request) => {
 		pending.add(request);
 		requests.push(request);
+		const url = new URL(request.url());
+		if (request.method() === 'GET' && hosts.some((o) => url.origin === o) && frameworkTransport(request, url)) fetchedPages.add(pagePath(url));
 	});
 	page.on('requestfinished', (request) => pending.delete(request));
 	page.on('requestfailed', (request) => pending.delete(request));
@@ -1413,6 +1431,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 				const line = writeOf.get(r) ?? appRequest(r, hosts);
 				return line ? [line] : [];
 			}),
+			...(!documentLoaded && fetchedPages.has(pagePath(new URL(page.url()))) ? { paged: true } : {}),
 			...(writes.length ? { writes: writes.map((w) => ({ line: w.line, reason: w.reason, sent: w.sent })) } : {}),
 			errors: [...errors],
 			announcements: liveAfter.filter((line) => !liveBefore.includes(line)),
@@ -2366,10 +2385,13 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			const navigated = n.navigated || oldSteps.some((x) => x!.navigated);
 			const reloaded = n.reloaded || oldSteps.some((x) => x!.reloaded);
 			let automatic: Failure['automatic'];
+			// One side read the next page's data in the browser, the other fetched that page from its server: the reads are that route's own check.
+			const paged = navigated && (n.paged || oldSteps.some((x) => x!.paged));
+			const shown = (r: StepResult): StepResult => (paged ? { ...r, requests: r.requests.filter((line) => !readLine(line)) } : r);
 			const fields = navigated ? (following ? (['requests', 'state', 'storage', 'dialogs'] as const) : (['requests', 'storage', 'dialogs'] as const)) : reloaded ? (['added', 'removed', 'state', 'storage'] as const) : (['added', 'removed', 'moved', 'requests', 'announcements', 'state', 'storage', 'dialogs', 'widget'] as const);
 			for (const field of fields.filter((f) => !(f === 'storage' && n.door))) {
 				// Requests in flight together finish in any order (a client retrying hosts it shuffled), so they count as a set.
-				const lines = (r: StepResult) => (field === 'requests' ? [...r[field]].sort() : field === 'state' ? effects(r.state, owner) : field === 'added' || field === 'removed' ? untick(r)[field] : (r[field] ?? []));
+				const lines = (r: StepResult) => (field === 'requests' ? [...r[field]].filter((line) => !(paged && readLine(line))).sort() : field === 'state' ? effects(r.state, owner) : field === 'added' || field === 'removed' ? untick(r)[field] : (r[field] ?? []));
 				const diff = diffLines(lineTemplates(lines(a!), ...rest.map(lines)), lines(n));
 				if (diff.changed.length || diff.missing.length || diff.unexpected.length) parts.push(field);
 				if (field === 'storage') automatic = storageCandidate([...diff.missing, ...diff.changed.map((c) => c.expected)], [...diff.unexpected, ...diff.changed.map((c) => c.actual)], owner);
@@ -2388,7 +2410,7 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			if (navigated && !n.loaded && morphs(oldSteps as StepResult[], n).length) parts.push('morph');
 			if (!reloaded && !n.loaded && interimViews(oldSteps as StepResult[], n)) parts.push('in between');
 			if (parts.length) {
-				const failure: Failure = { route, dimension, check, expected: where('old', format(a!, parts, missing, true)), actual: where('new', format(n, parts, missing)), hint, ...(automatic && parts.length === 1 && parts[0] === 'storage' ? { automatic } : {}) };
+				const failure: Failure = { route, dimension, check, expected: where('old', format(shown(a!), parts, missing, true)), actual: where('new', format(shown(n), parts, missing)), hint, ...(automatic && parts.length === 1 && parts[0] === 'storage' ? { automatic } : {}) };
 				if (parts.length === 1 && parts[0] === 'answer time') timedOnly.set(failure, { journey: j, step: k });
 				failures.push(failure);
 				break;

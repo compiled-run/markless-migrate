@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { pageAsset } from '../src/check/browser.ts';
-import { compareJourneys, consoleErrorText, describeStep, labelled, localUrl, movedLines, type Journey, type StepResult } from '../src/check/journeys.ts';
+import { compareJourneys, consoleErrorText, describeStep, labelled, localUrl, movedLines, pagePath, type Journey, type StepResult } from '../src/check/journeys.ts';
 
 const result = (over: Partial<StepResult>): StepResult => ({ url: '/', added: [], removed: [], requests: [], errors: [], announcements: [], focus: 'body', navigated: false, ...over });
 const pour = { role: 'button', name: 'Pour a cup', nth: 0 };
@@ -41,6 +41,21 @@ test('after a navigation only the URL, requests and errors are compared, not the
 	assert.deepEqual(compareJourneys('/', [old, old], nav, [[result({ url: '/about', navigated: true, added: ['- heading "About"'], focus: 'link "Skip"' })]]), []);
 	const [f] = compareJourneys('/', [old, old], nav, [[result({ url: '/about-us', navigated: true })]]);
 	assert.equal(f!.expected, 'URL /about');
+});
+
+test('data an old page read in the browser on an in-place navigation is the next page\'s when the new one fetched that page from its server', () => {
+	const nav: Journey[] = [{ name: 'click link "new"', steps: [{ action: 'click', target: { role: 'link', name: 'new', nth: 0 } }] }];
+	const query = 'POST /graphql {"query":"query NewestFeed($first: Int!) { feed(first: $first) { id } }","variables":{"first":"number"}}';
+	const vote = 'POST /graphql {"query":"mutation Upvote($id: Int!) { upvote(id: $id) { id } }","variables":{"id":"number"}}';
+	const old = [[result({ url: '/newest', navigated: true, requests: [query, 'GET /api/me'] })]];
+	assert.deepEqual(compareJourneys('/', [old, old], nav, [[result({ url: '/newest', navigated: true, paged: true })]]), [], 'the router fetched /newest, whose server render reads the feed');
+	assert.equal(compareJourneys('/', [old, old], nav, [[result({ url: '/newest', navigated: true })]]).length, 1, 'without the page fetched from the server, the missing query is a difference');
+	const writing = [[result({ url: '/newest', navigated: true, requests: [query, vote] })]];
+	const [f] = compareJourneys('/', [writing, writing], nav, [[result({ url: '/newest', navigated: true, paged: true })]]);
+	assert.match(f!.expected, /mutation Upvote/, 'a write is still compared');
+	assert.doesNotMatch(f!.expected, /NewestFeed/);
+	assert.equal(pagePath(new URL('http://127.0.0.1:4872/_markless/fragment/newest?p=2')), '/newest?p=2', 'a prefetched fragment counts for the page it is');
+	assert.equal(pagePath(new URL('http://127.0.0.1:3000/newest?p=2&_rsc=1x2y')), '/newest?p=2');
 });
 
 test('noise between OLD runs is allowed only where they differed', () => {
