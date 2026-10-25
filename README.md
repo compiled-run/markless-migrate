@@ -250,7 +250,8 @@ same pipeline: `check --old <pre-upgrade build> --new <upgraded build> --all` mu
 
 Every page loads frozen: `Date` and `Date.now` start at a fixed instant and move only when a timer
 fires (to the time it was due), `performance.timeOrigin` is that instant, `Math.random`,
-`crypto.getRandomValues` and `crypto.randomUUID` are seeded, the timezone and locale are fixed
+`crypto.getRandomValues` and `crypto.randomUUID` are seeded (all but the names Playwright gives the sockets it routes,
+which would otherwise be the same in two pages open at once and cross their traffic), the timezone and locale are fixed
 (UTC and en-US unless `--timezone`/`--locale`), a capture first waits (at most 3 s) for what the page
 load started to settle (a timeout due within that time, such as a loading bar's fade or a demo's fake
 server answering after 2 s, and transitions running; a loop does not hold it up), then finishes or cancels CSS animations and transitions (the reduced-motion check
