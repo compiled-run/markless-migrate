@@ -13,7 +13,7 @@ import { homedir } from 'node:os';
 import { PSI_KEY_ENV, PSI_NOTICE, psiKey, userEnvFile } from './check/psi.ts';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { measureSlowNetwork, NETWORK_BROWSERS, networkTables, shortNames, type NetworkBrowser } from './check/slow-network.ts';
+import { measureSlowNetwork, NETWORK_BROWSERS, networkTables, shortNames, type NetworkBrowser, type SlowNetworkOptions } from './check/slow-network.ts';
 import { NETWORK_PROFILES } from './check/throttle.ts';
 import { AGENTS, detectAgents, findBinary, type HostEnv, type ServerCommand } from './agents/registry.ts';
 import { applySetup, describeChanges, planSetup, undoSetup, writeUndo } from './agents/setup.ts';
@@ -196,7 +196,15 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           FCP, LCP, Speed Index, TBT, CLS and the score are compared by their medians: a metric is red when
           the new median is worse by more than max(100 ms, 5%) (TBT 50 ms, CLS 0.02, 3 score points) and the
           runs differ beyond noise (one-sided Mann-Whitney, p < 0.05). The failure names the LCP element, its
-          breakdown and the requests that began before it, old and new. --no-load leaves page load out;
+          breakdown and the requests that began before it, old and new.
+          - Slow network (--slow-network <profile>, repeatable: ${Object.keys(NETWORK_PROFILES).join(', ')}): each page
+            loaded cold through a throttling proxy, old and new in turn, --slow-network-runs a side (default
+            5), in each --slow-network-browser (chromium by default, firefox, webkit), clicking a control
+            every 250 ms from when it shows until it answers (--slow-network-control <selector>, default the
+            first unselected tab or closed disclosure): TTFB, first and largest paint, first click answered,
+            painted to answered, bytes and JavaScript downloaded and JavaScript executed. Shown beside the
+            rest, not a verdict; markless-migrate network measures any pages the same way.
+          --no-load leaves page load out;
           --only load measures it alone (a partial run: every other dimension is not compared).
           --source and --new-source map each failing element to its old and new source file and line.
           --concurrency checks that many routes at once (default half the cores, at most 4).
@@ -271,8 +279,9 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           shaped link through a local proxy, so Chromium, Firefox and WebKit are throttled alike: the
           profile's bandwidth shared by all connections, and its round-trip time on every packet, so a new
           connection pays for its handshakes. Profiles:
-          ${Object.values(NETWORK_PROFILES).map((p) => `${p.name} (${p.label.replace(/^[^(]+\(|\)$/g, '')})`).join(', ')};
-          default regular-3g. --browser chromium (default), firefox, webkit. The control is clicked every 250 ms
+          ${Object.values(NETWORK_PROFILES).map((p) => `${p.name} (${p.label.replace(/^[^(]+\(|\)$/g, '')})`).join(', ')}
+          (chrome-slow-4g is Chrome DevTools' own throttling, Chromium only, for comparison with
+          Lighthouse and PageSpeed numbers); default regular-3g. --browser chromium (default), firefox, webkit. The control is clicked every 250 ms
           from when it is on screen; --control is a Playwright selector (one for all pages, or one per
           page in order), default the first unselected tab or closed disclosure. Prints the medians:
           time to first byte, first and largest paint, load event, first click answered and painted to
@@ -389,6 +398,10 @@ const TIMING_FLAGS = {
 	'psi-key': { type: 'string' },
 	'psi-runs': { type: 'string' },
 	'no-psi': { type: 'boolean' },
+	'slow-network': { type: 'string', multiple: true },
+	'slow-network-browser': { type: 'string', multiple: true },
+	'slow-network-runs': { type: 'string' },
+	'slow-network-control': { type: 'string' },
 	'nav-entries': { type: 'string' },
 	'nav-destinations': { type: 'string' },
 } as const;
@@ -407,7 +420,22 @@ function navigationOptions(values: { 'no-navigation'?: boolean; 'nav-entries'?: 
 	return { ...(entries ? { entries } : {}), ...(destinations ? { destinations } : {}), ...(routes?.length ? { routes } : {}) };
 }
 
-function loadOptions(values: { 'no-load'?: boolean; 'load-runs'?: string; 'load-cpu'?: string; 'psi-key'?: string; 'psi-runs'?: string; 'no-psi'?: boolean }): CheckOptions['load'] {
+function slowNetworkOptions(values: { 'slow-network'?: string[]; 'slow-network-browser'?: string[]; 'slow-network-runs'?: string; 'slow-network-control'?: string }): SlowNetworkOptions | undefined {
+	const profiles = values['slow-network'];
+	if (!profiles?.length) {
+		if (values['slow-network-browser'] || values['slow-network-runs'] || values['slow-network-control']) fail('--slow-network-browser, --slow-network-runs and --slow-network-control go with --slow-network <profile>');
+		return undefined;
+	}
+	for (const name of profiles) if (!NETWORK_PROFILES[name]) fail(`unknown --slow-network ${name}: one of ${Object.keys(NETWORK_PROFILES).join(', ')}`);
+	const browsers = (values['slow-network-browser'] ?? ['chromium']) as NetworkBrowser[];
+	for (const name of browsers) if (!NETWORK_BROWSERS.includes(name)) fail(`unknown --slow-network-browser ${name}: one of ${NETWORK_BROWSERS.join(', ')}`);
+	const raw = values['slow-network-runs'];
+	const runs = raw === undefined ? undefined : Number(raw);
+	if (runs !== undefined && (!Number.isInteger(runs) || runs < 1)) fail('--slow-network-runs must be a whole number of at least 1');
+	return { profiles, browsers, ...(runs ? { runs } : {}), ...(values['slow-network-control'] ? { control: values['slow-network-control'] } : {}) };
+}
+
+function loadOptions(values: { 'no-load'?: boolean; 'load-runs'?: string; 'load-cpu'?: string; 'psi-key'?: string; 'psi-runs'?: string; 'no-psi'?: boolean; 'slow-network'?: string[]; 'slow-network-browser'?: string[]; 'slow-network-runs'?: string; 'slow-network-control'?: string }): CheckOptions['load'] {
 	if (values['no-load']) return undefined;
 	const count = (flag: 'load-runs' | 'psi-runs') => {
 		const raw = values[flag];
@@ -422,7 +450,8 @@ function loadOptions(values: { 'no-load'?: boolean; 'load-runs'?: string; 'load-
 	const cpu = cpuFlag === undefined ? undefined : cpuFlag === 'calibrated' ? ('calibrated' as const) : Number(cpuFlag);
 	if (typeof cpu === 'number' && !(cpu >= 1)) fail('--load-cpu takes calibrated or a CPU slowdown of at least 1 (default 4)');
 	const psi = values['no-psi'] ? false : { ...(values['psi-key'] ? { key: values['psi-key'] } : {}), ...(psiRuns ? { runs: psiRuns } : {}) };
-	return { ...(runs ? { runs } : {}), ...(cpu ? { cpu } : {}), psi };
+	const network = slowNetworkOptions(values);
+	return { ...(runs ? { runs } : {}), ...(cpu ? { cpu } : {}), psi, ...(network ? { network } : {}) };
 }
 
 function timingOptions(values: { 'no-responsiveness'?: boolean; 'interaction-budget'?: string; 'cpu-throttle'?: string; 'network-latency'?: string; 'interaction-controls'?: string }): CheckOptions['responsiveness'] {
@@ -441,9 +470,10 @@ function timingOptions(values: { 'no-responsiveness'?: boolean; 'interaction-bud
 	return { ...(budgetMs !== undefined ? { budgetMs } : {}), ...(cpu !== undefined ? { cpu } : {}), ...(latencyMs !== undefined ? { latencyMs } : {}), ...(maxControls !== undefined ? { maxControls } : {}) };
 }
 
-function timingFlags(values: Partial<Record<keyof typeof TIMING_FLAGS, string | boolean>>): string[] {
+function timingFlags(values: Partial<Record<keyof typeof TIMING_FLAGS, string | boolean | string[]>>): string[] {
 	return Object.keys(TIMING_FLAGS).flatMap((flag) => {
 		const value = values[flag as keyof typeof TIMING_FLAGS];
+		if (Array.isArray(value)) return value.flatMap((v) => [`--${flag}`, v]);
 		return value === undefined || value === false ? [] : value === true ? [`--${flag}`] : [`--${flag}`, value];
 	});
 }

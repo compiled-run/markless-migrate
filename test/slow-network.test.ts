@@ -37,3 +37,27 @@ test('the tables put a column per page and a row per metric with a value, and na
 	assert.match(text, /webkit, .*\n  webkit is not installed/);
 	assert.deepEqual(shortNames(['https://a.example/x', 'https://a.example/y', 'https://b.example/']), ['a.example/x', 'a.example/y', 'b.example']);
 });
+
+test('a frame is blank while every pixel is the one colour, and painted once anything differs from it', async () => {
+	const { PNG } = await import('pngjs');
+	const { blankFrame } = await import('../src/check/slow-network.ts');
+	const frame = (paint?: [number, number]) => {
+		const png = new PNG({ width: 20, height: 10 });
+		png.data.fill(255);
+		if (paint) {
+			const at = (paint[1] * 20 + paint[0]) * 4;
+			png.data[at] = png.data[at + 1] = png.data[at + 2] = 40;
+		}
+		return PNG.sync.write(png);
+	};
+	assert.equal(blankFrame(frame()), true);
+	assert.equal(blankFrame(frame([13, 7])), false);
+});
+
+test('painted-to-answered counts from the first painted frame, the browser\'s FCP only where no frame was read', () => {
+	const cell = summarizeCell('regular-3g', 'webkit', [{ firstFrame: 900, fcp: 3300, answered: 4000, clicks: 1, bytes: 1, jsDownloaded: 1, requests: [] }]);
+	assert.equal(cell.median.visibleToAnswer, 3100);
+	assert.equal(cell.median.firstFrame, 900);
+	assert.equal(summarizeCell('regular-3g', 'webkit', [{ fcp: 1000, answered: 4000, clicks: 1, bytes: 1, jsDownloaded: 1, requests: [] }]).median.visibleToAnswer, 3000);
+	assert.match(networkTables([{ url: 'https://a.example/', cells: [cell] }]), /First painted frame +0\.90 s\n +FCP \(as the browser reports it\) +3\.30 s/);
+});

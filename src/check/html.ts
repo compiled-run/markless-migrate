@@ -1,7 +1,9 @@
 import { journeyNames, pngBytes, pngSize, type Png } from './artifacts.ts';
 import { acceptedLabel } from './automatic.ts';
 import { headlines, type Sample } from './responsiveness.ts';
-import { formatMetric, METRIC_LABEL, psiLines, type LoadDetail } from './load.ts';
+import { formatMetric, METRIC_LABEL, psiLines, type LoadDetail, type RouteLoad } from './load.ts';
+import { CLICK_EVERY_MS, formatValue, RUN_METRIC_LABEL, RUN_METRICS } from './slow-network.ts';
+import { NETWORK_PROFILES } from './throttle.ts';
 import { partialLine } from './summary.ts';
 import type { Box, Failure, LoginResult, Report, ResponsivenessSummary, RouteResult, Shot, SourceLink } from './types.ts';
 import type { Filmstrip, MotionInteraction } from './motion.ts';
@@ -75,17 +77,33 @@ function loadStrip(side: string, d: LoadDetail | undefined): string {
 	return `<div class="strip"><h4>${side}</h4><div class="frames">${d.filmstrip.map((f) => `<figure><img src="${f.image}" loading="lazy" alt="${side} at ${f.ms} ms"><figcaption>${f.ms} ms</figcaption></figure>`).join('')}</div></div>`;
 }
 
+function slowNetwork(network: RouteLoad['network']): string {
+	if (!network) return '';
+	if ('unavailable' in network) return `<h4>Slow network</h4><p>${esc(network.unavailable)}</p>`;
+	const tables = network.old.cells.map((old, i) => {
+		const next = network.new.cells[i]!;
+		const title = `${old.browser}, ${NETWORK_PROFILES[old.profile]?.label ?? old.profile}`;
+		if (old.unavailable) return `<h4>${esc(title)}</h4><p>${esc(old.unavailable)}</p>`;
+		const rows = RUN_METRICS.filter((m) => old.median[m] !== undefined || next.median[m] !== undefined)
+			.map((m) => `<tr><td>${esc(RUN_METRIC_LABEL[m])}</td><td>${esc(formatValue(m, old.median[m]))}</td><td>${esc(formatValue(m, next.median[m]))}</td></tr>`)
+			.join('');
+		const failed = [old, next].flatMap((c, side) => (c.runs.some((r) => r.error) ? [`${side ? 'New' : 'Old'}: ${c.runs.filter((r) => r.error).length} of ${c.runs.length} runs failed (${c.runs.find((r) => r.error)!.error})`] : []));
+		return `<h4>${esc(title)}: median of ${Math.min(old.runs.length, next.runs.length)} cold loads</h4><table><thead><tr><th>Metric</th><th>Old</th><th>New</th></tr></thead><tbody>${rows}</tbody></table>${failed.map((f) => `<p><small>${esc(f)}</small></p>`).join('')}`;
+	});
+	return `<h4>Slow network <small>cold loads through a throttling proxy, the control clicked every ${CLICK_EVERY_MS} ms from when it shows until it answers; shown, not a verdict</small></h4>${tables.join('')}`;
+}
+
 function pageLoad(r: RouteResult): string {
 	const l = r.load;
 	if (!l) return '';
-	if (l.skipped) return `<details class="states timings"><summary>Page load (Lighthouse, mobile): not compared</summary><p>${esc(l.skipped)}</p></details>`;
+	if (l.skipped) return `<details class="states timings"><summary>Page load (Lighthouse, mobile): not compared</summary><p>${esc(l.skipped)}</p>${slowNetwork(l.network)}</details>`;
 	const failing = l.verdicts.filter((v) => !v.ok).length;
 	const rows = l.verdicts.map((v) => `<tr${v.ok ? '' : ' class="differs"'}><td>${esc(METRIC_LABEL[v.metric])}</td><td>${esc(formatMetric(v.metric, v.old))}</td><td>${esc(formatMetric(v.metric, v.new))}</td><td>old ±${esc(formatMetric(v.metric, v.spread.old))}, new ±${esc(formatMetric(v.metric, v.spread.new))}</td><td>${v.ok ? 'ok' : `worse by ${esc(formatMetric(v.metric, v.worse))} (allowed ${esc(formatMetric(v.metric, v.floor))}, p = ${v.p.toFixed(3)})`}</td></tr>`).join('');
 	const lcp = (side: string, d: LoadDetail | undefined) => (d?.lcpElement ? `<p><small>${side} LCP element: ${esc(d.lcpElement)}${d.lcpPhases ? `; ${esc(Object.entries(d.lcpPhases).map(([k, v]) => `${k} ${v} ms`).join(', '))}` : ''}</small></p>` : '');
 	const strips = l.old.detail?.filmstrip?.length || l.new.detail?.filmstrip?.length ? `<div class="filmstrip"><h3>Page load filmstrip <small>Lighthouse's frames of the median run, unthrottled time</small></h3>${loadStrip('Old', l.old.detail)}${loadStrip('New', l.new.detail)}</div>` : '';
 	const psi = psiLines(l.psi);
 	const psiBlock = psi.length ? `<h4>PageSpeed Insights</h4><ul>${psi.map((line) => `<li>${esc(line.trim())}</li>`).join('')}</ul><h4>PageSpeed-equivalent (lab)${l.cpuMultiplier ? `: ${l.cpuMultiplier}x CPU, benchmarkIndex ${l.benchmarkIndex ?? '?'}` : ''}</h4>` : '';
-	return `<details class="states timings"${failing || r.failures.some((f) => f.dimension === 'load') ? ' open' : ''}><summary>Page load: ${l.psi && !('unavailable' in l.psi) ? 'PageSpeed Insights and ' : ''}PageSpeed-equivalent (lab), median of ${l.runs} runs each${failing ? `: <strong>${failing} lab metric${failing === 1 ? '' : 's'} worse</strong>` : ''}</summary>${psiBlock}<table><thead><tr><th>Metric</th><th>Old</th><th>New</th><th>Between runs</th><th>Verdict</th></tr></thead><tbody>${rows}</tbody></table>${lcp('Old', l.old.detail)}${lcp('New', l.new.detail)}${strips}</details>`;
+	return `<details class="states timings"${failing || r.failures.some((f) => f.dimension === 'load') ? ' open' : ''}><summary>Page load: ${l.psi && !('unavailable' in l.psi) ? 'PageSpeed Insights and ' : ''}PageSpeed-equivalent (lab), median of ${l.runs} runs each${failing ? `: <strong>${failing} lab metric${failing === 1 ? '' : 's'} worse</strong>` : ''}</summary>${psiBlock}<table><thead><tr><th>Metric</th><th>Old</th><th>New</th><th>Between runs</th><th>Verdict</th></tr></thead><tbody>${rows}</tbody></table>${lcp('Old', l.old.detail)}${lcp('New', l.new.detail)}${slowNetwork(l.network)}${strips}</details>`;
 }
 
 function writes(r: RouteResult): string {
