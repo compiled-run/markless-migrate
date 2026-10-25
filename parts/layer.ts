@@ -36,7 +36,7 @@ export function focusFirst(container: HTMLElement): void {
 }
 
 /** Shows a control's content, places it off the trigger, and wires dismissal. Undefined when the page has none for it. */
-export function openLayer(trigger: HTMLElement, key: string, options: { readonly modal?: boolean; readonly anchor?: Anchor; readonly onDismiss: (layer: Layer, reason: 'escape' | 'outside' | 'focus') => void }): Layer | undefined {
+export function openLayer(trigger: HTMLElement, key: string, options: { readonly modal?: boolean; readonly anchor?: Anchor; readonly onDismiss: (layer: Layer, reason: 'escape' | 'outside' | 'focus', event?: Event) => void }): Layer | undefined {
 	if (isOpen(key)) return open.find((l) => l.key === key);
 	const nodes = layersFor(key);
 	if (!nodes.length) return undefined;
@@ -62,13 +62,21 @@ export function openLayer(trigger: HTMLElement, key: string, options: { readonly
 		for (const n of nodes) n.style.pointerEvents = 'auto';
 		layer.cleanup.push(hideOthers(nodes));
 		layer.cleanup.push(lockScroll(nodes));
+	} else if (open.some((l) => l.modal)) {
+		// A layer over a modal one is outside what it hid: Radix portals it after hideOthers ran, or nests it inside.
+		for (const n of nodes) {
+			n.style.pointerEvents = 'auto';
+			if (n.getAttribute('data-aria-hidden') !== 'true' || n.getAttribute('aria-hidden') !== 'true') continue;
+			n.removeAttribute('aria-hidden');
+			layer.cleanup.push(() => n.getAttribute('data-aria-hidden') === 'true' && n.setAttribute('aria-hidden', 'true'));
+		}
 	}
 	open.push(layer);
 	const onKey = (event: KeyboardEvent) => {
 		if (top() !== layer) return;
 		if (event.key === 'Escape') {
 			event.preventDefault();
-			options.onDismiss(layer, 'escape');
+			options.onDismiss(layer, 'escape', event);
 		} else if (event.key === 'Tab' && layer.modal) {
 			const list = tabbables(content);
 			if (!list.length) return event.preventDefault();
@@ -87,7 +95,7 @@ export function openLayer(trigger: HTMLElement, key: string, options: { readonly
 		if (!target || top() !== layer || layer.nodes.some((n) => n.contains(target)) || trigger.contains(target)) return;
 		pressedOutside = layer;
 		try {
-			options.onDismiss(layer, 'outside');
+			options.onDismiss(layer, 'outside', event);
 		} finally {
 			pressedOutside = undefined;
 		}
@@ -112,8 +120,9 @@ export function closeLayer(layer: Layer, keepFocus = false): void {
 	showCompanions(layer.key, false);
 	if (layer.modal && !open.some((l) => l.modal)) document.body.style.pointerEvents = bodyPointerEvents;
 	if (!keepFocus) layer.trigger.focus({ preventScroll: true });
-	// The press's own mousedown then blurs to the body; Radix's FocusScope returns focus to the trigger after it.
-	if (!keepFocus && layer.modal && pressedOutside === layer) {
+	// The press's own mousedown then blurs to the body; Radix's FocusScope returns focus to the trigger after it (the
+	// press may have dismissed a layer above this one, a submenu, that closed it).
+	if (!keepFocus && layer.modal && pressedOutside) {
 		setTimeout(() => {
 			if (!document.activeElement || document.activeElement === document.body) layer.trigger.focus({ preventScroll: true });
 		});

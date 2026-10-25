@@ -1,6 +1,6 @@
 import { closeLayer, layerOf, openLayer, type Layer } from '../layer.ts';
 import { layersFor, closestTrigger, layerKey } from '../reveal.ts';
-import { clearHighlight } from './dropdown-menu.ts';
+import { clearHighlight, closeSubs, menuRoot, trackMenu } from './dropdown-menu.ts';
 
 // Radix ContextMenu: a right press (or a long touch) on the trigger area opens the menu at the pointer, modal, with
 // its content focused; the dropdown-menu port's item rules (arrows, typeahead, choosing closes) apply to it as to any
@@ -13,6 +13,7 @@ const open = new Map<HTMLElement, Layer>();
 
 function close(trigger: HTMLElement, layer: Layer): void {
 	open.delete(trigger);
+	closeSubs(layer);
 	trigger.setAttribute('data-state', 'closed');
 	clearHighlight(layer);
 	closeLayer(layer, true);
@@ -33,6 +34,7 @@ export function contextmenu(target: Element, event: MouseEvent): boolean {
 	const layer = key ? openLayer(trigger, key, { modal: true, anchor, onDismiss: (l) => close(trigger, l) }) : undefined;
 	if (!layer) return false;
 	open.set(trigger, layer);
+	trackMenu(layer, () => close(trigger, layer));
 	trigger.setAttribute('data-state', 'open');
 	clearHighlight(layer);
 	layer.content.focus({ preventScroll: true });
@@ -43,7 +45,8 @@ export function click(target: Element): boolean {
 	const item = target.closest<HTMLElement>('[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]');
 	const layer = item && layerOf(item);
 	if (!item || !layer || item.hasAttribute('data-disabled') || item.getAttribute('aria-haspopup') === 'menu') return false;
-	for (const [trigger, l] of open) if (l === layer) {
+	const root = menuRoot(layer);
+	for (const [trigger, l] of open) if (l === root) {
 		close(trigger, l);
 		return true;
 	}

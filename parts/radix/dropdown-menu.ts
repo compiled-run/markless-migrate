@@ -5,7 +5,11 @@ import { closestTrigger, layerKey } from '../reveal.ts';
 // ArrowDown on it) opens the menu with outside pointer events off; the content takes focus (the first item from the
 // keyboard); arrows, Home and End move focus between the items; choosing an item or Escape closes it and focus returns.
 // An item is highlighted (data-highlighted) while it has focus: the mouse moving onto it focuses it, leaving it (or
-// moving onto a disabled one) focuses the content.
+// moving onto a disabled one) focuses the content. A sub-trigger opens its submenu (a layer keyed by its id, not modal)
+// 100 ms after the mouse rests on it, on a press, or on Enter, Space or the inline-end arrow (then on its first item);
+// the inline-start arrow closes it back to its trigger; Escape or choosing an item in it closes the whole menu, and
+// focus moving elsewhere in the parent closes it. The pointer crossing other items on its way to the open submenu
+// leaves them alone (Radix's pointer grace area).
 
 // Radix Menubar's triggers are menu buttons too, their menus not modal: the arrows rove focus between the triggers
 // (a RovingFocusGroup, looping), the focused one highlighted; with one open, the pointer on another trigger opens that
@@ -23,14 +27,51 @@ const keyOf = (trigger: HTMLElement) => layerKey(trigger);
 const disabled = (el: Element) => el.hasAttribute('data-disabled') || el.hasAttribute('disabled');
 const rtl = (el: Element) => getComputedStyle(el).direction === 'rtl';
 
+const isSubTrigger = (el: Element) => el.matches(ITEM) && el.getAttribute('aria-haspopup') === 'menu' && !barOf(el);
+
 function setTrigger(trigger: HTMLElement, open: boolean, layer?: Layer): void {
 	// A context menu's trigger area (opened by the context-menu port) is not a menu button.
 	if (!trigger.hasAttribute('aria-haspopup')) return;
 	trigger.setAttribute('aria-expanded', String(open));
 	trigger.setAttribute('data-state', open ? 'open' : 'closed');
+	// A sub-trigger names its content whether or not it is open.
+	if (isSubTrigger(trigger)) return;
 	if (open && layer?.content.id) trigger.setAttribute('aria-controls', layer.content.id);
 	else if (!open) trigger.removeAttribute('aria-controls');
 }
+
+// The open submenu of each open menu, and what closes each root menu (a context menu's port registers its own).
+const subOf = new Map<Layer, Layer>();
+const closers = new WeakMap<Layer, () => void>();
+const parentOf = (layer: Layer) => (isSubTrigger(layer.trigger) ? layerOf(layer.trigger) : undefined);
+
+/** The menu a submenu (or a submenu of one) opened from; the layer itself when it is no submenu. */
+export function menuRoot(layer: Layer): Layer {
+	let root = layer;
+	for (let up = parentOf(root); up; up = parentOf(root)) root = up;
+	return root;
+}
+
+/** How a menu's own port closes it: Escape or a choice in one of its submenus closes it so. */
+export function trackMenu(layer: Layer, close: () => void): void {
+	closers.set(layer, close);
+}
+
+/** Closes the submenus open from `layer`, innermost first. */
+export function closeSubs(layer: Layer): void {
+	const sub = subOf.get(layer);
+	if (!sub) return;
+	closeSubs(sub);
+	subOf.delete(layer);
+	setTrigger(sub.trigger, false);
+	clearHighlight(sub);
+	closeLayer(sub, true);
+}
+
+const closeMenu = (layer: Layer) => {
+	const root = menuRoot(layer);
+	(closers.get(root) ?? (() => close(root)))();
+};
 
 const items = (layer: Layer) => [...layer.content.querySelectorAll<HTMLElement>(ITEM)].filter((i) => !disabled(i));
 
@@ -57,6 +98,7 @@ function highlight(item: HTMLElement | undefined): void {
 }
 
 function close(layer: Layer, keepFocus = false): void {
+	closeSubs(layer);
 	setTrigger(layer.trigger, false);
 	clearHighlight(layer);
 	closeLayer(layer, keepFocus);
@@ -92,10 +134,65 @@ export function click(target: Element): boolean {
 	const item = target.closest<HTMLElement>(ITEM);
 	const layer = item && layerOf(item);
 	if (!item || !layer || disabled(item)) return false;
-	if (item.getAttribute('aria-haspopup') === 'menu') return true;
-	close(layer);
+	if (isSubTrigger(item)) {
+		item.focus();
+		if (subOf.get(layer)?.trigger !== item) openSub(item, false);
+		return true;
+	}
+	closeMenu(layer);
 	return true;
 }
+
+function openSub(trigger: HTMLElement, keyboard: boolean): Layer | undefined {
+	const parent = layerOf(trigger);
+	if (!parent) return undefined;
+	clearTimeout(openTimer);
+	if (subOf.get(parent)?.trigger === trigger) return subOf.get(parent);
+	closeSubs(parent);
+	const layer = openLayer(trigger, keyOf(trigger), {
+		onDismiss: (l, reason, event) => {
+			if (reason === 'escape') return closeMenu(l);
+			// A press outside every menu of the chain closes the whole menu; one in a parent only this submenu.
+			const target = event?.target instanceof Node ? event.target : null;
+			let up: Layer | undefined = parentOf(l);
+			closeSubs(up ?? l);
+			for (; up; up = parentOf(up)) if (target && (up.nodes.some((n) => n.contains(target)) || up.trigger.contains(target))) return;
+			closeMenu(l);
+		},
+	});
+	if (!layer) return undefined;
+	subOf.set(parent, layer);
+	setTrigger(trigger, true, layer);
+	clearHighlight(layer);
+	if (keyboard) highlight(items(layer)[0]);
+	return layer;
+}
+
+// Radix's pointer grace area: the polygon from where the pointer left an open sub-trigger to the submenu's near and far
+// edges, for 300 ms, while the pointer heads its way.
+let grace: { layer: Layer; area: { x: number; y: number }[]; side: string; until: number } | undefined;
+let openTimer = 0;
+
+// MenuContent's onPointerMove: the way the mouse last moved across the content, from where it lies inside it.
+const motion = new WeakMap<Layer, { x: number; dir: string }>();
+function track(layer: Layer, event: PointerEvent): void {
+	const m = motion.get(layer) ?? { x: 0, dir: 'right' };
+	if (event.clientX !== m.x) m.dir = event.clientX > m.x ? 'right' : 'left';
+	m.x = event.clientX;
+	motion.set(layer, m);
+}
+
+function inPolygon(x: number, y: number, area: readonly { x: number; y: number }[]): boolean {
+	let inside = false;
+	for (let i = 0, j = area.length - 1; i < area.length; j = i++) {
+		const a = area[i]!;
+		const b = area[j]!;
+		if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+	}
+	return inside;
+}
+
+const movingToSub = (layer: Layer, event: PointerEvent) => Boolean(grace && grace.layer === layer && Date.now() < grace.until && (motion.get(layer)?.dir ?? 'right') === grace.side && inPolygon(event.clientX, event.clientY, grace.area));
 
 function switchTo(from: HTMLElement, to: HTMLElement | undefined, first: boolean): boolean {
 	const open = openOf(from);
@@ -110,11 +207,22 @@ export function pointerover(target: Element, event: PointerEvent): boolean {
 		const open = barTriggers(bar.closest(BAR) ?? bar).find((t) => t !== bar && t.getAttribute('aria-expanded') === 'true');
 		return open ? switchTo(open, bar, false) : false;
 	}
+	const within = event.pointerType === 'mouse' ? layerOf(target) : undefined;
+	if (within?.content.contains(target)) track(within, event);
 	const item = target.closest<HTMLElement>(ITEM);
 	const layer = item && layerOf(item);
 	if (!item || !layer || event.pointerType !== 'mouse') return false;
-	if (disabled(item)) layer.content.focus({ preventScroll: true });
-	else highlight(item);
+	if (disabled(item)) {
+		if (!movingToSub(layer, event)) layer.content.focus({ preventScroll: true });
+		return true;
+	}
+	if (movingToSub(layer, event)) return true;
+	highlight(item);
+	if (isSubTrigger(item) && subOf.get(layer)?.trigger !== item) {
+		grace = undefined;
+		clearTimeout(openTimer);
+		openTimer = window.setTimeout(() => layerOf(item) === layer && openSub(item, false), 100);
+	}
 	return true;
 }
 
@@ -125,6 +233,20 @@ export function pointerout(target: Element, event: PointerEvent): boolean {
 	if (!item || !layer || event.pointerType !== 'mouse') return false;
 	const to = event.relatedTarget instanceof Node ? event.relatedTarget : null;
 	if (to && item.contains(to)) return true;
+	if (to && layer.content.contains(to)) track(layer, event);
+	const sub = subOf.get(layer);
+	if (isSubTrigger(item)) {
+		clearTimeout(openTimer);
+		if (sub?.trigger === item) {
+			const rect = sub.content.getBoundingClientRect();
+			const side = sub.content.dataset.side ?? 'right';
+			const right = side === 'right';
+			const near = rect[right ? 'left' : 'right'];
+			const far = rect[right ? 'right' : 'left'];
+			grace = { layer, side, until: Date.now() + 300, area: [{ x: event.clientX + (right ? -5 : 5), y: event.clientY }, { x: near, y: rect.top }, { x: far, y: rect.top }, { x: far, y: rect.bottom }, { x: near, y: rect.bottom }] };
+		}
+	}
+	if (movingToSub(layer, event)) return true;
 	if (item.contains(document.activeElement)) layer.content.focus({ preventScroll: true });
 	return true;
 }
@@ -143,7 +265,14 @@ export function focusin(target: Element, event: FocusEvent): boolean {
 	if (bar) {
 		setTabStop(target);
 		mark(target);
-	} else if (target.matches(ITEM) && layerOf(target)) mark(target);
+		return false;
+	}
+	const layer = layerOf(target);
+	if (!layer) return false;
+	// Focus moving in a menu, elsewhere than an open submenu's trigger, closes that submenu (its onFocusOutside).
+	const sub = subOf.get(layer);
+	if (sub && sub.trigger !== target && layer.content.contains(target)) closeSubs(layer);
+	if (target.matches(ITEM)) mark(target);
 	return false;
 }
 
@@ -177,11 +306,27 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 	}
 	const layer = layerOf(target);
 	if (!layer || !layer.content.contains(target) || !layer.content.matches('[role="menu"]')) return false;
-	if ((event.key === 'ArrowRight' || event.key === 'ArrowLeft') && barOf(layer.trigger) && !target.closest('[aria-haspopup="menu"]')) {
-		const all = barTriggers(barOf(layer.trigger)!).filter((t) => !disabled(t));
-		const step = (event.key === 'ArrowRight') !== rtl(layer.trigger) ? 1 : -1;
+	const root = menuRoot(layer);
+	const inlineEnd = rtl(layer.content) ? 'ArrowLeft' : 'ArrowRight';
+	const inlineStart = inlineEnd === 'ArrowLeft' ? 'ArrowRight' : 'ArrowLeft';
+	if (isSubTrigger(target) && !disabled(target) && ['Enter', ' ', inlineEnd].includes(event.key)) {
 		event.preventDefault();
-		return switchTo(layer.trigger, all[(all.indexOf(layer.trigger) + step + all.length) % all.length], false);
+		const sub = subOf.get(layer)?.trigger === target ? subOf.get(layer) : openSub(target as HTMLElement, true);
+		if (sub && sub.content.contains(document.activeElement) === false) highlight(items(sub)[0]);
+		return true;
+	}
+	if (layer !== root && event.key === inlineStart) {
+		event.preventDefault();
+		const parent = parentOf(layer)!;
+		closeSubs(parent);
+		layer.trigger.focus();
+		return true;
+	}
+	if ((event.key === 'ArrowRight' || event.key === 'ArrowLeft') && barOf(root.trigger)) {
+		const all = barTriggers(barOf(root.trigger)!).filter((t) => !disabled(t));
+		const step = (event.key === 'ArrowRight') !== rtl(root.trigger) ? 1 : -1;
+		event.preventDefault();
+		return switchTo(root.trigger, all[(all.indexOf(root.trigger) + step + all.length) % all.length], false);
 	}
 	const list = items(layer);
 	const at = list.indexOf(target.closest<HTMLElement>(ITEM)!);

@@ -8,7 +8,8 @@ import { chromium, type Browser, type Page } from 'playwright';
 import ts from 'typescript';
 
 const PARTS = join(import.meta.dirname, '..', 'parts');
-const FLOATING_STUB = `export const computePosition = async () => ({ x: 0, y: 0, placement: 'bottom', middlewareData: {} });
+// Placement is not under test: a layer goes below its anchor, or beside it for a right-hand side (a submenu).
+const FLOATING_STUB = `export const computePosition = async (anchor, floating, o) => { const r = anchor.getBoundingClientRect(); const right = o.placement.startsWith('right'); return { x: right ? r.right : r.left, y: right ? r.top : r.bottom, placement: o.placement, middlewareData: {} }; };
 export const autoUpdate = () => () => {};
 export const arrow = () => ({}), flip = () => ({}), hide = () => ({}), limitShift = () => ({}), offset = () => ({}), shift = () => ({}), size = () => ({});`;
 
@@ -45,7 +46,7 @@ async function press(page: Page, key: string): Promise<void> {
 }
 
 const ITEMS = ['Profile', 'Billing', 'Disabled', 'Settings'];
-const dropdown = `<main><button type="button" style="position:fixed;right:20px;bottom:20px" id="menu" aria-haspopup="menu" aria-expanded="false" data-state="closed" data-slot="dropdown-menu-trigger">Open</button></main>
+const dropdown = `<main><button type="button" style="position:fixed;left:20px;top:20px" id="menu" aria-haspopup="menu" aria-expanded="false" data-state="closed" data-slot="dropdown-menu-trigger">Open</button></main>
 <div data-mm-layer="menu" hidden data-radix-popper-content-wrapper style="position:fixed;left:40px;top:100px"><div data-slot="dropdown-menu-content" role="menu" id="menu-content" aria-labelledby="menu" data-state="closed" tabindex="-1" data-radix-menu-content="">${ITEMS.map((t) => `<div role="menuitem" tabindex="-1" data-slot="dropdown-menu-item"${t === 'Disabled' ? ' aria-disabled="true" data-disabled=""' : ''}>${t}</div>`).join('')}</div></div>`;
 
 async function hoverItem(page: Page, text: string): Promise<void> {
@@ -154,5 +155,112 @@ test('Radix Menubar in a right-to-left page: ArrowLeft moves to the next trigger
 	await page.locator('#t-File').focus();
 	await press(page, 'ArrowLeft');
 	assert.equal(await active(page), 'Edit');
+	await page.close();
+});
+
+// A DropdownMenu.Sub as convert renders it: the sub-trigger an item of the menu, its content a layer keyed by its id.
+const withSub = `<main><button type="button" style="position:fixed;left:20px;top:20px" id="menu" aria-haspopup="menu" aria-expanded="false" data-state="closed" data-slot="dropdown-menu-trigger">Open</button></main>
+<div data-mm-layer="menu" hidden data-radix-popper-content-wrapper><div data-slot="dropdown-menu-content" role="menu" id="menu-content" aria-labelledby="menu" data-state="closed" tabindex="-1" data-radix-menu-content="" data-side="bottom" data-align="start">
+<div role="menuitem" tabindex="-1">Team</div><div role="menuitem" id="sub" aria-haspopup="menu" aria-expanded="false" aria-controls="sub-content" data-state="closed" tabindex="-1" data-slot="dropdown-menu-sub-trigger">Invite users</div><div role="menuitem" tabindex="-1">New Team</div><div role="menuitem" tabindex="-1">GitHub</div></div></div>
+<div data-mm-layer="sub" hidden data-radix-popper-content-wrapper><div data-slot="dropdown-menu-sub-content" role="menu" id="sub-content" aria-labelledby="sub" data-state="closed" tabindex="-1" data-radix-menu-content="" data-side="right" data-align="start"><div role="menuitem" tabindex="-1">Email</div><div role="menuitem" tabindex="-1">Message</div></div></div>`;
+
+const subOpen = (page: Page) => page.locator('#sub').getAttribute('aria-expanded').then((v) => v === 'true');
+
+test('Radix DropdownMenu.Sub with the mouse: resting on the sub-trigger opens it with focus left there, the pointer crosses to it, a choice in it closes the whole menu', async () => {
+	const page = await open(withSub, ['radix/dropdown-menu']);
+	await page.getByText('Open').click();
+	await settled(page);
+	await hoverItem(page, 'Invite users');
+	await page.waitForTimeout(150);
+	assert.equal(await subOpen(page), true);
+	assert.equal(await page.locator('#sub-content').isVisible(), true);
+	assert.equal(await active(page), 'Invite users');
+	assert.deepEqual(await highlighted(page), ['Invite users']);
+	// Down and right across "New Team" to "Message": the grace area keeps the submenu open.
+	const from = (await page.locator('#sub').boundingBox())!;
+	const to = (await page.getByText('Message', { exact: true }).boundingBox())!;
+	await page.mouse.move(to.x + 10, to.y + to.height / 2, { steps: 6 });
+	await settled(page);
+	void from;
+	assert.equal(await subOpen(page), true);
+	assert.equal(await active(page), 'Message');
+	await page.getByText('Message', { exact: true }).click();
+	await settled(page);
+	assert.equal(await page.getByText('Open').getAttribute('aria-expanded'), 'false');
+	assert.equal(await page.locator('#sub-content').isVisible(), false);
+	await page.close();
+});
+
+test('Radix DropdownMenu.Sub: another item of the parent taking focus closes the submenu', async () => {
+	const page = await open(withSub, ['radix/dropdown-menu']);
+	await page.getByText('Open').click();
+	await settled(page);
+	await hoverItem(page, 'Invite users');
+	await page.waitForTimeout(150);
+	assert.equal(await subOpen(page), true);
+	const team = (await page.getByText('Team', { exact: true }).boundingBox())!;
+	await page.mouse.move(team.x + 5, team.y + team.height / 2, { steps: 2 });
+	await settled(page);
+	assert.equal(await subOpen(page), false);
+	assert.deepEqual(await highlighted(page), ['Team']);
+	await page.close();
+});
+
+test('Radix DropdownMenu.Sub from the keyboard: ArrowRight or Enter opens it on its first item, ArrowLeft closes it back to its trigger, Escape closes the whole menu', async () => {
+	const page = await open(withSub, ['radix/dropdown-menu']);
+	await page.locator('#menu').focus();
+	await press(page, 'Enter');
+	await press(page, 'ArrowDown');
+	assert.equal(await active(page), 'Invite users');
+	await press(page, 'ArrowRight');
+	assert.equal(await subOpen(page), true);
+	assert.equal(await active(page), 'Email');
+	// The modal menu hid everything beside it from assistive technology; not its submenu.
+	assert.equal(await page.locator('[data-mm-layer="sub"]').getAttribute('aria-hidden'), null);
+	await press(page, 'ArrowDown');
+	assert.deepEqual(await highlighted(page), ['Message']);
+	await press(page, 'ArrowLeft');
+	assert.equal(await subOpen(page), false);
+	assert.equal(await page.locator('[data-mm-layer="sub"]').getAttribute('aria-hidden'), 'true');
+	assert.equal(await active(page), 'Invite users');
+	await press(page, 'Enter');
+	assert.equal(await active(page), 'Email');
+	await press(page, 'Escape');
+	assert.equal(await subOpen(page), false);
+	assert.equal(await page.getByText('Open').getAttribute('aria-expanded'), 'false');
+	assert.equal(await page.evaluate(() => document.activeElement?.id), 'menu');
+	await page.close();
+});
+
+test('Radix DropdownMenu.Sub: the pointer leaving the sub-trigger off the menu, having only moved down across it, leaves the submenu open and its trigger focused', async () => {
+	const page = await open(withSub, ['radix/dropdown-menu']);
+	await page.getByText('Open').click();
+	await settled(page);
+	await hoverItem(page, 'Team');
+	await hoverItem(page, 'Invite users');
+	await page.waitForTimeout(150);
+	assert.equal(await subOpen(page), true);
+	// Out to the left at the height of the submenu: Radix judges the way by the last move across the menu (straight
+	// down, so its initial "right"), not by where the pointer went once off it.
+	const at = (await page.locator('#sub').boundingBox())!;
+	await page.mouse.move(8, at.y + at.height / 2, { steps: 3 });
+	await settled(page);
+	assert.equal(await subOpen(page), true);
+	assert.equal(await active(page), 'Invite users');
+	await page.close();
+});
+
+test('Radix DropdownMenu.Sub: a press outside the menu and its open submenu closes both, focus back on the trigger', async () => {
+	const page = await open(withSub, ['radix/dropdown-menu']);
+	await page.getByText('Open').click();
+	await settled(page);
+	await hoverItem(page, 'Invite users');
+	await page.waitForTimeout(150);
+	assert.equal(await subOpen(page), true);
+	await page.mouse.click(5, 790);
+	await settled(page);
+	assert.equal(await subOpen(page), false);
+	assert.equal(await page.getByText('Open').getAttribute('aria-expanded'), 'false');
+	assert.equal(await page.evaluate(() => document.activeElement?.id), 'menu');
 	await page.close();
 });
