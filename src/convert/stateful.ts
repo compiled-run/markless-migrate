@@ -251,7 +251,8 @@ export class CheckablePlan {
 				const names = [...new Set([...Object.keys(c.on.attrs), ...Object.keys(c.off.attrs)])].filter((a) => c.on.attrs[a] !== c.off.attrs[a] && /^[A-Za-z_][\w.-]*$/.test(a));
 				const value = (v: string | undefined) => (v === undefined ? 'undefined' : lit(v));
 				const keys = el.tagName === 'button' || el.tagName === 'input' ? [] : group.kind === 'radio' ? [`onKeyDown={(event) => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); ${choose}; } else radioKeys(event, ${!group.clears}); }}`] : [`onKeyDown={(event) => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); ${choose}; } }}`];
-				const radioRoving = el.tagName === 'button' && group.kind === 'radio' ? [`onKeyDown={(event) => radioKeys(event, ${!group.clears})}`] : [];
+				// React Aria's ToggleButtonGroup and Radix's RovingFocusGroup items move focus in toggle.ts's keydown.
+				const radioRoving = el.tagName === 'button' && group.kind === 'radio' && attr(el, 'data-rac') === undefined && attr(el, 'data-radix-collection-item') === undefined ? [`onKeyDown={(event) => radioKeys(event, ${!group.clears})}`] : [];
 				// React Aria's Checkbox, Switch and Radio: a label around a visually hidden input that holds focus. A click
 				// on the label reaches the input too, and Space on the input clicks it: the input's click is the one use.
 				// Only the descendants that differ are bound, so the focused input is never rendered again.

@@ -125,6 +125,9 @@ export const PORTS: readonly Port[] = [
 	{ module: 'react-aria/disclosure', library: 'react-aria-components', exports: ['Disclosure', 'DisclosurePanel', 'DisclosureGroup'], events: ['click'], locate: () => true, needs: ['react-aria/interactions'] },
 	// React Aria's Table focus and keyboard model; its row selection is Markless state (convert's RacTablePlan).
 	{ module: 'react-aria/grid', library: 'react-aria-components', exports: ['Table', 'TableHeader', 'TableBody', 'Column', 'Row', 'Cell'], events: ['keydown', 'focusin', 'focusout'], locate: (el) => el.tagName === 'table' || attr(el, 'role') === 'row' || attr(el, 'role') === 'gridcell' || attr(el, 'role') === 'rowheader' || attr(el, 'role') === 'columnheader', needs: ['react-aria/interactions'] },
+	// React Aria's Toolbar keys (useToolbar, which its ToggleButtonGroup uses) and RadioGroup's (useRadioGroup, useRadio's
+	// tab stop); what is chosen is Markless state.
+	{ module: 'toggle', library: 'react-aria-components', exports: ['ToggleButtonGroup', 'Toolbar', 'RadioGroup', 'Radio'], events: ['keydown', 'focusin', 'focusout', 'click'], locate: () => true },
 	// What a native element does plus React Aria's hover, press and focus states (and the focus-within ones of the
 	// groups around them): Markless state or the browser does the rest.
 	{ module: 'react-aria/interactions', library: 'react-aria-components', exports: ['Button', 'Link', 'Input', 'TextArea', 'Group', 'SearchField', 'Label', 'Checkbox', 'Radio', 'RadioGroup', 'Switch', 'ToggleButton', 'ToggleButtonGroup', 'Tabs', 'TabList', 'Tab', 'TabPanel', 'Breadcrumbs', 'Breadcrumb', 'Keyboard'], events: [], locate: () => true },
