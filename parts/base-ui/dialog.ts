@@ -14,8 +14,8 @@ const CLOSE = '[data-slot$="dialog-close"], [data-slot="sheet-close"], [data-slo
 const TABBABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]';
 
 const undo = new WeakMap<Popup, () => void>();
-// Popover.Trigger renders Dialog.Trigger's markup; a popover's portal holds its Positioner, which carries data-side.
-const opensPopover = (key: string) => layersFor(key).some((n) => n.hasAttribute('data-base-ui-portal') && n.querySelector(':scope > [data-side]'));
+// Popover.Trigger renders Dialog.Trigger's markup; a popover's portal holds its Positioner (role=presentation, data-side).
+const opensPopover = (key: string) => layersFor(key).some((n) => n.hasAttribute('data-base-ui-portal') && n.querySelector(':scope > [role="presentation"][data-side]'));
 
 const tabbables = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>(TABBABLE)].filter((el) => !el.closest('[hidden], [inert]') && !el.hasAttribute('data-base-ui-focus-guard') && el.getClientRects().length > 0);
 
@@ -56,8 +56,17 @@ function open(trigger: HTMLElement): boolean {
 	const shown = modal ? hideOthers([p.portal]) : () => {};
 	const unlock = modal ? lockScroll() : () => {};
 	const onKey = (event: KeyboardEvent) => {
-		if (event.key !== 'Tab' || !modal) return;
+		if (event.key !== 'Tab') return;
 		const list = tabbables(p.popup);
+		if (!modal) {
+			// FloatingPortal's focus guards: out past the last element to what follows the trigger, back past the first to it.
+			const at = document.activeElement;
+			if (!at || !p.popup.contains(at) || (event.shiftKey ? at !== list[0] && at !== p.popup : list.length && at !== list[list.length - 1])) return;
+			event.preventDefault();
+			if (event.shiftKey) trigger.focus();
+			else (tabbables(document.body).find((el) => !p.portal.contains(el) && Boolean(trigger.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)) ?? trigger).focus();
+			return;
+		}
 		if (!list.length) {
 			event.preventDefault();
 			p.popup.focus({ preventScroll: true });
@@ -99,8 +108,10 @@ export function click(target: Element): boolean {
 	if (trigger) {
 		if (trigger.matches(TRIGGER) && opensPopover(trigger.id || layerKey(trigger))) return false;
 		const p = [...document.querySelectorAll('[data-base-ui-portal]')].map((n) => popupOf(n)).find((x) => x?.trigger === trigger);
-		if (p) return true;
-		return open(trigger);
+		// useClick toggles: a press on the trigger of an open dialog (only reachable when it is not modal) closes it.
+		if (p) close(p);
+		else open(trigger);
+		return true;
 	}
 	const closer = target.closest(CLOSE);
 	const p = closer && popupOf(closer);
