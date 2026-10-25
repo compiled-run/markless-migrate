@@ -56,7 +56,8 @@ const allowsMultiple = (group: HTMLElement) => group.hasAttribute('data-mm-multi
 function toggle(trigger: HTMLElement): void {
 	const panel = panelOf(trigger);
 	if (!panel) return;
-	const on = trigger.getAttribute('aria-expanded') !== 'true';
+	// The panel says whether it is expanded: the page may bind the trigger's aria-expanded to its own state, set first.
+	const on = panel.hasAttribute('aria-hidden') ? panel.getAttribute('aria-hidden') === 'true' : panel.hasAttribute('hidden');
 	const disclosure = disclosureOf(trigger);
 	const group = disclosure && groupOf(disclosure);
 	if (on && group && !allowsMultiple(group))

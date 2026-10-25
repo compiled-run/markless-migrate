@@ -219,6 +219,23 @@ test('Disclosure: expanding one collapses the other in its group', async () => {
 	await page.close();
 });
 
+test('Disclosure: the page binding the trigger to its own state first (an icon that swaps) does not undo the expansion', async () => {
+	const page = await open(accordion);
+	await page.evaluate(() => {
+		const t = document.getElementById('a2')!;
+		t.addEventListener('click', () => t.setAttribute('aria-expanded', String(t.getAttribute('aria-expanded') !== 'true')));
+	});
+	await page.click('#a2');
+	await page.waitForTimeout(50);
+	assert.deepEqual(await attrs(page, 'p2', ['hidden', 'aria-hidden']), { hidden: null, 'aria-hidden': 'false' });
+	assert.equal(await page.getAttribute('#a2', 'aria-expanded'), 'true');
+	await page.click('#a2');
+	await page.waitForTimeout(50);
+	assert.deepEqual(await attrs(page, 'p2', ['hidden', 'aria-hidden']), { hidden: 'until-found', 'aria-hidden': 'true' });
+	assert.equal(await page.getAttribute('#a2', 'aria-expanded'), 'false');
+	await page.close();
+});
+
 test('ComboBox: typing shows the options containing the text, ArrowDown and Enter choose with focus kept in the input', async () => {
 	const page = await open(combobox);
 	await page.click('#cb');
