@@ -30,6 +30,27 @@ function loadFor(id) {
 	return load;
 }
 
+// A load whose tag pins the clock (`now=<ms>`) sees the server clock start there and tick on; every other request keeps the real one.
+const RealDate = Date;
+const pinnedNow = () => {
+	const tag = store.getStore();
+	return tag?.now ? Number(tag.now) + (RealDate.now() - tag.started) : undefined;
+};
+class PinnedDate extends RealDate {
+	constructor(...args) {
+		const now = args.length ? undefined : pinnedNow();
+		if (now === undefined) super(...args);
+		else super(now);
+	}
+	static now() {
+		return pinnedNow() ?? RealDate.now();
+	}
+	static [Symbol.hasInstance](value) {
+		return value instanceof RealDate;
+	}
+}
+globalThis.Date = PinnedDate;
+
 const textual = (type) => /json|text|xml|javascript|graphql|x-www-form-urlencoded/.test(type);
 const mime = (value) => (value ?? '').split(';')[0].trim().toLowerCase();
 
@@ -166,6 +187,6 @@ for (const Server of [http.Server, https.Server]) {
 		if (!tag) return emit.call(this, event, ...args);
 		const fresh = tag.fresh ? freshCookie() : '';
 		if (fresh) req.headers.cookie = req.headers.cookie ? `${req.headers.cookie}; ${fresh}` : fresh;
-		return store.run(tag, () => emit.call(this, event, ...args));
+		return store.run({ ...tag, started: RealDate.now() }, () => emit.call(this, event, ...args));
 	};
 }

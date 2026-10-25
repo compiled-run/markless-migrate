@@ -554,13 +554,15 @@ export function writesAllowed(options: Pick<CheckOptions, 'oldOrigin' | 'newOrig
 	return (Boolean(options.staging?.old) || isLoopback(options.oldOrigin)) && (Boolean(options.staging?.new) || isLoopback(options.newOrigin));
 }
 
-async function replayRoute(run: Run, dir: string, route: string): Promise<{ run: Run; failures: Failure[] }> {
+async function replayRoute(run: Run, dir: string, route: string, pinnedTime: boolean): Promise<{ run: Run; failures: Failure[] }> {
 	const recording = await readRecording(dir, route);
 	if (!recording) {
 		return { run, failures: [{ route, dimension: 'network', check: 'recorded data', expected: `a recording in ${dir}`, actual: 'none for this route', hint: HINTS.dataMissing }] };
 	}
 	const replay = { set: randomUUID(), responses: recording.responses };
-	const next: Run = { ...run, old: { ...run.old, replay }, new: { ...run.new, replay } };
+	const at = run.old.serverTime === undefined ? undefined : pinnedTime ? run.old.serverTime : Date.parse(recording.at);
+	const clock = (env: SideEnv): SideEnv => (at === undefined ? env : { ...env, serverTime: at, freeze: env.freeze && { ...env.freeze, time: at } });
+	const next: Run = { ...run, old: clock({ ...run.old, replay }), new: clock({ ...run.new, replay }) };
 	const failures: Failure[] = [];
 	if (recording.responses.some((r) => r.side === 'server')) {
 		for (const [label, env] of [['old', next.old], ['new', next.new]] as const) {
@@ -716,9 +718,11 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const startedAt = new Date().toISOString();
 	resetSharedAnswers();
 	const browser = options.browser ?? (await chromium.launch({ ...LAUNCH, ignoreDefaultArgs: [...LAUNCH.ignoreDefaultArgs] }));
-	const freeze: FreezeOptions | false = options.freeze === false ? false : { ...DEFAULT_FREEZE, ...options.freeze };
+	// Recorded data has its own moment (dates, "3 hours ago"): both clocks read it, not a fixed date months away, unless --time names one.
+	const dataTime = options.data && (options.freeze === false || options.freeze?.time === undefined) ? Date.parse(startedAt) : undefined;
+	const freeze: FreezeOptions | false = options.freeze === false ? false : { ...DEFAULT_FREEZE, ...(dataTime !== undefined ? { time: dataTime } : {}), ...options.freeze };
 	const bypass = { ...(options.headers ? { headers: options.headers } : {}), ...(options.cookies?.length ? { cookies: options.cookies } : {}), ...(options.userAgent ? { userAgent: options.userAgent } : {}) };
-	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [], ...(options.data ? { renderFresh: true } : {}), ...bypass };
+	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [], ...(options.data ? { renderFresh: true, serverTime: freeze ? freeze.time : dataTime! } : {}), ...bypass };
 	const artifacts = options.artifactsDir ? new RouteArtifacts(options.artifactsDir, options.oldOrigin) : undefined;
 	const oldCache = options.cacheDir ? new OldCache(join(options.cacheDir, 'old'), { block: options.block ?? null }) : undefined;
 	const base: Run = { old: defaultEnv(options.oldOrigin, shared), new: defaultEnv(options.newOrigin, shared), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: { ...options.probes, layout: new Map<string, string>() } } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
@@ -798,7 +802,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 					options.onRoute?.(earlier);
 					return earlier;
 				}
-				const { run, failures } = data?.mode === 'replay' ? await replayRoute(roleRun, data.dir, route) : { run: roleRun, failures: [] };
+				const { run, failures } = data?.mode === 'replay' ? await replayRoute(roleRun, data.dir, route, options.freeze !== false && options.freeze?.time !== undefined) : { run: roleRun, failures: [] };
 				const done = await withDeadline(route, run, routeTimeout(options), (scoped) => checkAs(browser, scoped, route, role, loginPaths, options, light(route))).catch(unreachable(route));
 				const old = oldCaptures.get(done);
 				oldCaptures.delete(done);

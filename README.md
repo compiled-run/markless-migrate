@@ -261,7 +261,12 @@ changed undone and infinite animations paused at time 0, and requests to known a
 tag-manager, session-replay and client-side experiment hosts are blocked (`src/check/trackers.ts`;
 `--block` adds a host, `--allow` lets one load). `--no-freeze` turns freezing off. The server's own
 clock cannot be frozen from the browser, so the repeated old loads below still catch it, and the report
-lists every element that still varied and why. With `--source`, the old app's code is scanned for
+lists every element that still varied and why. With `--data`, a server that runs the request recorder
+has its clock pinned too, and both clocks read the data's own moment rather than the fixed instant
+(unless `--time` names one): `record` starts them at the start of the run, `replay` at the moment that
+route was recorded, so a "posted 3 hours ago" a server renders and one the old app's code works out in
+the browser agree with each other and with the data. A pinned server clock ticks on from there during a
+load; requests that are not check loads keep the real clock. With `--source`, the old app's code is scanned for
 sources of variation, each reported as pinned, blocked or left to the noise baseline.
 
 Each route is loaded twice on the old app and once on the new one, at a desktop (1280x800) and a
