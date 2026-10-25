@@ -54,6 +54,8 @@ function withPartImports(source: string, dir: string): string {
 	if (motion.length) out = out.replace('\n', `\nimport { ${motion.join(', ')} } from '${dir}/panel-motion.ts';\n`);
 	const toggleNames = ['radioKeys', 'submitForm', 'focusControl'].filter((name) => new RegExp(`\\b${name}\\(event`).test(out));
 	if (toggleNames.length) out = out.replace('\n', `\nimport { ${toggleNames.join(', ')} } from '${dir}/toggle.ts';\n`);
+	const sonnerNames = ['sonnerAdd', 'sonnerList', 'SONNER_EMPTY'].filter((name) => new RegExp(`\\b${name}\\b`).test(out));
+	if (sonnerNames.length) out = out.replace('\n', `\nimport { ${sonnerNames.join(', ')} } from '${dir}/sonner.ts';\n`);
 	if (/\bwriteCookies\(/.test(out)) out = out.replace('\n', `\nimport { writeCookies } from '${dir}/switch.ts';\n`);
 	if (/\bplayScene\(event/.test(out)) out = out.replace('\n', `\nimport { playScene } from '${dir}/scene.ts';\n`);
 	const dayPicker = ['dayPickerView', 'dayPickerModel', 'dayPickerEvent', 'dayPickerWake', 'dayPickerSet', 'dayPickerLabel', 'dayPickerClose'].filter((name) => new RegExp(`\\b${name}\\(`).test(out));
@@ -1225,8 +1227,9 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	if (handledForms.size) templatePorts.add('form');
 	const notifyPlan = new NotifyPlan();
 	let notifyCount = 0;
-	for (const [route, p] of prepared) notifyCount += notifyPlan.add(notified.get(route) ?? [], locator(p.root.parentNode as Element), (html) => emitChildren(parseFragment(html) as unknown as Element));
+	for (const [route, p] of prepared) notifyCount += notifyPlan.add(notified.get(route) ?? [], locator(p.root.parentNode as Element), (html, bind) => emitChildren(parseFragment(html) as unknown as Element, bind ? { bind } : {}));
 	if (notifyCount) log(`notifications on Markless state: ${notifyCount}`);
+	if (notifyPlan.sonner) templatePorts.add('sonner');
 	// The shared body children holding a live region a page shows its notifications in: that page renders them.
 	const ownAfter = new Map<string, number[]>();
 	for (const route of prepared.keys())
@@ -1398,22 +1401,34 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		// a branch on a module constant, which never changes.
 		const pageLayers = layers.own(route);
 		let after = bodyAfter ? `<BodyAfter route={${lit(route)}} />` : '';
+		// A toaster nests a repeat in a repeat's rows, which Markless renders only outside a branch: it follows the arms.
+		let toasters = '';
 		const owned = ownAfter.get(route);
 		if (bodyAfter && owned?.length) {
 			let from = 0;
 			after = '';
 			for (const i of owned) {
 				for (let j = from; j < i; j++) after += `<BodyAfter${j} route={${lit(route)}} />`;
-				after += emitElement(bodyParts.after[i]!.byRoute.get(route)!, { declarations, bind: (el) => mergeBindings(bindParts(el, usedPorts), notifyPlan.bind(el)), dropped: noteDropped });
+				const el = bodyParts.after[i]!.byRoute.get(route)!;
+				const markup = emitElement(el, { declarations, bind: (x) => mergeBindings(bindParts(x, usedPorts), notifyPlan.bind(x)), dropped: noteDropped });
+				if (notifyPlan.rendersToasts(el)) toasters += markup;
+				else after += markup;
 				from = i + 1;
 			}
 			for (let j = from; j < bodyParts.after.length; j++) after += `<BodyAfter${j} route={${lit(route)}} />`;
 		}
-		const extras = (ownExtras.get(route) ?? []).map((el) => emitElement(el, { declarations, bind: (x) => notifyPlan.bind(x), dropped: noteDropped })).join('');
+		const extras = (ownExtras.get(route) ?? [])
+			.map((el) => {
+				const markup = emitElement(el, { declarations, bind: (x) => notifyPlan.bind(x), dropped: noteDropped });
+				if (!notifyPlan.rendersToasts(el)) return markup;
+				toasters += markup;
+				return '';
+			})
+			.join('');
 		// A copy control's text rides in the page's HTML as the old page's props did (an attribute: template content must be literal).
 		const copied = Object.entries(p.clipboard).map(([key, text]) => `<template data-mm-clipboard=${lit(key)} data-mm-text={${lit(text)}}></template>`).join('');
 		const tail = `${after}${extras}${pageLayers.map((n) => `<${n} />`).join('')}${copied}`;
-		const markup = tail ? `<>@if (${PAGE_SHOWN}) { ${rootMarkup} }@if (${PAGE_SHOWN}) { <>${tail}</> }</>` : rootMarkup;
+		const markup = tail || toasters ? `<>@if (${PAGE_SHOWN}) { ${rootMarkup} }${tail ? `@if (${PAGE_SHOWN}) { <>${tail}</> }` : ''}${toasters}</>` : rootMarkup;
 		const list = byFile.get(file) ?? [];
 		list.push({ route, search: url.search, markup, parts, declarations, layers: pageLayers });
 		byFile.set(file, list);

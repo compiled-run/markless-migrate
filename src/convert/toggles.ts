@@ -604,6 +604,18 @@ export interface Notify {
 	readonly into: { readonly sig: string; readonly nth: number };
 	readonly html: string;
 	readonly ms: number;
+	/** A sonner toast: what its Toast and Toaster were given, and its markup over its life. */
+	readonly sonner?: SonnerToast;
+}
+
+/** A sonner toast as the old page's React tree held it (parts/sonner.ts runs it). */
+export interface SonnerToast {
+	readonly position?: string;
+	readonly duration: number | null;
+	readonly dismissible: boolean;
+	readonly promise: boolean;
+	readonly phases: readonly { readonly at: number; readonly type?: string; readonly attrs: readonly (readonly [string, string])[]; readonly inner: string }[];
+	readonly toaster: { readonly position: string; readonly gap: number; readonly visibleToasts: number; readonly expand: boolean; readonly hotkey: readonly string[]; readonly ol: readonly (readonly [string, string])[] };
 }
 
 export interface NotifyCapture {
@@ -613,7 +625,7 @@ export interface NotifyCapture {
 
 /** Uses each listed control on a fresh load and records what it added inside a live region, until that went away. */
 export async function captureNotifications(browser: Browser, origin: string, route: string, dir: string, selectors: readonly string[]): Promise<NotifyCapture> {
-	const file = join(dir, `${createHash('sha256').update(`notify:${route}|${JSON.stringify(selectors)}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`notify2:${route}|${JSON.stringify(selectors)}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as NotifyCapture, () => undefined);
 	if (cached && cached.route === route) return cached;
 	const notifications: Notify[] = [];
@@ -672,6 +684,8 @@ export async function captureNotifications(browser: Browser, origin: string, rou
 				})[0];
 			});
 			if (!added) continue;
+			const sonner = await page.evaluate(readSonner).catch(() => undefined);
+			const phases = sonner ? [...sonner.phases] : [];
 			let ms = 0;
 			while (Date.now() - started < 15000) {
 				const gone = await page.evaluate(() => (window as unknown as { __mmAdded: { node: Element }[] }).__mmAdded.every((a) => !a.node.isConnected));
@@ -679,9 +693,15 @@ export async function captureNotifications(browser: Browser, origin: string, rou
 					ms = Date.now() - started;
 					break;
 				}
-				await page.waitForTimeout(250);
+				// A toast whose content changes while it shows (a promise's result) is recorded at each change.
+				if (sonner) {
+					const now = await page.evaluate(sonnerPhase).catch(() => undefined);
+					const last = phases[phases.length - 1]!;
+					if (now && (now.inner !== last.inner || now.type !== last.type)) phases.push({ ...now, at: Date.now() - started });
+				}
+				await page.waitForTimeout(sonner ? 100 : 250);
 			}
-			notifications.push({ sig: found.sig, nth: found.nth, into: added.into, html: added.html, ms: ms || 15000 });
+			notifications.push({ sig: found.sig, nth: found.nth, into: added.into, html: added.html, ms: ms || 15000, ...(sonner ? { sonner: { ...sonner, phases } } : {}) });
 		}
 	} finally {
 		await context.close().catch(() => {});
@@ -690,6 +710,43 @@ export async function captureNotifications(browser: Browser, origin: string, rou
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(capture));
 	return capture;
+}
+
+/** The newest sonner toast's markup and type (run in the page). */
+function sonnerPhase(): { type?: string; attrs: [string, string][]; inner: string } | undefined {
+	const li = (window as unknown as { __mmToast?: Element }).__mmToast;
+	if (!li?.isConnected) return undefined;
+	return { type: li.getAttribute('data-type') ?? undefined, attrs: [...li.attributes].map((a) => [a.name, a.value]), inner: li.innerHTML };
+}
+
+/**
+ * The toast the use added, read from sonner's React tree (run in the page): the Toast's props (its toast, the Toaster's
+ * duration, gap, visible count and expand) and the Toaster's own (position, hotkey), and the list it went into.
+ */
+function readSonner(): Omit<SonnerToast, 'phases'> & { phases: { at: number; type?: string; attrs: [string, string][]; inner: string }[] } | undefined {
+	const w = window as unknown as { __mmAdded: { node: Element }[]; __mmToast?: Element };
+	const li = w.__mmAdded.flatMap((a) => (a.node.matches('li[data-sonner-toast]') ? [a.node] : [...a.node.querySelectorAll('li[data-sonner-toast]')])).find((e) => e.isConnected);
+	if (!li) return undefined;
+	w.__mmToast = li;
+	type Fiber = { memoizedProps?: Record<string, unknown>; return?: Fiber };
+	const fiberOf = (el: Element) => (el as unknown as Record<string, Fiber>)[Object.keys(el).find((k) => k.startsWith('__reactFiber$'))!];
+	let f = fiberOf(li);
+	while (f && !(f.memoizedProps && 'visibleToasts' in f.memoizedProps && 'toast' in f.memoizedProps)) f = f.return;
+	const section = li.closest('section');
+	const toasterProps = section ? fiberOf(section)?.return?.memoizedProps : undefined;
+	const props = f?.memoizedProps;
+	const ol = li.closest('ol');
+	if (!props || !ol) return undefined;
+	const toast = props.toast as { position?: string; duration?: number; dismissible?: boolean; promise?: unknown; type?: string };
+	const duration = toast.duration || (props.duration as number | undefined) || 4000;
+	return {
+		...(toast.position ? { position: toast.position } : {}),
+		duration: duration === Infinity ? null : duration,
+		dismissible: toast.dismissible !== false,
+		promise: Boolean(toast.promise),
+		phases: [{ at: 0, type: li.getAttribute('data-type') ?? undefined, attrs: [...li.attributes].map((a) => [a.name, a.value]), inner: li.innerHTML }],
+		toaster: { position: (toasterProps?.position as string | undefined) ?? 'bottom-right', gap: (props.gap as number | undefined) ?? 14, visibleToasts: (props.visibleToasts as number | undefined) ?? 3, expand: Boolean(props.expandByDefault), hotkey: (toasterProps?.hotkey as string[] | undefined) ?? ['altKey', 'KeyT'], ol: [...ol.attributes].map((a) => [a.name, a.value]) },
+	};
 }
 
 /** An accordion of the old page, by its root's signature and occurrence, and whether two of its items stayed open together. */

@@ -228,3 +228,26 @@ test('Base UI checkables take Space as their library does (a checkbox on key up,
 	assert.match(out, /<span role="switch"[^\n]*?else if \(event\.key === 'Enter'\) \{ event\.preventDefault\(\); tg1 = !tg1; \}/, 'a switch takes Enter too');
 	assert.equal(out.match(/onFocus=\{\(event\) => focusControl\(event\)\}/g)?.length, 2);
 });
+
+test('a sonner toaster renders its lists and toasts from one state, each control adding the toast its use showed, each phase shown in its turn', async () => {
+	const { NotifyPlan } = await import('../src/convert/stateful.ts');
+	const { emitChildren } = await import('../src/convert/tsrx.ts');
+	const { parseFragment } = await import('parse5');
+	const doc = parseDocument('<body><main><button data-slot="button">Show</button><button data-slot="button">Promise</button><button data-slot="button">Left</button></main><section aria-label="Notifications alt+T" aria-live="polite"></section></body>');
+	const [show, promise, left] = [...walk(body(doc))].filter((el) => el.tagName === 'button') as [Element, Element, Element];
+	const region = find(body(doc), (el) => el.tagName === 'section')!;
+	const toaster = { position: 'top-center', gap: 14, visibleToasts: 3, expand: false, hotkey: ['altKey', 'KeyT'], ol: [['dir', 'ltr'], ['tabindex', '-1'], ['data-sonner-toaster', 'true'], ['data-y-position', 'top'], ['data-x-position', 'center'], ['style', '--front-toast-height: 50px; --width: 356px; --gap: 14px;']] as [string, string][] };
+	const li = (type: string): [string, string][] => [['tabindex', '0'], ['data-sonner-toast', ''], ['data-mounted', 'true'], ['data-type', type], ['data-front', 'true'], ['style', '--index: 0; --toasts-before: 0; --z-index: 1; --offset: 0px; --initial-height: 50px;']];
+	const note = (sig: string, sonner: object) => ({ sig, nth: 0, into: { sig: 'r', nth: 0 }, html: '', ms: 4600, sonner: { toaster, dismissible: true, ...sonner } as never });
+	const plan = new NotifyPlan();
+	plan.add([note('s', { duration: 4000, promise: false, phases: [{ at: 0, attrs: li(''), inner: '<div data-title="">Event</div>' }] }), note('p', { duration: 4000, promise: true, phases: [{ at: 0, type: 'loading', attrs: li('loading'), inner: '<div data-title="">Loading...</div>' }, { at: 2000, type: 'success', attrs: li('success'), inner: '<div data-title="">Done</div>' }] }), note('l', { position: 'top-left', duration: 4000, promise: false, phases: [{ at: 0, attrs: li(''), inner: '<div data-title="">Left</div>' }] })], (sig) => ({ s: show, p: promise, l: left, r: region })[sig as 's' | 'p' | 'l' | 'r'], (html, bind) => emitChildren(parseFragment(html) as unknown as Element, bind ? { bind } : {}));
+	assert.ok(plan.sonner);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<section aria-label="Notifications alt\+T" aria-live="polite" data-mm-toaster="tst0">@for \(const list of tst0\.lists; key list\.position\) \{ <ol dir="ltr" tabindex="-1" data-sonner-toaster="true" data-y-position=\{list\.y\} data-x-position=\{list\.x\} style=\{list\.style\} onMouseEnter=\{\(event\) => sonnerList\(\{[^}]*\}, list\.position, event, \(v\) => \(tst0 = v\)\)\}/);
+	assert.match(out, /@for \(const item of list\.items; key item\.id\) \{ <li tabindex=\{item\.a\["tabindex"\]\} data-sonner-toast=\{item\.a\["data-sonner-toast"\]\} data-mounted=\{item\.a\["data-mounted"\]\} data-type=\{item\.a\["data-type"\]\} data-front=\{item\.a\["data-front"\]\}[^>]* style=\{item\.a\.style\}>/, 'a toast has no handler of its own');
+	assert.match(out, /<div data-title="" style=\{item\.view === "1\.0" \? undefined : "display: none"\}>Loading\.\.\.<\/div><div data-title="" style=\{item\.view === "1\.1" \? undefined : "display: none"\}>Done<\/div>/, 'every phase is in the row, hidden but for its own');
+	assert.doesNotMatch(out, /@if \(item\.view/, 'a row holding an arm is rebuilt whenever the rows move');
+	assert.match(out, /<button data-slot="button" onClick=\{\(\) => sonnerAdd\(\{"id":"tst0","position":"top-center","gap":14,"visibleToasts":3,"expand":false,"hotkey":\["altKey","KeyT"\],"style":"--width: 356px; --gap: 14px;"\}, \{"view":1,"duration":4000,"dismissible":true,"promise":true,"style":"","phases":\[\{"at":0,"type":"loading","attrs":\{"tabindex":"0","data-sonner-toast":"","data-type":"loading"\}\}/);
+	assert.deepEqual(plan.bind(show)?.declare, ['let tst0 = state(SONNER_EMPTY);']);
+	assert.ok(plan.hosts(region));
+});
