@@ -34,7 +34,7 @@ import { CheckProgress } from './progress.ts';
 import { applyNavigation, checkNavigation, type NavigationOptions, type NavigationResult } from './nav-parity.ts';
 import { loadFailures, measureLoad, psiFailures, type LoadOptions } from './load.ts';
 import { measurePsi, psiKey } from './psi.ts';
-import { assetsToProbe, compareRoute, cssTargets, forgetFailures, httpFailures, noiseReport, noisyStyles, withFailures, type Probe } from './compare.ts';
+import { assetsToProbe, compareRoute, cssTargets, forgetFailures, httpFailures, noiseReport, noisyStyles, weightAllowed, withFailures, type Probe } from './compare.ts';
 import { matchElements } from './match.ts';
 import { contractLines, type NetworkRecord } from './network.ts';
 import type { SourceFacts } from './source-facts.ts';
@@ -223,7 +223,7 @@ async function loadBoth(browser: Browser, run: Run, route: string, viewports: re
 	// The new page gets the third-party answers the cached old page read; one this run already got differently means the old page is loaded again.
 	if (cached && (await adoptAnswers(cached.answers ?? []))) {
 		for (const page of cached.olds.flatMap((o) => Object.values(o.pages))) shareAnswers(page.network?.records ?? [], run.old.origin);
-		return { olds: cached.olds, loads: cached.loads, next: await captureRoute(browser, run.new.origin, route, viewports, run.new) };
+		return { olds: cached.olds, loads: cached.loads, next: await steadyWeight(browser, run, route, viewports, cached.olds, await captureRoute(browser, run.new.origin, route, viewports, run.new)) };
 	}
 	if (cached) run.oldCache?.demote();
 	// The OLD loads must not overlap, or time-based noise (clocks, counters) looks stable; the third comes after NEW so it brackets it in time.
@@ -235,7 +235,24 @@ async function loadBoth(browser: Browser, run: Run, route: string, viewports: re
 	const answers = await storedAnswers([...new Set(olds.flatMap((o) => Object.values(o.pages).flatMap((p) => thirdPartyLoads.get(p) ?? [])))]);
 	// A page that heard a live database is that moment's data: it is loaded afresh each run unless the data is replayed.
 	if (!olds.some((o) => Object.values(o.pages).some((p) => p.sockets?.length))) await run.oldCache?.write('captures', run.old, key, loads, { olds, loads, answers });
-	return { olds, next, loads };
+	return { olds, next: await steadyWeight(browser, run, route, viewports, olds, next), loads };
+}
+
+/**
+ * A page's own start-up can take a longer path on some loads: React hydrating before the streamed data it waits on has
+ * arrived suspends and retries, about 2 to 4 kB more code run on one load in five or so of a Next.js page, on either side.
+ * The old side's spread comes from two or three loads; the new side's one load over the allowance is loaded once more,
+ * and the load that ran less stands, so only code every new load runs is counted against the old page.
+ */
+async function steadyWeight(browser: Browser, run: Run, route: string, viewports: readonly Viewport[], olds: readonly RouteCapture[], next: RouteCapture): Promise<RouteCapture> {
+	const desktop = Object.keys(olds[0]!.pages)[0]!;
+	const first = next.pages[desktop];
+	if (!first || first.weight.executed <= weightAllowed(olds, 'executed')) return next;
+	const again = (await captureRoute(browser, run.new.origin, route, viewports.slice(0, 1), run.new)).pages[desktop];
+	if (!again || again.weight.executed >= first.weight.executed) return next;
+	const kept: PageCapture = { ...first, weight: again.weight };
+	for (const map of [pageLoads, thirdPartyLoads]) if (map.has(first)) map.set(kept, map.get(first)!);
+	return { ...next, pages: { ...next.pages, [desktop]: kept } };
 }
 
 /** The old page loaded without a stylesheet of its own in every load (a stale snapshot naming a file its host no longer serves): it shows unstyled, so nothing is compared against it and the route is not checked rather than red. */

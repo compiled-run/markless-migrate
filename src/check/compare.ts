@@ -14,7 +14,7 @@ import { compareNetwork, contractLines } from './network.ts';
 import type { ClientFact, NondeterminismFact } from './source-facts.ts';
 import { at as sourceAt } from './source-facts.ts';
 import { diffFields, diffLines, fieldTemplates, lineTemplates, type LineDiff } from './noise.ts';
-import type { AssetRecord, Box, Dimension, ElementSnapshot, Failure, HttpCapture, NoiseReport, PageCapture, RouteCapture, RouteResult, Shot } from './types.ts';
+import type { AssetRecord, Box, Dimension, ElementSnapshot, Failure, HttpCapture, NoiseReport, PageCapture, RouteCapture, RouteResult, ScriptWeight, Shot } from './types.ts';
 import { DIMENSIONS } from './types.ts';
 import { compareWithNoise, identicalShots, visuallyDifferent } from './visual.ts';
 import { storageFailure } from './storage.ts';
@@ -248,6 +248,45 @@ export function httpFailures(route: string, olds: readonly HttpCapture[], next: 
 	return failures;
 }
 
+/** The most JavaScript the new page may download or run at load: the first old load's, plus the spread between the old loads, plus the slack. */
+export function weightAllowed(olds: readonly RouteCapture[], key: 'downloaded' | 'executed'): number {
+	const oldA = olds[0]!;
+	const desktop = Object.keys(oldA.pages)[0]!;
+	const wa = oldA.pages[desktop]!.weight;
+	const others = olds.length > 1 ? olds.slice(1) : [oldA];
+	const slack = key === 'executed' ? Math.max(WEIGHT_SLACK_BYTES, Math.round(wa[key] * EXECUTED_SLACK_RATIO)) : WEIGHT_SLACK_BYTES;
+	return wa[key] + Math.max(...others.map((o) => Math.abs(wa[key] - o.pages[desktop]!.weight[key]))) + slack;
+}
+
+/** The new page downloading or running more JavaScript at load than the old one allows; scripts are told apart by what they hold, not by their names. */
+export function weightFailures(route: string, olds: readonly RouteCapture[], next: RouteCapture): Failure[] {
+	const failures: Failure[] = [];
+	const desktop = Object.keys(olds[0]!.pages)[0]!;
+	const wa = olds[0]!.pages[desktop]!.weight;
+	const wn = next.pages[desktop]?.weight ?? { downloaded: 0, source: 0, executed: 0, scripts: [] };
+	for (const key of ['downloaded', 'executed'] as const) {
+		const allowed = weightAllowed(olds, key);
+		if (wn[key] > allowed) {
+			const size = (s: ScriptWeight) => (key === 'downloaded' ? s.bytes : s.executed);
+			const same = (a: ScriptWeight, b: ScriptWeight) => (a.content && b.content ? a.content === b.content : a.url === b.url);
+			const only = wn.scripts.filter((s) => !wa.scripts.some((o) => same(o, s))).sort((x, y) => size(y) - size(x)).slice(0, 3);
+			const more = wn.scripts.flatMap((s) => {
+				const o = wa.scripts.find((x) => same(x, s));
+				return o && size(s) > size(o) ? [{ url: s.url, by: size(s) - size(o) }] : [];
+			}).sort((x, y) => y.by - x.by).slice(0, 3);
+			failures.push({
+				route,
+				dimension: 'weight',
+				check: key === 'downloaded' ? 'JavaScript downloaded' : 'JavaScript run at load',
+				expected: `at most ${allowed} bytes (old: ${wa[key]})`,
+				actual: `${wn[key]} bytes${only.length ? `; new-only scripts: ${only.map((s) => `${s.url} (${size(s)} B)`).join(', ')}` : ''}${more.length ? `; ${key === 'downloaded' ? 'downloaded' : 'ran'} more of: ${more.map((m) => `${m.url} (+${m.by} B)`).join(', ')}` : ''}`,
+				hint: HINTS.weight,
+			});
+		}
+	}
+	return failures;
+}
+
 export function compareRoute(route: string, olds: readonly RouteCapture[], next: RouteCapture, probes: ReadonlyMap<string, Probe>, clients: readonly ClientFact[] = []): RouteResult {
 	const oldA = olds[0]!;
 	const others = olds.length > 1 ? olds.slice(1) : [oldA];
@@ -351,22 +390,7 @@ export function compareRoute(route: string, olds: readonly RouteCapture[], next:
 
 	const wa = oldA.pages[desktop]!.weight;
 	const wn = next.pages[desktop]?.weight ?? { downloaded: 0, source: 0, executed: 0, scripts: [] };
-	for (const key of ['downloaded', 'executed'] as const) {
-		const slack = key === 'executed' ? Math.max(WEIGHT_SLACK_BYTES, Math.round(wa[key] * EXECUTED_SLACK_RATIO)) : WEIGHT_SLACK_BYTES;
-		const allowed = wa[key] + Math.max(...others.map((o) => Math.abs(wa[key] - o.pages[desktop]!.weight[key]))) + slack;
-		if (wn[key] > allowed) {
-			const oldUrls = new Set(wa.scripts.map((s) => s.url));
-			const only = wn.scripts.filter((s) => !oldUrls.has(s.url)).sort((x, y) => y[key === 'downloaded' ? 'bytes' : 'executed'] - x[key === 'downloaded' ? 'bytes' : 'executed']).slice(0, 3);
-			failures.push({
-				route,
-				dimension: 'weight',
-				check: key === 'downloaded' ? 'JavaScript downloaded' : 'JavaScript run at load',
-				expected: `at most ${allowed} bytes (old: ${wa[key]})`,
-				actual: `${wn[key]} bytes${only.length ? `; new-only scripts: ${only.map((s) => `${s.url} (${key === 'downloaded' ? s.bytes : s.executed} B)`).join(', ')}` : ''}`,
-				hint: HINTS.weight,
-			});
-		}
-	}
+	failures.push(...weightFailures(route, olds, next));
 
 	return withFailures({ route, ok: true, dimensions: {} as RouteResult['dimensions'], failures: [], weight: { old: { downloaded: wa.downloaded, source: wa.source, executed: wa.executed }, new: { downloaded: wn.downloaded, source: wn.source, executed: wn.executed } }, visualDiffs, shots, ...(network ? { network } : {}), ...(images.improvements.length ? { improvements: images.improvements } : {}) }, failures);
 }

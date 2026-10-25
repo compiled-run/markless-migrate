@@ -277,6 +277,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 				bytes: scriptBytes.get(entry.url)?.bytes ?? 0,
 				source: (entry.source ?? '').length,
 				executed: executedBytes(entry.source ?? '', entry.functions),
+				content: createHash('sha256').update(entry.source ?? '').digest('hex').slice(0, 16),
 			})),
 			...[...scriptBytes].filter(([url]) => !ran.some((entry) => entry.url === url)).map(([url, size]) => ({ url: toLocal(url, origin), bytes: size.bytes, source: size.source, executed: 0 })),
 		];
