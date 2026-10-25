@@ -1,0 +1,24 @@
+{
+	"rewrites": [
+		{
+			"source": "/_markless/:path*",
+			"destination": "https://mm-tanstack-query-new.vercel.app/_markless/:path*"
+		},
+		{
+			"source": "/build/:path*",
+			"destination": "https://mm-tanstack-query-new.vercel.app/build/:path*"
+		},
+		{
+			"source": "/",
+			"destination": "https://mm-tanstack-query-old.vercel.app/"
+		},
+		{
+			"source": "/:path*/",
+			"destination": "https://mm-tanstack-query-old.vercel.app/:path*/"
+		},
+		{
+			"source": "/:path*",
+			"destination": "https://mm-tanstack-query-old.vercel.app/:path*"
+		}
+	]
+}

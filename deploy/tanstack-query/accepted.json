@@ -1,0 +1,112 @@
+{
+	"accepted": [
+		{
+			"route": "**",
+			"dimension": "behaviour",
+			"check": "browser storage after the page loads",
+			"match": {
+				"expected": "(no other keys)",
+				"actual": "/^extra cookie kitchen-sink-tab HttpOnly SameSite=Lax session(, cookie (loaderDelay|pendingMinMs|pendingMs) SameSite=Lax session)*$/"
+			},
+			"reason": "The old app keeps its invoices, users and sign-in in tab memory and its panel settings in sessionStorage. Markless renders every page, including in-place navigations, on the server, which needs both with each request; a cookie is the only thing a navigation fetch carries. kitchen-sink-tab names the tab's data on the server (a new one on each fresh visit or reload, as tab memory starts over); loaderDelay, pendingMs and pendingMinMs mirror the sessionStorage keys of the same names, which are still written as the old app writes them.",
+			"by": "Claude Code (port worker)",
+			"date": "2026-10-25"
+		},
+		{
+			"route": "**",
+			"dimension": "behaviour",
+			"check": "**then go back before its page has arrived**",
+			"match": {
+				"expected": "/^kept in the browser: (- sessionStorage (loaderDelay|pendingMinMs|pendingMs)(, )?)+$/",
+				"actual": "/^kept in the browser: - cookie kitchen-sink-tab HttpOnly SameSite=Lax session, (- cookie (loaderDelay|pendingMinMs|pendingMs) SameSite=Lax session, )*(- sessionStorage (loaderDelay|pendingMinMs|pendingMs)(, )?)+$/"
+			},
+			"reason": "The same cookies as the kitchen-sink-tab entry, listed when Back leaves the app (the invoice pages' first raced link is the page itself, so no history entry is added and both apps go back to the blank tab): what the tab keeps after leaving is those cookies beside the sessionStorage keys the old app keeps.",
+			"by": "Claude Code (port worker)",
+			"date": "2026-10-25"
+		},
+		{
+			"route": "**",
+			"dimension": "*",
+			"check": "**",
+			"match": {
+				"expected": "/^changed: (sessionStorage (loaderDelay|pendingMinMs|pendingMs): \"\\d+\" → \"\\d+\"( \\| )?)+$/",
+				"actual": "/^changed: (cookie (loaderDelay|pendingMinMs|pendingMs): \\d+ → \\d+ \\| )+(sessionStorage (loaderDelay|pendingMinMs|pendingMs): \"\\d+\" → \"\\d+\"( \\| )?)+$/"
+			},
+			"reason": "The sandbox panel writes the same sessionStorage values as the old app and mirrors each into a cookie of the same name, so the server's mock API waits as long as the browser's did and a reload renders the panel with the stored values (see the kitchen-sink-tab entry).",
+			"by": "Claude Code (port worker)",
+			"date": "2026-10-25"
+		},
+		{
+			"route": "**",
+			"dimension": "*",
+			"check": "**button \"Create\"**",
+			"match": {
+				"expected": "/^requests: \\(none\\)/",
+				"actual": "/^requests: ((POST|GET) \\/api\\/invoices( \\{[^}]*\\})?(, )?)+$/"
+			},
+			"reason": "The old app's mock API is in-memory in the tab, so creating an invoice and refetching the list make no request. In the port the data lives on the server for server rendering, so the mutation is POST /api/invoices and the invalidated list is fetched again with GET /api/invoices: the same calls the mock made, now over HTTP.",
+			"by": "Claude Code (port worker)",
+			"date": "2026-10-25"
+		},
+		{
+			"route": "**",
+			"dimension": "*",
+			"check": "**button \"Save\"**",
+			"match": {
+				"expected": "/^requests: \\(none\\)/",
+				"actual": "/^requests: ((PATCH|GET) \\/api\\/invoices(\\/\\{id\\}|\\/\\d+)?( \\{[^}]*\\})?(, )?)+$/"
+			},
+			"reason": "As for Create: saving is PATCH /api/invoices/{id}, and invalidateQueries() refetches the list and the invoice, GET /api/invoices and GET /api/invoices/{id}.",
+			"by": "Claude Code (port worker)",
+			"date": "2026-10-25"
+		},
+		{
+			"route": "**",
+			"dimension": "*",
+			"check": "**button \"Login\"**",
+			"match": {
+				"expected": "/^requests: \\(none\\)/",
+				"actual": "/^requests: POST \\/api\\/auth \\{\"username\":\"string\"\\}$/"
+			},
+			"reason": "The old app's auth object is tab memory; the port's /profile guard runs on the server, so signing in is POST /api/auth for this tab.",
+			"by": "Claude Code (port worker)",
+			"date": "2026-10-25"
+		},
+		{
+			"route": "**",
+			"dimension": "*",
+			"check": "**button \"Log out\"**",
+			"match": {
+				"expected": "/^requests: \\(none\\)/",
+				"actual": "/^requests: DELETE \\/api\\/auth$/"
+			},
+			"reason": "As for Login: signing out is DELETE /api/auth for this tab.",
+			"by": "Claude Code (port worker)",
+			"date": "2026-10-25"
+		},
+		{
+			"route": "/markless-migrate-no-such-page",
+			"dimension": "http",
+			"check": "status",
+			"match": {
+				"expected": "200 /markless-migrate-no-such-page",
+				"actual": "404 /markless-migrate-no-such-page"
+			},
+			"reason": "The old app is a static single-page host that answers every address 200 and draws Not Found in the browser; the port answers an unknown address 404 with the same Not Found page, which is what crawlers and caches should see.",
+			"by": "Claude Code (port worker)",
+			"date": "2026-10-25"
+		},
+		{
+			"route": "/dashboard**",
+			"dimension": "rendered",
+			"check": "accessibility tree",
+			"match": {
+				"expected": "  - /url: /dashboard/users",
+				"actual": "  - /url: /dashboard/users?usersView=%7B%7D"
+			},
+			"reason": "TanStack Router's users route writes usersView={} into the address as it mounts, after the link to /dashboard/users was followed. Markless runs no code at load, so the Users tab links straight to /dashboard/users?usersView=%7B%7D: the address after the click is the old app's, the link's href is not.",
+			"by": "Claude Code (port worker)",
+			"date": "2026-10-25"
+		}
+	]
+}
