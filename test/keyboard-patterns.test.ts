@@ -4,8 +4,11 @@ import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { defaultEnv } from '../src/check/browser.ts';
-import { compareJourneys, explore, replayAll, type RecordedJourney } from '../src/check/journeys.ts';
+import { compareJourneys, explore, replayAll, timedOnly, type RecordedJourney } from '../src/check/journeys.ts';
 import { VIEWPORTS } from '../src/check/types.ts';
+
+// A step that only answered later is timed again one side at a time before it stands (run.ts retime); these tests compare what the steps did, so a busy machine's late answer is left to that.
+const compared = (...args: Parameters<typeof compareJourneys>) => compareJourneys(...args).filter((f) => !timedOnly.has(f));
 
 // A select-only combobox as Radix draws it: focus moves onto the highlighted option when the list opens and back to the trigger when it closes.
 // `reopenAfter` is where a reopened list starts, as an offset from the chosen option: 0 as the old page does, 1 for the port's bug.
@@ -125,13 +128,13 @@ test('a custom combobox and a tablist get WAI-ARIA keyboard journeys in a fixed 
 	assert.match(first.expected[4]!.focus, /option "Cherry"/);
 	assert.match(first.expected[3]!.widget!.join(' | '), /value: "Cherry" \| expanded: false/);
 	const again = await replayAll(browser, defaultEnv(old), '/', desktop, journeys);
-	assert.deepEqual(compareJourneys('/', [journeys.map((j) => j.expected)], journeys, again), []);
+	assert.deepEqual(compared('/', [journeys.map((j) => j.expected)], journeys, again), []);
 });
 
 test('a port that matches passes the keyboard journeys', async () => {
 	const next = await serve(page(combobox(0)));
 	const runs = await replayAll(browser, defaultEnv(next), '/', desktop, journeys);
-	assert.deepEqual(compareJourneys('/', [journeys.map((j) => j.expected)], journeys, runs), []);
+	assert.deepEqual(compared('/', [journeys.map((j) => j.expected)], journeys, runs), []);
 });
 
 test('a list the old page puts in and places on every open matches a port that keeps it placed and shows it, beside a hidden list with the same options', async () => {
@@ -139,13 +142,13 @@ test('a list the old page puts in and places on every open matches a port that k
 	const expected = (await explore(browser, defaultEnv(remounted), '/', desktop, { budgetMs: 60_000 })).journeys.filter((j) => j.pattern?.startsWith('combobox'));
 	assert.equal(expected.length, 3);
 	const runs = await replayAll(browser, defaultEnv(await serve(page(combobox(0, false, true)))), '/', desktop, expected);
-	assert.deepEqual(compareJourneys('/', [expected.map((j) => j.expected)], expected, runs), []);
+	assert.deepEqual(compared('/', [expected.map((j) => j.expected)], expected, runs), []);
 });
 
 test('a port whose reopened list starts on the option after the chosen one is red at the reopening step', async () => {
 	const next = await serve(page(combobox(1)));
 	const runs = await replayAll(browser, defaultEnv(next), '/', desktop, journeys);
-	const failures = compareJourneys('/', [journeys.map((j) => j.expected)], journeys, runs);
+	const failures = compared('/', [journeys.map((j) => j.expected)], journeys, runs);
 	assert.deepEqual(failures.map((f) => [f.dimension, f.check]), [
 		['a11y', 'combobox keys on combobox "Fruit Pick a fruit": open with ArrowDown, choose with Enter, reopen with ArrowDown, then Escape, End, Home and typeahead (step 5: press ArrowDown)'],
 		['a11y', 'combobox keys on combobox "Fruit Pick a fruit": open with Enter and with Space, choose with Enter, reopen with Enter (step 7: press Enter)'],
@@ -229,9 +232,9 @@ test('a disclosure, a menu button, a dialog, a tooltip, a listbox and a menubar 
 	assert.doesNotMatch(tip.expected[1]!.widget!.join(' | '), /tooltip/);
 	assert.match(tip.expected[3]!.widget!.join(' | '), /tooltip: "Save the draft"/);
 	const same = await replayAll(browser, defaultEnv(await serve(page(widgets(false)))), '/', desktop, found);
-	assert.deepEqual(compareJourneys('/', [found.map((j) => j.expected)], found, same), []);
+	assert.deepEqual(compared('/', [found.map((j) => j.expected)], found, same), []);
 	const port = await replayAll(browser, defaultEnv(await serve(page(widgets(true)))), '/', desktop, found);
-	assert.deepEqual(compareJourneys('/', [found.map((j) => j.expected)], found, port).map((f) => f.check), [
+	assert.deepEqual(compared('/', [found.map((j) => j.expected)], found, port).map((f) => f.check), [
 		'popup button keys on button "Share": open with Enter, Tab through it both ways, Escape, reopen with Space, close by a click outside, reopen with Enter (step 5: press Escape)',
 		'tooltip keys on button "Save": show it by focus, hide it with Escape, Tab away, Shift+Tab back to show it again (step 2: press Escape)',
 	]);
