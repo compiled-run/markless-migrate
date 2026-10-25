@@ -255,6 +255,18 @@ vaul Drawer 8, Radix RadioGroup 7, Radix Slider 5.
   day, Tab away, both dropdowns): all 22 calendars match at every step, and so do their accessibility trees, after
   the first render, where the old page still shows the day it was built as today until something renders again.
   The cells are keyed by place, so a focused day button stays in the page as the month changes (framework bugs, 17).
+- The docs palette's Search Results group, which the old page fetches from `/api/search` as you type, is Markless
+  code: `lib/site/command-menu.tsrx` ports `components/command-menu.tsx`'s Command, with the results a
+  `computed(async ...)` over the search, keyed `@for` rows inside `@try`/`@catch`, and fumadocs' fetch client
+  (`lib/site/docs-search.ts`: 500 ms after the last key, then 100 ms, each answer kept by URL). A site component
+  stands in for the element `lib/site/components.json` names; inside a served layer the page renders the shell with
+  the component and the file holds the rest, filled when the layer opens. The cmdk part takes items rendered or
+  removed during a search, as cmdk's item registration does, and goes to an item's `data-mm-href`. Compared step by
+  step with the old page (`z`, ArrowDown, clear, `but`, End, fast `accordion`, reopen, `zod`, clear; and a late `but`
+  answer after `zod`'s): the same groups, counts, order, selected and active item, and the same requests.
+  Not ported: the spinner beside the input and "Searching..." in the empty state are the old page's `isLoading`, a
+  status Markless shows only through `@pending`, which commits after 250 ms where the old page shows it at once; and
+  a failed search shows no group instead of the previous results.
 
 ## Markless framework bugs found
 
@@ -346,6 +358,21 @@ parse (quotes and backticks in arm text).
     by place, so the same button stays in the page; React mounts new day nodes and focus leaves them. In a list keyed
     by identity, Markless replaces the node and focus drops to the body, as React's does. The witness shows the
     port's focus matching the original at every step, so the keying stays as it is.
+18. Reported by the palette port (0.9.0 packs, fb5840dd): an `async` event handler holds the element's next events
+    until its `await` settles. `onInput={async (event) => { const v = (event.target as HTMLInputElement).value; await
+    wait(400); log = v; }}` typed "xyz" 50 ms apart runs x, then the next two only after x's 400 ms, both reading
+    "xyz". With `event.currentTarget` the handler throws (`currentTarget` is null by then). The port's debounce uses a
+    plain handler that dispatches `searchsettle` on the field after the wait, as `@markless/ui`'s navbar does.
+19. Reported by the palette port: inside `@try`, an element whose attribute reads the async value and that wraps a
+    keyed `@for` (`<ul hidden={list.length === 0}>@for (...) {...}</ul>`) shows nothing once the computed settles
+    again: the boundary keeps only its comment anchors. Without the attribute the rows render. The port renders the
+    group always, `hidden`, and the cmdk part shows it while it holds items.
+20. Reported by the palette port: a row a re-settled `@try` adds runs its handlers with the first row's local
+    (`@for (const r of list; key r.id) { <p onClick={() => (picked = r.text)}>...}`: clicking the third row picks
+    row 0). The port's rows carry their address in `data-mm-href`, which the cmdk part follows.
+21. Seen with bug 7: a keyed `@for` whose row binds an attribute cannot sit in an `@if` arm
+    (MARKLESS_BRANCH_ARM_UPDATE_UNSUPPORTED "a repeated row inside it holds a attribute binding"), here with state
+    decided by the component's own `state()`, `@if (open) { @for (const item of items; key item.id) { <p id={item.id}>...` .
 
 ## Build memory on Markless 0.9.0 (2026-10-22)
 
@@ -2493,7 +2520,8 @@ Leading causes (routes):
   found them. `.next/prerender-manifest.json` lists them with about 277 other unlinked `/view` pages; reading it in
   plan would add all of them.
 
-- The search palette's search results (`/api/search`), the remaining endpoints above, and `/og`.
+- The remaining endpoints above, and `/og`. The palette's spinner and "Searching..." (Markless shows waiting only
+  through `@pending`). `convert` writing a site's searchable palette as the Search Results component, not by hand.
 - Base UI Radio, Switch, Checkbox, Dialog, AlertDialog, Toast; Radix ScrollArea, ToggleGroup, Select, Slider,
   RadioGroup; vaul; react-resizable-panels.
 - Recapture every route's reveals with signatures (only the preview routes have them) and convert all 498 pages

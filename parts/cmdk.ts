@@ -7,7 +7,8 @@ import { navigate } from '@markless/router';
 // left are sorted by score and moved after the rest of their group, and the groups by their best item, as cmdk appends
 // them; here the move is CSS order on a column. The first item left is selected (aria-selected, data-selected). Arrows,
 // Home, End and Alt with an arrow move the selection; moving the pointer over an item selects it; Enter or a click
-// chooses it, and what choosing does is the old page's (captured: where it went or what it copied). The input and list
+// chooses it, and what choosing does is the old page's (captured: where it went or what it copied), or for an item the page
+// renders itself, the address in its data-mm-href. The input and list
 // carry aria-activedescendant as cmdk computes it. A command in a layer starts again each time its layer opens.
 
 export type Filter = (value: string, search: string, keywords: readonly string[]) => number;
@@ -116,15 +117,48 @@ function containerOf(el: HTMLElement): HTMLElement {
 function commandOf(root: HTMLElement): Command {
 	let c = commands.get(root);
 	if (!c) {
-		const original = new Map<HTMLElement, HTMLElement[]>();
-		for (const el of [...root.querySelectorAll<HTMLElement>(`${ITEM}, ${GROUP}`)]) {
-			const parent = containerOf(el);
-			if (!original.has(parent)) original.set(parent, [...parent.children] as HTMLElement[]);
-		}
-		c = { original, order: new Map([...original].map(([k, v]) => [k, [...v]])), search: '' };
+		c = { original: new Map(), order: new Map(), search: '' };
+		track(c, root);
 		commands.set(root, c);
+		new MutationObserver(() => rendered(root)).observe(listOf(root), { childList: true, subtree: true });
 	}
 	return c;
+}
+
+/** Takes the containers whose children the page changed (items rendered or removed) in the order the DOM now holds them; whether any changed. */
+function track(c: Command, root: HTMLElement): boolean {
+	const seen = new Set<HTMLElement>();
+	let changed = false;
+	for (const el of root.querySelectorAll<HTMLElement>(`${ITEM}, ${GROUP}`)) {
+		const parent = containerOf(el);
+		if (seen.has(parent)) continue;
+		seen.add(parent);
+		const kids = [...parent.children] as HTMLElement[];
+		const was = c.original.get(parent);
+		if (was && was.length === kids.length && was.every((k, i) => k === kids[i])) continue;
+		c.original.set(parent, kids);
+		c.order.set(parent, [...kids]);
+		changed = true;
+	}
+	for (const container of [...c.original.keys()]) {
+		if (seen.has(container)) continue;
+		c.original.delete(container);
+		c.order.delete(container);
+		changed = true;
+	}
+	return changed;
+}
+
+// An item mounting or unmounting (cmdk's context.item): the search filters and sorts again, and with no item selected (none
+// was, or the selected one left) the first is.
+function rendered(root: HTMLElement): void {
+	const c = commands.get(root);
+	if (!c || !track(c, root)) return;
+	apply(root, c.search);
+	if (selected(root)) return;
+	const first = items(root)[0];
+	if (first) select(root, first, 'search');
+	else setDescendant(root, undefined);
 }
 
 const isItem = (el: Element) => el.hasAttribute('cmdk-item');
@@ -206,7 +240,13 @@ function paintOrder(c: Command): void {
 }
 
 function search(root: HTMLElement, text: string): void {
+	apply(root, text);
+	select(root, items(root)[0], 'search');
+}
+
+function apply(root: HTMLElement, text: string): void {
 	const c = commandOf(root);
+	track(c, root);
 	const list = listOf(root);
 	const scores = new Map<HTMLElement, number>();
 	const filter = filterOf(root);
@@ -244,7 +284,6 @@ function search(root: HTMLElement, text: string): void {
 	paintOrder(c);
 	const empty = root.querySelector<HTMLElement>('[cmdk-empty]');
 	if (empty) empty.hidden = [...scores.values()].some((s) => s > 0);
-	select(root, items(root)[0], 'search');
 }
 
 function choose(item: HTMLElement): void {
@@ -253,8 +292,9 @@ function choose(item: HTMLElement): void {
 	const key = item.getAttribute('data-value') ?? (item.textContent ?? '').trim();
 	const choice = Object.values(CHOICES).find((c) => key in c)?.[key];
 	propsOf(item).beforeChoose?.(item);
+	const href = choice?.href ?? item.dataset.mmHref;
 	if (choice?.copied !== undefined) void navigator.clipboard?.writeText(choice.copied).catch(() => {});
-	else if (choice?.href) void navigate(choice.href);
+	else if (href) void navigate(href);
 }
 
 export function input(target: Element): boolean {

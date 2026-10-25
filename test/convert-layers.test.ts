@@ -7,6 +7,7 @@ import ts from 'typescript';
 import { atRest } from '../src/convert/at-rest.ts';
 import { body, find, outer, parseDocument, walk } from '../src/convert/dom.ts';
 import { LAYER_FILL, layerTable, SERVED_LAYER_BYTES } from '../src/convert/document.ts';
+import { componentImport, componentName, siteComponentOf } from '../src/convert/site-components.ts';
 import { APP_URL_TOKEN, emitElement, emitHtml, useOrigin } from '../src/convert/tsrx.ts';
 
 const ROOT = join(import.meta.dirname, '..');
@@ -41,6 +42,26 @@ test('a layer from SERVED_LAYER_BYTES up is its shell in the page and its conten
 	const sources = table.files.map((f) => f.source);
 	assert.ok(sources.some((s) => s.includes(`<link rel="preload" href="${path}" as="fetch" crossorigin="anonymous" fetchpriority="low" /><template data-mm-layer-src="${path}" data-mm-layer-keys="search"><div data-mm-layer="search" hidden><input /><div data-mm-layer-fill="${path}"></div></div></template>`) && !s.includes('xxxx')));
 	assert.ok(sources.some((s) => s.includes(small)));
+});
+
+test('a layer a site component stands in for is served whatever its size: the page renders its shell with the component, the file holds the rest', () => {
+	const shell = `<div data-mm-layer="search" hidden data-mm-served="${LAYER_FILL}"><CommandMenu fill="${LAYER_FILL}" /></div>`;
+	const fill = '<div cmdk-group="">Pages</div>';
+	const table = layerTable(new Map([['/', [{ key: 'search', markup: '<div data-mm-layer="search" hidden>small</div>', shell, fill, imports: ["import CommandMenu from '../../../lib/site/command-menu.tsrx';"] }]]]));
+	assert.deepEqual(table.served.map((s) => s.html), [fill]);
+	const path = table.served[0]!.path;
+	const source = table.files[0]!.source;
+	assert.match(source, /^\/\/ Generated[^\n]*\nimport CommandMenu from '\.\.\/\.\.\/\.\.\/lib\/site\/command-menu\.tsrx';\n/);
+	assert.ok(source.includes(`<template data-mm-layer-src="${path}" data-mm-layer-keys="search"></template><div data-mm-layer="search" hidden data-mm-served="${path}"><CommandMenu fill="${path}" /></div>`), source);
+});
+
+test('a site component stands in for the element its selector picks, inside a tag and attribute compound with :has()', () => {
+	const doc = parseDocument('<body><div cmdk-root=""><input cmdk-input="" placeholder="Search documentation..."></div><div cmdk-root=""><input cmdk-input="" placeholder="Type a command"></div></body>');
+	const site = [{ selector: 'div[cmdk-root]:has([cmdk-input][placeholder="Search documentation..."])', component: 'command-menu.tsrx' }];
+	const roots = [...walk(body(doc))].filter((el) => el.attrs.some((a) => a.name === 'cmdk-root'));
+	assert.deepEqual(roots.map((el) => siteComponentOf(el, site)?.component), ['command-menu.tsrx', undefined]);
+	assert.equal(componentName(site[0]!), 'CommandMenu');
+	assert.equal(componentImport(site[0]!, '../../..'), "import CommandMenu from '../../../lib/site/command-menu.tsrx';");
 });
 
 test('a used layer shows its shell at once and its content when the file lands, once, after the page, with the new origin', async () => {
@@ -84,6 +105,35 @@ test('a used layer shows its shell at once and its content when the file lands, 
 		});
 		assert.deepEqual(filled, { nodes: 1, href: 'https://new.example/docs', links: 1, pending: false });
 		assert.equal(fetches, 1);
+	} finally {
+		await browser.close();
+	}
+});
+
+test('a layer the page renders itself is filled from its file when it opens, not when the file lands as the page loads', async () => {
+	const reveal = await readFile(join(ROOT, 'parts', 'reveal.ts'), 'utf8').then((text) => ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText);
+	const browser = await chromium.launch();
+	try {
+		const page = await browser.newPage();
+		await page.route('http://app.test/**', async (route) => {
+			const path = new URL(route.request().url()).pathname;
+			if (path === '/layer.html') return route.fulfill({ contentType: 'text/html', body: '<a href="/docs">Docs</a>' });
+			if (path === '/reveal.js') return route.fulfill({ contentType: 'text/javascript', body: reveal });
+			return route.fulfill({ contentType: 'text/html', body: '<!doctype html><body><main>page</main><template data-mm-layer-src="/layer.html" data-mm-layer-keys="search"></template><div role="dialog" hidden data-mm-layer="search" data-mm-served="/layer.html"><input><div data-mm-layer-fill="/layer.html"></div><p>rendered</p></div></body>' });
+		});
+		await page.goto('http://app.test/');
+		const loaded = await page.evaluate(async () => {
+			const parts = (await import('/reveal.js' as string)) as typeof import('../parts/reveal.ts');
+			(globalThis as { parts?: unknown }).parts = parts;
+			await parts.loadLayers();
+			return { links: document.querySelectorAll('[data-mm-layer="search"] a').length, pending: parts.layersPending() };
+		});
+		assert.deepEqual(loaded, { links: 0, pending: false });
+		const opened = await page.evaluate(() => {
+			const nodes = (globalThis as { parts?: typeof import('../parts/reveal.ts') }).parts!.layersFor('search');
+			return { nodes: nodes.length, all: document.querySelectorAll('[data-mm-layer="search"]').length, links: nodes[0]?.querySelectorAll('a').length, order: [...(nodes[0]?.children ?? [])].map((c) => c.tagName).join(',') };
+		});
+		assert.deepEqual(opened, { nodes: 1, all: 1, links: 1, order: 'INPUT,DIV,P' });
 	} finally {
 		await browser.close();
 	}
