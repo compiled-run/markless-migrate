@@ -356,6 +356,40 @@ route's slowest control and a table per route; `report.json` carries the same as
 (`interaction` and `navigation`, each `desktop` and `throttled` with `old`, `new`, `oldAt`, `newAt`, and
 `routes`), and each route's full timings under its own `responsiveness`. `--no-responsiveness` leaves it out.
 
+### Widget probes: what a library's widgets do between the clicks
+
+Journeys compare what one use of a control changes. A library's widget also has behaviour between and
+around the uses, and a port can lose it while every journey still matches. So each page route also gets
+widget probes: one control of each kind (its region and component slot, else its tag and role) is driven
+through its class's sequence on the old and the new page at once, each from a fresh load, and after
+every step check reads what a visitor meets: where focus is and whether its ring shows (`:focus-visible`
+and `data-focus-visible`), the state attributes of the control and of its widget (`aria-expanded`,
+`aria-selected`, `aria-valuenow`, `data-state`, `data-highlighted`, `data-pressed`, `data-hovered`,
+`data-separator`...), what is open (with its highlighted and chosen items), the toasts shown (with
+`data-front` and `data-expanded`), the widget's tab stops, whether scrolling is locked and the page
+behind is hidden or inert, and the offsets a drag moves.
+
+| Class | Which controls | Sequence |
+| --- | --- | --- |
+| `modality` | every focusable control | a click, then Escape, Tab and Shift+Tab (in a text field: a click, typing, then the same keys); Tab to it, Escape, the pointer moving, Tab, Shift+Tab |
+| `popup` | a button that says it opens something (`aria-haspopup`, or `aria-expanded` with `aria-controls`), a combobox | open by a click, a click outside, open again, Escape, open again, its close button, Escape |
+
+A step that differs is red (`a11y` for focus rings and tab stops, `behaviour` otherwise) with the
+control, the class, the sequence, the step and what each side showed there, and the converter parts
+whose selectors match the control or what it opened (`Likely part: parts/resizable.ts`). A difference
+the two pages already had at load in a library's markup is the rendered check's, unless a step changes
+it on one side only; when the first old and new runs differ, the old side runs again, and what differs
+between its two runs is noise there (a line may then vary only in its digits); offsets a drag leaves
+agree within 2 px or 2%, scroll positions within 40 px, and fractional values (a panel at 65.7%) are
+read to the whole unit. A control in a shared header, nav, sidebar or footer is probed on the first
+route of the run that has it. Up to 40 controls a route are probed, within max(60 s, 15 s a control)
+(at most 10 minutes); one left out, and one check could not find again on the old page, is red as
+`not exercised`; the controls an alike one stood for are listed in the report (`widget probes: 13
+controls driven (205 alike stood for by one of their kind)`). The probes take about a minute a route
+on a docs page with a dozen kinds of widget.
+
+`--no-probes` leaves them out; `--only probes` runs them alone (a partial run).
+
 ### Which routes, and where a failure comes from
 
 `check --all` needs `plan --source`. It checks every crawled path, and every route only the source knows:

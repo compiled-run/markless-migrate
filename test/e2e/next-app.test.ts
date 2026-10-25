@@ -555,8 +555,8 @@ describe('next.js app router app', { concurrency: SUITE_CONCURRENCY }, () => {
 		await browser?.close();
 	});
 
-	shard.test('an independent rebuild of the same source is green on every route', async () => {
-		const report = await runCheck({ oldOrigin: old.origin, newOrigin: twin.origin, routes: ROUTES, browser });
+	shard.test('an independent rebuild of the same source is green on every route, widget probes included', async () => {
+		const report = await runCheck({ oldOrigin: old.origin, newOrigin: twin.origin, routes: ROUTES, browser, probes: {} });
 		process.stdout.write(`\n${summarize(report)}`);
 		assert.deepEqual(redDimensions(report), [], summarize(report));
 	});

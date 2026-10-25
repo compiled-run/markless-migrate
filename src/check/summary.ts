@@ -3,7 +3,7 @@ import { coverageLines } from './coverage.ts';
 import { headlines, worstLine } from './responsiveness.ts';
 import { loadLine, psiLines } from './load.ts';
 import { PSI_NOTICE } from './psi.ts';
-import { notCompared, type Coverage, type Failure, type LoginResult, type Report } from './types.ts';
+import { notCompared, type Coverage, type Failure, type LoginResult, type Report, type RouteResult } from './types.ts';
 
 function kb(bytes: number): string {
 	return `${(bytes / 1024).toFixed(1)} kB`;
@@ -55,10 +55,11 @@ export function summarize(report: Report): string {
 		const accepted = route.failures.filter((f) => f.accepted).length;
 		const w = route.weight;
 		const stopped = notCompared(route);
-		const js = route.only === 'embeds' ? 'only the embeds compared (--only embeds)' : route.only ? 'only page load compared (--only load)' : stopped ? 'page not compared: the two apps did not let this role in alike' : `JS on the wire ${kb(w.old.downloaded)} -> ${kb(w.new.downloaded)}, run at load ${kb(w.old.executed)} -> ${kb(w.new.executed)} (uncompressed)`;
+		const js = route.only === 'embeds' ? 'only the embeds compared (--only embeds)' : route.only === 'probes' ? 'only the widget probes compared (--only probes)' : route.only ? 'only page load compared (--only load)' : stopped ? 'page not compared: the two apps did not let this role in alike' : `JS on the wire ${kb(w.old.downloaded)} -> ${kb(w.new.downloaded)}, run at load ${kb(w.old.executed)} -> ${kb(w.new.executed)} (uncompressed)`;
 		lines.push(`${route.ok ? 'pass' : 'FAIL'}  ${route.route.padEnd(width)}  ${route.ok ? '' : `[${failed.join(', ')}]  `}${accepted ? `(${accepted} accepted) ` : ''}${route.endpoint ? `compared as ${route.endpoint}` : js}`);
 		if (route.template && route.template.representative !== route.route) lines.push(`      visual, responsiveness and motion: checked on ${route.template.representative}, the representative of its template group (${route.template.pattern}, ${route.template.members} pages)`);
 		if (route.coverage) lines.push(`      ${coverageLine(route.coverage)}`);
+		if (route.probes) lines.push(`      ${probesLine(route.probes)}`);
 		for (const note of route.improvements ?? []) lines.push(`      improvement (not red): ${note}`);
 		if (route.responsiveness) lines.push(`      ${worstLine(route.responsiveness)}`);
 		if (route.motion) {
@@ -102,4 +103,13 @@ export function partialLine(partial: NonNullable<Report['partial']>): string {
 	return partial.total === null
 		? `Partial run: ${partial.checked} route${partial.checked === 1 ? '' : 's'} checked and no plan lists the old site's routes (run plan): never overall green.`
 		: `Partial run: ${partial.checked} of ${partial.total} routes checked. A run limited by --route or --changed is never overall green; run check without --route to check every route.`;
+}
+
+/** `widget probes: 12 controls driven (34 alike stood for by one of their kind), 2 not driven, 48 s`. */
+export function probesLine(p: NonNullable<RouteResult['probes']>): string {
+	const driven = p.controls.filter((c) => c.state === 'probed').length;
+	const alike = p.controls.filter((c) => c.state.startsWith('alike')).length;
+	const shared = p.controls.filter((c) => c.state.startsWith('probed on ')).length;
+	const not = p.controls.length - driven - alike - shared;
+	return `widget probes: ${driven} control${driven === 1 ? '' : 's'} driven${alike ? ` (${alike} alike stood for by one of their kind)` : ''}${shared ? `, ${shared} in a shared layout driven on another route` : ''}${not ? `, ${not} not driven` : ''}, ${Math.round(p.ms / 1000)} s`;
 }

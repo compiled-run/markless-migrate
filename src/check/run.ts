@@ -18,6 +18,7 @@ import { checkEndpoint, checkRedirect, isPage } from './endpoints.ts';
 import { DEFAULT_FREEZE, pinnedBy, pinnedSummary, type FreezeOptions } from './freeze.ts';
 import { HINTS } from './hints.ts';
 import { locateFailures, NOT_EXERCISED } from './locate.ts';
+import { checkProbes, type ProbeOptions } from './probes.ts';
 import { mapRules } from './sourcemap.ts';
 import { negotiationFailures } from './i18n.ts';
 import { compareJourneys, describeTarget, MAX_ARRIVED, replay, timedOnly, type Journey, type Step, DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, inDarkMode, themed, replayAll, replayDestructive, survey, type ElementCoverage, type Exploration, type ExploreOptions, type RecordedJourney, type Run as RunResults } from './journeys.ts';
@@ -102,8 +103,10 @@ export interface CheckOptions {
 	readonly navigation?: NavigationOptions;
 	/** Lighthouse's mobile page load (FCP, LCP, Speed Index, TBT, CLS and the score), a median of several runs per side, after every other check so nothing else competes for the machine. */
 	readonly load?: LoadOptions;
-	/** `load`: only page load is measured, after nothing else; `embeds`: only the embed step runs, on each page route; every other dimension is skipped. */
-	readonly only?: 'load' | 'embeds';
+	/** `load`: only page load is measured, after nothing else; `embeds`: only the embed step runs, on each page route; `probes`: only the widget probes; every other dimension is skipped. */
+	readonly only?: 'load' | 'embeds' | 'probes';
+	/** The widget probes (probes.ts) on each page route; left out when absent. */
+	readonly probes?: Omit<ProbeOptions, 'layout'>;
 	/** How long one route's check (as one role) may take before it is stopped and reported as an infrastructure failure. */
 	readonly timeoutMs?: number;
 	/** Every route of the old site, each checked for existence on the new app (the coverage dimension). */
@@ -151,6 +154,7 @@ interface Run {
 	readonly responsiveness?: ResponsivenessOptions;
 	readonly motion?: MotionOptions;
 	readonly embeds?: EmbedCheckOptions;
+	readonly probes?: ProbeOptions;
 }
 
 async function probe(env: SideEnv, url: string): Promise<Probe> {
@@ -244,7 +248,8 @@ export async function checkRoute(browser: Browser, run: Run, route: string, view
 	const loadWrites = (Object.values(oldA.pages)[0]?.writes ?? []).map((w) => ({ ...w, during: 'page load' }));
 	const result = withFailures(compared, [...compared.failures, ...negotiationFailures(route, languages, [negotiatedA, negotiatedB], negotiatedNew)], { noise, writes: loadWrites });
 	const owner = storageOwner(olds.flatMap((o) => Object.values(o.pages)), Object.values(next.pages));
-	const explored = await statesAndJourneys(run, result, (input) => profiled(route, 'forced states', () => checkStates(browser, run, route, viewports, olds, input)), (input) => profiled(route, 'journeys', () => checkJourneys(browser, run, route, viewports[0]!, input, owner, loads)));
+	const journeyed = await statesAndJourneys(run, result, (input) => profiled(route, 'forced states', () => checkStates(browser, run, route, viewports, olds, input)), (input) => profiled(route, 'journeys', () => checkJourneys(browser, run, route, viewports[0]!, input, owner, loads)));
+	const explored = run.probes ? await profiled(route, 'widget probes', () => probeRoute(browser, run, route, viewports[0]!, journeyed)) : journeyed;
 	const moved = run.motion && explored.journeys?.length ? await checkMoves(browser, run, route, viewports[0]!, explored, oldA.pages[viewports[0]!.name]?.stylesheets ?? []) : explored;
 	const timed = run.responsiveness && moved.journeys?.length ? await checkTimings(browser, run, route, moved) : moved;
 	// The page captures already list each side's embeds: a route with none on either side has nothing for the embed step.
@@ -264,6 +269,14 @@ export async function statesAndJourneys(run: Pick<Run, 'old' | 'new'>, result: R
 	if (journeyed.status === 'rejected') throw journeyed.reason;
 	const j = journeyed.value;
 	return withFailures(stated.value, [...stated.value.failures, ...j.failures.slice(result.failures.length)], { journeys: j.journeys, coverage: j.coverage, writes: j.writes });
+}
+
+/** The widget probes of the route's controls, old against new, on top of what the journeys found. */
+async function probeRoute(browser: Browser, run: Pick<Run, 'old' | 'new' | 'probes'>, route: string, viewport: Viewport, result: RouteResult): Promise<RouteResult> {
+	const sides = { old: run.old, new: run.new };
+	const out = await checkProbes(browser, sides, route, viewport, result.journeys, run.probes);
+	const failures = out.failures;
+	return { ...(failures.length ? withFailures(result, [...result.failures, ...failures]) : result), probes: { controls: out.controls, ms: out.ms } };
 }
 
 async function checkRouteEmbeds(browser: Browser, run: Run, route: string, viewports: readonly Viewport[], result: RouteResult): Promise<RouteResult> {
@@ -287,7 +300,8 @@ export async function checkLight(browser: Browser, run: Run, route: string, view
 	const skipped = { ...checked, dimensions: { ...checked.dimensions, ...Object.fromEntries(REPRESENTATIVE_ONLY.map((d) => [d, 'skipped'])) } as RouteResult['dimensions'] };
 	const owner = storageOwner(olds.flatMap((o) => Object.values(o.pages)), Object.values(next.pages));
 	const journeyed = await checkJourneys(browser, run, route, first[0]!, skipped, owner, loads);
-	const located = await locateFailures(journeyed, { route, old: oldA, next, sides: { old: { origin: run.old.origin, dir: run.sourceDirs?.old }, new: { origin: run.new.origin, dir: run.sourceDirs?.new } }, ...(run.source ? { facts: run.source } : {}) });
+	const probed = run.probes ? await probeRoute(browser, run, route, first[0]!, journeyed) : journeyed;
+	const located = await locateFailures(probed, { route, old: oldA, next, sides: { old: { origin: run.old.origin, dir: run.sourceDirs?.old }, new: { origin: run.new.origin, dir: run.sourceDirs?.new } }, ...(run.source ? { facts: run.source } : {}) });
 	const done = oldA.http.status < 400 && (next.http.status === 404 || next.http.status === 410) ? { ...located, notPorted: true } : located;
 	oldCaptures.set(done, oldA);
 	return done;
@@ -698,7 +712,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [], ...bypass };
 	const artifacts = options.artifactsDir ? new RouteArtifacts(options.artifactsDir, options.oldOrigin) : undefined;
 	const oldCache = options.cacheDir ? new OldCache(join(options.cacheDir, 'old'), { block: options.block ?? null }) : undefined;
-	const base: Run = { old: defaultEnv(options.oldOrigin, shared), new: defaultEnv(options.newOrigin, shared), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
+	const base: Run = { old: defaultEnv(options.oldOrigin, shared), new: defaultEnv(options.newOrigin, shared), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: { ...options.probes, layout: new Map<string, string>() } } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
 	const auth = options.auth;
 	const roles: (string | undefined)[] = auth ? [ANONYMOUS, ...Object.keys(auth.roles)] : [undefined];
 	const logins: LoginResult[] = [];
@@ -749,6 +763,16 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 					const out = await checkEmbeds(browser, { old: roleRun.old, new: roleRun.new }, route, viewports, step).catch((error: Error) => ({ failures: [{ route, dimension: 'rendered' as const, check: 'embed step', expected: 'the embed step runs', actual: error.message.split('\n')[0]!, hint: 'The embed step could not load the route on one side.' }], shots: [], results: [] }));
 					const result = { ...partialResult(route, out.failures, [...new Set(out.failures.map((f) => f.dimension as Dimension))]), shots: out.shots, only: 'embeds' as const };
 					routes.push(asRole(withTemplate({ ...result, ok: out.failures.length === 0 }), role));
+				}
+				continue;
+			}
+			if (options.only === 'probes') {
+				const probing = { ...roleRun, probes: roleRun.probes ?? { layout: new Map<string, string>() } };
+				const viewport = (options.viewports ?? VIEWPORTS)[0]!;
+				for (const route of allPages) {
+					const empty = { ...partialResult(route, [], ['behaviour', 'a11y', 'rendered']), ok: true };
+					const result = await probeRoute(browser, probing, route, viewport, empty).catch((error: Error) => partialResult(route, [{ route, dimension: 'behaviour', check: 'the widget probes', expected: 'the widget probes run', actual: error.message.split('\n')[0]!, hint: 'The widget probes could not load the route on one side.' }], []));
+					routes.push(asRole(withTemplate({ ...result, ok: result.failures.length === 0, only: 'probes' as const }), role));
 				}
 				continue;
 			}
