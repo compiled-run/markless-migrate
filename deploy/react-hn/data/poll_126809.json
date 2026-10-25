@@ -1,0 +1,595 @@
+{
+	"route": "/poll/126809",
+	"recordedFrom": "http://localhost:4201",
+	"at": "2026-10-25T03:11:23.661Z",
+	"responses": [],
+	"live": {
+		"firebase": [
+			{
+				"host": "hacker-news.firebaseio.com",
+				"snapshot": {
+					"v0/item/126809": {
+						"by": "pg",
+						"descendants": 54,
+						"id": 126809,
+						"kids": {
+							"0": 126822,
+							"1": 126823,
+							"2": 126917,
+							"3": 126993,
+							"4": 126824,
+							"5": 126934,
+							"6": 127411,
+							"7": 126888,
+							"8": 127681,
+							"9": 126818,
+							"10": 126816,
+							"11": 126854,
+							"12": 127095,
+							"13": 126861,
+							"14": 127313,
+							"15": 127299,
+							"16": 126859,
+							"17": 126852,
+							"18": 126882,
+							"19": 126832,
+							"20": 127072,
+							"21": 127217,
+							"22": 126889,
+							"23": 126875,
+							"24": 127535
+						},
+						"parts": {
+							"0": 126810,
+							"1": 126811,
+							"2": 126812
+						},
+						"score": 47,
+						"time": 1204403652,
+						"title": "Poll: What would happen if News.YC had explicit support for polls?",
+						"type": "poll"
+					},
+					"v0/item/126810": {
+						"by": "pg",
+						"id": 126810,
+						"poll": 126809,
+						"score": 73,
+						"text": "Users would create too many, and new arrivals would think News.YC was a poll site.",
+						"time": 1204403652,
+						"type": "pollopt"
+					},
+					"v0/item/126811": {
+						"by": "pg",
+						"id": 126811,
+						"poll": 126809,
+						"score": 49,
+						"text": "Users would create fewer polls, because the main reason they do it now is to get karma from people voting up the poll choices.",
+						"time": 1204403652,
+						"type": "pollopt"
+					},
+					"v0/item/126812": {
+						"by": "pg",
+						"id": 126812,
+						"poll": 126809,
+						"score": 179,
+						"text": "We&#x27;d have the same number of polls, but they wouldn&#x27;t look as ugly.",
+						"time": 1204403652,
+						"type": "pollopt"
+					},
+					"v0/item/126822": {
+						"by": "mixmax",
+						"id": 126822,
+						"kids": {
+							"0": 127030,
+							"1": 127514,
+							"2": 127081,
+							"3": 127318,
+							"4": 126848
+						},
+						"parent": 126809,
+						"text": "The reason I come here is to read interesting articles, participate in discussions where I can have my views challenged by smart people, and (hopefully) contribute to these discussions in a meaningful way.<p>Not to degrade polls in any way, but they don't often add to the above reasons for being here. While I would love to chime in on which web framework is the best my observation is that:<p>a) the information I gain from reading a poll is minimal<p>b) the comments to a poll are less interesting than an ask YC link or a link to a story. The reason being that polls are (mostly) yes/no answers and tend to promote yes/no answers or flamewars.<p>Just my opinion of course. And since I come here to have my views challenged, feel free to do so. :-)",
+						"time": 1204404966,
+						"type": "comment"
+					},
+					"v0/item/126823": {
+						"by": "andr",
+						"id": 126823,
+						"kids": {
+							"0": 126826
+						},
+						"parent": 126809,
+						"text": "Most of the \"Ask YC\" questions get answers the asker did not expect, so a poll would do no good.",
+						"time": 1204404998,
+						"type": "comment"
+					},
+					"v0/item/126917": {
+						"by": "gojomo",
+						"id": 126917,
+						"parent": 126809,
+						"text": "Interesting and worth a try.<p>If the poll-maker can add choices later, and people are encouraged to modify their opinions in response to discussion,  you may want to allow voters to change their votes later. OTOH, if you want the polls to be snap surveys of initial impressions, the totals should start out hidden, and votes irreversible, so votes are unswayed by perceived popularity.<p>With the proposed UI,  there's still a problematic conflation of 'agree' with 'quality' -- both are clicks on the same 'up' icon. So I would again suggest using a new right/left vote that means 'agree/disagree', orthogonal to 'promote/bury'. Agree/disagree would have no karma implications, and would lend itself to a horizontal bar-graph of running results:<p><pre><code>  &#62; Users would create too many\n  ***********\n  &#62; Users would create fewer\n  *********\n  &#62; We'd have same number\n  ******************************\n</code></pre>\n(Previous suggestion of orthogonal agree/disagree voting: <a href=\"http://news.ycombinator.com/item?id=117196\" rel=\"nofollow\">http://news.ycombinator.com/item?id=117196</a> )",
+						"time": 1204412657,
+						"type": "comment"
+					},
+					"v0/item/126993": {
+						"by": "mechanical_fish",
+						"id": 126993,
+						"kids": {
+							"0": 127012
+						},
+						"parent": 126809,
+						"text": "I've never liked online polls. They're intensely unscientific, suffering from all the biases that trained sociologists battle every single day, with no attempt to correct for them. And they're easily manipulated, both by the questioner and by the respondents and their claques.<p>Humanity already has enough noise, nonsense, and astroturf masquerading as data; the last thing we need is more of it.",
+						"time": 1204417331,
+						"type": "comment"
+					},
+					"v0/item/126824": {
+						"by": "tim2",
+						"id": 126824,
+						"parent": 126809,
+						"text": "They'd be better than reddit's since there's no downvote.",
+						"time": 1204405076,
+						"type": "comment"
+					},
+					"v0/item/126934": {
+						"by": "smhinsey",
+						"id": 126934,
+						"parent": 126809,
+						"text": "I'm not sure if it's intentional, but polls don't show comment counts on the home page, or beneath their title on the discussion page. This feels wrong to me as I like to use the comment count as a judge of whether or not I want to click into the discussion page (if there aren't many, there's probably nothing too thrilling going on).",
+						"time": 1204413182,
+						"type": "comment"
+					},
+					"v0/item/127411": {
+						"by": "raghus",
+						"id": 127411,
+						"parent": 126809,
+						"text": "Polls are worth a try though the quality will depend even more on the creator/submitter than in case of a regular submission.<p>Feature request for polls: a simple bar graph (esp useful for polls with a ton of options like <a href=\"http://news.ycombinator.com/item?id=127203\" rel=\"nofollow\">http://news.ycombinator.com/item?id=127203</a>) so that someone doesn't need to do this each time: \n<a href=\"http://spreadsheets.google.com/pub?key=p3ZpyEuzg1jyMSQxC-NBMGQ\" rel=\"nofollow\">http://spreadsheets.google.com/pub?key=p3ZpyEuzg1jyMSQxC-NBM...</a> \nfor <a href=\"http://news.ycombinator.com/item?id=126923\" rel=\"nofollow\">http://news.ycombinator.com/item?id=126923</a>",
+						"time": 1204474895,
+						"type": "comment"
+					},
+					"v0/item/126888": {
+						"by": "edu",
+						"id": 126888,
+						"kids": {
+							"0": 127170
+						},
+						"parent": 126809,
+						"text": "IMO it's a good feature. First you can see the results quickly and in a convenient way, there will not be a lot of comments in the \"a\", \"b\", \"me to\", \"hope i get some karma\" way and we will not have to count, i.e.: <a href=\"http://news.ycombinator.com/item?id=126360\" rel=\"nofollow\">http://news.ycombinator.com/item?id=126360</a> would be clease using this feature.<p>Also, post will act as a catalyst (as if we need one...) to discuss, and this is good ;)<p>And finally it stops mangling with the karma to vote.<p>May I ask an extra feature? I think it would be useful to display the total number of votes, and maybe even the percentage of each option.",
+						"time": 1204410744,
+						"type": "comment"
+					},
+					"v0/item/127681": {
+						"by": "Electro",
+						"id": 127681,
+						"parent": 126809,
+						"text": "I prefer simple Ask YC's, it keeps people responding expressing something.<p>Look at BB websites, a large number of polls is usually followed by a \"Comment As To Why\" afterwards. I mean what's the point of having a poll if you want comments. You don't get quantifiable data online, so why have a poll that is inherently useless because simply seeing a number influences peoples choices.<p>It's pack mentality. I'm sure \"We'd have the same number of polls, but they wouldn't look as ugly\" is getting a lot more votes now it's broken into the lead than when they were at 0 points.",
+						"time": 1204504324,
+						"type": "comment"
+					},
+					"v0/item/126818": {
+						"by": "mhb",
+						"id": 126818,
+						"kids": {
+							"0": 126821
+						},
+						"parent": 126809,
+						"text": "Users would wonder whether they could/should vote for more than one poll choice because their philosophical mutual exclusivity is not reflected in the voting interface.",
+						"time": 1204404200,
+						"type": "comment"
+					},
+					"v0/item/126816": {
+						"by": "pg",
+						"id": 126816,
+						"parent": 126809,
+						"text": "As you can see, we do.  You can read more about it at <a href=\"http://ycombinator.com/newsnews.html\" rel=\"nofollow\">http://ycombinator.com/newsnews.html</a>.",
+						"time": 1204404016,
+						"type": "comment"
+					},
+					"v0/item/126854": {
+						"by": "mrtron",
+						"id": 126854,
+						"parent": 126809,
+						"text": "You are implying this poll doesn't look ugly with #3?  I strongly suggest you add some web 3.0 widgets with 3-D charts if you expect this to take off.<p>I actually really like this - perhaps you can limit users to submitting one poll a week or something, or only allow one or two polls on the main page at any time?  Sites like Slashdot has always had one poll running at a time, and I think thats for good reason.",
+						"time": 1204407469,
+						"type": "comment"
+					},
+					"v0/item/127095": {
+						"by": "iamelgringo",
+						"id": 127095,
+						"parent": 126809,
+						"text": "Really not a big fan of polls.",
+						"time": 1204426128,
+						"type": "comment"
+					},
+					"v0/item/126861": {
+						"by": "ivankirigin",
+						"id": 126861,
+						"parent": 126809,
+						"text": "Expect an initial glut, which will communicate a great deal of information quickly. This will improve the site.",
+						"time": 1204408042,
+						"type": "comment"
+					},
+					"v0/item/127313": {
+						"by": "kingnothing",
+						"id": 127313,
+						"parent": 126809,
+						"text": "What if we had polls, but with user submitted answers, that could then be voted on?<p>I'm a little out of it right now, mostly from lack of sleep, but it seems like an interesting concept to me.",
+						"time": 1204460069,
+						"type": "comment"
+					},
+					"v0/item/127299": {
+						"by": "jsmcgd",
+						"id": 127299,
+						"parent": 126809,
+						"text": "Lets just give polls a go and see what happens. It won't be too much trouble to remove them again if they turn out to be a force for evil.",
+						"time": 1204456959,
+						"type": "comment"
+					},
+					"v0/item/126859": {
+						"by": "far33d",
+						"id": 126859,
+						"parent": 126809,
+						"text": "Currently, you can vote for more than one choice...",
+						"time": 1204407900,
+						"type": "comment"
+					},
+					"v0/item/126852": {
+						"by": "icky",
+						"id": 126852,
+						"parent": 126809,
+						"text": "I like the approval-voting schema of this poll. :)",
+						"time": 1204407318,
+						"type": "comment"
+					},
+					"v0/item/126882": {
+						"by": "henning",
+						"id": 126882,
+						"parent": 126809,
+						"text": "You can always put in place a firm \"if there are too many polls people are going to get banned\" policy.",
+						"time": 1204409903,
+						"type": "comment"
+					},
+					"v0/item/126832": {
+						"by": "anewaccountname",
+						"id": 126832,
+						"kids": {
+							"0": 126855
+						},
+						"parent": 126809,
+						"text": "You were missing the option:  users would vote for all the choices (seems kinda broken).",
+						"time": 1204405915,
+						"type": "comment"
+					},
+					"v0/item/127072": {
+						"by": "gibsonf1",
+						"id": 127072,
+						"parent": 126809,
+						"text": "I vote to adjust the polling so that a user can only vote for 1 option.",
+						"time": 1204423622,
+						"type": "comment"
+					},
+					"v0/item/127217": {
+						"deleted": true,
+						"id": 127217,
+						"parent": 126809,
+						"time": 1204439778,
+						"type": "comment"
+					},
+					"v0/item/126889": {
+						"by": "bosshog",
+						"id": 126889,
+						"parent": 126809,
+						"text": "They do a cool implementation of polling at sermo.com",
+						"time": 1204410789,
+						"type": "comment"
+					},
+					"v0/item/126875": {
+						"by": "DanielBMarkham",
+						"id": 126875,
+						"parent": 126809,
+						"text": "Sounds like fun. Let's see what happens.",
+						"time": 1204409519,
+						"type": "comment"
+					},
+					"v0/item/127535": {
+						"by": "euccastro",
+						"id": 127535,
+						"parent": 126809,
+						"text": "Users would ask for pie charts. ;)",
+						"time": 1204488703,
+						"type": "comment"
+					},
+					"v0/item/127030": {
+						"by": "cstejerean",
+						"id": 127030,
+						"parent": 126822,
+						"text": "I fully agree with you. Polling would only be interesting if in addition to answering the poll the users would post comments. I like the overview of the different votes at the top of the thread that the polling feature provides but I think there should only be 2 ways of voting:<p>1. vote only when you add a comment by specifying your vote in addition to the comment<p>2. upmodding someone's vote/comment automatically adds a vote from you for the same choice<p>We need to keep in mind that a benefit of polls is that the folks answering can answer without worrying about loosing karma if they vote for the least popular choice. But we need to balance this with the fact that readers of the site don't gain much from just reading the numbers of a poll.",
+						"time": 1204420796,
+						"type": "comment"
+					},
+					"v0/item/127514": {
+						"by": "dkasper",
+						"id": 127514,
+						"kids": {
+							"0": 127742
+						},
+						"parent": 126822,
+						"text": "News.YC in my understanding is not a forum or a discussion group, it is a way to quickly find new interesting links.  Sure, commenting on the articles is great, but polls and the like are not news, and not usually new or interesting (imho).  I think sites like Reddit, Digg, News.YC get watered down when they start adding \"features\" like this.",
+						"time": 1204486525,
+						"type": "comment"
+					},
+					"v0/item/127081": {
+						"by": "yters",
+						"id": 127081,
+						"parent": 126822,
+						"text": "Since the front page is so empty, maybe it can be split down the middle between internal and external links.<p>Would this harm the aesthetics?",
+						"time": 1204424710,
+						"type": "comment"
+					},
+					"v0/item/127318": {
+						"by": "greendestiny",
+						"id": 127318,
+						"parent": 126822,
+						"text": "I think what we're seeing a few hours later is the success of the polling feature - the poll on gender has (at the time of writing this) 155 votes, but only 8 points - it has barely stayed on the front page. So while a poll doesn't add a huge amount to the community, the way people upvote polls reflects this if and only if the polling is separate from the frontpage upvote.",
+						"time": 1204461109,
+						"type": "comment"
+					},
+					"v0/item/126848": {
+						"by": "moog",
+						"id": 126848,
+						"kids": {
+							"0": 126851
+						},
+						"parent": 126822,
+						"text": "I also come here for the smart people you can find. I don't see why polls would change that.<p>Zeitgeiss anyone? Vote a), b) or c).",
+						"time": 1204407116,
+						"type": "comment"
+					},
+					"v0/item/126826": {
+						"by": "pg",
+						"id": 126826,
+						"kids": {
+							"0": 126844,
+							"1": 127080,
+							"2": 126830,
+							"3": 127022,
+							"4": 126919
+						},
+						"parent": 126823,
+						"text": "The creator of a poll can add new choices later, in response to comments.",
+						"time": 1204405090,
+						"type": "comment"
+					},
+					"v0/item/127012": {
+						"by": "pg",
+						"id": 127012,
+						"kids": {
+							"0": 127379
+						},
+						"parent": 126993,
+						"text": "You may be right.  But even if the results were worthless they could still set off interesting conversations.  And the fact is, people already were doing polls, via various awkward hacks.  When your users keep walking through a hole in the wall you should probably make a door there.",
+						"time": 1204418939,
+						"type": "comment"
+					},
+					"v0/item/127170": {
+						"by": "Darmani",
+						"id": 127170,
+						"parent": 126888,
+						"text": "Unfortunately, so far I've seen just the opposite. Other than this one, the comments on most of the polls I've seen (both here and elsewhere, now that I think about it) have just been the poster stating what choice he chose with little else. Even the poll on \"When do you upvote an article,\" which I expected to be very promising discussion-wise, has little going for it after 8 hours.<p>I think this is a result of the fact that names are no longer associated with votes with the explicit polling system. In more frank terms, people no longer get their burst of vanity from \"voting,\" and thus many replace it by shouting their vote out loud. In previous polls, many would post a more complex response to the prompt in their own words, along with a few thoughts. While we'd get plenty of the '\"a,\" \"b,\" \"me too\"' comments (glad I'm not the only one to detest those), they'd at least be at the bottom of an interesting thread rather than the top of a shoutfest.",
+						"time": 1204435417,
+						"type": "comment"
+					},
+					"v0/item/126821": {
+						"by": "pg",
+						"id": 126821,
+						"parent": 126818,
+						"text": "It's not so much a question of reflecting as enforcing. If you really felt options were exclusive, you'd never discover they weren't.<p>I probably will eventually let poll creaters enforce exclusivity, though.",
+						"time": 1204404630,
+						"type": "comment"
+					},
+					"v0/item/126855": {
+						"by": "bvttf",
+						"id": 126855,
+						"parent": 126832,
+						"text": "Eh, it's better this way when the options aren't mutually exclusive.",
+						"time": 1204407476,
+						"type": "comment"
+					},
+					"v0/item/127742": {
+						"by": "h34t",
+						"id": 127742,
+						"parent": 127514,
+						"text": "I disagree -- good links are easy to find; good discussion is not.",
+						"time": 1204511287,
+						"type": "comment"
+					},
+					"v0/item/126851": {
+						"by": "mixmax",
+						"id": 126851,
+						"kids": {
+							"0": 126858,
+							"1": 126877
+						},
+						"parent": 126848,
+						"text": "I think that the signal/noise ratio would get higher.",
+						"time": 1204407287,
+						"type": "comment"
+					},
+					"v0/item/126844": {
+						"by": "mixmax",
+						"id": 126844,
+						"kids": {
+							"0": 126986
+						},
+						"parent": 126826,
+						"text": "That would skew the results.<p>If it was possible to downvote choices a new choice could maybe start out with an average of the other choices. But since this isn't possible I don't see an obvious way of resolving this.<p>Note by the way that the same mechanism applies to comments, particularly since the comments that are added later and therefore have no votes are displayed at the bottom, thus making it proportionally harder for them to make it to the top of the thread before it falls off the frontpage. The last argument assumes that users start from the top of the page, and don't always make it through all the comments to the bottom. A behaviour that I think is quite common - I know I do it...",
+						"time": 1204406616,
+						"type": "comment"
+					},
+					"v0/item/127080": {
+						"by": "ratsbane",
+						"id": 127080,
+						"parent": 126826,
+						"text": "1) I like the way you implemented the poll.\n2) But I'd like to be able to change a vote - even if just for a few minutes.  I upvoted the third choice and then upvoted the second just to see if I could vote for more than one - but that was just a test. I wanted to change my vote but couldn't.\n3) What if you showed votes as a ratio of votes to (quantity of unique visitors since the choice was added)?  This would balance the scores of questions added later.  This might be interesting with comments, too.  A really good comment added to a posting that almost everyone has seen doesn't get recognized so much now.",
+						"time": 1204424631,
+						"type": "comment"
+					},
+					"v0/item/126830": {
+						"by": "abstractbill",
+						"id": 126830,
+						"kids": {
+							"0": 126837
+						},
+						"parent": 126826,
+						"text": "Wouldn't the results then be biased in favor of the original choices (since they were available longer) making it hard to draw any conclusions?",
+						"time": 1204405682,
+						"type": "comment"
+					},
+					"v0/item/127022": {
+						"by": "robg",
+						"id": 127022,
+						"parent": 126826,
+						"text": "Feature request: Allow author to make choices exclusive or multi-response. By that I mean, some polls<p><a href=\"http://news.ycombinator.com/item?id=126903\" rel=\"nofollow\">http://news.ycombinator.com/item?id=126903</a><p>are designed to allow voters to vote on multiple choices. While others:<p><a href=\"http://news.ycombinator.com/item?id=126923\" rel=\"nofollow\">http://news.ycombinator.com/item?id=126923</a><p>should only allow for a singular response.",
+						"time": 1204420074,
+						"type": "comment"
+					},
+					"v0/item/126919": {
+						"by": "robg",
+						"id": 126919,
+						"parent": 126826,
+						"text": "Love the line break for a new choice. Could you automatically add in letters or numbers to delineate them? It would make discussion around each choice a bit easier, especially if there are four choices or more.",
+						"time": 1204412719,
+						"type": "comment"
+					},
+					"v0/item/127379": {
+						"by": "mechanical_fish",
+						"id": 127379,
+						"parent": 127012,
+						"text": "Well, I thought about trying to argue that it's better to keep polls awkward and ugly, so that people get discouraged from creating the darned things and just ask questions instead. :) But, in fact, you're right: You've tried that already, and it hasn't worked.<p>I suppose polls are the online equivalent of asking people in the audience to raise their hands. It's a similarly useless technique for actually gathering data, but it can be effective as a rhetorical tool. And, given that the alternative in an online forum is to write for a <i>completely invisible</i> audience, maybe it is sometimes better than nothing.",
+						"time": 1204471527,
+						"type": "comment"
+					},
+					"v0/item/126858": {
+						"by": "moog",
+						"id": 126858,
+						"parent": 126851,
+						"text": "We could adopt a convention that when you vote, you post a short comment to explain your rationale.",
+						"time": 1204407836,
+						"type": "comment"
+					},
+					"v0/item/126877": {
+						"by": "mhb",
+						"id": 126877,
+						"kids": {
+							"0": 126900
+						},
+						"parent": 126851,
+						"text": "???<p>Why would that be bad?",
+						"time": 1204409710,
+						"type": "comment"
+					},
+					"v0/item/126986": {
+						"by": "mnemonicsloth",
+						"id": 126986,
+						"kids": {
+							"0": 126990
+						},
+						"parent": 126844,
+						"text": "Results of these polls are already skewed because the respondents are self-selected.",
+						"time": 1204416796,
+						"type": "comment"
+					},
+					"v0/item/126837": {
+						"by": "anewaccountname",
+						"id": 126837,
+						"kids": {
+							"0": 126879
+						},
+						"parent": 126830,
+						"text": "No, because it would be added in according to the scientific method.",
+						"time": 1204405969,
+						"type": "comment"
+					},
+					"v0/item/126900": {
+						"by": "mixmax",
+						"id": 126900,
+						"kids": {
+							"0": 126971
+						},
+						"parent": 126877,
+						"text": "Because then the site would be like Reddit - interesting content that is impossible to find in the vast froothing sea of Ron Paul submissions, funny pictures and conspiracy theories.<p>:-)",
+						"time": 1204411966,
+						"type": "comment"
+					},
+					"v0/item/126990": {
+						"by": "mixmax",
+						"id": 126990,
+						"parent": 126986,
+						"text": "You're right - but that's a problem that can't really be solved, unless we start hijacking unsuspecting random people to answer.<p>:-)",
+						"time": 1204417238,
+						"type": "comment"
+					},
+					"v0/item/126879": {
+						"by": "inklesspen",
+						"id": 126879,
+						"kids": {
+							"0": 127644
+						},
+						"parent": 126837,
+						"text": "what on earth does that mean?",
+						"time": 1204409791,
+						"type": "comment"
+					},
+					"v0/item/126971": {
+						"by": "mhb",
+						"id": 126971,
+						"kids": {
+							"0": 126974
+						},
+						"parent": 126900,
+						"text": "Then I think you meant that the signal/noise ratio would become lower.",
+						"time": 1204414900,
+						"type": "comment"
+					},
+					"v0/item/127644": {
+						"by": "anewaccountname",
+						"id": 127644,
+						"parent": 126879,
+						"text": "It was a joke.",
+						"time": 1204499668,
+						"type": "comment"
+					},
+					"v0/item/126974": {
+						"by": "mixmax",
+						"id": 126974,
+						"kids": {
+							"0": 126987
+						},
+						"parent": 126971,
+						"text": "Oooops....<p>You're right. Sorry about that.",
+						"time": 1204415253,
+						"type": "comment"
+					},
+					"v0/item/126987": {
+						"by": "rw",
+						"id": 126987,
+						"kids": {
+							"0": 126989
+						},
+						"parent": 126974,
+						"text": "This subthread is an example of the ratio getting higher.",
+						"time": 1204416824,
+						"type": "comment"
+					},
+					"v0/item/126989": {
+						"by": "mhb",
+						"id": 126989,
+						"parent": 126987,
+						"text": "I think you mean lower.",
+						"time": 1204417076,
+						"type": "comment"
+					}
+				},
+				"updates": []
+			}
+		]
+	}
+}

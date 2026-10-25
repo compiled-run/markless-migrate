@@ -1,0 +1,170 @@
+[
+	{
+		"mode": "dev",
+		"name": "01-literal-prop",
+		"expected": "apples 3",
+		"actual": "3",
+		"ok": false
+	},
+	{
+		"mode": "production",
+		"name": "01-literal-prop",
+		"expected": "apples 3",
+		"actual": "3",
+		"ok": false
+	},
+	{
+		"mode": "dev",
+		"name": "02-component-async-twice",
+		"expected": "value in the served HTML, slowValue ran on: server",
+		"actual": "value not in the served HTML, slowValue ran on: server+browser",
+		"ok": false
+	},
+	{
+		"mode": "production",
+		"name": "02-component-async-twice",
+		"expected": "value in the served HTML, slowValue ran on: server",
+		"actual": "value not in the served HTML, slowValue ran on: server+browser",
+		"ok": false
+	},
+	{
+		"mode": "dev",
+		"name": "03-async-prop-graph-node",
+		"expected": "no page error",
+		"actual": "no page error",
+		"ok": true
+	},
+	{
+		"mode": "production",
+		"name": "03-async-prop-graph-node",
+		"expected": "no page error",
+		"actual": "no page error",
+		"ok": true
+	},
+	{
+		"mode": "dev",
+		"name": "04-mutual-recursion",
+		"expected": "3 .inner, first button reads closed",
+		"actual": "3 .inner, first button reads open",
+		"ok": false
+	},
+	{
+		"mode": "production",
+		"name": "04-mutual-recursion",
+		"expected": "builds",
+		"actual": "the production build did not finish in 180 s (last output: transforming...)",
+		"ok": false
+	},
+	{
+		"mode": "dev",
+		"name": "05-recursive-async",
+		"expected": "4 .body, first toggle shows [+], no page error",
+		"actual": "0 .body, toggle missing, errors: none",
+		"ok": false
+	},
+	{
+		"mode": "production",
+		"name": "05-recursive-async",
+		"expected": "4 .body, first toggle shows [+], no page error",
+		"actual": "0 .body, toggle missing, errors: none",
+		"ok": false
+	},
+	{
+		"mode": "dev",
+		"name": "06-attach-prop",
+		"expected": "attach read id /06-attach-prop",
+		"actual": "attach read id undefined",
+		"ok": false
+	},
+	{
+		"mode": "production",
+		"name": "06-attach-prop",
+		"expected": "attach read id /06-attach-prop",
+		"actual": "attach read id undefined",
+		"ok": false
+	},
+	{
+		"mode": "dev",
+		"name": "07-arm-attach",
+		"expected": ".panel shown and focused",
+		"actual": ".panel shown and focused",
+		"ok": true
+	},
+	{
+		"mode": "production",
+		"name": "07-arm-attach",
+		"expected": ".panel shown and focused",
+		"actual": ".panel shown and focused",
+		"ok": true
+	},
+	{
+		"mode": "dev",
+		"name": "08-async-in-browser-computed",
+		"expected": "3",
+		"actual": "3",
+		"ok": true
+	},
+	{
+		"mode": "production",
+		"name": "08-async-in-browser-computed",
+		"expected": "3",
+		"actual": "3",
+		"ok": true
+	},
+	{
+		"mode": "dev",
+		"name": "09-row-branch",
+		"expected": "row 1 open, row 2 done, row 3 open",
+		"actual": "no rows",
+		"ok": false
+	},
+	{
+		"mode": "production",
+		"name": "09-row-branch",
+		"expected": "row 1 open, row 2 done, row 3 open",
+		"actual": "no rows",
+		"ok": false
+	},
+	{
+		"mode": "dev",
+		"name": "10-first-click-propagation",
+		"expected": "inner 1 outer 0",
+		"actual": "inner 1 outer 1",
+		"ok": false
+	},
+	{
+		"mode": "production",
+		"name": "10-first-click-propagation",
+		"expected": "inner 1 outer 0",
+		"actual": "inner 1 outer 1",
+		"ok": false
+	},
+	{
+		"mode": "dev",
+		"name": "11-row-attach",
+		"expected": "<b>bold</b> | <i>italic</i>",
+		"actual": " | ",
+		"ok": false
+	},
+	{
+		"mode": "production",
+		"name": "11-row-attach",
+		"expected": "<b>bold</b> | <i>italic</i>",
+		"actual": " | ",
+		"ok": false
+	},
+	{
+		"mode": "dev",
+		"name": "12-navigation-leak",
+		"expected": "window load listeners after 5 in-place navigations: as before",
+		"actual": "window load listeners after 5 in-place navigations: 0 -> 5",
+		"ok": false
+	},
+	{
+		"mode": "production",
+		"name": "12-navigation-leak",
+		"expected": "window load listeners after 5 in-place navigations: as before",
+		"actual": "window load listeners after 5 in-place navigations: 0 -> 5",
+		"ok": false
+	}
+]
