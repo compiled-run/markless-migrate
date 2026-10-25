@@ -51,8 +51,20 @@ test('the failure names the browser and network, and the largest requests the ne
 	const f = failures.find((x) => /First click answered/.test(x.check))!;
 	assert.equal(f.dimension, 'load');
 	assert.equal(f.check, 'page load: slow network, firefox Regular 2G (256 kbit/s, 300 ms RTT): First click answered');
-	assert.match(f.actual, /^12\.15 s, the median of 5 \(runs [^)]+\): 7\.13 s worse, beyond the [\d.]+ s the old page's own runs differ by \(p = 0\.00\d\)/);
+	assert.match(f.actual, /^12\.15 s, the median of 5 \(runs [^)]+\): 7\.13 s worse, beyond the [\d.]+ s the old page's own runs differ by or the measurement can tell apart \(p = 0\.00\d\)/);
 	assert.match(f.actual, /before the answer the new page finished 220 kB \(6\.9 s of the link\): stylesheet \/app\.css 94\.0 kB \(2\.9 s\), script \/late\.js 70\.0 kB \(2\.2 s\), document \/ 56\.0 kB \(1\.8 s\)/);
 	assert.doesNotMatch(f.actual, /after\.js/);
 	assert.ok(failures.some((x) => /First painted frame/.test(x.check)));
+});
+
+test('a difference finer than the instrument can see is no verdict: a frame read every 100 ms, a click answered at most every 250 ms', () => {
+	const tight = (base: number, ms: number[]) => ms.map((d) => run(base + d * 10, 430 + d));
+	const old = summarizeCell('regular-3g', 'chromium', tight(2000, [1, 1, 0, -1]));
+	const next = summarizeCell('regular-3g', 'chromium', tight(2000, [41, 41, 14, 51]));
+	const verdicts = networkVerdicts(old, next);
+	const frame = verdicts.find((v) => v.metric === 'firstFrame')!;
+	assert.ok(frame.worse > 30 && frame.worse < 100, String(frame.worse));
+	assert.equal(frame.band, 100, "the screenshots' interval, wider than the old page's own spread");
+	assert.equal(frame.ok, true);
+	assert.equal(verdicts.find((v) => v.metric === 'answered')!.band >= 250, true);
 });

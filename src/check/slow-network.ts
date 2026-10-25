@@ -137,7 +137,7 @@ export function blankFrame(png: Buffer): boolean {
 	return true;
 }
 
-const FRAME_EVERY_MS = 100;
+export const FRAME_EVERY_MS = 100;
 
 /** Epoch ms when the first screenshot with anything painted came back, taken every 100 ms until one is or `stop` says so. */
 async function firstPaintedFrame(page: Page, stop: () => boolean): Promise<number | undefined> {

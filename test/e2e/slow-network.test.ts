@@ -73,7 +73,7 @@ test('check is red on the slow network when the new page answers later beyond th
 		const f = route.failures.find((x) => x.check === 'page load: slow network, chromium Regular 3G (768 kbit/s, 100 ms RTT): First click answered');
 		assert.ok(f, route.failures.map((x) => x.check).join('\n'));
 		assert.equal(route.dimensions.load, 'fail');
-		assert.match(f.actual, /worse, beyond the [\d.]+ s the old page's own runs differ by \(p = 0\.0\d+\); before the answer the new page finished \d+ kB \([\d.]+ s of the link\): script \/app\.js 12\d\.\d kB/);
+		assert.match(f.actual, /worse, beyond the [\d.]+ s the old page's own runs differ by or the measurement can tell apart \(p = 0\.0\d+\); before the answer the new page finished \d+ kB \([\d.]+ s of the link\): script \/app\.js 12\d\.\d kB/);
 		assert.match(summarize(report), /slow network: 1 of 1 browser and network cells measured, [\d.]+ min/);
 		assert.match(summarize(report), /First click answered [\d.]+ s -> [\d.]+ s \(slower\)/);
 		assert.match(renderHtml(report, () => 'x.png'), /<strong>slower<\/strong> by [\d.]+ s \(old against old: ±/);

@@ -1,11 +1,13 @@
 import { mannWhitneyGreater, median, SIGNIFICANCE } from './load.ts';
-import { formatValue, RUN_METRIC_LABEL, runMetric, type NetworkCell, type NetworkRun, type RouteNetwork, type RunMetric } from './slow-network.ts';
+import { CLICK_EVERY_MS, FRAME_EVERY_MS, formatValue, RUN_METRIC_LABEL, runMetric, type NetworkCell, type NetworkRun, type RouteNetwork, type RunMetric } from './slow-network.ts';
 import { NETWORK_PROFILES } from './throttle.ts';
 import type { Failure } from './types.ts';
 
 /** The times that gate a route: a page that paints or answers later on any browser and network is slower there. */
 export const GATED: readonly RunMetric[] = ['firstFrame', 'lcp', 'answered'];
 const BAND_QUANTILE = 0.9;
+/** The instrument's own step: a first frame is read from screenshots this far apart, and a click is sent no more often than this, so a smaller difference cannot be seen. */
+export const RESOLUTION: Readonly<Partial<Record<RunMetric, number>>> = { firstFrame: FRAME_EVERY_MS, answered: CLICK_EVERY_MS };
 
 /** The 90th percentile of the gap between the medians of two halves of `old`, over every way to split its runs: how far apart the old page lands from itself. */
 export function noiseBand(old: readonly number[]): number | undefined {
@@ -32,6 +34,7 @@ export interface NetworkVerdict {
 	readonly old?: number;
 	readonly new?: number;
 	readonly worse: number;
+	/** The larger of the old page's own noise and the instrument's step. */
 	readonly band: number;
 	readonly p: number;
 	readonly ok: boolean;
@@ -52,8 +55,9 @@ export function networkVerdicts(old: NetworkCell, next: NetworkCell): NetworkVer
 			out.push({ metric, old: median(o), worse: Infinity, band: 0, p: 0, ok: false, reason: next.runs[0]!.error! });
 			continue;
 		}
-		const band = noiseBand(o);
-		if (!o.length || !n.length || band === undefined) continue;
+		const noise = noiseBand(o);
+		if (!o.length || !n.length || noise === undefined) continue;
+		const band = Math.max(noise, RESOLUTION[metric] ?? 0);
 		const om = median(o);
 		const nm = median(n);
 		const p = mannWhitneyGreater(o, n);
@@ -110,7 +114,7 @@ export function networkFailures(route: string, network: RouteNetwork | { readonl
 				expected: `${formatValue(v.metric, v.old)} or sooner, the old page's median of ${values(old.runs, v.metric).length} cold loads (runs ${runList(old.runs, v.metric)})`,
 				actual: v.reason
 					? `never, in ${next.runs.length} cold loads: ${v.reason}`
-					: `${formatValue(v.metric, v.new)}, the median of ${runs} (runs ${runList(next.runs, v.metric)}): ${formatValue(v.metric, v.worse)} worse, beyond the ${formatValue(v.metric, v.band)} the old page's own runs differ by (p = ${v.p.toFixed(3)})${path ? `; ${path}` : ''}`,
+					: `${formatValue(v.metric, v.new)}, the median of ${runs} (runs ${runList(next.runs, v.metric)}): ${formatValue(v.metric, v.worse)} worse, beyond the ${formatValue(v.metric, v.band)} the old page's own runs differ by or the measurement can tell apart (p = ${v.p.toFixed(3)})${path ? `; ${path}` : ''}`,
 				hint: NETWORK_HINT,
 			});
 		}
