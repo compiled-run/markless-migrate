@@ -1,0 +1,5 @@
+.build-old/
+.build-new/
+front/.vercel/
+front/public/_migrate/report.*
+front/public/_migrate/shots/
