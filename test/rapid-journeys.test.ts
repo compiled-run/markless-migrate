@@ -112,3 +112,11 @@ test('typing key by key into a search box whose first answer arrives last: the n
 	assert.ok(typed, JSON.stringify({ red: red.map((f) => [f.check, f.expected, f.actual]), journeys: names(report) }, null, 1));
 	assert.equal(failures(await check(search(true), search(true))).filter((f) => /key by key/.test(f.check)).length, 0);
 });
+
+test('where a race ends is compared with a fresh load of the same app, not with the old app the front door still sends that page to', async () => {
+	// The new app's people pages carry a footer the old one lacks; only `/` is switched, so the front door would load /grace from the old app.
+	const port = (path: string) => people(true)(path)?.replace('</main>', path === '/' ? '</main>' : '<footer>Ported</footer></main>');
+	const [a, b] = await Promise.all([serve(people(true)), serve(port)]);
+	const report = await runCheck({ oldOrigin: a, newOrigin: b, routes: ['/'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1, journeys: { budgetMs: 90_000 }, switched: ['/'] });
+	assert.deepEqual(failures(report).filter((f) => /against a fresh load/.test(f.actual)).map((f) => [f.check, f.actual]), []);
+});

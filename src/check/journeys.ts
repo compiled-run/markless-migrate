@@ -1499,7 +1499,10 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		}
 		// Where a race ended must show what that address shows when loaded on its own: lines that differ are an answer that came late and won.
 		if (step?.action === 'race' && !failed) {
+			// The fresh load is this app's own, even for a page the front door would still send to the old app.
+			log.ownPages = true;
 			const reloaded = await page.reload({ waitUntil: 'load', timeout: 30_000 }).then(() => true, () => false);
+			log.ownPages = false;
 			if (reloaded) {
 				await quiet(page, inflight, navigations);
 				const fresh = await snapshot(page, hosts);
@@ -2490,7 +2493,7 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			if (slower) parts.push('answer time');
 			if (navigated && !n.loaded && morphs(oldSteps as StepResult[], n).length) parts.push('morph');
 			if (!reloaded && !n.loaded && interimViews(oldSteps as StepResult[], n)) parts.push('in between');
-			if (n.stale?.length && oldSteps.every((x) => !x.stale?.length)) parts.push('stale');
+			if (n.stale?.length && !n.door && oldSteps.every((x) => !x.stale?.length)) parts.push('stale');
 			if (parts.length) {
 				const failure: Failure = { route, dimension, check, expected: where('old', format(shown(a!), parts, missing, true)), actual: where('new', format(shown(n), parts, missing)), hint, ...(automatic && parts.length === 1 && parts[0] === 'storage' ? { automatic } : {}) };
 				if (parts.length === 1 && parts[0] === 'answer time') timedOnly.set(failure, { journey: j, step: k });

@@ -143,6 +143,8 @@ export interface PageLog {
 	readonly sockets: SocketLog[];
 	/** While set, with writes held back, every page load and fetch to the app is held back too: a control that ends the session or deletes may do it with a GET. */
 	holdAll?: boolean;
+	/** While set, a page load stays on this app instead of going where the front door would send it: a load compared with what this app showed. */
+	ownPages?: boolean;
 	/** Waits for response bodies still being read. */
 	settled(): Promise<void>;
 	/** Stops recording: requests the checker itself makes from the page afterwards are not the page's. */
@@ -426,7 +428,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 		}
 		// The document must load at `/`, or the preload scanner fetches the shell's relative files under the route's path.
 		if (same && topLevelLoad(request) && shellRoute(url.pathname, env.routing)) return route.fulfill({ status: 302, headers: { location: `/#${url.pathname}${url.search}` } });
-		const door302 = door && topLevelLoad(request) ? frontDoorTarget(url, env.origin, door) : undefined;
+		const door302 = door && !log.ownPages && topLevelLoad(request) ? frontDoorTarget(url, env.origin, door) : undefined;
 		if (door302) return route.fulfill({ status: 302, headers: { location: door302 } });
 		const timed = options.timed;
 		if (!same) {
