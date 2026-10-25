@@ -458,7 +458,7 @@ when the wall allows a known agent.
 (Next.js, Nuxt, Remix, Express, Nitro...), on any Node from 16 (it loads with `--require`, which older Node
 accepts in `NODE_OPTIONS` where it refuses `--import`, and gives a server without `fetch` none). Start both apps with it. While `check` loads a page, the
 recorder files every request the server makes for it: `fetch` with method, URL, body and response,
-and `node:http`/`node:https` (axios, got, most SDKs) with method, URL and status only. Requests from
+and `node:http`/`node:https` (axios, got, node-fetch, most SDKs) with method, URL, request body and status (not the response, which is the app's to read). Requests from
 other runtimes (Python, Ruby, PHP, Go, edge workers) are not recorded; for those, only browser requests
 are compared. The recorder answers the checker on the app's own origin under `/__markless-migrate/`,
 to loopback callers only, or to callers sending `MARKLESS_MIGRATE_TOKEN` when it is set.
