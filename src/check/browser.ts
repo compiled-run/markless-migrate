@@ -340,11 +340,23 @@ export interface OpenPage {
 	readonly own: (url: URL) => boolean;
 }
 
-const received = new WeakMap<Page, number>();
+// Runs in the page: counts the messages its realtime database sockets deliver, as a routed socket is never one of the page's websockets.
+function countDatabaseFrames(pattern: string): void {
+	const Socket = globalThis.WebSocket;
+	const host = new RegExp(pattern);
+	const w = globalThis as unknown as { __mmDatabaseFrames: number };
+	w.__mmDatabaseFrames = 0;
+	globalThis.WebSocket = class extends Socket {
+		constructor(url: string | URL, protocols?: string | string[]) {
+			super(url, protocols);
+			if (host.test(String(url))) this.addEventListener('message', () => void w.__mmDatabaseFrames++);
+		}
+	};
+}
 
-/** How many frames the page has received on its realtime database sockets. */
-export function databaseFramesReceived(page: Page): number {
-	return received.get(page) ?? 0;
+/** How many frames the page has received on its replayed realtime database sockets. */
+export function databaseFramesReceived(page: Page): Promise<number> {
+	return page.evaluate(() => (globalThis as unknown as { __mmDatabaseFrames?: number }).__mmDatabaseFrames ?? 0).catch(() => 0);
 }
 
 /** A fresh context with the clock and randomness frozen, trackers blocked, writes held back unless allowed, and recorded data served. */
@@ -394,6 +406,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 	}
 	const recorded = [...(env.replay?.responses ?? []), ...(env.replay?.shared?.responses ?? [])].filter((r) => r.side === 'browser');
 	const databases: readonly FakeDatabase[] = env.replay?.live ? await serveDatabases(context, env.replay.live) : [];
+	if (env.replay?.live) await context.addInitScript(countDatabaseFrames, FIREBASE_SOCKET.source);
 	const door = env.frontDoor;
 	const ownOrigin = (url: URL) => sameApp(url, env.origin) || (door !== undefined && sameApp(url, door.old));
 	await context.route('**/*', async (route: Route) => {
@@ -491,7 +504,6 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 	const page = await context.newPage();
 	page.on('websocket', (socket) => {
 		if (!FIREBASE_SOCKET.test(socket.url())) return;
-		socket.on('framereceived', () => received.set(page, (received.get(page) ?? 0) + 1));
 		if (stopped) return;
 		const opened = Date.now();
 		const frames: { sent: boolean; text: string; at: number }[] = [];

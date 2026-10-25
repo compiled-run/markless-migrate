@@ -1275,7 +1275,7 @@ async function perform(page: Page, step: Step, patience = QUICK): Promise<void> 
 		// The pushed frames reach the page asynchronously; the step's effect is read once they are all there.
 		const sent = databases.reduce((n, db) => n + db.frames, 0);
 		const until = Date.now() + LIVE_DELIVERY_MS;
-		while (databaseFramesReceived(page) < sent && Date.now() < until) await sleep(10);
+		while ((await databaseFramesReceived(page)) < sent && Date.now() < until) await sleep(10);
 		return;
 	}
 	const target = await stepTarget(page, step);
