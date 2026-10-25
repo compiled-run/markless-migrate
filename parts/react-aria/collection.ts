@@ -10,7 +10,7 @@ export function itemsOf(collection: Element, all = false): HTMLElement[] {
 	return [...collection.querySelectorAll<HTMLElement>(ITEM)].filter((el) => !el.hasAttribute('data-mm-empty') && el.closest('[role="listbox"], [role="menu"]') === collection && (all || !disabled(el)));
 }
 
-export const textOf = (item: Element) => (item.getAttribute('data-text-value') ?? item.textContent ?? '').trim();
+export const textOf = (item: Element) => (item.getAttribute('data-mm-text-value') ?? item.textContent ?? '').trim();
 
 /** Moves focus to an item, which takes the collection's tab stop. */
 export function focusItem(collection: Element, item: HTMLElement | undefined): void {

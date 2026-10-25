@@ -6,6 +6,7 @@ import { defaultEnv, openPage } from '../check/browser.ts';
 import { finishAnimations } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS, type Viewport } from '../check/types.ts';
+import { markTextValues } from './rac-text.ts';
 
 /** How a control shows what it holds back. */
 /** `copy`: a click whose effect kept is what it writes to the clipboard. */
@@ -55,7 +56,7 @@ const CHILD_HOVER: readonly (readonly [selector: string, action: RevealAction])[
 // Radix ScrollArea (type "hover") mounts its scrollbars when the pointer enters it: hovered in a pass of its own.
 const SCROLL_HOVER: readonly (readonly [selector: string, action: RevealAction])[] = [['[data-slot="scroll-area"]:not([data-base-ui-scroll-area-root])', 'hover']];
 
-const key = (route: string, extra: readonly (readonly [string, string])[] = []) => createHash('sha256').update(`reveal:${route}${extra.length ? `|${JSON.stringify(extra)}` : ''}`).digest('hex').slice(0, 16);
+const key = (route: string, extra: readonly (readonly [string, string])[] = []) => createHash('sha256').update(`reveal:2:${route}${extra.length ? `|${JSON.stringify(extra)}` : ''}`).digest('hex').slice(0, 16);
 
 interface Candidate {
 	/** Listed by the site: only a control that takes itself away is recorded. */
@@ -193,6 +194,7 @@ async function reveal(page: Page, candidate: Candidate): Promise<Revealed[] | st
 		});
 		return kept ? [{ into: 'replace', before: kept.depth, html: kept.html }] : [];
 	}
+	await page.evaluate(markTextValues);
 	return page.evaluate(() => {
 		const w = window as unknown as { __mmAdded?: { parent: Element; node: Element; next: Element | null }[]; __mmObserver?: MutationObserver };
 		w.__mmObserver?.disconnect();
@@ -376,7 +378,7 @@ const RAC_HOVER_MAX = 60;
 
 /** Hovers each React Aria control that may hold a tooltip or preview and records what it showed. Cached by route. */
 export async function captureRacHovers(browser: Browser, origin: string, route: string, dir: string): Promise<readonly Reveal[]> {
-	const file = join(dir, `${createHash('sha256').update(`rac-hover:2:${route}|${RAC_HOVER}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`rac-hover:3:${route}|${RAC_HOVER}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
 	if (cached && cached.route === route) return cached.reveals;
 	const viewport = VIEWPORTS[0]!;
@@ -430,6 +432,7 @@ export async function captureRacHovers(browser: Browser, origin: string, route: 
 			if (!used) continue;
 			// A PreviewTrigger opens after 600 ms.
 			await quiet(open.page, c.preview ? 900 : 400);
+			await open.page.evaluate(markTextValues);
 			const added = await open.page.evaluate(() => {
 				const w = window as unknown as { __mmAdded?: Element[]; __mmObserver?: MutationObserver };
 				w.__mmObserver?.disconnect();
@@ -464,7 +467,7 @@ export async function captureRacHovers(browser: Browser, origin: string, route: 
 export async function captureRacSubmenus(browser: Browser, origin: string, route: string, dir: string, reveals: readonly Reveal[]): Promise<readonly Reveal[]> {
 	const menus = reveals.filter((r) => r.action === 'click' && r.added.some((a) => /role="menuitem[^"]*"[^>]*aria-haspopup="menu"|aria-haspopup="menu"[^>]*role="menuitem/.test(a.html) && a.html.includes('data-rac')));
 	if (!menus.length) return [];
-	const file = join(dir, `${createHash('sha256').update(`rac-submenus:1:${route}|${JSON.stringify(menus.map((m) => [m.sig, m.nth, m.path]))}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`rac-submenus:2:${route}|${JSON.stringify(menus.map((m) => [m.sig, m.nth, m.path]))}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
 	if (cached && cached.route === route) return cached.reveals;
 	const out: Reveal[] = [];
@@ -501,6 +504,7 @@ export async function captureRacSubmenus(browser: Browser, origin: string, route
 				const hovered = await item.hover({ timeout: 2000 }).then(() => true, () => false);
 				if (!hovered) continue;
 				await quiet(page, 500);
+				await page.evaluate(markTextValues);
 				const added = await page.evaluate(() => {
 					const w = window as unknown as { __mmAdded?: globalThis.Element[]; __mmObserver?: MutationObserver };
 					w.__mmObserver?.disconnect();
@@ -626,7 +630,7 @@ export async function captureRadixSubmenus(browser: Browser, origin: string, rou
  * else the input's. Cached by route.
  */
 export async function captureRacComboInputs(browser: Browser, origin: string, route: string, dir: string): Promise<readonly Reveal[]> {
-	const file = join(dir, `${createHash('sha256').update(`rac-combo-inputs:5:${route}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`rac-combo-inputs:6:${route}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
 	if (cached && cached.route === route) return cached.reveals;
 	const out: Reveal[] = [];
@@ -673,6 +677,7 @@ export async function captureRacComboInputs(browser: Browser, origin: string, ro
 				await page.keyboard.press('ArrowDown');
 				await page.waitForSelector('[data-trigger="ComboBox"] [role="option"]', { timeout: 8000 }).catch(() => {});
 				await quiet(page, 300);
+				await page.evaluate(markTextValues);
 				const added = await page.evaluate(() => {
 					const w = window as unknown as { __mmAdded?: globalThis.Element[]; __mmObserver?: MutationObserver };
 					w.__mmObserver?.disconnect();
