@@ -9,12 +9,12 @@ import CommentList from './CommentList.tsrx';
 
 export default function ItemView({ id }: { id: string }) @{
 	let rootId = state(Number(id));
-	let live = state<ThreadState>({ items: {}, visit: { lastVisit: null, prevMaxCommentId: 0, firstVisit: true }, settings: DEFAULT_SETTINGS, loading: true });
+	let live = state<ThreadState>({ items: {}, visit: { lastVisit: null, prevMaxCommentId: 0, firstVisit: true }, settings: DEFAULT_SETTINGS, loading: true, delayed: {} });
 	let collapsed = state<Flags>({});
 	let highlighted = state<Flags | null>(null);
 	let showAfter = state(0);
 	let now = state(Date.now());
-	const thread = computed<Thread>(() => ({ rootId, items: live.items, visit: live.visit, settings: live.settings, highlighted, collapsed }));
+	const thread = computed<Thread>(() => ({ rootId, items: live.items, visit: live.visit, settings: live.settings, highlighted, collapsed, delayed: live.delayed }));
 	const header = computed(() => itemHeader(thread, live.loading, showAfter, now));
 	const rows = computed(() => threadRows(thread, now));
 	const polls = computed(() => pollRows(thread));

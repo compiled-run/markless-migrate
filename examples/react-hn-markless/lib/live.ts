@@ -54,31 +54,58 @@ function coalesce<T>(write: (value: T) => void): (value: T) => void {
 	};
 }
 
-/** Listens to every id in `want`, and stops listening to ids no longer wanted. */
+const DELAY_RETRY_MS = 30_000;
+
+/** Listens to every id in `want`, and stops listening to ids no longer wanted; a listen the server refuses is tried again after 30 s, as the old Comment did. */
 class Listens {
 	private readonly stops = new Map<number, Stop>();
-	constructor(private readonly onValue: (id: number, value: Item | null) => void) {}
+	private readonly retries = new Map<number, ReturnType<typeof setTimeout>>();
+	private readonly onValue: (id: number, value: Item | null) => void;
+	private readonly onDelayed: (id: number) => void;
+
+	constructor(
+		onValue: (id: number, value: Item | null) => void,
+		onDelayed: (id: number) => void = () => {},
+	) {
+		this.onValue = onValue;
+		this.onDelayed = onDelayed;
+	}
 
 	want(ids: Iterable<number>): void {
 		const wanted = new Set(ids);
-		for (const [id, stop] of this.stops)
-			if (!wanted.has(id)) {
-				stop();
-				this.stops.delete(id);
-			}
-		for (const id of wanted)
-			if (!this.stops.has(id))
-				this.stops.set(
+		for (const [id, stop] of this.stops) {
+			if (wanted.has(id)) continue;
+			stop();
+			this.stops.delete(id);
+			clearTimeout(this.retries.get(id));
+			this.retries.delete(id);
+		}
+		for (const id of wanted) if (!this.stops.has(id)) this.start(id);
+	}
+
+	private start(id: number): void {
+		const stop = database().listen(
+			itemPath(id),
+			(value) => this.onValue(id, (value as Item | null) ?? null),
+			() => {
+				this.onDelayed(id);
+				this.retries.set(
 					id,
-					database().listen(itemPath(id), (value) =>
-						this.onValue(id, (value as Item | null) ?? null),
-					),
+					setTimeout(() => {
+						this.retries.delete(id);
+						if (this.stops.has(id)) this.start(id);
+					}, DELAY_RETRY_MS),
 				);
+			},
+		);
+		this.stops.set(id, stop);
 	}
 
 	stop(): void {
 		for (const stop of this.stops.values()) stop();
+		for (const retry of this.retries.values()) clearTimeout(retry);
 		this.stops.clear();
+		this.retries.clear();
 	}
 }
 
@@ -163,6 +190,7 @@ export interface ThreadState {
 	readonly visit: ThreadVisit;
 	readonly settings: Settings;
 	readonly loading: boolean;
+	readonly delayed: Flags;
 }
 
 /** A story's comment thread: the story and every comment it renders, each live, with the old store's first-load and visit bookkeeping. */
@@ -184,6 +212,7 @@ export function followThread(
 	if (cached) items[rootId] = cached;
 	let loading = true;
 	let fromCache = Boolean(cached);
+	const delayed: Record<number, boolean> = {};
 	const flush = coalesce(write);
 	const view = (): Thread => ({
 		rootId,
@@ -192,6 +221,7 @@ export function followThread(
 		settings,
 		highlighted: null,
 		collapsed: {},
+		delayed,
 	});
 	const store = () => {
 		const root = items[rootId];
@@ -202,31 +232,37 @@ export function followThread(
 			maxCommentId: stats(view()).maxCommentId,
 		});
 	};
-	const emit = () => flush({ items: { ...items }, visit, settings, loading });
+	const emit = () =>
+		flush({ items: { ...items }, visit, settings, loading, delayed: { ...delayed } });
 	if (cached) document.title = pageTitle(cached.title);
-	const listens = new Listens((id, value) => {
-		items[id] = value;
-		if (id === rootId) {
-			if (value?.title && (fromCache || !document.title.startsWith(value.title)))
-				document.title = pageTitle(value.title);
-			fromCache = false;
-		}
-		listens.want(wanted());
-		if (loading && !fromCache && loaded({ rootId, items, settings })) {
-			loading = false;
-			const { maxCommentId, newCommentCount } = stats(view());
-			if (visit.firstVisit)
-				visit = {
-					lastVisit: Date.now(),
-					prevMaxCommentId: maxCommentId,
-					firstVisit: false,
-				};
-			else if (settings.autoCollapse && newCommentCount > 0)
-				collapse(collapseWithoutNew(view()));
-			store();
-		}
-		emit();
-	});
+	const settle = () => {
+		if (!loading || fromCache || !loaded({ rootId, items, settings, delayed })) return;
+		loading = false;
+		const { maxCommentId, newCommentCount } = stats(view());
+		if (visit.firstVisit)
+			visit = { lastVisit: Date.now(), prevMaxCommentId: maxCommentId, firstVisit: false };
+		else if (settings.autoCollapse && newCommentCount > 0) collapse(collapseWithoutNew(view()));
+		store();
+	};
+	const listens = new Listens(
+		(id, value) => {
+			items[id] = value;
+			delete delayed[id];
+			if (id === rootId) {
+				if (value?.title && (fromCache || !document.title.startsWith(value.title)))
+					document.title = pageTitle(value.title);
+				fromCache = false;
+			}
+			listens.want(wanted());
+			settle();
+			emit();
+		},
+		(id) => {
+			delayed[id] = true;
+			settle();
+			emit();
+		},
+	);
 	const wanted = () => {
 		const ids = followed(rootId, items, settings);
 		const root = items[rootId];

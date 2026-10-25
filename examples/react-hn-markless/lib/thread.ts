@@ -19,6 +19,8 @@ export interface Thread {
 	/** Comment ids highlighted by "highlight N comments", replacing the new-since-visit ones; null when not used. */
 	readonly highlighted: Flags | null;
 	readonly collapsed: Flags;
+	/** Comments the server refused to send yet (an author's delay setting), tried again every 30 s. */
+	readonly delayed?: Flags;
 }
 
 const has = (items: Items, id: number) => Object.prototype.hasOwnProperty.call(items, id);
@@ -70,10 +72,12 @@ function registered(thread: Pick<Thread, 'rootId' | 'items' | 'settings'>): {
 }
 
 /** True once every comment the thread renders has answered: the old store's end of the initial load. */
-export function loaded(thread: Pick<Thread, 'rootId' | 'items' | 'settings'>): boolean {
+export function loaded(thread: Pick<Thread, 'rootId' | 'items' | 'settings' | 'delayed'>): boolean {
 	const { rootId, items, settings } = thread;
 	if (!has(items, rootId) || !items[rootId]) return false;
-	return followed(rootId, items, settings).every((id) => has(items, id));
+	return followed(rootId, items, settings).every(
+		(id) => has(items, id) || thread.delayed?.[id] === true,
+	);
 }
 
 export function counted(item: Item, settings: Settings): boolean {
@@ -176,6 +180,7 @@ export interface CommentRow {
 	readonly childClose: string;
 	readonly deadText: string;
 	readonly spinner: boolean;
+	readonly delayed: boolean;
 }
 
 function childCounts(
@@ -210,7 +215,11 @@ export function commentRows(
 	const walk = (id: number, level: number, spinner: boolean) => {
 		const base = `Comment--level${level}`;
 		if (!has(thread.items, id)) {
-			rows.push(empty(id, 'loading', `Comment Comment--loading ${base}`, spinner));
+			const delayed = thread.delayed?.[id] === true;
+			rows.push({
+				...empty(id, 'loading', `Comment Comment--loading ${base}`, spinner || delayed),
+				delayed,
+			});
 			return;
 		}
 		const item = thread.items[id];
@@ -262,6 +271,7 @@ export function commentRows(
 			childClose: counts ? ')' : '',
 			deadText: item.dead ? ' | [dead]' : '',
 			spinner: false,
+			delayed: false,
 		});
 		if (!collapsed) for (const kid of item.kids ?? []) walk(kid, level + 1, spinner);
 	};
@@ -297,6 +307,7 @@ function empty(
 		childClose: '',
 		deadText: '',
 		spinner,
+		delayed: false,
 	};
 }
 

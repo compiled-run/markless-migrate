@@ -9,6 +9,9 @@ export default function CommentList({ rows, onToggle }: { rows: readonly Comment
 					<div class="bounce2" style="height: 20px; width: 20px; margin-right: 2px;"></div>
 					<div class="bounce3" style="height: 20px; width: 20px; margin-right: 2px;"></div>
 				</div>
+				<div class="Comment__text" hidden={!row.delayed}>
+					Unable to load comment – this usually indicates the author has configured a delay. Trying again in 30 seconds.
+				</div>
 				<div class="Comment__content" hidden={row.kind === 'loading'}>
 					<div class="Comment__meta">
 						<span hidden={row.kind !== 'comment'}>

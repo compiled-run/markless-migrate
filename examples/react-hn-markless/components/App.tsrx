@@ -1,6 +1,7 @@
 import { state, type Children } from '@markless/core';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, VERSION, type Settings } from '../lib/hn.ts';
 import { navClass } from '../lib/nav.ts';
+import { saveOnUnload } from '../lib/cache.ts';
 
 export default function App({ path, children }: { path: string; children?: Children }) @{
 	let showSettings = state(false);
@@ -8,6 +9,8 @@ export default function App({ path, children }: { path: string; children?: Child
 
 	<div
 		class="App"
+		attach={() => saveOnUnload()}
+		onVisible={() => {}}
 		onClick={(event) => {
 			if (showSettings && !(event.target as Element).closest(".App__settings, .Settings")) showSettings = false;
 		}}

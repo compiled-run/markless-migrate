@@ -1,9 +1,11 @@
 // The Firebase Realtime Database wire protocol (v5) the old app's SDK spoke, reduced to what HN needs: one socket, listens and unlistens.
 
 type Listener = (value: unknown) => void;
+type Cancelled = (status: string) => void;
 
 interface Listen {
 	readonly listeners: Set<Listener>;
+	readonly cancelled: Set<Cancelled>;
 	value: unknown;
 	known: boolean;
 	unlistenTimer?: ReturnType<typeof setTimeout>;
@@ -19,21 +21,23 @@ export class Connection {
 	private nextRequest = 1;
 	private readonly outbox: string[] = [];
 	private readonly listens = new Map<string, Listen>();
+	private readonly asked = new Map<number, string>();
 	private fragments: string[] = [];
 	private expected = 0;
 	private keepalive: ReturnType<typeof setInterval> | undefined;
 
 	constructor(private readonly host: string) {}
 
-	/** Calls `listener` with the value at `path` now (when known) and on every change; the returned function stops it. */
-	listen(path: string, listener: Listener): () => void {
+	/** Calls `listener` with the value at `path` now (when known) and on every change, and `cancelled` when the server refuses it; the returned function stops it. */
+	listen(path: string, listener: Listener, cancelled?: Cancelled): () => void {
 		const key = normalise(path);
 		let entry = this.listens.get(key);
 		if (!entry) {
-			entry = { listeners: new Set(), value: undefined, known: false };
+			entry = { listeners: new Set(), cancelled: new Set(), value: undefined, known: false };
 			this.listens.set(key, entry);
-			this.send({ a: 'q', b: { p: `/${key}`, h: '' } });
+			this.asked.set(this.send({ a: 'q', b: { p: `/${key}`, h: '' } }), key);
 		}
+		if (cancelled) entry.cancelled.add(cancelled);
 		if (entry.unlistenTimer) {
 			clearTimeout(entry.unlistenTimer);
 			entry.unlistenTimer = undefined;
@@ -44,6 +48,7 @@ export class Connection {
 			queueMicrotask(() => own.listeners.has(listener) && listener(toValue(own.value)));
 		return () => {
 			own.listeners.delete(listener);
+			if (cancelled) own.cancelled.delete(cancelled);
 			if (own.listeners.size || own.unlistenTimer) return;
 			own.unlistenTimer = setTimeout(() => {
 				if (own.listeners.size || this.listens.get(key) !== own) return;
@@ -74,13 +79,15 @@ export class Connection {
 		this.open = false;
 	}
 
-	private send(body: { a: string; b: unknown }): void {
-		const frame = JSON.stringify({ t: 'd', d: { r: this.nextRequest++, ...body } });
+	private send(body: { a: string; b: unknown }): number {
+		const r = this.nextRequest++;
+		const frame = JSON.stringify({ t: 'd', d: { r, ...body } });
 		if (this.open) this.socket!.send(frame);
 		else {
 			this.outbox.push(frame);
 			this.connect();
 		}
+		return r;
 	}
 
 	private connect(): void {
@@ -124,16 +131,34 @@ export class Connection {
 			this.expected = Number(text);
 			return;
 		}
-		let message: { t?: string; d?: { a?: string; b?: { p?: string; d?: unknown } } };
+		let message: {
+			t?: string;
+			d?: { r?: number; a?: string; b?: { p?: string; d?: unknown; s?: string } };
+		};
 		try {
 			message = JSON.parse(text);
 		} catch {
 			return;
 		}
 		const data = message.t === 'd' ? message.d : undefined;
+		if (data?.r !== undefined) {
+			const key = this.asked.get(data.r);
+			this.asked.delete(data.r);
+			if (key !== undefined && data.b?.s && data.b.s !== 'ok') this.cancel(key, data.b.s);
+			return;
+		}
+		if (data?.a === 'c' && typeof data.b?.p === 'string')
+			return this.cancel(normalise(data.b.p), 'revoked');
 		if (!data?.b || typeof data.b.p !== 'string') return;
 		if (data.a === 'd' || data.a === 'm')
 			this.apply(normalise(data.b.p), data.b.d, data.a === 'm');
+	}
+
+	private cancel(key: string, status: string): void {
+		const entry = this.listens.get(key);
+		if (!entry) return;
+		this.listens.delete(key);
+		for (const cancelled of entry.cancelled) cancelled(status);
 	}
 
 	private apply(path: string, data: unknown, merge: boolean): void {
