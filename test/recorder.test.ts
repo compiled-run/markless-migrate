@@ -118,7 +118,7 @@ test('a node:http request whose headers are arrays, as node-fetch sets them, sti
 // A server that prints the time it renders at, as "posted 3 hours ago" pages do.
 const CLOCK_APP = `
 const http = require('node:http');
-http.createServer((req, res) => res.end(JSON.stringify({ now: Date.now(), date: new Date().toISOString(), parsed: new Date('2020-01-01T00:00:00Z').toISOString(), nodeDate: require('node:fs').statSync('.').mtime instanceof Date }))).listen(0, '127.0.0.1', function () { console.log('http://127.0.0.1:' + this.address().port); });
+http.createServer((req, res) => { const now = Date.now(); const date = new Date().toISOString(); setTimeout(() => res.end(JSON.stringify({ now, date, later: Date.now(), parsed: new Date('2020-01-01T00:00:00Z').toISOString(), nodeDate: require('node:fs').statSync('.').mtime instanceof Date })), 40); }).listen(0, '127.0.0.1', function () { console.log('http://127.0.0.1:' + this.address().port); });
 `;
 
 test('with --server-clock a page load check tags reads the frozen clock on the server too; other requests and dates the code names keep theirs', async () => {
@@ -132,8 +132,10 @@ test('with --server-clock a page load check tags reads the frozen clock on the s
 		assert.equal(recorderTag(defaultEnv(at), 'x').includes('time='), false, 'off unless asked for: sessions the server issues would expire by the frozen clock');
 		assert.match(tag, new RegExp(`time=${env.freeze && env.freeze.time}`));
 		const frozen = await (await fetch(at, { headers: { [RECORDER_HEADER]: tag } })).json();
-		assert.equal(frozen.now, env.freeze && env.freeze.time);
-		assert.equal(frozen.date, new Date(env.freeze ? env.freeze.time : 0).toISOString());
+		const time = env.freeze ? env.freeze.time : 0;
+		assert.ok(frozen.now >= time && frozen.now - time < 1000, 'the render starts at the frozen instant');
+		assert.ok(Math.abs(Date.parse(frozen.date) - frozen.now) < 50);
+		assert.ok(frozen.later - frozen.now >= 30, 'and the clock runs on from there: a server timing its own work (a streaming deadline) still sees time pass');
 		assert.equal(frozen.parsed, '2020-01-01T00:00:00.000Z');
 		assert.equal(frozen.nodeDate, true, "a Date Node makes is still instanceof Date");
 		const real = await (await fetch(at)).json();
