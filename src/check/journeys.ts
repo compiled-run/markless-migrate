@@ -2104,12 +2104,12 @@ export function extraShift(olds: readonly StepResult[], next: StepResult): strin
 // A placeholder shown for under a tenth of a second is a flicker at most; one shown longer is a view the visitor reads.
 const INTERIM_MS = 100;
 
-/** The new page shows views between the step and its result (a loading placeholder, the content gone and back) that every old run went without, or for longer. */
+/** The new page shows views between the step and its result (a loading placeholder, the content gone and back) that no old run showed. How long a placeholder both show stays up follows the server's speed: that is the responsiveness check's. */
 export function interimViews(olds: readonly StepResult[], next: StepResult): string | undefined {
 	const mine = next.reaction?.views;
 	if (!mine || olds.some((o) => !o.reaction?.views)) return undefined;
-	const old = Math.max(...olds.map((o) => o.reaction!.views!.interimMs));
-	if (mine.interimMs < INTERIM_MS || mine.interimMs <= old * SLOWER_RATIO + SLOWER_MS / 2) return undefined;
+	const seen = new Set(olds.flatMap((o) => o.reaction!.views!.interim));
+	if (mine.interimMs < INTERIM_MS || mine.interim.every((v) => seen.has(v))) return undefined;
 	return `old: ${viewsLine(olds[0]!.reaction!.views!)}; new: ${viewsLine(mine)}`;
 }
 

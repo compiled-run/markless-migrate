@@ -90,10 +90,12 @@ test('a list emptied while its refresh is in flight is red as part of the page g
 	assert.equal(inBetween(await check(invoices(false), invoices(false))).length, 0);
 });
 
-test('a placeholder the old page also showed, for as long, is not a difference; a flicker under a tenth of a second is not one either', () => {
+test('a placeholder the old page also showed is not a difference, however long each server took; a flicker under a tenth of a second is not one either', () => {
 	const step = (views: Views): StepResult => ({ url: '/', added: [], removed: [], requests: [], errors: [], announcements: [], focus: '', navigated: false, reaction: { regions: [], changes: [], views } });
 	const loading = { swaps: 2, interimMs: 380, interim: ['Loading…'] };
 	assert.equal(interimViews([step(loading), step({ ...loading, interimMs: 410 })], step({ ...loading, interimMs: 450 })), undefined);
+	// A Next.js loading.tsx both sides show: 18 ms on one runner, 151 ms on the other is the server's speed, not another view.
+	assert.equal(interimViews([step({ swaps: 2, interimMs: 18, interim: ['loading'] })], step({ swaps: 3, interimMs: 151, interim: ['loading'] })), undefined);
 	assert.equal(interimViews([step({ swaps: 1, interimMs: 0, interim: [] })], step({ swaps: 2, interimMs: 60, interim: ['…'] })), undefined);
 	assert.match(interimViews([step({ swaps: 1, interimMs: 0, interim: [] })], step({ swaps: 3, interimMs: 250, interim: ['⍥', 'Loading'] }))!, /new: shows 2 views in between for 250 ms \("⍥", "Loading"\)/);
 });
