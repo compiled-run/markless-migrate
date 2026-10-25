@@ -241,3 +241,56 @@ test('Base UI Combobox popup variant: Tab out of the search input closes it with
 	assert.deepEqual([await page.evaluate(() => document.activeElement?.id), await page.locator('#box').getAttribute('aria-expanded')], ['after', 'false']);
 	await page.close();
 });
+
+test('Base UI Combobox popup variant: the hidden input takes the value convert read off the chosen item, not its label', async () => {
+	const page = await open(popupBox.replace(/(<div role="option" id="box-(\d)")/g, (_, open: string, i: string) => `${open} data-mm-value="${['argentina', 'japan'][Number(i)]}"`), ['base-ui/combobox']);
+	await page.locator('#box').click();
+	await page.locator('[role="option"]', { hasText: 'Argentina' }).click();
+	assert.equal(await page.locator('#box').evaluate((b) => b.firstChild!.textContent), 'Argentina');
+	assert.equal(await page.locator('[id$="-hidden-input"]').inputValue(), 'argentina');
+	await page.close();
+});
+
+test('Base UI Combobox: an input with an item value submits that value, and shows the label', async () => {
+	const page = await open(single().replace('id="cb-1" ', 'id="cb-1" data-mm-value="sveltekit" '), ['base-ui/combobox']);
+	await page.locator('#cb').click();
+	await page.locator('[role="option"]', { hasText: 'SvelteKit' }).click();
+	assert.deepEqual([(await state(page)).value, (await state(page)).hidden], ['SvelteKit', 'sveltekit']);
+	await page.close();
+});
+
+const autoHighlight = () => single().replace('<input id="cb" ', '<input id="cb" data-mm-auto-highlight="true" ');
+
+test('Base UI Combobox autoHighlight: typing highlights the first match, and the highlight stays on the first item when the query empties', async () => {
+	const page = await open(autoHighlight(), ['base-ui/combobox']);
+	await page.locator('#cb').pressSequentially('e');
+	assert.deepEqual([(await state(page)).highlighted, (await state(page)).active], ['Next.js✓', 'Next.js✓']);
+	await page.locator('#cb').pressSequentially('k');
+	assert.deepEqual([(await state(page)).highlighted, (await state(page)).active], ['SvelteKit✓', 'SvelteKit✓'], 'the first of what is left');
+	await press(page, 'Backspace');
+	await press(page, 'Backspace');
+	assert.deepEqual([(await state(page)).expanded, (await state(page)).highlighted], ['true', 'Next.js✓']);
+	await page.locator('#cb').pressSequentially('sv');
+	await press(page, 'Enter');
+	assert.deepEqual([(await state(page)).value, (await state(page)).expanded], ['SvelteKit', 'false']);
+	await page.close();
+});
+
+test('Base UI Combobox autoHighlight: the arrows wrap past either end instead of passing to no item', async () => {
+	const page = await open(autoHighlight(), ['base-ui/combobox']);
+	await page.locator('#cb').focus();
+	await press(page, 'ArrowUp');
+	assert.equal((await state(page)).highlighted, 'Nuxt.js✓');
+	await press(page, 'ArrowDown');
+	assert.equal((await state(page)).highlighted, 'Next.js✓');
+	await press(page, 'ArrowUp');
+	assert.equal((await state(page)).highlighted, 'Nuxt.js✓');
+	await page.close();
+});
+
+test('Base UI Combobox without autoHighlight: typing leaves no item highlighted', async () => {
+	const page = await open(single(), ['base-ui/combobox']);
+	await page.locator('#cb').pressSequentially('t');
+	assert.deepEqual([(await state(page)).highlighted, (await state(page)).active], [null, null]);
+	await page.close();
+});

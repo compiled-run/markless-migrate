@@ -8,6 +8,7 @@ import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS, type Viewport } from '../check/types.ts';
 import { MEASURE_WIDTHS, readImages, readImageWidths, type ImageFacts } from './images.ts';
 import { LATE_CANDIDATE, lateFontsInFirstScreen, markLateFontCandidates } from './fonts.ts';
+import { INSTANCE_PROPS, INSTANCE_PROPS_VERSION, markedInstanceProps, markInstanceProps } from './instance-props.ts';
 
 /** One route of the old site as a visitor's browser holds it once the page has settled, beside what its server sent. */
 export interface CapturedPage {
@@ -25,6 +26,8 @@ export interface CapturedPage {
 	readonly firstScreenFonts?: readonly string[];
 	/** COMMAND_EMPTY when the commands' empty states were kept. */
 	readonly commandEmpty?: number;
+	/** INSTANCE_PROPS_VERSION when each instance's props were written on its elements (instance-props.ts). */
+	readonly instanceProps?: number;
 }
 
 const key = (route: string) => createHash('sha256').update(route).digest('hex').slice(0, 16);
@@ -76,7 +79,7 @@ export async function keepCommandEmpty(page: Page, added?: string): Promise<void
 export async function capturePage(browser: Browser, origin: string, route: string, dir: string, viewports: readonly Viewport[] = VIEWPORTS): Promise<CapturedPage> {
 	const file = join(dir, `${key(route)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as CapturedPage, () => undefined);
-	if (cached && cached.route === route && keptCommandEmpty(Object.values(cached.settled), cached.commandEmpty)) return cached;
+	if (cached && cached.route === route && keptCommandEmpty(Object.values(cached.settled), cached.commandEmpty) && markedInstanceProps(Object.values(cached.settled), cached.instanceProps)) return cached;
 	let server = '';
 	let status = 0;
 	const settled: Record<string, string> = {};
@@ -96,6 +99,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 			await finishAnimations(page);
 			await keepCommandEmpty(page);
 			const faces = viewport === viewports[0] ? await page.evaluate(markLateFontCandidates, LATE_CANDIDATE).catch(() => []) : [];
+			await page.evaluate(markInstanceProps, { specs: INSTANCE_PROPS, added: false }).catch(() => {});
 			settled[viewport.name] = await page.evaluate(() => `<!DOCTYPE html>${document.documentElement.outerHTML}`);
 			images[viewport.name] = await page.evaluate(readImages);
 			if (viewport === viewports[0]) {
@@ -114,7 +118,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 			await context.close().catch(() => {});
 		}
 	}
-	const captured: CapturedPage = { route, status, server, settled, images, commandEmpty: COMMAND_EMPTY, ...(lateFonts.length ? { lateFonts } : {}), ...(firstScreenFonts.length ? { firstScreenFonts } : {}) };
+	const captured: CapturedPage = { route, status, server, settled, images, commandEmpty: COMMAND_EMPTY, instanceProps: INSTANCE_PROPS_VERSION, ...(lateFonts.length ? { lateFonts } : {}), ...(firstScreenFonts.length ? { firstScreenFonts } : {}) };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(captured));
 	return captured;

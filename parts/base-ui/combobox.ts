@@ -31,6 +31,13 @@ const inputIn = (p: Popup) => (p.trigger.matches(BOX) ? p.popup.querySelector<HT
 const items = (p: Popup) => [...p.popup.querySelectorAll<HTMLElement>(OPTION)].filter((o) => !o.hidden && !o.hasAttribute('data-disabled'));
 const TABBABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 const tabbablesIn = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>(TABBABLE)].filter((el) => el.tabIndex >= 0 && !el.hasAttribute('data-base-ui-focus-guard') && !el.closest('[hidden], [inert]') && el.getClientRects().length > 0);
+// The root's autoHighlight, which convert reads off each instance (data-mm-auto-highlight): 'input-change' or 'always'.
+const autoHighlight = (input: Element | null | undefined) => {
+	const v = input?.getAttribute('data-mm-auto-highlight');
+	return v === 'always' ? 'always' : v === 'true' ? 'input-change' : false;
+};
+// What a form submits for an item (stringifyAsValue), which convert reads off each item (data-mm-value); else its label.
+const valueOf = (option: HTMLElement) => option.dataset.mmValue ?? textOf(option);
 const multiple = (root: ParentNode) => root.querySelector('[role="listbox"]')?.getAttribute('aria-multiselectable') === 'true';
 
 // Base UI writes an item's label (itemToStringLabel), not its whole text: the label is the item's first text.
@@ -204,7 +211,7 @@ function open(input: HTMLInputElement, typed = false): Popup | undefined {
 	});
 	hover(p);
 	filter(p, '');
-	if (!typed) highlight(p, selectedIn(p));
+	if (!typed) highlight(p, selectedIn(p) ?? (autoHighlight(input) === 'always' ? items(p)[0] : undefined));
 	return p;
 }
 
@@ -275,13 +282,13 @@ function choose(p: Popup, option: HTMLElement): void {
 	if (p.trigger.matches(BOX)) {
 		const node = [...p.trigger.childNodes].find((n) => n.nodeType === Node.TEXT_NODE && n.textContent!.trim());
 		if (node) (node as Text).data = text;
-		setValue(p.trigger, text);
+		setValue(p.trigger, valueOf(option));
 		close(p);
 		return;
 	}
 	const input = p.trigger as HTMLInputElement;
 	input.value = text;
-	setValue(input, text);
+	setValue(input, valueOf(option));
 	showClear(input, true);
 	for (const b of buttonsOf(input)) b.removeAttribute('data-placeholder');
 	close(p);
@@ -382,19 +389,23 @@ export function input(target: Element): boolean {
 	// Only text that is more than spaces opens the list.
 	const p = was ?? (el.value.trim() ? open(el, true) : undefined);
 	if (!p) return true;
+	const at = items(p).findIndex((o) => o.hasAttribute('data-highlighted'));
 	filter(p, el.value);
 	if (!selected) from.set(p, -1);
+	// autoHighlight keeps the highlight while typing and puts it on the first match of a query; an emptied query keeps its index.
+	const auto = autoHighlight(el);
+	if (auto) highlight(p, el.value.trim() || auto === 'always' ? items(p)[0] : at >= 0 ? items(p)[at] : undefined);
 	return true;
 }
 
-// useListNavigation with loopFocus and no autoHighlight (allowEscape): past either end is no item, then the other end.
+// useListNavigation with loopFocus: past either end is no item, then the other end; with autoHighlight, no item is skipped.
 function step(p: Popup, down: boolean): void {
 	const list = items(p);
 	if (!list.length) return;
 	const at = list.findIndex((o) => o.hasAttribute('data-highlighted'));
 	const last = from.get(p) ?? -1;
 	if (at < 0) highlight(p, (last >= 0 ? list[last + (down ? 1 : -1)] : undefined) ?? (down ? list[0] : list[list.length - 1]));
-	else if ((down && at === list.length - 1) || (!down && at === 0)) highlight(p, undefined);
+	else if ((down && at === list.length - 1) || (!down && at === 0)) highlight(p, autoHighlight(inputIn(p)) ? list[down ? 0 : list.length - 1] : undefined);
 	else highlight(p, list[at + (down ? 1 : -1)]);
 }
 
