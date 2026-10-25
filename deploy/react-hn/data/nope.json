@@ -1,0 +1,15 @@
+{
+	"route": "/nope",
+	"recordedFrom": "http://localhost:4201",
+	"at": "2026-10-25T03:11:23.667Z",
+	"responses": [],
+	"live": {
+		"firebase": [
+			{
+				"host": "hacker-news.firebaseio.com",
+				"snapshot": {},
+				"updates": []
+			}
+		]
+	}
+}

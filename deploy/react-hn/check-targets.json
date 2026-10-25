@@ -1,0 +1,6 @@
+{
+	"routes": ["/", "/news", "/news?page=2", "/newest", "/show", "/ask", "/jobs", "/read", "/newcomments", "/story/50226419", "/story/50224422", "/item/8863", "/job/8426937", "/poll/126809", "/comment/8054455", "/user/patio11", "/nope"],
+	"endpoints": [],
+	"redirects": [],
+	"unchecked": []
+}

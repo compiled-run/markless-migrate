@@ -1,0 +1,907 @@
+{
+	"route": "/story/50224422",
+	"recordedFrom": "http://localhost:4201",
+	"at": "2026-10-25T03:11:23.661Z",
+	"responses": [],
+	"live": {
+		"firebase": [
+			{
+				"host": "hacker-news.firebaseio.com",
+				"snapshot": {
+					"v0/item/50224422": {
+						"by": "liotier",
+						"descendants": 86,
+						"id": 50224422,
+						"kids": {
+							"0": 50224988,
+							"1": 50225083,
+							"2": 50224981,
+							"3": 50225614,
+							"4": 50227350,
+							"5": 50224627,
+							"6": 50226774,
+							"7": 50225187,
+							"8": 50227188,
+							"9": 50226730,
+							"10": 50224849,
+							"11": 50225043,
+							"12": 50225009,
+							"13": 50226716,
+							"14": 50224707,
+							"15": 50224831,
+							"16": 50224664
+						},
+						"score": 137,
+						"time": 1792871007,
+						"title": "Listen and read USA nuclear forces Emergency Action Messages, heard on 11175 kHz",
+						"type": "story",
+						"url": "https://missileer.watch"
+					},
+					"v0/item/50224988": {
+						"by": "rafram",
+						"id": 50224988,
+						"kids": {
+							"0": 50225336,
+							"1": 50226426,
+							"2": 50225456,
+							"3": 50225611,
+							"4": 50225752,
+							"5": 50227569,
+							"6": 50226884
+						},
+						"parent": 50224422,
+						"text": "&gt; Mostly static. The net is quiet until it isn&#x27;t.<p>&gt; Preformatted is what you can hear: the same shape every time.<p>&gt; hearing it is all anyone outside the force can do.<p>&gt; The day has a shape.<p>I would recommend switching to a newer Claude model.",
+						"time": 1792874234,
+						"type": "comment"
+					},
+					"v0/item/50225083": {
+						"by": "LeoPanthera",
+						"id": 50225083,
+						"kids": {
+							"0": 50226837,
+							"1": 50226164,
+							"2": 50225277,
+							"3": 50225926
+						},
+						"parent": 50224422,
+						"text": "This is a cool idea. I&#x27;m actually quite glad that AI generated stuff is still so very obvious. The world will be a darker place when it isn&#x27;t.",
+						"time": 1792874868,
+						"type": "comment"
+					},
+					"v0/item/50224981": {
+						"by": "ytxm",
+						"id": 50224981,
+						"parent": 50224422,
+						"text": "More on &quot;Skyking&quot; here: <a href=\"https:&#x2F;&#x2F;lswilson.dewlineadventures.com&#x2F;skyking&#x2F;\" rel=\"nofollow\">https:&#x2F;&#x2F;lswilson.dewlineadventures.com&#x2F;skyking&#x2F;</a>",
+						"time": 1792874169,
+						"type": "comment"
+					},
+					"v0/item/50225614": {
+						"by": "none_to_remain",
+						"id": 50225614,
+						"parent": 50224422,
+						"text": "A weird little trivia: for some time period the Skyking test messages used band names and other pop culture references as the content of test messages. Iron Maiden, The Cure, Duran Duran, Rush, Hansen... And of course test messages may be sent erroneously so we end up with the nuclear command channel carrying messages like &quot;DISREGARD &#x27;THE CURE&#x27; TRANSMITTED AT 19&quot; (<a href=\"https:&#x2F;&#x2F;eam.watch&#x2F;view&#x2F;d4272f25-fd33-47a4-9b37-6c55a8ea3d0e\" rel=\"nofollow\">https:&#x2F;&#x2F;eam.watch&#x2F;view&#x2F;d4272f25-fd33-47a4-9b37-6c55a8ea3d0e</a>)",
+						"time": 1792877878,
+						"type": "comment"
+					},
+					"v0/item/50227350": {
+						"by": "loeg",
+						"id": 50227350,
+						"kids": {
+							"0": 50227626
+						},
+						"parent": 50224422,
+						"text": "Is there some reason it&#x27;s written 11175 kHz instead of 11.175 MHz?",
+						"time": 1792891977,
+						"type": "comment"
+					},
+					"v0/item/50224627": {
+						"by": "jacquesm",
+						"id": 50224627,
+						"kids": {
+							"0": 50224775,
+							"1": 50224833
+						},
+						"parent": 50224422,
+						"text": "Nice and soothing for when you&#x27;re already a bit nervous about what the next 13 minutes might bring.",
+						"time": 1792872325,
+						"type": "comment"
+					},
+					"v0/item/50226774": {
+						"by": "nosmokewhereiam",
+						"id": 50226774,
+						"parent": 50224422,
+						"text": "I love this site. Everytime I heard skyking messages it was on 8775 khz I think, if anyone can explain that I&#x27;d love to hear if there are multiple freqs.<p>Also: has electronic music such as techno sampled these yet...? Seems rife for a dancefloor hit!",
+						"time": 1792886534,
+						"type": "comment"
+					},
+					"v0/item/50225187": {
+						"by": "nubinetwork",
+						"id": 50225187,
+						"parent": 50224422,
+						"text": "<a href=\"https:&#x2F;&#x2F;priyom.org&#x2F;military-stations&#x2F;united-states&#x2F;hfgcs#voice\" rel=\"nofollow\">https:&#x2F;&#x2F;priyom.org&#x2F;military-stations&#x2F;united-states&#x2F;hfgcs#voi...</a>",
+						"time": 1792875403,
+						"type": "comment"
+					},
+					"v0/item/50227188": {
+						"by": "pnw",
+						"id": 50227188,
+						"parent": 50224422,
+						"text": "Interested to learn more about the Missileer device listed on the site...",
+						"time": 1792890627,
+						"type": "comment"
+					},
+					"v0/item/50226730": {
+						"by": "wyldfire",
+						"id": 50226730,
+						"parent": 50224422,
+						"text": "&quot;We cannot launch our missiles unless both you and I agree!&quot;<p>Re: the partial EAM from &quot;Crimson Tide&quot;.",
+						"time": 1792886110,
+						"type": "comment"
+					},
+					"v0/item/50224849": {
+						"by": "londons_explore",
+						"id": 50224849,
+						"kids": {
+							"0": 50227920,
+							"1": 50225558,
+							"2": 50224913,
+							"3": 50224956
+						},
+						"parent": 50224422,
+						"text": "So these messages are presumably encrypted with a one time pad, and some lookup book of what each message of just a few characters means?<p>And I assume  there are also a high bandwidth comms channels, and this is just the backup which is presumably tested each day.",
+						"time": 1792873499,
+						"type": "comment"
+					},
+					"v0/item/50225043": {
+						"by": "dist-epoch",
+						"id": 50225043,
+						"parent": 50224422,
+						"text": "&gt; Skyking, Skyking, DO NOT ANSWER<p>This might be the source of the &quot;DO NOT ANSWER&quot; phrase from Three Body Problem.",
+						"time": 1792874571,
+						"type": "comment"
+					},
+					"v0/item/50225009": {
+						"by": "vorpalhex",
+						"id": 50225009,
+						"kids": {
+							"0": 50225650
+						},
+						"parent": 50224422,
+						"text": "Some context for those not exposed to this previously.<p>Messages usually mean nothing. An uptick in activity means.. nothing. We&#x27;re on the tail end of a major exercise so upticks in chatter are probably related to that.<p>Anyone who posts anything along the lines of &quot;but there were 5x more messages or a really big message so N is going to happen!&quot; is a crazy person. Ignore them.<p>It&#x27;s neat, but it&#x27;s not prophetic.",
+						"time": 1792874383,
+						"type": "comment"
+					},
+					"v0/item/50226716": {
+						"by": "aussieguy1234",
+						"id": 50226716,
+						"parent": 50224422,
+						"text": "Ah, some nice white noise to fall asleep to...<p>Until the apocalypse arrives that is.",
+						"time": 1792885960,
+						"type": "comment"
+					},
+					"v0/item/50224707": {
+						"by": "paaloeye",
+						"id": 50224707,
+						"parent": 50224422,
+						"text": "Founding Listener :)",
+						"time": 1792872762,
+						"type": "comment"
+					},
+					"v0/item/50224831": {
+						"by": "FrankWilhoit",
+						"id": 50224831,
+						"parent": 50224422,
+						"text": "Latency.",
+						"time": 1792873424,
+						"type": "comment"
+					},
+					"v0/item/50224664": {
+						"by": "qaz_plm",
+						"id": 50224664,
+						"parent": 50224422,
+						"text": "“Skyking, Skyking, do not answer…”",
+						"time": 1792872535,
+						"type": "comment"
+					},
+					"v0/item/50225336": {
+						"by": "cowlby",
+						"id": 50225336,
+						"kids": {
+							"0": 50225912,
+							"1": 50226119,
+							"2": 50225630
+						},
+						"parent": 50224988,
+						"text": "Everyone worried about AI detectors and here I am thinking I can spot Claudenglish in a sentence or two.",
+						"time": 1792876272,
+						"type": "comment"
+					},
+					"v0/item/50226426": {
+						"by": "Avamander",
+						"id": 50226426,
+						"kids": {
+							"0": 50226608
+						},
+						"parent": 50224988,
+						"text": "All Anthropic models write like that since Opus 4.8. Opus 4.8 was still tolerable.<p>Unfortunately only Gemini models can write text that isn&#x27;t vomit-inducing.",
+						"time": 1792883573,
+						"type": "comment"
+					},
+					"v0/item/50225456": {
+						"by": "bragr",
+						"id": 50225456,
+						"parent": 50224988,
+						"text": "&gt;Mostly static. The net is quiet until it isn&#x27;t.<p>Having tuned in myself with a SDR, it isn&#x27;t that quiet. There&#x27;s pretty steady rate of messages.",
+						"time": 1792876972,
+						"type": "comment"
+					},
+					"v0/item/50225611": {
+						"by": "jpablo",
+						"id": 50225611,
+						"kids": {
+							"0": 50225631,
+							"1": 50225737,
+							"2": 50226226
+						},
+						"parent": 50224988,
+						"text": "Which newer Claude model doesn’t do that? Fable 5.1 still writes like that for me. I have to fight against it to write proper software labels, or (the horror!) rewrite things manually.",
+						"time": 1792877856,
+						"type": "comment"
+					},
+					"v0/item/50225752": {
+						"deleted": true,
+						"id": 50225752,
+						"parent": 50224988,
+						"time": 1792878897,
+						"type": "comment"
+					},
+					"v0/item/50227569": {
+						"by": "medellin",
+						"id": 50227569,
+						"parent": 50224988,
+						"text": "That would require a brain. Claude hasn’t told them to upgrade yet.",
+						"time": 1792894123,
+						"type": "comment"
+					},
+					"v0/item/50226884": {
+						"by": "0c3ca83",
+						"id": 50226884,
+						"parent": 50224988,
+						"text": "Welcome to hacker news. All bots all the time.",
+						"time": 1792887612,
+						"type": "comment"
+					},
+					"v0/item/50226837": {
+						"by": "publlus_enigma",
+						"id": 50226837,
+						"parent": 50225083,
+						"text": "Until the kids learn to speak like Claude. Then it will all be the same.",
+						"time": 1792887154,
+						"type": "comment"
+					},
+					"v0/item/50226164": {
+						"by": "ahofmann",
+						"id": 50226164,
+						"kids": {
+							"0": 50226210,
+							"1": 50226891,
+							"2": 50226494
+						},
+						"parent": 50225083,
+						"text": "The obvious AI stuff is obvious, all the rest is either human generated, or you aren&#x27;t able to detect that it&#x27;s not.<p>So I would argue the world is already &quot;a darker place&quot;.",
+						"time": 1792881671,
+						"type": "comment"
+					},
+					"v0/item/50225277": {
+						"by": "skygazer",
+						"id": 50225277,
+						"kids": {
+							"0": 50225528,
+							"1": 50226304
+						},
+						"parent": 50225083,
+						"text": "My worry is that what we recognize is the unstylized default, but it might be very easy to emulate any particular human easily enough with some examples and a prompt and n-gram&#x2F;style template biasing token selection, or iterative generation-scoring loops.",
+						"time": 1792875909,
+						"type": "comment"
+					},
+					"v0/item/50225926": {
+						"by": "ajsnigrutin",
+						"id": 50225926,
+						"kids": {
+							"0": 50226236
+						},
+						"parent": 50225083,
+						"text": "Bombing schools isn&#x27;t dark enough?<p><a href=\"https:&#x2F;&#x2F;www.bloomberg.com&#x2F;graphics&#x2F;2026-iran-school-attack&#x2F;\" rel=\"nofollow\">https:&#x2F;&#x2F;www.bloomberg.com&#x2F;graphics&#x2F;2026-iran-school-attack&#x2F;</a>",
+						"time": 1792880092,
+						"type": "comment"
+					},
+					"v0/item/50227626": {
+						"by": "firesteelrain",
+						"id": 50227626,
+						"parent": 50227350,
+						"text": "Typical for shortwave to write it like this",
+						"time": 1792894600,
+						"type": "comment"
+					},
+					"v0/item/50224775": {
+						"by": "yread",
+						"id": 50224775,
+						"kids": {
+							"0": 50224949
+						},
+						"parent": 50224627,
+						"text": "Reading this comment when it was exactly 13 minutes old",
+						"time": 1792873152,
+						"type": "comment"
+					},
+					"v0/item/50224833": {
+						"by": "stackghost",
+						"id": 50224833,
+						"kids": {
+							"0": 50225675,
+							"1": 50224929
+						},
+						"parent": 50224627,
+						"text": "Is there something extra scary happening?<p>Usual news headlines on the sources I frequent.",
+						"time": 1792873429,
+						"type": "comment"
+					},
+					"v0/item/50227920": {
+						"by": "betterunix2",
+						"id": 50227920,
+						"parent": 50224849,
+						"text": "Nuclear strike orders do not require high bandwidth.  The orders contain targeting information and arming codes, all of which is pre-programmed on the missiles (the target package is specified with a &quot;pointer&quot; -- the computers on the missiles already have all the details, the order simply identifies which set of details should be used).  For ICBM crews it is conceivable that orders could be transmitted on high-bandwidth systems, but for submarines that is not even possible (ELF bands have to be used because of the physical properties of ocean water).<p>The basic launch sequence is this:  a missile crew receives a series of characters and both missileers write the characters down.  They check against a codebook and verify that they both heard the same message and that it is a valid launch order.  If the message is valid, they unlock the launch keys (from a box secured by two combination locks, each missileer knows the combination for one lock), insert the keys, enter the missile launch unlock code, enter the warhead arming code, turn the keys, and then that&#x27;s that.<p>(There are several other steps -- go watch a video of a test launch and listen to the operators read off the checklist, there are quite a few steps.  If you are wondering why such information is public, it is meant to reassure the other side that there is no possibility of unauthorized or unintentional launches -- we want our adversaries to know how we control our nuclear forces so they don&#x27;t panic and preemptively attack us)",
+						"time": 1792897841,
+						"type": "comment"
+					},
+					"v0/item/50225558": {
+						"by": "rcxdude",
+						"id": 50225558,
+						"parent": 50224849,
+						"text": "Some of the comms channels are even lower bandwidth: <a href=\"https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;Extremely_low_frequency\" rel=\"nofollow\">https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;Extremely_low_frequency</a> (Though, apparently the US no longer uses this)",
+						"time": 1792877508,
+						"type": "comment"
+					},
+					"v0/item/50224913": {
+						"by": "jacquesm",
+						"id": 50224913,
+						"kids": {
+							"0": 50225555
+						},
+						"parent": 50224849,
+						"text": "I think this is the primary.<p>High bandwidth comms are likely a lot more fragile than this. At the same time: there will be <i>many</i> different transmission channels, and I would expect this one to be useless immediately if someone really did something nasty.",
+						"time": 1792873810,
+						"type": "comment"
+					},
+					"v0/item/50224956": {
+						"by": "throwaway89864",
+						"id": 50224956,
+						"kids": {
+							"0": 50224983,
+							"1": 50225111,
+							"2": 50224986
+						},
+						"parent": 50224849,
+						"text": "You can probably just point Claude or ChatGPT to decrypt it, it would find that there&#x27;s some silly and obvious cipher is used that survived from the 60ies, with a 56 bit private key. &#x2F;this is a wild guess, I don&#x27;t have any special clearance or access&#x2F;",
+						"time": 1792874040,
+						"type": "comment"
+					},
+					"v0/item/50225650": {
+						"by": "jasonjayr",
+						"id": 50225650,
+						"kids": {
+							"0": 50226059
+						},
+						"parent": 50225009,
+						"text": "Riiiiiight.  That sounds like something spooks would say to throw you off the trail...... :-) &#x2F;s",
+						"time": 1792878104,
+						"type": "comment"
+					},
+					"v0/item/50225912": {
+						"by": "Natsu",
+						"id": 50225912,
+						"kids": {
+							"0": 50226256
+						},
+						"parent": 50225336,
+						"text": "&gt; Claudenglish<p>I prefer to call it Cloddish, myself.",
+						"time": 1792880009,
+						"type": "comment"
+					},
+					"v0/item/50226119": {
+						"by": "loloquwowndueo",
+						"id": 50226119,
+						"parent": 50225336,
+						"text": "LLMese",
+						"time": 1792881298,
+						"type": "comment"
+					},
+					"v0/item/50225630": {
+						"by": "david-gpu",
+						"dead": true,
+						"id": 50225630,
+						"parent": 50225336,
+						"text": "[flagged]",
+						"time": 1792877953,
+						"type": "comment"
+					},
+					"v0/item/50226608": {
+						"by": "wyager",
+						"id": 50226608,
+						"kids": {
+							"0": 50226883,
+							"1": 50226710
+						},
+						"parent": 50226426,
+						"text": "Opus 5.5 doesn&#x27;t write like this anymore",
+						"time": 1792885061,
+						"type": "comment"
+					},
+					"v0/item/50225631": {
+						"by": "kccqzy",
+						"id": 50225631,
+						"kids": {
+							"0": 50226949
+						},
+						"parent": 50225611,
+						"text": "IMO Opus 5.5 has surpassed Fable 5.1 in terms of both writing style and actual capability. Like I would give the same task to both models and Opus 5.5 consistently produces better results and explains itself better than Fable 5.1.",
+						"time": 1792877981,
+						"type": "comment"
+					},
+					"v0/item/50225737": {
+						"by": "rafram",
+						"id": 50225737,
+						"kids": {
+							"0": 50225942,
+							"1": 50226432
+						},
+						"parent": 50225611,
+						"text": "Fable is inappropriate for the vast majority of tasks (yes, including yours!), and it is quite obnoxious. Opus 5.5 writes concisely and <i>almost</i> sounds like a human.",
+						"time": 1792878774,
+						"type": "comment"
+					},
+					"v0/item/50226226": {
+						"by": "timcobb",
+						"id": 50226226,
+						"parent": 50225611,
+						"text": "Opus 5.5 is the only one that doesn&#x27;t do ths, _as much_, it would still to the &quot;it&#x27;s ___ until it isn&#x27;t&quot; all day though. Can&#x27;t wait for that to go away too.",
+						"time": 1792882203,
+						"type": "comment"
+					},
+					"v0/item/50226210": {
+						"by": "dpc050505",
+						"id": 50226210,
+						"kids": {
+							"0": 50226454
+						},
+						"parent": 50226164,
+						"text": "It&#x27;s also a lot easier to get caught when you&#x27;re not paying full attention to whatever is being sent your way. Say an algorythm starts playing AI music while it&#x27;s just playing in the background, or a friend posts something silly that you read sideways.",
+						"time": 1792882101,
+						"type": "comment"
+					},
+					"v0/item/50226891": {
+						"by": "0c3ca83",
+						"id": 50226891,
+						"parent": 50226164,
+						"text": "Wouldn&#x27;t it be lovely if we didn&#x27;t rush headlong into making things worse at the first sign of profit or power?",
+						"time": 1792887685,
+						"type": "comment"
+					},
+					"v0/item/50226494": {
+						"by": "InsidiousWombat",
+						"id": 50226494,
+						"parent": 50226164,
+						"text": "I mean I&#x27;ve seen people saying that whole &quot;oh, it&#x27;s just so good you can&#x27;t detect it&quot; a lot but not any actual evidence. I guess sentence can be short enough to not look clauded, but aside from that smells are still very common even for the best frontier models, so how anything else would be indistinguishable ?",
+						"time": 1792884058,
+						"type": "comment"
+					},
+					"v0/item/50225528": {
+						"by": "rcxdude",
+						"id": 50225528,
+						"parent": 50225277,
+						"text": "Yeah. The big LLMs have fairly idiosyncratic writing styles. Smaller finetuned LLMs can be quite different (and you can also tune them on a particular person&#x27;s writing). I think some of the confidence in this is because there&#x27;s plenty of cases which just don&#x27;t get noticed.",
+						"time": 1792877310,
+						"type": "comment"
+					},
+					"v0/item/50226304": {
+						"by": "Larrikin",
+						"id": 50226304,
+						"parent": 50225277,
+						"text": "This is probably possible now. Back when machine learning was all the rage people were using it to identify authors of various anonymous works. It became an introductory project to identify the Federalist Papers authors. Just read in some works, identify patterns, set up tests, and set the LLM into a loop testing whether the output would be predicted to be the author you are trying to impersonate.<p><a href=\"https:&#x2F;&#x2F;towardsdatascience.com&#x2F;hamilton-a-text-analysis-of-the-federalist-papers-e64cb1764fbf&#x2F;\" rel=\"nofollow\">https:&#x2F;&#x2F;towardsdatascience.com&#x2F;hamilton-a-text-analysis-of-t...</a>",
+						"time": 1792882784,
+						"type": "comment"
+					},
+					"v0/item/50226236": {
+						"by": "timcobb",
+						"id": 50226236,
+						"kids": {
+							"0": 50227844,
+							"1": 50226344,
+							"2": 50226401
+						},
+						"parent": 50225926,
+						"text": "Why this, of all things? It&#x27;s horrible, but look at where the school was, why did they put a school there? Who puts a school next to a military base? There&#x27;s way darker stuff than people missing a military base and hitting an adjacent school by accident.",
+						"time": 1792882297,
+						"type": "comment"
+					},
+					"v0/item/50224949": {
+						"by": "markus_zhang",
+						"id": 50224949,
+						"parent": 50224775,
+						"text": "It shows 13 mins ago for me.",
+						"time": 1792874009,
+						"type": "comment"
+					},
+					"v0/item/50225675": {
+						"by": "0manrho",
+						"id": 50225675,
+						"kids": {
+							"0": 50227698
+						},
+						"parent": 50224833,
+						"text": "My understanding is that this is just showcasing a website that introduces&#x2F;makes it easy to digest the EAM as  a concept, not that there&#x27;s anything particularly worrying happening on these frequencies in the present moment.<p>I don&#x27;t monitor these regularly so perhaps I&#x27;m wrong, but given it&#x27;s encrypted (likely with a OTP), you&#x27;d have to be mining metadata and making some second order dot connections to really get anything meaningful out of this without the cipher&#x2F;OTP&#x2F;some way to decrypt it and understand it.",
+						"time": 1792878263,
+						"type": "comment"
+					},
+					"v0/item/50224929": {
+						"by": "jacquesm",
+						"id": 50224929,
+						"kids": {
+							"0": 50225944
+						},
+						"parent": 50224833,
+						"text": "&gt; Is there something extra scary happening?<p>You might get something out of how frequently there are announcements on this channel. That&#x27;s the only real info you&#x27;re going to get out of this unless you&#x27;re in a very select group.",
+						"time": 1792873880,
+						"type": "comment"
+					},
+					"v0/item/50225555": {
+						"by": "notadev",
+						"id": 50225555,
+						"kids": {
+							"0": 50226903,
+							"1": 50226362
+						},
+						"parent": 50224913,
+						"text": "Back in my Navy days, we were taught HF is the less susceptible to jamming so is used for critical comms like these in serious situations. My ship performed in one exercise related to a doomsday scenario. We sat all day listening to an HR receiver until we heard these same messages, and we would then record the characters spoken. The message was repeated so we could make sure what we wrote was accurate. We never responded. Instead, we then repeated the same messages on an HF transmitter, presumably as part of some relay.",
+						"time": 1792877500,
+						"type": "comment"
+					},
+					"v0/item/50224983": {
+						"by": "jacquesm",
+						"id": 50224983,
+						"kids": {
+							"0": 50225047,
+							"1": 50226877,
+							"2": 50227723
+						},
+						"parent": 50224956,
+						"text": "Not a chance. OTP for sure.",
+						"time": 1792874184,
+						"type": "comment"
+					},
+					"v0/item/50225111": {
+						"by": "netsharc",
+						"id": 50225111,
+						"parent": 50224956,
+						"text": "Sheesh, hopefully a governmental department that has the NSA nearby would&#x27;ve been warned about this...<p>Then again, it is the government...",
+						"time": 1792874982,
+						"type": "comment"
+					},
+					"v0/item/50224986": {
+						"by": "rvba",
+						"id": 50224986,
+						"parent": 50224956,
+						"text": "I also dont know anything but Im sure AI &#x2F; cloud &#x2F; blockchain &#x2F; mongoDB &#x2F; (insert fad here) will solve it due to synergy and other buzzwords.",
+						"time": 1792874211,
+						"type": "comment"
+					},
+					"v0/item/50226059": {
+						"by": "thewanderer1983",
+						"id": 50226059,
+						"parent": 50225650,
+						"text": "It is right. Read about Able Archer 83.",
+						"time": 1792880865,
+						"type": "comment"
+					},
+					"v0/item/50226256": {
+						"by": "fosco",
+						"id": 50226256,
+						"parent": 50225912,
+						"text": "I initially thought Claude was a reference to clod from warbreaker and your spelling made me think of it again, for those that read warbreaker they might understand his description is darn close to what Claude is, but alas I believe I was deftly wrong",
+						"time": 1792882507,
+						"type": "comment"
+					},
+					"v0/item/50226883": {
+						"by": "0c3ca83",
+						"id": 50226883,
+						"kids": {
+							"0": 50227028
+						},
+						"parent": 50226608,
+						"text": "It has different awfulness.",
+						"time": 1792887594,
+						"type": "comment"
+					},
+					"v0/item/50226710": {
+						"by": "alexgoodhart",
+						"id": 50226710,
+						"parent": 50226608,
+						"text": "Fable 5.1 does. Wretched",
+						"time": 1792885931,
+						"type": "comment"
+					},
+					"v0/item/50226949": {
+						"by": "D13Fd",
+						"id": 50226949,
+						"parent": 50225631,
+						"text": "That&#x27;s what I&#x27;m finding too. Opus 5.5 feels both consistently better than Fable and faster.",
+						"time": 1792888161,
+						"type": "comment"
+					},
+					"v0/item/50225942": {
+						"by": "temac",
+						"id": 50225942,
+						"kids": {
+							"0": 50226435,
+							"1": 50226402
+						},
+						"parent": 50225737,
+						"text": "IMO the default style of Opus 5.5 is still terrible but it is way better than 5.0. If you tell its styling is horrendous it usually rewrites in an actually quite good form.",
+						"time": 1792880216,
+						"type": "comment"
+					},
+					"v0/item/50226432": {
+						"by": "lukan",
+						"id": 50226432,
+						"kids": {
+							"0": 50227108
+						},
+						"parent": 50225737,
+						"text": "Ok I bite, for what concrete tasks do you get better results with Opus than with Fable?<p>Because if true, I see no reason to spend that extra money, but for me Fable clearly outperformed Opus on complex tasks. (Including giving the same task and compare results)",
+						"time": 1792883640,
+						"type": "comment"
+					},
+					"v0/item/50226454": {
+						"by": "lukan",
+						"id": 50226454,
+						"parent": 50226210,
+						"text": "&quot;algorythm&quot;<p>Spelling errors are so far still a good sign of human written output.",
+						"time": 1792883760,
+						"type": "comment"
+					},
+					"v0/item/50227844": {
+						"by": "mullingitover",
+						"id": 50227844,
+						"parent": 50226236,
+						"text": "&gt; Who puts a school next to a military base?<p>These days they’re calling themselves the “Department of War”",
+						"time": 1792896977,
+						"type": "comment"
+					},
+					"v0/item/50226344": {
+						"by": "jacquesm",
+						"id": 50226344,
+						"kids": {
+							"0": 50226368,
+							"1": 50227480,
+							"2": 50227623,
+							"3": 50226374
+						},
+						"parent": 50226236,
+						"text": "The extent to which some people will twist to justify that which can not be justified is mind boggling.",
+						"time": 1792882975,
+						"type": "comment"
+					},
+					"v0/item/50226401": {
+						"by": "segfault99",
+						"dead": true,
+						"id": 50226401,
+						"kids": {
+							"0": 50226429
+						},
+						"parent": 50226236,
+						"text": "[flagged]",
+						"time": 1792883375,
+						"type": "comment"
+					},
+					"v0/item/50227698": {
+						"by": "betterunix2",
+						"id": 50227698,
+						"parent": 50225675,
+						"text": "It is OTP, that is not a secret.  The secret is not how the orders are being communicated, it is the actual meaning of the orders (e.g. the targeting pattern) and certain strategically significant details about how a launch order would be executed (e.g. if only one pair of launch keys is turned there is a timeout during which another missileer crew can cancel the launch; the length of that timeout is secret).  During the cold war nuclear strategy was the subject of extensive research by both the US and the USSR, which is why both sides wound up pursuing essentially the same strategy.<p>(China is interesting because strictly speaking they follow a theoretically suboptimal strategy -- they keep their ICBMs in an unarmed configuration and would &quot;absorb the blow&quot; of a surprise nuclear first strike.  The US and RF follow the theoretically optimal &quot;launch on warning&quot; strategy, which requires ICBMs that are always armed and ready to launch within minutes.)",
+						"time": 1792895297,
+						"type": "comment"
+					},
+					"v0/item/50225944": {
+						"by": "stackghost",
+						"id": 50225944,
+						"kids": {
+							"0": 50226369
+						},
+						"parent": 50224929,
+						"text": "Are you implying you’re part of that group?  Just curious what the context of your 13 minutes comment was.",
+						"time": 1792880223,
+						"type": "comment"
+					},
+					"v0/item/50226903": {
+						"by": "mijowi",
+						"id": 50226903,
+						"parent": 50225555,
+						"text": "I, too, was in the navy and supervised this very exercise on a ship. The exercise simulates a doomsday scenario that presumes satellite comms are out after a nuclear strike. Ships and other stations retransmit the messages over HF in order to eventually reach nuclear-armed subs for assured second strike capability. HF, with its semi-BLOS (beyond line of sight) range, is used to form a global communications network without satellites. The range of course depends on how much signal bounces off the atmosphere, which is why many stations are needed for redundancy. The whole exercise is Top Secret.",
+						"time": 1792887799,
+						"type": "comment"
+					},
+					"v0/item/50226362": {
+						"by": "jacquesm",
+						"id": 50226362,
+						"parent": 50225555,
+						"text": "Until someone decides the ionosphere needs to stop working for such relays. And there is only one way that I&#x27;m aware of to do that and that would be stupendously bad news.",
+						"time": 1792883074,
+						"type": "comment"
+					},
+					"v0/item/50225047": {
+						"by": "metabagel",
+						"id": 50225047,
+						"parent": 50224983,
+						"text": "<a href=\"https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;One-time_pad\" rel=\"nofollow\">https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;One-time_pad</a>",
+						"time": 1792874584,
+						"type": "comment"
+					},
+					"v0/item/50226877": {
+						"by": "publlus_enigma",
+						"id": 50226877,
+						"parent": 50224983,
+						"text": "An OTP is secure only if the key is truly random.<p>As we saw from eMudhra this week, people do stupid things.",
+						"time": 1792887535,
+						"type": "comment"
+					},
+					"v0/item/50227723": {
+						"by": "what",
+						"id": 50227723,
+						"parent": 50224983,
+						"text": "What’s the significance of the first six characters? They repeat them multiple times before reading off the full message multiple times.",
+						"time": 1792895601,
+						"type": "comment"
+					},
+					"v0/item/50227028": {
+						"by": "unshavedyak",
+						"id": 50227028,
+						"kids": {
+							"0": 50227069
+						},
+						"parent": 50226883,
+						"text": "I don&#x27;t find it anywhere remotely as bad. I&#x27;m not saying it&#x27;s good, but jesus.. i was ready to leave anthropic lol.",
+						"time": 1792888883,
+						"type": "comment"
+					},
+					"v0/item/50226435": {
+						"by": "KerrAvon",
+						"id": 50226435,
+						"parent": 50225942,
+						"text": "This. You can prompt Opus 5.5 into writing well.",
+						"time": 1792883671,
+						"type": "comment"
+					},
+					"v0/item/50226402": {
+						"by": "perching_aix",
+						"id": 50226402,
+						"parent": 50225942,
+						"text": "i tend to run a pass of sol 6.1 at its output, cleans up the language well and finds defects opus missed",
+						"time": 1792883380,
+						"type": "comment"
+					},
+					"v0/item/50227108": {
+						"by": "lostNFound",
+						"id": 50227108,
+						"parent": 50226432,
+						"text": "I let Claude do my job pretty much (with company approval) managing the entire stack of an app.<p>8hs of “prompt engineering” daily for a year or so.<p>I find Fable immensely better than 5.5 in their capabilities and results. Opus makes mistakes, a lot and big. Both on High Effort.<p>I just run Fable for literally everything including daily random use. Never run out of tokens on the 100 plan.",
+						"time": 1792889781,
+						"type": "comment"
+					},
+					"v0/item/50226368": {
+						"by": "timcobb",
+						"id": 50226368,
+						"kids": {
+							"0": 50226563,
+							"1": 50227230
+						},
+						"parent": 50226344,
+						"text": "What&#x27;s the twist? I&#x27;m curious why this event was chosen, if for any reason. Personally I am frustrated by people building a school next to a military installation. It feels extremely negligent. I find that to be pretty unsettling and wish people wouldn&#x27;t do that, because military installations are legitimate and predictable military tagets.",
+						"time": 1792883136,
+						"type": "comment"
+					},
+					"v0/item/50227480": {
+						"by": "mindslight",
+						"id": 50227480,
+						"parent": 50226344,
+						"text": "It turned out that the real dark stuff was the fiends we made along the way.",
+						"time": 1792893222,
+						"type": "comment"
+					},
+					"v0/item/50227623": {
+						"by": "betterunix2",
+						"id": 50227623,
+						"parent": 50226344,
+						"text": "I mean...sure...but if you are going to be consistent you are going to have to criticize the <i>Allied victory in WWII</i>.  There were literally <i>piles of dead children</i> in cities all over fascist Europe.  We do not even have exact numbers because in some cases the death toll had to be estimated by <i>weighing the ashes found in bomb shelters</i>.",
+						"time": 1792894588,
+						"type": "comment"
+					},
+					"v0/item/50226374": {
+						"by": "helf",
+						"dead": true,
+						"id": 50226374,
+						"parent": 50226344,
+						"text": "[dead]",
+						"time": 1792883170,
+						"type": "comment"
+					},
+					"v0/item/50226369": {
+						"by": "jacquesm",
+						"id": 50226369,
+						"kids": {
+							"0": 50226529
+						},
+						"parent": 50225944,
+						"text": "That&#x27;s how long a typical submarine based hit of a Russian missile on the USA would take from launch to detonation over target.<p>Land based would take maybe twice that much.<p>Effectively the world has been 30 minutes from &#x27;dead&#x27; since the 1960s.",
+						"time": 1792883148,
+						"type": "comment"
+					},
+					"v0/item/50227069": {
+						"by": "r_lee",
+						"id": 50227069,
+						"kids": {
+							"0": 50227706
+						},
+						"parent": 50227028,
+						"text": "I literally left. 5.5 is so much better. I don&#x27;t know how they managed to mess up 5 so bad",
+						"time": 1792889354,
+						"type": "comment"
+					},
+					"v0/item/50226563": {
+						"deleted": true,
+						"id": 50226563,
+						"parent": 50226368,
+						"time": 1792884721,
+						"type": "comment"
+					},
+					"v0/item/50227230": {
+						"by": "ok_dad",
+						"id": 50227230,
+						"parent": 50226368,
+						"text": "Did you know nearly every middle to larger sized US military base has base housing and even schools?<p>That’s the twist.",
+						"time": 1792891018,
+						"type": "comment"
+					},
+					"v0/item/50226529": {
+						"by": "lazide",
+						"id": 50226529,
+						"kids": {
+							"0": 50227751
+						},
+						"parent": 50226369,
+						"text": "It’s why the US mostly gave up on fallout shelters - no realistic amount of time to get to them unless you’re already sitting on it.",
+						"time": 1792884404,
+						"type": "comment"
+					},
+					"v0/item/50227706": {
+						"by": "SJMG",
+						"id": 50227706,
+						"parent": 50227069,
+						"text": "5 I couldn&#x27;t bear. It was terrible AND verbose",
+						"time": 1792895434,
+						"type": "comment"
+					},
+					"v0/item/50227751": {
+						"by": "betterunix2",
+						"id": 50227751,
+						"parent": 50226529,
+						"text": "It&#x27;s more that fallout shelters are basically useless even if you manage to get yourself inside before the detonation.<p>Basically, you would run out of water, and even if you have clean water you would still run out of food, even if you survived the strike and the fallout.  We cannot actually live without major transportation hubs to deliver food etc., which by necessity are located in or near the major urban areas that would be destroyed in a nuclear war.  That, more than anything else, is why the US and USSR ultimately abandoned &quot;civil defense&quot; and focused on &quot;deterrence.&quot;",
+						"time": 1792895866,
+						"type": "comment"
+					}
+				},
+				"updates": []
+			}
+		]
+	}
+}
