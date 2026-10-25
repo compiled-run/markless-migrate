@@ -13,7 +13,7 @@ import { BlockedError, blockedResult, detectChallenge, probeWall } from './block
 import { adoptAnswers, LAUNCH, DEFINITE, defaultEnv, isLoopback, pushRecording, resetSharedAnswers, shareAnswers, storedAnswers, tagHeaders, type StoredAnswer, type SideEnv, type StorageState, type WallHit } from './browser.ts';
 import { captureHttp, captureRoute, mime, pageLoads, thirdPartyLoads } from './capture.ts';
 import { OldCache } from './cache.ts';
-import { readRecording, recordable, slug, writeRecording } from './data.ts';
+import { everyRecording, readRecording, recordable, slug, writeRecording } from './data.ts';
 import { checkEndpoint, checkRedirect, isPage } from './endpoints.ts';
 import { DEFAULT_FREEZE, pinnedBy, pinnedSummary, type FreezeOptions } from './freeze.ts';
 import { HINTS } from './hints.ts';
@@ -31,7 +31,7 @@ import { loadFailures, measureLoad, psiFailures, type LoadOptions } from './load
 import { measurePsi, psiKey } from './psi.ts';
 import { assetsToProbe, compareRoute, cssTargets, forgetFailures, httpFailures, noiseReport, noisyStyles, withFailures, type Probe } from './compare.ts';
 import { matchElements } from './match.ts';
-import { contractLines } from './network.ts';
+import { contractLines, type NetworkRecord } from './network.ts';
 import type { SourceFacts } from './source-facts.ts';
 import { compareStates, type StateInput } from './states.ts';
 import { discoverStates, parseRules, type StyleSource } from './stylesheet.ts';
@@ -554,12 +554,12 @@ export function writesAllowed(options: Pick<CheckOptions, 'oldOrigin' | 'newOrig
 	return (Boolean(options.staging?.old) || isLoopback(options.oldOrigin)) && (Boolean(options.staging?.new) || isLoopback(options.newOrigin));
 }
 
-async function replayRoute(run: Run, dir: string, route: string): Promise<{ run: Run; failures: Failure[] }> {
+async function replayRoute(run: Run, dir: string, route: string, shared: Promise<{ set: string; responses: readonly NetworkRecord[] }>): Promise<{ run: Run; failures: Failure[] }> {
 	const recording = await readRecording(dir, route);
 	if (!recording) {
 		return { run, failures: [{ route, dimension: 'network', check: 'recorded data', expected: `a recording in ${dir}`, actual: 'none for this route', hint: HINTS.dataMissing }] };
 	}
-	const replay = { set: randomUUID(), responses: recording.responses };
+	const replay = { set: randomUUID(), responses: recording.responses, shared: await shared };
 	const next: Run = { ...run, old: { ...run.old, replay }, new: { ...run.new, replay } };
 	const failures: Failure[] = [];
 	if (recording.responses.some((r) => r.side === 'server')) {
@@ -787,6 +787,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			}
 			if (options.coverage) coverages.push(await checkCoverage(roleRun.old, roleRun.new, options.coverage, role));
 			const data = options.data && role && role !== ANONYMOUS ? { ...options.data, dir: join(options.data.dir, slug(role)) } : options.data;
+			const shared = data?.mode === 'replay' ? everyRecording(data.dir).then((responses) => ({ set: randomUUID(), responses })) : undefined;
 			const pages = allPages;
 			const full = pages.filter((route) => !light(route));
 			const owners = full.length > 1 ? await layoutOwners(browser, roleRun, full, options) : new Map<string, string>();
@@ -798,7 +799,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 					options.onRoute?.(earlier);
 					return earlier;
 				}
-				const { run, failures } = data?.mode === 'replay' ? await replayRoute(roleRun, data.dir, route) : { run: roleRun, failures: [] };
+				const { run, failures } = data?.mode === 'replay' ? await replayRoute(roleRun, data.dir, route, shared!) : { run: roleRun, failures: [] };
 				const done = await withDeadline(route, run, routeTimeout(options), (scoped) => checkAs(browser, scoped, route, role, loginPaths, options, light(route))).catch(unreachable(route));
 				const old = oldCaptures.get(done);
 				oldCaptures.delete(done);

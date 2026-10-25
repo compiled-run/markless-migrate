@@ -23,7 +23,7 @@ export interface SideEnv {
 	readonly sendWrites: boolean;
 	readonly writeFacts: readonly WriteFact[];
 	/** Recorded responses to serve instead of the network, and the id the app's server knows them by. */
-	readonly replay?: { readonly set: string; readonly responses: readonly NetworkRecord[] };
+	readonly replay?: { readonly set: string; readonly responses: readonly NetworkRecord[]; readonly shared?: { readonly set: string; readonly responses: readonly NetworkRecord[] } };
 	/** Asks the server recorder to render each page on demand instead of from the server's page cache (data is being recorded or replayed). */
 	readonly renderFresh?: boolean;
 	/** The signed-in role's cookies and storage, from its login script or storage state file. */
@@ -96,7 +96,7 @@ export function contextOptions(viewport: Viewport, freeze: FreezeOptions | false
 
 /** The header that tags a request with its page load, so the server recorder files what the server fetched under it. */
 export function recorderTag(env: SideEnv, load: string): string {
-	return `load=${load}${env.replay ? `; data=${env.replay.set}` : ''}${env.renderFresh ? '; fresh=1' : ''}`;
+	return `load=${load}${env.replay ? `; data=${[env.replay.set, env.replay.shared?.set].filter(Boolean).join(',')}` : ''}${env.renderFresh ? '; fresh=1' : ''}`;
 }
 
 /** Headers for the checker's own requests to an app, so replayed data reaches those renders too. */
@@ -367,7 +367,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 			else look('');
 		});
 	}
-	const recorded = env.replay?.responses.filter((r) => r.side === 'browser') ?? [];
+	const recorded = [...(env.replay?.responses ?? []), ...(env.replay?.shared?.responses ?? [])].filter((r) => r.side === 'browser');
 	const door = env.frontDoor;
 	const ownOrigin = (url: URL) => sameApp(url, env.origin) || (door !== undefined && sameApp(url, door.old));
 	await context.route('**/*', async (route: Route) => {
@@ -489,20 +489,31 @@ export async function serverRecords(env: SideEnv, load: string): Promise<Network
 }
 
 /** Hands recorded server responses to the app's server recorder; false when the server does not run it. */
+const pushedShared = new Set<string>();
+
 export async function pushRecording(env: SideEnv): Promise<boolean> {
 	if (!env.replay) return true;
 	const headers = { ...appHeaders(env), ...tokenHeaders() };
+	const put = async (set: string, responses: readonly NetworkRecord[]) => {
+		const response = await request(new URL(`/__markless-migrate/data?set=${encodeURIComponent(set)}`, env.origin), {
+			method: 'PUT',
+			headers: { 'content-type': 'application/json', ...headers },
+			body: JSON.stringify({ responses: responses.filter((r) => r.side === 'server') }),
+		});
+		await response.body?.cancel();
+		return response.ok;
+	};
 	try {
 		const hello = await request(new URL('/__markless-migrate/', env.origin), { headers });
 		const recorder = hello.ok && (hello.headers.get('content-type') ?? '').includes('json') && ((await hello.json()) as { recorder?: number }).recorder === 1;
 		if (!recorder) return false;
-		const response = await request(new URL(`/__markless-migrate/data?set=${encodeURIComponent(env.replay.set)}`, env.origin), {
-			method: 'PUT',
-			headers: { 'content-type': 'application/json', ...headers },
-			body: JSON.stringify({ responses: env.replay.responses.filter((r) => r.side === 'server') }),
-		});
-		await response.body?.cancel();
-		return response.ok;
+		const shared = env.replay.shared;
+		// The shared set is every route's recording at once: sent to each server once per run.
+		if (shared && !pushedShared.has(`${env.origin} ${shared.set}`)) {
+			if (!(await put(shared.set, shared.responses))) return false;
+			pushedShared.add(`${env.origin} ${shared.set}`);
+		}
+		return await put(env.replay.set, env.replay.responses);
 	} catch {
 		return false;
 	}

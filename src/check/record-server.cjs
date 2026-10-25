@@ -38,11 +38,15 @@ function queryKey(url) {
 	return `${u.pathname}?${[...u.searchParams].sort(([a, x], [b, y]) => (a === b ? x.localeCompare(y) : a.localeCompare(b))).map(([k, v]) => `${k}=${v}`).join('&')}`;
 }
 
-// Exact URL first; then the same path and query on any host, so an app pointed at another backend still gets the recording.
-function lookup(set, method, url, body) {
-	const responses = datasets.get(set) ?? [];
+// Each set the tag names in turn (the route's, then the run's shared one); in each, the exact URL first, then the same path and query on any host, so an app pointed at another backend still gets the recording.
+function lookup(sets, method, url, body) {
 	const same = (r) => r.side === 'server' && r.method === method && (r.requestBody ?? '') === (body ?? '');
-	return responses.find((r) => same(r) && r.url === url) ?? responses.find((r) => same(r) && queryKey(r.url) === queryKey(url));
+	for (const set of sets.split(',')) {
+		const responses = datasets.get(set) ?? [];
+		const hit = responses.find((r) => same(r) && r.url === url) ?? responses.find((r) => same(r) && queryKey(r.url) === queryKey(url));
+		if (hit) return hit;
+	}
+	return undefined;
 }
 
 const realFetch = globalThis.fetch;
