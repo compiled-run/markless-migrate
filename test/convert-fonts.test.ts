@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { chromium } from 'playwright';
 import { LATE_FONT, LATE_FONTS_SCRIPT } from '../parts/late-fonts.ts';
+import { capturePage } from '../src/convert/capture.ts';
 import { attr, parseDocument, walk } from '../src/convert/dom.ts';
 import { applyLateFonts, fontPreloads, LATE_CANDIDATE, lateFontsInFirstScreen, markLateFontCandidates, MAX_FONT_PRELOADS } from '../src/convert/fonts.ts';
 
@@ -68,4 +72,37 @@ test('first-screen fonts only a stylesheet names are preloaded: same-origin woff
 	const o = 'https://site.example';
 	assert.deepEqual(fontPreloads([`${o}/a.woff2`, `${o}/a.woff2`, 'https://fonts.gstatic.com/b.woff2', `${o}/c.ttf`, `${o}/d.woff2`], o, 0), [{ href: '/a.woff2' }, { href: '/d.woff2' }]);
 	assert.equal(fontPreloads([`${o}/a.woff2`, `${o}/b.woff2`], o, MAX_FONT_PRELOADS - 1).length, 1);
+});
+
+test('a capture cached before its page\'s font facts were recorded is taken again, so a late font is found on it', async () => {
+	let served = 0;
+	const server = createServer((req, res) => {
+		if (req.url === '/') {
+			served++;
+			return void res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(PAGE());
+		}
+		res.writeHead(200, { 'content-type': 'font/woff2' }).end(Buffer.alloc(64));
+	});
+	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	const dir = await mkdtemp(join(tmpdir(), 'mm-fonts-'));
+	const browser = await chromium.launch();
+	try {
+		const fresh = await capturePage(browser, origin, '/', dir);
+		assert.deepEqual(fresh.lateFonts?.map((f) => f.key.split('|')[0]), ['Arabic']);
+		const [file] = await readdir(dir);
+		const { fonts: _, lateFonts: __, ...before } = fresh;
+		await writeFile(join(dir, file!), JSON.stringify(before));
+		served = 0;
+		const again = await capturePage(browser, origin, '/', dir);
+		assert.ok(served > 0, 'the page was loaded again');
+		assert.deepEqual(again.lateFonts?.map((f) => f.key.split('|')[0]), ['Arabic']);
+		served = 0;
+		await capturePage(browser, origin, '/', dir);
+		assert.equal(served, 0, 'a capture with its font facts is kept');
+	} finally {
+		await browser.close();
+		server.close();
+		await rm(dir, { recursive: true, force: true });
+	}
 });

@@ -28,7 +28,12 @@ export interface CapturedPage {
 	readonly commandEmpty?: number;
 	/** INSTANCE_PROPS_VERSION when each instance's props were written on its elements (instance-props.ts). */
 	readonly instanceProps?: number;
+	/** FONT_FACTS when the page's web fonts were read (fonts.ts); a capture without them is taken again. */
+	readonly fonts?: number;
 }
+
+/** The version of the font facts a capture records: lateFonts and firstScreenFonts. */
+export const FONT_FACTS = 1;
 
 const key = (route: string) => createHash('sha256').update(route).digest('hex').slice(0, 16);
 
@@ -79,7 +84,7 @@ export async function keepCommandEmpty(page: Page, added?: string): Promise<void
 export async function capturePage(browser: Browser, origin: string, route: string, dir: string, viewports: readonly Viewport[] = VIEWPORTS): Promise<CapturedPage> {
 	const file = join(dir, `${key(route)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as CapturedPage, () => undefined);
-	if (cached && cached.route === route && keptCommandEmpty(Object.values(cached.settled), cached.commandEmpty) && markedInstanceProps(Object.values(cached.settled), cached.instanceProps)) return cached;
+	if (cached && cached.route === route && keptCommandEmpty(Object.values(cached.settled), cached.commandEmpty) && markedInstanceProps(Object.values(cached.settled), cached.instanceProps) && cached.fonts === FONT_FACTS) return cached;
 	let server = '';
 	let status = 0;
 	const settled: Record<string, string> = {};
@@ -118,7 +123,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 			await context.close().catch(() => {});
 		}
 	}
-	const captured: CapturedPage = { route, status, server, settled, images, commandEmpty: COMMAND_EMPTY, instanceProps: INSTANCE_PROPS_VERSION, ...(lateFonts.length ? { lateFonts } : {}), ...(firstScreenFonts.length ? { firstScreenFonts } : {}) };
+	const captured: CapturedPage = { route, status, server, settled, images, commandEmpty: COMMAND_EMPTY, instanceProps: INSTANCE_PROPS_VERSION, fonts: FONT_FACTS, ...(lateFonts.length ? { lateFonts } : {}), ...(firstScreenFonts.length ? { firstScreenFonts } : {}) };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(captured));
 	return captured;
