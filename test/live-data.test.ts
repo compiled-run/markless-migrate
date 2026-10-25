@@ -7,7 +7,8 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { dataFile } from '../src/check/data.ts';
-import { applyUpdate, recordDatabases, valueAt, type LiveRecording } from '../src/check/live-data.ts';
+import { applyUpdate, recordDatabases, sessionDatabases, valueAt, type LiveRecording } from '../src/check/live-data.ts';
+import { databaseFramesReceived, defaultEnv, openPage } from '../src/check/browser.ts';
 import { mergeRecordings } from '../src/check/live-record.ts';
 import { runCheck } from '../src/check/run.ts';
 import { freezePage, DEFAULT_FREEZE } from '../src/check/freeze.ts';
@@ -190,4 +191,22 @@ test("the navigation check is served every checked route's recording at once, a 
 		{ route: '/item/1', recordedFrom: 'http://old', at, responses: [], live: { firebase: [{ host: 'hn.firebaseio.com', snapshot: { 'v0/item/1': { id: 1, score: 5 }, 'v0/item/9': { id: 9 } }, updates: [] }] } },
 	]);
 	assert.deepEqual(merged.live, { firebase: [{ host: 'hn.firebaseio.com', snapshot: { 'v0/topstories': [1, 2], 'v0/item/1': { id: 1, score: 3 }, 'v0/item/9': { id: 9 } }, updates: [] }] });
+});
+
+test('the frames a replayed database pushes are counted where the page receives them, though a routed socket is never the page\'s websocket', async () => {
+	const server = await app();
+	servers.push(server);
+	const env = defaultEnv(origin(server), { replay: { set: 'frames', responses: [], live: RECORDING } });
+	const { context, page } = await openPage(browser, env, { name: 'desktop', width: 1280, height: 800, isMobile: false });
+	try {
+		await page.goto(`${origin(server)}/`);
+		await page.locator('li').first().waitFor();
+		const [db] = sessionDatabases(context);
+		assert.ok(db!.next());
+		const until = Date.now() + 3000;
+		while ((await databaseFramesReceived(page)) < db!.frames && Date.now() < until) await new Promise((done) => setTimeout(done, 20));
+		assert.equal(await databaseFramesReceived(page), db!.frames);
+	} finally {
+		await context.close();
+	}
 });
