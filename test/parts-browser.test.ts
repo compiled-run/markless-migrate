@@ -550,3 +550,52 @@ test("Radix Select in a form: its hidden native select's change chooses the opti
 	assert.equal(await page.locator('[data-slot="select-trigger"]').getAttribute('data-placeholder'), '');
 	await page.close();
 });
+
+// React Aria's Table markup as it serves it: the table is the tab stop until focus enters it.
+function racTable(): string {
+	const row = (name: string, k: number) => `<tr role="row" tabindex="-1" data-key="r${k}"><td role="rowheader" tabindex="-1" data-key="r${k}a">${name}</td><td role="gridcell" tabindex="-1" data-key="r${k}b">$${k}</td><td role="gridcell" tabindex="-1" data-key="r${k}c"><button>Open ${name}</button></td></tr>`;
+	return `<button id="before">before</button><table data-rac="" data-collection="c" role="grid" tabindex="0" aria-label="Products"><thead role="rowgroup"><tr role="row"><th role="columnheader" tabindex="-1" data-key="a">Product</th><th role="columnheader" tabindex="-1" data-key="b">Price</th><th role="columnheader" tabindex="-1" data-key="c">Actions</th></tr></thead><tbody role="rowgroup">${['Mouse', 'Keyboard', 'Monitor'].map(row).join('')}</tbody></table><button id="after">after</button>`;
+}
+const focusOf = (page: Page) => page.evaluate(() => { const a = document.activeElement!; return `${a.tagName.toLowerCase()}${a.getAttribute('role') ? `[${a.getAttribute('role')}]` : ''}:${(a.textContent ?? '').trim().slice(0, 14)}`; });
+
+test('React Aria Table: Tab enters on the first row and leaves the table; the table stops being a tab stop and focus comes back to the row', async () => {
+	const page = await open(racTable(), ['react-aria/interactions', 'react-aria/grid']);
+	await page.locator('#before').focus();
+	await page.keyboard.press('Tab');
+	assert.equal(await focusOf(page), 'tr[row]:Mouse$0Open Mo');
+	assert.equal(await page.locator('table').getAttribute('tabindex'), '-1');
+	assert.equal(await page.locator('tr[data-key="r0"]').getAttribute('tabindex'), '0');
+	await page.keyboard.press('ArrowDown');
+	assert.equal(await focusOf(page), 'tr[row]:Keyboard$1Open');
+	await page.keyboard.press('Tab');
+	assert.equal(await focusOf(page), 'button:after');
+	await page.keyboard.press('Shift+Tab');
+	assert.equal(await focusOf(page), 'tr[row]:Keyboard$1Open', 'the row focus left from is the one tab stop');
+	await page.keyboard.press('Shift+Tab');
+	assert.equal(await focusOf(page), 'button:before');
+	await page.close();
+});
+
+test('React Aria Table: Left from a row goes to its last cell\'s button, Up and Down keep the column, Up from the first row reaches its header, Home and End stay in the header row', async () => {
+	const page = await open(racTable(), ['react-aria/interactions', 'react-aria/grid']);
+	await page.locator('#before').focus();
+	await page.keyboard.press('Tab');
+	await page.keyboard.press('ArrowLeft');
+	assert.equal(await focusOf(page), 'button:Open Mouse');
+	await page.keyboard.press('ArrowDown');
+	assert.equal(await focusOf(page), 'button:Open Keyboard', 'a menu button in the cell does not take the arrow');
+	await page.keyboard.press('ArrowRight');
+	assert.equal(await focusOf(page), 'tr[row]:Keyboard$1Open', 'past the last cell focus goes back to the row');
+	await page.keyboard.press('ArrowRight');
+	assert.equal(await focusOf(page), 'td[rowheader]:Keyboard');
+	await page.keyboard.press('ArrowUp');
+	await page.keyboard.press('ArrowUp');
+	assert.equal(await focusOf(page), 'th[columnheader]:Product');
+	await page.keyboard.press('End');
+	assert.equal(await focusOf(page), 'th[columnheader]:Actions');
+	await page.keyboard.press('ArrowRight');
+	assert.equal(await focusOf(page), 'th[columnheader]:Product', 'the header row wraps');
+	await page.keyboard.press('k');
+	assert.equal(await focusOf(page), 'tr[row]:Keyboard$1Open', 'typing finds the row by its row header');
+	await page.close();
+});
