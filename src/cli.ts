@@ -13,6 +13,8 @@ import { homedir } from 'node:os';
 import { PSI_KEY_ENV, PSI_NOTICE, psiKey, userEnvFile } from './check/psi.ts';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { measureSlowNetwork, NETWORK_BROWSERS, networkTables, shortNames, type NetworkBrowser } from './check/slow-network.ts';
+import { NETWORK_PROFILES } from './check/throttle.ts';
 import { AGENTS, detectAgents, findBinary, type HostEnv, type ServerCommand } from './agents/registry.ts';
 import { applySetup, describeChanges, planSetup, undoSetup, writeUndo } from './agents/setup.ts';
 import { renderStatusPage } from './check/html.ts';
@@ -263,6 +265,22 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           (/blog/:slug, /docs/*rest).
   unswitch <route>
           Send a route back to the old app.
+  network <url>... [--profile <name>]... [--browser <name>]... [--runs <n>] [--control <selector>]... [--concurrency <n>] [--timeout <s>] [--json <file>]
+          Loads each page cold over a slow network, as a visitor on it would, and clicks a control on it
+          until it answers, the pages taken in turn, --runs a page (default 5). Every byte crosses one
+          shaped link through a local proxy, so Chromium, Firefox and WebKit are throttled alike: the
+          profile's bandwidth shared by all connections, and its round-trip time on every packet, so a new
+          connection pays for its handshakes. Profiles:
+          ${Object.values(NETWORK_PROFILES).map((p) => `${p.name} (${p.label.replace(/^[^(]+\(|\)$/g, '')})`).join(', ')};
+          default regular-3g. --browser chromium (default), firefox, webkit. The control is clicked every 250 ms
+          from when it is on screen; --control is a Playwright selector (one for all pages, or one per
+          page in order), default the first unselected tab or closed disclosure. Prints the medians:
+          time to first byte, first and largest paint, load event, first click answered and painted to
+          answered, bytes downloaded and JavaScript downloaded (compressed) by the answer and in all,
+          and JavaScript executed by the answer (Chromium). "In all" is once the network has been quiet
+          for 2 s, at most 60 s after the answer. A run gives up after --timeout seconds (default 120).
+          --concurrency loads that many pages at once, each over its own link (default 1).
+          --json writes every run with its requests.
   proxy   --old <origin> --new <origin> [--port <n>] [--host <addr>]
           One origin in front of both apps: switched routes from NEW, everything else from OLD, with
           method, body, headers and cookies passed through, redirects to either app pointed back at the
@@ -1092,6 +1110,38 @@ async function main(argv: string[]): Promise<number> {
 			const { removed, path } = await unswitchRoute(cwd, positionals[0]!);
 			out(removed ? `${positionals[0]} goes to the old app again. ${path}\n` : `${positionals[0]} was not switched.\n`);
 			return 0;
+		}
+		case 'network': {
+			const { values, positionals } = parseArgs({ args: rest, allowPositionals: true, options: { profile: { type: 'string', multiple: true }, browser: { type: 'string', multiple: true }, runs: { type: 'string' }, control: { type: 'string', multiple: true }, concurrency: { type: 'string' }, json: { type: 'string' }, timeout: { type: 'string' } } });
+			if (!positionals.length) fail('network needs the URLs of the pages to load');
+			for (const url of positionals) if (!URL.canParse(url)) fail(`not a URL: ${url}`);
+			const profiles = values.profile ?? ['regular-3g'];
+			for (const name of profiles) if (!NETWORK_PROFILES[name]) fail(`unknown --profile ${name}: one of ${Object.keys(NETWORK_PROFILES).join(', ')}`);
+			const browsers = (values.browser ?? ['chromium']) as NetworkBrowser[];
+			for (const name of browsers) if (!NETWORK_BROWSERS.includes(name)) fail(`unknown --browser ${name}: one of ${NETWORK_BROWSERS.join(', ')}`);
+			const whole = (flag: string, value: string | undefined) => {
+				if (value === undefined) return undefined;
+				const n = Number(value);
+				if (!Number.isInteger(n) || n < 1) fail(`--${flag} must be a whole number of at least 1`);
+				return n;
+			};
+			const runs = whole('runs', values.runs);
+			const concurrency = whole('concurrency', values.concurrency);
+			const timeout = whole('timeout', values.timeout);
+			const controls = values.control ?? [];
+			if (controls.length > 1 && controls.length !== positionals.length) fail('--control takes one selector for all pages, or one per page in order');
+			const sides = await measureSlowNetwork(positionals, {
+				profiles,
+				browsers,
+				...(runs ? { runs } : {}),
+				...(concurrency ? { concurrency } : {}),
+				...(timeout ? { timeoutMs: timeout * 1000 } : {}),
+				...(controls.length ? { controls: Object.fromEntries(positionals.map((url, i) => [url, controls[controls.length > 1 ? i : 0]!])) } : {}),
+				onRun: (label, run) => err(`${label}: ${run.error ?? `answered at ${run.answered} ms`}\n`),
+			});
+			if (values.json) await writeFile(values.json, `${JSON.stringify(sides, null, '\t')}\n`);
+			out(`${networkTables(sides, shortNames(positionals))}\n`);
+			return sides.every((s) => s.cells.every((c) => c.unavailable || c.runs.some((r) => !r.error))) ? 0 : 1;
 		}
 		case 'proxy': {
 			const { values } = parseArgs({ args: rest, options: { old: { type: 'string' }, new: { type: 'string' }, port: { type: 'string' }, host: { type: 'string' }, quiet: { type: 'boolean' } } });
