@@ -151,3 +151,12 @@ if (typeof document !== 'undefined') {
 	document.addEventListener('pointerout', (e) => e.target instanceof Element && pointerout(e.target, e), true);
 	document.addEventListener('pointerdown', (e) => e.target instanceof Element && pointerdown(e.target, e), true);
 }
+
+// autoFocus (focusSafely): the last visible control convert marked data-mm-autofocus takes focus, without scrolling.
+if (typeof document !== 'undefined') {
+	const FOCUSABLE = 'input:not([type="hidden"]), textarea, select, button, [tabindex]';
+	const marked = [...document.querySelectorAll<HTMLElement>('[data-mm-autofocus]')].filter((el) => !el.closest('[hidden], [data-mm-layer]') && el.getClientRects().length);
+	const last = marked[marked.length - 1];
+	const target = last && (last.matches(FOCUSABLE) ? last : last.querySelector<HTMLElement>(FOCUSABLE));
+	if (target && (document.activeElement === document.body || document.activeElement === null)) target.focus({ preventScroll: true });
+}

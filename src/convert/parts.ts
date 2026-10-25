@@ -196,6 +196,9 @@ export function portAttributes(el: Element): Binding | undefined {
 	// A hover card trigger rendered through its child has no HoverCard part of its own: the delays the old page showed.
 	const own = measured.get(el);
 	if (!extra.length && own?.openDelay !== undefined) extra.push(`data-mm-open-delay=${JSON.stringify(own.openDelay)}`, `data-mm-delay=${JSON.stringify(own.delay ?? own.openDelay)}`, `data-mm-close-delay=${JSON.stringify(own.closeDelay ?? '')}`);
+	// React Aria's autoFocus (useFocusable): the part takes focus once the page is live (react-aria/interactions).
+	const s = slot(el);
+	if (s && resolver?.slotProp && candidatesOf(el).some((c) => c.library === 'react-aria-components' && resolver!.prop(c.library, c.export, 'autoFocus') === 'true' && resolver!.slotProp!(c.library, c.export, s, 'autoFocus') === 'true')) extra.push('data-mm-autofocus=""');
 	return extra.length ? { extra } : undefined;
 }
 
