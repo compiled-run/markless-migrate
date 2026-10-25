@@ -1,3 +1,4 @@
+import { parse, visit } from 'graphql';
 import { HINTS } from './hints.ts';
 import { at, type ClientFact } from './source-facts.ts';
 import type { Failure } from './types.ts';
@@ -75,7 +76,39 @@ function jsonShape(value: unknown): unknown {
 	return typeof value;
 }
 
-/** The body's field names and value types; a GraphQL query is kept as its text, whitespace collapsed. */
+// Apollo Client adds __typename to every selection set below the root (addTypename); a port's own client does not.
+function graphqlText(query: string): string {
+	const cuts: [number, number][] = [];
+	try {
+		visit(parse(query), {
+			FragmentDefinition(fragment) {
+				visit(fragment.selectionSet, {
+					Field(field) {
+						if (field.name.value === '__typename' && !field.alias && field.loc) cuts.push([field.loc.start, field.loc.end]);
+					},
+				});
+				return false;
+			},
+			OperationDefinition(op) {
+				for (const top of op.selectionSet.selections) {
+					if (!('selectionSet' in top) || !top.selectionSet) continue;
+					visit(top.selectionSet, {
+						Field(field) {
+							if (field.name.value === '__typename' && !field.alias && field.loc) cuts.push([field.loc.start, field.loc.end]);
+						},
+					});
+				}
+			},
+		});
+	} catch {
+		cuts.length = 0;
+	}
+	let text = query;
+	for (const [start, end] of cuts.sort((x, y) => y[0] - x[0])) text = text.slice(0, start) + text.slice(end);
+	return text.replace(/\s+/g, ' ').trim();
+}
+
+/** The body's field names and value types; a GraphQL query is kept as its text, whitespace collapsed and Apollo's __typename left out. */
 export function bodyShape(body: string | null | undefined, contentType: string): string {
 	if (!body) return '';
 	if (contentType.includes('application/x-www-form-urlencoded')) {
@@ -86,7 +119,7 @@ export function bodyShape(body: string | null | undefined, contentType: string):
 		const parsed = JSON.parse(body) as unknown;
 		if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && typeof (parsed as { query?: unknown }).query === 'string') {
 			const { query, ...rest } = parsed as { query: string };
-			return ` ${JSON.stringify({ query: query.replace(/\s+/g, ' ').trim(), ...(jsonShape(rest) as object) })}`;
+			return ` ${JSON.stringify({ query: graphqlText(query), ...(jsonShape(rest) as object) })}`;
 		}
 		return ` ${JSON.stringify(jsonShape(parsed))}`;
 	} catch {

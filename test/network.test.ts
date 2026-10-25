@@ -25,6 +25,18 @@ test('body shapes keep field names and types, and GraphQL queries as text', () =
 	assert.equal(bodyShape('{"query":"query {\\n  posts { title summary }\\n}","variables":{"first":2}}', 'application/json'), ' {"query":"query { posts { title summary } }","variables":{"first":"number"}}');
 });
 
+test('a GraphQL query is compared by what it asks for: Apollo\'s __typename and how a client prints it are not a difference', () => {
+	const apollo = JSON.stringify({ operationName: 'HideNewsItem', variables: { id: 1 }, query: 'mutation HideNewsItem($id: Int!) {\n  hideNewsItem(id: $id) {\n    id\n    hidden\n    __typename\n  }\n}\n' });
+	const port = JSON.stringify({ operationName: 'HideNewsItem', variables: { id: 2 }, query: '\n  mutation HideNewsItem($id: Int!) {\n    hideNewsItem(id: $id) {\n      id\n      hidden\n    }\n  }\n' });
+	assert.equal(bodyShape(apollo, 'application/json'), bodyShape(port, 'application/json'));
+	const other = JSON.stringify({ operationName: 'HideNewsItem', variables: { id: 2 }, query: 'mutation HideNewsItem($id: Int!) { hideNewsItem(id: $id) { id } }' });
+	assert.notEqual(bodyShape(apollo, 'application/json'), bodyShape(other, 'application/json'), 'a field left out is still a difference');
+	const withFragment = (typename: string) => JSON.stringify({ query: `query Feed { feed { ...Story ${typename} } } fragment Story on NewsItem { id title ${typename} }` });
+	assert.equal(bodyShape(withFragment('__typename'), 'application/json'), bodyShape(withFragment(''), 'application/json'), 'inside fragments too');
+	const aliased = JSON.stringify({ query: 'query { __typename feed { kind: __typename id } }' });
+	assert.match(bodyShape(aliased, 'application/json'), /kind: __typename/, 'a __typename the page asks for by alias, or at the root, is its own');
+});
+
 test('the fields a page uses are the response values it shows in text or attributes', () => {
 	const used = usedFields(news(), 'Winter timetable');
 	assert.deepEqual([...used], ['items[].title']);
