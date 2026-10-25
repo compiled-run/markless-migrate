@@ -274,6 +274,31 @@ test('a Radix trigger with its own id has its layer under the id, while aria-con
 	await page.close();
 });
 
+test('a Radix popover, non-modal, focuses its first control that is not a link and loops Tab inside, as its FocusScope does', async () => {
+	const page = await open(
+		`<main><button data-slot="popover-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="pop" data-state="closed">Open</button>
+		<button data-slot="popover-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="text" data-state="closed">Read</button><a href="#after">After</a></main>
+		<div data-mm-layer="pop" hidden><div data-radix-popper-content-wrapper style="position:fixed;left:0;top:100px"><div data-slot="popover-content" role="dialog" id="pop" data-state="closed" tabindex="-1"><a href="#home">Home</a><button>One</button><button style="display:none">Gone</button><button>Two</button></div></div></div>
+		<div data-mm-layer="text" hidden><div data-radix-popper-content-wrapper style="position:fixed;left:0;top:200px"><div data-slot="popover-content" role="dialog" id="text" data-state="closed" tabindex="-1">Only text</div></div></div>`,
+		['radix/popover'],
+	);
+	await page.getByText('Open').click();
+	assert.equal(await focusOf(page), 'button:One', 'the link before it is skipped');
+	await page.keyboard.press('Tab');
+	assert.equal(await focusOf(page), 'button:Two');
+	await page.keyboard.press('Tab');
+	assert.equal(await focusOf(page), 'a:Home', 'Tab from the last shown control wraps to the first');
+	await page.keyboard.press('Shift+Tab');
+	assert.equal(await focusOf(page), 'button:Two', 'Shift+Tab from the first wraps to the last');
+	assert.equal(await page.getByText('Open').getAttribute('aria-expanded'), 'true');
+	await page.keyboard.press('Escape');
+	await page.getByText('Read').click();
+	assert.equal(await focusOf(page), 'div[dialog]:Only text');
+	await page.keyboard.press('Tab');
+	assert.equal(await focusOf(page), 'div[dialog]:Only text', 'with nothing to tab to, focus stays on the content');
+	await page.close();
+});
+
 test('recharts: the pointer picks the point whose range it is in, the tooltip goes where recharts puts it, the arrow keys step, leaving hides', async () => {
 	const facts = JSON.stringify({ w: 300, h: 100, v: [5, 5, 290, 90], m: 'x', g: [[0, 99, 0], [100, 199, 1], [200, 300, 2]], sp: [5, 95], p: [[50, null], [150, null], [250, null]], k: [[0, 50, 60], [1, 150, 60], [2, 250, 60]] });
 	const page = await open(

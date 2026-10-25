@@ -6,8 +6,8 @@ import { lockScroll } from './remove-scroll.ts';
 
 // What Radix's Portal, DismissableLayer and FocusScope do around a popover, menu, select or tooltip, on the content
 // Markless renders at the end of the body: shown on open, Escape and a press outside closing the top layer, focus
-// moved in on open and back to the trigger on close, Tab kept inside a modal layer. Radix's focus guard spans are not
-// added (the page Markless renders gets no nodes from a part); a modal layer traps Tab itself instead.
+// moved in on open and back to the trigger on close, Tab kept inside a modal or looping layer. Radix's focus guard spans
+// are not added (the page Markless renders gets no nodes from a part); a modal layer traps Tab itself instead.
 
 export interface Layer {
 	readonly key: string;
@@ -31,12 +31,45 @@ export const layerOf = (el: Element) => open.find((l) => l.nodes.some((n) => n.c
 const TABBABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 const tabbables = (container: HTMLElement) => [...container.querySelectorAll<HTMLElement>(TABBABLE)].filter((el) => el.getClientRects().length > 0);
 
+// Radix FocusScope's candidates (tabIndex >= 0, not disabled or hidden) and its edges: the first and last shown.
+function candidates(container: HTMLElement): HTMLElement[] {
+	const nodes: HTMLElement[] = [];
+	const walker = document.createTreeWalker(container, NodeFilter.SHOW_ELEMENT, {
+		acceptNode: (node) => {
+			const el = node as HTMLElement & { disabled?: boolean; type?: string };
+			if (el.disabled || el.hidden || (el.tagName === 'INPUT' && el.type === 'hidden')) return NodeFilter.FILTER_SKIP;
+			return el.tabIndex >= 0 ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+		},
+	});
+	while (walker.nextNode()) nodes.push(walker.currentNode as HTMLElement);
+	return nodes;
+}
+
+function isHidden(node: HTMLElement, upTo: HTMLElement): boolean {
+	if (getComputedStyle(node).visibility === 'hidden') return true;
+	for (let el: HTMLElement | null = node; el && el !== upTo; el = el.parentElement) if (getComputedStyle(el).display === 'none') return true;
+	return false;
+}
+
+function focusSelect(el: HTMLElement): void {
+	const before = document.activeElement;
+	el.focus({ preventScroll: true });
+	if (el !== before && el instanceof HTMLInputElement && 'select' in el) el.select();
+}
+
+/** FocusScope's mount autofocus: the first candidate that takes focus, links left out, else the container itself. */
 export function focusFirst(container: HTMLElement): void {
-	(tabbables(container)[0] ?? container).focus({ preventScroll: true });
+	const before = document.activeElement;
+	for (const el of candidates(container)) {
+		if (el.tagName === 'A') continue;
+		focusSelect(el);
+		if (document.activeElement !== before) return;
+	}
+	container.focus({ preventScroll: true });
 }
 
 /** Shows a control's content, places it off the trigger, and wires dismissal. Undefined when the page has none for it. */
-export function openLayer(trigger: HTMLElement, key: string, options: { readonly modal?: boolean; readonly anchor?: Anchor; readonly onDismiss: (layer: Layer, reason: 'escape' | 'outside' | 'focus', event?: Event) => void }): Layer | undefined {
+export function openLayer(trigger: HTMLElement, key: string, options: { readonly modal?: boolean; readonly loop?: boolean; readonly anchor?: Anchor; readonly onDismiss: (layer: Layer, reason: 'escape' | 'outside' | 'focus', event?: Event) => void }): Layer | undefined {
 	if (isOpen(key)) return open.find((l) => l.key === key);
 	const nodes = layersFor(key);
 	if (!nodes.length) return undefined;
@@ -77,6 +110,20 @@ export function openLayer(trigger: HTMLElement, key: string, options: { readonly
 		if (event.key === 'Escape') {
 			event.preventDefault();
 			options.onDismiss(layer, 'escape', event);
+		} else if (event.key === 'Tab' && options.loop && !event.altKey && !event.ctrlKey && !event.metaKey) {
+			// A looping FocusScope, modal or not: Tab off either edge wraps; with nothing to tab to, focus stays on the content.
+			const shown = candidates(content).filter((el) => !isHidden(el, content));
+			const [first, last] = [shown[0], shown[shown.length - 1]];
+			const focused = document.activeElement;
+			if (!first || !last) {
+				if (focused === content) event.preventDefault();
+			} else if (!event.shiftKey && focused === last) {
+				event.preventDefault();
+				focusSelect(first);
+			} else if (event.shiftKey && focused === first) {
+				event.preventDefault();
+				focusSelect(last);
+			}
 		} else if (event.key === 'Tab' && layer.modal) {
 			const list = tabbables(content);
 			if (!list.length) return event.preventDefault();
