@@ -428,6 +428,11 @@ to loopback callers only, or to callers sending `MARKLESS_MIGRATE_TOKEN` when it
 for requests to other origins, and on the server through the recorder, so both render the same data
 even when they are pointed at different backends. A request is answered from the recording by its
 exact URL, or else by the same path and query on any host; the app's own API routes still run.
+With `--data`, every page is rendered on demand rather than from the server's page cache, so what it
+fetches is seen: a Next.js build answers a prerendered or revalidated page (`x-nextjs-cache: HIT` or
+`STALE`) and a cached `fetch` without running them, so the recorder adds the build's own draft-mode
+cookie (from `.next/prerender-manifest.json` in the server's working directory) to each tagged request.
+The old app's page loads are then as slow as an uncached render.
 
 Writes are classified before they are sent: form posts, non-GET requests, Next.js server actions,
 and any request a handler the source scan marks as writing. They are sent only when both origins are
