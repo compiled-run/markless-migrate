@@ -72,6 +72,7 @@ document.addEventListener('click', (e) => { const props = e.target['__reactProps
 			['columnheader "Name"', 'click columnheader "Name"'],
 			['clickable "Load more"', 'click clickable "Load more"'],
 			['clickable <span> #2 in main>grid>row>columnheader (no name: matched by structure and position)', 'click clickable <span> #2 in main>grid>row>columnheader (no name: matched by structure and position)'],
+			['grid keyboard pattern of grid "Files"', 'its grid keyboard journeys'],
 		]);
 		assert.deepEqual(journeys.find((j) => j.name === 'click clickable "Load more"')!.expected[0]!.added, ['- paragraph: more loaded']);
 	} finally {
