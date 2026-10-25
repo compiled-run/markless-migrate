@@ -1,5 +1,5 @@
 // react-resizable-panels 4: a separator between two panels of a group resizes them, by pointer drag or by keyboard
-// (arrows 5 %, Home and End to the preceding panel's minimum and maximum), each panel's size its flex-grow and the
+// (the arrows of the group's orientation 5 %, in either text direction, Home and End to the preceding panel's minimum and maximum), each panel's size its flex-grow and the
 // separator's aria-valuenow, within the minimum and maximum sizes the source gives each panel (data-mm-min-size,
 // data-mm-max-size, written by the converter). data-separator is "hover" under the pointer and "active" while dragged; a
 // press focuses the separator, and a release leaves it "inactive" until the pointer moves again.
@@ -48,12 +48,11 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 	const p = pairOf(target);
 	if (!p || target !== p.separator) return false;
 	const size = sizeOf(p.before);
-	const forward = p.row ? (getComputedStyle(p.group).direction === 'rtl' ? 'ArrowLeft' : 'ArrowRight') : 'ArrowDown';
-	const backward = p.row ? (forward === 'ArrowRight' ? 'ArrowLeft' : 'ArrowRight') : 'ArrowUp';
-	const to = event.key === forward ? size + STEP : event.key === backward ? size - STEP : event.key === 'Home' ? -Infinity : event.key === 'End' ? Infinity : undefined;
-	if (to === undefined) return false;
+	// onDocumentKeyDown: the arrows of the group's orientation, whatever the text direction; the other two do nothing.
+	const step = { ArrowRight: p.row ? STEP : 0, ArrowLeft: p.row ? -STEP : 0, ArrowDown: p.row ? 0 : STEP, ArrowUp: p.row ? 0 : -STEP, Home: -Infinity, End: Infinity }[event.key];
+	if (step === undefined) return false;
 	event.preventDefault();
-	resize(p, to);
+	if (step) resize(p, size + step);
 	return true;
 }
 
@@ -66,11 +65,10 @@ export function pointerdown(target: Element, event: PointerEvent): boolean {
 	const total = sizeOf(p.before) + sizeOf(p.after);
 	const start = p.row ? event.clientX : event.clientY;
 	const from = sizeOf(p.before);
-	const rtl = p.row && getComputedStyle(p.group).direction === 'rtl' ? -1 : 1;
 	p.separator.setAttribute('data-separator', 'active');
 	p.separator.focus();
 	p.separator.setPointerCapture?.(event.pointerId);
-	const move = (e: PointerEvent) => resize(p, from + ((((p.row ? e.clientX : e.clientY) - start) * rtl) / (length || 1)) * (total || 100));
+	const move = (e: PointerEvent) => resize(p, from + (((p.row ? e.clientX : e.clientY) - start) / (length || 1)) * (total || 100));
 	const up = () => {
 		p.separator.setAttribute('data-separator', 'inactive');
 		p.separator.addEventListener('pointermove', () => p.separator.getAttribute('data-separator') === 'inactive' && p.separator.setAttribute('data-separator', 'hover'), { once: true });

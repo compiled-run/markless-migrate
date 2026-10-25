@@ -314,6 +314,22 @@ test('react-resizable-panels: a press on a separator focuses it; once released i
 });
 
 
+test('react-resizable-panels: the arrows do not follow the text direction, and the other orientation\'s arrows do nothing', async () => {
+	const page = await open(
+		`<div dir="rtl" style="padding:50px"><div data-group="" style="display:flex;width:400px;height:100px"><div data-panel="" style="flex:50 1 0px"></div><div role="separator" tabindex="0" aria-valuenow="50" data-separator="inactive" style="width:8px;flex:0 0 auto"></div><div data-panel="" style="flex:50 1 0px"></div></div></div>`,
+		['resizable'],
+	);
+	const separator = page.locator('[role="separator"]');
+	await separator.focus();
+	const now = () => separator.getAttribute('aria-valuenow');
+	await page.keyboard.press('ArrowLeft');
+	assert.equal(await now(), '45', 'ArrowLeft shrinks the panel before the separator in RTL too');
+	await page.keyboard.press('ArrowDown');
+	assert.equal(await now(), '45');
+	assert.equal(await page.evaluate(() => scrollY), 0, 'and is prevented');
+	await page.close();
+});
+
 test('Radix NavigationMenu: a press opens the trigger\'s content in the viewport rendered beside the list, Escape closes it', async () => {
 	const page = await open(
 		`<nav data-slot="navigation-menu"><ul><li><button id="t1" data-slot="navigation-menu-trigger" data-state="closed" aria-expanded="false" aria-controls="c1">Components</button></li></ul>
