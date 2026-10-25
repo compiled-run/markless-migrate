@@ -27,9 +27,9 @@ const GQL_TAGS = /^(gql|graphql|groq|defineQuery)$/;
 const GQL_KEYWORD = /^\s*(query|mutation|subscription|fragment)\b/;
 const ARRAY_METHODS = /^(map|forEach|filter|find|findIndex|some|every|flatMap|reduce|sort|slice|at|includes|join|length|concat|keys|values|entries|toString|then|json|text)$/;
 
-/** Leaf field paths a GraphQL document selects, keyed by response name. */
-export function graphqlFields(doc: DocumentNode): string[] {
-	const fragments = new Map(doc.definitions.filter((d) => d.kind === Kind.FRAGMENT_DEFINITION).map((d) => [d.name.value, d.selectionSet]));
+/** Leaf field paths a GraphQL document selects, keyed by response name; `shared` holds fragments other files define. */
+export function graphqlFields(doc: DocumentNode, shared: ReadonlyMap<string, SelectionSetNode> = new Map()): string[] {
+	const fragments = new Map([...shared, ...doc.definitions.filter((d) => d.kind === Kind.FRAGMENT_DEFINITION).map((d) => [d.name.value, d.selectionSet] as const)]);
 	const out: string[] = [];
 	const visit = (set: SelectionSetNode, prefix: string, depth: number) => {
 		if (depth > 12) return;
@@ -323,6 +323,8 @@ export async function scanClients(ctx: Context): Promise<ClientFacts> {
 	const out: ClientFacts = { clients: [], writes: [] };
 	const cms = new Sdks(ctx, CMS);
 	const docs = new Map<string, Client>();
+	// Apollo colocates fragments with components and interpolates them from other files, so a spread is resolved project-wide once every file is read.
+	const parsed = new Map<Client, DocumentNode>();
 	const addGraphql = (file: string, line: number, text: string, kind: string, endpoint: string | null) => {
 		const doc = parseGraphql(text);
 		if (!doc || !doc.definitions.length) return false;
@@ -334,6 +336,7 @@ export async function scanClients(ctx: Context): Promise<ClientFacts> {
 		}
 		const client: Client = { kind, file, line, queries: [normalise(text)], fields: graphqlFields(doc), ...(endpoint ? { base: baseOf(endpoint) ?? endpoint } : {}) };
 		docs.set(key, client);
+		parsed.set(client, doc);
 		out.clients.push(client);
 		for (const d of doc.definitions) if (d.kind === Kind.OPERATION_DEFINITION && d.operation === 'mutation') out.writes.push({ method: 'POST', path: endpoint, handler: { file, line }, via: 'graphql-mutation' });
 		return true;
@@ -464,6 +467,9 @@ export async function scanClients(ctx: Context): Promise<ClientFacts> {
 			out.clients.push({ kind: 'sanity', file, line: mod.line(d.node.start), queries: [normalise(d.text)], fields: groqFields(d.text) });
 		}
 	}
+	const shared = new Map<string, SelectionSetNode>();
+	for (const doc of parsed.values()) for (const d of doc.definitions) if (d.kind === Kind.FRAGMENT_DEFINITION && !shared.has(d.name.value)) shared.set(d.name.value, d.selectionSet);
+	for (const [client, doc] of parsed) if (client.fields?.some((f) => f.includes('...'))) client.fields = graphqlFields(doc, shared);
 	out.clients.push(...(await expandWrappers(ctx, wrappers)));
 	return out;
 }

@@ -277,3 +277,21 @@ test('a webpack app: pages are what HtmlWebpackPlugin and CopyPlugin emit, each 
 	const { stepRoutes } = await import('../src/plan/source.ts');
 	assert.deepEqual(inventory.order.map((s) => `${s.name} ${stepRoutes(inventory, s).join(',')}`), ['Badge /,/admin/', 'App /,/admin/', 'Entry /,/admin/']);
 });
+
+test('a GraphQL query whose fragments come from other files (Apollo fragment colocation) reads the fragments\' fields', async () => {
+	const { mkdir } = await import('node:fs/promises');
+	const root = await mkdtemp(join(tmpdir(), 'mm-fragments-'));
+	const files: Record<string, string> = {
+		'package.json': '{"dependencies":{"@apollo/client":"3.5.7","next":"12.0.8"}}',
+		'src/components/news-title.tsx': 'export const newsTitleFragment = `\n  fragment NewsTitle on NewsItem {\n    id\n    title\n  }\n`;\n',
+		'src/components/news-feed.tsx': "import { newsTitleFragment } from './news-title';\nexport const newsFeedFragment = `\n  fragment NewsFeed on NewsItem {\n    id\n    hidden\n    ...NewsTitle\n  }\n  ${newsTitleFragment}\n`;\n",
+		'pages/index.tsx': "import gql from 'graphql-tag';\nimport { newsFeedFragment } from '../src/components/news-feed';\nconst query = gql`\n  query topNewsItems($first: Int!) {\n    feed(first: $first) {\n      ...NewsFeed\n    }\n  }\n  ${newsFeedFragment}\n`;\nexport default function Index() { return null; }\n",
+	};
+	for (const [file, text] of Object.entries(files)) {
+		await mkdir(join(root, file, '..'), { recursive: true });
+		await writeFile(join(root, file), text);
+	}
+	const facts = await scanSource(root);
+	const page = facts.clients.find((c) => c.file === 'pages/index.tsx');
+	assert.deepEqual(page?.fields, ['feed.id', 'feed.hidden', 'feed.title']);
+});
