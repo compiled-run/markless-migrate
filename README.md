@@ -368,7 +368,7 @@ route's slowest control and a table per route; `report.json` carries the same as
 
 Journeys compare what one use of a control changes. A library's widget also has behaviour between and
 around the uses, and a port can lose it while every journey still matches. So each page route also gets
-widget probes: one control of each kind (its region and component slot, else its tag and role) is driven
+widget probes: one control of each kind (its region and component slot, else its tag and role, and whether it sits in right-to-left text) is driven
 through its class's sequence on the old and the new page at once, each from a fresh load, and after
 every step check reads what a visitor meets: where focus is and whether its ring shows (`:focus-visible`
 and `data-focus-visible`), the state attributes of the control and of its widget (`aria-expanded`,
