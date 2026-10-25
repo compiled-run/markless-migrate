@@ -1,7 +1,8 @@
 // react-resizable-panels 4: a separator between two panels of a group resizes them, by pointer drag or by keyboard
 // (arrows 5 %, Home and End to the preceding panel's minimum and maximum), each panel's size its flex-grow and the
 // separator's aria-valuenow, within the minimum and maximum sizes the source gives each panel (data-mm-min-size,
-// data-mm-max-size, written by the converter). data-separator is "hover" under the pointer and "active" while dragged.
+// data-mm-max-size, written by the converter). data-separator is "hover" under the pointer and "active" while dragged; a
+// press focuses the separator, and a release leaves it "inactive" until the pointer moves again.
 const SEPARATOR = '[data-group] > [role="separator"]';
 const STEP = 5;
 
@@ -60,17 +61,19 @@ export function pointerdown(target: Element, event: PointerEvent): boolean {
 	const p = pairOf(target);
 	if (!p || event.button !== 0) return false;
 	event.preventDefault();
-	const box = p.group.getBoundingClientRect();
-	const length = p.row ? box.width : box.height;
+	// calculateAvailableGroupSize: the panels' own sizes, without the separators between them.
+	const length = [...p.group.children].reduce((sum, c) => (c instanceof HTMLElement && c.hasAttribute('data-panel') ? sum + (p.row ? c.offsetWidth : c.offsetHeight) : sum), 0);
 	const total = sizeOf(p.before) + sizeOf(p.after);
 	const start = p.row ? event.clientX : event.clientY;
 	const from = sizeOf(p.before);
 	const rtl = p.row && getComputedStyle(p.group).direction === 'rtl' ? -1 : 1;
 	p.separator.setAttribute('data-separator', 'active');
+	p.separator.focus();
 	p.separator.setPointerCapture?.(event.pointerId);
 	const move = (e: PointerEvent) => resize(p, from + ((((p.row ? e.clientX : e.clientY) - start) * rtl) / (length || 1)) * (total || 100));
 	const up = () => {
-		p.separator.setAttribute('data-separator', p.separator.matches(':hover') ? 'hover' : 'inactive');
+		p.separator.setAttribute('data-separator', 'inactive');
+		p.separator.addEventListener('pointermove', () => p.separator.getAttribute('data-separator') === 'inactive' && p.separator.setAttribute('data-separator', 'hover'), { once: true });
 		p.separator.removeEventListener('pointermove', move);
 		p.separator.removeEventListener('pointerup', up);
 		p.separator.removeEventListener('pointercancel', up);
