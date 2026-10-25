@@ -2,20 +2,23 @@
 // The old site is built by Docusaurus from MDX through its theme's React components; this reads the page each
 // route ends up as once its scripts have run (light mode, desktop) and writes it as static Markless markup. The interactive
 // parts (tabs, copy buttons, colour mode, sidebar, dropdowns) are wired by hand in components/ and lib/.
-import { copyFile, mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { copyFile, mkdir, rm, writeFile } from 'node:fs/promises';
+import { dirname, join, relative } from 'node:path';
+import { parseFragment } from 'parse5';
 import { chromium } from '../../../node_modules/playwright/index.mjs';
+import { regionModule, sharedRegions } from '../../../src/convert/factor.ts';
 import { toTsrx } from './serialize.js';
 import { RUNTIME_MARKERS } from '../../../src/check/residue.ts';
 
 const origin = (process.argv[2] ?? 'http://127.0.0.1:4201').replace(/\/$/, '');
 const app = join(import.meta.dirname, '..');
 const ROUTES = [
-	{ path: '/', name: 'home' },
-	{ path: '/docs', name: 'intro' },
-	{ path: '/docs/installation', name: 'installation' },
+	{ path: '/', name: 'home', page: 'pages/index.tsrx' },
+	{ path: '/docs', name: 'intro', page: 'pages/docs/index.tsrx' },
+	{ path: '/docs/installation', name: 'installation', page: 'pages/docs/installation.tsrx' },
 ];
 
+const ROOT_HANDLERS = ' onIdle={() => siteBoot()}';
 const browser = await chromium.launch();
 
 // What only exists at a mobile width (the navbar's drawer), and what lazy images become once scrolled into view.
@@ -48,12 +51,12 @@ async function capture(path, colorScheme) {
 	await page.goto(origin + path);
 	await page.waitForLoadState('networkidle');
 	await page.waitForTimeout(500);
-	const data = await page.evaluate(`(${capturePage.toString()})(${toTsrx.toString()})`);
+	const data = await page.evaluate(`(${capturePage.toString()})(${toTsrx.toString()}, ${JSON.stringify(ROOT_HANDLERS)})`);
 	await context.close();
 	return data;
 }
 
-function capturePage(toTsrx) {
+function capturePage(toTsrx, handlers) {
 	const html = Object.fromEntries([...document.documentElement.attributes].map((a) => [a.name, a.value]));
 	const head = [...document.head.children]
 		.filter((el) => {
@@ -66,7 +69,6 @@ function capturePage(toTsrx) {
 		})
 		.map((el) => ({ tag: el.tagName.toLowerCase(), attrs: Object.fromEntries([...el.attributes].map((a) => [a.name, a.value])), text: el.textContent }));
 	const root = document.getElementById('__docusaurus');
-	const handlers = ' onIdle={() => siteBoot()}';
 	// Third-party embeds become their Markless components (components/embeds/), fed by the data kept beside them under
 	// the embed's id from .migrate/embeds.json: no provider frame or script at load.
 	const embeds = (el) => {
@@ -94,14 +96,27 @@ function capturePage(toTsrx) {
 	}
 	for (const el of document.querySelectorAll('[style*="url("]')) for (const m of el.getAttribute('style').matchAll(/url\(["']?([^"')]+)/g)) urls.add(m[1]);
 	const assets = [...urls].filter((url) => url.startsWith('/') && !url.startsWith('//') && !/\.js([?#].*)?$/.test(url) && /\.[a-z0-9]{2,5}([?#].*)?$/i.test(url));
-	return { html, head, bodyScript, assets, body: toTsrx(root, { depth: 1, attrs: (el) => (el === root ? handlers : ''), replace: embeds }), sprite: toTsrx(document.body.querySelector(':scope > svg'), { depth: 1 }), codeStyles };
+	// The same markup as HTML, each embed left as the TSRX it becomes, to find the parts the routes share.
+	const marked = (el) => {
+		const code = embeds(el);
+		if (code) {
+			const stand = document.createElement('markless-tsrx');
+			stand.setAttribute('code', code);
+			return stand;
+		}
+		const copy = el.cloneNode(false);
+		for (const child of el.childNodes) copy.appendChild(child.nodeType === 1 ? marked(child) : child.cloneNode(false));
+		return copy;
+	};
+	return { html, head, bodyScript, assets, body: toTsrx(root, { depth: 1, attrs: (el) => (el === root ? handlers : ''), replace: embeds }), markup: marked(root).outerHTML, sprite: toTsrx(document.body.querySelector(':scope > svg'), { depth: 1 }), codeStyles };
 }
 
-const EMBED_COMPONENTS = { GitHubButton: '../embeds/github-button.tsrx', YouTubeFacade: '../embeds/youtube-facade.tsrx' };
-const embedImports = (body) =>
+const EMBED_COMPONENTS = { GitHubButton: 'components/embeds/github-button.tsrx', YouTubeFacade: 'components/embeds/youtube-facade.tsrx' };
+const fromFile = (file, path) => relative(dirname(file), join(app, path)).replace(/^(?!\.)/, './');
+const embedImports = (body, file) =>
 	Object.entries(EMBED_COMPONENTS)
 		.filter(([name]) => body.includes(`<${name} `))
-		.map(([name, path]) => `import ${name} from '${path}';\n`)
+		.map(([name, path]) => `import ${name} from '${fromFile(file, path)}';\n`)
 		.join('');
 
 function componentName(name) {
@@ -116,6 +131,7 @@ const themes = {};
 const responsiveParts = {};
 const assets = new Set(['/img/docusaurus.ico', '/img/docusaurus.png', '/manifest.json', '/opensearch.xml']);
 let firstBodyScript = '';
+const captured = [];
 for (const route of ROUTES) {
 	const light = await capture(route.path, 'light');
 	const dark = await capture(route.path, 'dark');
@@ -126,12 +142,56 @@ for (const route of ROUTES) {
 	for (const asset of [...light.assets, ...dark.assets]) assets.add(asset);
 	themes[route.path] = { light: light.codeStyles, dark: dark.codeStyles };
 	responsiveParts[route.path] = await responsive(route.path);
-	const file = join(app, 'components/generated', `${route.name}.tsrx`);
+	captured.push({ route, body: light.body, root: parseFragment(light.markup).childNodes[0] });
+}
+
+const asDom = (node) =>
+	node.nodeName === '#text'
+		? { nodeType: 3, data: node.value }
+		: 'tagName' in node
+			? { nodeType: 1, source: node, tagName: node.tagName, attributes: node.attrs.map((a) => ({ name: a.prefix ? `${a.prefix}:${a.name}` : a.name, value: a.value })), get childNodes() { return node.childNodes.map(asDom); } }
+			: { nodeType: 8 };
+const stands = (el) => (el.source.tagName === 'markless-tsrx' ? el.source.attrs.find((a) => a.name === 'code').value : '');
+const generated = (path) => `// Generated by tooling/import.mjs from ${path} on the old site; do not edit by hand.`;
+for (const { route, body, root } of captured) {
+	const again = toTsrx(asDom(root), { depth: 1, attrs: (el) => (el.source === root ? ROOT_HANDLERS : ''), replace: stands });
+	if (again !== body) throw new Error(`${route.path}: the page's markup read back from its HTML is not the markup the browser wrote`);
+}
+// The parts several routes render alike (the navbar, the footer): one component each, taking the page's path.
+const chrome = sharedRegions(new Map(captured.map(({ route, root }) => [route.path, root])), {
+	// Markless keeps a part whose attributes follow the page, but a class bound to a prop is a DOM update, which it never keeps.
+	varies: (el, name) => name !== 'class' && !el.tagName.startsWith('markless-'),
+	// A doc's <article> is its own content; a part holding a <template> is never kept across a navigation.
+	skip: (el) => el.tagName === 'article' || el.tagName === 'template',
+	name: (el) => el.attrs.find((a) => a.name === 'class')?.value.split(/\s+/).find((c) => c.startsWith('theme-'))?.slice('theme-'.length),
+});
+const generatedDir = join(app, 'components/generated');
+await rm(generatedDir, { recursive: true, force: true });
+await mkdir(generatedDir, { recursive: true });
+const chromeOf = new Map();
+for (const region of chrome) {
+	for (const member of region.members) chromeOf.set(member.element, { region, path: member.path });
+	const markup = toTsrx(asDom(region.element), { depth: 1, replace: stands, expressions: (el) => region.expressions.get(el.source) }).trim();
+	const file = join(generatedDir, `${region.base}.tsrx`);
+	await writeFile(file, regionModule(region, markup, { comment: `${generated(region.members.map((m) => m.path).join(', '))} (rendered by ${region.members.length} pages)`, imports: embedImports(markup, file).split('\n').filter(Boolean) }));
+}
+for (const { route, root } of captured) {
+	const used = new Set();
+	const body = toTsrx(asDom(root), {
+		depth: 1,
+		attrs: (el) => (el.source === root ? ROOT_HANDLERS : ''),
+		replace: (el) => {
+			const shared = chromeOf.get(el.source);
+			if (!shared) return stands(el);
+			used.add(shared.region);
+			return `<${shared.region.name} path=${JSON.stringify(shared.path)} />`;
+		},
+	});
+	// The markup is the page module's own: a component holding the whole page would be kept whole, and its shared parts not.
+	const file = join(app, route.page);
+	const imports = [...used].map((region) => `import ${region.name} from '${fromFile(file, `components/generated/${region.base}.tsrx`)}';\n`).join('');
 	await mkdir(dirname(file), { recursive: true });
-	await writeFile(
-		file,
-		`// Generated by tooling/import.mjs from ${route.path} on the old site; do not edit by hand.\n${embedImports(light.body)}import { siteBoot } from '../../lib/site.ts';\n\nexport default function ${componentName(route.name)}() @{\n${light.body}}\n`,
-	);
+	await writeFile(file, `${generated(route.path)}\n${embedImports(body, file)}${imports}import { siteBoot } from '${fromFile(file, 'lib/site.ts')}';\n\nexport default function ${componentName(route.name)}Page() @{\n${body}}\n`);
 	process.stdout.write(`${route.path} -> ${file}\n`);
 }
 // Files the imported pages load from the old site's own origin, copied from its build into public/.

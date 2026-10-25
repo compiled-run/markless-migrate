@@ -41,6 +41,8 @@ export interface Converted {
 export interface Options {
 	// An attribute value the page must import (a source asset), or undefined to keep the value.
 	readonly asset?: (value: string, attribute: string, tag: string) => { readonly specifier: string; readonly suffix: string } | undefined;
+	// Attribute values written as expressions in place of the copied text, by attribute name.
+	readonly expressions?: (el: Element) => Readonly<Record<string, string>> | undefined;
 }
 
 // Vite's import.meta.glob transform reads .tsrx sources before Markless compiles them, so the phrase never appears verbatim.
@@ -67,10 +69,13 @@ class Writer {
 	}
 
 	attributes(el: Element): string {
+		const expressions = this.options.expressions?.(el);
 		return el.attrs
 			.filter((a) => ATTRIBUTE_NAME.test(a.name))
 			.map((a) => {
 				const name = a.prefix === 'xlink' && a.name === 'href' ? 'xlink:href' : a.prefix ? `${a.prefix}:${a.name}` : a.name;
+				const expression = !a.prefix ? expressions?.[a.name] : undefined;
+				if (expression !== undefined) return ` ${name}={${expression}}`;
 				// A style that points at a source asset: the url() takes the imported binding.
 				if (name === 'style' && this.options.asset && /url\(/.test(a.value)) {
 					const parts: string[] = [];
@@ -133,6 +138,11 @@ class Writer {
 		const content = name === 'template' ? this.children((el as DefaultTreeAdapterMap['template']).content, inPre) : this.children(el, inPre);
 		return `<${name}${this.attributes(el)}>${content}</${name}>`;
 	}
+}
+
+export function convertElement(el: Element, options: Options = {}): Converted {
+	const writer = new Writer(options);
+	return { tsrx: writer.node(el, false), imports: writer.imports };
 }
 
 export function convert(html: string, options: Options = {}): Converted {
