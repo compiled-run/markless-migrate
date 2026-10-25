@@ -11,7 +11,8 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseFragment, serialize } from 'parse5';
 import type { DefaultTreeAdapterMap } from 'parse5';
-import { convert } from './import/html-to-tsrx.ts';
+import { regionModule, sharedRegions, type SharedRegion } from '../../../src/convert/factor.ts';
+import { convert, convertElement, type Options } from './import/html-to-tsrx.ts';
 import { docsLayout, marketingLayout, type OutlineItem, type Page, type SidebarItem } from './import/layouts.ts';
 
 const docs = process.argv[2] && resolve(process.argv[2]);
@@ -257,20 +258,32 @@ function headOf(route: string, page: { title: string; description: string; front
 	};
 }
 
-function writePage(file: string, body: string): void {
+const assetOption =
+	(file: string): Options['asset'] =>
+	(value, name) => {
+		if (!/^(src|href|xlink:href|poster)$/.test(name)) return undefined;
+		if (!value.startsWith('/')) return undefined;
+		const found = assetFile(value);
+		if (!found) return undefined;
+		copyAsset(found.file);
+		let rel = relative(dirname(file), found.file);
+		if (!rel.startsWith('.')) rel = `./${rel}`;
+		return { specifier: rel, suffix: found.suffix };
+	};
+
+// The layout parts several pages render alike (the header, a section's sidebar): one component each, taking the page's path.
+const CHROME_DIR = 'components/docs';
+const chromeFile = (region: SharedRegion) => `${CHROME_DIR}/${region.base}.tsrx`;
+function writeChrome(region: SharedRegion): void {
+	const file = join(APP, chromeFile(region));
+	const converted = convertElement(region.element, { asset: assetOption(file), expressions: (el) => region.expressions.get(el) });
+	mkdirSync(dirname(file), { recursive: true });
+	writeFileSync(file, regionModule(region, converted.tsrx, { comment: `${GENERATED} (rendered by ${region.members.length} pages)`, imports: [...converted.imports].map(([specifier, name]) => `import ${name} from '${specifier}';`) }));
+}
+
+function writePage(file: string, body: string, chrome: readonly SharedRegion[] = []): void {
 	const imports = new Map<string, string>();
-	const converted = convert(body, {
-		asset: (value, name) => {
-			if (!/^(src|href|xlink:href|poster)$/.test(name)) return undefined;
-			if (!value.startsWith('/')) return undefined;
-			const found = assetFile(value);
-			if (!found) return undefined;
-			copyAsset(found.file);
-			let rel = relative(dirname(file), found.file);
-			if (!rel.startsWith('.')) rel = `./${rel}`;
-			return { specifier: rel, suffix: found.suffix };
-		},
-	});
+	const converted = convert(body, { asset: assetOption(file) });
 	for (const [specifier, name] of converted.imports) imports.set(name, specifier);
 	const used = (name: string) => converted.tsrx.includes(`<${name} `) || converted.tsrx.includes(`<${name}>`);
 	const up = relative(dirname(file), APP) || '.';
@@ -280,7 +293,8 @@ function writePage(file: string, body: string): void {
 		['TopBanner', 'components/top-banner.tsrx'],
 		['Header', 'components/header.tsrx'],
 		['YouTubeEmbed', 'components/embeds/youtube-embed.tsrx'],
-	].filter(([name]) => used(name!));
+		...chrome.map((region) => [region.name, chromeFile(region)]),
+	].filter(([name], i, all) => used(name!) && all.findIndex(([other]) => other === name) === i);
 	const lines = [
 		GENERATED,
 		...components.map(([name, path]) => `import ${name} from '${up}/${path}';`),
@@ -301,6 +315,9 @@ function writePage(file: string, body: string): void {
 
 const viteconf = '/images/viteconf.svg';
 const written: string[] = [];
+// Each page's layout with its own content left as this element, to find the parts pages share; the content goes back in after.
+const CONTENT = 'markless-page-content';
+const layouts: { readonly route: string; readonly file: string; readonly html: string; readonly content: string }[] = [];
 for (const relativePath of [...siteConfig.pages, '404.md']) {
 	if (HAND_PORTED.has(relativePath)) continue;
 	const route = relativePath === '404.md' ? '/404' : routeOf(relativePath);
@@ -363,13 +380,42 @@ for (const relativePath of [...siteConfig.pages, '404.md']) {
 		});
 		(page as { content: string }).content = page.content.replace(/<\/div>$/, `<template data-live-video data-start="${start}">${video.html}</template></div>`);
 	}
-	const body = isHome
-		? marketingLayout(page, `/@fs${themeAssets}`)
-		: docsLayout(page, notFound ? 'not-found' : frontmatter.layout === 'page' ? 'page' : 'doc', viteconf, `/@fs${themeAssets}`);
+	const marked = { ...page, content: `<${CONTENT}></${CONTENT}>` };
+	const html = isHome
+		? marketingLayout(marked, `/@fs${themeAssets}`)
+		: docsLayout(marked, notFound ? 'not-found' : frontmatter.layout === 'page' ? 'page' : 'doc', viteconf, `/@fs${themeAssets}`);
 	const file = join(APP, 'pages', notFound ? '404.tsrx' : `${relativePath.replace(/\.md$/, '')}.tsrx`);
-	writePage(file, body);
+	layouts.push({ route: page.route, file, html, content: page.content });
 	heads[notFound ? '/404' : route] = headOf(route, pageData, relativePath);
 	written.push(relative(APP, file));
+}
+
+const trees = layouts.map((layout) => ({ ...layout, fragment: parseFragment(layout.html) }));
+const chrome = sharedRegions(new Map(trees.map((t) => [t.route, t.fragment.childNodes.find(isElement)!])), {
+	// Markless keeps a part whose attributes follow the page, but a class bound to a prop is a DOM update, which it never keeps.
+	varies: (_el, name) => name !== 'class',
+	// A part holding a <template> is never kept across a navigation.
+	skip: (el) => el.tagName === CONTENT || el.tagName === 'template',
+	name: (el) => {
+		const classes = el.attrs.find((a) => a.name === 'class')?.value.split(/\s+/) ?? [];
+		return classes.find((c) => /^[A-Z]/.test(c)) ?? (/^(header|footer|nav|aside|main)$/.test(el.tagName) ? el.tagName : classes[0]);
+	},
+}).map((region) => ({ ...region, name: `Docs${region.name}` }));
+rmSync(join(APP, CHROME_DIR), { recursive: true, force: true });
+for (const region of chrome) writeChrome(region);
+for (const region of chrome)
+	for (const member of region.members) {
+		const parent = member.element.parentNode!;
+		const props = JSON.stringify({ path: member.path }).replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+		const call = parseFragment(`<markless-component name="${region.name}" props="${props}"></markless-component>`).childNodes[0] as Element;
+		call.parentNode = parent;
+		parent.childNodes[parent.childNodes.indexOf(member.element)] = call;
+	}
+for (const tree of trees) {
+	const marker = `<${CONTENT}></${CONTENT}>`;
+	const html = serialize(tree.fragment);
+	if (!html.includes(marker)) throw new Error(`${tree.route}: the page's content marker went into a shared part`);
+	writePage(tree.file, html.replace(marker, () => tree.content), chrome);
 }
 
 // VitePress's hashmap.json, which its router fetches when a route does not resolve (page-scripts/docs.ts on the not-found

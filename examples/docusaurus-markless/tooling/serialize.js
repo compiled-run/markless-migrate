@@ -21,7 +21,8 @@ export function toTsrx(root, options = {}) {
 		if (tag === 'script' || skip(el)) return '';
 		const replaced = options.replace?.(el);
 		if (replaced) return replaced.split('\n').map((line) => `${pad}${line}\n`).join('');
-		const attrs = [...el.attributes].map((a) => attr(a.name, a.value)).join('');
+		const expressions = options.expressions?.(el);
+		const attrs = [...el.attributes].map((a) => (expressions && a.name in expressions ? ` ${a.name}={${expressions[a.name]}}` : attr(a.name, a.value))).join('');
 		const extra = options.attrs?.(el) ?? '';
 		if (VOID.has(tag)) return `${pad}<${tag}${attrs}${extra} />\n`;
 		const kids = [...el.childNodes].map((c) => walk(c, depth + 1)).join('');
