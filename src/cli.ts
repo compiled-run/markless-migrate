@@ -1016,7 +1016,7 @@ async function main(argv: string[]): Promise<number> {
 			return 0;
 		}
 		case 'recorder':
-			out(`Start each Node server (old and new) with the request recorder loaded:\n\n  export NODE_OPTIONS="${recorderEnv().NODE_OPTIONS}"\n\nIt records what the server fetches while rendering each page check loads (fetch: method, URL, body and response; node:http and node:https: method, URL and status), and serves recordings on --data replay. It answers loopback callers only; set MARKLESS_MIGRATE_TOKEN in both the server and check environments to reach a remote server.\nModule: ${RECORDER.pathname}\n`);
+			out(`Start each Node server (old and new) with the request recorder loaded:\n\n  export NODE_OPTIONS='${recorderEnv().NODE_OPTIONS}'\n\nIt records what the server fetches while rendering each page check loads (fetch: method, URL, body and response; node:http and node:https: method, URL and status), and serves recordings on --data replay. It answers loopback callers only; set MARKLESS_MIGRATE_TOKEN in both the server and check environments to reach a remote server.\nModule: ${RECORDER.pathname}\n`);
 			return 0;
 		case 'setup':
 			return setup(rest);

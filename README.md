@@ -421,7 +421,8 @@ when the wall allows a known agent.
 ### Server requests, recorded data and writes
 
 `markless-migrate recorder` prints the `NODE_OPTIONS` that load the request recorder into a Node server
-(Next.js, Nuxt, Remix, Express, Nitro...). Start both apps with it. While `check` loads a page, the
+(Next.js, Nuxt, Remix, Express, Nitro...), on any Node from 16 (it loads with `--require`, which older Node
+accepts in `NODE_OPTIONS` where it refuses `--import`, and gives a server without `fetch` none). Start both apps with it. While `check` loads a page, the
 recorder files every request the server makes for it: `fetch` with method, URL, body and response,
 and `node:http`/`node:https` (axios, got, most SDKs) with method, URL and status only. Requests from
 other runtimes (Python, Ruby, PHP, Go, edge workers) are not recorded; for those, only browser requests
