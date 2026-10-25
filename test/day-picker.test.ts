@@ -166,3 +166,21 @@ test('a date picker trigger\'s label: the date-fns pattern that renders what the
 	const range = labelOf({ sig: 'r', nth: 0, k: 0, before: '<svg></svg>Jan 20, 2026 - Feb 09, 2026', picks: [{ days: [[2026, 0, 5]], html: '<svg></svg>Jan 05, 2026', open: true }, { days: [[2026, 0, 5], [2026, 0, 10]], html: '<svg></svg>Jan 05, 2026 - Jan 10, 2026', open: true }] }, { ...(config as object), mode: 'range' } as never);
 	assert.deepEqual(range && { pattern: range.pattern, join: range.join, prefix: range.prefix }, { pattern: 'LLL dd, y', join: ' - ', prefix: '<svg></svg>' });
 });
+
+test('a fixed date that is the day before behind UTC is an instant: the calendar opens on its local day', async () => {
+	const { configOf } = await import('../src/convert/day-picker.ts');
+	const raw = (selected: [number, number, number]) => ({ sig: 's', nth: 0, config: { ...base, code: null }, dates: { month: selected, selected: [selected] } }) as unknown as Parameters<typeof configOf>[0];
+	const config = configOf(raw([2025, 5, 1]), raw([2025, 5, 1]), () => {}, raw([2025, 4, 31]));
+	assert.deepEqual(config.selected, [{ at: Date.UTC(2025, 5, 1) }]);
+	const view = dayPickerView(config, JAN_15);
+	const local = new Date(Date.UTC(2025, 5, 1));
+	assert.deepEqual(view.s, [dayOfDate(local)], "the instant's day where this runs");
+	assert.equal(view.m, dayOfDate(new Date(local.getFullYear(), local.getMonth(), 1)));
+	assert.deepEqual(configOf(raw([2025, 5, 1]), raw([2025, 5, 1]), () => {}, raw([2025, 5, 1])).selected, [{ y: 2025, m: 5, d: 1 }], 'one that stays is a day');
+});
+
+test("the converter checks its render against the capture with an instant on the capture's day, whatever its own time zone", async () => {
+	const { asCaptured } = await import('../src/convert/day-picker.ts');
+	const config = asCaptured({ ...base, month: { at: Date.UTC(2025, 5, 1) }, selected: [{ at: Date.UTC(2025, 5, 1) }, null] });
+	assert.deepEqual([config.month, config.selected], [{ y: 2025, m: 5, d: 1 }, [{ y: 2025, m: 5, d: 1 }, null]]);
+});

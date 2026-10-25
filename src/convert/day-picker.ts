@@ -67,13 +67,17 @@ export interface CapturedPickers {
 	readonly at: number;
 	readonly pickers: readonly RawPicker[];
 	readonly later: readonly RawPicker[];
+	/** At the capture clock behind UTC (BEHIND): a date-only instant is the day before there. */
+	readonly behind?: readonly RawPicker[];
 }
 
 /** The second clock: a later year, month, day and weekday than the capture clock, so a date relative to today moves in each. */
 export const LATER = Date.UTC(2027, 4, 20, 12, 0, 0);
+/** Behind UTC at the capture's hour on both clocks: a date-only instant (UTC midnight) is a day earlier there. */
+export const BEHIND = 'America/Los_Angeles';
 
 // Bumped when what is read changes, so a cached read is taken again.
-const READ_VERSION = 6;
+const READ_VERSION = 7;
 const fileFor = (dir: string, route: string) => join(dir, `${createHash('sha256').update(`day-picker:${READ_VERSION}:${route}`).digest('hex').slice(0, 16)}.json`);
 
 /** Reads every DayPicker on a route at the capture clock and at LATER, and whether its keys move the browser's focus. */
@@ -81,8 +85,8 @@ export async function captureDayPickers(browser: Browser, origin: string, route:
 	const file = openers.length ? fileFor(dir, `${route}|${JSON.stringify(openers)}`) : fileFor(dir, route);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as CapturedPickers, () => undefined);
 	if (cached && cached.route === route) return cached;
-	const read = async (time: number, probe: boolean, ks: readonly (number | undefined)[] = []): Promise<RawPicker[]> => {
-		const env = defaultEnv(origin, { freeze: { ...DEFAULT_FREEZE, time } });
+	const read = async (time: number, probe: boolean, ks: readonly (number | undefined)[] = [], timezone = DEFAULT_FREEZE.timezone): Promise<RawPicker[]> => {
+		const env = defaultEnv(origin, { freeze: { ...DEFAULT_FREEZE, time, timezone } });
 		const { context, page } = await openPage(browser, env, VIEWPORTS[0]!);
 		try {
 			await loadPage(page, new URL(route, origin).href);
@@ -116,7 +120,7 @@ export async function captureDayPickers(browser: Browser, origin: string, route:
 	};
 	const pickers = await read(DEFAULT_FREEZE.time, true);
 	const ks = openers.map((o) => pickers.find((p) => p.opener?.sig === o.sig && p.opener.nth === o.nth)?.opener?.k);
-	const captured: CapturedPickers = { route, at: DEFAULT_FREEZE.time, pickers, later: await read(LATER, false, ks) };
+	const captured: CapturedPickers = { route, at: DEFAULT_FREEZE.time, pickers, later: await read(LATER, false, ks), behind: await read(DEFAULT_FREEZE.time, false, ks, BEHIND) };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(captured));
 	return captured;
@@ -540,7 +544,7 @@ const tripleOf = (n: number): Triple => {
 const todayAt = (time: number): Triple => tripleOf(Math.floor(time / DAY));
 
 /** The date both clocks agree on: fixed, a number of days from today, or fixed or relative per component; else undefined. */
-export function whenOf(a: Triple, b: Triple, at: number = DEFAULT_FREEZE.time, later: number = LATER): When | undefined {
+export function whenOf(a: Triple, b: Triple, at: number = DEFAULT_FREEZE.time, later: number = LATER): Exclude<When, { readonly at: number }> | undefined {
 	const ta = todayAt(at);
 	const tb = todayAt(later);
 	if (a[0] === b[0] && a[1] === b[1] && a[2] === b[2]) return { y: a[0], m: a[1], d: a[2] };
@@ -556,9 +560,19 @@ export function whenOf(a: Triple, b: Triple, at: number = DEFAULT_FREEZE.time, l
 
 const fixed = (t: Triple): When => ({ y: t[0], m: t[1], d: t[2] });
 
-function pairWhen(a: Triple | undefined, b: Triple | undefined, note: (what: string) => void, what: string): When | undefined {
+// The configuration as the capture's browser saw it: an instant on its day in the capture's time zone (UTC), whatever this process's is.
+export function asCaptured(config: DayPickerConfig): DayPickerConfig {
+	const day = (w: When | undefined): When | undefined => (w && 'at' in w ? fixed(tripleOf(Math.floor(w.at / DAY))) : w);
+	const out: Record<string, unknown> = { ...config };
+	for (const key of ['start', 'end', 'endProp', 'month', 'today'] as const) if (config[key]) out[key] = day(config[key]);
+	if (config.selected) out.selected = config.selected.map((w) => (w ? day(w)! : null));
+	return out as unknown as DayPickerConfig;
+}
+
+function pairWhen(a: Triple | undefined, b: Triple | undefined, note: (what: string) => void, what: string, behind?: Triple): When | undefined {
 	if (!a) return undefined;
 	const w = b ? whenOf(a, b) : undefined;
+	if (w && 'y' in w && !w.ry && !w.rm && !w.rd && behind && dayNumber(behind) === dayNumber(a) - 1) return { at: Date.UTC(a[0], a[1], a[2]) };
 	if (!w) note(`${what} (${a.join('-')}) follows the clock in a way the port cannot: kept as on the capture clock`);
 	return w ?? fixed(a);
 }
@@ -585,19 +599,20 @@ function pairMatchers(a: readonly RawMatcher[] | undefined, b: readonly RawMatch
 }
 
 /** The port's configuration for a calendar, from what it was given at the capture clock and at LATER. */
-export function configOf(at: RawPicker, later: RawPicker | undefined, note: (what: string) => void): DayPickerConfig {
+export function configOf(at: RawPicker, later: RawPicker | undefined, note: (what: string) => void, behind?: RawPicker): DayPickerConfig {
 	const c = at.config!;
 	const d = at.dates ?? {};
 	const l = later?.dates ?? {};
+	const b = behind?.dates ?? {};
 	const m = at.matchers ?? {};
 	const lm = later?.matchers ?? {};
 	const { code, ...rest } = c;
-	const start = pairWhen(d.start, l.start, note, 'startMonth');
-	const end = pairWhen(d.end, l.end, note, 'endMonth');
-	const endProp = pairWhen(d.endProp, l.endProp, note, 'endMonth');
-	const month = pairWhen(d.month, l.month, note, 'month');
-	const today = pairWhen(d.today, l.today, note, 'today');
-	const selected = d.selected?.map((t, i) => (t ? pairWhen(t, l.selected?.[i] ?? undefined, note, 'selected')! : null));
+	const start = pairWhen(d.start, l.start, note, 'startMonth', b.start);
+	const end = pairWhen(d.end, l.end, note, 'endMonth', b.end);
+	const endProp = pairWhen(d.endProp, l.endProp, note, 'endMonth', b.endProp);
+	const month = pairWhen(d.month, l.month, note, 'month', b.month);
+	const today = pairWhen(d.today, l.today, note, 'today', b.today);
+	const selected = d.selected?.map((t, i) => (t ? pairWhen(t, l.selected?.[i] ?? undefined, note, 'selected', b.selected?.[i] ?? undefined)! : null));
 	const disabled = pairMatchers(m.disabled, lm.disabled, note, 'disabled');
 	const hidden = pairMatchers(m.hidden, lm.hidden, note, 'hidden');
 	const modifiers = m.modifiers?.map(([name, list]) => [name, pairMatchers(list, lm.modifiers?.find(([n]) => n === name)?.[1], note, `modifier ${name}`) ?? []] as const);
@@ -991,10 +1006,10 @@ export class DayPickerPlan {
 	/** The binding of one calendar's root, rendered from the view `v` (`declare` makes it, CONFIG standing for its configuration). */
 	private planOne(route: string, captured: CapturedPickers, i: number, root: Element, note: (what: string) => void, k: number, v: string, make: readonly string[], closes = false, keep = '', reading?: (c: string) => string): { root: Binding; declare: string[]; c: string; id: string; config: DayPickerConfig } | undefined {
 		const raw = captured.pickers[i]!;
-		const read = configOf(raw, captured.later[i], note);
+		const read = configOf(raw, captured.later[i], note, captured.behind?.[i]);
 		const config: DayPickerConfig = { ...read, loc: pruneLocale(read.loc, keep) };
 		const at = Math.floor(captured.at / DAY);
-		const model = dayPickerModel(config, dayPickerView(config, at));
+		const model = dayPickerModel(asCaptured(config), dayPickerView(asCaptured(config), at));
 		const off = differs(root, raw.ui!, config, model);
 		if (off) {
 			note(`not ported: the port's render differs from the old page's: ${off}`);
@@ -1079,7 +1094,7 @@ export class DayPickerPlan {
 		const v = `${holder}.v`;
 		const closes = raw.opener.picks.some((p) => !p.open);
 		// The trigger's label is learned on the whole locale, and its pattern's names are kept in the calendar's.
-		const label = known?.label ?? labelOf(raw.opener, configOf(raw, captured.later[i], () => {}));
+		const label = known?.label ?? labelOf(raw.opener, asCaptured(configOf(raw, captured.later[i], () => {}, captured.behind?.[i])));
 		const planned = this.planOne(route, captured, i, root, note, k, v, [`const ${holder} = dpShared${k}();`], closes, label?.pattern ?? '', (c) => `(${holder}.v ?? dayPickerView(${c}))`);
 		if (!planned) return undefined;
 		if (!known) {

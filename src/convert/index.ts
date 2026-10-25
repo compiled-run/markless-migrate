@@ -14,6 +14,7 @@ import { factor, GENERATED_ID, type Factored } from './factor.ts';
 import { BaseTabsPlan, CheckablePlan, RacTablePlan, DisclosurePlan, radixDisclosurePanel, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
 import { captureCharts, CHART_CSS, ChartPlan, MOTION_FILE, type ChartFacts } from './charts.ts';
 import { captureSliders, type SliderFacts } from './sliders.ts';
+import { captureClock, DATED, type ClockMark } from './clock.ts';
 import { captureScenes, type Scene } from './scenes.ts';
 import { ScenePlan } from './scene-plan.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
@@ -612,6 +613,12 @@ const ROUND_DELAYS = [0, 10, 50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 80
 const delayOf = (ms: number) => ROUND_DELAYS.filter((d) => d <= ms).at(-1) ?? 0;
 
 /** Finds an element of a page by its signature and occurrence, as reveals and toggles were captured. */
+// A chart's [data-slot="chart"] container, else its wrapper's parent: what holds its SVGs and tooltip.
+function chartRegion(wrapper: Element | undefined): Element | undefined {
+	for (let el = wrapper?.parentNode as Element | undefined; el && isElement(el); el = el.parentNode as Element | undefined) if (attr(el, 'data-slot') === 'chart') return el;
+	return wrapper?.parentNode && isElement(wrapper.parentNode as Element) ? (wrapper.parentNode as Element) : undefined;
+}
+
 function locator(root: Element): (sig: string, nth: number) => Element | undefined {
 	const bySig = new Map<string, Element[]>();
 	const index = (el: Element) => {
@@ -868,6 +875,8 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const hoverDelays = new Map<string, readonly HoverDelay[]>();
 	const carouselFacts = new Map<string, readonly CarouselFacts[]>();
 	const sliderFacts = new Map<string, readonly SliderFacts[]>();
+	const clockRoutes: string[] = [];
+	const clockMarks = new Map<string, readonly ClockMark[]>();
 	const chartFacts = new Map<string, readonly ChartFacts[]>();
 	const chartRoutes: string[] = [];
 	const scrollerOpenings = new Map<string, readonly ScrollerOpening[]>();
@@ -981,7 +990,13 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			if (settled.some((html) => html.includes('data-slot="carousel"'))) carouselFacts.set(ref.route, (await captureCarousels(browser, options.old, ref.route, join(state, 'convert', 'toggles'))).carousels);
 			if (settled.some((html) => html.includes('recharts-wrapper'))) chartRoutes.push(ref.route);
 			if (settled.some((html) => /data-slot="slider"/.test(html) && html.includes('role="slider"'))) sliderFacts.set(ref.route, (await captureSliders(browser, options.old, ref.route, join(state, 'convert', 'toggles'))).sliders);
+			if (settled.some((html) => DATED.test(html))) clockRoutes.push(ref.route);
 		}
+		// The dates each page computes in the visitor's browser, read again at a later clock and behind UTC.
+		const clockQueue = [...clockRoutes];
+		await Promise.all(Array.from({ length: Math.min(options.concurrency ?? 4, clockQueue.length) }, async () => {
+			for (let route = clockQueue.shift(); route !== undefined; route = clockQueue.shift()) clockMarks.set(route, (await captureClock(browser, options.old, route, join(state, 'convert', 'clock'))).marks);
+		}));
 		// Each chart's states, sweeping the pointer over it on the old page, several pages at once.
 		const queue = [...chartRoutes];
 		await Promise.all(Array.from({ length: Math.min(options.concurrency ?? 4, queue.length) }, async () => {
@@ -1087,7 +1102,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	};
 	const appended = new Map<Element, string>();
 	for (const p of prepared.values()) for (const [el, markup] of p.appends) appended.set(el, markup);
-	useMounts([...(await readFile(join(app, 'lib', 'site', 'mounts.json'), 'utf8').then((t) => JSON.parse(t) as string[], () => [])), ...([...carouselFacts.values()].some((f) => f.some((c) => c.autoplay)) ? ['data-mm-autoplay'] : [])]);
+	useMounts([...(await readFile(join(app, 'lib', 'site', 'mounts.json'), 'utf8').then((t) => JSON.parse(t) as string[], () => [])), ...([...carouselFacts.values()].some((f) => f.some((c) => c.autoplay)) ? ['data-mm-autoplay'] : []), ...([...clockMarks.values()].some((m) => m.length) ? ['data-mm-clock'] : [])]);
 	const tabs = new TabsPlan();
 	let tabGroups = 0;
 	for (const p of prepared.values()) tabGroups += tabs.add(p.root, isRadixTab, (panel) => panelContent.get(panel));
@@ -1130,6 +1145,22 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			const el = locate!(f.sig, f.nth);
 			if (el) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-mm-step'), { name: 'data-mm-step', value: String(f.step) }];
 		}
+	}
+	let clocked = 0;
+	for (const [route, p] of prepared) {
+		const marks = clockMarks.get(route) ?? [];
+		const locate = marks.length ? locator(p.root.parentNode as Element) : undefined;
+		const wrappers = [...walk(p.root.parentNode as Element)].filter((e) => (attr(e, 'class') ?? '').split(/\s+/).includes('recharts-wrapper'));
+		for (const mark of marks) {
+			const el = mark.chart !== undefined ? chartRegion(wrappers[mark.chart]) : locate!(mark.sig, mark.nth);
+			if (!el) continue;
+			el.attrs = [...el.attrs.filter((a) => a.name !== 'data-mm-clock'), { name: 'data-mm-clock', value: JSON.stringify(mark.rules) }];
+			clocked++;
+		}
+	}
+	if (clocked) {
+		usedPorts.add('clock');
+		log(`dates that follow the visitor's clock or time zone: ${clocked}`);
 	}
 	useMeasuredProps(ownDelays);
 	const measuredOf = (el: Element) => ownDelays.get(el);

@@ -3,8 +3,11 @@
 // the default formatters and labels) on whole days, and its handlers apply DayPicker's own (dayPickerNext). Dates are day
 // numbers (days since 1970-01-01, local); a Jalali DateLib (react-day-picker/persian) is date-fns-jalali's arithmetic.
 
-/** A date the converter read from the old page: fixed, or following today's date (`t` days from it, or per component). */
-export type When = { readonly t: number } | { readonly y: number; readonly m: number; readonly d: number; readonly ry?: 1; readonly rm?: 1; readonly rd?: 1 };
+/**
+ * A date the converter read from the old page: fixed, following today's date (`t` days from it, or per component), or
+ * the local day of an instant (`at`, ms: a date-only string the page parsed as UTC midnight).
+ */
+export type When = { readonly t: number } | { readonly at: number } | { readonly y: number; readonly m: number; readonly d: number; readonly ry?: 1; readonly rm?: 1; readonly rd?: 1 };
 /** A DayPicker matcher: every day, days of the week, or the days from `from` to `to` (an absent end is open). */
 export type Matcher = true | { readonly dow: readonly number[] } | { readonly from?: When; readonly to?: When };
 
@@ -367,6 +370,7 @@ export function dayPickerClose(): void {
 
 export function resolve(when: When, today: number): number {
 	if ('t' in when) return today + when.t;
+	if ('at' in when) return dayOfDate(new Date(when.at));
 	const [ty, tm, td] = gregorianParts(today);
 	return gregorian(when.ry ? ty + when.y : when.y, when.rm ? tm + when.m : when.m, when.rd ? td + when.d : when.d);
 }
