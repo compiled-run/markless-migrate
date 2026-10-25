@@ -19,6 +19,8 @@
 		"browsers": "playwright install chromium"
 	},
 	"devDependencies": {
+		"@floating-ui/dom": "1.7.6",
+		"@markless/router": "0.7.0",
 		"@types/node": "^24.12.2",
 		"@types/pngjs": "^6.0.5",
 		"@vercel/routing-utils": "^6.6.0",
