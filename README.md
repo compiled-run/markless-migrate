@@ -366,6 +366,11 @@ route handlers, `robots.txt`, sitemaps (including those robots.txt names), feeds
 pages link to, and common `/.well-known` files, whenever the old app serves them as something other than
 HTML. Any `--route` whose old response is not HTML is compared the same way.
 
+`plan`'s link crawl follows pagination until nothing new turns up. Pagination that runs on past its last
+page (a "More" link on an empty list, `/news/18` linking to `/news/19` forever) ends where a page shows
+what an earlier page of the same route shows apart from its numbers and links on to the next one: that
+page is listed, its links are not followed, and plan says so.
+
 With `--source` (old) and `--new-source` (the Markless app), each failure about an element carries a
 `where` line, for example `old app/[lang]/tip.tsx:10 renders paragraph "Barista’s tip:"; new
 pages/index.tsrx:12 renders paragraph "Baristas’ tip:"`, and report.html links both to the editor
