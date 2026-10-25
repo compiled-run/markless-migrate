@@ -38,15 +38,22 @@ async function focused(session: CDPSession): Promise<string | undefined> {
 	return label(nodes.find((n) => !n.ignored) ?? nodes[0]);
 }
 
-// The text axe found outside every landmark, line by line: where it reports it depends on where hidden elements sit, the text does not.
+// The text axe found outside every landmark: where it reports it depends on where hidden elements sit, the text does not.
 function outsideText(selectors: string[]): string[] {
-	const lines = new Set<string>();
+	const lines: string[] = [];
 	for (const selector of selectors) {
 		const el = document.querySelector(selector) as HTMLElement | null;
-		for (const line of (el?.innerText ?? '').split('\n')) if (line.trim()) lines.add(line.trim());
+		for (const line of (el?.innerText ?? '').split('\n')) if (line.trim()) lines.push(line.trim());
 	}
-	return [...lines].sort();
+	return lines;
 }
+
+// Compared word by word, as a reported element may hold a whole line on one page and a piece of it on the other.
+const wordCounts = (lines: readonly string[]) => {
+	const counts = new Map<string, number>();
+	for (const word of lines.join(' ').split(/\s+/)) if (word) counts.set(word, (counts.get(word) ?? 0) + 1);
+	return counts;
+};
 
 // Runs last on a page: it presses Tab, which moves focus and may scroll.
 export async function captureA11y(page: Page): Promise<A11yCapture> {
@@ -109,8 +116,9 @@ export function compareA11y(route: string, viewport: string, oldA: A11yCapture, 
 	for (const [id, v] of Object.entries(next.violations)) {
 		const olds = [oldA, ...others].map((o) => o.violations[id]);
 		if (v.text && olds.every((o) => o?.text)) {
-			const known = new Set(olds.flatMap((o) => o!.text!));
-			const added = v.text.filter((line) => !known.has(line));
+			const oldCounts = olds.map((o) => wordCounts(o!.text!));
+			const extra = [...wordCounts(v.text)].filter(([word, n]) => n > Math.max(...oldCounts.map((c) => c.get(word) ?? 0))).map(([word]) => word);
+			const added = [...new Set(v.text.filter((line) => line.split(/\s+/).some((word) => extra.includes(word))))];
 			if (added.length) failures.push({ route, dimension: 'a11y', check: `axe ${id}: ${v.help}`, viewport, expected: 'no text outside the landmarks that the old page did not have', actual: `outside every landmark: ${added.slice(0, 5).map((l) => `"${l.length > 60 ? `${l.slice(0, 60)}...` : l}"`).join(', ')}${added.length > 5 ? ` and ${added.length - 5} more lines` : ''}`, hint: `${HINTS.axe} ${v.helpUrl}` });
 			continue;
 		}
