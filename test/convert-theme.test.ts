@@ -52,3 +52,27 @@ test('the inline toggle switches the theme in the click and marks the event, so 
 	assert.deepEqual([...classes], ['dark'], 'the D shortcut, the key matched case-insensitively');
 	assert.ok(prevented);
 });
+
+test("the site's theme-color follows the resolved theme once the page has loaded and as the system's scheme changes, as its ModeSwitcher sets it", async () => {
+	const { chromium } = await import('playwright');
+	const browser = await chromium.launch();
+	try {
+		const page = await browser.newPage({ colorScheme: 'light' });
+		const script = earlyThemeScript({ attribute: 'class', storageKey: 'theme', defaultTheme: 'system', themes: ['light', 'dark'], enableSystem: true, enableColorScheme: true, disableTransitionOnChange: false }, { name: 'Toggle theme', metaColors: { light: '#ffffff', dark: '#0a0a0a' } });
+		const html = `<!doctype html><html><head><script>${script}</script><meta name="theme-color" content="#ffffff"></head><body></body></html>`;
+		await page.route('http://theme.test/', (route) => route.fulfill({ contentType: 'text/html', body: html }));
+		await page.goto('http://theme.test/');
+		await page.evaluate(() => localStorage.setItem('theme', 'dark'));
+		await page.reload();
+		const color = () => page.evaluate(() => document.querySelector('meta[name="theme-color"]')!.getAttribute('content'));
+		assert.equal(await color(), '#0a0a0a', 'a stored dark theme');
+		await page.evaluate(() => localStorage.setItem('theme', 'system'));
+		await page.reload();
+		assert.equal(await color(), '#ffffff');
+		await page.emulateMedia({ colorScheme: 'dark' });
+		await page.waitForFunction(() => document.querySelector('meta[name="theme-color"]')!.getAttribute('content') === '#0a0a0a', undefined, { timeout: 2000 }).catch(() => {});
+		assert.equal(await color(), '#0a0a0a', 'the system scheme turning dark');
+	} finally {
+		await browser.close();
+	}
+});
