@@ -1,8 +1,8 @@
-// Loaded into the app's Node server with `node --import`: records the requests each page load makes while the server renders it, and replays recorded responses on request.
-import { AsyncLocalStorage } from 'node:async_hooks';
-import { readFileSync } from 'node:fs';
-import http from 'node:http';
-import https from 'node:https';
+// Loaded into the app's Node server with `node --require` (any Node from 16, CommonJS or ESM app): records the requests each page load makes while the server renders it, and replays recorded responses on request.
+const { AsyncLocalStorage } = require('node:async_hooks');
+const { readFileSync } = require('node:fs');
+const http = require('node:http');
+const https = require('node:https');
 
 const CONTROL = '/__markless-migrate/';
 const HEADER = 'x-markless-migrate';
@@ -46,7 +46,8 @@ function lookup(set, method, url, body) {
 }
 
 const realFetch = globalThis.fetch;
-globalThis.fetch = async function recordedFetch(input, init) {
+// Node 16 has no fetch; giving the app one would change what it does.
+if (realFetch) globalThis.fetch = async function recordedFetch(input, init) {
 	const tag = store.getStore();
 	if (!tag) return realFetch(input, init);
 	let request;

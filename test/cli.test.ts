@@ -29,7 +29,7 @@ test('an unknown command is a usage error', () => {
 test('recorder prints the NODE_OPTIONS that loads the request recorder', () => {
 	const result = run('recorder');
 	assert.equal(result.status, 0);
-	assert.match(result.stdout, /NODE_OPTIONS=".*--import=file:\/\/.*\/src\/check\/record-server\.mjs"/);
+	assert.match(result.stdout, /NODE_OPTIONS=".*--require=\\?".*\/src\/check\/record-server\.cjs\\?""/);
 });
 
 test('check rejects an unknown --data mode and a bad --time', () => {

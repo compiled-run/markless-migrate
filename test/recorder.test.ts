@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { startCms, type Cms } from '../fixtures/cms/server.ts';
 import { defaultEnv, pushRecording, RECORDER_HEADER, serverRecords, writeReason, requestLine } from '../src/check/browser.ts';
@@ -42,6 +45,33 @@ test('the server recorder files what the server fetched under the page load that
 	assert.match(records![0]!.body!, /"title":"Winter timetable/);
 	assert.deepEqual(await serverRecords(env, 'never-seen'), []);
 	assert.equal(await serverRecords(defaultEnv(cms.origin), 'one'), undefined, 'a server without the recorder has no records');
+});
+
+// A CommonJS server on an old Node (16 has no fetch, and refuses --import in NODE_OPTIONS), reading the CMS with node:http.
+const OLD_NODE_APP = `
+const http = require('node:http');
+const server = http.createServer((req, res) => {
+	http.get(process.env.CMS_URL + '/walks/settings', (r) => { r.resume(); r.on('end', () => res.writeHead(200, { 'content-type': 'text/plain' }).end('fetch is ' + typeof globalThis.fetch)); });
+});
+server.listen(0, '127.0.0.1', () => console.log('http://127.0.0.1:' + server.address().port));
+`;
+
+test('a server on an old Node loads the recorder from NODE_OPTIONS and still has no fetch', async () => {
+	const { NODE_OPTIONS } = recorderEnv('');
+	assert.doesNotMatch(NODE_OPTIONS, /--import|--loader/, 'Node 16 refuses --import in NODE_OPTIONS, so the old app would not start');
+	const dir = mkdtempSync(join(tmpdir(), 'mm-old-node-'));
+	const noFetch = join(dir, 'no-fetch.cjs');
+	writeFileSync(noFetch, 'delete globalThis.fetch;\n');
+	const app = spawn(process.execPath, ['-e', OLD_NODE_APP], { env: { ...process.env, CMS_URL: cms.origin, NODE_OPTIONS: `--require=${noFetch} ${NODE_OPTIONS}` }, stdio: ['ignore', 'pipe', 'inherit'] });
+	try {
+		const at = await new Promise<string>((resolve) => app.stdout!.once('data', (chunk) => resolve(String(chunk).trim())));
+		const text = await (await fetch(at, { headers: { [RECORDER_HEADER]: 'load=old-node' } })).text();
+		assert.equal(text, 'fetch is undefined', 'the recorder must not give an app a fetch it does not have');
+		const records = await serverRecords(defaultEnv(at), 'old-node');
+		assert.deepEqual(records!.map((r) => `${r.method} ${new URL(r.url).pathname} ${r.status}`), ['GET /walks/settings 200']);
+	} finally {
+		app.kill();
+	}
 });
 
 test('pushed recordings are served instead of the network for loads that ask for them', async () => {
