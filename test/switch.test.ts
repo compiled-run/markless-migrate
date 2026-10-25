@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnNode } from './spawn-node.ts';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
@@ -178,20 +179,19 @@ test('a route in Vercel or path-to-regexp syntax is refused with the pattern to 
 });
 
 test('only a person forces a switch: never without a name and a reason off a terminal, never from an agent run drives, and not by MCP', async () => {
-	const { spawnSync } = await import('node:child_process');
 	const cli = new URL('../src/cli.ts', import.meta.url).pathname;
 	const cwd = await project({ '/x': { route: '/x', ok: false, red: ['behaviour'] } });
-	const run = (args: string[], env: NodeJS.ProcessEnv = {}) => spawnSync(process.execPath, [cli, ...args], { cwd, encoding: 'utf8', input: '', env: { ...process.env, MARKLESS_MIGRATE_AGENT: '', ...env } });
-	assert.equal(run(['switch', '/x']).status, 1);
-	const bare = run(['switch', '/x', '--force']);
+	const run = (args: string[], env: NodeJS.ProcessEnv = {}) => spawnNode([cli, ...args], { cwd, env: { ...process.env, MARKLESS_MIGRATE_AGENT: '', ...env }, timeoutMs: 60_000 });
+	assert.equal((await run(['switch', '/x'])).status, 1);
+	const bare = await run(['switch', '/x', '--force']);
 	assert.equal(bare.status, 2);
 	assert.match(bare.stderr, /needs --by <name> and --reason <why>/);
-	const agent = run(['switch', '/x', '--force', '--by', 'bot', '--reason', 'r'], { MARKLESS_MIGRATE_AGENT: '1' });
+	const agent = await run(['switch', '/x', '--force', '--by', 'bot', '--reason', 'r'], { MARKLESS_MIGRATE_AGENT: '1' });
 	assert.equal(agent.status, 2);
 	assert.match(agent.stderr, /is for a person/);
-	assert.match(run(['accept', 'abc', '--reason', 'r'], { MARKLESS_MIGRATE_AGENT: '1' }).stderr, /accept is for a person/);
+	assert.match((await run(['accept', 'abc', '--reason', 'r'], { MARKLESS_MIGRATE_AGENT: '1' })).stderr, /accept is for a person/);
 	assert.deepEqual((await readSwitched(cwd)).routes, []);
-	const person = run(['switch', '/x', '--force', '--by', 'Jo', '--reason', 'ships behind a flag']);
+	const person = await run(['switch', '/x', '--force', '--by', 'Jo', '--reason', 'ships behind a flag']);
 	assert.equal(person.status, 0, person.stderr);
 	assert.match(person.stdout, /forced by Jo, not proven: ships behind a flag/);
 	assert.deepEqual((await readSwitched(cwd)).routes[0]!.forced, { reason: 'ships behind a flag', by: 'Jo' });
