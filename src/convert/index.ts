@@ -10,7 +10,8 @@ import { captureChoices, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
 import { cleanDocument, frameworkBuilds, lateHead, type Dropped } from './clean.ts';
 import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, parseDocument, textContent, walk, type Document, type Element } from './dom.ts';
-import { factor, GENERATED_ID, type Factored } from './factor.ts';
+import { factor, type Factored } from './factor.ts';
+import { layerNames } from './layer-ids.ts';
 import { BaseTabsPlan, CheckablePlan, RacTablePlan, DisclosurePlan, radixDisclosurePanel, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
 import { captureCharts, CHART_CSS, ChartPlan, MOTION_FILE, type ChartFacts } from './charts.ts';
 import { captureSliders, type SliderFacts } from './sliders.ts';
@@ -518,25 +519,6 @@ function panelOf(kept: readonly Element[], controls: string | undefined): { pane
 const layerElements = (added: Reveal['added'][number]) => childrenOf(parseFragment(added.html) as unknown as Element).filter((n): n is Element => isElement(n) && !n.attrs.some((a) => FOCUS_GUARD.test(a.name)));
 
 /**
- * The ids a framework generated per render inside a layer (Radix's and React's useId), and the layer's key when it is
- * one, given names from the layer's own content: the same dialog on two pages differs only by those ids, and is then
- * one layer component instead of one per page.
- */
-function layerIds(key: string, kept: readonly Element[]): Map<string, string> {
-	const own: string[] = [];
-	for (const top of kept) for (const el of [top, ...walkAll(top)]) {
-		const id = attr(el, 'id');
-		if (id && GENERATED_ID.test(id) && !own.includes(id)) own.push(id);
-	}
-	if (GENERATED_ID.test(key) && !own.includes(key)) own.push(key);
-	if (!own.length) return new Map();
-	let text = kept.map((e) => outer(e)).join('');
-	own.forEach((id, k) => (text = text.split(id).join(`@${k}`)));
-	const h = hash(text).slice(0, 8);
-	return new Map(own.map((id, k) => [id, `mm-${h}-${k}`]));
-}
-
-/**
  * The element of a layer most of its markup sits in (a command palette's list): a served layer's page keeps the layer
  * with this element emptied as its shell, and the file holds this element's content.
  */
@@ -727,18 +709,10 @@ function resolveReveals(doc: Document, reveals: readonly Reveal[], dropped: (wha
 		l.trigger!.attrs = l.trigger!.attrs.map((a) => (a.name === 'id' ? { ...a, value: l.reveal.key } : a));
 		for (const top of l.kept) for (const el of [top, ...walkAll(top)]) el.attrs = el.attrs.map((a) => (/^aria-(labelledby|describedby)$/.test(a.name) ? { ...a, value: a.value.split(/(\s+)/).map((t) => (t === id ? l.reveal.key : t)).join('') } : a));
 	}
-	const rename = new Map<string, string>();
-	const taken = new Set<string>();
-	// Two alike layers on one page (the same tooltip on two buttons) keep distinct ids.
-	for (const l of pendingLayers) for (const [from, to] of layerIds(l.reveal.key, l.kept)) {
-		if (rename.has(from)) continue;
-		let name = to;
-		for (let n = 2; taken.has(name); n++) name = `${to}-${n}`;
-		taken.add(name);
-		rename.set(from, name);
-	}
-	renameIds([...walk(root)], rename);
-	for (const l of pendingLayers) {
+	const names = layerNames(pendingLayers.map((l) => ({ key: l.reveal.key, kept: l.kept, inPage: l.trigger !== undefined })));
+	renameIds([...walk(root)], names.page);
+	for (const [i, l] of pendingLayers.entries()) {
+		const rename = names.each[i]!;
 		const { markup, shell, fill, declare } = layerMarkup(l.reveal, l.added, dropped, rename, l.kept);
 		const key = rename.get(l.reveal.key) ?? l.reveal.key;
 		if (markup) currentLayers.push({ key, markup, shell, fill, ...(declare.length ? { declare } : {}) });
