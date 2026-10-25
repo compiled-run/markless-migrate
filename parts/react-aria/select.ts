@@ -1,3 +1,4 @@
+import { focusItem as focusVirtually } from './autocomplete.ts';
 import { focusItem, itemsOf, navigate, typeahead, typing } from './collection.ts';
 import { holdPressed, setModality } from './interactions.ts';
 import { closeOverlay, openOverlay, overlayFor, overlayOf, type Overlay } from './overlay.ts';
@@ -16,7 +17,9 @@ const selected = (listbox: Element) => itemsOf(listbox).find((el) => el.getAttri
 // The options a closed trigger's typeahead and arrows choose among: its captured listbox, hidden until opened.
 const closedListbox = (trigger: HTMLElement) => document.querySelector<HTMLElement>(`[data-mm-layer="${CSS.escape(trigger.id)}"] ${LISTBOX}`);
 
-function choose(trigger: HTMLElement, listbox: Element, option: HTMLElement): void {
+const optionText = (option: Element) => ((option.firstElementChild ?? option).textContent ?? '').trim();
+
+function mark(trigger: HTMLElement, listbox: Element, option: HTMLElement): void {
 	for (const el of itemsOf(listbox, true)) {
 		const on = el === option;
 		el.setAttribute('aria-selected', String(on));
@@ -24,13 +27,32 @@ function choose(trigger: HTMLElement, listbox: Element, option: HTMLElement): vo
 		else el.removeAttribute('data-selected');
 		for (const icon of el.querySelectorAll('[data-mm-indicator]')) icon.toggleAttribute('hidden', !on);
 	}
-	const value = trigger.querySelector<HTMLElement>('[data-slot="select-value"]');
-	value?.removeAttribute('data-placeholder');
 	const native = trigger.parentElement?.querySelector<HTMLSelectElement>('[data-testid="hidden-select-container"] select');
 	const key = option.getAttribute('data-key');
 	if (native && key !== null) native.value = key;
+}
+
+function choose(trigger: HTMLElement, listbox: Element, option: HTMLElement): void {
+	const value = trigger.querySelector<HTMLElement>('[data-slot="select-value"]');
+	// A trigger that renders the chosen key itself, not a SelectValue, shows the key it showed for the one chosen before.
+	const before = selected(listbox)?.getAttribute('data-key');
+	const showsKey = !value && before != null && (trigger.textContent ?? '').trim() === before;
+	mark(trigger, listbox, option);
+	value?.removeAttribute('data-placeholder');
+	const key = option.getAttribute('data-key');
 	// The trigger's value is Markless state (convert's SelectPlan); its handler for this event sets it.
-	trigger.dispatchEvent(new CustomEvent('mmchoose', { detail: (option.firstElementChild ?? option).textContent ?? '', bubbles: true }));
+	trigger.dispatchEvent(new CustomEvent('mmchoose', { detail: showsKey && key !== null ? key : optionText(option), bubbles: true }));
+}
+
+// The selected option is the one the SelectValue shows (a calendar's month picker follows the calendar's view).
+function syncShown(trigger: HTMLElement, listbox: Element): void {
+	const value = trigger.querySelector('[data-slot="select-value"]');
+	if (!value || value.hasAttribute('data-placeholder') || listbox.getAttribute('aria-multiselectable') === 'true') return;
+	const shown = (value.textContent ?? '').trim();
+	const current = selected(listbox);
+	if (current && optionText(current) === shown) return;
+	const matching = itemsOf(listbox, true).filter((o) => optionText(o) === shown);
+	if (matching.length === 1) mark(trigger, listbox, matching[0]!);
 }
 
 // The Select itself is marked open (data-open) while its listbox is, and focused (useSelectState's isFocused) though
@@ -54,13 +76,21 @@ function openSelect(trigger: HTMLElement, strategy: 'first' | 'last' | null): bo
 	return true;
 }
 
+const searchOf = (o: Overlay, listbox: Element) => (listbox.id ? o.content.querySelector<HTMLInputElement>(`input[data-rac][aria-controls="${CSS.escape(listbox.id)}"]`) : null);
+
 // Focus goes to the selected option, else the first or last for the keys that ask for one, else the listbox itself.
 function ready(o: Overlay, strategy: 'first' | 'last' | null): void {
 	const listbox = listboxOf(o);
 	if (!listbox) return;
+	syncShown(o.trigger, listbox);
 	const list = itemsOf(listbox);
 	const target = selected(listbox) ?? (strategy === 'first' ? list[0] : strategy === 'last' ? list[list.length - 1] : undefined);
-	if (target) focusItem(listbox, target);
+	// A SearchField in the popover (autoFocus) takes focus; the listbox's focus is then virtual (useAutocomplete).
+	const search = searchOf(o, listbox);
+	if (search) {
+		search.focus({ preventScroll: true });
+		focusVirtually(search, listbox, target);
+	} else if (target) focusItem(listbox, target);
 	else listbox.focus({ preventScroll: true });
 	const onUp = (event: PointerEvent) => {
 		const option = (event.target as Element | null)?.closest?.<HTMLElement>('[role="option"]');
@@ -109,6 +139,7 @@ export function pointerover(target: Element): boolean {
 	const o = option && overlayOf(option);
 	if (!option || !o || !o.trigger.matches(TRIGGER) || option.getAttribute('aria-disabled') === 'true') return false;
 	const listbox = listboxOf(o);
+	if (listbox && searchOf(o, listbox)) return false;
 	if (listbox && document.activeElement !== option) focusItem(listbox, option);
 	return true;
 }
@@ -123,6 +154,7 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 		}
 		const listbox = closedListbox(trigger);
 		if (!listbox) return false;
+		syncShown(trigger, listbox);
 		const list = itemsOf(listbox);
 		const current = selected(listbox);
 		const to = event.key === 'ArrowLeft' ? (current ? list[list.indexOf(current) - 1] : list[0]) : event.key === 'ArrowRight' ? (current ? list[list.indexOf(current) + 1] : list[0]) : event.ctrlKey || event.metaKey || event.altKey ? undefined : typeahead(listbox, event.key, current);
