@@ -38,6 +38,16 @@ async function focused(session: CDPSession): Promise<string | undefined> {
 	return label(nodes.find((n) => !n.ignored) ?? nodes[0]);
 }
 
+// The text axe found outside every landmark, line by line: where it reports it depends on where hidden elements sit, the text does not.
+function outsideText(selectors: string[]): string[] {
+	const lines = new Set<string>();
+	for (const selector of selectors) {
+		const el = document.querySelector(selector) as HTMLElement | null;
+		for (const line of (el?.innerText ?? '').split('\n')) if (line.trim()) lines.add(line.trim());
+	}
+	return [...lines].sort();
+}
+
 // Runs last on a page: it presses Tab, which moves focus and may scroll.
 export async function captureA11y(page: Page): Promise<A11yCapture> {
 	const session = await page.context().newCDPSession(page);
@@ -47,7 +57,9 @@ export async function captureA11y(page: Page): Promise<A11yCapture> {
 		const results = (await page.evaluate(() => (window as unknown as { axe: { run: (ctx: Document, opts: object) => Promise<unknown> } }).axe.run(document, { resultTypes: ['violations'] }))) as {
 			violations: { id: string; impact: string | null; help: string; helpUrl: string; nodes: { target: unknown[] }[] }[];
 		};
-		const violations = Object.fromEntries(results.violations.map((v) => [v.id, { impact: v.impact ?? 'unknown', help: v.help, helpUrl: v.helpUrl, count: v.nodes.length, targets: v.nodes.slice(0, 5).map((n) => n.target.map(String).join(' ')) }]));
+		const regionTargets = results.violations.find((v) => v.id === 'region')?.nodes.map((n) => String(n.target[0])) ?? [];
+		const regionText = regionTargets.length ? await page.evaluate(outsideText, regionTargets).catch(() => undefined) : undefined;
+		const violations = Object.fromEntries(results.violations.map((v) => [v.id, { impact: v.impact ?? 'unknown', help: v.help, helpUrl: v.helpUrl, count: v.nodes.length, targets: v.nodes.slice(0, 5).map((n) => n.target.map(String).join(' ')), ...(v.id === 'region' && regionText ? { text: regionText } : {}) }]));
 
 		await session.send('Accessibility.enable');
 		const { nodes } = (await session.send('Accessibility.getFullAXTree')) as { nodes: AxNode[] };
@@ -95,6 +107,13 @@ function sequence(items: readonly string[], from: number): string {
 export function compareA11y(route: string, viewport: string, oldA: A11yCapture, others: readonly A11yCapture[], next: A11yCapture): Failure[] {
 	const failures: Failure[] = [];
 	for (const [id, v] of Object.entries(next.violations)) {
+		const olds = [oldA, ...others].map((o) => o.violations[id]);
+		if (v.text && olds.every((o) => o?.text)) {
+			const known = new Set(olds.flatMap((o) => o!.text!));
+			const added = v.text.filter((line) => !known.has(line));
+			if (added.length) failures.push({ route, dimension: 'a11y', check: `axe ${id}: ${v.help}`, viewport, expected: 'no text outside the landmarks that the old page did not have', actual: `outside every landmark: ${added.slice(0, 5).map((l) => `"${l.length > 60 ? `${l.slice(0, 60)}...` : l}"`).join(', ')}${added.length > 5 ? ` and ${added.length - 5} more lines` : ''}`, hint: `${HINTS.axe} ${v.helpUrl}` });
+			continue;
+		}
 		const before = Math.max(oldA.violations[id]?.count ?? 0, ...others.map((o) => o.violations[id]?.count ?? 0));
 		if (v.count <= before) continue;
 		failures.push({ route, dimension: 'a11y', check: `axe ${id}: ${v.help}`, viewport, expected: `${before} element${before === 1 ? '' : 's'}`, actual: `${v.count} (${v.impact}): ${v.targets.join(', ')}`, hint: `${HINTS.axe} ${v.helpUrl}` });
