@@ -215,7 +215,7 @@ function scopeOf(file: string, routes: SourceRoute[]): SourceRoute[] {
 	return routes.filter((r) => r.file === file || r.file.startsWith(`${dir}/${base}/`) || (r.file.startsWith(`${dir}/`) && posix.basename(r.file).startsWith(`${base}.`)));
 }
 
-export async function scanAuth(ctx: Context, routes: SourceRoute[]): Promise<AuthGuard[]> {
+export async function scanAuth(ctx: Context, routes: SourceRoute[], serverFiles: ReadonlySet<string> = new Set()): Promise<AuthGuard[]> {
 	const out: AuthGuard[] = [];
 	const pages = routes.filter((r) => r.kind === 'page' || r.kind === 'endpoint');
 	for (const file of ['middleware.ts', 'middleware.js', 'src/middleware.ts', 'src/middleware.js', 'proxy.ts', 'proxy.js', 'src/proxy.ts', 'src/proxy.js', 'src/hooks.server.ts', 'src/hooks.server.js']) {
@@ -256,7 +256,7 @@ export async function scanAuth(ctx: Context, routes: SourceRoute[]): Promise<Aut
 	for (const root of ['app/root.tsx', 'app/root.jsx', 'src/routes/__root.tsx', 'app/routes/__root.tsx']) if (ctx.project.has(root)) files.add(root);
 	for (const file of ctx.project.files) if (/^(app\/)?middleware\/[\w.-]+\.[jt]s$/.test(file)) files.add(file);
 	for (const file of [...files].sort()) {
-		if (!/\.(tsx?|jsx?|mjs|svelte|vue|astro)$/.test(file) || /^(src\/)?(middleware|proxy)\.[jt]s$/.test(file) || /hooks\.server/.test(file)) continue;
+		if (!/\.(tsx?|jsx?|mjs|svelte|vue|astro)$/.test(file) || /^(src\/)?(middleware|proxy)\.[jt]s$/.test(file) || /hooks\.server/.test(file) || serverFiles.has(file)) continue;
 		const mod = await ctx.module(file);
 		if (!mod) continue;
 		const nuxtMiddleware = /^(app\/)?middleware\//.test(file);
