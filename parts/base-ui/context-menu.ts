@@ -31,7 +31,8 @@ function close(p: Popup): void {
 export function click(target: Element): boolean {
 	const item = target.closest('[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]');
 	const p = item && popupOf(item);
-	if (!item || !p || p !== current || item.hasAttribute('data-disabled')) return false;
+	// A submenu's trigger opens its submenu (the menu port) instead of choosing.
+	if (!item || !p || p !== current || item.hasAttribute('data-disabled') || item.matches('[aria-haspopup="menu"]')) return false;
 	close(p);
 	return true;
 }
