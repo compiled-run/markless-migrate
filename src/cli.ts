@@ -160,7 +160,8 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           once, read after every step (focus and its ring, state attributes, what is open, toasts, tab
           stops, scroll lock): a click then Escape and Tab, Tab then the pointer moving; what it opens
           pointed along, closed by a click outside, Escape and its close button, reopened, chosen from and
-          typed into; the pointer resting on it; sliders, handles and carousels dragged.
+          typed into; the pointer resting on it; sliders, handles and carousels dragged; a button that shows
+          a toast used three times.
           --no-probes leaves them out; --only probes runs them alone.
           Navigation: one page per page shape (layout and scripts, at most --nav-destinations, 40) is
           reached by clicking a real link on --nav-entries (2) other pages, other layouts first, and once

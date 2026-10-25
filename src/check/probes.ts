@@ -12,10 +12,10 @@ import type { Dimension, Failure, Viewport } from './types.ts';
  * the old and the new page side by side, and what a visitor meets is read after every step: where focus is and whether its ring
  * shows, the state attributes of the control and its widget, what is open, the toasts, tab stops and page lock.
  */
-export type ProbeClass = 'modality' | 'popup' | 'hover' | 'drag';
+export type ProbeClass = 'modality' | 'popup' | 'hover' | 'drag' | 'repeat';
 
 export type Op =
-	| { readonly op: 'click' | 'tab in' | 'hover' | 'leave' | 'outside' | 'close' }
+	| { readonly op: 'click' | 'tab in' | 'hover' | 'leave' | 'outside' | 'close' | 'point at toasts' }
 	/** The n-th item of the list that is open: pointed at or clicked. */
 	| { readonly op: 'item'; readonly n: number; readonly how: 'hover' | 'click' }
 	/** The first letter of the n-th item whose first letter is new, pressed as typeahead. */
@@ -68,6 +68,8 @@ export function sequencesFor(cls: ProbeClass, control: Pick<ProbeControl, 'role'
 				: control.role === 'slider'
 					? [s('dragged by the pointer both ways', [{ op: 'drag', dx: 40, dy: 0 }, { op: 'drag', dx: -90, dy: 0 }, { op: 'leave' }])]
 					: [s('swiped by the pointer both ways', [{ op: 'drag', dx: -260, dy: 0 }, { op: 'drag', dx: 260, dy: 0 }, { op: 'leave' }])];
+		case 'repeat':
+			return [s('used three times in a row, then the pointer resting on what it showed', [{ op: 'click' }, { op: 'click' }, { op: 'click' }, { op: 'point at toasts' }, { op: 'leave' }])];
 	}
 }
 
@@ -89,6 +91,8 @@ export function describeOp(op: Op): string {
 			return 'click outside it and what it opened';
 		case 'close':
 			return "click the open dialog's close button";
+		case 'point at toasts':
+			return 'point at the toasts';
 		case 'key':
 			return `press ${op.key}`;
 		case 'type':
@@ -98,13 +102,14 @@ export function describeOp(op: Op): string {
 	}
 }
 
-const DIMENSION: Record<ProbeClass, Dimension> = { modality: 'a11y', popup: 'behaviour', hover: 'behaviour', drag: 'behaviour' };
+const DIMENSION: Record<ProbeClass, Dimension> = { modality: 'a11y', popup: 'behaviour', hover: 'behaviour', drag: 'behaviour', repeat: 'behaviour' };
 
 export const PROBE_HINTS: Record<ProbeClass, string> = {
 	modality: 'Whether the focus ring shows follows how the visitor last moved: a key press (Tab, an arrow, Escape) shows it, a pointer press hides it, and typing into a text field or moving the mouse leaves it as it was. Track the modality on the document the way the old library does (keydown before pointerdown), not per control, and set the same marker (data-focus-visible or :focus-visible) on the element that has focus.',
 	popup: 'What this control opens must answer as on the old page: the item the pointer is on is highlighted and the highlight goes when the pointer leaves or the list closes, so a reopened list starts fresh; a list opened by the pointer takes focus so ArrowDown moves in it, and Tab closes it; a typed letter moves to the item it starts; a hidden form input follows the chosen value; a reopened overlay is visible and its content rendered once; Tab inside a non-modal popover moves on as the old one does, a modal one keeps focus in. Opening and closing by the pointer must leave focus where the old page leaves it: on open, in the pop-up or its first item as the old library chooses; after Escape or the close button, back on the control; after a click outside, where the old page put it (the control for a modal, the clicked spot for a non-modal). Lock scrolling and hide the rest of the page only while the old page does.',
 	hover: 'The pointer resting on this control (or focus reaching it) shows something on the old page, or marks it hovered: open it after the same delay, keep it while the pointer is on it, close it when the pointer leaves, and set the same hover markers (data-hovered, data-state).',
 	drag: 'A pointer drag moves this control on the old page: follow the pointer (pointerdown, pointermove, pointerup), move the value, panel or slide by the same amount, take focus as the old one does, and leave the same state attributes after release.',
+	repeat: 'Each use of this control adds what the old page adds (a toast, a notification): the next use stacks on top rather than replacing it, the front one is marked as such, and pointing at the stack expands it as on the old page.',
 };
 
 const STEP_TIMEOUT = 2_500;
@@ -151,7 +156,7 @@ const read = (page: Page) => page.evaluate(() => (globalThis as ProbeWindow).__m
 /** Marks the control the probe drives; one still marked is kept unless `again`, as a step may have renamed it (a combobox showing its choice). */
 async function mark(page: Page, control: ProbeControl, again = false): Promise<boolean> {
 	if (!again && (await page.locator(MARK).count().catch(() => 0))) return true;
-	await page.evaluate(probeControls, { mark: controlKey(control) }).catch(() => {});
+	await page.evaluate(probeControls, { notify: [], mark: controlKey(control) }).catch(() => {});
 	return (await page.locator(MARK).count().catch(() => 0)) > 0;
 }
 
@@ -199,6 +204,11 @@ async function perform(side: Side, control: ProbeControl, op: Op): Promise<void>
 			const button = await aim('close');
 			if (!button) throw new Error('no open dialog with a close button');
 			return button.click({ timeout: STEP_TIMEOUT });
+		}
+		case 'point at toasts': {
+			const toaster = await aim('toaster');
+			if (!toaster) throw new Error('nothing shown to point at');
+			return toaster.hover({ timeout: STEP_TIMEOUT });
 		}
 		case 'key':
 			return page.keyboard.press(op.key, { delay: HOLD_MS });
@@ -343,6 +353,17 @@ const MIN_BUDGET_MS = 60_000;
 const PER_CONTROL_MS = 30_000;
 const MAX_BUDGET_MS = 600_000;
 
+/** Buttons whose click announced something in a live region in the recorded journeys: they get the repeated-use probe. */
+export function notifiers(journeys: readonly RecordedJourney[] | undefined): string[] {
+	const out = new Set<string>();
+	for (const j of journeys ?? []) {
+		const step = j.steps[0];
+		if (j.steps.length !== 1 || step?.action !== 'click' || step.target.role !== 'button' || !j.expected[0]?.announcements.length) continue;
+		out.add(step.target.name);
+	}
+	return [...out];
+}
+
 /** Probes the route's controls, class by class, old against new; the old side runs twice where the first runs differ. */
 export async function checkProbes(browser: Browser, sides: { readonly old: SideEnv; readonly new: SideEnv }, route: string, viewport: Viewport, journeys?: readonly RecordedJourney[], options: ProbeOptions = {}): Promise<ProbeResult> {
 	const started = Date.now();
@@ -353,11 +374,12 @@ export async function checkProbes(browser: Browser, sides: { readonly old: SideE
 		await loadPage(scan.page, new URL(route, sides.old.origin).href);
 		await settle(scan);
 		await markHandlers(scan.page);
-		const opened = await discover(scan, sides.old.origin, route, await scan.page.evaluate(probeControls, {}));
+		const notify = notifiers(journeys);
+		const opened = await discover(scan, sides.old.origin, route, await scan.page.evaluate(probeControls, { notify }));
 		await loadPage(scan.page, new URL(route, sides.old.origin).href);
 		await settle(scan);
 		await markHandlers(scan.page);
-		found = await scan.page.evaluate(probeControls, { found: opened });
+		found = await scan.page.evaluate(probeControls, { notify, found: opened });
 	} finally {
 		await scan.close();
 	}
@@ -444,14 +466,14 @@ const DISCOVER_MAX = 24;
 
 /**
  * On the old page, clicks each button of a distinct name that says nothing of what it does (no aria-haspopup, not a toggle, not
- * in a shared layout, not one that ends the session or deletes) once, and keeps whether it opened a dialog, menu, listbox or
- * popover: it gets the popup probe. React Aria's dialog trigger carries no aria-haspopup.
+ * in a shared layout, not one that ends the session or deletes) once, and keeps what it did: opened a dialog, menu, listbox or
+ * popover (it gets the popup probe), or showed a toast (the repeat probe). React Aria's dialog trigger carries no aria-haspopup.
  */
 async function discover(side: Side, origin: string, route: string, controls: readonly ProbeControl[]): Promise<Record<string, string[]>> {
 	const page = side.page;
 	const out: Record<string, string[]> = {};
 	const names = new Set<string>();
-	const candidates = controls.filter((c) => c.role === 'button' && !c.classes.some((k) => k === 'popup') && !LAYOUT.has(c.region) && !DESTRUCTIVE.test(c.name) && !names.has(c.name) && names.add(c.name)).slice(0, DISCOVER_MAX);
+	const candidates = controls.filter((c) => c.role === 'button' && !c.classes.some((k) => k === 'popup' || k === 'repeat') && !LAYOUT.has(c.region) && !DESTRUCTIVE.test(c.name) && !names.has(c.name) && names.add(c.name)).slice(0, DISCOVER_MAX);
 	if (!candidates.length) return out;
 	const fresh = async () => {
 		await loadPage(page, new URL(route, origin).href);
@@ -470,8 +492,11 @@ async function discover(side: Side, origin: string, route: string, controls: rea
 		}
 		const after = await read(page);
 		const opened = clicked && lines(after.open).some((o) => !lines(before.open).includes(o));
+		const shownToasts = (r: Reading) => Number(/^(\d+) shown/.exec(String(r.toasts ?? ''))?.[1] ?? 0);
+		const toasted = clicked && shownToasts(after) > shownToasts(before);
 		const key = controlKey(control);
 		if (opened) out[key] = ['popup'];
+		if (toasted) out[key] = [...(out[key] ?? []), 'repeat'];
 		if (opened) {
 			await page.keyboard.press('Escape', { delay: HOLD_MS });
 			await settle(side);
