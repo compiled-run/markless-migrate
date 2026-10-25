@@ -1,7 +1,7 @@
 import { sessionDatabases, updateCount } from './live-data.ts';
 import { FRAMEWORK_MARKUP_SELECTOR } from './automatic.ts';
 import type { Browser, BrowserContext, Locator, Page, Request } from 'playwright';
-import { frameworkTransport, openPage, requestLine, type OpenOptions, type SideEnv } from './browser.ts';
+import { frameworkTransport, openPage, requestLine, type OpenOptions, type SideEnv, databaseFramesReceived } from './browser.ts';
 import { clockLine } from './clock.ts';
 import { markHandlers } from './handlers.ts';
 import { originInQuery } from './capture.ts';
@@ -403,6 +403,7 @@ export const SECTION = 'section';
 /** The target of a step that no control performs: the database sends it. */
 export const LIVE = 'database';
 const MAX_LIVE_STEPS = 6;
+const LIVE_DELIVERY_MS = 5_000;
 
 /** The recorded updates in at most MAX_LIVE_STEPS steps, each sending the next few in order. */
 export function liveSteps(count: number): Step[] {
@@ -1152,6 +1153,10 @@ async function perform(page: Page, step: Step, patience = QUICK): Promise<void> 
 	if (step.action === 'live') {
 		const databases = sessionDatabases(page.context());
 		for (let i = 0; i < step.updates; i++) if (!databases.some((db) => db.next(step.away))) throw new Error('the recording has no more updates');
+		// The pushed frames reach the page asynchronously; the step's effect is read once they are all there.
+		const sent = databases.reduce((n, db) => n + db.frames, 0);
+		const until = Date.now() + LIVE_DELIVERY_MS;
+		while (databaseFramesReceived(page) < sent && Date.now() < until) await sleep(10);
 		return;
 	}
 	const target = await stepTarget(page, step);

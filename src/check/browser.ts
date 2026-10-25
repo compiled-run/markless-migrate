@@ -333,6 +333,13 @@ export interface OpenPage {
 	readonly own: (url: URL) => boolean;
 }
 
+const received = new WeakMap<Page, number>();
+
+/** How many frames the page has received on its realtime database sockets. */
+export function databaseFramesReceived(page: Page): number {
+	return received.get(page) ?? 0;
+}
+
 /** A fresh context with the clock and randomness frozen, trackers blocked, writes held back unless allowed, and recorded data served. */
 export async function openPage(browser: Browser, env: SideEnv, viewport: Viewport, options: OpenOptions = {}): Promise<OpenPage> {
 	await registerStructure();
@@ -474,7 +481,9 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 	context.on('requestfailed', finish);
 	const page = await context.newPage();
 	page.on('websocket', (socket) => {
-		if (!FIREBASE_SOCKET.test(socket.url()) || stopped) return;
+		if (!FIREBASE_SOCKET.test(socket.url())) return;
+		socket.on('framereceived', () => received.set(page, (received.get(page) ?? 0) + 1));
+		if (stopped) return;
 		const opened = Date.now();
 		const frames: { sent: boolean; text: string; at: number }[] = [];
 		log.sockets.push({ url: socket.url(), frames });

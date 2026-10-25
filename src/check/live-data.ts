@@ -155,6 +155,8 @@ export class FakeDatabase {
 	private sent = 0;
 	/** Paths the pages listened to, in order, so both apps' reads can be compared. */
 	readonly listened: string[] = [];
+	/** Every frame this database has sent its sockets, so a step can wait until the page has them all. */
+	frames = 0;
 
 	readonly recorded: FirebaseDatabase;
 
@@ -174,7 +176,7 @@ export class FakeDatabase {
 	/** Answers a page's socket as the database server does: the handshake, each listen with its value, and ok to everything else. */
 	serve(socket: WebSocketRoute): void {
 		const host = this.recorded.host;
-		socket.send(JSON.stringify({ t: 'c', d: { t: 'h', d: { ts: Date.now(), v: '5', h: host, s: 'markless-migrate-replay' } } }));
+		this.send(socket, JSON.stringify({ t: 'c', d: { t: 'h', d: { ts: Date.now(), v: '5', h: host, s: 'markless-migrate-replay' } } }));
 		const mine = new Set<Listener>();
 		socket.onMessage((message) => {
 			const text = typeof message === 'string' ? message : message.toString('utf8');
@@ -182,14 +184,14 @@ export class FakeDatabase {
 			const parsed = parse(text) as DataMessage | undefined;
 			if (parsed?.t !== 'd') return;
 			const { r, a, b } = parsed.d;
-			const ok = (d: unknown = {}) => r !== undefined && socket.send(JSON.stringify({ t: 'd', d: { r, b: { s: 'ok', d } } }));
+			const ok = (d: unknown = {}) => r !== undefined && this.send(socket, JSON.stringify({ t: 'd', d: { r, b: { s: 'ok', d } } }));
 			if (a === 'q' && typeof b?.p === 'string') {
 				const path = trim(b.p);
 				const listener = { socket, path };
 				mine.add(listener);
 				this.listeners.add(listener);
 				this.listened.push(path);
-				socket.send(JSON.stringify({ t: 'd', d: { b: { p: path, d: this.value(path) }, a: 'd' } }));
+				this.send(socket, JSON.stringify({ t: 'd', d: { b: { p: path, d: this.value(path) }, a: 'd' } }));
 				return void ok();
 			}
 			if (a === 'n' && typeof b?.p === 'string') {
@@ -217,10 +219,15 @@ export class FakeDatabase {
 		if (away) return true;
 		const key = trim(update.path);
 		for (const { socket, path } of this.listeners) {
-			if (path === key || key.startsWith(`${path}/`)) socket.send(JSON.stringify({ t: 'd', d: { b: { p: key, d: update.data }, a: update.merge ? 'm' : 'd' } }));
-			else if (path.startsWith(`${key}/`)) socket.send(JSON.stringify({ t: 'd', d: { b: { p: path, d: this.value(path) }, a: 'd' } }));
+			if (path === key || key.startsWith(`${path}/`)) this.send(socket, JSON.stringify({ t: 'd', d: { b: { p: key, d: update.data }, a: update.merge ? 'm' : 'd' } }));
+			else if (path.startsWith(`${key}/`)) this.send(socket, JSON.stringify({ t: 'd', d: { b: { p: path, d: this.value(path) }, a: 'd' } }));
 		}
 		return true;
+	}
+
+	private send(socket: WebSocketRoute, frame: string): void {
+		this.frames++;
+		socket.send(frame);
 	}
 }
 
