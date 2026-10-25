@@ -527,16 +527,19 @@ export async function captureRacSubmenus(browser: Browser, origin: string, route
  * Radix submenus (DropdownMenu.Sub, ContextMenu.Sub, Menubar.Sub): a sub-trigger mounts its content only when the
  * pointer rests on it, inside a menu no control in the page shows. Each menu a reveal opened is opened again, each
  * sub-trigger in it hovered, and the content it mounted (portaled to the body, or, unportaled, inside the parent
- * menu: its popper wrapper is fixed either way) recorded as a body layer keyed by the sub-trigger's id (one level
- * deep). Cached by route.
+ * menu: its popper wrapper is fixed either way) recorded as a body layer (one level deep). Radix ids its items as each
+ * menu mounts, so menus captured on fresh pages share them: a submenu is keyed by its menu's key and its place, and
+ * its trigger in the menu's reveal is marked with that key (data-mm-key). Returns those menus' reveals, so marked,
+ * and the submenus. Cached by route.
  */
 export async function captureRadixSubmenus(browser: Browser, origin: string, route: string, dir: string, reveals: readonly Reveal[]): Promise<readonly Reveal[]> {
 	const menus = reveals.filter((r) => (r.action === 'click' || r.action === 'contextmenu') && r.added.some((a) => a.html.includes('data-radix-menu-content') && /aria-haspopup="menu"/.test(a.html)));
 	if (!menus.length) return [];
-	const file = join(dir, `${createHash('sha256').update(`radix-submenus:3:${route}|${JSON.stringify(menus.map((m) => [m.sig, m.nth, m.path, m.action]))}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`radix-submenus:4:${route}|${JSON.stringify(menus.map((m) => [m.sig, m.nth, m.path, m.action]))}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
 	if (cached && cached.route === route) return cached.reveals;
 	const out: Reveal[] = [];
+	const marked: Reveal[] = [];
 	const viewport = VIEWPORTS[0]!;
 	const SUB_TRIGGER = '[data-radix-menu-content] [role^="menuitem"][aria-haspopup="menu"]';
 	type Trigger = { readonly id: string; readonly controls: string; readonly disabled: boolean };
@@ -569,6 +572,7 @@ export async function captureRadixSubmenus(browser: Browser, origin: string, rou
 			// The sub-triggers as the reveal recorded them: Radix gives a menu's items new ids each time it mounts, so each
 			// submenu is found again by its trigger's place in the menu and recorded under the ids the reveal has.
 			const recorded = await triggersIn(page, menu.added.map((a) => a.html).join(''));
+			const keys: [id: string, key: string][] = [];
 			for (const [k, want] of recorded.entries()) {
 				if (want.disabled || !want.id) continue;
 				if (!(await opened()) && !(await open())) break;
@@ -592,11 +596,16 @@ export async function captureRadixSubmenus(browser: Browser, origin: string, rou
 					return nodes.filter((n) => !nodes.some((m) => m !== n && m.contains(n))).map((n) => n.outerHTML);
 				});
 				const named = (html: string) => [[mine.id, want.id], [mine.controls, want.controls]].reduce((h, [from, to]) => (from && to ? h.split(from).join(to) : h), html);
-				if (added.length) out.push({ key: want.id, path: [-1], action: 'hover', viewport: viewport.name, added: added.map((html) => ({ into: 'body' as const, before: -1, html: named(html) })) });
+				const key = `${menu.key}-sub-${k}`;
+				if (added.length) {
+					out.push({ key, path: [-1], action: 'hover', viewport: viewport.name, added: added.map((html) => ({ into: 'body' as const, before: -1, html: named(html) })) });
+					keys.push([want.id, key]);
+				}
 				// Escape closes the whole menu (a submenu's Escape closes its root): it is opened again for the next one.
 				await page.keyboard.press('Escape').catch(() => {});
 				await quiet(page, 300);
 			}
+			if (keys.length) marked.push({ ...menu, added: menu.added.map((a) => ({ ...a, html: keys.reduce((h, [id, key]) => h.replace(` id="${id}"`, ` id="${id}" data-mm-key="${key}"`), a.html) })) });
 		} catch {
 			// a menu that cannot be opened again keeps its submenus closed
 		} finally {
@@ -604,8 +613,8 @@ export async function captureRadixSubmenus(browser: Browser, origin: string, rou
 		}
 	}
 	await mkdir(dir, { recursive: true });
-	await writeFile(file, JSON.stringify({ route, reveals: out }));
-	return out;
+	await writeFile(file, JSON.stringify({ route, reveals: [...marked, ...out] }));
+	return [...marked, ...out];
 }
 
 /**

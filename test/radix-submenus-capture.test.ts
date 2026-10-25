@@ -47,13 +47,17 @@ after(async () => {
 	server.close();
 });
 
-test('captureRadixSubmenus: each enabled sub-trigger of a revealed Radix menu is hovered, and the content it mounts, portaled or inside the menu, is a reveal keyed by its id', async () => {
+test('captureRadixSubmenus: each enabled sub-trigger of a revealed Radix menu is hovered, and the content it mounts, portaled or inside the menu, is a reveal keyed by the menu and its place', async () => {
 	const dir = await mkdtemp(join(tmpdir(), 'radix-submenus-'));
 	try {
 		const recorded = '<div data-radix-popper-content-wrapper=""><div role="menu" data-radix-menu-content=""><div role="menuitem">Team</div><div role="menuitem" id="radix-a" aria-controls="radix-ac" aria-haspopup="menu">Invite users</div><div role="menuitem" id="radix-b" aria-haspopup="menu" data-disabled="">Disabled</div><div role="menuitem" id="radix-c" aria-controls="radix-cc" aria-haspopup="menu">Share</div></div></div>';
 		const menu: Reveal = { key: 't', path: [0], sig: 'button||Open', nth: 0, action: 'click', viewport: 'desktop', added: [{ into: 'body', before: -1, html: recorded }] };
-		const found = await captureRadixSubmenus(browser, origin, '/', dir, [menu]);
-		assert.deepEqual(found.map((r) => [r.key, r.action, r.added.map((a) => a.into)]), [['radix-a', 'hover', ['body']], ['radix-c', 'hover', ['body']]]);
+		const [marked, ...found] = await captureRadixSubmenus(browser, origin, '/', dir, [menu]);
+		// The menu's reveal, its sub-triggers keyed by the menu's key and their place in it.
+		assert.equal(marked!.key, 't');
+		assert.equal(marked!.added[0]!.html, recorded.replace('id="radix-a"', 'id="radix-a" data-mm-key="t-sub-0"').replace('id="radix-c"', 'id="radix-c" data-mm-key="t-sub-2"'));
+		assert.deepEqual(found.map((r) => [r.key, r.action, r.added.map((a) => a.into)]), [['t-sub-0', 'hover', ['body']], ['t-sub-2', 'hover', ['body']]]);
+		// Under the ids the menu's reveal has, though Radix gave the items new ones.
 		assert.match(found[0]!.added[0]!.html, /^<div data-radix-popper-content-wrapper=""><div [^>]*id="radix-ac" aria-labelledby="radix-a">.*Email/);
 		assert.match(found[1]!.added[0]!.html, /^<div data-radix-popper-content-wrapper=""><div [^>]*id="radix-cc" aria-labelledby="radix-c">.*Link/);
 		// A menu without a sub-trigger is not opened again.

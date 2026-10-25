@@ -910,8 +910,12 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		// React Aria and Radix submenus, on the routes where a revealed menu has an item that opens one.
 		if (options.reveal !== false)
 			for (const [route, reveals] of [...revealed]) {
-				const submenus = [...(await captureRacSubmenus(browser, options.old, route, join(state, 'convert', 'reveals'), reveals)), ...(await captureRadixSubmenus(browser, options.old, route, join(state, 'convert', 'reveals'), reveals))];
-				if (submenus.length) revealed.set(route, [...reveals, ...submenus.filter((s) => !reveals.some((r) => r.key === s.key))]);
+				const submenus = await captureRacSubmenus(browser, options.old, route, join(state, 'convert', 'reveals'), reveals);
+				// Radix's: the menus they open from come back with their sub-triggers keyed, in place of the menus' own reveals.
+				const radix = await captureRadixSubmenus(browser, options.old, route, join(state, 'convert', 'reveals'), reveals);
+				const same = (a: Reveal, b: Reveal) => a.key === b.key && a.action === b.action && a.viewport === b.viewport && a.path.join('.') === b.path.join('.');
+				const all = [...reveals.map((r) => radix.find((m) => same(m, r)) ?? r), ...[...submenus, ...radix].filter((s) => !reveals.some((r) => same(r, s) || r.key === s.key))];
+				if (all.length !== reveals.length || radix.length) revealed.set(route, all);
 			}
 		// What each Base UI combobox shows once nothing matches, into the empty element of the layer it opens.
 		for (const [route, reveals] of revealed) {

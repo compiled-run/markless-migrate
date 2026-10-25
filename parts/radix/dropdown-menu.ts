@@ -171,13 +171,15 @@ function openSub(trigger: HTMLElement, keyboard: boolean): Layer | undefined {
 // Radix's pointer grace area: the polygon from where the pointer left an open sub-trigger to the submenu's near and far
 // edges, for 300 ms, while the pointer heads its way.
 let grace: { layer: Layer; area: { x: number; y: number }[]; side: string; until: number } | undefined;
-let lastX = 0;
-let pointerDir = 'right';
 let openTimer = 0;
 
-function track(event: PointerEvent): void {
-	if (event.clientX !== lastX) pointerDir = event.clientX > lastX ? 'right' : 'left';
-	lastX = event.clientX;
+// MenuContent's onPointerMove: the way the mouse last moved across the content, from where it lies inside it.
+const motion = new WeakMap<Layer, { x: number; dir: string }>();
+function track(layer: Layer, event: PointerEvent): void {
+	const m = motion.get(layer) ?? { x: 0, dir: 'right' };
+	if (event.clientX !== m.x) m.dir = event.clientX > m.x ? 'right' : 'left';
+	m.x = event.clientX;
+	motion.set(layer, m);
 }
 
 function inPolygon(x: number, y: number, area: readonly { x: number; y: number }[]): boolean {
@@ -190,7 +192,7 @@ function inPolygon(x: number, y: number, area: readonly { x: number; y: number }
 	return inside;
 }
 
-const movingToSub = (layer: Layer, event: PointerEvent) => Boolean(grace && grace.layer === layer && Date.now() < grace.until && pointerDir === grace.side && inPolygon(event.clientX, event.clientY, grace.area));
+const movingToSub = (layer: Layer, event: PointerEvent) => Boolean(grace && grace.layer === layer && Date.now() < grace.until && (motion.get(layer)?.dir ?? 'right') === grace.side && inPolygon(event.clientX, event.clientY, grace.area));
 
 function switchTo(from: HTMLElement, to: HTMLElement | undefined, first: boolean): boolean {
 	const open = openOf(from);
@@ -205,10 +207,11 @@ export function pointerover(target: Element, event: PointerEvent): boolean {
 		const open = barTriggers(bar.closest(BAR) ?? bar).find((t) => t !== bar && t.getAttribute('aria-expanded') === 'true');
 		return open ? switchTo(open, bar, false) : false;
 	}
+	const within = event.pointerType === 'mouse' ? layerOf(target) : undefined;
+	if (within?.content.contains(target)) track(within, event);
 	const item = target.closest<HTMLElement>(ITEM);
 	const layer = item && layerOf(item);
 	if (!item || !layer || event.pointerType !== 'mouse') return false;
-	track(event);
 	if (disabled(item)) {
 		if (!movingToSub(layer, event)) layer.content.focus({ preventScroll: true });
 		return true;
@@ -230,7 +233,7 @@ export function pointerout(target: Element, event: PointerEvent): boolean {
 	if (!item || !layer || event.pointerType !== 'mouse') return false;
 	const to = event.relatedTarget instanceof Node ? event.relatedTarget : null;
 	if (to && item.contains(to)) return true;
-	track(event);
+	if (to && layer.content.contains(to)) track(layer, event);
 	const sub = subOf.get(layer);
 	if (isSubTrigger(item)) {
 		clearTimeout(openTimer);

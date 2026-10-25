@@ -228,3 +228,21 @@ test('Radix DropdownMenu.Sub from the keyboard: ArrowRight or Enter opens it on 
 	assert.equal(await page.evaluate(() => document.activeElement?.id), 'menu');
 	await page.close();
 });
+
+test('Radix DropdownMenu.Sub: the pointer leaving the sub-trigger off the menu, having only moved down across it, leaves the submenu open and its trigger focused', async () => {
+	const page = await open(withSub, ['radix/dropdown-menu']);
+	await page.getByText('Open').click();
+	await settled(page);
+	await hoverItem(page, 'Team');
+	await hoverItem(page, 'Invite users');
+	await page.waitForTimeout(150);
+	assert.equal(await subOpen(page), true);
+	// Out to the left at the height of the submenu: Radix judges the way by the last move across the menu (straight
+	// down, so its initial "right"), not by where the pointer went once off it.
+	const at = (await page.locator('#sub').boundingBox())!;
+	await page.mouse.move(8, at.y + at.height / 2, { steps: 3 });
+	await settled(page);
+	assert.equal(await subOpen(page), true);
+	assert.equal(await active(page), 'Invite users');
+	await page.close();
+});
