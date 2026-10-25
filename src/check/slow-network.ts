@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { PNG } from 'pngjs';
 import { chromium, firefox, webkit, type Browser, type BrowserType, type Page, type Request } from 'playwright';
 import { NETWORK_PROFILES, startThrottle, type NetworkProfile, type Throttle } from './throttle.ts';
 
@@ -29,6 +30,8 @@ export interface NetworkRun {
 	/** All in ms after navigation start. */
 	readonly ttfb?: number;
 	readonly fcp?: number;
+	/** The first frame with anything painted, from screenshots taken every 100 ms: the same measure in every browser, where FCP is not (Firefox reports none on some pages, WebKit reports it only once a blocking web font arrives, after the fallback text has shown). */
+	readonly firstFrame?: number;
 	/** Largest Contentful Paint, where the browser reports it. */
 	readonly lcp?: number;
 	readonly domContentLoaded?: number;
@@ -50,12 +53,13 @@ export interface NetworkRun {
 	readonly error?: string;
 }
 
-export const RUN_METRICS = ['ttfb', 'fcp', 'lcp', 'load', 'answered', 'visibleToAnswer', 'bytesByAnswer', 'bytes', 'jsDownloadedByAnswer', 'jsDownloaded', 'jsExecutedByAnswer'] as const;
+export const RUN_METRICS = ['ttfb', 'firstFrame', 'fcp', 'lcp', 'load', 'answered', 'visibleToAnswer', 'bytesByAnswer', 'bytes', 'jsDownloadedByAnswer', 'jsDownloaded', 'jsExecutedByAnswer'] as const;
 export type RunMetric = (typeof RUN_METRICS)[number];
 
 export const RUN_METRIC_LABEL: Readonly<Record<RunMetric, string>> = {
 	ttfb: 'Time to first byte',
-	fcp: 'First paint (FCP)',
+	firstFrame: 'First painted frame',
+	fcp: 'FCP (as the browser reports it)',
 	lcp: 'Largest paint (LCP)',
 	load: 'Load event',
 	answered: 'First click answered',
@@ -69,7 +73,10 @@ export const RUN_METRIC_LABEL: Readonly<Record<RunMetric, string>> = {
 
 export function runMetric(run: NetworkRun, metric: RunMetric): number | undefined {
 	if (run.error) return undefined;
-	if (metric === 'visibleToAnswer') return run.answered !== undefined && run.fcp !== undefined ? run.answered - run.fcp : undefined;
+	if (metric === 'visibleToAnswer') {
+		const painted = run.firstFrame ?? run.fcp;
+		return run.answered !== undefined && painted !== undefined ? run.answered - painted : undefined;
+	}
 	return run[metric];
 }
 
@@ -114,6 +121,32 @@ export function executedBytes(entries: readonly { readonly source?: string; read
 		for (const byte of ran) total += byte;
 	}
 	return total;
+}
+
+/** Whether every pixel of a PNG frame is the colour of its first, give or take a little compression noise. */
+export function blankFrame(png: Buffer): boolean {
+	const { data } = PNG.sync.read(png);
+	const [r, g, b] = [data[0]!, data[1]!, data[2]!];
+	for (let i = 4; i < data.length; i += 4) if (Math.abs(data[i]! - r) > 8 || Math.abs(data[i + 1]! - g) > 8 || Math.abs(data[i + 2]! - b) > 8) return false;
+	return true;
+}
+
+const FRAME_EVERY_MS = 100;
+
+/** Epoch ms of the first screenshot with anything painted, taken every 100 ms until one is or `stop` says so. */
+async function firstPaintedFrame(page: Page, stop: () => boolean): Promise<number | undefined> {
+	while (!stop()) {
+		const at = Date.now();
+		// Playwright's screenshots wait for web fonts unless this is set, which holds a swap-font page's first frame back.
+		const before = process.env.PW_TEST_SCREENSHOT_NO_FONTS_READY;
+		process.env.PW_TEST_SCREENSHOT_NO_FONTS_READY = '1';
+		const png = await page.screenshot({ scale: 'css', type: 'png', timeout: 5000 }).catch(() => undefined);
+		if (before === undefined) delete process.env.PW_TEST_SCREENSHOT_NO_FONTS_READY;
+		else process.env.PW_TEST_SCREENSHOT_NO_FONTS_READY = before;
+		if (png && !blankFrame(png)) return at;
+		await new Promise((r) => setTimeout(r, Math.max(0, FRAME_EVERY_MS - (Date.now() - at))));
+	}
+	return undefined;
 }
 
 // Runs in the page before its own scripts: notes trusted clicks, the first state change on a clicked control (or one
@@ -191,6 +224,8 @@ async function pageTimings(page: Page): Promise<Omit<NetworkRun, 'clicks' | 'byt
 export interface NetworkRunOptions {
 	/** A Playwright selector for the control to click; default the first unselected tab or closed disclosure. */
 	readonly control?: string;
+	/** false skips the screenshots that find the first painted frame. */
+	readonly firstFrame?: boolean;
 	/** Give up on a run after this long; default 120 s. */
 	readonly timeoutMs?: number;
 	/** Host names the proxy connects elsewhere (tests). */
@@ -210,12 +245,20 @@ async function launch(name: NetworkBrowser, throttle: Throttle): Promise<Browser
 /** One cold load of `url` over `profile` in a fresh `browser`, clicking the control every 250 ms from when it is on screen until it answers. */
 export async function networkRun(url: string, profile: NetworkProfile, name: NetworkBrowser, options: NetworkRunOptions = {}): Promise<NetworkRun> {
 	const timeoutMs = options.timeoutMs ?? 120_000;
-	const throttle = await startThrottle(profile, options.hosts ? { hosts: options.hosts } : {});
+	if (profile.devtools && name !== 'chromium') return { clicks: 0, bytes: 0, jsDownloaded: 0, requests: [], error: `${profile.name} is DevTools throttling, which only Chromium has` };
+	// DevTools throttling happens in the browser; the proxy then only counts the bytes.
+	const link = profile.devtools ? { ...profile, downBytesPerSecond: Infinity, upBytesPerSecond: Infinity, rttMs: 0 } : profile;
+	const throttle = await startThrottle(link, options.hosts ? { hosts: options.hosts } : {});
 	let browser: Browser | undefined;
 	try {
 		browser = await launch(name, throttle);
 		const context = await browser.newContext({ viewport: VIEWPORT });
 		const page = await context.newPage();
+		if (profile.devtools) {
+			const cdp = await context.newCDPSession(page);
+			await cdp.send('Network.enable');
+			await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: profile.devtools.requestLatencyMs, downloadThroughput: profile.downBytesPerSecond, uploadThroughput: profile.upBytesPerSecond });
+		}
 		let answeredAt: (() => void) | undefined;
 		const answered = new Promise<void>((resolve) => (answeredAt = resolve));
 		await page.exposeFunction('__mmNetAnswered', () => answeredAt?.());
@@ -235,6 +278,7 @@ export async function networkRun(url: string, profile: NetworkProfile, name: Net
 		await page.goto(url, { waitUntil: 'commit', timeout: timeoutMs });
 		let clicks = 0;
 		let done = false;
+		const frame = options.firstFrame !== false ? firstPaintedFrame(page, () => done || Date.now() > deadline) : Promise.resolve(undefined);
 		void answered.then(() => (done = true));
 		const control = page.locator(options.control ?? AUTO_CONTROL).first();
 		while (!done && Date.now() < deadline) {
@@ -252,7 +296,9 @@ export async function networkRun(url: string, profile: NetworkProfile, name: Net
 		const executed = coverage && done ? executedBytes((await page.coverage.stopJSCoverage()).filter((e) => e.url)) : undefined;
 		const settle = Math.min(deadline, Date.now() + AFTER_ANSWER_MS);
 		while (Date.now() < settle && Date.now() - throttle.lastActivity() < QUIET_MS) await new Promise((r) => setTimeout(r, 200));
+		const painted = await frame;
 		const timings = await pageTimings(page);
+		const firstFrame = painted === undefined ? undefined : Math.max(0, Math.round(painted - timings.origin));
 		const requests: NetworkRequest[] = [];
 		let jsByAnswer = 0;
 		let jsDownloaded = 0;
@@ -272,6 +318,7 @@ export async function networkRun(url: string, profile: NetworkProfile, name: Net
 		const { origin: _, ...rest } = timings;
 		return {
 			...rest,
+			...(firstFrame !== undefined ? { firstFrame } : {}),
 			clicks,
 			...(answerEpoch !== undefined ? { bytesByAnswer: throttle.downloadedBy(answerEpoch), jsDownloadedByAnswer: jsByAnswer } : {}),
 			bytes: throttle.downloaded(),
@@ -386,4 +433,34 @@ export function networkTables(sides: readonly SideNetwork[], names: readonly str
 export function shortNames(urls: readonly string[]): string[] {
 	const hosts = urls.map((u) => new URL(u).host);
 	return urls.map((u, i) => (hosts.filter((h) => h === hosts[i]).length > 1 ? `${hosts[i]}${new URL(u).pathname}` : hosts[i]!));
+}
+
+/** A route's cold loads over slow networks, old and new side by side. */
+export interface RouteNetwork {
+	readonly old: SideNetwork;
+	readonly new: SideNetwork;
+}
+
+const SUMMARY_METRICS: readonly RunMetric[] = ['answered', 'visibleToAnswer', 'firstFrame', 'lcp', 'bytesByAnswer', 'jsExecutedByAnswer'];
+
+/** One line per network and browser: the summary's medians, old -> new. */
+export function networkLines(network: RouteNetwork | { readonly unavailable: string } | undefined): string[] {
+	if (!network) return [];
+	if ('unavailable' in network) return [`slow network: ${network.unavailable}`];
+	return network.old.cells.map((old, i) => {
+		const next = network.new.cells[i]!;
+		const label = `slow network, ${old.browser} ${NETWORK_PROFILES[old.profile]?.label ?? old.profile}`;
+		if (old.unavailable) return `${label}: ${old.unavailable}`;
+		const runs = Math.min(old.runs.filter((r) => !r.error).length, next.runs.filter((r) => !r.error).length);
+		const parts = SUMMARY_METRICS.filter((m) => old.median[m] !== undefined || next.median[m] !== undefined).map((m) => `${RUN_METRIC_LABEL[m].replace(/ \(Chromium\)$/, '')} ${formatValue(m, old.median[m])} -> ${formatValue(m, next.median[m])}`);
+		const failed = [old, next].flatMap((c, side) => (c.runs.some((r) => r.error) ? [`${side ? 'new' : 'old'} ${c.runs.filter((r) => r.error).length} of ${c.runs.length} runs failed: ${c.runs.find((r) => r.error)!.error}`] : []));
+		return `${label} (median of ${runs} cold loads): ${parts.join(', ') || 'no run finished'}${failed.length ? `; ${failed.join('; ')}` : ''}`;
+	});
+}
+
+/** Cold loads of the route on old and new over each profile in each browser, the two sides taken in turn. */
+export async function measureRouteNetwork(origins: { readonly old: string; readonly new: string }, route: string, options: SlowNetworkOptions = {}): Promise<RouteNetwork> {
+	const urls = [new URL(route, origins.old).href, new URL(route, origins.new).href];
+	const [old, next] = await measureSlowNetwork(urls, options);
+	return { old: old!, new: next! };
 }

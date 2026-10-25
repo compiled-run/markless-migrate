@@ -34,6 +34,7 @@ import { CheckProgress } from './progress.ts';
 import { applyNavigation, checkNavigation, type NavigationOptions, type NavigationResult } from './nav-parity.ts';
 import { loadFailures, measureLoad, psiFailures, type LoadOptions } from './load.ts';
 import { measurePsi, psiKey } from './psi.ts';
+import { measureRouteNetwork } from './slow-network.ts';
 import { assetsToProbe, compareRoute, cssTargets, forgetFailures, httpFailures, noiseReport, noisyStyles, weightAllowed, withFailures, type Probe } from './compare.ts';
 import { matchElements } from './match.ts';
 import { contractLines, type NetworkRecord } from './network.ts';
@@ -905,6 +906,11 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			if (psiOptions !== false && !bypassed) {
 				const key = psiOptions?.key ?? psiKey();
 				for (const [route, load] of loads) loads.set(route, { ...load, psi: await measurePsi({ old: options.oldOrigin, new: options.newOrigin }, route, { ...psiOptions, ...(key ? { key } : {}) }) });
+			}
+			const networkOptions = options.load?.network;
+			if (networkOptions) {
+				// The proxy cannot add a bypass token to https requests it only tunnels.
+				for (const [route, load] of loads) loads.set(route, { ...load, network: bypassed ? { unavailable: 'not measured: --header and --cookie cannot be sent through the throttling proxy' } : await measureRouteNetwork({ old: options.oldOrigin, new: options.newOrigin }, route, networkOptions) });
 			}
 			routes.forEach((r, i) => {
 				const load = anonymous(r) ? loads.get(r.route) : undefined;

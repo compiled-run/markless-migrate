@@ -11,6 +11,8 @@ export interface NetworkProfile {
 	readonly rttMs: number;
 	/** Where the numbers come from. */
 	readonly source: string;
+	/** Throttled inside Chromium by DevTools' model instead of the link: a fixed delay added to every request, the bandwidth metered per request. */
+	readonly devtools?: { readonly requestLatencyMs: number };
 }
 
 // Firefox and Lighthouse both count a kilobit as 1024 bits.
@@ -27,6 +29,15 @@ export const NETWORK_PROFILES: Readonly<Record<string, NetworkProfile>> = {
 		upBytesPerSecond: throttling.mobileSlow4G.uploadThroughputKbps * KBIT,
 		rttMs: throttling.mobileSlow4G.rttMs,
 		source: 'Lighthouse mobile (PageSpeed Insights), throttling.mobileSlow4G',
+	},
+	'chrome-slow-4g': {
+		name: 'chrome-slow-4g',
+		label: 'Chrome DevTools Slow 4G (1.4 Mbit/s, 562.5 ms added to every request)',
+		downBytesPerSecond: throttling.mobileSlow4G.downloadThroughputKbps * KBIT,
+		upBytesPerSecond: throttling.mobileSlow4G.uploadThroughputKbps * KBIT,
+		rttMs: throttling.mobileSlow4G.rttMs,
+		devtools: { requestLatencyMs: throttling.mobileSlow4G.requestLatencyMs },
+		source: "Lighthouse's DevTools throttling, throttling.mobileSlow4G (Chrome DevTools' Slow 4G preset), Chromium only",
 	},
 };
 

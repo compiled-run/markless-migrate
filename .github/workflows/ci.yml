@@ -62,7 +62,7 @@ jobs:
           - suite: proxy
           - suite: radix-dialog-port
           - suite: responsiveness
-          - suite: slow-network
+          - { suite: slow-network, browsers: chromium firefox webkit }
           - { suite: next-app, shard: 1/6 }
           - { suite: next-app, shard: 2/6 }
           - { suite: next-app, shard: 3/6 }
@@ -76,6 +76,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
+        with:
+          browsers: ${{ matrix.browsers || 'chromium' }}
       - run: node --test test/e2e/${{ matrix.suite }}.test.ts
         env:
           E2E_SHARD: ${{ matrix.shard }}

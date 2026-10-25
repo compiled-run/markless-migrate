@@ -33,16 +33,18 @@ function get(proxy: string, url: string, agent?: Agent): Promise<{ bytes: number
 	});
 }
 
-test('the named profiles are the Firefox DevTools presets and Lighthouse mobile, each with its source', () => {
+test('the named profiles are the Firefox DevTools presets, Lighthouse mobile and Chrome DevTools Slow 4G, each with its source', () => {
 	assert.deepEqual(
-		Object.values(NETWORK_PROFILES).map((p) => [p.name, p.downBytesPerSecond, p.upBytesPerSecond, p.rttMs]),
+		Object.values(NETWORK_PROFILES).map((p) => [p.name, Math.round(p.downBytesPerSecond * 100) / 100, p.upBytesPerSecond, p.rttMs]),
 		[
 			['regular-2g', 32_000, 6_400, 300],
 			['regular-3g', 96_000, 32_000, 100],
 			['slow-4g', 209_715.2, 86_400, 150],
+			['chrome-slow-4g', 188_743.68, 86_400, 150],
 		],
 	);
 	assert.ok(Object.values(NETWORK_PROFILES).every((p) => p.source.length > 10));
+	assert.equal(NETWORK_PROFILES['chrome-slow-4g']!.devtools?.requestLatencyMs, 562.5);
 });
 
 test('a response pays a round trip for the connection, one for the name lookup, one for the request, and its bytes at the link rate', async () => {

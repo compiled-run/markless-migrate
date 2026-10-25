@@ -10,6 +10,7 @@ import { HINTS } from './hints.ts';
 import { TRACKER_HOSTS, type BlockList } from './trackers.ts';
 import type { Failure } from './types.ts';
 import type { FieldData, PsiOptions, PsiResult } from './psi.ts';
+import type { RouteNetwork, SlowNetworkOptions } from './slow-network.ts';
 
 export const LOAD_METRICS = ['score', 'fcp', 'lcp', 'si', 'tbt', 'cls'] as const;
 export type LoadMetric = (typeof LOAD_METRICS)[number];
@@ -35,6 +36,8 @@ export interface LoadOptions {
 	readonly psi?: PsiOptions | false;
 	/** A bypass token for the apps alone (--header, --cookie): sent with requests to these origins only, never to another host the pages load. */
 	readonly bypass?: AppBypass;
+	/** Cold loads over named slow networks in each browser, old and new in turn, with the first click timed (--network); left out unless given. */
+	readonly network?: SlowNetworkOptions;
 }
 
 export interface AppBypass {
@@ -191,6 +194,8 @@ export interface RouteLoad {
 	readonly skipped?: string;
 	/** PageSpeed Insights on the deployments: when it answered, its verdicts gate the route instead of the lab's. */
 	readonly psi?: PsiResult;
+	/** Cold loads over slow networks, old and new: shown beside the rest, not a verdict. */
+	readonly network?: RouteNetwork | { readonly unavailable: string };
 }
 
 export function median(values: readonly number[]): number {
