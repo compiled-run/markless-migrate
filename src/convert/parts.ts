@@ -1,7 +1,7 @@
 import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { attr, childrenOf, type Element } from './dom.ts';
+import { attr, childrenOf, elementChildren, type Element } from './dom.ts';
 import type { Binding } from './tsrx.ts';
 import { APPLE_KEY, CTRL_KEYS } from '../../parts/docsearch.ts';
 import type { PartResolver, PartUsage } from './usage.ts';
@@ -42,7 +42,12 @@ export function renamedFrom(el: Element, id: string): void {
 	if (!generated.has(el)) generated.set(el, id);
 }
 const idOf = (el: Element) => generated.get(el) ?? attr(el, 'id') ?? '';
-const base = (el: Element) => el.attrs.some((a) => a.name.startsWith('data-base-ui')) || /^base-ui-/.test(idOf(el));
+// Select and Combobox roots render a hidden input after their parts, under the generated id an author's id replaces on the trigger.
+function beforeBaseInput(el: Element): boolean {
+	const siblings = el.parentNode ? elementChildren(el.parentNode) : [];
+	return siblings.slice(siblings.indexOf(el) + 1).some((s) => s.tagName === 'input' && /^base-ui-.*-hidden-input$/.test(idOf(s)));
+}
+const base = (el: Element) => el.attrs.some((a) => a.name.startsWith('data-base-ui')) || /^base-ui-/.test(idOf(el)) || beforeBaseInput(el);
 // Radix writes data-state on its parts (a closed tooltip's trigger carries nothing else); Base UI, cmdk and React Aria never do.
 const radix = (el: Element) => /^radix-/.test(generated.get(el) ?? '') || el.attrs.some((a) => a.name.startsWith('data-radix-') || a.name === 'data-state' || ((a.name === 'id' || a.name === 'aria-controls') && a.value.startsWith('radix-')));
 
@@ -51,7 +56,7 @@ const ids = (el: Element) => [generated.get(el) ?? '', ...el.attrs.filter((a) =>
 const SIGNATURES: Readonly<Record<string, (el: Element) => boolean>> = {
 	cmdk: (el) => el.attrs.some((a) => a.name.startsWith('cmdk-')),
 	'radix-ui': radix,
-	'@base-ui/react': (el) => el.attrs.some((a) => a.name.startsWith('data-base-ui')) || /\bbase-ui-/.test(ids(el)),
+	'@base-ui/react': (el) => el.attrs.some((a) => a.name.startsWith('data-base-ui')) || /\bbase-ui-/.test(ids(el)) || beforeBaseInput(el),
 	'react-aria-components': (el) => el.attrs.some((a) => a.name === 'data-rac' || a.name.startsWith('data-react-aria')) || /react-aria/.test(ids(el)),
 };
 
