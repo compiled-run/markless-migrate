@@ -39,7 +39,11 @@ export type Step =
 	| { readonly action: 'scroll'; readonly target: Target }
 	| { readonly action: 'hover'; readonly target: Target; readonly at: number }
 	/** The next `updates` updates the old page heard from its realtime database, sent to every socket of the page session. */
-	| { readonly action: 'live'; readonly target: Target; readonly updates: number; /** Kept for the next load only, as if the page were closed while the database changed. */ readonly away?: boolean };
+	| { readonly action: 'live'; readonly target: Target; readonly updates: number; /** Kept for the next load only, as if the page were closed while the database changed. */ readonly away?: boolean }
+	/** Click `target`, then `then` (or go back) before the first click's page has arrived: the answer that comes last must not be the one shown. */
+	| { readonly action: 'race'; readonly target: Target; readonly then: Target | 'back' }
+	/** Type `value` key by key, `delayMs` apart, as a person types into a search box. */
+	| { readonly action: 'type'; readonly target: Target; readonly value: string; readonly delayMs: number };
 
 export interface StepResult {
 	readonly url: string;
@@ -67,6 +71,8 @@ export interface StepResult {
 	readonly door?: boolean;
 	/** What the step changed on <html> and <body> (attributes, class names: shown, not compared), in the page colours, colour scheme, scroll lock and pointer-events, and in stored values: `page background: rgb(255, 255, 255) → rgb(24, 25, 32)`, `localStorage theme: "light" → "dark"`. */
 	readonly state?: readonly string[];
+	/** After a race step: lines the page showed that a fresh load of the address it ended on does not show, with `-` for those it lacked (an earlier click's answer that arrived last and won). */
+	readonly stale?: readonly string[];
 	/** The step reloaded the page: what it shows and keeps after the reload is compared with what it showed before. */
 	readonly reloaded?: boolean;
 	/** A document loaded during the step (not a router's swap in place). */
@@ -208,6 +214,10 @@ export function describeStep(step: Step): string {
 			return `point at ${Math.round(step.at * 100)}% across ${describeTarget(step.target)}`;
 		case 'live':
 			return step.away ? `the database takes ${step.updates} update${step.updates === 1 ? '' : 's'} while the page is not listening` : `receive ${step.updates} live update${step.updates === 1 ? '' : 's'} from the database`;
+		case 'race':
+			return step.then === 'back' ? `click ${describeTarget(step.target)}, then go back before its page has arrived` : `click ${describeTarget(step.target)}, then ${describeTarget(step.then)} before the first one's page has arrived`;
+		case 'type':
+			return `type "${step.value}" into ${describeTarget(step.target)} key by key, ${step.delayMs} ms apart`;
 	}
 }
 
@@ -522,6 +532,13 @@ async function forms(page: Page, origin: string, found: readonly Candidate[]): P
 }
 
 /** The one step that uses an element as a visitor would, so a journey made of it exercises the element. */
+/** A link that leaves for another page of the app, in place or not: one a visitor can click twice in a row before the first page arrives. */
+function raceable(c: Candidate, host: string): boolean {
+	if (c.target.role !== 'link' || !c.href || c.covered || c.skip || c.destructive || /^javascript:/i.test(c.href)) return false;
+	const to = new URL(c.href, host);
+	return to.origin === host && !(to.hash && to.pathname === new URL(host).pathname);
+}
+
 function primaryStep(c: Candidate): Step | undefined {
 	const t = c.target;
 	if (t.role === 'textbox' || t.role === 'searchbox' || t.role === 'spinbutton') return { action: 'fill', target: t, value: sample(c.type ?? '', t.name) };
@@ -1007,6 +1024,11 @@ const pendingWork = (page: Page) =>
 		.catch(() => 0);
 
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
+// The second click of a race lands this long after the first: sooner than any app's server answers a page.
+const RACE_GAP_MS = 60;
+// About how fast a person types into a search box.
+const TYPE_DELAY_MS = 150;
+const STALE_LINES = 20;
 
 // A <meta http-equiv="refresh"> that sends the visitor to another address within a few seconds.
 function scheduledRefresh(): { delay: number } | null {
@@ -1269,6 +1291,15 @@ async function perform(page: Page, step: Step, patience = QUICK): Promise<void> 
 		case 'scroll':
 			// The wheel brings the section to the top, as a reader scrolls, so what follows the scroll position (a contents list's current link) answers.
 			return void (await reach(page, target, (t, timeout) => t.evaluate((el) => el.scrollIntoView({ block: 'start' }), undefined, { timeout }), false, patience));
+		case 'race': {
+			await reach(page, target, (t, timeout) => t.click({ timeout, noWaitAfter: true }), true, patience);
+			await sleep(RACE_GAP_MS);
+			if (step.then === 'back') return void (await page.evaluate(() => history.back()));
+			return reach(page, locate(page, step.then), (t, timeout) => t.click({ timeout, noWaitAfter: true }), true, patience);
+		}
+		case 'type':
+			await reach(page, target, (t, timeout) => t.fill('', { timeout }), false, patience);
+			return page.keyboard.type(step.value, { delay: step.delayMs });
 		case 'hover':
 			return reach(page, target, async (t, timeout) => {
 				const box = await t.boundingBox({ timeout });
@@ -1451,6 +1482,18 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		if (ownTimers) {
 			await holdTimers(page, false);
 			await timersOut(page, mark);
+		}
+		// Where a race ended must show what that address shows when loaded on its own: lines that differ are an answer that came late and won.
+		if (step?.action === 'race' && !failed) {
+			const reloaded = await page.reload({ waitUntil: 'load', timeout: 30_000 }).then(() => true, () => false);
+			if (reloaded) {
+				await quiet(page, inflight, navigations);
+				const fresh = await snapshot(page, hosts);
+				const { added: shown, removed: lacked } = multisetDiff(fresh, after);
+				const noise = new Set(ambient.lines);
+				const stale = [...shown.filter((l) => !noise.has(l)).map((l) => `+ ${l}`), ...lacked.filter((l) => !noise.has(l)).map((l) => `- ${l}`)].slice(0, STALE_LINES);
+				if (stale.length) return { ...done, stale };
+			}
 		}
 		return done;
 	};
@@ -1772,6 +1815,9 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	};
 
 	const sampled = new Map<string, number>();
+	// The first two links of a group to pages of the app race: the second clicked before the first one's page has arrived, and the first followed by Back.
+	const raceFirst = new Map<string, Candidate>();
+	const races: Item[] = [];
 	const batched = new Map<string, Tracked[]>();
 	/** Items that use each control of an alike group in turn, in one session, for the groups `track` gathered since the last call. */
 	const alikeTurn = (usable: Tracked[], depth: number): Item => {
@@ -1802,6 +1848,17 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			const group = layout && !raw.group?.includes('|list ') ? undefined : raw.group;
 			const seen = group ? (sampled.get(group) ?? 0) : 0;
 			if (group) sampled.set(group, seen + 1);
+			if (group && !prefix.length && raceable(raw, host)) {
+				const first = raceFirst.get(group);
+				if (!first) raceFirst.set(group, raw);
+				else if (first.href !== raw.href && !raceFirst.has(`${group}|raced`)) {
+					raceFirst.set(`${group}|raced`, raw);
+					for (const then of [raw.target, 'back' as const]) {
+						const step: Step = { action: 'race', target: first.target, then };
+						races.push({ journey: { name: describeStep(step), steps: [step] }, depth: 1, expand: false });
+					}
+				}
+			}
 			const repeat = Boolean(group?.startsWith('repeat|')) && seen >= SAMPLES;
 			if (group && seen >= SAMPLES && !repeat) continue;
 			const c = raw;
@@ -1875,6 +1932,13 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			.map((e) => e.path)
 			.slice(0, ARRIVAL_ENTRIES);
 		const first = itemsFor(track(found, [], undefined), 1);
+		// A search box is also typed into key by key, so each keystroke's answer is seen arriving while the next key is pressed.
+		const box = found.find((c) => (c.target.role === 'searchbox' || c.target.role === 'textbox') && !c.covered && !c.skip && !c.destructive && !isLayout(c));
+		if (box) {
+			const step: Step = { action: 'type', target: box.target, value: sample(box.type ?? '', box.target.name), delayMs: TYPE_DELAY_MS };
+			later.push({ journey: { name: describeStep(step), steps: [step] }, depth: 1, expand: false });
+		}
+		later.push(...races);
 		formSteps = await forms(start.page, host, found);
 		const keys = keyItems(await findWidgets(start.page, tracked.filter((t) => !t.prefix.length), true), [], 1);
 		// A page with many controls gets the time they take, so the default budget does not leave its own controls unused; exploring ends sooner when its journeys run out.
@@ -2238,6 +2302,7 @@ function format(result: StepResult, parts: readonly string[], missing?: { change
 	if (parts.includes('shift')) out.push(`layout: ${shifted ? `a large part of the page moves ${shifted.x} px sideways and ${shifted.y} px up or down (layout shift ${shifted.score})` : 'nothing moves'}`);
 	if (parts.includes('answer time')) out.push(`first change ${result.reaction?.answeredMs ?? '?'} ms after the step`);
 	if (parts.includes('in between') && result.reaction?.views) out.push(`on screen until the result: ${viewsLine(result.reaction.views)}`);
+	if (parts.includes('stale')) out.push(`against a fresh load of where it ended: ${result.stale?.length ? `shows ${listed(result.stale)}` : 'the same page'}`);
 	if (parts.includes('morph')) out.push(`moves while the page changes: ${result.reaction?.transitions?.slice(0, 8).join(' | ') || '(nothing)'}`);
 	return out.join('; ');
 }
@@ -2411,6 +2476,7 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			if (slower) parts.push('answer time');
 			if (navigated && !n.loaded && morphs(oldSteps as StepResult[], n).length) parts.push('morph');
 			if (!reloaded && !n.loaded && interimViews(oldSteps as StepResult[], n)) parts.push('in between');
+			if (n.stale?.length && oldSteps.every((x) => !x.stale?.length)) parts.push('stale');
 			if (parts.length) {
 				const failure: Failure = { route, dimension, check, expected: where('old', format(shown(a!), parts, missing, true)), actual: where('new', format(shown(n), parts, missing)), hint, ...(automatic && parts.length === 1 && parts[0] === 'storage' ? { automatic } : {}) };
 				if (parts.length === 1 && parts[0] === 'answer time') timedOnly.set(failure, { journey: j, step: k });
