@@ -276,3 +276,64 @@ test('the arrows, Home and End rove focus and the Tab stop between closed Base U
 	}
 	await page.close();
 });
+
+const disabledSelect = select.replace('data-slot="select-item"><div>Grapes', 'data-slot="select-item" aria-disabled="true" data-disabled=""><div>Grapes').replace(/data-slot="select-item"><div>(\w+)</g, (_, f: string) => `data-slot="select-item" data-mm-value="${f.toLowerCase()}"><div>${f}<`);
+const selectState = (page: Page) => page.evaluate(() => `${document.querySelector('[data-slot="select-value"]')!.textContent} input=${(document.getElementById('base-ui-x-hidden-input') as HTMLInputElement).value}`);
+async function withValue(page: Page): Promise<void> {
+	await page.evaluate(() => document.querySelector('[data-slot="select-trigger"]')!.addEventListener('mmchoose', (e) => (document.querySelector('[data-slot="select-value"]')!.textContent = (e as CustomEvent<string>).detail)));
+}
+
+test('Base UI select keys: ArrowUp opens at the last enabled option, the arrows stop at the ends and on disabled options, which cannot be chosen', async () => {
+	const page = await open(disabledSelect.replace('<div>Pineapple', '<div>Pineapple</div></div><div role="option" aria-selected="false" tabindex="-1" data-slot="select-item" aria-disabled="true" data-disabled=""><div>Kiwi'), ['base-ui/select']);
+	await page.locator('#base').focus();
+	for (const [key, expected] of [
+		['ArrowUp', 'true focus=Pineapple highlighted=Pineapple'],
+		['ArrowDown', 'true focus=Kiwi highlighted=Kiwi'],
+		['ArrowDown', 'true focus=Kiwi highlighted=Kiwi'],
+		['Enter', 'true focus=Kiwi highlighted=Kiwi'],
+		['Home', 'true focus=Apple highlighted=Apple'],
+		['ArrowUp', 'true focus=Apple highlighted=Apple'],
+		['Escape', 'false focus=trigger:Select a fruit highlighted=-'],
+		['ArrowDown', 'true focus=Apple highlighted=Apple'],
+	] as const) {
+		await press(page, key);
+		assert.equal((await state(page)).replace(/ highlighted=.*\|/, ' highlighted='), expected, `after ${key}`);
+	}
+	await page.close();
+});
+
+test('Base UI select typeahead: open, a letter highlights the next enabled option starting with it; closed, it chooses it; the hidden input takes the value', async () => {
+	const page = await open(disabledSelect, ['base-ui/select']);
+	await withValue(page);
+	await page.locator('#base').focus();
+	await press(page, 'Enter');
+	for (const [key, expected] of [
+		['b', 'Banana'],
+		['b', 'Blueberry'],
+		['g', 'Blueberry'],
+	] as const) {
+		await press(page, key);
+		assert.match(await state(page), new RegExp(`^true focus=${expected} `), `after ${key}`);
+	}
+	await page.waitForTimeout(600);
+	await press(page, 'p');
+	await press(page, 'Enter');
+	assert.equal(await selectState(page), 'Pineapple input=pineapple');
+	assert.match(await state(page), /^false focus=trigger/);
+	await page.waitForTimeout(600);
+	await press(page, 'a');
+	assert.equal(await selectState(page), 'Apple input=apple');
+	assert.match(await state(page), /^false /, 'typing on a closed select does not open it');
+	await page.close();
+});
+
+test('the pointer leaving a Base UI select option for no other unhighlights it and focuses the select popup', async () => {
+	const page = await open(select, ['base-ui/select']);
+	await page.locator('#base').click();
+	await page.locator('[role="option"]', { hasText: 'Banana' }).hover();
+	assert.match(await state(page), /^true focus=Banana highlighted=Banana/);
+	await page.mouse.move(990, 790, { steps: 3 });
+	await settled(page);
+	assert.equal(await page.evaluate(() => [document.activeElement?.getAttribute('data-slot'), document.querySelectorAll('[data-highlighted]').length].join(' ')), 'select-content 0');
+	await page.close();
+});

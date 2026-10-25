@@ -167,7 +167,7 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 	const at = list.indexOf(target.closest<HTMLElement>(ITEM)!);
 	const t = typing.get(p) ?? newTyping();
 	typing.set(p, t);
-	const typed = typeahead(t, event, list, highlightedIn(p));
+	const typed = typeahead(t, event, list, highlightedIn(p), (i) => !visible(list[i]!));
 	if (typed !== undefined) {
 		highlight(p, list[typed], true);
 		keysMoved = true;
