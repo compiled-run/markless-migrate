@@ -116,7 +116,7 @@ export const PORTS: readonly Port[] = [
 	{ module: 'react-aria/combobox', library: 'react-aria-components', exports: ['ComboBox', 'ComboBoxValue', 'ListBox', 'ListBoxItem'], events: ['pointerdown', 'click', 'pointerover', 'input', 'keydown', 'focusout'], locate: () => true, needs: ['react-aria/overlay', 'react-aria/position', 'react-aria/collection', 'react-aria/interactions'] },
 	{ module: 'react-aria/tooltip', library: 'react-aria-components', exports: ['Tooltip', 'TooltipTrigger', 'PreviewTrigger', 'OverlayArrow'], events: ['pointerover', 'pointerout', 'focusin', 'focusout', 'pointerdown'], locate: () => true, needs: ['react-aria/overlay', 'react-aria/position', 'react-aria/interactions'] },
 	// React Aria calendars are Markless state (convert's RacCalendarPlan); the part keeps a calendar key from scrolling the page and syncs its pickers.
-	{ module: 'react-aria/calendar', library: 'react-aria-components', exports: ['Calendar', 'RangeCalendar', 'CalendarGrid', 'CalendarCell', 'CalendarHeading'], events: ['keydown', 'pointerdown'], locate: () => true, needs: ['react-aria/interactions'] },
+	{ module: 'react-aria/calendar', library: 'react-aria-components', exports: ['Calendar', 'RangeCalendar', 'CalendarGrid', 'CalendarCell', 'CalendarHeading'], events: ['keydown'], locate: () => true, needs: ['react-aria/interactions'] },
 	{ module: 'react-aria/disclosure', library: 'react-aria-components', exports: ['Disclosure', 'DisclosurePanel', 'DisclosureGroup'], events: ['click'], locate: () => true, needs: ['react-aria/interactions'] },
 	// What a native element does plus React Aria's hover, press and focus states (and the focus-within ones of the
 	// groups around them): Markless state or the browser does the rest.

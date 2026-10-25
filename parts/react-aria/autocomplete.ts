@@ -24,7 +24,8 @@ function contains(text: string, query: string): boolean {
 const shown = (collection: Element) => itemsOf(collection).filter((i) => !i.hidden);
 const focusedOf = (collection: Element) => itemsOf(collection, true).find((i) => i.hasAttribute('data-focused'));
 
-function focusItem(input: HTMLInputElement, collection: Element, item: HTMLElement | undefined): void {
+/** Focuses an item virtually: the input keeps focus and names it (aria-activedescendant). */
+export function focusItem(input: HTMLInputElement, collection: Element, item: HTMLElement | undefined): void {
 	for (const el of itemsOf(collection, true)) {
 		el.removeAttribute('data-focused');
 		el.removeAttribute('data-focus-visible');

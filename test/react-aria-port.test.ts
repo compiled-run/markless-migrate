@@ -24,6 +24,30 @@ const select = `
 <div data-slot="select-item" data-rac="" role="option" aria-selected="false" tabindex="-1" data-key="blueberry" id="o3"><span>Blueberry</span><span></span></div>
 </div></div></div>`;
 
+// What a calendar's month picker is: its SelectValue follows the calendar's state, the captured listbox still selects the capture's month.
+const staleSelect = select
+	.replace('<span data-slot="select-value" data-rac="" data-placeholder="true">Select a fruit</span>', '<span data-slot="select-value" data-rac="">Banana</span></button><div data-testid="hidden-select-container"><select><option value=""></option><option value="apple">Apple</option><option value="banana">Banana</option><option value="blueberry">Blueberry</option></select></div><button hidden>')
+	.replace('aria-selected="false" tabindex="-1" data-key="apple"', 'aria-selected="true" data-selected="true" tabindex="-1" data-key="apple"');
+
+const searchSelect = `
+<div data-slot="select" data-rac=""><button id="t1" data-slot="select-trigger" data-rac="" type="button" data-react-aria-pressable="true" aria-haspopup="listbox" aria-expanded="false"><span data-slot="select-value" data-rac="" data-placeholder="true">Select a fruit</span></button></div>
+<!--layers--><div style="display: contents;" hidden data-mm-layer="t1"><div data-slot="select-content" data-rac="" data-trigger="Select" style="position:absolute" role="dialog" tabindex="-1" data-placement="bottom">
+<div data-slot="select-input-wrapper" data-rac="" data-empty="true"><div data-slot="input-group" data-rac="" role="group"><input id="q" aria-autocomplete="list" data-slot="select-input" data-rac="" type="search" value="" aria-controls="lb"></div></div>
+<div id="lb" data-slot="select-list" data-rac="" role="listbox" aria-label="Suggestions"><section data-rac="" role="group">
+<div data-slot="select-item" data-rac="" role="option" aria-selected="false" tabindex="-1" data-key="apple" id="o1"><span>Apple</span><span></span></div>
+<div data-slot="select-item" data-rac="" role="option" aria-selected="false" tabindex="-1" data-key="banana" id="o2"><span>Banana</span><span></span></div>
+<div data-slot="select-item" data-rac="" role="option" aria-selected="false" tabindex="-1" data-key="blueberry" id="o3"><span>Blueberry</span><span></span></div>
+</section></div></div></div>`;
+
+const currencySelect = `
+<div data-slot="select" data-rac=""><button id="t1" data-slot="select-trigger" data-rac="" type="button" data-react-aria-pressable="true" aria-haspopup="listbox" aria-expanded="false">$<svg></svg></button></div>
+<!--layers--><div style="display: contents;" hidden data-mm-layer="t1"><div data-slot="select-content" data-rac="" data-trigger="Select" style="position:absolute" role="dialog" tabindex="-1" data-placement="bottom">
+<div id="lb" data-slot="select-list" data-rac="" role="listbox" tabindex="0">
+<div data-slot="select-item" data-rac="" role="option" aria-selected="true" data-selected="true" tabindex="-1" data-key="$" id="o1"><span>$ <span>US Dollar</span></span><span></span></div>
+<div data-slot="select-item" data-rac="" role="option" aria-selected="false" tabindex="-1" data-key="€" id="o2"><span>€ <span>Euro</span></span><span></span></div>
+<div data-slot="select-item" data-rac="" role="option" aria-selected="false" tabindex="-1" data-key="£" id="o3"><span>£ <span>British Pound</span></span><span></span></div>
+</div></div></div>`;
+
 const menu = `
 <button id="m1" data-slot="button" data-rac="" type="button" data-react-aria-pressable="true" aria-haspopup="true" aria-expanded="false">Open</button>
 <!--layers--><div style="display: contents;" hidden data-mm-layer="m1"><div data-slot="dropdown-menu-content" data-rac="" data-trigger="MenuTrigger" style="position:absolute" role="dialog" tabindex="-1" data-placement="bottom">
@@ -76,7 +100,7 @@ const autofocus = `
 
 const PARTS = ['react-aria/select', 'react-aria/menu', 'react-aria/dialog', 'react-aria/disclosure', 'react-aria/combobox', 'react-aria/tooltip'];
 
-async function open(html: string): Promise<Page> {
+async function open(html: string, parts: readonly string[] = PARTS): Promise<Page> {
 	const page = await browser.newPage();
 	await page.route('http://app.test/**', async (route) => {
 		const path = new URL(route.request().url()).pathname;
@@ -86,7 +110,7 @@ async function open(html: string): Promise<Page> {
 		}
 		// The page in its root, the overlays Markless renders after it, and Tailwind's preflight rule for [hidden].
 		const [page, layers = ''] = html.split('<!--layers-->');
-		return route.fulfill({ contentType: 'text/html', body: `<!doctype html><style>[hidden]:where(:not([hidden='until-found'])){display:none!important}</style><body style="margin:0;padding:40px"><div data-slot="layout">${page}</div>${layers}</body>` });
+		return route.fulfill({ contentType: 'text/html', body: `<!doctype html><meta charset="utf-8"><style>[hidden]:where(:not([hidden='until-found'])){display:none!important}</style><body style="margin:0;padding:40px"><div data-slot="layout">${page}</div>${layers}</body>` });
 	});
 	await page.goto('http://app.test/');
 	await page.evaluate(async (parts) => {
@@ -99,7 +123,7 @@ async function open(html: string): Promise<Page> {
 				for (const part of loaded) if (part[type]?.(event.target, event)) return;
 			});
 		}
-	}, PARTS);
+	}, parts);
 	return page;
 }
 
@@ -150,6 +174,60 @@ test('Select: the keyboard opens on the selected option, moves without wrapping,
 	await page.waitForTimeout(50);
 	assert.equal(await active(page), 't1');
 	assert.equal(await page.getAttribute('#t1', 'aria-expanded'), 'false');
+	await page.close();
+});
+
+test('Select: the option it opens on is the one its SelectValue shows, though the listbox was captured selecting another', async () => {
+	const page = await open(staleSelect);
+	await page.focus('#t1');
+	await page.keyboard.press('Enter');
+	assert.equal(await active(page), 'o2');
+	assert.deepEqual(await page.evaluate(() => ['o1', 'o2', 'o3'].map((id) => document.getElementById(id)!.getAttribute('aria-selected'))), ['false', 'true', 'false']);
+	assert.equal(await page.evaluate(() => document.querySelector('select')!.value), 'banana');
+	await page.keyboard.press('Escape');
+	await page.evaluate(() => (document.querySelector('select')!.value = ''));
+	await page.keyboard.press('Enter');
+	assert.equal(await page.evaluate(() => document.querySelector('select')!.value), 'banana', 'the hidden select follows though the selection already did');
+	await page.close();
+});
+
+test('Select with a search field: the field takes focus, the options are focused virtually, typing filters and Enter chooses', async () => {
+	const page = await open(searchSelect, [...PARTS, 'react-aria/autocomplete']);
+	await page.evaluate(() => document.getElementById('t1')!.addEventListener('mmchoose', (e) => ((window as { chosen?: string }).chosen = (e as CustomEvent<string>).detail)));
+	await page.focus('#t1');
+	await page.keyboard.press('Enter');
+	assert.equal(await active(page), 'q');
+	assert.equal(await page.getAttribute('#q', 'aria-activedescendant'), 'o1');
+	assert.equal(await page.getAttribute('#o1', 'data-focused'), 'true');
+	await page.hover('#o3');
+	assert.equal(await active(page), 'q', 'hovering moves the virtual focus');
+	assert.equal(await page.getAttribute('#q', 'aria-activedescendant'), 'o3');
+	await page.keyboard.type('an');
+	assert.deepEqual(await page.evaluate(() => ['o1', 'o2', 'o3'].map((id) => document.getElementById(id)!.hidden)), [true, false, true]);
+	await page.keyboard.press('ArrowDown');
+	assert.equal(await active(page), 'q');
+	assert.equal(await page.getAttribute('#q', 'aria-activedescendant'), 'o2');
+	await page.keyboard.press('Enter');
+	await page.waitForTimeout(50);
+	assert.equal(await page.evaluate(() => (window as { chosen?: string }).chosen), 'Banana');
+	assert.equal(await active(page), 't1');
+	await page.close();
+});
+
+test('Select whose trigger renders the chosen key itself: choosing tells the page the key it shows, not the option text', async () => {
+	const page = await open(currencySelect);
+	await page.evaluate(() => document.getElementById('t1')!.addEventListener('mmchoose', (e) => {
+		const t = e.currentTarget as HTMLElement;
+		t.firstChild!.textContent = (e as CustomEvent<string>).detail;
+	}));
+	await page.click('#t1');
+	await page.click('#o3');
+	await page.waitForTimeout(50);
+	assert.equal(await page.evaluate(() => document.getElementById('t1')!.textContent), '£');
+	await page.click('#t1');
+	await page.click('#o2');
+	await page.waitForTimeout(50);
+	assert.equal(await page.evaluate(() => document.getElementById('t1')!.textContent), '€');
 	await page.close();
 });
 

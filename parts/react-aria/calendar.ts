@@ -710,20 +710,6 @@ export function racCalendarEvent(config: RacCalendarConfig, read: RacCalendarVie
 	return next;
 }
 
-// The month and year pickers' listboxes are layers the select part opens: the option chosen is the one the picker shows.
-function syncPicker(root: Element, target: Element): void {
-	const trigger = target.closest('[aria-haspopup="listbox"]');
-	if (!trigger || !root.contains(trigger) || !trigger.id) return;
-	const shown = (trigger.querySelector('[data-slot="select-value"]')?.textContent ?? '').trim();
-	for (const option of document.querySelectorAll<HTMLElement>(`[data-mm-layer="${CSS.escape(trigger.id)}"] [role="option"]`)) {
-		const on = (option.textContent ?? '').trim() === shown;
-		option.setAttribute('aria-selected', String(on));
-		if (on) option.setAttribute('data-selected', 'true');
-		else option.removeAttribute('data-selected');
-		for (const icon of option.querySelectorAll('[data-mm-indicator]')) icon.toggleAttribute('hidden', !on);
-	}
-}
-
 /**
  * Once Markless has drawn the new view: the focused cell takes the browser's focus when React Aria's would (it moved by
  * key or press while the calendar had focus), and a button that became disabled hands focus to the grid, as
@@ -807,14 +793,6 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 	const root = target.closest(ROOT);
 	if (!root) return false;
 	if (KEYS.has(event.key) && inCell(root, target)) event.preventDefault();
-	syncPicker(root, target);
-	return false;
-}
-
-/** The part runs before the select part opens a picker: its options first show the calendar's month or year. */
-export function pointerdown(target: Element): boolean {
-	const root = target.closest(ROOT);
-	if (root) syncPicker(root, target);
 	return false;
 }
 
