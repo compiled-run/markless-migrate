@@ -12,6 +12,7 @@ import { changedRegions } from './visual.ts';
 import { storageCandidate, type StorageOwner } from './automatic.ts';
 import { loadPage } from './infrastructure.ts';
 import { describeStructure, STRUCTURE_ENGINE, type Structure } from './structure.ts';
+import { compositeWidgets, controlPattern, focusEntry, MAX_PATTERN_WIDGETS, outsidePoint, PATTERN_BUDGET_MS, PATTERN_SAMPLES, patternJourneys, TOOLTIP_PROBES, TOOLTIP_WAIT_MS, typeaheadLetter, unsafeChoice, widgetState, type PatternKey, type PatternWidget } from './patterns.ts';
 
 export interface Target {
 	readonly role: string;
@@ -21,11 +22,15 @@ export interface Target {
 	readonly structure?: Structure;
 }
 
-export type Key = 'Enter' | 'Space' | 'Escape' | 'ArrowDown' | 'ArrowUp' | 'ArrowLeft' | 'ArrowRight' | 'Home' | 'End';
+export type Key = 'Enter' | 'Space' | 'Escape' | 'ArrowDown' | 'ArrowUp' | 'ArrowLeft' | 'ArrowRight' | 'Home' | 'End' | 'PageUp' | 'PageDown';
 
 export type Step =
 	| { readonly action: 'click'; readonly target: Target }
 	| { readonly action: 'press'; readonly key: Key; readonly target: Target }
+	/** A key pressed where focus is now (`focus`: on the target first, or where Tab enters it when it is a composite widget); `choose` presses Enter unless the item would leave the page or end the session, then Escape. */
+	| { readonly action: 'key'; readonly key: PatternKey; readonly target: Target; readonly focus?: boolean; readonly choose?: boolean }
+	/** A click on a point outside the target and every pop-up shown, on no other control. */
+	| { readonly action: 'outside'; readonly target: Target }
 	| { readonly action: 'fill'; readonly target: Target; readonly value: string }
 	| { readonly action: 'select'; readonly target: Target; readonly value: string }
 	| { readonly action: 'submit'; readonly target: Target; readonly fields: readonly { readonly target: Target; readonly value: string; readonly check?: boolean }[] }
@@ -62,6 +67,8 @@ export interface StepResult {
 	readonly reloaded?: boolean;
 	/** A document loaded during the step (not a router's swap in place). */
 	readonly loaded?: boolean;
+	/** After a keyboard pattern step: the widget's value, whether it is expanded, and its active, highlighted, selected and expanded items (patterns.ts widgetState). */
+	readonly widget?: readonly string[];
 	/** How the page answered where a visitor sees it, when the step stayed on the page: the viewport regions whose pixels changed outside the used control's own box, and what changed in its widgets (a value, a selection, a moved or scrolled track). */
 	readonly reaction?: Reaction;
 }
@@ -91,6 +98,8 @@ export interface Journey {
 	readonly patience?: number;
 	/** The page the journey starts on, when not the route itself: its first step follows a link to the route in place, as a visitor arrives from another page. */
 	readonly start?: string;
+	/** The WAI-ARIA pattern whose keyboard sequence this journey runs: every step's widget state is compared. */
+	readonly pattern?: string;
 }
 
 /**
@@ -161,6 +170,13 @@ export function describeStep(step: Step): string {
 			return `click ${describeTarget(step.target)}`;
 		case 'press':
 			return `press ${step.key} on ${describeTarget(step.target)}`;
+		case 'key': {
+			const key = step.key === 'Typeahead' ? 'the first letter of the last item' : step.choose ? `${step.key} to choose` : step.key;
+			if (step.key === 'Focus') return `focus ${describeTarget(step.target)}`;
+			return step.focus ? `focus ${describeTarget(step.target)} and press ${key}` : `press ${key}`;
+		}
+		case 'outside':
+			return `click outside ${describeTarget(step.target)} and what it opened`;
 		case 'fill':
 			return `type "${step.value}" into ${describeTarget(step.target)}`;
 		case 'select':
@@ -640,12 +656,13 @@ function liveRegions() {
 
 // Runs in the page before a step: records which attributes change, and where every scrolling container and the window stand.
 function watchReaction(): void {
-	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; stop: () => void };
+	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; inserted: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; stop: () => void };
 	const g = globalThis as { __markless_migrate_reaction__?: Watch };
 	g.__markless_migrate_reaction__?.observer.disconnect();
 	g.__markless_migrate_reaction__?.shifts?.disconnect();
 	g.__markless_migrate_reaction__?.stop();
 	const changed = new Map<Element, Map<string, string | null>>();
+	const inserted = new Set<Node>();
 	const timing = { started: performance.now(), first: undefined as number | undefined, input: undefined as number | undefined };
 	// Timed from the input the page received, not from when the checker asked for it: how fast the checker's own clicks land is no page's.
 	const input = (event: Event) => {
@@ -662,6 +679,7 @@ function watchReaction(): void {
 	const observer = new MutationObserver((records) => {
 		if (timing.first === undefined && timing.input !== undefined && records.some((r) => !(r.target instanceof Element && r.attributeName?.startsWith('data-markless-migrate')))) timing.first = performance.now();
 		for (const r of records) {
+			if (r.type === 'childList') for (const n of r.addedNodes) inserted.add(n);
 			if (r.type !== 'attributes' || !(r.target instanceof Element) || !r.attributeName || r.attributeName.startsWith('data-markless-migrate')) continue;
 			let attrs = changed.get(r.target);
 			if (!attrs) changed.set(r.target, (attrs = new Map()));
@@ -693,12 +711,12 @@ function watchReaction(): void {
 			if (/(auto|scroll)/.test(`${s.overflowX} ${s.overflowY}`)) scrolls.set(el, `${Math.round(el.scrollLeft)},${Math.round(el.scrollTop)}`);
 		}
 	}
-	g.__markless_migrate_reaction__ = { observer, changed, scrolls, window: `${Math.round(scrollX)},${Math.round(scrollY)}`, shifts, shift, runs, stop: () => removeEventListener('transitionrun', ran, { capture: true }), get started() { return timing.input ?? timing.started; }, get first() { return timing.first; } };
+	g.__markless_migrate_reaction__ = { observer, changed, inserted, scrolls, window: `${Math.round(scrollX)},${Math.round(scrollY)}`, shifts, shift, runs, stop: () => removeEventListener('transitionrun', ran, { capture: true }), get started() { return timing.input ?? timing.started; }, get first() { return timing.first; } };
 }
 
 // Runs in the page after a step: what changed in the page's widgets, named by role and label as a visitor's tools name them.
 function readReaction(): { changes: string[]; scrolled: boolean; boxes: Record<string, { x: number; y: number; width: number; height: number }>; answeredMs?: number; shift: { score: number; x: number; y: number }; transitions: string[] } {
-	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; stop: () => void };
+	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; inserted: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; stop: () => void };
 	const g = globalThis as { __markless_migrate_reaction__?: Watch };
 	const watch = g.__markless_migrate_reaction__;
 	if (!watch) return { changes: [], scrolled: false, boxes: {}, shift: { score: 0, x: 0, y: 0 }, transitions: [] };
@@ -723,7 +741,8 @@ function readReaction(): { changes: string[]; scrolled: boolean; boxes: Record<s
 		const role = roleOf(el) ?? el.localName;
 		const kind = el.getAttribute('aria-roledescription');
 		const name = label(el);
-		const alike = [...document.querySelectorAll(el.getAttribute('role') ? `[role="${el.getAttribute('role')}"]` : el.localName)].filter((o) => label(o) === name);
+		// Content kept hidden (another select's closed list) is no namesake a visitor meets.
+		const alike = [...document.querySelectorAll(el.getAttribute('role') ? `[role="${el.getAttribute('role')}"]` : el.localName)].filter((o) => (o === el || o.checkVisibility()) && label(o) === name);
 		const nth = alike.length > 1 ? ` #${alike.indexOf(el) + 1}` : '';
 		return `${role}${kind ? ` (${kind})` : ''}${name ? ` "${name}"` : ''}${nth}`;
 	};
@@ -749,13 +768,18 @@ function readReaction(): { changes: string[]; scrolled: boolean; boxes: Record<s
 		return [s.transform, s.translate, s.left, s.top, s.right, s.bottom, s.marginLeft, s.marginTop, s.scale, s.rotate].join('|');
 	};
 	const out = new Set<string>();
+	// A pop-up put in during the step is placed as it goes in; that it appeared is the step's added lines, not a move.
+	const fresh = (el: Element) => {
+		for (let at: Node | null = el; at; at = at.parentNode) if (watch.inserted.has(at)) return true;
+		return false;
+	};
 	for (const [el, attrs] of watch.changed) {
 		if (!el.isConnected) continue;
 		for (const [attr, was] of attrs) {
 			const now = el.getAttribute(attr);
 			if (now === was) continue;
 			if (STATES.includes(attr)) add(`${describe(el)} ${attr}: ${was ?? '(none)'} → ${now ?? '(none)'}`, el);
-			else if (attr === 'style' && moved(was) !== moved(now)) anchored(el, 'moved');
+			else if (attr === 'style' && moved(was) !== moved(now) && !fresh(el)) anchored(el, 'moved');
 			// A contents list marks its current section by a class or a data attribute on the in-page link.
 			else if (el.matches('a[href^="#"]') && attr === 'class') {
 				const before = new Set((was ?? '').split(/\s+/).filter(Boolean));
@@ -1083,9 +1107,32 @@ async function reach(page: Page, target: Locator, act: (t: Locator, timeout: num
 }
 
 const USED = 'data-markless-migrate-used';
+// The widget a keyboard pattern journey uses, marked when its first step focuses it: a combobox named by its own value is renamed by the choice.
+const WIDGET = 'data-markless-migrate-widget';
+
+/** Whether focusing the control shows a tooltip that was not shown before; focus leaves it again either way. */
+async function showsTooltip(page: Page, control: Locator): Promise<boolean> {
+	const tip = page.getByRole('tooltip').filter({ visible: true });
+	if (await tip.count().catch(() => 1)) return false;
+	try {
+		await control.focus({ timeout: QUICK });
+		return await tip.first().waitFor({ state: 'visible', timeout: TOOLTIP_WAIT_MS }).then(() => true, () => false);
+	} catch {
+		return false;
+	} finally {
+		await control.evaluate((el) => (el as HTMLElement).blur(), undefined, { timeout: QUICK }).catch(() => {});
+		await tip.first().waitFor({ state: 'hidden', timeout: QUICK }).catch(() => {});
+	}
+}
+
+/** Where a step acts: a keyboard pattern step's marked widget, else its target by role and name. */
+async function stepTarget(page: Page, step: Step): Promise<Locator> {
+	const marked = page.locator(`[${WIDGET}]`).first();
+	return (step.action === 'key' || step.action === 'outside') && (await marked.count().catch(() => 0)) ? marked : locate(page, step.target);
+}
 
 async function perform(page: Page, step: Step, patience = QUICK): Promise<void> {
-	const target = locate(page, step.target);
+	const target = await stepTarget(page, step);
 	await target
 		.evaluate((el, used) => {
 			for (const other of document.querySelectorAll(`[${used}]`)) other.removeAttribute(used);
@@ -1098,6 +1145,24 @@ async function perform(page: Page, step: Step, patience = QUICK): Promise<void> 
 		case 'press':
 			await reach(page, target, (t, timeout) => t.focus({ timeout }), false, patience);
 			return page.keyboard.press(step.key);
+		case 'key': {
+			if (step.focus) await reach(page, target, async (t, timeout) => {
+				await t.evaluate((el, mark) => el.setAttribute(mark, ''), WIDGET, { timeout });
+				if (!(await t.evaluate(focusEntry, undefined, { timeout }))) throw new Error('nothing in it takes focus');
+			}, false, patience);
+			if (step.key === 'Focus') return;
+			if (step.key === 'Typeahead') {
+				const letter = await page.evaluate(typeaheadLetter);
+				return letter ? page.keyboard.press(letter) : undefined;
+			}
+			if (step.choose && (await page.evaluate(unsafeChoice, DESTRUCTIVE.source))) return page.keyboard.press('Escape');
+			return page.keyboard.press(step.key);
+		}
+		case 'outside': {
+			const point = await target.evaluate(outsidePoint, undefined, { timeout: patience }).catch(() => null);
+			if (!point) throw new UnreachableError('missing', 'no point outside it and what it opened holds no control');
+			return page.mouse.click(point.x, point.y);
+		}
 		case 'fill':
 			return reach(page, target, (t, timeout) => t.fill(step.value, { timeout }), false, patience);
 		case 'select':
@@ -1190,7 +1255,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 	const observe = async (act: () => Promise<void>, what: string, step: Step | undefined, destructive: boolean, reload: boolean): Promise<StepResult> => {
 		const startPath = new URL(page.url()).pathname;
 		const href = step?.target.role === 'link' ? await locate(page, step.target).getAttribute('href', { timeout: STEP_TIMEOUT }).catch(() => null) : null;
-		const used = step && !reload && step.action !== 'scroll' ? locate(page, step.target) : undefined;
+		const used = step && !reload && step.action !== 'scroll' ? await stepTarget(page, step) : undefined;
 		// The control is brought into view first, so the frames before and after the step show what it answers with, not a scroll.
 		if (used && (await used.evaluate((el) => { const r = el.getBoundingClientRect(); return r.bottom < 0 || r.right < 0 || r.top > innerHeight || r.left > innerWidth; }, undefined, { timeout: QUICK }).catch(() => false))) {
 			await used.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' }), undefined, { timeout: QUICK }).catch(() => {});
@@ -1228,6 +1293,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		if (!documentLoaded && new URL(page.url()).pathname !== startPath) await domQuiet(page);
 		log.holdAll = false;
 		accepting = false;
+		const widget = step && (step.action === 'key' || step.action === 'outside') ? await (await stepTarget(page, step)).evaluate(widgetState, undefined, { timeout: QUICK }).catch(() => ['the widget is gone']) : undefined;
 		const after = await snapshot(page, hosts);
 		const liveAfter = await page.evaluate(liveRegions).catch(() => [] as string[]);
 		// Lines the page changes on its own while nothing is used (a demo toggling a class on a timer) are no step's doing.
@@ -1278,6 +1344,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 			...(onOld(page.url()) ? { door: true } : {}),
 			...(state.length ? { state } : {}),
 			...(reaction ? { reaction } : {}),
+			...(widget ? { widget } : {}),
 		};
 		// The 1 to 3 s timeouts the step set (a "Copied" label's reset) run once its result is read, and are waited out before the next step.
 		if (ownTimers) {
@@ -1420,7 +1487,20 @@ interface Item {
 	readonly of?: Tracked;
 	/** Alike controls this journey uses one after another, after the steps that reveal them: each counts as exercised by its own step. */
 	readonly batch?: readonly Tracked[];
+	/** The widget whose WAI-ARIA keyboard journey this is. */
+	readonly keys?: KeyedWidget;
 }
+
+/** A widget given pattern journeys: how many of them ran on the old page, and why the rest did not. */
+interface KeyedWidget {
+	readonly widget: PatternWidget;
+	readonly element: string;
+	readonly signature: string;
+	readonly journeys: string[];
+	reason?: string;
+}
+
+const PATTERN_ROLES = new Set(['combobox', 'button', 'summary', 'slider']);
 
 const URGENT = 3;
 
@@ -1541,6 +1621,52 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	let formSteps: Step[] = [];
 	const deferred: { journey: Journey; signature: string }[] = [];
 	const sequences: Item[] = [];
+	const keyed: KeyedWidget[] = [];
+	const keyedKinds = new Map<string, number>();
+	const keyedSkipped = { alike: 0, over: 0 };
+	const loadComposites = new Set<string>();
+	/** The widgets among `found` and the composite widgets shown that follow a WAI-ARIA keyboard pattern, in page order (composites shown at load are left out after a step). */
+	const findWidgets = async (page: Page, found: readonly { readonly candidate: Candidate; readonly shared?: string }[], atLoad: boolean): Promise<PatternWidget[]> => {
+		const widgets: PatternWidget[] = [];
+		let probes = 0;
+		for (const t of found) {
+			const c = t.candidate;
+			if (t.shared || c.covered || c.skip || c.destructive) continue;
+			const kind = (pattern: string) => `${c.region}|${pattern}|${c.kind?.split('|').at(-1) ?? ''}`;
+			const pattern = PATTERN_ROLES.has(c.target.role) ? await locate(page, c.target).evaluate(controlPattern, undefined, { timeout: QUICK }).catch(() => null) : null;
+			if (pattern) widgets.push({ pattern, target: c.target, kind: kind(pattern) });
+			else if (atLoad && (c.target.role === 'button' || c.target.role === 'link') && !LAYOUT.has(c.region) && probes++ < TOOLTIP_PROBES && (await showsTooltip(page, locate(page, c.target)))) widgets.push({ pattern: 'tooltip', target: c.target, kind: kind('tooltip') });
+		}
+		for (const w of await compositeWidgets(page, snapshotName, STEP_TIMEOUT)) {
+			const key = `${w.target.role}|${w.target.name}|${w.target.nth}`;
+			if (atLoad) loadComposites.add(key);
+			else if (loadComposites.has(key)) continue;
+			if (LAYOUT.has(w.region)) continue;
+			widgets.push({ pattern: w.pattern, target: w.target, kind: `${w.region}|${w.pattern}|${w.slot}`, vertical: w.vertical });
+		}
+		return widgets;
+	};
+	/** Pattern journeys for the first few widgets of each kind, at most MAX_PATTERN_WIDGETS a route; called in a fixed order, so which widgets run never depends on timing. */
+	const keyItems = (widgets: readonly PatternWidget[], prefix: readonly Step[], depth: number): Item[] => {
+		const items: Item[] = [];
+		for (const widget of widgets) {
+			const seen = keyedKinds.get(widget.kind) ?? 0;
+			keyedKinds.set(widget.kind, seen + 1);
+			if (seen >= PATTERN_SAMPLES) {
+				keyedSkipped.alike++;
+				continue;
+			}
+			if (keyed.length >= MAX_PATTERN_WIDGETS) {
+				keyedSkipped.over++;
+				continue;
+			}
+			const element = `${widget.pattern} keyboard pattern of ${describeTarget(widget.target)}${prefix.length ? ` (after ${prefix.map(describeStep).join(', then ')})` : ''}`;
+			const k: KeyedWidget = { widget, element, signature: `keys|${prefix.map(describeStep).join('>')}|${widget.target.role}|${widget.target.name}|${widget.target.nth}`, journeys: [] };
+			keyed.push(k);
+			for (const journey of patternJourneys(widget, prefix, describeTarget)) items.push({ journey, depth, expand: false, keys: k });
+		}
+		return items;
+	};
 
 	const sampled = new Map<string, number>();
 	const batched = new Map<string, Tracked[]>();
@@ -1643,9 +1769,11 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			.slice(0, ARRIVAL_ENTRIES);
 		const first = itemsFor(track(found, [], undefined), 1);
 		formSteps = await forms(start.page, host, found);
+		const keys = keyItems(await findWidgets(start.page, tracked.filter((t) => !t.prefix.length), true), [], 1);
 		// A page with many controls gets the time they take, so the default budget does not leave its own controls unused; exploring ends sooner when its journeys run out.
-		if (options.budgetMs === undefined) budget = Math.min(MAX_ADAPTIVE_BUDGET_MS, Math.max(DEFAULT_JOURNEY_BUDGET_MS, found.length * BUDGET_PER_CONTROL_MS));
-		wave = [...first.primary, ...batches(1), ...formSteps.map((step): Item => ({ journey: { name: describeStep(step), steps: [step] }, depth: 1, expand: false }))];
+		if (options.budgetMs === undefined) budget = Math.min(MAX_ADAPTIVE_BUDGET_MS, Math.max(DEFAULT_JOURNEY_BUDGET_MS, found.length * BUDGET_PER_CONTROL_MS) + keys.length * PATTERN_BUDGET_MS);
+		// The keyboard patterns of the page's widgets run first: they are few, and a page whose other controls spend the budget must not leave them out.
+		wave = [...keys, ...first.primary, ...batches(1), ...formSteps.map((step): Item => ({ journey: { name: describeStep(step), steps: [step] }, depth: 1, expand: false }))];
 		later.push(...first.keyboard);
 		// A contents list of this page's sections: the page is scrolled to each section in turn, and what marks the current one is compared.
 		// A surface that answers the pointer moving over it (a chart showing a tooltip and its active point) is pointed at across its width.
@@ -1711,6 +1839,9 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			const steps = item.journey.steps;
 			const step = steps.at(-1)!;
 			const expanded = stayed && step.action === 'click' && (await locate(page, step.target).getAttribute('aria-expanded', { timeout: 500 }).catch(() => null)) === 'true';
+			// What a control opened (a date picker's calendar, a dialog's tabs) gets its keyboard patterns too, after the steps that open it.
+			const opener = item.expand && stayed && (expanded || opened.length > 0) && item.depth < maxDepth;
+			const widgets = opener ? await findWidgets(page, revealed.filter((c) => !known.has(`${c.target.role}|${c.target.name}|${c.target.nth}`)).map((candidate) => ({ candidate })), false) : [];
 			const sequences: Item[] = [];
 			let journey: Journey = item.journey;
 			if ((item.discover || item.journey.cycle) && stayed) {
@@ -1728,7 +1859,7 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 				for (const close of closes) sequences.push({ journey: { name: `${item.journey.name}, closed by ${closedBy(close)}`, steps, cycle: [close, 'again'] }, depth: item.depth, expand: false, rank: 2, of: item.element });
 				if (stored && navLink) sequences.push({ journey: { name: `${item.journey.name}, then follow ${describeTarget(navLink)}`, steps, cycle: [{ navigate: navLink }, 'again', 'reload'] }, depth: item.depth, expand: false, rank: URGENT, of: item.element });
 			}
-			return { item: { ...item, journey }, expected, done, failed: last.failed, unreachable: last.unreachable, revealed, expanded, sequences, empty: !item.discover && Boolean(item.journey.cycle) && !journey.cycle?.length };
+			return { item: { ...item, journey }, expected, done, failed: last.failed, unreachable: last.unreachable, revealed, expanded, sequences, widgets, empty: !item.discover && Boolean(item.journey.cycle) && !journey.cycle?.length };
 		} finally {
 			await session.close();
 		}
@@ -1754,7 +1885,10 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 	for (let depth = 1; wave.length; depth++) {
 		const room = Math.max(0, cap - journeys.length);
 		const runnable = wave.slice(0, room);
-		for (const item of wave.slice(room)) if (item.element) item.element.reason = `out of the journey budget (${options.maxJourneys} journeys)`;
+		for (const item of wave.slice(room)) {
+			if (item.element) item.element.reason = `out of the journey budget (${options.maxJourneys} journeys)`;
+			if (item.keys) item.keys.reason = `out of the journey budget (${options.maxJourneys} journeys)`;
+		}
 		// A control that changed the page's mode or what it stores is used again straight after, before deeper controls can spend the budget.
 		const results = await pool(runnable, CONCURRENCY, async (item) => {
 			if (outOfBudget()) return undefined;
@@ -1773,9 +1907,12 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 			const item = r?.item ?? runnable[i]!;
 			if (!r) {
 				if (item.element) item.element.reason = budgetReason(budget, options.maxJourneys);
+				if (item.keys) item.keys.reason = budgetReason(budget, options.maxJourneys);
 				continue;
 			}
 			journeys.push({ ...item.journey, expected: r.expected });
+			item.keys?.journeys.push(item.journey.name);
+			next.push(...keyItems(r.widgets, item.journey.steps, depth + 1));
 			sequences.push(...r.sequences.filter((s) => (s.rank ?? 0) < URGENT));
 			for (const [k, t] of (item.batch ?? []).entries()) {
 				const step = r.expected[t.prefix.length + k];
@@ -1836,6 +1973,9 @@ export async function explore(browser: Browser, env: SideEnv, route: string, vie
 		...(t.candidate.destructive ? { destructive: true } : {}),
 		...(t.unreachable && !t.by ? { unreachable: t.unreachable } : {}),
 	}));
+	for (const k of keyed) elements.push({ element: k.element, signature: k.signature, layout: false, ...(k.reason ? { reason: `its keyboard journeys were left out: ${k.reason}` } : { by: `its ${k.widget.pattern} keyboard journeys`, journeys: k.journeys }) });
+	if (keyedSkipped.alike) elements.push({ element: `${keyedSkipped.alike} more widget${keyedSkipped.alike === 1 ? '' : 's'} with a keyboard pattern, alike`, signature: 'keys|alike', layout: false, by: `alike: the first ${PATTERN_SAMPLES} of each kind run the keyboard journeys` });
+	if (keyedSkipped.over) elements.push({ element: `${keyedSkipped.over} more widget${keyedSkipped.over === 1 ? '' : 's'} with a keyboard pattern`, signature: 'keys|over', layout: false, by: `the first ${MAX_PATTERN_WIDGETS} widgets with a keyboard pattern run the keyboard journeys, in page order` });
 	for (const [group, n] of sampled) {
 		if (n <= SAMPLES) continue;
 		if (group.startsWith('repeat|')) continue;
@@ -1953,6 +2093,7 @@ function format(result: StepResult, parts: readonly string[], missing?: { change
 	if (parts.includes('errors')) out.push(`console errors: ${result.errors.join(' | ') || '(none)'}`);
 	if (parts.includes('announcements')) out.push(`announced: ${result.announcements.join(' | ') || '(nothing)'}`);
 	if (parts.includes('focus')) out.push(`focus on ${result.focus}`);
+	if (parts.includes('widget')) out.push(`widget: ${result.widget?.join(' | ') || '(not read)'}`);
 	if (parts.includes('state')) out.push(`changed: ${result.state?.join(' | ') || '(nothing)'}`);
 	if (parts.includes('storage')) out.push(`kept in the browser: ${result.storage?.join(', ') || '(no change)'}`);
 	if (parts.includes('dialogs')) out.push(`dialogs: ${result.dialogs?.join(' | ') || '(none)'}`);
@@ -2095,10 +2236,10 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			const n = improved?.step ?? raw;
 			// A page the front door serves from the old app keeps its state on the old app's origin.
 			if ((following || navigatedAway) && n?.door) break;
-			const dimension: Dimension = step.action === 'press' ? 'a11y' : 'behaviour';
-			const named = journey.steps.length > 1 && k <= last ? `${journey.name} (step ${k + 1})` : journey.name;
+			const dimension: Dimension = step.action === 'press' || journey.pattern ? 'a11y' : 'behaviour';
+			const named = journey.steps.length > 1 && k <= last ? `${journey.name} (step ${k + 1}${journey.pattern ? `: ${describeStep(step)}` : ''})` : journey.name;
 			const check = act ? `${journey.name} (${cycleLabel(journey.steps.length, acts, k - last - 1)})` : named;
-			const hint = act ? HINTS.cycle : step.action === 'press' ? HINTS.keyboard : HINTS.behaviour;
+			const hint = act ? HINTS.cycle : journey.pattern ? HINTS.keyboardPattern : step.action === 'press' ? HINTS.keyboard : HINTS.behaviour;
 			const where = (side: string, f: string) => (act ? `${side} ${f}; step by step: ${trail(side === 'old' ? runs[0]! : actual, last, k)}` : f);
 			if (!n || n.failed) {
 				failures.push({ route, dimension, check, expected: where('old', format(a!, ['url', 'added', 'state'])), actual: where('new', n?.failed ?? 'the journey stopped before this step'), hint });
@@ -2109,7 +2250,7 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			const navigated = n.navigated || oldSteps.some((x) => x!.navigated);
 			const reloaded = n.reloaded || oldSteps.some((x) => x!.reloaded);
 			let automatic: Failure['automatic'];
-			const fields = navigated ? (following ? (['requests', 'state', 'storage', 'dialogs'] as const) : (['requests', 'storage', 'dialogs'] as const)) : reloaded ? (['added', 'removed', 'state', 'storage'] as const) : (['added', 'removed', 'moved', 'requests', 'announcements', 'state', 'storage', 'dialogs'] as const);
+			const fields = navigated ? (following ? (['requests', 'state', 'storage', 'dialogs'] as const) : (['requests', 'storage', 'dialogs'] as const)) : reloaded ? (['added', 'removed', 'state', 'storage'] as const) : (['added', 'removed', 'moved', 'requests', 'announcements', 'state', 'storage', 'dialogs', 'widget'] as const);
 			for (const field of fields.filter((f) => !(f === 'storage' && n.door))) {
 				// Requests in flight together finish in any order (a client retrying hosts it shuffled), so they count as a set.
 				const lines = (r: StepResult) => (field === 'requests' ? [...r[field]].sort() : field === 'state' ? effects(r.state, owner) : field === 'added' || field === 'removed' ? untick(r)[field] : (r[field] ?? []));

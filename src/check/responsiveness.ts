@@ -480,7 +480,7 @@ export function controlsToMeasure(journeys: readonly RecordedJourney[], options:
 	const firsts = new Map<string, { step: Step; navigates: boolean; failed: boolean }>();
 	for (const j of journeys) {
 		const step = j.steps[0];
-		if (!step) continue;
+		if (!step || j.pattern) continue;
 		const key = `${step.target.role}|${step.target.name}|${step.target.nth}`;
 		const prev = firsts.get(key);
 		const entry = { step, navigates: Boolean(j.expected[0]?.navigated), failed: Boolean(j.expected[0]?.failed) };
