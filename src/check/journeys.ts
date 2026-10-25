@@ -85,6 +85,19 @@ export interface Reaction {
 	readonly transitions?: readonly string[];
 	/** Layout shifts while the step ran: their summed score and the largest sideways and vertical jump of any element, in px. */
 	readonly shift?: { readonly score: number; readonly x: number; readonly y: number };
+	/** What a visitor saw between the step and its result, frame by frame: see Views. */
+	readonly views?: Views;
+}
+
+/**
+ * The page's text as painted, sampled once a frame while the step ran: `swaps` counts each time it changed, `interimMs` how long
+ * the views between the one before the step and the result were on screen (a loading placeholder, content gone and back),
+ * and `interim` what those views showed that neither end did.
+ */
+export interface Views {
+	readonly swaps: number;
+	readonly interimMs: number;
+	readonly interim: readonly string[];
 }
 
 export interface Journey {
@@ -657,7 +670,7 @@ function liveRegions() {
 
 // Runs in the page before a step: records which attributes change, and where every scrolling container and the window stand.
 function watchReaction(): void {
-	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; inserted: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; stop: () => void };
+	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; inserted: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; views: { at: number; text: string }[]; stop: () => void };
 	const g = globalThis as { __markless_migrate_reaction__?: Watch };
 	g.__markless_migrate_reaction__?.observer.disconnect();
 	g.__markless_migrate_reaction__?.shifts?.disconnect();
@@ -677,7 +690,23 @@ function watchReaction(): void {
 		if (runs.length < 200 && event.target instanceof Element) runs.push({ el: event.target, what: (event as TransitionEvent).propertyName });
 	};
 	addEventListener('transitionrun', ran, { capture: true });
+	// The text a visitor sees, read once a frame after something changed: a state that lasts less than a frame is never painted.
+	const views: { at: number; text: string }[] = [];
+	const painted = () => (document.body?.innerText ?? '').replace(/\s+/g, ' ').trim();
+	views.push({ at: timing.started, text: painted() });
+	let dirty = false;
+	let frame = 0;
+	const sampleFrame = () => {
+		if (dirty && views.length < 120) {
+			dirty = false;
+			const text = painted();
+			if (text !== views[views.length - 1]!.text) views.push({ at: performance.now(), text });
+		}
+		frame = requestAnimationFrame(sampleFrame);
+	};
+	frame = requestAnimationFrame(sampleFrame);
 	const observer = new MutationObserver((records) => {
+		dirty = true;
 		if (timing.first === undefined && timing.input !== undefined && records.some((r) => !(r.target instanceof Element && r.attributeName?.startsWith('data-markless-migrate')))) timing.first = performance.now();
 		for (const r of records) {
 			if (r.type === 'childList') for (const n of r.addedNodes) inserted.add(n);
@@ -712,12 +741,12 @@ function watchReaction(): void {
 			if (/(auto|scroll)/.test(`${s.overflowX} ${s.overflowY}`)) scrolls.set(el, `${Math.round(el.scrollLeft)},${Math.round(el.scrollTop)}`);
 		}
 	}
-	g.__markless_migrate_reaction__ = { observer, changed, inserted, scrolls, window: `${Math.round(scrollX)},${Math.round(scrollY)}`, shifts, shift, runs, stop: () => removeEventListener('transitionrun', ran, { capture: true }), get started() { return timing.input ?? timing.started; }, get first() { return timing.first; } };
+	g.__markless_migrate_reaction__ = { observer, changed, inserted, scrolls, window: `${Math.round(scrollX)},${Math.round(scrollY)}`, shifts, shift, runs, views, stop: () => { removeEventListener('transitionrun', ran, { capture: true }); cancelAnimationFrame(frame); }, get started() { return timing.input ?? timing.started; }, get first() { return timing.first; } };
 }
 
 // Runs in the page after a step: what changed in the page's widgets, named by role and label as a visitor's tools name them.
-function readReaction(): { changes: string[]; scrolled: boolean; boxes: Record<string, { x: number; y: number; width: number; height: number }>; answeredMs?: number; shift: { score: number; x: number; y: number }; transitions: string[] } {
-	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; inserted: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; stop: () => void };
+function readReaction(): { changes: string[]; scrolled: boolean; boxes: Record<string, { x: number; y: number; width: number; height: number }>; answeredMs?: number; shift: { score: number; x: number; y: number }; transitions: string[]; views?: { swaps: number; interimMs: number; interim: string[] } } {
+	type Watch = { observer: MutationObserver; changed: Map<Element, Map<string, string | null>>; inserted: Set<Node>; scrolls: Map<Element, string>; window: string; started: number; first?: number; shifts?: PerformanceObserver; shift: { score: number; x: number; y: number }; runs: { el: Element; what: string }[]; views: { at: number; text: string }[]; stop: () => void };
 	const g = globalThis as { __markless_migrate_reaction__?: Watch };
 	const watch = g.__markless_migrate_reaction__;
 	if (!watch) return { changes: [], scrolled: false, boxes: {}, shift: { score: 0, x: 0, y: 0 }, transitions: [] };
@@ -795,7 +824,19 @@ function readReaction(): { changes: string[]; scrolled: boolean; boxes: Record<s
 		const at = anchorOf(r.el);
 		return `${at === r.el || !at ? (at ? describe(at) : r.el.localName) : `${r.el.localName} in ${describe(at)}`} ${r.what}`;
 	}))].sort();
-	return { transitions, changes: [...out].sort(), scrolled: `${Math.round(scrollX)},${Math.round(scrollY)}` !== watch.window, boxes, ...(watch.first !== undefined ? { answeredMs: Math.round(watch.first - watch.started) } : {}), shift: { score: Math.round(watch.shift.score * 1000) / 1000, x: Math.round(watch.shift.x), y: Math.round(watch.shift.y) } };
+	const views = watch.views;
+	const result = (document.body?.innerText ?? '').replace(/\s+/g, ' ').trim();
+	if (views.length && result !== views[views.length - 1]!.text) views.push({ at: performance.now(), text: result });
+	const ends = new Set([...(views[0]?.text ?? '').split(' '), ...result.split(' ')]);
+	let interimMs = 0;
+	const interim: string[] = [];
+	for (let i = 1; i < views.length - 1; i++) {
+		interimMs += views[i + 1]!.at - views[i]!.at;
+		const own = views[i]!.text.split(' ').filter((w) => w && !ends.has(w));
+		const line = own.length ? own.slice(0, 8).join(' ') + (own.length > 8 ? ' …' : '') : '(part of the page gone)';
+		if (interim.length < 5 && !interim.includes(line)) interim.push(line);
+	}
+	return { transitions, changes: [...out].sort(), scrolled: `${Math.round(scrollX)},${Math.round(scrollY)}` !== watch.window, boxes, ...(watch.first !== undefined ? { answeredMs: Math.round(watch.first - watch.started) } : {}), shift: { score: Math.round(watch.shift.score * 1000) / 1000, x: Math.round(watch.shift.x), y: Math.round(watch.shift.y) }, ...(views.length ? { views: { swaps: views.length - 1, interimMs: Math.round(interimMs), interim } } : {}) };
 }
 
 type TimerWindow = { __markless_migrate_timer_mark__?: () => number; __markless_migrate_timers_after__?: (mark: number) => number; __markless_migrate_hold_timers__?: (on: boolean) => void };
@@ -1311,7 +1352,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 		if (frameBefore && !documentLoaded && !stayed) {
 			// A router that swapped the page in place: what morphed on the way is compared, the rest is the new page's own.
 			const read = await page.evaluate(readReaction).catch(() => undefined);
-			if (read) reaction = { regions: [], changes: [], ...(read.transitions.length ? { transitions: read.transitions } : {}) };
+			if (read) reaction = { regions: [], changes: [], ...(read.transitions.length ? { transitions: read.transitions } : {}), ...(read.views ? { views: read.views } : {}) };
 		}
 		if (frameBefore && stayed) {
 			const read = await page.evaluate(readReaction).catch(() => undefined);
@@ -1320,7 +1361,7 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 			// What the page changes on its own (an autoplaying carousel, a ticking counter) is no step's answer.
 			// Where those widgets sit now is left out too: what moves on its own changes different pixels every second.
 			const own = read ? read.changes.filter((c) => ambient.changes.includes(c)).flatMap((c) => (read.boxes[c] ? [read.boxes[c]!] : [])) : [];
-			if (read && frameAfter) reaction = { regions: read.scrolled ? [] : changedRegions(frameBefore, frameAfter, [boxBefore, boxAfter, ...ambient.regions, ...own].filter((b): b is Box => Boolean(b))), changes: read.changes.filter((c) => !ambient.changes.includes(c)), ...(read.scrolled ? { scrolled: true } : {}), ...(read.answeredMs !== undefined ? { answeredMs: read.answeredMs } : {}), ...(read.shift.score || read.shift.x || read.shift.y ? { shift: read.shift } : {}), ...(read.transitions.length ? { transitions: read.transitions } : {}) };
+			if (read && frameAfter) reaction = { regions: read.scrolled ? [] : changedRegions(frameBefore, frameAfter, [boxBefore, boxAfter, ...ambient.regions, ...own].filter((b): b is Box => Boolean(b))), changes: read.changes.filter((c) => !ambient.changes.includes(c)), ...(read.scrolled ? { scrolled: true } : {}), ...(read.answeredMs !== undefined ? { answeredMs: read.answeredMs } : {}), ...(read.shift.score || read.shift.x || read.shift.y ? { shift: read.shift } : {}), ...(read.transitions.length ? { transitions: read.transitions } : {}), ...(read.views ? { views: read.views } : {}) };
 		}
 		const done: StepResult = {
 			url: redirected && here(page.url()) === landing ? 'the page the route redirected to' : here(page.url()),
@@ -2060,6 +2101,20 @@ export function extraShift(olds: readonly StepResult[], next: StepResult): strin
 	return `old: a large part of the page moves at most ${x} px sideways and ${y} px up or down (layout shift ${score}); new: ${n.x} px sideways and ${n.y} px up or down (layout shift ${n.score})`;
 }
 
+// A placeholder shown for under a tenth of a second is a flicker at most; one shown longer is a view the visitor reads.
+const INTERIM_MS = 100;
+
+/** The new page shows views between the step and its result (a loading placeholder, the content gone and back) that every old run went without, or for longer. */
+export function interimViews(olds: readonly StepResult[], next: StepResult): string | undefined {
+	const mine = next.reaction?.views;
+	if (!mine || olds.some((o) => !o.reaction?.views)) return undefined;
+	const old = Math.max(...olds.map((o) => o.reaction!.views!.interimMs));
+	if (mine.interimMs < INTERIM_MS || mine.interimMs <= old * SLOWER_RATIO + SLOWER_MS / 2) return undefined;
+	return `old: ${viewsLine(olds[0]!.reaction!.views!)}; new: ${viewsLine(mine)}`;
+}
+
+const viewsLine = (v: Views) => (v.swaps <= 1 ? 'goes straight to the result' : `shows ${v.swaps - 1} view${v.swaps > 2 ? 's' : ''} in between for ${v.interimMs} ms (${v.interim.map((t) => `"${t}"`).join(', ')}) before the result`);
+
 /** The new page takes meaningfully longer than every old run to show its first change after a step. */
 export function slowerAnswer(olds: readonly StepResult[], next: StepResult): string | undefined {
 	// A step that asks the server first is as fast as the server; how fast each side's server answers is the responsiveness check's, on a fair network.
@@ -2102,6 +2157,7 @@ function format(result: StepResult, parts: readonly string[], missing?: { change
 	const shifted = result.reaction?.shift;
 	if (parts.includes('shift')) out.push(`layout: ${shifted ? `a large part of the page moves ${shifted.x} px sideways and ${shifted.y} px up or down (layout shift ${shifted.score})` : 'nothing moves'}`);
 	if (parts.includes('answer time')) out.push(`first change ${result.reaction?.answeredMs ?? '?'} ms after the step`);
+	if (parts.includes('in between') && result.reaction?.views) out.push(`on screen until the result: ${viewsLine(result.reaction.views)}`);
 	if (parts.includes('morph')) out.push(`moves while the page changes: ${result.reaction?.transitions?.slice(0, 8).join(' | ') || '(nothing)'}`);
 	return out.join('; ');
 }
@@ -2271,6 +2327,7 @@ export function compareJourneys(route: string, olds: readonly Run[], journeys: r
 			const slower = navigated || reloaded ? undefined : slowerAnswer(oldSteps as StepResult[], n);
 			if (slower) parts.push('answer time');
 			if (navigated && !n.loaded && morphs(oldSteps as StepResult[], n).length) parts.push('morph');
+			if (!reloaded && !n.loaded && interimViews(oldSteps as StepResult[], n)) parts.push('in between');
 			if (parts.length) {
 				const failure: Failure = { route, dimension, check, expected: where('old', format(a!, parts, missing, true)), actual: where('new', format(n, parts, missing)), hint, ...(automatic && parts.length === 1 && parts[0] === 'storage' ? { automatic } : {}) };
 				if (parts.length === 1 && parts[0] === 'answer time') timedOnly.set(failure, { journey: j, step: k });
