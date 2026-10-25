@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { pageAsset } from '../src/check/browser.ts';
-import { compareJourneys, consoleErrorText, describeStep, labelled, localUrl, movedLines, pagePath, type Journey, type StepResult } from '../src/check/journeys.ts';
+import { compareJourneys, consoleErrorText, describeStep, labelled, localUrl, locate, movedLines, pagePath, type Journey, type StepResult } from '../src/check/journeys.ts';
 
 const result = (over: Partial<StepResult>): StepResult => ({ url: '/', added: [], removed: [], requests: [], errors: [], announcements: [], focus: 'body', navigated: false, ...over });
 const pour = { role: 'button', name: 'Pour a cup', nth: 0 };
@@ -159,4 +159,19 @@ test('a console error is compared by its message: the stack names each app\'s ow
 	assert.equal(consoleErrorText(port, ['http://127.0.0.1:4872']), consoleErrorText(old, ['http://127.0.0.1:4871']));
 	assert.equal(consoleErrorText(firefox, []), 'TypeError: x is undefined');
 	assert.equal(consoleErrorText('Warning: two lines\nof message, no stack', []), 'Warning: two lines\nof message, no stack', 'a message on several lines keeps them');
+});
+
+test('a control named with a relative time is found whatever the clock has moved it to, and other numbers still have to match', async () => {
+	const { chromium } = await import('playwright');
+	const browser = await chromium.launch();
+	try {
+		const page = await browser.newPage();
+		await page.setContent('<button>highlight 1 comment from 21 minutes ago</button><button>Page 3</button><button>a minute ago</button>');
+		assert.equal(await locate(page, { role: 'button', name: 'highlight 1 comment from 20 minutes ago', nth: 0 }).count(), 1);
+		assert.equal(await locate(page, { role: 'button', name: 'highlight 2 comments from 20 minutes ago', nth: 0 }).count(), 0, 'the count of comments is no time');
+		assert.equal(await locate(page, { role: 'button', name: '2 minutes ago', nth: 0 }).count(), 1, "react-timeago's 'a minute ago' is a minute");
+		assert.equal(await locate(page, { role: 'button', name: 'Page 2', nth: 0 }).count(), 0);
+	} finally {
+		await browser.close();
+	}
 });
