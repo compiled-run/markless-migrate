@@ -31,6 +31,15 @@ const menu = `
 <div data-rac="" role="menuitem" tabindex="-1" id="i1">Profile</div><div data-rac="" role="menuitem" tabindex="-1" id="i2">Billing</div><div data-rac="" role="menuitem" tabindex="-1" id="i3">Settings</div>
 </div></div></div>`;
 
+const submenu = `
+<button id="m1" data-slot="button" data-rac="" type="button" data-react-aria-pressable="true" aria-haspopup="true" aria-expanded="false">Open</button>
+<!--layers--><div style="display: contents;" hidden data-mm-layer="m1"><div data-slot="dropdown-menu-content" data-rac="" data-trigger="MenuTrigger" style="position:absolute" role="dialog" tabindex="-1" data-placement="bottom">
+<div id="menu" data-rac="" role="menu" tabindex="0">
+<div data-rac="" role="menuitem" tabindex="-1" id="i1">Team</div><div data-rac="" role="menuitem" tabindex="-1" id="i2" aria-haspopup="menu" aria-expanded="false">Invite users</div>
+</div></div></div><div style="display: contents;" hidden data-mm-layer="i2"><div data-rac="" data-trigger="SubmenuTrigger" style="position:absolute" data-placement="right">
+<div id="sub" data-rac="" role="menu" tabindex="0"><div data-rac="" role="menuitem" tabindex="-1" id="s1">Email</div><div data-rac="" role="menuitem" tabindex="-1" id="s2">Message</div></div>
+</div></div>`;
+
 const dialog = `
 <button id="d1" data-slot="button" data-rac="" type="button" data-react-aria-pressable="true" aria-expanded="false">Open Dialog</button>
 <!--layers--><div data-slot="dialog-overlay" data-rac="" hidden data-mm-layer="d1"><div data-slot="dialog-content" data-rac=""><div style="clip-path: inset(50%); position:absolute"><button aria-label="Dismiss" tabindex="-1"></button></div>
@@ -174,6 +183,26 @@ test('Menu: Enter opens on the first item, the arrows wrap, Escape closes and fo
 	await page.close();
 });
 
+test('Menu: a submenu opened from the keyboard takes focus on its first item, the modal menu leaving it usable', async () => {
+	const page = await open(submenu);
+	await page.focus('#m1');
+	await page.keyboard.press('Enter');
+	await page.keyboard.press('ArrowDown');
+	assert.equal(await active(page), 'i2');
+	await page.keyboard.press('Enter');
+	assert.equal(await page.getAttribute('#i2', 'aria-expanded'), 'true');
+	assert.equal(await active(page), 's1');
+	assert.equal(await page.evaluate(() => document.querySelector<HTMLElement>('[data-mm-layer="i2"]')!.inert), false);
+	await page.keyboard.press('ArrowDown');
+	assert.equal(await active(page), 's2');
+	await page.keyboard.press('ArrowLeft');
+	await page.waitForTimeout(50);
+	assert.equal(await active(page), 'i2');
+	await page.keyboard.press('ArrowRight');
+	assert.equal(await active(page), 's1');
+	await page.close();
+});
+
 test('Dialog: a press opens it focused, Tab stays inside, its close button closes it', async () => {
 	const page = await open(dialog);
 	await page.click('#d1');
@@ -253,6 +282,20 @@ test('ComboBox: typing shows the options containing the text, ArrowDown and Ente
 	assert.equal(await page.getAttribute('#cb', 'aria-expanded'), 'false');
 	await page.fill('#cb', 'zz');
 	assert.equal(await page.getAttribute('#cb', 'aria-expanded'), 'false', 'no option contains it, so it stays closed');
+	await page.close();
+});
+
+test('ComboBox: while open, everything but its input and popover is hidden from assistive technology, not made inert', async () => {
+	const page = await open(combobox);
+	await page.focus('#cb');
+	await page.keyboard.press('ArrowDown');
+	await page.waitForTimeout(50);
+	const hidden = () => page.evaluate(() => [...document.querySelectorAll('[aria-hidden="true"]')].map((el) => el.id || el.getAttribute('data-slot') || el.tagName));
+	assert.deepEqual(await hidden(), ['cbb']);
+	assert.equal(await page.evaluate(() => [...document.querySelectorAll('*')].some((el) => (el as HTMLElement).inert)), false);
+	await page.keyboard.press('Escape');
+	await page.waitForTimeout(50);
+	assert.deepEqual(await hidden(), []);
 	await page.close();
 });
 

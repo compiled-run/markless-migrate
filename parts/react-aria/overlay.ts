@@ -27,7 +27,16 @@ export const overlayOf = (el: Element | null) => (el ? open.find((o) => o.nodes.
 export const overlayFor = (trigger: Element) => open.find((o) => o.trigger === trigger);
 
 const inerted = new Map<HTMLElement, number>();
-function hideOutside(keep: readonly HTMLElement[]): () => void {
+const ariaHidden = new Map<HTMLElement, number>();
+// ariaHideOutside: everything in the body but `keep` made inert (a modal), or only aria-hidden (a ComboBox's popover).
+function hideOutside(keep: readonly HTMLElement[], mode: 'inert' | 'aria-hidden' = 'inert'): () => void {
+	const counts = mode === 'inert' ? inerted : ariaHidden;
+	const isHidden = (el: HTMLElement) => (mode === 'inert' ? el.inert : el.getAttribute('aria-hidden') === 'true');
+	const setHidden = (el: HTMLElement, on: boolean) => {
+		if (mode === 'inert') el.inert = on;
+		else if (on) el.setAttribute('aria-hidden', 'true');
+		else el.removeAttribute('aria-hidden');
+	};
 	const hidden: HTMLElement[] = [];
 	const keeps = (el: Element) => keep.some((k) => el.contains(k) || k.contains(el)) || el.matches('[data-live-announcer], [data-react-aria-top-layer]');
 	const walk = (parent: Element) => {
@@ -38,22 +47,34 @@ function hideOutside(keep: readonly HTMLElement[]): () => void {
 				walk(child);
 				continue;
 			}
-			const count = inerted.get(child) ?? 0;
-			if (count === 0 && child.inert) continue;
-			if (count === 0) child.inert = true;
-			inerted.set(child, count + 1);
+			const count = counts.get(child) ?? 0;
+			if (count === 0 && isHidden(child)) continue;
+			if (count === 0) setHidden(child, true);
+			counts.set(child, count + 1);
 			hidden.push(child);
 		}
 	};
 	walk(document.body);
 	return () => {
 		for (const el of hidden) {
-			const count = inerted.get(el) ?? 1;
+			const count = counts.get(el) ?? 1;
 			if (count === 1) {
-				el.inert = false;
-				inerted.delete(el);
-			} else inerted.set(el, count - 1);
+				setHidden(el, false);
+				counts.delete(el);
+			} else counts.set(el, count - 1);
 		}
+	};
+}
+
+/** useComboBox's ariaHideOutside: while it is open, assistive technology sees only `keep`; the page stays usable. */
+export const ariaHideOutside = (keep: readonly HTMLElement[]): (() => void) => hideOutside(keep, 'aria-hidden');
+
+// keepVisible: a non-modal overlay opened from a modal one (a submenu) stays usable though the modal one hid the rest.
+function keepVisible(nodes: readonly HTMLElement[]): () => void {
+	const shown = nodes.filter((n) => (inerted.get(n) ?? 0) > 0 && n.inert);
+	for (const n of shown) n.inert = false;
+	return () => {
+		for (const n of shown) if ((inerted.get(n) ?? 0) > 0) n.inert = true;
 	};
 }
 
@@ -147,7 +168,7 @@ export function openOverlay(trigger: HTMLElement, key: string, options: OpenOpti
 	if (o.modal) {
 		o.cleanup.push(hideOutside(nodes));
 		o.cleanup.push(preventScroll());
-	}
+	} else o.cleanup.push(keepVisible(nodes));
 	open.push(o);
 	if (nodes.some((n) => n.matches('[data-mm-layer-fill]') || n.querySelector('[data-mm-layer-fill]'))) void loadLayers().then(ready);
 	else ready();

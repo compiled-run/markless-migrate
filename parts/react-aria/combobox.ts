@@ -1,6 +1,6 @@
 import { itemsOf, textOf } from './collection.ts';
 import { holdPressed, keyboardModality, setModality } from './interactions.ts';
-import { closeOverlay, openOverlay, overlayFor, overlayOf, type Overlay } from './overlay.ts';
+import { ariaHideOutside, closeOverlay, openOverlay, overlayFor, overlayOf, type Overlay } from './overlay.ts';
 
 // React Aria's ComboBox (useComboBox, useComboBoxState with its default `contains` filter): the input keeps focus and
 // the listbox's focused option is virtual (aria-activedescendant, data-focused). Typing opens the popover on the options
@@ -119,6 +119,7 @@ function open(input: HTMLInputElement, query: string, strategy: 'first' | 'last'
 	if (!overlay || !overlayFor(button ?? input)) return undefined;
 	combo.overlay = overlay;
 	combos.push(combo);
+	overlay.cleanup.push(ariaHideOutside([input, ...overlay.nodes]));
 	input.setAttribute('aria-expanded', 'true');
 	rootOf(input)?.setAttribute('data-open', 'true');
 	const listbox = listboxOf(overlay);
