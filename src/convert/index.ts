@@ -13,6 +13,7 @@ import { attr, body, childrenOf, elementChildren, head, html, isElement, outer, 
 import { factor, GENERATED_ID, type Factored } from './factor.ts';
 import { BaseTabsPlan, CheckablePlan, RacTablePlan, DisclosurePlan, radixDisclosurePanel, InsertedDisclosurePlan, NotifyPlan, SelectPlan, SwitchPlan, TabsPlan } from './stateful.ts';
 import { captureCharts, CHART_CSS, ChartPlan, MOTION_FILE, type ChartFacts } from './charts.ts';
+import { captureSliders, type SliderFacts } from './sliders.ts';
 import { captureScenes, type Scene } from './scenes.ts';
 import { ScenePlan } from './scene-plan.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
@@ -866,6 +867,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const accordionModes = new Map<string, readonly AccordionMode[]>();
 	const hoverDelays = new Map<string, readonly HoverDelay[]>();
 	const carouselFacts = new Map<string, readonly CarouselFacts[]>();
+	const sliderFacts = new Map<string, readonly SliderFacts[]>();
 	const chartFacts = new Map<string, readonly ChartFacts[]>();
 	const chartRoutes: string[] = [];
 	const scrollerOpenings = new Map<string, readonly ScrollerOpening[]>();
@@ -974,6 +976,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 			const settled = Object.values((await ref.load()).settled);
 			if (settled.some((html) => html.includes('data-slot="carousel"'))) carouselFacts.set(ref.route, (await captureCarousels(browser, options.old, ref.route, join(state, 'convert', 'toggles'))).carousels);
 			if (settled.some((html) => html.includes('recharts-wrapper'))) chartRoutes.push(ref.route);
+			if (settled.some((html) => /data-slot="slider"/.test(html) && html.includes('role="slider"'))) sliderFacts.set(ref.route, (await captureSliders(browser, options.old, ref.route, join(state, 'convert', 'toggles'))).sliders);
 		}
 		// Each chart's states, sweeping the pointer over it on the old page, several pages at once.
 		const queue = [...chartRoutes];
@@ -1113,6 +1116,14 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		}
 	}
 	if (carouselFacts.size) log(`carousels measured: ${[...carouselFacts.values()].reduce((n, f) => n + f.length, 0)}`);
+	for (const [route, p] of prepared) {
+		const facts = sliderFacts.get(route) ?? [];
+		const locate = facts.length ? locator(p.root.parentNode as Element) : undefined;
+		for (const f of facts) {
+			const el = locate!(f.sig, f.nth);
+			if (el) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-mm-step'), { name: 'data-mm-step', value: String(f.step) }];
+		}
+	}
 	useMeasuredProps(ownDelays);
 	const measuredOf = (el: Element) => ownDelays.get(el);
 	const openings = new Map<Element, ScrollerOpening['position']>();
