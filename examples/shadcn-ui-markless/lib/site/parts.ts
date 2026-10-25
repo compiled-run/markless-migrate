@@ -29,18 +29,21 @@ const copied = new WeakMap<Element, { timer: number; saved: { cls: string | null
 
 function setIcon(svg: SVGElement, saved: { cls: string | null; d: (string | null)[] }, check: boolean): void {
 	const paths = [...svg.querySelectorAll('path')];
+	// The check is one path: the icon's other shapes (lucide Copy's rect) are not drawn meanwhile.
+	const others = [...svg.children].filter((el) => el !== paths[0]);
 	if (check) {
 		const icon = (saved.cls ?? '').includes('lucide') ? LUCIDE_CHECK : TABLER_CHECK;
 		svg.setAttribute('class', icon.class);
-		paths.forEach((p, i) => (i === 0 ? p.setAttribute('d', icon.d) : p.setAttribute('display', 'none')));
+		paths[0]?.setAttribute('d', icon.d);
+		for (const el of others) el.setAttribute('display', 'none');
 	} else {
 		if (saved.cls === null) svg.removeAttribute('class');
 		else svg.setAttribute('class', saved.cls);
 		paths.forEach((p, i) => {
 			const d = saved.d[i];
 			if (d) p.setAttribute('d', d);
-			p.removeAttribute('display');
 		});
+		for (const el of others) el.removeAttribute('display');
 	}
 }
 
@@ -94,6 +97,7 @@ function valueFor(button: Element): string {
 	return code?.textContent ?? '';
 }
 
+// registry/bases/*/ui/code-block.tsx's CodeBlockCopyButton: aria-label "Copied" and data-copied while it shows the check.
 function showCopied(button: HTMLElement): void {
 	const svg = button.querySelector('svg');
 	if (!svg) return;
@@ -101,11 +105,16 @@ function showCopied(button: HTMLElement): void {
 	if (was) clearTimeout(was.timer);
 	const saved = was?.saved ?? { cls: svg.getAttribute('class'), d: [...svg.querySelectorAll('path')].map((p) => p.getAttribute('d')) };
 	setIcon(svg, saved, true);
-	const marks = button.hasAttribute('data-copied');
+	const codeBlock = button.dataset.slot === 'code-block-copy-button';
+	const marks = button.hasAttribute('data-copied') || codeBlock;
 	if (marks) button.setAttribute('data-copied', 'true');
+	if (codeBlock) button.setAttribute('aria-label', 'Copied');
 	const timer = window.setTimeout(() => {
 		setIcon(svg, saved, false);
-		if (marks) button.setAttribute('data-copied', 'false');
+		if (codeBlock) {
+			button.removeAttribute('data-copied');
+			button.setAttribute('aria-label', 'Copy');
+		} else if (marks) button.setAttribute('data-copied', 'false');
 		copied.delete(button);
 	}, 2000);
 	copied.set(button, { timer, saved });
@@ -159,7 +168,7 @@ const docsSidebar: Part = {
 };
 
 // components/docs-copy-page.tsx: Copy Page writes the page's raw MDX (captured from the old page as what the button
-// copies) and shows IconCheck for useCopyToClipboard's 2 s.
+// copies) and shows IconCheck for useCopyToClipboard's 2 s; CodeBlockCopyButton (registry/bases/*/ui/code-block.tsx) alike.
 const copyPage: Part = {
 	click(target) {
 		const button = target.closest<HTMLElement>('button');
