@@ -67,6 +67,7 @@ export const HINTS = {
 	networkCount: 'The new page makes this request a different number of times. Fetch it once, as the old page did: share the result or deduplicate the call.',
 	networkFields: 'The old page shows these fields of the response and the new page does not. Render them, or request them if the new query no longer asks for them.',
 	networkRecorder: 'Start the server with the request recorder so its requests are compared: NODE_OPTIONS="--require <markless-migrate>/src/check/record-server.cjs" (run `markless-migrate recorder` for the exact line).',
+	hashLink: 'The old app kept each route after #, so every link anyone saved or shared reads /#/<route>. The new app must send that address to the route itself, before anything renders (a one-line script in the document head: if the hash starts with #/, location.replace the hash without its #), or those links all land on the front page.',
 	dataMissing: 'Run check --data record first: it saves what the old app fetched for each route under .migrate/data/, which --data replay then serves to both apps.',
 	accessGranted: 'The new app lets this role see a page the old app kept from it. Port the old guard (middleware, layout or page check) with the same condition, so the new app also redirects to the login page or answers 401/403.',
 	accessDenied: 'The new app turns this role away from a page the old app showed it. Check that the new app reads the same session cookie and grants the same roles.',

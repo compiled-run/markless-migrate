@@ -87,6 +87,7 @@ export function createServer(cwd: string): McpServer {
 				...(args.staging ? { staging: { old: true, new: true } } : {}),
 				...(args.data ? { data: { mode: args.data, dir: join(cwd, STATE_DIR, DATA_DIR) } } : {}),
 				...(source ? { source } : {}),
+				...(inventory?.source?.routing === 'hash' || source?.routing === 'hash' ? { oldRouting: 'hash' as const } : {}),
 				...(args.source || args.new_source ? { sourceDirs: { ...(args.source ? { old: resolve(args.source) } : {}), ...(args.new_source ? { new: resolve(args.new_source) } : {}) } } : {}),
 				...bypassOptions(args.header, args.cookie),
 				...(args.userAgent ? { userAgent: args.userAgent } : {}),

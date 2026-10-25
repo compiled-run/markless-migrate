@@ -14,6 +14,7 @@ import { request } from './http.ts';
 import { loadPage } from './infrastructure.ts';
 import { holdLoops, loopEffects, settleMotion, type LoopEffect } from './loops.ts';
 import { liveEmbeds, maskedShot, withoutEmbeds, type LiveEmbed } from './embeds.ts';
+import { routeLinks, routePath, shellRoute } from './hash-routes.ts';
 import { runtimeMarkers } from './residue.ts';
 
 const ASSET_TYPES = new Set(['image', 'font', 'stylesheet', 'script', 'media']);
@@ -43,6 +44,13 @@ const pageUrlBefore = (page: Page) => page.url();
 
 export function mime(contentType: string | null | undefined): string {
 	return (contentType ?? '').split(';')[0]!.trim().toLowerCase();
+}
+
+/** A route's HTTP answer; a hash-routed app answers every route from its shell at `/`, which is reported under the route. */
+export async function captureRouteHttp(env: Pick<SideEnv, 'origin' | 'routing'>, route: string, headers: Record<string, string> = {}): Promise<HttpCapture> {
+	if (!shellRoute(route, env.routing)) return captureHttp(env.origin, route, headers);
+	const http = await captureHttp(env.origin, '/', headers);
+	return { ...http, chain: http.chain.map((hop, i) => (i === 0 ? { ...hop, url: route } : hop)) };
 }
 
 export async function captureHttp(origin: string, route: string, headers: Record<string, string> = {}): Promise<HttpCapture> {
@@ -231,7 +239,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		const collected = await readPage(page, { origin, full: true });
 		const loops = await page.evaluate(loopEffects).catch(() => [] as LoopEffect[]);
 		const embedTrees = marked.length ? await Promise.all((await page.locator('[data-markless-migrate-embed]').all()).map((l) => l.ariaSnapshot({ timeout: 2000 }).catch(() => ''))) : [];
-		const aria = withoutEmbeds((await page.locator('body').ariaSnapshot()).split(origin).join('').split('\n'), embedTrees.map((t) => t.split(origin).join('').split('\n')));
+		const aria = withoutEmbeds(routeLinks(await page.locator('body').ariaSnapshot(), env.routing).split(origin).join('').split('\n'), embedTrees.map((t) => t.split(origin).join('').split('\n')));
 		const { shot: screenshot, embeds: live } = await maskedShot(page, (mask) => page.screenshot({ fullPage: true, animations: 'disabled', caret: 'hide', mask }), marked);
 		const coverage = await page.coverage.stopJSCoverage();
 		await Promise.all(pending);
@@ -274,7 +282,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		const server = await serverRecords(env, log.load);
 		const captured: PageCapture = {
 			viewport: viewport.name,
-			finalUrl: toLocal(pageUrl, origin),
+			finalUrl: toLocal(routePath(pageUrl, env.routing), origin),
 			...routeFile(html),
 			aria,
 			text: collected.text,
@@ -314,6 +322,6 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 }
 
 export async function captureRoute(browser: Browser, origin: string, route: string, viewports: readonly Viewport[], env: SideEnv = defaultEnv(origin)): Promise<RouteCapture> {
-	const [http, ...captured] = await Promise.all([captureHttp(origin, route, tagHeaders(env)), ...viewports.map((viewport) => capturePage(browser, env, route, viewport))]);
+	const [http, ...captured] = await Promise.all([captureRouteHttp(env, route, tagHeaders(env)), ...viewports.map((viewport) => capturePage(browser, env, route, viewport))]);
 	return { origin, route, http, pages: Object.fromEntries(captured.map((page) => [page.viewport, page])) };
 }

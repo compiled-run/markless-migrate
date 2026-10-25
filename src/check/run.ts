@@ -1,3 +1,5 @@
+import { shellRoute, type OldRouting } from './hash-routes.ts';
+import { hashLinkFailures } from './hash-links.ts';
 import { randomUUID } from 'node:crypto';
 import { checkEmbeds, type EmbedCheckOptions } from '../embed/check.ts';
 import { createWriteStream } from 'node:fs';
@@ -12,7 +14,7 @@ import { accessFailures, ANONYMOUS, saysDenied, compareLogin, loginRoutes, saveS
 import { BlockedError, blockedResult, detectChallenge, probeWall } from './blocked.ts';
 import type { ClientFact } from './source-facts.ts';
 import { adoptAnswers, LAUNCH, DEFINITE, defaultEnv, isLoopback, pushRecording, resetSharedAnswers, shareAnswers, storedAnswers, tagHeaders, type StoredAnswer, type SideEnv, type StorageState, type WallHit } from './browser.ts';
-import { captureHttp, captureRoute, landing, mime, pageLoads, thirdPartyLoads } from './capture.ts';
+import { captureHttp, captureRoute, captureRouteHttp, landing, mime, pageLoads, thirdPartyLoads } from './capture.ts';
 import { OldCache } from './cache.ts';
 import { everyRecording, readRecording, recordable, slug, writeRecording } from './data.ts';
 import { mergeRecordings, recordLive, restRecords } from './live-record.ts';
@@ -125,6 +127,7 @@ export interface CheckOptions {
 	readonly artifactsDir?: string;
 	/** Told as each page route's check finishes, with its result as the report will keep it. */
 	readonly onRoute?: (result: RouteResult) => void;
+	readonly oldRouting?: OldRouting;
 }
 
 
@@ -200,7 +203,7 @@ export function loadsDiffer(a: RouteCapture, b: RouteCapture): boolean {
 async function negotiate(env: SideEnv, route: string, locales: readonly string[]): Promise<Record<string, string>> {
 	const out: Record<string, string> = {};
 	for (const locale of locales) {
-		const http = await captureHttp(env.origin, route, { 'accept-language': locale, ...tagHeaders(env) }).catch(() => undefined);
+		const http = await captureRouteHttp(env, route, { 'accept-language': locale, ...tagHeaders(env) }).catch(() => undefined);
 		out[locale] = http ? http.chain.at(-1)!.url : '(no response)';
 	}
 	return out;
@@ -677,7 +680,7 @@ async function checkAs(browser: Browser, run: Run, route: string, role: string |
 	if (wall) return partialResult(route, [], [], wall);
 	const gate: Failure[] = [];
 	if (role) {
-		const [a, b, n] = await Promise.all([captureHttp(run.old.origin, route, tagHeaders(run.old)), captureHttp(run.old.origin, route, tagHeaders(run.old)), captureHttp(run.new.origin, route, tagHeaders(run.new))]);
+		const [a, b, n] = await Promise.all([captureRouteHttp(run.old, route, tagHeaders(run.old)), captureRouteHttp(run.old, route, tagHeaders(run.old)), captureRouteHttp(run.new, route, tagHeaders(run.new))]);
 		const guarded = run.source?.guarded?.some((pattern) => matchRoute(pattern, route)) ? { old: { saysDenied: await deniedPage(run.old, a) }, new: { saysDenied: await deniedPage(run.new, n) } } : undefined;
 		const decided = accessFailures(route, role, a, n, logins, guarded);
 		if (!decided.comparable) return partialResult(route, [...httpFailures(route, [a, b], n), ...decided.failures], ['http', 'auth']);
@@ -686,7 +689,10 @@ async function checkAs(browser: Browser, run: Run, route: string, role: string |
 	const walls = { old: [] as WallHit[], new: [] as WallHit[] };
 	const watched: Run = { ...run, old: { ...run.old, walls: walls.old }, new: { ...run.new, walls: walls.new } };
 	try {
-		const result = light ? await checkLight(browser, watched, route, options.viewports) : await checkRoute(browser, watched, route, options.viewports, options.locales);
+		const checked = light ? await checkLight(browser, watched, route, options.viewports) : await checkRoute(browser, watched, route, options.viewports, options.locales);
+		const links = shellRoute(route, run.old.routing) ? await hashLinkFailures(browser, run.new, route, (options.viewports ?? VIEWPORTS)[0]!) : [];
+		const result = links.length ? withFailures(checked, [...checked.failures, ...links]) : checked;
+		if (result !== checked && oldCaptures.has(checked)) oldCaptures.set(result, oldCaptures.get(checked)!);
 		// A wall that started part way through (an asset, a journey's post, a forced state) stops the route like one at the door.
 		const hit = walls.old[0] ? ({ side: 'old', ...walls.old[0] } as const) : walls.new[0] ? ({ side: 'new', ...walls.new[0] } as const) : undefined;
 		if (hit) return partialResult(route, [], [], blockedResult(hit.side, hit.status, hit));
@@ -760,7 +766,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [], ...(options.data ? { renderFresh: true } : {}), ...(dataHosts.size ? { dataHosts } : {}), ...(options.serverClock && freeze ? { serverClock: true } : {}), ...bypass };
 	const artifacts = options.artifactsDir ? new RouteArtifacts(options.artifactsDir, options.oldOrigin) : undefined;
 	const oldCache = options.cacheDir ? new OldCache(join(options.cacheDir, 'old'), { block: options.block ?? null }) : undefined;
-	const base: Run = { old: defaultEnv(options.oldOrigin, shared), new: defaultEnv(options.newOrigin, shared), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: { ...options.probes, layout: new Map<string, string>() } } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
+	const base: Run = { old: defaultEnv(options.oldOrigin, { ...shared, ...(options.oldRouting ? { routing: options.oldRouting } : {}) }), new: defaultEnv(options.newOrigin, shared), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: { ...options.probes, layout: new Map<string, string>() } } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
 	const auth = options.auth;
 	const roles: (string | undefined)[] = auth ? [ANONYMOUS, ...Object.keys(auth.roles)] : [undefined];
 	const logins: LoginResult[] = [];
@@ -771,7 +777,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 		const endpoints = new Set(options.endpoints ?? []);
 		const redirects = new Set(options.redirects ?? []);
 		const kinds = await pool(options.routes, 8, async (route) => {
-			const http = await captureHttp(options.oldOrigin, route, tagHeaders(base.old)).catch((error: unknown) => (classify(error) ? ('unreachable' as const) : undefined));
+			const http = await captureRouteHttp(base.old, route, tagHeaders(base.old)).catch((error: unknown) => (classify(error) ? ('unreachable' as const) : undefined));
 			if (http === 'unreachable') return 'page';
 			// A route the old app redirects off its own origin is compared by its status and redirect chain: the page it lands on
 			// is another site's. (A same-origin redirect, a login guard or a locale, still checks the page it shows.)

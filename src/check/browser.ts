@@ -15,6 +15,7 @@ import type { Viewport } from './types.ts';
 import { request } from './http.ts';
 import type { Scope } from './infrastructure.ts';
 import { FIREBASE_SOCKET, restAnswer, serveDatabases, type FakeDatabase, type LiveRecording, type SocketLog } from './live-data.ts';
+import { enterHashRoute, setRouting, shellRoute, type OldRouting } from './hash-routes.ts';
 
 /** How the checker treats one app: what it freezes and blocks, whether writes are sent, and which recorded data it serves. */
 export interface SideEnv {
@@ -49,6 +50,8 @@ export interface SideEnv {
 	readonly colorScheme?: 'light' | 'dark';
 	/** Hosts the old app's source reads its data from (its API clients): a journey's GETs there are answered from the run's one copy. */
 	readonly dataHosts?: ReadonlySet<string>;
+	/** A hash-routed old app: each route loads from the shell at `/` with the route moved into the hash, and the addresses its pages show are read as routes. */
+	readonly routing?: OldRouting;
 }
 
 // On an asset or a fetch only a challenge header proves a wall; a CDN's server header on an ordinary 403 does not.
@@ -353,6 +356,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 	const extra = env.headers ?? {};
 	if (env.freeze) await context.addInitScript(freezePage, { time: env.freeze.time, seed: env.freeze.seed, ...(env.freeze.clock ? { clock: env.freeze.clock } : {}) });
 	if (options.loops) await context.addInitScript(trackLoops, options.loops === true ? [] : [...options.loops.known]);
+	if (env.routing === 'hash') await context.addInitScript(enterHashRoute);
 	await context.addInitScript(trackEmbedSlots, SLOTS.map((s) => ({ ...s })));
 	await context.addInitScript(trackCanvasDraws);
 	const load = randomUUID();
@@ -420,6 +424,10 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 				if (request.isNavigationRequest()) return route.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><title>Write held back</title><p>markless-migrate held back this write: ${line.replace(/[&<>]/g, '')}</p>` });
 				return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } });
 			}
+		}
+		if (same && topLevelLoad(request) && shellRoute(url.pathname, env.routing)) {
+			const shell = await route.fetch({ url: new URL('/', home).href, headers: { ...request.headers(), ...extra, [RECORDER_HEADER]: tag } }).catch(() => undefined);
+			return shell ? route.fulfill({ response: shell }) : route.abort();
 		}
 		const door302 = door && topLevelLoad(request) ? frontDoorTarget(url, env.origin, door) : undefined;
 		if (door302) return route.fulfill({ status: 302, headers: { location: door302 } });
@@ -492,6 +500,7 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 		socket.on('framesent', (frame) => frames.push({ sent: true, text: String(frame.payload), at: Date.now() - opened }));
 		socket.on('framereceived', (frame) => frames.push({ sent: false, text: String(frame.payload), at: Date.now() - opened }));
 	});
+	setRouting(page, env.routing);
 	return { context, page, log, own: ownOrigin };
 }
 

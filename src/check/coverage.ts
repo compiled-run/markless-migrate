@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { tagHeaders, type SideEnv } from './browser.ts';
-import { captureHttp, mime, routeFile } from './capture.ts';
+import { captureHttp, captureRouteHttp, mime, routeFile } from './capture.ts';
 import { answeredThenRedirected, UNKNOWN_PATH, type Landing } from './endpoints.ts';
 import { movedInBrowser } from './compare.ts';
 import { HINTS } from './hints.ts';
@@ -13,7 +13,7 @@ const RETRIES_MS = [1_000, 4_000];
 /** A request the network dropped is tried again after a pause, twice: a busy server or a rate limit must not read as a missing route. */
 async function http(env: SideEnv, route: string): Promise<HttpCapture | undefined> {
 	for (let attempt = 0; ; attempt++) {
-		const got = await captureHttp(env.origin, route, tagHeaders(env)).catch(() => undefined);
+		const got = await captureRouteHttp(env, route, tagHeaders(env)).catch(() => undefined);
 		if (got && got.chain[0]!.status !== 429 && got.chain[0]!.status !== 503) return got;
 		if (attempt >= RETRIES_MS.length) return got;
 		await new Promise((done) => setTimeout(done, RETRIES_MS[attempt]));

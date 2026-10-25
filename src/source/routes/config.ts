@@ -7,6 +7,8 @@ import type { AuthGuard, SourceRoute } from '../types.ts';
 import { remixFlatRoutes } from './files.ts';
 
 export interface Found {
+	/** The source sets up a hash router: its routes are reached at `/#<route>`. */
+	hash?: boolean;
 	routes: SourceRoute[];
 	guards: AuthGuard[];
 }
@@ -249,6 +251,7 @@ export async function codeRoutes(ctx: Context): Promise<Found> {
 	for (const file of files) {
 		const text = await ctx.project.read(file);
 		if (!/vue-router|react-router|@angular\/router|@tanstack\/(react|solid)-router|Routes|createRoute/.test(text)) continue;
+		if (hashRouted(text)) found.hash = true;
 		const mod = await ctx.module(file);
 		if (!mod) continue;
 		const roots: N[] = [];
@@ -280,3 +283,10 @@ export async function codeRoutes(ctx: Context): Promise<Found> {
 	return found;
 }
 
+
+const HASH_ROUTERS = [/\bhashHistory\b/, /\bcreateHashHistory\s*\(/, /\bcreateHashRouter\s*\(/, /<HashRouter\b/, /\bcreateWebHashHistory\s*\(/, /\bmode\s*:\s*['"]hash['"]/, /\buseHash\s*:\s*true\b/];
+
+/** The source sets up a router that keeps the route after `#`: React Router's hashHistory, createHashRouter or HashRouter, Vue Router's hash history, Angular's useHash. */
+export function hashRouted(text: string): boolean {
+	return HASH_ROUTERS.some((pattern) => pattern.test(text));
+}

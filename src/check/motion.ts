@@ -1,3 +1,4 @@
+import { shownUrl } from './hash-routes.ts';
 import type { Png } from './artifacts.ts';
 import type { Browser, Page } from 'playwright';
 import type { SideEnv } from './browser.ts';
@@ -423,9 +424,9 @@ type Learned = SideEnv & { readonly loops: readonly string[] };
 type MotionJourney = RecordedJourney & { readonly dismiss?: boolean; readonly act?: number };
 
 async function dismiss(page: Page): Promise<{ failed?: string; navigated: boolean }> {
-	const path = new URL(page.url()).pathname;
+	const path = new URL(shownUrl(page)).pathname;
 	await page.keyboard.press('Escape');
-	return { navigated: new URL(page.url()).pathname !== path };
+	return { navigated: new URL(shownUrl(page)).pathname !== path };
 }
 
 interface Film {
