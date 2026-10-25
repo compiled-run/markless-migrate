@@ -235,8 +235,16 @@ export function locate(page: Page, t: Target): Locator {
 	return page.getByRole(t.role as Parameters<Page['getByRole']>[0], t.name ? { name: spacing(t.name) } : { name: '', exact: true }).nth(t.nth);
 }
 
-// A name matched whatever whitespace it has: a port that drops the spaces between a select's options names it alike.
-const spacing = (name: string) => new RegExp(`^\\s*${[...name.replace(/\s+/g, '')].map(escapeRegex).join('\\s*')}\\s*$`);
+const RELATIVE_TIME = /\b(?:\d+|an?)\s+(?:second|minute|hour|day|week|month|year)s?\s+ago\b/gi;
+const ANY_RELATIVE_TIME = '(?:\\d+|an?)\\s*(?:second|minute|hour|day|week|month|year)s?\\s*ago';
+
+// A name matched whatever whitespace it has (a port that drops the spaces between a select's options names it alike), and whatever a relative time in it reads now: the clock moves it between runs.
+const spacing = (name: string) => {
+	const letters = (text: string) => [...text.replace(/\s+/g, '')].map(escapeRegex);
+	const parts = name.split(RELATIVE_TIME).map(letters);
+	const pattern = parts.map((p) => p.join('\\s*')).join(`\\s*${ANY_RELATIVE_TIME}\\s*`);
+	return new RegExp(`^\\s*${pattern}\\s*$`);
+};
 
 function sample(type: string, name: string): string {
 	const n = name.toLowerCase();
