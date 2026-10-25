@@ -151,14 +151,14 @@ test('a port that shows only the first value it is sent is red at the live updat
 	const report = await replay(await app({ live: false }));
 	const route = report.routes[0]!;
 	assert.equal(route.ok, false);
-	assert.ok(route.failures.some((f) => f.dimension === 'behaviour' && /receive 1 live update/.test(f.check)), failures(route));
+	assert.ok(route.failures.some((f) => f.dimension === 'behaviour' && /^receive the 2 updates .*\(step 1\)/.test(f.check) && /Plums/.test(f.expected)), failures(route));
 });
 
 test('a port that forgets the last visit is red when the page comes back after updates it did not hear', async () => {
 	const report = await replay(await app({ forget: true }));
 	const route = report.routes[0]!;
 	assert.equal(route.ok, false);
-	assert.ok(route.failures.some((f) => /come back after the 2 updates/.test(f.check) && /reload/.test(f.check)), failures(route));
+	assert.ok(route.failures.some((f) => f.dimension === 'behaviour' && /^come back after the 2 updates/.test(f.check)), failures(route));
 });
 
 test("two frozen pages open at once each get their own routed socket, though their seeded randomness is the same", async () => {
