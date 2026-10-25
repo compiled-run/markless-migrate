@@ -75,7 +75,8 @@ test('Base UI Popover: its trigger has Dialog.Trigger\'s markup, yet it opens as
 	await page.close();
 });
 
-const drawer = (modal: boolean) => `<main style="height:3000px"><button type="button" data-slot="drawer-trigger" data-base-ui-click-trigger aria-haspopup="dialog" aria-expanded="false" id="dr">Open Drawer</button><button type="button">After</button></main>
+// `kept`: the root's disablePointerDismissal, as convert reads it off the instance onto its trigger.
+const drawer = (modal: boolean, kept = false) => `<main style="height:3000px"><button type="button" data-slot="drawer-trigger" data-base-ui-click-trigger aria-haspopup="dialog" aria-expanded="false" id="dr"${kept ? ' data-mm-disable-pointer-dismissal="true"' : ''}>Open Drawer</button><button type="button">After</button></main>
 	<div data-base-ui-portal hidden data-mm-layer="dr">${modal ? `${INTERNAL_BACKDROP}<div role="presentation" data-slot="drawer-overlay" aria-hidden="true" data-base-ui-inert data-closed></div>` : ''}<div role="presentation" data-slot="drawer-viewport" data-closed><div role="dialog" tabindex="-1" data-base-ui-focusable data-slot="drawer-popup" data-swipe-direction="right" data-closed><button type="button">First</button><button data-slot="drawer-close" type="button">Close</button></div></div></div>`;
 
 test('Base UI Drawer: the popup itself takes focus; a modal one hides and locks the page and keeps Tab inside', async () => {
@@ -89,8 +90,8 @@ test('Base UI Drawer: the popup itself takes focus; a modal one hides and locks 
 	await page.close();
 });
 
-test('Base UI Drawer with modal={false}: no internal backdrop, so the page stays live and scrolls, Tab leaves the popup through its portal\'s focus guards, its trigger toggles it', async () => {
-	const page = await open(drawer(false), ['base-ui/dialog']);
+test('Base UI Drawer with modal={false} and disablePointerDismissal: no internal backdrop, so the page stays live and scrolls, Tab leaves the popup through its portal\'s focus guards and it stays open, its trigger toggles it', async () => {
+	const page = await open(drawer(false, true), ['base-ui/dialog']);
 	await page.getByText('Open Drawer').click();
 	assert.equal(await focused(page), 'drawer-popup');
 	assert.deepEqual(await pageState(page), { hidden: null, gutter: '', overflow: '' });
@@ -151,4 +152,30 @@ test('Base UI Popover with nothing tabbable in it: opened, its popup takes focus
 	await press(page, 'Tab');
 	assert.deepEqual([await page.evaluate(() => document.activeElement?.textContent), await page.locator('#pop').getAttribute('aria-expanded')], ['After', 'false']);
 	await page.close();
+});
+
+test('Base UI Drawer with modal={false}: Tab out of it closes it (closeOnFocusOut) with focus where Tab went, and so does a press outside', async () => {
+	const page = await open(drawer(false), ['base-ui/dialog']);
+	const expanded = () => page.getByText('Open Drawer').getAttribute('aria-expanded');
+	await page.getByText('Open Drawer').click();
+	await page.getByText('Close').focus();
+	await press(page, 'Tab');
+	assert.deepEqual([await page.evaluate(() => document.activeElement?.textContent), await expanded()], ['After', 'false']);
+	await page.getByText('Open Drawer').click();
+	await settled(page);
+	await page.mouse.click(500, 700);
+	assert.equal(await expanded(), 'false');
+	await page.close();
+});
+
+test('Base UI Drawer with disablePointerDismissal: a press outside leaves it open, modal or not', async () => {
+	for (const modal of [false, true]) {
+		const page = await open(drawer(modal, true), ['base-ui/dialog']);
+		await page.getByText('Open Drawer').click();
+		await settled(page);
+		await page.mouse.click(5, 700);
+		await settled(page);
+		assert.equal(await page.getByText('Open Drawer').getAttribute('aria-expanded'), 'true', modal ? 'modal' : 'not modal');
+		await page.close();
+	}
 });

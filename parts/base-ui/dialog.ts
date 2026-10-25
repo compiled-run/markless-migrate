@@ -24,17 +24,19 @@ const scroller = (el: HTMLElement) => {
 };
 const tabbables = (root: HTMLElement, scrollers = true) => [...root.querySelectorAll<HTMLElement>(scrollers ? '*' : TABBABLE)].filter((el) => (el.matches(TABBABLE) || scroller(el)) && !el.closest('[hidden], [inert]') && !el.hasAttribute('data-base-ui-focus-guard') && el.getClientRects().length > 0);
 
-function close(p: Popup): void {
+function close(p: Popup, returnFocus = true): void {
 	undo.get(p)?.();
 	const overlay = p.portal.querySelector<HTMLElement>('[data-slot$="overlay"], [data-slot$="backdrop"]');
 	if (overlay) exit(overlay, [], () => {});
-	closePopup(p);
+	closePopup(p, returnFocus);
 }
 
 function open(trigger: HTMLElement): boolean {
 	const p = openPopup(trigger, { popupSelector: '[role="dialog"], [role="alertdialog"]', onDismiss: (x) => close(x), outsidePress: false, anchored: false, key: trigger.id || layerKey(trigger) });
 	if (!p) return false;
 	const alert = p.popup.getAttribute('role') === 'alertdialog';
+	// disablePointerDismissal (convert reads it per instance; always set for an alert dialog): no outside-press or focus-out close.
+	const dismissible = !alert && trigger.getAttribute('data-mm-disable-pointer-dismissal') !== 'true';
 	// DialogPortal renders its InternalBackdrop only for modal={true}: the page behind is then inert and does not scroll.
 	const modal = Boolean(p.portal.querySelector(':scope > [role="presentation"][data-base-ui-inert]:not([data-slot])'));
 	const overlay = p.portal.querySelector<HTMLElement>('[data-slot$="overlay"], [data-slot$="backdrop"]');
@@ -50,7 +52,10 @@ function open(trigger: HTMLElement): boolean {
 			if (!at || !p.popup.contains(at) || (event.shiftKey ? at !== list[0] && at !== p.popup : list.length && at !== list[list.length - 1])) return;
 			event.preventDefault();
 			if (event.shiftKey) trigger.focus();
-			else (tabbables(document.body, false).find((el) => !p.portal.contains(el) && Boolean(trigger.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)) ?? trigger).focus();
+			else {
+				(tabbables(document.body, false).find((el) => !p.portal.contains(el) && Boolean(trigger.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)) ?? trigger).focus();
+				if (dismissible) close(p, false);
+			}
 			return;
 		}
 		if (!list.length) {
@@ -69,10 +74,10 @@ function open(trigger: HTMLElement): boolean {
 			(content[0] ?? list[0]!).focus();
 		}
 	};
-	// A press on the backdrop closes a dialog; an alert dialog closes only through its own buttons or Escape.
+	// A press on the backdrop, or anywhere outside a non-modal one, closes it.
 	const onPress = (event: PointerEvent) => {
 		const target = event.target as Node | null;
-		if (alert || !target || p.popup.contains(target) || trigger.contains(target)) return;
+		if (!dismissible || !target || p.popup.contains(target) || trigger.contains(target)) return;
 		close(p);
 	};
 	document.addEventListener('keydown', onKey, true);

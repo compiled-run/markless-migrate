@@ -107,3 +107,15 @@ test('a capture is taken again only where an older one holds what a spec reads',
 	assert.equal(markedInstanceProps(['<p>nothing</p>'], undefined, [spec]), true);
 	assert.equal(markedInstanceProps(['<input aria-haspopup="listbox">'], 1, [spec]), true);
 });
+
+test("a dialog trigger gets its root's disablePointerDismissal, which Drawer.Root takes and Drawer.Trigger does not render", async () => {
+	const page = await browser.newPage();
+	const trigger = (id: string) => `<button id="${id}" data-base-ui-click-trigger aria-haspopup="dialog">Open</button>`;
+	await fibers(page, `<div id="page">${trigger('kept')}${trigger('plain')}</div>`, [3, {}, [[5, '#page', [
+		[0, { modal: false, disablePointerDismissal: true, swipeDirection: 'right' }, [[0, { render: {} }, [[11, {}, [[5, '#kept']]]]], [4, {}]]],
+		[0, { modal: false }, [[0, {}, [[5, '#plain']]]]],
+	]]]]);
+	await page.evaluate(markInstanceProps, { specs: INSTANCE_PROPS.filter((s) => s.port === 'base-ui/dialog'), added: false });
+	assert.deepEqual(await attrs(page, 'data-mm-disable-pointer-dismissal'), { page: null, kept: 'true', plain: null });
+	await page.close();
+});

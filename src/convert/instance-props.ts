@@ -20,6 +20,7 @@ export interface InstanceSpec {
 export const INSTANCE_PROPS: readonly InstanceSpec[] = [
 	{ port: 'base-ui/combobox', selector: 'input[role="combobox"][aria-haspopup="listbox"]:not([cmdk-input])', props: [{ name: 'autoHighlight' }], hints: ['aria-haspopup="listbox"'] },
 	{ port: 'base-ui/combobox', selector: '[role="listbox"][data-base-ui-focusable] [role="option"]', props: [{ name: 'value', attr: 'data-mm-value', as: 'form-value' }], hints: ['data-base-ui-focusable', 'role="option"'] },
+	{ port: 'base-ui/dialog', selector: '[data-base-ui-click-trigger][aria-haspopup="dialog"]', props: [{ name: 'disablePointerDismissal' }], hints: ['data-base-ui-click-trigger', 'aria-haspopup="dialog"'] },
 ];
 
 /** Bumped when the specs read more: captures marked with an older version are taken again where a spec applies. */
