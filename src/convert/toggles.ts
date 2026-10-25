@@ -59,14 +59,14 @@ export interface ToggleCapture {
 const SELECTOR = '[role="checkbox"], [role="switch"], [role="radio"], button[aria-pressed], label[data-rac]:has(input[type="checkbox"]), label[data-rac]:has(input[type="radio"])';
 
 // The selector is part of the key: controls it did not find before are captured again.
-const key = (route: string) => createHash('sha256').update(`toggles:${route}|${SELECTOR}|dependents`).digest('hex').slice(0, 16);
+const key = (route: string) => createHash('sha256').update(`toggles:${route}|${SELECTOR}|dependents|choice`).digest('hex').slice(0, 16);
 
 interface Found {
 	readonly id: number;
 	readonly sig: string;
 	readonly nth: number;
 	readonly role: string;
-	/** The radio group's id, for radios. */
+	/** The radio group's id, for radios, or the group a pressed toggle sits in. */
 	readonly group?: number;
 	readonly visible: boolean;
 }
@@ -97,8 +97,9 @@ async function find(page: Page): Promise<Found[]> {
 			const input = el.matches('label[data-rac]') ? el.querySelector('input') : null;
 			const role = input ? (input.getAttribute('role') ?? input.type) : (el.getAttribute('role') ?? 'pressed');
 			let group: number | undefined;
-			if (role === 'radio') {
-				const holder = el.closest('[role="radiogroup"]') ?? el.closest('[role="group"]') ?? el.parentElement!;
+			// Pressed toggles in one group may be one choice (a single-choice ToggleGroup); captureToggles tries.
+			const holder = role === 'radio' ? (el.closest('[role="radiogroup"]') ?? el.closest('[role="group"]') ?? el.parentElement!) : role === 'pressed' ? el.closest('[role="group"]') : null;
+			if (holder) {
 				if (!groups.has(holder)) groups.set(holder, groups.size);
 				group = groups.get(holder);
 			}
@@ -222,7 +223,93 @@ export async function captureToggles(browser: Browser, origin: string, route: st
 		await loadPage(page, new URL(route, origin).href);
 		await page.waitForTimeout(300);
 		const found = await find(page);
-		for (const c of found.filter((f) => f.role !== 'radio')) {
+		// One choice among buttons: a radio group, or a single-choice toggle group whose pressed buttons unpress each other.
+		const chooseOne = async (members: Found[]): Promise<void> => {
+			if (members.some((m) => !m.visible)) {
+				skipped.push(`${members[0]!.sig}#${members[0]!.nth}: a radio of its group is not visible`);
+				return;
+			}
+			const initial = await Promise.all(members.map((m) => stateOf(page, m.id)));
+			const on = new Map<number, ToggleState>();
+			const off = new Map<number, ToggleState>();
+			initial.forEach((s, i) => (s.on ? on : off).set(i, s));
+			const base = await snapshot(page);
+			const snaps: string[][] = [];
+			let failed: string | undefined;
+			for (let i = 0; i < members.length && !failed; i++) {
+				failed = await use(page, members[i]!.id);
+				const after = await Promise.all(members.map((m) => stateOf(page, m.id)));
+				after.forEach((s, k) => {
+					if (s.on && !on.has(k)) on.set(k, s);
+					if (!s.on && !off.has(k)) off.set(k, s);
+				});
+				snaps.push(await snapshot(page));
+			}
+			// Choosing the chosen one again: a radio group keeps it, a single-choice toggle group clears.
+			const last = members.length - 1;
+			await use(page, members[last]!.id);
+			const clears = !(await stateOf(page, members[last]!.id)).on;
+			if (clears) snaps.push(await snapshot(page));
+			const chosen = initial.findIndex((s) => s.on);
+			if (chosen >= 0) await use(page, members[chosen]!.id);
+			if (failed || members.some((_, k) => !on.has(k) || !off.has(k))) {
+				skipped.push(`${members[0]!.sig}#${members[0]!.nth}: ${failed ?? 'a radio never showed both states'}`);
+				return;
+			}
+			const found = await dependentsOf(page, members.map((m) => m.id), base, snaps, await snapshot(page));
+			let dependents: Dependent[] | undefined;
+			if (found.length) {
+				const states = found.map(() => ({}) as Record<string, ToggleState>);
+				const record = async (state: string) => (await dependentMarkup(page, found.map((d) => d.index))).forEach((m, k) => (states[k]![state] = m));
+				for (let i = 0; i < members.length; i++) {
+					await use(page, members[i]!.id);
+					// Choosing the chosen one of a group that clears clears it: once more chooses it.
+					if (!(await stateOf(page, members[i]!.id)).on) await use(page, members[i]!.id);
+					await record(String(i));
+				}
+				if (clears) {
+					await use(page, members[last]!.id);
+					await record('-1');
+				}
+				if (chosen >= 0) await use(page, members[chosen]!.id);
+				dependents = found.map((d, k) => ({ sig: d.sig, nth: d.nth, states: states[k]! }));
+			}
+			groups.push({ kind: 'radio', ...(clears ? { clears } : {}), controls: members.map((m, k) => ({ sig: m.sig, nth: m.nth, role: m.role, initial: initial[k]!.on, on: on.get(k)!, off: off.get(k)! })), ...(dependents ? { dependents } : {}) });
+		};
+		const exclusive = new Set<number>();
+		const pressedGroups = new Map<number, Found[]>();
+		for (const f of found.filter((f) => f.role === 'pressed' && f.group !== undefined && f.visible)) (pressedGroups.get(f.group!) ?? pressedGroups.set(f.group!, []).get(f.group!)!).push(f);
+		for (const members of pressedGroups.values()) {
+			if (members.length < 2) continue;
+			const before = await Promise.all(members.map((m) => stateOf(page, m.id)));
+			// Press one that is off, then another (the pressed one, if any): a single value lets only the second stay pressed.
+			const ia = before.findIndex((st) => !st.on);
+			const ib = before.findIndex((st, k) => k !== ia && st.on) >= 0 ? before.findIndex((st, k) => k !== ia && st.on) : before.findIndex((_, k) => k !== ia);
+			if (ia < 0 || ib < 0) continue;
+			const a = members[ia]!;
+			const b = members[ib]!;
+			if (await use(page, a.id)) continue;
+			const pressedA = (await stateOf(page, a.id)).on;
+			if (await use(page, b.id)) continue;
+			const afterB = await Promise.all(members.map((m) => stateOf(page, m.id)));
+			if (pressedA && afterB[ib]!.on && !afterB[ia]!.on) {
+				const chosen = before.findIndex((st) => st.on);
+				if (chosen >= 0) {
+					if (!(await stateOf(page, members[chosen]!.id)).on) await use(page, members[chosen]!.id);
+				} else await use(page, b.id);
+				const restored = await Promise.all(members.map((m) => stateOf(page, m.id)));
+				if (restored.some((st, k) => st.on !== before[k]!.on)) {
+					skipped.push(`${a.sig}#${a.nth}: its single-choice group did not go back to its first state`);
+					continue;
+				}
+				for (const m of members) exclusive.add(m.id);
+				await chooseOne(members);
+			} else {
+				await use(page, b.id);
+				await use(page, a.id);
+			}
+		}
+		for (const c of found.filter((f) => f.role !== 'radio' && !exclusive.has(f.id))) {
 			if (!c.visible) {
 				skipped.push(`${c.sig}#${c.nth}: not visible`);
 				continue;
@@ -256,58 +343,7 @@ export async function captureToggles(browser: Browser, origin: string, route: st
 		}
 		const radios = new Map<number, Found[]>();
 		for (const r of found.filter((f) => f.role === 'radio')) (radios.get(r.group!) ?? radios.set(r.group!, []).get(r.group!)!).push(r);
-		for (const members of radios.values()) {
-			if (members.some((m) => !m.visible)) {
-				skipped.push(`${members[0]!.sig}#${members[0]!.nth}: a radio of its group is not visible`);
-				continue;
-			}
-			const initial = await Promise.all(members.map((m) => stateOf(page, m.id)));
-			const on = new Map<number, ToggleState>();
-			const off = new Map<number, ToggleState>();
-			initial.forEach((s, i) => (s.on ? on : off).set(i, s));
-			const base = await snapshot(page);
-			const snaps: string[][] = [];
-			let failed: string | undefined;
-			for (let i = 0; i < members.length && !failed; i++) {
-				failed = await use(page, members[i]!.id);
-				const after = await Promise.all(members.map((m) => stateOf(page, m.id)));
-				after.forEach((s, k) => {
-					if (s.on && !on.has(k)) on.set(k, s);
-					if (!s.on && !off.has(k)) off.set(k, s);
-				});
-				snaps.push(await snapshot(page));
-			}
-			// Choosing the chosen one again: a radio group keeps it, a single-choice toggle group clears.
-			const last = members.length - 1;
-			await use(page, members[last]!.id);
-			const clears = !(await stateOf(page, members[last]!.id)).on;
-			if (clears) snaps.push(await snapshot(page));
-			const chosen = initial.findIndex((s) => s.on);
-			if (chosen >= 0) await use(page, members[chosen]!.id);
-			if (failed || members.some((_, k) => !on.has(k) || !off.has(k))) {
-				skipped.push(`${members[0]!.sig}#${members[0]!.nth}: ${failed ?? 'a radio never showed both states'}`);
-				continue;
-			}
-			const found = await dependentsOf(page, members.map((m) => m.id), base, snaps, await snapshot(page));
-			let dependents: Dependent[] | undefined;
-			if (found.length) {
-				const states = found.map(() => ({}) as Record<string, ToggleState>);
-				const record = async (state: string) => (await dependentMarkup(page, found.map((d) => d.index))).forEach((m, k) => (states[k]![state] = m));
-				for (let i = 0; i < members.length; i++) {
-					await use(page, members[i]!.id);
-					// Choosing the chosen one of a group that clears clears it: once more chooses it.
-					if (!(await stateOf(page, members[i]!.id)).on) await use(page, members[i]!.id);
-					await record(String(i));
-				}
-				if (clears) {
-					await use(page, members[last]!.id);
-					await record('-1');
-				}
-				if (chosen >= 0) await use(page, members[chosen]!.id);
-				dependents = found.map((d, k) => ({ sig: d.sig, nth: d.nth, states: states[k]! }));
-			}
-			groups.push({ kind: 'radio', ...(clears ? { clears } : {}), controls: members.map((m, k) => ({ sig: m.sig, nth: m.nth, role: m.role, initial: initial[k]!.on, on: on.get(k)!, off: off.get(k)! })), ...(dependents ? { dependents } : {}) });
-		}
+		for (const members of radios.values()) await chooseOne(members);
 	} finally {
 		await context.close().catch(() => {});
 	}
