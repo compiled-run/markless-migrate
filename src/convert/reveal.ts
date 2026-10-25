@@ -349,37 +349,30 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 	return capture;
 }
 
-/** Captures every route's reveals, `concurrency` at a time. */
-export async function captureAllReveals(browser: Browser, origin: string, routes: readonly string[], dir: string, options: { concurrency?: number; log?: (line: string) => void; extra?: readonly (readonly [selector: string, action: RevealAction, routes?: string])[]; opens?: readonly { readonly selector: string; readonly routes?: string }[] } = {}): Promise<RevealCapture[]> {
-	const memo: RevealMemo = new Map();
-	const out: RevealCapture[] = new Array(routes.length);
-	let next = 0;
-	let done = 0;
-	const worker = async () => {
-		while (next < routes.length) {
-			const index = next++;
-			const failed = (error: Error): RevealCapture => ({ route: routes[index]!, reveals: [], skipped: [`the route: ${error.message.split('\n')[0]}`] });
-			// A listed control with routes is the site's on those routes only.
-			const extra = (options.extra ?? []).filter(([, , only]) => !only || new RegExp(only).test(routes[index]!)).map(([selector, action]) => [selector, action] as const);
-			const own = await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, extra).catch(failed);
-			// The site's listed controls (View Code) again on their own, cached apart: their swaps are taken from here.
-			const listed = extra.length ? await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, extra, { controls: [], tag: 'listed-v2:' }).catch(failed) : undefined;
-			const relisted = new Set(listed?.reveals.flatMap((r) => [r.key, `${r.sig}#${r.nth}`]) ?? []);
-			const base = listed ? [...own.reveals.filter((r) => !((relisted.has(r.key) || relisted.has(`${r.sig}#${r.nth}`)) && r.added.every((a) => a.into === 'replace' || a.into === 'clipboard'))), ...listed.reveals] : own.reveals;
-			const child = await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, [], { controls: CHILD_HOVER, tag: 'child-hover:' }).catch(failed);
-			// Controls the site lists as opening a layer without ARIA saying so, on the routes it lists them for.
-			const opens = (options.opens ?? []).filter((o) => !o.routes || new RegExp(o.routes).test(routes[index]!)).map((o) => [o.selector, 'click'] as const);
-			const opened = opens.length ? await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, [], { controls: opens, tag: 'open:' }).catch(failed) : undefined;
-			const scroll = await captureReveals(browser, origin, routes[index]!, dir, memo, VIEWPORTS, [], { controls: SCROLL_HOVER, tag: 'scroll-area:' }).catch(failed);
-			const keys = new Set(base.map((r) => r.key));
-			const more = [...child.reveals, ...(opened?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? []), ...scroll.reveals];
-			out[index] = { route: own.route, reveals: [...base, ...more.filter((r) => !keys.has(r.key))], skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped, ...(opened?.skipped ?? [])] };
-			done++;
-			options.log?.(`revealed ${done}/${routes.length} ${routes[index]} (${out[index]!.reveals.length} controls)`);
-		}
-	};
-	await Promise.all(Array.from({ length: Math.max(1, options.concurrency ?? 4) }, worker));
-	return out;
+/** What the site lists beside the controls ARIA marks (lib/site/controls.json): controls that reveal, and those that open a layer ARIA does not mark. */
+export interface ListedControls {
+	readonly extra?: readonly (readonly [selector: string, action: RevealAction, routes?: string])[];
+	readonly opens?: readonly { readonly selector: string; readonly routes?: string }[];
+}
+
+/** Every pass over one route's controls (ARIA-marked, listed, child-rendered hovers, listed openers, scroll areas), joined. */
+export async function captureRouteReveals(browser: Browser, origin: string, route: string, dir: string, memo: RevealMemo, options: ListedControls = {}): Promise<RevealCapture> {
+	const failed = (error: Error): RevealCapture => ({ route, reveals: [], skipped: [`the route: ${error.message.split('\n')[0]}`] });
+	// A listed control with routes is the site's on those routes only.
+	const extra = (options.extra ?? []).filter(([, , only]) => !only || new RegExp(only).test(route)).map(([selector, action]) => [selector, action] as const);
+	const own = await captureReveals(browser, origin, route, dir, memo, VIEWPORTS, extra).catch(failed);
+	// The site's listed controls (View Code) again on their own, cached apart: their swaps are taken from here.
+	const listed = extra.length ? await captureReveals(browser, origin, route, dir, memo, VIEWPORTS, extra, { controls: [], tag: 'listed-v2:' }).catch(failed) : undefined;
+	const relisted = new Set(listed?.reveals.flatMap((r) => [r.key, `${r.sig}#${r.nth}`]) ?? []);
+	const base = listed ? [...own.reveals.filter((r) => !((relisted.has(r.key) || relisted.has(`${r.sig}#${r.nth}`)) && r.added.every((a) => a.into === 'replace' || a.into === 'clipboard'))), ...listed.reveals] : own.reveals;
+	const child = await captureReveals(browser, origin, route, dir, memo, VIEWPORTS, [], { controls: CHILD_HOVER, tag: 'child-hover:' }).catch(failed);
+	// Controls the site lists as opening a layer without ARIA saying so, on the routes it lists them for.
+	const opens = (options.opens ?? []).filter((o) => !o.routes || new RegExp(o.routes).test(route)).map((o) => [o.selector, 'click'] as const);
+	const opened = opens.length ? await captureReveals(browser, origin, route, dir, memo, VIEWPORTS, [], { controls: opens, tag: 'open:' }).catch(failed) : undefined;
+	const scroll = await captureReveals(browser, origin, route, dir, memo, VIEWPORTS, [], { controls: SCROLL_HOVER, tag: 'scroll-area:' }).catch(failed);
+	const keys = new Set(base.map((r) => r.key));
+	const more = [...child.reveals, ...(opened?.reveals.filter((r) => r.added.some((a) => a.into === 'body')) ?? []), ...scroll.reveals];
+	return { route: own.route, reveals: [...base, ...more.filter((r) => !keys.has(r.key))], skipped: [...own.skipped, ...(listed?.skipped ?? []), ...child.skipped, ...(opened?.skipped ?? [])] };
 }
 
 // React Aria's TooltipTrigger renders no element and marks nothing on its child, a PreviewTrigger's press opens nothing,

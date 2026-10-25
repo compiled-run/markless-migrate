@@ -3,9 +3,10 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { chromium } from 'playwright';
 import { copyAssets, copyStaticDir, resourcePaths } from './assets.ts';
-import { captureAll, type CapturedPage, type CapturedRef } from './capture.ts';
+import { capturePage, type CapturedPage, type CapturedRef } from './capture.ts';
+import { eachLimited, limiter } from './limit.ts';
 import { atRest } from './at-rest.ts';
-import { captureAllReveals, captureBaseSubmenus, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
+import { captureRouteReveals, type RevealMemo, captureBaseSubmenus, captureRacComboInputs, captureRacHovers, captureRacSubmenus, captureRadixSubmenus, type Reveal } from './reveal.ts';
 import { captureChoices, copyBinding, type Choice } from './choices.ts';
 import { parseFragment, serialize } from 'parse5';
 import { cleanDocument, frameworkBuilds, lateHead, type Dropped } from './clean.ts';
@@ -20,7 +21,7 @@ import { captureClock, DATED, type ClockMark } from './clock.ts';
 import { captureScenes, type Scene } from './scenes.ts';
 import { ScenePlan } from './scene-plan.ts';
 import { bindScroller, captureScrollers, useScrollerOpenings, type ScrollerOpening } from './scrollers.ts';
-import { captureAccordions, captureCarousels, restCarousel, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureAllForms, captureAllSwitches, captureAllToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
+import { captureAccordions, captureCarousels, restCarousel, captureComboboxEmpties, captureRacEmpties, type ComboboxEmpty, type EmptyReach, captureHoverDelays, captureForms, captureSwitches, captureToggles, captureNotifications, type AccordionMode, type CarouselFacts, type FormCapture, type HoverDelay, type Notify, type Switch, type ToggleGroup } from './toggles.ts';
 import { bindMount, bindParts, bodyHandlers, candidatesOf, docsearchConfigured, docsearchShell, useDocSearch, handledBy, portAttributes, portFor, onRoute, renamedFrom, UNPORTED, useMeasuredProps, useMounts, useResolver, writeParts, type PartUse } from './parts.ts';
 import { sourceSlotResolver, usageResolver, type PartResolver } from './usage.ts';
 import { captureTables, CELLS_PREFIX, mayHoldTable, SHARED_MODULE as TABLES_SHARED, SPEC_PREFIX, SPECS_MODULE as TABLE_SPECS, TablePlan, type CapturedTable } from './tanstack-table.ts';
@@ -898,6 +899,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const routes = options.only?.length ? htmlRoutes.filter((r) => options.only!.includes(r)) : htmlRoutes;
 	siteComponents = await readSiteComponents(app);
 	const browser = await chromium.launch();
+	const width = Math.max(1, options.concurrency ?? 4);
 	let captures: CapturedRef[];
 	const revealed = new Map<string, readonly Reveal[]>();
 	const toggled = new Map<string, readonly ToggleGroup[]>();
@@ -921,78 +923,113 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	optionValues = {};
 	layerChoices = choices;
 	try {
-		// The old site's not-found page, from a path no route has: the new app's 404 page.
-		captures = await captureAll(browser, options.old, options.only?.length ? routes : [...routes, NOT_FOUND], join(state, 'convert', 'captures'), { concurrency: options.concurrency ?? 4, log });
+		const limit = limiter(width);
+		const at = (name: string) => join(state, 'convert', name);
+		const reveal = options.reveal !== false;
 		// Controls the site's own components reveal content with, beside those ARIA marks (lib/site/controls.json).
 		const listed = await readFile(join(app, 'lib', 'site', 'controls.json'), 'utf8').then((t) => JSON.parse(t) as { selector: string; action: Reveal['action'] | 'toggle' | 'notify' | 'play' | 'open' | 'theme'; routes?: string }[], () => []);
 		const extra = listed.flatMap((c) => (c.action === 'toggle' || c.action === 'notify' || c.action === 'play' || c.action === 'open' || c.action === 'theme' ? [] : [[c.selector, c.action, c.routes] as const]));
 		// Controls the site lists as opening a layer no ARIA marks (a button whose click sets a dialog's open state).
 		const opens = listed.filter((c) => c.action === 'open').map((c) => ({ selector: c.selector, routes: c.routes }));
+		// Controls the site lists as switching attributes in place (lib/site/controls.json, action "toggle").
+		const switchSelectors = listed.filter((c) => c.action === 'toggle').map((c) => c.selector);
+		// TanStack tables are read when the usage inventory finds a TanStack table library (or there is none).
+		const usesTables = await readFile(join(state, 'usage.json'), 'utf8').then((text) => /"library":\s*"@tanstack\/(react|vue|solid|svelte)-table"/.test(text), () => true);
+		// The old site's not-found page, from a path no route has: the new app's 404 page.
+		const captureRoutes = options.only?.length ? routes : [...routes, NOT_FOUND];
+		let capturedCount = 0;
+		const pageOf = new Map(
+			captureRoutes.map((route) => {
+				const ref = limit(() => capturePage(browser, options.old, route, at('captures'))).then(({ status }): CapturedRef => {
+					log(`captured ${++capturedCount}/${captureRoutes.length} ${route}`);
+					return { route, status, load: () => capturePage(browser, options.old, route, at('captures')) };
+				});
+				ref.catch(() => {});
+				return [route, ref] as const;
+			}),
+		);
 		// Controls whose use the demo's own state answers (Send, Replay, Show more): every use recorded frame by frame.
-		for (const c of listed.filter((x) => x.action === 'play'))
-			for (const r of routes.filter((x) => !c.routes || new RegExp(c.routes).test(x))) scenes.set(r, [...(scenes.get(r) ?? []), ...(await captureScenes(browser, options.old, r, join(state, 'convert', 'scenes'), c.selector)).scenes.map((scene) => ({ scene, listed: c.selector }))]);
+		const plays = listed.filter((x) => x.action === 'play').flatMap((c) => routes.filter((x) => !c.routes || new RegExp(c.routes).test(x)).map((r) => [c.selector, r] as const));
+		const scenesRead = eachLimited(limit, plays, ([selector, r]) => captureScenes(browser, options.old, r, at('scenes'), selector)).then((got) => plays.forEach(([selector, r], i) => scenes.set(r, [...(scenes.get(r) ?? []), ...got[i]!.scenes.map((scene) => ({ scene, listed: selector }))])));
+		scenesRead.catch(() => {});
 		// Controls whose use shows a notification (a toast), on the routes the site lists them for.
-		for (const c of listed.filter((x) => x.action === 'notify')) {
-			const on = routes.filter((r) => !c.routes || new RegExp(c.routes).test(r));
-			for (const r of on) notified.set(r, [...(notified.get(r) ?? []), ...(await captureNotifications(browser, options.old, r, join(state, 'convert', 'toggles'), [c.selector])).notifications]);
-		}
+		const notifies = listed.filter((x) => x.action === 'notify').flatMap((c) => routes.filter((r) => !c.routes || new RegExp(c.routes).test(r)).map((r) => [c.selector, r] as const));
+		const notifiesRead = eachLimited(limit, notifies, ([selector, r]) => captureNotifications(browser, options.old, r, at('toggles'), [selector])).then((got) => notifies.forEach(([, r], i) => notified.set(r, [...(notified.get(r) ?? []), ...got[i]!.notifications])));
+		notifiesRead.catch(() => {});
 		// A control a demo's recorded uses play is the scene's, not a disclosure's: its reveal is not planned.
 		const played = (route: string) => new Set((scenes.get(route) ?? []).flatMap(({ scene }) => scene.edges.map((e) => e.control.replace(/#\d+$/, ''))));
-		if (options.reveal !== false) for (const r of await captureAllReveals(browser, options.old, routes, join(state, 'convert', 'reveals'), { concurrency: options.concurrency ?? 4, log, extra, opens })) revealed.set(r.route, r.reveals.filter((reveal) => !reveal.sig || !played(r.route).has(reveal.sig)));
-		// React Aria tooltips and previews, on the pages whose server HTML has React Aria controls.
-		if (options.reveal !== false) {
-			const queue = [...captures];
-			const worker = async () => {
-				for (let c = queue.shift(); c; c = queue.shift()) {
-					if (!(await c.load()).server.includes('data-react-aria-pressable')) continue;
-					const route = c.route;
-					const hovers = [...(await captureRacHovers(browser, options.old, route, join(state, 'convert', 'reveals'))), ...((await c.load()).server.includes('role="combobox"') ? await captureRacComboInputs(browser, options.old, route, join(state, 'convert', 'reveals')) : [])];
-					const own = revealed.get(route) ?? [];
-					const added = hovers.filter((h) => !own.some((r) => r.key === h.key));
-					if (added.length) revealed.set(route, [...own, ...added]);
-				}
-			};
-			await Promise.all(Array.from({ length: Math.max(1, options.concurrency ?? 4) }, worker));
+		const same = (a: Reveal, b: Reveal) => a.key === b.key && a.action === b.action && a.viewport === b.viewport && a.path.join('.') === b.path.join('.');
+		const empty = /(<div\b[^>]*\bdata-slot="combobox-empty"[^>]*>)(<\/div>)/;
+		const reachOf = (r: Reveal): EmptyReach | undefined => (!r.sig ? undefined : r.added.some((a) => a.html.includes('data-trigger="ComboBox"')) ? 'beside' : r.added.some((a) => /<input\b(?=[^>]*\bdata-rac\b)(?=[^>]*aria-autocomplete="list")(?![^>]*role="combobox")/.test(a.html)) ? 'opens' : undefined);
+		const racCalendar = (html: string) => /role="application"[^>]*data-rac=|data-rac=[^>]*role="application"/.test(html);
+		const memo: RevealMemo = new Map();
+		let revealedCount = 0;
+		let toggledCount = 0;
+		// Everything one route's old page is read for, each capture taking a slot of the limit; set in the maps in route order once all are in.
+		interface RouteFacts {
+			reveals?: readonly Reveal[];
+			racEmpties?: readonly ComboboxEmpty[];
+			accordions?: readonly AccordionMode[];
+			hoverDelays?: readonly HoverDelay[];
+			carousels?: readonly CarouselFacts[];
+			chart?: boolean;
+			sliders?: readonly SliderFacts[];
+			dated?: boolean;
+			clock?: readonly ClockMark[];
+			charts?: readonly ChartFacts[];
+			scrollers?: readonly ScrollerOpening[];
+			pickers?: CapturedPickers;
+			racCalendars?: CapturedCalendars;
+			tables?: readonly CapturedTable[];
+			toggles?: readonly ToggleGroup[];
+			switches?: readonly Switch[];
 		}
-		// React Aria and Radix submenus, on the routes where a revealed menu has an item that opens one.
-		if (options.reveal !== false)
-			for (const [route, reveals] of [...revealed]) {
-				const submenus = await captureRacSubmenus(browser, options.old, route, join(state, 'convert', 'reveals'), reveals);
-				// Radix's: the menus they open from come back with their sub-triggers keyed, in place of the menus' own reveals.
-				const radix = await captureRadixSubmenus(browser, options.old, route, join(state, 'convert', 'reveals'), reveals);
-				const same = (a: Reveal, b: Reveal) => a.key === b.key && a.action === b.action && a.viewport === b.viewport && a.path.join('.') === b.path.join('.');
-				const all = [...reveals.map((r) => radix.find((m) => same(m, r)) ?? r), ...[...submenus, ...radix].filter((s) => !reveals.some((r) => same(r, s) || r.key === s.key))];
-				if (all.length !== reveals.length || radix.length) revealed.set(route, all);
+		const readRoute = async (route: string): Promise<RouteFacts> => {
+			const ref = await pageOf.get(route)!;
+			const facts: RouteFacts = {};
+			const page = () => ref.load();
+			let reveals: readonly Reveal[] | undefined;
+			if (reveal && routes.includes(route)) {
+				const own = await limit(() => captureRouteReveals(browser, options.old, route, at('reveals'), memo, { extra, opens }));
+				log(`revealed ${++revealedCount}/${routes.length} ${route} (${own.reveals.length} controls)`);
+				await scenesRead;
+				reveals = own.reveals.filter((r) => !r.sig || !played(route).has(r.sig));
 			}
-		// Base UI submenus: the menus they open from come back with their triggers keyed, in place of the menus' own reveals.
-		if (options.reveal !== false)
-			for (const [route, reveals] of [...revealed]) {
-				const base = await captureBaseSubmenus(browser, options.old, route, join(state, 'convert', 'reveals'), reveals);
-				if (!base.length) continue;
-				const same = (a: Reveal, b: Reveal) => a.key === b.key && a.action === b.action && a.viewport === b.viewport && a.path.join('.') === b.path.join('.');
-				revealed.set(route, [...reveals.map((r) => base.find((m) => same(m, r)) ?? r), ...base.filter((s) => !reveals.some((r) => same(r, s) || r.key === s.key))]);
+			// React Aria tooltips and previews, on the pages whose server HTML has React Aria controls.
+			if (reveal && (await page()).server.includes('data-react-aria-pressable')) {
+				const hovers = [...(await limit(() => captureRacHovers(browser, options.old, route, at('reveals')))), ...((await page()).server.includes('role="combobox"') ? await limit(() => captureRacComboInputs(browser, options.old, route, at('reveals'))) : [])];
+				const own = reveals ?? [];
+				const added = hovers.filter((h) => !own.some((r) => r.key === h.key));
+				if (added.length) reveals = [...own, ...added];
 			}
-		// What each Base UI combobox shows once nothing matches, into the empty element of the layer it opens.
-		for (const [route, reveals] of revealed) {
-			const empty = /(<div\b[^>]*\bdata-slot="combobox-empty"[^>]*>)(<\/div>)/;
-			const controls = reveals.filter((r) => r.sig && r.added.some((a) => empty.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
-			if (!controls.length) continue;
-			const found = (await captureComboboxEmpties(browser, options.old, route, join(state, 'convert', 'toggles'), controls)).empties;
-			revealed.set(route, reveals.map((r) => {
-				const html = found.find((f) => f.sig === r.sig && f.nth === (r.nth ?? 0))?.html;
-				return html ? { ...r, added: r.added.map((a) => ({ ...a, html: a.html.replace(empty, (_, open: string, close: string) => `${open}${html}${close}`) })) } : r;
-			}));
-		}
-		// What each React Aria collection an input filters shows once nothing matches: a ComboBox's listbox and an
-		// Autocomplete's in a layer, hidden at the end of the layer's collection; an Autocomplete's in the page, likewise there.
-		if (options.reveal !== false)
-			for (const c of captures) {
-				if (!c || c.status !== 200) continue;
-				const route = c.route;
-				const reveals = revealed.get(route) ?? [];
-				const reachOf = (r: Reveal): EmptyReach | undefined => (!r.sig ? undefined : r.added.some((a) => a.html.includes('data-trigger="ComboBox"')) ? 'beside' : r.added.some((a) => /<input\b(?=[^>]*\bdata-rac\b)(?=[^>]*aria-autocomplete="list")(?![^>]*role="combobox")/.test(a.html)) ? 'opens' : undefined);
-				const fromLayers = reveals.flatMap((r) => (reachOf(r) ? [{ sig: r.sig!, nth: r.nth ?? 0, reach: reachOf(r)! }] : []));
-				const settled = (await c.load()).settled.desktop ?? Object.values((await c.load()).settled)[0] ?? '';
+			if (reveal && reveals) {
+				// React Aria and Radix submenus, where a revealed menu has an item that opens one; Radix's menus come back with their
+				// sub-triggers keyed, in place of the menus' own reveals.
+				const from = reveals;
+				const submenus = await limit(() => captureRacSubmenus(browser, options.old, route, at('reveals'), from));
+				const radix = await limit(() => captureRadixSubmenus(browser, options.old, route, at('reveals'), from));
+				const all = [...from.map((r) => radix.find((m) => same(m, r)) ?? r), ...[...submenus, ...radix].filter((s) => !from.some((r) => same(r, s) || r.key === s.key))];
+				if (all.length !== from.length || radix.length) reveals = all;
+				// Base UI submenus: the menus they open from come back with their triggers keyed, in place of the menus' own reveals.
+				const before = reveals;
+				const base = await limit(() => captureBaseSubmenus(browser, options.old, route, at('reveals'), before));
+				if (base.length) reveals = [...before.map((r) => base.find((m) => same(m, r)) ?? r), ...base.filter((s) => !before.some((r) => same(r, s) || r.key === s.key))];
+			}
+			// What each Base UI combobox shows once nothing matches, into the empty element of the layer it opens.
+			const comboboxes = (reveals ?? []).filter((r) => r.sig && r.added.some((a) => empty.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
+			if (reveals && comboboxes.length) {
+				const found = (await limit(() => captureComboboxEmpties(browser, options.old, route, at('toggles'), comboboxes))).empties;
+				reveals = reveals.map((r) => {
+					const html = found.find((f) => f.sig === r.sig && f.nth === (r.nth ?? 0))?.html;
+					return html ? { ...r, added: r.added.map((a) => ({ ...a, html: a.html.replace(empty, (_, open: string, close: string) => `${open}${html}${close}`) })) } : r;
+				});
+			}
+			// What each React Aria collection an input filters shows once nothing matches: a ComboBox's listbox and an
+			// Autocomplete's in a layer, hidden at the end of the layer's collection; an Autocomplete's in the page, likewise there.
+			if (reveal && ref.status === 200) {
+				const own = reveals ?? [];
+				const fromLayers = own.flatMap((r) => (reachOf(r) ? [{ sig: r.sig!, nth: r.nth ?? 0, reach: reachOf(r)! }] : []));
+				const settled = (await page()).settled.desktop ?? Object.values((await page()).settled)[0] ?? '';
 				const inPage: { sig: string; nth: number; reach: EmptyReach }[] = [];
 				if (settled.includes('aria-autocomplete="list"')) {
 					const counts = new Map<string, number>();
@@ -1008,96 +1045,111 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 					};
 					visit(body(parseDocument(settled)));
 				}
-				if (!fromLayers.length && !inPage.length) continue;
-				const found = (await captureRacEmpties(browser, options.old, route, join(state, 'convert', 'toggles'), [...fromLayers, ...inPage])).empties;
-				if (!found.length) continue;
-				const own = (f: ComboboxEmpty) => inPage.some((x) => x.sig === f.sig && x.nth === f.nth);
-				racPageEmpties.set(route, found.filter(own));
-				revealed.set(route, reveals.map((r) => {
-					const html = reachOf(r) && found.find((f) => !own(f) && f.sig === r.sig && f.nth === (r.nth ?? 0))?.html;
-					return html ? { ...r, added: r.added.map((a) => (/role="(listbox|menu)"/.test(a.html) ? { ...a, html: withEmptyState(a.html, html) } : a)) } : r;
-				}));
-			}
-		// Whether each accordion lets several items be open, on the routes where one revealed an item's content.
-		for (const [route, reveals] of revealed) if (reveals.some((r) => r.sig?.includes('|accordion-trigger|'))) accordionModes.set(route, (await captureAccordions(browser, options.old, route, join(state, 'convert', 'toggles'))).accordions);
-		// React Aria's accordion panels are in the page while collapsed, so expanding one reveals nothing: its server HTML says it is there.
-		for (const c of captures) if (c && !accordionModes.has(c.route) && /data-slot="accordion"[^>]*data-rac=/.test((await c.load()).server)) accordionModes.set(c.route, (await captureAccordions(browser, options.old, c.route, join(state, 'convert', 'toggles'))).accordions);
-		for (const [route, reveals] of revealed) {
-			// Hover cards, among them those whose trigger renders its child (its data-slot is the child's).
-			const others = reveals.filter((r) => r.action === 'hover' && r.sig && !r.sig.includes('|hover-card-trigger|') && r.added.some((a) => /data-slot="hover-card-content"/.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
-			if (others.length || reveals.some((r) => r.sig?.includes('|hover-card-trigger|'))) hoverDelays.set(route, (await captureHoverDelays(browser, options.old, route, join(state, 'convert', 'toggles'), others)).delays);
-		}
-		// Each carousel's alignment and autoplay, on the routes whose settled page has one.
-		for (const ref of captures) {
-			if (ref.status !== 200) continue;
-			const settled = Object.values((await ref.load()).settled);
-			if (settled.some((html) => html.includes('data-slot="carousel"'))) carouselFacts.set(ref.route, (await captureCarousels(browser, options.old, ref.route, join(state, 'convert', 'toggles'))).carousels);
-			if (settled.some((html) => html.includes('recharts-wrapper'))) chartRoutes.push(ref.route);
-			if (settled.some((html) => /data-slot="slider"/.test(html) && html.includes('role="slider"'))) sliderFacts.set(ref.route, (await captureSliders(browser, options.old, ref.route, join(state, 'convert', 'toggles'))).sliders);
-			if (settled.some((html) => DATED.test(html))) clockRoutes.push(ref.route);
-		}
-		// The dates each page computes in the visitor's browser, read again at a later clock and behind UTC.
-		const clockQueue = [...clockRoutes];
-		await Promise.all(Array.from({ length: Math.min(options.concurrency ?? 4, clockQueue.length) }, async () => {
-			for (let route = clockQueue.shift(); route !== undefined; route = clockQueue.shift()) clockMarks.set(route, (await captureClock(browser, options.old, route, join(state, 'convert', 'clock'))).marks);
-		}));
-		// Each chart's states, sweeping the pointer over it on the old page, several pages at once.
-		const queue = [...chartRoutes];
-		await Promise.all(Array.from({ length: Math.min(options.concurrency ?? 4, queue.length) }, async () => {
-			for (let route = queue.shift(); route !== undefined; route = queue.shift()) chartFacts.set(route, (await captureCharts(browser, options.old, route, join(state, 'convert', 'toggles'))).charts);
-		}));
-		for (const c of captures) if (c && (await c.load()).server.includes('data-slot="message-scroller"')) scrollerOpenings.set(c.route, (await captureScrollers(browser, options.old, c.route, join(state, 'convert', 'toggles'))).scrollers);
-		// What each react-day-picker calendar was given, on the routes whose settled page shows a month grid.
-		if (options.reveal !== false)
-			for (const ref of captures) {
-				if (!ref || ref.status !== 200) continue;
-				// The controls whose layer shows a calendar (a date picker's trigger): their calendars are read opened.
-				const openers = (revealed.get(ref.route) ?? []).filter((r) => r.sig && r.added.some((a) => a.into === 'body' && /<table[^>]*role="grid"[^>]*aria-multiselectable/.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
-				if (!openers.length && !Object.values((await ref.load()).settled).some((html) => /<table[^>]*role="grid"[^>]*aria-multiselectable/.test(html))) continue;
-				pickers.set(ref.route, await captureDayPickers(browser, options.old, ref.route, join(state, 'convert', 'day-pickers'), openers));
-			}
-		// What each React Aria calendar was given, on the routes whose settled page shows one.
-		if (options.reveal !== false)
-			for (const ref of captures) {
-				const calendar = (html: string) => /role="application"[^>]*data-rac=|data-rac=[^>]*role="application"/.test(html);
-				const opening = (revealed.get(ref?.route ?? '') ?? []).filter((r) => r.sig && r.added.some((a) => calendar(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0, path: r.path }));
-				if (!ref || ref.status !== 200 || (!opening.length && !Object.values((await ref.load()).settled).some(calendar))) continue;
-				racCalendarsRead.set(ref.route, await captureRacCalendars(browser, options.old, ref.route, join(state, 'convert', 'rac-calendars'), opening));
-			}
-		// What each TanStack table was given and showed in each state, on the routes whose settled page has a table, when the
-		// usage inventory finds a TanStack table library (or there is none).
-		const usesTables = await readFile(join(state, 'usage.json'), 'utf8').then((text) => /"library":\s*"@tanstack\/(react|vue|solid|svelte)-table"/.test(text), () => true);
-		if (options.reveal !== false && usesTables) {
-			const queue: string[] = [];
-			for (const ref of captures) if (ref && ref.status === 200 && Object.values((await ref.load()).settled).some(mayHoldTable)) queue.push(ref.route);
-			await Promise.all(Array.from({ length: Math.min(options.concurrency ?? 4, queue.length) }, async () => {
-				for (let route = queue.shift(); route !== undefined; route = queue.shift()) {
-					const captured = await captureTables(browser, options.old, route, join(state, 'convert', 'tables'), log);
-					for (const why of captured.skipped) log(`  table on ${route} not read: ${why}`);
-					if (captured.tables.length) tablesRead.set(route, captured.tables);
+				if (fromLayers.length || inPage.length) {
+					const found = (await limit(() => captureRacEmpties(browser, options.old, route, at('toggles'), [...fromLayers, ...inPage]))).empties;
+					if (found.length) {
+						const mine = (f: ComboboxEmpty) => inPage.some((x) => x.sig === f.sig && x.nth === f.nth);
+						facts.racEmpties = found.filter(mine);
+						reveals = own.map((r) => {
+							const html = reachOf(r) && found.find((f) => !mine(f) && f.sig === r.sig && f.nth === (r.nth ?? 0))?.html;
+							return html ? { ...r, added: r.added.map((a) => (/role="(listbox|menu)"/.test(a.html) ? { ...a, html: withEmptyState(a.html, html) } : a)) } : r;
+						});
+					}
 				}
-			}));
-		}
-		if (options.reveal !== false) for (const t of await captureAllToggles(browser, options.old, routes, join(state, 'convert', 'toggles'), { concurrency: options.concurrency ?? 4, log })) toggled.set(t.route, t.groups);
-		// Controls the site lists as switching attributes in place (lib/site/controls.json, action "toggle").
-		const switchSelectors = listed.filter((c) => c.action === 'toggle').map((c) => c.selector);
-		if (options.reveal !== false) for (const f of await captureAllForms(browser, options.old, routes, join(state, 'convert', 'toggles'), { concurrency: options.concurrency ?? 4 })) submitted.set(f.route, f.forms);
-		if (options.reveal !== false) for (const c of await captureAllSwitches(browser, options.old, routes, join(state, 'convert', 'toggles'), switchSelectors, { concurrency: options.concurrency ?? 4, log })) switched.set(c.route, c.switches);
+			}
+			// Whether each accordion lets several items be open, where one revealed an item's content; React Aria's accordion
+			// panels are in the page while collapsed, so expanding one reveals nothing: its server HTML says it is there.
+			if (reveals?.some((r) => r.sig?.includes('|accordion-trigger|')) || /data-slot="accordion"[^>]*data-rac=/.test((await page()).server)) facts.accordions = (await limit(() => captureAccordions(browser, options.old, route, at('toggles')))).accordions;
+			// Hover cards, among them those whose trigger renders its child (its data-slot is the child's).
+			const others = (reveals ?? []).filter((r) => r.action === 'hover' && r.sig && !r.sig.includes('|hover-card-trigger|') && r.added.some((a) => /data-slot="hover-card-content"/.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
+			if (reveals && (others.length || reveals.some((r) => r.sig?.includes('|hover-card-trigger|')))) facts.hoverDelays = (await limit(() => captureHoverDelays(browser, options.old, route, at('toggles'), others))).delays;
+			if (ref.status === 200) {
+				const settled = Object.values((await page()).settled);
+				// Each carousel's alignment and autoplay, each chart's states (sweeping the pointer over it), each slider's step,
+				// and the dates the page computes in the visitor's browser, read again at a later clock and behind UTC.
+				if (settled.some((html) => html.includes('data-slot="carousel"'))) facts.carousels = (await limit(() => captureCarousels(browser, options.old, route, at('toggles')))).carousels;
+				facts.chart = settled.some((html) => html.includes('recharts-wrapper'));
+				if (settled.some((html) => /data-slot="slider"/.test(html) && html.includes('role="slider"'))) facts.sliders = (await limit(() => captureSliders(browser, options.old, route, at('toggles')))).sliders;
+				facts.dated = settled.some((html) => DATED.test(html));
+				if (facts.dated) facts.clock = (await limit(() => captureClock(browser, options.old, route, at('clock')))).marks;
+				if (facts.chart) facts.charts = (await limit(() => captureCharts(browser, options.old, route, at('toggles')))).charts;
+			}
+			if ((await page()).server.includes('data-slot="message-scroller"')) facts.scrollers = (await limit(() => captureScrollers(browser, options.old, route, at('toggles')))).scrollers;
+			if (reveal && ref.status === 200) {
+				const settled = Object.values((await page()).settled);
+				// What each react-day-picker calendar was given, where the settled page shows a month grid or a control's layer does (a date picker's trigger: read opened).
+				const openers = (reveals ?? []).filter((r) => r.sig && r.added.some((a) => a.into === 'body' && /<table[^>]*role="grid"[^>]*aria-multiselectable/.test(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0 }));
+				if (openers.length || settled.some((html) => /<table[^>]*role="grid"[^>]*aria-multiselectable/.test(html))) facts.pickers = await limit(() => captureDayPickers(browser, options.old, route, at('day-pickers'), openers));
+				// What each React Aria calendar was given, where the settled page shows one.
+				const opening = (reveals ?? []).filter((r) => r.sig && r.added.some((a) => racCalendar(a.html))).map((r) => ({ sig: r.sig!, nth: r.nth ?? 0, path: r.path }));
+				if (opening.length || settled.some(racCalendar)) facts.racCalendars = await limit(() => captureRacCalendars(browser, options.old, route, at('rac-calendars'), opening));
+				// What each TanStack table was given and showed in each state, where the settled page has a table.
+				if (usesTables && settled.some(mayHoldTable)) {
+					const captured = await limit(() => captureTables(browser, options.old, route, at('tables'), log));
+					for (const why of captured.skipped) log(`  table on ${route} not read: ${why}`);
+					if (captured.tables.length) facts.tables = captured.tables;
+				}
+			}
+			if (reveal && routes.includes(route)) {
+				const toggles = await limit(() => captureToggles(browser, options.old, route, at('toggles'))).catch((error: Error) => ({ route, groups: [] as ToggleGroup[], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
+				toggledCount++;
+				if (toggles.groups.length) log(`toggles ${toggledCount}/${routes.length} ${route} (${toggles.groups.length} groups)`);
+				facts.toggles = toggles.groups;
+				if (switchSelectors.length) {
+					const switches = await limit(() => captureSwitches(browser, options.old, route, at('toggles'), switchSelectors)).catch((error: Error) => ({ route, switches: [] as Switch[], skipped: [`the route: ${error.message.split('\n')[0]}`] }));
+					if (switches.switches.length) log(`switches ${route} (${switches.switches.length})`);
+					facts.switches = switches.switches;
+				}
+			}
+			facts.reveals = reveals;
+			return facts;
+		};
+		const read = await Promise.all(captureRoutes.map(readRoute));
+		captures = await Promise.all(captureRoutes.map((route) => pageOf.get(route)!));
+		await Promise.all([scenesRead, notifiesRead]);
+		captureRoutes.forEach((route, i) => {
+			const f = read[i]!;
+			if (f.reveals) revealed.set(route, f.reveals);
+			if (f.racEmpties) racPageEmpties.set(route, f.racEmpties);
+			if (f.accordions) accordionModes.set(route, f.accordions);
+			if (f.hoverDelays) hoverDelays.set(route, f.hoverDelays);
+			if (f.carousels) carouselFacts.set(route, f.carousels);
+			if (f.chart) chartRoutes.push(route);
+			if (f.sliders) sliderFacts.set(route, f.sliders);
+			if (f.dated) clockRoutes.push(route);
+			if (f.clock) clockMarks.set(route, f.clock);
+			if (f.charts) chartFacts.set(route, f.charts);
+			if (f.scrollers) scrollerOpenings.set(route, f.scrollers);
+			if (f.pickers) pickers.set(route, f.pickers);
+			if (f.racCalendars) racCalendarsRead.set(route, f.racCalendars);
+			if (f.tables) tablesRead.set(route, f.tables);
+			if (f.toggles) toggled.set(route, f.toggles);
+			if (f.switches) switched.set(route, f.switches);
+		});
 		// Options revealed without a link (a command palette's items): what choosing each did, once per control.
 		const seenKeys = new Set<string>();
+		const choosing: { route: string; reveal: Reveal; first: boolean }[] = [];
 		for (const [route, reveals] of revealed)
 			for (const reveal of reveals) {
 				if (!reveal.added.some((a) => a.into === 'body' && /cmdk-item|role="option"|role="menuitem"/.test(a.html))) continue;
 				// A Base UI listbox's values are its page's: generated ids repeat across pages.
 				const listbox = reveal.added.some((a) => a.html.includes('data-base-ui-portal') && a.html.includes('role="listbox"'));
 				if (seenKeys.has(reveal.key) && !listbox) continue;
-				const first = !seenKeys.has(reveal.key);
+				choosing.push({ route, reveal, first: !seenKeys.has(reveal.key) });
 				seenKeys.add(reveal.key);
-				const found = await captureChoices(browser, options.old, route, reveal, join(state, 'convert', 'choices'), log);
-				if (first && Object.values(found).some((c) => c.href || c.copied !== undefined)) choices[reveal.key] = found;
-				const chosen = Object.entries(found).filter(([, c]) => c.value !== undefined || c.shown !== undefined);
-				if (chosen.length) optionValues[`${route}|${reveal.key}`] = Object.fromEntries(chosen);
 			}
+		const chosenBy = await Promise.all(choosing.map(({ route, reveal }) => captureChoices(browser, options.old, route, reveal, at('choices'), log, limit)));
+		choosing.forEach(({ route, reveal, first }, i) => {
+			const found = chosenBy[i]!;
+			if (first && Object.values(found).some((c) => c.href || c.copied !== undefined)) choices[reveal.key] = found;
+			const chosen = Object.entries(found).filter(([, c]) => c.value !== undefined || c.shown !== undefined);
+			if (chosen.length) optionValues[`${route}|${reveal.key}`] = Object.fromEntries(chosen);
+		});
+		// Forms last: every other capture reads the old site before any form is submitted to it.
+		if (reveal) {
+			const forms = await eachLimited(limit, routes, (route) => captureForms(browser, options.old, route, at('toggles')).catch(() => ({ route, forms: [] })));
+			for (const f of forms) submitted.set(f.route, f.forms);
+		}
 	} finally {
 		await browser.close();
 	}
