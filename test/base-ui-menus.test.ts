@@ -8,7 +8,8 @@ import { chromium, type Browser, type Page } from 'playwright';
 import ts from 'typescript';
 
 const PARTS = join(import.meta.dirname, '..', 'parts');
-const FLOATING_STUB = `export const computePosition = async () => ({ x: 0, y: 0, placement: 'bottom', middlewareData: {} });
+// Placement is not under test: a popup goes to the page's corner, a submenu (placed on a side) beside its trigger.
+const FLOATING_STUB = `export const computePosition = async (anchor, floating, o) => { if (!/^(right|left)/.test(o.placement)) return { x: 0, y: 0, placement: 'bottom', middlewareData: {} }; const r = anchor.getBoundingClientRect(); return { x: r.right, y: r.top, placement: o.placement, middlewareData: {} }; };
 export const autoUpdate = () => () => {};
 export const arrow = () => ({}), flip = () => ({}), hide = () => ({}), limitShift = () => ({}), offset = () => ({}), shift = () => ({}), size = () => ({});`;
 
@@ -335,5 +336,127 @@ test('the pointer leaving a Base UI select option for no other unhighlights it a
 	await page.mouse.move(990, 790, { steps: 3 });
 	await settled(page);
 	assert.equal(await page.evaluate(() => [document.activeElement?.getAttribute('data-slot'), document.querySelectorAll('[data-highlighted]').length].join(' ')), 'select-content 0');
+	await page.close();
+});
+
+// A dropdown menu with a submenu as convert renders it: the submenu's own portal is a layer keyed by its menu's key and
+// its trigger's place, which its trigger carries (captureBaseSubmenus).
+const withSub = (dir = 'ltr') =>
+	menu(['Team', 'Invite users', 'New Team'])
+		.replace('<main ', `<main dir="${dir}" `)
+		.replace('<div tabindex="-1" role="menu"', `<div tabindex="-1" dir="${dir}" role="menu"`)
+		.replace('data-slot="dropdown-menu-item">Invite users', 'data-slot="dropdown-menu-sub-trigger" id="sub1" aria-haspopup="menu" aria-expanded="false" data-mm-key="dd-sub-1" style="display:block;width:200px">Invite users') +
+	`<div data-base-ui-portal hidden data-mm-layer="dd-sub-1"><div data-side="right" data-align="start" data-nested role="presentation" style="position:absolute;left:400px;top:0" data-closed><div tabindex="-1" dir="${dir}" role="menu" data-nested aria-labelledby="sub1" data-slot="dropdown-menu-sub-content" data-closed style="width:200px">${['Email', 'Message'].map((t) => `<div role="menuitem" tabindex="-1" data-slot="dropdown-menu-item">${t}</div>`).join('')}</div></div></div>`;
+const subState = (page: Page) =>
+	page.evaluate(() => {
+		const sub = document.getElementById('sub1')!;
+		const open = !document.querySelector<HTMLElement>('[data-mm-layer="dd-sub-1"]')!.hidden && sub.getAttribute('aria-expanded') === 'true';
+		const at = document.activeElement;
+		const focus = at?.matches('[role="menu"]') ? (at.hasAttribute('data-nested') ? 'submenu' : 'menu') : at?.textContent?.trim();
+		const highlighted = [...document.querySelectorAll('[data-highlighted]')].map((e) => e.textContent?.trim()).join('|') || '-';
+		return `menu=${document.getElementById('dd')!.getAttribute('aria-expanded')} sub=${open} focus=${focus} highlighted=${highlighted}${sub.hasAttribute('data-popup-open') ? ' popup-open' : ''}${sub.hasAttribute('data-pressed') ? ' pressed' : ''}`;
+	});
+
+test('a Base UI submenu from the keyboard: ArrowRight, Enter or Space open it on its first item, ArrowLeft and Escape close it back onto its trigger', async () => {
+	const page = await open(withSub(), ['base-ui/menu']);
+	await page.locator('#dd').focus();
+	for (const [key, expected] of [
+		['Enter', 'menu=true sub=false focus=Team highlighted=Team'],
+		['ArrowDown', 'menu=true sub=false focus=Invite users highlighted=Invite users'],
+		['ArrowRight', 'menu=true sub=true focus=Email highlighted=Email popup-open'],
+		['ArrowDown', 'menu=true sub=true focus=Message highlighted=Message popup-open'],
+		['ArrowLeft', 'menu=true sub=false focus=Invite users highlighted=Invite users'],
+		['Enter', 'menu=true sub=true focus=Email highlighted=Email popup-open'],
+		['Escape', 'menu=true sub=false focus=Invite users highlighted=Invite users'],
+		[' ', 'menu=true sub=true focus=Email highlighted=Email popup-open'],
+		['Tab', 'menu=true sub=false focus=Invite users highlighted=Invite users'],
+		['ArrowRight', 'menu=true sub=true focus=Email highlighted=Email popup-open'],
+		['Enter', 'menu=false sub=false focus=Open highlighted=-'],
+	] as const) {
+		await press(page, key);
+		assert.equal(await subState(page), expected, `after ${key}`);
+	}
+	await page.close();
+});
+
+test('a Base UI submenu right to left opens with ArrowLeft and closes with ArrowRight', async () => {
+	const page = await open(withSub('rtl'), ['base-ui/menu']);
+	await page.locator('#dd').focus();
+	for (const key of ['Enter', 'ArrowDown']) await press(page, key);
+	await press(page, 'ArrowLeft');
+	assert.equal(await subState(page), 'menu=true sub=true focus=Email highlighted=Email popup-open');
+	await press(page, 'ArrowRight');
+	assert.equal(await subState(page), 'menu=true sub=false focus=Invite users highlighted=Invite users');
+	await page.close();
+});
+
+test('a Base UI submenu opens once the pointer rests on its trigger, focus staying there; choosing in it closes every menu', async () => {
+	const page = await open(withSub(), ['base-ui/menu']);
+	await page.locator('#dd').click();
+	await page.getByText('Invite users').hover();
+	await page.waitForTimeout(250);
+	assert.equal(await subState(page), 'menu=true sub=true focus=Invite users highlighted=Invite users popup-open');
+	const box = (await page.getByText('Message').boundingBox())!;
+	await page.mouse.move(box.x + 20, box.y + box.height / 2, { steps: 4 });
+	await settled(page);
+	assert.equal(await subState(page), 'menu=true sub=true focus=Message highlighted=Message popup-open');
+	await page.getByText('Message').click();
+	await settled(page);
+	assert.equal(await subState(page), 'menu=false sub=false focus=Open highlighted=-');
+	assert.equal(await page.evaluate(() => document.querySelector<HTMLElement>('[data-slot="dropdown-menu-content"]')!.style.pointerEvents), '');
+	await page.close();
+});
+
+test('the pointer leaving a Base UI submenu trigger away from its submenu closes the submenu, with nothing highlighted', async () => {
+	const page = await open(withSub(), ['base-ui/menu']);
+	await page.locator('#dd').click();
+	await page.getByText('Invite users').hover();
+	await page.waitForTimeout(250);
+	assert.match(await subState(page), /sub=true/);
+	// The jump a test pointer makes: while the submenu shields its menu, New Team is not hovered.
+	const box = (await page.getByText('New Team').boundingBox())!;
+	await page.mouse.move(box.x + 30, box.y + box.height / 2);
+	await settled(page);
+	assert.equal(await subState(page), 'menu=true sub=false focus=menu highlighted=-');
+	await page.mouse.move(box.x + 40, box.y + box.height / 2);
+	await settled(page);
+	assert.equal(await subState(page), 'menu=true sub=false focus=New Team highlighted=New Team');
+	await page.close();
+});
+
+test('a press in the menu a Base UI submenu opened from closes only the submenu; a press outside both closes both', async () => {
+	const page = await open(withSub().replace('data-slot="dropdown-menu-content" data-closed', 'data-slot="dropdown-menu-content" data-closed style="padding:20px"'), ['base-ui/menu']);
+	await page.locator('#dd').focus();
+	for (const key of ['Enter', 'ArrowDown', 'ArrowRight']) await press(page, key);
+	assert.match(await subState(page), /sub=true/);
+	await settled(page);
+	const box = (await page.locator('[data-slot="dropdown-menu-content"]').boundingBox())!;
+	await page.mouse.click(box.x + box.width - 5, box.y + box.height - 5);
+	await settled(page);
+	assert.match(await subState(page), /^menu=true sub=false focus=menu/);
+	for (const key of ['ArrowDown', 'ArrowDown', 'ArrowRight']) await press(page, key);
+	assert.match(await subState(page), /^menu=true sub=true/);
+	await settled(page);
+	await page.mouse.click(990, 790);
+	await settled(page);
+	assert.match(await subState(page), /^menu=false sub=false/);
+	await page.close();
+});
+
+test('a Base UI context menu opened under the pointer highlights nothing until it moves; ArrowLeft closes it, as its root is nested in the trigger area', async () => {
+	const page = await open(
+		`<main style="padding:20px"><div data-slot="context-menu-trigger" data-mm-key="ctx" style="width:600px;height:300px;border:1px dashed">Right click here</div></main>
+		<div data-base-ui-portal hidden data-mm-layer="ctx"><div role="presentation" style="position:absolute;left:0;top:0" data-closed><div tabindex="-1" role="menu" data-slot="context-menu-content" data-closed style="width:200px">${['Back', 'Forward', 'Reload'].map((t) => `<div role="menuitem" tabindex="-1" data-slot="context-menu-item">${t}</div>`).join('')}</div></div></div>`,
+		['base-ui/context-menu', 'base-ui/menu'],
+	);
+	// The stub places the menu at the page's corner: under the pointer that opens it.
+	await page.mouse.click(30, 30, { button: 'right' });
+	await settled(page);
+	const st = () => page.evaluate(() => `${!document.querySelector<HTMLElement>('[data-mm-layer="ctx"]')!.hidden} focus=${document.activeElement?.getAttribute('role') ?? document.activeElement?.tagName} highlighted=${[...document.querySelectorAll('[data-highlighted]')].map((e) => e.textContent).join('|') || '-'} pressed=${document.querySelector('[data-slot="context-menu-trigger"]')!.hasAttribute('data-pressed')}`);
+	assert.equal(await st(), 'true focus=menu highlighted=- pressed=true');
+	await press(page, 'ArrowDown');
+	assert.equal(await st(), 'true focus=menuitem highlighted=Back pressed=true');
+	await press(page, 'ArrowLeft');
+	assert.equal(await st(), 'false focus=BODY highlighted=- pressed=false');
 	await page.close();
 });

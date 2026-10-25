@@ -698,3 +698,82 @@ export async function captureRacComboInputs(browser: Browser, origin: string, ro
 	await writeFile(file, JSON.stringify({ route, reveals: out }));
 	return out;
 }
+
+/**
+ * Base UI submenus (Menu.SubmenuRoot, in a dropdown, context or menubar menu): a submenu trigger mounts its popup, in
+ * its own portal, only once the pointer rests on it, inside a menu no control in the page shows. Each menu a reveal
+ * opened is opened again, each submenu trigger in it hovered, and the portal it mounted recorded as a body layer (one
+ * level deep). The ids Base UI generates on the client follow the order things mount, so a submenu is keyed by its menu's
+ * key and its trigger's place in the menu, and that trigger in the menu's reveal is marked with the key (data-mm-key).
+ * Returns those menus' reveals, so marked, and the submenus. Cached by route.
+ */
+export async function captureBaseSubmenus(browser: Browser, origin: string, route: string, dir: string, reveals: readonly Reveal[]): Promise<readonly Reveal[]> {
+	// A submenu's popup is data-nested; the root menu's triggers only.
+	const SUB_TRIGGER = '[data-base-ui-portal] [role="menu"]:not([data-nested]) [role^="menuitem"][aria-haspopup="menu"]';
+	const menus = reveals.filter((r) => (r.action === 'click' || r.action === 'contextmenu') && r.added.some((a) => a.html.includes('data-base-ui-portal') && /role="menu"/.test(a.html) && /role="menuitem[^"]*"[^>]*aria-haspopup="menu"|aria-haspopup="menu"[^>]*role="menuitem/.test(a.html)));
+	if (!menus.length) return [];
+	const file = join(dir, `${createHash('sha256').update(`base-submenus:1:${route}|${JSON.stringify(menus.map((m) => [m.sig, m.nth, m.path, m.action]))}`).digest('hex').slice(0, 16)}.json`);
+	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
+	if (cached && cached.route === route) return cached.reveals;
+	const out: Reveal[] = [];
+	const marked: Reveal[] = [];
+	const viewport = VIEWPORTS[0]!;
+	type Trigger = { readonly id: string; readonly controls: string; readonly disabled: boolean };
+	// The submenu triggers of the open menu, or of the reveal's markup when given.
+	const triggersIn = (page: Page, html?: string): Promise<Trigger[]> =>
+		page.evaluate(
+			([selector, markup]) => {
+				const root = markup === null ? document : Object.assign(document.createElement('template'), { innerHTML: markup }).content;
+				return [...root.querySelectorAll(selector)].map((e) => ({ id: e.id, controls: e.getAttribute('aria-controls') ?? '', disabled: e.hasAttribute('data-disabled') || e.getAttribute('aria-disabled') === 'true' }));
+			},
+			[SUB_TRIGGER, html ?? null] as const,
+		);
+	for (const menu of menus) {
+		const { context, page } = await fresh(browser, origin, route, viewport);
+		try {
+			const opened = () => page.locator('[data-base-ui-portal] [role="menu"]').count().then((n) => n > 0);
+			const open = async () => {
+				const el = (
+					await page.evaluateHandle((path) => {
+						let node: globalThis.Element | undefined = document.body;
+						for (const i of path) node = node?.children[i];
+						return node ?? null;
+					}, menu.path)
+				).asElement();
+				if (!el) return false;
+				await el.click({ timeout: 2000, button: menu.action === 'contextmenu' ? 'right' : 'left' });
+				await quiet(page, 400);
+				return opened();
+			};
+			const recorded = await triggersIn(page, menu.added.map((a) => a.html).join(''));
+			const keys: [id: string, key: string][] = [];
+			for (const [k, want] of recorded.entries()) {
+				if (want.disabled || !want.id) continue;
+				if (!(await opened()) && !(await open())) break;
+				const mine = (await triggersIn(page))[k];
+				if (!mine?.id) break;
+				const hovered = await page.locator(`[id="${mine.id}"]`).hover({ timeout: 2000 }).then(() => true, () => false);
+				// Base UI opens a submenu once the pointer has rested 100 ms on its trigger.
+				if (hovered) await quiet(page, 500);
+				const added = await page.evaluate((id) => document.querySelector(`[role="menu"][aria-labelledby="${CSS.escape(id)}"]`)?.closest('[data-base-ui-portal]')?.outerHTML, mine.id);
+				const named = (html: string) => [[mine.id, want.id], [mine.controls, want.controls]].reduce((h, [from, to]) => (from && to ? h.split(from).join(to) : h), html);
+				const key = `${menu.key}-sub-${k}`;
+				if (added) {
+					out.push({ key, path: [-1], action: 'hover', viewport: viewport.name, added: [{ into: 'body' as const, before: -1, html: named(added) }] });
+					keys.push([want.id, key]);
+				}
+				// Escape closes the submenu only; the pointer leaves for the next trigger.
+				await page.keyboard.press('Escape').catch(() => {});
+				await quiet(page, 300);
+			}
+			if (keys.length) marked.push({ ...menu, added: menu.added.map((a) => ({ ...a, html: keys.reduce((h, [id, key]) => h.replace(` id="${id}"`, ` id="${id}" data-mm-key="${key}"`), a.html) })) });
+		} catch {
+			// a menu that cannot be opened again keeps its submenus closed
+		} finally {
+			await context.close().catch(() => {});
+		}
+	}
+	await mkdir(dir, { recursive: true });
+	await writeFile(file, JSON.stringify({ route, reveals: [...marked, ...out] }));
+	return [...marked, ...out];
+}
