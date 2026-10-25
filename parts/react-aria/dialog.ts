@@ -1,6 +1,6 @@
 import { layersFor } from '../reveal.ts';
 import { holdPressed } from './interactions.ts';
-import { closeOverlay, openOverlay, overlayFor, overlayOf, type Overlay } from './overlay.ts';
+import { closeOverlay, openOverlay, overlayFor, overlayOf, top, type Overlay } from './overlay.ts';
 
 // React Aria's DialogTrigger with a Popover or a Modal (useOverlayTrigger, usePopover, useModalOverlay, useDialog): a
 // press on the trigger toggles it, the trigger held pressed while it is open; the dialog takes focus and keeps Tab
@@ -53,10 +53,25 @@ export function click(target: Element): boolean {
 	return true;
 }
 
+const ours = (o: Overlay) => o.trigger.matches(TRIGGER) || (o.trigger.matches(PLAIN) && modalLayer(o.trigger));
+
+// FocusScope contain: focus that leaves the open dialog for nothing in it (a press on its backdrop) goes back, a frame later.
+export function focusout(target: Element, event: FocusEvent): boolean {
+	const o = overlayOf(target);
+	const to = event.relatedTarget;
+	if (!o || top() !== o || !ours(o) || (to instanceof Node && o.nodes.some((n) => n.contains(to)))) return false;
+	requestAnimationFrame(() => {
+		const now = document.activeElement;
+		if (top() !== o || (now && o.nodes.some((n) => n.contains(now)))) return;
+		(target.isConnected ? (target as HTMLElement) : dialogOf(o)).focus({ preventScroll: true });
+	});
+	return false;
+}
+
 export function keydown(target: Element, event: KeyboardEvent): boolean {
 	if (event.key !== 'Tab') return false;
 	const o = overlayOf(target);
-	if (!o || !(o.trigger.matches(TRIGGER) || (o.trigger.matches(PLAIN) && modalLayer(o.trigger)))) return false;
+	if (!o || !ours(o)) return false;
 	const scope = dialogOf(o);
 	const list = tabbables(scope);
 	if (!list.length) {
