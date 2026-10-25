@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { pageAsset } from '../src/check/browser.ts';
-import { compareJourneys, describeStep, labelled, localUrl, movedLines, type Journey, type StepResult } from '../src/check/journeys.ts';
+import { compareJourneys, consoleErrorText, describeStep, labelled, localUrl, movedLines, type Journey, type StepResult } from '../src/check/journeys.ts';
 
 const result = (over: Partial<StepResult>): StepResult => ({ url: '/', added: [], removed: [], requests: [], errors: [], announcements: [], focus: 'body', navigated: false, ...over });
 const pour = { role: 'button', name: 'Pour a cup', nth: 0 };
@@ -134,4 +134,14 @@ test('a step answered more slowly on the new page is red only when neither side 
 	assert.match(slowerAnswer([at(40), at(60)], at(400)) ?? '', /old page changes 60 ms after the step; the new page 400 ms/);
 	assert.equal(slowerAnswer([at(40), at(60)], at(140)), undefined, 'within 100 ms');
 	assert.equal(slowerAnswer([at(40, ['POST /api/contact']), at(60, ['POST /api/contact'])], at(3000, ['POST /api/contact'])), undefined, 'the server answered first');
+});
+
+test('a console error is compared by its message: the stack names each app\'s own bundles', () => {
+	const old = 'Error: Must be logged in to submit a news item.\n    at new t (http://127.0.0.1:4871/_next/static/chunks/899-6b10732b7ffc73b6.js:1:103267)\n    at r (http://127.0.0.1:4871/_next/static/chunks/899-6b10732b7ffc73b6.js:1:60162)';
+	const port = 'Error: Must be logged in to submit a news item.\n    at Te (http://127.0.0.1:4872/build/chunk-_mOLiCY1.js:2:7771)\n    at async ee (http://127.0.0.1:4872/build/chunk-v6puppFU.js:2:83675)';
+	const firefox = 'TypeError: x is undefined\nonClick@http://127.0.0.1:4872/build/app.js:1:200\n';
+	assert.equal(consoleErrorText(old, ['http://127.0.0.1:4871']), 'Error: Must be logged in to submit a news item.');
+	assert.equal(consoleErrorText(port, ['http://127.0.0.1:4872']), consoleErrorText(old, ['http://127.0.0.1:4871']));
+	assert.equal(consoleErrorText(firefox, []), 'TypeError: x is undefined');
+	assert.equal(consoleErrorText('Warning: two lines\nof message, no stack', []), 'Warning: two lines\nof message, no stack', 'a message on several lines keeps them');
 });

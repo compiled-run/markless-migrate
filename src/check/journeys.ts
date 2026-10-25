@@ -906,6 +906,18 @@ async function snapshot(page: Page, origins: readonly string[]): Promise<string[
 
 const unOrigin = (text: string, origins: readonly string[]) => origins.reduce((t, o) => t.split(o).join(''), text);
 
+// V8's `    at fn (url:line:col)` and Firefox's `fn@url:line:col` frames name each app's own bundles, never the same twice.
+const STACK_FRAME = /^\s+at\s|^[^\s@]*@\S+:\d+:\d+$/;
+
+/** A console error as compared: its message, without the stack frames an Error logged whole carries, and without the app's origin. */
+export function consoleErrorText(text: string, origins: readonly string[]): string {
+	return unOrigin(text, origins)
+		.split('\n')
+		.filter((line) => !STACK_FRAME.test(line))
+		.join('\n')
+		.trim();
+}
+
 const IDLE_MS = 150;
 const IDLE_LIMIT_MS = 3_000;
 
@@ -1241,9 +1253,9 @@ export async function openSession(browser: Browser, env: SideEnv, route: string,
 	const signedIn = new Set([...signInCookies(env.storageState), ...signInCookies(env.frontDoor?.storageState)]);
 	page.on('console', (message) => {
 		// A failed resource load is reported by the assets check of the page that loads it.
-		if (message.type() === 'error' && !message.text().startsWith('Failed to load resource')) errors.push(unOrigin(message.text(), hosts));
+		if (message.type() === 'error' && !message.text().startsWith('Failed to load resource')) errors.push(consoleErrorText(message.text(), hosts));
 	});
-	page.on('pageerror', (error) => errors.push(unOrigin(error.message, hosts)));
+	page.on('pageerror', (error) => errors.push(consoleErrorText(error.message, hosts)));
 	await loadPage(page, new URL(route, origin).href);
 	await quiet(page, inflight, navigations);
 	const loadErrors = [...errors];
