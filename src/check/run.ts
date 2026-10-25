@@ -22,6 +22,7 @@ import { checkEndpoint, checkRedirect, isPage } from './endpoints.ts';
 import { DEFAULT_FREEZE, pinnedBy, pinnedSummary, type FreezeOptions } from './freeze.ts';
 import { HINTS } from './hints.ts';
 import { locateFailures, NOT_EXERCISED } from './locate.ts';
+import { checkClock } from './clock-shift.ts';
 import { checkProbes, type ProbeOptions } from './probes.ts';
 import { mapRules } from './sourcemap.ts';
 import { negotiationFailures } from './i18n.ts';
@@ -109,9 +110,9 @@ export interface CheckOptions {
 	readonly navigation?: NavigationOptions;
 	/** Lighthouse's mobile page load (FCP, LCP, Speed Index, TBT, CLS and the score), a median of several runs per side, after every other check so nothing else competes for the machine. */
 	readonly load?: LoadOptions;
-	/** `load`: only page load is measured, after nothing else; `embeds`: only the embed step runs, on each page route; `probes`: only the widget probes; every other dimension is skipped. */
+	/** `load`: only page load is measured, after nothing else; `embeds`: only the embed step runs, on each page route; `probes`: only the widget probes and the moved clock; every other dimension is skipped. */
 	readonly only?: 'load' | 'embeds' | 'probes';
-	/** The widget probes (probes.ts) on each page route; left out when absent. */
+	/** The widget probes (probes.ts) and the moved-clock look (clock-shift.ts) on each page route; left out when absent. */
 	readonly probes?: Omit<ProbeOptions, 'layout'>;
 	/** How long one route's check (as one role) may take before it is stopped and reported as an infrastructure failure. */
 	readonly timeoutMs?: number;
@@ -289,11 +290,12 @@ export async function statesAndJourneys(run: Pick<Run, 'old' | 'new'>, result: R
 	return withFailures(stated.value, [...stated.value.failures, ...j.failures.slice(result.failures.length)], { journeys: j.journeys, coverage: j.coverage, writes: j.writes });
 }
 
-/** The widget probes of the route's controls, old against new, on top of what the journeys found. */
+/** The widget probes of the route's controls and the moved-clock look, old against new, on top of what the journeys found. */
 async function probeRoute(browser: Browser, run: Pick<Run, 'old' | 'new' | 'probes'>, route: string, viewport: Viewport, result: RouteResult): Promise<RouteResult> {
 	const sides = { old: run.old, new: run.new };
+	const clock = await checkClock(browser, sides, route, viewport);
 	const out = await checkProbes(browser, sides, route, viewport, result.journeys, run.probes);
-	const failures = out.failures;
+	const failures = [...clock, ...out.failures];
 	return { ...(failures.length ? withFailures(result, [...result.failures, ...failures]) : result), probes: { controls: out.controls, ms: out.ms } };
 }
 
