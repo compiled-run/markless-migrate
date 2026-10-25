@@ -472,3 +472,15 @@ test('a component a registry loads with import() is rendered on the routes of th
 	assert.deepEqual(exp(file, 'radix-ui', 'Accordion.Root').sites.map((s) => s.routes), [['/docs']]);
 	await rm(dir, { recursive: true, force: true });
 });
+
+test('a query library is replaced by Markless itself: a query becomes an async computed() read in @try, a mutation an event handler, and no query cache is kept', async () => {
+	const { catalogEntry } = await import('../src/library/index.ts');
+	for (const name of ['@tanstack/react-query', '@tanstack/vue-query', '@tanstack/solid-query', 'swr']) {
+		const entry = catalogEntry(name);
+		assert.equal(entry?.class, 'framework', name);
+		assert.equal(entry?.core, undefined, `${name}: no query core is kept`);
+		assert.match(entry!.replacement!, /async computed\(\)/, name);
+		assert.match(entry!.reason, /@pending/, name);
+	}
+	assert.equal(catalogEntry('@tanstack/react-query-devtools')?.class, 'drop');
+});
