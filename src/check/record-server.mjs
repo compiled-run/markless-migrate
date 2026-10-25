@@ -1,5 +1,6 @@
 // Loaded into the app's Node server with `node --import`: records the requests each page load makes while the server renders it, and replays recorded responses on request.
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
 
@@ -103,6 +104,20 @@ for (const mod of [http, https]) {
 	}
 }
 
+let nextPreview;
+// A Next.js build answers prerendered pages and cached fetches without running them; its draft-mode cookie renders on demand.
+function freshCookie() {
+	if (nextPreview === undefined) {
+		try {
+			const id = JSON.parse(readFileSync('.next/prerender-manifest.json', 'utf8')).preview?.previewModeId;
+			nextPreview = typeof id === 'string' ? `__prerender_bypass=${id}` : '';
+		} catch {
+			nextPreview = '';
+		}
+	}
+	return nextPreview;
+}
+
 function allowed(req) {
 	const token = process.env.MARKLESS_MIGRATE_TOKEN;
 	if (token) return req.headers['x-markless-migrate-token'] === token;
@@ -148,6 +163,8 @@ for (const Server of [http.Server, https.Server]) {
 		}
 		const tag = parseTag(req.headers[HEADER]);
 		if (!tag) return emit.call(this, event, ...args);
+		const fresh = tag.fresh ? freshCookie() : '';
+		if (fresh) req.headers.cookie = req.headers.cookie ? `${req.headers.cookie}; ${fresh}` : fresh;
 		return store.run(tag, () => emit.call(this, event, ...args));
 	};
 }
