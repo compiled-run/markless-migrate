@@ -120,3 +120,15 @@ test('where a race ends is compared with a fresh load of the same app, not with 
 	const report = await runCheck({ oldOrigin: a, newOrigin: b, routes: ['/'], viewports: [VIEWPORTS[0]!], browser, concurrency: 1, journeys: { budgetMs: 90_000 }, switched: ['/'] });
 	assert.deepEqual(failures(report).filter((f) => /against a fresh load/.test(f.actual)).map((f) => [f.check, f.actual]), []);
 });
+
+test('Back pressed before a router has added the page to history leaves the app on both sides: the step is compared, not reported as a control that could not be used', async () => {
+	// This router adds the history entry when the page arrives, so Back before that leaves the document; only the old page's beforeunload listener slows the leaving.
+	const late = (slow: boolean) => (path: string) =>
+		people(true)(path)?.replace(
+			/<script>[\s\S]*<\/script>/,
+			`<script>document.addEventListener('click', async (e) => { const a = e.target.closest('a[data-nav]'); if (!a) return; e.preventDefault(); const html = await (await fetch(a.href)).text(); history.pushState(null, '', a.href); document.querySelector('main').innerHTML = new DOMParser().parseFromString(html, 'text/html').querySelector('main').innerHTML; });${slow ? "addEventListener('beforeunload', () => {});" : ''}</script>`,
+		);
+	const report = await check(late(true), late(false));
+	assert.ok(names(report).includes('click link "Ada", then go back before its page has arrived'), JSON.stringify(names(report)));
+	assert.deepEqual(failures(report).filter((f) => /could not be used/.test(f.actual)).map((f) => [f.check, f.actual]), []);
+});

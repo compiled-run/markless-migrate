@@ -1306,7 +1306,8 @@ async function perform(page: Page, step: Step, patience = QUICK): Promise<void> 
 		case 'race': {
 			await reach(page, target, (t, timeout) => t.click({ timeout, noWaitAfter: true }), true, patience);
 			await sleep(RACE_GAP_MS);
-			if (step.then === 'back') return void (await page.evaluate(() => history.back()));
+			// Back is queued so it can leave the document without destroying this evaluate's context.
+			if (step.then === 'back') return void (await page.evaluate(() => void setTimeout(() => history.back())));
 			return reach(page, locate(page, step.then), (t, timeout) => t.click({ timeout, noWaitAfter: true }), true, patience);
 		}
 		case 'type':
