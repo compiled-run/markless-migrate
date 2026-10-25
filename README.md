@@ -496,7 +496,10 @@ always sent, on any origin, and a login the network fails (a deployment's cold s
 A page load that times out or cannot connect is tried again once, 2 s later; when it fails again, and
 when one route's check passes `--timeout` (default 600 s, or five journey budgets when that is more),
 the route is reported as not checked for an infrastructure failure, naming DNS (`ERR_NAME_NOT_RESOLVED`),
-connection (`ECONNREFUSED`) or the timeout, rather than as red. The checker's own requests are retried
+connection (`ECONNREFUSED`) or the timeout (and the request that waited), rather than as red. A route
+whose check passes `--timeout` while both apps were still answering, with no request waiting, is not a
+network failure: it is red, "ran out of time", and a bigger `--timeout` or `--journey-budget` is the fix
+(a page with hundreds of controls, such as a long comment thread). The checker's own requests are retried
 the same way. `check` exits 3 when nothing is red but such a route was not checked.
 
 ## Converting pages

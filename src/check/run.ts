@@ -616,9 +616,16 @@ export async function withDeadline(route: string, run: Run, ms: number, work: (r
 	} finally {
 		clearTimeout(timer);
 	}
+	// A route whose pages were all answered right up to the deadline is not a network failure: it took longer to check than --timeout allows.
+	const stalled = scope.stalled(Math.min(30_000, ms / 2));
+	const lastAnswer = scope.answered ? Date.now() - scope.answered : undefined;
 	await scope.close();
 	await Promise.race([task.catch(() => {}), new Promise((done) => setTimeout(done, 10_000))]);
-	return partialResult(route, [], [], undefined, { cause: 'check timeout', message: `the check of ${route} did not finish within ${Math.round(ms / 1000)} s (--timeout), so it was stopped: a server that stops answering part way through does this` });
+	if (!stalled && lastAnswer !== undefined && lastAnswer < Math.min(30_000, ms / 2)) {
+		const actual = `it ran out of time: it did not finish within ${Math.round(ms / 1000)} s (--timeout), and both apps were still answering (the last answer came ${(lastAnswer / 1000).toFixed(1)} s before it stopped, and no request was waiting)`;
+		return partialResult(route, [{ route, dimension: 'http', check: 'the check of this route', expected: 'the check runs to the end', actual, hint: HINTS.checkOutOfTime }], []);
+	}
+	return partialResult(route, [], [], undefined, { cause: 'check timeout', message: `the check of ${route} did not finish within ${Math.round(ms / 1000)} s (--timeout), so it was stopped: ${stalled ? `${stalled.url} had waited ${Math.round((Date.now() - stalled.at) / 1000)} s for an answer` : 'a server that stops answering part way through does this'}` });
 }
 
 function asRole(result: RouteResult, role: string | undefined): RouteResult {

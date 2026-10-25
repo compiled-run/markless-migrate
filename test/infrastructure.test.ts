@@ -126,3 +126,20 @@ test('a retried load that the about:blank before it aborts is loaded again, not 
 	assert.deepEqual(await loadPage(page, 'http://x/a/', { timeout: 500, backoffMs: 1 }), { ok: true });
 	assert.deepEqual(calls, ['http://x/a/', 'about:blank', 'http://x/a/', 'http://x/a/']);
 });
+
+test('a route whose check is still going at --timeout while both apps keep answering is red for running out of time, not an infrastructure failure', async () => {
+	const { withDeadline } = await import('../src/check/run.ts');
+	const { defaultEnv } = await import('../src/check/browser.ts');
+	const run = { old: defaultEnv(origin(good)), new: defaultEnv(origin(good)), frozen: false };
+	// Stands in for the journeys of a page with hundreds of controls: every load answers, there are just too many of them.
+	const route = await withDeadline('/thread', run, 2_000, async (scoped) => {
+		const context = await browser.newContext();
+		scoped.old.scope!.track(context);
+		const page = await context.newPage();
+		for (;;) await page.goto(origin(good));
+	});
+	assert.equal(route.infrastructure, undefined, JSON.stringify(route.infrastructure));
+	assert.equal(route.ok, false);
+	assert.equal(route.failures[0]?.check, 'the check of this route');
+	assert.match(route.failures[0]!.actual, /ran out of time: it did not finish within 2 s \(--timeout\), and both apps were still answering/);
+});
