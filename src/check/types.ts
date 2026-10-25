@@ -117,7 +117,7 @@ export interface Weight {
 
 export interface A11yCapture {
 	/** axe-core violations by rule id. */
-	readonly violations: Readonly<Record<string, { readonly impact: string; readonly help: string; readonly helpUrl: string; readonly count: number; readonly targets: readonly string[] }>>;
+	readonly violations: Readonly<Record<string, { readonly impact: string; readonly help: string; readonly helpUrl: string; readonly count: number; readonly targets: readonly string[]; readonly text?: readonly string[] }>>;
 	readonly landmarks: readonly string[];
 	/** Role and name of each element Tab reaches, from Chromium's accessibility tree. */
 	readonly focusOrder: readonly string[];
