@@ -56,10 +56,14 @@ export default function App({ path, children }: { path: string; children?: Child
 						onClick={(event) => event.stopPropagation()}
 					>
 						<form
-							onChange={(event) => {
+							onInput={(event) => {
 								const field = event.target as HTMLInputElement;
 								if (field.type === 'checkbox') settings = { ...settings, [field.name]: field.checked };
-								else if (field.type === 'number' && field.value) settings = { ...settings, [field.name]: field.value };
+								else if (field.type === 'number' && field.value) {
+									settings = { ...settings, [field.name]: field.value };
+									// React 15 writes a controlled input's value back to its attribute, which names the row it sits in.
+									field.setAttribute('value', field.value);
+								}
 								saveSettings(settings);
 							}}
 						>

@@ -157,8 +157,18 @@ const CHECKS = {
 function install() {
 	if (existsSync(join(scratch, 'node_modules'))) return;
 	mkdirSync(scratch, { recursive: true });
-	for (const file of ['package.json', 'package-lock.json', 'vite.config.ts', 'tsconfig.json', 'markless-router-env.d.ts']) cpSync(join(app, file), join(scratch, file));
-	const ci = spawnSync('npm', ['ci', '--no-audit', '--no-fund'], { cwd: scratch, stdio: 'inherit' });
+	for (const file of [
+		'package.json',
+		'package-lock.json',
+		'vite.config.ts',
+		'tsconfig.json',
+		'markless-router-env.d.ts',
+	])
+		cpSync(join(app, file), join(scratch, file));
+	const ci = spawnSync('npm', ['ci', '--no-audit', '--no-fund'], {
+		cwd: scratch,
+		stdio: 'inherit',
+	});
 	if (ci.status) throw new Error('npm ci failed in the scratch app');
 }
 
@@ -168,16 +178,26 @@ function scaffold(name) {
 	rmSync(join(scratch, 'repros'), { recursive: true, force: true });
 	rmSync(join(scratch, '.output'), { recursive: true, force: true });
 	mkdirSync(join(scratch, 'pages'), { recursive: true });
-	writeFileSync(join(scratch, 'document.tsrx'), "import type { Children } from '@markless/core';\nimport { Html } from '@markless/router';\n\nexport default function Document({ children }: { readonly children?: Children }) @{\n\t<Html>\n\t\t<head>\n\t\t\t<meta charset=\"utf-8\" />\n\t\t\t<title>repro</title>\n\t\t</head>\n\t\t<body>{children}</body>\n\t</Html>\n}\n");
+	writeFileSync(
+		join(scratch, 'document.tsrx'),
+		"import type { Children } from '@markless/core';\nimport { Html } from '@markless/router';\n\nexport default function Document({ children }: { readonly children?: Children }) @{\n\t<Html>\n\t\t<head>\n\t\t\t<meta charset=\"utf-8\" />\n\t\t\t<title>repro</title>\n\t\t</head>\n\t\t<body>{children}</body>\n\t</Html>\n}\n",
+	);
 	cpSync(join(here, name), join(scratch, 'repros', name), { recursive: true });
 	rmSync(join(scratch, 'repros', name, 'page.tsrx'));
-	const page = readFileSync(join(here, name, 'page.tsrx'), 'utf8').replace(/from '\.\/([^']+)'/g, `from '../repros/${name}/$1'`);
+	const page = readFileSync(join(here, name, 'page.tsrx'), 'utf8').replace(
+		/from '\.\/([^']+)'/g,
+		`from '../repros/${name}/$1'`,
+	);
 	writeFileSync(join(scratch, 'pages', `${name}.tsrx`), page);
 }
 
 function run(command, cmdArgs, timeoutMs) {
 	return new Promise((done) => {
-		const child = spawn(command, cmdArgs, { cwd: scratch, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+		const child = spawn(command, cmdArgs, {
+			cwd: scratch,
+			detached: true,
+			stdio: ['ignore', 'pipe', 'pipe'],
+		});
 		let output = '';
 		let timedOut = false;
 		child.stdout.on('data', (d) => (output += d));
@@ -276,7 +296,11 @@ const results = [];
 for (const name of repros) {
 	scaffold(name);
 	const devPort = await freePort();
-	const dev = await serve('npx', ['vp', 'dev', '--host', '127.0.0.1', '--port', String(devPort), '--strictPort'], devPort);
+	const dev = await serve(
+		'npx',
+		['vp', 'dev', '--host', '127.0.0.1', '--port', String(devPort), '--strictPort'],
+		devPort,
+	);
 	try {
 		results.push(...(await drive(`http://127.0.0.1:${devPort}`, dev, 'dev', [name])));
 	} finally {
@@ -286,7 +310,19 @@ for (const name of repros) {
 	const built = await run('npx', ['vp', 'build'], 180_000);
 	if (built.status !== 0) {
 		const last = built.output.split('\n').filter(Boolean).at(-1)?.trim() ?? 'none';
-		results.push({ mode: 'production', name, expected: 'builds', actual: built.timedOut ? `the production build did not finish in 180 s (last output: ${last})` : built.output.split('\n').filter((l) => /MARKLESS_|Error/.test(l)).slice(0, 3).join(' | '), ok: false });
+		results.push({
+			mode: 'production',
+			name,
+			expected: 'builds',
+			actual: built.timedOut
+				? `the production build did not finish in 180 s (last output: ${last})`
+				: built.output
+						.split('\n')
+						.filter((l) => /MARKLESS_|Error/.test(l))
+						.slice(0, 3)
+						.join(' | '),
+			ok: false,
+		});
 		continue;
 	}
 	const prodPort = await freePort();
@@ -305,5 +341,7 @@ for (const r of results)
 const file = join(here, 'results.json');
 const earlier = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : [];
 const ran = new Set(results.map((r) => r.name));
-const merged = [...earlier.filter((r) => !ran.has(r.name)), ...results].sort((a, b) => a.name.localeCompare(b.name) || a.mode.localeCompare(b.mode));
+const merged = [...earlier.filter((r) => !ran.has(r.name)), ...results].sort(
+	(a, b) => a.name.localeCompare(b.name) || a.mode.localeCompare(b.mode),
+);
 writeFileSync(file, `${JSON.stringify(merged, null, '\t')}\n`);

@@ -405,7 +405,7 @@ export function updatesPage(view: UpdatesView, page: number, now: number): Updat
 }
 
 export interface Permalink {
-	readonly kind: 'loading' | 'error' | 'deleted' | 'comment';
+	readonly kind: 'loading' | 'deleted' | 'comment';
 	readonly className: string;
 	readonly by: string;
 	readonly userHref: string;
@@ -449,11 +449,6 @@ export function permalink(
 		hnHref: `https://news.ycombinator.com/item?id=${id}`,
 		hasKids: false,
 	};
-	if (comment === null)
-		return {
-			head: { ...base, kind: 'error', className: 'Comment Comment--level0 Comment--error' },
-			rows: [],
-		};
 	if (!comment || !comment.id)
 		return {
 			head: {

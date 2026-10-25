@@ -178,7 +178,7 @@ export function highlightSince(thread: Thread, showAfter: number): Flags {
 export interface CommentRow {
 	readonly key: number;
 	readonly id: number;
-	readonly kind: 'comment' | 'loading' | 'error' | 'deleted';
+	readonly kind: 'comment' | 'loading' | 'deleted';
 	readonly className: string;
 	readonly by: string;
 	readonly userHref: string;
@@ -231,7 +231,8 @@ export function commentRows(
 	const rows: CommentRow[] = [];
 	const walk = (id: number, level: number, spinner: boolean) => {
 		const base = `Comment--level${level}`;
-		if (!has(thread.items, id)) {
+		// reactfire turns a null value into a record with no id, which the old Comment renders as still loading.
+		if (!has(thread.items, id) || thread.items[id] === null) {
 			const delayed = thread.delayed?.[id] === true;
 			rows.push({
 				...empty(id, 'loading', `Comment Comment--loading ${base}`, spinner || delayed),
@@ -239,11 +240,7 @@ export function commentRows(
 			});
 			return;
 		}
-		const item = thread.items[id];
-		if (!item) {
-			rows.push(empty(id, 'error', `Comment Comment--error ${base}`, false));
-			return;
-		}
+		const item = thread.items[id]!;
 		if (item.dead && !thread.settings.showDead) return;
 		if (item.deleted) {
 			if (thread.settings.showDeleted)

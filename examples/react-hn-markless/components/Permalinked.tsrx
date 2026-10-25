@@ -46,7 +46,6 @@ export default function Permalinked({ id }: { id: string }) @{
 					{view.head.deadText}
 				</span>
 				<span hidden={view.head.kind !== 'deleted'}>[deleted] | <a href={view.head.hnHref}>view on Hacker News</a></span>
-				<span hidden={view.head.kind !== 'error'}>[error] | comment is null | <a href={view.head.hnHref}>view on Hacker News</a></span>
 			</div>
 			<div class="Comment__text" hidden={!view.head.showText}>
 				<div data-html={view.head.html}></div>

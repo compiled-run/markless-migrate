@@ -7,8 +7,9 @@ import { collapseWithoutNew, highlightSince, shownTimes, toggled, type Flags, ty
 import { itemHeader, pollRows, threadRows } from '../lib/views.ts';
 import CommentList from './CommentList.tsrx';
 
-export default function ItemView({ id }: { id: string }) @{
+export default function ItemView({ id, path }: { id: string; path: string }) @{
 	let rootId = state(Number(id));
+	let here = state(path);
 	let live = state<ThreadState>({ items: {}, visit: { lastVisit: null, prevMaxCommentId: 0, firstVisit: true }, settings: DEFAULT_SETTINGS, loading: true, delayed: {} });
 	let collapsed = state<Flags>({});
 	let highlighted = state<Flags | null>(null);
@@ -18,6 +19,7 @@ export default function ItemView({ id }: { id: string }) @{
 	const header = computed(() => itemHeader(thread, live.loading, showAfter, now));
 	const rows = computed(() => threadRows(thread, now));
 	const polls = computed(() => pollRows(thread));
+	const linksHere = computed(() => header.meta.itemHref === here);
 
 	<div
 		class={header.className}
@@ -48,7 +50,15 @@ export default function ItemView({ id }: { id: string }) @{
 				<time class="Item__time" datetime={header.meta.timeIso} title={header.meta.timeTitle}>{header.meta.timeText}</time>
 				<span hidden={header.meta.job}>
 					{' | '}
-					<a href={header.meta.itemHref}>{header.meta.comments}</a>
+					<a
+						href={header.meta.itemHref}
+						onClick={(event) => {
+							// hashHistory does not push the path it is already on, so the old link to this page does nothing.
+							if (linksHere) event.preventDefault();
+						}}
+					>
+						{header.meta.comments}
+					</a>
 					<span hidden={header.newCount <= 0}>
 						{' '}(<em>{header.newCount} new</em> in the last <time datetime={header.lastVisitIso} title={header.lastVisitTitle}>{header.lastVisitText}</time>{') | '}
 						<span

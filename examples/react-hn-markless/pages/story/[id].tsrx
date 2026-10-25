@@ -4,6 +4,6 @@ import ItemView from '../../components/ItemView.tsrx';
 
 export default function ItemPage({ url, params }: PageProps<{ id: string }>) @{
 	<App path={url.pathname}>
-		<ItemView id={params.id} />
+		<ItemView id={params.id} path={url.pathname} />
 	</App>
 }

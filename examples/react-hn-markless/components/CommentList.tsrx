@@ -35,7 +35,6 @@ export default function CommentList({ rows, onToggle }: { rows: readonly Comment
 							<a href={row.linkHref}>link</a>{row.deadText}{row.childText}<em hidden={row.childNew <= 0}>{row.childNew} new</em>{row.childClose}
 						</span>
 						<span hidden={row.kind !== 'deleted'}>[deleted] | <a href={row.hnHref}>view on Hacker News</a></span>
-						<span hidden={row.kind !== 'error'}>[error] | comment is null | <a href={row.hnHref}>view on Hacker News</a></span>
 					</div>
 					<div class="Comment__text" hidden={row.kind !== 'comment'}>
 						<div data-html={row.html}></div>
