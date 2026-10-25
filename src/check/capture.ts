@@ -1,4 +1,4 @@
-import { frameworkMarkup, frameworkRuntime, sealedBy, thirdPartyEmbeds } from './automatic.ts';
+import { frameworkMarkup, frameworkRuntime, scriptLibraries, sealedBy, thirdPartyEmbeds } from './automatic.ts';
 import type { Browser, Page, Response } from 'playwright';
 import { decodeImages, readPage } from './collect.ts';
 import { createHash } from 'node:crypto';
@@ -191,6 +191,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 		const fontHashes = new Map<string, string>();
 		const scriptBytes = new Map<string, { bytes: number; source: number }>();
 		const runtimes = new Map<string, string>();
+		const libraries = new Map<string, string[]>();
 		const embedded = new Set<string>();
 		const ownScripts = new Set<string>();
 		const loaded = new Set<string>();
@@ -213,8 +214,11 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 					if (type === 'script') {
 						const body = response.ok() ? await response.body().catch(() => Buffer.alloc(0)) : Buffer.alloc(0);
 						scriptBytes.set(response.url(), { bytes, source: body.length });
-						const runtime = frameworkRuntime(body.toString('utf8'));
+						const code = body.toString('utf8');
+						const runtime = frameworkRuntime(code);
 						if (runtime) runtimes.set(toLocal(response.url(), origin), runtime);
+						const found = scriptLibraries(code);
+						if (found.length) libraries.set(toLocal(response.url(), origin), found);
 					}
 					if (type === 'font' && response.ok()) fontHashes.set(response.url(), createHash('sha256').update(await response.body()).digest('hex'));
 					if (type === 'stylesheet' && response.ok()) stylesheets.push({ url: toLocal(response.url(), origin), text: await response.text() });
@@ -255,7 +259,7 @@ export async function capturePage(browser: Browser, env: SideEnv, route: string,
 			if (text.trim()) stylesheets.push({ url: `${toLocal(pageUrlBefore(page), origin)} <style> #${i + 1}`, text });
 		}
 		const builtTexts = [html, ...stylesheets.map((s) => s.text), ...coverage.map((entry) => entry.source ?? '')];
-		const assets: AssetRecord[] = (await Promise.all(pending)).filter((a) => a !== undefined).map((a) => ({ ...a, fingerprinted: isFingerprinted(a.url, builtTexts), ...(runtimes.has(a.url) ? { runtime: runtimes.get(a.url)! } : {}) }));
+		const assets: AssetRecord[] = (await Promise.all(pending)).filter((a) => a !== undefined).map((a) => ({ ...a, fingerprinted: isFingerprinted(a.url, builtTexts), ...(runtimes.has(a.url) ? { runtime: runtimes.get(a.url)! } : {}), ...(libraries.has(a.url) ? { libraries: libraries.get(a.url)! } : {}) }));
 		const internals = await page.evaluate(frameworkMarkup).catch(() => []);
 		const embeds = await page.evaluate(thirdPartyEmbeds).catch(() => []);
 		const served = runtimeMarkers(html, 'served');

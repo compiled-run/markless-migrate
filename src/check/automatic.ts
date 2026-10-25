@@ -16,6 +16,13 @@ const RUNTIMES: readonly [string, readonly RegExp[]][] = [
 	['Alpine.js', [/\bAlpine\b/, /x-data/, /x-init/]],
 ];
 
+/** Libraries that keep storage of their own, found in a bundle whatever UI framework it also carries. */
+const LIBRARIES: readonly [string, readonly RegExp[]][] = [['Firebase', [/previous_websocket_failure/, /firebaseio\.com/]]];
+
+export function scriptLibraries(code: string): string[] {
+	return LIBRARIES.filter(([, all]) => all.every((re) => re.test(code))).map(([name]) => name);
+}
+
 export function frameworkRuntime(code: string): string | undefined {
 	return RUNTIMES.find(([, all]) => all.every((re) => re.test(code)))?.[0];
 }
@@ -204,10 +211,11 @@ export function unreachableCandidate(kind: string, oldReason: string, onNew: { r
 	return candidate('unreachable-on-both', `neither page lets a visitor use it, for the same reason (${kind}): old ${old}; new ${onNew.failed ?? kind}`);
 }
 
-/** Keys a framework's runtime writes for itself, never the app: htmx's history cache, and the entry state of history 2 and 3, React Router's. */
+/** Keys a framework's runtime writes for itself, never the app: htmx's history cache, and the entry state of history 2 and 3, React Router's, and the Firebase SDK's connection flag. */
 const FRAMEWORK_KEYS: readonly { readonly framework: string; readonly key: RegExp }[] = [
 	{ framework: 'htmx', key: /^(sessionStorage|localStorage) htmx-(history-cache|current-path-for-history)$/ },
 	{ framework: 'React', key: /^sessionStorage @@History\/./ },
+	{ framework: 'Firebase', key: /^localStorage firebase:previous_websocket_failure$/ },
 ];
 
 /** The server framework whose own sealed format a cookie value is in: Laravel encrypts every cookie it sets as base64 JSON with iv, value and mac. */
@@ -224,7 +232,7 @@ export function sealedBy(value: string): string | undefined {
 export type StorageOwner = (line: string) => string | undefined;
 
 export function storageOwner(olds: readonly PageCapture[], next: readonly PageCapture[]): StorageOwner {
-	const runtimes = (pages: readonly PageCapture[]) => new Set(pages.flatMap((p) => p.assets.flatMap((a) => (a.runtime ? [a.runtime] : []))));
+	const runtimes = (pages: readonly PageCapture[]) => new Set(pages.flatMap((p) => p.assets.flatMap((a) => [...(a.runtime ? [a.runtime] : []), ...(a.libraries ?? [])])));
 	const sealed = (pages: readonly PageCapture[]) => new Map(pages.flatMap((p) => Object.entries(p.sealed ?? {})));
 	const [oldRuntimes, newRuntimes, oldSealed, newSealed] = [runtimes(olds), runtimes(next), sealed(olds), sealed(next)];
 	return (line) => {
