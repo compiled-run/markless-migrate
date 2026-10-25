@@ -107,6 +107,8 @@ export interface ScriptWeight {
 	readonly bytes: number;
 	readonly source: number;
 	readonly executed: number;
+	/** A digest of its source when it ran: a bundler names the same chunk differently from one build to the next, so scripts are matched by what they hold. */
+	readonly content?: string;
 }
 
 /** downloaded: bytes on the wire (compressed when the server compresses); source and executed: uncompressed source bytes. */
