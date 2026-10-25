@@ -402,12 +402,18 @@ the two pages already had at load in a library's markup is the rendered check's,
 it on one side only; when the first old and new runs differ, the old side runs again, and what differs
 between its two runs is noise there (a line may then vary only in its digits); offsets a drag leaves
 agree within 2 px or 2%, scroll positions within 40 px, and fractional values (a panel at 65.7%) are
-read to the whole unit. A control in a shared header, nav, sidebar or footer is probed on the first
-route of the run that has it. Up to 40 controls a route are probed, within max(60 s, 30 s a control
+read to the whole unit. A widget that several routes render alike (the same control markup, the four
+elements around it, its label and what it opens, on both pages, with the ids and handler numbers a
+page derives for itself numbered by first use) is probed once a run, on the first route that has it,
+and its result counts for each of those routes: the report says where it was driven (`probed on
+/docs, which renders the same widget`), and its failures are each route's, ending `(driven on /docs,
+which renders the same widget)`. Where its markup differs on a route, it is probed there too; one the
+first route could not drive is driven on the next. Up to 40 controls a route are probed, within max(60 s, 30 s a control
 divided by the pairs probed at once, 2), at most 10 minutes, counted from the end of discovery; one left out, and one check could not
 find again on the old page, is red as `not exercised`; the controls an alike one stood for are listed in the report (`widget probes: 13
-controls driven (205 alike stood for by one of their kind)`). The probes take about a minute a route
-on a docs page with a dozen kinds of widget.
+controls driven (205 alike stood for by one of their kind)`). On 20 routes of ui.shadcn.com's docs the
+probes add 37 s a route on average (6 to 148 s; 85 s before a widget was probed once a run), with the
+default two pairs at once.
 
 The route is also loaded with the frozen clock moved 40 days and 7 hours on, in `Pacific/Auckland`:
 text the old page changes with the clock (a date, a relative time, a chart axis) must change on the new

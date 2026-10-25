@@ -5,7 +5,7 @@ import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { defaultEnv } from '../src/check/browser.ts';
 import type { RecordedJourney } from '../src/check/journeys.ts';
-import { checkProbes, compareRuns, type Reading } from '../src/check/probes.ts';
+import { checkProbes, compareRuns, type Reading, type SharedProbe } from '../src/check/probes.ts';
 import { VIEWPORTS } from '../src/check/types.ts';
 
 // A focus marker kept the way React Aria keeps it: any key press means keyboard (`keys` narrows which), a pointer press means pointer.
@@ -60,14 +60,21 @@ function serve(pages: Record<string, string>): Promise<{ server: Server; origin:
 	return new Promise((done) => server.listen(0, '127.0.0.1', () => done({ server, origin: `http://127.0.0.1:${(server.address() as AddressInfo).port}` })));
 }
 
+// The same dialog on routes that differ around it; on /shared-c the new page's trigger carries a class the others do not, so its markup differs there.
+const SHARED: Record<string, { old: string; bad: string }> = {
+	'/shared-a': { old: `<p>Opening hours</p>${dialog(false)}`, bad: `<p>Opening hours</p>${dialog(true)}` },
+	'/shared-b': { old: `<p>Our roasts, by origin</p>${dialog(false)}`, bad: `<p>Our roasts, by origin</p>${dialog(true)}` },
+	'/shared-c': { old: `<p>Contact</p>${dialog(false)}`, bad: `<p>Contact</p>${dialog(true).replace('<button id="o"', '<button class="wide" id="o"')}` },
+};
+
 let browser: Browser;
 let old: string;
 let bad: string;
 const servers: Server[] = [];
 before(async () => {
 	browser = await chromium.launch();
-	const a = await serve(Object.fromEntries(Object.entries(PAIRS).map(([k, v]) => [`/${k.replace(' ', '-')}`, v.old])));
-	const b = await serve(Object.fromEntries(Object.entries(PAIRS).map(([k, v]) => [`/${k.replace(' ', '-')}`, v.bad])));
+	const a = await serve(Object.fromEntries([...Object.entries(PAIRS).map(([k, v]) => [`/${k.replace(' ', '-')}`, v.old]), ...Object.entries(SHARED).map(([k, v]) => [k, v.old])]));
+	const b = await serve(Object.fromEntries([...Object.entries(PAIRS).map(([k, v]) => [`/${k.replace(' ', '-')}`, v.bad]), ...Object.entries(SHARED).map(([k, v]) => [k, v.bad])]));
 	servers.push(a.server, b.server);
 	old = a.origin;
 	bad = b.origin;
@@ -119,4 +126,27 @@ test('a difference both pages had at load, noise between two old runs, and sub-p
 	const stamp = (t: string): Reading[] => [load, { focus: 'body', widget: [`time ${t}`] }];
 	assert.deepEqual(compareRuns(stamp('1'), stamp('3'), stamp('2')), [[]]);
 	assert.deepEqual(compareRuns(old, [next[0]!, { ...next[1]!, focus: 'body' }]), [[{ field: 'focus', old: 'button "A"', new: 'body' }]]);
+});
+
+test('a widget rendered alike on several routes is driven once a run and its result is each of those routes\'; where its markup differs it is driven again', async () => {
+	const sides = { old: defaultEnv(old), new: defaultEnv(bad) };
+	const shared = new Map<string, SharedProbe>();
+	const popup = (r: Awaited<ReturnType<typeof checkProbes>>) => r.controls.find((c) => c.cls === 'popup' && c.control === 'button "Settings"');
+	const mine = (r: Awaited<ReturnType<typeof checkProbes>>) => r.failures.filter((f) => f.check.startsWith('popup probe of button "Settings"'));
+	const first = await checkProbes(browser, sides, '/shared-a', VIEWPORTS[0]!, undefined, { shared });
+	// Driven at once with the first, the third waits for it; the fourth, its markup different on new, is driven itself.
+	const [second, other] = await Promise.all([checkProbes(browser, sides, '/shared-b', VIEWPORTS[0]!, undefined, { shared }), checkProbes(browser, sides, '/shared-c', VIEWPORTS[0]!, undefined, { shared })]);
+	assert.equal(popup(first)?.state, 'probed');
+	assert.equal(popup(second)?.state, 'probed on /shared-a, which renders the same widget', JSON.stringify(second.controls));
+	assert.equal(popup(other)?.state, 'probed', JSON.stringify(other.controls));
+	assert.ok(mine(first).length && mine(other).length);
+	assert.deepEqual(mine(second).map((f) => [f.route, f.check]), mine(first).map((f) => ['/shared-b', f.check]));
+	assert.ok(mine(second).every((f) => f.actual.endsWith('(driven on /shared-a, which renders the same widget)')));
+
+	const together = new Map<string, SharedProbe>();
+	const both = await Promise.all(['/shared-a', '/shared-b'].map((route) => checkProbes(browser, sides, route, VIEWPORTS[0]!, undefined, { shared: together })));
+	const driver = both.findIndex((r) => popup(r)?.state === 'probed');
+	assert.ok(driver >= 0, JSON.stringify(both.map((r) => r.controls)));
+	assert.equal(popup(both[1 - driver]!)?.state, `probed on ${['/shared-a', '/shared-b'][driver]}, which renders the same widget`);
+	assert.equal(mine(both[1 - driver]!).length, mine(both[driver]!).length);
 });

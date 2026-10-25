@@ -111,7 +111,37 @@ export function installProbe(): void {
 		}
 		return out;
 	};
+	const strip = (html: string) => html.replace(/ data-markless-migrate-[\w-]+(="[^"]*")?/g, '').replace(/\s+/g, ' ');
+	const openTag = (e: Element) => `<${e.localName}${[...e.attributes].filter((a) => !a.name.startsWith('data-markless-migrate')).map((a) => ` ${a.name}="${a.value}"`).join('')}>`;
 	const probe = {
+		/**
+		 * What makes two copies of a widget the same one, hashed: the control's markup, the opening tags of the four elements
+		 * around it (what a converter part's selectors match), its label, and what it controls when that is on the page. Ids a
+		 * library or the converter derives per page, and a Markless page's handler numbers, are numbered by first use, so only how
+		 * they point at each other counts.
+		 */
+		print(el: Element): string {
+			const parts = [describe(el), strip(el.outerHTML)];
+			for (let at = el.parentElement, n = 0; at && at !== document.body && n < 4; at = at.parentElement, n++) parts.push(openTag(at));
+			const labels = el instanceof HTMLInputElement || el instanceof HTMLButtonElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement ? [...(el.labels ?? [])] : [];
+			for (const id of `${el.getAttribute('aria-labelledby') ?? ''} ${el.getAttribute('aria-controls') ?? ''}`.split(/\s+/).filter(Boolean)) {
+				const target = document.getElementById(id);
+				if (target && !target.contains(el) && !labels.includes(target as HTMLLabelElement)) labels.push(target as HTMLLabelElement);
+			}
+			for (const target of labels) parts.push(strip(target.outerHTML));
+			const numbered = new Map<string, string>();
+			const handlers = new Map<string, string>();
+			// A Markless page numbers its handlers in page order: what an element listens for is kept, the number counted from this widget.
+			const text = parts.join('\n').replace(/(m:on="[^"]*")/g, (on) => on.replace(/:(\d+)/g, (_, n: string) => `:#h${handlers.get(n) ?? (handlers.set(n, String(handlers.size)), handlers.get(n))}`)).replace(/\b(react-aria|radix-|base-ui-|headlessui-|mm-[0-9a-f]+-|_r_|«|:r)[\w:«»-]*/gi, (id) => numbered.get(id) ?? (numbered.set(id, `#id${numbered.size}`), numbered.get(id)!));
+			let h1 = 0x811c9dc5;
+			let h2 = 0x01000193;
+			for (let i = 0; i < text.length; i++) {
+				const c = text.charCodeAt(i);
+				h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+				h2 = Math.imul(h2 ^ c, 0x5bd1e995) >>> 0;
+			}
+			return `${text.length}:${h1.toString(16)}${h2.toString(16)}`;
+		},
 		mark(el: Element): void {
 			for (const o of document.querySelectorAll(`[${MARK}]`)) o.removeAttribute(MARK);
 			el.setAttribute(MARK, '');
@@ -220,15 +250,18 @@ export interface ProbeControl {
 	readonly region: string;
 	/** What it says it opens (its aria-haspopup), when it says. */
 	readonly popup?: string;
+	/** Its widget's print (installProbe's `print`), when asked for. */
+	readonly print?: string;
 }
 
 /**
  * Runs in the page: the controls of each probe class, in page order. `hover` holds the elements the handler scan saw listening
  * for the pointer moving over them (handlers.ts),
  * `notify` the names of buttons whose click announced something in a live region,
- * `found` the classes discovery gave controls by their key.
+ * `found` the classes discovery gave controls by their key; with `prints`, only the controls of those keys, each with its widget's print.
  */
-export function probeControls({ notify, mark, found = {} }: { readonly notify: readonly string[]; readonly mark?: string; readonly found?: Readonly<Record<string, readonly string[]>> }): ProbeControl[] {
+export function probeControls({ notify, mark, found = {}, prints }: { readonly notify: readonly string[]; readonly mark?: string; readonly found?: Readonly<Record<string, readonly string[]>>; readonly prints?: readonly string[] }): ProbeControl[] {
+	const printer = (globalThis as { __markless_migrate_probe__?: { print(el: Element): string } }).__markless_migrate_probe__;
 	const hover = (globalThis as { __markless_migrate_hover__?: WeakSet<Element> }).__markless_migrate_hover__;
 	const shown = (e: Element) => {
 		const r = e.getBoundingClientRect();
@@ -255,6 +288,10 @@ export function probeControls({ notify, mark, found = {} }: { readonly notify: r
 		seen.set(key, nth + 1);
 		if (mark !== undefined) {
 			if (`${key}|${nth}` === mark) e.setAttribute('data-markless-migrate-probe', '');
+			return;
+		}
+		if (prints) {
+			if (printer && prints.includes(`${key}|${nth}`)) out.push({ role, name: label, nth, kind: '', classes: [], region: '', print: printer.print(e) });
 			return;
 		}
 		for (const cls of found[`${key}|${nth}`] ?? []) if (!classes.includes(cls)) classes.push(cls);

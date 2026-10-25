@@ -23,7 +23,7 @@ import { DEFAULT_FREEZE, pinnedBy, pinnedSummary, type FreezeOptions } from './f
 import { HINTS } from './hints.ts';
 import { locateFailures, NOT_EXERCISED } from './locate.ts';
 import { checkClock } from './clock-shift.ts';
-import { checkProbes, type ProbeOptions } from './probes.ts';
+import { checkProbes, type ProbeOptions, type SharedProbe } from './probes.ts';
 import { mapRules } from './sourcemap.ts';
 import { negotiationFailures } from './i18n.ts';
 import { compareJourneys, describeTarget, MAX_ARRIVED, replay, timedOnly, type Journey, type Step, DEFAULT_JOURNEY_BUDGET_MS, doorPageErrors, explore, inDarkMode, themed, replayAll, replayDestructive, survey, type ElementCoverage, type Exploration, type ExploreOptions, type RecordedJourney, type Run as RunResults } from './journeys.ts';
@@ -113,7 +113,7 @@ export interface CheckOptions {
 	/** `load`: only page load is measured, after nothing else; `embeds`: only the embed step runs, on each page route; `probes`: only the widget probes and the moved clock; every other dimension is skipped. */
 	readonly only?: 'load' | 'embeds' | 'probes';
 	/** The widget probes (probes.ts) and the moved-clock look (clock-shift.ts) on each page route; left out when absent. */
-	readonly probes?: Omit<ProbeOptions, 'layout'>;
+	readonly probes?: Omit<ProbeOptions, 'shared'>;
 	/** How long one route's check (as one role) may take before it is stopped and reported as an infrastructure failure. */
 	readonly timeoutMs?: number;
 	/** Every route of the old site, each checked for existence on the new app (the coverage dimension). */
@@ -786,7 +786,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 	const shared = { freeze, block: blocker(options.block), sendWrites: writesAllowed(options), writeFacts: options.source?.writes ?? [], ...(options.data ? { renderFresh: true } : {}), ...(dataHosts.size ? { dataHosts } : {}), ...(options.serverClock && freeze ? { serverClock: true } : {}), ...bypass };
 	const artifacts = options.artifactsDir ? new RouteArtifacts(options.artifactsDir, options.oldOrigin) : undefined;
 	const oldCache = options.cacheDir ? new OldCache(join(options.cacheDir, 'old'), { block: options.block ?? null }) : undefined;
-	const base: Run = { old: defaultEnv(options.oldOrigin, { ...shared, ...(options.oldRouting ? { routing: options.oldRouting } : {}) }), new: defaultEnv(options.newOrigin, shared), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: { ...options.probes, layout: new Map<string, string>() } } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
+	const base: Run = { old: defaultEnv(options.oldOrigin, { ...shared, ...(options.oldRouting ? { routing: options.oldRouting } : {}) }), new: defaultEnv(options.newOrigin, shared), frozen: Boolean(freeze), ...(oldCache ? { oldCache } : {}), ...(options.responsiveness ? { responsiveness: options.responsiveness } : {}), ...(options.motion ? { motion: options.motion } : {}), ...(options.embeds ? { embeds: { ...options.embeds, claimed: new Map<string, string>() } } : {}), ...(options.probes ? { probes: options.probes } : {}), ...(options.switched ? { switched: options.switched } : {}), ...(options.source ? { source: options.source } : {}), ...(options.sourceDirs ? { sourceDirs: options.sourceDirs } : {}) };
 	const auth = options.auth;
 	const roles: (string | undefined)[] = auth ? [ANONYMOUS, ...Object.keys(auth.roles)] : [undefined];
 	const logins: LoginResult[] = [];
@@ -826,6 +826,8 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				if (!signed.run) continue;
 				roleRun = signed.run;
 			}
+			// A widget is shared only among one role's routes: a signed-in visitor may meet another one behind the same markup.
+			if (roleRun.probes) roleRun = { ...roleRun, probes: { ...roleRun.probes, shared: new Map<string, SharedProbe>() } };
 			if (options.only === 'load') {
 				if (!role || role === ANONYMOUS) routes.push(...allPages.map((route) => withTemplate({ ...partialResult(route, [], []), ok: true, only: 'load' as const })));
 				continue;
@@ -841,7 +843,7 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 				continue;
 			}
 			if (options.only === 'probes') {
-				const probing = { ...roleRun, probes: roleRun.probes ?? { layout: new Map<string, string>() } };
+				const probing = { ...roleRun, probes: roleRun.probes ?? { shared: new Map<string, SharedProbe>() } };
 				const viewport = (options.viewports ?? VIEWPORTS)[0]!;
 				for (const route of allPages) {
 					const empty = { ...partialResult(route, [], ['behaviour', 'a11y', 'rendered']), ok: true };
