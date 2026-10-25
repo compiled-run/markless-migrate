@@ -304,12 +304,11 @@ export function endTyping(t: Typing): void {
 	clearTimeout(t.timer);
 	Object.assign(t, newTyping());
 }
-const visible = (el: Element) => el.getClientRects().length > 0;
 
-/** useTypeahead's keydown in an open list: the index typed to, or undefined. `skip` is Select's disabledIndices. */
-export function typeahead(t: Typing, event: KeyboardEvent, items: readonly HTMLElement[], active: number, skip: (i: number) => boolean = () => false, selected: number | null = null): number | undefined {
+/** useTypeahead's keydown: the index typed to, or undefined. `skip`: items it passes over (hidden, or Select's disabled). */
+export function typeahead(t: Typing, event: KeyboardEvent, items: readonly HTMLElement[], active: number, skip: (i: number) => boolean, open = true, selected: number | null = null): number | undefined {
 	const labels = items.map((i) => i.textContent ?? '');
-	const available = (i: number) => visible(items[i]!) && !skip(i);
+	const available = (i: number) => !skip(i);
 	const matching = (text: string, start = 0) => {
 		const lower = text.toLowerCase();
 		for (let offset = 0; offset < labels.length; offset++) {
@@ -324,7 +323,7 @@ export function typeahead(t: Typing, event: KeyboardEvent, items: readonly HTMLE
 	}
 	if (t.text.length > 0 && t.text[0] !== ' ' && matching(t.text) === -1 && event.key !== ' ') t.typing = false;
 	if (!labels.length || event.key.length !== 1 || event.ctrlKey || event.metaKey || event.altKey) return undefined;
-	if (event.key !== ' ') {
+	if (open && event.key !== ' ') {
 		event.preventDefault();
 		t.typing = true;
 	}

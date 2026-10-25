@@ -294,6 +294,8 @@ let currentRoute = '';
 let layerPickers: ((route: string, reveal: Reveal, kept: readonly Element[]) => { readonly bind: (el: Element) => Binding | undefined; readonly declare: readonly string[] } | undefined) | undefined;
 // The React Aria calendars the popovers of the route being prepared show (convert's RacCalendarPlan, set per route).
 let racLayer: { readonly plan: RacCalendarPlan; readonly captured: ReadonlyMap<string, CapturedCalendars>; readonly messages: (locale: string) => CalendarMessages | undefined; route: string } | undefined;
+// The value each option of a control's layer gave its hidden form input (Base UI Select's), by layer key and option text.
+let optionValues: Record<string, Record<string, string>> = {};
 // What the old page's copy controls wrote, by the control's signature and occurrence.
 let currentClipboard: Record<string, string> = {};
 // Routes with a block that waits for the load event to render (its web font is fetched after the load).
@@ -562,8 +564,13 @@ function layerMarkup(reveal: Reveal, added: Reveal['added'][number], dropped: (w
 	for (const top of kept) renameIds([top, ...walkAll(top)], rename);
 	const key = rename.get(reveal.key) ?? reveal.key;
 	const extra = placed ? placed.trim().split(/\s+(?=data-)/) : [];
+	const values = optionValues[`${currentRoute}|${reveal.key}`];
 	for (const top of kept) {
-		for (const el of [top, ...walkAll(top)]) atRest(el);
+		for (const el of [top, ...walkAll(top)]) {
+			atRest(el);
+			const value = values && attr(el, 'role') === 'option' ? values[textContent(el).trim()] : undefined;
+			if (value !== undefined) el.attrs = [...el.attrs.filter((a) => a.name !== 'data-mm-value'), { name: 'data-mm-value', value }];
+		}
 		selectIndicators(top);
 		comboboxIndicators(top);
 		racIndicators(top);
@@ -884,6 +891,7 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 	const pickers = new Map<string, CapturedPickers>();
 	const racCalendarsRead = new Map<string, CapturedCalendars>();
 	const choices: Record<string, Record<string, Choice>> = {};
+	optionValues = {};
 	try {
 		// The old site's not-found page, from a path no route has: the new app's 404 page.
 		captures = await captureAll(browser, options.old, options.only?.length ? routes : [...routes, NOT_FOUND], join(state, 'convert', 'captures'), { concurrency: options.concurrency ?? 4, log });
@@ -1029,10 +1037,16 @@ export async function convert(options: ConvertOptions): Promise<ConvertReport> {
 		const seenKeys = new Set<string>();
 		for (const [route, reveals] of revealed)
 			for (const reveal of reveals) {
-				if (seenKeys.has(reveal.key) || !reveal.added.some((a) => a.into === 'body' && /cmdk-item|role="option"|role="menuitem"/.test(a.html))) continue;
+				if (!reveal.added.some((a) => a.into === 'body' && /cmdk-item|role="option"|role="menuitem"/.test(a.html))) continue;
+				// A Base UI listbox's values are its page's: generated ids repeat across pages.
+				const listbox = reveal.added.some((a) => a.html.includes('data-base-ui-portal') && a.html.includes('role="listbox"'));
+				if (seenKeys.has(reveal.key) && !listbox) continue;
+				const first = !seenKeys.has(reveal.key);
 				seenKeys.add(reveal.key);
 				const found = await captureChoices(browser, options.old, route, reveal, join(state, 'convert', 'choices'), log);
-				if (Object.values(found).some((c) => c.href || c.copied !== undefined)) choices[reveal.key] = found;
+				if (first && Object.values(found).some((c) => c.href || c.copied !== undefined)) choices[reveal.key] = found;
+				const chosen = Object.entries(found).filter(([, c]) => c.value !== undefined);
+				if (chosen.length) optionValues[`${route}|${reveal.key}`] = Object.fromEntries(chosen.map(([k, c]) => [k, c.value!]));
 			}
 	} finally {
 		await browser.close();
