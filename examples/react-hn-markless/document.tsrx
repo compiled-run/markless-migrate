@@ -3,7 +3,7 @@ import { Html } from '@markless/router';
 import { HASH_LINKS, UNREGISTER_WORKERS } from './lib/legacy.ts';
 
 export default function Document({ children }: { readonly children?: Children }) @{
-	<Html>
+	<Html lang={null}>
 		<head>
 			<script>{HASH_LINKS}</script>
 			<meta http-equiv="X-UA-Compatible" content="IE=edge" />

@@ -424,7 +424,7 @@ export function followPermalink(
 		document.title = pageTitle(
 			comment.deleted
 				? 'Deleted comment'
-				: `Comment by ${comment.by}${ancestry.op ? ` | ${ancestry.op.title}` : ''}`,
+				: `Comment by ${comment.by}`,
 		);
 	};
 	const listens = new Listens((at, value) => {
@@ -440,7 +440,6 @@ export function followPermalink(
 				ancestors(value).then((found) => {
 					if (stopped) return;
 					ancestry = found;
-					title();
 					emit();
 				});
 			}

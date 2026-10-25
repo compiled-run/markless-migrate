@@ -25,12 +25,10 @@ export interface Thread {
 
 const has = (items: Items, id: number) => Object.prototype.hasOwnProperty.call(items, id);
 
-/** Whether a comment's own subtree is shown and its kids loaded: dead and deleted comments render nothing below them unless the settings show them. */
+/** Whether a comment renders the comments under it: a deleted one never does, a dead one only when the settings show dead comments. */
 export function rendersKids(item: Item | null | undefined, settings: Settings): boolean {
-	if (!item) return false;
-	if (item.deleted) return settings.showDeleted;
-	if (item.dead && !settings.showDead) return false;
-	return true;
+	if (!item || item.deleted) return false;
+	return !item.dead || settings.showDead;
 }
 
 /** Ids the listener follows: the root and every comment a rendered comment lists as a kid. */
@@ -71,13 +69,32 @@ function registered(thread: Pick<Thread, 'rootId' | 'items' | 'settings'>): {
 	return { comments, children, parents };
 }
 
-/** True once every comment the thread renders has answered: the old store's end of the initial load. */
+/** The old store's end of the initial load, counted as it counted: a dead comment's replies are expected but never render, so such a thread never ends it. */
 export function loaded(thread: Pick<Thread, 'rootId' | 'items' | 'settings' | 'delayed'>): boolean {
 	const { rootId, items, settings } = thread;
-	if (!has(items, rootId) || !items[rootId]) return false;
-	return followed(rootId, items, settings).every(
-		(id) => has(items, id) || thread.delayed?.[id] === true,
-	);
+	const root = items[rootId];
+	if (!root) return false;
+	let expected = root.kids?.length ?? 0;
+	let count = 0;
+	const queue = [...(root.kids ?? [])];
+	while (queue.length) {
+		const id = queue.shift()!;
+		if (thread.delayed?.[id]) {
+			expected--;
+			continue;
+		}
+		if (!has(items, id)) continue;
+		const item = items[id];
+		if (!item || item.deleted) {
+			expected--;
+			continue;
+		}
+		if (item.dead && !settings.showDead) expected--;
+		else count++;
+		expected += item.kids?.length ?? 0;
+		if (rendersKids(item, settings)) queue.push(...(item.kids ?? []));
+	}
+	return count >= expected;
 }
 
 export function counted(item: Item, settings: Settings): boolean {
