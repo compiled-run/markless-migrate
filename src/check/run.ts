@@ -323,7 +323,7 @@ async function checkJourneys(browser: Browser, run: Run, route: string, viewport
 	const reachable = await profiled(route, 'unreachable on new', () => unreachableOnBoth(browser, front, route, viewport, elements));
 	const writes = journeys.flatMap((j) => j.expected.flatMap((step) => (step.writes ?? []).map((w) => ({ ...w, during: j.name }))));
 	const coverage: Coverage = { total: elements.length, exercised: elements.filter((e) => e.by).length, elements, skipped: explored.skipped, ...(explored.sequencesSkipped ? { sequencesSkipped: explored.sequencesSkipped } : {}) };
-	const unexercised = elements.filter((e) => !e.by && !e.shared).map((e) => notExercised(route, e.element, e.reason ?? 'no journey used it', reachable.get(e.signature)));
+	const unexercised = [...elements.filter((e) => !e.by && !e.shared).map((e) => notExercised(route, e.element, e.reason ?? 'no journey used it', reachable.get(e.signature))), ...leftOut(route, explored)];
 	const doorErrors = await doorPageErrors(browser, run.old, viewport, [...next, ...newRisky]);
 	// A theme toggle starts from the OS colour scheme: its cycles run again with the OS in dark mode, twice on old (what varies there may vary) and once on new.
 	const dark = themed(plain);
@@ -460,6 +460,15 @@ async function checkTimings(browser: Browser, run: Run, route: string, result: R
 	// The new app is timed on its own, not through the front door: a link's target is its page as it will serve it.
 	const timed = await checkResponsiveness(browser, { old: run.old, new: run.new }, route, (result.journeys ?? []).filter((j) => !j.destructive), run.responsiveness);
 	return withFailures(result, [...result.failures, ...timed.failures], { responsiveness: timed.responsiveness });
+}
+
+/** Keyboard journeys and repeated-use sequences the budget left out: what they would have compared was compared nowhere, so the route is red until they run. */
+export function leftOut(route: string, explored: Pick<Exploration, 'skipped' | 'sequencesSkipped'>): Failure[] {
+	const out: Failure[] = [];
+	const n = (k: number, what: string) => `${k} ${what}${k === 1 ? '' : 's'}`;
+	if (explored.skipped) out.push(notExercised(route, n(explored.skipped, 'keyboard journey'), `left out when the journey budget ran out; raise --journey-budget until they run`));
+	if (explored.sequencesSkipped) out.push(notExercised(route, n(explored.sequencesSkipped, 'repeated-use or closing sequence'), `left out when the journey budget ran out; raise --journey-budget until they run`));
+	return out;
 }
 
 export function notExercised(route: string, element: string, reason: string, automatic?: Failure['automatic']): Failure {
