@@ -387,6 +387,8 @@ whose content is rendered twice shows twice as many).
 | `drag` | a slider, a focusable separator (a resize handle), a carousel (`aria-roledescription="carousel"`) | dragged by the pointer one way and back |
 | `repeat` | a button whose click showed a toast or announced something in a journey or a probe | three clicks in a row, then the pointer on the toasts and away |
 | `tab stops` | a tablist, radiogroup, toolbar, menubar, grid, tree, or a group of toggle buttons | Tab in, each arrow, Space, Tab out and Shift+Tab back |
+| `context menu` | an element with no role that answers a right click (a React or Vue `onContextMenu`, or its own `oncontextmenu`), counted among the innermost role-less elements of its text on both pages, so a port that answers it from a delegated handler still has it | right-click it, point at an item and away, Escape, right-click again, a click outside, right-click again, choose an item, right-click again and type the first letters of its items |
+| `toggle` | a checkbox, a switch, a button with `aria-pressed` | Tab to it, Enter, Space, a click, Enter again, Tab; a click on its label (by `for`, by wrapping it, or by `aria-labelledby`), Space, Tab |
 
 A step that differs is red (`a11y` for focus rings and tab stops, `behaviour` otherwise) with the
 control, the class, the sequence, the step and what each side showed there, and the converter parts

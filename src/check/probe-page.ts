@@ -180,7 +180,7 @@ export function installProbe(): void {
 			}
 			return letters[n] ?? '';
 		},
-		aim(what: 'close' | 'popup' | 'thumb' | 'track' | 'toaster' | 'before' | `item ${number}`): boolean {
+		aim(what: 'close' | 'popup' | 'thumb' | 'track' | 'toaster' | 'label' | 'before' | `item ${number}`): boolean {
 			const AIM = 'data-markless-migrate-aim';
 			for (const o of document.querySelectorAll(`[${AIM}]`)) o.removeAttribute(AIM);
 			const el = control();
@@ -193,6 +193,10 @@ export function installProbe(): void {
 			else if (what === 'toaster') found = [...document.querySelectorAll('[data-sonner-toaster], [aria-live]:not([aria-live="off"]), [role="region"][aria-label*="otification" i]')].find((t) => t.querySelector('*') && shown(t.querySelector('[data-sonner-toast], li, [role="status"]') ?? t));
 			else if (what === 'thumb') found = el && ([el, ...el.querySelectorAll('[role="slider"], input[type="range"]')].find((t) => t.matches('[role="slider"], input[type="range"]') && shown(t)) ?? el);
 			else if (what === 'track') found = el && ([...el.querySelectorAll('*')].find((t) => t instanceof HTMLElement && t.scrollWidth > t.clientWidth + 2 && getComputedStyle(t).overflowX !== 'visible') ?? el.querySelector(':scope > * > *') ?? el);
+			else if (what === 'label' && el) {
+				const by = (el.getAttribute('aria-labelledby') ?? '').split(/\s+/).map((id) => document.getElementById(id)).find((l) => l?.localName === 'label');
+				found = (el instanceof HTMLInputElement ? el.labels?.[0] : null) ?? (el.id ? document.querySelector(`label[for="${CSS.escape(el.id)}"]`) : null) ?? el.closest('label') ?? by;
+			}
 			else if (what === 'before' && el) {
 				const all = [...document.querySelectorAll('a[href], button, input, select, textarea, [tabindex]')].filter((e) => e instanceof HTMLElement && e.tabIndex >= 0 && shown(e) && !el.contains(e) && !(el.compareDocumentPosition(e) & Node.DOCUMENT_POSITION_FOLLOWING));
 				found = all.pop();
@@ -263,9 +267,17 @@ export function probeControls({ notify, mark, found = {} }: { readonly notify: r
 		out.push({ role, name: label, nth, kind: `${region}|${slot ?? `${e.localName}[${role}]`}`, classes, region, ...(popup && popup !== 'false' ? { popup } : {}) });
 	};
 	if (mark !== undefined) for (const o of document.querySelectorAll('[data-markless-migrate-probe]')) o.removeAttribute('data-markless-migrate-probe');
+	// A right-click target says so only through its handler: React's and Vue's props, or the element's own property.
+	const contextual = (e: Element) => e instanceof HTMLElement && (Boolean(e.oncontextmenu) || Object.keys(e).some((k) => (k.startsWith('__reactProps$') && typeof (e as unknown as Record<string, Record<string, unknown>>)[k]?.onContextMenu === 'function') || (k === '_vei' && Boolean((e as unknown as Record<string, Record<string, unknown>>)[k]?.onContextmenu))));
 	for (const e of document.body.querySelectorAll('*')) {
 		const carousel = /^carousel$/i.test(e.getAttribute('aria-roledescription') ?? '');
 		let role = roleOf(e) || (carousel ? 'region' : '');
+		// A right-click area has no role, and a port may answer it from a delegated handler: it is counted among the innermost role-less elements of its text on both pages alike, whatever listens.
+		const menu = !role && contextual(e);
+		if (!role && e.childElementCount <= 20) {
+			const label = accessibleName(e);
+			if (label && label.length <= 80 && ![...e.children].some((c) => accessibleName(c) === label)) role = 'area';
+		}
 		if (!role) continue;
 		const classes: string[] = [];
 		const focusable = e instanceof HTMLElement && e.tabIndex >= 0;
@@ -276,6 +288,8 @@ export function probeControls({ notify, mark, found = {} }: { readonly notify: r
 		// A link listens for hover to prefetch its page (Next's Link does): it is a hover target only when it says it shows something.
 		if (hover?.has(e) && /^(button|link|checkbox|switch|tab|radio)$/.test(role) && (role !== 'link' || e.hasAttribute('data-state') || e.hasAttribute('aria-describedby') || e.hasAttribute('aria-haspopup') || e.hasAttribute('aria-expanded'))) classes.push('hover');
 		if (role === 'slider' || (role === 'separator' && focusable) || carousel) classes.push('drag');
+		if (menu) classes.push('context menu');
+		if (/^(checkbox|switch)$/.test(role) || (role === 'button' && e.hasAttribute('aria-pressed'))) classes.push('toggle');
 		if (role === 'button' && notify.includes(accessibleName(e))) classes.push('repeat');
 		if (/^(tablist|radiogroup|toolbar|menubar|grid|treegrid|tree)$/.test(role) || (role === 'group' && e.querySelectorAll(ITEMS).length >= 2 && [...e.querySelectorAll('[aria-pressed], [role="radio"], [role="checkbox"]')].length >= 2)) {
 			if (!e.parentElement?.closest(COMPOSITE) || /^(tablist|radiogroup|toolbar|menubar)$/.test(role)) classes.push('tab stops');
