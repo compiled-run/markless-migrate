@@ -29,6 +29,8 @@ const popupFor = (input: HTMLElement) => inBox(input) ?? openFor(input);
 const ours = (p: Popup) => p.trigger.matches(INPUT) || p.trigger.matches(BOX);
 const inputIn = (p: Popup) => (p.trigger.matches(BOX) ? p.popup.querySelector<HTMLInputElement>(INPUT) : (p.trigger as HTMLInputElement));
 const items = (p: Popup) => [...p.popup.querySelectorAll<HTMLElement>(OPTION)].filter((o) => !o.hidden && !o.hasAttribute('data-disabled'));
+const TABBABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const tabbablesIn = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>(TABBABLE)].filter((el) => el.tabIndex >= 0 && !el.hasAttribute('data-base-ui-focus-guard') && !el.closest('[hidden], [inert]') && el.getClientRects().length > 0);
 const multiple = (root: ParentNode) => root.querySelector('[role="listbox"]')?.getAttribute('aria-multiselectable') === 'true';
 
 // Base UI writes an item's label (itemToStringLabel), not its whole text: the label is the item's first text.
@@ -135,6 +137,24 @@ function openBox(button: HTMLElement): void {
 	hover(p);
 	filter(p, '');
 	highlight(p, selectedIn(p));
+	// The non-modal popup's portal guards: Tab past its last element closes it (closeOnFocusOut) with focus on what
+	// follows the trigger; Shift+Tab past its first goes back to the trigger, its reference, and leaves it open.
+	const onKey = (event: KeyboardEvent) => {
+		const at = document.activeElement;
+		if (event.key !== 'Tab' || !at || !p.popup.contains(at)) return;
+		const inside = tabbablesIn(p.popup);
+		if (event.shiftKey ? at !== inside[0] : at !== inside[inside.length - 1]) return;
+		event.preventDefault();
+		if (event.shiftKey) {
+			button.focus();
+			return;
+		}
+		const next = tabbablesIn(document.body).find((el) => !p.portal.contains(el) && Boolean(button.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING));
+		close(p);
+		(next ?? button).focus();
+	};
+	document.addEventListener('keydown', onKey, true);
+	p.cleanup.push(() => document.removeEventListener('keydown', onKey, true));
 }
 
 // Items highlight on a mouse move over them (onMouseMove), not when the list moves under a still pointer; a pointer

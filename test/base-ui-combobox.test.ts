@@ -156,7 +156,7 @@ test('Base UI Combobox with several values: opening highlights the last chosen, 
 	await page.close();
 });
 
-const popupBox = `<main style="padding-top:200px"><div><button type="button" data-slot="combobox-trigger" aria-haspopup="dialog" aria-expanded="false" role="combobox" tabindex="0" id="box">Select country<span>v</span></button><input id="base-ui-_R_2_-hidden-input" tabindex="-1" aria-hidden="true" value=""></div></main>
+const popupBox = `<main style="padding-top:200px"><div><button type="button" data-slot="combobox-trigger" aria-haspopup="dialog" aria-expanded="false" role="combobox" tabindex="0" id="box">Select country<span>v</span></button><input id="base-ui-_R_2_-hidden-input" tabindex="-1" aria-hidden="true" value=""></div><button type="button" id="after">After</button></main>
 	<div data-mm-layer="box" hidden data-base-ui-portal><div data-side="bottom" role="presentation" style="position:absolute;left:0;top:300px" data-closed><div role="dialog" id="box-popup" data-slot="combobox-content" data-closed><input id="search" role="combobox" aria-haspopup="listbox" aria-expanded="false" data-slot="input-group-control" value=""><div role="listbox" id="box-list">${['Argentina', 'Japan'].map((c, i) => item('box', i, c)).join('')}</div></div></div></div>`;
 
 test('Base UI Combobox popup variant: Enter on the trigger opens it with the search input focused; choosing writes the label to the trigger and the hidden input', async () => {
@@ -227,5 +227,17 @@ test('Base UI Combobox: the clear button leaves when the value goes, so CSS keye
 	await page.locator('#cb').click();
 	await page.locator('[role="option"]', { hasText: 'Nuxt.js' }).click();
 	assert.equal(await button.isVisible(), false, 'a value brings the clear button back');
+	await page.close();
+});
+
+test('Base UI Combobox popup variant: Tab out of the search input closes it with focus after the trigger; Shift+Tab goes back to the trigger, still open', async () => {
+	const page = await open(popupBox, ['base-ui/combobox']);
+	await page.locator('#box').focus();
+	await press(page, 'Enter');
+	await page.keyboard.press('Shift+Tab');
+	assert.deepEqual([await page.evaluate(() => document.activeElement?.id), await page.locator('#box').getAttribute('aria-expanded')], ['box', 'true']);
+	await page.locator('#search').focus();
+	await press(page, 'Tab');
+	assert.deepEqual([await page.evaluate(() => document.activeElement?.id), await page.locator('#box').getAttribute('aria-expanded')], ['after', 'false']);
 	await page.close();
 });
