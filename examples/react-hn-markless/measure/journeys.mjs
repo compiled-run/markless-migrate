@@ -201,7 +201,7 @@ async function journeys(browser, side) {
 			newMarked: await page.locator('.Comment--new').count(),
 			header:
 				(await page
-					.locator('.Item__meta em')
+					.locator('.Item__meta em:visible')
 					.first()
 					.textContent({ timeout: 1000 })
 					.catch(() => null)) ?? '',

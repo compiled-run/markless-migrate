@@ -28,7 +28,6 @@ export default function App({ path, children }: { path: string; children?: Child
 				<a href="/read" class={navClass(path, '/read')}>read</a>
 				<a
 					class="App__settings"
-					role="link"
 					tabindex="0"
 					onClick={(event) => {
 						event.preventDefault();

@@ -44,7 +44,7 @@ export default function ItemView({ id }: { id: string }) @{
 				<a href={header.title.href} hidden={header.title.dead}>{header.title.linkText}</a>{header.title.deadText}<span hidden={!header.title.external}> <span class="Item__host">({header.title.host})</span></span>
 			</div>
 			<div class="Item__meta">
-				<span hidden={header.meta.job}><span class="Item__score">{header.meta.score}</span> <span class="Item__by">by <a href={header.meta.userHref}>{header.meta.by}</a></span> </span>
+				<span hidden={header.meta.job}><span class="Item__score">{header.meta.scoreValue} point{header.meta.scorePlural}</span> <span class="Item__by">by <a href={header.meta.userHref}>{header.meta.by}</a></span> </span>
 				<time class="Item__time" datetime={header.meta.timeIso} title={header.meta.timeTitle}>{header.meta.timeText}</time>
 				<span hidden={header.meta.job}>
 					{' | '}

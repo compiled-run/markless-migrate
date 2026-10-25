@@ -36,7 +36,7 @@ export default function Stories({ type, limit, title, route, search }: { type: s
 						<a href={row.title.href} hidden={row.title.dead}>{row.title.linkText}</a>{row.title.deadText}<span hidden={!row.title.external}> <span class="Item__host">({row.title.host})</span></span>
 					</div>
 					<div class="Item__meta" hidden={row.loading}>
-						<span hidden={row.meta.job}><span class="Item__score">{row.meta.score}</span> <span class="Item__by">by <a href={row.meta.userHref}>{row.meta.by}</a></span> </span>
+						<span hidden={row.meta.job}><span class="Item__score">{row.meta.scoreValue} point{row.meta.scorePlural}</span> <span class="Item__by">by <a href={row.meta.userHref}>{row.meta.by}</a></span> </span>
 						<time class="Item__time" datetime={row.meta.timeIso} title={row.meta.timeTitle}>{row.meta.timeText}</time>
 						<span hidden={row.meta.job}>{' | '}<a href={row.meta.itemHref}>{row.meta.comments}</a><span class="ListItem__newcomments" hidden={row.newComments <= 0}> (<a href={row.meta.itemHref}>{row.newComments} new</a>)</span></span>
 					</div>

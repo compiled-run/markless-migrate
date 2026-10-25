@@ -112,6 +112,27 @@ const CHECKS = {
 		await wait(600);
 		return { expected: 'inner 1 outer 0', actual: (await text(page, '.probe'))?.trim() };
 	},
+	'12-navigation-leak': async (page) => {
+		const cdp = await page.context().newCDPSession(page);
+		const loads = async () => {
+			const { result } = await cdp.send('Runtime.evaluate', { expression: 'window' });
+			const { listeners } = await cdp.send('DOMDebugger.getEventListeners', {
+				objectId: result.objectId,
+			});
+			return listeners.filter((l) => l.type === 'load').length;
+		};
+		await wait(800);
+		const before = await loads();
+		for (let i = 0; i < 5; i++) {
+			await page.click('.next');
+			await page.waitForURL(new RegExp(`n=${i + 1}`)).catch(() => {});
+			await wait(400);
+		}
+		return {
+			expected: 'window load listeners after 5 in-place navigations: as before',
+			actual: `window load listeners after 5 in-place navigations: ${(await loads()) === before ? 'as before' : `${before} -> ${await loads()}`}`,
+		};
+	},
 	'11-row-attach': async (page) => {
 		await page.click('.fill');
 		await wait(600);
@@ -125,39 +146,25 @@ const CHECKS = {
 	},
 };
 
-function scaffold() {
-	if (!existsSync(join(scratch, 'node_modules'))) {
-		mkdirSync(scratch, { recursive: true });
-		for (const file of [
-			'package.json',
-			'package-lock.json',
-			'vite.config.ts',
-			'tsconfig.json',
-			'markless-router-env.d.ts',
-		])
-			cpSync(join(app, file), join(scratch, file));
-		const install = spawnSync('npm', ['ci', '--no-audit', '--no-fund'], {
-			cwd: scratch,
-			stdio: 'inherit',
-		});
-		if (install.status) throw new Error('npm ci failed in the scratch app');
-	}
+function install() {
+	if (existsSync(join(scratch, 'node_modules'))) return;
+	mkdirSync(scratch, { recursive: true });
+	for (const file of ['package.json', 'package-lock.json', 'vite.config.ts', 'tsconfig.json', 'markless-router-env.d.ts']) cpSync(join(app, file), join(scratch, file));
+	const ci = spawnSync('npm', ['ci', '--no-audit', '--no-fund'], { cwd: scratch, stdio: 'inherit' });
+	if (ci.status) throw new Error('npm ci failed in the scratch app');
+}
+
+/** The scratch app holds one repro at a time, so a repro that hangs or crashes its server cannot take the others down. */
+function scaffold(name) {
 	rmSync(join(scratch, 'pages'), { recursive: true, force: true });
 	rmSync(join(scratch, 'repros'), { recursive: true, force: true });
+	rmSync(join(scratch, '.output'), { recursive: true, force: true });
 	mkdirSync(join(scratch, 'pages'), { recursive: true });
-	writeFileSync(
-		join(scratch, 'document.tsrx'),
-		"import type { Children } from '@markless/core';\nimport { Html } from '@markless/router';\n\nexport default function Document({ children }: { readonly children?: Children }) @{\n\t<Html>\n\t\t<head>\n\t\t\t<meta charset=\"utf-8\" />\n\t\t\t<title>repro</title>\n\t\t</head>\n\t\t<body>{children}</body>\n\t</Html>\n}\n",
-	);
-	for (const name of repros) {
-		cpSync(join(here, name), join(scratch, 'repros', name), { recursive: true });
-		rmSync(join(scratch, 'repros', name, 'page.tsrx'));
-		const page = readFileSync(join(here, name, 'page.tsrx'), 'utf8').replace(
-			/from '\.\/([^']+)'/g,
-			`from '../repros/${name}/$1'`,
-		);
-		writeFileSync(join(scratch, 'pages', `${name}.tsrx`), page);
-	}
+	writeFileSync(join(scratch, 'document.tsrx'), "import type { Children } from '@markless/core';\nimport { Html } from '@markless/router';\n\nexport default function Document({ children }: { readonly children?: Children }) @{\n\t<Html>\n\t\t<head>\n\t\t\t<meta charset=\"utf-8\" />\n\t\t\t<title>repro</title>\n\t\t</head>\n\t\t<body>{children}</body>\n\t</Html>\n}\n");
+	cpSync(join(here, name), join(scratch, 'repros', name), { recursive: true });
+	rmSync(join(scratch, 'repros', name, 'page.tsrx'));
+	const page = readFileSync(join(here, name, 'page.tsrx'), 'utf8').replace(/from '\.\/([^']+)'/g, `from '../repros/${name}/$1'`);
+	writeFileSync(join(scratch, 'pages', `${name}.tsrx`), page);
 }
 
 async function serve(command, cmdArgs, port) {
@@ -180,14 +187,22 @@ async function serve(command, cmdArgs, port) {
 			break;
 		await wait(500);
 	}
-	return { child, lines, stop: () => process.kill(-child.pid, 'SIGTERM') };
+	return {
+		child,
+		lines,
+		stop: () => {
+			try {
+				process.kill(-child.pid, 'SIGTERM');
+			} catch {}
+		},
+	};
 }
 
-async function drive(origin, server, mode) {
+async function drive(origin, server, mode, names) {
 	const browser = await chromium.launch();
 	const rows = [];
 	try {
-		for (const name of repros) {
+		for (const name of names) {
 			const page = await browser.newPage();
 			const log = { errors: [], calls: [], served: '' };
 			page.on('pageerror', (e) => log.errors.push(e.message.slice(0, 120)));
@@ -228,35 +243,30 @@ async function drive(origin, server, mode) {
 	return rows;
 }
 
-scaffold();
+install();
 const results = [];
-const dev = await serve('npx', ['vp', 'dev', '--port', '4561', '--strictPort'], 4561);
-try {
-	results.push(...(await drive('http://127.0.0.1:4561', dev, 'dev')));
-} finally {
-	dev.stop();
-}
-if (!devOnly) {
-	const build = spawnSync('npx', ['vp', 'build'], { cwd: scratch, encoding: 'utf8' });
-	if (build.status)
-		results.push({
-			mode: 'build',
-			name: 'vp build',
-			expected: 'builds',
-			actual: (build.stdout + build.stderr)
-				.split('\n')
-				.filter((l) => /MARKLESS_|Error/.test(l))
-				.slice(0, 3)
-				.join(' | '),
-			ok: false,
-		});
-	else {
-		const prod = await serve('node', ['.output/server/index.mjs'], 4562);
-		try {
-			results.push(...(await drive('http://127.0.0.1:4562', prod, 'production')));
-		} finally {
-			prod.stop();
-		}
+for (const [n, name] of repros.entries()) {
+	scaffold(name);
+	const devPort = 4561 + n * 2;
+	const dev = await serve('npx', ['vp', 'dev', '--port', String(devPort), '--strictPort'], devPort);
+	try {
+		results.push(...(await drive(`http://127.0.0.1:${devPort}`, dev, 'dev', [name])));
+	} finally {
+		dev.stop();
+	}
+	if (devOnly) continue;
+	const built = await run('npx', ['vp', 'build'], 180_000);
+	if (built.status !== 0) {
+		const last = built.output.split('\n').filter(Boolean).at(-1)?.trim() ?? 'none';
+		results.push({ mode: 'production', name, expected: 'builds', actual: built.timedOut ? `the production build did not finish in 180 s (last output: ${last})` : built.output.split('\n').filter((l) => /MARKLESS_|Error/.test(l)).slice(0, 3).join(' | '), ok: false });
+		continue;
+	}
+	const prodPort = devPort + 1;
+	const prod = await serve('node', ['.output/server/index.mjs'], prodPort);
+	try {
+		results.push(...(await drive(`http://127.0.0.1:${prodPort}`, prod, 'production', [name])));
+	} finally {
+		prod.stop();
 	}
 }
 for (const r of results)

@@ -26,6 +26,8 @@ import type { PermalinkState, StoriesView, UpdatesView } from './live.ts';
 export interface Meta {
 	readonly job: boolean;
 	readonly score: string;
+	readonly scoreValue: string;
+	readonly scorePlural: string;
 	readonly by: string;
 	readonly userHref: string;
 	readonly timeIso: string;
@@ -57,7 +59,7 @@ export function title(item: Item, settings: Settings): Title {
 		text: item.dead ? `[dead] ${item.title ?? ''}` : (item.title ?? ''),
 		linkText: item.dead ? '' : (item.title ?? ''),
 		deadText: item.dead ? `[dead] ${item.title ?? ''}` : '',
-		href: item.url ?? itemHref(item),
+		href: item.url || itemHref(item),
 		external,
 		host: external ? parseHost(item.url!) : '',
 		style: `font-size: ${settings.titleFontSize}px;`,
@@ -70,6 +72,8 @@ export function meta(item: Item, now: number): Meta {
 	return {
 		job: item.type === 'job',
 		score: `${item.score} point${pluralise(item.score)}`,
+		scoreValue: String(item.score),
+		scorePlural: pluralise(item.score),
 		by: item.by ?? '',
 		userHref: `/user/${item.by}`,
 		timeIso: isoTime(ms),
@@ -103,6 +107,8 @@ const NO_TITLE: Title = {
 const NO_META: Meta = {
 	job: false,
 	score: '',
+	scoreValue: '',
+	scorePlural: '',
 	by: '',
 	userHref: '',
 	timeIso: '',

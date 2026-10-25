@@ -90,15 +90,100 @@ TODO
 
 ## Measurements
 
-TODO
+Local, Chromium, both apps production builds, both fed the same recorded database
+(`deploy/react-hn/data/story_50226419.json`: story 50226419, 187 comments, 150 recorded live updates) through the
+migrator's fake Firebase server. `node measure/journeys.mjs` writes `measure/results-50226419.json`;
+`node measure/weight.mjs` gives the JavaScript figures. Times are wall clock on an unthrottled M5 laptop, so read
+them as a ratio, not as absolute numbers.
+
+**Journeys** (requests are HTTP; "listens" are database subscriptions the page opened over its one websocket)
+
+| Journey | Old | New |
+| --- | --- | --- |
+| Open a story: first comment on screen | 305 ms | 128 ms |
+| Open a story: all 187 comments on screen | 387 ms | 152 ms |
+| Open a story: HTTP requests (most at once) | 5 (4) | 28 (13) |
+| Open a story: database listens, frames, bytes | 197, 396, 107 kB | 197, 395, 107 kB |
+| Collapse and expand a subtree: requests, listens | 0, 0 | 0, 0 |
+| Live updates while reading (4 updates to this thread): new listens, comments marked new | 1, 1 | 1, 1 |
+| Come back (reload): requests, listens, comments marked new | 5, 198, 0 | 28, 198, 0 |
+
+The new app makes more HTTP requests because the page is split into small modules and the router prefetches the
+other routes when idle; both apps talk to the database the same way (same listens, same frames).
+
+**JavaScript at load** (V8 coverage: bytes of the functions that ran; then the bytes of JavaScript received, as
+each local server sends it)
+
+| Route | Old executed | New executed | Old received | New received |
+| --- | --- | --- | --- | --- |
+| /news | 201.5 kB | 125.3 kB | 428.9 kB | 345.6 kB |
+| /story/50226419 | 207.0 kB | 176.6 kB | 428.9 kB | 443.8 kB |
+| /item/8863 | 206.9 kB | 176.5 kB | 428.9 kB | 443.8 kB |
+| /comment/8054455 | 202.4 kB | 155.2 kB | 428.9 kB | 503.3 kB |
+| /newcomments | 202.3 kB | 118.2 kB | 428.9 kB | 345.6 kB |
+| /read | 178.0 kB | 117.3 kB | 428.9 kB | 345.6 kB |
+| /user/patio11 | 194.1 kB | 77.0 kB | 428.9 kB | 362.3 kB |
+
+The new app runs 15% to 60% less JavaScript at load on every route measured. It receives more on the item and comment
+routes because, once idle, the router prefetches the other routes' modules and their render data (the item view's
+alone is 79 kB). That is prefetched download, not code run at load.
+
+**Memory over a 2-minute live session** (heap after a forced GC, sampled every 10 s)
+
+| Session | Old heap | New heap | DOM elements old / new |
+| --- | --- | --- | --- |
+| Thread that grows (124 new comments pushed) | 5.0 → 5.7 MB | 4.4 → 4.6 MB | 2,419 → 2,887 / 4,438 → 5,318 |
+| Thread that is edited in place (150 updates) | 5.1 → 5.3 MB | 4.4 → 4.5 MB | flat / flat |
+| 15 in-place navigations between stories | 4.2 → 6.6 MB (levels off) | 3.8 → 15.9 MB (+~800 kB per visit, linear) | flat / flat |
+
+The live sessions do not leak in either app. The navigation churn does leak in the new app: framework bug 12
+(a window `load` listener per in-place navigation keeps every visited page alive). The app cannot work around it
+without editing the framework.
 
 ## Markless 0.9.0 bugs found (minimal repros in `react-hn-markless/repros/`)
 
-TODO
+Each repro is one page (and the components it uses). `node repros/run.mjs` builds a scratch app with the published
+0.9.0 packages, drives every repro in the dev server and in a production build, and writes `repros/results.json`.
+"Dev" and "prod" below say where it was seen.
+
+| # | Repro | What the author writes | Expected | Actual |
+| --- | --- | --- | --- | --- |
+| 1 | `01-literal-prop` | `<Label label="apples" />`, the component shows `{label} {count}` and bumps `count` from an `attach` | `apples 3` after the bump | ` 3`: once the browser updates the text, a literal (string or number) prop reads as `undefined`; a prop from `params` or state works |
+| 2 | `02-component-async-twice` | a component-level `computed(async () => slowValue(id))` inside `@try` | the server awaits it and streams the arm, as a page-level one does | the server runs the fetch, discards it and sends only `@pending`; the browser runs the fetch again (two fetches, no server-rendered value) |
+| 3 | `03-async-prop-graph-node` | `@try { <Child item={item} /> }` with `item` an async `computed` | no error | the content renders, with `pageerror: Markless DOM update expected graph node computed:item.` |
+| 4 | `04-mutual-recursion` | `Outer.tsrx` renders `Inner.tsrx`, which renders `Outer.tsrx` (a comment and its replies in two files) | renders and answers clicks | the dev server never answers the browser's request for the component module (the page stays inert, no error); see the results for the production build |
+| 5 | `05-recursive-async` | a recursive component (one file) whose body awaits its own item in `@try` | 4 nested bodies, the toggle works | `Unknown async symbol c1:symbol:8` page errors; replies never render; handlers are dead |
+| 6 | `06-attach-prop` | an `attach` closure that reads the component's `id` prop | `attach read id /06-attach-prop` | the prop reads `undefined` in the browser; seeding `let x = state(id)` and reading that works |
+| 7 | `07-arm-attach` | an `attach` on an element inside an `@if` arm the browser opens | the arm renders and its attach runs | `Unknown async symbol` page error and the arm does not render at all (the settings panel) |
+| 8 | `08-async-in-browser-computed` | a browser-side `computed` that reads an async value the server resolved, then a click | `3` | `TypeError: Cannot convert undefined or null to object`: the server's async value is not there after resume |
+| 9 | `09-row-branch` | `@for` rows whose body is an `@if` / `@else`, rows added in the browser | 3 rows | no rows at all, no error |
+| 10 | `10-first-click-propagation` | `event.stopPropagation()` in a button's handler, a click handler on its ancestor | `inner 1 outer 0` | the first (waking) click also runs the ancestor's handler; later clicks are right |
+| 11 | `11-row-attach` | an `attach` on an element in a row the browser adds | the row's HTML set by its attach | the attach never runs |
+| 12 | `12-navigation-leak` | any page, navigated in place (a link to the same route with another query) | the number of window `load` listeners stays the same | one more per in-place navigation: the inline resumer re-run for the swapped-in page calls `addEventListener('load', ..., { once: true })` after the window has loaded, so it never fires, and its closure keeps the page container and its `__marklessCensus` (every node of the page) alive. On react-hn: +830 kB of heap per story visited, unbounded (see the memory measurements) |
+| 13 | (in the app) | the router's built-in `#/` handling on `/` | `/#/story/1` lands on the story | the router renders the story but keeps the hash URL, and the next hash change throws `TypeError: Cannot read properties of undefined (reading 'startsWith')`; the port's own one-line redirect in the head avoids it |
+| 14 | (in the app) | the dev server after a compile error is fixed | the fixed file is served | the old compile error kept being served (`MARKLESS_CHILD_REPEAT_WITHOUT_ELEMENT`, after the `@for` got its element) until a restart; also, stopping `vp dev` leaves its `vite` child running on the port |
+
 
 ## Markless gaps (diagnosed limits, with the authored workaround)
 
-TODO
+These are not crashes: the compiler or a diagnostic refuses the shape, or the API has no way to say it.
+
+| Gap | Diagnostic or symptom | Workaround in the port |
+| --- | --- | --- |
+| No way to keep a value's data in the browser after a server-side `computed(async)`, and component-level async does not stream (bugs 2, 8) | | the live regions read the database in the browser from an `attach` and keep what they hear in `state()`; only the user page uses `computed(async)` |
+| A dynamic key read on graph state (`items[id]`), even in a handler | `MARKLESS_STATE_DYNAMIC_PATH_READ` | lookups go through plain functions over the whole state (`lib/thread.ts`, `lib/views.ts`) |
+| A prop expression (`level + 1`, `Number(params.id)`) | `MARKLESS_CAPTURE_OPAQUE_PROP` | the value is a `computed` or seeded into `state()` first |
+| A row value passed into a child component that looks it up | `MARKLESS_CAPTURE_OPAQUE_PROP` | rows are plain markup; the one shared row list (`CommentList.tsrx`) takes the whole computed list |
+| An `@if` arm holding a `@for` of components, or a branch inside a branch | `MARKLESS_BRANCH_ARM_UPDATE_UNSUPPORTED` | one level of `@if`, optional parts toggled with `hidden` |
+| Browser-added rows cannot branch or attach (bugs 9, 11) | rows silently empty | each row carries every variant and hides the others (`hidden`); trusted HTML goes in `data-html` and the region's own attach sets it with a MutationObserver (`lib/markup.ts`). Cost: about 1.8x the old app's DOM elements on a thread |
+| `@try` content must read one async value directly | `MARKLESS_PUBLIC_RENDER_GATE_PLAN_DISAGREEMENT` | the settled value is handed to a child component |
+| No trusted-HTML binding | `innerHTML={...}` becomes an attribute | `data-html` + `lib/markup.ts` |
+| `storage()` keys are compile-time strings | `MARKLESS_STORAGE_KEY_STATIC` | per-story visit records (`localStorage[storyId]`) are read and written from the listeners |
+| A `@for` at the top of a component needs an element of its own | `MARKLESS_CHILD_REPEAT_WITHOUT_ELEMENT` | `CommentList` wraps its rows in a `<div>` |
+| An arm or code block renders one node | `MARKLESS_PARSE_ERROR` (TSRX2011) | fragments |
+| Every `.tsrx` under `pages/` is a page | a component file there became a route | components live in `components/` |
+| No "after this write is on screen" hook for focus | focus set in a handler ran before the arm existed on the first (waking) click | the settings panel focuses itself from its own `onVisible` |
+
 
 ## markless-migrate improvements made
 

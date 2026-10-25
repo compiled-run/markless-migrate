@@ -9,8 +9,8 @@
 				"unlistens": 0,
 				"frames": 396,
 				"bytes": 107308,
-				"firstCommentMs": 303,
-				"allCommentsMs": 358,
+				"firstCommentMs": 305,
+				"allCommentsMs": 387,
 				"comments": 187
 			},
 			"collapse and expand a subtree": {
@@ -47,67 +47,67 @@
 			"samples": [
 				{
 					"t": 0,
-					"heapKb": 5029,
+					"heapKb": 5045,
 					"nodes": 2419
 				},
 				{
-					"t": 10000,
-					"heapKb": 5215,
+					"t": 10001,
+					"heapKb": 5211,
 					"nodes": 2458
 				},
 				{
-					"t": 20037,
-					"heapKb": 5257,
+					"t": 20015,
+					"heapKb": 5263,
 					"nodes": 2493
 				},
 				{
-					"t": 30016,
-					"heapKb": 5317,
+					"t": 30035,
+					"heapKb": 5314,
 					"nodes": 2538
 				},
 				{
-					"t": 40032,
-					"heapKb": 5346,
+					"t": 40010,
+					"heapKb": 5344,
 					"nodes": 2573
 				},
 				{
-					"t": 50020,
-					"heapKb": 5357,
+					"t": 50009,
+					"heapKb": 5355,
 					"nodes": 2608
 				},
 				{
-					"t": 60034,
-					"heapKb": 5389,
+					"t": 60021,
+					"heapKb": 5387,
 					"nodes": 2642
 				},
 				{
-					"t": 70018,
-					"heapKb": 5424,
+					"t": 70009,
+					"heapKb": 5420,
 					"nodes": 2689
 				},
 				{
-					"t": 80032,
-					"heapKb": 5464,
+					"t": 80000,
+					"heapKb": 5450,
 					"nodes": 2724
 				},
 				{
-					"t": 90028,
-					"heapKb": 5532,
+					"t": 90039,
+					"heapKb": 5534,
 					"nodes": 2771
 				},
 				{
-					"t": 100012,
-					"heapKb": 5581,
+					"t": 100016,
+					"heapKb": 5571,
 					"nodes": 2806
 				},
 				{
-					"t": 110033,
-					"heapKb": 5628,
+					"t": 110007,
+					"heapKb": 5605,
 					"nodes": 2841
 				},
 				{
-					"t": 122546,
-					"heapKb": 5704,
+					"t": 122542,
+					"heapKb": 5700,
 					"nodes": 2887
 				}
 			]
@@ -117,67 +117,67 @@
 			"samples": [
 				{
 					"t": 0,
-					"heapKb": 5066,
+					"heapKb": 5093,
 					"nodes": 2419
 				},
 				{
-					"t": 10015,
-					"heapKb": 5107,
+					"t": 10050,
+					"heapKb": 5110,
 					"nodes": 2419
 				},
 				{
-					"t": 20024,
-					"heapKb": 5142,
+					"t": 20025,
+					"heapKb": 5144,
 					"nodes": 2419
 				},
 				{
-					"t": 30021,
-					"heapKb": 5167,
+					"t": 30033,
+					"heapKb": 5164,
 					"nodes": 2419
 				},
 				{
-					"t": 40040,
-					"heapKb": 5201,
+					"t": 40010,
+					"heapKb": 5198,
 					"nodes": 2419
 				},
 				{
-					"t": 50008,
-					"heapKb": 5204,
+					"t": 50019,
+					"heapKb": 5197,
 					"nodes": 2419
 				},
 				{
-					"t": 60013,
-					"heapKb": 5217,
+					"t": 60037,
+					"heapKb": 5200,
 					"nodes": 2419
 				},
 				{
-					"t": 70049,
-					"heapKb": 5219,
+					"t": 70017,
+					"heapKb": 5212,
 					"nodes": 2419
 				},
 				{
-					"t": 80038,
-					"heapKb": 5232,
+					"t": 80045,
+					"heapKb": 5226,
 					"nodes": 2419
 				},
 				{
-					"t": 90042,
-					"heapKb": 5255,
+					"t": 90030,
+					"heapKb": 5248,
 					"nodes": 2419
 				},
 				{
-					"t": 100006,
+					"t": 100004,
+					"heapKb": 5287,
+					"nodes": 2419
+				},
+				{
+					"t": 110012,
 					"heapKb": 5294,
 					"nodes": 2419
 				},
 				{
-					"t": 110025,
-					"heapKb": 5300,
-					"nodes": 2419
-				},
-				{
-					"t": 122504,
-					"heapKb": 5316,
+					"t": 122533,
+					"heapKb": 5308,
 					"nodes": 2419
 				}
 			]
@@ -185,97 +185,97 @@
 		"churn": [
 			{
 				"round": 0,
-				"heapKb": 4210,
+				"heapKb": 4209,
 				"nodes": 354,
 				"listening": 0
 			},
 			{
 				"round": 1,
-				"heapKb": 4924,
+				"heapKb": 4922,
 				"nodes": 354,
 				"listens": 259
 			},
 			{
 				"round": 2,
-				"heapKb": 5149,
+				"heapKb": 5155,
 				"nodes": 354,
 				"listens": 487
 			},
 			{
 				"round": 3,
-				"heapKb": 5430,
+				"heapKb": 5424,
 				"nodes": 354,
 				"listens": 715
 			},
 			{
 				"round": 4,
-				"heapKb": 5580,
+				"heapKb": 5572,
 				"nodes": 354,
 				"listens": 943
 			},
 			{
 				"round": 5,
-				"heapKb": 5686,
+				"heapKb": 5679,
 				"nodes": 354,
 				"listens": 1171
 			},
 			{
 				"round": 6,
-				"heapKb": 5803,
+				"heapKb": 5797,
 				"nodes": 354,
 				"listens": 1399
 			},
 			{
 				"round": 7,
-				"heapKb": 5901,
+				"heapKb": 5889,
 				"nodes": 354,
 				"listens": 1627
 			},
 			{
 				"round": 8,
-				"heapKb": 5991,
+				"heapKb": 5980,
 				"nodes": 354,
 				"listens": 1855
 			},
 			{
 				"round": 9,
-				"heapKb": 6081,
+				"heapKb": 6070,
 				"nodes": 354,
 				"listens": 2083
 			},
 			{
 				"round": 10,
-				"heapKb": 6175,
+				"heapKb": 6161,
 				"nodes": 354,
 				"listens": 2311
 			},
 			{
 				"round": 11,
-				"heapKb": 6264,
+				"heapKb": 6260,
 				"nodes": 354,
 				"listens": 2539
 			},
 			{
 				"round": 12,
-				"heapKb": 6338,
+				"heapKb": 6337,
 				"nodes": 354,
 				"listens": 2767
 			},
 			{
 				"round": 13,
-				"heapKb": 6400,
+				"heapKb": 6399,
 				"nodes": 354,
 				"listens": 2995
 			},
 			{
 				"round": 14,
-				"heapKb": 6486,
+				"heapKb": 6491,
 				"nodes": 354,
 				"listens": 3223
 			},
 			{
 				"round": 15,
-				"heapKb": 6558,
+				"heapKb": 6557,
 				"nodes": 354,
 				"listens": 3451
 			}
@@ -291,8 +291,8 @@
 				"unlistens": 0,
 				"frames": 395,
 				"bytes": 107263,
-				"firstCommentMs": 150,
-				"allCommentsMs": 168,
+				"firstCommentMs": 128,
+				"allCommentsMs": 152,
 				"comments": 187
 			},
 			"collapse and expand a subtree": {
@@ -329,68 +329,68 @@
 			"samples": [
 				{
 					"t": 0,
-					"heapKb": 4234,
-					"nodes": 4437
+					"heapKb": 4365,
+					"nodes": 4438
 				},
 				{
-					"t": 10002,
-					"heapKb": 4340,
-					"nodes": 4503
+					"t": 10016,
+					"heapKb": 4460,
+					"nodes": 4504
 				},
 				{
-					"t": 20021,
-					"heapKb": 4378,
-					"nodes": 4569
+					"t": 20012,
+					"heapKb": 4491,
+					"nodes": 4570
 				},
 				{
-					"t": 30021,
-					"heapKb": 4404,
-					"nodes": 4657
+					"t": 30031,
+					"heapKb": 4520,
+					"nodes": 4658
 				},
 				{
-					"t": 40016,
-					"heapKb": 4360,
-					"nodes": 4723
+					"t": 40007,
+					"heapKb": 4444,
+					"nodes": 4724
 				},
 				{
-					"t": 50004,
-					"heapKb": 4376,
-					"nodes": 4789
+					"t": 50016,
+					"heapKb": 4488,
+					"nodes": 4790
 				},
 				{
-					"t": 60016,
-					"heapKb": 4379,
-					"nodes": 4855
+					"t": 60024,
+					"heapKb": 4490,
+					"nodes": 4856
 				},
 				{
-					"t": 70009,
-					"heapKb": 4380,
-					"nodes": 4943
+					"t": 70020,
+					"heapKb": 4472,
+					"nodes": 4944
 				},
 				{
-					"t": 80011,
-					"heapKb": 4384,
-					"nodes": 5009
+					"t": 80005,
+					"heapKb": 4472,
+					"nodes": 5010
 				},
 				{
-					"t": 90039,
-					"heapKb": 4426,
-					"nodes": 5097
+					"t": 90016,
+					"heapKb": 4540,
+					"nodes": 5098
 				},
 				{
-					"t": 100021,
-					"heapKb": 4428,
-					"nodes": 5163
+					"t": 100017,
+					"heapKb": 4542,
+					"nodes": 5164
 				},
 				{
-					"t": 110014,
-					"heapKb": 4455,
-					"nodes": 5229
+					"t": 110039,
+					"heapKb": 4568,
+					"nodes": 5230
 				},
 				{
-					"t": 122519,
-					"heapKb": 4482,
-					"nodes": 5317
+					"t": 122548,
+					"heapKb": 4594,
+					"nodes": 5318
 				}
 			]
 		},
@@ -399,166 +399,166 @@
 			"samples": [
 				{
 					"t": 0,
-					"heapKb": 4241,
-					"nodes": 4437
+					"heapKb": 4373,
+					"nodes": 4438
 				},
 				{
-					"t": 10014,
-					"heapKb": 4330,
-					"nodes": 4437
+					"t": 10037,
+					"heapKb": 4419,
+					"nodes": 4438
 				},
 				{
-					"t": 20042,
-					"heapKb": 4351,
-					"nodes": 4437
+					"t": 20027,
+					"heapKb": 4441,
+					"nodes": 4438
 				},
 				{
-					"t": 30006,
-					"heapKb": 4341,
-					"nodes": 4437
+					"t": 30003,
+					"heapKb": 4391,
+					"nodes": 4438
 				},
 				{
-					"t": 40000,
-					"heapKb": 4341,
-					"nodes": 4437
+					"t": 40037,
+					"heapKb": 4392,
+					"nodes": 4438
 				},
 				{
-					"t": 50000,
-					"heapKb": 4326,
-					"nodes": 4437
+					"t": 50008,
+					"heapKb": 4452,
+					"nodes": 4438
 				},
 				{
-					"t": 60010,
-					"heapKb": 4353,
-					"nodes": 4437
+					"t": 60033,
+					"heapKb": 4470,
+					"nodes": 4438
 				},
 				{
-					"t": 70009,
-					"heapKb": 4362,
-					"nodes": 4437
+					"t": 70032,
+					"heapKb": 4459,
+					"nodes": 4438
 				},
 				{
-					"t": 80045,
-					"heapKb": 4378,
-					"nodes": 4437
+					"t": 80005,
+					"heapKb": 4480,
+					"nodes": 4438
 				},
 				{
-					"t": 90043,
-					"heapKb": 4402,
-					"nodes": 4437
+					"t": 90012,
+					"heapKb": 4505,
+					"nodes": 4438
 				},
 				{
-					"t": 100046,
-					"heapKb": 4411,
-					"nodes": 4437
+					"t": 100010,
+					"heapKb": 4510,
+					"nodes": 4438
 				},
 				{
-					"t": 110042,
-					"heapKb": 4412,
-					"nodes": 4437
+					"t": 110018,
+					"heapKb": 4513,
+					"nodes": 4438
 				},
 				{
-					"t": 122534,
-					"heapKb": 4415,
-					"nodes": 4437
+					"t": 122533,
+					"heapKb": 4514,
+					"nodes": 4438
 				}
 			]
 		},
 		"churn": [
 			{
 				"round": 0,
-				"heapKb": 3809,
-				"nodes": 649,
+				"heapKb": 3830,
+				"nodes": 650,
 				"listening": 0
 			},
 			{
 				"round": 1,
-				"heapKb": 5742,
-				"nodes": 651,
+				"heapKb": 5769,
+				"nodes": 652,
 				"listens": 227
 			},
 			{
 				"round": 2,
-				"heapKb": 6662,
-				"nodes": 651,
+				"heapKb": 6631,
+				"nodes": 652,
 				"listens": 423
 			},
 			{
 				"round": 3,
-				"heapKb": 7453,
-				"nodes": 651,
+				"heapKb": 7390,
+				"nodes": 652,
 				"listens": 619
 			},
 			{
 				"round": 4,
-				"heapKb": 8330,
-				"nodes": 651,
+				"heapKb": 8190,
+				"nodes": 652,
 				"listens": 815
 			},
 			{
 				"round": 5,
-				"heapKb": 9150,
-				"nodes": 651,
+				"heapKb": 8986,
+				"nodes": 652,
 				"listens": 1011
 			},
 			{
 				"round": 6,
-				"heapKb": 9803,
-				"nodes": 651,
+				"heapKb": 9666,
+				"nodes": 652,
 				"listens": 1207
 			},
 			{
 				"round": 7,
-				"heapKb": 10541,
-				"nodes": 651,
+				"heapKb": 10311,
+				"nodes": 652,
 				"listens": 1403
 			},
 			{
 				"round": 8,
-				"heapKb": 11287,
-				"nodes": 651,
+				"heapKb": 11021,
+				"nodes": 652,
 				"listens": 1599
 			},
 			{
 				"round": 9,
-				"heapKb": 12133,
-				"nodes": 651,
+				"heapKb": 11855,
+				"nodes": 652,
 				"listens": 1795
 			},
 			{
 				"round": 10,
-				"heapKb": 12846,
-				"nodes": 651,
+				"heapKb": 12551,
+				"nodes": 652,
 				"listens": 1991
 			},
 			{
 				"round": 11,
-				"heapKb": 13544,
-				"nodes": 651,
+				"heapKb": 13230,
+				"nodes": 652,
 				"listens": 2187
 			},
 			{
 				"round": 12,
-				"heapKb": 14222,
-				"nodes": 651,
+				"heapKb": 13887,
+				"nodes": 652,
 				"listens": 2383
 			},
 			{
 				"round": 13,
-				"heapKb": 14914,
-				"nodes": 651,
+				"heapKb": 14549,
+				"nodes": 652,
 				"listens": 2579
 			},
 			{
 				"round": 14,
-				"heapKb": 15593,
-				"nodes": 651,
+				"heapKb": 15197,
+				"nodes": 652,
 				"listens": 2775
 			},
 			{
 				"round": 15,
-				"heapKb": 16311,
-				"nodes": 651,
+				"heapKb": 15903,
+				"nodes": 652,
 				"listens": 2971
 			}
 		]
