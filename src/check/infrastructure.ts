@@ -72,6 +72,10 @@ export async function loadPage(page: Page, url: string, options: { timeout?: num
 export class Scope {
 	closed = false;
 	readonly contexts = new Set<BrowserContext>();
+	/** Requests the route's pages are waiting on, by when each was sent; when each origin last answered, and when a request last failed. */
+	readonly waiting = new Map<object, { url: string; at: number }>();
+	readonly answered = new Map<string, number>();
+	failed = 0;
 	track(context: BrowserContext): void {
 		if (this.closed) {
 			void context.close().catch(() => {});
@@ -79,6 +83,27 @@ export class Scope {
 		}
 		this.contexts.add(context);
 		context.on('close', () => this.contexts.delete(context));
+		context.on('request', (request) => this.waiting.set(request, { url: request.url(), at: Date.now() }));
+		context.on('requestfinished', (request) => {
+			this.waiting.delete(request);
+			try {
+				this.answered.set(new URL(request.url()).origin, Date.now());
+			} catch {}
+		});
+		context.on('requestfailed', (request) => {
+			this.waiting.delete(request);
+			this.failed = Date.now();
+		});
+	}
+	/** The oldest request still waiting for an answer after `ms`, if any: a server that stopped answering. */
+	stalled(ms: number): { url: string; at: number } | undefined {
+		const now = Date.now();
+		return [...this.waiting.values()].filter((w) => now - w.at >= ms).sort((a, b) => a.at - b.at)[0];
+	}
+	/** How long ago `origin` last answered a request of the route's pages. */
+	sinceAnswer(origin: string): number | undefined {
+		const at = this.answered.get(new URL(origin).origin);
+		return at === undefined ? undefined : Date.now() - at;
 	}
 	async close(): Promise<void> {
 		this.closed = true;
