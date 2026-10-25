@@ -526,18 +526,29 @@ export async function captureRacSubmenus(browser: Browser, origin: string, route
 /**
  * Radix submenus (DropdownMenu.Sub, ContextMenu.Sub, Menubar.Sub): a sub-trigger mounts its content only when the
  * pointer rests on it, inside a menu no control in the page shows. Each menu a reveal opened is opened again, each
- * sub-trigger in it hovered, and the content it mounted recorded as a reveal keyed by the sub-trigger's id (one level
+ * sub-trigger in it hovered, and the content it mounted (portaled to the body, or, unportaled, inside the parent
+ * menu: its popper wrapper is fixed either way) recorded as a body layer keyed by the sub-trigger's id (one level
  * deep). Cached by route.
  */
 export async function captureRadixSubmenus(browser: Browser, origin: string, route: string, dir: string, reveals: readonly Reveal[]): Promise<readonly Reveal[]> {
 	const menus = reveals.filter((r) => (r.action === 'click' || r.action === 'contextmenu') && r.added.some((a) => a.html.includes('data-radix-menu-content') && /aria-haspopup="menu"/.test(a.html)));
 	if (!menus.length) return [];
-	const file = join(dir, `${createHash('sha256').update(`radix-submenus:1:${route}|${JSON.stringify(menus.map((m) => [m.sig, m.nth, m.path, m.action]))}`).digest('hex').slice(0, 16)}.json`);
+	const file = join(dir, `${createHash('sha256').update(`radix-submenus:3:${route}|${JSON.stringify(menus.map((m) => [m.sig, m.nth, m.path, m.action]))}`).digest('hex').slice(0, 16)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as { route: string; reveals: Reveal[] }, () => undefined);
 	if (cached && cached.route === route) return cached.reveals;
 	const out: Reveal[] = [];
 	const viewport = VIEWPORTS[0]!;
-	const SUB_TRIGGER = '[data-radix-menu-content] [role^="menuitem"][aria-haspopup="menu"][id]:not([data-disabled])';
+	const SUB_TRIGGER = '[data-radix-menu-content] [role^="menuitem"][aria-haspopup="menu"]';
+	type Trigger = { readonly id: string; readonly controls: string; readonly disabled: boolean };
+	// In the page, the sub-triggers of the open menu, or of the reveal's markup when given.
+	const triggersIn = (page: Page, html?: string): Promise<Trigger[]> =>
+		page.evaluate(
+			([selector, markup]) => {
+				const root = markup === null ? document : Object.assign(document.createElement('template'), { innerHTML: markup }).content;
+				return [...root.querySelectorAll(selector)].map((e) => ({ id: e.id, controls: e.getAttribute('aria-controls') ?? '', disabled: e.hasAttribute('data-disabled') }));
+			},
+			[SUB_TRIGGER, html ?? null] as const,
+		);
 	for (const menu of menus) {
 		const { context, page } = await fresh(browser, origin, route, viewport);
 		try {
@@ -555,27 +566,33 @@ export async function captureRadixSubmenus(browser: Browser, origin: string, rou
 				await quiet(page, 400);
 				return opened();
 			};
-			if (!(await open())) continue;
-			const ids = await page.evaluate((selector) => [...document.querySelectorAll(selector)].map((e) => e.id), SUB_TRIGGER);
-			for (const id of [...new Set(ids)]) {
+			// The sub-triggers as the reveal recorded them: Radix gives a menu's items new ids each time it mounts, so each
+			// submenu is found again by its trigger's place in the menu and recorded under the ids the reveal has.
+			const recorded = await triggersIn(page, menu.added.map((a) => a.html).join(''));
+			for (const [k, want] of recorded.entries()) {
+				if (want.disabled || !want.id) continue;
 				if (!(await opened()) && !(await open())) break;
+				const mine = (await triggersIn(page))[k];
+				if (!mine?.id) break;
 				await page.evaluate(() => {
 					const w = window as unknown as { __mmAdded?: globalThis.Element[]; __mmObserver?: MutationObserver };
 					w.__mmAdded = [];
 					w.__mmObserver = new MutationObserver((records) => {
 						for (const r of records) for (const n of r.addedNodes) if (n instanceof globalThis.Element) w.__mmAdded!.push(n);
 					});
-					w.__mmObserver.observe(document.body, { childList: true });
+					w.__mmObserver.observe(document.body, { childList: true, subtree: true });
 				});
-				const hovered = await page.locator(`[id="${id}"]`).hover({ timeout: 2000 }).then(() => true, () => false);
+				const hovered = await page.locator(`[id="${mine.id}"]`).hover({ timeout: 2000 }).then(() => true, () => false);
 				// Radix opens a submenu 100 ms after the pointer moves onto its trigger.
 				if (hovered) await quiet(page, 500);
 				const added = await page.evaluate(() => {
 					const w = window as unknown as { __mmAdded?: globalThis.Element[]; __mmObserver?: MutationObserver };
 					w.__mmObserver?.disconnect();
-					return (w.__mmAdded ?? []).filter((n) => n.isConnected && (n.matches('[data-radix-menu-content]') || n.querySelector('[data-radix-menu-content]'))).map((n) => n.outerHTML);
+					const nodes = (w.__mmAdded ?? []).filter((n) => n.isConnected && (n.matches('[data-radix-menu-content]') || n.querySelector('[data-radix-menu-content]')));
+					return nodes.filter((n) => !nodes.some((m) => m !== n && m.contains(n))).map((n) => n.outerHTML);
 				});
-				if (added.length) out.push({ key: id, path: [-1], action: 'hover', viewport: viewport.name, added: added.map((html) => ({ into: 'body' as const, before: -1, html })) });
+				const named = (html: string) => [[mine.id, want.id], [mine.controls, want.controls]].reduce((h, [from, to]) => (from && to ? h.split(from).join(to) : h), html);
+				if (added.length) out.push({ key: want.id, path: [-1], action: 'hover', viewport: viewport.name, added: added.map((html) => ({ into: 'body' as const, before: -1, html: named(html) })) });
 				// Escape closes the whole menu (a submenu's Escape closes its root): it is opened again for the next one.
 				await page.keyboard.press('Escape').catch(() => {});
 				await quiet(page, 300);
