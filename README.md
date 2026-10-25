@@ -390,6 +390,11 @@ whose content is rendered twice shows twice as many).
 | `context menu` | an element with no role that answers a right click (a React or Vue `onContextMenu`, or its own `oncontextmenu`), counted among the innermost role-less elements of its text on both pages, so a port that answers it from a delegated handler still has it | right-click it, point at an item and away, Escape, right-click again, a click outside, right-click again, choose an item, right-click again and type the first letters of its items |
 | `toggle` | a checkbox, a switch, a button with `aria-pressed` | Tab to it, Enter, Space, a click, Enter again, Tab; a click on its label (by `for`, by wrapping it, or by `aria-labelledby`), Space, Tab |
 
+Every journey step is held to the same attributes: when each old run changes one of `data-state`,
+`data-highlighted`, `data-pressed`, `data-hovered`, `data-selected`, `data-checked`, `data-open`,
+`data-active`, `data-disabled`, `data-popup-open` or `data-focus-visible` and the new page does not, the
+step is red, as it is for an `aria-*` value.
+
 A step that differs is red (`a11y` for focus rings and tab stops, `behaviour` otherwise) with the
 control, the class, the sequence, the step and what each side showed there, and the converter parts
 whose selectors match the control or what it opened (`Likely part: parts/resizable.ts`). A difference
