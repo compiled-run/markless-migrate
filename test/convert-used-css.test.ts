@@ -62,6 +62,13 @@ test('a stylesheet keeps the rules whose classes and ids the page can hold, byte
 	);
 });
 
+test("a class holding quotes, brackets and parentheses is found whole, in markup and in code", () => {
+	const sheet = ".\\[\\&_svg\\:not\\(\\[class\\*\\=\\'size-\\'\\]\\)\\]\\:size-4 svg:not([class*=size-]){width:1rem}.before\\:content-\\[\\'x\\'\\]:before{content:'x'}.after\\:content-\\[\\\"y\\\"\\]:after{content:\"y\"}.gone{a:b}";
+	const html = `<button class="[&amp;_svg:not([class*='size-'])]:size-4 px-2"></button><b class="after:content-[&quot;y&quot;]"></b>`;
+	const code = `const c={"x":"before:content-['x'] flex"};`;
+	assert.equal(usedCss(sheet, classTokens([html, code])), sheet.replace('.gone{a:b}', ''));
+});
+
 test('a selector the parser cannot read is kept', () => {
 	const sheet = '.flex{display:flex}.a:unknown-thing((){color:red}';
 	assert.equal(usedCss(sheet, classTokens(['flex'])), sheet);

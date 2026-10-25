@@ -8,16 +8,30 @@ type Node = any;
 
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", '#39': "'", '#x27': "'" };
 
+const DELIMITER = /["'`<>={}(),;]/g;
+
 /**
- * Every word the given markup and code could put in a class or id attribute: split at whitespace and quotes, and again
- * at the punctuation markup and code put around words. A class built by joining strings is not seen.
+ * Every word the given markup and code could put in a class or id attribute. Each whitespace-separated piece counts, and
+ * so does each part of it between quotes and the punctuation around words, since a class itself may hold them
+ * (`[&_svg:not([class*='size-'])]:size-4`). A class built by joining strings is not seen.
  */
 export function classTokens(texts: Iterable<string>): Set<string> {
 	const tokens = new Set<string>();
 	for (const raw of texts) {
 		const text = raw.replace(/&(amp|lt|gt|quot|apos|#39|#x27);/g, (_, e: string) => ENTITIES[e]!);
-		for (const t of text.split(/[\s"'`]+/)) if (t) tokens.add(t);
-		for (const t of text.split(/[\s"'`<>={}(),;]+/)) if (t) tokens.add(t);
+		for (const piece of text.split(/\s+/)) {
+			if (!piece) continue;
+			tokens.add(piece);
+			const cuts = [...piece.matchAll(DELIMITER)].map((m) => m.index!);
+			if (!cuts.length) continue;
+			if (cuts.length > 24) {
+				for (const t of piece.split(DELIMITER)) if (t) tokens.add(t);
+				continue;
+			}
+			const starts = [0, ...cuts.map((i) => i + 1)];
+			const ends = [...cuts, piece.length];
+			for (const a of starts) for (const b of ends) if (b > a) tokens.add(piece.slice(a, b));
+		}
 	}
 	return tokens;
 }
