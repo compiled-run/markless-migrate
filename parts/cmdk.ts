@@ -97,7 +97,7 @@ export function configure(options: CommandProps): void {
 const ITEM = '[cmdk-item]';
 const GROUP = '[cmdk-group]';
 const rootOf = (el: Element) => el.closest<HTMLElement>('[cmdk-root]');
-const listOf = (root: Element) => root.querySelector<HTMLElement>('[cmdk-list-sizer]') ?? root.querySelector<HTMLElement>('[cmdk-list]') ?? root;
+const listOf = (root: HTMLElement) => root.querySelector<HTMLElement>('[cmdk-list-sizer]') ?? root.querySelector<HTMLElement>('[cmdk-list]') ?? root;
 const enabled = (i: Element) => i.getAttribute('aria-disabled') !== 'true';
 
 // What React renders and cmdk moves, per container (the list, a group's items): the children in the order the DOM holds

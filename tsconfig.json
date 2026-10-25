@@ -11,8 +11,9 @@
 		"erasableSyntaxOnly": true,
 		"verbatimModuleSyntax": true,
 		"skipLibCheck": true,
-		"types": ["node"]
+		"types": ["node"],
+		"rootDirs": ["parts", "test/parts-env", "examples/shadcn-ui-markless/lib/parts"]
 	},
-	"include": ["src", "test", "scripts", "fixtures/vite-site/serve.ts", "fixtures/cms/server.ts", "fixtures/div-grid/page.ts"],
-	"exclude": ["test/source-fixtures", "test/library-fixtures"]
+	"include": ["src", "test", "scripts", "parts", "examples/shadcn-ui-markless/lib/site", "deploy", "fixtures/*/server.ts", "fixtures/vite-site/serve.ts", "fixtures/div-grid/page.ts"],
+	"exclude": ["test/source-fixtures", "test/library-fixtures", "deploy/*/old-app", "deploy/*/vercel-old"]
 }
