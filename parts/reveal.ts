@@ -95,7 +95,11 @@ const slots = new WeakMap<Element, string>();
  */
 export function triggerSlot(el: Element): string {
 	const own = el.getAttribute('data-slot') ?? '';
-	if (own.endsWith('-trigger')) return own;
+	return own.endsWith('-trigger') ? own : layerSlot(el);
+}
+
+/** The trigger part a control's layer content names (`popover-content` is a `popover-trigger`'s), whatever its own data-slot. */
+export function layerSlot(el: Element): string {
 	const known = slots.get(el);
 	if (known !== undefined) return known;
 	const key = layerKey(el);

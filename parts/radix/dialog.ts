@@ -1,5 +1,5 @@
 import { installDialog } from './dialog-engine.ts';
-import { layersFor, closestTrigger, layerKey } from '../reveal.ts';
+import { layersFor, closestTrigger, layerKey, layerSlot } from '../reveal.ts';
 
 // Radix Dialog and AlertDialog, delegated: the trigger's aria-controls names the content captured from the old page. The
 // content (and overlay) are mounted from their templates, then dialog-engine.ts (the shared port's engine, which does
@@ -9,7 +9,14 @@ import { layersFor, closestTrigger, layerKey } from '../reveal.ts';
 const TRIGGER = '[aria-haspopup="dialog"][aria-controls][data-slot$="dialog-trigger"], [aria-haspopup="dialog"][aria-controls][data-slot="sheet-trigger"], [aria-haspopup="dialog"][aria-controls][data-slot="drawer-trigger"]';
 // A trigger rendered through its child (asChild, render) carries the child's data-slot; its layer names the part.
 // A plain button a page opens its dialog from (open state set on click, no ARIA) has the layer under its key.
-const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[aria-haspopup="dialog"][aria-controls], [data-mm-key]:not([aria-haspopup]):not([data-state])', (slot) => /(dialog|sheet|drawer)-trigger$/.test(slot));
+// A trigger whose child has a -trigger data-slot of its own (shadcn's AttachmentTrigger) is known by its layer's content.
+const isDialogSlot = (slot: string) => /(dialog|sheet|drawer)-trigger$/.test(slot);
+function triggerOf(target: Element): HTMLElement | null {
+	const trigger = target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[aria-haspopup="dialog"][aria-controls], [data-mm-key]:not([aria-haspopup]):not([data-state])', isDialogSlot);
+	if (trigger) return trigger;
+	for (let el = target.closest<HTMLElement>('[aria-haspopup="dialog"][aria-controls]'); el; el = el.parentElement?.closest<HTMLElement>('[aria-haspopup="dialog"][aria-controls]') ?? null) if (isDialogSlot(layerSlot(el))) return el;
+	return null;
+}
 const CLOSE = '[data-slot$="dialog-close"], [data-slot="sheet-close"], [data-slot$="dialog-cancel"], [data-slot$="dialog-action"]';
 
 interface Open {
@@ -51,7 +58,8 @@ function open(trigger: HTMLElement): boolean {
 	const cancel = alert ? (content.querySelector<HTMLElement>('[data-slot$="dialog-cancel"]') ?? undefined) : undefined;
 	if (!installed.has(key)) {
 		installed.add(key);
-		installDialog([trigger], overlay, content, cancel, alert);
+		// Radix returns focus on close to its own Trigger only: a page's plain button that opened the dialog gets none.
+		installDialog(trigger.hasAttribute('aria-haspopup') ? [trigger] : [], overlay, content, cancel, alert);
 		content.addEventListener('radixdismiss', () => close(key));
 	}
 	opened.set(key, { trigger, nodes, content, overlay });

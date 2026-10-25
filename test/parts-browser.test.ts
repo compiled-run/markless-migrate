@@ -548,6 +548,40 @@ test('a Base UI dialog a page opens from a plain button opens under the button\'
 	await page.close();
 });
 
+test('a Radix dialog opened from a trigger whose child has its own -trigger data-slot (AttachmentTrigger) opens', async () => {
+	const page = await open(
+		`<main><button data-slot="attachment-trigger" type="button" aria-label="Preview" aria-haspopup="dialog" aria-expanded="false" aria-controls="att" data-state="closed">Preview</button></main>
+		<div data-mm-layer="att" hidden data-slot="dialog-overlay" data-state="closed"></div><div data-mm-layer="att" hidden role="dialog" id="att" data-slot="dialog-content" data-state="closed"><button data-slot="dialog-close">Close</button></div>`,
+		['radix/dialog'],
+	);
+	await page.getByText('Preview').click();
+	assert.equal(await page.locator('#att').getAttribute('data-state'), 'open');
+	assert.equal(await page.getByText('Preview').getAttribute('aria-expanded'), 'true');
+	await page.close();
+});
+
+test('a Radix dialog returns focus on close to its own Trigger only: one a plain button opened leaves focus on the body', async () => {
+	const layer = (key: string) => `<div data-mm-layer="${key}" hidden data-slot="dialog-overlay" data-state="closed"></div><div data-mm-layer="${key}" hidden role="dialog" data-slot="dialog-content" data-state="closed"><input placeholder="Search ${key}"></div>`;
+	const page = await open(
+		`<main><button data-slot="button" data-mm-key="p:1" type="button">Open Menu</button>
+		<button data-slot="dialog-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="p:2" data-state="closed">Search</button></main>${layer('p:1')}${layer('p:2')}`,
+		['radix/dialog'],
+	);
+	const onBody = () => page.evaluate(() => document.activeElement === document.body);
+	await page.getByText('Open Menu').click();
+	await settled(page);
+	assert.equal(await page.locator('[data-mm-layer="p:1"][role="dialog"]').getAttribute('data-state'), 'open');
+	await page.keyboard.press('Escape');
+	await settled(page);
+	assert.equal(await onBody(), true, await focusOf(page));
+	await page.getByText('Search').click();
+	await settled(page);
+	await page.keyboard.press('Escape');
+	await settled(page);
+	assert.equal(await focusOf(page), 'button:Search');
+	await page.close();
+});
+
 test('recharts: an SVG scaled to its container maps the pointer and the tooltip through its scale', async () => {
 	const facts = JSON.stringify({ w: 300, h: 100, v: [5, 5, 290, 90], m: 'x', g: [[0, 149, 0], [150, 300, 1]], p: [[50, 20], [200, 20]] });
 	const page = await open(
