@@ -44,7 +44,12 @@ async function press(page: Page, key: string): Promise<void> {
 	await settled(page);
 }
 const focused = (page: Page) => page.evaluate(() => (document.activeElement === document.body ? 'body' : (document.activeElement?.getAttribute('data-slot') ?? document.activeElement?.tagName.toLowerCase())));
-const pageState = (page: Page) => page.evaluate(() => ({ hidden: document.querySelector('main')!.getAttribute('aria-hidden'), gutter: document.documentElement.style.scrollbarGutter, overflow: document.body.style.overflowY }));
+// useScrollLock takes the lock from a timer; where scrollbars take no room it only stops the body scrolling.
+const pageState = async (page: Page) => {
+	await settled(page);
+	return page.evaluate(() => ({ hidden: document.querySelector('main')!.getAttribute('aria-hidden'), gutter: document.documentElement.style.scrollbarGutter, overflow: document.body.style.overflowY }));
+};
+const locked = async (page: Page) => ({ hidden: 'true', gutter: (await page.evaluate(() => innerWidth - document.documentElement.clientWidth)) > 0 ? 'stable' : '', overflow: 'hidden' });
 
 // DialogPortal's InternalBackdrop, rendered only for a modal dialog or drawer.
 const INTERNAL_BACKDROP = '<div role="presentation" data-base-ui-inert aria-hidden="true" style="position:fixed;inset:0;user-select:none"></div>';
@@ -66,7 +71,7 @@ test('Base UI Popover: its trigger has Dialog.Trigger\'s markup, yet it opens as
 
 	await page.getByText('Open Dialog').click();
 	assert.equal(await focused(page), 'dialog-close', "a sheet, whose popup carries data-side, is still a dialog: it focuses its first tabbable element");
-	assert.deepEqual(await pageState(page), { hidden: 'true', gutter: 'stable', overflow: 'hidden' });
+	assert.deepEqual(await pageState(page), await locked(page));
 	await page.close();
 });
 
@@ -77,7 +82,7 @@ test('Base UI Drawer: the popup itself takes focus; a modal one hides and locks 
 	const page = await open(drawer(true), ['base-ui/dialog']);
 	await page.getByText('Open Drawer').click();
 	assert.equal(await focused(page), 'drawer-popup');
-	assert.deepEqual(await pageState(page), { hidden: 'true', gutter: 'stable', overflow: 'hidden' });
+	assert.deepEqual(await pageState(page), await locked(page));
 	await page.getByText('Close').focus();
 	await press(page, 'Tab');
 	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'First', 'Tab wraps inside');
@@ -100,3 +105,40 @@ test('Base UI Drawer with modal={false}: no internal backdrop, so the page stays
 	await page.close();
 });
 
+
+const popover = `<main style="padding-top:200px"><button type="button" data-slot="popover-trigger" data-base-ui-click-trigger aria-haspopup="dialog" aria-expanded="false" id="pop">Open</button><button type="button">After</button></main>
+	<div data-base-ui-portal hidden data-mm-layer="pop"><div data-side="bottom" data-align="center" role="presentation" data-closed><span data-type="inside" aria-hidden="true" tabindex="0" data-base-ui-focus-guard></span><div role="dialog" tabindex="-1" data-slot="popover-content" data-closed><input aria-label="Width"><button type="button">Save</button></div></div></div>`;
+
+test('Base UI Popover: Tab past its last control closes it with focus after the trigger; Shift+Tab past its first goes back to the trigger, still open', async () => {
+	const page = await open(popover, ['base-ui/popover']);
+	const expanded = () => page.locator('#pop').getAttribute('aria-expanded');
+	await page.locator('#pop').click();
+	assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Width');
+	await page.keyboard.press('Shift+Tab');
+	assert.deepEqual([await page.evaluate(() => document.activeElement?.id), await expanded()], ['pop', 'true']);
+	await page.getByLabel('Width').focus();
+	await press(page, 'Tab');
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Save');
+	await press(page, 'Tab');
+	assert.deepEqual([await page.evaluate(() => document.activeElement?.textContent), await expanded()], ['After', 'false']);
+	await page.close();
+});
+
+test('Base UI Dialog: a scroll container with nothing focusable in it is a Tab stop inside the trap, but its guards wrap to the tabbable content\'s ends', async () => {
+	const page = await open(
+		`<main><button type="button" data-slot="sheet-trigger" data-base-ui-click-trigger aria-haspopup="dialog" aria-expanded="false" id="sh">Open</button></main>
+		<div data-base-ui-portal hidden data-mm-layer="sh">${INTERNAL_BACKDROP}<div role="dialog" tabindex="-1" data-slot="sheet-content" style="position:relative;z-index:1"><div id="scroller" style="height:50px;overflow-y:auto"><p style="height:400px">Lorem ipsum</p></div><button type="button">First</button><button type="button">Last</button></div></div>`,
+		['base-ui/dialog'],
+	);
+	await page.getByText('Open').click();
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'First');
+	await page.keyboard.press('Shift+Tab');
+	assert.equal(await page.evaluate(() => document.activeElement?.id), 'scroller', 'Shift+Tab from the first control reaches the scroller before it');
+	await page.getByText('Last').focus();
+	await page.keyboard.press('Tab');
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'First', 'Tab from the last wraps to the first control, not the scroller');
+	await page.keyboard.press('Shift+Tab');
+	await page.keyboard.press('Shift+Tab');
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Last', 'Shift+Tab from the scroller wraps to the last control');
+	await page.close();
+});
