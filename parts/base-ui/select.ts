@@ -102,7 +102,7 @@ function choose(p: Popup, option: HTMLElement): void {
 const popupFor = (trigger: HTMLElement) => [...document.querySelectorAll('[data-base-ui-portal]')].map((n) => popupOf(n)).find((x) => x?.trigger === trigger);
 
 function openSelect(trigger: HTMLElement): boolean {
-	const p = openPopup(trigger, { popupSelector: '[role="listbox"]', positionMethod: 'fixed', onDismiss: (x) => closePopup(x, true, true) });
+	const p = openPopup(trigger, { popupSelector: '[role="listbox"]', positionMethod: 'fixed', lockScroll: true, tabOut: true, onDismiss: (x) => closePopup(x, true, true) });
 	if (!p) return false;
 	const label = selectedValue.get(trigger);
 	if (label !== undefined) for (const o of p.popup.querySelectorAll<HTMLElement>(OPTION)) {
