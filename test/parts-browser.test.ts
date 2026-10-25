@@ -365,6 +365,29 @@ test('shadcn-ui site: an input group\'s Copy button shows tabler\'s check for 2 
 	await page.close();
 });
 
+test('a vaul drawer opens with focus left on its trigger and no trap until focus enters it; a Radix dialog still focuses its first control', async () => {
+	const layer = (key: string, slot: string, vaul: boolean) => `<div data-mm-layer="${key}" hidden data-slot="${slot}-overlay" data-state="closed"></div><div data-mm-layer="${key}" hidden role="dialog" id="${key}" data-slot="${slot}-content"${vaul ? ' data-vaul-drawer="" data-vaul-drawer-direction="bottom"' : ''} data-state="closed"><button>Submit ${key}</button></div>`;
+	const page = await open(
+		`<main><button data-slot="drawer-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="dr" data-state="closed">Open Drawer</button><button>Page</button>
+		<button data-slot="dialog-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="dl" data-state="closed">Open Dialog</button></main>${layer('dr', 'drawer', true)}${layer('dl', 'dialog', false)}`,
+		['radix/dialog'],
+	);
+	await page.getByText('Open Drawer').focus();
+	await page.keyboard.press('Enter');
+	await settled(page);
+	assert.equal(await page.locator('#dr').getAttribute('data-state'), 'open');
+	assert.equal(await focusOf(page), 'button:Open Drawer');
+	await page.keyboard.press('Tab');
+	assert.equal(await focusOf(page), 'button:Page', 'Tab walks the page behind');
+	await page.keyboard.press('Escape');
+	await settled(page);
+	await page.getByText('Open Dialog').focus();
+	await page.keyboard.press('Enter');
+	await settled(page);
+	assert.equal(await focusOf(page), 'button:Submit dl');
+	await page.close();
+});
+
 test('a Radix vertical slider steps up with ArrowUp and follows the pointer from the bottom', async () => {
 	const page = await open(
 		`<div style="padding:50px"><span data-orientation="vertical" data-slot="slider" data-state="x" style="position:relative;display:block;height:200px;width:20px"><span data-slot="slider-track" style="position:absolute;inset:0"><span data-slot="slider-range" style="position:absolute;bottom:0%;top:50%;left:0;right:0"></span></span><span style="position:absolute;bottom:calc(50% + 0px)"><span role="slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" aria-orientation="vertical" data-orientation="vertical" tabindex="0" data-slot="slider-thumb" style="display:block;width:16px;height:16px"></span></span></span></div>`,
