@@ -6,6 +6,7 @@ import { chromium, type Browser, type Page } from 'playwright';
 import ts from 'typescript';
 import { atRest } from '../src/convert/at-rest.ts';
 import { body as bodyOf, outer, parseDocument, walk } from '../src/convert/dom.ts';
+import { earlyThemeScript } from '../parts/next-themes.ts';
 
 // The ports run as the app runs them: parts/index.ts delegating every event to a registry of ports, in a real browser.
 const PARTS = join(import.meta.dirname, '..', 'parts');
@@ -25,13 +26,14 @@ after(async () => {
 
 // `deliver`: also hand every event to the parts from the body's or the window's capture phase, as a Markless page delegates
 // them, before the event reaches the document listener.
-async function open(body: string, ports: readonly string[], deliver?: 'body' | 'window'): Promise<Page> {
+// `head`: what the app's Document puts in the head before any module (the inline theme toggle).
+async function open(body: string, ports: readonly string[], deliver?: 'body' | 'window', head = ''): Promise<Page> {
 	const page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
 	// `site`: the shadcn-ui port's own site parts (lib/site/parts.ts), which import the ports as the app's lib/parts.
 	const registry = `${ports.map((p, i) => (p === 'site' ? `import { SITE_PARTS as p${i} } from './site.ts';` : `import * as p${i} from './${p}.ts';`)).join('\n')}\nexport const PARTS = [${ports.map((p, i) => (p === 'site' ? `...p${i}` : `p${i}`)).join(', ')}];`;
 	await page.route('http://parts.test/**', async (route) => {
 		const path = new URL(route.request().url()).pathname;
-		if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js","@markless/router":"/router.js"}}</script><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif}</style></head><body>${body}<script>window.pointerLog = []; for (const type of ['pointerover', 'pointermove']) document.addEventListener(type, (e) => { const t = e.target; window.pointerLog.push(type + '@' + Math.round(e.clientX) + ',' + Math.round(e.clientY) + ':' + (t.tagName || '') + '.' + (t.getAttribute && t.getAttribute('class') || '')); }, true);</script><script type="module">import { behave, listen, mount } from '/parts/index.ts'; listen(); ${deliver ? `for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout']) ${deliver === 'body' ? 'document.body' : 'window'}.addEventListener(type, behave, true);` : ''} window.mountParts = mount; window.ready = true;</script></body></html>` });
+		if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><script type="importmap">{"imports":{"@floating-ui/dom":"/floating.js","@markless/router":"/router.js"}}</script><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif}</style>${head}</head><body>${body}<script>window.pointerLog = []; for (const type of ['pointerover', 'pointermove']) document.addEventListener(type, (e) => { const t = e.target; window.pointerLog.push(type + '@' + Math.round(e.clientX) + ',' + Math.round(e.clientY) + ':' + (t.tagName || '') + '.' + (t.getAttribute && t.getAttribute('class') || '')); }, true);</script><script type="module">import { behave, listen, mount } from '/parts/index.ts'; listen(); ${deliver ? `for (const type of ['click', 'keydown', 'pointerover', 'pointerout', 'pointerdown', 'focusin', 'focusout']) ${deliver === 'body' ? 'document.body' : 'window'}.addEventListener(type, behave, true);` : ''} window.mountParts = mount; window.ready = true;</script></body></html>` });
 		if (path === '/floating.js') return route.fulfill({ contentType: 'text/javascript', body: FLOATING_STUB });
 		if (path === '/router.js') return route.fulfill({ contentType: 'text/javascript', body: 'export const navigate = async (href) => { window.navigated = href; };' });
 		// What choosing each option did on the old page, which convert writes beside the ports.
@@ -221,15 +223,31 @@ test('Radix Tooltip: keyboard focus opens it instant-open; the pointer opens it 
 	await fresh.close();
 });
 
-test('the site\'s D theme shortcut, a document listener on the old page, runs with the part that claims the key: in an open menu "d" moves the typeahead and switches the theme', async () => {
+// The site's Document as convert writes it for ui.shadcn.com: next-themes' options and the toggle controls.json names.
+const EARLY_THEME = `<script>${earlyThemeScript({ attribute: 'class', storageKey: 'theme', defaultTheme: 'system', themes: ['light', 'dark'], enableSystem: true, enableColorScheme: true, disableTransitionOnChange: true }, { name: 'Toggle theme', key: 'd' })}</script>`;
+const themeFlips = (page: Page) => page.evaluate(() => (window as unknown as { flips?: number }).flips ?? 0);
+// Every switch counts, two in one event too: each class change whose darkness differs from the next one's.
+const countFlips = (page: Page) =>
+	page.evaluate(() => {
+		const w = window as unknown as { flips: number };
+		w.flips = 0;
+		const dark = (c: string | null) => /\bdark\b/.test(c ?? '');
+		new MutationObserver((records) => {
+			records.forEach((r, i) => {
+				if (dark(r.oldValue) !== (i + 1 < records.length ? dark(records[i + 1]!.oldValue) : document.documentElement.classList.contains('dark'))) w.flips++;
+			});
+		}).observe(document.documentElement, { attributeFilter: ['class'], attributeOldValue: true });
+	});
+
+test('the site\'s D theme shortcut, a document listener on the old page, runs with the part that claims the key: in an open Radix menu "d" moves the typeahead and switches the theme once', async () => {
 	const page = await open(
 		`<main style="padding:200px"><button type="button" id="menu" aria-haspopup="menu" aria-expanded="false" data-state="closed" data-slot="dropdown-menu-trigger">Open</button></main>
 		<div data-mm-layer="menu" hidden data-radix-popper-content-wrapper style="position:fixed"><div data-slot="dropdown-menu-content" role="menu" id="menu-content" aria-labelledby="menu" data-state="closed" tabindex="-1">${['Edit', 'Share', 'Delete'].map((t) => `<div role="menuitem" tabindex="-1">${t}</div>`).join('')}</div></div>`,
 		['site', 'radix/dropdown-menu'],
 		'body',
+		EARLY_THEME,
 	);
-	const dark = () => page.evaluate(() => document.documentElement.classList.contains('dark'));
-	const before = await dark();
+	await countFlips(page);
 	// The pointer away from the menu (placed at the corner by the stub): the theme's restyle moves no pointer onto an item.
 	await page.mouse.move(990, 790);
 	await page.locator('#menu').focus();
@@ -237,7 +255,31 @@ test('the site\'s D theme shortcut, a document listener on the old page, runs wi
 	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Edit');
 	await page.keyboard.press('d');
 	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Delete');
-	assert.equal(await dark(), !before);
+	assert.equal(await themeFlips(page), 1);
+	await page.close();
+});
+
+test("in an open Base UI menu a typed key stops at the menu's typeahead, as Base UI's useTypeahead stops it: the site's D shortcut does not see it", async () => {
+	const page = await open(
+		`<main style="padding:100px"><button type="button" id="dd" aria-haspopup="menu" aria-expanded="false" data-slot="dropdown-menu-trigger">Open</button></main>
+		<div data-base-ui-portal hidden data-mm-layer="dd"><div data-side="bottom" data-align="start" role="presentation" style="position:absolute;left:0;top:0" data-closed><div tabindex="-1" role="menu" aria-labelledby="dd" data-slot="dropdown-menu-content" data-closed>${['Edit', 'Share', 'Delete'].map((t) => `<div role="menuitem" tabindex="-1" data-slot="dropdown-menu-item">${t}</div>`).join('')}</div></div></div>`,
+		['site', 'base-ui/menu'],
+		'body',
+		EARLY_THEME,
+	);
+	await countFlips(page);
+	await page.mouse.move(990, 790);
+	await page.locator('#dd').focus();
+	await page.keyboard.press('ArrowDown');
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Edit');
+	await page.keyboard.press('d');
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Delete');
+	assert.equal(await themeFlips(page), 0, 'a key the typeahead took');
+	await page.keyboard.press('x');
+	assert.equal(await themeFlips(page), 0, 'a key matching no item is stopped too');
+	await page.keyboard.press('Escape');
+	await page.keyboard.press('d');
+	assert.equal(await themeFlips(page), 1, 'with the menu closed the shortcut answers');
 	await page.close();
 });
 

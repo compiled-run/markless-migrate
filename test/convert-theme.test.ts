@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { earlyThemeScript, handledEarly } from '../parts/next-themes.ts';
+import { earlyThemeScript, markSwitched, switchedFor } from '../parts/next-themes.ts';
 import { nextThemesOptions, themeToggleOf } from '../src/convert/theme.ts';
 
 // next-themes 0.4's inline script as ui.shadcn.com's ThemeProvider writes it.
@@ -17,8 +17,9 @@ test('the site names its toggle in controls.json', () => {
 	assert.equal(themeToggleOf([{ selector: 'button', action: 'click' }]), undefined);
 });
 
-test('the inline toggle switches the theme in the click and marks the event, so the part does not switch it back', () => {
+test('the inline toggle switches the theme in the click and marks the event, so the part does not switch it back; a key reaches it on the window, unless a part switched for it', () => {
 	const listeners: Record<string, (event: unknown) => void> = {};
+	const onWindow: Record<string, (event: unknown) => void> = {};
 	const classes = new Set(['light']);
 	const store = new Map<string, string>();
 	const button = { closest: () => button, getAttribute: () => null, textContent: ' Toggle theme ' };
@@ -27,6 +28,7 @@ test('the inline toggle switches the theme in the click and marks the event, so 
 	const root = { classList: { remove: (...n: string[]) => n.forEach((c) => classes.delete(c)), add: (c: string) => classes.add(c) }, style: {} as Record<string, string>, setAttribute() {} };
 	const scope = {
 		document: { documentElement: root, addEventListener: (type: string, fn: (event: unknown) => void) => (listeners[type] = fn), querySelector: () => null, createElement: () => ({ remove() {} }), head: { appendChild() {} }, body: {} },
+		window: { addEventListener: (type: string, fn: (event: unknown) => void) => (onWindow[type] = fn) },
 		localStorage: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v) },
 		matchMedia: () => ({ matches: false }),
 		getComputedStyle: () => ({}),
@@ -44,13 +46,18 @@ test('the inline toggle switches the theme in the click and marks the event, so 
 	assert.deepEqual([...classes], ['dark']);
 	assert.equal(store.get('theme'), 'dark');
 	assert.equal(root.style.colorScheme, 'dark');
-	assert.equal(handledEarly(click as unknown as Event), true);
+	assert.equal(switchedFor(click as unknown as Event), true);
 	listeners.click!({ target: button });
 	assert.deepEqual([...classes], ['light'], 'the second click switches back');
 	let prevented = false;
-	listeners.keydown!({ key: 'd', target: null, preventDefault: () => (prevented = true) });
+	assert.equal(listeners.keydown, undefined, 'a document listener would see keys a part stops');
+	onWindow.keydown!({ key: 'd', target: null, preventDefault: () => (prevented = true) });
 	assert.deepEqual([...classes], ['dark'], 'the D shortcut, the key matched case-insensitively');
 	assert.ok(prevented);
+	const switched = { key: 'd', target: null, preventDefault() {} };
+	markSwitched(switched as unknown as Event);
+	onWindow.keydown!(switched);
+	assert.deepEqual([...classes], ['dark'], 'a key a part already switched the theme for');
 });
 
 test("the site's theme-color follows the resolved theme once the page has loaded and as the system's scheme changes, as its ModeSwitcher sets it", async () => {

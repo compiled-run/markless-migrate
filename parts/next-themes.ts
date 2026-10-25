@@ -131,26 +131,27 @@ function earlyToggle(o: ThemeOptions & ThemeToggle): void {
 		matchMedia('(prefers-color-scheme: dark)').addEventListener('change', sync);
 	}
 	document.addEventListener('click', (event) => isToggle(event.target) && flip(event), true);
+	// On the window, after the document's listeners: a key a part stopped, as its library does, never reaches it.
 	if (o.key)
-		document.addEventListener(
-			'keydown',
-			(event) => {
-				const t = event.target;
-				const editable = t instanceof HTMLElement && (t.isContentEditable || t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement);
-				if (event.key.toLowerCase() !== o.key || event.metaKey || event.ctrlKey || event.altKey || editable) return;
-				event.preventDefault();
-				flip(event);
-			},
-			true,
-		);
+		window.addEventListener('keydown', (event) => {
+			const t = event.target;
+			const editable = t instanceof HTMLElement && (t.isContentEditable || t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement);
+			if (event.key.toLowerCase() !== o.key || event.metaKey || event.ctrlKey || event.altKey || editable || (event as Event & { __mmTheme?: boolean }).__mmTheme) return;
+			event.preventDefault();
+			flip(event);
+		});
 }
 
 /**
  * The theme toggle answers from the page's first paint: an inline script in the head switches the theme in the click's
  * own frame, whether or not the page's code has arrived, and marks the event; the site's part then only does what else
- * its toggle does (`handledEarly`).
+ * its toggle does (`switchedFor`). A key reaches the inline script after the parts: one that switched the theme marks
+ * the event (`markSwitched`).
  */
 export const earlyThemeScript = (options: ThemeOptions, toggle: ThemeToggle): string => `(${earlyToggle.toString()})(${JSON.stringify({ ...options, ...toggle, key: toggle.key?.toLowerCase() })});`;
 
-/** The inline handler already switched the theme for this event: switching it again would switch it back. */
-export const handledEarly = (event: Event): boolean => Boolean((event as Event & { __mmTheme?: boolean }).__mmTheme);
+/** The theme was already switched for this event: switching it again would switch it back. */
+export const switchedFor = (event: Event): boolean => Boolean((event as Event & { __mmTheme?: boolean }).__mmTheme);
+export const markSwitched = (event: Event): void => {
+	(event as Event & { __mmTheme?: boolean }).__mmTheme = true;
+};

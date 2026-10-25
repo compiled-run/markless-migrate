@@ -318,6 +318,12 @@ export function endTyping(t: Typing): void {
 	Object.assign(t, newTyping());
 }
 
+// floating-ui's stopEvent: the key reaches no listener above the list (the site's document shortcuts).
+const stopEvent = (event: Event) => {
+	event.preventDefault();
+	event.stopPropagation();
+};
+
 /** useTypeahead's keydown: the index typed to, or undefined. `skip`: items it passes over (hidden, or Select's disabled). */
 export function typeahead(t: Typing, event: KeyboardEvent, items: readonly HTMLElement[], active: number, skip: (i: number) => boolean, open = true, selected: number | null = null): number | undefined {
 	const labels = items.map((i) => i.textContent ?? '');
@@ -331,13 +337,13 @@ export function typeahead(t: Typing, event: KeyboardEvent, items: readonly HTMLE
 		return -1;
 	};
 	if (t.text.length > 0 && event.key === ' ') {
-		event.preventDefault();
+		stopEvent(event);
 		t.typing = true;
 	}
 	if (t.text.length > 0 && t.text[0] !== ' ' && matching(t.text) === -1 && event.key !== ' ') t.typing = false;
 	if (!labels.length || event.key.length !== 1 || event.ctrlKey || event.metaKey || event.altKey) return undefined;
 	if (open && event.key !== ' ') {
-		event.preventDefault();
+		stopEvent(event);
 		t.typing = true;
 	}
 	const isNew = t.text === '';

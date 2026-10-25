@@ -1,5 +1,5 @@
 import type { Part } from '../parts/index.ts';
-import { handledEarly, resolvedTheme, setTheme, watchSystemTheme, type ThemeOptions } from '../parts/next-themes.ts';
+import { markSwitched, resolvedTheme, switchedFor, setTheme, watchSystemTheme, type ThemeOptions } from '../parts/next-themes.ts';
 import { configure } from '../parts/cmdk.ts';
 import { clipboardFor } from '../parts/reveal.ts';
 import { closeContaining, toggle } from '../parts/radix/dialog.ts';
@@ -124,13 +124,15 @@ const modeSwitcher: Part = {
 	click(target, event) {
 		const button = target.closest('button');
 		if (!button || button.querySelector('.sr-only')?.textContent !== 'Toggle theme') return false;
-		if (!handledEarly(event)) toggleTheme();
+		if (!switchedFor(event)) toggleTheme();
 		return true;
 	},
 	shortcut(target, event) {
 		if ((event.key !== 'd' && event.key !== 'D') || event.metaKey || event.ctrlKey || event.altKey || isEditable(target)) return;
 		event.preventDefault();
-		if (!handledEarly(event)) toggleTheme();
+		if (switchedFor(event)) return;
+		toggleTheme();
+		markSwitched(event);
 	},
 };
 
