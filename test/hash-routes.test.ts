@@ -39,10 +39,10 @@ function oldApp(): Promise<Server> {
 function newApp(options: { heading?: (path: string) => string; legacy?: boolean } = {}): Promise<Server> {
 	const server = createServer((req, res) => {
 		const path = new URL(req.url ?? '/', 'http://x').pathname;
+		if (path === '/app.css') return void res.writeHead(200, { 'content-type': 'text/css' }).end(CSS);
 		const title = PAGES[path];
 		if (!title) return void res.writeHead(404, { 'content-type': 'text/html' }).end('<!doctype html><title>Shop</title><h1>Not found</h1>');
 		const redirect = options.legacy === false ? '' : `<script>if(location.hash.indexOf('#/')===0)location.replace(location.hash.slice(1))</script>`;
-		if (path === '/app.css') return void res.writeHead(200, { 'content-type': 'text/css' }).end(CSS);
 		res.writeHead(200, { 'content-type': 'text/html' }).end(`<!doctype html><html><head><meta charset="utf-8">${redirect}<title>Shop</title><link rel="stylesheet" href="/app.css"></head><body><div id="app"><nav><a href="/">Home</a> <a href="/about">About</a> <a href="/item/7">Seven</a></nav><main><h1>${options.heading?.(path) ?? title}</h1></main></div></body></html>`);
 	});
 	return new Promise((done) => server.listen(0, '127.0.0.1', () => done(server)));
