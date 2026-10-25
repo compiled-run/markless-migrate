@@ -167,6 +167,29 @@ test('asChild: a Radix dropdown menu trigger with the child data-slot opens the 
 	await page.close();
 });
 
+// Radix Tooltip as convert renders it: the content and its hidden role="tooltip" text a layer keyed by the trigger's id.
+const tooltipLayer = (key: string, text: string) => `<div data-mm-layer="${key}" hidden data-radix-popper-content-wrapper style="position:fixed"><div data-slot="tooltip-content" data-state="closed">${text}<span id="${key}-text" role="tooltip" style="position:absolute;width:1px;height:1px;overflow:hidden">${text}</span></div></div>`;
+
+test('Radix Tooltip: keyboard focus opens it instant-open; the pointer opens it delayed-open, instant-open within the skip delay after another closed', async () => {
+	const page = await open(
+		`<main style="padding:200px"><button id="a" data-slot="tooltip-trigger" data-state="closed">Save</button> <button id="b" data-slot="tooltip-trigger" data-state="closed">Print</button></main>${tooltipLayer('a', 'Save file')}${tooltipLayer('b', 'Print file')}`,
+		['radix/tooltip'],
+	);
+	await page.keyboard.press('Tab');
+	assert.equal(await page.locator('#a').getAttribute('data-state'), 'instant-open');
+	assert.equal(await page.locator('#a').getAttribute('aria-describedby'), 'a-text');
+	await page.keyboard.press('Tab');
+	assert.equal(await page.locator('#a').getAttribute('data-state'), 'closed');
+	assert.equal(await page.locator('#b').getAttribute('data-state'), 'instant-open');
+	await page.close();
+	const fresh = await open(`<main style="padding:200px"><button id="a" data-slot="tooltip-trigger" data-state="closed">Save</button> <button id="b" data-slot="tooltip-trigger" data-state="closed">Print</button></main>${tooltipLayer('a', 'Save file')}${tooltipLayer('b', 'Print file')}`, ['radix/tooltip']);
+	await fresh.getByText('Save', { exact: true }).hover();
+	assert.equal(await fresh.locator('#a').getAttribute('data-state'), 'delayed-open');
+	await fresh.getByText('Print', { exact: true }).hover();
+	assert.equal(await fresh.locator('#b').getAttribute('data-state'), 'instant-open');
+	await fresh.close();
+});
+
 // Base UI Combobox as the converter renders it: the list a portal keyed by the input's id, every item's indicator and
 // every chip already there, hidden.
 const comboboxLayer = (key: string, multi: boolean) => `<div data-mm-layer="${key}" hidden data-base-ui-portal><div data-slot="positioner"><div data-slot="combobox-content" data-closed><div role="status" data-slot="combobox-empty" class="empty">No items found.</div><div role="listbox" id="${key}-list" data-slot="combobox-list"${multi ? ' aria-multiselectable="true"' : ''}>${['Next.js', 'SvelteKit', 'Nuxt.js']

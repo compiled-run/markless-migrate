@@ -1,10 +1,10 @@
 import { closeLayer, openLayer, type Layer } from '../layer.ts';
 import { closestTrigger, layerKey } from '../reveal.ts';
 
-// Radix Tooltip under shadcn's TooltipProvider delayDuration={0}: the pointer entering the trigger or keyboard focus
-// shows the content at once (data-state "delayed-open", "instant-open" when another tooltip closed within Radix's
-// 300 ms skip delay), with aria-describedby naming its hidden role="tooltip" text; leaving, blurring, a press on the
-// trigger or Escape hides it. The content never takes focus.
+// Radix Tooltip under shadcn's TooltipProvider delayDuration={0}: the pointer entering the trigger shows the content
+// (data-state "delayed-open", "instant-open" while another tooltip is open or closed within Radix's 300 ms skip
+// delay); keyboard focus shows it "instant-open". aria-describedby names its hidden role="tooltip" text; leaving,
+// blurring, a press on the trigger or Escape hides it. The content never takes focus.
 const TRIGGER = '[data-slot="tooltip-trigger"][data-state]';
 // A trigger rendered through its child (asChild, render) carries the child's data-slot; its layer names the part.
 const triggerOf = (target: Element) => target.closest<HTMLElement>(TRIGGER) ?? closestTrigger(target, '[data-state][data-mm-key], [data-state][aria-controls], [data-state][id]', (slot) => /^tooltip-trigger$/.test(slot));
@@ -14,13 +14,13 @@ let lastClosed = 0;
 
 const keyOf = (t: HTMLElement) => layerKey(t);
 
-function show(trigger: HTMLElement): boolean {
+function show(trigger: HTMLElement, instant: boolean): boolean {
 	if (shown.has(trigger)) return true;
 	const key = keyOf(trigger);
 	if (!key) return false;
 	const layer = openLayer(trigger, key, { onDismiss: () => hide(trigger) });
 	if (!layer) return false;
-	const state = Date.now() - lastClosed < SKIP_DELAY ? 'instant-open' : 'delayed-open';
+	const state = instant ? 'instant-open' : 'delayed-open';
 	trigger.setAttribute('data-state', state);
 	layer.content.setAttribute('data-state', state);
 	const text = layer.content.querySelector('[role="tooltip"]');
@@ -42,7 +42,7 @@ function hide(trigger: HTMLElement): void {
 export function pointerover(target: Element, event: PointerEvent): boolean {
 	const trigger = triggerOf(target);
 	if (!trigger || event.pointerType === 'touch') return false;
-	return show(trigger);
+	return show(trigger, shown.size > 0 || Date.now() - lastClosed < SKIP_DELAY);
 }
 
 export function pointerout(target: Element, event: PointerEvent): boolean {
@@ -63,7 +63,7 @@ export function pointerdown(target: Element): boolean {
 
 export function focusin(target: Element): boolean {
 	const trigger = triggerOf(target);
-	return trigger && (target as HTMLElement).matches(':focus-visible') ? show(trigger) : false;
+	return trigger && (target as HTMLElement).matches(':focus-visible') ? show(trigger, true) : false;
 }
 
 export function focusout(target: Element): boolean {
