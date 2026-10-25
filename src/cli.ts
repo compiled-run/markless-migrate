@@ -13,8 +13,9 @@ import { homedir } from 'node:os';
 import { PSI_KEY_ENV, PSI_NOTICE, psiKey, userEnvFile } from './check/psi.ts';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { measureSlowNetwork, NETWORK_BROWSERS, networkTables, shortNames, type NetworkBrowser, type SlowNetworkOptions } from './check/slow-network.ts';
+import { measureSlowNetwork, NETWORK_BROWSERS, networkTables, shortNames, slowNetworkFlags, type NetworkBrowser, type SlowNetworkFlags, type SlowNetworkOptions } from './check/slow-network.ts';
 import { NETWORK_PROFILES } from './check/throttle.ts';
+import { networkHtml } from './check/slow-network-html.ts';
 import { AGENTS, detectAgents, findBinary, type HostEnv, type ServerCommand } from './agents/registry.ts';
 import { applySetup, describeChanges, planSetup, undoSetup, writeUndo } from './agents/setup.ts';
 import { renderStatusPage } from './check/html.ts';
@@ -197,13 +198,25 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           the new median is worse by more than max(100 ms, 5%) (TBT 50 ms, CLS 0.02, 3 score points) and the
           runs differ beyond noise (one-sided Mann-Whitney, p < 0.05). The failure names the LCP element, its
           breakdown and the requests that began before it, old and new.
-          - Slow network (--slow-network <profile>, repeatable: ${Object.keys(NETWORK_PROFILES).join(', ')}): each page
-            loaded cold through a throttling proxy, old and new in turn, --slow-network-runs a side (default
-            5), in each --slow-network-browser (chromium by default, firefox, webkit), clicking a control
-            every 250 ms from when it shows until it answers (--slow-network-control <selector>, default the
-            first unselected tab or closed disclosure): TTFB, first and largest paint, first click answered,
-            painted to answered, bytes and JavaScript downloaded and JavaScript executed. Shown beside the
-            rest, not a verdict; markless-migrate network measures any pages the same way.
+          - Slow network, on by default: each page loaded cold through a throttling proxy that every
+            byte crosses (the bandwidth shared, the round-trip time paid on every packet), in Chromium,
+            Firefox and WebKit, at Regular 3G and Regular 2G (Firefox's presets) and slow 4G (Lighthouse's
+            numbers with real round trips), old and new in turn, --slow-network-runs a side (default 5,
+            at least 4). A control is clicked every 250 ms from when it shows until it answers
+            (--slow-network-control <selector>, default the first unselected tab or closed disclosure; a
+            page with none is timed to its first painted frame and largest paint only). Shown: first
+            painted frame (from screenshots, the same in every browser), LCP, first click answered,
+            painted to answered, bytes and JavaScript downloaded before the answer, JavaScript executed
+            (Chromium). A route is red when the new page's first painted frame, LCP or answer is later in
+            any browser and network by more than the old page's own runs differ from each other (the
+            90th percentile gap between the medians of two halves of them) and the runs differ
+            (one-sided Mann-Whitney, p < 0.05); the failure names the cell and the largest requests the
+            new page finished first. The old page's runs are kept in .migrate/slow-network/ and reused
+            while its deploy (the files its HTML names) is the same. Cells not measured (a browser not
+            installed) are listed as skipped. --slow-network <profile> (repeatable: ${Object.keys(NETWORK_PROFILES).join(', ')})
+            and --slow-network-browser <name> narrow it, --slow-network-concurrency loads that many pages
+            at once (default 2), --no-slow-network leaves it out. markless-migrate network measures any
+            pages the same way, side by side.
           --no-load leaves page load out;
           --only load measures it alone (a partial run: every other dimension is not compared).
           --source and --new-source map each failing element to its old and new source file and line.
@@ -273,7 +286,7 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           (/blog/:slug, /docs/*rest).
   unswitch <route>
           Send a route back to the old app.
-  network <url>... [--profile <name>]... [--browser <name>]... [--runs <n>] [--control <selector>]... [--concurrency <n>] [--timeout <s>] [--json <file>]
+  network <url>... [--profile <name>]... [--browser <name>]... [--runs <n>] [--control <selector>]... [--concurrency <n>] [--timeout <s>] [--json <file>] [--html <file>]
           Loads each page cold over a slow network, as a visitor on it would, and clicks a control on it
           until it answers, the pages taken in turn, --runs a page (default 5). Every byte crosses one
           shaped link through a local proxy, so Chromium, Firefox and WebKit are throttled alike: the
@@ -289,7 +302,8 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           and JavaScript executed by the answer (Chromium). "In all" is once the network has been quiet
           for 2 s, at most 60 s after the answer. A run gives up after --timeout seconds (default 120).
           --concurrency loads that many pages at once, each over its own link (default 1).
-          --json writes every run with its requests.
+          --json writes every run with its requests; --html a page to share: the tables, and each page's
+          request timeline from its median run, marked at its first painted frame and its answer.
   proxy   --old <origin> --new <origin> [--port <n>] [--host <addr>]
           One origin in front of both apps: switched routes from NEW, everything else from OLD, with
           method, body, headers and cookies passed through, redirects to either app pointed back at the
@@ -402,6 +416,8 @@ const TIMING_FLAGS = {
 	'slow-network-browser': { type: 'string', multiple: true },
 	'slow-network-runs': { type: 'string' },
 	'slow-network-control': { type: 'string' },
+	'slow-network-concurrency': { type: 'string' },
+	'no-slow-network': { type: 'boolean' },
 	'nav-entries': { type: 'string' },
 	'nav-destinations': { type: 'string' },
 } as const;
@@ -420,22 +436,13 @@ function navigationOptions(values: { 'no-navigation'?: boolean; 'nav-entries'?: 
 	return { ...(entries ? { entries } : {}), ...(destinations ? { destinations } : {}), ...(routes?.length ? { routes } : {}) };
 }
 
-function slowNetworkOptions(values: { 'slow-network'?: string[]; 'slow-network-browser'?: string[]; 'slow-network-runs'?: string; 'slow-network-control'?: string }): SlowNetworkOptions | undefined {
-	const profiles = values['slow-network'];
-	if (!profiles?.length) {
-		if (values['slow-network-browser'] || values['slow-network-runs'] || values['slow-network-control']) fail('--slow-network-browser, --slow-network-runs and --slow-network-control go with --slow-network <profile>');
-		return undefined;
-	}
-	for (const name of profiles) if (!NETWORK_PROFILES[name]) fail(`unknown --slow-network ${name}: one of ${Object.keys(NETWORK_PROFILES).join(', ')}`);
-	const browsers = (values['slow-network-browser'] ?? ['chromium']) as NetworkBrowser[];
-	for (const name of browsers) if (!NETWORK_BROWSERS.includes(name)) fail(`unknown --slow-network-browser ${name}: one of ${NETWORK_BROWSERS.join(', ')}`);
-	const raw = values['slow-network-runs'];
-	const runs = raw === undefined ? undefined : Number(raw);
-	if (runs !== undefined && (!Number.isInteger(runs) || runs < 1)) fail('--slow-network-runs must be a whole number of at least 1');
-	return { profiles, browsers, ...(runs ? { runs } : {}), ...(values['slow-network-control'] ? { control: values['slow-network-control'] } : {}) };
+function slowNetworkOptions(values: SlowNetworkFlags): SlowNetworkOptions | undefined {
+	const { options, error } = slowNetworkFlags(values);
+	if (error) fail(error);
+	return options && { ...options, cacheDir: join(process.cwd(), STATE_DIR, 'slow-network') };
 }
 
-function loadOptions(values: { 'no-load'?: boolean; 'load-runs'?: string; 'load-cpu'?: string; 'psi-key'?: string; 'psi-runs'?: string; 'no-psi'?: boolean; 'slow-network'?: string[]; 'slow-network-browser'?: string[]; 'slow-network-runs'?: string; 'slow-network-control'?: string }): CheckOptions['load'] {
+function loadOptions(values: { 'no-load'?: boolean; 'load-runs'?: string; 'load-cpu'?: string; 'psi-key'?: string; 'psi-runs'?: string; 'no-psi'?: boolean } & SlowNetworkFlags): CheckOptions['load'] {
 	if (values['no-load']) return undefined;
 	const count = (flag: 'load-runs' | 'psi-runs') => {
 		const raw = values[flag];
@@ -1142,7 +1149,7 @@ async function main(argv: string[]): Promise<number> {
 			return 0;
 		}
 		case 'network': {
-			const { values, positionals } = parseArgs({ args: rest, allowPositionals: true, options: { profile: { type: 'string', multiple: true }, browser: { type: 'string', multiple: true }, runs: { type: 'string' }, control: { type: 'string', multiple: true }, concurrency: { type: 'string' }, json: { type: 'string' }, timeout: { type: 'string' } } });
+			const { values, positionals } = parseArgs({ args: rest, allowPositionals: true, options: { profile: { type: 'string', multiple: true }, browser: { type: 'string', multiple: true }, runs: { type: 'string' }, control: { type: 'string', multiple: true }, concurrency: { type: 'string' }, json: { type: 'string' }, html: { type: 'string' }, timeout: { type: 'string' } } });
 			if (!positionals.length) fail('network needs the URLs of the pages to load');
 			for (const url of positionals) if (!URL.canParse(url)) fail(`not a URL: ${url}`);
 			const profiles = values.profile ?? ['regular-3g'];
@@ -1170,6 +1177,7 @@ async function main(argv: string[]): Promise<number> {
 				onRun: (label, run) => err(`${label}: ${run.error ?? `answered at ${run.answered} ms`}\n`),
 			});
 			if (values.json) await writeFile(values.json, `${JSON.stringify(sides, null, '\t')}\n`);
+			if (values.html) await writeFile(values.html, networkHtml(sides, shortNames(positionals)));
 			out(`${networkTables(sides, shortNames(positionals))}\n`);
 			return sides.every((s) => s.cells.every((c) => c.unavailable || c.runs.some((r) => !r.error))) ? 0 : 1;
 		}

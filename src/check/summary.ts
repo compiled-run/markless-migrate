@@ -3,7 +3,7 @@ import { coverageLines } from './coverage.ts';
 import { headlines, worstLine } from './responsiveness.ts';
 import { loadLine, psiLines } from './load.ts';
 import { PSI_NOTICE } from './psi.ts';
-import { networkLines } from './slow-network.ts';
+import { networkLines } from './slow-network-verdicts.ts';
 import { notCompared, type Coverage, type Failure, type LoginResult, type Report, type RouteResult } from './types.ts';
 
 function kb(bytes: number): string {

@@ -2,7 +2,8 @@ import { journeyNames, pngBytes, pngSize, type Png } from './artifacts.ts';
 import { acceptedLabel } from './automatic.ts';
 import { headlines, type Sample } from './responsiveness.ts';
 import { formatMetric, METRIC_LABEL, psiLines, type LoadDetail, type RouteLoad } from './load.ts';
-import { CLICK_EVERY_MS, formatValue, RUN_METRIC_LABEL, RUN_METRICS } from './slow-network.ts';
+import { CLICK_EVERY_MS, formatValue, RUN_METRIC_LABEL, RUN_METRICS, type RunMetric } from './slow-network.ts';
+import { GATED, networkHeadline, networkVerdicts } from './slow-network-verdicts.ts';
 import { NETWORK_PROFILES } from './throttle.ts';
 import { partialLine } from './summary.ts';
 import type { Box, Failure, LoginResult, Report, ResponsivenessSummary, RouteResult, Shot, SourceLink } from './types.ts';
@@ -83,14 +84,22 @@ function slowNetwork(network: RouteLoad['network']): string {
 	const tables = network.old.cells.map((old, i) => {
 		const next = network.new.cells[i]!;
 		const title = `${old.browser}, ${NETWORK_PROFILES[old.profile]?.label ?? old.profile}`;
-		if (old.unavailable) return `<h4>${esc(title)}</h4><p>${esc(old.unavailable)}</p>`;
+		const skip = old.unavailable ?? next.unavailable;
+		if (skip) return `<h4>${esc(title)}: skipped</h4><p>${esc(skip)}</p>`;
+		const verdicts = new Map(networkVerdicts(old, next).map((v) => [v.metric, v]));
+		const verdict = (m: RunMetric) => {
+			const v = verdicts.get(m);
+			if (!v) return GATED.includes(m) ? 'no verdict' : '';
+			return v.ok ? `ok (old against old: ±${esc(formatValue(m, v.band))})` : `<strong>slower</strong> by ${esc(v.reason ? 'never answering' : formatValue(m, v.worse))} (old against old: ±${esc(formatValue(m, v.band))}, p = ${v.p.toFixed(3)})`;
+		};
 		const rows = RUN_METRICS.filter((m) => old.median[m] !== undefined || next.median[m] !== undefined)
-			.map((m) => `<tr><td>${esc(RUN_METRIC_LABEL[m])}</td><td>${esc(formatValue(m, old.median[m]))}</td><td>${esc(formatValue(m, next.median[m]))}</td></tr>`)
+			.map((m) => `<tr${verdicts.get(m)?.ok === false ? ' class="differs"' : ''}><td>${esc(RUN_METRIC_LABEL[m])}</td><td>${esc(formatValue(m, old.median[m]))}</td><td>${esc(formatValue(m, next.median[m]))}</td><td>${verdict(m)}</td></tr>`)
 			.join('');
-		const failed = [old, next].flatMap((c, side) => (c.runs.some((r) => r.error) ? [`${side ? 'New' : 'Old'}: ${c.runs.filter((r) => r.error).length} of ${c.runs.length} runs failed (${c.runs.find((r) => r.error)!.error})`] : []));
-		return `<h4>${esc(title)}: median of ${Math.min(old.runs.length, next.runs.length)} cold loads</h4><table><thead><tr><th>Metric</th><th>Old</th><th>New</th></tr></thead><tbody>${rows}</tbody></table>${failed.map((f) => `<p><small>${esc(f)}</small></p>`).join('')}`;
+		const notes = [old, next].flatMap((c, side) => (c.runs.some((r) => r.error) ? [`${side ? 'New' : 'Old'}: ${c.runs.filter((r) => r.error).length} of ${c.runs.length} runs failed (${c.runs.find((r) => r.error)!.error})`] : []));
+		if (old.cached) notes.push('Old: runs reused from an earlier check of the same deploy.');
+		return `<h4>${esc(title)}: median of ${Math.min(old.runs.length, next.runs.length)} cold loads</h4><table><thead><tr><th>Metric</th><th>Old</th><th>New</th><th>Verdict</th></tr></thead><tbody>${rows}</tbody></table>${notes.map((f) => `<p><small>${esc(f)}</small></p>`).join('')}`;
 	});
-	return `<h4>Slow network <small>cold loads through a throttling proxy, the control clicked every ${CLICK_EVERY_MS} ms from when it shows until it answers; shown, not a verdict</small></h4>${tables.join('')}`;
+	return `<h4>Slow network <small>${esc(networkHeadline(network).replace(/^slow network: /, ''))}; cold loads through a throttling proxy, the control clicked every ${CLICK_EVERY_MS} ms from when it shows until it answers; red when the new page is slower beyond how far the old page's own runs differ</small></h4>${tables.join('')}`;
 }
 
 function pageLoad(r: RouteResult): string {
