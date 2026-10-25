@@ -222,7 +222,7 @@ export function noiseReport(olds: readonly RouteCapture[], frozen: boolean, sour
 }
 
 /** Every old load answered the route itself and its page then moved to one address in the browser, where the new server's redirects end. */
-function movedInBrowser(olds: readonly HttpCapture[], next: HttpCapture, landings: readonly string[]): boolean {
+export function movedInBrowser(olds: readonly HttpCapture[], next: HttpCapture, landings: readonly string[]): boolean {
 	const answered = (c: HttpCapture) => c.chain.length === 1 && c.status >= 200 && c.status < 300;
 	const target = landings[0];
 	if (!target || !olds.every(answered) || landings.some((l) => l !== target) || target === olds[0]!.chain[0]!.url) return false;

@@ -99,6 +99,20 @@ async function quietAfter(page: Page, scroll: () => Promise<void>): Promise<void
 	}
 }
 
+/** Where a browser load of the route ends once it has settled: a single-page app may move its address as it starts. */
+export async function landing(browser: Browser, env: SideEnv, route: string, viewport: Viewport): Promise<string | undefined> {
+	const { context, page } = await openPage(browser, env, viewport, { shareThirdParty: true });
+	try {
+		await loadPage(page, new URL(route, env.origin).href);
+		await settle(page);
+		return toLocal(page.url(), env.origin);
+	} catch {
+		return undefined;
+	} finally {
+		await context.close();
+	}
+}
+
 export async function settle(page: Page): Promise<void> {
 	await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
 	await quietAfter(page, () =>

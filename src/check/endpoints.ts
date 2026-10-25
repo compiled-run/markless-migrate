@@ -381,11 +381,18 @@ export async function checkEndpoint(envs: { readonly old: SideEnv; readonly new:
 	return { ...withFailures({ route, ok: true, dimensions: {} as RouteResult['dimensions'], failures: [], weight: { old: zero, new: zero }, visualDiffs: [], shots: [] }, failures), endpoint: oldA.kind };
 }
 
+/** Where a browser load of a route on the old app ends, read only when its answer alone cannot say. */
+export type Landing = (route: string) => Promise<string | undefined>;
+
+/** The old app answered the route itself and the new one redirects: where the old page moves in the browser decides. */
+export const answeredThenRedirected = (old: HttpCapture, next: HttpCapture): boolean => old.chain.length === 1 && old.status >= 200 && old.status < 300 && next.chain.length > 1;
+
 /** A path the old app redirects (a config redirect, the other trailing-slash form): only where it sends a visitor is compared. */
-export async function checkRedirect(envs: { readonly old: SideEnv; readonly new: SideEnv }, route: string): Promise<RouteResult & { readonly endpoint: 'redirect' }> {
+export async function checkRedirect(envs: { readonly old: SideEnv; readonly new: SideEnv }, route: string, land?: Landing): Promise<RouteResult & { readonly endpoint: 'redirect' }> {
 	const [a, b, next] = await Promise.all([captureHttp(envs.old.origin, route, tagHeaders(envs.old)), captureHttp(envs.old.origin, route, tagHeaders(envs.old)), captureHttp(envs.new.origin, route, tagHeaders(envs.new))]);
 	const zero = { downloaded: 0, source: 0, executed: 0 };
-	return { ...withFailures({ route, ok: true, dimensions: {} as RouteResult['dimensions'], failures: [], weight: { old: zero, new: zero }, visualDiffs: [], shots: [] }, httpFailures(route, [a, b], next)), endpoint: 'redirect' };
+	const landed = land && answeredThenRedirected(a, next) ? await land(route) : undefined;
+	return { ...withFailures({ route, ok: true, dimensions: {} as RouteResult['dimensions'], failures: [], weight: { old: zero, new: zero }, visualDiffs: [], shots: [] }, httpFailures(route, [a, b], next, landed ? { olds: [landed] } : undefined)), endpoint: 'redirect' };
 }
 
 /** A path no app serves, so the not-found page and its status are checked too. */
