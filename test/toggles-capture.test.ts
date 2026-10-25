@@ -1,0 +1,54 @@
+// What using each in-place control did on the old page (src/convert/toggles.ts captureToggles), on a page whose radio
+// group is named by a caption and whose switch disables a field.
+import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { chromium } from 'playwright';
+import { captureToggles } from '../src/convert/toggles.ts';
+
+const PAGE = `<!doctype html><html><body><main>
+<div role="radiogroup"><button role="radio" aria-checked="true">Left</button><button role="radio" aria-checked="false">Center</button><button role="radio" aria-checked="false">Right</button></div>
+<p>Align <code id="caption">left</code></p>
+<button role="switch" aria-checked="false" id="voice">Voice</button><input id="field">
+<p id="clock">0</p>
+<script>
+const radios = [...document.querySelectorAll('[role=radio]')];
+for (const b of radios) b.addEventListener('click', () => {
+	const next = b.getAttribute('aria-checked') !== 'true';
+	for (const o of radios) o.setAttribute('aria-checked', String(o === b && next));
+	document.getElementById('caption').textContent = next ? b.textContent.toLowerCase() : 'none';
+});
+const voice = document.getElementById('voice');
+voice.addEventListener('click', () => {
+	const on = voice.getAttribute('aria-checked') !== 'true';
+	voice.setAttribute('aria-checked', String(on));
+	document.getElementById('field').toggleAttribute('disabled', on);
+});
+let n = 0;
+setInterval(() => (document.getElementById('clock').textContent = String(++n)), 50);
+</script></main></body></html>`;
+
+test('what a control\'s state drives elsewhere on the page is captured in each state; what changes on its own is not', async () => {
+	const server = createServer((_, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(PAGE));
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+	const dir = await mkdtemp(join(tmpdir(), 'mm-toggles-'));
+	const browser = await chromium.launch();
+	try {
+		const { groups } = await captureToggles(browser, origin, '/', dir);
+		const radios = groups.find((g) => g.kind === 'radio')!;
+		assert.equal(radios.clears, true);
+		assert.deepEqual(radios.dependents?.map((d) => d.sig), ['code||left']);
+		assert.deepEqual(Object.fromEntries(Object.entries(radios.dependents![0]!.states).map(([k, v]) => [k, v.inner])), { '0': 'left', '1': 'center', '2': 'right', '-1': 'none' });
+		const voice = groups.find((g) => g.controls[0]!.sig === 'button||Voice')!;
+		assert.deepEqual(voice.dependents?.map((d) => [d.sig, d.states['on']!.attrs['disabled'], d.states['off']!.attrs['disabled']]), [['input||', '', undefined]]);
+	} finally {
+		await browser.close();
+		server.close();
+		await rm(dir, { recursive: true, force: true });
+	}
+});

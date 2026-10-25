@@ -238,6 +238,8 @@ export class CheckablePlan {
 
 	add(root: Element, groups: readonly ToggleGroup[], locate: (sig: string, nth: number) => Element | undefined, emit: (html: string) => string, skip: (el: Element) => boolean = () => false): number {
 		let placed = 0;
+		// A control another group's state reads (a select-all box) stays its own group's: it is no dependent.
+		const controls = new Set(groups.flatMap((g) => g.controls.map((c) => locate(c.sig, c.nth))));
 		for (const group of groups) {
 			const els = group.controls.map((c) => locate(c.sig, c.nth));
 			if (els.some((el) => !el || this.bindings.has(el) || skip(el))) continue;
@@ -277,6 +279,17 @@ export class CheckablePlan {
 					this.bindings.set(input, { declare, omit: ['checked'], extra: [`checked={${on}}`, `onClick={() => { ${group.kind === 'radio' ? `${name} = ${k}` : choose}; }}`] });
 				}
 			});
+			for (const d of group.dependents ?? []) {
+				const el = locate(d.sig, d.nth);
+				if (!el || controls.has(el) || this.bindings.has(el) || skip(el)) continue;
+				const states = Object.entries(d.states);
+				const when = (state: string) => (group.kind === 'radio' ? `${name} === ${state}` : state === 'on' ? name : `!${name}`);
+				const value = (v: string | undefined) => (v === undefined ? 'undefined' : lit(v));
+				const pick = (values: readonly (string | undefined)[]) => values.reduceRight<string>((rest, v, k) => (k === values.length - 1 ? value(v) : `${when(states[k]![0])} ? ${value(v)} : ${rest}`), '');
+				const names = [...new Set(states.flatMap(([, st]) => Object.keys(st.attrs)))].filter((a) => new Set(states.map(([, st]) => st.attrs[a])).size > 1 && /^[A-Za-z_][\w.-]*$/.test(a));
+				const inner = new Set(states.map(([, st]) => st.inner)).size > 1;
+				this.bindings.set(el, { declare, omit: names, extra: names.map((a) => `${a}={${pick(states.map(([, st]) => st.attrs[a]))}}`), ...(inner ? { children: states.map(([state, st]) => `@if (${when(state)}) { <>${emit(st.inner)}</> }`).join('') } : {}) });
+			}
 			placed++;
 		}
 		return placed;

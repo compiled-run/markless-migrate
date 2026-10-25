@@ -193,3 +193,25 @@ test('React Aria ToggleButtonGroup radios leave the arrows to the toolbar part; 
 	assert.match(out, /<input type="radio" name="g" value="b" tabindex="-1" checked=\{rg0 === 1\} \/>/, 'the toggle part keeps its tab stop');
 	assert.doesNotMatch(out, /radioKeys\(event, /, 'a React Aria ToggleButtonGroup moves focus as a toolbar');
 });
+
+test('an element the group\'s state is read by (a caption naming the chosen value) renders the markup each state showed', () => {
+	const doc = parseDocument('<body><div role="group"><button role="radio" aria-checked="false">Light</button><button role="radio" aria-checked="true">Normal</button></div><p>Use <code>font-normal</code> here.</p></body>');
+	const [a, b] = [...walk(body(doc))].filter((el) => attr(el, 'role') === 'radio') as [Element, Element];
+	const code = find(body(doc), (el) => el.tagName === 'code')!;
+	const state = (checked: boolean) => ({ attrs: { role: 'radio', 'aria-checked': String(checked) }, inner: '' });
+	const plan = new CheckablePlan();
+	plan.add(body(doc), [{ kind: 'radio', clears: true, controls: [{ sig: 'a', nth: 0, role: 'radio', initial: false, on: state(true), off: state(false) }, { sig: 'b', nth: 0, role: 'radio', initial: true, on: state(true), off: state(false) }], dependents: [{ sig: 'code', nth: 0, states: { '0': { attrs: {}, inner: 'font-light' }, '1': { attrs: {}, inner: 'font-normal' }, '-1': { attrs: {}, inner: 'font-' } } }] }], (sig) => ({ a, b, code })[sig as 'a' | 'b' | 'code'], (h) => h);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<code>@if \(rg0 === 0\) \{ <>font-light<\/> \}@if \(rg0 === 1\) \{ <>font-normal<\/> \}@if \(rg0 === -1\) \{ <>font-<\/> \}<\/code>/);
+});
+
+test('a control that another control\'s state is read by keeps its own group, and is no dependent', () => {
+	const doc = parseDocument('<body><button role="checkbox" aria-checked="false">all</button><button role="checkbox" aria-checked="false">one</button></body>');
+	const [all, one] = [...walk(body(doc))].filter((el) => el.tagName === 'button') as [Element, Element];
+	const state = (checked: boolean) => ({ attrs: { role: 'checkbox', 'aria-checked': String(checked) }, inner: '' });
+	const control = (sig: string) => ({ sig, nth: 0, role: 'checkbox', initial: false, on: state(true), off: state(false) });
+	const plan = new CheckablePlan();
+	const placed = plan.add(body(doc), [{ kind: 'toggle', controls: [control('one')], dependents: [{ sig: 'all', nth: 0, states: { off: state(false), on: { attrs: { role: 'checkbox', 'aria-checked': 'mixed' }, inner: '' } } }] }, { kind: 'toggle', controls: [control('all')] }], (sig) => (sig === 'all' ? all : one), (h) => h);
+	assert.equal(placed, 2);
+	assert.deepEqual(plan.bind(all)?.declare, ['let tg1 = state(false);']);
+});
