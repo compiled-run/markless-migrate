@@ -91,7 +91,8 @@ function ready(o: Overlay, strategy: 'first' | 'last' | null): void {
 	const list = itemsOf(menu);
 	const target = strategy === 'first' ? list[0] : strategy === 'last' ? list[list.length - 1] : undefined;
 	if (target) focusItem(menu, target);
-	else menu.focus({ preventScroll: true });
+	// A submenu the pointer opened leaves focus on its item until the pointer enters it.
+	else if (!o.trigger.matches(SUB)) menu.focus({ preventScroll: true });
 	const onUp = (event: PointerEvent) => {
 		const item = (event.target as Element | null)?.closest?.<HTMLElement>(ITEM);
 		if (!item || !menu.contains(item) || disabled(item)) return;

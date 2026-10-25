@@ -203,6 +203,18 @@ test('Menu: a submenu opened from the keyboard takes focus on its first item, th
 	await page.close();
 });
 
+test('Menu: a submenu opened by hovering its item leaves focus on the item', async () => {
+	const page = await open(submenu);
+	await page.click('#m1');
+	await page.hover('#i2');
+	await page.waitForTimeout(300);
+	assert.equal(await page.getAttribute('#i2', 'aria-expanded'), 'true');
+	assert.equal(await active(page), 'i2');
+	await page.hover('#s2');
+	assert.equal(await active(page), 's2');
+	await page.close();
+});
+
 test('Dialog: a press opens it focused, Tab stays inside, its close button closes it', async () => {
 	const page = await open(dialog);
 	await page.click('#d1');
