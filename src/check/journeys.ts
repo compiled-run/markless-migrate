@@ -320,7 +320,7 @@ async function candidates(page: Page, origin: string): Promise<Candidate[]> {
 		if (info) add({ target: { role: 'summary', name, nth }, region: info.region, importance: importance(info) });
 	}
 	let unnamed = 0;
-	for (const c of await page.evaluate(clickables).catch(() => [])) {
+	for (const c of await page.evaluate(clickables, FRAMEWORK_MARKUP_SELECTOR).catch(() => [])) {
 		const target = { role: CLICKABLE, name: c.name, nth: c.name ? c.nth : unnamed++, ...(c.name ? {} : { structure: c.structure }) };
 		const base = { target, region: c.region, importance: importance(c), ...(c.name ? { kind: `${c.region || 'page'}|${CLICKABLE}|${c.name}|${c.structure.tag}` } : {}), ...(c.focusable ? { focusable: true } : {}) };
 		add(c.name && DESTRUCTIVE.test(c.name) ? { ...base, destructive: true } : base);
@@ -409,7 +409,7 @@ function contentsSections(): string[] {
 }
 
 /** Elements that answer a click or a key themselves but have no interactive role, each with its label and its index among the elements `labelled` finds for it. */
-function clickables() {
+function clickables(frameworkMarkup: string) {
 	const handlers = (globalThis as { __markless_migrate_handlers__?: WeakSet<Element> }).__markless_migrate_handlers__;
 	if (!handlers) return [];
 	// The same expression as labelled(), written out here because a page with a CSP may refuse eval.
@@ -432,7 +432,8 @@ function clickables() {
 	const cell = '[role="columnheader"], [role="row"], [role="gridcell"]';
 	// A header's own label listening for the header's click is the header, already counted by its role.
 	const ownLabel = (el: Element) => !!el.closest(cell) && label(el.closest(cell)!) === label(el);
-	const hits = [...(document.body?.querySelectorAll('*') ?? [])].filter((el) => handlers.has(el) && !el.matches(control) && !el.closest(control) && !el.querySelector(control) && !el.matches(cell) && !(label(el) && ownLabel(el)) && el.querySelectorAll('*').length <= 40 && el.checkVisibility({ visibilityProperty: true }));
+	// A framework's own markup (Next.js's route announcer) is no control of the page's.
+	const hits = [...(document.body?.querySelectorAll('*') ?? [])].filter((el) => handlers.has(el) && !el.closest(frameworkMarkup) && !el.matches(control) && !el.closest(control) && !el.querySelector(control) && !el.matches(cell) && !(label(el) && ownLabel(el)) && el.querySelectorAll('*').length <= 40 && el.checkVisibility({ visibilityProperty: true }));
 	const outer = hits.filter((el) => !hits.some((other) => other !== el && other.contains(el)));
 	return outer.map((el) => {
 		const name = label(el);

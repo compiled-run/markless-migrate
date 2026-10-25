@@ -148,3 +148,19 @@ test('plain links in the page are sampled: two are followed, every address is co
 		server.close();
 	}
 });
+
+test('Next.js\'s route announcer is the framework\'s own markup, not a control the port must have', async () => {
+	const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Announced</title></head><body>
+<main><h1>Home</h1><button type="button" onclick="this.textContent = 'Pressed'">Press</button></main>
+<next-route-announcer><p aria-live="assertive" id="__next-route-announcer__" role="alert" style="border:0;clip:rect(0 0 0 0);height:1px;margin:-1px;overflow:hidden;padding:0;position:absolute;width:1px;white-space:nowrap;word-wrap:normal"></p></next-route-announcer>
+<script>document.querySelector('next-route-announcer').addEventListener('click', () => {});</script>
+</body></html>`;
+	const server = createServer((req, res) => res.writeHead(req.url === '/' ? 200 : 404, { 'content-type': 'text/html; charset=utf-8' }).end(req.url === '/' ? html : ''));
+	await new Promise<void>((done) => server.listen(0, '127.0.0.1', () => done()));
+	try {
+		const { elements } = await explore(browser, defaultEnv(origin(server)), '/', desktop[0]!);
+		assert.deepEqual(elements.map((e) => e.element), ['button "Press"']);
+	} finally {
+		server.close();
+	}
+});
