@@ -13,7 +13,8 @@ export default function UserProfile({ user }: { user: User }) @{
 			if (created) {
 				created.textContent = timeAgo(then, Date.now());
 				const date = created.nextSibling;
-				if (date?.nodeType === Node.TEXT_NODE) date.textContent = ` (${new Date(then).toDateString()})`;
+				// React 15 renders " (", the date and ")" as three text nodes, and text breaks at their edges.
+				if (date?.nodeType === Node.TEXT_NODE) date.replaceWith(' (', new Date(then).toDateString(), ')');
 			}
 			return showMarkup(element);
 		}}
