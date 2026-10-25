@@ -44,6 +44,8 @@ export interface SideEnv {
 	readonly reducedMotion?: 'reduce' | 'no-preference';
 	/** The OS colour scheme the page sees (light unless set). */
 	readonly colorScheme?: 'light' | 'dark';
+	/** Hosts the old app's source reads its data from (its API clients): a journey's GETs there are answered from the run's one copy. */
+	readonly dataHosts?: ReadonlySet<string>;
 }
 
 // On an asset or a fetch only a challenge header proves a wall; a CDN's server header on an ordinary 403 does not.
@@ -183,6 +185,11 @@ export function findRecorded(responses: readonly NetworkRecord[], side: 'browser
 // A page's own scripts, styles, fonts and images from a CDN still load in journeys (sites load their framework that way); widget frames and data calls do not.
 export function pageAsset(method: string, resourceType: string): boolean {
 	return method === 'GET' && ['script', 'stylesheet', 'font', 'image'].includes(resourceType);
+}
+
+/** A data call a page makes itself: a journey answers it from what the page's load read, never from a new fetch. */
+export function pageData(method: string, resourceType: string): boolean {
+	return method === 'GET' && ['fetch', 'xhr'].includes(resourceType);
 }
 
 // Each other-origin asset is fetched once per run, in a request context of its own (one tied to a closed journey page never settles): journeys open many pages at once and must not burst a CDN.
@@ -412,6 +419,11 @@ export async function openPage(browser: Browser, env: SideEnv, viewport: Viewpor
 				return route.fulfill({ status: hit.status, headers: { 'content-type': hit.contentType, 'access-control-allow-origin': '*' }, body: hit.body ?? '' });
 			}
 			if (!options.sameOriginOnly) return options.shareThirdParty && sharedThirdParty(request.method(), request.resourceType()) ? fulfillAsset(route, true) : route.continue();
+			// The page's own data from another origin (a single-page app's API) answers it as it answers the page's load: from the run's one copy.
+			if (pageData(request.method(), request.resourceType()) && (assets.has(url.href) || env.dataHosts?.has(url.host)) && !insideEmbed(request, ownOrigin)) {
+				await timed?.network.delay();
+				return fulfillAsset(route);
+			}
 			if (!pageAsset(request.method(), request.resourceType())) return route.abort();
 			await timed?.network.delay();
 			return fulfillAsset(route);
