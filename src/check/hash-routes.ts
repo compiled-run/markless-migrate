@@ -15,9 +15,16 @@ export function shellRoute(route: string, routing: OldRouting | undefined): bool
 	return routing === 'hash' && route !== '/' && !/\.[a-z0-9]+$/i.test(route.split(/[?#]/)[0]!);
 }
 
-/** Link addresses in an accessibility snapshot, read as routes: `/url: "#/about"` is `/url: "/about"`. */
+// YAML quotes `#/about` for its `#`; the path alone is quoted only when it holds what YAML would quote it for.
+const YAML_QUOTED = /^[\s!&*{}[\],|>@`'"%-]|: | #|[\s:]$/;
+
+/** Link addresses in an accessibility snapshot, read as routes: `/url: "#/about"` is `/url: /about`. */
 export function routeLinks(aria: string, routing: OldRouting | undefined): string {
-	return routing === 'hash' ? aria.replace(/(\/url: "?)#\//g, '$1/') : aria;
+	if (routing !== 'hash') return aria;
+	return aria.replace(/(\/url: )(?:"#(\/(?:[^"\\]|\\.)*)"|#(\/\S*))/g, (_, label: string, quoted: string | undefined, bare: string | undefined) => {
+		const path = quoted !== undefined ? (JSON.parse(`"${quoted}"`) as string) : bare!;
+		return `${label}${YAML_QUOTED.test(path) ? JSON.stringify(path) : path}`;
+	});
 }
 
 /** Runs before the old page's own scripts: a route loaded at its path moves into the hash, where the app's router reads it. */

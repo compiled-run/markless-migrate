@@ -5,12 +5,12 @@ import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { runCheck } from '../src/check/run.ts';
 import { hashRouted } from '../src/source/routes/config.ts';
-import { routePath } from '../src/check/hash-routes.ts';
+import { routeLinks, routePath } from '../src/check/hash-routes.ts';
 
 const PAGES: Record<string, string> = { '/': 'Front page', '/about': 'About us', '/item/7': 'Item seven' };
 
 // A static host with a hash router, as react-hn on GitHub Pages: every route is `/#/<path>`, any other path is a 404.
-const OLD_SHELL = `<!doctype html><html><head><meta charset="utf-8"><title>Shop</title></head><body><div id="app"></div><script src="app.js"></script></body></html>`;
+const OLD_SHELL = `<!doctype html><html><head><meta charset="utf-8"><title>Shop</title></head><body><div id="app"></div><script src="app.3f9a1c2b.js"></script></body></html>`;
 const OLD_APP = `
 const pages = ${JSON.stringify(PAGES)};
 function draw() {
@@ -24,7 +24,7 @@ function oldApp(): Promise<Server> {
 	const server = createServer((req, res) => {
 		const path = new URL(req.url ?? '/', 'http://x').pathname;
 		if (path === '/') res.writeHead(200, { 'content-type': 'text/html' }).end(OLD_SHELL);
-		else if (path === '/app.js') res.writeHead(200, { 'content-type': 'text/javascript' }).end(OLD_APP);
+		else if (path === '/app.3f9a1c2b.js') res.writeHead(200, { 'content-type': 'text/javascript' }).end(OLD_APP);
 		else res.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
 	});
 	return new Promise((done) => server.listen(0, '127.0.0.1', () => done(server)));
@@ -78,6 +78,14 @@ test("a port that leaves the old app's /#/ links on its front page is red in htt
 	const failure = report.routes[0]!.failures.find((f) => f.dimension === 'http' && f.check === 'old hash link');
 	assert.ok(failure, report.routes[0]!.failures.map((f) => `${f.dimension} ${f.check}`).join('; '));
 	assert.equal(failure.expected, '/#/about lands on /about');
+});
+
+test("a hash-routed page's link addresses are read as routes, quoted only where YAML needs it", () => {
+	assert.equal(routeLinks('- link "About":\n  - /url: "#/about"', 'hash'), '- link "About":\n  - /url: /about');
+	assert.equal(routeLinks('  - /url: "#/item/7?page=2"', 'hash'), '  - /url: /item/7?page=2');
+	assert.equal(routeLinks('  - /url: "#/a: b"', 'hash'), '  - /url: "/a: b"');
+	assert.equal(routeLinks('  - /url: "#section"', 'hash'), '  - /url: "#section"');
+	assert.equal(routeLinks('  - /url: "#/about"', undefined), '  - /url: "#/about"');
 });
 
 test('the address a hash-routed page shows is read as its route', () => {
