@@ -100,7 +100,7 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           [--auth <file>] [--header <name:value>]... [--cookie <name=value>]... [--user-agent <ua>]
           [--all] [--allow-unchecked] [--new-source <path>] [--concurrency <n>] [--changed]
           [--journey-budget <seconds>] [--max-journeys <n>] [--journey-depth <steps>] [--timeout <seconds>]
-          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-cache] [--resume]
+          [--no-responsiveness] [--interaction-budget <ms>] [--cpu-throttle <rate>] [--network-latency <ms>] [--interaction-controls <n>] [--no-motion] [--no-embeds] [--no-probes] [--no-cache] [--resume]
           [--no-navigation] [--nav-entries <n>] [--nav-destinations <n>] [--no-load] [--load-runs <n>] [--load-cpu calibrated|<n>]
           [--psi-key <key>] [--psi-runs <n>] [--no-psi]
           Compare routes old vs new (default: every route of the old site plan listed). Exits 1 when any is red.
@@ -156,6 +156,12 @@ ${CACHE_USAGE}  check   --old <origin> --new <origin> [--route <path>]... [--jso
           animation missing on new (it jumps), timed differently (beyond max(20 ms, 10%)) or only on new
           is red. The same runs again with prefers-reduced-motion: reduce, where both must agree, and
           hovering and focusing each control is compared the same way. --no-motion leaves it out.
+          Widget probes: one control of each kind is driven through its class's sequence on both apps at
+          once, read after every step (focus and its ring, state attributes, what is open, toasts, tab
+          stops, scroll lock): a click then Escape and Tab, Tab then the pointer moving; what it opens
+          pointed along, closed by a click outside, Escape and its close button, reopened, chosen from and
+          typed into.
+          --no-probes leaves them out; --only probes runs them alone.
           Navigation: one page per page shape (layout and scripts, at most --nav-destinations, 40) is
           reached by clicking a real link on --nav-entries (2) other pages, other layouts first, and once
           more after the entry page's control that keeps its state in the browser (a theme switch); then
@@ -349,6 +355,7 @@ const TIMING_FLAGS = {
 	'interaction-controls': { type: 'string' },
 	'no-motion': { type: 'boolean' },
 	'no-embeds': { type: 'boolean' },
+	'no-probes': { type: 'boolean' },
 	'no-navigation': { type: 'boolean' },
 	'no-load': { type: 'boolean' },
 	'load-runs': { type: 'string' },
@@ -625,6 +632,7 @@ async function run(args: string[], cwd: string): Promise<number> {
 					...(timing ? { responsiveness: timing } : {}),
 				...(values['no-motion'] ? {} : { motion: {} }),
 				...(values['no-embeds'] ? {} : { embeds: { dir: join(stateDir, EMBEDS_DIR) } }),
+					...(values['no-probes'] ? {} : { probes: {} }),
 					...(navigation ? { navigation } : {}),
 					...(load ? { load } : {}),
 					...(values.only === 'load' || values.only === 'embeds' ? { only: values.only } : {}),
@@ -762,10 +770,12 @@ async function main(argv: string[]): Promise<number> {
 			});
 			const deadline = timeoutOption(values.timeout);
 			if (!values.old || !values.new) fail('check needs --old <origin> and --new <origin>');
-			if (values.only !== undefined && values.only !== 'coverage' && values.only !== 'load' && values.only !== 'embeds') fail('--only takes coverage (whether every route of the old site exists on the new app), load (page load alone) or embeds (the embed step alone)');
+			if (values.only !== undefined && values.only !== 'coverage' && values.only !== 'load' && values.only !== 'embeds' && values.only !== 'probes') fail('--only takes coverage (whether every route of the old site exists on the new app), load (page load alone), embeds (the embed step alone) or probes (the widget probes alone)');
+			if (values.only === 'probes' && values['no-probes']) fail('--only probes and --no-probes leave nothing to check');
 			const coverageOnly = values.only === 'coverage';
 			const loadOnly = values.only === 'load';
 			const embedsOnly = values.only === 'embeds';
+			const probesOnly = values.only === 'probes';
 			if (loadOnly && values['no-load']) fail('--only load and --no-load leave nothing to check');
 			const journeys = journeyOptions(values['journey-budget'], values['max-journeys'], values['journey-depth']);
 			const timing = timingOptions(values);
@@ -851,9 +861,10 @@ async function main(argv: string[]): Promise<number> {
 				...(timing ? { responsiveness: timing } : {}),
 				...(values['no-motion'] ? {} : { motion: {} }),
 				...(values['no-embeds'] ? {} : { embeds: { dir: join(cwd, STATE_DIR, EMBEDS_DIR) } }),
-				...(navigation ? { navigation } : {}),
-				...(load && !coverageOnly ? { load } : {}),
-				...(loadOnly ? { only: 'load' as const } : embedsOnly ? { only: 'embeds' as const } : {}),
+				...(values['no-probes'] ? {} : { probes: {} }),
+				...(navigation && !probesOnly ? { navigation } : {}),
+				...(load && !coverageOnly && !probesOnly ? { load } : {}),
+				...(loadOnly ? { only: 'load' as const } : embedsOnly ? { only: 'embeds' as const } : probesOnly ? { only: 'probes' as const } : {}),
 				switched: (await readSwitched(cwd)).routes.map((r) => r.route),
 				...(!values['new-source'] && !values.changed ? {} : { sourceDirs: { ...(values.source ? { old: resolve(values.source) } : {}), new: newDir } }),
 				...(partial ? { partial: { total: planned?.length ?? null } } : planned?.length ? { coverage: planned } : {}),
