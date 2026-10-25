@@ -46,6 +46,21 @@ test("each listened path's first value is the snapshot and every later push an u
 	]);
 });
 
+test("a listen's first answer reported before the frame that asked for it is still the snapshot", () => {
+	const dbs = recordDatabases([
+		{
+			url: 'wss://hn.firebaseio.com/.ws?v=5',
+			frames: [
+				{ sent: false, text: push('v0/item/9', { id: 9 }), at: 3 },
+				{ sent: true, text: listen(1, 'v0/item/9'), at: 3 },
+				{ sent: false, text: push('v0/item/9', { id: 9, score: 2 }), at: 700 },
+			],
+		},
+	]);
+	assert.deepEqual(dbs[0]!.snapshot, { 'v0/item/9': { id: 9 } });
+	assert.deepEqual(dbs[0]!.updates, [{ path: 'v0/item/9', data: { id: 9, score: 2 }, at: 700 }]);
+});
+
 test('an update lands in the listened path above it, replaces the paths below it, and merges only the children it names', () => {
 	const state = new Map<string, unknown>([['v0/item/1', { id: 1, kids: [2] }], ['v0/item/1/kids', [2]], ['v0/top', [1]]]);
 	applyUpdate(state, { path: 'v0/item/1/kids', data: [2, 3] });

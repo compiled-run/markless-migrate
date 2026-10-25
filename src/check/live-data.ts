@@ -81,33 +81,16 @@ export function recordDatabases(sockets: readonly SocketLog[]): FirebaseDatabase
 		const host = new URL(socket.url).host;
 		const db = byHost.get(host) ?? { snapshot: {}, updates: [] };
 		byHost.set(host, db);
-		const waiting = new Set<string>();
-		const received: { text: string; at: number }[] = [];
-		const flush = () => {
-			for (const { message, at } of framesToMessages(received)) {
-				const data = (message as DataMessage)?.t === 'd' ? (message as DataMessage).d : undefined;
-				const path = data?.b?.p;
-				if (!data || data.r !== undefined || typeof path !== 'string' || (data.a !== 'd' && data.a !== 'm')) continue;
-				const key = trim(path);
-				if (data.a === 'd' && waiting.has(key)) {
-					waiting.delete(key);
-					if (!(key in db.snapshot)) db.snapshot[key] = data.b!.d ?? null;
-					continue;
-				}
-				db.updates.push({ path: key, data: data.b!.d ?? null, ...(data.a === 'm' ? { merge: true } : {}), at });
-			}
-			received.length = 0;
-		};
-		for (const frame of socket.frames) {
-			if (!frame.sent) {
-				received.push({ text: frame.text, at: frame.at });
-				continue;
-			}
-			flush();
-			const message = parse(frame.text) as DataMessage | undefined;
-			if (message?.t === 'd' && message.d.a === 'q' && typeof message.d.b?.p === 'string') waiting.add(trim(message.d.b.p));
+		// A listen's first answer can be reported before the frame that asked for it, so the order of the two directions is not used.
+		const known = (path: string) => path in db.snapshot || Object.keys(db.snapshot).some((kept) => path.startsWith(`${kept}/`));
+		for (const { message, at } of framesToMessages(socket.frames.filter((f) => !f.sent))) {
+			const data = (message as DataMessage)?.t === 'd' ? (message as DataMessage).d : undefined;
+			const path = data?.b?.p;
+			if (!data || data.r !== undefined || typeof path !== 'string' || (data.a !== 'd' && data.a !== 'm')) continue;
+			const key = trim(path);
+			if (data.a === 'd' && !known(key)) db.snapshot[key] = data.b!.d ?? null;
+			else db.updates.push({ path: key, data: data.b!.d ?? null, ...(data.a === 'm' ? { merge: true } : {}), at });
 		}
-		flush();
 	}
 	return [...byHost].map(([host, db]) => ({ host, snapshot: db.snapshot, updates: db.updates }));
 }
