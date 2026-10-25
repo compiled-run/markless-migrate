@@ -114,6 +114,22 @@ function earlyToggle(o: ThemeOptions & ThemeToggle): void {
 		const button = target instanceof Element ? target.closest('button') : null;
 		return !!button && (button.getAttribute('aria-label') ?? button.textContent ?? '').trim() === o.name;
 	};
+	// The site's toggle sets theme-color to its resolved theme once mounted and whenever that changes (useMetaColor).
+	const metaColors = o.metaColors;
+	if (metaColors) {
+		const sync = () => {
+			let stored: string | null = null;
+			try {
+				stored = localStorage.getItem(o.storageKey);
+			} catch {}
+			const theme = stored || o.defaultTheme;
+			const resolved = theme === 'system' && o.enableSystem ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme;
+			document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? metaColors.dark! : metaColors.light!);
+		};
+		if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', sync);
+		else sync();
+		matchMedia('(prefers-color-scheme: dark)').addEventListener('change', sync);
+	}
 	document.addEventListener('click', (event) => isToggle(event.target) && flip(event), true);
 	if (o.key)
 		document.addEventListener(
