@@ -208,7 +208,10 @@ port's forms carry `method="dialog"`, which submits nowhere.
 | [#179](https://github.com/compiled-run/markless-migrate/pull/179) | An accept entry's `check` glob was matched like a route: `*` stopped at `/`, and journey steps name addresses, so `"check": "*"` silently matched none of the "after arriving from / by link" steps. And a run limited to some routes called entries for other routes stale ("remove them") | `*` in a check glob matches any text; a partial run judges only entries for exact routes |
 | [#187](https://github.com/compiled-run/markless-migrate/pull/187) | `run --agent claude-code` (the name `setup` uses) failed: run only knew `claude` | run takes the setup names too (`claude-code`, `gemini-cli`, `github-copilot`) |
 
-<!-- PR-STATE -->
+All ten are merged (2026-10-25), each once its CI was green; none had review findings, human or bot. Three CI reds
+on the way were in tests these PRs do not touch and were rerun with the reason on the PR: a page-load timing on #149,
+a Vue dev-build trace on #187, and on #153 a Recharts pointer test and the memory check (measured first: the heap after
+the last route was 103.2 MB with and without #153; both tests were since fixed on main).
 
 Found while doing this and not fixed:
 
