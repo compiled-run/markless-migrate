@@ -263,7 +263,8 @@ test('combobox: a query nothing matches marks the popup empty; with several valu
 	await page.locator('#single').fill('');
 	await page.locator('#single').pressSequentially('Sv');
 	assert.equal(await page.locator('[data-mm-layer="single"] .empty').isVisible(), false);
-	await page.keyboard.press('Escape');
+	await page.locator('[data-mm-layer="single"] [role="option"]', { hasText: 'SvelteKit' }).click();
+	// Emptying the input cleared the value, and with it the clear button (ComboboxClear shows while a value is selected).
 	await page.getByText('Clear').click();
 	assert.equal(await page.locator('#single').inputValue(), '');
 	assert.equal(await page.getByText('Clear').isHidden(), true);
