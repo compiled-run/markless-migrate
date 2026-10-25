@@ -142,7 +142,8 @@ test('plain links in the page are sampled: two are followed, every address is co
 	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
 	try {
 		const { journeys, elements } = await explore(browser, defaultEnv(origin(server)), '/', desktop[0]!);
-		assert.deepEqual(journeys.map((j) => j.name).filter((n) => n.startsWith('click link')), ['click link "Part 0"', 'click link "Part 1"']);
+		// The first two also race: the second clicked before the first one's page arrives, and the first followed by Back.
+		assert.deepEqual(journeys.map((j) => j.name).filter((n) => n.startsWith('click link')), ['click link "Part 0"', 'click link "Part 1"', 'click link "Part 0", then link "Part 1" before the first one\'s page has arrived', 'click link "Part 0", then go back before its page has arrived']);
 		assert.ok(elements.some((e) => e.element === '10 more links in main to other pages' && e.by?.startsWith('alike')), elements.map((e) => e.element).join(', '));
 	} finally {
 		server.close();
