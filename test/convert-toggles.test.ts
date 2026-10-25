@@ -177,3 +177,19 @@ test('a Radix Collapsible whose content mounts on opening binds its root\'s data
 	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
 	assert.match(out, /<div data-slot="trace-collapsible" data-state=\{ins0 \? "open" : "closed"\}>/);
 });
+
+test('React Aria ToggleButtonGroup radios leave the arrows to the toolbar part; React Aria radio inputs bind only their checked state', () => {
+	const doc = parseDocument('<body><div data-rac="" role="radiogroup" aria-orientation="vertical"><label data-rac="" data-selected="true"><input type="radio" name="g" value="a" tabindex="0" checked=""></label><label data-rac=""><input type="radio" name="g" value="b" tabindex="-1"></label></div><div data-rac="" role="radiogroup"><button data-rac="" role="radio" aria-checked="true">x</button><button data-rac="" role="radio" aria-checked="false">y</button></div></body>');
+	const [la, lb] = [...walk(body(doc))].filter((el) => el.tagName === 'label') as [Element, Element];
+	const [x, y] = [...walk(body(doc))].filter((el) => el.tagName === 'button') as [Element, Element];
+	const radio = (checked: boolean) => ({ attrs: { 'data-selected': checked ? 'true' : undefined } as Record<string, string>, inner: '' });
+	const box = (checked: boolean) => ({ attrs: { role: 'radio', 'aria-checked': String(checked) }, inner: '' });
+	const plan = new CheckablePlan();
+	plan.add(body(doc), [
+		{ kind: 'radio', controls: [{ sig: 'la', nth: 0, role: 'radio', initial: true, on: radio(true), off: radio(false) }, { sig: 'lb', nth: 0, role: 'radio', initial: false, on: radio(true), off: radio(false) }] },
+		{ kind: 'radio', clears: true, controls: [{ sig: 'x', nth: 0, role: 'radio', initial: true, on: box(true), off: box(false) }, { sig: 'y', nth: 0, role: 'radio', initial: false, on: box(true), off: box(false) }] },
+	], (sig) => ({ la, lb, x, y })[sig as 'la' | 'lb' | 'x' | 'y'], (h) => h);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<input type="radio" name="g" value="b" tabindex="-1" checked=\{rg0 === 1\} \/>/, 'the toggle part keeps its tab stop');
+	assert.doesNotMatch(out, /radioKeys\(event, /, 'a React Aria ToggleButtonGroup moves focus as a toolbar');
+});

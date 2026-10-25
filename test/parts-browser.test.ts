@@ -704,3 +704,115 @@ test('React Aria Table: Left from a row goes to its last cell\'s button, Up and 
 	assert.equal(await focusOf(page), 'tr[row]:Keyboard$1Open', 'typing finds the row by its row header');
 	await page.close();
 });
+
+// React Aria's ToggleButtonGroup markup: every item is tabbable; the toolbar, not each item, owns the keys.
+function racToolbar(options: { single?: boolean; dir?: string } = {}): string {
+	const item = (label: string, k: number) => (options.single ? `<button data-rac="" type="button" tabindex="0" role="radio" aria-checked="${k === 0}">${label}</button>` : `<button data-rac="" type="button" tabindex="0" aria-pressed="false">${label}</button>`);
+	return `<button id="before">before</button><div data-rac="" role="${options.single ? 'radiogroup' : 'toolbar'}" aria-orientation="horizontal"${options.dir ? ` dir="${options.dir}"` : ''}>${['A', 'B', 'C'].map(item).join('')}</div><button id="after">after</button>`;
+}
+
+test('React Aria ToggleButtonGroup: Left and Right move focus without wrapping or choosing, Up and Down do nothing in a horizontal group', async () => {
+	const page = await open(racToolbar({ single: true }), ['toggle']);
+	await page.getByText('A', { exact: true }).focus();
+	await page.keyboard.press('ArrowDown');
+	assert.equal(await focused(page), 'A');
+	await page.keyboard.press('ArrowRight');
+	assert.equal(await focused(page), 'B');
+	assert.equal(await page.getByText('B', { exact: true }).getAttribute('aria-checked'), 'false', 'the arrows only move focus');
+	await page.keyboard.press('ArrowRight');
+	await page.keyboard.press('ArrowRight');
+	assert.equal(await focused(page), 'C', 'no wrapping past the last item');
+	await page.keyboard.press('ArrowLeft');
+	assert.equal(await focused(page), 'B');
+	await page.close();
+	const rtl = await open(racToolbar({ dir: 'rtl' }), ['toggle']);
+	await rtl.getByText('A', { exact: true }).focus();
+	await rtl.keyboard.press('ArrowLeft');
+	assert.equal(await focused(rtl), 'B', 'right to left, Left moves on');
+	await rtl.close();
+});
+
+test('React Aria ToggleButtonGroup: Tab leaves the group from any item, and coming back returns to the item it left', async () => {
+	const page = await open(racToolbar(), ['toggle']);
+	await page.getByText('A', { exact: true }).focus();
+	await page.keyboard.press('ArrowRight');
+	await page.keyboard.press('Tab');
+	assert.equal(await focused(page), 'after');
+	await page.keyboard.press('Shift+Tab');
+	assert.equal(await focused(page), 'B', 'focus returns to the item it left from');
+	await page.keyboard.press('Shift+Tab');
+	assert.equal(await focused(page), 'before');
+	await page.close();
+});
+
+test('React Aria RadioGroup: the arrows choose the next radio, wrapping, in reading order in a vertical group read right to left', async () => {
+	const radio = (v: string, checked: boolean) => `<label data-rac=""><input type="radio" name="g" value="${v}" tabindex="${checked ? 0 : -1}"${checked ? ' checked' : ''}>${v}</label>`;
+	const page = await open(`<div data-rac="" role="radiogroup" aria-orientation="vertical" dir="rtl">${radio('a', false)}${radio('b', true)}${radio('c', false)}</div><button>after</button>`, ['toggle']);
+	const value = () => page.evaluate(() => [(document.activeElement as HTMLInputElement).value, (document.querySelector('input:checked') as HTMLInputElement).value, [...document.querySelectorAll('input')].map((i) => i.tabIndex).join('')].join(':'));
+	await page.locator('input[value="b"]').focus();
+	await page.keyboard.press('ArrowRight');
+	assert.equal(await value(), 'c:c:-1-10', 'a vertical group keeps Right as next, and the chosen radio is the one tab stop');
+	await page.keyboard.press('ArrowDown');
+	assert.equal(await value(), 'a:a:0-1-1', 'wrapping');
+	await page.keyboard.press('ArrowLeft');
+	assert.equal(await value(), 'c:c:-1-10');
+	await page.keyboard.press('Tab');
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'after');
+	await page.close();
+});
+
+test('React Aria RadioGroup with nothing chosen: every radio is a tab stop until focus enters, then only the one focused', async () => {
+	const radio = (v: string) => `<label data-rac=""><input type="radio" name="g" value="${v}" tabindex="0">${v}</label>`;
+	const page = await open(`<button>before</button><div data-rac="" role="radiogroup" aria-orientation="vertical">${radio('a')}${radio('b')}</div><button>after</button>`, ['toggle']);
+	await page.getByText('before').focus();
+	await page.keyboard.press('Tab');
+	await page.keyboard.press('Tab');
+	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'after');
+	assert.equal(await page.evaluate(() => [...document.querySelectorAll('input')].map((i) => i.tabIndex).join('')), '00', 'leaving with nothing chosen makes every radio a tab stop again');
+	await page.close();
+});
+
+// Radix ToggleGroup and RadioGroup markup after hydration: the group is the tab stop until an item takes focus.
+function radixGroup(options: { role: 'group' | 'radiogroup'; pressed?: boolean; dir?: string }): string {
+	const item = (label: string, k: number) => `<button type="button" ${options.pressed ? `aria-pressed="false" data-state="off"` : `role="radio" aria-checked="${k === 0}" data-state="${k === 0 ? 'on' : 'off'}"`} tabindex="-1" data-radix-collection-item="" onclick="${options.role === 'radiogroup' ? `for (const b of this.parentElement.children) { b.setAttribute('aria-checked', String(b === this)); }` : ''}">${label}</button>`;
+	return `<button id="before">before</button><div role="${options.role}" dir="${options.dir ?? 'ltr'}" tabindex="0">${['A', 'B', 'C'].map(item).join('')}</div><button id="after">after</button>`;
+}
+async function holdKey(page: Page, key: string): Promise<void> {
+	await page.keyboard.down(key);
+	await page.waitForTimeout(60);
+	await page.keyboard.up(key);
+	await page.waitForTimeout(30);
+}
+
+test('Radix ToggleGroup: arrows, Home and End move focus in either axis, looping, and the focused item is the tab stop', async () => {
+	const page = await open(radixGroup({ role: 'group', pressed: true }), ['toggle']);
+	await page.getByText('A', { exact: true }).focus();
+	await holdKey(page, 'ArrowRight');
+	assert.equal(await focused(page), 'B');
+	await holdKey(page, 'ArrowDown');
+	assert.equal(await focused(page), 'C');
+	await holdKey(page, 'ArrowRight');
+	assert.equal(await focused(page), 'A', 'looping');
+	await holdKey(page, 'End');
+	assert.equal(await focused(page), 'C');
+	assert.equal(await page.evaluate(() => [...document.querySelectorAll('[data-radix-collection-item]')].map((b) => b.getAttribute('tabindex')).join(',')), '-1,-1,0');
+	assert.equal(await page.getByText('C', { exact: true }).getAttribute('aria-pressed'), 'false', 'arrows only move focus');
+	await page.close();
+});
+
+test('Radix RadioGroup: a held arrow chooses the radio it moves to and Enter does nothing; a Radix Checkbox ignores Enter', async () => {
+	const page = await open(`${radixGroup({ role: 'radiogroup' })}<button role="checkbox" aria-checked="false" data-state="unchecked" onclick="this.setAttribute('aria-checked', String(this.getAttribute('aria-checked') !== 'true'))">box</button>`, ['toggle']);
+	await page.getByText('A', { exact: true }).focus();
+	await holdKey(page, 'ArrowDown');
+	assert.equal(await focused(page), 'B');
+	assert.equal(await page.getByText('B', { exact: true }).getAttribute('aria-checked'), 'true');
+	await page.getByText('C', { exact: true }).focus();
+	await page.keyboard.press('Enter');
+	assert.equal(await page.getByText('C', { exact: true }).getAttribute('aria-checked'), 'false');
+	await page.getByText('box').focus();
+	await page.keyboard.press('Enter');
+	assert.equal(await page.getByText('box').getAttribute('aria-checked'), 'false');
+	await page.keyboard.press(' ');
+	assert.equal(await page.getByText('box').getAttribute('aria-checked'), 'true');
+	await page.close();
+});
