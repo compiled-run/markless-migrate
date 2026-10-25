@@ -25,6 +25,8 @@ const CMS: [RegExp, string][] = [
 ];
 const GQL_TAGS = /^(gql|graphql|groq|defineQuery)$/;
 const GQL_KEYWORD = /^\s*(query|mutation|subscription|fragment)\b/;
+// A schema (Apollo Server's typeDefs) defines the server's types; no page sends it.
+const GQL_SCHEMA = /^(\s*#[^\n]*\n)*\s*(type|input|enum|scalar|interface|union|schema|directive|extend)\b/;
 const ARRAY_METHODS = /^(map|forEach|filter|find|findIndex|some|every|flatMap|reduce|sort|slice|at|includes|join|length|concat|keys|values|entries|toString|then|json|text)$/;
 
 /** Leaf field paths a GraphQL document selects, keyed by response name; `shared` holds fragments other files define. */
@@ -327,7 +329,7 @@ export async function scanClients(ctx: Context): Promise<ClientFacts> {
 	const parsed = new Map<Client, DocumentNode>();
 	const addGraphql = (file: string, line: number, text: string, kind: string, endpoint: string | null) => {
 		const doc = parseGraphql(text);
-		if (!doc || !doc.definitions.length) return false;
+		if (!doc || !doc.definitions.some((d) => d.kind === Kind.OPERATION_DEFINITION || d.kind === Kind.FRAGMENT_DEFINITION)) return false;
 		const key = `${file}\n${normalise(text)}`;
 		const prior = docs.get(key);
 		if (prior) {
@@ -371,6 +373,7 @@ export async function scanClients(ctx: Context): Promise<ClientFacts> {
 				if (tag && GQL_TAGS.test(tag)) {
 					const text = queryText(n, mod) ?? '';
 					seenDocs.add(n.type === 'TaggedTemplateExpression' ? n.quasi : unwrap(n.arguments[0])!);
+					if (tag !== 'groq' && tag !== 'defineQuery' && GQL_SCHEMA.test(text)) return false;
 					if (tag === 'groq' || tag === 'defineQuery' || !GQL_KEYWORD.test(text) && !/^\s*\{/.test(text)) groqDocs.push({ node: n, text });
 					else addGraphql(file, mod.line(n.start), text, gqlKind, endpoint);
 					return false;

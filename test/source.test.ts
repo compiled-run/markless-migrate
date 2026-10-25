@@ -295,3 +295,21 @@ test('a GraphQL query whose fragments come from other files (Apollo fragment col
 	const page = facts.clients.find((c) => c.file === 'pages/index.tsx');
 	assert.deepEqual(page?.fields, ['feed.id', 'feed.hidden', 'feed.title']);
 });
+
+test('a GraphQL schema written with gql (an Apollo Server typeDefs) is the server\'s, not a query a page makes', async () => {
+	const { mkdir } = await import('node:fs/promises');
+	const root = await mkdtemp(join(tmpdir(), 'mm-sdl-'));
+	const files: Record<string, string> = {
+		'package.json': '{"dependencies":{"apollo-server-express":"3.6.1","graphql-tag":"2.12.6"}}',
+		'server/graphql-schema.ts': "import gql from 'graphql-tag';\nexport const typeDefs = gql(`\n  type Comment {\n    id: Int!\n    # The ID of the item\n    parent: Int!\n  }\n  scalar Date\n  type Query {\n    comment(id: Int!): Comment\n  }\n`);\n",
+		'server/more-schema.ts': "import { gql } from 'graphql-tag';\nexport const extra = gql`\n  # Feeds\n  enum FeedType {\n    top\n    new\n  }\n  extend type Query {\n    feed(type: FeedType!): [Int]\n  }\n`;\n",
+		'server/schema.graphql': 'type Story {\n  id: Int!\n}\n',
+		'pages/index.tsx': "import gql from 'graphql-tag';\nexport const query = gql`\n  query Comment($id: Int!) {\n    comment(id: $id) {\n      id\n    }\n  }\n`;\n",
+	};
+	for (const [file, text] of Object.entries(files)) {
+		await mkdir(join(root, file, '..'), { recursive: true });
+		await writeFile(join(root, file), text);
+	}
+	const facts = await scanSource(root);
+	assert.deepEqual(facts.clients.map((c) => `${c.kind} ${c.file}`), ['graphql pages/index.tsx']);
+});
