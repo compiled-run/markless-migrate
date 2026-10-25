@@ -9,13 +9,15 @@ import { VIEWPORTS } from '../check/types.ts';
 import type { Reveal } from './reveal.ts';
 
 /**
- * What choosing an option inside revealed content did on the old page: where the page went, what it copied, or the value
- * it gave the hidden form input beside the control (Base UI Select's, which no attribute of the option carries).
+ * What choosing an option inside revealed content did on the old page: where the page went, what it copied, or, for a
+ * Base UI Select, the value it gave the hidden form input beside the control and the text the trigger then showed (the
+ * Root's items' label, which need not be the option's own text). No attribute of the option carries either.
  */
 export interface Choice {
 	readonly href?: string;
 	readonly copied?: string;
 	readonly value?: string;
+	readonly shown?: string;
 }
 
 /** Options a library writes without a link (cmdk items, menu items), whose destination the old app's code computes. */
@@ -43,13 +45,16 @@ async function openOn(page: Page, origin: string, route: string, path: readonly 
 	return true;
 }
 
-// Base UI's Select.Root renders its hidden input right after its trigger.
-const hiddenInputValue = (page: Page, path: readonly number[]) =>
+// Base UI's Select.Root renders its hidden input right after its trigger; Select.Value shows the chosen item's label.
+const chosenOf = (page: Page, path: readonly number[]) =>
 	page.evaluate((p) => {
 		let el: Element | undefined = document.body;
 		for (const i of p) el = el?.children[i];
-		const next = el?.getAttribute('role') === 'combobox' ? el.nextElementSibling : null;
-		return next instanceof HTMLInputElement && next.getAttribute('aria-hidden') === 'true' ? next.value : undefined;
+		if (el?.getAttribute('role') !== 'combobox') return {};
+		const next = el.nextElementSibling;
+		const value = next instanceof HTMLInputElement && next.getAttribute('aria-hidden') === 'true' ? next.value : undefined;
+		const shown = (el.querySelector('[data-slot="select-value"]') ?? el).textContent?.trim();
+		return { ...(value !== undefined ? { value } : {}), ...(shown ? { shown } : {}) };
 	}, path);
 
 /**
@@ -58,7 +63,7 @@ const hiddenInputValue = (page: Page, path: readonly number[]) =>
  */
 export async function captureChoices(browser: Browser, origin: string, route: string, reveal: Reveal, dir: string, log: (line: string) => void = () => {}): Promise<Record<string, Choice>> {
 	const listbox = reveal.added.some((a) => a.html.includes('data-base-ui-portal') && a.html.includes('role="listbox"'));
-	const file = join(dir, `${reveal.key.replace(/[^\w-]/g, '_')}${listbox ? `-${createHash('sha256').update(route).digest('hex').slice(0, 8)}.values` : ''}.json`);
+	const file = join(dir, `${reveal.key.replace(/[^\w-]/g, '_')}${listbox ? `-${createHash('sha256').update(route).digest('hex').slice(0, 8)}.chosen` : ''}.json`);
 	const cached = await readFile(file, 'utf8').then((t) => JSON.parse(t) as Record<string, Choice>, () => undefined);
 	if (cached) return cached;
 	const viewport = VIEWPORTS.find((v) => v.name === reveal.viewport) ?? VIEWPORTS[0]!;
@@ -77,8 +82,8 @@ export async function captureChoices(browser: Browser, origin: string, route: st
 			await page.waitForTimeout(500);
 			const copied = await page.evaluate(() => (window as unknown as { __mmCopied?: string[] }).__mmCopied?.at(-1));
 			const after = page.url();
-			const value = listbox && after === before ? await hiddenInputValue(page, reveal.path) : undefined;
-			out[key] = after !== before ? { href: new URL(after).pathname + new URL(after).search + new URL(after).hash } : copied !== undefined ? { copied } : value !== undefined ? { value } : {};
+			const chosen = listbox && after === before ? await chosenOf(page, reveal.path) : {};
+			out[key] = after !== before ? { href: new URL(after).pathname + new URL(after).search + new URL(after).hash } : copied !== undefined ? { copied } : chosen;
 			if (after !== before || copied !== undefined || !(await target.isVisible().catch(() => false))) await openOn(page, origin, route, reveal.path);
 		}
 		log(`choices of ${reveal.key} on ${route}: ${Object.keys(out).length} options`);

@@ -98,8 +98,9 @@ function select(trigger: HTMLElement, root: ParentNode, option: HTMLElement): vo
 		else o.removeAttribute('data-selected');
 	}
 	const label = ([...option.children].find((c) => c.tagName === 'DIV') ?? option).textContent ?? '';
-	// The trigger's value is Markless state (convert's SelectPlan); its handler for this event sets it.
-	trigger.dispatchEvent(new CustomEvent('mmchoose', { bubbles: true, detail: label }));
+	// The trigger's value is Markless state (convert's SelectPlan); its handler for this event sets it. Select.Value shows
+	// the Root's items' label, which convert recorded where it is not the option's own text.
+	trigger.dispatchEvent(new CustomEvent('mmchoose', { bubbles: true, detail: option.dataset.mmText ?? label }));
 	selectedValue.set(trigger, label);
 	const input = trigger.nextElementSibling;
 	const value = option.dataset.mmValue;
