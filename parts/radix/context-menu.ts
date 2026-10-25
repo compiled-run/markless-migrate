@@ -1,5 +1,6 @@
 import { closeLayer, layerOf, openLayer, type Layer } from '../layer.ts';
 import { layersFor, closestTrigger, layerKey } from '../reveal.ts';
+import { clearHighlight } from './dropdown-menu.ts';
 
 // Radix ContextMenu: a right press (or a long touch) on the trigger area opens the menu at the pointer, modal, with
 // its content focused; the dropdown-menu port's item rules (arrows, typeahead, choosing closes) apply to it as to any
@@ -13,6 +14,7 @@ const open = new Map<HTMLElement, Layer>();
 function close(trigger: HTMLElement, layer: Layer): void {
 	open.delete(trigger);
 	trigger.setAttribute('data-state', 'closed');
+	clearHighlight(layer);
 	closeLayer(layer, true);
 }
 
@@ -32,6 +34,7 @@ export function contextmenu(target: Element, event: MouseEvent): boolean {
 	if (!layer) return false;
 	open.set(trigger, layer);
 	trigger.setAttribute('data-state', 'open');
+	clearHighlight(layer);
 	layer.content.focus({ preventScroll: true });
 	return true;
 }
