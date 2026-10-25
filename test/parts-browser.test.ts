@@ -565,6 +565,23 @@ test('recharts: a pie\'s sector under the pointer is its point, and the tooltip 
 	await page.close();
 });
 
+test('clock: a marked date is written for the visitor\'s clock and zone once the parts load, and again when its content changes', async () => {
+	const page = await open(
+		`<p data-mm-clock='[{"x":"January 17, 2026","in":2}]'>published on January 17, 2026.</p><input data-mm-clock='[{"x":"June 01, 2025","at":1748736000000}]' value="June 01, 2025"><div data-mm-clock='[{"*":2026}]'><span id="tip">Apr 5, 2024</span></div>`,
+		['clock'],
+	);
+	const expected = await page.evaluate(() => {
+		const day = (d: Date) => `${d.toLocaleDateString('en-US', { month: 'long' })} ${d.getDate()}, ${d.getFullYear()}`;
+		const june = new Date(1748736000000);
+		return [`published on ${day(new Date(Date.now() + 2 * 86_400_000))}.`, `${june.toLocaleDateString('en-US', { month: 'long' })} ${String(june.getDate()).padStart(2, '0')}, ${june.getFullYear()}`];
+	});
+	assert.equal(await page.locator('p').textContent(), expected[0]);
+	assert.equal(await page.locator('input').inputValue(), expected[1]);
+	await page.locator('#tip').evaluate((el) => (el.firstChild!.nodeValue = 'Apr 9, 2024'));
+	assert.equal(await page.locator('#tip').textContent(), await page.evaluate(() => `Apr ${new Date(Date.UTC(2024, 3, 9)).getDate()}, 2024`), 'a tooltip Markless writes later');
+	await page.close();
+});
+
 test('Radix ScrollArea: the scrollbar rendered beside the content shows on hover, its thumb sized and moved with the scroll', async () => {
 	const rows = Array.from({ length: 40 }, (_, i) => `<div style="height:20px">row ${i}</div>`).join('');
 	const page = await open(
