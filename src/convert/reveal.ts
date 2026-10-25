@@ -1,14 +1,15 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import type { Browser, Page } from 'playwright';
+import type { Browser, BrowserContext, Page } from 'playwright';
 import { defaultEnv, openPage } from '../check/browser.ts';
 import { finishAnimations } from '../check/capture.ts';
 import { loadPage } from '../check/infrastructure.ts';
-import { COMMAND_EMPTY, keepCommandEmpty, keptCommandEmpty } from './capture.ts';
+import { commandEmptyMark, keepCommandEmpty, markedOf } from './capture.ts';
 import { VIEWPORTS, type Viewport } from '../check/types.ts';
 import { markTextValues } from './rac-text.ts';
-import { INSTANCE_PROPS, INSTANCE_PROPS_VERSION, markedInstanceProps, markInstanceProps } from './instance-props.ts';
+import { INSTANCE_PROPS, instancePropMarks, markInstanceProps } from './instance-props.ts';
+import { marksOf, missingMarks, type Mark, type Marked } from './marks.ts';
 
 // What the old page's React tree knows of the content a gesture added, written on it before it is read.
 async function markAdded(page: Page): Promise<void> {
@@ -45,10 +46,18 @@ export interface RevealCapture {
 	readonly route: string;
 	readonly reveals: readonly Reveal[];
 	readonly skipped: readonly string[];
+	/** The version of each mark written on what the gestures added (addedMarks): a reveal lacking one that applies to it is taken again. */
+	readonly marks?: Marked;
+	/** Before marks: COMMAND_EMPTY when the commands' empty states were kept. */
 	readonly commandEmpty?: number;
-	/** INSTANCE_PROPS_VERSION when each instance's props were written on what it added (instance-props.ts). */
+	/** Before marks: 1 when each instance's props were written on what it added (instance-props.ts). */
 	readonly instanceProps?: number;
 }
+
+const textValuesMark: Mark = { id: 'text-values', version: 1, applies: (html) => html.includes('data-rac') && /role="(option|menuitem)/.test(html) };
+
+/** The marks written on what a gesture added before it is read. */
+export const addedMarks = (): Mark[] => [commandEmptyMark, textValuesMark, ...instancePropMarks()];
 
 // Controls ARIA marks as holding content back, and the gesture that shows it.
 const CONTROLS: readonly (readonly [selector: string, action: RevealAction])[] = [
@@ -292,11 +301,35 @@ export type RevealMemo = Map<string, { readonly html: string; readonly reveal: R
 
 const REUSE_AFTER = 3;
 
+type Open = { context: BrowserContext; page: Page; baseline: string };
+
+/** Uses one candidate the way captureReveals does, then puts the page back (loading it again when using the control left it changed). */
+async function useCandidate(open: Open, candidate: Candidate, again: () => Promise<Open>): Promise<{ added: Revealed[] | string; open: Open }> {
+	const previous = await selectedSibling(open.page, candidate.path);
+	const raw = await reveal(open.page, candidate);
+	const added = candidate.extra && typeof raw !== 'string' ? raw.filter((a) => a.into === 'replace' || a.into === 'clipboard') : raw;
+	if (!(await undo(open.page, previous, open.baseline))) {
+		await open.context.close().catch(() => {});
+		open = await again();
+	}
+	return { added, open };
+}
+
 /** Uses every control on a route that holds content back, on each viewport where it can be used, and records what each showed. */
-export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, memo: RevealMemo = new Map(), viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = [], pass: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string } = { controls: CONTROLS, tag: '' }): Promise<RevealCapture> {
+export async function captureReveals(browser: Browser, origin: string, route: string, dir: string, memo: RevealMemo = new Map(), viewports: readonly Viewport[] = VIEWPORTS, extra: readonly (readonly [string, RevealAction])[] = [], pass: { readonly controls: readonly (readonly [string, RevealAction])[]; readonly tag: string } = { controls: CONTROLS, tag: '' }, marks: readonly Mark[] = addedMarks()): Promise<RevealCapture> {
 	const file = join(dir, `${key(`${pass.tag}${route}`, extra)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as RevealCapture, () => undefined);
-	if (cached && cached.route === route && keptCommandEmpty(cached.reveals.flatMap((r) => r.added.map((a) => a.html)), cached.commandEmpty) && markedInstanceProps(cached.reveals.flatMap((r) => r.added.map((a) => a.html)), cached.instanceProps)) return cached;
+	if (cached && cached.route === route) {
+		// A capture under the reveal:2 key had its text values marked.
+		const marked = markedOf(cached, { [textValuesMark.id]: 1 });
+		const stale = cached.reveals.filter((r) => missingMarks(r.added.map((a) => a.html), marked, marks).length);
+		if (!stale.length) return cached;
+		// Only the controls whose content a newer mark reads are used again; every other reveal is kept as it was.
+		const taken = await retake(browser, origin, route, stale, extra, pass.controls, viewports);
+		const capture: RevealCapture = { route, reveals: cached.reveals.map((r) => taken.get(r) ?? r), skipped: cached.skipped, marks: marksOf(marks) };
+		await writeFile(file, JSON.stringify(capture));
+		return capture;
+	}
 	const reveals: Reveal[] = [];
 	const skipped: string[] = [];
 	const done = new Set<string>();
@@ -317,9 +350,9 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 					reveals.push({ ...known.reveal, path: candidate.path, sig: candidate.sig, nth: candidate.nth });
 					continue;
 				}
-				const previous = await selectedSibling(open.page, candidate.path);
-				const raw = await reveal(open.page, candidate);
-				const added = candidate.extra && typeof raw !== 'string' ? raw.filter((a) => a.into === 'replace' || a.into === 'clipboard') : raw;
+				const used = await useCandidate(open, candidate, () => fresh(browser, origin, route, viewport));
+				open = used.open;
+				const added = used.added;
 				if (typeof added === 'string') skipped.push(`${candidate.key} (${viewport.name}): ${added}`);
 				else {
 					done.add(candidate.key);
@@ -334,19 +367,37 @@ export async function captureReveals(browser: Browser, origin: string, route: st
 						}
 					}
 				}
-				if (!(await undo(open.page, previous, open.baseline))) {
-					await open.context.close().catch(() => {});
-					open = await fresh(browser, origin, route, viewport);
-				}
 			}
 		} finally {
 			await open.context.close().catch(() => {});
 		}
 	}
-	const capture: RevealCapture = { route, reveals, skipped, commandEmpty: COMMAND_EMPTY, instanceProps: INSTANCE_PROPS_VERSION };
+	const capture: RevealCapture = { route, reveals, skipped, marks: marksOf(marks) };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(capture));
 	return capture;
+}
+
+// The cached reveals' controls used again on a fresh load at each one's viewport, found by key and else by tag, slot, text
+// and order: what each shows now, by the reveal it replaces. A control not found again, or showing nothing now, keeps its reveal.
+async function retake(browser: Browser, origin: string, route: string, stale: readonly Reveal[], extra: readonly (readonly [string, RevealAction])[], controls: readonly (readonly [string, RevealAction])[], viewports: readonly Viewport[]): Promise<Map<Reveal, Reveal>> {
+	const out = new Map<Reveal, Reveal>();
+	for (const viewport of viewports.filter((v) => stale.some((r) => r.viewport === v.name))) {
+		let open = await fresh(browser, origin, route, viewport);
+		try {
+			const found = await candidates(open.page, extra, controls);
+			for (const old of stale.filter((r) => r.viewport === viewport.name)) {
+				const candidate = found.find((c) => c.key === old.key && c.action === old.action) ?? found.find((c) => c.sig === old.sig && c.nth === old.nth && c.action === old.action);
+				if (!candidate?.visible) continue;
+				const used = await useCandidate(open, candidate, () => fresh(browser, origin, route, viewport));
+				open = used.open;
+				if (typeof used.added !== 'string' && used.added.length) out.set(old, { ...old, path: candidate.path, sig: candidate.sig, nth: candidate.nth, added: used.added });
+			}
+		} finally {
+			await open.context.close().catch(() => {});
+		}
+	}
+	return out;
 }
 
 /** What the site lists beside the controls ARIA marks (lib/site/controls.json): controls that reveal, and those that open a layer ARIA does not mark. */

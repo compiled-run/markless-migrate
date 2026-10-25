@@ -8,7 +8,8 @@ import { loadPage } from '../check/infrastructure.ts';
 import { VIEWPORTS, type Viewport } from '../check/types.ts';
 import { MEASURE_WIDTHS, readImages, readImageWidths, type ImageFacts } from './images.ts';
 import { fontPreloadsInFirstScreen, LATE_CANDIDATE, lateFontsInFirstScreen, markLateFontCandidates } from './fonts.ts';
-import { INSTANCE_PROPS, INSTANCE_PROPS_VERSION, markedInstanceProps, markInstanceProps } from './instance-props.ts';
+import { INSTANCE_PROPS, instancePropMarks, legacyInstanceProps, markInstanceProps } from './instance-props.ts';
+import { marksOf, missingMarks, type Mark, type Marked } from './marks.ts';
 
 /** One route of the old site as a visitor's browser holds it once the page has settled, beside what its server sent. */
 export interface CapturedPage {
@@ -26,9 +27,11 @@ export interface CapturedPage {
 	readonly firstScreenFonts?: readonly string[];
 	/** The font files the page preloads that no first screen draws. */
 	readonly offscreenFontPreloads?: readonly string[];
-	/** COMMAND_EMPTY when the commands' empty states were kept. */
+	/** The version of each mark written on the documents (pageMarks): a capture lacking one that applies to it is taken again. */
+	readonly marks?: Marked;
+	/** Before marks: COMMAND_EMPTY when the commands' empty states were kept. */
 	readonly commandEmpty?: number;
-	/** INSTANCE_PROPS_VERSION when each instance's props were written on its elements (instance-props.ts). */
+	/** Before marks: 1 when each instance's props were written on its elements (instance-props.ts). */
 	readonly instanceProps?: number;
 	/** FONT_FACTS when the page's web fonts were read (fonts.ts); a capture without them is taken again. */
 	readonly fonts?: number;
@@ -41,7 +44,13 @@ const key = (route: string) => createHash('sha256').update(route).digest('hex').
 
 /** Captures (and reveals) taken before commands' empty states were kept are taken again where they hold a cmdk input. */
 export const COMMAND_EMPTY = 1;
-export const keptCommandEmpty = (htmls: readonly string[], marked: number | undefined) => marked === COMMAND_EMPTY || !htmls.some((h) => h.includes('cmdk-input'));
+export const commandEmptyMark: Mark = { id: 'command-empty', version: COMMAND_EMPTY, applies: (html) => html.includes('cmdk-input') };
+
+/** The marks a page's settled documents are written with. */
+export const pageMarks = (): Mark[] => [commandEmptyMark, ...instancePropMarks()];
+
+/** The marks a capture was written with, from its own record or, before marks, the version fields it had then. */
+export const markedOf = (capture: { readonly marks?: Marked; readonly commandEmpty?: number; readonly instanceProps?: number }, also: Marked = {}): Marked => capture.marks ?? { ...also, ...(capture.commandEmpty !== undefined ? { [commandEmptyMark.id]: capture.commandEmpty } : {}), ...legacyInstanceProps(capture.instanceProps) };
 
 /**
  * cmdk renders [cmdk-empty] only while a search leaves nothing: each command (in `added` content only, when given) is
@@ -86,7 +95,8 @@ export async function keepCommandEmpty(page: Page, added?: string): Promise<void
 export async function capturePage(browser: Browser, origin: string, route: string, dir: string, viewports: readonly Viewport[] = VIEWPORTS): Promise<CapturedPage> {
 	const file = join(dir, `${key(route)}.json`);
 	const cached = await readFile(file, 'utf8').then((text) => JSON.parse(text) as CapturedPage, () => undefined);
-	if (cached && cached.route === route && keptCommandEmpty(Object.values(cached.settled), cached.commandEmpty) && markedInstanceProps(Object.values(cached.settled), cached.instanceProps) && cached.fonts === FONT_FACTS) return cached;
+	const marks = pageMarks();
+	if (cached && cached.route === route && !missingMarks(Object.values(cached.settled), markedOf(cached), marks).length && cached.fonts === FONT_FACTS) return cached;
 	let server = '';
 	let status = 0;
 	const settled: Record<string, string> = {};
@@ -130,7 +140,7 @@ export async function capturePage(browser: Browser, origin: string, route: strin
 			await context.close().catch(() => {});
 		}
 	}
-	const captured: CapturedPage = { route, status, server, settled, images, commandEmpty: COMMAND_EMPTY, instanceProps: INSTANCE_PROPS_VERSION, fonts: FONT_FACTS, ...(lateFonts.length ? { lateFonts } : {}), ...(firstScreenFonts.length ? { firstScreenFonts } : {}), ...(offscreenFontPreloads.length ? { offscreenFontPreloads } : {}) };
+	const captured: CapturedPage = { route, status, server, settled, images, marks: marksOf(marks), fonts: FONT_FACTS, ...(lateFonts.length ? { lateFonts } : {}), ...(firstScreenFonts.length ? { firstScreenFonts } : {}), ...(offscreenFontPreloads.length ? { offscreenFontPreloads } : {}) };
 	await mkdir(dir, { recursive: true });
 	await writeFile(file, JSON.stringify(captured));
 	return captured;
