@@ -12,7 +12,7 @@ import type { Dimension, Failure, Viewport } from './types.ts';
  * the old and the new page side by side, and what a visitor meets is read after every step: where focus is and whether its ring
  * shows, the state attributes of the control and its widget, what is open, the toasts, tab stops and page lock.
  */
-export type ProbeClass = 'modality' | 'popup' | 'hover';
+export type ProbeClass = 'modality' | 'popup' | 'hover' | 'drag';
 
 export type Op =
 	| { readonly op: 'click' | 'tab in' | 'hover' | 'leave' | 'outside' | 'close' }
@@ -21,7 +21,8 @@ export type Op =
 	/** The first letter of the n-th item whose first letter is new, pressed as typeahead. */
 	| { readonly op: 'typeahead'; readonly n: number }
 	| { readonly op: 'key'; readonly key: string }
-	| { readonly op: 'type'; readonly text: string };
+	| { readonly op: 'type'; readonly text: string }
+	| { readonly op: 'drag'; readonly dx: number; readonly dy: number };
 
 export interface Sequence {
 	readonly cls: ProbeClass;
@@ -61,6 +62,12 @@ export function sequencesFor(cls: ProbeClass, control: Pick<ProbeControl, 'role'
 				s('pointer resting on it, leaving and coming back', [{ op: 'hover' }, { op: 'leave' }, { op: 'hover' }, ...(control.role === 'link' ? [] : [{ op: 'click' } as Op]), { op: 'leave' }]),
 				s('focus by Tab resting on it, then Escape and Tab', [{ op: 'tab in' }, key('Escape'), key('Tab')]),
 			];
+		case 'drag':
+			return control.role === 'separator'
+				? [s('dragged by the pointer both ways', [{ op: 'hover' }, { op: 'drag', dx: 60, dy: 0 }, { op: 'drag', dx: 0, dy: 50 }, { op: 'drag', dx: -120, dy: 0 }, { op: 'leave' }])]
+				: control.role === 'slider'
+					? [s('dragged by the pointer both ways', [{ op: 'drag', dx: 40, dy: 0 }, { op: 'drag', dx: -90, dy: 0 }, { op: 'leave' }])]
+					: [s('swiped by the pointer both ways', [{ op: 'drag', dx: -260, dy: 0 }, { op: 'drag', dx: 260, dy: 0 }, { op: 'leave' }])];
 	}
 }
 
@@ -86,15 +93,18 @@ export function describeOp(op: Op): string {
 			return `press ${op.key}`;
 		case 'type':
 			return `type "${op.text}"`;
+		case 'drag':
+			return `drag it ${op.dx ? `${Math.abs(op.dx)} px ${op.dx > 0 ? 'right' : 'left'}` : `${Math.abs(op.dy)} px ${op.dy > 0 ? 'down' : 'up'}`}`;
 	}
 }
 
-const DIMENSION: Record<ProbeClass, Dimension> = { modality: 'a11y', popup: 'behaviour', hover: 'behaviour' };
+const DIMENSION: Record<ProbeClass, Dimension> = { modality: 'a11y', popup: 'behaviour', hover: 'behaviour', drag: 'behaviour' };
 
 export const PROBE_HINTS: Record<ProbeClass, string> = {
 	modality: 'Whether the focus ring shows follows how the visitor last moved: a key press (Tab, an arrow, Escape) shows it, a pointer press hides it, and typing into a text field or moving the mouse leaves it as it was. Track the modality on the document the way the old library does (keydown before pointerdown), not per control, and set the same marker (data-focus-visible or :focus-visible) on the element that has focus.',
 	popup: 'What this control opens must answer as on the old page: the item the pointer is on is highlighted and the highlight goes when the pointer leaves or the list closes, so a reopened list starts fresh; a list opened by the pointer takes focus so ArrowDown moves in it, and Tab closes it; a typed letter moves to the item it starts; a hidden form input follows the chosen value; a reopened overlay is visible and its content rendered once; Tab inside a non-modal popover moves on as the old one does, a modal one keeps focus in. Opening and closing by the pointer must leave focus where the old page leaves it: on open, in the pop-up or its first item as the old library chooses; after Escape or the close button, back on the control; after a click outside, where the old page put it (the control for a modal, the clicked spot for a non-modal). Lock scrolling and hide the rest of the page only while the old page does.',
 	hover: 'The pointer resting on this control (or focus reaching it) shows something on the old page, or marks it hovered: open it after the same delay, keep it while the pointer is on it, close it when the pointer leaves, and set the same hover markers (data-hovered, data-state).',
+	drag: 'A pointer drag moves this control on the old page: follow the pointer (pointerdown, pointermove, pointerup), move the value, panel or slide by the same amount, take focus as the old one does, and leave the same state attributes after release.',
 };
 
 const STEP_TIMEOUT = 2_500;
@@ -104,7 +114,7 @@ const AIM = '[data-markless-migrate-aim]';
 type ProbeWindow = { __markless_migrate_probe__?: { read(): Reading; outside(): { x: number; y: number } | null; aim(what: string): boolean; letter(n: number): string } };
 // Keys are held as a person holds them: Radix moves a radio group's focus in a timeout and checks the radio only while the key is still down.
 const HOLD_MS = 60;
-const ON_CONTROL = new Set<Op['op']>(['click', 'tab in', 'hover']);
+const ON_CONTROL = new Set<Op['op']>(['click', 'tab in', 'hover', 'drag']);
 const DESTRUCTIVE = /\b(log ?out|sign ?out|delete|remove|destroy|unsubscribe|deactivate)\b/i;
 
 const controlKey = (c: Pick<ProbeControl, 'role' | 'name' | 'nth'>) => `${c.role}|${c.name.replace(/\s+/g, '')}|${c.nth}`;
@@ -194,6 +204,19 @@ async function perform(side: Side, control: ProbeControl, op: Op): Promise<void>
 			return page.keyboard.press(op.key, { delay: HOLD_MS });
 		case 'type':
 			return page.keyboard.type(op.text, { delay: 30 });
+		case 'drag': {
+			const role = await target.getAttribute('role', { timeout: STEP_TIMEOUT }).catch(() => null);
+			const handle = (await aim(role === 'slider' || (await target.evaluate((e) => e instanceof HTMLInputElement && e.type === 'range', undefined, { timeout: STEP_TIMEOUT }).catch(() => false)) ? 'thumb' : role === 'separator' ? 'none' : 'track')) ?? target;
+			const box = await handle.boundingBox({ timeout: STEP_TIMEOUT });
+			if (!box) throw new Error('it has no box to drag');
+			const x = box.x + box.width / 2;
+			const y = box.y + box.height / 2;
+			await page.mouse.move(x, y);
+			await page.mouse.down();
+			await page.mouse.move(x + op.dx / 2, y + op.dy / 2, { steps: 4 });
+			await page.mouse.move(x + op.dx, y + op.dy, { steps: 4 });
+			return page.mouse.up();
+		}
 	}
 }
 

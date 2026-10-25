@@ -180,7 +180,7 @@ export function installProbe(): void {
 			}
 			return letters[n] ?? '';
 		},
-		aim(what: 'close' | 'popup' | 'before' | `item ${number}`): boolean {
+		aim(what: 'close' | 'popup' | 'thumb' | 'track' | 'before' | `item ${number}`): boolean {
 			const AIM = 'data-markless-migrate-aim';
 			for (const o of document.querySelectorAll(`[${AIM}]`)) o.removeAttribute(AIM);
 			const el = control();
@@ -190,6 +190,8 @@ export function installProbe(): void {
 				found = top && [...top.querySelectorAll('button, [role="button"]')].filter(shown).find((b) => /\b(close|cancel|dismiss|done)\b/i.test(`${b.getAttribute('aria-label') ?? ''} ${text(b)}`));
 			} else if (what.startsWith('item ')) found = items()[Number(what.slice(5))];
 			else if (what === 'popup') found = [...document.querySelectorAll(POPUP)].filter(shown).pop();
+			else if (what === 'thumb') found = el && ([el, ...el.querySelectorAll('[role="slider"], input[type="range"]')].find((t) => t.matches('[role="slider"], input[type="range"]') && shown(t)) ?? el);
+			else if (what === 'track') found = el && ([...el.querySelectorAll('*')].find((t) => t instanceof HTMLElement && t.scrollWidth > t.clientWidth + 2 && getComputedStyle(t).overflowX !== 'visible') ?? el.querySelector(':scope > * > *') ?? el);
 			else if (what === 'before' && el) {
 				const all = [...document.querySelectorAll('a[href], button, input, select, textarea, [tabindex]')].filter((e) => e instanceof HTMLElement && e.tabIndex >= 0 && shown(e) && !el.contains(e) && !(el.compareDocumentPosition(e) & Node.DOCUMENT_POSITION_FOLLOWING));
 				found = all.pop();
@@ -258,7 +260,8 @@ export function probeControls({ mark, found = {} }: { readonly mark?: string; re
 	};
 	if (mark !== undefined) for (const o of document.querySelectorAll('[data-markless-migrate-probe]')) o.removeAttribute('data-markless-migrate-probe');
 	for (const e of document.body.querySelectorAll('*')) {
-		const role = roleOf(e);
+		const carousel = /^carousel$/i.test(e.getAttribute('aria-roledescription') ?? '');
+		let role = roleOf(e) || (carousel ? 'region' : '');
 		if (!role) continue;
 		const classes: string[] = [];
 		const focusable = e instanceof HTMLElement && e.tabIndex >= 0;
@@ -268,6 +271,7 @@ export function probeControls({ mark, found = {} }: { readonly mark?: string; re
 		if (opener || role === 'combobox') classes.push('popup');
 		// A link listens for hover to prefetch its page (Next's Link does): it is a hover target only when it says it shows something.
 		if (hover?.has(e) && /^(button|link|checkbox|switch|tab|radio)$/.test(role) && (role !== 'link' || e.hasAttribute('data-state') || e.hasAttribute('aria-describedby') || e.hasAttribute('aria-haspopup') || e.hasAttribute('aria-expanded'))) classes.push('hover');
+		if (role === 'slider' || (role === 'separator' && focusable) || carousel) classes.push('drag');
 		add(e, role, classes);
 	}
 	return out;
