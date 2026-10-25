@@ -789,7 +789,8 @@ function readReaction(): { changes: string[]; scrolled: boolean; boxes: Record<s
 	watch.stop();
 	watch.observer.disconnect();
 	delete g.__markless_migrate_reaction__;
-	const STATES = ['aria-valuenow', 'aria-valuetext', 'aria-expanded', 'aria-selected', 'aria-checked', 'aria-pressed', 'aria-current', 'open'];
+	// With the state attributes component libraries set for their styles: a port that leaves data-state or data-highlighted as it was looks different.
+	const STATES = ['aria-valuenow', 'aria-valuetext', 'aria-expanded', 'aria-selected', 'aria-checked', 'aria-pressed', 'aria-current', 'open', 'data-state', 'data-highlighted', 'data-pressed', 'data-hovered', 'data-selected', 'data-checked', 'data-open', 'data-active', 'data-disabled', 'data-popup-open', 'data-focus-visible'];
 	const IMPLICIT: Record<string, string> = { button: 'button', a: 'link', select: 'combobox', textarea: 'textbox', dialog: 'dialog', details: 'group', summary: 'button', nav: 'navigation', main: 'main', header: 'banner', footer: 'contentinfo', aside: 'complementary', form: 'form', table: 'table', ul: 'list', ol: 'list', li: 'listitem', section: 'region', img: 'img' };
 	const roleOf = (el: Element) => el.getAttribute('role') ?? (el.localName === 'input' ? ((el as HTMLInputElement).type === 'range' ? 'slider' : (el as HTMLInputElement).type === 'checkbox' ? 'checkbox' : (el as HTMLInputElement).type === 'radio' ? 'radio' : 'textbox') : IMPLICIT[el.localName]);
 	const label = (el: Element) => {

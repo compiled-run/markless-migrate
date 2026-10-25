@@ -388,6 +388,11 @@ whose content is rendered twice shows twice as many).
 | `repeat` | a button whose click showed a toast or announced something in a journey or a probe | three clicks in a row, then the pointer on the toasts and away |
 | `tab stops` | a tablist, radiogroup, toolbar, menubar, grid, tree, or a group of toggle buttons | Tab in, each arrow, Space, Tab out and Shift+Tab back |
 
+Every journey step is held to the same attributes: when each old run changes one of `data-state`,
+`data-highlighted`, `data-pressed`, `data-hovered`, `data-selected`, `data-checked`, `data-open`,
+`data-active`, `data-disabled`, `data-popup-open` or `data-focus-visible` and the new page does not, the
+step is red, as it is for an `aria-*` value.
+
 A step that differs is red (`a11y` for focus rings and tab stops, `behaviour` otherwise) with the
 control, the class, the sequence, the step and what each side showed there, and the converter parts
 whose selectors match the control or what it opened (`Likely part: parts/resizable.ts`). A difference
