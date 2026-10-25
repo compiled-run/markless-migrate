@@ -54,8 +54,13 @@ const setValue = (control: HTMLElement, value: string) => {
 	if (hidden) hidden.value = value;
 };
 
+// useListNavigation's indexRef: where the arrows go on from. Clearing the highlight by typing keeps it while an item is
+// selected, a pointer leaving the items resets it.
+const from = new WeakMap<Popup, number>();
+
 function highlight(p: Popup, option: HTMLElement | undefined): void {
 	for (const o of p.popup.querySelectorAll<HTMLElement>(OPTION)) o.removeAttribute('data-highlighted');
+	if (option) from.set(p, items(p).indexOf(option));
 	if (!option) {
 		inputIn(p)?.removeAttribute('aria-activedescendant');
 		return;
@@ -127,8 +132,31 @@ function openBox(button: HTMLElement): void {
 		if (list?.id) input.setAttribute('aria-controls', list.id);
 		input.focus({ preventScroll: true });
 	}
+	hover(p);
 	filter(p, '');
 	highlight(p, selectedIn(p));
+}
+
+// Items highlight on a mouse move over them (onMouseMove), not when the list moves under a still pointer; a pointer
+// leaving them for anything but another item clears it (resetOnPointerLeave).
+function hover(p: Popup): void {
+	const onMove = (event: PointerEvent) => {
+		const option = event.pointerType === 'touch' ? null : (event.target as Element | null)?.closest?.<HTMLElement>(OPTION);
+		if (option && p.popup.contains(option) && !option.hasAttribute('data-highlighted')) highlight(p, option);
+	};
+	const onOut = (event: PointerEvent) => {
+		const option = (event.target as Element | null)?.closest?.(OPTION);
+		const to = event.relatedTarget instanceof Element ? event.relatedTarget.closest(OPTION) : null;
+		if (event.pointerType === 'touch' || !option || !p.popup.contains(option) || (to && p.popup.contains(to))) return;
+		highlight(p, undefined);
+		from.set(p, -1);
+	};
+	document.addEventListener('pointermove', onMove, true);
+	document.addEventListener('pointerout', onOut, true);
+	p.cleanup.push(() => {
+		document.removeEventListener('pointermove', onMove, true);
+		document.removeEventListener('pointerout', onOut, true);
+	});
 }
 
 // `typed`: opened by typing, which leaves no item highlighted.
@@ -154,6 +182,7 @@ function open(input: HTMLInputElement, typed = false): Popup | undefined {
 		clearTimeout(timer);
 		document.removeEventListener('pointerdown', onDown, true);
 	});
+	hover(p);
 	filter(p, '');
 	if (!typed) highlight(p, selectedIn(p));
 	return p;
@@ -294,29 +323,25 @@ export function click(target: Element, event: MouseEvent): boolean {
 	return true;
 }
 
-export function pointerover(target: Element): boolean {
-	const option = target.closest<HTMLElement>(OPTION);
-	const p = option && popupOf(option);
-	if (!option || !p || !ours(p)) return false;
-	highlight(p, option);
-	return true;
-}
-
 export function input(target: Element): boolean {
 	const el = target.closest<HTMLInputElement>(INPUT);
 	if (!el) return false;
+	const was = popupFor(el);
+	const selected = was ? Boolean(selectedIn(was)) : false;
 	// Emptying a single-value input clears its value (inputClear); the list stays open (openOnInputClick).
 	if (el.value === '' && !inBox(el)) {
-		const p = popupFor(el);
-		if (!p || !multiple(p.popup)) {
+		if (!was || !multiple(was.popup)) {
 			for (const o of optionsOf(el)) mark(o, false);
 			for (const c of groupOf(el)?.querySelectorAll<HTMLElement>('[data-slot="combobox-clear"]') ?? []) c.hidden = true;
 			for (const b of buttonsOf(el)) b.setAttribute('data-placeholder', '');
 			setValue(el, '');
 		}
 	}
-	const p = open(el, true);
-	if (p) filter(p, el.value);
+	// Only text that is more than spaces opens the list.
+	const p = was ?? (el.value.trim() ? open(el, true) : undefined);
+	if (!p) return true;
+	filter(p, el.value);
+	if (!selected) from.set(p, -1);
 	return true;
 }
 
@@ -325,7 +350,8 @@ function step(p: Popup, down: boolean): void {
 	const list = items(p);
 	if (!list.length) return;
 	const at = list.findIndex((o) => o.hasAttribute('data-highlighted'));
-	if (at < 0) highlight(p, down ? list[0] : list[list.length - 1]);
+	const last = from.get(p) ?? -1;
+	if (at < 0) highlight(p, (last >= 0 ? list[last + (down ? 1 : -1)] : undefined) ?? (down ? list[0] : list[list.length - 1]));
 	else if ((down && at === list.length - 1) || (!down && at === 0)) highlight(p, undefined);
 	else highlight(p, list[at + (down ? 1 : -1)]);
 }
@@ -348,6 +374,14 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 	}
 	const el = target.closest<HTMLInputElement>(INPUT);
 	if (!el || event.shiftKey) return false;
+	// ComboboxInput moves the caret itself on Home and End, so the page does not scroll.
+	if (event.key === 'Home' || event.key === 'End') {
+		event.preventDefault();
+		const at = event.key === 'Home' ? 0 : el.value.length;
+		el.setSelectionRange(at, at);
+		el.scrollLeft = event.key === 'Home' ? 0 : el.scrollWidth;
+		return true;
+	}
 	if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
 		const was = popupFor(el);
 		const p = open(el);

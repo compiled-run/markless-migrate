@@ -171,3 +171,41 @@ test('Base UI Combobox popup variant: Enter on the trigger opens it with the sea
 	assert.equal(await page.locator('[id$="-hidden-input"]').inputValue(), 'Argentina');
 	await page.close();
 });
+
+test('Base UI Combobox input: spaces alone do not open the list, Home and End move the caret without scrolling the page', async () => {
+	const page = await open(single().replace('<main style="padding-top:200px">', '<main style="padding-top:200px;height:4000px">'), ['base-ui/combobox']);
+	await page.locator('#cb').focus();
+	await press(page, ' ');
+	assert.equal((await state(page)).expanded, 'false');
+	await press(page, 'End');
+	assert.equal(await page.evaluate(() => scrollY), 0);
+	await page.close();
+});
+
+test('Base UI Combobox pointer: an item highlights when the mouse moves over it, not when the list opens under it, and leaving the items clears it', async () => {
+	const page = await open(single(), ['base-ui/combobox']);
+	await page.locator('#cb').focus();
+	await press(page, 'ArrowDown');
+	const box = await page.locator('[data-mm-layer="cb"] [role="option"]').nth(1).boundingBox();
+	await press(page, 'Escape');
+	await page.waitForFunction(() => document.querySelector<HTMLElement>('[data-mm-layer="cb"]')!.hidden);
+	await page.mouse.move(box!.x + 5, box!.y + 5);
+	await press(page, 'ArrowDown');
+	assert.equal((await state(page)).highlighted, 'Next.js✓', 'the keyboard highlight stands');
+	await page.mouse.move(box!.x + 8, box!.y + 8);
+	assert.equal((await state(page)).highlighted, 'SvelteKit✓');
+	await page.mouse.move(box!.x + 8, box!.y - 400);
+	assert.equal((await state(page)).highlighted, null);
+	await page.close();
+});
+
+test('Base UI Combobox with several values: after typing clears the highlight, ArrowDown goes on from the item opening highlighted', async () => {
+	const page = await open(chips, ['base-ui/combobox']);
+	await page.locator('#cb').click();
+	await page.locator('#cb').pressSequentially('zz');
+	await press(page, 'Backspace');
+	await press(page, 'Backspace');
+	await press(page, 'ArrowDown');
+	assert.equal(await page.evaluate(() => document.querySelector('[data-highlighted]')?.textContent), 'SvelteKit✓');
+	await page.close();
+});
