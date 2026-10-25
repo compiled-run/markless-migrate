@@ -230,6 +230,8 @@ test('the site\'s D theme shortcut, a document listener on the old page, runs wi
 	);
 	const dark = () => page.evaluate(() => document.documentElement.classList.contains('dark'));
 	const before = await dark();
+	// The pointer away from the menu (placed at the corner by the stub): the theme's restyle moves no pointer onto an item.
+	await page.mouse.move(990, 790);
 	await page.locator('#menu').focus();
 	await page.keyboard.press('Enter');
 	assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Edit');
