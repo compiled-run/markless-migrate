@@ -76,6 +76,71 @@ function radixTabStop(item: HTMLElement): void {
 	if (arrowHeld && item.getAttribute('role') === 'radio' && group.getAttribute('role') === 'radiogroup' && item.getAttribute('aria-checked') !== 'true') item.click();
 }
 
+// Base UI ToggleGroup's CompositeRoot: arrows along its orientation (Left and Right swapped right to left), Home and End
+// move focus in a microtask to the next item that is not disabled or hidden, looping; the item focused is the tab stop.
+const BASE_ITEM = 'button[aria-pressed]:not([data-radix-collection-item]):not([data-rac])';
+const baseGroupOf = (item: Element) => item.closest<HTMLElement>('[role="group"][data-orientation]');
+const baseItems = (group: Element) => [...group.querySelectorAll<HTMLElement>(BASE_ITEM)].filter((i) => baseGroupOf(i) === group);
+const baseDisabled = (el: HTMLElement) => !el.checkVisibility() || el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true';
+
+function baseKeys(item: HTMLElement, event: KeyboardEvent): boolean {
+	const group = baseGroupOf(item);
+	if (!group || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return false;
+	const items = baseItems(group);
+	// ToggleGroup's own orientation prop (horizontal unless the source passes one), not the data-orientation it renders.
+	const orientation = group.getAttribute('data-mm-orientation') ?? 'horizontal';
+	const rtl = getComputedStyle(group).direction === 'rtl';
+	const forward = orientation === 'vertical' ? ['ArrowDown'] : orientation === 'both' ? [rtl ? 'ArrowLeft' : 'ArrowRight', 'ArrowDown'] : [rtl ? 'ArrowLeft' : 'ArrowRight'];
+	const backward = orientation === 'vertical' ? ['ArrowUp'] : orientation === 'both' ? [rtl ? 'ArrowRight' : 'ArrowLeft', 'ArrowUp'] : [rtl ? 'ArrowRight' : 'ArrowLeft'];
+	if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return false;
+	const step = (from: number, back: boolean) => {
+		let i = from;
+		do i += back ? -1 : 1;
+		while (i >= 0 && i <= items.length - 1 && baseDisabled(items[i]!));
+		return i;
+	};
+	const min = step(-1, false);
+	const max = step(items.length, true);
+	const highlighted = Math.max(0, items.findIndex((i) => i.getAttribute('tabindex') === '0'));
+	let next = event.key === 'Home' ? min : event.key === 'End' ? max : highlighted;
+	if (next === highlighted && (forward.includes(event.key) || backward.includes(event.key))) {
+		if (next === max && forward.includes(event.key)) next = min;
+		else if (next === min && backward.includes(event.key)) next = max;
+		else next = step(next, backward.includes(event.key));
+	}
+	if (next === highlighted || next < 0 || next > items.length - 1) return false;
+	const prevented = orientation === 'vertical' ? ['ArrowUp', 'ArrowDown', 'Home', 'End'] : orientation === 'both' ? ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'] : ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
+	if (prevented.includes(event.key)) event.preventDefault();
+	const to = items[next]!;
+	queueMicrotask(() => to.focus());
+	return true;
+}
+
+function baseTabStop(item: HTMLElement): void {
+	const group = baseGroupOf(item);
+	if (!group) return;
+	for (const i of baseItems(group)) {
+		const value = i === item ? '0' : '-1';
+		if (i.getAttribute('tabindex') !== value) i.setAttribute('tabindex', value);
+	}
+}
+
+/** Base UI Checkbox's Enter: the form around its hidden input is submitted by its default button, once the key has run its course. */
+export function submitForm(event: KeyboardEvent): void {
+	const input = (event.target as Element).nextElementSibling;
+	const form = input instanceof HTMLInputElement ? input.form : null;
+	if (!form) return;
+	// getDefaultFormSubmitter: the form's first control of type submit.
+	const submitter = [...form.elements].find((c): c is HTMLButtonElement | HTMLInputElement => (c instanceof HTMLButtonElement || c instanceof HTMLInputElement) && c.type === 'submit');
+	queueMicrotask(() => submitter?.click());
+}
+
+/** A Base UI control's hidden input, focused by its label's click, hands focus to the control just before it. */
+export function focusControl(event: FocusEvent): void {
+	const control = (event.target as Element).previousElementSibling;
+	if (control instanceof HTMLElement) control.focus();
+}
+
 // React Aria's focusable test (isFocusable): its selector, not inert, and rendered.
 const FOCUSABLE = ['input:not([disabled]):not([type=hidden])', 'select:not([disabled])', 'textarea:not([disabled])', 'button:not([disabled])', 'a[href]', 'area[href]', 'summary', 'iframe', 'object', 'embed', 'audio[controls]', 'video[controls]', '[contenteditable]:not([contenteditable^="false"])', 'permission'].join(':not([hidden]),') + ',[tabindex]:not([disabled]):not([hidden])';
 const focusable = (el: Element): el is HTMLElement => el instanceof HTMLElement && el.matches(FOCUSABLE) && !el.closest('[inert]') && el.checkVisibility({ visibilityProperty: true });
@@ -140,6 +205,7 @@ function toolbarOf(target: Element): HTMLElement | undefined {
 export function keydown(target: Element, event: KeyboardEvent): boolean {
 	const item = target.closest<HTMLElement>(RADIX_ITEM);
 	if (item) return radixKeys(item, event);
+	if (target.matches(BASE_ITEM) && baseGroupOf(target)) return baseKeys(target as HTMLElement, event);
 	if (event.key === 'Enter' && target.matches('button[role="checkbox"][data-state]')) {
 		event.preventDefault();
 		return true;
@@ -172,6 +238,10 @@ export function keydown(target: Element, event: KeyboardEvent): boolean {
 export function focusin(target: Element, event: FocusEvent): boolean {
 	if (target.matches(RADIX_ITEM)) {
 		radixTabStop(target as HTMLElement);
+		return false;
+	}
+	if (target.matches(BASE_ITEM) && baseGroupOf(target)) {
+		baseTabStop(target as HTMLElement);
 		return false;
 	}
 	const group = racRadio(target);

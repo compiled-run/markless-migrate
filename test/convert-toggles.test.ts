@@ -215,3 +215,16 @@ test('a control that another control\'s state is read by keeps its own group, an
 	assert.equal(placed, 2);
 	assert.deepEqual(plan.bind(all)?.declare, ['let tg1 = state(false);']);
 });
+
+test('Base UI checkables take Space as their library does (a checkbox on key up, Enter submitting its form), and their hidden input hands focus to the control', () => {
+	const doc = parseDocument('<body><span role="checkbox" aria-checked="false" data-unchecked=""></span><input type="checkbox" aria-hidden="true"><span role="switch" aria-checked="false"></span><input type="checkbox" aria-hidden="true"></body>');
+	const [box, sw] = [...walk(body(doc))].filter((el) => el.tagName === 'span') as [Element, Element];
+	const state = (role: string, checked: boolean) => ({ attrs: { role, 'aria-checked': String(checked) }, inner: '' });
+	const control = (sig: string, role: string) => ({ sig, nth: 0, role, initial: false, on: state(role, true), off: state(role, false) });
+	const plan = new CheckablePlan();
+	plan.add(body(doc), [{ kind: 'toggle', controls: [control('box', 'checkbox')] }, { kind: 'toggle', controls: [control('sw', 'switch')] }], (sig) => (sig === 'box' ? box : sw), (h) => h);
+	const out = emitElement(body(doc), { bind: (el) => plan.bind(el) });
+	assert.match(out, /<span role="checkbox"[^\n]*?onKeyDown=\{\(event\) => \{ if \(event\.key === ' '\) event\.preventDefault\(\); else if \(event\.key === 'Enter'\) \{ event\.preventDefault\(\); submitForm\(event\); \} \}\} onKeyUp=\{\(event\) => \{ if \(event\.key === ' '\) \{ tg0 = !tg0; \} \}\}/);
+	assert.match(out, /<span role="switch"[^\n]*?else if \(event\.key === 'Enter'\) \{ event\.preventDefault\(\); tg1 = !tg1; \}/, 'a switch takes Enter too');
+	assert.equal(out.match(/onFocus=\{\(event\) => focusControl\(event\)\}/g)?.length, 2);
+});

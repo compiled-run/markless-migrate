@@ -1127,3 +1127,39 @@ test('Radix RadioGroup: a held arrow chooses the radio it moves to and Enter doe
 	assert.equal(await page.getByText('box').getAttribute('aria-checked'), 'true');
 	await page.close();
 });
+
+// Base UI ToggleGroup as shadcn renders it: the wrapper writes its own data-orientation; Base UI's is a prop.
+function baseGroup(options: { dataOrientation?: string; orientation?: string } = {}): string {
+	const item = (label: string, k: number) => `<button type="button" aria-disabled="false" tabindex="${k === 0 ? 0 : -1}" aria-pressed="false">${label}</button>`;
+	return `<div role="group" data-orientation="${options.dataOrientation ?? 'horizontal'}"${options.orientation ? ` data-mm-orientation="${options.orientation}"` : ''}>${['A', 'B', 'C'].map(item).join('')}</div>`;
+}
+
+test('Base UI ToggleGroup: the arrows of its own orientation move focus, looping, Home and End go to the ends, and the item focused is the tab stop', async () => {
+	const page = await open(baseGroup({ dataOrientation: 'vertical' }), ['toggle']);
+	await page.getByText('A', { exact: true }).focus();
+	await page.keyboard.press('ArrowDown');
+	assert.equal(await focused(page), 'A', 'its orientation is horizontal whatever data-orientation the wrapper writes');
+	await page.keyboard.press('ArrowRight');
+	assert.equal(await focused(page), 'B');
+	await page.keyboard.press('End');
+	assert.equal(await focused(page), 'C');
+	await page.keyboard.press('ArrowRight');
+	assert.equal(await focused(page), 'A', 'looping');
+	assert.equal(await page.evaluate(() => [...document.querySelectorAll('button')].map((b) => b.getAttribute('tabindex')).join(',')), '0,-1,-1');
+	await page.close();
+	const vertical = await open(baseGroup({ orientation: 'vertical' }), ['toggle']);
+	await vertical.getByText('A', { exact: true }).focus();
+	await vertical.keyboard.press('ArrowDown');
+	assert.equal(await focused(vertical), 'B', 'an orientation the source passes is followed');
+	await vertical.close();
+});
+
+test('Base UI Checkbox: its hidden input, focused by a click on its label, hands focus to the control; Enter submits the form around it', async () => {
+	const page = await open(`<form onsubmit="event.preventDefault(); window.submitted = (window.submitted ?? 0) + 1"><span role="checkbox" tabindex="0" id="c">x</span><input type="checkbox" aria-hidden="true" id="i" tabindex="-1"><label for="i">Label</label><button>Send</button></form><script type="module">import { focusControl, submitForm } from '/parts/toggle.ts'; document.getElementById('i').addEventListener('focus', focusControl); document.getElementById('c').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submitForm(e); } });</script>`, ['toggle']);
+	await page.getByText('Label').click();
+	assert.equal(await page.evaluate(() => document.activeElement?.id), 'c');
+	await page.keyboard.press('Enter');
+	await page.waitForTimeout(50);
+	assert.equal(await page.evaluate(() => (window as unknown as { submitted?: number }).submitted), 1);
+	await page.close();
+});
