@@ -117,7 +117,7 @@ test('each driver runs its CLI headless with tool approval for the markless-migr
 	assert.deepEqual(args.copilot, ['copilot', '-p', 'PROMPT', '--allow-all-tools', '--model', 'M']);
 	assert.deepEqual(args.opencode, ['opencode', 'run', '--model', 'M', 'PROMPT']);
 	for (const d of DRIVERS) assert.equal(d.args('PROMPT').includes('--model'), false, d.id);
-	assert.throws(() => driver('notepad'), /unknown agent "notepad"; run supports: codex, claude, gemini, cursor, copilot, opencode/);
+	assert.throws(() => driver('notepad'), /unknown agent "notepad"; run supports: codex, claude \(claude-code\), gemini \(gemini-cli\), cursor, copilot \(github-copilot\), opencode/);
 });
 
 test('run validates its arguments before starting anything', async () => {
@@ -311,4 +311,11 @@ test('an embeds-only run asks for embed changes alone and checks with the comman
 	assert.match(prompt, /Make the third-party embeds on route \/ of the new app match the old app's: this run compares the embeds alone \(`--only embeds`\)/);
 	assert.match(prompt, /leave everything else on the page as it is/);
 	assert.ok(prompt.includes('Check by running `mm check --old http://old.test --new http://new.test --route / --only embeds`'), prompt);
+});
+
+test('run takes the agent names setup uses: claude-code, gemini-cli and github-copilot drive claude, gemini and copilot', () => {
+	assert.equal(driver('claude-code').id, 'claude');
+	assert.equal(driver('gemini-cli').id, 'gemini');
+	assert.equal(driver('github-copilot').id, 'copilot');
+	assert.throws(() => driver('vscode'), /unknown agent "vscode"; run supports: codex, claude \(claude-code\), gemini \(gemini-cli\), cursor, copilot \(github-copilot\), opencode/);
 });

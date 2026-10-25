@@ -4,6 +4,8 @@ import { SERVER_NAME, type ServerCommand } from '../agents/registry.ts';
 
 export interface Driver {
 	readonly id: string;
+	/** The name `setup` gives the same agent, when it differs (`claude-code` for `claude`). */
+	readonly setupId?: string;
 	readonly binary: string;
 	/** With `server`, the markless-migrate MCP server is passed on the command line, so the agent's own config is never edited or copied. */
 	args(prompt: string, model?: string, server?: ServerCommand): string[];
@@ -29,6 +31,7 @@ export const DRIVERS: readonly Driver[] = [
 	},
 	{
 		id: 'claude',
+		setupId: 'claude-code',
 		binary: 'claude',
 		args: (prompt, m, server) => [
 			'-p',
@@ -43,6 +46,7 @@ export const DRIVERS: readonly Driver[] = [
 	},
 	{
 		id: 'gemini',
+		setupId: 'gemini-cli',
 		binary: 'gemini',
 		args: (prompt, m) => ['--approval-mode', 'yolo', ...model('--model', m), '-p', prompt],
 	},
@@ -53,6 +57,7 @@ export const DRIVERS: readonly Driver[] = [
 	},
 	{
 		id: 'copilot',
+		setupId: 'github-copilot',
 		binary: 'copilot',
 		args: (prompt, m) => ['-p', prompt, '--allow-all-tools', ...model('--model', m)],
 	},
@@ -64,8 +69,8 @@ export const DRIVERS: readonly Driver[] = [
 ];
 
 export function driver(id: string): Driver {
-	const found = DRIVERS.find((d) => d.id === id);
-	if (!found) throw new Error(`unknown agent "${id}"; run supports: ${DRIVERS.map((d) => d.id).join(', ')}`);
+	const found = DRIVERS.find((d) => d.id === id || d.setupId === id);
+	if (!found) throw new Error(`unknown agent "${id}"; run supports: ${DRIVERS.map((d) => (d.setupId ? `${d.id} (${d.setupId})` : d.id)).join(', ')}`);
 	return found;
 }
 
