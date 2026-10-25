@@ -210,13 +210,28 @@ function close(p: Popup): void {
 	closePopup(p, false);
 }
 
+// ComboboxClear renders only while a value is selected, and shadcn hides the trigger button off its presence
+// (:has([data-slot=combobox-clear])): a hidden one gives its slot up until it shows again.
+function showClear(input: HTMLElement, on: boolean): void {
+	for (const c of groupOf(input)?.querySelectorAll<HTMLElement>('[data-slot="combobox-clear"], [data-mm-slot="combobox-clear"]') ?? []) {
+		c.hidden = !on;
+		if (on) {
+			c.setAttribute('data-slot', 'combobox-clear');
+			c.removeAttribute('data-mm-slot');
+		} else {
+			c.setAttribute('data-mm-slot', 'combobox-clear');
+			c.removeAttribute('data-slot');
+		}
+	}
+}
+
 // Clearing (Combobox.Clear, Escape on a closed input, emptying the input): no value, no chip, the placeholder back.
 function clear(input: HTMLInputElement): void {
 	input.value = '';
 	for (const o of optionsOf(input)) mark(o, false);
 	for (const chip of chipsOf(input)) chip.hidden = true;
 	chosen.set(input, []);
-	for (const c of groupOf(input)?.querySelectorAll<HTMLElement>('[data-slot="combobox-clear"]') ?? []) c.hidden = true;
+	showClear(input, false);
 	for (const b of buttonsOf(input)) b.setAttribute('data-placeholder', '');
 	setValue(input, '');
 }
@@ -247,7 +262,7 @@ function choose(p: Popup, option: HTMLElement): void {
 	const input = p.trigger as HTMLInputElement;
 	input.value = text;
 	setValue(input, text);
-	for (const c of groupOf(input)?.querySelectorAll<HTMLElement>('[data-slot="combobox-clear"]') ?? []) c.hidden = false;
+	showClear(input, true);
 	for (const b of buttonsOf(input)) b.removeAttribute('data-placeholder');
 	close(p);
 	input.focus({ preventScroll: true });
@@ -323,6 +338,13 @@ export function click(target: Element, event: MouseEvent): boolean {
 	return true;
 }
 
+// The highlight follows mouse moves (hover above); claiming the crossing keeps another port's pointerover off these items.
+export function pointerover(target: Element): boolean {
+	const option = target.closest<HTMLElement>(OPTION);
+	const p = option && popupOf(option);
+	return Boolean(option && p && ours(p));
+}
+
 export function input(target: Element): boolean {
 	const el = target.closest<HTMLInputElement>(INPUT);
 	if (!el) return false;
@@ -332,7 +354,7 @@ export function input(target: Element): boolean {
 	if (el.value === '' && !inBox(el)) {
 		if (!was || !multiple(was.popup)) {
 			for (const o of optionsOf(el)) mark(o, false);
-			for (const c of groupOf(el)?.querySelectorAll<HTMLElement>('[data-slot="combobox-clear"]') ?? []) c.hidden = true;
+			showClear(el, false);
 			for (const b of buttonsOf(el)) b.setAttribute('data-placeholder', '');
 			setValue(el, '');
 		}

@@ -209,3 +209,23 @@ test('Base UI Combobox with several values: after typing clears the highlight, A
 	assert.equal(await page.evaluate(() => document.querySelector('[data-highlighted]')?.textContent), 'SvelteKit✓');
 	await page.close();
 });
+
+test('Base UI Combobox beside Base UI Select: the select port does not take the combobox\'s items, so hovering sets aria-activedescendant', async () => {
+	const page = await open(single(), ['base-ui/combobox', 'base-ui/select']);
+	await page.locator('#cb').click();
+	await page.locator('[role="option"]', { hasText: 'SvelteKit' }).hover();
+	assert.deepEqual([(await state(page)).highlighted, (await state(page)).active], ['SvelteKit✓', 'SvelteKit✓']);
+	await page.close();
+});
+
+test('Base UI Combobox: the clear button leaves when the value goes, so CSS keyed off its presence shows the trigger button again', async () => {
+	const page = await open(`<style>[data-slot="input-group"]:has([data-slot="combobox-clear"]) [data-slot="input-group-button"]{display:none}</style>${single({ value: 'Next.js' })}`, ['base-ui/combobox']);
+	const button = page.locator('[data-slot="input-group-button"]');
+	assert.equal(await button.isVisible(), false);
+	await page.locator('[data-slot="combobox-clear"]').click();
+	assert.equal(await button.isVisible(), true);
+	await page.locator('#cb').click();
+	await page.locator('[role="option"]', { hasText: 'Nuxt.js' }).click();
+	assert.equal(await button.isVisible(), false, 'a value brings the clear button back');
+	await page.close();
+});
