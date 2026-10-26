@@ -42,7 +42,8 @@ export interface NetworkVerdict {
 	readonly reason?: string;
 }
 
-const values = (runs: readonly NetworkRun[], metric: RunMetric) => runs.map((r) => runMetric(r, metric)).filter((v): v is number => v !== undefined);
+// A run that stopped waiting for its answer counts it at that moment: an old page's answer is no sooner than that.
+const values = (runs: readonly NetworkRun[], metric: RunMetric) => runs.map((r) => runMetric(r, metric) ?? (metric === 'answered' && !r.error ? r.answeredAfter : undefined)).filter((v): v is number => v !== undefined);
 const unanswered = (r: NetworkRun) => Boolean(r.error && /never answered/.test(r.error));
 
 /** Each gated time old against new in one browser and network. */
@@ -55,7 +56,8 @@ export function networkVerdicts(old: NetworkCell, next: NetworkCell): NetworkVer
 			out.push({ metric, old: median(o), worse: Infinity, band: 0, p: 0, ok: false, reason: next.runs[0]!.error! });
 			continue;
 		}
-		const noise = noiseBand(o);
+		// A cell stopped once settled has too few runs to split the old ones; nothing it could still take would have made it red.
+		const noise = noiseBand(o) ?? (old.settled || next.settled ? 0 : undefined);
 		if (!o.length || !n.length || noise === undefined) continue;
 		const band = Math.max(noise, resolution(metric));
 		const om = median(o);
@@ -64,6 +66,37 @@ export function networkVerdicts(old: NetworkCell, next: NetworkCell): NetworkVer
 		out.push({ metric, old: om, new: nm, worse: nm - om, band, p, ok: !(nm - om > band && p < SIGNIFICANCE) });
 	}
 	return out;
+}
+
+/** The median of `known` and `missing` more values, each of those as large as it can be (`hi`) or as small (`lo`). */
+function medianWith(known: readonly number[], missing: number, fill: number): number {
+	return median([...known, ...Array.from({ length: Math.max(0, missing) }, () => fill)]);
+}
+
+/** The latest the new page's median answer can come, whatever answers its missing runs bring; undefined while it can still be any time. */
+export function latestAnswer(next: readonly NetworkRun[], runs: number): number | undefined {
+	if (next.some((r) => r.error)) return undefined;
+	const answers = values(next, 'answered');
+	if (answers.length !== next.length) return undefined;
+	const latest = medianWith(answers, runs - next.length, Infinity);
+	return Number.isFinite(latest) ? latest : undefined;
+}
+
+/**
+ * Whether the runs a cell has yet to take can no longer make the new page slower: on every gated time, the new page's median
+ * with each missing run as late as can be is no later than the old page's with each missing run at 0. Runs that failed, or a
+ * time some runs have and others lack, leave the cell unsettled.
+ */
+export function settledNotSlower(old: readonly NetworkRun[], next: readonly NetworkRun[], runs: number): boolean {
+	if (!old.length || !next.length || [...old, ...next].some((r) => r.error)) return false;
+	for (const metric of GATED) {
+		const o = values(old, metric);
+		const n = values(next, metric);
+		if (!o.length && !n.length) continue;
+		if (o.length !== old.length || n.length !== next.length) return false;
+		if (medianWith(n, runs - next.length, Infinity) > medianWith(o, runs - old.length, 0)) return false;
+	}
+	return true;
 }
 
 const KB = (bytes: number) => `${(bytes / 1000).toFixed(1)} kB`;

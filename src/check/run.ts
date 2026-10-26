@@ -34,7 +34,7 @@ import { CheckProgress } from './progress.ts';
 import { applyNavigation, checkNavigation, type NavigationOptions, type NavigationResult } from './nav-parity.ts';
 import { loadFailures, measureLoad, psiFailures, type LoadOptions } from './load.ts';
 import { measurePsi, psiKey } from './psi.ts';
-import { CHECK_AFTER_ANSWER_MS, CHECK_RUN_TIMEOUT_MS, measureRouteNetwork } from './slow-network.ts';
+import { CHECK_AFTER_ANSWER_MS, CHECK_RUN_TIMEOUT_MS, measureRoutesNetwork } from './slow-network.ts';
 import { networkFailures } from './slow-network-verdicts.ts';
 import { assetsToProbe, compareRoute, cssTargets, forgetFailures, httpFailures, noiseReport, noisyStyles, weightAllowed, withFailures, type Probe } from './compare.ts';
 import { matchElements } from './match.ts';
@@ -911,7 +911,8 @@ export async function runCheck(options: CheckOptions): Promise<Report> {
 			const networkOptions = options.load?.network;
 			if (networkOptions) {
 				// The proxy cannot add a bypass token to https requests it only tunnels.
-				for (const [route, load] of loads) loads.set(route, { ...load, network: bypassed ? { unavailable: 'not measured: --header and --cookie cannot be sent through the throttling proxy' } : await measureRouteNetwork({ old: options.oldOrigin, new: options.newOrigin }, route, { afterAnswerMs: CHECK_AFTER_ANSWER_MS, timeoutMs: CHECK_RUN_TIMEOUT_MS, ...networkOptions }) });
+				const measured = bypassed ? undefined : await measureRoutesNetwork({ old: options.oldOrigin, new: options.newOrigin }, [...loads.keys()], { afterAnswerMs: CHECK_AFTER_ANSWER_MS, timeoutMs: CHECK_RUN_TIMEOUT_MS, ...networkOptions });
+				for (const [route, load] of loads) loads.set(route, { ...load, network: measured?.get(route) ?? { unavailable: 'not measured: --header and --cookie cannot be sent through the throttling proxy' } });
 			}
 			routes.forEach((r, i) => {
 				const load = anonymous(r) ? loads.get(r.route) : undefined;

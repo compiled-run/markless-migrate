@@ -51,16 +51,17 @@ export class NetworkCache {
 
 	async get(key: CellKey): Promise<NetworkRun[] | undefined> {
 		try {
-			const stored = JSON.parse(await readFile(await this.#file(key), 'utf8')) as { runs: NetworkRun[] };
-			return stored.runs.length >= key.runs ? stored.runs : undefined;
+			const stored = JSON.parse(await readFile(await this.#file(key), 'utf8')) as { runs: NetworkRun[]; settled?: boolean };
+			return stored.runs.length >= key.runs || stored.settled ? stored.runs : undefined;
 		} catch {
 			return undefined;
 		}
 	}
 
-	async put(key: CellKey, runs: readonly NetworkRun[]): Promise<void> {
+	/** `settled`: the cell stopped short of `key.runs` because no more runs could have changed its verdict; those runs stand for the cell. */
+	async put(key: CellKey, runs: readonly NetworkRun[], settled = false): Promise<void> {
 		if (runs.some((r) => r.error && !/never answered/.test(r.error))) return;
 		await mkdir(this.#dir, { recursive: true });
-		await writeFile(await this.#file(key), `${JSON.stringify({ ...key, at: new Date().toISOString(), runs })}\n`);
+		await writeFile(await this.#file(key), `${JSON.stringify({ ...key, at: new Date().toISOString(), runs, ...(settled ? { settled } : {}) })}\n`);
 	}
 }

@@ -97,9 +97,17 @@ function slowNetwork(network: RouteLoad['network']): string {
 			.join('');
 		const notes = [old, next].flatMap((c, side) => (c.runs.some((r) => r.error) ? [`${side ? 'New' : 'Old'}: ${c.runs.filter((r) => r.error).length} of ${c.runs.length} runs failed (${c.runs.find((r) => r.error)!.error})`] : []));
 		if (old.cached) notes.push('Old: runs reused from an earlier check of the same deploy.');
+		const waited = old.runs.filter((r) => r.answeredAfter !== undefined);
+		if (waited.length) notes.push(`Old: ${waited.length} of ${old.runs.length} runs stopped waiting for the answer after ${waited.map((r) => formatValue('answered', r.answeredAfter)).join(', ')}, once the new page's median answer could no longer come later; they count as answering then.`);
+		if (old.settled || next.settled) notes.push('Stopped short of the runs asked for: those left could not have made the new page slower here.');
 		return `<h4>${esc(title)}: median of ${Math.min(old.runs.length, next.runs.length)} cold loads</h4><table><thead><tr><th>Metric</th><th>Old</th><th>New</th><th>Verdict</th></tr></thead><tbody>${rows}</tbody></table>${notes.map((f) => `<p><small>${esc(f)}</small></p>`).join('')}`;
 	});
-	return `<h4>Slow network <small>${esc(networkHeadline(network).replace(/^slow network: /, ''))}; cold loads through a throttling proxy, the control clicked every ${CLICK_EVERY_MS} ms from when it shows until it answers; red when the new page is slower beyond how far the old page's own runs differ</small></h4>${tables.join('')}`;
+	const stood = network.measuredAs
+		? `<p><small>Measured on ${esc(network.measuredAs)}, which stands for this page: the same files on both sides' critical paths, this page's new HTML no larger and its old HTML no smaller.</small></p>`
+		: network.standsFor?.length
+			? `<p><small>This measurement also stands for ${network.standsFor.map(esc).join(', ')}.</small></p>`
+			: '';
+	return `<h4>Slow network <small>${esc(networkHeadline(network).replace(/^slow network: /, ''))}; cold loads through a throttling proxy, the control clicked every ${CLICK_EVERY_MS} ms from when it shows until it answers; red when the new page is slower beyond how far the old page's own runs differ</small></h4>${stood}${tables.join('')}`;
 }
 
 function pageLoad(r: RouteResult): string {

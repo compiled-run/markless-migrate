@@ -60,6 +60,16 @@ test('a control that never answers is an error, not a time', async () => {
 	assert.equal(run.answered, undefined);
 });
 
+test('a run told to stop waiting for the answer records when it stopped, not an error, and does not wait out its timeout', async () => {
+	const started = Date.now();
+	const run = await networkRun(`${origin}/`, LINK, 'chromium', { timeoutMs: 30_000, answerBy: 1_500, control: '[role="tab"][aria-selected="true"]' });
+	assert.equal(run.error, undefined);
+	assert.equal(run.answered, undefined);
+	assert.ok(run.answeredAfter !== undefined && run.answeredAfter >= 1_500, `stopped after ${run.answeredAfter} ms`);
+	assert.ok(run.firstFrame !== undefined, 'the first frame is still read');
+	assert.ok(Date.now() - started < 20_000, `took ${Date.now() - started} ms`);
+});
+
 const DESKTOP = [{ name: 'desktop', width: 1280, height: 800, isMobile: false }];
 
 test('check is red on the slow network when the new page answers later beyond the old page\'s own noise, naming the cell and what came first', async () => {
